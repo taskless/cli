@@ -11,34 +11,54 @@ The package SHALL expose its knowledge prompts (the `help/*.txt` recipes) throug
 
 ### Requirement: The prompt export is typed
 
-The export SHALL provide a `PromptTopic` union of the available canonical topics, a `PROMPTS: Record<PromptTopic, string>` map, and a `getPrompt(topic, opts?)` accessor. Referencing an unknown topic SHALL be a compile-time error against `PromptTopic`.
+The export SHALL provide a `PromptTopic` union of the available canonical topics, a `PROMPTS: Record<PromptTopic, (options?: PromptOptions) => string>` map of render functions, and a `getPrompt(topic, options?)` accessor over the same. Referencing an unknown topic SHALL be a compile-time error against `PromptTopic`.
 
 #### Scenario: Typed access to topics
 
 - **WHEN** a consumer calls `getPrompt("route")`
 - **THEN** it type-checks and returns the `route` recipe; `getPrompt("nope")` fails type-checking against `PromptTopic`
 
-### Requirement: The export and the help command share one source
+#### Scenario: A topic is callable from the map
 
-The prompt export SHALL be sourced from the same embedded `help/*.txt` content that `commands/help.ts` serves, with no duplicated embedding. Both surfaces SHALL return identical text for the same topic.
+- **WHEN** a consumer calls `PROMPTS.route()` with no arguments
+- **THEN** it returns the same string as `getPrompt("route")`
+
+### Requirement: The export and the help command share one source and one renderer
+
+The prompt export SHALL be sourced from the same embedded `help/*.txt` content that `commands/help.ts` serves, and SHALL render it through the same render path, with no duplicated embedding and no duplicated interpolation logic. Both surfaces SHALL return identical text for the same topic and equivalent options.
 
 #### Scenario: Parity between import and help command
 
-- **WHEN** the `help` command renders topic `T` with no interpolation and a consumer reads `getPrompt("T")`
-- **THEN** the two texts are identical (single source of truth)
+- **WHEN** the `help` command renders topic `T` and a consumer calls `getPrompt("T")`
+- **THEN** the two texts are identical, including under a non-prod build target where the CLI invocation is rewritten
 
-### Requirement: The export returns raw recipe text
+### Requirement: The export returns fully-rendered prompt text
 
-The export SHALL return recipe text verbatim, including any `%(KEY)s` placeholders; it SHALL NOT interpolate CLI runtime values. Interpolation remains a CLI-side concern.
+Calling a prompt SHALL return finished text with every `%(KEY)s` placeholder substituted — `CLI_VERSION` from the build-time version, `INPUT_SCHEMA` from the corresponding Zod input schema, `PACKAGE_MANAGER_DLX` from `PromptOptions.packageManagerDlx` or its default agent-fill marker — and with the build-target CLI invocation applied. The returned text SHALL NOT require further templating by the consumer.
 
-#### Scenario: Placeholders are preserved
+#### Scenario: Placeholders are resolved
 
-- **WHEN** a consumer reads a recipe that contains `%(CLI_VERSION)s` or similar
-- **THEN** the returned string still contains the literal `%(...)s` placeholder, un-substituted
+- **WHEN** a consumer calls a prompt for a recipe whose source contains `%(CLI_VERSION)s`
+- **THEN** the returned string contains the rendered version and no literal `%(...)s` placeholder
+
+#### Scenario: Schema-bearing topics render their input schema
+
+- **WHEN** a consumer calls the `rule-create` or `rule-improve` prompt
+- **THEN** `%(INPUT_SCHEMA)s` is replaced by the JSON Schema rendered from that topic's Zod input schema
+
+#### Scenario: Agent-fill marker defaults and overrides
+
+- **WHEN** a consumer calls the `ci` prompt without options
+- **THEN** `%(PACKAGE_MANAGER_DLX)s` renders as the default `<package-manager-dlx>` marker; supplying `packageManagerDlx` substitutes that value instead
+
+#### Scenario: Build defines are inlined into the prompts entry
+
+- **WHEN** a rendered prompt is inspected from the built `dist/prompts.js`
+- **THEN** it contains no un-inlined build-define identifier (e.g. a literal `__VERSION__`)
 
 ### Requirement: The prompts import is free of CLI runtime dependencies
 
-The `@taskless/cli/prompts` module SHALL contain only embedded prompt data and types — no `citty` command tree, telemetry, or other CLI runtime imports — so importing it does not load `@taskless/cli`'s main entry.
+The `@taskless/cli/prompts` module SHALL contain only embedded prompt data, types, and the render path — no `citty` command tree, telemetry, filesystem, or network imports — so importing it does not load `@taskless/cli`'s main entry. Its permitted runtime imports are the templating library and the leaf Zod input schemas required for rendering.
 
 #### Scenario: Worker-safe import
 
@@ -47,7 +67,7 @@ The `@taskless/cli/prompts` module SHALL contain only embedded prompt data and t
 
 ### Requirement: Anonymous variants are accessible distinctly from canonical
 
-Where a `<topic>.anonymous.txt` variant exists, the export SHALL make it retrievable distinctly (e.g. `getPrompt(topic, { anonymous: true })`), falling back to the canonical recipe when no variant exists.
+Where a `<topic>.anonymous.txt` variant exists, the export SHALL make it retrievable distinctly via `PromptOptions.anonymous`, falling back to the canonical recipe when no variant exists.
 
 #### Scenario: Anonymous variant retrieval and fallback
 
@@ -56,9 +76,35 @@ Where a `<topic>.anonymous.txt` variant exists, the export SHALL make it retriev
 
 ### Requirement: Topic names and accessor shape are stable public API
 
-The set of `PromptTopic` names and the `getPrompt`/`PROMPTS` shape SHALL be treated as public API under semver; recipe _text_ MAY change within a major version.
+The set of `PromptTopic` names, the `getPrompt`/`PROMPTS` shape, and the existing fields of `PromptOptions` SHALL be treated as public API under semver; recipe _text_ MAY change within a major version.
 
 #### Scenario: Removing a topic is a breaking change
 
 - **WHEN** a topic is removed or renamed, or the accessor signature changes
 - **THEN** it SHALL be released as a major version bump; a text edit SHALL NOT
+
+#### Scenario: Adding an option is not a breaking change
+
+- **WHEN** a new optional field is added to `PromptOptions`
+- **THEN** it SHALL NOT require a major version bump, since existing call sites keep their behavior
+
+### Requirement: Topic membership is explicit and verified against the recipe files
+
+`PromptTopic` SHALL be derived from an explicit, hand-maintained list of exported topics rather than inferred from whatever recipe files are present, so that adding or removing a `help/*.txt` file cannot silently change the public API. Recipe files deliberately withheld from the export SHALL be recorded in an explicit internal-topics list.
+
+An automated check SHALL assert that the set of canonical `help/*.txt` topics on disk is exactly the union of the exported topics and the internal-topics list, failing when the two diverge in either direction.
+
+#### Scenario: A new recipe file is added without being classified
+
+- **WHEN** a new canonical `help/<topic>.txt` is added and appears in neither the exported topics nor the internal-topics list
+- **THEN** the completeness check SHALL fail, requiring the author to either export the topic or record it as internal
+
+#### Scenario: An exported topic loses its recipe file
+
+- **WHEN** a topic remains in `PromptTopic` but its canonical `help/<topic>.txt` no longer exists
+- **THEN** the completeness check SHALL fail, rather than the topic rendering empty or undefined at runtime
+
+#### Scenario: A deliberately internal recipe stays unexported
+
+- **WHEN** a recipe file is listed as internal
+- **THEN** the check SHALL pass and the topic SHALL NOT be a member of `PromptTopic`
