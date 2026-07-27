@@ -83,6 +83,22 @@ Absence of an engine and an **unrecognized** engine are distinct. If a payload i
 - **WHEN** a payload identifies an engine the installed CLI does not support
 - **THEN** ingest exits with an error naming the engine and directing the user to upgrade, and no rule file is written under any engine directory
 
+### Requirement: Both the legacy and engine-partitioned layouts are readable
+
+The CLI SHALL dispatch rules found at the legacy `.taskless/rules/` path as ast-grep, in addition to `.taskless/sg/rules/`, so a checkout that has not yet been migrated — or a rule delivered by a service that still names the legacy location — is executed rather than ignored.
+
+This tolerance is what decouples the CLI's release from any consumer's: a producer may continue to use the pre-migration layout indefinitely and its rules keep running.
+
+#### Scenario: Unmigrated checkout still runs its rules
+
+- **WHEN** `check` runs against a `.taskless/` containing `rules/` but no `sg/`
+- **THEN** those rules are dispatched to ast-grep and reported, not silently skipped
+
+#### Scenario: Both layouts present
+
+- **WHEN** rules exist under both `.taskless/rules/` and `.taskless/sg/rules/`
+- **THEN** both are dispatched to ast-grep and their findings merged, with no duplicate reporting of the same rule
+
 ### Requirement: Reconciliation survives the relayout
 
 The CLI SHALL report rule files to the reconcile endpoint at their post-migration repo-relative paths. Because the server joins reported files by content signature rather than by path, moving a rule without editing it SHALL NOT change its reconciled state.

@@ -12,6 +12,8 @@
 - [ ] 2.1 Implement directory-based engine discovery: enumerate `.taskless/<engine>/` (`sg`, `vale`, `runtime`) and route rules by directory, no per-file parsing
 - [ ] 2.2 In `commands/check.ts`, call `ensureTasklessDirectory(cwd)` directly (preserving the migration trigger now that `generateSgConfig` leaves the check path)
 - [ ] 2.3 Tests: a rule under `sg/rules/` dispatches to ast-grep and one under `vale/rules/` to Vale, by directory alone
+- [ ] 2.4 Treat the legacy `.taskless/rules/` path as an ast-grep source alongside `sg/rules/`, so an unmigrated checkout still runs; de-duplicate when both are present
+- [ ] 2.5 Tests: a `.taskless/` with only `rules/` dispatches to ast-grep; with both `rules/` and `sg/rules/`, findings merge without duplicates
 
 ## 2b. Service-delivered rule ingest
 
@@ -40,7 +42,11 @@
 
 ## 5. Vale engine
 
-- [ ] 5.1 Add `rules/vale/binary.ts`: resolve the `vale` binary; when absent, report the Vale engine unavailable without aborting other engines
+- [ ] 5.1 Extract the platform-binary resolution in `findSgBinary()` (`rules/scan.ts:38-61`) into a shared helper — resolve `<pkg>/package.json` via `createRequire(import.meta.url)`, exec the binary beside it, fall back to `PATH` — and use it for both `sg` and `vale`. When nothing resolves, report the Vale engine unavailable without aborting other engines (D6b)
+- [ ] 5.1b Publish per-platform Vale binary packages under the Taskless scope: binary in the tarball, `os`/`cpu` declared, **no `bin`, no code, no scripts** (we exec by path, so nothing needs hardlinking into place). Add them to `packages/cli` as `optionalDependencies`. Include Vale's MIT attribution. Do NOT depend on a download-at-postinstall package: the script runs under the consumer's package-manager policy, and pnpm 10 blocks it by default, yielding no binary and no error
+- [ ] 5.1c CI job to mirror upstream Vale releases into those packages; decide the architecture set (ast-grep's seven is the starting point) and pin the Vale version the CLI expects
+- [ ] 5.1d Handle musl: `findSgBinary()` maps every Linux to `-gnu`, so Alpine falls through to `PATH` today. Detect libc for the Vale lookup (upstream ast-grep uses `detect-libc`) and decide whether to publish a musl variant or leave the `PATH` fallback deliberately
+- [ ] 5.1e Confirm the Vite build externalizes the platform packages rather than bundling them, and that `createRequire(import.meta.url)` resolves correctly from `dist/` — the same context `findSgBinary()` already relies on
 - [ ] 5.2 Add `rules/vale/run.ts`: run `vale --config .taskless/vale/.vale.ini --output=JSON --no-exit <paths>`, bounded by a subprocess timeout that terminates and reports on expiry
 - [ ] 5.3 Map Vale JSON findings → `CheckResult`: `source: "vale"`, `ruleId` = check name with `rules.` stripped, severity `error/warning/suggestion → error/warning/hint`, and `message`/`note`/`range`/`matchedText`/`fix` per the mapping
 - [ ] 5.4 Add `rules/vale/verify.ts`: for each `vale/rule-tests/<rule>/`, generate an ephemeral `.vale.ini` enabling only that rule, run Vale over `pass/`/`fail/` fixtures, assert every `fail/` yields a finding and every `pass/` none
@@ -51,6 +57,17 @@
 - [ ] 6.1 Dispatch to distinct executors by engine directory — ast-grep (`sg/`) → scanner, Vale (`vale/`) → runner, runtime (`runtime/rules/`) → harness
 - [ ] 6.2 Run engines concurrently, merge `CheckResult`s into one set, derive the exit code from merged severities, and keep an unavailable engine from aborting the others
 - [ ] 6.3 Tests: a mixed `sg`+`vale`+`runtime` corpus runs all executors and merges; with the `vale` binary absent, ast-grep results still return
+
+## 6b. Engine-selection knowledge topic
+
+- [ ] 6b.1 Author `packages/cli/src/help/<engine-selection>.txt` from the seed prose in `tmp/SEED-engine-selection-prose.md`: the three engine definitions (`sg` in-file syntax tree incl. relational correlation, `vale` prose/markup, `runtime` cross-file/graph/metadata/normalization), the reason-before-answer procedure, and the worked example table
+- [ ] 6b.2 State the ambiguity default as a property — the default names an engine known to be available — and note that `@ast-grep/cli` ships as a dependency while the Vale binary is external, so `sg` satisfies it locally
+- [ ] 6b.3 Carry the three boundary cases: prose-about-code vs structure, Vale is per-document (cross-document prose consistency is `runtime`), and `sg`/`vale` are both static-tier so trust tier is a separate axis
+- [ ] 6b.4 Keep the topic scoped to engine choice — no authoring-destination guidance, no tool-calling mechanics from the seed's source prompt
+- [ ] 6b.5 Register the topic in the help index and add `route`/`static` cross-references to it
+- [ ] 6b.6 Tests: the topic resolves via `taskless help` and appears in the index; the topic file matches the established recipe header/format convention
+
+> Export via `@taskless/cli/prompts` is not part of this change (see D9). Whichever of this change and `export-knowledge-prompts` lands second adds the one-line `TOPICS` entry.
 
 ## 7. Quality gates
 
