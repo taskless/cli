@@ -14,7 +14,7 @@ prints:
 Run from anywhere in the repo; operates purely on refs, independent of the
 currently checked-out branch.
 
-    uv run .claude/skills/iterate-pr/scripts/stack_status.py [--root <branch>]
+    uv run ${CLAUDE_SKILL_ROOT}/scripts/stack_status.py [--root <branch>]
 """
 
 from __future__ import annotations

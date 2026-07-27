@@ -3,6 +3,13 @@ name: iterate-pr
 description: Iterate on a PR until CI passes. Use when you need to fix CI failures, address review feedback, or continuously push fixes until all checks are green. Automates the feedback-fix-push-wait cycle.
 ---
 
+<!--
+Forked from Sentry's iterate-pr skill (Apache-2.0):
+https://github.com/getsentry/skills/tree/main/skills/iterate-pr
+Substantially modified: stack-aware tooling, LOGAF feedback bucketing,
+self-review handling, and pending-reviewer tracking.
+-->
+
 # Iterate on PR Until CI Passes
 
 Continuously iterate on the current branch until all CI checks pass and review feedback is addressed.

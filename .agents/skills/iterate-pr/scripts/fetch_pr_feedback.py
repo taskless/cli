@@ -107,16 +107,19 @@ def get_pr_info(pr_number: int | None = None) -> dict[str, Any] | None:
 
 
 def get_requested_reviewers(owner: str, repo: str, pr_number: int) -> list[str]:
-    """Get usernames of requested reviewers who haven't submitted a review yet."""
-    try:
-        proc = subprocess.run(
-            ["gh", "api", f"repos/{owner}/{repo}/pulls/{pr_number}",
-             "--jq", "[.requested_reviewers[].login]"],
-            capture_output=True, text=True, check=True,
-        )
-        return json.loads(proc.stdout) if proc.stdout.strip() else []
-    except (subprocess.CalledProcessError, json.JSONDecodeError):
+    """Requested reviewers who haven't submitted a review yet.
+
+    GitHub drops a reviewer from these lists once they submit, so what remains is
+    exactly the outstanding set. Teams are included as `@org/team` — a PR awaiting
+    only a team review would otherwise report zero pending reviewers and exit the
+    wait loop early.
+    """
+    pr = run_gh(["api", f"repos/{owner}/{repo}/pulls/{pr_number}"])
+    if not isinstance(pr, dict):
         return []
+    users = [u.get("login") for u in pr.get("requested_reviewers") or []]
+    teams = ["@" + t.get("slug") for t in pr.get("requested_teams") or [] if t.get("slug")]
+    return [u for u in users if u] + teams
 
 
 def is_review_bot(username: str) -> bool:

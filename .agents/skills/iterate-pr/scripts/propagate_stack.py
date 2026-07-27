@@ -14,16 +14,20 @@ required. Processing is topological: a child is rebased only after its parent.
 
 SAFETY GUARDS:
   * Balloon guard — before each rebase the branch's own-commit count is recorded
-    (merge-base(parent,child)..child). After the rebase the count above the
-    parent must match exactly; if it balloons (e.g. the rebase landed on the
-    wrong parent and swept in the whole upper stack), the script RESETS the
-    branch back to origin and aborts WITHOUT pushing. This is the guard that
-    would have prevented force-pushing garbage to a PR.
+    (merge-base(parent,child)..child). A rebase can only ever DROP own commits
+    (patch-equivalent ones already in the parent), never add them, so any
+    increase means the rebase landed on the wrong parent and swept in the upper
+    stack. On an increase — or on exceeding the absolute --max-own ceiling — the
+    script RESETS the branch back to origin and aborts WITHOUT pushing. This is
+    the guard that would have prevented force-pushing garbage to a PR.
+  * Checkout — a failed checkout (dirty tree, index lock) aborts immediately.
+    Continuing would rebase and force-push whichever branch was checked out.
   * Conflict — on a rebase conflict the rebase is aborted, the conflicting files
     are reported, and the script stops (that boundary needs manual reconcile).
-  * Push uses --force-with-lease only; refuses if origin moved underneath.
+  * Push uses --force-with-lease against a freshly fetched origin; the lease is
+    only meaningful if remote-tracking refs are current, so we fetch first.
 
-    uv run .claude/skills/iterate-pr/scripts/propagate_stack.py --root <branch> [--dry-run] [--no-push]
+    uv run ${CLAUDE_SKILL_ROOT}/scripts/propagate_stack.py --root <branch> [--dry-run] [--no-push]
 """
 
 from __future__ import annotations
@@ -84,15 +88,24 @@ def count(range_expr: str) -> int:
 
 
 def ordered_descendants(root: str, edges: dict[str, str]) -> list[str]:
-    """Return descendants of root in parent-before-child order."""
+    """Return descendants of root in parent-before-child order.
+
+    `seen` is load-bearing, not defensive: GitHub permits a base cycle (A based
+    on B while B is based on A), which would otherwise spin here forever — and
+    this is the walk that drives rebases and force-pushes.
+    """
     children: dict[str, list[str]] = {}
     for child, parent in edges.items():
         children.setdefault(parent, []).append(child)
     ordered: list[str] = []
+    seen: set[str] = {root}
     stack = [root]
     while stack:
         b = stack.pop()
         for c in sorted(children.get(b, [])):
+            if c in seen:
+                continue
+            seen.add(c)
             ordered.append(c)
             stack.append(c)
     return ordered
@@ -103,7 +116,9 @@ def main() -> int:
     ap.add_argument("--root", required=True, help="Propagate this branch up to its descendants")
     ap.add_argument("--dry-run", action="store_true", help="Print the plan and divergence; do nothing")
     ap.add_argument("--no-push", action="store_true", help="Rebase locally but do not push")
-    ap.add_argument("--max-own", type=int, default=15, help="Balloon threshold for a branch's own commits")
+    ap.add_argument("--max-own", type=int, default=15,
+                    help="Absolute ceiling on a branch's own commits (fallback when "
+                         "the pre-rebase count is unavailable)")
     args = ap.parse_args()
 
     edges = lineage()
@@ -123,6 +138,15 @@ def main() -> int:
         print("\n(dry-run) no changes made.")
         return 0
 
+    # --force-with-lease compares against remote-tracking refs, so a stale
+    # origin/* silently degrades it to a plain --force. Refresh before pushing.
+    if not args.no_push:
+        fetch = run("fetch", "origin")
+        if fetch.returncode != 0:
+            print("  ✗ `git fetch origin` failed; --force-with-lease would be "
+                  f"unsafe against stale refs. Not pushing.\n{fetch.stderr.strip()}")
+            return 5
+
     start = out("rev-parse", "--abbrev-ref", "HEAD")
     for child in plan:
         parent = edges[child]
@@ -133,7 +157,13 @@ def main() -> int:
         base = out("merge-base", parent, child)
         expected_own = count(f"{base}..{child}") if base else -1
 
-        run("checkout", child)
+        checkout = run("checkout", child)
+        if checkout.returncode != 0:
+            print(f"  ✗ could not check out {child}; aborting before any rebase "
+                  f"(otherwise the CURRENT branch would be rebased and force-pushed):"
+                  f"\n{checkout.stderr.strip()}")
+            return 6
+
         rebase = run("rebase", parent)
         if rebase.returncode != 0:
             conflicts = out("diff", "--name-only", "--diff-filter=U")
@@ -146,13 +176,23 @@ def main() -> int:
             return 2
 
         actual_own = count(f"{parent}..{child}")
-        if expected_own >= 0 and actual_own > max(expected_own, args.max_own):
+        # A rebase can only drop own commits, never gain them, so ANY increase is
+        # a balloon. --max-own is a separate absolute ceiling for the case where
+        # expected_own could not be computed (no merge-base).
+        ballooned = actual_own > expected_own if expected_own >= 0 else False
+        if ballooned or actual_own > args.max_own:
             print(
                 f"  ✗ BALLOON GUARD: {child} has {actual_own} commits above {parent} "
-                f"(expected ~{expected_own}). Likely rebased onto the wrong parent. "
-                f"Resetting to origin/{child}, NOT pushing."
+                f"(expected at most {expected_own if expected_own >= 0 else args.max_own}). "
+                f"Likely rebased onto the wrong parent. NOT pushing."
             )
-            run("reset", "--hard", f"origin/{child}")
+            reset = run("reset", "--hard", f"origin/{child}")
+            if reset.returncode == 0:
+                print(f"        reset {child} back to origin/{child}.")
+            else:
+                print(f"        COULD NOT reset to origin/{child} (unpushed branch?); "
+                      f"{child} is left rebased locally and needs manual repair:"
+                      f"\n{reset.stderr.strip()}")
             if start:
                 run("checkout", start)
             return 3
@@ -161,7 +201,8 @@ def main() -> int:
             print(f"  ✓ {child} rebased onto {parent} (+{actual_own} own) — not pushed (--no-push)")
             continue
 
-        push = run("push", "--force-with-lease")
+        # Explicit remote + branch: never rely on push.default to infer the ref.
+        push = run("push", "--force-with-lease", "origin", child)
         if push.returncode != 0:
             print(f"  ✗ push failed for {child}:\n{push.stderr.strip()}")
             if start:

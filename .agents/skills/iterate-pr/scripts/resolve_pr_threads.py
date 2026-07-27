@@ -28,22 +28,32 @@ import sys
 from typing import Any
 
 
-def run_gh_graphql(query: str) -> dict[str, Any]:
-    """Run a GraphQL query via gh api."""
+def run_gh_graphql(query: str, thread_id: str) -> dict[str, Any]:
+    """Run a GraphQL query via gh api, passing the node ID as a variable.
+
+    The ID goes through -F rather than being interpolated into the query text, so
+    it is never parsed as GraphQL syntax.
+    """
     result = subprocess.run(
-        ["gh", "api", "graphql", "-f", f"query={query}"],
+        ["gh", "api", "graphql", "-F", f"threadId={thread_id}", "-f", f"query={query}"],
         capture_output=True,
         text=True,
     )
     if result.returncode != 0:
         return {"errors": [{"message": result.stderr.strip()}]}
-    return json.loads(result.stdout)
+    try:
+        return json.loads(result.stdout)
+    except json.JSONDecodeError as e:
+        return {"errors": [{"message": f"could not parse gh output as JSON: {e}"}]}
 
 
 def check_thread_resolved(thread_id: str) -> bool | None:
     """Check if a thread is already resolved. Returns None on error."""
-    query = f'{{ node(id: "{thread_id}") {{ ... on PullRequestReviewThread {{ isResolved }} }} }}'
-    data = run_gh_graphql(query)
+    query = (
+        "query($threadId: ID!) { node(id: $threadId) "
+        "{ ... on PullRequestReviewThread { isResolved } } }"
+    )
+    data = run_gh_graphql(query, thread_id)
     node = data.get("data", {}).get("node")
     if node is None:
         return None
@@ -53,10 +63,10 @@ def check_thread_resolved(thread_id: str) -> bool | None:
 def resolve_thread(thread_id: str) -> bool:
     """Resolve a single review thread. Returns True on success."""
     query = (
-        f'mutation {{ resolveReviewThread(input: {{threadId: "{thread_id}"}}) '
-        f"{{ thread {{ isResolved }} }} }}"
+        "mutation($threadId: ID!) { resolveReviewThread(input: {threadId: $threadId}) "
+        "{ thread { isResolved } } }"
     )
-    data = run_gh_graphql(query)
+    data = run_gh_graphql(query, thread_id)
     thread = (
         data.get("data", {}).get("resolveReviewThread", {}).get("thread", {})
     )
