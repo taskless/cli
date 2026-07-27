@@ -72,6 +72,22 @@ Vale's Tengo `script` sandbox exposes only `text`/`math`/`fmt` (verified: `os`/`
 
 `taskless.json.version` is the single format version. Migration `0004-*` is a **mechanical move**: the existing `.taskless/rules/` and `rule-tests/` are all known-ast-grep, so it moves `rules/ → sg/rules/`, `rule-tests/ → sg/rule-tests/`, and `sgconfig.yml → sg/sgconfig.yml` — and because `ruleDirs: [rules]` is _relative to the config_, it survives the move unchanged (no path edits). It then scaffolds `vale/` (`.vale.ini` + `rules/` + `rule-tests/`) and moves the runtime tier into the same shape: `runtime-rules/<name>/ → runtime/rules/<name>/` and `runtime-rule-tests/<name>/ → runtime/rule-tests/<name>/`. The runtime move is content-preserving — capture-rule bytes (and thus their reconciliation hashes) are unchanged; only `discover.ts`'s search path updates. Legacy bare rules keep working (they become `sg/` rules). **Version gating:** `runMigrations` currently returns silently when `version > maxVersion`; change it to **throw** ("upgrade the CLI") unless `--allow-version-mismatches` is passed.
 
+### D7b — Ingest defaults an engine-less payload to `sg`, permanently; unrecognized fails loudly
+
+`0004` relayouts what is already on disk, but the **ingest** path writes rules that arrive from the service, and it is a separate hazard: `writeRuleFile`/`writeRuleTestFile` (`rules/files.ts:11,26`) hardcode `.taskless/rules` and `.taskless/rule-tests`. Left untouched, the migration would move existing rules to `sg/` and the next `taskless rule create` would write straight back into `.taskless/rules/` — a directory no engine dispatches from under D1. Silent, and it reads as a vanished rule.
+
+The API offers nothing to switch on: there is no `engine`, `analysisType`, or `ruleType` field anywhere in `src/generated/api.d.ts`, and `/cli/api/rule/{ruleId}` documents `rules[].content` as "The ast-grep rule definition". The `filename` fields that do exist are **client→server** (`references[].filename` on `rule improve`; `files[].file` on reconcile) — the CLI tells the service where things live, not the reverse. So the CLI owns the destination decision, and today every delivered rule is ast-grep.
+
+Hence: **no engine identified ⇒ `sg`**, and permanently rather than for a migration window — published CLIs keep receiving engine-less payloads. This is the same judgment `0004` makes about on-disk state, so ingest and migration land a rule in the same place.
+
+**Absence and unrecognized are not the same.** An unrecognized engine means the payload is newer than the CLI; falling back to `sg` would file a Vale rule where ast-grep parses it, surfacing as a broken rule rather than version skew. Ingest errors and writes nothing, mirroring D7's scaffold-version gating. Server-side, the existing `x-taskless-cli-version` header (`api/client.ts`) lets the service avoid sending engine-typed payloads to a CLI that predates them; that half is the platform's.
+
+- **Alternative — sniff the rule body to guess its engine:** rejected; contradicts D1 (directory decides engine, no per-file parsing) and guesses where an explicit default is correct and knowable.
+
+### D7c — Reconcile is path-independent, so the relayout is transparent
+
+Reported reconcile paths are repo-relative POSIX and derived from wherever a rule was discovered (`rules/runtime/run-set.ts:57`), so they follow the moved trees automatically. The server joins reported files **by content signature, not path** — "content-based, so a moved-but-unchanged rule resolves" — and `0004` is byte-preserving. A migrated rule therefore reconciles to the same server-side rule with no coordinated release. The schema description "Delivered rule filename under `.taskless/rules/` on the client" goes stale on the platform side and is worth a follow-up there, but nothing depends on it.
+
 ### D8 — Metadata surfaces through `CheckResult`; identity from the rule name
 
 `CheckResult { source, ruleId, severity, message, note, file, range, matchedText, fix }` is the contract each engine maps into. `ruleId` is the rule's basename (ast-grep native `id`; Vale's `rules.<name>` stripped to `<name>`). Severity is engine-native, normalized on the client — Vale `error/warning/suggestion → error/warning/hint` (`info` unused; `.vale.ini` sets `MinAlertLevel = suggestion`). Vale mapping: `message←Message`, `note←Description/Link`, `range←Line+Span`, `matchedText←Match`, `fix←Action` when populated. Provenance is a generation-time server wrapper, never on disk.
@@ -84,6 +100,7 @@ Vale's Tengo `script` sandbox exposes only `text`/`math`/`fmt` (verified: `os`/`
 - **Losing auto-migration when `generateSgConfig` leaves check** → `check` calls `ensureTasklessDirectory` directly (D5).
 - **Vale DoS (runaway Tengo)** → subprocess timeout (D6).
 - **New `vale` binary dependency** → shell out like `sg`; degrade clearly if absent.
+- **Hardcoded `.taskless/rules` literals outside the ingest writer** — `rules/verify.ts:246`, `rules/files.ts:99`, `commands/check.ts:314`, `commands/rules.ts:661`, and the `detect/scan.ts:428` layout probe all name the pre-migration path. Each is the same class of defect as the ingest writer and is audited in task 2b.4; a missed one silently reads or writes outside the engine directories.
 - **Runtime realignment** → `runtime-rules/ → runtime/rules/` moves the directory only; execution (harness/reconcile/signing) and capture-rule content are untouched, so hashes are stable. Safe now because runtime rules have no live users; the downstream generator's write path updates separately.
 
 ## Migration Plan

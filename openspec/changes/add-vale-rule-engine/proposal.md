@@ -27,7 +27,7 @@ Taskless rules today are ast-grep only — structural AST matching that fits cod
 
 ## Impact
 
-- **CLI (`packages/cli`)**: `commands/check.ts` (per-engine execution over committed configs + migration trigger), `rules/scan.ts` (`--config` over `sg/`), `rules/verify.ts` (`sg test` over `sg/`), new `rules/vale/*` (`--config` runner, `CheckResult` mapping, fixture verify), removal of ephemeral `filesystem/sgconfig.ts` generation from the check path, new `filesystem/migrations/0004-*.ts`.
+- **CLI (`packages/cli`)**: `commands/check.ts` (per-engine execution over committed configs + migration trigger), `rules/scan.ts` (`--config` over `sg/`), `rules/verify.ts` (`sg test` over `sg/`), new `rules/vale/*` (`--config` runner, `CheckResult` mapping, fixture verify), removal of ephemeral `filesystem/sgconfig.ts` generation from the check path, new `filesystem/migrations/0004-*.ts`, and `rules/files.ts` (ingest writes into `sg/`, defaulting an engine-less service payload to ast-grep).
 - **On-disk layout**: `.taskless/sg/{sgconfig.yml, rules/, rule-tests/}` and `.taskless/vale/{.vale.ini, rules/, rule-tests/}`; legacy bare `.taskless/rules/*.yml` migrate under `sg/`. `taskless.json` scaffold version bumps.
 - **Dependency**: adds `vale` as an external binary the CLI shells out to (like `sg`).
 - **Runtime execution unchanged** (reconcile/signing/harness) — only the directory moves `runtime-rules/ → runtime/rules/` (updating `discover.ts`'s path); Vale is explicitly static. **No new `upgrade` command** — the migration ladder suffices (now with version-mismatch gating).
