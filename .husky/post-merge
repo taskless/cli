@@ -1,8 +1,10 @@
 # Refresh dotagents-managed skills when their manifest moves.
 # https://dotagents.sentry.dev/guide/
 
+# agents.lock is generated and gitignored by design, so agents.toml is the
+# only manifest that can ever show up in a diff.
 manifest_changed() {
-  git diff --name-only "$1" HEAD 2>/dev/null | grep -qE '^agents\.(toml|lock)$'
+  git diff --name-only "$1" HEAD 2>/dev/null | grep -qx 'agents\.toml'
 }
 
 if manifest_changed ORIG_HEAD || manifest_changed 'HEAD@{1}'; then
