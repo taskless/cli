@@ -60,6 +60,38 @@ The migration to the engine-partitioned layout SHALL move the existing `.taskles
 - **WHEN** the migration runs
 - **THEN** `.taskless/vale/` is created with empty `rules/` and `rule-tests/`, and `.taskless/runtime-rules/` becomes `.taskless/runtime/rules/` with byte-identical contents
 
+### Requirement: Service-delivered rules without an engine are written as ast-grep
+
+The rule ingest path SHALL write a service-delivered rule into the engine directory its payload identifies. The current API carries **no** engine discriminator — `/cli/api/rule/{ruleId}` returns `rules[].content` documented as an ast-grep rule definition — so a payload that does not identify an engine SHALL be written as ast-grep, under `.taskless/sg/rules/<id>.yml`, with its tests under `.taskless/sg/rule-tests/`.
+
+This default is permanent, not a migration window: published CLIs and stored payloads without an engine field continue to exist indefinitely, and the default matches what the migration does to the same rules already on disk.
+
+Absence of an engine and an **unrecognized** engine are distinct. If a payload identifies an engine the installed CLI does not know, ingest SHALL fail with an error naming the engine and instructing the user to upgrade, and SHALL NOT fall back to ast-grep.
+
+#### Scenario: Engine-less payload is filed under sg
+
+- **WHEN** a rule is delivered by the service with no engine identified in its payload
+- **THEN** it is written to `.taskless/sg/rules/<id>.yml` and its tests to `.taskless/sg/rule-tests/`, and a subsequent `check` dispatches it to ast-grep
+
+#### Scenario: Ingest and migration agree on destination
+
+- **WHEN** a rule that predates the engine-partitioned layout is migrated, and an equivalent rule is delivered fresh by the service
+- **THEN** both come to rest at the same path under `.taskless/sg/rules/`
+
+#### Scenario: Unrecognized engine fails loudly
+
+- **WHEN** a payload identifies an engine the installed CLI does not support
+- **THEN** ingest exits with an error naming the engine and directing the user to upgrade, and no rule file is written under any engine directory
+
+### Requirement: Reconciliation survives the relayout
+
+The CLI SHALL report rule files to the reconcile endpoint at their post-migration repo-relative paths. Because the server joins reported files by content signature rather than by path, moving a rule without editing it SHALL NOT change its reconciled state.
+
+#### Scenario: Moved rules reconcile unchanged
+
+- **WHEN** `check` reconciles after the migration has moved rules from `.taskless/rules/` to `.taskless/sg/rules/` and runtime rules to `.taskless/runtime/rules/`
+- **THEN** each file's signature is unchanged, the server resolves it to the same rule, and no rule is reported as new or missing
+
 ### Requirement: The CLI refuses a scaffold newer than it understands unless overridden
 
 When `taskless.json`'s `version` exceeds the highest migration the installed CLI knows, the system SHALL exit with an error instructing the user to upgrade the CLI, unless `--allow-version-mismatches` is passed, in which case it SHALL proceed without applying migrations.
