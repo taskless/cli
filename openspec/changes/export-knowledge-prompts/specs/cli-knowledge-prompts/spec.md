@@ -51,6 +51,20 @@ Calling a prompt SHALL return finished text with every `%(KEY)s` placeholder sub
 - **WHEN** a consumer calls the `ci` prompt without options
 - **THEN** `%(PACKAGE_MANAGER_DLX)s` renders as the default `<package-manager-dlx>` marker; supplying `packageManagerDlx` substitutes that value instead
 
+### Requirement: The version header is suppressible
+
+Rendered prompts SHALL begin with a header line naming the topic and the CLI version. Because that version participates in an LLM consumer's prompt-cache key, `PromptOptions.header` SHALL allow suppressing it. It SHALL default to `true`, leaving the `help` command's output and all existing behavior unchanged.
+
+#### Scenario: Header suppressed for a cache-stable system prompt
+
+- **WHEN** a consumer calls a prompt with `header: false`
+- **THEN** the returned text omits the `# Topic: …` line and contains no CLI version string, while the body is otherwise identical to the default rendering
+
+#### Scenario: Header present by default
+
+- **WHEN** a prompt is called with no options, or the `help` command renders a topic
+- **THEN** the header line is present, exactly as it renders today
+
 #### Scenario: Build defines are inlined into the prompts entry
 
 - **WHEN** a rendered prompt is inspected from the built `dist/prompts.js`

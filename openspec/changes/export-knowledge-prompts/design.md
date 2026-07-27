@@ -38,16 +38,28 @@ Every placeholder in use today is resolvable **inside** the package, so there is
 | `INPUT_SCHEMA`        | `rule-create`, `rule-improve` | `z.toJSONSchema()` over the Zod input schema                    |
 | `PACKAGE_MANAGER_DLX` | `ci`                          | agent-fill marker `<package-manager-dlx>` (overridable, see D4) |
 
-None of the routing topics the first consumer needs (`route`, `static`, `remote`, `existing`, `detect`, `rule-meta`) contain anything but `CLI_VERSION`.
+No topic the first consumer needs contains anything but `CLI_VERSION`. (An earlier draft of this design named a six-topic consumer set read off the `generator-decision-router` design; the `cloud` side has since established that only `static` is reachable server-side — see D6.)
 
-Rendering also carries `applyCliInvocation` (`util/invocation.ts:18`), which rewrites `npx @taskless/cli` to the build-target invocation. This is a no-op for prod builds but **not** for `build:self`/`build:dev` — the mode in which the generator consumes this as a workspace/path dependency before publish. Returning raw text would make the export disagree with `taskless help` in exactly the setup the first consumer uses.
+Rendering also carries `applyCliInvocation` (`util/invocation.ts:18`), which rewrites `npx @taskless/cli` to the build-target invocation. That is a no-op for prod builds, and the first consumer now plans to consume a **published prerelease** rather than a workspace/path dependency (D6), so this is not load-bearing for that consumer. It still matters for parity in general: any consumer resolving the package from a non-prod build gets the same invocation string `taskless help` prints, because both go through one render path.
 
-- **Alternative — return raw text, placeholders intact:** rejected; pushes an undocumented template dialect (sprintf-js, including its `%%` escaping rule) onto every consumer to solve values the package already knows, and silently diverges from `help` under non-prod builds.
+- **Alternative — return raw text, placeholders intact:** rejected; pushes an undocumented template dialect (sprintf-js, including its `%%` escaping rule) onto every consumer to solve values the package already knows.
 - **Alternative — a caller-facing `renderPrompt(topic, vars)`:** rejected as speculative; there is no variable a caller knows and the package does not. The optional-options escape hatch in D4 covers the case non-breakingly if one appears.
 
 ### D4 — Typed accessor: `PromptTopic`, `PROMPTS`, `getPrompt`
 
-Expose a `PromptTopic` string-union of canonical topics, a `PROMPTS: Record<PromptTopic, (options?: PromptOptions) => string>` map of render functions, and a `getPrompt(topic, options?)` accessor over the same. `PromptOptions` carries `anonymous?: boolean` (select the `.anonymous` variant, falling back to canonical when none exists) and `packageManagerDlx?: string` — the one value a caller may genuinely know better than the package, defaulting to today's agent-fill marker. Adding a future option is additive, not breaking.
+Expose a `PromptTopic` string-union of canonical topics, a `PROMPTS: Record<PromptTopic, (options?: PromptOptions) => string>` map of render functions, and a `getPrompt(topic, options?)` accessor over the same. Adding a future option is additive, not breaking.
+
+`PromptOptions`:
+
+| Field                | Default                 | Purpose                                                                     |
+| -------------------- | ----------------------- | --------------------------------------------------------------------------- |
+| `anonymous?`         | `false`                 | select the `.anonymous` variant, falling back to canonical when none exists |
+| `packageManagerDlx?` | `<package-manager-dlx>` | the one value a caller may know better than the package                     |
+| `header?`            | `true`                  | include the `# Topic: <name> (CLI v<version> / topic v1)` first line        |
+
+`header: false` exists for a concrete reason: the header embeds the CLI version, and a consumer placing rendered text in an LLM **system prompt** puts that version into the prompt-cache key — so every CLI publish invalidates the consumer's cache for every request, over a line the model does not use. Defaulting to `true` leaves `taskless help` output and every existing behavior byte-identical.
+
+- **Alternative — let consumers strip the header themselves:** rejected; every consumer reimplements the same fragile first-line regex against text whose format we control, and it silently breaks if the header ever gains a line.
 
 Topic names, the accessor shape, and `PromptOptions`' existing fields are the **public API** (semver-tracked); recipe _text_ may change within a major.
 
@@ -63,6 +75,23 @@ It is also not desirable. Topic names are semver-tracked public API (D4), so an 
 
 - **Alternative — codegen `topics.generated.ts` from the glob with a CI `--check` mode:** rejected; converts the failure from a red test to a red type error, but adds a generated file plus a script, still needs the same CI gate, and reinstates silent publishing of any newly added recipe.
 - **Trade-off accepted:** completeness is enforced at test time, not compile time. The check runs on the PR that introduces the divergence, which is when it matters.
+
+### D6 — The initial exported topic list is minimal, driven by a real consumer
+
+The first consumer (`generator-decision-router`, in the `cloud` repo) has confirmed which topics it can actually use server-side, and it is not the set this design originally assumed. Verified against the recipe files:
+
+| Topic       | Server-side usable | Why not                                                                                                                                                                      |
+| ----------- | ------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `static`    | **yes**            | canonical on-disk rule shape; the one topic the router wants                                                                                                                 |
+| `route`     | no                 | picks an _authoring destination_ (`existing`/`static`/`remote`) pre-service; runs `detect`, asks the user. A request reaching the generator has already resolved to `remote` |
+| `remote`    | no                 | states the boundary itself — "The service owns rule-type selection" (`remote.txt:51`)                                                                                        |
+| `detect`    | no                 | documents a CLI subprocess a Worker cannot run                                                                                                                               |
+| `existing`  | no                 | local-toolchain authoring; structurally unreachable server-side                                                                                                              |
+| `rule-meta` | no                 | unrelated — reads a `rule improve` metadata sidecar                                                                                                                          |
+
+So `TOPICS` starts at the minimum a consumer genuinely needs and grows on demand. Under D4 an exported name is a promise held for a major version; exporting a topic speculatively spends that promise for nothing. Everything else is recorded in `INTERNAL_TOPICS` (D5), which keeps them visible and deliberate rather than forgotten.
+
+Consumption is via a **published prerelease** of `@taskless/cli`, not a workspace/path dependency: `../skills` sits outside the `cloud` pnpm workspace and does not resolve in its CI or the generator's Docker build.
 
 ## Risks / Trade-offs
 
