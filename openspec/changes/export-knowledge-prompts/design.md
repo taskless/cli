@@ -40,7 +40,7 @@ Every placeholder in use today is resolvable **inside** the package, so there is
 
 No topic the first consumer needs contains anything but `CLI_VERSION`. (An earlier draft of this design named a six-topic consumer set read off the `generator-decision-router` design; the `cloud` side has since established that only `static` is reachable server-side — see D6.)
 
-Rendering also carries `applyCliInvocation` (`util/invocation.ts:18`), which rewrites `npx @taskless/cli` to the build-target invocation. That is a no-op for prod builds, and the first consumer now plans to consume a **published prerelease** rather than a workspace/path dependency (D6), so this is not load-bearing for that consumer. It still matters for parity in general: any consumer resolving the package from a non-prod build gets the same invocation string `taskless help` prints, because both go through one render path.
+Rendering also carries `applyCliInvocation` (`util/invocation.ts:18`), which rewrites `npx @taskless/cli` to the build-target invocation. That is a no-op for prod builds, and the first consumer will consume a normal published release (D6), so this is not load-bearing for that consumer. It still matters for parity in general: any consumer resolving the package from a non-prod build gets the same invocation string `taskless help` prints, because both go through one render path.
 
 - **Alternative — return raw text, placeholders intact:** rejected; pushes an undocumented template dialect (sprintf-js, including its `%%` escaping rule) onto every consumer to solve values the package already knows.
 - **Alternative — a caller-facing `renderPrompt(topic, vars)`:** rejected as speculative; there is no variable a caller knows and the package does not. The optional-options escape hatch in D4 covers the case non-breakingly if one appears.
@@ -91,7 +91,9 @@ The first consumer (`generator-decision-router`, in the `cloud` repo) has confir
 
 So `TOPICS` starts at the minimum a consumer genuinely needs and grows on demand. Under D4 an exported name is a promise held for a major version; exporting a topic speculatively spends that promise for nothing. Everything else is recorded in `INTERNAL_TOPICS` (D5), which keeps them visible and deliberate rather than forgotten.
 
-Consumption is via a **published prerelease** of `@taskless/cli`, not a workspace/path dependency: `../skills` sits outside the `cloud` pnpm workspace and does not resolve in its CI or the generator's Docker build.
+Consumption is via a **normal published release** of `@taskless/cli`. A workspace/path dependency is not an option — `../skills` sits outside the `cloud` pnpm workspace and does not resolve in its CI or the generator's Docker build — and the consumer has explicitly declined a prerelease, preferring to wait for a stable version rather than pin a moving one against an API that is by definition not yet semver-stable.
+
+**This change is therefore not on anyone's critical path.** Nothing downstream is waiting on it, so it can be released at whatever cadence suits this repo, and there is no reason to cut a prerelease to unblock a consumer.
 
 ## Risks / Trade-offs
 
