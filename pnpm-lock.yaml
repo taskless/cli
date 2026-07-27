@@ -17,6 +17,9 @@ importers:
       '@fission-ai/openspec':
         specifier: ^1.1.1
         version: 1.2.0(@types/node@25.3.3)
+      '@sentry/dotagents':
+        specifier: ^1.19.0
+        version: 1.19.0
       '@types/node':
         specifier: ^25.3.0
         version: 25.3.3
@@ -781,6 +784,15 @@ packages:
     resolution: {integrity: sha512-2HRCml6OztYXyJXAvdDXPKcawukWY2GpR5/nxKp4iBgiO3wcoEGkAaqctIbZcNB6KlUQBIqt8VYkNSj2397EfA==}
     cpu: [x64]
     os: [win32]
+
+  '@sentry/dotagents-lib@1.19.0':
+    resolution: {integrity: sha512-UkQ9hioBnLhE70qcrsjFbxyQt1sVjiWZTEi/xYvADhGKE3hIYW6SFXfA2H6ota1IkF5LNkZopcbJQy+j7ecNMg==}
+    engines: {node: '>=20'}
+
+  '@sentry/dotagents@1.19.0':
+    resolution: {integrity: sha512-PkCkFXx2Zk1jgOC7iHMty8Z/CIaFjCEJOxeuXPAtBU8yLWd/qWGajHxO9FvjRA8qYuLzwFNV0V2hK+3vEGdgNw==}
+    engines: {node: '>=20'}
+    hasBin: true
 
   '@sindresorhus/merge-streams@2.3.0':
     resolution: {integrity: sha512-LtoMMhxAlorcGhmFYI+LhPgbPZCkgP6ra1YL604EeF6U98pLlQ3iWIGMdWSC+vWmPBWBNgmDBAhnAobLROJmwg==}
@@ -2159,6 +2171,7 @@ packages:
   tsconfck@3.1.6:
     resolution: {integrity: sha512-ks6Vjr/jEw0P1gmOVwutM3B7fWxoWBL2KRDb1JfqGVawBmO5UsvmWOQFGHBPl5yxYz4eERr19E6L7NMv+Fej4w==}
     engines: {node: ^18 || >=20}
+    deprecated: unmaintained
     hasBin: true
     peerDependencies:
       typescript: ^5.0.0
@@ -2365,6 +2378,11 @@ packages:
 
   yaml@2.8.2:
     resolution: {integrity: sha512-mplynKqc1C2hTVYxd0PU2xQAc22TI1vShAYGksCCfxbn/dFwnHTNi1bvYsBTkhdUNtGIf5xNOg938rrSSYvS9A==}
+    engines: {node: '>= 14.6'}
+    hasBin: true
+
+  yaml@2.9.0:
+    resolution: {integrity: sha512-2AvhNX3mb8zd6Zy7INTtSpl1F15HW6Wnqj0srWlkKLcpYl/gMIMJiyuGq2KeI2YFxUPjdlB+3Lc10seMLtL4cA==}
     engines: {node: '>= 14.6'}
     hasBin: true
 
@@ -2991,6 +3009,19 @@ snapshots:
 
   '@rollup/rollup-win32-x64-msvc@4.59.0':
     optional: true
+
+  '@sentry/dotagents-lib@1.19.0':
+    dependencies:
+      yaml: 2.9.0
+
+  '@sentry/dotagents@1.19.0':
+    dependencies:
+      '@clack/prompts': 1.2.0
+      '@sentry/dotagents-lib': 1.19.0
+      chalk: 5.6.2
+      jsonc-parser: 3.3.1
+      smol-toml: 1.6.1
+      zod: 4.3.6
 
   '@sindresorhus/merge-streams@2.3.0': {}
 
@@ -4513,6 +4544,8 @@ snapshots:
   yaml-ast-parser@0.0.43: {}
 
   yaml@2.8.2: {}
+
+  yaml@2.9.0: {}
 
   yargs-parser@21.1.1: {}
 

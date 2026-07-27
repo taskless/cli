@@ -26,6 +26,37 @@ When running OpenSpec commands in this repo, use `pnpm openspec` instead of a ba
 
 - **ALWAYS** wait for confirmation before committing. After staging changes with `git add`, present a summary and pause for user approval before running the commit. This allows the user to review diffs and catch issues early.
 
+## PR Issue References
+
+Reference issues as a **trailing line at the bottom of the PR body**, not inline in the opening paragraph:
+
+| Syntax                | Effect                       |
+| --------------------- | ---------------------------- |
+| `Fixes #1234`         | Closes GitHub issue on merge |
+| `Fixes TSKL-1234`     | Closes Taskless Linear issue |
+| `Refs GH-1234`        | Links without closing        |
+| `Refs LINEAR-ABC-123` | Links Linear issue           |
+
+- `TSKL-` is the Taskless Linear team prefix; a bare `TSKL-NNNN` resolves without a URL.
+- `Fixes` for the issue this PR resolves; `Refs` for a parent or related issue that stays open.
+- Mentioning an issue in prose (`Found while investigating TSKL-5678.`) is **not** a reference — a PR can cite an issue mid-body with no trailing directive at all.
+- Only use a reference you can verify from user input, the branch name, commits, PR discussion, or tracker output. Never invent an issue number.
+
+### Editing an existing PR
+
+`gh pr edit` is broken by GitHub's Projects (classic) deprecation. Use `gh api` for body and title updates:
+
+```bash
+gh api -X PATCH repos/{owner}/{repo}/pulls/PR_NUMBER -f body="$(cat <<'EOF'
+Updated description here
+EOF
+)"
+
+gh api -X PATCH repos/{owner}/{repo}/pulls/PR_NUMBER -f title='new: Title here'
+```
+
+Both flags can be passed in one call. See also **Stacked PRs → Other gotchas** for the PR-state equivalent.
+
 ## Background Agents and Worktrees
 
 When delegating to a background agent with **worktree isolation** (its own checked-out copy of the repo):

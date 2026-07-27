@@ -1,0 +1,16 @@
+# Refresh dotagents-managed skills when their manifest moves.
+# https://dotagents.sentry.dev/guide/
+
+manifest_changed() {
+  git diff --name-only "$1" HEAD 2>/dev/null | grep -qE '^agents\.(toml|lock)$'
+}
+
+if manifest_changed ORIG_HEAD || manifest_changed 'HEAD@{1}'; then
+  if [ -x node_modules/.bin/dotagents ]; then
+    node_modules/.bin/dotagents install ||
+      echo "dotagents install failed — run 'pnpm dotagents doctor'"
+  else
+    npx --yes @sentry/dotagents@latest install ||
+      echo "dotagents install failed — run 'pnpm install', then 'pnpm dotagents install'"
+  fi
+fi

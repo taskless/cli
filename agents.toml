@@ -1,0 +1,18 @@
+version = 1
+agents = ["claude"]
+
+[trust]
+github_orgs = [ "taskless" ]
+github_repos = [ "getsentry/skills", "getsentry/dotagents" ]
+
+[[skills]]
+name = "dotagents"
+source = "getsentry/dotagents"
+
+[[skills]]
+name = "code-review"
+source = "getsentry/skills"
+
+[[skills]]
+name = "pr-writer"
+source = "getsentry/skills"
