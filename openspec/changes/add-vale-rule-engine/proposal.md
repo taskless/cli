@@ -24,6 +24,8 @@ Taskless rules today are ast-grep only — structural AST matching that fits cod
 
 - `cli-check`: Check runs each engine's native tool with its committed config (`sg scan --config sg/…`, `vale --config vale/…`) over the resolved paths, concurrently, and merges results; verify runs `sg test` (ast-grep) and a Vale fixture runner. The ephemeral `sgconfig.yml` generation is removed from the check path (configs are committed under `sg/`), and `check` calls `ensureTasklessDirectory` directly to preserve the migration trigger.
 - `cli-runtime-rule-execution`: Runtime rules are discovered under `.taskless/runtime/rules/<name>/` (and fixtures under `runtime/rule-tests/<name>/`) instead of `runtime-rules/` — a directory move only; execution semantics are unchanged.
+- `cli-rule-routing`: Gains an **engine-selection** topic — which engine (`sg`/`vale`/`runtime`) can enforce a requested rule — as a distinct axis from `route`'s authoring destination and from trust tier. Ambiguity defaults to an engine known to be available.
+- `cli-help`: The engine-selection topic is registered in the help index, and the `route`/`static` recipes cross-reference it so the local flow applies the same engine test the service does.
 
 ## Impact
 
