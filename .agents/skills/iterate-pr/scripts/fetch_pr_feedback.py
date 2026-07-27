@@ -106,6 +106,19 @@ def get_pr_info(pr_number: int | None = None) -> dict[str, Any] | None:
     return run_gh(args)
 
 
+def get_requested_reviewers(owner: str, repo: str, pr_number: int) -> list[str]:
+    """Get usernames of requested reviewers who haven't submitted a review yet."""
+    try:
+        proc = subprocess.run(
+            ["gh", "api", f"repos/{owner}/{repo}/pulls/{pr_number}",
+             "--jq", "[.requested_reviewers[].login]"],
+            capture_output=True, text=True, check=True,
+        )
+        return json.loads(proc.stdout) if proc.stdout.strip() else []
+    except (subprocess.CalledProcessError, json.JSONDecodeError):
+        return []
+
+
 def is_review_bot(username: str) -> bool:
     """Check if username matches a review bot that posts actionable feedback."""
     return any(re.search(p, username) for p in REVIEW_BOT_PATTERNS)
@@ -462,6 +475,9 @@ def main():
             category = categorize_comment(comment, body)
             feedback[category].append(item)
 
+    # Check for pending review requests (reviewers who haven't submitted yet)
+    requested_reviewers = get_requested_reviewers(owner, repo, pr_number)
+
     # Count review bot items across priority buckets
     review_bot_count = sum(
         1 for bucket in ("high", "medium", "low")
@@ -483,6 +499,7 @@ def main():
             "url": pr_info.get("url", ""),
             "author": pr_author,
             "review_decision": review_decision,
+            "requested_reviewers": requested_reviewers,
         },
         "summary": {
             "high": len(feedback["high"]),
@@ -493,6 +510,7 @@ def main():
             "review_bot_feedback": review_bot_count,
             "self_review_feedback": self_review_count,
             "needs_attention": len(feedback["high"]) + len(feedback["medium"]),
+            "pending_reviewers": len(requested_reviewers),
         },
         "feedback": feedback,
     }

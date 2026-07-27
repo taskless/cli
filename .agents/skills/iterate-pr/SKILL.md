@@ -11,6 +11,8 @@ Continuously iterate on the current branch until all CI checks pass and review f
 
 **Important**: All scripts must be run from the repository root directory (where `.git` is located), not from the skill directory. Use the full path to the script via `${CLAUDE_SKILL_ROOT}`.
 
+**Shell gotcha**: the agent's Bash tool MAY run under a non-bash shell (e.g. **zsh**). **Always check the current shell before running commands** (`echo "$0"` / `ps -p $$ -o comm=`). It matters because zsh does NOT word-split unquoted variables the way bash does — `for x in $list; do …` iterates once over the whole string, not per token, which can silently send a loop down the wrong path. So any multi-step orchestration (cascade rebases, loops over branches/PRs, array iteration) MUST be wrapped in a `bash <<'EOF' … EOF` heredoc (or `bash -c`) so the semantics are guaranteed regardless of the login shell — never write it as an inline loop. For destructive git fan-out (rebase + force-push loops), add a guard that refuses to push if a rebase balloons — e.g. abort when `git rev-list --count <parent>..HEAD` exceeds the branch's own commit count, which catches a rebase that landed on the wrong parent _before_ it reaches the remote.
+
 ## Bundled Scripts
 
 ### `scripts/fetch_pr_checks.py`
@@ -57,6 +59,41 @@ Review bot feedback (from Sentry, Warden, Copilot, Cursor, Bugbot, CodeQL, etc.)
 Each feedback item may also include:
 
 - `thread_id` - GraphQL node ID for inline review comments (used for replies)
+- `pending_reviewers` (in `summary`) - count of requested reviewers who have not submitted yet; `pr.requested_reviewers` lists them
+
+### `scripts/resolve_pr_threads.py`
+
+Resolves PR review threads by their GraphQL node IDs — the bulk equivalent of the `resolveReviewThread` mutation below. Prefer it when closing out several threads at once.
+
+```bash
+uv run ${CLAUDE_SKILL_ROOT}/scripts/resolve_pr_threads.py THREAD_ID [THREAD_ID ...]
+```
+
+Returns JSON:
+
+```json
+{
+  "resolved": ["PRRT_abc123", "PRRT_def456"],
+  "failed": [],
+  "already_resolved": ["PRRT_ghi789"]
+}
+```
+
+### `scripts/stack_status.py`
+
+Reports the health of a PR stack — **prefer this over hand-rolled `git rev-list`/`merge-base` shell loops** (which are zsh-fragile). Lineage comes from the open GitHub PRs (each PR's head → base), the shared source of truth — no local config. For every branch with a parent it prints ahead/behind vs origin, own-commit count, and whether it is cleanly stacked or **DIVERGED** (parent tip is not an ancestor → needs a restack). Operates purely on refs, independent of the checked-out branch.
+
+```bash
+uv run ${CLAUDE_SKILL_ROOT}/scripts/stack_status.py [--root <branch>]
+```
+
+### `scripts/propagate_stack.py`
+
+Cascade-rebases a branch's descendants onto their parents to carry a fix up the stack — a focused restack that (unlike a whole-stack sync) never rebases onto the latest `main`, so fix-propagation stays decoupled from main-reconciliation. Lineage comes from the open GitHub PRs (head → base). It is topological (parent before child) and **guarded**: a balloon guard resets-without-pushing if a rebase lands on the wrong parent, and it stops on the first conflict for manual reconcile. Always prefer this to an inline rebase loop.
+
+```bash
+uv run ${CLAUDE_SKILL_ROOT}/scripts/propagate_stack.py --root <branch> [--dry-run] [--no-push]
+```
 
 ## Workflow
 
@@ -133,6 +170,8 @@ mutation {
   }
 }
 ```
+
+To close out several threads in one pass, use `scripts/resolve_pr_threads.py THREAD_ID [THREAD_ID ...]` instead of repeating the mutation. Resolve threads for `high`/`medium` items that were fixed or confirmed as false positives, and `low` items that were fixed or explicitly declined by the user — never where the action is unclear or still pending.
 
 **Top-level comments** (items WITHOUT a `thread_id` — `review_summary` items and top-level PR/issue comments, e.g. a review bot like Claude that posts its findings as one top-level comment):
 
@@ -247,7 +286,14 @@ If step 7 required code changes (from new feedback after CI passed), return to s
 
 ## Exit Conditions
 
-**Success:** All checks pass, post-CI feedback re-check is clean (no new unaddressed high/medium feedback including review bot findings), user has decided on low-priority items.
+Before exiting, check `summary.pending_reviewers`. If it is > 0, reviewers have been requested but haven't submitted yet — their review may produce new feedback. Ask the user whether to wait:
+
+- **Yes:** sleep 30 seconds, re-check feedback. If new high/medium feedback appeared, address it (return to step 3). If `pending_reviewers` dropped to 0, proceed to exit. Repeat until reviewers complete.
+- **No:** proceed to the exit conditions below.
+
+If waiting produced code changes, return to step 2 for a fresh cycle.
+
+**Success:** All checks pass, post-CI feedback re-check is clean (no new unaddressed high/medium feedback including review bot findings), user has decided on low-priority items, and pending reviewers resolved or user opted to skip.
 
 **Ask for help:** Same failure after 2 attempts, feedback needs clarification, infrastructure issues.
 
