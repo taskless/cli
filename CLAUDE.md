@@ -59,13 +59,12 @@ Both flags can be passed in one call. See also **Stacked PRs → Other gotchas**
 
 ## Background Agents and Worktrees
 
-When delegating to a background agent with **worktree isolation** (its own checked-out copy of the repo):
+**Use the `worktrees-pnpm` skill** whenever creating a worktree or delegating to a background agent with worktree isolation. It covers the full procedure, the pnpm specifics, cleanup, and recovery.
 
-- **NEVER point the agent at the main repo path** (e.g. `/Users/<you>/code/taskless-skills`). It will `cd` there and run git commands and edits in the **main** checkout, defeating isolation — it can create and check out a branch in your working tree, silently switching your session off its own branch. Tell the agent to work in **its assigned worktree** (`$PWD`) and pass only relative paths plus GitHub identifiers (`owner/repo`).
-- **The worktree has no `node_modules`** — `pnpm install` does not run there. An agent that needs `prettier`/`eslint`/`tsx` must invoke them from the main checkout's binaries against the worktree's files (or install first). A missing `prettier` here once cost an agent an hour of dead-end workarounds.
-- **If a background agent stalls in a degraded shell** (each command taking minutes to return), stop it (`TaskStop`) and finish the work directly rather than waiting it out. Check its scratchpad first for artifacts it already produced (fetched files, partial output).
+The two rules that cause the most damage when missed:
 
-**Recovery if the main checkout gets switched onto an agent's branch:** your own work is safe as long as it was pushed — confirm `origin/<branch>` and the PR head SHA still match your last commit. Then `git worktree remove --force <path>`, delete the stray branch, and `git checkout <your-branch>`.
+- **A worktree gets its own empty `node_modules`.** `git worktree add` is not finished until `pnpm install` has run inside it. Without that, `git commit` fails in `lint-staged` (no `prettier`/`eslint`), and every `pnpm` script fails. A missing `prettier` here once cost an agent an hour of dead-end workarounds. There is no `pnpm worktree` command — `git worktree` is the tool.
+- **NEVER point an agent at the main repo path** (e.g. `/Users/<you>/code/taskless/skills`). It will `cd` there and run git commands and edits in the **main** checkout, defeating isolation — it can create and check out a branch in your working tree, silently switching your session off its own branch. Tell the agent to work in **its assigned worktree** (`$PWD`) and pass only relative paths plus GitHub identifiers (`owner/repo`).
 
 ## Stacked PRs
 
