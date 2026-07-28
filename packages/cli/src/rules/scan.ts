@@ -1,6 +1,6 @@
 import { existsSync } from "node:fs";
 import { createRequire } from "node:module";
-import { spawn } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { dirname, resolve } from "node:path";
 import { createInterface } from "node:readline";
 import { fileURLToPath } from "node:url";
@@ -55,7 +55,7 @@ function platformPackageBinary(binary: string): string | undefined {
   }
 }
 
-/** First entry on PATH that holds an executable named `command`. */
+/** First entry on PATH that holds a file named `command`. */
 function findOnPath(command: string): string | undefined {
   const separator = process.platform === "win32" ? ";" : ":";
   for (const directory of (process.env.PATH ?? "").split(separator)) {
@@ -64,6 +64,26 @@ function findOnPath(command: string): string | undefined {
     if (existsSync(candidate)) return candidate;
   }
   return undefined;
+}
+
+/**
+ * Whether `path` is really ast-grep, established by running it.
+ *
+ * Existence is not enough. The `@ast-grep/cli` wrapper's postinstall leaves a
+ * **placeholder text file** at the binary's path when its hardlink fails under
+ * pnpm dlx's strict isolation — the exact failure this resolver exists to route
+ * around, and one that an `existsSync` check accepts happily. Asking the
+ * candidate to identify itself is the only check that distinguishes the real
+ * binary from a file merely sitting where the binary belongs.
+ */
+export function isAstGrepBinary(path: string): boolean {
+  if (!existsSync(path)) return false;
+  const result = spawnSync(path, ["--version"], {
+    encoding: "utf8",
+    timeout: 5000,
+  });
+  if (result.error !== undefined || result.status !== 0) return false;
+  return /ast-grep/i.test(`${result.stdout ?? ""}${result.stderr ?? ""}`);
 }
 
 /**
@@ -78,11 +98,25 @@ function findOnPath(command: string): string | undefined {
  *
  * Candidates are ordered by confidence, not by quality of outcome — the
  * platform package first because it is the version we pinned, then a locally
- * linked binary, then whatever the host provides. If every candidate misses
+ * linked binary, then whatever the host provides. Each is verified by running
+ * it ({@link isAstGrepBinary}), so a file sitting at the right path but not
+ * actually ast-grep is skipped rather than executed. If every candidate misses
  * there is no ast-grep, and we say so plainly rather than handing a bare
  * command name to spawn and letting ENOENT explain it.
+ *
+ * The result is cached for the process: the search spawns a subprocess per
+ * candidate, and callers resolve once per rule.
  */
+let cachedSgBinary: string | undefined;
+
+/** Clear the resolution cache. Exported for tests. */
+export function resetSgBinaryCache(): void {
+  cachedSgBinary = undefined;
+}
+
 export function findSgBinary(): string {
+  if (cachedSgBinary !== undefined) return cachedSgBinary;
+
   const binary = process.platform === "win32" ? "ast-grep.exe" : "ast-grep";
   const alternative = process.platform === "win32" ? "sg.exe" : "sg";
   const localBin = resolve(
@@ -94,13 +128,19 @@ export function findSgBinary(): string {
 
   const candidates: Array<[label: string, path: string | undefined]> = [
     [platformPackageName(), platformPackageBinary(binary)],
+    // Both names, matching the PATH search below: the wrapper declares `sg` and
+    // `ast-grep` as bin entries for the same target, so either may be linked.
     ["node_modules/.bin", resolve(localBin, alternative)],
+    ["node_modules/.bin", resolve(localBin, binary)],
     ["PATH", findOnPath(alternative)],
     ["PATH", findOnPath(binary)],
   ];
 
   for (const [, path] of candidates) {
-    if (path !== undefined && existsSync(path)) return path;
+    if (path !== undefined && isAstGrepBinary(path)) {
+      cachedSgBinary = path;
+      return path;
+    }
   }
 
   const tried = candidates.map(([label]) => label).join(", ");
@@ -153,9 +193,12 @@ export async function runAstGrepScan(
 
     child.on("error", (error) => {
       if ("code" in error && error.code === "ENOENT") {
+        // Near-unreachable: findSgBinary verifies the candidate by running it
+        // before we get here. Reachable only if the binary disappears between
+        // resolution and spawn, so the message names that, not a package.
         reject(
           new Error(
-            "ast-grep (sg) binary not found. Is @ast-grep/cli installed?"
+            `ast-grep binary vanished between resolution and execution: ${sgBinary}`
           )
         );
       } else {
