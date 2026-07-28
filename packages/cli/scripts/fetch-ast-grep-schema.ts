@@ -12,14 +12,16 @@ const OUTPUT_PATH = resolve(
   "ast-grep-rule-schema.json"
 );
 
-// Read @ast-grep/cli version from package.json
+// Read @ast-grep/cli version from package.json. It is a devDependency: the
+// shipped CLI depends only on the per-platform binary packages, and this
+// wrapper is kept solely as the version source for this script.
 const packageJson = JSON.parse(readFileSync(CLI_PACKAGE_JSON, "utf8")) as {
-  dependencies?: Record<string, string>;
+  devDependencies?: Record<string, string>;
 };
-const rawVersion = packageJson.dependencies?.["@ast-grep/cli"];
+const rawVersion = packageJson.devDependencies?.["@ast-grep/cli"];
 if (!rawVersion) {
   throw new Error(
-    "@ast-grep/cli not found in packages/cli/package.json dependencies"
+    "@ast-grep/cli not found in packages/cli/package.json devDependencies"
   );
 }
 
