@@ -30,3 +30,5 @@ This change makes the layout multi-engine **before** any second engine exists: r
 - **On-disk**: every existing `.taskless/` is relaid out by `0004` on first run. Content-preserving, so nothing needs re-signing or re-reconciling.
 - **No new engine, no new binary, no user-visible behavior change.** `vale/` is scaffolded empty and nothing executes it yet.
 - **Deliberately excluded**: the Vale engine itself and the engine-selection knowledge topic, which need this layout to exist first.
+
+**Tracking:** OSS-24
