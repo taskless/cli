@@ -109,11 +109,6 @@ export function isAstGrepBinary(path: string): boolean {
  */
 let cachedSgBinary: string | undefined;
 
-/** Clear the resolution cache. Exported for tests. */
-export function resetSgBinaryCache(): void {
-  cachedSgBinary = undefined;
-}
-
 export function findSgBinary(): string {
   if (cachedSgBinary !== undefined) return cachedSgBinary;
 

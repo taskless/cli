@@ -8,13 +8,19 @@ import {
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import {
-  findSgBinary,
-  isAstGrepBinary,
-  resetSgBinaryCache,
-} from "../src/rules/scan";
+import { isAstGrepBinary } from "../src/rules/scan";
+
+/**
+ * `findSgBinary` memoizes its result for the process, so each case loads a
+ * fresh copy of the module rather than the module exporting a cache-reset hook
+ * that exists only for tests.
+ */
+async function freshFindSgBinary(): Promise<() => string> {
+  const module_ = await import("../src/rules/scan");
+  return module_.findSgBinary;
+}
 
 const packageJson = JSON.parse(
   readFileSync(resolve(import.meta.dirname, "../package.json"), "utf8")
@@ -34,9 +40,12 @@ describe("findSgBinary", () => {
   const originalPath = process.env.PATH;
   const temporaryDirectories: string[] = [];
 
+  beforeEach(() => {
+    vi.resetModules();
+  });
+
   afterEach(() => {
     process.env.PATH = originalPath;
-    resetSgBinaryCache();
     for (const directory of temporaryDirectories.splice(0)) {
       rmSync(directory, { recursive: true, force: true });
     }
@@ -52,11 +61,11 @@ describe("findSgBinary", () => {
     return directory;
   }
 
-  it("prefers the platform package over an unrelated binary on PATH", () => {
+  it("prefers the platform package over an unrelated binary on PATH", async () => {
     const decoy = directoryWithExecutable("sg");
     process.env.PATH = decoy;
 
-    const resolved = findSgBinary();
+    const resolved = (await freshFindSgBinary())();
 
     // The platform package is an installed optionalDependency in this repo, so
     // it must win even when PATH offers something by the same name.
@@ -64,13 +73,13 @@ describe("findSgBinary", () => {
     expect(resolved).not.toContain(decoy);
   });
 
-  it("resolves an absolute path, not a bare command name", () => {
-    expect(findSgBinary()).toMatch(/^\//);
+  it("resolves an absolute path, not a bare command name", async () => {
+    expect((await freshFindSgBinary())()).toMatch(/^\//);
   });
 
-  it("still resolves when PATH is empty", () => {
+  it("still resolves when PATH is empty", async () => {
     process.env.PATH = "";
-    expect(findSgBinary()).toContain("@ast-grep/cli-");
+    expect((await freshFindSgBinary())()).toContain("@ast-grep/cli-");
   });
 });
 
@@ -98,8 +107,8 @@ describe("isAstGrepBinary", () => {
     return file;
   }
 
-  it("accepts the real ast-grep binary", () => {
-    expect(isAstGrepBinary(findSgBinary())).toBe(true);
+  it("accepts the real ast-grep binary", async () => {
+    expect(isAstGrepBinary((await freshFindSgBinary())())).toBe(true);
   });
 
   it("rejects a placeholder text file sitting where the binary belongs", () => {
