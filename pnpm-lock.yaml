@@ -71,9 +71,6 @@ importers:
 
   packages/cli:
     dependencies:
-      '@ast-grep/cli':
-        specifier: ^0.41.0
-        version: 0.41.0
       '@clack/prompts':
         specifier: ^1.2.0
         version: 1.2.0
@@ -111,6 +108,9 @@ importers:
         specifier: ^4.3.6
         version: 4.3.6
     devDependencies:
+      '@ast-grep/cli':
+        specifier: 0.41.0
+        version: 0.41.0
       '@types/sprintf-js':
         specifier: ^1.1.4
         version: 1.1.4
@@ -131,25 +131,25 @@ importers:
         version: 3.2.4(@types/node@25.3.3)(jiti@2.6.1)(lightningcss@1.31.1)(tsx@4.21.0)(yaml@2.8.2)
     optionalDependencies:
       '@ast-grep/cli-darwin-arm64':
-        specifier: ^0.41.0
+        specifier: 0.41.0
         version: 0.41.0
       '@ast-grep/cli-darwin-x64':
-        specifier: ^0.41.0
+        specifier: 0.41.0
         version: 0.41.0
       '@ast-grep/cli-linux-arm64-gnu':
-        specifier: ^0.41.0
+        specifier: 0.41.0
         version: 0.41.0
       '@ast-grep/cli-linux-x64-gnu':
-        specifier: ^0.41.0
+        specifier: 0.41.0
         version: 0.41.0
       '@ast-grep/cli-win32-arm64-msvc':
-        specifier: ^0.41.0
+        specifier: 0.41.0
         version: 0.41.0
       '@ast-grep/cli-win32-ia32-msvc':
-        specifier: ^0.41.0
+        specifier: 0.41.0
         version: 0.41.0
       '@ast-grep/cli-win32-x64-msvc':
-        specifier: ^0.41.0
+        specifier: 0.41.0
         version: 0.41.0
 
 packages:

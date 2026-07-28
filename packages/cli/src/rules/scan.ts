@@ -21,43 +21,85 @@ export function buildPath(): string {
   return `${binDirectory}${separator}${process.env.PATH ?? ""}`;
 }
 
-/**
- * Resolve the ast-grep binary path.
- *
- * The @ast-grep/cli package relies on a postinstall script that uses
- * require.resolve() to find platform-specific binary packages and hardlink
- * them into place. Under pnpm dlx, the strict dependency isolation can
- * prevent that resolution from working, leaving a placeholder text file
- * instead of the real binary.
- *
- * To work around this, we resolve the platform-specific package ourselves
- * (from our own module context where optionalDependencies are accessible)
- * and return the full path to the binary. Falls back to "sg" via PATH
- * for environments where the normal .bin shim works fine.
- */
-export function findSgBinary(): string {
+/** The npm package carrying this host's prebuilt ast-grep binary. */
+function platformPackageName(): string {
   const parts: string[] = [process.platform, process.arch];
   if (process.platform === "linux") {
     parts.push("gnu");
   } else if (process.platform === "win32") {
     parts.push("msvc");
   }
+  return `@ast-grep/cli-${parts.join("-")}`;
+}
 
-  const platformPackage = `@ast-grep/cli-${parts.join("-")}`;
-  const binary = process.platform === "win32" ? "ast-grep.exe" : "ast-grep";
-
+/** Absolute path to the binary inside the resolved platform package, if any. */
+function platformPackageBinary(binary: string): string | undefined {
   try {
     const require = createRequire(import.meta.url);
-    const packageJsonPath = require.resolve(`${platformPackage}/package.json`);
-    const binaryPath = resolve(dirname(packageJsonPath), binary);
-    if (existsSync(binaryPath)) {
-      return binaryPath;
-    }
+    const packageJsonPath = require.resolve(
+      `${platformPackageName()}/package.json`
+    );
+    return resolve(dirname(packageJsonPath), binary);
   } catch {
-    // Platform package not resolvable — fall through to PATH-based lookup
+    // Not installed for this host (unsupported arch, or musl — upstream
+    // publishes no musl package and marks the gnu ones `libc: [glibc]`).
+    return undefined;
+  }
+}
+
+/** First entry on PATH that holds an executable named `command`. */
+function findOnPath(command: string): string | undefined {
+  const separator = process.platform === "win32" ? ";" : ":";
+  for (const directory of (process.env.PATH ?? "").split(separator)) {
+    if (directory === "") continue;
+    const candidate = resolve(directory, command);
+    if (existsSync(candidate)) return candidate;
+  }
+  return undefined;
+}
+
+/**
+ * Resolve the ast-grep binary, searching every place it could reasonably live
+ * before giving up.
+ *
+ * We never rely on an install-time step to put the binary somewhere: the CLI
+ * depends on the per-platform packages directly and executes by path. That
+ * matters because the `@ast-grep/cli` wrapper's postinstall hardlink fails
+ * under pnpm dlx's strict isolation, leaving a placeholder text file where the
+ * binary should be.
+ *
+ * Candidates are ordered by confidence, not by quality of outcome — the
+ * platform package first because it is the version we pinned, then a locally
+ * linked binary, then whatever the host provides. If every candidate misses
+ * there is no ast-grep, and we say so plainly rather than handing a bare
+ * command name to spawn and letting ENOENT explain it.
+ */
+export function findSgBinary(): string {
+  const binary = process.platform === "win32" ? "ast-grep.exe" : "ast-grep";
+  const alternative = process.platform === "win32" ? "sg.exe" : "sg";
+  const localBin = resolve(
+    dirname(fileURLToPath(import.meta.url)),
+    "..",
+    "node_modules",
+    ".bin"
+  );
+
+  const candidates: Array<[label: string, path: string | undefined]> = [
+    [platformPackageName(), platformPackageBinary(binary)],
+    ["node_modules/.bin", resolve(localBin, alternative)],
+    ["PATH", findOnPath(alternative)],
+    ["PATH", findOnPath(binary)],
+  ];
+
+  for (const [, path] of candidates) {
+    if (path !== undefined && existsSync(path)) return path;
   }
 
-  return "sg";
+  const tried = candidates.map(([label]) => label).join(", ");
+  throw new Error(
+    `ast-grep binary not found. Looked in: ${tried}. Install a supported ` +
+      `platform build, or put \`${alternative}\` on your PATH.`
+  );
 }
 
 /** Run ast-grep scan and return parsed results */
