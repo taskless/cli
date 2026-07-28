@@ -34,3 +34,5 @@ Taskless rules today are ast-grep only — structural AST matching that fits cod
 - **Dependency**: adds `vale` as an external binary the CLI shells out to (like `sg`).
 - **Runtime execution unchanged** (reconcile/signing/harness) — only the directory moves `runtime-rules/ → runtime/rules/` (updating `discover.ts`'s path); Vale is explicitly static. **No new `upgrade` command** — the migration ladder suffices (now with version-mismatch gating).
 - **Downstream (separate change, taskless repo)**: generating Vale rules + authoring the committed `.vale.ini`/`sgconfig.yml`, the verification-sandbox path, and prose-request classification build on this foundation.
+
+**Tracking:** OSS-21
