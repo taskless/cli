@@ -10,7 +10,11 @@ import { join, resolve } from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
-import { findSgBinary } from "../src/rules/scan";
+import {
+  findSgBinary,
+  isAstGrepBinary,
+  resetSgBinaryCache,
+} from "../src/rules/scan";
 
 const packageJson = JSON.parse(
   readFileSync(resolve(import.meta.dirname, "../package.json"), "utf8")
@@ -32,6 +36,7 @@ describe("findSgBinary", () => {
 
   afterEach(() => {
     process.env.PATH = originalPath;
+    resetSgBinaryCache();
     for (const directory of temporaryDirectories.splice(0)) {
       rmSync(directory, { recursive: true, force: true });
     }
@@ -66,6 +71,53 @@ describe("findSgBinary", () => {
   it("still resolves when PATH is empty", () => {
     process.env.PATH = "";
     expect(findSgBinary()).toContain("@ast-grep/cli-");
+  });
+});
+
+/**
+ * The check that makes the search trustworthy. The `@ast-grep/cli` wrapper's
+ * postinstall leaves a placeholder *text file* at the binary's path when its
+ * hardlink fails under pnpm dlx — so "the file exists" says nothing about
+ * whether it will run. Every candidate is asked to identify itself instead.
+ */
+describe("isAstGrepBinary", () => {
+  const temporaryDirectories: string[] = [];
+
+  afterEach(() => {
+    for (const directory of temporaryDirectories.splice(0)) {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  function temporaryFile(name: string, contents: string, mode: number): string {
+    const directory = mkdtempSync(join(tmpdir(), "taskless-probe-"));
+    temporaryDirectories.push(directory);
+    const file = join(directory, name);
+    writeFileSync(file, contents);
+    chmodSync(file, mode);
+    return file;
+  }
+
+  it("accepts the real ast-grep binary", () => {
+    expect(isAstGrepBinary(findSgBinary())).toBe(true);
+  });
+
+  it("rejects a placeholder text file sitting where the binary belongs", () => {
+    // This is the pnpm dlx failure mode verbatim: a readable file at the right
+    // path that is not the binary. An existsSync check would accept it.
+    const placeholder = temporaryFile("ast-grep", "placeholder\n", 0o644);
+    expect(isAstGrepBinary(placeholder)).toBe(false);
+  });
+
+  it("rejects an executable that is not ast-grep", () => {
+    const impostor = temporaryFile("sg", "#!/bin/sh\necho nope\n", 0o755);
+    expect(isAstGrepBinary(impostor)).toBe(false);
+  });
+
+  it("rejects a path that does not exist", () => {
+    expect(isAstGrepBinary(join(tmpdir(), "definitely-not-here-12345"))).toBe(
+      false
+    );
   });
 });
 
