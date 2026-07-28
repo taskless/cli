@@ -13,7 +13,15 @@ export interface ScanResult {
   exitCode: number;
 }
 
-/** Build PATH that includes this package's node_modules/.bin */
+/**
+ * Build PATH that includes this package's node_modules/.bin, for processes we
+ * spawn.
+ *
+ * This no longer participates in locating ast-grep — {@link findSgBinary}
+ * searches candidate locations explicitly and returns an absolute path. It is
+ * kept because it shapes the *child* process's environment, which is a separate
+ * concern from how we found the binary.
+ */
 export function buildPath(): string {
   const thisDirectory = dirname(fileURLToPath(import.meta.url));
   const binDirectory = resolve(thisDirectory, "..", "node_modules", ".bin");
