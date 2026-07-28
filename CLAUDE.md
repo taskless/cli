@@ -30,14 +30,15 @@ When running OpenSpec commands in this repo, use `pnpm openspec` instead of a ba
 
 Reference issues as a **trailing line at the bottom of the PR body**, not inline in the opening paragraph:
 
-| Syntax                | Effect                       |
-| --------------------- | ---------------------------- |
-| `Fixes #1234`         | Closes GitHub issue on merge |
-| `Fixes TSKL-1234`     | Closes Taskless Linear issue |
-| `Refs GH-1234`        | Links without closing        |
-| `Refs LINEAR-ABC-123` | Links Linear issue           |
+| Syntax                | Effect                          |
+| --------------------- | ------------------------------- |
+| `Fixes #1234`         | Closes GitHub issue on merge    |
+| `Fixes TSKL-1234`     | Closes Taskless Linear issue    |
+| `Fixes OSS-123`       | Closes an OSS-team Linear issue |
+| `Refs GH-1234`        | Links without closing           |
+| `Refs LINEAR-ABC-123` | Links Linear issue              |
 
-- `TSKL-` is the Taskless Linear team prefix; a bare `TSKL-NNNN` resolves without a URL.
+- A bare `<TEAM>-NNN` resolves without a URL for **any** Linear team, not just `TSKL-`. `TSKL-` is Product and `OSS-` is the open-source team; verified with `OSS-23`, which the integration linked and moved to In Review on PR creation.
 - `Fixes` for the issue this PR resolves; `Refs` for a parent or related issue that stays open.
 - Mentioning an issue in prose (`Found while investigating TSKL-5678.`) is **not** a reference — a PR can cite an issue mid-body with no trailing directive at all.
 - Only use a reference you can verify from user input, the branch name, commits, PR discussion, or tracker output. Never invent an issue number.
