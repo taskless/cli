@@ -32,3 +32,5 @@ This change produces the artifact the resolver needs: per-platform Vale binary p
 - **Not in scope**: the code that resolves and execs the binary. `findSgBinary()`'s generalization into a shared helper belongs to `add-vale-rule-engine`; this change only guarantees there is something for it to resolve.
 - **Published artifacts are not reproducible from a plain `git clone`** — the binary is fetched at release time, not stored in the repository.
 - **Supply chain**: the repository becomes a redistributor of a third-party binary. Vale is MIT, so redistribution requires attribution; the committed checksums keep "what can merge to `main`" as the trust boundary.
+
+**Tracking:** OSS-22
