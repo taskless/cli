@@ -26,3 +26,5 @@ The wrapper's only job is a `postinstall` that hardlinks the binary out of a pla
 - **Kept**: `@ast-grep/cli` stays in the root `pnpm.onlyBuiltDependencies`, now permitting a script that runs only for contributors.
 - **Related**: `add-vale-binary-packages` applies this same model to Vale. This change makes the two engines consistent, and lets one shared resolver serve both (`add-vale-rule-engine` task 5.1).
 - **Behavioral risk**: platforms where no `@ast-grep/cli-<platform>` package exists — notably musl/Alpine — lose the wrapper's fallback path and rely on `PATH` alone.
+
+**Tracking:** OSS-23
