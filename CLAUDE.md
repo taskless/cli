@@ -26,6 +26,23 @@ When running OpenSpec commands in this repo, use `pnpm openspec` instead of a ba
 
 - **ALWAYS** wait for confirmation before committing. After staging changes with `git add`, present a summary and pause for user approval before running the commit. This allows the user to review diffs and catch issues early.
 
+- **CHECK the clone is not shallow before rebasing or force-pushing.** A `git clone --depth=N` also implies `--single-branch`, which leaves the clone unable to do ordinary branch work:
+
+  ```bash
+  git rev-parse --is-shallow-repository   # must be false
+  git config --get-all remote.origin.fetch # must be +refs/heads/*:refs/remotes/origin/*
+  ```
+
+  If either is wrong, repair it once — both are local settings, nothing is committed:
+
+  ```bash
+  git fetch --unshallow
+  git config remote.origin.fetch '+refs/heads/*:refs/remotes/origin/*'
+  git fetch origin
+  ```
+
+  Until then: `--force-with-lease` fails with `stale info` on every branch (there is no remote-tracking ref to lease against, so people fall back to a bare `--force`), `git push -u` cannot store an upstream, `gh pr create` needs an explicit `--head <branch>`, and `git branch -r` shows only `main`. The dangerous one is quieter — `git rebase main` is only correct while the merge base sits inside the shallow window, so as `main` advances a rebase can reconstruct the wrong base without saying so.
+
 ## PR Issue References
 
 Reference issues as a **trailing line at the bottom of the PR body**, not inline in the opening paragraph:
