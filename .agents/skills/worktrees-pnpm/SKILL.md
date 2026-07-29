@@ -1,6 +1,6 @@
 ---
 name: worktrees-pnpm
-description: Create and work in git worktrees in this pnpm workspace. Use when creating a worktree, delegating to a background agent with worktree isolation, or when a worktree fails at commit time with a missing prettier/eslint/tsx binary. Covers why a worktree needs its own pnpm install, and why worktrees live beside the repo rather than inside it.
+description: Create and work in git worktrees in this pnpm workspace. Use when creating a worktree, delegating to a background agent with worktree isolation, or when a worktree fails at commit time with a missing prettier/eslint/tsx binary. Covers why a worktree needs its own pnpm install, where worktrees live, and remediations for branch locks, moving a worktree, and failures that look like worktree problems but are not.
 ---
 
 # Worktrees in a pnpm workspace
@@ -69,6 +69,53 @@ Cheap insurance against a failure that is otherwise invisible.
 
 Verified as unaffected by nesting either way: prettier (its globs do not descend into
 dot-directories) and `tsc` (typecheck runs per-package through turbo, not from the root).
+
+## Gotchas and remediations
+
+Each of these was hit for real in this repo.
+
+**A branch can live in only one worktree.** If you need to edit a branch an agent worktree holds,
+you have three options, in order of preference: hand the edit to the agent that owns it; work
+directly inside that worktree, but _only_ if the agent is idle — never while it is running; or
+remove the worktree if it has no work worth keeping.
+
+**An idle agent's worktree still holds its branch lock.** A finished or stopped agent leaves the
+worktree registered, so its branch stays unavailable. Check before reclaiming it:
+
+```bash
+git -C <worktree> status --short                        # uncommitted work?
+git -C <worktree> log --oneline origin/<branch>..HEAD   # unpushed commits?
+git worktree remove <worktree>                          # only when both are empty
+```
+
+**`git worktree list` shows a `worktree-<id>` branch you did not create.** That is the
+placeholder branch made at creation time; an agent checks out the branch it actually needs
+afterward, so the placeholder is not where the work is. Look at the branch the agent reports, not
+the one in the listing.
+
+**Never `mv` a worktree.** Use `git worktree move` — it rewrites the `.git` pointers and carries
+`node_modules` along, so no reinstall is needed. Moving the directory by hand leaves the worktree
+pointing at a path that no longer exists.
+
+**A worktree survives between agent runs.** Resuming an agent reuses its worktree and its
+`node_modules`, so a resumed agent does not pay the install again. Tell it to `cd $PWD` fresh
+rather than trusting a path it cached in an earlier run — the worktree may have been moved.
+
+## Problems that look like worktree problems and are not
+
+Worth knowing, because misdiagnosing these wastes real time:
+
+- **`--force-with-lease` fails with `stale info` on every branch.** That is a shallow or
+  single-branch clone, not a worktree issue — there is no remote-tracking ref to lease against.
+  See the shallow-clone entry in `CLAUDE.md`. The same cause breaks `git push -u` and makes
+  `gh pr create` demand an explicit `--head`.
+- **Several branches suddenly need rebasing and force-pushing at once.** That is `main` moving
+  under an open stack, which happens whenever a PR merges. It is a stacking-cadence concern; see
+  the stacked-PR guidance in `CLAUDE.md`.
+- **A `git push` is rejected as non-fast-forward.** Check whether the remote branch was rebased
+  independently (for example by GitHub's _Update branch_) before assuming your local history is
+  wrong. If the remote already contains your commits under new SHAs, replay only what is missing
+  with `git rebase --onto origin/<branch> <old-base> <branch>` rather than force-pushing over it.
 
 ## Delegating to a background agent with worktree isolation
 
