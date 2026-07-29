@@ -37,9 +37,11 @@ git -C "$repo_root" worktree remove "$worktree_path" >&2 || {
 }
 
 # Drop the per-worktree branch this hook's counterpart created, but only if it is
-# fully merged — an unmerged branch may be the only reference to real work.
+# fully merged — `-d` (not `-D`) so an unmerged branch, which may be the only
+# reference to real work, is left alone. Best-effort: both the "Deleted branch"
+# notice and any refusal go to stderr for debug logs, and neither is fatal.
 branch="worktree-$(basename "$worktree_path")"
-git -C "$repo_root" branch -d "$branch" >&2 2>/dev/null || true
+git -C "$repo_root" branch -d "$branch" >&2 || true
 
 # Remove the parent directory only when it is empty, so the sibling directory
 # does not linger once the last worktree is gone.
