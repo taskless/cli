@@ -16,6 +16,7 @@ export type CLIErrorCode =
   | "NETWORK_ERROR"
   | "SCAN_FAILED"
   | "RECONCILE_FAILED"
+  | "SCAFFOLD_VERSION_MISMATCH"
   | "INTERNAL_ERROR";
 
 /**

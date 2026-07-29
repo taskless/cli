@@ -11,6 +11,11 @@ export interface EnsureOptions {
    * runner falls back to its default `console.error` message.
    */
   onNotice?: (message: string) => void;
+  /**
+   * Proceed instead of throwing when `.taskless/` is newer than this CLI
+   * understands. Defaults to whether `--allow-version-mismatches` is in argv.
+   */
+  allowVersionMismatches?: boolean;
 }
 
 /**
@@ -24,5 +29,8 @@ export async function ensureTasklessDirectory(
 ): Promise<void> {
   const tasklessDirectory = join(cwd, ".taskless");
   await mkdir(tasklessDirectory, { recursive: true });
-  await runMigrations(tasklessDirectory, { onNotice: options.onNotice });
+  await runMigrations(tasklessDirectory, {
+    onNotice: options.onNotice,
+    allowVersionMismatches: options.allowVersionMismatches,
+  });
 }

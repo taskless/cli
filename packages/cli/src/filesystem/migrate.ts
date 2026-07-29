@@ -1,10 +1,12 @@
 import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
+import { CLIError } from "../util/cli-error";
 import type { Migrations } from "./types";
 import init from "./migrations/0001-init";
 import installMigration from "./migrations/0002-install";
 import dropInstalledAt from "./migrations/0003-drop-installed-at";
+import valeEngine from "./migrations/0004-vale-engine";
 
 export interface TasklessInstallTarget {
   skills?: string[];
@@ -34,7 +36,23 @@ const migrations: Migrations = {
   "1": init,
   "2": installMigration,
   "3": dropInstalledAt,
+  "4": valeEngine,
 };
+
+/** Global flag that downgrades a too-new scaffold from an error to a skip. */
+export const ALLOW_VERSION_MISMATCHES_FLAG = "--allow-version-mismatches";
+
+/**
+ * Whether the invocation opted out of scaffold-version enforcement. Read from
+ * raw argv rather than a parsed command, because every command reaches the
+ * migration runner through {@link ensureTasklessDirectory} and none of them
+ * thread their own options down to it.
+ */
+export function hasVersionMismatchOverride(
+  rawArguments: string[] = process.argv.slice(2)
+): boolean {
+  return rawArguments.includes(ALLOW_VERSION_MISMATCHES_FLAG);
+}
 
 /** Sort migration keys numerically and return [version, migration] pairs */
 function sortedMigrations(
@@ -145,12 +163,22 @@ export interface RunMigrationsOptions {
    * custom handler to route the notice through their logger.
    */
   onNotice?: (message: string) => void;
+  /**
+   * Proceed without applying migrations when the on-disk scaffold is newer
+   * than this CLI understands, instead of throwing. Defaults to whether
+   * {@link ALLOW_VERSION_MISMATCHES_FLAG} is present in argv.
+   */
+  allowVersionMismatches?: boolean;
 }
 
 /**
  * Run any pending migrations against the .taskless/ directory.
  * Reads the current version from taskless.json and runs migrations
  * whose numeric key is greater than the current version.
+ *
+ * Throws when the manifest's version is *newer* than the highest migration
+ * this CLI knows: an older CLI cannot safely read a layout written by a newer
+ * one, so it fails loudly rather than half-reading it.
  */
 export async function runMigrations(
   tasklessDirectory: string,
@@ -162,7 +190,18 @@ export async function runMigrations(
   const maxVersion = sorted.at(-1)![0];
   const { version } = await readRawManifest(tasklessDirectory);
 
-  if (version >= maxVersion) {
+  if (version > maxVersion) {
+    if (options.allowVersionMismatches ?? hasVersionMismatchOverride()) {
+      return;
+    }
+    throw new CLIError(
+      `This project's .taskless/ scaffold is version ${String(version)}, but this CLI only understands version ${String(maxVersion)}. ` +
+        `Upgrade the CLI to continue, or re-run with ${ALLOW_VERSION_MISMATCHES_FLAG} to proceed without migrating.`,
+      "SCAFFOLD_VERSION_MISMATCH"
+    );
+  }
+
+  if (version === maxVersion) {
     return;
   }
 
