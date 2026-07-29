@@ -1,6 +1,6 @@
 ---
 name: worktrees-pnpm
-description: Create and work in git worktrees in this pnpm workspace. Use when creating a worktree, delegating to a background agent with worktree isolation, or when a worktree fails at commit time with a missing prettier/eslint/tsx binary. Covers why a worktree needs its own pnpm install and how to make that install cheap.
+description: Create and work in git worktrees in this pnpm workspace. Use when creating a worktree, delegating to a background agent with worktree isolation, or when a worktree fails at commit time with a missing prettier/eslint/tsx binary. Covers why a worktree needs its own pnpm install, where worktrees belong, and why repo-root tooling must ignore them.
 ---
 
 # Worktrees in a pnpm workspace
@@ -14,10 +14,14 @@ problem in this repo.
 **`git worktree add` is not finished until `pnpm install` has run inside the new worktree.**
 
 ```bash
-git worktree add ../skills-<topic> -b <branch>
-cd ../skills-<topic>
+git worktree add .claude/worktrees/<name> <branch>   # or -b <branch> for a new one
+cd .claude/worktrees/<name>
 pnpm install            # ← not optional
 ```
+
+Put worktrees in **`.claude/worktrees/`**. It is already gitignored (`.gitignore:19`), it is where the agent harness creates them, and living inside the repo means they disappear when the repo does. Sibling directories (`../skills-<topic>`) outlive a deleted repo as orphaned checkouts still holding branch locks with no obvious owner.
+
+A branch can only be checked out in one worktree at a time. If the branch you want is checked out in the primary tree, move that tree to another branch first.
 
 Skipping the install leaves a checkout that looks fine and fails the moment you try to
 accomplish anything:
@@ -38,26 +42,32 @@ pnpm does not provide worktree subcommands. Use `git worktree` — it is the cor
 (pnpm's own repository has a `worktree:new` helper script, but that is a script in _their_
 repo, not a pnpm feature. Do not go looking for it here.)
 
-What pnpm contributes is making the required install cheap; see below.
+pnpm's only contribution here is the install you owe the new worktree.
 
-## Making the install cheap
+## What the install actually costs
 
-`enableGlobalVirtualStore: true` in `pnpm-workspace.yaml` makes `node_modules` a tree of
-symlinks into one content-addressable store shared across worktrees, so a second worktree's
-`pnpm install` is close to instant instead of a full materialization.
+`du` reports `node_modules` at roughly 370 MB, but that is apparent size. The pnpm store lives
+on the same APFS volume, so package content is shared by copy-on-write rather than duplicated;
+the real incremental cost of another worktree is far smaller than the number suggests. Disk is
+not the reason to avoid a worktree.
 
-It is **not currently enabled in this repo**, deliberately. Before turning it on, know:
+**`enableGlobalVirtualStore` is not used here, and that is settled.** It would make installs a
+tree of symlinks into one shared store, but it is experimental, pnpm documents it as not working
+with ESM under hoisted dependencies, and this repo is ESM throughout. We gain nothing worth that
+risk. Do not re-propose it.
 
-- Requires pnpm ≥ **10.12.1** (this repo runs 10.12.4, so the version is fine).
-- Defaults to `false`, and pnpm disables it automatically in detected CI.
-- **It does not work with ESM when hoisted dependencies are used**, because Node no longer
-  honours `NODE_PATH` in ESM. This repo is ESM (`packages/cli` is `"type": "module"`) and
-  currently sets no hoisting configuration, so it is likely fine — but "likely" is why it is
-  off. Enable it as its own change, with the full test suite as the check.
-- The store assumes mutually trusting users and processes. Do not share one writable store
-  across untrusted agents.
+So a worktree install is a normal install. Budget for it; do not skip it.
 
-Until it is enabled, a worktree install is a normal install. Budget for it; do not skip it.
+## Worktrees live inside the repo, so repo-wide tooling must ignore them
+
+A worktree under `.claude/worktrees/` is a complete second checkout nested in the tree. Anything
+that walks the repo from the root will walk into it — linting or formatting an agent's
+half-finished work, and failing on code you did not write.
+
+`eslint.config.js` ignores `.claude/worktrees/` for exactly this reason. Verified as not
+affected: prettier (its globs do not descend into dot-directories) and `tsc` (typecheck runs
+per-package through turbo, not from the root). **If you add another repo-root tool that walks
+the tree, give it the same ignore.**
 
 ## Delegating to a background agent with worktree isolation
 
@@ -77,8 +87,8 @@ Until it is enabled, a worktree install is a normal install. Budget for it; do n
 ## Cleaning up
 
 ```bash
-git worktree remove ../skills-<topic>     # add --force if it has uncommitted changes
-git worktree list                          # confirm
+git worktree remove .claude/worktrees/<name>   # add --force if it has uncommitted changes
+git worktree list                               # confirm
 ```
 
 Removing the directory by hand leaves a stale registration; `git worktree prune` clears it.
@@ -96,7 +106,7 @@ git checkout <your-branch>
 
 ## When a worktree is worth it
 
-Worktrees cost a full `node_modules` (until the global virtual store is enabled). They earn it
+Worktrees cost a `pnpm install` and a little wall-clock. They earn it
 when you need two branches checked out at once — running a long test suite on one branch while
 editing another, or letting a background agent work without disturbing your tree.
 
