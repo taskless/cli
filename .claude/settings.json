@@ -51,5 +51,28 @@
       "**/credentials/**",
       "**/secrets/**"
     ]
+  },
+  "hooks": {
+    "WorktreeCreate": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR/.claude/hooks/worktree-create.sh\"",
+            "statusMessage": "Creating worktree beside the repo"
+          }
+        ]
+      }
+    ],
+    "WorktreeRemove": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR/.claude/hooks/worktree-remove.sh\""
+          }
+        ]
+      }
+    ]
   }
 }
