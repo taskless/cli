@@ -33,4 +33,15 @@ This change produces the artifact the resolver needs: per-platform Vale binary p
 - **Published artifacts are not reproducible from a plain `git clone`** — the binary is fetched at release time, not stored in the repository.
 - **Supply chain**: the repository becomes a redistributor of a third-party binary. Vale is MIT, so redistribution requires attribution; the committed checksums keep "what can merge to `main`" as the trust boundary.
 
+## Delivery shape
+
+**Stacked, merging forward.** Publishing is inert until something pins it, which is what makes these units independently safe.
+
+| Unit | Scope                                                         | Safe alone because                                    |
+| ---- | ------------------------------------------------------------- | ----------------------------------------------------- |
+| 1    | Package scaffolding, committed checksums, changesets `ignore` | Nothing published, nothing consumed — repository-only |
+| 2    | Fetch, verify, stamp, and the two-phase release workflow      | Publishes packages no consumer references yet         |
+| 3    | The CLI's `optionalDependencies` pin                          | The packages it pins already exist                    |
+
+Unit 3 is the only one with user-visible effect, and it cannot precede unit 2 — reversing that order would pin a version that does not exist.
 **Tracking:** OSS-22
