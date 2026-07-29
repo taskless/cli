@@ -68,7 +68,23 @@ The two rules that cause the most damage when missed:
 
 ## Stacked PRs
 
-Committing a branch straight to `main` is the norm — stacks are optional. When PRs _do_ stack, the **stack-breadcrumb workflow** (`.github/workflows/stack-breadcrumb.yml`) keeps their cross-links and carried-forward bodies in sync automatically; there is no git-town or other stacking tool in the loop. Branch protection lives on `main` only (`Validate` required, `strict_up_to_date: true`, 0 required reviews); child branches are unprotected. When you do land a stack, follow these practices.
+When PRs stack, the **stack-breadcrumb workflow** (`.github/workflows/stack-breadcrumb.yml`) keeps their cross-links and carried-forward bodies in sync automatically; there is no git-town or other stacking tool in the loop. Branch protection lives on `main` only (`Validate` required, `strict_up_to_date: true`, 0 required reviews); child branches are unprotected. When you do land a stack, follow these practices.
+
+### Every OpenSpec proposal declares its delivery shape
+
+The proposal states which of these the change is, and why. Decide it while writing the proposal, not when the diff has already grown too big to review.
+
+| Shape                        | When                                                                                                      | How it lands                                                                                                                                        |
+| ---------------------------- | --------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Single PR**                | The whole change fits one reviewable diff.                                                                | Spec, implementation, and the archive land together.                                                                                                |
+| **Stacked, merging forward** | Each unit is independently safe in production.                                                            | Each PR merges to `main` in turn; the last one archives the change.                                                                                 |
+| **Stacked, merging down**    | The units are only correct together — an intermediate state would ship a broken or half-migrated product. | Merge each PR **down** into its parent from the tip, then one protected merge of the bottom branch to `main`. The change reaches `main` atomically. |
+
+**Prefer stacking, and aim to keep an individual diff under ~300 lines.** A 900-line PR does not get reviewed, it gets approved. Tests count toward the total but never split from the code they cover — if a unit is oversized because of its tests, that is usually a sign the unit itself should be smaller.
+
+The deciding question between forward and down is only this: **can each unit reach production on its own without breaking anything?** If landing unit 1 alone would leave `check` broken, tests failing, or a migration half-applied, the answer is no and the stack merges down. Do not assume forward because it is tidier — verify it, since "each unit is safe" is a claim about behavior, not intent.
+
+Note how this interacts with the archive gate (see the OpenSpec archive check below): a change is archived exactly once, on whichever PR is the tip. Mid-stack PRs are expected to carry an unarchived change directory and the gate skips them.
 
 ### Landing a stack: merge _down_, then one merge to `main`
 
