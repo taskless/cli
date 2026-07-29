@@ -32,4 +32,16 @@ Taskless rules are ast-grep only — structural AST matching that fits code but 
 - **New external dependency**: the Vale binary, delivered as per-platform packages rather than assumed on `PATH`.
 - **Deliberately excluded**: generating Vale rules and authoring the committed `.vale.ini`. That is rule-generation work, split between a CLI-side authoring change and server-side generation in the platform repo.
 
+## Delivery shape
+
+**Stacked, merging down.** The Vale engine is only correct once `check` can dispatch to it: the runner without the multi-engine orchestration ships an engine that never executes, and the orchestration without the runner dispatches to nothing.
+
+| Unit | Scope                                                      |
+| ---- | ---------------------------------------------------------- |
+| 1    | Binary resolution, Vale runner, `CheckResult` mapping      |
+| 2    | Fixture-based verify                                       |
+| 3    | Concurrent multi-engine orchestration and merge            |
+| 4    | Engine-selection knowledge topic and its help registration |
+
+Unit 4 is the arguable exception — a knowledge topic is inert and would be safe alone — but it describes `vale` as an engine an agent can choose, which is only true once units 1–3 exist. It rides the same stack rather than shipping guidance ahead of the capability.
 **Tracking:** OSS-21
