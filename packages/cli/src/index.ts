@@ -46,6 +46,12 @@ const main = defineCommand({
       description: "Output as JSON",
       default: false,
     },
+    "allow-version-mismatches": {
+      type: "boolean",
+      description:
+        "Proceed when .taskless/ is newer than this CLI understands (skips migrations)",
+      default: false,
+    },
   },
   subCommands: {
     ...subCommands,
