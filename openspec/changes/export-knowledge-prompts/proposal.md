@@ -22,4 +22,14 @@ The CLI's **knowledge prompts** — `help/*.txt` (`route`, `static`, `remote`, `
 - **Consumers**: `@taskless/cli/prompts` becomes importable — the enabler for the `taskless/taskless` `generator-decision-router` change.
 - **No change** to CLI commands, rule execution, or on-disk formats.
 
+## Delivery shape
+
+**Stacked, merging forward.** Each unit is independently safe: the first changes no observable behavior, and the second only adds a new export.
+
+| Unit | Scope                                                                                        | Safe alone because                                                                 |
+| ---- | -------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------- |
+| 1    | Move the glob and `renderRecipe` into `src/prompts/`, have `commands/help.ts` consume them   | Pure refactor — `help` output must be byte-identical, which is the unit's own test |
+| 2    | The `./prompts` subpath export, Vite entry, `TOPICS`/`PromptOptions` API, completeness check | Adds a new public surface; nothing existing depends on it yet                      |
+
+Unit 1 must not change `help` output at all, so a difference there is a regression rather than a judgement call. Splitting this way also means the risky part (touching a shipped command) is reviewed apart from the new API surface.
 **Tracking:** OSS-20
