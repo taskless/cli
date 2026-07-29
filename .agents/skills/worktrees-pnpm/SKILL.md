@@ -1,6 +1,6 @@
 ---
 name: worktrees-pnpm
-description: Create and work in git worktrees in this pnpm workspace. Use when creating a worktree, delegating to a background agent with worktree isolation, or when a worktree fails at commit time with a missing prettier/eslint/tsx binary. Covers why a worktree needs its own pnpm install, where worktrees belong, and why repo-root tooling must ignore them.
+description: Create and work in git worktrees in this pnpm workspace. Use when creating a worktree, delegating to a background agent with worktree isolation, or when a worktree fails at commit time with a missing prettier/eslint/tsx binary. Covers why a worktree needs its own pnpm install, and why worktrees live beside the repo rather than inside it.
 ---
 
 # Worktrees in a pnpm workspace
@@ -14,12 +14,14 @@ problem in this repo.
 **`git worktree add` is not finished until `pnpm install` has run inside the new worktree.**
 
 ```bash
-git worktree add .claude/worktrees/<name> <branch>   # or -b <branch> for a new one
-cd .claude/worktrees/<name>
+git worktree add ../skills-worktrees/<name> <branch>   # or -b <branch> for a new one
+cd ../skills-worktrees/<name>
 pnpm install            # ← not optional
 ```
 
-Put worktrees in **`.claude/worktrees/`**. It is already gitignored (`.gitignore:19`), it is where the agent harness creates them, and living inside the repo means they disappear when the repo does. Sibling directories (`../skills-<topic>`) outlive a deleted repo as orphaned checkouts still holding branch locks with no obvious owner.
+Worktrees go **beside the repo**, in `../skills-worktrees/`, never inside it. Agent worktrees land there too: the `WorktreeCreate` / `WorktreeRemove` hooks in `.claude/settings.json` (scripts under `.claude/hooks/`) replace the default placement, which would otherwise nest them at `.claude/worktrees/<id>`.
+
+That is not a matter of taste. A worktree is a complete second checkout, so nesting it inside the repo means every tool that walks the tree from the root walks into it. We hit exactly that: a root `eslint .` traversed 2983 files across two agent worktrees and failed on code an agent had half-written. An ignore rule patches one tool; a sibling directory makes the whole class of problem impossible. One directory also answers "what worktrees do I have?" at a glance — `ls ../skills-worktrees/`.
 
 A branch can only be checked out in one worktree at a time. If the branch you want is checked out in the primary tree, move that tree to another branch first.
 
@@ -58,16 +60,15 @@ risk. Do not re-propose it.
 
 So a worktree install is a normal install. Budget for it; do not skip it.
 
-## Worktrees live inside the repo, so repo-wide tooling must ignore them
+## The in-repo ignore is a backstop, not the mechanism
 
-A worktree under `.claude/worktrees/` is a complete second checkout nested in the tree. Anything
-that walks the repo from the root will walk into it — linting or formatting an agent's
-half-finished work, and failing on code you did not write.
+`eslint.config.js` still ignores `.claude/worktrees/`, and `.gitignore` still lists it. With the
+hooks in place nothing should land there — the ignores exist so that a worktree created by hand
+in the old location, or by a tool that bypasses the hooks, cannot silently break a root lint.
+Cheap insurance against a failure that is otherwise invisible.
 
-`eslint.config.js` ignores `.claude/worktrees/` for exactly this reason. Verified as not
-affected: prettier (its globs do not descend into dot-directories) and `tsc` (typecheck runs
-per-package through turbo, not from the root). **If you add another repo-root tool that walks
-the tree, give it the same ignore.**
+Verified as unaffected by nesting either way: prettier (its globs do not descend into
+dot-directories) and `tsc` (typecheck runs per-package through turbo, not from the root).
 
 ## Delegating to a background agent with worktree isolation
 
@@ -87,11 +88,15 @@ the tree, give it the same ignore.**
 ## Cleaning up
 
 ```bash
-git worktree remove .claude/worktrees/<name>   # add --force if it has uncommitted changes
-git worktree list                               # confirm
+git worktree remove ../skills-worktrees/<name>   # add --force if it has uncommitted changes
+git worktree list                                 # confirm
 ```
 
 Removing the directory by hand leaves a stale registration; `git worktree prune` clears it.
+
+To relocate an existing worktree, use `git worktree move <from> <to>` — it rewrites the `.git`
+pointers, and `node_modules` comes along, so no reinstall is needed. Moving the directory
+yourself leaves the worktree pointing at a path that no longer exists.
 
 ## Recovery: the main checkout got switched onto an agent's branch
 
