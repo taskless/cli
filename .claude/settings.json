@@ -59,7 +59,7 @@
           {
             "type": "command",
             "command": "\"$CLAUDE_PROJECT_DIR/.agents/skills/worktrees-pnpm/scripts/worktree-create.sh\"",
-            "statusMessage": "Creating worktree beside the repo"
+            "statusMessage": "Creating worktree"
           }
         ]
       }
