@@ -147,6 +147,58 @@ def get_review_comments(owner: str, repo: str, pr_number: int) -> list[dict[str,
     return result if isinstance(result, list) else []
 
 
+_VIEWER_LOGIN: str | None = None
+_VIEWER_LOOKUP_FAILED = False
+
+
+def get_viewer_login() -> str | None:
+    """Login of the authenticated gh user, looked up once per run."""
+    global _VIEWER_LOGIN, _VIEWER_LOOKUP_FAILED
+    if _VIEWER_LOGIN is None and not _VIEWER_LOOKUP_FAILED:
+        # No --jq here: run_gh json.loads() its stdout, and --jq emits a bare
+        # unquoted string that is not valid JSON.
+        result = run_gh(["api", "user"])
+        login = result.get("login") if isinstance(result, dict) else None
+        if login:
+            _VIEWER_LOGIN = login
+        else:
+            _VIEWER_LOOKUP_FAILED = True
+    return _VIEWER_LOGIN
+
+
+def has_our_acknowledgement(
+    owner: str, repo: str, comment_id: int, hooray_count: int
+) -> bool:
+    """Whether *we* left the acknowledgement reaction on this comment.
+
+    The count on the comment payload is every user's reaction, so a maintainer
+    celebrating a review would otherwise mark it handled and silently drop real
+    feedback. Only our own reaction counts. The per-comment lookup is skipped
+    entirely when the count is zero, so the common case costs nothing.
+
+    Fails closed: if the viewer cannot be identified or the lookup errors, the
+    item is treated as unacknowledged and resurfaces, which is the safe
+    direction — answering twice beats dropping feedback.
+    """
+    if hooray_count <= 0:
+        return False
+    viewer = get_viewer_login()
+    if not viewer:
+        return False
+    reactions = run_gh([
+        "api",
+        f"repos/{owner}/{repo}/issues/comments/{comment_id}/reactions",
+        "--paginate",
+    ])
+    if not isinstance(reactions, list):
+        return False
+    return any(
+        r.get("content") == "hooray"
+        and (r.get("user") or {}).get("login") == viewer
+        for r in reactions
+    )
+
+
 def get_issue_comments(owner: str, repo: str, pr_number: int) -> list[dict[str, Any]]:
     """Get PR conversation comments (includes bot comments)."""
     result = run_gh([
@@ -468,10 +520,17 @@ def main():
         if not body or len(body.strip()) < 3:
             continue
 
-        # A 🎉 reaction is our machine-readable "this was handled" marker for
-        # top-level comments, which have no thread to resolve. Set it after
-        # replying; see the skill's "Replying to Comments" section.
-        acknowledged = comment.get("reactions", {}).get("hooray", 0) > 0
+        # Our own 🎉 reaction is the machine-readable "this was handled" marker
+        # for top-level comments, which have no thread to resolve. Scoped to the
+        # authenticated user: an unrelated 🎉 from anyone else must not silence
+        # real feedback. Set it after replying; see the skill's "Replying to
+        # Comments" section.
+        acknowledged = has_our_acknowledgement(
+            owner,
+            repo,
+            comment.get("id", 0),
+            comment.get("reactions", {}).get("hooray", 0),
+        )
 
         item = extract_feedback_item(
             body=body,
