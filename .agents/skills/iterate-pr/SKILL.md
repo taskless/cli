@@ -57,7 +57,7 @@ Returns JSON with feedback categorized as:
 - `medium` - Should address (`m:`, standard feedback)
 - `low` - Optional (`l:`, nit, style, suggestion)
 - `bot` - Informational automated comments (Codecov, Dependabot, etc.)
-- `resolved` - Already resolved threads
+- `resolved` - Already resolved threads, and top-level comments carrying our 🎉 acknowledgement
 
 Review bot feedback (from Sentry, Warden, Copilot, Cursor, Bugbot, CodeQL, etc.) appears in `high`/`medium`/`low` with `review_bot: true` — it is NOT placed in the `bot` bucket.
 
@@ -182,7 +182,22 @@ To close out several threads in one pass, use `scripts/resolve_pr_threads.py THR
 
 **Top-level comments** (items WITHOUT a `thread_id` — `review_summary` items and top-level PR/issue comments, e.g. a review bot like Claude that posts its findings as one top-level comment):
 
-There is no thread to reply into, so post a **new top-level comment** with `gh pr comment <pr> --body "..."`. A PR can carry several independent top-level comments, so a bare reply is ambiguous — **open every top-level reply with a reference marker** identifying the comment you are addressing. Cite the author and the opening of the original, and link it when the item includes a `url`:
+There is no thread to reply into, so do two things: post a **new top-level comment**, then **add a 🎉 reaction to the original**. The reaction is the machine-readable record that this item is handled — `fetch_pr_feedback.py` reads it and buckets the comment as `resolved`, so a re-run stops reporting it as needing attention. Without it, every later pass re-surfaces the same comment and you have to reason about whether you already dealt with it.
+
+```bash
+gh pr comment <pr> --body "..."
+
+# React on the ORIGINAL comment. Use the PR-scoped endpoint — the repo-wide
+# `repos/{owner}/{repo}/issues/comments` returns every comment in the repo, and
+# picking from it will eventually react on the wrong PR.
+gh api "repos/{owner}/{repo}/issues/<pr>/comments" \
+  --jq '.[] | select(.id == <comment_id>) | .id'
+gh api -X POST "repos/{owner}/{repo}/issues/comments/<comment_id>/reactions" -f content=hooray
+```
+
+The feedback script reports `comment_id` on each top-level item, so take the id from there rather than searching by body text.
+
+A PR can carry several independent top-level comments, so a bare reply is ambiguous — **open every top-level reply with a reference marker** identifying the comment you are addressing. Cite the author and the opening of the original, and link it when the item includes a `url`:
 
 ```
 > **Re:** @<author> — "<first line of the original, ~100 chars>…"
@@ -197,7 +212,7 @@ There is no thread to reply into, so post a **new top-level comment** with `gh p
 
 - 1-2 sentences: what was changed, why it's not an issue, or acknowledgment of declined items.
 - End every reply with `\n\n*— AI Coding Agent*`.
-- Before replying, dedupe against re-loops: for inline threads, check whether the thread already has a reply ending in `*- AI Coding Agent*` / `*— AI Coding Agent*`; for top-level comments, scan existing top-level comments for one whose **reference marker** already cites this author + snippet (the signature alone is not enough — distinct top-level items would otherwise collide).
+- Before replying, dedupe against re-loops: for inline threads, check whether the thread already has a reply ending in `*- AI Coding Agent*` / `*— AI Coding Agent*`. For top-level comments the 🎉 reaction handles this — an item carrying `acknowledged: true` (bucketed as `resolved`) has already been answered, so skip it rather than replying twice.
 - If the `gh`/GraphQL call fails, log and continue — do not block the workflow.
 
 ### 4. Check CI Status

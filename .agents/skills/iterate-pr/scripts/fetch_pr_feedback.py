@@ -301,6 +301,8 @@ def extract_feedback_item(
     review_bot: bool = False,
     self_review: bool = False,
     thread_id: str | None = None,
+    comment_id: int | None = None,
+    acknowledged: bool = False,
 ) -> dict[str, Any]:
     """Create a standardized feedback item."""
     # Truncate long bodies for summary
@@ -329,6 +331,10 @@ def extract_feedback_item(
         item["self_review"] = True
     if thread_id:
         item["thread_id"] = thread_id
+    if comment_id is not None:
+        item["comment_id"] = comment_id
+    if acknowledged:
+        item["acknowledged"] = True
 
     return item
 
@@ -462,11 +468,22 @@ def main():
         if not body or len(body.strip()) < 3:
             continue
 
+        # A 🎉 reaction is our machine-readable "this was handled" marker for
+        # top-level comments, which have no thread to resolve. Set it after
+        # replying; see the skill's "Replying to Comments" section.
+        acknowledged = comment.get("reactions", {}).get("hooray", 0) > 0
+
         item = extract_feedback_item(
             body=body,
             author=author,
             url=comment.get("html_url"),
+            comment_id=comment.get("id"),
+            acknowledged=acknowledged,
         )
+
+        if acknowledged:
+            feedback["resolved"].append(item)
+            continue
 
         if is_review_bot(author):
             category = categorize_comment(comment, body)
