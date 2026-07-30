@@ -60,15 +60,139 @@ risk. Do not re-propose it.
 
 So a worktree install is a normal install. Budget for it; do not skip it.
 
-## The in-repo ignore is a backstop, not the mechanism
+## Setup (per repo)
 
-`eslint.config.js` still ignores `.claude/worktrees/`, and `.gitignore` still lists it. With the
-hooks in place nothing should land there — the ignores exist so that a worktree created by hand
-in the old location, or by a tool that bypasses the hooks, cannot silently break a root lint.
-Cheap insurance against a failure that is otherwise invisible.
+This skill ships the hook scripts it needs, in `scripts/` beside this file. A repo that installs
+the skill gets them; wiring them up is two edits.
 
-Verified as unaffected by nesting either way: prettier (its globs do not descend into
-dot-directories) and `tsc` (typecheck runs per-package through turbo, not from the root).
+**1. Register the hooks** in the repo's committed `.claude/settings.json`. `WorktreeCreate`
+replaces the default placement logic entirely — it runs `git worktree add` itself and prints the
+path it made — and `WorktreeRemove` is its counterpart.
+
+```json
+{
+  "hooks": {
+    "WorktreeCreate": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR/.agents/skills/worktrees-pnpm/scripts/worktree-create.sh\"",
+            "statusMessage": "Creating worktree"
+          }
+        ]
+      }
+    ],
+    "WorktreeRemove": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR/.agents/skills/worktrees-pnpm/scripts/worktree-remove.sh\""
+          }
+        ]
+      }
+    ]
+  }
+}
+```
+
+Two things that will waste your time if you get them wrong. The **nested** `[{ "hooks": [...] }]`
+shape is required — the flatter `[{ type, command }]` form shown on some documentation pages does
+not validate, and an invalid settings file disables _every_ setting in it silently. And the
+scripts need `jq` on `PATH`; they read their payload from stdin.
+
+Verify without waiting for an agent, by feeding a hook its payload directly:
+
+```bash
+printf '{"hook_event_name":"WorktreeCreate","cwd":"%s","worktree_id":"probe"}' "$PWD" \
+  | .agents/skills/worktrees-pnpm/scripts/worktree-create.sh
+# expect: <repo>/worktrees/probe on stdout, git chatter on stderr, exit 0
+
+printf '{"hook_event_name":"WorktreeRemove","worktree_path":"%s"}' "$PWD/worktrees/probe" \
+  | .agents/skills/worktrees-pnpm/scripts/worktree-remove.sh
+```
+
+**2. Add the ignores** described in the next section. Skipping this is the single most common way
+to end up debugging a lint failure in code you never wrote.
+
+## Every root-level tool must ignore the worktrees directory
+
+This is the one real cost of keeping worktrees in the repo, and it is not optional. A worktree is
+a **complete second checkout**. Anything that walks the tree from the root will walk into it —
+linting, formatting, or type-checking another branch's code, and failing on whatever an agent has
+half-written. The symptom is bewildering: your tooling fails on code you never wrote.
+
+Placing worktrees outside the repo avoids this, but the path then depends on what the clone
+directory is named, so committed config cannot reference it portably. In-repo plus ignores is the
+trade: three one-line entries you control, instead of a path that silently differs per teammate.
+
+**Add `worktrees/` to every tool that walks the tree from the root.** In this repo that is:
+
+```gitignore
+# .gitignore
+worktrees/
+```
+
+```gitignore
+# .prettierignore
+worktrees/
+```
+
+```js
+// eslint.config.js (flat config)
+export default [{ ignores: ["worktrees/", ".claude/worktrees/"] }];
+```
+
+Other ecosystems, same idea:
+
+```json
+// .eslintrc.json (legacy)
+{ "ignorePatterns": ["worktrees/"] }
+```
+
+```jsonc
+// biome.json
+{ "files": { "ignore": ["worktrees/"] } }
+```
+
+```toml
+# pyproject.toml — ruff / black
+[tool.ruff]
+exclude = ["worktrees"]
+[tool.black]
+extend-exclude = "worktrees"
+```
+
+```json
+// tsconfig.json — only if the root config globs sources itself
+{ "exclude": ["worktrees"] }
+```
+
+Also check anything else that globs from the root: test runners (`vitest`/`jest` `exclude`),
+bundlers, coverage tools, `.dockerignore`, and workspace globs in `pnpm-workspace.yaml`,
+`package.json` `workspaces`, or a Cargo/Go workspace file.
+
+**Do not assume which tools are affected — measure.** In this repo, `pnpm` workspaces and `tsc`
+turned out _not_ to need an entry (the workspace glob is root-anchored, and typecheck runs
+per-package through turbo), while `prettier` did — and it was invisible until worktrees moved out
+of a dot-directory, because its globs skip dotfiles. Your repo's answer will differ.
+
+The check that settles it, run with a worktree actually present:
+
+```bash
+git worktree add worktrees/probe -b throwaway-probe
+touch worktrees/probe/UNFORMATTED.md
+
+git status --porcelain | grep -c '^?? worktrees'          # expect 0
+npx prettier --list-different "**/*.md" | grep -c worktrees  # expect 0
+npx eslint --debug . 2>&1 | grep -c worktrees/probe       # expect 0
+# ...and the same shape for every other root-level tool
+
+git worktree remove worktrees/probe && git branch -D throwaway-probe
+```
+
+Any non-zero count is a tool that still needs an ignore entry.
 
 ## Gotchas and remediations
 
