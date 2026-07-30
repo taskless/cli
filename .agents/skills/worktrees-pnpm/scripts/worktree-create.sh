@@ -1,15 +1,21 @@
 #!/usr/bin/env bash
 #
-# WorktreeCreate hook — place worktrees BESIDE the repo, not inside it.
+# WorktreeCreate hook — place worktrees at <repo>/worktrees/<id>.
 #
-# Default Claude Code behavior creates worktrees at <repo>/.claude/worktrees/<id>.
-# A worktree is a complete second checkout, so nesting it inside the repo means
-# every tool that walks the tree from the root walks into it. We hit that: a root
-# `eslint .` traversed 2983 files across two agent worktrees and failed on code an
-# agent had half-written. An ignore rule patches one tool; placing worktrees
-# outside the repo makes the whole class of problem impossible.
+# Default Claude Code behavior uses <repo>/.claude/worktrees/<id>; this moves them
+# to a top-level `worktrees/` directory instead.
 #
-# Layout: /path/to/<repo>  ->  /path/to/<repo>-worktrees/<worktree_id>
+# A sibling directory (<repo>-worktrees/) was tried first and rejected: its path
+# depends on what the clone directory is named, so committed settings.json cannot
+# reference it portably — a teammate whose checkout is not named `skills` would be
+# prompted for every file operation, silently and per-person.
+#
+# In-repo costs three ignore surfaces, because a worktree is a complete second
+# checkout that root-level tooling walks into: .gitignore, .prettierignore, and
+# eslint.config.js all exclude `worktrees/`. Verified as NOT needing one: pnpm
+# workspaces (`packages/*` is root-anchored) and tsc (per-package via turbo).
+#
+# Layout: /path/to/<repo>  ->  /path/to/<repo>/worktrees/<worktree_id>
 #
 # Contract (docs: code.claude.com/docs/en/hooks):
 #   stdin  - JSON with .worktree_id (and .base_path, .cwd, .session_id, ...)
@@ -38,7 +44,7 @@ fi
 # Resolve against the repo this hook was invoked for, not $PWD.
 cwd=$(printf '%s' "$payload" | jq -r '.cwd // empty')
 repo_root=$(git -C "${cwd:-$PWD}" rev-parse --show-toplevel)
-worktree_dir="$(dirname "$repo_root")/$(basename "$repo_root")-worktrees/$worktree_id"
+worktree_dir="$repo_root/worktrees/$worktree_id"
 
 # Idempotent, but only for a real worktree. A bare directory test would hand back
 # a path that git knows nothing about — left by a partial cleanup, an interrupted
