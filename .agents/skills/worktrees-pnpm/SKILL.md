@@ -14,14 +14,14 @@ problem in this repo.
 **`git worktree add` is not finished until `pnpm install` has run inside the new worktree.**
 
 ```bash
-git worktree add ../skills-worktrees/<name> <branch>   # or -b <branch> for a new one
-cd ../skills-worktrees/<name>
+git worktree add worktrees/<name> <branch>   # or -b <branch> for a new one
+cd worktrees/<name>
 pnpm install            # ← not optional
 ```
 
-Worktrees go **beside the repo**, in `../skills-worktrees/`, never inside it. Agent worktrees land there too: the `WorktreeCreate` / `WorktreeRemove` hooks in `.claude/settings.json` (scripts under `.claude/hooks/`) replace the default placement, which would otherwise nest them at `.claude/worktrees/<id>`.
+Worktrees go in **`worktrees/` at the repo root**, gitignored. Agent worktrees land there too: the `WorktreeCreate` / `WorktreeRemove` hooks configured in `.claude/settings.json` (scripts in this skill's `scripts/` directory) replace the default placement, which would otherwise nest them at `.claude/worktrees/<id>`. `ls worktrees/` answers "what worktrees do I have?" at a glance.
 
-That is not a matter of taste. A worktree is a complete second checkout, so nesting it inside the repo means every tool that walks the tree from the root walks into it. We hit exactly that: a root `eslint .` traversed 2983 files across two agent worktrees and failed on code an agent had half-written. An ignore rule patches one tool; a sibling directory makes the whole class of problem impossible. One directory also answers "what worktrees do I have?" at a glance — `ls ../skills-worktrees/`.
+A sibling directory (`../<repo>-worktrees/`) is the obvious alternative and was tried first. It is genuinely better on one axis — nothing inside the repo, so no tool can walk into it — but its path depends on what the clone directory is _named_, which committed config cannot know. A teammate whose checkout is not named the same thing gets permission prompts for every file operation, silently and per person. `worktrees/` is the same path in every clone; the price is the ignore entries in the next section, which are three lines you control.
 
 A branch can only be checked out in one worktree at a time. If the branch you want is checked out in the primary tree, move that tree to another branch first.
 
@@ -259,7 +259,7 @@ Worth knowing, because misdiagnosing these wastes real time:
 ## Cleaning up
 
 ```bash
-git worktree remove ../skills-worktrees/<name>   # add --force if it has uncommitted changes
+git worktree remove worktrees/<name>   # add --force if it has uncommitted changes
 git worktree list                                 # confirm
 ```
 
