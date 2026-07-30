@@ -57,7 +57,7 @@ Returns JSON with feedback categorized as:
 - `medium` - Should address (`m:`, standard feedback)
 - `low` - Optional (`l:`, nit, style, suggestion)
 - `bot` - Informational automated comments (Codecov, Dependabot, etc.)
-- `resolved` - Already resolved threads, and top-level comments carrying our 🎉 acknowledgement
+- `resolved` - Already resolved threads, and top-level comments carrying our own 🎉 acknowledgement
 
 Review bot feedback (from Sentry, Warden, Copilot, Cursor, Bugbot, CodeQL, etc.) appears in `high`/`medium`/`low` with `review_bot: true` — it is NOT placed in the `bot` bucket.
 
@@ -182,20 +182,23 @@ To close out several threads in one pass, use `scripts/resolve_pr_threads.py THR
 
 **Top-level comments** (items WITHOUT a `thread_id` — `review_summary` items and top-level PR/issue comments, e.g. a review bot like Claude that posts its findings as one top-level comment):
 
-There is no thread to reply into, so do two things: post a **new top-level comment**, then **add a 🎉 reaction to the original**. The reaction is the machine-readable record that this item is handled — `fetch_pr_feedback.py` reads it and buckets the comment as `resolved`, so a re-run stops reporting it as needing attention. Without it, every later pass re-surfaces the same comment and you have to reason about whether you already dealt with it.
+There is no thread to reply into, so post a **new top-level comment** — and when the item carries a `comment_id`, also **add a 🎉 reaction to the original**. The reaction is the machine-readable record that the item is handled: `fetch_pr_feedback.py` checks whether _we_ reacted and buckets the comment as `resolved`, so a re-run stops reporting it. Without it, every later pass re-surfaces the same comment and you have to reason about whether you already dealt with it.
 
 ```bash
 gh pr comment <pr> --body "..."
-
-# React on the ORIGINAL comment. Use the PR-scoped endpoint — the repo-wide
-# `repos/{owner}/{repo}/issues/comments` returns every comment in the repo, and
-# picking from it will eventually react on the wrong PR.
-gh api "repos/{owner}/{repo}/issues/<pr>/comments" \
-  --jq '.[] | select(.id == <comment_id>) | .id'
 gh api -X POST "repos/{owner}/{repo}/issues/comments/<comment_id>/reactions" -f content=hooray
 ```
 
-The feedback script reports `comment_id` on each top-level item, so take the id from there rather than searching by body text.
+Take the id from the item's `comment_id` rather than searching by body text. If you do need to look it up, use the **PR-scoped** endpoint _with_ `--paginate` — the repo-wide `repos/{owner}/{repo}/issues/comments` returns every comment in the repository, and the PR-scoped one defaults to 30 per page, so an unpaginated search silently misses comments on later pages:
+
+```bash
+gh api "repos/{owner}/{repo}/issues/<pr>/comments" --paginate \
+  --jq '.[] | select(.id == <comment_id>) | .id'
+```
+
+**The reaction is scoped to us.** The script does not trust the raw reaction count — anyone can react 🎉 to a comment for unrelated reasons, and treating that as handled would silently drop real feedback. It confirms the reaction belongs to the authenticated user, and fails closed: if the viewer cannot be identified, the item resurfaces. Answering twice beats dropping something.
+
+**Items without a `comment_id` cannot be reacted to.** GitHub exposes no reactions endpoint for a pull-request review body, so `review_summary` items — the text of a submitted review, as opposed to an ordinary PR conversation comment — have no reaction target. For those, dedupe by scanning existing top-level comments for one whose **reference marker** already cites this author and snippet. In practice most review bots post their findings as an ordinary comment, which does carry a `comment_id`.
 
 A PR can carry several independent top-level comments, so a bare reply is ambiguous — **open every top-level reply with a reference marker** identifying the comment you are addressing. Cite the author and the opening of the original, and link it when the item includes a `url`:
 
@@ -212,7 +215,7 @@ A PR can carry several independent top-level comments, so a bare reply is ambigu
 
 - 1-2 sentences: what was changed, why it's not an issue, or acknowledgment of declined items.
 - End every reply with `\n\n*— AI Coding Agent*`.
-- Before replying, dedupe against re-loops: for inline threads, check whether the thread already has a reply ending in `*- AI Coding Agent*` / `*— AI Coding Agent*`. For top-level comments the 🎉 reaction handles this — an item carrying `acknowledged: true` (bucketed as `resolved`) has already been answered, so skip it rather than replying twice.
+- Before replying, dedupe against re-loops: for inline threads, check whether the thread already has a reply ending in `*- AI Coding Agent*` / `*— AI Coding Agent*`. For a top-level comment with a `comment_id`, the 🎉 reaction handles it — an item carrying `acknowledged: true` (bucketed as `resolved`) has already been answered, so skip it. For a `review_summary` with no `comment_id`, fall back to the reference-marker scan.
 - If the `gh`/GraphQL call fails, log and continue — do not block the workflow.
 
 ### 4. Check CI Status
