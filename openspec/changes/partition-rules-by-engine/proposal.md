@@ -31,4 +31,19 @@ This change makes the layout multi-engine **before** any second engine exists: r
 - **No new engine, no new binary, no user-visible behavior change.** `vale/` is scaffolded empty and nothing executes it yet.
 - **Deliberately excluded**: the Vale engine itself and the engine-selection knowledge topic, which need this layout to exist first.
 
+## Delivery shape
+
+**Stacked, merging down.** Not a preference — a constraint, verified. Task group 1 alone leaves **20 tests failing**: migration `0004` moves rules out from under readers that groups 2–4 update (`rules/scan.ts`, `rules/verify.ts`, `commands/check.ts`, `rules/runtime/discover.ts`). Any intermediate state ships a CLI that has relocated its rules and cannot find them, so no unit can reach production alone.
+
+The stack merges down into the bottom branch and reaches `main` as one commit.
+
+| Unit | Scope                                                                            |
+| ---- | -------------------------------------------------------------------------------- |
+| 1    | Migration `0004`, directory scaffolding, version gating                          |
+| 2    | Directory-based dispatch, service-delivered rule ingest, reconcile compatibility |
+| 3    | Runtime discovery path                                                           |
+| 4    | ast-grep over the committed config, quality gates                                |
+
+Group 1's diff is ~580 lines under `packages/`, 347 of them fixture tests. That exceeds the repo's ~300-line guideline and is the honest cost of a migration that must prove byte-identical moves; splitting the tests from the migration they cover would make review worse, not better.
+
 **Tracking:** OSS-24
