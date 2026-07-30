@@ -187,6 +187,55 @@ describe("migration 0004 — engine-partitioned layout", () => {
     );
   });
 
+  it("anchors the sgconfig.yml gitignore pattern so the committed sg config is tracked", async () => {
+    await seedLegacyLayout();
+    // Start at version 0 so 0001 runs too: it appends the anchored form, and
+    // 0004 must collapse that with the legacy unanchored line rather than
+    // leaving both.
+    await writeFile(
+      join(tasklessDirectory, "taskless.json"),
+      JSON.stringify({ version: 0 }),
+      "utf8"
+    );
+    // The pattern 0001 used to write: unanchored, so it matches at any depth
+    // and would swallow `.taskless/sg/sgconfig.yml`.
+    await writeFile(
+      join(tasklessDirectory, ".gitignore"),
+      ".env.local.json\nsgconfig.yml\n",
+      "utf8"
+    );
+
+    await ensureTasklessDirectory(temporaryDirectory);
+
+    const gitignore = await readFile(
+      join(tasklessDirectory, ".gitignore"),
+      "utf8"
+    );
+    const entries = gitignore
+      .split("\n")
+      .map((line) => line.trim())
+      .filter(Boolean);
+    expect(entries).toContain("/sgconfig.yml");
+    expect(entries).not.toContain("sgconfig.yml");
+    expect(entries).toContain(".env.local.json");
+    // Exactly one entry, even though 0001 also appends the anchored form.
+    expect(entries.filter((entry) => entry === "/sgconfig.yml")).toHaveLength(
+      1
+    );
+  });
+
+  it("leaves an already-anchored gitignore untouched", async () => {
+    await seedLegacyLayout();
+    const original = ".env.local.json\n/sgconfig.yml\n.run/\n";
+    await writeFile(join(tasklessDirectory, ".gitignore"), original, "utf8");
+
+    await ensureTasklessDirectory(temporaryDirectory);
+
+    expect(await readFile(join(tasklessDirectory, ".gitignore"), "utf8")).toBe(
+      original
+    );
+  });
+
   it("scaffolds vale/ and gitkeeps every otherwise-empty directory", async () => {
     await seedLegacyLayout();
 
@@ -236,6 +285,19 @@ describe("migration 0004 — engine-partitioned layout", () => {
     expect(await exists(join(tasklessDirectory, "sg", "sgconfig.yml"))).toBe(
       true
     );
+
+    // The ignore pattern is anchored from the start for a fresh scaffold.
+    const gitignore = await readFile(
+      join(tasklessDirectory, ".gitignore"),
+      "utf8"
+    );
+    expect(gitignore).toContain("/sgconfig.yml");
+    expect(
+      gitignore
+        .split("\n")
+        .map((line) => line.trim())
+        .filter(Boolean)
+    ).not.toContain("sgconfig.yml");
   });
 
   it("is idempotent — a second run changes nothing", async () => {

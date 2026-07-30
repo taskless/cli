@@ -41,7 +41,11 @@ const migration: Migration = async (directory) => {
 
   // Ensure .gitignore has required entries
   const cwd = join(directory, "..");
-  await addToGitignore(cwd, [".env.local.json", "sgconfig.yml"]);
+  // `/sgconfig.yml` is anchored to `.taskless/` on purpose: an unanchored
+  // pattern matches at any depth and would also ignore the committed
+  // `.taskless/sg/sgconfig.yml`. Migration 0004 rewrites the unanchored form
+  // that earlier versions of this migration wrote.
+  await addToGitignore(cwd, [".env.local.json", "/sgconfig.yml"]);
 
   // Create subdirectories
   await mkdir(join(directory, "rules"), { recursive: true });

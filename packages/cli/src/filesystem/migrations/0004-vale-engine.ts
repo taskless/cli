@@ -2,6 +2,7 @@ import {
   cp,
   mkdir,
   readdir,
+  readFile,
   rename,
   rm,
   rmdir,
@@ -118,6 +119,50 @@ async function writeIfAbsent(path: string, content: string): Promise<void> {
   await writeFile(path, content, "utf8");
 }
 
+/**
+ * Anchor the legacy `sgconfig.yml` entry in `.taskless/.gitignore` to the
+ * directory root.
+ *
+ * Migration `0001` wrote the pattern unanchored, when the only `sgconfig.yml`
+ * was the ephemeral one generated directly in `.taskless/`. A gitignore pattern
+ * without a slash matches at **any** depth, so that same line would now also
+ * ignore the committed `.taskless/sg/sgconfig.yml` this layout makes the source
+ * of truth — the config would silently never be tracked. `/sgconfig.yml` still
+ * ignores the ephemeral file and nothing below it.
+ */
+async function anchorSgConfigIgnore(directory: string): Promise<void> {
+  const gitignorePath = join(directory, ".gitignore");
+  let existing: string;
+  try {
+    existing = await readFile(gitignorePath, "utf8");
+  } catch {
+    return; // No .gitignore — 0001 writes one, nothing to fix.
+  }
+
+  let changed = false;
+  let seenAnchored = false;
+  const rewritten: string[] = [];
+  for (const line of existing.split("\n")) {
+    const anchored =
+      line.trim() === "sgconfig.yml" ? "/sgconfig.yml" : line.trim();
+    if (anchored === "/sgconfig.yml") {
+      // 0001 may already have appended the anchored form beside the legacy
+      // unanchored one; collapse them into a single entry.
+      if (seenAnchored) {
+        changed = true;
+        continue;
+      }
+      seenAnchored = true;
+      if (line.trim() !== "/sgconfig.yml") changed = true;
+      rewritten.push("/sgconfig.yml");
+      continue;
+    }
+    rewritten.push(line);
+  }
+  if (!changed) return;
+  await writeFile(gitignorePath, rewritten.join("\n"), "utf8");
+}
+
 /** Create `path` and drop a `.gitkeep` in it when it would otherwise be empty. */
 async function ensureTrackedDirectory(path: string): Promise<void> {
   await mkdir(path, { recursive: true });
@@ -158,6 +203,8 @@ const migration: Migration = async (directory) => {
   for (const segments of SCAFFOLD_DIRECTORIES) {
     await ensureTrackedDirectory(join(directory, ...segments));
   }
+
+  await anchorSgConfigIgnore(directory);
 };
 
 export default migration;
