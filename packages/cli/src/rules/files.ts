@@ -5,13 +5,19 @@ import { parse, stringify } from "yaml";
 
 import { ensureTasklessDirectory } from "../filesystem/directory";
 import type { GeneratedRule, RuleMetadata } from "../api/rules";
-import { isValidRuleId } from "./validate-id";
 import {
-  SG_RULES_DIRECTORY,
-  SG_RULE_TESTS_DIRECTORY,
-} from "../filesystem/layout";
+  ENGINE_LAYOUTS,
+  astGrepRuleFileCandidates,
+  astGrepRuleTestDirectories,
+  resolveIngestEngine,
+} from "./engines";
+import { isValidRuleId } from "./validate-id";
 
-/** Write a generated rule's content to .taskless/rules/{kebab-id}.yml */
+/**
+ * Write a generated rule's content into the engine directory its payload
+ * identifies — `.taskless/sg/rules/{kebab-id}.yml` for the engine-less payloads
+ * the API delivers today (see {@link resolveIngestEngine}).
+ */
 export async function writeRuleFile(
   cwd: string,
   rule: GeneratedRule
@@ -19,14 +25,25 @@ export async function writeRuleFile(
   if (!isValidRuleId(rule.id)) {
     throw new Error(`Invalid rule ID "${rule.id}"`);
   }
+  // Resolve the engine before touching the filesystem: an unrecognized engine
+  // must write nothing at all.
+  const engine = resolveIngestEngine(rule);
   await ensureTasklessDirectory(cwd);
-  const directory = join(cwd, ".taskless", SG_RULES_DIRECTORY);
+  const directory = join(
+    cwd,
+    ".taskless",
+    ENGINE_LAYOUTS[engine].rulesDirectory
+  );
+  await mkdir(directory, { recursive: true });
   const filePath = join(directory, `${rule.id}.yml`);
   await writeFile(filePath, stringify(rule.content, { lineWidth: 0 }), "utf8");
   return filePath;
 }
 
-/** Write a rule's test cases to .taskless/rule-tests/{kebab-id}-{timestamp}-test.yml */
+/**
+ * Write a rule's test cases to that engine's rule-tests directory —
+ * `.taskless/sg/rule-tests/{kebab-id}-{timestamp}-test.yml` by default.
+ */
 export async function writeRuleTestFile(
   cwd: string,
   rule: GeneratedRule,
@@ -35,8 +52,14 @@ export async function writeRuleTestFile(
   if (!isValidRuleId(rule.id)) {
     throw new Error(`Invalid rule ID "${rule.id}"`);
   }
+  const engine = resolveIngestEngine(rule);
   await ensureTasklessDirectory(cwd);
-  const directory = join(cwd, ".taskless", SG_RULE_TESTS_DIRECTORY);
+  const directory = join(
+    cwd,
+    ".taskless",
+    ENGINE_LAYOUTS[engine].ruleTestsDirectory
+  );
+  await mkdir(directory, { recursive: true });
   const filePath = join(directory, `${rule.id}-${timestamp}-test.yml`);
   const content = {
     id: rule.id,
@@ -100,47 +123,50 @@ export async function deleteRuleFiles(
   if (!isValidRuleId(id)) {
     return false;
   }
-  const rulesDirectory = join(cwd, ".taskless", SG_RULES_DIRECTORY);
-  const ruleFilePath = join(rulesDirectory, `${id}.yml`);
-
+  // Delete from every layout the CLI dispatches, so a rule that still lives at
+  // the legacy path is removed rather than reported as missing.
   let ruleExisted = false;
-  try {
-    await rm(ruleFilePath);
-    ruleExisted = true;
-  } catch {
-    return false;
+  for (const ruleFilePath of astGrepRuleFileCandidates(cwd, id)) {
+    try {
+      await rm(ruleFilePath);
+      ruleExisted = true;
+    } catch {
+      // Not in this layout — try the next.
+    }
   }
+  if (!ruleExisted) return false;
 
   // Remove matching test files
-  const testDirectory = join(cwd, ".taskless", SG_RULE_TESTS_DIRECTORY);
-  try {
-    const entries = await readdir(testDirectory);
-    const matchingTests = entries.filter(
-      (f) => f.startsWith(`${id}-`) && f.endsWith("-test.yml")
-    );
-    await Promise.all(
-      matchingTests.map((f) =>
-        rm(join(testDirectory, f)).catch((error: NodeJS.ErrnoException) => {
-          if (error.code !== "ENOENT") {
-            console.error(
-              `Warning: failed to remove test file ${f}: ${error.message}`
-            );
-          }
-        })
-      )
-    );
-  } catch (error) {
-    if (
-      !(
-        error &&
-        typeof error === "object" &&
-        "code" in error &&
-        (error as NodeJS.ErrnoException).code === "ENOENT"
-      )
-    ) {
-      console.error(
-        `Warning: failed to clean up test files: ${(error as Error).message}`
+  for (const testDirectory of astGrepRuleTestDirectories(cwd)) {
+    try {
+      const entries = await readdir(testDirectory);
+      const matchingTests = entries.filter(
+        (f) => f.startsWith(`${id}-`) && f.endsWith("-test.yml")
       );
+      await Promise.all(
+        matchingTests.map((f) =>
+          rm(join(testDirectory, f)).catch((error: NodeJS.ErrnoException) => {
+            if (error.code !== "ENOENT") {
+              console.error(
+                `Warning: failed to remove test file ${f}: ${error.message}`
+              );
+            }
+          })
+        )
+      );
+    } catch (error) {
+      if (
+        !(
+          error &&
+          typeof error === "object" &&
+          "code" in error &&
+          (error as NodeJS.ErrnoException).code === "ENOENT"
+        )
+      ) {
+        console.error(
+          `Warning: failed to clean up test files: ${(error as Error).message}`
+        );
+      }
     }
   }
 

@@ -3,7 +3,8 @@ import { readFile as readFileNode } from "node:fs/promises";
 import { resolve } from "node:path";
 
 import { parse as parseToml } from "smol-toml";
-import { SG_RULES_DIRECTORY } from "../filesystem/layout";
+
+import { ENGINE_LAYOUTS, LEGACY_RULES_DIRECTORY } from "../rules/engines";
 
 export interface DetectedLinter {
   name: string;
@@ -416,22 +417,29 @@ interface PythonManifest {
 
 /**
  * Surface the styles of the repo's own existing rules so the authoring recipe
- * can match house conventions. `.taskless/rules` is the repo-root, polyglot
- * Taskless convention, so it is read at the scan root; the custom-ESLint-rule
- * tells (house rule directories and the local-rules plugin dependency) describe
- * how this repo already authors lint rules.
+ * can match house conventions. ast-grep rules are the repo-root, polyglot
+ * Taskless convention, so they are read at the scan root — from the `sg` engine
+ * directory, or the pre-migration `.taskless/rules` when that is what the repo
+ * still has; the custom-ESLint-rule tells (house rule directories and the
+ * local-rules plugin dependency) describe how this repo already authors lint
+ * rules.
  */
 function detectRuleStyles(
   root: string,
   nodeManifests: NodeManifest[]
 ): RuleStyle[] {
   const ruleStyles: RuleStyle[] = [];
-  if (existsSync(resolve(root, ".taskless", SG_RULES_DIRECTORY))) {
+  for (const source of [
+    `.taskless/${ENGINE_LAYOUTS.sg.rulesDirectory}`,
+    `.taskless/${LEGACY_RULES_DIRECTORY}`,
+  ]) {
+    if (!existsSync(resolve(root, source))) continue;
     ruleStyles.push({
-      source: `.taskless/${SG_RULES_DIRECTORY}`,
+      source,
       description:
         "Existing Taskless ast-grep rules — match their structure and conventions.",
     });
+    break;
   }
   for (const directory of [
     "eslint-rules",
