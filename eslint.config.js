@@ -17,11 +17,13 @@ export default tseslint.config(
       "openspec/",
       "**/test/fixtures/",
       "tmp/",
-      // Agent worktrees are full checkouts nested inside the repo. Without
-      // this, a root `eslint .` lints every worktree's copy of the tree —
-      // slow, and it fails on whatever an agent has mid-edit. Scoped to
-      // `worktrees` rather than all of `.claude/` so anything else we put
-      // there is still checked.
+      // Worktrees are full checkouts nested inside the repo. Without this, a
+      // root `eslint .` lints every worktree's copy of the tree — slow, and it
+      // fails on whatever an agent has mid-edit. `.claude/worktrees/` is the
+      // harness default and stays listed as a backstop for anything that
+      // bypasses the WorktreeCreate hook; both are scoped to `worktrees` rather
+      // than all of `.claude/` so anything else we put there is still checked.
+      "worktrees/",
       ".claude/worktrees/",
       // Zero-dependency CommonJS workflow scripts (covered by their own
       // node:test suite); the app's TS/ESM-oriented rules don't apply.

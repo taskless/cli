@@ -35,3 +35,6 @@ agents.lock
 # Python bytecode (skill scripts)
 __pycache__/
 *.pyc
+
+# Agent and manual git worktrees (full second checkouts; see worktrees-pnpm skill)
+worktrees/
