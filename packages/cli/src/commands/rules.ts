@@ -14,6 +14,7 @@ import {
   readRuleMetaFile,
   deleteRuleFiles,
 } from "../rules/files";
+import { ENGINE_LAYOUTS } from "../rules/engines";
 import {
   inputSchema as createInputSchema,
   outputSchema as createOutputSchema,
@@ -658,7 +659,7 @@ const deleteCommand = defineCommand({
         }
         success = true;
       } else {
-        const message = `Rule "${id}" not found in .taskless/rules/${id}.yml`;
+        const message = `Rule "${id}" not found in .taskless/${ENGINE_LAYOUTS.sg.rulesDirectory}/${id}.yml`;
         if (args.json) {
           console.log(
             JSON.stringify(makeErrorEnvelope("RULE_NOT_FOUND", message))

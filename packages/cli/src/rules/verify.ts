@@ -1,5 +1,4 @@
 import { readFile, readdir } from "node:fs/promises";
-import { join } from "node:path";
 import { spawn } from "node:child_process";
 
 import { parse } from "yaml";
@@ -9,15 +8,19 @@ import {
   TASKLESS_REQUIRED_FIELDS,
   findRegexWithoutKind,
 } from "../schemas/ast-grep-rule";
+import { ensureTasklessDirectory } from "../filesystem/directory";
 import { generateSgConfig } from "../filesystem/sgconfig";
+import {
+  astGrepRuleFileCandidates,
+  astGrepRuleTestDirectories,
+  ENGINE_LAYOUTS,
+  LEGACY_RULES_DIRECTORY,
+  LEGACY_RULE_TESTS_DIRECTORY,
+} from "./engines";
 import { findSgBinary, buildPath } from "./scan";
 import astGrepJsonSchema from "../generated/ast-grep-rule-schema.json";
 import { RULE_EXAMPLES } from "./verify-examples";
 import { isValidRuleId } from "./validate-id";
-import {
-  SG_RULES_DIRECTORY,
-  SG_RULE_TESTS_DIRECTORY,
-} from "../filesystem/layout";
 
 // --- Helpers ---
 
@@ -133,20 +136,26 @@ async function validateRequirements(
     }
   }
 
-  // Check test file exists
-  const testDirectory = join(cwd, ".taskless", SG_RULE_TESTS_DIRECTORY);
+  // Check a test file exists, in either layout the CLI dispatches.
   let hasTestFile = false;
-  try {
-    const entries = await readdir(testDirectory);
-    hasTestFile = entries.some(
-      (f) => f.startsWith(`${ruleId}-`) && f.endsWith("-test.yml")
-    );
-  } catch {
-    // directory doesn't exist
+  for (const testDirectory of astGrepRuleTestDirectories(cwd)) {
+    try {
+      const entries = await readdir(testDirectory);
+      if (
+        entries.some(
+          (f) => f.startsWith(`${ruleId}-`) && f.endsWith("-test.yml")
+        )
+      ) {
+        hasTestFile = true;
+        break;
+      }
+    } catch {
+      // directory doesn't exist
+    }
   }
   if (!hasTestFile) {
     errors.push(
-      `No test file found for rule "${ruleId}" in .taskless/rule-tests/`
+      `No test file found for rule "${ruleId}" in .taskless/${ENGINE_LAYOUTS.sg.ruleTestsDirectory}/`
     );
   }
 
@@ -155,8 +164,17 @@ async function validateRequirements(
 
 // --- Layer 3: Test execution ---
 
-async function runTests(cwd: string, ruleId: string): Promise<TestLayerResult> {
-  await generateSgConfig(cwd);
+async function runTests(
+  cwd: string,
+  ruleId: string,
+  layout: { rulesDirectory: string; ruleTestsDirectory: string }
+): Promise<TestLayerResult> {
+  // Point ast-grep at the layout the rule was actually resolved from, so a
+  // rule still living at the legacy path is tested rather than reported absent.
+  await generateSgConfig(cwd, {
+    rulesDirectory: layout.rulesDirectory,
+    testDirectory: layout.ruleTestsDirectory,
+  });
 
   const sgBinary = findSgBinary();
 
@@ -247,18 +265,43 @@ export async function verifyRule(
     };
   }
 
-  const rulePath = join(cwd, ".taskless", SG_RULES_DIRECTORY, `${ruleId}.yml`);
+  // Settle the layout before resolving anything: the migration moves rules
+  // between the two candidate paths, so resolving first and migrating later
+  // would point ast-grep at a directory the migration has just emptied.
+  await ensureTasklessDirectory(cwd);
 
-  let ruleContent: string;
-  try {
-    ruleContent = await readFile(rulePath, "utf8");
-  } catch {
+  // Resolve the rule from the engine directory first, then the legacy path,
+  // and remember which layout won so the test run points ast-grep at it.
+  const candidates = astGrepRuleFileCandidates(cwd, ruleId);
+  let ruleContent: string | undefined;
+  let layout = {
+    rulesDirectory: ENGINE_LAYOUTS.sg.rulesDirectory,
+    ruleTestsDirectory: ENGINE_LAYOUTS.sg.ruleTestsDirectory,
+  };
+  for (const [index, candidate] of candidates.entries()) {
+    try {
+      ruleContent = await readFile(candidate, "utf8");
+      if (index > 0) {
+        layout = {
+          rulesDirectory: LEGACY_RULES_DIRECTORY,
+          ruleTestsDirectory: LEGACY_RULE_TESTS_DIRECTORY,
+        };
+      }
+      break;
+    } catch {
+      // Not in this layout — try the next.
+    }
+  }
+
+  if (ruleContent === undefined) {
     return {
       success: false,
       ruleId,
       schema: {
         valid: false,
-        errors: [`Rule file not found: .taskless/rules/${ruleId}.yml`],
+        errors: [
+          `Rule file not found: .taskless/${ENGINE_LAYOUTS.sg.rulesDirectory}/${ruleId}.yml`,
+        ],
       },
       requirements: {
         valid: false,
@@ -310,7 +353,7 @@ export async function verifyRule(
 
   // Layer 3 — only if test file exists (Layer 2 checks this)
   const testResult = requirementsResult.hasTestFile
-    ? await runTests(cwd, ruleId)
+    ? await runTests(cwd, ruleId, layout)
     : {
         valid: false,
         errors: ["Skipped: no test file found"],

@@ -1,11 +1,17 @@
-import { resolve, join, isAbsolute, relative } from "node:path";
-import { readdir, stat } from "node:fs/promises";
+import { resolve, isAbsolute, relative } from "node:path";
+import { stat } from "node:fs/promises";
 import { defineCommand } from "citty";
 
 import { runAstGrepScan } from "../rules/scan";
 import type { CheckResult } from "../types/check";
 import { formatText } from "../util/format";
 import { generateSgConfig } from "../filesystem/sgconfig";
+import { ensureTasklessDirectory } from "../filesystem/directory";
+import {
+  dedupeFindings,
+  discoverAstGrepRuleSources,
+  planEngineDispatch,
+} from "../rules/engines";
 import { getTelemetry } from "../telemetry";
 import { outputSchema as checkOutputSchema } from "../schemas/check";
 import { makeErrorEnvelope } from "../types/errors";
@@ -25,8 +31,6 @@ import {
   signRuntimeChecks,
 } from "../rules/runtime/run-set";
 import { executeRuntimeRules } from "../rules/runtime/harness";
-import { SG_RULES_DIRECTORY } from "../filesystem/layout";
-import { ensureTasklessDirectory } from "../filesystem/directory";
 
 async function pathExists(absolutePath: string): Promise<boolean> {
   try {
@@ -311,30 +315,25 @@ export const checkCommand = defineCommand({
         return;
       }
 
-      // Migrate before discovering anything. Rules are read from their
-      // engine directory, which migration `0004` is what creates — discovering
-      // first would find an empty `sg/rules/` on any project still on the flat
-      // layout, report "No rules configured", and return before the migration
-      // that would have populated it ever ran. Only an existing `.taskless/` is
-      // migrated, so `check` in a project that has none still says so instead
-      // of scaffolding one as a side effect.
-      if (await pathExists(join(cwd, ".taskless"))) {
-        await ensureTasklessDirectory(cwd);
-      }
+      // Rules dispatch by the engine directory that contains them. This is also
+      // the migration trigger: `generateSgConfig` is leaving the check path, so
+      // without this call an upgraded CLI would keep reading a stale layout.
+      await ensureTasklessDirectory(cwd);
+      const dispatch = await planEngineDispatch(cwd);
 
       // Static rules (trusted ast-grep YAML) always run; runtime rules
-      // (untrusted check.ts) are gated separately.
-      const rulesDirectory = join(cwd, ".taskless", SG_RULES_DIRECTORY);
-      let staticRuleFiles: string[] = [];
-      try {
-        const entries = await readdir(rulesDirectory);
-        staticRuleFiles = entries.filter((f) => f.endsWith(".yml"));
-      } catch {
-        // .taskless/ or rules/ directory doesn't exist
-      }
-      const runtimeRules = await discoverRuntimeRules(cwd);
+      // (untrusted check.ts) are gated separately. An engine directory this CLI
+      // has no executor for (vale) contributes nothing, and a directory that is
+      // not a known engine is ignored rather than handed to someone's parser.
+      const astGrepSources = await discoverAstGrepRuleSources(cwd);
+      const runtimeEnabled =
+        dispatch.find((entry) => entry.engine === "runtime")?.executor ===
+        "runtime-harness";
+      const runtimeRules = runtimeEnabled
+        ? await discoverRuntimeRules(cwd)
+        : [];
 
-      if (staticRuleFiles.length === 0 && runtimeRules.length === 0) {
+      if (astGrepSources.length === 0 && runtimeRules.length === 0) {
         if (args.json) {
           console.log(
             JSON.stringify(
@@ -352,12 +351,21 @@ export const checkCommand = defineCommand({
       try {
         const results: CheckResult[] = [];
 
-        // Static rules: always scan, no verification (inert data).
-        if (staticRuleFiles.length > 0) {
-          await generateSgConfig(cwd);
+        // Static rules: always scan, no verification (inert data). Each
+        // ast-grep source is scanned on its own — `sg/rules/` and, for an
+        // unmigrated checkout, the legacy `.taskless/rules/` — and identical
+        // findings from both are collapsed so a rule present in both layouts
+        // is reported once.
+        const staticResults: CheckResult[] = [];
+        for (const source of astGrepSources) {
+          await generateSgConfig(cwd, {
+            rulesDirectory: source.rulesDirectory,
+            testDirectory: source.ruleTestsDirectory,
+          });
           const scan = await runAstGrepScan(cwd, existingPaths);
-          results.push(...scan.results);
+          staticResults.push(...scan.results);
         }
+        results.push(...dedupeFindings(staticResults));
 
         // Runtime rules: run only what the server validated (or forced).
         const plan = await planRuntime(cwd, runtimeRules, {

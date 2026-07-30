@@ -17,7 +17,7 @@ describe("generateSgConfig", () => {
     await rm(temporaryDirectory, { recursive: true, force: true });
   });
 
-  it("writes sgconfig.yml with correct ruleDirs", async () => {
+  it("writes sgconfig.yml pointing at the sg engine directory by default", async () => {
     await generateSgConfig(temporaryDirectory);
 
     const content = await readFile(
@@ -27,7 +27,21 @@ describe("generateSgConfig", () => {
     expect(content).toContain("ruleDirs:");
     expect(content).toContain("- sg/rules");
     expect(content).toContain("testConfigs:");
-    expect(content).toContain("sg/rule-tests");
+    expect(content).toContain("testDir: sg/rule-tests");
+  });
+
+  it("accepts the legacy layout for an unmigrated rule set", async () => {
+    await generateSgConfig(temporaryDirectory, {
+      rulesDirectory: "rules",
+      testDirectory: "rule-tests",
+    });
+
+    const content = await readFile(
+      join(temporaryDirectory, ".taskless", "sgconfig.yml"),
+      "utf8"
+    );
+    expect(content).toContain("- rules");
+    expect(content).toContain("testDir: rule-tests");
   });
 
   it("creates .taskless/.gitignore with required entries", async () => {
