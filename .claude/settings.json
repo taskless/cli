@@ -38,7 +38,7 @@
       "Bash(pnpm dlx @taskless/cli*)",
       "Bash(openspec:*)"
     ],
-    "additionalDirectories": ["openspec/*"]
+    "additionalDirectories": ["openspec/*", "../skills-worktrees"]
   },
   "read": {
     "deny": [
