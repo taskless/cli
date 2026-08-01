@@ -5,7 +5,7 @@ import { defineCommand } from "citty";
 import { runAstGrepScan } from "../rules/scan";
 import type { CheckResult } from "../types/check";
 import { formatText } from "../util/format";
-import { generateSgConfig } from "../filesystem/sgconfig";
+import { resolveSgConfigPath } from "../filesystem/sgconfig";
 import { ensureTasklessDirectory } from "../filesystem/directory";
 import {
   dedupeFindings,
@@ -316,8 +316,9 @@ export const checkCommand = defineCommand({
       }
 
       // Rules dispatch by the engine directory that contains them. This is also
-      // the migration trigger: `generateSgConfig` is leaving the check path, so
-      // without this call an upgraded CLI would keep reading a stale layout.
+// the migration trigger: no config is generated on the check path any
+      // more, so without this call an upgraded CLI would keep reading a stale
+      // layout.
       //
       // Only an existing `.taskless/` is migrated. `ensureTasklessDirectory`
       // creates the scaffold, and `check` is a read-only command — running it in
@@ -371,11 +372,8 @@ export const checkCommand = defineCommand({
         // is reported once.
         const staticResults: CheckResult[] = [];
         for (const source of astGrepSources) {
-          await generateSgConfig(cwd, {
-            rulesDirectory: source.rulesDirectory,
-            testDirectory: source.ruleTestsDirectory,
-          });
-          const scan = await runAstGrepScan(cwd, existingPaths);
+          const configPath = await resolveSgConfigPath(cwd, source);
+          const scan = await runAstGrepScan(cwd, existingPaths, { configPath });
           staticResults.push(...scan.results);
         }
         results.push(...dedupeFindings(staticResults));

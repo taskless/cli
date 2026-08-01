@@ -7,6 +7,14 @@ import { fileURLToPath } from "node:url";
 
 import type { AstGrepMatch } from "../types/check";
 import { toCheckResult, type CheckResult } from "../types/check";
+import { ENGINE_LAYOUTS } from "./engines";
+
+/**
+ * The committed ast-grep config, relative to the project root. It is authored
+ * and persisted, never generated at check time: its `ruleDirs`/`testConfigs`
+ * are relative to the config file, so it needs no rewriting to stay valid.
+ */
+export const COMMITTED_SG_CONFIG = `.taskless/${ENGINE_LAYOUTS.sg.configFile ?? "sg/sgconfig.yml"}`;
 
 export interface ScanResult {
   results: CheckResult[];
@@ -145,10 +153,21 @@ export function findSgBinary(): string {
   );
 }
 
+export interface ScanOptions {
+  /**
+   * ast-grep config to scan with, relative to `cwd`. Defaults to the committed
+   * `sg` engine config — the source of truth for the ast-grep engine, read
+   * as-is rather than generated per run. Callers scanning the pre-migration
+   * layout pass the ephemeral config written for it instead.
+   */
+  configPath?: string;
+}
+
 /** Run ast-grep scan and return parsed results */
 export async function runAstGrepScan(
   cwd: string,
-  paths: string[] = []
+  paths: string[] = [],
+  options: ScanOptions = {}
 ): Promise<ScanResult> {
   return new Promise((resolve, reject) => {
     const sgBinary = findSgBinary();
@@ -157,7 +176,7 @@ export async function runAstGrepScan(
     const argv = [
       "scan",
       "--config",
-      ".taskless/sgconfig.yml",
+      options.configPath ?? COMMITTED_SG_CONFIG,
       "--json=stream",
       ...(paths.length > 0 ? ["--", ...paths] : []),
     ];
