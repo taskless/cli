@@ -35,6 +35,8 @@ This change produces the artifact the resolver needs: per-platform Vale binary p
 
 ## Delivery shape
 
+**Release impact: minor.** Adds per-platform binary packages and declares them as CLI `optionalDependencies`. Install gains a bundled binary — additive, but a change to what shipping the CLI actually delivers.
+
 **Stacked, merging forward.** Publishing is inert until something pins it, which is what makes these units independently safe.
 
 | Unit | Scope                                                         | Safe alone because                                    |
