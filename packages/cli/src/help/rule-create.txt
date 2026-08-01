@@ -29,7 +29,7 @@ If the user wants the local-only flow (no API call), fetch
    - In what language?
    - Are there contexts where the pattern is acceptable?
 
-3. **Check for similar existing rules.** Scan `.taskless/rules/` for
+3. **Check for similar existing rules.** Scan `.taskless/sg/rules/` for
    rule files. Read each rule's `message`, `note`, and `rule` fields.
    If any overlap with the user's request, show the user and ask:
    "It looks like you already have a rule that covers something
@@ -64,8 +64,8 @@ If the user wants the local-only flow (no API call), fetch
    of success or failure.
 
 9. **Report results.** The CLI writes the generated rule to
-   `.taskless/rules/<id>.yml`, tests to
-   `.taskless/rule-tests/<id>-YYYYMMDD-test.yml` (timestamped per
+   `.taskless/sg/rules/<id>.yml`, tests to
+   `.taskless/sg/rule-tests/<id>-YYYYMMDD-test.yml` (timestamped per
    generation), and metadata to `.taskless/rule-metadata/<id>.yml`.
    Show the user the file paths. Suggest fetching `taskless help check`
    to validate.

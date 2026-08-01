@@ -13,7 +13,7 @@ If the user wants the local-only flow (no API call), fetch
 ## Preconditions
 - User is logged in.
 - Repository has a GitHub origin remote.
-- The target rule exists in `.taskless/rules/<id>.yml`.
+- The target rule exists in `.taskless/sg/rules/<id>.yml`.
 - The rule has metadata at `.taskless/rule-metadata/<id>.yml` (the
   `ticketId` is required by the iterate endpoint). If metadata is
   missing, the rule was created in anonymous mode and cannot be
@@ -25,7 +25,7 @@ If the user wants the local-only flow (no API call), fetch
    `loggedIn`. If false, fetch `taskless help auth`.
 
 2. **Identify the rule to improve.** If the user named one, use it.
-   Otherwise, list rules in `.taskless/rules/` and ask which one.
+   Otherwise, list rules in `.taskless/sg/rules/` and ask which one.
    Read the existing rule file so you can summarize what it does.
 
 3. **Fetch the rule's metadata.** Run:

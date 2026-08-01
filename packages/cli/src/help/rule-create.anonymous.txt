@@ -26,14 +26,14 @@ using `rule verify` in a feedback loop.
    - Are there exceptions or edge cases where the pattern is OK?
    - Can they show valid and invalid examples?
 
-3. **Check for similar existing rules.** Scan `.taskless/rules/`. If
+3. **Check for similar existing rules.** Scan `.taskless/sg/rules/`. If
    anything overlaps, point it out and ask whether the user wants to
    improve an existing rule via `taskless help rule improve --anonymous`.
 
 4. **Search the codebase for real instances.** Show the user what you
    found and confirm any exclusions.
 
-5. **Derive the rule.** Write a YAML file at `.taskless/rules/<id>.yml`
+5. **Derive the rule.** Write a YAML file at `.taskless/sg/rules/<id>.yml`
    with at minimum:
    - `id`: kebab-case identifier (e.g. `no-eval`, `prefer-const`)
    - `language`: target language
@@ -44,7 +44,7 @@ using `rule verify` in a feedback loop.
    Optional but useful: `note` (multi-line guidance, supports markdown),
    `fix` (auto-fix pattern), `ignores` (file patterns to skip).
 
-6. **Write test cases.** Create `.taskless/rule-tests/<id>-YYYYMMDD-test.yml`
+6. **Write test cases.** Create `.taskless/sg/rule-tests/<id>-YYYYMMDD-test.yml`
    with `id`, `valid: [...]`, and `invalid: [...]` arrays. Include at
    least 2 valid and 2 invalid cases. Use real patterns from the
    codebase where possible.

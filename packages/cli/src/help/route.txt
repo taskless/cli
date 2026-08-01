@@ -31,7 +31,7 @@ failed and the user confirms.
      "linters": [{ "name": "eslint", "evidence": ["packages/api/.eslintrc.json"] }],
      "languages": ["JavaScript", "TypeScript"],
      "ruleStyles": [
-       { "source": ".taskless/rules", "description": "Existing Taskless ast-grep rules." }
+       { "source": ".taskless/sg/rules", "description": "Existing Taskless ast-grep rules." }
      ]
    }
    ```

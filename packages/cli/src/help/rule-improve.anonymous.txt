@@ -13,8 +13,8 @@ validate with `rule verify` in a feedback loop.
 ## Steps
 
 1. **Identify the target rule.** If the user named one, use it.
-   Otherwise, list `.taskless/rules/` and ask which one. Read the
-   rule file and any test file (`.taskless/rule-tests/<id>-*.yml`).
+   Otherwise, list `.taskless/sg/rules/` and ask which one. Read the
+   rule file and any test file (`.taskless/sg/rule-tests/<id>-*.yml`).
 
 2. **Gather improvement guidance.** Ask:
    - Are there false positives (cases currently flagged but
@@ -31,13 +31,13 @@ validate with `rule verify` in a feedback loop.
    Summarize the planned change before editing.
 
 4. **Edit the rule file.** Make the change directly in
-   `.taskless/rules/<id>.yml`. Preserve the existing `id`,
+   `.taskless/sg/rules/<id>.yml`. Preserve the existing `id`,
    `language`, and `severity` unless the user explicitly asked to
    change them.
 
 5. **Update test cases.** Add the new false-positive examples to the
    `valid:` list and the new false-negative examples to the
-   `invalid:` list in `.taskless/rule-tests/<id>-*.yml`.
+   `invalid:` list in `.taskless/sg/rule-tests/<id>-*.yml`.
 
 6. **Run the verify feedback loop.** Run:
    ```

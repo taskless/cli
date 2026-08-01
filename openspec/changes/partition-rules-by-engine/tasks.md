@@ -54,6 +54,6 @@
 
 ## 5. Quality gates
 
-- [ ] 5.1 `pnpm --filter @taskless/cli typecheck && lint && test` clean
-- [ ] 5.2 Verify `check` output is identical before and after the relayout on a real `.taskless/` — same findings, same exit code. This change is a no-op to the user, so a difference is a regression
-- [ ] 5.3 Update CLI help/onboarding text that names `.taskless/rules/` for the engine-partitioned layout, and `.taskless/.gitignore` handling
+- [x] 5.1 `pnpm --filter @taskless/cli typecheck && lint && test` clean — 421 passed, 0 failed
+- [x] 5.2 Verify `check` output is identical before and after the relayout on a real `.taskless/` — same findings, same exit code. This change is a no-op to the user, so a difference is a regression. Ran against this repo's own rule set: the pre-change scan (ast-grep over the old ephemeral `ruleDirs: [rules]` config) and the post-migration CLI produced the same 2 findings — same rule, file, position, severity, message — and the same exit code 1. The published CLI was not used as the baseline because `pnpm dlx` is unavailable here; the reproduction is the exact command the old check path ran
+- [x] 5.3 Update CLI help/onboarding text that names `.taskless/rules/` for the engine-partitioned layout, and `.taskless/.gitignore` handling — 12 `help/*.txt` recipes, `packages/cli/README.md`, and the `.taskless/README.md` that `0001` writes (now describing the per-engine directories). `.gitignore` handling landed in 1.7

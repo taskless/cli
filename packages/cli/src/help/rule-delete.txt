@@ -6,13 +6,13 @@ not contact the Taskless API; purely a local filesystem operation.
 
 ## Preconditions
 - `.taskless/` directory exists.
-- The target rule file exists at `.taskless/rules/<id>.yml`.
+- The target rule file exists at `.taskless/sg/rules/<id>.yml`.
 - No auth required.
 
 ## Steps
 
 1. **Identify the rule.** If the user named one, use it. Otherwise,
-   list `.taskless/rules/` and ask which one. Confirm the user's
+   list `.taskless/sg/rules/` and ask which one. Confirm the user's
    intent — deletion is destructive.
 
 2. **Invoke the CLI.** Run:
@@ -21,8 +21,8 @@ not contact the Taskless API; purely a local filesystem operation.
    ```
 
    The CLI removes:
-   - `.taskless/rules/<id>.yml`
-   - All matching `.taskless/rule-tests/<id>-*.yml` files
+   - `.taskless/sg/rules/<id>.yml`
+   - All matching `.taskless/sg/rule-tests/<id>-*.yml` files
    - `.taskless/rule-metadata/<id>.yml` (if present)
 
 3. **Report results.** Show the user what was deleted. If the rule

@@ -25,10 +25,10 @@ writes, so `check`, `improve`, and `verify` treat them identically.
    the codebase for real instances and confirm exclusions with the user.
 
 3. **Author the rule in the canonical shape.** Write the rule to
-   `.taskless/rules/<id>.yml` with at minimum `id` (kebab-case),
+   `.taskless/sg/rules/<id>.yml` with at minimum `id` (kebab-case),
    `language`, `severity` (`error`/`warning`/`info`/`hint`), `message`,
    and the `rule` object. Write tests to
-   `.taskless/rule-tests/<id>-YYYYMMDD-test.yml` with the matching `id`
+   `.taskless/sg/rule-tests/<id>-YYYYMMDD-test.yml` with the matching `id`
    field plus `valid` and `invalid` arrays (at least two of each). The
    `id` must match the rule's `id` so ast-grep test filtering pairs them.
    These paths and shape are the same ones the service writes — do not
@@ -50,7 +50,7 @@ writes, so `check`, `improve`, and `verify` treat them identically.
 6. **On failure, escalate via the route fallback — with confirmation.**
    If after the feedback loop the rule still cannot capture the user's
    cases, this is the try-verify-escalate fallback:
-   - Delete the candidate `.taskless/rules/<id>.yml` and its test file so
+   - Delete the candidate `.taskless/sg/rules/<id>.yml` and its test file so
      the repo is not left with a broken rule (guaranteed cleanup of the
      abandoned candidate).
    - Tell the user the local rule could not capture the cases, and that

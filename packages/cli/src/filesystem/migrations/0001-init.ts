@@ -31,8 +31,13 @@ npx @taskless/cli@latest check
 - \`.env.local.json\` - Local authentication credentials (git-ignored)
 - \`skills/\` - Canonical Taskless skill content; tool directories hold thin stubs that delegate here (managed by Taskless)
 - \`commands/\` - Canonical Taskless command content (managed by Taskless)
-- \`rules/\` - Generated ast-grep rules (managed by Taskless)
-- \`rule-tests/\` - Rule tests containing pass/fail examples for your rules
+
+Rules are partitioned by the engine that runs them. Each engine directory holds
+that tool's own native config, its \`rules/\`, and its \`rule-tests/\`:
+
+- \`sg/\` - ast-grep: \`sgconfig.yml\`, generated rules (managed by Taskless), and their pass/fail test cases
+- \`vale/\` - Vale prose rules: \`.vale.ini\`. Scaffolded and inert; nothing runs it yet
+- \`runtime/\` - Rules that execute a \`check.ts\`, each in its own \`rules/<name>/\` directory
 `;
 
 const migration: Migration = async (directory) => {
