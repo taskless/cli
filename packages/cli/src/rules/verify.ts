@@ -9,7 +9,10 @@ import {
   findRegexWithoutKind,
 } from "../schemas/ast-grep-rule";
 import { ensureTasklessDirectory } from "../filesystem/directory";
-import { generateSgConfig } from "../filesystem/sgconfig";
+import {
+  resolveSgConfigPath,
+  type SgConfigSource,
+} from "../filesystem/sgconfig";
 import {
   astGrepRuleFileCandidates,
   astGrepRuleTestDirectories,
@@ -169,14 +172,12 @@ async function validateRequirements(
 async function runTests(
   cwd: string,
   ruleId: string,
-  layout: { rulesDirectory: string; ruleTestsDirectory: string }
+  layout: SgConfigSource
 ): Promise<TestLayerResult> {
-  // Point ast-grep at the layout the rule was actually resolved from, so a
-  // rule still living at the legacy path is tested rather than reported absent.
-  await generateSgConfig(cwd, {
-    rulesDirectory: layout.rulesDirectory,
-    testDirectory: layout.ruleTestsDirectory,
-  });
+  // Point ast-grep at the layout the rule was actually resolved from: the
+  // committed `sg/sgconfig.yml` over `sg/rule-tests/`, or a generated config
+  // when the rule still lives at the pre-migration path.
+  const configPath = await resolveSgConfigPath(cwd, layout);
 
   const sgBinary = findSgBinary();
 
@@ -186,7 +187,7 @@ async function runTests(
       [
         "test",
         "-c",
-        ".taskless/sgconfig.yml",
+        configPath,
         "--skip-snapshot-tests",
         "--filter",
         `^${escapeRegExp(ruleId)}$`,
@@ -276,9 +277,10 @@ export async function verifyRule(
   // and remember which layout won so the test run points ast-grep at it.
   const candidates = astGrepRuleFileCandidates(cwd, ruleId);
   let ruleContent: string | undefined;
-  let layout = {
+  let layout: SgConfigSource = {
     rulesDirectory: ENGINE_LAYOUTS.sg.rulesDirectory,
     ruleTestsDirectory: ENGINE_LAYOUTS.sg.ruleTestsDirectory,
+    legacy: false,
   };
   for (const [index, candidate] of candidates.entries()) {
     try {
@@ -287,6 +289,7 @@ export async function verifyRule(
         layout = {
           rulesDirectory: LEGACY_RULES_DIRECTORY,
           ruleTestsDirectory: LEGACY_RULE_TESTS_DIRECTORY,
+          legacy: true,
         };
       }
       break;

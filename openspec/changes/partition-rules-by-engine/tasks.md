@@ -44,9 +44,13 @@
 
 ## 4. ast-grep engine over the committed config
 
-- [ ] 4.1 Update `rules/scan.ts` to run `sg scan --config .taskless/sg/sgconfig.yml --json=stream` and remove ephemeral `sgconfig.yml` generation from the check path
-- [ ] 4.2 Update `rules/verify.ts` to run `sg test -c .taskless/sg/sgconfig.yml` over `sg/rule-tests/`
-- [ ] 4.3 Tests: scan/verify run against the committed `sg/` config; `sg` binary-not-found prints an error and exits 1
+- [x] 4.1 Update `rules/scan.ts` to run `sg scan --config .taskless/sg/sgconfig.yml --json=stream` and remove ephemeral `sgconfig.yml` generation from the check path — `runAstGrepScan` takes the config path and defaults to the committed one; `resolveSgConfigPath` returns it without writing anything
+- [x] 4.2 Update `rules/verify.ts` to run `sg test -c .taskless/sg/sgconfig.yml` over `sg/rule-tests/` — through the same resolver, so verify and check agree on which config a rule set uses
+- [x] 4.3 Tests: scan/verify run against the committed `sg/` config; `sg` binary-not-found prints an error and exits 1 — `test/sg-committed-config.test.ts`, including a rule directory only the committed config declares (proving it is read, not reconstructed) and the bundled CLI run from outside the workspace with an empty `PATH`
+
+> `generateSgConfig` survives, narrowed to rule sets that have no committed config of their own: the
+> pre-migration `.taskless/rules/` layout and the materialized `.run/` set. Its `rulesDirectory` /
+> `testDirectory` options are still required for exactly that; only the `sg` engine stopped using it.
 
 ## 5. Quality gates
 
