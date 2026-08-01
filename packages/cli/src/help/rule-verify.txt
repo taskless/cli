@@ -6,8 +6,8 @@ Primary consumer is the anonymous create/improve flow (the verify
 feedback loop), but agents can also call it directly to lint a rule.
 
 ## Preconditions
-- `.taskless/rules/<id>.yml` exists.
-- Optionally `.taskless/rule-tests/<id>-*.yml` exists (test cases run
+- `.taskless/sg/rules/<id>.yml` exists.
+- Optionally `.taskless/sg/rule-tests/<id>-*.yml` exists (test cases run
   if present).
 - No auth required.
 

@@ -162,7 +162,7 @@ different structure for CircleCI. The six steps stay the same.
 config works out of the box with no secrets and scans all local rules.
 
 Static ast-grep rules always run in CI with no secrets. **Runtime
-rules** (`.taskless/runtime-rules/`, which execute a `check.ts`) only
+rules** (`.taskless/runtime/rules/`, which execute a `check.ts`) only
 run when their code is server-verified — so an unauthenticated CI job
 runs the static rules and skips the runtime ones.
 

@@ -49,7 +49,7 @@ confirmed.
 - Do NOT pre-build the rule yourself on this path — submit the request
   and let the service generate it.
 - The service owns rule-type selection. Today it generates ast-grep
-  rules written under `.taskless/rules/`, the same shape the local
+  rules written under `.taskless/sg/rules/`, the same shape the local
   `static` path produces.
 
 ## See Also

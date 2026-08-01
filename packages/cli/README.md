@@ -95,7 +95,7 @@ bare CLI; when the install only wrote skills (OpenCode, Codex, the
 
 ### `taskless check`
 
-Run ast-grep rules from `.taskless/rules/` against the codebase. Exits with code 1 if any error-severity matches are found.
+Run ast-grep rules from `.taskless/sg/rules/` against the codebase. Exits with code 1 if any error-severity matches are found.
 
 ```bash
 taskless check          # human-readable output, scans whole project
@@ -121,7 +121,7 @@ Authenticate with taskless.io using the device flow. Tokens are stored in `~/.co
 
 ### `taskless rule create`
 
-Generate ast-grep rules via the taskless.io API. Reads a JSON request from stdin, submits it, polls for results, and writes rule and test files to `.taskless/rules/` and `.taskless/rule-tests/`.
+Generate ast-grep rules via the taskless.io API. Reads a JSON request from stdin, submits it, polls for results, and writes rule and test files to `.taskless/sg/rules/` and `.taskless/sg/rule-tests/`.
 
 ```bash
 echo '{"prompt": "detect console.log usage"}' | taskless rule create
