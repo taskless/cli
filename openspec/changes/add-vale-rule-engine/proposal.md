@@ -34,6 +34,8 @@ Taskless rules are ast-grep only — structural AST matching that fits code but 
 
 ## Delivery shape
 
+**Release impact: minor.** Adds a second rule engine and a new knowledge topic. Nothing existing breaks; ast-grep rules behave exactly as before. A whole new capability is a feature.
+
 **Stacked, merging down.** The Vale engine is only correct once `check` can dispatch to it: the runner without the multi-engine orchestration ships an engine that never executes, and the orchestration without the runner dispatches to nothing.
 
 | Unit | Scope                                                      |
