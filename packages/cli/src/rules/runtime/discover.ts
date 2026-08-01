@@ -4,10 +4,15 @@ import { join } from "node:path";
 import { parse } from "yaml";
 
 import type { CaptureRule, MatchMode } from "../../types/runtime-rule";
-import { RUNTIME_RULES_DIRECTORY } from "../../filesystem/layout";
+import { ENGINE_LAYOUTS } from "../engines";
 
-/** Directory (relative to `.taskless/`) that holds runtime rules. */
-export const RUNTIME_RULES_DIR = RUNTIME_RULES_DIRECTORY;
+/**
+ * Directory (relative to `.taskless/`) that holds runtime rules — the
+ * `runtime` engine's own directory, so this tracks the engine layout rather
+ * than repeating it. Migration `0004` moved the tree here from
+ * `runtime-rules/` without touching a byte, so signatures are unaffected.
+ */
+export const RUNTIME_RULES_DIR = ENGINE_LAYOUTS.runtime.rulesDirectory;
 
 /** A parsed capture `*.yml` of a runtime rule, with the fields the harness needs. */
 export interface LoadedCaptureRule {
@@ -27,7 +32,7 @@ export interface LoadedCaptureRule {
   rule: CaptureRule;
 }
 
-/** A discovered runtime rule directory under `.taskless/runtime-rules/`. */
+/** A discovered runtime rule directory under `.taskless/runtime/rules/`. */
 export interface RuntimeRule {
   /** Rule directory basename (e.g. `no-default-export-abc12345`). */
   name: string;
@@ -88,10 +93,12 @@ async function loadCaptureRules(
 }
 
 /**
- * Enumerate `.taskless/runtime-rules/` under `cwd` and return each rule
+ * Enumerate `.taskless/runtime/rules/` under `cwd` and return each rule
  * directory that holds at least one `kind: runtime` capture rule.
- * `.taskless/runtime-rule-tests/` is never enumerated — it holds verification
- * fixtures, not executable rules.
+ * `.taskless/runtime/rule-tests/` is never enumerated — it holds verification
+ * fixtures, not executable rules — and neither is any other engine's
+ * directory: a rule under `.taskless/sg/rules/` is static by virtue of where
+ * it lives, and is never considered here.
  */
 export async function discoverRuntimeRules(
   cwd: string
@@ -100,7 +107,7 @@ export async function discoverRuntimeRules(
 }
 
 /**
- * Enumerate runtime rules under an explicit `runtime-rules` root — used to
+ * Enumerate runtime rules under an explicit runtime-rules root — used to
  * re-discover rules from the materialized `.taskless/.run/` tree so the executed
  * bytes are the blessed ones.
  */
@@ -111,7 +118,7 @@ export async function discoverRuntimeRulesIn(
   try {
     directoryEntries = await readdir(root, { withFileTypes: true });
   } catch {
-    return []; // no runtime-rules directory
+    return []; // no runtime rules directory
   }
 
   const rules: RuntimeRule[] = [];

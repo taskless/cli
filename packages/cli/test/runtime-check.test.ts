@@ -133,7 +133,7 @@ const RUNTIME_CHECK = `export default async function (root, matches) {
 }
 `;
 
-const CHECK_REPORT_PATH = ".taskless/runtime-rules/demo/check.ts";
+const CHECK_REPORT_PATH = ".taskless/runtime/rules/demo/check.ts";
 
 describe("check: static vs runtime dispatch", () => {
   let directory: string;
@@ -288,7 +288,7 @@ describe("check: static vs runtime dispatch", () => {
 
   it("a runtime rule missing check.ts is skipped, not fatal; static still runs", async () => {
     // A malformed rule (capture yml, no check.ts) must not abort the whole check.
-    const broken = join(directory, ".taskless", "runtime-rules", "broken");
+    const broken = join(directory, ".taskless", "runtime", "rules", "broken");
     await mkdir(broken, { recursive: true });
     await writeFile(join(broken, "logs.yml"), RUNTIME_CAPTURE, "utf8");
 

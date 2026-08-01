@@ -13,7 +13,10 @@ import {
   resolveIngestEngine,
 } from "../src/rules/engines";
 import { writeRuleFile, writeRuleTestFile } from "../src/rules/files";
-import { discoverRuntimeRulesIn } from "../src/rules/runtime/discover";
+import {
+  discoverRuntimeRules,
+  discoverRuntimeRulesIn,
+} from "../src/rules/runtime/discover";
 import {
   reportRuntimeChecks,
   signRuntimeChecks,
@@ -210,6 +213,53 @@ describe("engine dispatch by directory", () => {
     // The scaffold creates sg/rules with only a .gitkeep in it.
     const sources = await discoverAstGrepRuleSources(temporaryDirectory);
     expect(sources).toEqual([]);
+  });
+
+  it("discovers a runtime rule under runtime/rules/ and nothing else", async () => {
+    const runtimeRule = join(
+      tasklessDirectory,
+      "runtime",
+      "rules",
+      "logs-abc12345"
+    );
+    await mkdir(runtimeRule, { recursive: true });
+    await writeFile(join(runtimeRule, "logs.yml"), RUNTIME_CAPTURE, "utf8");
+    await writeFile(join(runtimeRule, "check.ts"), RUNTIME_CHECK, "utf8");
+
+    const discovered = await discoverRuntimeRules(temporaryDirectory);
+    expect(discovered.map((rule) => rule.name)).toEqual(["logs-abc12345"]);
+    expect(discovered[0]?.checkFile).toBe(join(runtimeRule, "check.ts"));
+  });
+
+  it("treats a rule under sg/rules/ as static, never runtime", async () => {
+    // Same capture shape, filed under the ast-grep engine: the directory
+    // decides, so runtime discovery must not pick it up.
+    await writeFile(
+      join(tasklessDirectory, "sg", "rules", "logs.yml"),
+      RUNTIME_CAPTURE,
+      "utf8"
+    );
+    await writeFile(
+      join(tasklessDirectory, "sg", "rules", "check.ts"),
+      RUNTIME_CHECK,
+      "utf8"
+    );
+
+    expect(await discoverRuntimeRules(temporaryDirectory)).toEqual([]);
+    const sources = await discoverAstGrepRuleSources(temporaryDirectory);
+    expect(sources.map((source) => source.rulesDirectory)).toEqual([
+      "sg/rules",
+    ]);
+  });
+
+  it("does not discover runtime rules left at the pre-migration path", async () => {
+    // 0004 moves this tree; a leftover here is not a second runtime source.
+    const legacy = join(tasklessDirectory, "runtime-rules", "logs-abc12345");
+    await mkdir(legacy, { recursive: true });
+    await writeFile(join(legacy, "logs.yml"), RUNTIME_CAPTURE, "utf8");
+    await writeFile(join(legacy, "check.ts"), RUNTIME_CHECK, "utf8");
+
+    expect(await discoverRuntimeRules(temporaryDirectory)).toEqual([]);
   });
 });
 

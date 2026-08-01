@@ -90,7 +90,7 @@ export function selectBlessedRuntimeRules(
  * Materialize blessed runtime rules into the gitignored
  * `.taskless/.run/runtime-rules/` and return them re-discovered from there, so
  * the narrow and `check.ts` execute the blessed bytes rather than whatever is
- * live in `.taskless/runtime-rules/`.
+ * live in `.taskless/runtime/rules/`.
  */
 export async function materializeRuntimeRules(
   cwd: string,

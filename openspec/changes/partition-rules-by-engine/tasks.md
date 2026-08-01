@@ -11,13 +11,13 @@
 
 > After group 1 alone, `check`/`verify`/runtime discovery still read the pre-move paths, so 20 tests in
 > `check.test.ts`, `verify.test.ts`, and `runtime-check.test.ts` fail until groups 2–4 land. Group 2 brings
-> that to 9, all in `runtime-check.test.ts`, which group 3 fixes.
+> that to 9, all in `runtime-check.test.ts`, and group 3 to zero.
 
 ## 2. Engine dispatch (directory model)
 
 - [x] 2.1 Implement directory-based engine discovery: enumerate `.taskless/<engine>/` and route rules by directory, no per-file parsing. `sg` and `runtime` get executors here; `vale/` is recognized as an engine directory but has no executor yet — `rules/engines.ts` (`planEngineDispatch`, `discoverAstGrepRuleSources`)
 - [x] 2.2 In `commands/check.ts`, call `ensureTasklessDirectory(cwd)` directly (preserving the migration trigger now that `generateSgConfig` leaves the check path) — `rules/verify.ts` does the same, since the migration moves rules between the paths it resolves
-- [ ] 2.3 Tests: a rule under `sg/rules/` dispatches to ast-grep and one under `runtime/rules/` to the harness, by directory alone; an unknown engine directory is ignored rather than misrouted — **partially done**: the `sg/rules/` and unknown-directory scenarios are covered (`test/engine-dispatch.test.ts`), and the dispatch plan asserts `runtime` → harness; a rule _under `runtime/rules/`_ cannot reach the harness until 3.1 moves discovery, so that half is covered by 3.3
+- [x] 2.3 Tests: a rule under `sg/rules/` dispatches to ast-grep and one under `runtime/rules/` to the harness, by directory alone; an unknown engine directory is ignored rather than misrouted — completed in group 3 once 3.1 moved discovery; `test/engine-dispatch.test.ts` and `test/runtime-check.test.ts` now cover both halves
 - [x] 2.4 Treat the legacy `.taskless/rules/` path as an ast-grep source alongside `sg/rules/`, so an unmigrated checkout still runs; de-duplicate when both are present
 - [x] 2.5 Tests: a `.taskless/` with only `rules/` dispatches to ast-grep; with both `rules/` and `sg/rules/`, findings merge without duplicates
 
@@ -36,9 +36,9 @@
 
 ## 3. Runtime discovery path
 
-- [ ] 3.1 Update `rules/runtime/discover.ts` to read `.taskless/runtime/rules/<name>/` and fixtures from `runtime/rule-tests/<name>/` (was `runtime-rules/`)
-- [ ] 3.2 Confirm rules under `.taskless/sg/rules/` are treated as static, not runtime
-- [ ] 3.3 Tests: runtime discovery at the new path; execution/reconcile/signing behavior unchanged
+- [x] 3.1 Update `rules/runtime/discover.ts` to read `.taskless/runtime/rules/<name>/` and fixtures from `runtime/rule-tests/<name>/` (was `runtime-rules/`) — `RUNTIME_RULES_DIR` now derives from `ENGINE_LAYOUTS.runtime`. No code reads the rule-tests fixtures yet (only `0004` moves them), so only the rules path needed a change
+- [x] 3.2 Confirm rules under `.taskless/sg/rules/` are treated as static, not runtime — discovery only ever enumerates the `runtime` engine directory; covered by a test that files a runtime-shaped capture under `sg/rules/` and asserts it is never discovered as runtime
+- [x] 3.3 Tests: runtime discovery at the new path; execution/reconcile/signing behavior unchanged — `runtime-check.test.ts` and `runtime-harness.test.ts` now seed the engine layout and pass unmodified otherwise; the reported reconcile path moves to `.taskless/runtime/rules/<name>/check.ts` with the signature unchanged
 
 ## 4. ast-grep engine over the committed config
 
