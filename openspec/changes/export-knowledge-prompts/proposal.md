@@ -24,6 +24,8 @@ The CLI's **knowledge prompts** — `help/*.txt` (`route`, `static`, `remote`, `
 
 ## Delivery shape
 
+**Release impact: minor.** Adds a new public subpath export (`@taskless/cli/prompts`). Purely additive — no existing surface changes — but a new entry point that consumers can depend on is a feature, not a fix.
+
 **Stacked, merging forward.** Each unit is independently safe: the first changes no observable behavior, and the second only adds a new export.
 
 | Unit | Scope                                                                                        | Safe alone because                                                                 |
