@@ -264,6 +264,27 @@ Then:
 This rule applies ONLY to the OpenSpec Archive Check. Every other check is
 handled normally regardless of stack position.
 
+#### Stacked PRs: two other failures that are structural, not regressions
+
+**`Require a changeset` on the bottom PR.** The workflow runs only on PRs based
+on `main` and looks for a `.changeset/*.md` added in that PR's own diff, so a
+mid-stack PR never runs it and the bottom PR is the only place a changeset can
+satisfy it. If it fails, move the changeset DOWN to the bottom branch rather
+than labelling anything `skip-changeset` — every branch above inherits it, since
+a child contains its ancestors' commits. Extend that one file as later PRs land;
+never add a second changeset per PR.
+
+**Test failures on a merge-down stack.** When the delivery shape is
+_stacked, merging down_, no unit is independently correct — that is the
+definition of the shape. A lower PR can legitimately be red because the unit
+that completes it has not landed yet (e.g. rules are relocated but dispatch
+arrives in the next PR). Before treating such a failure as a regression, check
+the branch out and run the suite: if the failures match what the change's own
+tasks predict for that unit, they are structural and clear as the stack
+accumulates. Say so on the PR rather than inventing throwaway assertions to make
+an intermediate state look green. Verify it — do not assume a red check is
+expected because the shape is merge-down.
+
 ### 5. Fix CI Failures
 
 For each failure in the script output:

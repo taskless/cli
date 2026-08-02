@@ -86,6 +86,17 @@ The deciding question between forward and down is only this: **can each unit rea
 
 Note how this interacts with the archive gate (see the OpenSpec archive check below): a change is archived exactly once, on whichever PR is the tip. Mid-stack PRs are expected to carry an unarchived change directory and the gate skips them.
 
+### One changeset, at the bottom of the stack, grown as the stack grows
+
+`require-changeset.yml` is `on: pull_request: branches: [main]` and looks for a `.changeset/*.md` **added in that PR's own diff**. Two consequences:
+
+- **A mid-stack PR never runs the check at all** — its base is a feature branch. Do not label it `skip-changeset`; the label implies a decision that was never needed and reads as "this change ships no release note."
+- **The changeset belongs on the bottom PR**, the one that targets `main`. That is also the only place it can live: a changeset added on the tip is invisible to the bottom PR's diff, so the check fails on the PR that actually merges.
+
+Put it at the base and every branch above inherits it, since a child contains its ancestors' commits.
+
+**Grow it incrementally as the stack lands.** Each PR extends the changeset with its own scope rather than the base describing the whole future change up front. A reviewer reading the changeset then sees only what has actually landed, and is not asked to evaluate a release note that promises more than the diff in front of them. When you extend it, edit the same file on the branch you are working on — never add a second changeset per PR, or one change becomes several release notes for what merges to `main` exactly once.
+
 ### Landing a stack: merge _down_, then one merge to `main`
 
 Merge each PR **down** into its parent's branch, from the tip to the bottom:
