@@ -2,8 +2,7 @@ import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
 import { ensureTasklessDirectory } from "./directory";
-import { ENGINE_LAYOUTS } from "../rules/engines";
-import { COMMITTED_SG_CONFIG } from "../rules/scan";
+import { COMMITTED_SG_CONFIG, ENGINE_LAYOUTS } from "../rules/engines";
 
 /** Build sgconfig contents pointing `ruleDirs` at the given directory. */
 function sgConfigContent(

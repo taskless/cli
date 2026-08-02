@@ -27,7 +27,7 @@ export interface EngineLayout {
   executor: EngineExecutor;
 }
 
-export const ENGINE_LAYOUTS: Record<EngineName, EngineLayout> = {
+export const ENGINE_LAYOUTS = {
   sg: {
     engine: "sg",
     rulesDirectory: "sg/rules",
@@ -50,7 +50,18 @@ export const ENGINE_LAYOUTS: Record<EngineName, EngineLayout> = {
     configFile: undefined,
     executor: "runtime-harness",
   },
-};
+} satisfies Record<EngineName, EngineLayout>;
+
+/**
+ * The committed ast-grep config, relative to the project root. It is authored
+ * and persisted, never generated at check time: its `ruleDirs`/`testConfigs`
+ * are relative to the config file, so it needs no rewriting to stay valid.
+ *
+ * Declared here beside the layout it derives from. `engines.ts` imports nothing
+ * of ours but the error type, so both the filesystem and rules layers can reach
+ * this constant without either pulling in the other's machinery.
+ */
+export const COMMITTED_SG_CONFIG = `.taskless/${ENGINE_LAYOUTS.sg.configFile}`;
 
 /**
  * The pre-`0004` ast-grep locations. Still dispatched as ast-grep so an
