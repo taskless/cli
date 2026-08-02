@@ -102,6 +102,14 @@ Cascade-rebases a branch's descendants onto their parents to carry a fix up the 
 uv run ${CLAUDE_SKILL_ROOT}/scripts/propagate_stack.py --root <branch> [--dry-run] [--no-push]
 ```
 
+**It leaves the repo checked out on the last branch it rebased, not the branch
+you started on.** Anything you do next inherits that as its base — branching
+"from main" right after a propagate silently creates a branch on top of the
+whole stack, and the resulting PR carries every stack commit plus a change
+directory it never touched. Run `git checkout main` (or explicitly
+`git checkout -B <new> origin/main`) before starting unrelated work, and check
+`git log --oneline origin/main..HEAD` before opening the PR.
+
 ## Workflow
 
 ### 1. Identify PR
