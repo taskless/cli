@@ -7,14 +7,7 @@ import { fileURLToPath } from "node:url";
 
 import type { AstGrepMatch } from "../types/check";
 import { toCheckResult, type CheckResult } from "../types/check";
-import { ENGINE_LAYOUTS } from "./engines";
-
-/**
- * The committed ast-grep config, relative to the project root. It is authored
- * and persisted, never generated at check time: its `ruleDirs`/`testConfigs`
- * are relative to the config file, so it needs no rewriting to stay valid.
- */
-export const COMMITTED_SG_CONFIG = `.taskless/${ENGINE_LAYOUTS.sg.configFile ?? "sg/sgconfig.yml"}`;
+import { COMMITTED_SG_CONFIG } from "./engines";
 
 export interface ScanResult {
   results: CheckResult[];
