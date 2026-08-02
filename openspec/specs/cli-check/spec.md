@@ -27,22 +27,6 @@ The `check` command SHALL NOT require `.taskless/taskless.json` to exist. The co
 - **THEN** the CLI SHALL print a warning that no rules were found
 - **AND** the CLI SHALL exit with code 0
 
-### Requirement: Check subcommand generates ephemeral sgconfig.yml
-
-The `check` command SHALL generate an `sgconfig.yml` file in `.taskless/` before invoking ast-grep. The generated config SHALL set `ruleDirs` to `['rules']` and `testConfigs` to `[{testDir: 'rule-tests'}]`. The file SHALL be written to `.taskless/sgconfig.yml` which is gitignored via `.taskless/.gitignore`. If `.taskless/.gitignore` does not exist, the CLI SHALL create it before writing the config.
-
-#### Scenario: sgconfig.yml is generated at check time
-
-- **WHEN** a user runs `taskless check`
-- **AND** `.taskless/rules/` contains rule files
-- **THEN** the CLI SHALL write `.taskless/sgconfig.yml` with `ruleDirs: ['rules']`
-- **AND** the CLI SHALL pass `--config .taskless/sgconfig.yml` to ast-grep
-
-#### Scenario: Existing sgconfig.yml is overwritten
-
-- **WHEN** `.taskless/sgconfig.yml` already exists (from a previous run or legacy scaffold)
-- **THEN** the CLI SHALL overwrite it with the freshly generated content
-
 ### Requirement: Check subcommand warns when no rules exist
 
 The CLI SHALL check for the presence of YAML rule files in the `.taskless/rules/` directory. When no rule files are found, the CLI SHALL warn the user and exit cleanly.
@@ -60,26 +44,14 @@ The CLI SHALL check for the presence of YAML rule files in the `.taskless/rules/
 
 ### Requirement: Check subcommand executes ast-grep scan
 
-The CLI SHALL generate an ephemeral `sgconfig.yml` in `.taskless/` and execute
-`sg scan --config .taskless/sgconfig.yml --json=stream` using `child_process.spawn` with
-`shell: true` for cross-platform binary resolution. The `sg` binary SHALL be resolved from
-the `@ast-grep/cli` dependency via PATH. When reconciliation succeeds, the scan SHALL cover
-only the blessed `run`-set rule files; on the unauthenticated/`--anonymous` path, or when an
-authenticated reconciliation degrades to a local scan, the scan SHALL cover all local rule
-files as before.
+The CLI SHALL execute `sg scan --config .taskless/sg/sgconfig.yml --json=stream` using `child_process.spawn` with `shell: true` for cross-platform binary resolution, reading the **committed** ast-grep config at `.taskless/sg/sgconfig.yml`. No `sgconfig.yml` is generated at check time. The `sg` binary SHALL be resolved from the `@ast-grep/cli` dependency via PATH. Reconciliation/run-set semantics for runtime rules are unchanged.
 
-#### Scenario: ast-grep scan runs with generated config
+#### Scenario: ast-grep scan runs with the committed config
 
-- **WHEN** the CLI executes the scanner
-- **THEN** it SHALL first write `.taskless/sgconfig.yml`
-- **AND** it SHALL invoke `sg scan` with `--config .taskless/sgconfig.yml` and `--json=stream`
+- **WHEN** the CLI executes the ast-grep scanner
+- **THEN** it SHALL invoke `sg scan` with `--config .taskless/sg/sgconfig.yml` and `--json=stream`
+- **AND** it SHALL NOT write or generate a config file
 - **AND** the working directory for the spawned process SHALL be the resolved project directory
-
-#### Scenario: Scan is limited to the run set when reconciled
-
-- **WHEN** reconciliation succeeded and returned a `run` set
-- **THEN** the generated scan configuration SHALL cause `sg scan` to evaluate only the
-  `run`-set rule files
 
 #### Scenario: ast-grep binary is not found
 
@@ -321,16 +293,12 @@ non-zero code solely because reconciliation failed, and the warning SHALL be sup
 
 ### Requirement: Check dispatches static and runtime rules to distinct executors
 
-`taskless check` SHALL execute **static** ast-grep rules under `.taskless/rules/` with the
-ast-grep scanner as before, and **runtime** rules under `.taskless/runtime-rules/` (directories
-with `metadata.taskless.kind: runtime`, per the `cli-runtime-rule-execution` capability) with
-the runtime harness. Findings from both executors SHALL be aggregated into the same result set
-and SHALL count toward the exit code identically.
+`taskless check` SHALL dispatch rules to distinct executors by their engine directory: **ast-grep** rules under `.taskless/sg/` via the ast-grep scanner, **Vale** rules under `.taskless/vale/` via the Vale runner (per the `cli-vale-rule-engine` capability), and **runtime** rules under `.taskless/runtime/rules/` via the runtime harness (per the `cli-runtime-rule-execution` capability). Findings from all executors SHALL be aggregated into the same result set and SHALL count toward the exit code identically.
 
-#### Scenario: Mixed corpus runs both executors
+#### Scenario: Mixed corpus runs all executors
 
-- **WHEN** `.taskless/rules/` contains static rules and `.taskless/runtime-rules/` contains runtime rules
-- **THEN** the CLI SHALL run static rules through `sg scan` and runtime rules through the runtime harness
+- **WHEN** `.taskless/sg/` contains ast-grep rules, `.taskless/vale/` contains Vale rules, and `.taskless/runtime/rules/` contains runtime rules
+- **THEN** the CLI SHALL run ast-grep rules through `sg scan`, Vale rules through the Vale runner, and runtime rules through the runtime harness
 - **AND** SHALL merge their findings into one result set
 
 ### Requirement: Check runs runtime rules only on a signature-validated path
