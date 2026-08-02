@@ -12,6 +12,7 @@ import {
 import { dirname, join } from "node:path";
 
 import type { Migration } from "../types";
+import { CLIError } from "../../util/cli-error";
 
 /**
  * Default `sgconfig.yml` written when a project has none to move. `ruleDirs`
@@ -94,9 +95,15 @@ async function movePreservingContent(
     return;
   }
 
-  const sourceStats = await stat(source);
-  if (!sourceStats.isDirectory()) {
-    // A file already exists at the destination — leave both alone.
+  const [sourceStats, destinationStats] = await Promise.all([
+    stat(source),
+    stat(destination),
+  ]);
+  if (!sourceStats.isDirectory() || !destinationStats.isDirectory()) {
+    // Something already occupies the destination and at least one side is a
+    // file, so there is no merge to perform. Checking only the source would
+    // let a directory recurse into a file destination and fail with ENOTDIR
+    // part-way through the migration, having already moved some entries.
     return;
   }
 
@@ -163,6 +170,36 @@ async function anchorSgConfigIgnore(directory: string): Promise<void> {
   await writeFile(gitignorePath, rewritten.join("\n"), "utf8");
 }
 
+/**
+ * Refuse to start when a **file** sits where an engine directory belongs.
+ *
+ * Checked up front, before anything moves. Every one of these paths must end up
+ * a directory, and none of the steps below can merge a file into one: the move
+ * declines, then `mkdir` fails with a bare `EEXIST` — after earlier moves have
+ * already happened. Failing first keeps `.taskless/` in the state the user can
+ * still reason about, and says which path to deal with.
+ */
+async function assertNoDirectoryConflicts(directory: string): Promise<void> {
+  const conflicts: string[] = [];
+  for (const segments of SCAFFOLD_DIRECTORIES) {
+    const path = join(directory, ...segments);
+    if (!(await pathExists(path))) continue;
+    const stats = await stat(path);
+    if (!stats.isDirectory()) conflicts.push(segments.join("/"));
+  }
+  if (conflicts.length === 0) return;
+
+  throw new CLIError(
+    `Cannot partition .taskless/ by engine: ${conflicts
+      .map((path) => `.taskless/${path}`)
+      .join(
+        ", "
+      )} ${conflicts.length === 1 ? "is a file" : "are files"}, but ` +
+      `must be a directory. Move or delete it, then run the command again.`,
+    "SCAFFOLD_CONFLICT"
+  );
+}
+
 /** Create `path` and drop a `.gitkeep` in it when it would otherwise be empty. */
 async function ensureTrackedDirectory(path: string): Promise<void> {
   await mkdir(path, { recursive: true });
@@ -187,6 +224,8 @@ async function ensureTrackedDirectory(path: string): Promise<void> {
  * beyond re-asserting the scaffold.
  */
 const migration: Migration = async (directory) => {
+  await assertNoDirectoryConflicts(directory);
+
   for (const [from, to] of MOVES) {
     await movePreservingContent(
       join(directory, ...from),

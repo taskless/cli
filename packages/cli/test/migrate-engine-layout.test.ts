@@ -333,6 +333,40 @@ describe("migration 0004 — engine-partitioned layout", () => {
       await readFile(join(tasklessDirectory, "sg", "sgconfig.yml"), "utf8")
     ).toBe(custom);
   });
+
+  it("refuses to start when a file occupies an engine directory", async () => {
+    await writeFile(
+      join(tasklessDirectory, "taskless.json"),
+      JSON.stringify({ version: 3 }),
+      "utf8"
+    );
+    // A *file* sits where `rules/` would land. Nothing can merge the two, so
+    // the migration must fail before it moves anything — a partial move would
+    // leave `.taskless/` split across both layouts.
+    await writeTree(tasklessDirectory, {
+      "rules/no-eval.yml": CAPTURE_YML,
+      "runtime-rules/no-eval-capture/rule.yml": CAPTURE_YML,
+      "sg/rules": "not a directory\n",
+    });
+
+    await expect(ensureTasklessDirectory(temporaryDirectory)).rejects.toThrow(
+      /\.taskless\/sg\/rules is a file/
+    );
+
+    // Everything is exactly where it was: no half-migration.
+    expect(await sha256(join(tasklessDirectory, "rules", "no-eval.yml"))).toBe(
+      createHash("sha256").update(CAPTURE_YML).digest("hex")
+    );
+    expect(
+      await exists(join(tasklessDirectory, "runtime-rules", "no-eval-capture"))
+    ).toBe(true);
+    expect(await exists(join(tasklessDirectory, "runtime", "rules"))).toBe(
+      false
+    );
+    expect(await readFile(join(tasklessDirectory, "sg", "rules"), "utf8")).toBe(
+      "not a directory\n"
+    );
+  });
 });
 
 describe("scaffold version gating", () => {
