@@ -221,6 +221,13 @@ describe("ast-grep binary is missing", () => {
     // Run the bundled CLI from outside the workspace with an empty PATH, so
     // every candidate location misses: the platform package no longer resolves,
     // there is no node_modules/.bin beside it, and PATH holds nothing.
+    //
+    // The child gets a *minimal* env rather than an override on top of
+    // `process.env`. Inheriting the parent's environment leaks `NODE_PATH` and
+    // `HOME` into module resolution — node consults `$HOME/.node_modules` — so
+    // on a machine where either points at a real ast-grep the resolver finds
+    // one, the scan succeeds, and the test fails asserting an error that never
+    // needed to be printed.
     const isolated = join(temporaryDirectory, "cli");
     const project = join(temporaryDirectory, "project");
     const emptyPath = join(temporaryDirectory, "empty");
@@ -238,20 +245,40 @@ describe("ast-grep binary is missing", () => {
     await writeFile(join(project, "src.ts"), 'eval("danger");\n', "utf8");
 
     let stderr = "";
+    let stdout = "";
     let exitCode = 0;
     try {
-      await execFileAsync(
+      const result = await execFileAsync(
         process.execPath,
         [join(isolated, "index.js"), "check", "-d", project],
-        { env: { ...process.env, PATH: emptyPath } }
+        {
+          env: {
+            PATH: emptyPath,
+            HOME: emptyPath,
+            // Telemetry would otherwise try to reach the network from a test.
+            TASKLESS_TELEMETRY_DISABLED: "1",
+          },
+        }
       );
+      stdout = result.stdout;
     } catch (error) {
-      const execError = error as { stderr: string; code: number };
+      const execError = error as {
+        stderr: string;
+        stdout: string;
+        code: number;
+      };
       stderr = execError.stderr ?? "";
+      stdout = execError.stdout ?? "";
       exitCode = execError.code;
     }
 
+    // Named so a failure reports which path the CLI actually took: finding a
+    // binary makes this the findings path (exit 1, empty stderr), which looks
+    // identical to the error path on the exit code alone.
     expect(exitCode).toBe(1);
-    expect(stderr).toContain("ast-grep binary not found");
+    expect(
+      stderr,
+      `stderr was empty; the CLI printed to stdout instead:\n${stdout}`
+    ).toContain("ast-grep binary not found");
   });
 });
