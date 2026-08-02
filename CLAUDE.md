@@ -88,12 +88,14 @@ Note how this interacts with the archive gate (see the OpenSpec archive check be
 
 ### One changeset, at the bottom of the stack, grown as the stack grows
 
-`require-changeset.yml` is `on: pull_request: branches: [main]` and looks for a `.changeset/*.md` **added in that PR's own diff**. Two consequences:
+`require-changeset.yml` looks for a `.changeset/*.md` **added in that PR's own diff**. On a stack that means:
 
-- **A mid-stack PR never runs the check at all** — its base is a feature branch. Do not label it `skip-changeset`; the label implies a decision that was never needed and reads as "this change ships no release note."
-- **The changeset belongs on the bottom PR**, the one that targets `main`. That is also the only place it can live: a changeset added on the tip is invisible to the bottom PR's diff, so the check fails on the PR that actually merges.
+- **The changeset belongs on the bottom PR**, the one that targets `main`. That is the only place it can live: a changeset added on the tip is invisible to the bottom PR's diff, so the check would fail on the PR that actually merges.
+- **Mid-stack PRs bypass the check automatically**, because the base branch is not `main`. They inherit the base's changeset rather than adding one, so there is nothing for the check to find. **Do not label them `skip-changeset`** — the label records a deliberate "this change ships no release note," which is false here, and the bypass already handles it.
 
-Put it at the base and every branch above inherits it, since a child contains its ancestors' commits.
+Note the workflow's `on: branches: [main]` filter does **not** keep it from running on a PR based on a feature branch; the base is re-checked inside the step for exactly that reason. If you see mid-stack PRs failing this check, the bypass is missing, not the changeset.
+
+Put the changeset at the base and every branch above inherits it, since a child contains its ancestors' commits.
 
 **Grow it incrementally as the stack lands.** Each PR extends the changeset with its own scope rather than the base describing the whole future change up front. A reviewer reading the changeset then sees only what has actually landed, and is not asked to evaluate a release note that promises more than the diff in front of them. When you extend it, edit the same file on the branch you are working on — never add a second changeset per PR, or one change becomes several release notes for what merges to `main` exactly once.
 

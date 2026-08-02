@@ -266,13 +266,17 @@ handled normally regardless of stack position.
 
 #### Stacked PRs: two other failures that are structural, not regressions
 
-**`Require a changeset` on the bottom PR.** The workflow runs only on PRs based
-on `main` and looks for a `.changeset/*.md` added in that PR's own diff, so a
-mid-stack PR never runs it and the bottom PR is the only place a changeset can
-satisfy it. If it fails, move the changeset DOWN to the bottom branch rather
-than labelling anything `skip-changeset` — every branch above inherits it, since
-a child contains its ancestors' commits. Extend that one file as later PRs land;
-never add a second changeset per PR.
+**`Require a changeset` on the bottom PR.** The check looks for a
+`.changeset/*.md` added in that PR's own diff, so the bottom PR — the one
+targeting `main` — is the only place a changeset can satisfy it. If it fails
+there, move the changeset DOWN to the bottom branch rather than labelling
+anything `skip-changeset`; every branch above inherits it, since a child
+contains its ancestors' commits. Extend that one file as later PRs land; never
+add a second changeset per PR.
+
+Mid-stack PRs bypass the check on their base ref. If you see one failing it,
+that bypass is missing — fix the workflow rather than reaching for the label,
+which would wrongly record the change as shipping no release note.
 
 **Test failures on a merge-down stack.** When the delivery shape is
 _stacked, merging down_, no unit is independently correct — that is the

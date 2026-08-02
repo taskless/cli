@@ -29,11 +29,29 @@ jobs:
       - name: Check for a changeset
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           HEAD_REF: ${{ github.event.pull_request.head.ref }}
           LABELS: ${{ join(github.event.pull_request.labels.*.name, ',') }}
         run: |
           set -euo pipefail
+
+          # Mid-stack PR. On a stack, exactly one changeset describes the whole
+          # change and it lives on the bottom PR — the one targeting `main`,
+          # which is where this check has to pass. Every branch above inherits
+          # that file, so it is never *added* in a child's own diff and the
+          # check below would fail every one of them. Bypassing here keeps that
+          # from being papered over with a `skip-changeset` label, which would
+          # wrongly record "this change ships no release note."
+          #
+          # The `on:` block already filters to `branches: [main]`, but that
+          # filter does not hold for stacked PRs in practice — the workflow
+          # still runs on a PR based on a feature branch — so the base is
+          # re-checked here rather than trusted.
+          if [ "$BASE_REF" != "main" ]; then
+            echo "Base is '$BASE_REF', not 'main' — mid-stack PR, so the bottom PR of the stack carries the changeset."
+            exit 0
+          fi
 
           # The changesets "Version Packages" PR consumes changesets (removing
           # them is its whole job), so it legitimately has none. Bypass it by its
