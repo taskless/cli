@@ -39,6 +39,30 @@ const SCAFFOLD_DIRECTORIES = [
 ] as const;
 
 /**
+ * Every path that must be a directory for the migration to complete: each
+ * scaffold directory *and* each of its ancestors, shallow first.
+ *
+ * The engine roots (`sg/`, `vale/`, `runtime/`) are only ever created
+ * implicitly, as a side effect of creating the directories under them, so they
+ * appear in no other list — and a file sitting at one of those roots blocks the
+ * migration just as surely as a file at a leaf.
+ */
+const REQUIRED_DIRECTORIES: string[][] = (() => {
+  const seen = new Set<string>();
+  const paths: string[][] = [];
+  for (const segments of SCAFFOLD_DIRECTORIES) {
+    for (let depth = 1; depth <= segments.length; depth++) {
+      const prefix = segments.slice(0, depth);
+      const key = prefix.join("/");
+      if (seen.has(key)) continue;
+      seen.add(key);
+      paths.push([...prefix]);
+    }
+  }
+  return paths;
+})();
+
+/**
  * Trees moved by this migration, as [legacy path, engine-partitioned path]
  * relative to `.taskless/`. Every move is content-preserving: runtime capture
  * bytes determine their server-side reconciliation hashes, so a rewrite here
@@ -181,10 +205,19 @@ async function anchorSgConfigIgnore(directory: string): Promise<void> {
  */
 async function assertNoDirectoryConflicts(directory: string): Promise<void> {
   const conflicts: string[] = [];
-  for (const segments of SCAFFOLD_DIRECTORIES) {
+  for (const segments of REQUIRED_DIRECTORIES) {
     const path = join(directory, ...segments);
-    if (!(await pathExists(path))) continue;
-    const stats = await stat(path);
+    // `stat` throws ENOTDIR — not ENOENT — when an ancestor is a file, and
+    // treating that as "nothing there" is what let an occupied engine root
+    // through. Ancestors are checked before their children, so the root is
+    // reported and the children below it are skipped as unreachable rather
+    // than each producing a confusing second complaint.
+    let stats;
+    try {
+      stats = await stat(path);
+    } catch {
+      continue;
+    }
     if (!stats.isDirectory()) conflicts.push(segments.join("/"));
   }
   if (conflicts.length === 0) return;
