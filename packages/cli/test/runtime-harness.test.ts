@@ -38,7 +38,7 @@ async function writeRuntimeRule(
   captures: Record<string, string>,
   check: string
 ): Promise<void> {
-  const directory = join(root, ".taskless", "runtime-rules", name);
+  const directory = join(root, ".taskless", "runtime", "rules", name);
   await mkdir(directory, { recursive: true });
   for (const [file, body] of Object.entries(captures)) {
     await writeFile(join(directory, file), body, "utf8");

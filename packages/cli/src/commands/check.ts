@@ -25,6 +25,8 @@ import {
   signRuntimeChecks,
 } from "../rules/runtime/run-set";
 import { executeRuntimeRules } from "../rules/runtime/harness";
+import { SG_RULES_DIRECTORY } from "../filesystem/layout";
+import { ensureTasklessDirectory } from "../filesystem/directory";
 
 async function pathExists(absolutePath: string): Promise<boolean> {
   try {
@@ -309,9 +311,20 @@ export const checkCommand = defineCommand({
         return;
       }
 
+      // Migrate before discovering anything. Rules are read from their
+      // engine directory, which migration `0004` is what creates — discovering
+      // first would find an empty `sg/rules/` on any project still on the flat
+      // layout, report "No rules configured", and return before the migration
+      // that would have populated it ever ran. Only an existing `.taskless/` is
+      // migrated, so `check` in a project that has none still says so instead
+      // of scaffolding one as a side effect.
+      if (await pathExists(join(cwd, ".taskless"))) {
+        await ensureTasklessDirectory(cwd);
+      }
+
       // Static rules (trusted ast-grep YAML) always run; runtime rules
       // (untrusted check.ts) are gated separately.
-      const rulesDirectory = join(cwd, ".taskless", "rules");
+      const rulesDirectory = join(cwd, ".taskless", SG_RULES_DIRECTORY);
       let staticRuleFiles: string[] = [];
       try {
         const entries = await readdir(rulesDirectory);

@@ -140,8 +140,8 @@ describe("check: static vs runtime dispatch", () => {
 
   beforeEach(async () => {
     directory = await mkdtemp(join(tmpdir(), "tskl-rt-check-"));
-    const rules = join(directory, ".taskless", "rules");
-    const runtime = join(directory, ".taskless", "runtime-rules", "demo");
+    const rules = join(directory, ".taskless", "sg", "rules");
+    const runtime = join(directory, ".taskless", "runtime", "rules", "demo");
     await mkdir(rules, { recursive: true });
     await mkdir(runtime, { recursive: true });
     await writeFile(join(rules, "no-console.yml"), STATIC_RULE, "utf8");

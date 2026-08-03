@@ -25,9 +25,9 @@ describe("generateSgConfig", () => {
       "utf8"
     );
     expect(content).toContain("ruleDirs:");
-    expect(content).toContain("- rules");
+    expect(content).toContain("- sg/rules");
     expect(content).toContain("testConfigs:");
-    expect(content).toContain("rule-tests");
+    expect(content).toContain("sg/rule-tests");
   });
 
   it("creates .taskless/.gitignore with required entries", async () => {

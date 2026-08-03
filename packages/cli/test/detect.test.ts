@@ -226,11 +226,11 @@ describe("taskless detect", () => {
   });
 
   it("surfaces the repo's own Taskless rule styles", async () => {
-    await mkdir(join(cwd, ".taskless", "rules"), { recursive: true });
+    await mkdir(join(cwd, ".taskless", "sg", "rules"), { recursive: true });
     const result = await detect(cwd);
-    expect(result.ruleStyles.some((s) => s.source === ".taskless/rules")).toBe(
-      true
-    );
+    expect(
+      result.ruleStyles.some((s) => s.source === ".taskless/sg/rules")
+    ).toBe(true);
   });
 
   it("emits a stable JSON shape with only signal keys (no packaged-rule claims)", async () => {

@@ -55,7 +55,7 @@ describe("check", () => {
   });
 
   it("exits 0 with friendly message when rules directory is empty", async () => {
-    await mkdir(join(temporaryDirectory, ".taskless", "rules"), {
+    await mkdir(join(temporaryDirectory, ".taskless", "sg", "rules"), {
       recursive: true,
     });
 
@@ -124,11 +124,11 @@ describe("check", () => {
 
   it("exits 0 for warnings-only, exits 1 for errors", async () => {
     // Create a project with only a warning-level rule
-    await mkdir(join(temporaryDirectory, ".taskless", "rules"), {
+    await mkdir(join(temporaryDirectory, ".taskless", "sg", "rules"), {
       recursive: true,
     });
     await writeFile(
-      join(temporaryDirectory, ".taskless", "rules", "warn-only.yml"),
+      join(temporaryDirectory, ".taskless", "sg", "rules", "warn-only.yml"),
       [
         "id: no-console-warn",
         "language: javascript",

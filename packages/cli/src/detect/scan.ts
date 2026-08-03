@@ -3,6 +3,7 @@ import { readFile as readFileNode } from "node:fs/promises";
 import { resolve } from "node:path";
 
 import { parse as parseToml } from "smol-toml";
+import { SG_RULES_DIRECTORY } from "../filesystem/layout";
 
 export interface DetectedLinter {
   name: string;
@@ -425,9 +426,9 @@ function detectRuleStyles(
   nodeManifests: NodeManifest[]
 ): RuleStyle[] {
   const ruleStyles: RuleStyle[] = [];
-  if (existsSync(resolve(root, ".taskless", "rules"))) {
+  if (existsSync(resolve(root, ".taskless", SG_RULES_DIRECTORY))) {
     ruleStyles.push({
-      source: ".taskless/rules",
+      source: `.taskless/${SG_RULES_DIRECTORY}`,
       description:
         "Existing Taskless ast-grep rules — match their structure and conventions.",
     });
