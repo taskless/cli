@@ -93,7 +93,9 @@ Note how this interacts with the archive gate (see the OpenSpec archive check be
 - **The changeset belongs on the bottom PR**, the one that targets `main`. That is the only place it can live: a changeset added on the tip is invisible to the bottom PR's diff, so the check would fail on the PR that actually merges.
 - **Mid-stack PRs bypass the check**, because the base branch is not `main`. They inherit the base's changeset rather than adding one, so there is nothing for the check to find. **Do not label them `skip-changeset`** — the label records a deliberate "this change ships no release note," which is false here, and the bypass already handles it.
 
-The bypass is an in-step check on the base ref. `on: pull_request` with `branches: [main]` is documented to filter on the base branch, which should make that redundant — but it did not hold here: #73, #80, and #81 all produced failing `Require a changeset` check runs with `openspec/partition-engine-*` bases, and a workflow that never triggers produces no check run at all. Keep the guard, and if you see a mid-stack PR failing this check, look there rather than reaching for the label.
+The bypass is an in-step check on the base ref, and it is load-bearing. **`branches: [main]` no longer means "only the PR whose base is `main`."** Under GitHub's stacked-PR support, a PR in a stack is understood to target `main` eventually, so the filter matches on that eventual target and the workflow runs on mid-stack PRs as well — observed here on #73, #80, and #81, all with `openspec/partition-engine-*` bases.
+
+The general rule that follows: **any workflow whose correctness depends on "is this the PR that merges to `main`" must determine that itself** — from the base ref, or by resolving stack position — and cannot lean on the `on:` filter to scope it. If you see a mid-stack PR failing this check, look at that guard rather than reaching for the label.
 
 Put the changeset at the base and every branch above inherits it, since a child contains its ancestors' commits.
 
