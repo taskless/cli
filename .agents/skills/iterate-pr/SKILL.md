@@ -246,11 +246,11 @@ exactly once, at the END of the work — so a PR that still carries an in-progre
 change directory will fail this check. Archiving on an intermediate PR is wrong:
 it would remove the change docs before the implementation PRs above it merge.
 
-Note the workflow's trigger is currently `pull_request.branches: [main]`, so it
-only RUNS on PRs whose base is `main`. A stacked PR based on another feature
-branch won't run (or fail) this check at all — so there is nothing to ignore
-there. The check matters for PRs that target `main`: typically the bottom of a
-stack, plus any PR later retargeted to `main` as the stack merges down.
+The workflow's trigger is `pull_request.branches: [main]`, but do NOT read that
+as "it only runs on PRs whose base is `main`." Under GitHub's stacked-PR support
+a stacked PR targets `main` eventually and the filter matches that eventual
+target, so this workflow runs on mid-stack PRs as well. Expect to see the check
+on every PR in a stack and decide from stack position, not from the `on:` block.
 
 When the archive check does run and fail, decide ONE thing before treating it as
 actionable: **is this PR the last in the chain (the tip)?** A PR is the tip when
@@ -291,6 +291,14 @@ add a second changeset per PR.
 Mid-stack PRs bypass the check on their base ref. If you see one failing it,
 look at that guard rather than reaching for the label, which would wrongly
 record the change as shipping no release note.
+
+**Do not read `on: pull_request: branches: [main]` as "this only runs on the
+bottom PR."** Under GitHub's stacked-PR support a stacked PR targets `main`
+eventually, and the filter matches that eventual target — so these workflows run
+on mid-stack PRs too. A workflow that must act only on the PR merging to `main`
+has to establish that from the base ref or its stack position. When judging
+whether a check "should even be running here," check the stack rather than the
+`on:` block.
 
 ### Never leave a PR on red
 
