@@ -102,13 +102,19 @@ Cascade-rebases a branch's descendants onto their parents to carry a fix up the 
 uv run ${CLAUDE_SKILL_ROOT}/scripts/propagate_stack.py --root <branch> [--dry-run] [--no-push]
 ```
 
-**It leaves the repo checked out on the last branch it rebased, not the branch
-you started on.** Anything you do next inherits that as its base — branching
-"from main" right after a propagate silently creates a branch on top of the
-whole stack, and the resulting PR carries every stack commit plus a change
-directory it never touched. Run `git checkout main` (or explicitly
-`git checkout -B <new> origin/main`) before starting unrelated work, and check
-`git log --oneline origin/main..HEAD` before opening the PR.
+**One failure path leaves the repo on another branch.** Normal completion, a
+rebase conflict, a balloon guard trip, and a push failure all `checkout` the
+branch you started on before returning. The exception is when checking out a
+_child_ fails (exit 6) — most often because that branch is checked out in a
+worktree — which returns immediately, leaving you on whichever branch it had
+reached.
+
+That matters because anything you do next inherits it as a base: branching "from
+main" right after one of these silently creates a branch on top of the whole
+stack, and the resulting PR carries every stack commit plus an OpenSpec change
+directory it never touched. After a non-zero exit, run `git checkout main` (or
+`git checkout -B <new> origin/main`), and check `git log --oneline origin/main..HEAD`
+before opening the PR.
 
 ## Workflow
 
@@ -283,19 +289,35 @@ contains its ancestors' commits. Extend that one file as later PRs land; never
 add a second changeset per PR.
 
 Mid-stack PRs bypass the check on their base ref. If you see one failing it,
-that bypass is missing — fix the workflow rather than reaching for the label,
-which would wrongly record the change as shipping no release note.
+look at that guard rather than reaching for the label, which would wrongly
+record the change as shipping no release note.
 
-**Test failures on a merge-down stack.** When the delivery shape is
-_stacked, merging down_, no unit is independently correct — that is the
-definition of the shape. A lower PR can legitimately be red because the unit
-that completes it has not landed yet (e.g. rules are relocated but dispatch
-arrives in the next PR). Before treating such a failure as a regression, check
-the branch out and run the suite: if the failures match what the change's own
-tasks predict for that unit, they are structural and clear as the stack
-accumulates. Say so on the PR rather than inventing throwaway assertions to make
-an intermediate state look green. Verify it — do not assume a red check is
-expected because the shape is merge-down.
+### Never leave a PR on red
+
+**No PR merges with failing tests, including mid-stack.** "Merging down" changes
+where a PR merges, not whether its tests pass — and a red branch you merge into
+its parent carries that red upward.
+
+It is tempting on a stack to explain a failure as structural: this unit
+relocates something and the unit that consumes it lands next, so of course it
+fails. **Treat that explanation as a bug report about the split, not a reason to
+proceed.** If unit N alone leaves the suite red, unit N is incomplete — the
+change that makes it self-consistent belongs _in_ it. In practice that means the
+PR that moves something also repoints every reader and updates the tests that
+assert the old shape; the next PR then generalizes.
+
+This is not hypothetical. A stack here sat on 20 failures rationalized as
+"dispatch arrives in the next PR." The real causes were a migration that
+relocated files while every reader kept the old paths, and a command that
+discovered rules _before_ running the migration that creates them. Both were
+real defects, in the released code path, that the structural story explained
+away. An empty scan reports success, so the symptom was "no findings" rather
+than an error — which is exactly why it looked like an artifact of the split.
+
+So: never annotate a red check as expected and move on. Check the branch out,
+run the suite, and fix the unit until it is green on its own. The only failures
+that survive that treatment are ones you can point at a specific missing commit
+for — and if that commit is in this stack, it belongs in this PR.
 
 ### 5. Fix CI Failures
 
