@@ -6,6 +6,10 @@ import { parse, stringify } from "yaml";
 import { ensureTasklessDirectory } from "../filesystem/directory";
 import type { GeneratedRule, RuleMetadata } from "../api/rules";
 import { isValidRuleId } from "./validate-id";
+import {
+  SG_RULES_DIRECTORY,
+  SG_RULE_TESTS_DIRECTORY,
+} from "../filesystem/layout";
 
 /** Write a generated rule's content to .taskless/rules/{kebab-id}.yml */
 export async function writeRuleFile(
@@ -16,7 +20,7 @@ export async function writeRuleFile(
     throw new Error(`Invalid rule ID "${rule.id}"`);
   }
   await ensureTasklessDirectory(cwd);
-  const directory = join(cwd, ".taskless", "rules");
+  const directory = join(cwd, ".taskless", SG_RULES_DIRECTORY);
   const filePath = join(directory, `${rule.id}.yml`);
   await writeFile(filePath, stringify(rule.content, { lineWidth: 0 }), "utf8");
   return filePath;
@@ -32,7 +36,7 @@ export async function writeRuleTestFile(
     throw new Error(`Invalid rule ID "${rule.id}"`);
   }
   await ensureTasklessDirectory(cwd);
-  const directory = join(cwd, ".taskless", "rule-tests");
+  const directory = join(cwd, ".taskless", SG_RULE_TESTS_DIRECTORY);
   const filePath = join(directory, `${rule.id}-${timestamp}-test.yml`);
   const content = {
     id: rule.id,
@@ -96,7 +100,7 @@ export async function deleteRuleFiles(
   if (!isValidRuleId(id)) {
     return false;
   }
-  const rulesDirectory = join(cwd, ".taskless", "rules");
+  const rulesDirectory = join(cwd, ".taskless", SG_RULES_DIRECTORY);
   const ruleFilePath = join(rulesDirectory, `${id}.yml`);
 
   let ruleExisted = false;
@@ -108,7 +112,7 @@ export async function deleteRuleFiles(
   }
 
   // Remove matching test files
-  const testDirectory = join(cwd, ".taskless", "rule-tests");
+  const testDirectory = join(cwd, ".taskless", SG_RULE_TESTS_DIRECTORY);
   try {
     const entries = await readdir(testDirectory);
     const matchingTests = entries.filter(

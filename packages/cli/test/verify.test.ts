@@ -19,8 +19,13 @@ describe("verifyRule", () => {
 
   it("passes all layers for a valid rule with tests", async () => {
     // Write a valid rule
-    const rulesDirectory = join(temporaryDirectory, ".taskless", "rules");
-    const testsDirectory = join(temporaryDirectory, ".taskless", "rule-tests");
+    const rulesDirectory = join(temporaryDirectory, ".taskless", "sg", "rules");
+    const testsDirectory = join(
+      temporaryDirectory,
+      ".taskless",
+      "sg",
+      "rule-tests"
+    );
     await mkdir(rulesDirectory, { recursive: true });
     await mkdir(testsDirectory, { recursive: true });
 
@@ -60,8 +65,13 @@ describe("verifyRule", () => {
   });
 
   it("isolates test results to the specified rule only", async () => {
-    const rulesDirectory = join(temporaryDirectory, ".taskless", "rules");
-    const testsDirectory = join(temporaryDirectory, ".taskless", "rule-tests");
+    const rulesDirectory = join(temporaryDirectory, ".taskless", "sg", "rules");
+    const testsDirectory = join(
+      temporaryDirectory,
+      ".taskless",
+      "sg",
+      "rule-tests"
+    );
     await mkdir(rulesDirectory, { recursive: true });
     await mkdir(testsDirectory, { recursive: true });
 
@@ -124,7 +134,7 @@ describe("verifyRule", () => {
   });
 
   it("reports schema errors for invalid rule structure", async () => {
-    const rulesDirectory = join(temporaryDirectory, ".taskless", "rules");
+    const rulesDirectory = join(temporaryDirectory, ".taskless", "sg", "rules");
     await mkdir(rulesDirectory, { recursive: true });
 
     // Rule with missing required 'rule' field (required by ast-grep schema)
@@ -147,7 +157,7 @@ describe("verifyRule", () => {
   });
 
   it("reports missing test file", async () => {
-    const rulesDirectory = join(temporaryDirectory, ".taskless", "rules");
+    const rulesDirectory = join(temporaryDirectory, ".taskless", "sg", "rules");
     await mkdir(rulesDirectory, { recursive: true });
 
     await writeFile(
@@ -215,7 +225,7 @@ describe("verifyRule", () => {
   });
 
   it("reports error for invalid YAML in rule file", async () => {
-    const rulesDirectory = join(temporaryDirectory, ".taskless", "rules");
+    const rulesDirectory = join(temporaryDirectory, ".taskless", "sg", "rules");
     await mkdir(rulesDirectory, { recursive: true });
 
     await writeFile(
@@ -240,8 +250,13 @@ describe("verifyRule", () => {
   });
 
   it("reports regex-without-kind violation", async () => {
-    const rulesDirectory = join(temporaryDirectory, ".taskless", "rules");
-    const testsDirectory = join(temporaryDirectory, ".taskless", "rule-tests");
+    const rulesDirectory = join(temporaryDirectory, ".taskless", "sg", "rules");
+    const testsDirectory = join(
+      temporaryDirectory,
+      ".taskless",
+      "sg",
+      "rule-tests"
+    );
     await mkdir(rulesDirectory, { recursive: true });
     await mkdir(testsDirectory, { recursive: true });
 
@@ -279,7 +294,7 @@ describe("verifyRule", () => {
   });
 
   it("reports missing required Taskless fields", async () => {
-    const rulesDirectory = join(temporaryDirectory, ".taskless", "rules");
+    const rulesDirectory = join(temporaryDirectory, ".taskless", "sg", "rules");
     await mkdir(rulesDirectory, { recursive: true });
 
     // Rule missing severity and message (Taskless requires them)

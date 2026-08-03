@@ -176,7 +176,7 @@ describe("standardized error envelope (--json)", () => {
     });
 
     it("is silent on stdout when a real rule is deleted in --json mode", async () => {
-      const rulesDirectory = join(cwd, ".taskless", "rules");
+      const rulesDirectory = join(cwd, ".taskless", "sg", "rules");
       await mkdir(rulesDirectory, { recursive: true });
       await writeFile(
         join(rulesDirectory, "doomed.yml"),

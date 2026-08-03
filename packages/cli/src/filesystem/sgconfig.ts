@@ -2,17 +2,18 @@ import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
 import { ensureTasklessDirectory } from "./directory";
+import { SG_RULES_DIRECTORY, SG_RULE_TESTS_DIRECTORY } from "./layout";
 
 /** Build sgconfig contents pointing `ruleDirs` at the given directory. */
 function sgConfigContent(rulesDirectory: string): string {
-  return `ruleDirs:\n  - ${rulesDirectory}\ntestConfigs:\n  - testDir: rule-tests\n`;
+  return `ruleDirs:\n  - ${rulesDirectory}\ntestConfigs:\n  - testDir: ${SG_RULE_TESTS_DIRECTORY}\n`;
 }
 
 export interface SgConfigOptions {
   /**
    * Directory (relative to `.taskless/`) that ast-grep should load rules from.
-   * Defaults to `rules`. Reconciliation points this at the ephemeral run
-   * directory so only the server-blessed run set is evaluated.
+   * Defaults to the `sg` engine directory. Reconciliation points this at the
+   * ephemeral run directory so only the server-blessed run set is evaluated.
    */
   rulesDirectory?: string;
 }
@@ -28,7 +29,7 @@ export async function generateSgConfig(
   await ensureTasklessDirectory(cwd);
   await writeFile(
     join(cwd, ".taskless", "sgconfig.yml"),
-    sgConfigContent(options.rulesDirectory ?? "rules"),
+    sgConfigContent(options.rulesDirectory ?? SG_RULES_DIRECTORY),
     "utf8"
   );
 }

@@ -4,9 +4,10 @@ import { join } from "node:path";
 import { parse } from "yaml";
 
 import type { CaptureRule, MatchMode } from "../../types/runtime-rule";
+import { RUNTIME_RULES_DIRECTORY } from "../../filesystem/layout";
 
 /** Directory (relative to `.taskless/`) that holds runtime rules. */
-export const RUNTIME_RULES_DIR = "runtime-rules";
+export const RUNTIME_RULES_DIR = RUNTIME_RULES_DIRECTORY;
 
 /** A parsed capture `*.yml` of a runtime rule, with the fields the harness needs. */
 export interface LoadedCaptureRule {

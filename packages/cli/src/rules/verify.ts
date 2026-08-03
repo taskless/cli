@@ -14,6 +14,10 @@ import { findSgBinary, buildPath } from "./scan";
 import astGrepJsonSchema from "../generated/ast-grep-rule-schema.json";
 import { RULE_EXAMPLES } from "./verify-examples";
 import { isValidRuleId } from "./validate-id";
+import {
+  SG_RULES_DIRECTORY,
+  SG_RULE_TESTS_DIRECTORY,
+} from "../filesystem/layout";
 
 // --- Helpers ---
 
@@ -130,7 +134,7 @@ async function validateRequirements(
   }
 
   // Check test file exists
-  const testDirectory = join(cwd, ".taskless", "rule-tests");
+  const testDirectory = join(cwd, ".taskless", SG_RULE_TESTS_DIRECTORY);
   let hasTestFile = false;
   try {
     const entries = await readdir(testDirectory);
@@ -243,7 +247,7 @@ export async function verifyRule(
     };
   }
 
-  const rulePath = join(cwd, ".taskless", "rules", `${ruleId}.yml`);
+  const rulePath = join(cwd, ".taskless", SG_RULES_DIRECTORY, `${ruleId}.yml`);
 
   let ruleContent: string;
   try {
