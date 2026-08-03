@@ -441,3 +441,42 @@ describe("scaffold version gating", () => {
     ).resolves.toBeUndefined();
   });
 });
+
+describe("migration 0004 — engine root occupied by a file", () => {
+  let temporaryDirectory: string;
+  let tasklessDirectory: string;
+
+  beforeEach(async () => {
+    temporaryDirectory = await mkdtemp(join(tmpdir(), "taskless-0004-root-"));
+    tasklessDirectory = join(temporaryDirectory, ".taskless");
+    await mkdir(tasklessDirectory, { recursive: true });
+  });
+
+  afterEach(async () => {
+    await rm(temporaryDirectory, { recursive: true, force: true });
+  });
+
+  it("refuses when an engine root itself is a file", async () => {
+    await writeFile(
+      join(tasklessDirectory, "taskless.json"),
+      JSON.stringify({ version: 3 }),
+      "utf8"
+    );
+    await writeTree(tasklessDirectory, {
+      "rules/no-eval.yml": CAPTURE_YML,
+      "runtime-rules/demo/capture.yml": CAPTURE_YML,
+    });
+    // `.taskless/runtime` is a FILE, so `runtime/rules` cannot be created.
+    await writeFile(join(tasklessDirectory, "runtime"), "not a dir\n", "utf8");
+
+    await expect(ensureTasklessDirectory(temporaryDirectory)).rejects.toThrow(
+      /\.taskless\/runtime is a file/
+    );
+
+    // Nothing moved: the sg tree is still where it started.
+    expect(await exists(join(tasklessDirectory, "rules", "no-eval.yml"))).toBe(
+      true
+    );
+    expect(await exists(join(tasklessDirectory, "sg", "rules"))).toBe(false);
+  });
+});
