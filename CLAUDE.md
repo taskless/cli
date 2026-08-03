@@ -91,9 +91,9 @@ Note how this interacts with the archive gate (see the OpenSpec archive check be
 `require-changeset.yml` looks for a `.changeset/*.md` **added in that PR's own diff**. On a stack that means:
 
 - **The changeset belongs on the bottom PR**, the one that targets `main`. That is the only place it can live: a changeset added on the tip is invisible to the bottom PR's diff, so the check would fail on the PR that actually merges.
-- **Mid-stack PRs bypass the check automatically**, because the base branch is not `main`. They inherit the base's changeset rather than adding one, so there is nothing for the check to find. **Do not label them `skip-changeset`** — the label records a deliberate "this change ships no release note," which is false here, and the bypass already handles it.
+- **Mid-stack PRs bypass the check**, because the base branch is not `main`. They inherit the base's changeset rather than adding one, so there is nothing for the check to find. **Do not label them `skip-changeset`** — the label records a deliberate "this change ships no release note," which is false here, and the bypass already handles it.
 
-Note the workflow's `on: branches: [main]` filter does **not** keep it from running on a PR based on a feature branch; the base is re-checked inside the step for exactly that reason. If you see mid-stack PRs failing this check, the bypass is missing, not the changeset.
+The bypass is an in-step check on the base ref. `on: pull_request` with `branches: [main]` is documented to filter on the base branch, which should make that redundant — but it did not hold here: #73, #80, and #81 all produced failing `Require a changeset` check runs with `openspec/partition-engine-*` bases, and a workflow that never triggers produces no check run at all. Keep the guard, and if you see a mid-stack PR failing this check, look there rather than reaching for the label.
 
 Put the changeset at the base and every branch above inherits it, since a child contains its ancestors' commits.
 
