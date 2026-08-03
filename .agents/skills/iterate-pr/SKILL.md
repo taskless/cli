@@ -252,6 +252,14 @@ a stacked PR targets `main` eventually and the filter matches that eventual
 target, so this workflow runs on mid-stack PRs as well. Expect to see the check
 on every PR in a stack and decide from stack position, not from the `on:` block.
 
+The archive job is also skipped while a PR is a **draft**. A spec-only proposal
+is its own tip until its implementation is stacked on top, so the gate would
+otherwise demand it archive a change nobody has built yet, and it would sit red
+for as long as the proposal is open. A draft cannot merge, and the check runs on
+`ready_for_review`, so nothing unarchived can reach `main` — if a proposal PR is
+red on this check, mark it ready only when its implementation is stacked
+beneath it.
+
 When the archive check does run and fail, decide ONE thing before treating it as
 actionable: **is this PR the last in the chain (the tip)?** A PR is the tip when
 no other OPEN PR targets its head branch as a base:

@@ -6,8 +6,20 @@ name: PR OpenSpec Archive Check
 # tip of a stack (or a standalone PR) and is skipped on PRs that still have work
 # stacked on top of them. Tip = no other OPEN PR targets this PR's head branch
 # as its base.
+#
+# Drafts are skipped. A spec-only proposal is its own tip until its
+# implementation is stacked on top, so the gate would otherwise demand it
+# archive a change that has not been built yet — leaving the PR red for as long
+# as the proposal is open, which is how teams learn to ignore red. A draft
+# cannot merge, so the guarantee that no unarchived change reaches `main` is
+# unaffected: the check runs when the PR is marked ready for review.
 on:
   pull_request:
+    # `ready_for_review` is REQUIRED here, and is not in the default set
+    # (opened/synchronize/reopened). The archive job is skipped while a PR is a
+    # draft, so without this event a draft could be marked ready and merged on a
+    # stale green that was never re-evaluated.
+    types: [opened, synchronize, reopened, ready_for_review]
 
 permissions:
   contents: read
@@ -53,7 +65,12 @@ jobs:
   check-openspec-archived:
     name: "stack: openspec-archived"
     needs: stack-position
-    if: needs.stack-position.outputs.is_tip == 'true'
+    # Skipped on drafts. A proposal-only PR is its own tip — nothing is stacked
+    # on it yet — so the gate would demand it archive a change whose
+    # implementation has not been written, and it would sit red for as long as
+    # the proposal is open. A draft cannot merge, so nothing can reach `main`
+    # unarchived; the check runs the moment it is marked ready for review.
+    if: needs.stack-position.outputs.is_tip == 'true' && github.event.pull_request.draft == false
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
