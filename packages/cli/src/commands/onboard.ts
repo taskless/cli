@@ -67,7 +67,7 @@ export const onboardCommand = defineCommand({
         "  --force re-runs the discovery recipe; --mark-complete records completion."
       );
       process.exitCode = 1;
-      throw new CLIError("conflicting flags");
+      throw new CLIError("conflicting flags", undefined, { reported: true });
     }
 
     await ensureTasklessDirectory(cwd);
@@ -101,7 +101,7 @@ export const onboardCommand = defineCommand({
       // Should not happen — onboard.txt is embedded at build time.
       console.error("Internal error: onboard recipe is not available.");
       process.exitCode = 1;
-      throw new CLIError("recipe missing");
+      throw new CLIError("recipe missing", undefined, { reported: true });
     }
     console.log(recipe.trimEnd());
   },

@@ -14,7 +14,7 @@ import {
   readRuleMetaFile,
   deleteRuleFiles,
 } from "../rules/files";
-import { ENGINE_LAYOUTS } from "../rules/engines";
+import { ENGINE_LAYOUTS, LEGACY_RULES_DIRECTORY } from "../rules/engines";
 import {
   inputSchema as createInputSchema,
   outputSchema as createOutputSchema,
@@ -98,7 +98,7 @@ const createCommand = defineCommand({
         console.error(`Error: ${message}`);
       }
       process.exitCode = 1;
-      throw new CLIError(message);
+      throw new CLIError(message, code, { reported: true });
     }
 
     if (args.anonymous) {
@@ -343,7 +343,7 @@ const improveCommand = defineCommand({
         console.error(`Error: ${message}`);
       }
       process.exitCode = 1;
-      throw new CLIError(message);
+      throw new CLIError(message, code, { reported: true });
     }
 
     if (args.anonymous) {
@@ -583,7 +583,7 @@ const metaCommand = defineCommand({
         console.error(`Error: ${message}`);
       }
       process.exitCode = 1;
-      throw new CLIError(message);
+      throw new CLIError(message, code, { reported: true });
     }
 
     const meta = await readRuleMetaFile(cwd, args.id);
@@ -659,7 +659,9 @@ const deleteCommand = defineCommand({
         }
         success = true;
       } else {
-        const message = `Rule "${id}" not found in .taskless/${ENGINE_LAYOUTS.sg.rulesDirectory}/${id}.yml`;
+        const message =
+          `Rule "${id}" not found in .taskless/${ENGINE_LAYOUTS.sg.rulesDirectory}/${id}.yml ` +
+          `or .taskless/${LEGACY_RULES_DIRECTORY}/${id}.yml`;
         if (args.json) {
           console.log(
             JSON.stringify(makeErrorEnvelope("RULE_NOT_FOUND", message))

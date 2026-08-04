@@ -121,9 +121,17 @@ let thrown: unknown;
 try {
   await runCommand(main, { rawArgs: rawArguments });
 } catch (error) {
-  // CLIError = expected failure (already printed output, exitCode already set)
+  // CLIError = expected failure. Most throw sites (the `fail()` helpers) print
+  // and set exitCode first and mark themselves `reported`; one that does not
+  // still has to produce output and a non-zero exit, or the CLI exits 0 with no
+  // message and the failure reads as success.
   thrown = error;
-  if (!(error instanceof CLIError)) {
+  if (error instanceof CLIError) {
+    if (!error.reported) {
+      console.error(`Error: ${error.message}`);
+    }
+    if (!process.exitCode) process.exitCode = 1;
+  } else {
     process.exitCode = 1;
     console.error(error instanceof Error ? error.message : String(error));
   }

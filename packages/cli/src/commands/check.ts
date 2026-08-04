@@ -1,4 +1,4 @@
-import { resolve, isAbsolute, relative } from "node:path";
+import { resolve, join, isAbsolute, relative } from "node:path";
 import { stat } from "node:fs/promises";
 import { defineCommand } from "citty";
 
@@ -318,7 +318,14 @@ export const checkCommand = defineCommand({
       // Rules dispatch by the engine directory that contains them. This is also
       // the migration trigger: `generateSgConfig` is leaving the check path, so
       // without this call an upgraded CLI would keep reading a stale layout.
-      await ensureTasklessDirectory(cwd);
+      //
+      // Only an existing `.taskless/` is migrated. `ensureTasklessDirectory`
+      // creates the scaffold, and `check` is a read-only command — running it in
+      // a project that has none should report that, not write one (and not fail
+      // on a read-only filesystem).
+      if (await pathExists(join(cwd, ".taskless"))) {
+        await ensureTasklessDirectory(cwd);
+      }
       const dispatch = await planEngineDispatch(cwd);
 
       // Static rules (trusted ast-grep YAML) always run; runtime rules
@@ -326,9 +333,15 @@ export const checkCommand = defineCommand({
       // has no executor for (vale) contributes nothing, and a directory that is
       // not a known engine is ignored rather than handed to someone's parser.
       const astGrepSources = await discoverAstGrepRuleSources(cwd);
+      // Both halves matter: `executor` alone is read from the static layout
+      // table and is therefore always `runtime-harness`, so gating on it only
+      // would make this unconditionally true and the presence check decorative.
+      const runtimeDispatch = dispatch.find(
+        (entry) => entry.engine === "runtime"
+      );
       const runtimeEnabled =
-        dispatch.find((entry) => entry.engine === "runtime")?.executor ===
-        "runtime-harness";
+        runtimeDispatch?.present === true &&
+        runtimeDispatch.executor === "runtime-harness";
       const runtimeRules = runtimeEnabled
         ? await discoverRuntimeRules(cwd)
         : [];
