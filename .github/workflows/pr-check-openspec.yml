@@ -15,11 +15,17 @@ name: PR OpenSpec Archive Check
 # unaffected: the check runs when the PR is marked ready for review.
 on:
   pull_request:
-    # `ready_for_review` is REQUIRED here, and is not in the default set
-    # (opened/synchronize/reopened). The archive job is skipped while a PR is a
-    # draft, so without this event a draft could be marked ready and merged on a
-    # stale green that was never re-evaluated.
-    types: [opened, synchronize, reopened, ready_for_review]
+    # Both draft-transition events are REQUIRED, and neither is in the default
+    # set (opened/synchronize/reopened), because the archive job's condition
+    # depends on draft state:
+    #   ready_for_review   — without it a draft could be marked ready and merged
+    #                        on a stale green that was never re-evaluated. This
+    #                        one protects the guarantee.
+    #   converted_to_draft — without it a PR that failed while ready keeps that
+    #                        failure after being converted back to draft, until
+    #                        some unrelated push happens to re-run it.
+    types:
+      [opened, synchronize, reopened, ready_for_review, converted_to_draft]
 
 permissions:
   contents: read
