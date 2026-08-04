@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { mkdtemp, rm, mkdir, writeFile, cp } from "node:fs/promises";
+import { mkdtemp, rm, mkdir, writeFile, cp, stat } from "node:fs/promises";
 import { resolve, join } from "node:path";
 import { tmpdir } from "node:os";
 import { promisify } from "node:util";
@@ -52,6 +52,14 @@ describe("check", () => {
     ]);
     expect(exitCode).toBe(0);
     expect(stdout).toContain("No rules configured");
+  });
+
+  it("does not scaffold .taskless/ in a project that has none", async () => {
+    // `check` reads; it must not write a scaffold as a side effect of looking
+    // for rules — which also keeps it working on a read-only checkout.
+    await runCli(["check", "-d", temporaryDirectory]);
+
+    await expect(stat(join(temporaryDirectory, ".taskless"))).rejects.toThrow();
   });
 
   it("exits 0 with friendly message when rules directory is empty", async () => {

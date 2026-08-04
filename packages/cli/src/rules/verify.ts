@@ -155,7 +155,9 @@ async function validateRequirements(
   }
   if (!hasTestFile) {
     errors.push(
-      `No test file found for rule "${ruleId}" in .taskless/${ENGINE_LAYOUTS.sg.ruleTestsDirectory}/`
+      `No test file found for rule "${ruleId}" in ` +
+        `.taskless/${ENGINE_LAYOUTS.sg.ruleTestsDirectory}/ or ` +
+        `.taskless/${LEGACY_RULE_TESTS_DIRECTORY}/`
     );
   }
 
@@ -300,7 +302,8 @@ export async function verifyRule(
       schema: {
         valid: false,
         errors: [
-          `Rule file not found: .taskless/${ENGINE_LAYOUTS.sg.rulesDirectory}/${ruleId}.yml`,
+          `Rule file not found: .taskless/${ENGINE_LAYOUTS.sg.rulesDirectory}/${ruleId}.yml ` +
+            `or .taskless/${LEGACY_RULES_DIRECTORY}/${ruleId}.yml`,
         ],
       },
       requirements: {
