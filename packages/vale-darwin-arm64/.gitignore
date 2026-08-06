@@ -1,0 +1,7 @@
+# The Vale executable is fetched and unpacked by the release pipeline
+# (.github/workflows/vale-binaries.yml), never committed. A clean checkout of
+# this repository holds no binaries.
+vale
+
+# npm pack output from a local dry run of that pipeline.
+*.tgz

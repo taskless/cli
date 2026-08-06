@@ -116,8 +116,35 @@ Purely additive. The packages can be published before anything consumes them; th
 
 Rollback is deprecation of a published version plus reverting the CLI's pin — no consumer state to unwind.
 
-## Open Questions
+## Resolved Questions
 
-- **Architecture matrix.** ast-grep's seven (win32 `arm64`/`ia32`/`x64`, darwin `arm64`/`x64`, linux `arm64-gnu`/`x64-gnu`) is the starting point, but Vale's published release assets decide what is actually available.
-- **musl / Alpine.** Publish a musl variant, or leave it on the `PATH` fallback? Note `findSgBinary()` maps every Linux to `-gnu` today, so Alpine already falls through for ast-grep — this is an existing gap, not a new one.
-- **Which Vale version the CLI pins**, and the policy for tracking upstream releases (including how quickly a Vale security release must be mirrored).
+### The architecture matrix is six packages, not ast-grep's seven
+
+Vale 3.17.1 publishes exactly six binary assets, and the matrix is those six:
+
+| Package                       | os       | cpu     | Upstream asset                    | Binary in archive |
+| ----------------------------- | -------- | ------- | --------------------------------- | ----------------- |
+| `@taskless/vale-darwin-arm64` | `darwin` | `arm64` | `vale_3.17.1_macOS_arm64.tar.gz`  | `vale`            |
+| `@taskless/vale-darwin-x64`   | `darwin` | `x64`   | `vale_3.17.1_macOS_64-bit.tar.gz` | `vale`            |
+| `@taskless/vale-linux-arm64`  | `linux`  | `arm64` | `vale_3.17.1_Linux_arm64.tar.gz`  | `vale`            |
+| `@taskless/vale-linux-x64`    | `linux`  | `x64`   | `vale_3.17.1_Linux_64-bit.tar.gz` | `vale`            |
+| `@taskless/vale-win32-arm64`  | `win32`  | `arm64` | `vale_3.17.1_Windows_arm64.zip`   | `vale.exe`        |
+| `@taskless/vale-win32-x64`    | `win32`  | `x64`   | `vale_3.17.1_Windows_64-bit.zip`  | `vale.exe`        |
+
+ast-grep's seventh is `win32-ia32`, and Vale publishes no 32-bit Windows asset, so there is nothing to package. Directory names are `packages/vale-<os>-<cpu>/`, matching the package-name suffix.
+
+**No libc or toolchain suffix in the names** — `vale-linux-x64`, not `vale-linux-x64-gnu`; `vale-win32-x64`, not `-msvc`. ast-grep carries those suffixes because Rust target triples disambiguate several builds per platform. Vale publishes exactly one build per os/cpu pair, so a suffix would disambiguate nothing while asserting a toolchain nobody verified.
+
+### musl stays on the `PATH` fallback
+
+Upstream publishes no musl asset, so there is nothing to package for Alpine. That is not a naming detail: Vale's Linux build is **dynamically linked against glibc** — verified as `ELF 64-bit LSB executable, x86-64, dynamically linked, interpreter /lib64/ld-linux-x86-64.so.2, for GNU/Linux 3.2.0, stripped` — so it is not a static Go binary and will not run on musl even if it were installed there. A musl host therefore falls back to a `vale` on `PATH`, and the linux packages' READMEs say so plainly rather than leaving a user to discover it as a loader error.
+
+This matches the existing gap rather than widening it: `findSgBinary()` maps every Linux to `-gnu` today, so Alpine already falls through for ast-grep.
+
+### Pinned Vale version: 3.17.1, tracked by the detect phase
+
+3.17.1 (released 2026-08-05) is the pinned version, recorded in `.github/scripts/vale-manifest.json` beside the scripts that consume it. The manifest holds the version once, and per platform the asset-name template, the archive member to unpack, and the SHA256 **of the release archive** — upstream's `vale_<version>_checksums.txt` covers the archives rather than the executables inside them, so a committed digest is independently checkable against upstream and the archive is verified before anything is unpacked from it.
+
+Tracking policy is the detect phase in D5: a weekly schedule opens a pull request whenever upstream is ahead. A Vale **security** release should not wait for that cadence — the same workflow takes a manual `detect` dispatch, and the expectation is that a security release is mirrored within a day rather than at the next scheduled run.
+
+Which Vale version **the CLI** pins is a separate decision, made when the CLI's `optionalDependencies` land; a published platform package is inert until that pin names it (D8).

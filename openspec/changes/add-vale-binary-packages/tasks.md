@@ -1,20 +1,20 @@
 ## 1. Decide the distribution surface
 
-- [ ] 1.1 Enumerate Vale's published release assets for the pinned version and map them to npm `os`/`cpu` pairs; record the resulting architecture matrix (ast-grep's seven — win32 `arm64`/`ia32`/`x64`, darwin `arm64`/`x64`, linux `arm64-gnu`/`x64-gnu` — is the starting point, not the answer)
-- [ ] 1.2 Decide musl/Alpine: publish a musl variant or leave it on the `PATH` fallback. Note `findSgBinary()` maps every Linux to `-gnu` today, so ast-grep already falls through there
-- [ ] 1.3 Pin the Vale version the CLI expects, and write down the policy for tracking upstream releases (including expected turnaround for a Vale security release)
+- [x] 1.1 Enumerate Vale's published release assets for the pinned version and map them to npm `os`/`cpu` pairs; record the resulting architecture matrix (ast-grep's seven — win32 `arm64`/`ia32`/`x64`, darwin `arm64`/`x64`, linux `arm64-gnu`/`x64-gnu` — is the starting point, not the answer)
+- [x] 1.2 Decide musl/Alpine: publish a musl variant or leave it on the `PATH` fallback. Note `findSgBinary()` maps every Linux to `-gnu` today, so ast-grep already falls through there
+- [x] 1.3 Pin the Vale version the CLI expects, and write down the policy for tracking upstream releases (including expected turnaround for a Vale security release)
 
 ## 2. Package scaffolding
 
-- [ ] 2.1 Create `packages/vale-<platform>/` for each platform in the matrix: `package.json` with `name`, `version`, `os`, `cpu`, `files`, and `description` — **no `bin`, no `scripts`, no code**
-- [ ] 2.2 Add each package's `README.md` and the upstream Vale `LICENSE` (MIT) with attribution
-- [ ] 2.3 Gitignore the binary inside each package directory so a clean checkout stays binary-free
-- [ ] 2.4 Add the platform packages to `.changeset/config.json` `ignore`
-- [ ] 2.5 Confirm `pnpm-workspace.yaml`'s `packages/*` glob picks them up and `pnpm install` succeeds with the binaries absent
+- [x] 2.1 Create `packages/vale-<platform>/` for each platform in the matrix: `package.json` with `name`, `version`, `os`, `cpu`, `files`, and `description` — **no `bin`, no `scripts`, no code**
+- [x] 2.2 Add each package's `README.md` and the upstream Vale `LICENSE` (MIT) with attribution
+- [x] 2.3 Gitignore the binary inside each package directory so a clean checkout stays binary-free
+- [x] 2.4 Add the platform packages to `.changeset/config.json` `ignore`
+- [x] 2.5 Confirm `pnpm-workspace.yaml`'s `packages/*` glob picks them up and `pnpm install` succeeds with the binaries absent
 
 ## 3. Checksums and fetch
 
-- [ ] 3.1 Commit a checksum manifest recording the SHA256 of each platform's upstream release asset for the pinned Vale version
+- [x] 3.1 Commit a checksum manifest recording the SHA256 of each platform's upstream release asset for the pinned Vale version
 - [ ] 3.2 Write the fetch step: download each platform asset, verify against the committed checksum, fail loudly on mismatch, and unpack the executable into its package directory preserving the executable bit
 - [ ] 3.3 Ensure verification runs in a credential-free step, so no credentialed step handles unverified bytes
 - [ ] 3.4 Tests: a mismatched checksum aborts and publishes nothing; a matching one yields an executable file in the expected location

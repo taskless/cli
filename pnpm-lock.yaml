@@ -152,6 +152,18 @@ importers:
         specifier: 0.41.0
         version: 0.41.0
 
+  packages/vale-darwin-arm64: {}
+
+  packages/vale-darwin-x64: {}
+
+  packages/vale-linux-arm64: {}
+
+  packages/vale-linux-x64: {}
+
+  packages/vale-win32-arm64: {}
+
+  packages/vale-win32-x64: {}
+
 packages:
 
   '@ast-grep/cli-darwin-arm64@0.41.0':

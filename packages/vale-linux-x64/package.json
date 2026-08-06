@@ -1,0 +1,23 @@
+{
+  "name": "@taskless/vale-linux-x64",
+  "description": "The Vale executable for x86-64 Linux, packaged for @taskless/cli",
+  "version": "0.0.0",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/taskless/skills.git",
+    "directory": "packages/vale-linux-x64"
+  },
+  "files": [
+    "vale"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "cpu": [
+    "x64"
+  ],
+  "os": [
+    "linux"
+  ]
+}
