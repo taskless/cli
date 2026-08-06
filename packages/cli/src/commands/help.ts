@@ -6,50 +6,9 @@ import {
   type Resolvable,
   type SubCommandsDef,
 } from "citty";
-import { sprintf } from "sprintf-js";
-import { z } from "zod";
 
 import { getTelemetry } from "../telemetry";
-import { applyCliInvocation } from "../util/invocation";
-import { inputSchema as ruleCreateInputSchema } from "../schemas/rules-create";
-import { inputSchema as ruleImproveInputSchema } from "../schemas/rules-improve";
-
-// Help text files embedded at build time via Vite import.meta.glob.
-// Filename convention: <topic>.txt for the canonical recipe and
-// <topic>.anonymous.txt for the local-only variant (when the flow
-// genuinely differs).
-const helpFiles: Record<string, string> = import.meta.glob("../help/*.txt", {
-  query: "?raw",
-  import: "default",
-  eager: true,
-});
-
-// Build two lookup maps:
-//   - helpMap: "rule-create"           → canonical recipe text
-//   - anonymousMap: "rule-create"      → anonymous variant text (if exists)
-function buildHelpMaps(): {
-  helpMap: Map<string, string>;
-  anonymousMap: Map<string, string>;
-} {
-  const helpMap = new Map<string, string>();
-  const anonymousMap = new Map<string, string>();
-  for (const [path, content] of Object.entries(helpFiles)) {
-    const filename = path
-      .split("/")
-      .pop()
-      ?.replace(/\.txt$/, "");
-    if (!filename) continue;
-    if (filename.endsWith(".anonymous")) {
-      const topic = filename.slice(0, -".anonymous".length);
-      anonymousMap.set(topic, content);
-    } else {
-      helpMap.set(filename, content);
-    }
-  }
-  return { helpMap, anonymousMap };
-}
-
-const { helpMap, anonymousMap } = buildHelpMaps();
+import { getRecipe } from "../prompts/recipes";
 
 // Help-only recipe topics (no backing subcommand) that should still be
 // discoverable from the `taskless help` index. The rule-authoring front
@@ -60,56 +19,6 @@ const RECIPE_TOPICS: ReadonlyArray<[string, string]> = [
   ["static", "Author a local ast-grep rule on this machine (no login)"],
   ["remote", "Generate a rule via the Taskless service (login)"],
 ];
-
-// Topic → Zod input schema. When a recipe contains the %(INPUT_SCHEMA)s
-// placeholder, the help command substitutes the JSON Schema rendered
-// from this Zod source.
-const TOPIC_INPUT_SCHEMAS: Record<string, z.ZodType> = {
-  "rule-create": ruleCreateInputSchema,
-  "rule-improve": ruleImproveInputSchema,
-};
-
-/**
- * Render a recipe by interpolating sprintf-js named arguments. The recipe
- * source uses `%(KEY)s` placeholders; the variable table built here resolves
- * each known placeholder to its rendered string. Recipes that contain a
- * literal `%` character must escape it as `%%` per sprintf-js conventions.
- *
- * Two flavors of substitution coexist in the variables table:
- * - System-resolved values (e.g. `CLI_VERSION`) — rendered to a real value.
- * - Agent-fill markers (e.g. `PACKAGE_MANAGER_DLX`) — rendered as
- *   `<lower-kebab-name>` so the consuming agent knows to substitute.
- */
-function renderRecipe(content: string, topic: string): string {
-  const variables: Record<string, string> = {
-    CLI_VERSION: __VERSION__,
-    PACKAGE_MANAGER_DLX: "<package-manager-dlx>",
-  };
-  if (content.includes("%(INPUT_SCHEMA)s")) {
-    const schema = TOPIC_INPUT_SCHEMAS[topic];
-    variables.INPUT_SCHEMA = schema
-      ? JSON.stringify(z.toJSONSchema(schema), null, 2)
-      : "(no input schema for this topic)";
-  }
-  return sprintf(applyCliInvocation(content), variables);
-}
-
-/**
- * Look up a help topic from the embedded recipe map and return the rendered
- * text. Anonymous variants are preferred when `anonymous` is set and a
- * variant exists; otherwise the canonical recipe is returned. Returns
- * `undefined` when the topic is unknown.
- */
-export function getRecipe(
-  topic: string,
-  options: { anonymous?: boolean } = {}
-): string | undefined {
-  const content = options.anonymous
-    ? (anonymousMap.get(topic) ?? helpMap.get(topic))
-    : helpMap.get(topic);
-  if (content === undefined) return undefined;
-  return renderRecipe(content, topic);
-}
 
 async function unwrap<T>(resolvable: Resolvable<T>): Promise<T> {
   if (typeof resolvable === "function") {
@@ -213,16 +122,16 @@ export function createHelpCommand(subCommands: SubCommandsDef) {
       const key = positionals.join("-");
 
       // Anonymous variant lookup: prefer <topic>.anonymous.txt when
-      // --anonymous is set, fall back to the canonical recipe.
-      const content = args.anonymous
-        ? (anonymousMap.get(key) ?? helpMap.get(key))
-        : helpMap.get(key);
+      // --anonymous is set, fall back to the canonical recipe. The lookup and
+      // the render both live in the shared prompts module, so `help` and the
+      // `@taskless/cli/prompts` export emit the same text.
+      const recipe = getRecipe(key, { anonymous: args.anonymous });
 
-      if (content) {
+      if (recipe) {
         // cli_help: agent fetched a specific recipe (intent signal). The topic
         // is the served topic; filtering on it replaces the old per-topic events.
         telemetry.capture("cli_help", { topic: positionals.join(" ") });
-        console.log(renderRecipe(content, key).trimEnd());
+        console.log(recipe.trimEnd());
       } else {
         // cli_help for an unknown topic — still the attempted topic string.
         telemetry.capture("cli_help", { topic: positionals.join(" ") });
