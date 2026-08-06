@@ -1,4 +1,10 @@
-## ADDED Requirements
+# cli-knowledge-prompts Specification
+
+## Purpose
+
+TBD - created by archiving change export-knowledge-prompts. Update Purpose after archive.
+
+## Requirements
 
 ### Requirement: The package exposes knowledge prompts via a dedicated import
 
@@ -7,7 +13,7 @@ The package SHALL expose its knowledge prompts (the `help/*.txt` recipes) throug
 #### Scenario: Importing a prompt by topic
 
 - **WHEN** a consumer imports `getPrompt` (or `PROMPTS`) from `@taskless/cli/prompts`
-- **THEN** it receives the recipe text for a known topic (e.g. `route`, `static`, `runtime`-adjacent authoring recipes) as a string
+- **THEN** it receives the recipe text for a known topic (e.g. `static`) as a string
 
 ### Requirement: The prompt export is typed
 
@@ -15,13 +21,13 @@ The export SHALL provide a `PromptTopic` union of the available canonical topics
 
 #### Scenario: Typed access to topics
 
-- **WHEN** a consumer calls `getPrompt("route")`
-- **THEN** it type-checks and returns the `route` recipe; `getPrompt("nope")` fails type-checking against `PromptTopic`
+- **WHEN** a consumer calls `getPrompt("static")`
+- **THEN** it type-checks and returns the `static` recipe; `getPrompt("nope")` fails type-checking against `PromptTopic`
 
 #### Scenario: A topic is callable from the map
 
-- **WHEN** a consumer calls `PROMPTS.route()` with no arguments
-- **THEN** it returns the same string as `getPrompt("route")`
+- **WHEN** a consumer calls `PROMPTS.static()` with no arguments
+- **THEN** it returns the same string as `getPrompt("static")`
 
 ### Requirement: The export and the help command share one source and one renderer
 
