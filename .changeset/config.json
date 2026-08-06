@@ -7,5 +7,12 @@
   "access": "public",
   "baseBranch": "main",
   "updateInternalDependencies": "patch",
-  "ignore": []
+  "ignore": [
+    "@taskless/vale-darwin-arm64",
+    "@taskless/vale-darwin-x64",
+    "@taskless/vale-linux-arm64",
+    "@taskless/vale-linux-x64",
+    "@taskless/vale-win32-arm64",
+    "@taskless/vale-win32-x64"
+  ]
 }

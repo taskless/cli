@@ -1,0 +1,23 @@
+{
+  "name": "@taskless/vale-darwin-arm64",
+  "description": "The Vale executable for macOS on Apple silicon, packaged for @taskless/cli",
+  "version": "0.0.0",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/taskless/skills.git",
+    "directory": "packages/vale-darwin-arm64"
+  },
+  "files": [
+    "vale"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "cpu": [
+    "arm64"
+  ],
+  "os": [
+    "darwin"
+  ]
+}

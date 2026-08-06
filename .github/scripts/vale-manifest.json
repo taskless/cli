@@ -1,0 +1,81 @@
+{
+  "comment": [
+    "The pinned upstream Vale release and the digests that gate packaging it.",
+    "This file is the trust boundary for @taskless/vale-* : the publish pipeline",
+    "verifies every downloaded archive against the sha256 recorded here and",
+    "refuses to continue on a mismatch, so changing which bytes can be published",
+    "means changing this file, which means passing code review.",
+    "",
+    "Each sha256 is the digest of the RELEASE ARCHIVE, not of the executable",
+    "inside it. Upstream publishes vale_<valeVersion>_checksums.txt covering the",
+    "archives, so these values are independently checkable against upstream, and",
+    "the archive is verified before anything is unpacked from it.",
+    "",
+    "`asset` is a template; {version} is replaced with valeVersion. The detect",
+    "phase of .github/workflows/vale-binaries.yml rewrites valeVersion and every",
+    "sha256 from upstream's checksums file, and leaves the templates alone."
+  ],
+  "valeVersion": "3.17.1",
+  "upstream": {
+    "repository": "errata-ai/vale",
+    "tag": "v{version}",
+    "downloadUrl": "https://github.com/errata-ai/vale/releases/download/v{version}/{asset}",
+    "checksumsAsset": "vale_{version}_checksums.txt"
+  },
+  "platforms": [
+    {
+      "package": "@taskless/vale-darwin-arm64",
+      "directory": "packages/vale-darwin-arm64",
+      "os": "darwin",
+      "cpu": "arm64",
+      "asset": "vale_{version}_macOS_arm64.tar.gz",
+      "archiveMember": "vale",
+      "sha256": "80cacf85ef23f53cfdd77355ec41a6ef99aec136f15dfb3517723482f35593f9"
+    },
+    {
+      "package": "@taskless/vale-darwin-x64",
+      "directory": "packages/vale-darwin-x64",
+      "os": "darwin",
+      "cpu": "x64",
+      "asset": "vale_{version}_macOS_64-bit.tar.gz",
+      "archiveMember": "vale",
+      "sha256": "b37ab999dfd1414d041bd2e94ced103292d634da76f954c385bf789dc7f5f939"
+    },
+    {
+      "package": "@taskless/vale-linux-arm64",
+      "directory": "packages/vale-linux-arm64",
+      "os": "linux",
+      "cpu": "arm64",
+      "asset": "vale_{version}_Linux_arm64.tar.gz",
+      "archiveMember": "vale",
+      "sha256": "92d91ebf9ee69ec077379be95cd09e6710ab33d3d5bab66bb482e66ebc80dc23"
+    },
+    {
+      "package": "@taskless/vale-linux-x64",
+      "directory": "packages/vale-linux-x64",
+      "os": "linux",
+      "cpu": "x64",
+      "asset": "vale_{version}_Linux_64-bit.tar.gz",
+      "archiveMember": "vale",
+      "sha256": "db947f89f2292e6a0381a61de155f6a5f5cb4cb460ca178ea412ef605559cefd"
+    },
+    {
+      "package": "@taskless/vale-win32-arm64",
+      "directory": "packages/vale-win32-arm64",
+      "os": "win32",
+      "cpu": "arm64",
+      "asset": "vale_{version}_Windows_arm64.zip",
+      "archiveMember": "vale.exe",
+      "sha256": "6fe10e873b09cf31feab2780ac9738ba42d69fb00fac491faadd3cb97c040587"
+    },
+    {
+      "package": "@taskless/vale-win32-x64",
+      "directory": "packages/vale-win32-x64",
+      "os": "win32",
+      "cpu": "x64",
+      "asset": "vale_{version}_Windows_64-bit.zip",
+      "archiveMember": "vale.exe",
+      "sha256": "0be3fead4e845fc7e740ad8a7e744eee3041ef8c874748a947b7adb63250a642"
+    }
+  ]
+}
