@@ -33,9 +33,13 @@ export interface SgConfigOptions {
  * Runs migrations and ensures the directory structure is up-to-date.
  *
  * The `sg` engine no longer goes through here — it reads its committed
- * `sg/sgconfig.yml` ({@link COMMITTED_SG_CONFIG}). What remains is the rule
- * sets that have no committed config of their own: the pre-migration
- * `.taskless/rules/` layout, and the materialized run set under `.run/`.
+ * `sg/sgconfig.yml` ({@link COMMITTED_SG_CONFIG}). What remains is exactly one
+ * caller: {@link resolveSgConfigPath} generating a config for the pre-migration
+ * `.taskless/rules/` layout, which has no committed config of its own.
+ *
+ * The runtime narrow is NOT a second caller, despite looking like one — it
+ * writes its own `sgconfig.yml` into the materialized run directory
+ * (`rules/runtime/narrow.ts`) rather than coming through here.
  */
 export async function generateSgConfig(
   cwd: string,

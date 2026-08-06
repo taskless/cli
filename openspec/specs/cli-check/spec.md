@@ -8,12 +8,12 @@ TBD — Defines the `taskless check` subcommand that validates project setup and
 
 ### Requirement: Check subcommand works without taskless.json
 
-The `check` command SHALL NOT require `.taskless/taskless.json` to exist. The command SHALL only require the presence of rule files in `.taskless/rules/`.
+The `check` command SHALL NOT require `.taskless/taskless.json` to exist. The command SHALL only require the presence of ast-grep rule files, in the `sg` engine directory `.taskless/sg/rules/` or the pre-migration `.taskless/rules/`.
 
 #### Scenario: Check succeeds without taskless.json
 
-- **WHEN** a user runs `taskless check` in a directory with `.taskless/rules/*.yml` files but no `taskless.json`
-- **THEN** the CLI SHALL proceed to generate `sgconfig.yml` and run the scanner
+- **WHEN** a user runs `taskless check` in a directory with `.taskless/sg/rules/*.yml` files but no `taskless.json`
+- **THEN** the CLI SHALL run the scanner against the committed `.taskless/sg/sgconfig.yml`
 
 #### Scenario: Check exits cleanly with no .taskless/ directory
 
@@ -23,24 +23,29 @@ The `check` command SHALL NOT require `.taskless/taskless.json` to exist. The co
 
 #### Scenario: Check exits cleanly with empty rules directory
 
-- **WHEN** a user runs `taskless check` and `.taskless/rules/` contains no `.yml` files
+- **WHEN** a user runs `taskless check` and no engine directory holds any rule files
 - **THEN** the CLI SHALL print a warning that no rules were found
 - **AND** the CLI SHALL exit with code 0
 
 ### Requirement: Check subcommand warns when no rules exist
 
-The CLI SHALL check for the presence of YAML rule files in the `.taskless/rules/` directory. When no rule files are found, the CLI SHALL warn the user and exit cleanly.
+The CLI SHALL check for the presence of YAML rule files in the `sg` engine directory `.taskless/sg/rules/`, and in the pre-migration `.taskless/rules/` where a project has not been migrated. When no rule files are found in either, the CLI SHALL warn the user and exit cleanly.
 
-#### Scenario: No rule files in rules directory
+#### Scenario: No rule files in any rules directory
 
-- **WHEN** a user runs `taskless check` and `.taskless/rules/` contains no `.yml` files
+- **WHEN** a user runs `taskless check` and neither `.taskless/sg/rules/` nor `.taskless/rules/` contains `.yml` files
 - **THEN** the CLI SHALL print a warning message indicating no rules were found
 - **AND** the CLI SHALL exit with code 0
 
-#### Scenario: Rules directory contains rule files
+#### Scenario: Engine rules directory contains rule files
 
-- **WHEN** a user runs `taskless check` and `.taskless/rules/` contains one or more `.yml` files
+- **WHEN** a user runs `taskless check` and `.taskless/sg/rules/` contains one or more `.yml` files
 - **THEN** the CLI SHALL proceed to run the scanner
+
+#### Scenario: Only the pre-migration rules directory contains rule files
+
+- **WHEN** a user runs `taskless check` and only `.taskless/rules/` contains `.yml` files
+- **THEN** the CLI SHALL run the scanner against a generated config for that layout, so an unmigrated rule set still runs
 
 ### Requirement: Check subcommand executes ast-grep scan
 
@@ -220,7 +225,7 @@ When `taskless check --json` exits with an error, the output SHALL conform to th
 ### Requirement: Check selects what it runs from auth state
 
 `taskless check` SHALL NOT require authentication, and it SHALL choose what it runs from the
-current auth state. **Static ast-grep rules** (single `*.yml` files under `.taskless/rules/`)
+current auth state. **Static ast-grep rules** (single `*.yml` files under `.taskless/sg/rules/`, or the pre-migration `.taskless/rules/`)
 SHALL always run without contacting the server, on every path (the offline linter posture).
 **Runtime rules** (directories with `metadata.taskless.kind: runtime`) SHALL run only on a
 signature-validated path: when a token is available and `--anonymous` is not set the CLI SHALL

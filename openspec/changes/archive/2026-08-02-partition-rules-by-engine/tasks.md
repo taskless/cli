@@ -48,9 +48,11 @@
 - [x] 4.2 Update `rules/verify.ts` to run `sg test -c .taskless/sg/sgconfig.yml` over `sg/rule-tests/` — through the same resolver, so verify and check agree on which config a rule set uses
 - [x] 4.3 Tests: scan/verify run against the committed `sg/` config; `sg` binary-not-found prints an error and exits 1 — `test/sg-committed-config.test.ts`, including a rule directory only the committed config declares (proving it is read, not reconstructed) and the bundled CLI run from outside the workspace with an empty `PATH`
 
-> `generateSgConfig` survives, narrowed to rule sets that have no committed config of their own: the
-> pre-migration `.taskless/rules/` layout and the materialized `.run/` set. Its `rulesDirectory` /
-> `testDirectory` options are still required for exactly that; only the `sg` engine stopped using it.
+> `generateSgConfig` survives, narrowed to exactly one caller: `resolveSgConfigPath` generating a config
+> for the pre-migration `.taskless/rules/` layout, which has no committed config of its own. Its
+> `rulesDirectory` / `testDirectory` options are required for that alone. The materialized `.run/` set is
+> **not** a second caller — the runtime narrow writes its own `sgconfig.yml` (`rules/runtime/narrow.ts`)
+> and never goes through `generateSgConfig`.
 
 ## 5. Quality gates
 
