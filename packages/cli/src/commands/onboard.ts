@@ -4,10 +4,9 @@ import { defineCommand } from "citty";
 
 import { ensureTasklessDirectory } from "../filesystem/directory";
 import { readManifest, writeManifest } from "../filesystem/migrate";
+import { getRecipe } from "../prompts/recipes";
 import { getTelemetry } from "../telemetry";
 import { CLIError } from "../util/cli-error";
-
-import { getRecipe } from "./help";
 
 /**
  * One-line trailer printed by `taskless init` (and the wizard) after a
