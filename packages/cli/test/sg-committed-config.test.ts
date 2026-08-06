@@ -48,14 +48,24 @@ async function runCli(
   args: string[]
 ): Promise<{ stdout: string; stderr: string; exitCode: number }> {
   try {
-    const { stdout, stderr } = await execFileAsync("node", [binPath, ...args]);
+    const { stdout, stderr } = await execFileAsync(process.execPath, [
+      binPath,
+      ...args,
+    ]);
     return { stdout, stderr, exitCode: 0 };
   } catch (error) {
-    const execError = error as { stdout: string; stderr: string; code: number };
+    // `code` is a number for a normal exit, but null when the child was killed
+    // by a signal and a string for spawn failures (e.g. ENOENT) — coerce so a
+    // signal death cannot read as exit 0.
+    const execError = error as {
+      stdout?: string;
+      stderr?: string;
+      code?: number | string | null;
+    };
     return {
       stdout: execError.stdout ?? "",
       stderr: execError.stderr ?? "",
-      exitCode: execError.code,
+      exitCode: typeof execError.code === "number" ? execError.code : 1,
     };
   }
 }
