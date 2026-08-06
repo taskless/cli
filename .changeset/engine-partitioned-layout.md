@@ -8,4 +8,6 @@ The directory a rule sits in now **is** its engine: dispatch reads the path and 
 
 A rule engine the CLI does not recognize is now rejected with a message instead of failing silently: an unsupported engine from the server previously exited 0 with no output, which read as success.
 
+Runtime rules are discovered under `runtime/rules/` rather than the pre-migration `runtime-rules/`. Migration `0004` moves that tree byte-for-byte, so the signatures the server validates are unchanged.
+
 Existing projects keep working without action. The pre-`0004` `.taskless/rules/` still runs as ast-grep, and a delivered rule that names no engine is still treated as ast-grep — a rule engine this CLI does not recognize is rejected rather than guessed at. A migration that would have to merge a file into an engine directory now refuses up front with `SCAFFOLD_CONFLICT` rather than failing part-way.
