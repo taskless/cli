@@ -1,0 +1,19 @@
+// Declaration emit for the `@taskless/cli/prompts` subpath export only.
+//
+// Vite's lib build emits JavaScript and no types, so `tsc` supplies the `.d.ts`
+// for the one entry that is a public importable API. The include list is
+// deliberately just the prompts entry (plus the ambient build defines it needs)
+// rather than all of `src`: emitting a `dist/index.d.ts` next to `dist/index.js`
+// would give the CLI's main entry a typed public surface it does not have today
+// and has never promised, purely as a side effect of typing the new one.
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "emitDeclarationOnly": true,
+    "sourceMap": false,
+    "rootDir": "src",
+    "declarationDir": "dist"
+  },
+  "include": ["src/globals.d.ts", "src/prompts/index.ts"]
+}
