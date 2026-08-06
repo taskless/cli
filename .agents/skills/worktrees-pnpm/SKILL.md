@@ -109,8 +109,15 @@ printf '{"hook_event_name":"WorktreeCreate","cwd":"%s","worktree_id":"probe"}' "
   | .agents/skills/worktrees-pnpm/scripts/worktree-create.sh
 # expect: <repo>/worktrees/probe on stdout, git chatter on stderr, exit 0
 
+# The id field is not stable across callers, so .worktreeId and .name are read
+# too — `.name` is what a background agent's payload actually carries.
+printf '{"hook_event_name":"WorktreeCreate","cwd":"%s","name":"probe-name"}' "$PWD" \
+  | .agents/skills/worktrees-pnpm/scripts/worktree-create.sh
+# expect: <repo>/worktrees/probe-name
+
 printf '{"hook_event_name":"WorktreeRemove","worktree_path":"%s"}' "$PWD/worktrees/probe" \
   | .agents/skills/worktrees-pnpm/scripts/worktree-remove.sh
+# ...and the same for worktrees/probe-name
 ```
 
 **2. Add the ignores** described in the next section. Skipping this is the single most common way

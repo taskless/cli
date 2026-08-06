@@ -18,12 +18,17 @@
 # Layout: /path/to/<repo>  ->  /path/to/<repo>/worktrees/<worktree_id>
 #
 # Contract (docs: code.claude.com/docs/en/hooks):
-#   stdin  - JSON identifying the worktree, plus .cwd, .session_id, ...
+#   stdin  - JSON identifying the worktree, plus .base_path, .cwd, .session_id, ...
 #            The id field is NOT stable across callers: a background agent's
 #            payload carries `.name` (e.g. "agent-a5e1de46e730bdfd7") and no
-#            `.worktree_id` at all, so both are read. Accepting only one of them
+#            `.worktree_id` at all, so all three spellings are read
+#            (.worktree_id, .worktreeId, .name). Accepting only one of them
 #            fails worktree creation outright with a message that reads like the
-#            harness sent nothing.
+#            harness sent nothing. `.name` is the weakest of the three — it is
+#            justified by one captured payload, not a guaranteed contract — so a
+#            caller that sends an unrelated `.name` while genuinely lacking both
+#            id fields lands on the validation below and fails loudly, which is
+#            the intended floor rather than an accident.
 #   stdout - the absolute path of the created worktree, plain text, REQUIRED
 #   exit   - non-zero, or zero with empty stdout, fails worktree creation
 # This hook replaces the default logic entirely, so it must run `git worktree add`.
