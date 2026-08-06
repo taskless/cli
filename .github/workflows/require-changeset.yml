@@ -78,9 +78,16 @@ jobs:
               ;;
           esac
 
-          # A changeset is any new `.changeset/*.md` added by this PR, other than
-          # the template README.
-          ADDED=$(git diff --name-only --diff-filter=A "$BASE_SHA...$HEAD_SHA" -- '.changeset/*.md' \
+          # A changeset is any `.changeset/*.md` this PR adds OR modifies, other
+          # than the template README.
+          #
+          # Modifications count because one change gets ONE changeset: when a
+          # stack lands forward, the second PR onward finds the release note
+          # already on `main` from the PR below it, and the right move is to
+          # extend that file rather than add a second entry for something that
+          # ships once. Counting additions only made "grow the changeset as the
+          # stack lands" impossible to satisfy.
+          ADDED=$(git diff --name-only --diff-filter=AM "$BASE_SHA...$HEAD_SHA" -- '.changeset/*.md' \
             | grep -viE '/README\.md$' || true)
 
           if [ -z "$ADDED" ]; then
