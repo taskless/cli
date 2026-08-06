@@ -1,0 +1,267 @@
+# SPDX-License-Identifier: MIT
+# Vale platform packages — detect upstream releases, then publish @taskless/vale-*.
+#
+# Standalone by design. This workflow does not touch release.yml and release.yml
+# does not touch these packages: they are in the changesets `ignore` list, their
+# versions are stamped here rather than bumped by a changeset, and release.yml's
+# "is main's version on npm yet?" check reads packages/cli/package.json only.
+#
+# TWO PHASES, because the trust boundary is code review (design D6):
+#
+#   detect   Runs on a schedule with NO npm credential and NO OIDC identity. It
+#            compares the latest upstream Vale release against the version
+#            pinned in .github/scripts/vale-manifest.json. When upstream is
+#            ahead it opens a pull request that updates the pinned version and
+#            all six SHA256 digests, taken from upstream's own checksums file.
+#            It publishes nothing.
+#
+#   publish  Runs on the push to main that merges that pull request — i.e. once
+#            a human has reviewed the digests. Split further into `prepare` and
+#            `publish` below.
+#
+# A single job that discovered a digest and then verified downloads against the
+# digest it had just discovered would verify nothing. Splitting the phases is
+# what makes the automation trustworthy: nothing is published on bytes nobody
+# signed off on, and nobody has to notice a Vale release for the process to run.
+#
+# WHAT BOUNDS A RUN is the upstream-version comparison, and only that. A "is
+# this version already on npm?" check — the thing release.yml uses — cannot work
+# here: every publish stamps <valeVersion>-<yyyymmddhhmmss>, a version npm has
+# never seen, so such a check would answer "not published" every time and could
+# never suppress anything (design D5).
+#
+# WHY prepare AND publish ARE SEPARATE JOBS: `prepare` downloads third-party
+# bytes off the internet. It holds `contents: read`, no environment, and no
+# id-token, so it cannot publish or mint a token no matter what it downloads. It
+# verifies every archive against the committed digest, aborts the run on a
+# mismatch before anything is unpacked, and hands over `npm pack` tarballs. The
+# credentialed `publish` job therefore only ever handles bytes that already
+# matched a reviewed digest and are already sealed into a tarball. It does not
+# even check out the repository.
+#
+# WHY PACK BEFORE UPLOADING: actions/upload-artifact does not preserve file
+# modes, and the Vale executable has to reach npm with its executable bit set.
+# `npm pack` records modes inside the .tgz, so packing first and shipping the
+# tarball through the artifact keeps 0755 intact end to end.
+#
+# PUBLISHING IDENTITY is inherited, not reinvented: npm trusted publishing, a
+# short-lived OIDC-minted token bound to the `npm-production` environment, with
+# no stored NPM_TOKEN anywhere. That binding is registered PER PACKAGE on
+# npmjs.com and there is nothing to bind until the package name exists, so the
+# FIRST publish of each of the six names is a deliberate one-time manual step by
+# a maintainer, who then registers the trusted publisher. This workflow assumes
+# that has already happened for every name in the manifest, and there is no
+# fallback token path here on purpose.
+#
+# BOOTSTRAPPING A NEW PACKAGE NAME, once:
+#
+#     node .github/scripts/vale-prepare.cjs --out .vale-dist
+#     npm publish --access public --tag latest .vale-dist/<name>.tgz
+#     git checkout -- packages/vale-*/package.json   # drop the local stamp
+#
+# Publish the packed tarball rather than the directory: the committed
+# package.json carries the placeholder version 0.0.0 and no binary, so a bare
+# `npm publish` in a package directory would burn the name on an empty 0.0.0.
+# Provenance is omitted from the manual step (it needs a CI OIDC identity);
+# register the trusted publisher afterwards and every later publish gets it.
+#
+# Action refs are pinned to commit SHAs; the trailing comment records the tag.
+
+name: Vale Binaries
+
+on:
+  # Detect only. Weekly is a deliberate cadence choice: a Vale security release
+  # should be mirrored faster than that, which is what the manual `detect`
+  # dispatch below is for.
+  schedule:
+    - cron: "23 7 * * 1"
+
+  # Publish. This path fires exactly when a reviewed manifest change lands on
+  # main, which is the merge of a detect pull request. An ordinary push to main
+  # does not touch the manifest, so it starts no job here at all.
+  push:
+    branches: [main]
+    paths:
+      - ".github/scripts/vale-manifest.json"
+
+  workflow_dispatch:
+    inputs:
+      phase:
+        description: "detect: check upstream and open a PR. publish: stamp and publish the pinned version."
+        type: choice
+        options:
+          - detect
+          - publish
+        default: detect
+
+# No workflow-wide grants; each job asks for exactly what it needs.
+permissions: {}
+
+# One at a time, so a scheduled detect cannot race a publish.
+concurrency: vale-binaries
+
+jobs:
+  detect:
+    name: Detect upstream Vale
+    if: >-
+      github.event_name == 'schedule' ||
+      (github.event_name == 'workflow_dispatch' && inputs.phase == 'detect')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # push the vale/update-<version> branch
+      pull-requests: write # open the manifest update PR
+    steps:
+      # Credentials persist here because this job pushes a branch. It holds no
+      # npm identity and no id-token, and it never runs downloaded code.
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 24
+
+      # No install step: the script is zero-dependency CommonJS. GITHUB_TOKEN is
+      # passed only to raise the GitHub API rate limit; the endpoints are public.
+      - id: detect
+        run: node .github/scripts/vale-detect.cjs --write
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # Every value reaching the shell below goes through `env:` rather than
+      # `${{ }}` interpolation into the script body. The version has already been
+      # validated as major.minor.patch by the script, but the pattern is the
+      # rule regardless of the value.
+      - name: Open the manifest update PR
+        if: steps.detect.outputs.update == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VALE_VERSION: ${{ steps.detect.outputs.vale_version }}
+          PINNED_VERSION: ${{ steps.detect.outputs.pinned_version }}
+        run: |
+          branch="vale/update-${VALE_VERSION}"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          if git diff --quiet -- .github/scripts/vale-manifest.json; then
+            echo "Manifest already pins ${VALE_VERSION}; nothing to propose."
+            exit 0
+          fi
+
+          git checkout -b "$branch"
+          git add .github/scripts/vale-manifest.json
+          git commit -m "chore(vale): pin Vale ${VALE_VERSION}"
+          git push --force origin "$branch"
+
+          if [ -n "$(gh pr list --head "$branch" --state open --json number --jq '.[].number')" ]; then
+            echo "A pull request for $branch is already open; it now carries the current digests."
+            exit 0
+          fi
+
+          gh pr create \
+            --base main \
+            --head "$branch" \
+            --title "chore(vale): pin Vale ${VALE_VERSION}" \
+            --body "$(cat <<'BODY'
+          Upstream Vale is ahead of the version this repository packages.
+
+          This updates `.github/scripts/vale-manifest.json` to the new upstream
+          version and replaces every platform's SHA256 with the digest from
+          upstream's `vale_<version>_checksums.txt`.
+
+          **Reviewing this is the trust boundary.** Merging it authorizes the
+          publish phase to download those exact archives and package them; a
+          download that does not match a digest here aborts the run and
+          publishes nothing. Check the digests against upstream's checksums file
+          for the release before approving.
+
+          Merging this triggers the publish phase, which stamps every platform
+          package `<valeVersion>-<yyyymmddhhmmss>` and publishes the set. That
+          publish is inert on its own: `@taskless/cli` pins exact versions, so
+          nothing reaches a consumer until that pin is deliberately bumped.
+          BODY
+          )" \
+            --label skip-changeset
+
+  # Credential-free. Downloads third-party bytes, verifies them against the
+  # reviewed digests, and produces tarballs. Cannot publish anything.
+  prepare:
+    name: Fetch, verify, stamp, pack
+    if: >-
+      github.event_name == 'push' ||
+      (github.event_name == 'workflow_dispatch' && inputs.phase == 'publish')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read # checkout only
+    outputs:
+      version: ${{ steps.prepare.outputs.version }}
+      vale_version: ${{ steps.prepare.outputs.vale_version }}
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false # nothing here writes to git
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 24
+
+      # No dependency install at all: the script is zero-dependency CommonJS and
+      # unpacks with `tar` and `unzip`, both present on ubuntu-latest. Nothing
+      # from npm runs in this job beyond `npm pack` on our own packages.
+      - id: prepare
+        run: node .github/scripts/vale-prepare.cjs --out .vale-dist
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: vale-tarballs
+          path: .vale-dist/*.tgz
+          if-no-files-found: error
+          retention-days: 1
+
+  publish:
+    name: Publish to npm
+    needs: prepare
+    runs-on: ubuntu-latest
+    # The scoping and audit boundary for the release, and where the npm trusted
+    # publisher for each @taskless/vale-* package is bound.
+    environment: npm-production
+    permissions:
+      contents: read
+      id-token: write # OIDC → short-lived npm auth + build provenance
+    steps:
+      # Deliberately no checkout. This job publishes tarballs the previous job
+      # already verified and sealed; it has no reason to hold repository source
+      # while an OIDC identity exists.
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: vale-tarballs
+          path: tarballs
+
+      # OIDC trusted publishing and provenance need npm >= 11.5.1. Pinned, not
+      # @latest, so publish behavior cannot change unreviewed. --ignore-scripts:
+      # no lifecycle code runs while the OIDC identity is available.
+      - run: npm install -g npm@12.0.1 --ignore-scripts
+
+      # `--tag latest` is required, not cosmetic: every version here is a semver
+      # prerelease by design (D4), and npm refuses to publish a prerelease onto
+      # the default tag without being told. Tagging them `latest` is right —
+      # these are not preview builds, they are the only builds, and the
+      # prerelease component exists to defeat range matching, not to signal
+      # instability.
+      - name: Publish every platform tarball
+        working-directory: tarballs
+        env:
+          STAMPED_VERSION: ${{ needs.prepare.outputs.version }}
+        run: |
+          shopt -s nullglob
+          tarballs=(*.tgz)
+          if [ "${#tarballs[@]}" -eq 0 ]; then
+            echo "No tarballs in the artifact — refusing to report success." >&2
+            exit 1
+          fi
+          echo "Publishing ${#tarballs[@]} package(s) at ${STAMPED_VERSION}."
+          for tarball in "${tarballs[@]}"; do
+            echo "::group::$tarball"
+            npm publish --provenance --access public --tag latest "./$tarball"
+            echo "::endgroup::"
+          done

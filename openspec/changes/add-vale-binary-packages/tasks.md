@@ -15,22 +15,22 @@
 ## 3. Checksums and fetch
 
 - [x] 3.1 Commit a checksum manifest recording the SHA256 of each platform's upstream release asset for the pinned Vale version
-- [ ] 3.2 Write the fetch step: download each platform asset, verify against the committed checksum, fail loudly on mismatch, and unpack the executable into its package directory preserving the executable bit
-- [ ] 3.3 Ensure verification runs in a credential-free step, so no credentialed step handles unverified bytes
-- [ ] 3.4 Tests: a mismatched checksum aborts and publishes nothing; a matching one yields an executable file in the expected location
+- [x] 3.2 Write the fetch step: download each platform asset, verify against the committed checksum, fail loudly on mismatch, and unpack the executable into its package directory preserving the executable bit
+- [x] 3.3 Ensure verification runs in a credential-free step, so no credentialed step handles unverified bytes
+- [x] 3.4 Tests: a mismatched checksum aborts and publishes nothing; a matching one yields an executable file in the expected location
 
 ## 4. Version stamping
 
-- [ ] 4.1 Write the stamping step: set every platform package to `<valeVersion>-<yyyymmddhhmmss>` (UTC), identically across the set
-- [ ] 4.2 Assert the stamped version parses as a valid semver prerelease, that the timestamp is a numeric identifier with no leading zero, and that a plain `<valeVersion>` is never produced
-- [ ] 4.3 Tests: two runs produce ordered versions; the whole set shares one version; a caret range over the Vale version matches nothing
+- [x] 4.1 Write the stamping step: set every platform package to `<valeVersion>-<yyyymmddhhmmss>` (UTC), identically across the set
+- [x] 4.2 Assert the stamped version parses as a valid semver prerelease, that the timestamp is a numeric identifier with no leading zero, and that a plain `<valeVersion>` is never produced
+- [x] 4.3 Tests: two runs produce ordered versions; the whole set shares one version; a caret range over the Vale version matches nothing
 
 ## 5. Release workflow
 
-- [ ] 5.1 Add a standalone workflow in two phases, no coupling to `release.yml`: **detect** — on a schedule, compare upstream Vale against what is published and open a PR updating the pinned version + checksums, publishing nothing; **publish** — on merge of that PR, run fetch → verify → stamp → pack → publish against the reviewed checksums
-- [ ] 5.2 Bound runs by the upstream comparison, not a published-version check — a fresh timestamp is never already on npm, so that check can never suppress a run
-- [ ] 5.3 Follow the existing hardening conventions: SHA-pinned action refs, no workflow-wide permission grants, no `${{ }}` interpolation of untrusted text into `run:`, OIDC trusted publishing bound to the `npm-production` environment, `--ignore-scripts` on install
-- [ ] 5.4 Verify an ordinary push to `main` publishes no platform package, and that a run with upstream unchanged publishes nothing
+- [x] 5.1 Add a standalone workflow in two phases, no coupling to `release.yml`: **detect** — on a schedule, compare upstream Vale against what is published and open a PR updating the pinned version + checksums, publishing nothing; **publish** — on merge of that PR, run fetch → verify → stamp → pack → publish against the reviewed checksums
+- [x] 5.2 Bound runs by the upstream comparison, not a published-version check — a fresh timestamp is never already on npm, so that check can never suppress a run
+- [x] 5.3 Follow the existing hardening conventions: SHA-pinned action refs, no workflow-wide permission grants, no `${{ }}` interpolation of untrusted text into `run:`, OIDC trusted publishing bound to the `npm-production` environment, `--ignore-scripts` on install
+- [x] 5.4 Verify an ordinary push to `main` publishes no platform package, and that a run with upstream unchanged publishes nothing
 
 ## 6. CLI wiring
 
@@ -40,6 +40,6 @@
 
 ## 7. Quality gates
 
-- [ ] 7.1 `pnpm typecheck && pnpm lint && pnpm test` clean at the repo root
-- [ ] 7.2 Dry-run the release workflow end to end without publishing, and confirm the packed tarball contains the executable with its permission bit
+- [x] 7.1 `pnpm typecheck && pnpm lint && pnpm test` clean at the repo root
+- [x] 7.2 Dry-run the release workflow end to end without publishing, and confirm the packed tarball contains the executable with its permission bit
 - [ ] 7.3 Once published, remove tasks 5.1b–5.1e from `add-vale-rule-engine`, which reduces to the runtime resolution (its task 5.1) alone
