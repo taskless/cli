@@ -10,4 +10,6 @@ A rule engine the CLI does not recognize is now rejected with a message instead 
 
 Runtime rules are discovered under `runtime/rules/` rather than the pre-migration `runtime-rules/`. Migration `0004` moves that tree byte-for-byte, so the signatures the server validates are unchanged.
 
+`check` and `rule verify` read the committed `.taskless/sg/sgconfig.yml` rather than writing an ephemeral config on every run, so the config ast-grep uses is the one you can edit and review. A pre-migration rule set still gets a generated config, so an unmigrated project keeps running.
+
 Existing projects keep working without action. The pre-`0004` `.taskless/rules/` still runs as ast-grep, and a delivered rule that names no engine is still treated as ast-grep — a rule engine this CLI does not recognize is rejected rather than guessed at. A migration that would have to merge a file into an engine directory now refuses up front with `SCAFFOLD_CONFLICT` rather than failing part-way.
