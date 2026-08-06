@@ -9,9 +9,11 @@
 
 - [x] 1.7 Anchor the `sgconfig.yml` entry in `.taskless/.gitignore` (`/sgconfig.yml`), so the unanchored pattern `0001` wrote no longer also ignores the committed `.taskless/sg/sgconfig.yml`; `0004` rewrites it in existing checkouts
 
-> After group 1 alone, `check`/`verify`/runtime discovery still read the pre-move paths, so 20 tests in
-> `check.test.ts`, `verify.test.ts`, and `runtime-check.test.ts` fail until groups 2–4 land. Group 2 brings
-> that to 9, all in `runtime-check.test.ts`, and group 3 to zero.
+> Group 1 relocates the trees **and** repoints every reader, so the suite is green on that group alone
+> (396 passing). An earlier revision moved the files without following them, which left 20 failures across
+> `check.test.ts`, `verify.test.ts`, and `runtime-check.test.ts` — those were two real defects, not an
+> artifact of splitting the work: readers kept the pre-move paths, and `check` discovered rules before
+> running the migration that creates them. Each group is independently correct; none is expected to be red.
 
 ## 2. Engine dispatch (directory model)
 
