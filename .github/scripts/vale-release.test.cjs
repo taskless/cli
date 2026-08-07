@@ -221,6 +221,15 @@ test("rangeMatches: plain versions keep ordinary caret/tilde semantics", () => {
   assert.equal(rangeMatches("^3.17.1", "3.17.0"), false);
 });
 
+test("rangeMatches: caret below 1.0.0 narrows the way semver narrows it", () => {
+  // `^0.y.z` pins the minor; `^0.0.z` pins everything.
+  assert.equal(rangeMatches("^0.2.1", "0.2.9"), true);
+  assert.equal(rangeMatches("^0.2.1", "0.3.0"), false);
+  assert.equal(rangeMatches("^0.0.1", "0.0.1"), true);
+  assert.equal(rangeMatches("^0.0.1", "0.0.2"), false);
+  assert.equal(rangeMatches("^0.0.1", "0.1.0"), false);
+});
+
 // ---------------------------------------------------------------------------
 // Stamping the set (task 4.1, 4.3)
 // ---------------------------------------------------------------------------
