@@ -97,7 +97,7 @@ Consumption is via a **normal published release** of `@taskless/cli`. A workspac
 
 ## Risks / Trade-offs
 
-- **Build must emit the second entry** → configure Vite for a `prompts` entry with types; a CI/test asserts `dist/prompts.js` + `.d.ts` exist, or the export resolves to nothing at publish.
+- **Build must emit the second entry** → configure Vite for a `prompts` entry and emit its declarations from a scoped `tsc` pass; a CI/test asserts `dist/prompts.js` + `dist/prompts/index.d.ts` exist, or the export resolves to nothing at publish.
 - **Build defines must reach the second entry** → `dist/prompts.js` depends on `__VERSION__` and `__TASKLESS_CLI__` being inlined. If the `prompts` entry is configured without the same `define` block as the main entry, rendering emits a literal `__VERSION__` or throws. A test asserting rendered output contains no `__`-prefixed define names covers this.
 - **No per-topic tree-shaking** → a render function isn't statically analyzable, so all 20 recipes (~66 KB of text) ship even when a consumer reads six. Negligible against Worker bundle limits; accepted deliberately in exchange for `help`/export parity.
 - **Prompt text drift within a major** → acceptable and stated; only topic names + accessor shape are stability-guaranteed.
