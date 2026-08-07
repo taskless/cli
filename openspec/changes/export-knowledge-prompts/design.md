@@ -14,14 +14,14 @@ The package ships only `dist` and exports only `"." → ./dist/index.js` (which 
 
 ### D1 — A shared prompts module is the single source; `help.ts` consumes it
 
-Move the glob + `buildHelpMaps` logic **and `renderRecipe`** (`commands/help.ts:83-95`) into `src/prompts/index.ts`; `help.ts` imports from it. One embed and one render path, no duplication.
+Move the glob + `buildHelpMaps` logic **and `renderRecipe`** (`commands/help.ts:83-95`) into `src/prompts/recipes.ts`; `help.ts` imports from it. One embed and one render path, no duplication. `src/prompts/index.ts` sits on top of that module as the public entry, so the shared implementation and the published surface are separately reviewable.
 
 - **Alternative — a second glob in `help.ts` and the export:** rejected; two embeds drift.
 - **Alternative — share the embed but not the renderer:** rejected; the two surfaces would emit different text from identical source, which is the drift the change exists to prevent.
 
 ### D2 — The export carries no CLI runtime, imported via a subpath
 
-`src/prompts/index.ts` imports nothing from the CLI runtime — no `citty`/command tree, no telemetry, no filesystem or network. It may import `sprintf-js` and the two Zod input schemas (`schemas/rules-create`, `schemas/rules-improve`), which are leaf modules whose only dependency is `zod`; both are already dependencies of the intended consumer. The subpath export `@taskless/cli/prompts` maps to a dedicated `dist/prompts.js` so importing it never loads `dist/index.js`.
+The `src/prompts/` graph (`index.ts` and the `recipes.ts` it consumes) imports nothing from the CLI runtime — no `citty`/command tree, no telemetry, no filesystem or network. It may import `sprintf-js` and the two Zod input schemas (`schemas/rules-create`, `schemas/rules-improve`), which are leaf modules whose only dependency is `zod`; both are already dependencies of the intended consumer. The subpath export `@taskless/cli/prompts` maps to a dedicated `dist/prompts.js` so importing it never loads `dist/index.js`.
 
 - **Alternative — re-export from the main entry (`@taskless/cli`):** rejected; the main entry pulls the whole CLI, unusable/heavy in a Worker.
 - **Alternative — pure data with zero deps, pre-rendering `INPUT_SCHEMA` at build time:** rejected as premature; it buys nothing for the intended consumer (which already ships `zod`) and adds a codegen step to keep in sync.

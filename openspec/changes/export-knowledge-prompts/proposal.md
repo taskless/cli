@@ -18,7 +18,7 @@ The CLI's **knowledge prompts** — `help/*.txt` (`route`, `static`, `remote`, `
 
 ## Impact
 
-- **`packages/cli`**: `package.json` `exports` (add `./prompts`) and `files`; a new `src/prompts/index.ts` holding the embedded `help/*.txt` map, the render path, and a typed accessor; `commands/help.ts` refactored to consume that shared module (no observable behavior change); the Vite build gains a second entry.
+- **`packages/cli`**: `package.json` `exports` (add `./prompts`) and `files`; a new `src/prompts/` module — `recipes.ts` holding the embedded `help/*.txt` map and the render path, `index.ts` holding the typed accessor published as the subpath entry; `commands/help.ts` refactored to consume that shared module (no observable behavior change); the Vite build gains a second entry.
 - **Consumers**: `@taskless/cli/prompts` becomes importable — the enabler for the `taskless/taskless` `generator-decision-router` change.
 - **No change** to CLI commands, rule execution, or on-disk formats.
 

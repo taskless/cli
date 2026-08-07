@@ -1,9 +1,9 @@
 ## 1. Shared prompts module
 
-- [x] 1.1 Create `packages/cli/src/prompts/index.ts` that embeds `../help/*.txt` via the same `import.meta.glob(..., { query: "?raw", eager: true })` and builds canonical + anonymous maps
+- [x] 1.1 Create `packages/cli/src/prompts/recipes.ts` that embeds `../help/*.txt` via the same `import.meta.glob(..., { query: "?raw", eager: true })` and builds canonical + anonymous maps
 - [x] 1.2 Move `renderRecipe` + the `TOPIC_INPUT_SCHEMAS` table out of `commands/help.ts` into the shared module, so interpolation lives on the shared path
-- [x] 1.3 Export the typed API: `PromptTopic` union (from an explicit `const TOPICS = [...] as const`), `PromptOptions` (`anonymous?`, `packageManagerDlx?`, `header?`), `PROMPTS: Record<PromptTopic, (options?: PromptOptions) => string>` of render functions, and `getPrompt(topic, options?)` with canonical fallback for anonymous
-- [x] 1.4 Add an `INTERNAL_TOPICS` list recording recipe files deliberately withheld from the export; classify every existing `help/*.txt` as exported or internal. Per D6, `TOPICS` starts minimal — `static` is the only topic a consumer has asked for; `route`/`remote`/`detect`/`existing`/`rule-meta` are internal until one does
+- [ ] 1.3 Export the typed API from `packages/cli/src/prompts/index.ts`: `PromptTopic` union (from an explicit `const TOPICS = [...] as const`), `PromptOptions` (`anonymous?`, `packageManagerDlx?`, `header?`), `PROMPTS: Record<PromptTopic, (options?: PromptOptions) => string>` of render functions, and `getPrompt(topic, options?)` with canonical fallback for anonymous
+- [ ] 1.4 Add an `INTERNAL_TOPICS` list recording recipe files deliberately withheld from the export; classify every existing `help/*.txt` as exported or internal. Per D6, `TOPICS` starts minimal — `static` is the only topic a consumer has asked for; `route`/`remote`/`detect`/`existing`/`rule-meta` are internal until one does
 - [x] 1.5 Ensure the module imports nothing from the CLI runtime (no `citty`/telemetry/command tree/fs/network) — embedded text, types, `sprintf-js`, `applyCliInvocation`, and the leaf Zod input schemas only
 - [x] 1.6 Refactor `commands/help.ts` to consume the shared module (remove its own glob/`buildHelpMaps`/`renderRecipe`), leaving `help` output byte-identical
 
