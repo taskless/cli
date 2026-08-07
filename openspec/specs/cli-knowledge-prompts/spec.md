@@ -2,7 +2,19 @@
 
 ## Purpose
 
-TBD - created by archiving change export-knowledge-prompts. Update Purpose after archive.
+The CLI's `help/*.txt` recipes are the authoritative guidance Taskless gives an
+agent about authoring and operating rules. Until now the only way to read them
+was to run `taskless help`, which puts them out of reach of anything that cannot
+spawn the CLI — notably the service-side generator, which needs the same text to
+brief a model.
+
+This capability publishes those recipes as a typed subpath export,
+`@taskless/cli/prompts`, rendered through the same embed and the same render
+path the `help` command uses. One source and one renderer means the two surfaces
+cannot drift into giving different guidance. The export carries no CLI runtime,
+so a Worker can import it without dragging in the command tree, and topic
+membership is an explicit hand-maintained list so a new recipe file cannot
+silently become public API.
 
 ## Requirements
 
@@ -49,13 +61,13 @@ Calling a prompt SHALL return finished text with every `%(KEY)s` placeholder sub
 
 #### Scenario: Schema-bearing topics render their input schema
 
-- **WHEN** a consumer calls the `rule-create` or `rule-improve` prompt
-- **THEN** `%(INPUT_SCHEMA)s` is replaced by the JSON Schema rendered from that topic's Zod input schema
+- **WHEN** a recipe carrying `%(INPUT_SCHEMA)s` is rendered (today `rule-create` and `rule-improve`, both internal topics)
+- **THEN** the placeholder is replaced by the JSON Schema rendered from that topic's Zod input schema
 
 #### Scenario: Agent-fill marker defaults and overrides
 
-- **WHEN** a consumer calls the `ci` prompt without options
-- **THEN** `%(PACKAGE_MANAGER_DLX)s` renders as the default `<package-manager-dlx>` marker; supplying `packageManagerDlx` substitutes that value instead
+- **WHEN** a recipe carrying `%(PACKAGE_MANAGER_DLX)s` is rendered without options (today `ci`, an internal topic)
+- **THEN** the placeholder renders as the default `<package-manager-dlx>` marker; supplying `packageManagerDlx` substitutes that value instead
 
 ### Requirement: The version header is suppressible
 
