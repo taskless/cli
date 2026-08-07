@@ -44,11 +44,11 @@ the same digest upstream publishes in `vale_<version>_checksums.txt`.
 ## glibc, and why there is no musl package
 
 Vale's Linux build is dynamically linked against glibc — `ELF 64-bit LSB
-executable, dynamically linked, interpreter /lib64/ld-linux-x86-64.so.2, for
-GNU/Linux 3.2.0` — so it is not a static Go binary and it does not run on
-musl-based distributions such as Alpine. Upstream publishes no musl asset, so
-there is nothing to package for those hosts; they fall back to a `vale` found
-on `PATH`.
+executable, ARM aarch64, dynamically linked, interpreter
+/lib/ld-linux-aarch64.so.1, for GNU/Linux 3.7.0` — so it is not a static Go
+binary and it does not run on musl-based distributions such as Alpine. Upstream
+publishes no musl asset, so there is nothing to package for those hosts; they
+fall back to a `vale` found on `PATH`.
 
 ## License
 

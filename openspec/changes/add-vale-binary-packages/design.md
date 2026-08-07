@@ -137,7 +137,7 @@ ast-grep's seventh is `win32-ia32`, and Vale publishes no 32-bit Windows asset, 
 
 ### musl stays on the `PATH` fallback
 
-Upstream publishes no musl asset, so there is nothing to package for Alpine. That is not a naming detail: Vale's Linux build is **dynamically linked against glibc** — verified as `ELF 64-bit LSB executable, x86-64, dynamically linked, interpreter /lib64/ld-linux-x86-64.so.2, for GNU/Linux 3.2.0, stripped` — so it is not a static Go binary and will not run on musl even if it were installed there. A musl host therefore falls back to a `vale` on `PATH`, and the linux packages' READMEs say so plainly rather than leaving a user to discover it as a loader error.
+Upstream publishes no musl asset, so there is nothing to package for Alpine. That is not a naming detail: Vale's Linux build is **dynamically linked against glibc** on both architectures — verified against the pinned 3.17.1 archives as `ELF 64-bit LSB executable, x86-64, dynamically linked, interpreter /lib64/ld-linux-x86-64.so.2, for GNU/Linux 3.2.0, stripped` and, for arm64, `ELF 64-bit LSB executable, ARM aarch64, dynamically linked, interpreter /lib/ld-linux-aarch64.so.1, for GNU/Linux 3.7.0, stripped` — so it is not a static Go binary and will not run on musl even if it were installed there. The two differ in interpreter path and minimum kernel, so each linux README quotes its own architecture's string rather than sharing one. A musl host therefore falls back to a `vale` on `PATH`, and the linux packages' READMEs say so plainly rather than leaving a user to discover it as a loader error.
 
 This matches the existing gap rather than widening it: `findSgBinary()` maps every Linux to `-gnu` today, so Alpine already falls through for ast-grep.
 
