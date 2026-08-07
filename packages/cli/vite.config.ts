@@ -170,4 +170,22 @@ export default defineConfig({
       external: [/^node:/, ...builtinModules],
     },
   },
+  // Much of this suite is integration-shaped rather than unit-shaped: tests in
+  // check/runtime-check/init/onboard spawn the real built CLI via
+  // `execFile("node", [binPath, ...])`, and several lay out a fixture tree and
+  // run `git init` first. One cold CLI spawn measures ~0.8s by itself, so a test
+  // doing four or five of them sits at 3-4s before any load at all.
+  //
+  // Vitest's default 5s testTimeout left no margin for that. Since vitest runs
+  // test files in parallel workers competing for CPU, whichever tests happened
+  // to land together tipped over: a different set failed on each run, always
+  // with "Test timed out in 5000ms" and never an assertion. Verified against a
+  // clean checkout of `main` with no local changes, where 8 tests failed this
+  // way, so it is the suite's own sizing rather than any one change.
+  //
+  // 20s swallows the contention without hiding a genuine hang.
+  test: {
+    testTimeout: 20_000,
+    hookTimeout: 20_000,
+  },
 });
