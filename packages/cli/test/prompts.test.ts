@@ -199,6 +199,16 @@ describe("built prompts entry", () => {
     ).resolves.toContain("getPrompt");
   });
 
+  it("leaves the CLI entry untyped", async () => {
+    // The `.` export has no `types` condition. A `dist/index.d.ts` emitted
+    // beside `dist/index.js` would hand consumers a typed CLI surface the
+    // package never promised, as a side effect of typing the prompts entry —
+    // which is the whole reason `tsconfig.prompts.json` scopes its include list.
+    await expect(
+      readFile(resolve(distributionDirectory, "index.d.ts"), "utf8")
+    ).rejects.toThrow(/ENOENT/);
+  });
+
   it("is a library module, not an executable script", async () => {
     const source = await readFile(distributionPromptsPath, "utf8");
     // The shebang plugin serves the `bin` entry. A `#!` line here would be a

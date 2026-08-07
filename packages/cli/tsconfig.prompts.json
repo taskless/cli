@@ -6,6 +6,22 @@
 // rather than all of `src`: emitting a `dist/index.d.ts` next to `dist/index.js`
 // would give the CLI's main entry a typed public surface it does not have today
 // and has never promised, purely as a side effect of typing the new one.
+//
+// The include list bounds which entry is rooted here, not how many files are
+// emitted. Declaration emit follows the import graph, so the modules the entry
+// reaches get one too: `prompts/recipes`, `util/invocation`, and the two leaf
+// Zod schemas. They ship in the tarball under `files: ["dist"]` but no `exports`
+// condition points at them, so they stay reachable only as the types this
+// entry's own signatures reference. `dist/index.d.ts` — the thing this scoping
+// exists to prevent — is absent, which `test/prompts.test.ts` asserts.
+//
+// `declarationDir` is `dist` rather than following `TASKLESS_BUILD_TARGET` the
+// way `vite.config.ts`'s `resolveOutDir()` does, because the `./prompts` export
+// resolves to `./dist/prompts.js` unconditionally. The `dev` and `self` targets
+// exist to run the CLI binary from a local path, and nothing resolves a prompts
+// entry out of `dist-dev`/`dist-self`. Wiring this step into those builds means
+// overriding `--declarationDir` to match, or the declarations land beside the
+// wrong JavaScript.
 {
   "extends": "./tsconfig.json",
   "compilerOptions": {

@@ -2,7 +2,7 @@ import { builtinModules } from "node:module";
 import { chmodSync, readFileSync, readdirSync } from "node:fs";
 import { resolve, join } from "node:path";
 import { parse } from "yaml";
-import type { Plugin } from "vite";
+import type { Plugin, Rollup } from "vite";
 import { defineConfig } from "vite";
 import tsconfigPaths from "vite-tsconfig-paths";
 
@@ -140,20 +140,19 @@ const BIN_ENTRY = "index";
 const PROMPTS_ENTRY = "prompts";
 
 function shebang(): Plugin {
-  const isBinEntry = (chunk: {
-    type: string;
-    isEntry?: boolean;
-    name?: string;
-  }) =>
-    chunk.type === "chunk" &&
-    chunk.isEntry === true &&
-    chunk.name === BIN_ENTRY;
+  // Typed against Rollup's own bundle union rather than a structural shape, so
+  // an asset cannot satisfy the parameter by having none of these fields. The
+  // predicate return lets both hooks narrow to the chunk they act on.
+  const isBinEntry = (
+    chunk: Rollup.OutputAsset | Rollup.OutputChunk
+  ): chunk is Rollup.OutputChunk =>
+    chunk.type === "chunk" && chunk.isEntry && chunk.name === BIN_ENTRY;
 
   return {
     name: "shebang",
     generateBundle(_options, bundle) {
       for (const chunk of Object.values(bundle)) {
-        if (chunk.type === "chunk" && isBinEntry(chunk)) {
+        if (isBinEntry(chunk)) {
           chunk.code = "#!/usr/bin/env node\n" + chunk.code;
         }
       }
