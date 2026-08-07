@@ -1,12 +1,5 @@
 import { execFile } from "node:child_process";
-import {
-  copyFile,
-  mkdir,
-  mkdtemp,
-  rm,
-  stat,
-  writeFile,
-} from "node:fs/promises";
+import { cp, mkdir, mkdtemp, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { promisify } from "node:util";
@@ -16,7 +9,8 @@ import { ensureTasklessDirectory } from "../src/filesystem/directory";
 import { verifyRule } from "../src/rules/verify";
 
 const execFileAsync = promisify(execFile);
-const binPath = resolve(import.meta.dirname, "../dist/index.js");
+const distributionDirectory = resolve(import.meta.dirname, "../dist");
+const binPath = join(distributionDirectory, "index.js");
 
 /** `.taskless/sgconfig.yml` — written only when a rule set has no committed config. */
 const EPHEMERAL_CONFIG = ["sgconfig.yml"];
@@ -238,13 +232,18 @@ describe("ast-grep binary is missing", () => {
     // on a machine where either points at a real ast-grep the resolver finds
     // one, the scan succeeds, and the test fails asserting an error that never
     // needed to be printed.
+    //
+    // The whole `dist/` is copied, not just `index.js`. The build emits two
+    // library entries (`index` and `prompts`), so rollup hoists what they share
+    // into a sibling chunk that `index.js` imports by relative path — copying
+    // the bin alone leaves that import dangling and the CLI dies on
+    // ERR_MODULE_NOT_FOUND before it ever looks for ast-grep.
     const isolated = join(temporaryDirectory, "cli");
     const project = join(temporaryDirectory, "project");
     const emptyPath = join(temporaryDirectory, "empty");
-    await mkdir(isolated, { recursive: true });
     await mkdir(emptyPath, { recursive: true });
     await mkdir(project, { recursive: true });
-    await copyFile(binPath, join(isolated, "index.js"));
+    await cp(distributionDirectory, isolated, { recursive: true });
 
     await ensureTasklessDirectory(project);
     await writeFile(
