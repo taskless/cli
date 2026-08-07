@@ -247,6 +247,12 @@ function rangeMatches(range, version) {
     return false;
   }
   if (operator === "^" && rangeParts.major === 0) {
+    // Caret below 1.0.0 narrows twice: `^0.y.z` allows the patch to float but
+    // pins the minor, and `^0.0.z` desugars to `>=0.0.z <0.0.(z+1)`, which is
+    // the single version itself.
+    if (rangeParts.minor === 0) {
+      return versionParts.minor === 0 && versionParts.patch === rangeParts.patch;
+    }
     return versionParts.minor === rangeParts.minor;
   }
   return true;

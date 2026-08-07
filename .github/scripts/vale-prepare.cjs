@@ -47,7 +47,7 @@ const { createHash } = require("node:crypto");
 const {
   chmodSync,
   copyFileSync,
-  existsSync,
+  lstatSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
@@ -56,7 +56,7 @@ const {
   appendFileSync,
 } = require("node:fs");
 const { tmpdir } = require("node:os");
-const { basename, join, resolve } = require("node:path");
+const { basename, join, resolve, sep } = require("node:path");
 const { spawnSync } = require("node:child_process");
 
 const {
@@ -71,16 +71,30 @@ const {
 const REPO_ROOT = resolve(__dirname, "..", "..");
 const MANIFEST_PATH = join(__dirname, "vale-manifest.json");
 
+/**
+ * Read the value that follows a flag, or throw. A missing value is a typo, and
+ * defaulting it would be worse than stopping: an empty `--out` resolves to the
+ * current working directory, so `--out` with its argument dropped would scatter
+ * tarballs wherever the script happened to be invoked from.
+ */
+function requireValue(argv, index, flag) {
+  const value = argv[index];
+  if (value === undefined || value.length === 0 || value.startsWith("--")) {
+    throw new Error(`${flag} requires a value`);
+  }
+  return value;
+}
+
 function parseArguments(argv) {
   const options = { out: join(REPO_ROOT, ".vale-dist"), only: [], pack: true };
   for (let index = 0; index < argv.length; index += 1) {
     const argument = argv[index];
     if (argument === "--out") {
       index += 1;
-      options.out = resolve(argv[index] ?? "");
+      options.out = resolve(requireValue(argv, index, "--out"));
     } else if (argument === "--only") {
       index += 1;
-      options.only.push(String(argv[index] ?? ""));
+      options.only.push(requireValue(argv, index, "--only"));
     } else if (argument === "--skip-pack") {
       options.pack = false;
     } else {
@@ -144,6 +158,13 @@ async function download(url, destinationPath) {
  * carry `-rwxr-xr-x`, but a zip has no reliable Unix mode, and the executable
  * bit surviving into the published tarball is a requirement rather than
  * something to leave to the archive format.
+ *
+ * What lands in the temp directory is third-party bytes, so two things are
+ * checked before anything is copied into a package: the extracted path resolves
+ * inside the temp directory (a `../` member name cannot reach out of it), and it
+ * is a regular file rather than a symlink or directory. Without those, an
+ * archive carrying a symlink at the member's name would put a dangling link, or
+ * a link to a host path, into the published tarball.
  */
 function unpackMember(archivePath, member, destinationPath) {
   const workDirectory = mkdtempSync(join(tmpdir(), "vale-unpack-"));
@@ -153,10 +174,20 @@ function unpackMember(archivePath, member, destinationPath) {
     } else {
       run("tar", ["-xzf", archivePath, "-C", workDirectory, member]);
     }
-    const extracted = join(workDirectory, member);
-    if (!existsSync(extracted)) {
+    const root = resolve(workDirectory);
+    const extracted = resolve(root, member);
+    if (extracted === root || !extracted.startsWith(`${root}${sep}`)) {
+      throw new Error(`member ${member} resolves outside the unpack directory`);
+    }
+    const stats = lstatSync(extracted, { throwIfNoEntry: false });
+    if (!stats) {
       throw new Error(
         `${basename(archivePath)} contains no member named ${member}`
+      );
+    }
+    if (!stats.isFile()) {
+      throw new Error(
+        `member ${member} of ${basename(archivePath)} is not a regular file`
       );
     }
     copyFileSync(extracted, destinationPath);
