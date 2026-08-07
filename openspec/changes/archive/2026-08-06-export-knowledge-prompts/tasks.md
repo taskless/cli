@@ -10,8 +10,8 @@
 ## 2. Package export + build
 
 - [x] 2.1 Add the `./prompts` subpath to `package.json` `exports` (→ `./dist/prompts.js`, with `types`) and keep `files: ["dist"]`
-- [x] 2.2 Configure the Vite build to emit `dist/prompts.js` (+ `dist/prompts.d.ts`) as a second entry alongside `dist/index.js`, **with the same `define` block** (`__VERSION__`, `__TASKLESS_CLI__`) as the main entry
-- [x] 2.3 Add a build/CI assertion that `dist/prompts.js` and its types exist after `vite build`
+- [x] 2.2 Configure the build to emit `dist/prompts.js` as a second Vite entry alongside `dist/index.js`, **with the same `define` block** (`__VERSION__`, `__TASKLESS_CLI__`) as the main entry, plus `dist/prompts/index.d.ts` from a scoped `tsc --emitDeclarationOnly` pass
+- [x] 2.3 Add a build/CI assertion that `dist/prompts.js` and its types exist after `pnpm build`
 
 ## 3. Verify
 
