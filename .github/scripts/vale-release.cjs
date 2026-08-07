@@ -251,7 +251,9 @@ function rangeMatches(range, version) {
     // pins the minor, and `^0.0.z` desugars to `>=0.0.z <0.0.(z+1)`, which is
     // the single version itself.
     if (rangeParts.minor === 0) {
-      return versionParts.minor === 0 && versionParts.patch === rangeParts.patch;
+      return (
+        versionParts.minor === 0 && versionParts.patch === rangeParts.patch
+      );
     }
     return versionParts.minor === rangeParts.minor;
   }
@@ -312,6 +314,22 @@ function assertManifest(manifest) {
           `manifest platform ${JSON.stringify(platform.package ?? "?")} is missing ${field}`
         );
       }
+    }
+    // The containment checks in vale-prepare.cjs's unpackMember run after
+    // extraction, so they cover the member's LEAF entry only: an intermediate
+    // directory component that is itself a symlink pointing out of the unpack
+    // directory would be followed by tar while writing, before there is any
+    // path to inspect. Requiring a flat filename deletes that case rather than
+    // leaving it to the extractor's own symlink refusal — and keeps the
+    // requirement here, where a hand-edited manifest is rejected up front,
+    // instead of as a comment someone has to notice.
+    if (
+      /[/\\]/.test(platform.archiveMember) ||
+      platform.archiveMember === ".."
+    ) {
+      throw new Error(
+        `manifest platform ${platform.package} has an archiveMember that is not a flat filename: ${platform.archiveMember}`
+      );
     }
     if (!SHA256_PATTERN.test(platform.sha256)) {
       throw new Error(

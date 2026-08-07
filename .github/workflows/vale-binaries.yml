@@ -260,8 +260,39 @@ jobs:
             exit 1
           fi
           echo "Publishing ${#tarballs[@]} package(s) at ${STAMPED_VERSION}."
+
+          # The loop deliberately does not stop at the first failure, and the
+          # step deliberately does not lean on `set -e` here. Six sequential
+          # publishes are six chances for a transient registry error, and
+          # aborting midway leaves the set partially released — some platforms
+          # resolvable at this version, others not, which is the one state the
+          # CLI's exact cross-package pins cannot tolerate. Attempting all six
+          # and failing at the end means one re-run has at most the stragglers
+          # left to do.
+          #
+          # That re-run is what the `npm view` guard is for: a tarball is
+          # immutable and its version is stamped once, in prepare, so a package
+          # already at this version was published by an earlier attempt of this
+          # same release. Skipping it is idempotent, where re-publishing would
+          # fail with "cannot publish over the previously published version"
+          # and strand every package after it.
+          failed=()
           for tarball in "${tarballs[@]}"; do
             echo "::group::$tarball"
-            npm publish --provenance --access public --tag latest "./$tarball"
+            name="$(tar -xzOf "$tarball" package/package.json | node -e 'let raw = ""; process.stdin.on("data", (chunk) => { raw += chunk; }).on("end", () => { console.log(JSON.parse(raw).name); });')"
+            if npm view "${name}@${STAMPED_VERSION}" version >/dev/null 2>&1; then
+              echo "${name}@${STAMPED_VERSION} is already published — skipping."
+            elif ! npm publish --provenance --access public --tag latest "./$tarball"; then
+              echo "::error::failed to publish ${name}@${STAMPED_VERSION}"
+              failed+=("$name")
+            fi
             echo "::endgroup::"
           done
+
+          if [ "${#failed[@]}" -ne 0 ]; then
+            echo "Failed to publish ${#failed[@]} of ${#tarballs[@]} package(s) at ${STAMPED_VERSION}:" >&2
+            printf '  %s\n' "${failed[@]}" >&2
+            echo "Re-run this job to retry them; already-published packages are skipped." >&2
+            exit 1
+          fi
+          echo "All ${#tarballs[@]} package(s) are published at ${STAMPED_VERSION}."

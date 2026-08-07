@@ -320,6 +320,22 @@ test("assertManifest: rejects a missing field, a bad digest, and a duplicate", (
   assert.throws(() => assertManifest(noUpstream), /upstream\.downloadUrl/);
 });
 
+test("assertManifest: an archiveMember must be a flat filename", () => {
+  // unpackMember's containment checks run after extraction and only cover the
+  // leaf entry, so a nested member would let a symlinked intermediate
+  // directory be followed by tar before there is a path to inspect. Keeping
+  // members flat is what removes that case, so it is asserted, not assumed.
+  for (const member of ["bin/vale", "../vale", "..", "a\\vale.exe"]) {
+    const nested = fixtureManifest();
+    nested.platforms[0].archiveMember = member;
+    assert.throws(() => assertManifest(nested), /not a flat filename/);
+  }
+
+  const flat = fixtureManifest();
+  flat.platforms[0].archiveMember = "vale.exe";
+  assert.equal(assertManifest(flat), flat);
+});
+
 test("resolve*: templates expand against the pinned version", () => {
   const manifest = fixtureManifest();
   const [linux] = manifest.platforms;
