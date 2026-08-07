@@ -165,6 +165,18 @@ async function download(url, destinationPath) {
  * is a regular file rather than a symlink or directory. Without those, an
  * archive carrying a symlink at the member's name would put a dangling link, or
  * a link to a host path, into the published tarball.
+ *
+ * Both checks run after extraction, so they cover the member's LEAF entry and
+ * nothing above it. For a nested member the escape to worry about is an
+ * intermediate directory component that is itself a symlink out of the temp
+ * directory, which `tar` would follow while writing — before this function sees
+ * a path to inspect. What rules that out is upstream of here: `assertManifest`
+ * requires every `archiveMember` to be a flat single-segment filename, so there
+ * is no intermediate component to subvert. (GNU tar also refuses by default to
+ * follow a symlink when creating an implied directory, but that is the
+ * extractor's behavior, not this code's guarantee.) A future manifest entry
+ * needing a nested member would have to relax that assertion, and the checks
+ * below will not substitute for it.
  */
 function unpackMember(archivePath, member, destinationPath) {
   const workDirectory = mkdtempSync(join(tmpdir(), "vale-unpack-"));

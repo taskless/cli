@@ -40,6 +40,8 @@ const { join } = require("node:path");
 const {
   applyTemplate,
   assertManifest,
+  isUpstreamAhead,
+  parseReleaseTag,
   planManifestUpdate,
   resolveChecksumsUrl,
 } = require("./vale-release.cjs");
@@ -86,36 +88,41 @@ async function fetchText(url) {
   return response.text();
 }
 
-async function main() {
-  const write = process.argv.slice(2).includes("--write");
+async function main({
+  argv = process.argv.slice(2),
+  latestTag = fetchLatestTag,
+  text = fetchText,
+} = {}) {
+  const write = argv.includes("--write");
   const manifest = assertManifest(
     JSON.parse(readFileSync(MANIFEST_PATH, "utf8"))
   );
 
-  const upstreamTag = await fetchLatestTag(manifest.upstream.repository);
+  const upstreamTag = await latestTag(manifest.upstream.repository);
   console.log(
     `pinned: ${manifest.valeVersion}   upstream latest: ${upstreamTag}`
   );
 
-  // Probe first with an empty checksums file. When upstream is not ahead the
-  // plan short-circuits and never looks at it, so the checksums file is only
-  // downloaded for a release we are actually going to propose.
-  const probe = planManifestUpdate({
-    manifest,
-    upstreamTag,
-    checksumsText: "",
-  });
-  if (!probe.update) {
+  // Decide whether to go on with the two pure predicates directly, rather than
+  // by calling planManifestUpdate with a placeholder checksums payload. That
+  // shortcut looks equivalent but inverts the script: planManifestUpdate only
+  // ignores `checksumsText` on the NOT-ahead path, so a stand-in empty string
+  // makes it throw ("parsed to no entries") on exactly the runs that have
+  // something to propose. The cheap check has to be the cheap check.
+  const upstreamVersion = parseReleaseTag(upstreamTag);
+  if (!isUpstreamAhead(manifest.valeVersion, upstreamVersion)) {
     console.log("Upstream is not ahead of the pinned version. Nothing to do.");
     setOutput("update", "false");
-    setOutput("vale_version", probe.upstreamVersion);
+    setOutput("vale_version", upstreamVersion);
     setOutput("pinned_version", manifest.valeVersion);
     return;
   }
 
-  const checksumsUrl = resolveChecksumsUrl(manifest, probe.upstreamVersion);
+  // Only now is the checksums file worth downloading: it belongs to a release
+  // we are actually going to propose.
+  const checksumsUrl = resolveChecksumsUrl(manifest, upstreamVersion);
   console.log(`fetching ${checksumsUrl}`);
-  const checksumsText = await fetchText(checksumsUrl);
+  const checksumsText = await text(checksumsUrl);
 
   const plan = planManifestUpdate({ manifest, upstreamTag, checksumsText });
   console.log(
@@ -139,7 +146,15 @@ async function main() {
   setOutput("pinned_version", plan.pinnedVersion);
 }
 
-main().catch((error) => {
-  console.error(`\nvale-detect failed: ${error.message}`);
-  process.exitCode = 1;
-});
+// Exported (and only self-invoking as a script) so vale-detect.test.cjs can run
+// main() with the two fetches stubbed. The bug that motivated this was in the
+// composition — how main() sequences pure functions that were each already
+// tested — which is reachable no other way.
+module.exports = { main };
+
+if (require.main === module) {
+  main().catch((error) => {
+    console.error(`\nvale-detect failed: ${error.message}`);
+    process.exitCode = 1;
+  });
+}
