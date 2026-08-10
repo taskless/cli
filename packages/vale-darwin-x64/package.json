@@ -5,7 +5,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/taskless/skills.git",
+    "url": "https://github.com/taskless/cli.git",
     "directory": "packages/vale-darwin-x64"
   },
   "files": [

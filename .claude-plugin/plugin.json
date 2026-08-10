@@ -6,7 +6,7 @@
     "name": "Taskless"
   },
   "homepage": "https://taskless.io",
-  "repository": "https://github.com/taskless/skills",
+  "repository": "https://github.com/taskless/cli",
   "license": "MIT",
   "commands": "./commands/tskl/"
 }

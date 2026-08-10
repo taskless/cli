@@ -64,7 +64,7 @@ step, so local dogfooding always matches a true install.)
 > The `dev`/`self` invocations are local paths and must never be published —
 > only `pnpm build` (or `pnpm package`) produces a release artifact.
 
-## Releasing taskless/skills
+## Releasing taskless/cli
 
 Releases use [Changesets](https://github.com/changesets/changesets) with Turborepo for orchestration.
 

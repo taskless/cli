@@ -3,7 +3,7 @@
   "name": "@taskless/skills",
   "version": "0.10.2",
   "license": "MIT",
-  "repository": "taskless/skills.git",
+  "repository": "taskless/cli.git",
   "scripts": {
     "build": "pnpm build:compile",
     "build:compile": "turbo run build",
