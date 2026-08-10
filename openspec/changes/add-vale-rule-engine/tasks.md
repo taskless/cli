@@ -5,11 +5,11 @@
 
 ## 1. Vale engine
 
-- [ ] 1.1 Extract the platform-binary resolution in `findSgBinary()` (`rules/scan.ts:38-61`) into a shared helper — resolve `<pkg>/package.json` via `createRequire(import.meta.url)`, exec the binary beside it, fall back to `PATH` — and use it for both `sg` and `vale`. Parameterize the package name rather than reusing ast-grep's: `add-vale-binary-packages` ships `@taskless/vale-<os>-<cpu>` with no libc suffix, so the `-gnu` mapping `findSgBinary()` applies to every Linux must not be applied to the Vale lookup. When nothing resolves, report the Vale engine unavailable without aborting other engines (D6b)
-- [ ] 1.2 Add `rules/vale/run.ts`: run `vale --config .taskless/vale/.vale.ini --output=JSON --no-exit <paths>`, bounded by a subprocess timeout that terminates and reports on expiry
-- [ ] 1.3 Map Vale JSON findings → `CheckResult`: `source: "vale"`, `ruleId` = check name with `rules.` stripped, severity `error/warning/suggestion → error/warning/hint`, and `message`/`note`/`range`/`matchedText`/`fix` per the mapping
+- [x] 1.1 Extract the platform-binary resolution in `findSgBinary()` (`rules/scan.ts:38-61`) into a shared helper — resolve `<pkg>/package.json` via `createRequire(import.meta.url)`, exec the binary beside it, fall back to `PATH` — and use it for both `sg` and `vale`. Parameterize the package name rather than reusing ast-grep's: `add-vale-binary-packages` ships `@taskless/vale-<os>-<cpu>` with no libc suffix, so the `-gnu` mapping `findSgBinary()` applies to every Linux must not be applied to the Vale lookup. When nothing resolves, report the Vale engine unavailable without aborting other engines (D6b)
+- [x] 1.2 Add `rules/vale/run.ts`: run `vale --config .taskless/vale/.vale.ini --output=JSON --no-exit <paths>`, bounded by a subprocess timeout that terminates and reports on expiry
+- [x] 1.3 Map Vale JSON findings → `CheckResult`: `source: "vale"`, `ruleId` = check name with `rules.` stripped, severity `error/warning/suggestion → error/warning/hint`, and `message`/`note`/`range`/`matchedText`/`fix` per the mapping
 - [ ] 1.4 Add `rules/vale/verify.ts`: for each `vale/rule-tests/<rule>/`, generate an ephemeral `.vale.ini` enabling only that rule, run Vale over `pass/`/`fail/` fixtures, assert every `fail/` yields a finding and every `pass/` none
-- [ ] 1.5 Tests: `rules.` stripping + severity mapping; committed-config scoping respected (include union, exclude disable, duplicate matchers merge); verify pass/fail; missing-binary and timeout paths
+- [ ] 1.5 Tests: `rules.` stripping + severity mapping; committed-config scoping respected (include union, exclude disable, duplicate matchers merge); verify pass/fail; missing-binary and timeout paths. **Partially complete — the verify half belongs with 1.4 and lands in unit 2.** Done in unit 1: `rules.` stripping and severity mapping (`test/vale-map.test.ts`), and against the real binary (`test/vale-run.test.ts`) all three scoping cases, the missing-binary path, and the timeout path
 
 ## 2. Check orchestration
 
