@@ -34,12 +34,12 @@
 
 ## 6. CLI wiring
 
-- [ ] 6.1 Add the platform packages to `packages/cli` `optionalDependencies` at literal exact versions — not `devDependencies` (never installed for consumers) and not `workspace:*` (would silently re-point at the newest stamp)
-- [ ] 6.2 Verify installing the CLI on a supported platform yields a resolvable binary from the CLI's module context, and that an unsupported platform installs cleanly with none present
-- [ ] 6.3 Confirm publishing a newer platform package leaves an unchanged CLI resolving its pinned version
+- [x] 6.1 Add the platform packages to `packages/cli` `optionalDependencies` at literal exact versions — not `devDependencies` (never installed for consumers) and not `workspace:*` (would silently re-point at the newest stamp). Pinned at `3.17.1-20260810052605`; the lockfile records a registry resolution, not a workspace `link:`, which is what keeps the literal pin meaningful while the packages are also workspace members.
+- [x] 6.2 Verify installing the CLI on a supported platform yields a resolvable binary from the CLI's module context, and that an unsupported platform installs cleanly with none present. `createRequire` from the CLI resolves `@taskless/vale-darwin-arm64/package.json`; the sibling `vale` is mode `755`, 37.7 MB, and reports `vale version 3.17.1`. Only the host-matching package installs — the other five are filtered by `os`/`cpu`.
+- [x] 6.3 Confirm publishing a newer platform package leaves an unchanged CLI resolving its pinned version. Verified against two real published stamps: with `dist-tags.latest` at `3.17.1-20260810052605`, a project pinned to `3.17.1-20260810045147` installs `045147`. `^3.17.1` matches no version at all, so a range cannot float into a prerelease (D4).
 
 ## 7. Quality gates
 
 - [x] 7.1 `pnpm typecheck && pnpm lint && pnpm test` clean at the repo root
 - [x] 7.2 Dry-run the release workflow end to end without publishing, and confirm the packed tarball contains the executable with its permission bit
-- [ ] 7.3 Once published, remove tasks 5.1b–5.1e from `add-vale-rule-engine`, which reduces to the runtime resolution (its task 5.1) alone
+- [ ] 7.3 Once published, remove tasks 5.1b–5.1e from `add-vale-rule-engine`, which reduces to the runtime resolution (its task 5.1) alone. **Carried to `add-vale-rule-engine` (#71), the only branch where that file exists** — it is not present here, so this box cannot be ticked from this change. The precondition ("once published") is now met: all six packages are live at `3.17.1-20260810052605`.

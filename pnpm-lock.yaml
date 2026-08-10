@@ -151,6 +151,24 @@ importers:
       '@ast-grep/cli-win32-x64-msvc':
         specifier: 0.41.0
         version: 0.41.0
+      '@taskless/vale-darwin-arm64':
+        specifier: 3.17.1-20260810052605
+        version: 3.17.1-20260810052605
+      '@taskless/vale-darwin-x64':
+        specifier: 3.17.1-20260810052605
+        version: 3.17.1-20260810052605
+      '@taskless/vale-linux-arm64':
+        specifier: 3.17.1-20260810052605
+        version: 3.17.1-20260810052605
+      '@taskless/vale-linux-x64':
+        specifier: 3.17.1-20260810052605
+        version: 3.17.1-20260810052605
+      '@taskless/vale-win32-arm64':
+        specifier: 3.17.1-20260810052605
+        version: 3.17.1-20260810052605
+      '@taskless/vale-win32-x64':
+        specifier: 3.17.1-20260810052605
+        version: 3.17.1-20260810052605
 
   packages/vale-darwin-arm64: {}
 
@@ -812,6 +830,36 @@ packages:
 
   '@standard-schema/spec@1.1.0':
     resolution: {integrity: sha512-l2aFy5jALhniG5HgqrD6jXLi/rUWrKvqN/qJx6yoJsgKhblVd+iqqU4RCXavm/jPityDo5TCvKMnpjKnOriy0w==}
+
+  '@taskless/vale-darwin-arm64@3.17.1-20260810052605':
+    resolution: {integrity: sha512-182XIfZmbUaa8js7t11a7MB7Iw+tKsIUOXd8sDIKD7QhuEcdnrRt3dWHXRVR065tr86U5/z1tnHqenlWlx2BfA==}
+    cpu: [arm64]
+    os: [darwin]
+
+  '@taskless/vale-darwin-x64@3.17.1-20260810052605':
+    resolution: {integrity: sha512-NR3fWrTTu1Lj/nWOcKTO27pGv+wRTwbETcrxmDCxbsP5wNGPUHk/lhZIdvR4JE2PcIBg79mDOuE3CGt/G8nlnQ==}
+    cpu: [x64]
+    os: [darwin]
+
+  '@taskless/vale-linux-arm64@3.17.1-20260810052605':
+    resolution: {integrity: sha512-bxQgaTVxuxASzuLSVF/hm/blQnM8b3+2+y5swm91YbcCW8PW0/myjSCsNCazErfOwZzbdOdsSV4GJkNjmzSSsA==}
+    cpu: [arm64]
+    os: [linux]
+
+  '@taskless/vale-linux-x64@3.17.1-20260810052605':
+    resolution: {integrity: sha512-XByCGwrckU2vueP1XoqIaUD5sqPsgqhWAlVKHhTlTql/5wecQLT6c6/WGa8g8uN4uRYbl7MG12eJPBHWabOXiw==}
+    cpu: [x64]
+    os: [linux]
+
+  '@taskless/vale-win32-arm64@3.17.1-20260810052605':
+    resolution: {integrity: sha512-PxX0QZUTB1VR3h6T8A7/YJ8QtXCAEWnYifBrHHy0yYTPlgb7hQw69px26AAnlZy2ml7CClzt4LwF7Syq7gE+sw==}
+    cpu: [arm64]
+    os: [win32]
+
+  '@taskless/vale-win32-x64@3.17.1-20260810052605':
+    resolution: {integrity: sha512-JBldnOID0Q7RM3jy9tr98ZI2DFav9UzLtRdR1bkoJ2i8X5XdkeEfKVD6Na5YNJ/C87I3z6tcZyoiIxcTKYcM9w==}
+    cpu: [x64]
+    os: [win32]
 
   '@types/chai@5.2.3':
     resolution: {integrity: sha512-Mw558oeA9fFbv65/y4mHtXDs9bPnFMZAL/jxdPFUpOHHIXX91mcgEHbS5Lahr+pwZFR8A7GQleRWeI6cGFC2UA==}
@@ -3038,6 +3086,24 @@ snapshots:
   '@sindresorhus/merge-streams@2.3.0': {}
 
   '@standard-schema/spec@1.1.0': {}
+
+  '@taskless/vale-darwin-arm64@3.17.1-20260810052605':
+    optional: true
+
+  '@taskless/vale-darwin-x64@3.17.1-20260810052605':
+    optional: true
+
+  '@taskless/vale-linux-arm64@3.17.1-20260810052605':
+    optional: true
+
+  '@taskless/vale-linux-x64@3.17.1-20260810052605':
+    optional: true
+
+  '@taskless/vale-win32-arm64@3.17.1-20260810052605':
+    optional: true
+
+  '@taskless/vale-win32-x64@3.17.1-20260810052605':
+    optional: true
 
   '@types/chai@5.2.3':
     dependencies:
