@@ -1,6 +1,4 @@
-import { existsSync } from "node:fs";
-import { createRequire } from "node:module";
-import { spawn, spawnSync } from "node:child_process";
+import { spawn } from "node:child_process";
 import { dirname, resolve } from "node:path";
 import { createInterface } from "node:readline";
 import { fileURLToPath } from "node:url";
@@ -8,6 +6,11 @@ import { fileURLToPath } from "node:url";
 import type { AstGrepMatch } from "../types/check";
 import { toCheckResult, type CheckResult } from "../types/check";
 import { COMMITTED_SG_CONFIG } from "./engines";
+import {
+  isPlatformBinary,
+  resolvePlatformBinary,
+  type PlatformBinarySpec,
+} from "./platform-binary";
 
 export interface ScanResult {
   results: CheckResult[];
@@ -30,42 +33,23 @@ export function buildPath(): string {
   return `${binDirectory}${separator}${process.env.PATH ?? ""}`;
 }
 
-/** The npm package carrying this host's prebuilt ast-grep binary. */
-function platformPackageName(): string {
-  const parts: string[] = [process.platform, process.arch];
-  if (process.platform === "linux") {
-    parts.push("gnu");
-  } else if (process.platform === "win32") {
-    parts.push("msvc");
-  }
-  return `@ast-grep/cli-${parts.join("-")}`;
-}
-
-/** Absolute path to the binary inside the resolved platform package, if any. */
-function platformPackageBinary(binary: string): string | undefined {
-  try {
-    const require = createRequire(import.meta.url);
-    const packageJsonPath = require.resolve(
-      `${platformPackageName()}/package.json`
-    );
-    return resolve(dirname(packageJsonPath), binary);
-  } catch {
-    // Not installed for this host (unsupported arch, or musl — upstream
-    // publishes no musl package and marks the gnu ones `libc: [glibc]`).
-    return undefined;
-  }
-}
-
-/** First entry on PATH that holds a file named `command`. */
-function findOnPath(command: string): string | undefined {
-  const separator = process.platform === "win32" ? ";" : ":";
-  for (const directory of (process.env.PATH ?? "").split(separator)) {
-    if (directory === "") continue;
-    const candidate = resolve(directory, command);
-    if (existsSync(candidate)) return candidate;
-  }
-  return undefined;
-}
+/**
+ * ast-grep's per-platform packaging, as the shared resolver understands it.
+ *
+ * `toolchainSuffix: true` is what produces `@ast-grep/cli-linux-x64-gnu` and
+ * `-win32-x64-msvc`. The Vale packages set it false; see
+ * {@link PlatformBinarySpec} for why that distinction is load-bearing.
+ *
+ * Both `ast-grep` and `sg` are listed because the wrapper declares them as bin
+ * entries for the same target, so either may be what got linked.
+ */
+export const AST_GREP_BINARY: PlatformBinarySpec = {
+  label: "ast-grep",
+  packagePrefix: "@ast-grep/cli",
+  toolchainSuffix: true,
+  binaryNames: ["ast-grep", "sg"],
+  identity: /ast-grep/i,
+};
 
 /**
  * Whether `path` is really ast-grep, established by running it.
@@ -78,13 +62,7 @@ function findOnPath(command: string): string | undefined {
  * binary from a file merely sitting where the binary belongs.
  */
 export function isAstGrepBinary(path: string): boolean {
-  if (!existsSync(path)) return false;
-  const result = spawnSync(path, ["--version"], {
-    encoding: "utf8",
-    timeout: 5000,
-  });
-  if (result.error !== undefined || result.status !== 0) return false;
-  return /ast-grep/i.test(`${result.stdout ?? ""}${result.stderr ?? ""}`);
+  return isPlatformBinary(AST_GREP_BINARY, path);
 }
 
 /**
@@ -113,36 +91,18 @@ let cachedSgBinary: string | undefined;
 export function findSgBinary(): string {
   if (cachedSgBinary !== undefined) return cachedSgBinary;
 
-  const binary = process.platform === "win32" ? "ast-grep.exe" : "ast-grep";
-  const alternative = process.platform === "win32" ? "sg.exe" : "sg";
-  const localBin = resolve(
-    dirname(fileURLToPath(import.meta.url)),
-    "..",
-    "node_modules",
-    ".bin"
-  );
-
-  const candidates: Array<[label: string, path: string | undefined]> = [
-    [platformPackageName(), platformPackageBinary(binary)],
-    // Both names, matching the PATH search below: the wrapper declares `sg` and
-    // `ast-grep` as bin entries for the same target, so either may be linked.
-    ["node_modules/.bin", resolve(localBin, alternative)],
-    ["node_modules/.bin", resolve(localBin, binary)],
-    ["PATH", findOnPath(alternative)],
-    ["PATH", findOnPath(binary)],
-  ];
-
-  for (const [, path] of candidates) {
-    if (path !== undefined && isAstGrepBinary(path)) {
-      cachedSgBinary = path;
-      return path;
-    }
+  const { path, tried } = resolvePlatformBinary(AST_GREP_BINARY);
+  if (path !== undefined) {
+    cachedSgBinary = path;
+    return path;
   }
 
-  const tried = candidates.map(([label]) => label).join(", ");
+  // ast-grep, unlike Vale, has no degraded mode: it is the executor for every
+  // `sg` rule, so a miss is fatal for this command rather than one engine
+  // reporting itself unavailable.
   throw new Error(
-    `ast-grep binary not found. Looked in: ${tried}. Install a supported ` +
-      `platform build, or put \`${alternative}\` on your PATH.`
+    `ast-grep binary not found. Looked in: ${tried.join(", ")}. Install a ` +
+      `supported platform build, or put \`sg\` on your PATH.`
   );
 }
 
