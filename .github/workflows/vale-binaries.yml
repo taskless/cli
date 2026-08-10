@@ -180,13 +180,44 @@ jobs:
           )" \
             --label skip-changeset
 
+  # Is there anything to publish? The push trigger fires on ANY edit to
+  # vale-manifest.json — a reworded comment, a reformat, a digest correction —
+  # and it cannot tell those from a version bump. Without this gate each of them
+  # publishes six packages at a fresh <valeVersion>-<timestamp> stamp, which
+  # nothing downstream can absorb because every stamp is novel by construction.
+  #
+  # Cheap on purpose: it reads the registry and decides BEFORE `prepare`
+  # downloads ~60 MB of third-party archives. Credential-free, like prepare.
+  gate:
+    name: "publish gate"
+    if: >-
+      github.event_name == 'push' ||
+      (github.event_name == 'workflow_dispatch' && inputs.phase == 'publish')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read # checkout only
+    outputs:
+      should_publish: ${{ steps.gate.outputs.should_publish }}
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 24
+      # --force on dispatch: an explicit human request publishes even when the
+      # pinned version is already out. Only the automatic push path is gated.
+      - id: gate
+        run: |
+          node .github/scripts/vale-gate.cjs \
+            ${{ github.event_name == 'workflow_dispatch' && '--force' || '' }}
+
   # Credential-free. Downloads third-party bytes, verifies them against the
   # reviewed digests, and produces tarballs. Cannot publish anything.
   prepare:
     name: Fetch, verify, stamp, pack
-    if: >-
-      github.event_name == 'push' ||
-      (github.event_name == 'workflow_dispatch' && inputs.phase == 'publish')
+    needs: gate
+    if: needs.gate.outputs.should_publish == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: read # checkout only
