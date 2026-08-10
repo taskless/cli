@@ -114,10 +114,17 @@ async function main({
     JSON.parse(readFileSync(MANIFEST_PATH, "utf8"))
   );
 
-  const publishedByPackage = {};
-  for (const platform of manifest.platforms) {
-    publishedByPackage[platform.package] = await published(platform.package);
-  }
+  // Concurrent, not sequential: the six lookups are independent, and this job
+  // exists to decide cheaply BEFORE prepare downloads ~60 MB. Sequential awaits
+  // would make the gate six round trips deep for no reason.
+  const publishedByPackage = Object.fromEntries(
+    await Promise.all(
+      manifest.platforms.map(async (platform) => [
+        platform.package,
+        await published(platform.package),
+      ])
+    )
+  );
 
   const plan = planPublish({ manifest, publishedByPackage, forced });
 

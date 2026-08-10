@@ -16,19 +16,31 @@
 #            It publishes nothing.
 #
 #   publish  Runs on the push to main that merges that pull request — i.e. once
-#            a human has reviewed the digests. Split further into `prepare` and
-#            `publish` below.
+#            a human has reviewed the digests. Split further into `gate`,
+#            `prepare`, and `publish` below, where `gate` decides whether the
+#            pinned version still needs publishing at all.
 #
 # A single job that discovered a digest and then verified downloads against the
 # digest it had just discovered would verify nothing. Splitting the phases is
 # what makes the automation trustworthy: nothing is published on bytes nobody
 # signed off on, and nobody has to notice a Vale release for the process to run.
 #
-# WHAT BOUNDS A RUN is the upstream-version comparison, and only that. A "is
-# this version already on npm?" check — the thing release.yml uses — cannot work
+# WHAT BOUNDS A RUN is the upstream-version comparison plus the `gate` job, and
+# the distinction between them is worth stating precisely because half of it is
+# a trap (design D5).
+#
+# A check against the STAMPED version — the thing release.yml uses — cannot work
 # here: every publish stamps <valeVersion>-<yyyymmddhhmmss>, a version npm has
-# never seen, so such a check would answer "not published" every time and could
-# never suppress anything (design D5).
+# never seen, so it would answer "not published" every time and could never
+# suppress anything.
+#
+# A check against the BASE version is a different question and does work. "Has
+# anything been published for Vale 3.17.1?" is satisfied by a published 3.17.1
+# or any 3.17.1-* stamp, which is exactly the set this workflow can mint for it.
+# `gate` runs that check, because the push trigger below fires on ANY edit to
+# vale-manifest.json and a `paths:` filter cannot see why the file changed — a
+# reworded comment would otherwise publish six packages. An explicit dispatch
+# passes --force and is never suppressed.
 #
 # WHY prepare AND publish ARE SEPARATE JOBS: `prepare` downloads third-party
 # bytes off the internet. It holds `contents: read`, no environment, and no
