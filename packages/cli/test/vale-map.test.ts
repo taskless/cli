@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  asValeConfigError,
   normalizeSeverity,
   stripRulesPrefix,
   toValeCheckResult,
@@ -147,5 +148,43 @@ describe("toValeCheckResults", () => {
 
   it("tolerates a file key with no findings", () => {
     expect(toValeCheckResults({ "docs/a.md": [] })).toEqual([]);
+  });
+});
+
+describe("asValeConfigError", () => {
+  /**
+   * Captured from the real binary by giving a rule `level: catastrophe`. Vale
+   * sends this to stderr with exit 2, so `runVale` reports it as a failure and
+   * it does not reach the mapper today; these cases pin the guard that keeps a
+   * future stdout-reported config error from crashing instead of reporting.
+   */
+  const configError = {
+    Line: 3,
+    Path: "/x/.taskless/vale/rules/bogus.yml",
+    Text: "'level' must be one of [suggestion warning error]",
+    Code: "E201",
+    Span: 1,
+  };
+
+  it("recognizes the config-error payload", () => {
+    expect(asValeConfigError(configError)?.Code).toBe("E201");
+  });
+
+  it("does not mistake a findings payload for one", () => {
+    expect(asValeConfigError({ "docs/a.md": [example] })).toBeUndefined();
+    expect(asValeConfigError({})).toBeUndefined();
+    expect(asValeConfigError(null)).toBeUndefined();
+  });
+
+  it("does not throw when a config error reaches the mapper anyway", () => {
+    // Without the Array.isArray guard this dies with `(findings ?? []).map is
+    // not a function`: Object.entries walks Line/Path/Code and calls .map on a
+    // number. An uncaught throw here would abort the other engines, which is
+    // precisely what D6b forbids.
+    expect(() =>
+      toValeCheckResults(
+        configError as unknown as Parameters<typeof toValeCheckResults>[0]
+      )
+    ).not.toThrow();
   });
 });

@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { findValeBinary } from "../src/rules/vale/binary";
-import { runVale } from "../src/rules/vale/run";
+import { isValeFailure, runVale } from "../src/rules/vale/run";
 
 /**
  * These run the real Vale binary. It ships as an `optionalDependency` for the
@@ -185,6 +185,29 @@ withVale("runVale against the real binary", () => {
     });
   });
 
+  it("reports a malformed rule as a failure instead of crashing", async () => {
+    // Measured, not assumed: Vale answers a bad rule on stderr with exit 2 and
+    // an empty stdout, so the non-zero-exit branch reports it. The point of the
+    // test is that a broken rule file surfaces as a failure the user can act on
+    // rather than as "no Vale findings", which is indistinguishable from a
+    // clean run and is how a silently disabled engine ships.
+    const cwd = makeProject(
+      `${header}\n[*.md]\nrules.bogus = YES\n`,
+      {
+        bogus: `extends: existence\nmessage: "test"\nlevel: catastrophe\ntokens:\n  - simply\n`,
+      },
+      { "doc.md": "Just simply do it.\n" }
+    );
+
+    const outcome = await runVale({ cwd, paths: ["doc.md"] });
+    expect(outcome.status).toBe("failed");
+    if (outcome.status !== "failed") return;
+    // Vale's own diagnostic is carried through verbatim: the rule file it
+    // rejected and why.
+    expect(outcome.message).toContain("E201");
+    expect(outcome.message).toContain("bogus.yml");
+  });
+
   it("terminates and reports a timeout rather than hanging", async () => {
     const cwd = makeProject(
       `${header}\n[*.md]\nrules.no-simply = YES\n`,
@@ -198,5 +221,26 @@ withVale("runVale against the real binary", () => {
     expect(outcome.status).toBe("timeout");
     if (outcome.status !== "timeout") return;
     expect(outcome.message).toContain("terminated");
+  });
+});
+
+describe("isValeFailure", () => {
+  it("treats an absent binary as a skip, not a failure", () => {
+    // An unsupported arch is an ordinary state, not evidence that the user's
+    // rules are wrong. Failing here would make `check` unrunnable on a machine
+    // where ast-grep and runtime rules report perfectly well.
+    expect(isValeFailure({ status: "unavailable", message: "x" })).toBe(false);
+  });
+
+  it("treats a timeout or a failure as an error", () => {
+    // Vale was present and asked to work. Reporting these as a skip would let
+    // a broken rule file read as "no Vale findings" — indistinguishable from a
+    // clean run, and how a silently disabled engine ships.
+    expect(isValeFailure({ status: "timeout", message: "x" })).toBe(true);
+    expect(isValeFailure({ status: "failed", message: "x" })).toBe(true);
+  });
+
+  it("treats findings as a success; severity decides the exit code", () => {
+    expect(isValeFailure({ status: "ok", results: [] })).toBe(false);
   });
 });

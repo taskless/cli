@@ -24,6 +24,50 @@ export interface ValeFinding {
 export type ValeOutput = Record<string, ValeFinding[]>;
 
 /**
+ * Vale's *other* JSON payload: a configuration error.
+ *
+ * When a rule file is malformed, Vale emits one flat object like
+ * `{Line, Path, Text: "'level' must be one of [...]", Code: "E201", Span}`
+ * rather than findings-keyed-by-file.
+ *
+ * Measured against the real binary (a rule with an out-of-vocabulary `level`):
+ * it goes to **stderr** with **exit 2** and an empty stdout, so `runVale`'s
+ * non-zero-exit branch already reports it as a failure and this shape never
+ * reaches the mapper today.
+ *
+ * This guard is therefore defensive, not a fix for a live bug. It is cheap and
+ * worth keeping because the failure mode if Vale ever reports a config error on
+ * stdout is not a wrong answer but a crash: mapping it walks `Object.entries`
+ * over `Line`/`Path`/`Code` and calls `.map` on a number, and an uncaught throw
+ * out of `runVale` would take the other engines down with it (D6b).
+ */
+export interface ValeConfigError {
+  Code: string;
+  Text: string;
+  Path?: string;
+  Line?: number;
+}
+
+/**
+ * Recognize the config-error payload, so the caller can report it as a failure
+ * rather than crashing while mapping it.
+ *
+ * Keyed on `Code` + `Text` because those are what distinguish it: a findings
+ * payload's values are arrays, and its keys are file paths, so a top-level
+ * string `Code` cannot occur in one.
+ */
+export function asValeConfigError(
+  parsed: unknown
+): ValeConfigError | undefined {
+  if (typeof parsed !== "object" || parsed === null) return undefined;
+  const candidate = parsed as Partial<ValeConfigError>;
+  return typeof candidate.Code === "string" &&
+    typeof candidate.Text === "string"
+    ? (candidate as ValeConfigError)
+    : undefined;
+}
+
+/**
  * Vale's severities, normalized to the scanner-agnostic set.
  *
  * `suggestion → hint` is the only one that renames. Vale's three levels do not
@@ -126,6 +170,11 @@ export function toValeCheckResult(
  */
 export function toValeCheckResults(output: ValeOutput): CheckResult[] {
   return Object.entries(output).flatMap(([file, findings]) =>
-    (findings ?? []).map((finding) => toValeCheckResult(file, finding))
+    // Defence in depth against the shape confusion {@link asValeConfigError}
+    // guards: callers should reject a config-error payload before reaching
+    // here, but a non-array value must never become a `.map` on a number.
+    Array.isArray(findings)
+      ? findings.map((finding) => toValeCheckResult(file, finding))
+      : []
   );
 }

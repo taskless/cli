@@ -5,7 +5,7 @@ import type { CheckResult } from "../../types/check";
 import { ENGINE_LAYOUTS } from "../engines";
 import { buildPath } from "../scan";
 import { findValeBinary, valeUnavailableMessage } from "./binary";
-import { toValeCheckResults, type ValeOutput } from "./map";
+import { asValeConfigError, toValeCheckResults, type ValeOutput } from "./map";
 
 /** The committed Vale config, relative to the project root. */
 export const COMMITTED_VALE_CONFIG = `.taskless/${ENGINE_LAYOUTS.vale.configFile}`;
@@ -33,6 +33,30 @@ export type ValeRunOutcome =
   | { status: "unavailable"; message: string }
   | { status: "timeout"; message: string }
   | { status: "failed"; message: string };
+
+/**
+ * Whether an outcome should fail the check, as opposed to being reported and
+ * moved past.
+ *
+ * The three non-ok cases are not equivalent, and collapsing them would be
+ * wrong in both directions:
+ *
+ * - `unavailable` is a **skip**. The host has no Vale binary, which is an
+ *   ordinary state on an unsupported arch and not evidence of anything wrong
+ *   with the user's rules. Failing here would make `check` unrunnable on a
+ *   machine where ast-grep and runtime rules are perfectly able to report.
+ * - `timeout` and `failed` are **errors**. Vale was present and was asked to do
+ *   its job: it hung, crashed, or rejected the configuration. Reporting those
+ *   as a skip would let a broken rule file read as "no Vale findings", which is
+ *   indistinguishable from a clean run and is exactly how a silently disabled
+ *   engine gets shipped.
+ *
+ * Exported here rather than decided at the call site so orchestration (2.2)
+ * derives the exit code from one rule instead of restating it.
+ */
+export function isValeFailure(outcome: ValeRunOutcome): boolean {
+  return outcome.status === "timeout" || outcome.status === "failed";
+}
 
 export interface ValeRunOptions {
   /** Project root. Vale runs here, so its config paths resolve as committed. */
@@ -141,8 +165,25 @@ export async function runVale(
       }
 
       try {
-        const parsed = JSON.parse(stdout) as ValeOutput;
-        settle({ status: "ok", results: toValeCheckResults(parsed) });
+        const parsed: unknown = JSON.parse(stdout);
+
+        // A malformed rule makes Vale emit a config error and still exit 0, so
+        // this is the only place the difference is detectable.
+        const configError = asValeConfigError(parsed);
+        if (configError !== undefined) {
+          settle({
+            status: "failed",
+            message: `Vale rejected the configuration (${configError.Code}): ${configError.Text}${
+              configError.Path === undefined ? "" : ` in ${configError.Path}`
+            }`,
+          });
+          return;
+        }
+
+        settle({
+          status: "ok",
+          results: toValeCheckResults(parsed as ValeOutput),
+        });
       } catch (error) {
         settle({
           status: "failed",
