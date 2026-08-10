@@ -71,7 +71,9 @@ Nobody has to notice a Vale release, and nothing is published on bytes a human h
 
 Safe to automate because **publishing a platform package changes nothing on its own** — the CLI pins an exact version (D8), so a newly published package is inert until someone bumps that pin. Two independent gates, then: review to publish the package, and a separate deliberate bump to adopt it.
 
-This also avoids a trap: a freshly stamped timestamp is never already on npm, so any "is this version published?" check would fire on every run. The upstream-version comparison, not a published-version check, is what bounds releases.
+This also avoids a trap, but only a specific one, and the distinction is load-bearing. A freshly stamped timestamp is never already on npm, so a check against the **stamped** version would answer "not published" every time and could never suppress anything. A check against the **base** version is a different question and is answerable: "has anything been published for Vale 3.17.1?" is satisfied by a published `3.17.1` or any `3.17.1-…` stamp, which is exactly the set this workflow can mint for it.
+
+That check is required, not optional. The publish phase fires on a push to `main` touching `vale-manifest.json`, and a `paths:` filter cannot see _why_ the file changed — a reworded comment, a reformat, or a digest correction is indistinguishable from a version bump, and each would publish six packages nobody asked for. So the publish path is gated on the base-version comparison (`.github/scripts/vale-gate.cjs`), which skips only when **all** platform packages already carry the pinned version; a partial set still publishes, so the gate doubles as partial-release repair. An explicit `workflow_dispatch` passes `--force` and is never suppressed — a human asking for a publish gets one.
 
 - **Alternative — route these through `release.yml`:** rejected; it is built around changesets and a published-version check, neither of which applies here, and coupling them would mean a Vale release could not ship without a CLI release.
 
