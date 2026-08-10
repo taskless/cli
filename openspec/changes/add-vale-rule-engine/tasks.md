@@ -1,7 +1,7 @@
 ## 0. Prerequisites
 
-- [ ] 0.1 Confirm `partition-rules-by-engine` has landed: `.taskless/vale/` is scaffolded, dispatch routes by engine directory, and `check` runs ast-grep over the committed `sg/sgconfig.yml`. This change extends that layout; it does not create it
-- [ ] 0.2 Confirm the Vale platform packages from `add-vale-binary-packages` are published and declared, so there is a binary to resolve
+- [x] 0.1 Confirm `partition-rules-by-engine` has landed: `.taskless/vale/` is scaffolded, dispatch routes by engine directory, and `check` runs ast-grep over the committed `sg/sgconfig.yml`. This change extends that layout; it does not create it. Archived on `main` as `openspec/changes/archive/2026-08-02-partition-rules-by-engine`
+- [x] 0.2 Confirm the Vale platform packages from `add-vale-binary-packages` are published and declared, so there is a binary to resolve. All six `@taskless/vale-*` are published at `3.17.1-20260810052605` and pinned in `packages/cli` `optionalDependencies`
 
 ## 1. Vale engine
 
@@ -19,7 +19,7 @@
 
 ## 3. Engine-selection knowledge topic
 
-- [ ] 3.1 Author `packages/cli/src/help/<engine-selection>.txt` from the seed prose in `tmp/SEED-engine-selection-prose.md`: the three engine definitions (`sg` in-file syntax tree incl. relational correlation, `vale` prose/markup, `runtime` cross-file/graph/metadata/normalization), the reason-before-answer procedure, and the worked example table
+- [ ] 3.1 Author `packages/cli/src/help/<engine-selection>.txt` covering: the three engine definitions (`sg` in-file syntax tree incl. relational correlation, `vale` prose/markup, `runtime` cross-file/graph/metadata/normalization), the reason-before-answer procedure, and a worked example table. The original seed (`tmp/SEED-engine-selection-prose.md`) no longer exists — rebuild the examples rather than treating the file as a prerequisite; the content requirements are stated here and in 3.2–3.4, which is the authority
 - [ ] 3.2 State the ambiguity default as a property — the default names an engine known to be available — and note that `@ast-grep/cli` ships as a dependency while the Vale binary is external, so `sg` satisfies it locally
 - [ ] 3.3 Carry the three boundary cases: prose-about-code vs structure, Vale is per-document (cross-document prose consistency is `runtime`), and `sg`/`vale` are both static-tier so trust tier is a separate axis
 - [ ] 3.4 Keep the topic scoped to engine choice — no authoring-destination guidance, no tool-calling mechanics from the seed's source prompt
