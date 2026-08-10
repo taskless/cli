@@ -115,7 +115,7 @@ Exporting the topic through `@taskless/cli/prompts` is deliberately **not** coup
 
 ## Open Questions
 
-**Vale binary packaging** — the per-platform packages (D6b) are their own release-engineering task: which architectures to cover beyond the ast-grep set, and the CI job that mirrors upstream Vale releases. It does not block the engine work; resolution falls back to `PATH` while the packages are being stood up, and the missing-binary path degrades cleanly throughout.
+**Vale binary packaging** — resolved by `add-vale-binary-packages`. Six packages (`@taskless/vale-{darwin,linux,win32}-{arm64,x64}`) are published at `3.17.1-20260810052605` and pinned as `optionalDependencies`, with a CI job mirroring upstream Vale releases. No musl variant is published, so Alpine keeps the `PATH` fallback deliberately. Only the runtime resolution (task 1.1) remains here.
 
 The three revisited items are resolved: Vale rule-tests use per-rule `pass/`/`fail/` subdirectories with a verify-time-**generated** isolating `.vale.ini` (mirroring ast-grep's valid/invalid); Taskless breadcrumbs in `.vale.ini` use the `tskl) <name> = <value>` namespace (all namespaced key syntaxes verified tolerated); and the runtime tier is **realigned** to `runtime/` in this change (content-preserving move).
 
