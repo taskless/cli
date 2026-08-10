@@ -64,6 +64,12 @@
     "@ast-grep/cli-linux-x64-gnu": "0.41.0",
     "@ast-grep/cli-win32-arm64-msvc": "0.41.0",
     "@ast-grep/cli-win32-ia32-msvc": "0.41.0",
-    "@ast-grep/cli-win32-x64-msvc": "0.41.0"
+    "@ast-grep/cli-win32-x64-msvc": "0.41.0",
+    "@taskless/vale-darwin-arm64": "3.17.1-20260810052605",
+    "@taskless/vale-darwin-x64": "3.17.1-20260810052605",
+    "@taskless/vale-linux-arm64": "3.17.1-20260810052605",
+    "@taskless/vale-linux-x64": "3.17.1-20260810052605",
+    "@taskless/vale-win32-arm64": "3.17.1-20260810052605",
+    "@taskless/vale-win32-x64": "3.17.1-20260810052605"
   }
 }
