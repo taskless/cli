@@ -207,10 +207,18 @@ jobs:
       - id: prepare
         run: node .github/scripts/vale-prepare.cjs --out .vale-dist
 
+      # `include-hidden-files` is REQUIRED because the output directory is
+      # dot-prefixed. upload-artifact has excluded hidden files by default since
+      # v4.4, and a leading-dot DIRECTORY makes everything beneath it hidden —
+      # so `.vale-dist/*.tgz` silently matched nothing even though `prepare`
+      # had just written six tarballs there. `if-no-files-found: error` is what
+      # turned that into a failed run rather than an empty artifact handed to
+      # the publish job; keep both.
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: vale-tarballs
           path: .vale-dist/*.tgz
+          include-hidden-files: true
           if-no-files-found: error
           retention-days: 1
 
