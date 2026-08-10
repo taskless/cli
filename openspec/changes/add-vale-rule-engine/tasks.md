@@ -25,8 +25,9 @@
 - [ ] 3.4 Keep the topic scoped to engine choice — no authoring-destination guidance, no tool-calling mechanics from the seed's source prompt
 - [ ] 3.5 Register the topic in the help index and add `route`/`static` cross-references to it
 - [ ] 3.6 Tests: the topic resolves via `taskless help` and appears in the index; the topic file matches the established recipe header/format convention
+- [ ] 3.7 Add the topic to `TOPICS` in `packages/cli/src/prompts/index.ts`, in the **same unit as the topic file**. This is not optional bookkeeping: `TOPICS ∪ INTERNAL_TOPICS` must account for every canonical recipe on disk, and `test/prompts.test.ts` asserts that in both directions — so a recipe file added without a classification turns the suite red. `TOPICS` rather than `INTERNAL_TOPICS` per D7: the platform generator is the intended consumer, and exporting the entry is what lets it render the same text `taskless help` serves instead of keeping its own copy
 
-> Export via `@taskless/cli/prompts` is not part of this change (see D9). Whichever of this change and `export-knowledge-prompts` lands second adds the one-line `TOPICS` entry.
+> Export via `@taskless/cli/prompts` **is** part of this change (D7). `export-knowledge-prompts` landed first, so the one-line `TOPICS` entry falls here — see task 3.7.
 
 ## 4. Quality gates
 
