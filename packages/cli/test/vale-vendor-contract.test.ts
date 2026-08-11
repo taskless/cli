@@ -317,6 +317,24 @@ withVale("Vale vendor contract", () => {
     });
   });
 
+  it("matches existence tokens case-sensitively by default", () => {
+    // Depended on by: every fixture we author, and by anyone writing a rule.
+    // `Simply` does not match the token `simply`. This cost real time once —
+    // a verify fixture that read as a bug in the verifier rather than as a
+    // fixture that never matched. If Vale ever changes this default, rules
+    // that relied on case sensitivity start firing on prose they ignored.
+    const cwd = project(
+      `${header}\n[*.md]\nrules.no-simply = YES\n`,
+      { "no-simply": existence("simply") },
+      { "doc.md": "Simply put, simply.\n" }
+    );
+    const parsed = JSON.parse(
+      runRaw(cwd, ["doc.md"], ["--no-exit"]).stdout
+    ) as Record<string, Array<{ Span: [number, number] }>>;
+    // One finding: the lowercase occurrence only.
+    expect(parsed["doc.md"]).toHaveLength(1);
+  });
+
   it("ignores a `tskl)` breadcrumb key in the config", () => {
     // Depended on by: the spec's breadcrumb requirement — Taskless writes
     // `tskl) rule = <id>` keys into .vale.ini and relies on Vale's ini parser
