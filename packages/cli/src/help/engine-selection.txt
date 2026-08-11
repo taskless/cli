@@ -1,0 +1,113 @@
+# Topic: engine-selection     (CLI v%(CLI_VERSION)s / topic v1)
+
+## Goal
+Decide WHICH ENGINE enforces a rule: `sg` (ast-grep), `vale`, or
+`runtime`. This is a question about the shape of the evidence the rule
+needs, not about where the rule gets authored and not about how much
+the rule is trusted.
+
+## Preconditions
+- A rule intent stated in words ("no `eval`", "don't say 'simply'",
+  "every exported symbol must appear in the changelog").
+- No auth required. Engine choice is a property of the rule, not of the
+  user's session.
+
+## The three engines
+
+**`sg` — one file's syntax tree.**
+Code structure, decided by parsing a single file: a call, an import, a
+JSX attribute, a type annotation. Relational correlation counts as
+in-file — "a `useEffect` whose dependency array omits a value used in
+its body" is still one file's tree, and `sg` handles it. If the rule
+can be settled by looking at exactly one file's structure, it is `sg`.
+
+**`vale` — prose and markup.**
+Natural language in documents and in the prose parts of code: docs,
+README, comments, commit-message bodies. Word choice, phrasing,
+terminology, capitalization, banned or preferred vocabulary. Vale reads
+a document, not a syntax tree.
+
+**`runtime` — everything that needs more than one file, or needs the
+world.**
+Cross-file and graph questions ("this exported symbol is unused across
+the repo"), metadata not in any file's text (git history, ownership,
+build outputs), and normalization a parser cannot express (resolving
+aliases, following a config chain). If answering the rule requires
+holding two files at once, or looking outside the files, it is
+`runtime`.
+
+## Steps
+
+1. **State the evidence the rule needs, before naming an engine.**
+   Write one sentence: "to decide this, you must look at ___." Do this
+   first, every time. Naming an engine and then justifying it is how
+   prose-about-code ends up in `sg` and cross-file questions end up in
+   `vale`.
+
+2. **Match the evidence to an engine.**
+   - one file's structure → `sg`
+   - a document's words → `vale`
+   - more than one file, or anything outside the files → `runtime`
+
+3. **Check the boundary cases below.** Most wrong answers are one of
+   the three.
+
+4. **If it is still ambiguous, choose an engine you know is
+   available.** State that as the reason. Both `sg` and `vale` ship as
+   platform binaries with the CLI, so both are normally present; on an
+   unsupported architecture, or where an install was blocked, the
+   fallback may find nothing. Server-side the same conclusion follows
+   from a different cause: `sg` is the only ungated route. Prefer the
+   engine whose availability you can actually assert in the situation
+   you are in, rather than defaulting to a name.
+
+## Boundary cases
+
+**Prose about code is still prose.**
+"Comments must not say 'obviously'" is `vale` — the evidence is the
+words. "Every exported function has a doc comment" is `sg` — the
+evidence is whether a node exists above a declaration. Ask what you
+would have to read to decide, not what the subject matter is.
+
+**Vale sees one document at a time.**
+Vale has no cross-document view. "This term is spelled consistently
+ACROSS the docs directory" is `runtime`, not `vale`, even though it is
+entirely about prose. Per-document prose is `vale`; prose consistency
+between documents is a graph question.
+
+**Engine is not trust tier.**
+`sg` and `vale` are both static-tier: inert data, always run, no login,
+no reconcile, no signing. Only `runtime` involves verification, because
+only `runtime` executes code. "Static vs runtime" is a different axis
+from "which engine", and conflating them is what makes a prose rule
+look like it needs login.
+
+## Worked examples
+
+| Rule intent                                              | Evidence needed                          | Engine    |
+| -------------------------------------------------------- | ---------------------------------------- | --------- |
+| No `eval(...)` anywhere                                  | one file's call expressions              | `sg`      |
+| `useEffect` deps must include what the body reads        | one file's tree, correlated within it    | `sg`      |
+| Don't write "simply" or "just" in docs                   | a document's words                       | `vale`    |
+| Comments must not say "obviously"                        | a document's words (comments are prose)  | `vale`    |
+| Headings use sentence case                               | a document's markup                      | `vale`    |
+| Exported symbols must be used somewhere in the repo      | every file, correlated                   | `runtime` |
+| Product name spelled the same across all docs            | many documents, compared                 | `runtime` |
+| Files changed in the last release need a changelog entry | git metadata, not file contents          | `runtime` |
+| Imports must resolve through the tsconfig path aliases   | config chain resolution, outside the file| `runtime` |
+
+## Important Notes
+
+- This topic decides the engine and nothing else. Where a rule is
+  authored — in a linter the repo already uses, locally, or via the
+  service — is `route`, and it is a separate decision made earlier.
+  Locally the two compose: route first, then engine.
+- A rule that seems to need two engines is usually two rules. Split it
+  and let each half pick its own engine, rather than forcing one engine
+  to cover evidence it cannot see.
+
+## See Also
+
+- `taskless help route` — decide WHERE to author a rule (a different question)
+- `taskless help static` — author a local ast-grep rule (no login)
+- `taskless help check` — run every engine over the repo

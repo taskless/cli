@@ -71,4 +71,6 @@ writes, so `check`, `improve`, and `verify` treat them identically.
 
 - `taskless help route` — re-decide the destination
 - `taskless help remote` — generate via the Taskless service (login)
+- `taskless help engine-selection` — confirm `sg` is the right engine for
+  this rule, rather than `vale` or `runtime`
 - `taskless help check` — validate the new rule against the codebase

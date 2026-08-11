@@ -93,3 +93,5 @@ failed and the user confirms.
 - `taskless help existing` — author in a linter the repo already uses
 - `taskless help static` — author a local ast-grep rule (no login)
 - `taskless help remote` — generate via the Taskless service (login)
+- `taskless help engine-selection` — decide WHICH engine enforces the rule
+  (the next decision once the destination is settled)
