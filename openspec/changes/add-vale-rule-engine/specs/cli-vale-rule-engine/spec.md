@@ -25,22 +25,34 @@ The system SHALL run `vale --config .taskless/vale/.vale.ini --output=JSON --no-
 
 ### Requirement: Per-rule scoping is expressed via Vale config matchers
 
-The system SHALL express a Vale rule's scope through `.vale.ini` **matchers** — `[<glob>]` sections. Include is `rules.<name> = YES` (unioning across matching matchers); exclude is `rules.<name> = NO` (a disable takes precedence over an enable, independent of order). Duplicate `[<glob>]` matchers SHALL be treated as merged, since Vale unions them.
+The system SHALL express a Vale rule's scope through `.vale.ini` **matchers** — `[<glob>]` sections. Include is `rules.<name> = YES`, exclude is `rules.<name> = NO`.
+
+Precedence is **positional**, and the system SHALL order matchers accordingly rather than relying on a disable to win on its own. Measured against Vale 3.17.1:
+
+- Where two matchers both match a file, the **last** one wins for that rule.
+- Where the same key is assigned twice inside one matcher — including across duplicate `[<glob>]` sections, which Vale merges — the **first** assignment wins.
+
+A disable therefore SHALL be declared **after** the enable it narrows. Duplicate `[<glob>]` matchers SHALL be treated as merged, and a rule's scope SHALL NOT be expressed as a repeated assignment of the same key within one glob, since the later assignment is discarded.
 
 #### Scenario: Duplicate matchers merge
 
 - **WHEN** two `[*.md]` matchers each enable a different rule
-- **THEN** both rules run on a matching `.md` file (Vale unions the matchers)
+- **THEN** both rules run on a matching `.md` file (Vale merges the matchers)
 
 #### Scenario: Include scopes a rule to a path
 
 - **WHEN** a rule is enabled only under `[marketing/**]`
 - **THEN** the rule produces findings in `marketing/` files and none in `api/` files
 
-#### Scenario: Exclude removes a subpath from an included scope
+#### Scenario: A later matcher overrides an earlier one
 
-- **WHEN** a rule is enabled under `[marketing/**]` and disabled under `[marketing/legacy/**]`
+- **WHEN** a rule is enabled under `[marketing/**]` and then disabled under `[marketing/legacy/**]`
 - **THEN** the rule fires in `marketing/` but not in `marketing/legacy/`
+
+#### Scenario: Declaration order is significant
+
+- **WHEN** the same two matchers are declared in the opposite order — `[marketing/legacy/**]` disabling first, `[marketing/**]` enabling second
+- **THEN** the rule fires in `marketing/legacy/` as well, because the later enable wins; a disable does not take precedence on its own
 
 ### Requirement: Vale findings map to the scanner-agnostic CheckResult
 
