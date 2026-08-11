@@ -27,8 +27,16 @@ import { getRecipe, type RecipeOptions } from "./recipes.js";
  * The list starts at what a consumer has actually asked for and grows on
  * demand. `static` is the canonical on-disk rule shape, the one topic the
  * generator's decision router can use server-side.
+ *
+ * `engine-selection` is exported for the same consumer and the same reason
+ * (D7 of `add-vale-rule-engine`). Choosing an engine is a decision the service
+ * already makes — today as a binary `static | runtime` classifier that predates
+ * Vale, and is therefore now wrong. Exporting the topic is what lets the
+ * generator render the same guidance `taskless help` serves instead of keeping
+ * a second copy free to drift, which is the divergence this module exists to
+ * prevent.
  */
-export const TOPICS = ["static"] as const;
+export const TOPICS = ["static", "engine-selection"] as const;
 
 /**
  * Recipes deliberately withheld from the export, recorded so they stay visible

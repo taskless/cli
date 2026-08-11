@@ -62,7 +62,13 @@ describe("taskless help (no args)", () => {
   it("lists the routing recipe topics under Authoring recipes", async () => {
     const result = await runCli(["help", "-d", cwd]);
     expect(result.stdout).toContain("Authoring recipes:");
-    for (const topic of ["route", "existing", "static", "remote"]) {
+    for (const topic of [
+      "route",
+      "existing",
+      "static",
+      "remote",
+      "engine-selection",
+    ]) {
       expect(result.stdout).toContain(topic);
     }
   });
@@ -79,7 +85,7 @@ describe("taskless help <routing topic>", () => {
     await rm(cwd, { recursive: true, force: true });
   });
 
-  it.each(["route", "existing", "static", "remote"])(
+  it.each(["route", "existing", "static", "remote", "engine-selection"])(
     "resolves the %s recipe without an unknown-topic error",
     async (topic) => {
       const result = await runCli(["help", topic, "-d", cwd]);
@@ -209,5 +215,62 @@ describe("bare taskless (non-TTY) routes to help index", () => {
     expect(result.exitCode).toBe(0);
     expect(result.stderr).toContain("non-interactive context detected");
     expect(result.stdout).toContain("Topics:");
+  });
+});
+
+describe("taskless help engine-selection", () => {
+  let cwd: string;
+
+  beforeEach(async () => {
+    cwd = await mkdtemp(join(tmpdir(), "taskless-help-engine-"));
+  });
+
+  afterEach(async () => {
+    await rm(cwd, { recursive: true, force: true });
+  });
+
+  it("names all three engines and puts evidence before the answer", async () => {
+    const result = await runCli(["help", "engine-selection", "-d", cwd]);
+    expect(result.exitCode).toBe(0);
+    for (const engine of ["`sg`", "`vale`", "`runtime`"]) {
+      expect(result.stdout).toContain(engine);
+    }
+    expect(result.stdout).toContain("before naming an engine");
+  });
+
+  it("carries the three boundary cases", async () => {
+    const result = await runCli(["help", "engine-selection", "-d", cwd]);
+    // Each is a wrong answer someone actually reaches for.
+    expect(result.stdout).toContain("Prose about code is still prose");
+    expect(result.stdout).toContain("one document at a time");
+    expect(result.stdout).toContain("Engine is not trust tier");
+  });
+
+  it("states the ambiguity default as a property, not as `sg`", async () => {
+    const result = await runCli(["help", "engine-selection", "-d", cwd]);
+    // D7: "choose an engine you know is available" stays correct on an
+    // unsupported arch and server-side alike; naming `sg` outright would be
+    // false on the host where `sg` is the missing one.
+    expect(result.stdout).toContain("choose an engine you know is");
+    expect(result.stdout).toContain("available");
+  });
+
+  it("stays out of the authoring-destination decision", async () => {
+    const result = await runCli(["help", "engine-selection", "-d", cwd]);
+    // Scope guard (3.4): it may point at `route`, never re-decide it.
+    expect(result.stdout).toContain("is `route`, and it is a separate");
+  });
+
+  it("follows the recipe header and section convention", async () => {
+    const result = await runCli(["help", "engine-selection", "-d", cwd]);
+    expect(result.stdout).toContain("# Topic: engine-selection");
+    for (const section of [
+      "## Goal",
+      "## Preconditions",
+      "## Steps",
+      "## See Also",
+    ]) {
+      expect(result.stdout).toContain(section);
+    }
   });
 });

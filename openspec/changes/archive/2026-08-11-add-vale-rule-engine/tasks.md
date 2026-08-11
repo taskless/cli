@@ -19,17 +19,17 @@
 
 ## 3. Engine-selection knowledge topic
 
-- [ ] 3.1 Author `packages/cli/src/help/<engine-selection>.txt` covering: the three engine definitions (`sg` in-file syntax tree incl. relational correlation, `vale` prose/markup, `runtime` cross-file/graph/metadata/normalization), the reason-before-answer procedure, and a worked example table. The original seed (`tmp/SEED-engine-selection-prose.md`) no longer exists — rebuild the examples rather than treating the file as a prerequisite; the content requirements are stated here and in 3.2–3.4, which is the authority
-- [ ] 3.2 State the ambiguity default as a property — the default names an engine known to be available — and note that `@ast-grep/cli` ships as a dependency while the Vale binary is external, so `sg` satisfies it locally
-- [ ] 3.3 Carry the three boundary cases: prose-about-code vs structure, Vale is per-document (cross-document prose consistency is `runtime`), and `sg`/`vale` are both static-tier so trust tier is a separate axis
-- [ ] 3.4 Keep the topic scoped to engine choice — no authoring-destination guidance, no tool-calling mechanics from the seed's source prompt
-- [ ] 3.5 Register the topic in the help index and add `route`/`static` cross-references to it
-- [ ] 3.6 Tests: the topic resolves via `taskless help` and appears in the index; the topic file matches the established recipe header/format convention
-- [ ] 3.7 Add the topic to `TOPICS` in `packages/cli/src/prompts/index.ts`, in the **same unit as the topic file**. This is not optional bookkeeping: `TOPICS ∪ INTERNAL_TOPICS` must account for every canonical recipe on disk, and `test/prompts.test.ts` asserts that in both directions — so a recipe file added without a classification turns the suite red. `TOPICS` rather than `INTERNAL_TOPICS` per D7: the platform generator is the intended consumer, and exporting the entry is what lets it render the same text `taskless help` serves instead of keeping its own copy
+- [x] 3.1 Author `packages/cli/src/help/<engine-selection>.txt` covering: the three engine definitions (`sg` in-file syntax tree incl. relational correlation, `vale` prose/markup, `runtime` cross-file/graph/metadata/normalization), the reason-before-answer procedure, and a worked example table. The original seed (`tmp/SEED-engine-selection-prose.md`) no longer exists — rebuild the examples rather than treating the file as a prerequisite; the content requirements are stated here and in 3.2–3.4, which is the authority
+- [x] 3.2 State the ambiguity default as a property — the default names an engine known to be available. Written per D7 rather than this line's parenthetical, which is stale: `add-vale-binary-packages` ships the Vale binary as an `optionalDependency` too, so both `sg` and `vale` are normally present locally. The property still binds on an unsupported architecture or a blocked install, and server-side `sg` remains the only ungated route
+- [x] 3.3 Carry the three boundary cases: prose-about-code vs structure, Vale is per-document (cross-document prose consistency is `runtime`), and `sg`/`vale` are both static-tier so trust tier is a separate axis
+- [x] 3.4 Keep the topic scoped to engine choice — no authoring-destination guidance, no tool-calling mechanics from the seed's source prompt
+- [x] 3.5 Register the topic in the help index and add `route`/`static` cross-references to it
+- [x] 3.6 Tests: the topic resolves via `taskless help` and appears in the index; the topic file matches the established recipe header/format convention
+- [x] 3.7 Add the topic to `TOPICS` in `packages/cli/src/prompts/index.ts`, in the **same unit as the topic file**. This is not optional bookkeeping: `TOPICS ∪ INTERNAL_TOPICS` must account for every canonical recipe on disk, and `test/prompts.test.ts` asserts that in both directions — so a recipe file added without a classification turns the suite red. `TOPICS` rather than `INTERNAL_TOPICS` per D7: the platform generator is the intended consumer, and exporting the entry is what lets it render the same text `taskless help` serves instead of keeping its own copy
 
 > Export via `@taskless/cli/prompts` **is** part of this change (D7). `export-knowledge-prompts` landed first, so the one-line `TOPICS` entry falls here — see task 3.7.
 
 ## 4. Quality gates
 
-- [ ] 4.1 `pnpm --filter @taskless/cli typecheck && lint && test` clean
-- [ ] 4.2 With the Vale binary absent, confirm ast-grep and runtime results still return and only Vale reports unavailable
+- [x] 4.1 `pnpm --filter @taskless/cli typecheck && lint && test` clean
+- [x] 4.2 With the Vale binary absent, confirm ast-grep and runtime results still return and only Vale reports unavailable

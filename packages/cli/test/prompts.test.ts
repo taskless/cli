@@ -235,6 +235,24 @@ describe("built prompts entry", () => {
   });
 });
 
+/**
+ * Whether `value` could be a module specifier at all.
+ *
+ * The scan below is a regex over the whole chunk, and a built chunk embeds
+ * every recipe as a string literal — so ordinary prose containing the words
+ * `from "…"` is matched as an import. That is not hypothetical: the
+ * engine-selection recipe contains `a different axis from "which engine"`, and
+ * it failed this guard with `dist/prompts.js graph imports which engine`.
+ *
+ * A real specifier is a bare name, a scope, a path, or a `node:` builtin —
+ * never whitespace-bearing and never arbitrary punctuation. Filtering on that
+ * shape drops prose without weakening the check, because anything the bundle
+ * genuinely imports still matches.
+ */
+function looksLikeSpecifier(value: string): boolean {
+  return /^(?:node:)?[@\w./-]+$/.test(value);
+}
+
 /** Module specifiers a built chunk imports, static and dynamic. */
 function importSpecifiers(source: string): string[] {
   const specifiers = new Set<string>();
@@ -247,7 +265,7 @@ function importSpecifiers(source: string): string[] {
   for (const match of source.matchAll(/\bimport\s*["']([^"']+)["']/g)) {
     specifiers.add(match[1]!);
   }
-  return [...specifiers];
+  return [...specifiers].filter((specifier) => looksLikeSpecifier(specifier));
 }
 
 describe("prompts entry carries no CLI runtime", () => {

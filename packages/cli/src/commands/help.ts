@@ -18,6 +18,7 @@ const RECIPE_TOPICS: ReadonlyArray<[string, string]> = [
   ["existing", "Author a rule in a linter the repo already uses"],
   ["static", "Author a local ast-grep rule on this machine (no login)"],
   ["remote", "Generate a rule via the Taskless service (login)"],
+  ["engine-selection", "Decide which engine enforces a rule (sg/vale/runtime)"],
 ];
 
 async function unwrap<T>(resolvable: Resolvable<T>): Promise<T> {
