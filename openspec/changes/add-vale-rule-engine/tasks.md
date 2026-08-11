@@ -13,9 +13,9 @@
 
 ## 2. Check orchestration
 
-- [ ] 2.1 Dispatch to distinct executors by engine directory — ast-grep (`sg/`) → scanner, Vale (`vale/`) → runner, runtime (`runtime/rules/`) → harness
-- [ ] 2.2 Run engines concurrently, merge `CheckResult`s into one set, derive the exit code from merged severities, and keep an unavailable engine from aborting the others
-- [ ] 2.3 Tests: a mixed `sg`+`vale`+`runtime` corpus runs all executors and merges; with the `vale` binary absent, ast-grep results still return
+- [x] 2.1 Dispatch to distinct executors by engine directory — ast-grep (`sg/`) → scanner, Vale (`vale/`) → runner, runtime (`runtime/rules/`) → harness
+- [x] 2.2 Run engines concurrently, merge `CheckResult`s into one set, derive the exit code from merged severities, and keep an unavailable engine from aborting the others
+- [x] 2.3 Tests: a mixed `sg`+`vale`+`runtime` corpus runs all executors and merges; with the `vale` binary absent, ast-grep results still return
 
 ## 3. Engine-selection knowledge topic
 
