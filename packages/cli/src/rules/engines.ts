@@ -14,7 +14,11 @@ export const ENGINES = ["sg", "vale", "runtime"] as const;
 export type EngineName = (typeof ENGINES)[number];
 
 /** How a rule reaches execution, or `null` when this CLI has no executor yet. */
-export type EngineExecutor = "ast-grep" | "runtime-harness" | null;
+export type EngineExecutor =
+  | "ast-grep"
+  | "vale-runner"
+  | "runtime-harness"
+  | null;
 
 export interface EngineLayout {
   engine: EngineName;
@@ -40,8 +44,7 @@ export const ENGINE_LAYOUTS = {
     rulesDirectory: "vale/rules",
     ruleTestsDirectory: "vale/rule-tests",
     configFile: "vale/.vale.ini",
-    // Scaffolded but inert: the Vale engine itself is a later change.
-    executor: null,
+    executor: "vale-runner",
   },
   runtime: {
     engine: "runtime",

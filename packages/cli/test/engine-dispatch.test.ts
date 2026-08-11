@@ -128,10 +128,11 @@ describe("engine dispatch by directory", () => {
       present: true,
       executor: "runtime-harness",
     });
-    // Scaffolded, recognized, but nothing executes it yet.
+    // Vale gained its executor with the Vale engine; before that this was
+    // `null` because the directory was scaffolded but inert.
     expect(byEngine.get("vale")).toMatchObject({
       present: true,
-      executor: null,
+      executor: "vale-runner",
     });
   });
 
