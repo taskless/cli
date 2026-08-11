@@ -154,7 +154,12 @@ withVale("runVale against the real binary", () => {
       expect(files).not.toContain("api/c.md");
     });
 
-    it("lets a disable win over an enable, regardless of order", async () => {
+    it("lets a later matcher override an earlier one", async () => {
+      // Order is significant, and this asserts only the working order. The
+      // opposite order is pinned in vale-vendor-contract.test.ts, where it
+      // documents that a disable does NOT win on its own — the earlier name of
+      // this test claimed "regardless of order" while testing one order, which
+      // would have kept passing while the claim was false.
       const cwd = makeProject(
         `${header}\n[marketing/**]\nrules.no-simply = YES\n\n[marketing/legacy/**]\nrules.no-simply = NO\n`,
         rules,

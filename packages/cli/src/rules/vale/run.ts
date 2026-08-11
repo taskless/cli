@@ -159,7 +159,10 @@ export async function runVale(
 
       const stdout = stdoutChunks.join("").trim();
       if (stdout === "") {
-        // Vale prints nothing at all when it has no findings.
+        // Measured: Vale prints `{}` when it finds nothing, which parses and
+        // maps to [] below. This branch is for a Vale that says nothing at all
+        // — cheap insurance against JSON.parse("") reporting a clean run as a
+        // failure.
         settle({ status: "ok", results: [] });
         return;
       }
