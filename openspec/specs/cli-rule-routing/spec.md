@@ -260,14 +260,14 @@ Where code or diff context is available, the engine-selection topic SHALL weigh 
 - **AND WHEN** the equivalent rule requires normalizing a captured value to match a declaration elsewhere
 - **THEN** it selects `runtime`, despite an identically phrased request
 
-### Requirement: Ambiguity defaults to an engine known to be available
+### Requirement: Ambiguity resolves to an engine known to be available
 
-When no engine is clearly indicated, the engine-selection topic SHALL default to `sg` and record why the call was close. The topic SHALL state this as a property — the default names an engine known to be available — rather than as a bare fact about `sg`, so it stays correct wherever an engine can be unavailable or a route withheld.
+When no engine is clearly indicated, the engine-selection topic SHALL direct the reader to choose an engine whose availability can be asserted in the situation at hand, and to give that availability as the reason for the call. The topic SHALL NOT name a fixed fallback engine. Both `sg` and `vale` ship as platform binaries, so either can be the missing one on an unsupported architecture or where an install was blocked; server-side the constraint is different again, `sg` being the only ungated route. A named default is wrong in whichever of those situations it failed to anticipate, which is why the requirement is stated as a property rather than as a fact about any one engine.
 
-#### Scenario: Ambiguous request defaults to sg
+#### Scenario: Ambiguous request resolves to an assertably available engine
 
 - **WHEN** the available context does not disambiguate which engine can enforce a rule
-- **THEN** the topic selects `sg` and states the reasoning that made the call close
+- **THEN** the topic selects an engine whose availability it can assert, and states that availability as the reasoning that made the call close
 
 #### Scenario: The default is never an unavailable engine
 
