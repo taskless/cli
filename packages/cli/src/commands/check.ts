@@ -2,13 +2,11 @@ import { resolve, join, isAbsolute, relative } from "node:path";
 import { stat } from "node:fs/promises";
 import { defineCommand } from "citty";
 
-import { runAstGrepScan } from "../rules/scan";
-import type { CheckResult } from "../types/check";
+import { deriveExitCode, runEngines } from "../rules/dispatch";
 import { formatText } from "../util/format";
 import { resolveSgConfigPath } from "../filesystem/sgconfig";
 import { ensureTasklessDirectory } from "../filesystem/directory";
 import {
-  dedupeFindings,
   discoverAstGrepRuleSources,
   planEngineDispatch,
 } from "../rules/engines";
@@ -30,7 +28,6 @@ import {
   selectBlessedRuntimeRules,
   signRuntimeChecks,
 } from "../rules/runtime/run-set";
-import { executeRuntimeRules } from "../rules/runtime/harness";
 
 async function pathExists(absolutePath: string): Promise<boolean> {
   try {
@@ -316,7 +313,7 @@ export const checkCommand = defineCommand({
       }
 
       // Rules dispatch by the engine directory that contains them. This is also
-// the migration trigger: no config is generated on the check path any
+      // the migration trigger: no config is generated on the check path any
       // more, so without this call an upgraded CLI would keep reading a stale
       // layout.
       //
@@ -363,22 +360,9 @@ export const checkCommand = defineCommand({
       }
 
       try {
-        const results: CheckResult[] = [];
-
-        // Static rules: always scan, no verification (inert data). Each
-        // ast-grep source is scanned on its own — `sg/rules/` and, for an
-        // unmigrated checkout, the legacy `.taskless/rules/` — and identical
-        // findings from both are collapsed so a rule present in both layouts
-        // is reported once.
-        const staticResults: CheckResult[] = [];
-        for (const source of astGrepSources) {
-          const configPath = await resolveSgConfigPath(cwd, source);
-          const scan = await runAstGrepScan(cwd, existingPaths, { configPath });
-          staticResults.push(...scan.results);
-        }
-        results.push(...dedupeFindings(staticResults));
-
-        // Runtime rules: run only what the server validated (or forced).
+        // Runtime rules are planned before dispatch, not during it: planning
+        // consults auth and reconcile state, which is a decision about *what*
+        // may run rather than part of running it.
         const plan = await planRuntime(cwd, runtimeRules, {
           anonymous: args.anonymous,
           dangerouslyRunScripts: Boolean(args["dangerously-run-scripts"]),
@@ -389,13 +373,26 @@ export const checkCommand = defineCommand({
             `Notice: runtime rule ${skipped.rule} was not run — ${skipped.reason}.`
           );
         }
-        if (plan.execute.length > 0) {
-          const runtimeResults = await executeRuntimeRules(cwd, plan.execute, {
-            paths: existingPaths,
-            timeoutMs: parseTimeoutMs(args.timeout),
-          });
-          results.push(...runtimeResults);
-        }
+
+        // Every engine runs concurrently and merges into one result set. An
+        // engine that cannot run reports a notice and the others still return.
+        const resolvedSources = await Promise.all(
+          astGrepSources.map(async (source) => ({
+            source,
+            configPath: await resolveSgConfigPath(cwd, source),
+          }))
+        );
+        const dispatched = await runEngines({
+          cwd,
+          paths: existingPaths,
+          astGrepSources: resolvedSources,
+          runtimeRules: plan.execute,
+          runtimeTimeoutMs: parseTimeoutMs(args.timeout),
+        });
+        const results = dispatched.results;
+
+        for (const notice of dispatched.notices) warn(`Notice: ${notice}`);
+        for (const failure of dispatched.failures) warn(`Error: ${failure}`);
 
         let errorCount = 0;
         let warningCount = 0;
@@ -403,12 +400,15 @@ export const checkCommand = defineCommand({
           if (result.severity === "error") errorCount++;
           else if (result.severity === "warning") warningCount++;
         }
-        const hasErrors = errorCount > 0;
         scanCounts = { errorCount, warningCount, findings: results.length };
+
+        // An engine failure fails the check even with no findings: a Vale that
+        // timed out reports nothing, which would otherwise read as clean.
+        const exitCode = deriveExitCode(dispatched);
 
         if (args.json) {
           const output = checkOutputSchema.parse({
-            success: !hasErrors,
+            success: exitCode === 0,
             results,
             ...(plan.skipped.length > 0 ? { skipped: plan.skipped } : {}),
           });
@@ -417,9 +417,8 @@ export const checkCommand = defineCommand({
           console.log(formatText(results));
         }
 
-        // Exit code: 1 if any errors, 0 otherwise
-        if (hasErrors) {
-          process.exitCode = 1;
+        if (exitCode !== 0) {
+          process.exitCode = exitCode;
         }
       } catch (error) {
         const message = `Error: ${error instanceof Error ? error.message : String(error)}`;
