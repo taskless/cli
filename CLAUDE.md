@@ -117,7 +117,13 @@ The general rule that follows: **any workflow whose correctness depends on "is t
 
 Put the changeset at the base and every branch above inherits it, since a child contains its ancestors' commits.
 
-**Grow it incrementally as the stack lands.** Each PR extends the changeset with its own scope rather than the base describing the whole future change up front. A reviewer reading the changeset then sees only what has actually landed, and is not asked to evaluate a release note that promises more than the diff in front of them. When you extend it, edit the same file on the branch you are working on — never add a second changeset per PR, or one change becomes several release notes for what merges to `main` exactly once.
+**Write it on the base branch before you cut the children.** Inheritance only runs forward in time: a child branched before the file existed does not carry it, and "grown as the stack grows" has nothing to grow. What makes this easy to miss is that the natural moment to write a release note is when you finish a unit — which is exactly the moment you are standing on a child branch, several branches above the only diff `require-changeset` reads. On the #71/#93/#94/#95 stack the changeset was written on the tip instead; the bottom PR looked fine only because it carried `skip-changeset`, and the moment that label came off, `Require a changeset` went red there.
+
+**Grow it incrementally when the stack merges forward.** Each PR extends the changeset with its own scope rather than the base describing the whole future change up front. A reviewer reading the changeset then sees only what has actually landed, and is not asked to evaluate a release note that promises more than the diff in front of them. When you extend it, edit the same file on the branch you are working on — never add a second changeset per PR, or one change becomes several release notes for what merges to `main` exactly once.
+
+**When the stack merges down, that reasoning does not apply.** Nothing reaches `main` until everything does — a single protected merge carries the whole stack — so a changeset describing the complete change is accurate at the only moment it is ever read, and no reviewer is asked to approve more than what lands. Growing it per unit is still friendlier to review, but there it is a preference, not a correctness constraint.
+
+What _is_ a correctness constraint in both shapes is where the file lives: **on the bottom branch, present in the bottom PR's own diff.** That is the only diff `require-changeset` ever evaluates.
 
 ### Landing a stack: merge _down_, then one merge to `main`
 
