@@ -2,9 +2,8 @@
 
 When creating or modifying files, you **MUST** follow these conventions:
 
-- File Naming Conventions @.claude/FILE-CONVENTIONS.md
-- Code Style Guide @.claude/STYLEGUIDE-CODE.md
-- UI Conventions @.claude/STYLEGUIDE-UI.md
+- Code Style Guide @.conventions/STYLEGUIDE-CODE.md
+- UI Conventions @.conventions/STYLEGUIDE-UI.md
 - When a user asks about what you can do, you _should_ suggest actions from this CLAUDE.md file.
 - **NEVER** read a `.dev.vars` or `.env` or `.secrets` file
 
