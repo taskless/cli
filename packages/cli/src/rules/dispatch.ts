@@ -2,12 +2,7 @@ import { readdir } from "node:fs/promises";
 import { join } from "node:path";
 
 import type { CheckResult } from "../types/check";
-import {
-  dedupeFindings,
-  ENGINE_LAYOUTS,
-  type AstGrepRuleSource,
-  type EngineName,
-} from "./engines";
+import { dedupeFindings, ENGINE_LAYOUTS, type EngineName } from "./engines";
 import { executeRuntimeRules } from "./runtime/harness";
 import type { RuntimeRule } from "./runtime/discover";
 import { runAstGrepScan } from "./scan";
@@ -65,8 +60,11 @@ export interface DispatchOptions {
   cwd: string;
   /** Target paths, already filtered to those that exist. */
   paths: string[];
-  /** ast-grep sources, each with the config that scans it. */
-  astGrepSources: Array<{ source: AstGrepRuleSource; configPath: string }>;
+  /**
+   * One `--config` path per ast-grep rule source, already resolved. The source
+   * each was derived from is the caller's concern; dispatch only runs configs.
+   */
+  astGrepConfigPaths: string[];
   /** Runtime rules that survived planning. Empty means the harness is skipped. */
   runtimeRules: RuntimeRule[];
   runtimeTimeoutMs?: number;
@@ -95,7 +93,7 @@ async function runAstGrepEngine(
   options: DispatchOptions
 ): Promise<EngineOutcome> {
   const results: CheckResult[] = [];
-  for (const { configPath } of options.astGrepSources) {
+  for (const configPath of options.astGrepConfigPaths) {
     const scan = await runAstGrepScan(options.cwd, options.paths, {
       configPath,
     });
@@ -196,12 +194,8 @@ export async function runEngines(
 
   return {
     results: outcomes.flatMap((outcome) => outcome.results),
-    notices: outcomes
-      .map((outcome) => outcome.notice)
-      .filter((notice): notice is string => notice !== undefined),
-    failures: outcomes
-      .map((outcome) => outcome.failure)
-      .filter((failure): failure is string => failure !== undefined),
+    notices: outcomes.flatMap((outcome) => outcome.notice ?? []),
+    failures: outcomes.flatMap((outcome) => outcome.failure ?? []),
     outcomes,
   };
 }
