@@ -55,6 +55,8 @@ describe("normalizeSeverity", () => {
 
 describe("toValeCheckResult", () => {
   it("maps the spec's worked example", () => {
+    // Vale's `Line: 3` / `Span: [1, 7]` are 1-based; `CheckResult.range` is
+    // 0-indexed for every source, so each drops by one on the way in.
     expect(toValeCheckResult("docs/a.md", example)).toEqual({
       source: "vale",
       ruleId: "no-simply",
@@ -63,11 +65,24 @@ describe("toValeCheckResult", () => {
       note: undefined,
       file: "docs/a.md",
       range: {
-        start: { line: 3, column: 1 },
-        end: { line: 3, column: 7 },
+        start: { line: 2, column: 0 },
+        end: { line: 2, column: 6 },
       },
       matchedText: "simply",
       fix: undefined,
+    });
+  });
+
+  it("clamps at 0 rather than emitting a negative position", () => {
+    // A 0 from Vale means "unset", not "one before the first column".
+    const result = toValeCheckResult("docs/a.md", {
+      ...example,
+      Line: 0,
+      Span: [0, 0],
+    });
+    expect(result.range).toEqual({
+      start: { line: 0, column: 0 },
+      end: { line: 0, column: 0 },
     });
   });
 

@@ -1,5 +1,6 @@
 import { spawn } from "node:child_process";
 import { join } from "node:path";
+import { StringDecoder } from "node:string_decoder";
 
 import type { CheckResult } from "../../types/check";
 import { ENGINE_LAYOUTS } from "../engines";
@@ -27,36 +28,36 @@ export const VALE_TIMEOUT_MS = 60_000;
  * unavailable Vale must not abort the other engines, so the orchestration layer
  * needs to tell "Vale found nothing" from "Vale never ran" — a distinction an
  * empty array erases.
- */
-export type ValeRunOutcome =
-  | { status: "ok"; results: CheckResult[] }
-  | { status: "unavailable"; message: string }
-  | { status: "timeout"; message: string }
-  | { status: "failed"; message: string };
-
-/**
- * Whether an outcome should fail the check, as opposed to being reported and
- * moved past.
  *
- * The three non-ok cases are not equivalent, and collapsing them would be
- * wrong in both directions:
+ * `blocking` says whether the outcome should fail the check, as opposed to
+ * being reported and moved past. It is carried **on the outcome** rather than
+ * derived by a helper the caller must remember to call: every engine we add
+ * follows the same shape — run a binary, return a self-describing outcome — and
+ * severity is a property of what happened, not knowledge the orchestration
+ * layer has to hold about each engine. Literal-typed per variant, so a call
+ * site that builds an outcome by hand cannot mislabel it.
  *
- * - `unavailable` is a **skip**. The host has no Vale binary, which is an
+ * The three non-ok cases are not equivalent, and collapsing them would be wrong
+ * in both directions:
+ *
+ * - `unavailable` is **non-blocking**. The host has no Vale binary, which is an
  *   ordinary state on an unsupported arch and not evidence of anything wrong
  *   with the user's rules. Failing here would make `check` unrunnable on a
  *   machine where ast-grep and runtime rules are perfectly able to report.
- * - `timeout` and `failed` are **errors**. Vale was present and was asked to do
- *   its job: it hung, crashed, or rejected the configuration. Reporting those
- *   as a skip would let a broken rule file read as "no Vale findings", which is
- *   indistinguishable from a clean run and is exactly how a silently disabled
- *   engine gets shipped.
+ * - `timeout` and `failed` are **blocking**. Vale was present and was asked to
+ *   do its job: it hung, crashed, or rejected the configuration. Reporting
+ *   those as a skip would let a broken rule file read as "no Vale findings",
+ *   which is indistinguishable from a clean run and is exactly how a silently
+ *   disabled engine gets shipped.
  *
- * Exported here rather than decided at the call site so orchestration (2.2)
- * derives the exit code from one rule instead of restating it.
+ * `ok` is non-blocking even when it carries findings: severity decides the exit
+ * code there, the same as for every other engine.
  */
-export function isValeFailure(outcome: ValeRunOutcome): boolean {
-  return outcome.status === "timeout" || outcome.status === "failed";
-}
+export type ValeRunOutcome =
+  | { status: "ok"; blocking: false; results: CheckResult[] }
+  | { status: "unavailable"; blocking: false; message: string }
+  | { status: "timeout"; blocking: true; message: string }
+  | { status: "failed"; blocking: true; message: string };
 
 export interface ValeRunOptions {
   /** Project root. Vale runs here, so its config paths resolve as committed. */
@@ -84,7 +85,11 @@ export async function runVale(
 ): Promise<ValeRunOutcome> {
   const { path: binary, tried } = findValeBinary();
   if (binary === undefined) {
-    return { status: "unavailable", message: valeUnavailableMessage(tried) };
+    return {
+      status: "unavailable",
+      blocking: false,
+      message: valeUnavailableMessage(tried),
+    };
   }
 
   const configPath = options.configPath ?? COMMITTED_VALE_CONFIG;
@@ -108,6 +113,16 @@ export async function runVale(
       env: { ...process.env, PATH: buildPath() },
     });
 
+    // One decoder per stream, not `chunk.toString()` per chunk. A multi-byte
+    // UTF-8 sequence split across a chunk boundary would otherwise have each
+    // half independently replaced with U+FFFD, and Vale lints free-form prose
+    // full of curly quotes, em dashes and accented characters. The damage is
+    // not limited to a mangled `Match`: corruption landing inside JSON string
+    // escaping makes `JSON.parse` throw, reporting a clean Vale run as
+    // `failed`. `runAstGrepScan` in `scan.ts` avoids the same trap by reading
+    // stdout through `node:readline`, which decodes for us.
+    const stdoutDecoder = new StringDecoder("utf8");
+    const stderrDecoder = new StringDecoder("utf8");
     const stdoutChunks: string[] = [];
     const stderrChunks: string[] = [];
     let settled = false;
@@ -124,6 +139,7 @@ export async function runVale(
       child.kill("SIGKILL");
       settle({
         status: "timeout",
+        blocking: true,
         message: `Vale exceeded ${String(timeoutMs)}ms and was terminated. The Vale engine reported a timeout; other engines were unaffected.`,
       });
     }, timeoutMs);
@@ -131,27 +147,40 @@ export async function runVale(
     timer.unref?.();
 
     child.stdout.on("data", (chunk: Buffer) => {
-      stdoutChunks.push(chunk.toString());
+      stdoutChunks.push(stdoutDecoder.write(chunk));
     });
     child.stderr.on("data", (chunk: Buffer) => {
-      stderrChunks.push(chunk.toString());
+      stderrChunks.push(stderrDecoder.write(chunk));
     });
 
     child.on("error", (error) => {
-      // Near-unreachable: the binary was verified by running it during
-      // resolution, so this means it vanished in between.
+      // Near-unreachable, and a real failure rather than a skip when it does
+      // happen. `findValeBinary` proved this binary runs by executing
+      // `--version` during resolution, so an `error` here means it vanished,
+      // lost its permissions, or was quarantined between resolution and
+      // execution — not that Vale is uninstalled. Calling that `unavailable`
+      // would file a broken host under the advisory skip and let the check
+      // pass. `runAstGrepScan` rejects outright on the same event.
       settle({
-        status: "unavailable",
+        status: "failed",
+        blocking: true,
         message: `Vale could not be executed at ${binary}: ${error.message}`,
       });
     });
 
     child.on("close", (code) => {
+      // Flush whatever partial multi-byte sequence each decoder is holding, so
+      // a stream that ends mid-character contributes its replacement char once
+      // rather than leaving bytes unaccounted for.
+      stdoutChunks.push(stdoutDecoder.end());
+      stderrChunks.push(stderrDecoder.end());
+
       // With --no-exit, a non-zero code is Vale failing, not Vale finding.
       if (code !== null && code !== 0) {
         const stderr = stderrChunks.join("").trim();
         settle({
           status: "failed",
+          blocking: true,
           message: `Vale exited ${String(code)}${stderr === "" ? "" : `: ${stderr}`}`,
         });
         return;
@@ -163,19 +192,25 @@ export async function runVale(
         // maps to [] below. This branch is for a Vale that says nothing at all
         // — cheap insurance against JSON.parse("") reporting a clean run as a
         // failure.
-        settle({ status: "ok", results: [] });
+        settle({ status: "ok", blocking: false, results: [] });
         return;
       }
 
       try {
         const parsed: unknown = JSON.parse(stdout);
 
-        // A malformed rule makes Vale emit a config error and still exit 0, so
-        // this is the only place the difference is detectable.
+        // Defensive, not a live path. Measured against the real binary (a rule
+        // with an out-of-vocabulary `level`), a config error goes to stderr
+        // with exit 2 and an empty stdout, so the non-zero branch above has
+        // already reported it and this shape never arrives here. The guard
+        // stays because the cost of being wrong is a crash rather than a wrong
+        // answer: mapping a config error walks `Object.entries` over
+        // `Line`/`Path`/`Code` and calls `.map` on a number.
         const configError = asValeConfigError(parsed);
         if (configError !== undefined) {
           settle({
             status: "failed",
+            blocking: true,
             message: `Vale rejected the configuration (${configError.Code}): ${configError.Text}${
               configError.Path === undefined ? "" : ` in ${configError.Path}`
             }`,
@@ -185,11 +220,13 @@ export async function runVale(
 
         settle({
           status: "ok",
+          blocking: false,
           results: toValeCheckResults(parsed as ValeOutput),
         });
       } catch (error) {
         settle({
           status: "failed",
+          blocking: true,
           message: `Vale produced output that is not JSON: ${
             error instanceof Error ? error.message : String(error)
           }`,
