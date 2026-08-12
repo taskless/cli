@@ -37,7 +37,7 @@ describe("help routing topics emit cli_help intent telemetry", () => {
     logSpy.mockRestore();
   });
 
-  it.each(["route", "existing", "static", "remote"])(
+  it.each(["route", "existing", "static", "remote", "engine-selection"])(
     "captures cli_help for %s",
     async (topic) => {
       const command = createHelpCommand({}) as unknown as RunnableCommand;
