@@ -14,6 +14,8 @@ import { findValeBinary } from "../src/rules/vale/binary";
 import {
   buildIsolatingConfig,
   discoverValeRuleTests,
+  type ValeRunFailure,
+  type ValeRuleVerification,
   verifyValeRule,
   verifyValeRules,
 } from "../src/rules/vale/verify";
@@ -23,10 +25,27 @@ const withVale = findValeBinary().path === undefined ? describe.skip : describe;
 const workspaces: string[] = [];
 afterEach(() => {
   vi.restoreAllMocks();
-  while (workspaces.length > 0) {
-    rmSync(workspaces.pop() as string, { recursive: true, force: true });
+  for (const workspace of workspaces.splice(0)) {
+    rmSync(workspace, { recursive: true, force: true });
   }
 });
+
+/**
+ * Narrow away the non-`ok` Vale outcomes, which are a broken test environment
+ * rather than anything under test — and name the one that arrived, so a Vale
+ * that times out here does not look like a verifier that returned the wrong
+ * shape.
+ */
+function verification(
+  result: ValeRuleVerification | { outcome: ValeRunFailure }
+): ValeRuleVerification {
+  if ("outcome" in result) {
+    throw new Error(
+      `expected a verification, got Vale ${result.outcome.status}`
+    );
+  }
+  return result;
+}
 
 interface RuleFixtures {
   pass?: Record<string, string>;
@@ -180,8 +199,7 @@ withVale("verifyValeRule", () => {
         },
       }
     );
-    const result = await verifyValeRule(cwd, "no-simply");
-    if ("outcome" in result) throw new Error("expected a verification");
+    const result = verification(await verifyValeRule(cwd, "no-simply"));
     expect(result.passed).toBe(false);
     // A fixture that produces nothing is absent from Vale's output entirely,
     // so this can only be caught by comparing against the files on disk.
@@ -200,8 +218,7 @@ withVale("verifyValeRule", () => {
         },
       }
     );
-    const result = await verifyValeRule(cwd, "no-simply");
-    if ("outcome" in result) throw new Error("expected a verification");
+    const result = verification(await verifyValeRule(cwd, "no-simply"));
     expect(result.passed).toBe(false);
     expect(result.unexpectedFindings).toEqual([
       ".taskless/vale/rule-tests/no-simply/pass/oops.md",
@@ -221,8 +238,7 @@ withVale("verifyValeRule", () => {
         },
       }
     );
-    const result = await verifyValeRule(cwd, "no-simply");
-    if ("outcome" in result) throw new Error("expected a verification");
+    const result = verification(await verifyValeRule(cwd, "no-simply"));
     expect(result.passed).toBe(true);
     expect(result.unexpectedFindings).toEqual([]);
   });
@@ -236,8 +252,7 @@ withVale("verifyValeRule", () => {
         "no-simply": {},
       }
     );
-    const result = await verifyValeRule(cwd, "no-simply");
-    if ("outcome" in result) throw new Error("expected a verification");
+    const result = verification(await verifyValeRule(cwd, "no-simply"));
     expect(result.fixtures).toBe("none");
     expect(result.passed).toBe(false);
   });
@@ -250,8 +265,7 @@ withVale("verifyValeRule", () => {
       { "no-simply": existence("simply") },
       { "no-simply": { fail: { "a.md": "Just simply do it.\n" } } }
     );
-    const result = await verifyValeRule(cwd, "no-simply");
-    if ("outcome" in result) throw new Error("expected a verification");
+    const result = verification(await verifyValeRule(cwd, "no-simply"));
     expect(result.fixtures).toBe("fail-only");
     expect(result.passed).toBe(false);
   });
@@ -263,8 +277,7 @@ withVale("verifyValeRule", () => {
       { "no-simply": existence("simply") },
       { "no-simply": { pass: { "c.md": "Nothing objectionable.\n" } } }
     );
-    const result = await verifyValeRule(cwd, "no-simply");
-    if ("outcome" in result) throw new Error("expected a verification");
+    const result = verification(await verifyValeRule(cwd, "no-simply"));
     expect(result.fixtures).toBe("pass-only");
     expect(result.passed).toBe(false);
   });
@@ -281,8 +294,7 @@ withVale("verifyValeRule", () => {
         },
       }
     );
-    const result = await verifyValeRule(cwd, "no-simply");
-    if ("outcome" in result) throw new Error("expected a verification");
+    const result = verification(await verifyValeRule(cwd, "no-simply"));
     expect(result.passed).toBe(true);
   });
 });
