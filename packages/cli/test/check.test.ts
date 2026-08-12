@@ -76,6 +76,30 @@ describe("check", () => {
     expect(stdout).toContain("No rules configured");
   });
 
+  it("does not report a Vale-only project as having no rules", async () => {
+    // Vale rules alone are rules. Gating the "nothing to run" message on
+    // ast-grep and runtime rules only returned before the engines were ever
+    // dispatched, so a project whose rules are all Vale's ran nothing and read
+    // as unconfigured. Asserted on the message rather than on findings so the
+    // test does not depend on the optional Vale binary being installed.
+    await mkdir(join(temporaryDirectory, ".taskless", "vale", "rules"), {
+      recursive: true,
+    });
+    await writeFile(
+      join(temporaryDirectory, ".taskless", "vale", "rules", "no-simply.yml"),
+      `extends: existence\nmessage: "Avoid 'simply'"\nlevel: warning\ntokens:\n  - simply\n`
+    );
+    await writeFile(
+      join(temporaryDirectory, ".taskless", "vale", ".vale.ini"),
+      "StylesPath = .\nMinAlertLevel = suggestion\n\n[*.md]\nBasedOnStyles =\nrules.no-simply = YES\n"
+    );
+    await writeFile(join(temporaryDirectory, "doc.md"), "Just simply do it.\n");
+
+    const { stdout } = await runCli(["check", "-d", temporaryDirectory]);
+
+    expect(stdout).not.toContain("No rules configured");
+  });
+
   it("runs scanner and produces human output for rule matches", async () => {
     await cp(fixturesDirectory, temporaryDirectory, { recursive: true });
 

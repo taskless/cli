@@ -2,7 +2,7 @@ import { resolve, join, isAbsolute, relative } from "node:path";
 import { stat } from "node:fs/promises";
 import { defineCommand } from "citty";
 
-import { deriveExitCode, runEngines } from "../rules/dispatch";
+import { deriveExitCode, hasValeRules, runEngines } from "../rules/dispatch";
 import { formatText } from "../util/format";
 import { resolveSgConfigPath } from "../filesystem/sgconfig";
 import { ensureTasklessDirectory } from "../filesystem/directory";
@@ -327,9 +327,11 @@ export const checkCommand = defineCommand({
       const dispatch = await planEngineDispatch(cwd);
 
       // Static rules (trusted ast-grep YAML) always run; runtime rules
-      // (untrusted check.ts) are gated separately. An engine directory this CLI
-      // has no executor for (vale) contributes nothing, and a directory that is
-      // not a known engine is ignored rather than handed to someone's parser.
+      // (untrusted check.ts) are gated separately. Vale is discovered below,
+      // in the "anything to run?" gate — every known engine now has an
+      // executor, so none of them can be assumed to contribute nothing. A
+      // directory that is not a known engine is still ignored rather than
+      // handed to someone's parser.
       const astGrepSources = await discoverAstGrepRuleSources(cwd);
       // Both halves matter: `executor` alone is read from the static layout
       // table and is therefore always `runtime-harness`, so gating on it only
@@ -344,7 +346,18 @@ export const checkCommand = defineCommand({
         ? await discoverRuntimeRules(cwd)
         : [];
 
-      if (astGrepSources.length === 0 && runtimeRules.length === 0) {
+      // "No rules configured" has to mean *no engine* has any, not just these
+      // two: a project whose only rules live in `.taskless/vale/rules/` would
+      // otherwise return here and Vale would never be dispatched, which is a
+      // silent skip of the engine the user actually configured. Asked last and
+      // short-circuited, so the ordinary project with ast-grep or runtime rules
+      // pays nothing and `runEngines` still owns the decision to spawn Vale.
+      const noRuleFiles =
+        astGrepSources.length === 0 &&
+        runtimeRules.length === 0 &&
+        !(await hasValeRules(cwd));
+
+      if (noRuleFiles) {
         if (args.json) {
           console.log(
             JSON.stringify(
