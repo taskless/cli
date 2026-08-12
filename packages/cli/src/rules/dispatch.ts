@@ -11,7 +11,7 @@ import {
 import { executeRuntimeRules } from "./runtime/harness";
 import type { RuntimeRule } from "./runtime/discover";
 import { runAstGrepScan } from "./scan";
-import { isValeFailure, runVale } from "./vale/run";
+import { runVale } from "./vale/run";
 
 /** Errno values that mean "the directory is not there", and nothing worse. */
 const ABSENT_DIRECTORY_CODES = new Set(["ENOENT", "ENOTDIR"]);
@@ -27,9 +27,10 @@ const ABSENT_DIRECTORY_CODES = new Set(["ENOENT", "ENOTDIR"]);
  *
  * Only absence is swallowed. A blanket `catch` here would read an unreadable
  * rules directory (`EACCES`, a bad mount) as "no rules" and skip Vale with no
- * notice and no failure — the same silent-disable that {@link isValeFailure}
- * exists to prevent one file over. Anything that is not absence propagates, so
- * `runEngines` reports it as an engine failure rather than a clean run.
+ * notice and no failure — the same silent-disable that `ValeRunOutcome`'s
+ * `blocking` field exists to prevent one file over. Anything that is not
+ * absence propagates, so `runEngines` reports it as an engine failure rather
+ * than a clean run.
  */
 export async function hasValeRules(cwd: string): Promise<boolean> {
   try {
@@ -106,12 +107,17 @@ async function runAstGrepEngine(
 /**
  * Vale, when it has rules to run.
  *
- * The three non-ok outcomes divide along the line `isValeFailure` draws: an
+ * The three non-ok outcomes divide along the line `outcome.blocking` draws: an
  * absent binary is a notice, because an unsupported arch is an ordinary state
  * and failing there would make `check` unrunnable on a machine where the other
  * engines work; a timeout or a crash is a failure, because Vale was present and
  * asked to work, and reporting that as a skip lets a broken rule file read as
  * "no Vale findings".
+ *
+ * Reading the severity off the outcome rather than asking a helper is the point
+ * of that field: an engine reports how bad its own trouble is, and a caller
+ * cannot forget to ask. Every engine we add answers the same question the same
+ * way.
  */
 async function runValeEngine(options: DispatchOptions): Promise<EngineOutcome> {
   if (!(await hasValeRules(options.cwd))) {
@@ -127,7 +133,7 @@ async function runValeEngine(options: DispatchOptions): Promise<EngineOutcome> {
   if (outcome.status === "ok") {
     return { engine: "vale", results: outcome.results };
   }
-  return isValeFailure(outcome)
+  return outcome.blocking
     ? { engine: "vale", results: [], failure: outcome.message }
     : { engine: "vale", results: [], notice: outcome.message };
 }

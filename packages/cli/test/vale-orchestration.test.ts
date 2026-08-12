@@ -247,6 +247,7 @@ describe("runEngines when Vale is unavailable", () => {
     const run = await import("../src/rules/vale/run");
     vi.spyOn(run, "runVale").mockResolvedValue({
       status: "ok",
+      blocking: false,
       results: [
         {
           source: "vale",
