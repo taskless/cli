@@ -1,5 +1,6 @@
 import {
   resolvePlatformBinary,
+  type PlatformBinaryResolution,
   type PlatformBinarySpec,
 } from "../platform-binary";
 
@@ -33,7 +34,7 @@ export const VALE_BINARY: PlatformBinarySpec = {
  * that never installed it. Without this, every rule would re-run the whole
  * search to rediscover the same nothing.
  */
-let cached: { path: string | undefined; tried: string[] } | undefined;
+let cached: PlatformBinaryResolution | undefined;
 
 /**
  * Locate the Vale binary, or report that it is unavailable.
@@ -43,10 +44,7 @@ let cached: { path: string | undefined; tried: string[] } | undefined;
  * caller turns that into a reported-but-not-fatal outcome; ast-grep's resolver
  * throws instead, because it has no degraded mode.
  */
-export function findValeBinary(): {
-  path: string | undefined;
-  tried: string[];
-} {
+export function findValeBinary(): PlatformBinaryResolution {
   cached ??= resolvePlatformBinary(VALE_BINARY);
   return cached;
 }
