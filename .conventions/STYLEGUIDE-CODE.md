@@ -208,8 +208,13 @@ import type { UserDO, GitHubOrganizationDO } from "@taskless/storage";
 ```typescript
 // ✅ Good - the build refuses to emit a violating artifact
 // vite.config.ts
+import type { Plugin } from "vite";
+
+const ALLOWED = new Set<string>([
+  // allowed specifiers here
+]);
+
 function forbidHostCapabilities(): Plugin {
-  return {
     name: "forbid-host-capabilities",
     generateBundle(_options, bundle) {
       const chunk = bundle["prompts.js"];
