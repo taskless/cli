@@ -389,16 +389,13 @@ export const checkCommand = defineCommand({
 
         // Every engine runs concurrently and merges into one result set. An
         // engine that cannot run reports a notice and the others still return.
-        const resolvedSources = await Promise.all(
-          astGrepSources.map(async (source) => ({
-            source,
-            configPath: await resolveSgConfigPath(cwd, source),
-          }))
+        const astGrepConfigPaths = await Promise.all(
+          astGrepSources.map((source) => resolveSgConfigPath(cwd, source))
         );
         const dispatched = await runEngines({
           cwd,
           paths: existingPaths,
-          astGrepSources: resolvedSources,
+          astGrepConfigPaths,
           runtimeRules: plan.execute,
           runtimeTimeoutMs: parseTimeoutMs(args.timeout),
         });

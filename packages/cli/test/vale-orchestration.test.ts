@@ -77,18 +77,8 @@ function makeMixedProject(options?: { valeRules?: boolean }) {
   return cwd;
 }
 
-const sgSources = (cwd: string) => [
-  {
-    source: {
-      rulesDirectory: "sg/rules",
-      ruleTestsDirectory: "sg/rule-tests",
-      absoluteRulesDirectory: join(cwd, ".taskless", "sg", "rules"),
-      ruleIds: ["no-eval"],
-      legacy: false,
-    },
-    configPath: ".taskless/sg/sgconfig.yml",
-  },
-];
+/** The committed config `makeMixedProject` writes, as `check` would resolve it. */
+const sgConfigPaths = [".taskless/sg/sgconfig.yml"];
 
 describe("hasValeRules", () => {
   it("is false for a scaffolded-but-empty rules directory", async () => {
@@ -175,7 +165,7 @@ withVale("runEngines over a mixed corpus", () => {
     const dispatched = await runEngines({
       cwd,
       paths: ["app.js", "doc.md"],
-      astGrepSources: sgSources(cwd),
+      astGrepConfigPaths: sgConfigPaths,
       runtimeRules: [],
     });
 
@@ -192,7 +182,7 @@ withVale("runEngines over a mixed corpus", () => {
     const dispatched = await runEngines({
       cwd,
       paths: ["app.js", "doc.md"],
-      astGrepSources: sgSources(cwd),
+      astGrepConfigPaths: sgConfigPaths,
       runtimeRules: [],
     });
     expect(dispatched.results.every((result) => result.source !== "vale")).toBe(
@@ -216,7 +206,7 @@ describe("runEngines when Vale is unavailable", () => {
     const dispatched = await runEngines({
       cwd,
       paths: ["app.js", "doc.md"],
-      astGrepSources: sgSources(cwd),
+      astGrepConfigPaths: sgConfigPaths,
       runtimeRules: [],
     });
 
@@ -268,7 +258,7 @@ describe("runEngines when Vale is unavailable", () => {
     const dispatched = await runEngines({
       cwd,
       paths: ["doc.md"],
-      astGrepSources: sgSources(cwd),
+      astGrepConfigPaths: sgConfigPaths,
       runtimeRules: [],
     });
 
@@ -295,7 +285,7 @@ describe("runEngines when Vale is unavailable", () => {
         const dispatched = await runEngines({
           cwd,
           paths: ["app.js", "doc.md"],
-          astGrepSources: sgSources(cwd),
+          astGrepConfigPaths: sgConfigPaths,
           runtimeRules: [],
         });
 
