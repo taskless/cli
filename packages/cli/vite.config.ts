@@ -168,13 +168,91 @@ function shebang(): Plugin {
   };
 }
 
+/**
+ * Refuse to emit a prompts entry that drags the CLI runtime along with it.
+ *
+ * `@taskless/cli/prompts` is a library surface: an agent imports it to render
+ * recipe text, and it must not pull in the command layer or reach a host
+ * capability to do that. The graph is allowed to touch embedded text and the
+ * pure helpers it renders with, and nothing else.
+ *
+ * Two rules, both checked over the entry's transitive chunk graph:
+ *
+ * - **No external imports at all.** Everything but node builtins is bundled
+ *   (see `rollupOptions.external`), so a bare specifier surviving here is a
+ *   builtin — `node:fs`, `node:child_process` — and the render path has no
+ *   business with any of them.
+ * - **Never reach the bin entry.** That chunk is the CLI itself.
+ *
+ * ENFORCED IN THE BUILD, DELIBERATELY, rather than asserted by a test over the
+ * artifact. A build that refuses to emit a leaking bundle makes the bad artifact
+ * unproducible; a test that inspects one afterwards only notices. It is also
+ * the difference between reading rollup's own resolved graph and reconstructing
+ * it: the test this replaces regex-scanned built JavaScript for `from "…"`, and
+ * a chunk embeds every recipe as a string literal, so the engine-selection
+ * recipe's `a different axis from "which engine"` was reported as an import.
+ * `imports`/`dynamicImports` below are the real thing and cannot be spoofed by
+ * prose.
+ */
+function assertPromptsGraph(): Plugin {
+  return {
+    name: "assert-prompts-graph",
+    generateBundle(_options, bundle) {
+      const entry = Object.values(bundle).find(
+        (chunk): chunk is Rollup.OutputChunk =>
+          chunk.type === "chunk" &&
+          chunk.isEntry &&
+          chunk.name === PROMPTS_ENTRY
+      );
+      // Not an error: `build:self`/`build:dev` and any future single-entry
+      // build legitimately emit no prompts entry. Nothing to check, not a
+      // failure to check it.
+      if (entry === undefined) return;
+
+      const binFile = Object.values(bundle).find(
+        (chunk): chunk is Rollup.OutputChunk =>
+          chunk.type === "chunk" && chunk.isEntry && chunk.name === BIN_ENTRY
+      )?.fileName;
+
+      const seen = new Set<string>();
+      const queue = [entry.fileName];
+      while (queue.length > 0) {
+        const fileName = queue.pop()!;
+        if (seen.has(fileName)) continue;
+        seen.add(fileName);
+
+        const chunk = bundle[fileName];
+        if (chunk === undefined || chunk.type !== "chunk") {
+          // Resolved to something outside the bundle: an external module.
+          this.error(
+            `prompts entry graph imports ${fileName}; the render path must not ` +
+              `reach a host capability`
+          );
+        }
+        if (binFile !== undefined && fileName === binFile) {
+          this.error(
+            `prompts entry graph reaches the CLI entry (${fileName}); ` +
+              `importing @taskless/cli/prompts would load the command layer`
+          );
+        }
+        queue.push(...chunk.imports, ...chunk.dynamicImports);
+      }
+    },
+  };
+}
+
 export default defineConfig({
   define: {
     __VERSION__: JSON.stringify(pkg.version),
     __TASKLESS_CLI__: JSON.stringify(resolveCliInvocation()),
     __TASKLESS_CLI_NOTICE__: JSON.stringify(resolveCliNotice()),
   },
-  plugins: [tsconfigPaths(), assertSkillVersions(), shebang()],
+  plugins: [
+    tsconfigPaths(),
+    assertSkillVersions(),
+    shebang(),
+    assertPromptsGraph(),
+  ],
   build: {
     outDir: resolveOutDir(),
     lib: {
