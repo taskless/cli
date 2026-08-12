@@ -128,8 +128,8 @@ describe("candidate order", () => {
   const workspaces: string[] = [];
 
   afterEach(() => {
-    while (workspaces.length > 0) {
-      rmSync(workspaces.pop() as string, { recursive: true, force: true });
+    for (const workspace of workspaces.splice(0)) {
+      rmSync(workspace, { recursive: true, force: true });
     }
   });
 
