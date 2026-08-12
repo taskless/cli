@@ -1,7 +1,7 @@
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { type Dirent, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { readdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join, posix, resolve, sep } from "node:path";
+import { join, posix, relative, resolve, sep } from "node:path";
 
 import { ENGINE_LAYOUTS } from "../engines";
 import { runVale, type ValeRunOutcome } from "./run";
@@ -66,6 +66,21 @@ function isMissingDirectory(error: unknown): boolean {
 }
 
 /**
+ * Directory entries, with a directory that is not there reading as an empty one.
+ *
+ * The single place that decides which `readdir` failures are absence and which
+ * are problems, so no caller can accidentally answer that question differently.
+ */
+async function directoryEntries(directory: string): Promise<Dirent[]> {
+  try {
+    return await readdir(directory, { withFileTypes: true });
+  } catch (error) {
+    if (isMissingDirectory(error)) return [];
+    throw error;
+  }
+}
+
+/**
  * Fixture documents directly under `<rule-tests>/<rule>/<bucket>/`.
  *
  * A missing directory is an empty bucket; anything else rethrows. The buckets
@@ -81,23 +96,15 @@ async function fixtureFiles(
   bucket: "pass" | "fail"
 ): Promise<string[]> {
   const directory = join(valeRuleTestsDirectory(cwd, ruleId), bucket);
-  try {
-    const entries = await readdir(directory, { withFileTypes: true });
-    return entries
-      .filter((entry) => entry.isFile())
-      .map((entry) => join(directory, entry.name));
-  } catch (error) {
-    if (isMissingDirectory(error)) return [];
-    throw error;
-  }
+  const entries = await directoryEntries(directory);
+  return entries
+    .filter((entry) => entry.isFile())
+    .map((entry) => join(directory, entry.name));
 }
 
 /** Vale keys findings by the path it was given, so compare in that shape. */
 function toRelativePosix(cwd: string, absolute: string): string {
-  return absolute
-    .slice(cwd.length + 1)
-    .split(sep)
-    .join(posix.sep);
+  return relative(cwd, absolute).split(sep).join(posix.sep);
 }
 
 /**
@@ -137,6 +144,16 @@ export interface ValeRuleVerification {
   fixtures: ValeFixtureCoverage;
 }
 
+/**
+ * The Vale outcomes that end a verification instead of producing one.
+ *
+ * Every member carries a `message`, which is why `verifyValeRule` hands back
+ * this rather than the full {@link ValeRunOutcome}: an `ok` run is never what a
+ * caller is handed there, so it should not have to write a fallback for the
+ * message an `ok` run would not have had.
+ */
+export type ValeRunFailure = Exclude<ValeRunOutcome, { status: "ok" }>;
+
 export type ValeVerifyOutcome =
   | { status: "ok"; rules: ValeRuleVerification[] }
   | { status: "unavailable"; message: string }
@@ -144,18 +161,11 @@ export type ValeVerifyOutcome =
 
 /** Rule ids that have a `rule-tests/<id>/` directory. */
 export async function discoverValeRuleTests(cwd: string): Promise<string[]> {
-  try {
-    const entries = await readdir(valeRuleTestsDirectory(cwd), {
-      withFileTypes: true,
-    });
-    return entries
-      .filter((entry) => entry.isDirectory())
-      .map((entry) => entry.name)
-      .toSorted();
-  } catch (error) {
-    if (isMissingDirectory(error)) return [];
-    throw error;
-  }
+  const entries = await directoryEntries(valeRuleTestsDirectory(cwd));
+  return entries
+    .filter((entry) => entry.isDirectory())
+    .map((entry) => entry.name)
+    .toSorted();
 }
 
 /**
@@ -188,7 +198,7 @@ export async function verifyValeRule(
   cwd: string,
   ruleId: string,
   options: { timeoutMs?: number } = {}
-): Promise<ValeRuleVerification | { outcome: ValeRunOutcome }> {
+): Promise<ValeRuleVerification | { outcome: ValeRunFailure }> {
   const [passFixtures, failFixtures] = await Promise.all([
     fixtureFiles(cwd, ruleId, "pass"),
     fixtureFiles(cwd, ruleId, "fail"),
@@ -270,7 +280,7 @@ export async function verifyValeRules(
       const { outcome } = result;
       return {
         status: outcome.status === "unavailable" ? "unavailable" : "failed",
-        message: "message" in outcome ? outcome.message : "Vale failed",
+        message: outcome.message,
       };
     }
     rules.push(result);
