@@ -85,6 +85,8 @@ When the `vale` binary cannot be found or invoked, the system SHALL report that 
 
 The system SHALL verify a Vale rule from a `.taskless/vale/rule-tests/<rule>/` subdirectory containing `pass/` and `fail/` fixture documents. Because verification is one-time (not per-check), the system SHALL **generate** an ephemeral `.vale.ini` at verify time (StylesPath plus only that rule enabled) rather than requiring a committed one — the subdirectory holds fixtures only. Verification SHALL assert that every `fail/` fixture produces at least one finding for the rule and every `pass/` fixture produces none (mirroring ast-grep's `invalid`/`valid`).
 
+Both buckets SHALL hold at least one document before a rule can be reported as verified. A `fail/` fixture proves the rule fires; a `pass/` fixture proves it does not over-fire; either alone establishes half the claim. A rule populating only one bucket SHALL be reported as unverified rather than passing, and the report SHALL distinguish that half-written state from a rule carrying no fixtures at all — a rule with only `pass/` fixtures would otherwise pass trivially, on an empty set of expected failures, having never demonstrated that it fires.
+
 #### Scenario: Fail fixture triggers, pass fixture does not
 
 - **WHEN** verify runs for a rule and generates an isolating `.vale.ini` enabling only that rule
@@ -94,6 +96,12 @@ The system SHALL verify a Vale rule from a `.taskless/vale/rule-tests/<rule>/` s
 
 - **WHEN** a `fail/` fixture for a rule produces no finding
 - **THEN** verification reports a failure for that rule
+
+#### Scenario: A one-sided fixture set is not verified
+
+- **WHEN** a rule has `fail/` fixtures but no `pass/` fixtures, or `pass/` fixtures but no `fail/`
+- **THEN** verification reports the rule as unverified rather than passing
+- **AND** the result distinguishes a half-written fixture set from a rule with no fixtures at all
 
 ### Requirement: Taskless breadcrumbs use a namespaced ignored key in the Vale config
 
