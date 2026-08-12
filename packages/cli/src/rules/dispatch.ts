@@ -13,6 +13,9 @@ import type { RuntimeRule } from "./runtime/discover";
 import { runAstGrepScan } from "./scan";
 import { isValeFailure, runVale } from "./vale/run";
 
+/** Errno values that mean "the directory is not there", and nothing worse. */
+const ABSENT_DIRECTORY_CODES = new Set(["ENOENT", "ENOTDIR"]);
+
 /**
  * Whether `.taskless/vale/rules/` holds anything to run.
  *
@@ -21,6 +24,12 @@ import { isValeFailure, runVale } from "./vale/run";
  * nothing: a scaffolded-but-empty engine directory is the common state after
  * `taskless init`, and spawning a subprocess per check to confirm it found
  * nothing is pure cost.
+ *
+ * Only absence is swallowed. A blanket `catch` here would read an unreadable
+ * rules directory (`EACCES`, a bad mount) as "no rules" and skip Vale with no
+ * notice and no failure — the same silent-disable that {@link isValeFailure}
+ * exists to prevent one file over. Anything that is not absence propagates, so
+ * `runEngines` reports it as an engine failure rather than a clean run.
  */
 export async function hasValeRules(cwd: string): Promise<boolean> {
   try {
@@ -28,8 +37,10 @@ export async function hasValeRules(cwd: string): Promise<boolean> {
       join(cwd, ".taskless", ENGINE_LAYOUTS.vale.rulesDirectory)
     );
     return entries.some((entry) => entry.endsWith(".yml"));
-  } catch {
-    return false;
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code;
+    if (code !== undefined && ABSENT_DIRECTORY_CODES.has(code)) return false;
+    throw error;
   }
 }
 
