@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { findValeBinary } from "../src/rules/vale/binary";
-import { isValeFailure, runVale } from "../src/rules/vale/run";
+import { runVale } from "../src/rules/vale/run";
 
 /**
  * These run the real Vale binary. It ships as an `optionalDependency` for the
@@ -94,8 +94,9 @@ withVale("runVale against the real binary", () => {
       file: "doc.md",
       matchedText: "simply",
     });
-    expect(result.range.start.line).toBe(3);
-    expect(result.range.end.line).toBe(3);
+    // The match is on the document's third line; `range` is 0-indexed, so 2.
+    expect(result.range.start.line).toBe(2);
+    expect(result.range.end.line).toBe(2);
   });
 
   it("produces no findings, and no error, on a clean document", async () => {
@@ -108,7 +109,7 @@ withVale("runVale against the real binary", () => {
     const outcome = await runVale({ cwd, paths: ["doc.md"] });
     // Vale prints nothing at all when it finds nothing; that must read as an
     // empty result rather than as unparseable output.
-    expect(outcome).toEqual({ status: "ok", results: [] });
+    expect(outcome).toEqual({ status: "ok", blocking: false, results: [] });
   });
 
   it("normalizes suggestion to hint", async () => {
@@ -229,23 +230,65 @@ withVale("runVale against the real binary", () => {
   });
 });
 
-describe("isValeFailure", () => {
-  it("treats an absent binary as a skip, not a failure", () => {
+describe("ValeRunOutcome.blocking", () => {
+  it("marks an absent binary non-blocking", async () => {
     // An unsupported arch is an ordinary state, not evidence that the user's
-    // rules are wrong. Failing here would make `check` unrunnable on a machine
+    // rules are wrong. Blocking here would make `check` unrunnable on a machine
     // where ast-grep and runtime rules report perfectly well.
-    expect(isValeFailure({ status: "unavailable", message: "x" })).toBe(false);
-  });
+    const binary = await import("../src/rules/vale/binary");
+    vi.spyOn(binary, "findValeBinary").mockReturnValue({
+      path: undefined,
+      tried: ["@taskless/vale-darwin-arm64", "node_modules/.bin", "PATH"],
+    });
 
-  it("treats a timeout or a failure as an error", () => {
-    // Vale was present and asked to work. Reporting these as a skip would let
-    // a broken rule file read as "no Vale findings" — indistinguishable from a
+    expect(await runVale({ cwd: process.cwd() })).toMatchObject({
+      status: "unavailable",
+      blocking: false,
+    });
+  });
+});
+
+withVale("ValeRunOutcome.blocking against the real binary", () => {
+  it("marks a timeout blocking", async () => {
+    // Vale was present and asked to work. Reporting this as a skip would let a
+    // broken rule file read as "no Vale findings" — indistinguishable from a
     // clean run, and how a silently disabled engine ships.
-    expect(isValeFailure({ status: "timeout", message: "x" })).toBe(true);
-    expect(isValeFailure({ status: "failed", message: "x" })).toBe(true);
+    const cwd = makeProject(
+      `${header}\n[*.md]\nrules.no-simply = YES\n`,
+      { "no-simply": existenceRule("simply", "Avoid 'simply'") },
+      { "doc.md": "Just simply do it.\n" }
+    );
+
+    expect(
+      await runVale({ cwd, paths: ["doc.md"], timeoutMs: 1 })
+    ).toMatchObject({ status: "timeout", blocking: true });
   });
 
-  it("treats findings as a success; severity decides the exit code", () => {
-    expect(isValeFailure({ status: "ok", results: [] })).toBe(false);
+  it("marks a rejected configuration blocking", async () => {
+    const cwd = makeProject(
+      `${header}\n[*.md]\nrules.bogus = YES\n`,
+      {
+        bogus: `extends: existence\nmessage: "test"\nlevel: catastrophe\ntokens:\n  - simply\n`,
+      },
+      { "doc.md": "Just simply do it.\n" }
+    );
+
+    expect(await runVale({ cwd, paths: ["doc.md"] })).toMatchObject({
+      status: "failed",
+      blocking: true,
+    });
+  });
+
+  it("marks findings non-blocking; severity decides the exit code", async () => {
+    const cwd = makeProject(
+      `${header}\n[*.md]\nrules.no-simply = YES\n`,
+      { "no-simply": existenceRule("simply", "Avoid 'simply'") },
+      { "doc.md": "Just simply do it.\n" }
+    );
+
+    expect(await runVale({ cwd, paths: ["doc.md"] })).toMatchObject({
+      status: "ok",
+      blocking: false,
+    });
   });
 });

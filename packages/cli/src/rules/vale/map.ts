@@ -138,14 +138,24 @@ function toFix(finding: ValeFinding): string | undefined {
  *
  * `range` collapses to a single line: Vale reports `Line` plus a `Span` of
  * columns within it, and has no concept of a finding that crosses lines, so
- * start and end share the line number. `Span` is 1-based and inclusive, which
- * matches what ast-grep already emits for `column`.
+ * start and end share the line number.
+ *
+ * Both are converted down by one. `CheckResult.range` is 0-indexed — ast-grep's
+ * native range is passed straight through by `toCheckResult`, the runtime
+ * harness converts its 1-based `Finding` down the same way, and `format.ts` adds
+ * 1 back for every source when it displays. Vale's `Line` and `Span` are both
+ * 1-based, so emitting them verbatim would report every finding one line and one
+ * column further into the file than it is. Clamped at 0 because a 0 from Vale
+ * (unset, rather than a real position) must not become -1.
  */
 export function toValeCheckResult(
   file: string,
   finding: ValeFinding
 ): CheckResult {
-  const [startColumn, endColumn] = finding.Span;
+  const [spanStart, spanEnd] = finding.Span;
+  const line = Math.max(0, finding.Line - 1);
+  const startColumn = Math.max(0, spanStart - 1);
+  const endColumn = Math.max(0, spanEnd - 1);
   return {
     source: "vale",
     ruleId: stripRulesPrefix(finding.Check),
@@ -154,8 +164,8 @@ export function toValeCheckResult(
     note: toNote(finding),
     file,
     range: {
-      start: { line: finding.Line, column: startColumn },
-      end: { line: finding.Line, column: endColumn },
+      start: { line, column: startColumn },
+      end: { line, column: endColumn },
     },
     matchedText: finding.Match,
     fix: toFix(finding),
