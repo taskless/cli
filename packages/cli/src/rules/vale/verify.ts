@@ -89,6 +89,20 @@ async function directoryEntries(directory: string): Promise<Dirent[]> {
  * one-sided, and could report `passed: true` having never checked the pass side
  * at all. A permissions problem must not read as "no pass fixtures were
  * written".
+ *
+ * A bucket is one directory deep, and a nested directory is rejected rather
+ * than ignored. The two halves of verification disagree about recursion: this
+ * read is flat, but Vale is invoked over the whole `rule-tests/<rule>` tree and
+ * lints recursively. Silently skipping a nested entry therefore fails in the
+ * dangerous direction — a nested `pass/` fixture that wrongly fires produces a
+ * finding this function never collected, so `unexpectedFindings` discards it,
+ * and a nested `fail/` fixture is never required to fire. Either way the rule
+ * reports `passed: true` while half its fixtures went unchecked, which is the
+ * exact failure `ValeFixtureCoverage` exists to prevent.
+ *
+ * Flat-and-loud is chosen over recursing because it keeps one layout legal
+ * instead of two, and because the error names the offending path at the moment
+ * someone creates it.
  */
 async function fixtureFiles(
   cwd: string,
@@ -97,6 +111,17 @@ async function fixtureFiles(
 ): Promise<string[]> {
   const directory = join(valeRuleTestsDirectory(cwd, ruleId), bucket);
   const entries = await directoryEntries(directory);
+
+  const nested = entries.find((entry) => entry.isDirectory());
+  if (nested !== undefined) {
+    throw new Error(
+      `Vale fixture buckets are flat: ${join(directory, nested.name)} is a ` +
+        `directory. Move its documents directly into ${bucket}/ — Vale lints ` +
+        `the rule's whole directory, so a nested fixture is linted but never ` +
+        `checked.`
+    );
+  }
+
   return entries
     .filter((entry) => entry.isFile())
     .map((entry) => join(directory, entry.name));
