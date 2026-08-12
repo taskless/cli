@@ -144,6 +144,9 @@ export function isPlatformBinary(
   return spec.identity.test(`${result.stdout ?? ""}${result.stderr ?? ""}`);
 }
 
+/** One place to look, paired with the label `tried` reports it under. */
+type Candidate = [label: string, path: string | undefined];
+
 export interface PlatformBinaryResolution {
   /** Absolute path to the verified binary, or `undefined` when none resolved. */
   path: string | undefined;
@@ -180,7 +183,8 @@ export function resolvePlatformBinary(
     ".bin"
   );
 
-  const candidates: Array<[label: string, path: string | undefined]> = [
+  const links = linkNames(spec);
+  const candidates: Candidate[] = [
     [
       platformPackageName(spec),
       platformPackageBinary(
@@ -188,14 +192,15 @@ export function resolvePlatformBinary(
         executableName(spec.binaryNames[0] ?? spec.label)
       ),
     ],
-    ...linkNames(spec).map((name): [string, string | undefined] => [
-      "node_modules/.bin",
-      resolve(localBin, executableName(name)),
-    ]),
-    ...linkNames(spec).map((name): [string, string | undefined] => [
-      "PATH",
-      findOnPath(executableName(name)),
-    ]),
+    ...links.map(
+      (name): Candidate => [
+        "node_modules/.bin",
+        resolve(localBin, executableName(name)),
+      ]
+    ),
+    ...links.map(
+      (name): Candidate => ["PATH", findOnPath(executableName(name))]
+    ),
   ];
 
   // `tried` names *locations*, not candidates: a tier searched under two
