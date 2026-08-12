@@ -1,4 +1,10 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import {
+  chmodSync,
+  mkdirSync,
+  mkdtempSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -102,6 +108,41 @@ describe("discoverValeRuleTests", () => {
   });
 });
 
+// Root ignores the mode bits, so there is no unreadable directory to make.
+const asUser = process.getuid?.() === 0 ? describe.skip : describe;
+
+asUser("verifyValeRule with an unreadable bucket", () => {
+  it("surfaces the IO error instead of reading it as an empty bucket", async () => {
+    // The buckets are read independently: swallowing this would leave `pass/`
+    // silently `[]` beside a populated `fail/`, and the rule could report
+    // passing having never checked the pass side.
+    const cwd = makeProject(
+      { "no-simply": existence("simply") },
+      {
+        "no-simply": {
+          fail: { "a.md": "Just simply do it.\n" },
+          pass: { "c.md": "Nothing objectionable.\n" },
+        },
+      }
+    );
+    const passDirectory = join(
+      cwd,
+      ".taskless",
+      "vale",
+      "rule-tests",
+      "no-simply",
+      "pass"
+    );
+    chmodSync(passDirectory, 0o000);
+    try {
+      await expect(verifyValeRule(cwd, "no-simply")).rejects.toThrow(/EACCES/);
+    } finally {
+      // Restore, or the afterEach cleanup cannot recurse into it either.
+      chmodSync(passDirectory, 0o700);
+    }
+  });
+});
+
 withVale("verifyValeRule", () => {
   it("passes when every fail fixture fires and every pass fixture is clean", async () => {
     const cwd = makeProject(
@@ -122,7 +163,7 @@ withVale("verifyValeRule", () => {
       passed: true,
       missingFailures: [],
       unexpectedFindings: [],
-      empty: false,
+      fixtures: "both",
     });
   });
 
@@ -135,11 +176,12 @@ withVale("verifyValeRule", () => {
             "a.md": "Just simply do it.\n",
             "quiet.md": "Nothing here.\n",
           },
+          pass: { "c.md": "Nothing objectionable.\n" },
         },
       }
     );
     const result = await verifyValeRule(cwd, "no-simply");
-    if ("unavailable" in result) throw new Error("expected a verification");
+    if ("outcome" in result) throw new Error("expected a verification");
     expect(result.passed).toBe(false);
     // A fixture that produces nothing is absent from Vale's output entirely,
     // so this can only be caught by comparing against the files on disk.
@@ -159,7 +201,7 @@ withVale("verifyValeRule", () => {
       }
     );
     const result = await verifyValeRule(cwd, "no-simply");
-    if ("unavailable" in result) throw new Error("expected a verification");
+    if ("outcome" in result) throw new Error("expected a verification");
     expect(result.passed).toBe(false);
     expect(result.unexpectedFindings).toEqual([
       ".taskless/vale/rule-tests/no-simply/pass/oops.md",
@@ -180,7 +222,7 @@ withVale("verifyValeRule", () => {
       }
     );
     const result = await verifyValeRule(cwd, "no-simply");
-    if ("unavailable" in result) throw new Error("expected a verification");
+    if ("outcome" in result) throw new Error("expected a verification");
     expect(result.passed).toBe(true);
     expect(result.unexpectedFindings).toEqual([]);
   });
@@ -195,8 +237,35 @@ withVale("verifyValeRule", () => {
       }
     );
     const result = await verifyValeRule(cwd, "no-simply");
-    if ("unavailable" in result) throw new Error("expected a verification");
-    expect(result.empty).toBe(true);
+    if ("outcome" in result) throw new Error("expected a verification");
+    expect(result.fixtures).toBe("none");
+    expect(result.passed).toBe(false);
+  });
+
+  it("does not report success for a rule with only fail fixtures", async () => {
+    // The rule is shown to fire and never shown not to over-fire. Half a
+    // claim, and it is not "empty" — without this it would report passing on
+    // an unexpectedFindings that had nothing to check.
+    const cwd = makeProject(
+      { "no-simply": existence("simply") },
+      { "no-simply": { fail: { "a.md": "Just simply do it.\n" } } }
+    );
+    const result = await verifyValeRule(cwd, "no-simply");
+    if ("outcome" in result) throw new Error("expected a verification");
+    expect(result.fixtures).toBe("fail-only");
+    expect(result.passed).toBe(false);
+  });
+
+  it("does not report success for a rule with only pass fixtures", async () => {
+    // The more misleading half: `missingFailures` is trivially empty, so this
+    // used to pass without ever demonstrating the rule can fire at all.
+    const cwd = makeProject(
+      { "no-simply": existence("simply") },
+      { "no-simply": { pass: { "c.md": "Nothing objectionable.\n" } } }
+    );
+    const result = await verifyValeRule(cwd, "no-simply");
+    if ("outcome" in result) throw new Error("expected a verification");
+    expect(result.fixtures).toBe("pass-only");
     expect(result.passed).toBe(false);
   });
 
@@ -205,10 +274,15 @@ withVale("verifyValeRule", () => {
     // generated. makeProject never writes one.
     const cwd = makeProject(
       { "no-simply": existence("simply") },
-      { "no-simply": { fail: { "a.md": "Just simply do it.\n" } } }
+      {
+        "no-simply": {
+          fail: { "a.md": "Just simply do it.\n" },
+          pass: { "c.md": "Nothing objectionable.\n" },
+        },
+      }
     );
     const result = await verifyValeRule(cwd, "no-simply");
-    if ("unavailable" in result) throw new Error("expected a verification");
+    if ("outcome" in result) throw new Error("expected a verification");
     expect(result.passed).toBe(true);
   });
 });
@@ -218,8 +292,14 @@ withVale("verifyValeRules", () => {
     const cwd = makeProject(
       { "no-simply": existence("simply"), "no-very": existence("very") },
       {
-        "no-simply": { fail: { "a.md": "Just simply do it.\n" } },
-        "no-very": { fail: { "a.md": "It is very good.\n" } },
+        "no-simply": {
+          fail: { "a.md": "Just simply do it.\n" },
+          pass: { "c.md": "Nothing objectionable.\n" },
+        },
+        "no-very": {
+          fail: { "a.md": "It is very good.\n" },
+          pass: { "c.md": "Nothing objectionable.\n" },
+        },
       }
     );
     const outcome = await verifyValeRules(cwd);
@@ -244,9 +324,16 @@ describe("verifyValeRules without a binary", () => {
       tried: ["@taskless/vale-darwin-arm64", "PATH"],
     });
 
+    // Both buckets, or the rule short-circuits on incomplete fixtures and Vale
+    // is never invoked — the binary's absence would go unnoticed.
     const cwd = makeProject(
       { "no-simply": existence("simply") },
-      { "no-simply": { fail: { "a.md": "Just simply do it.\n" } } }
+      {
+        "no-simply": {
+          fail: { "a.md": "Just simply do it.\n" },
+          pass: { "c.md": "Nothing objectionable.\n" },
+        },
+      }
     );
     const outcome = await verifyValeRules(cwd);
     expect(outcome.status).toBe("unavailable");
