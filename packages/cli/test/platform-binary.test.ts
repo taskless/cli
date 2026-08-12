@@ -1,10 +1,22 @@
-import { readFileSync } from "node:fs";
+import {
+  chmodSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 
 import { AST_GREP_BINARY } from "../src/rules/scan";
-import { platformPackageName } from "../src/rules/platform-binary";
+import {
+  pathCommandName,
+  platformPackageName,
+  resolvePlatformBinary,
+  type PlatformBinarySpec,
+} from "../src/rules/platform-binary";
 import { VALE_BINARY } from "../src/rules/vale/binary";
 
 /**
@@ -99,5 +111,102 @@ describe("platform package naming", () => {
     );
 
     expect(generated.toSorted()).toEqual(declared.toSorted());
+  });
+});
+
+/**
+ * The order candidates are tried in, which no existing case pinned.
+ *
+ * Every other test here asserts that resolution succeeds or fails, and that is
+ * exactly why extracting the shared resolver could silently reverse ast-grep's
+ * `sg`-before-`ast-grep` ordering without a single failure: both names link to
+ * the same target, so either answer is "resolved". These pin the ordering
+ * itself, using a spec whose identity nothing on the host satisfies except the
+ * fakes planted for the test.
+ */
+describe("candidate order", () => {
+  const workspaces: string[] = [];
+
+  afterEach(() => {
+    while (workspaces.length > 0) {
+      rmSync(workspaces.pop() as string, { recursive: true, force: true });
+    }
+  });
+
+  /** Two identically-behaving executables, differing only in name. */
+  function plantOnPath(names: string[]): string {
+    const directory = mkdtempSync(join(tmpdir(), "candidate-order-"));
+    workspaces.push(directory);
+    for (const name of names) {
+      const path = join(directory, name);
+      writeFileSync(path, "#!/bin/sh\necho 'fake-tool 1.0.0'\n");
+      chmodSync(path, 0o755);
+    }
+    return directory;
+  }
+
+  const FAKE: PlatformBinarySpec = {
+    label: "fake-tool",
+    // Deliberately unresolvable, so the platform-package and node_modules/.bin
+    // tiers miss and the PATH tier is what decides.
+    packagePrefix: "@taskless/fake-tool-that-does-not-exist",
+    toolchainSuffix: false,
+    binaryNames: ["ast-grep", "sg"],
+    identity: /fake-tool/i,
+  };
+
+  const onUnix = process.platform === "win32" ? it.skip : it;
+
+  onUnix("tries the alternative name before the canonical one on PATH", () => {
+    // ast-grep's original resolver looked for `sg` first at both link-based
+    // tiers, with a comment marking it deliberate. Nothing observable rides on
+    // it today — both names point at the same target and `isPlatformBinary`
+    // verifies whichever answers — so only a test can keep the documented
+    // ordering from being quietly reversed by a refactor.
+    const directory = plantOnPath(["ast-grep", "sg"]);
+    const originalPath = process.env.PATH;
+    process.env.PATH = directory;
+    try {
+      expect(resolvePlatformBinary(FAKE).path).toBe(join(directory, "sg"));
+    } finally {
+      process.env.PATH = originalPath;
+    }
+  });
+
+  onUnix("still resolves the canonical name when it is the only one", () => {
+    const directory = plantOnPath(["ast-grep"]);
+    const originalPath = process.env.PATH;
+    process.env.PATH = directory;
+    try {
+      expect(resolvePlatformBinary(FAKE).path).toBe(
+        join(directory, "ast-grep")
+      );
+    } finally {
+      process.env.PATH = originalPath;
+    }
+  });
+
+  it("names each searched location once, however many spellings it tried", () => {
+    // The platform package is probed under one name, and a tier searched under
+    // two spellings is still one place to look; repeating a label makes
+    // "Looked in: …" read as if we searched the same directory twice.
+    const { tried } = resolvePlatformBinary(FAKE);
+    expect(tried).toEqual([...new Set(tried)]);
+    expect(tried).toEqual([
+      platformPackageName(FAKE),
+      "node_modules/.bin",
+      "PATH",
+    ]);
+  });
+
+  it("advises the PATH name the search actually looks for first", () => {
+    // `sg`, not `ast-grep`, and `.exe`-suffixed on Windows — telling a Windows
+    // user to install a name we would not find there is worse than silence.
+    expect(pathCommandName(AST_GREP_BINARY)).toBe(
+      process.platform === "win32" ? "sg.exe" : "sg"
+    );
+    expect(pathCommandName(VALE_BINARY)).toBe(
+      process.platform === "win32" ? "vale.exe" : "vale"
+    );
   });
 });

@@ -8,6 +8,7 @@ import { toCheckResult, type CheckResult } from "../types/check";
 import { COMMITTED_SG_CONFIG } from "./engines";
 import {
   isPlatformBinary,
+  pathCommandName,
   resolvePlatformBinary,
   type PlatformBinarySpec,
 } from "./platform-binary";
@@ -41,7 +42,11 @@ export function buildPath(): string {
  * {@link PlatformBinarySpec} for why that distinction is load-bearing.
  *
  * Both `ast-grep` and `sg` are listed because the wrapper declares them as bin
- * entries for the same target, so either may be what got linked.
+ * entries for the same target, so either may be what got linked. `ast-grep`
+ * leads because it is the name the platform package ships the binary under; the
+ * resolver reverses the list at the link-based tiers, so `sg` is still tried
+ * first there and named in the PATH advice, as it was before the shared
+ * resolver existed.
  */
 export const AST_GREP_BINARY: PlatformBinarySpec = {
   label: "ast-grep",
@@ -100,9 +105,13 @@ export function findSgBinary(): string {
   // ast-grep, unlike Vale, has no degraded mode: it is the executor for every
   // `sg` rule, so a miss is fatal for this command rather than one engine
   // reporting itself unavailable.
+  //
+  // The PATH advice is spelled for the platform — `sg.exe` on Windows — rather
+  // than hardcoded, so a Windows user is not told to install a name that would
+  // not be found there.
   throw new Error(
     `ast-grep binary not found. Looked in: ${tried.join(", ")}. Install a ` +
-      `supported platform build, or put \`sg\` on your PATH.`
+      `supported platform build, or put \`${pathCommandName(AST_GREP_BINARY)}\` on your PATH.`
   );
 }
 

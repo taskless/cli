@@ -41,6 +41,11 @@ export interface PlatformBinarySpec {
    * Executable names to try, in confidence order, spelled for unix. `.exe` is
    * appended on Windows. More than one because ast-grep declares both
    * `ast-grep` and `sg` for the same target.
+   *
+   * The first name is the canonical one: it is the only spelling probed inside
+   * the platform package, and it is the name error messages tell the user to put
+   * on PATH. The rest are alternative link names, tried *first* at the
+   * link-based tiers — see {@link resolvePlatformBinary}.
    */
   binaryNames: string[];
   /** Pattern the candidate's own `--version` output must match. */
@@ -63,6 +68,31 @@ export function platformPackageName(spec: PlatformBinarySpec): string {
 /** Executable name for this platform. */
 function executableName(name: string): string {
   return process.platform === "win32" ? `${name}.exe` : name;
+}
+
+/**
+ * The spellings tried at the link-based tiers (`node_modules/.bin`, `PATH`), in
+ * order — the reverse of {@link PlatformBinarySpec.binaryNames}.
+ *
+ * Reversed deliberately, preserving ast-grep's original resolver: it tried `sg`
+ * before `ast-grep` at both tiers. Nothing observable hangs on it today, since
+ * both names link to the same target and {@link isPlatformBinary} verifies
+ * whichever one answers, so this is about keeping a documented ordering rather
+ * than repairing a behavioural bug. It is kept because the ordering is the only
+ * record of which spelling we expect to find, and the same list decides which
+ * name a failure message tells the user to put on PATH.
+ */
+function linkNames(spec: PlatformBinarySpec): string[] {
+  return spec.binaryNames.toReversed();
+}
+
+/**
+ * The command name to tell a user to put on PATH, spelled for this platform
+ * (`sg.exe` on Windows). It is the first spelling the PATH search itself tries,
+ * so the advice and the search cannot drift apart.
+ */
+export function pathCommandName(spec: PlatformBinarySpec): string {
+  return executableName(linkNames(spec)[0] ?? spec.label);
 }
 
 /** Absolute path to a binary inside the resolved platform package, if any. */
@@ -128,6 +158,13 @@ export interface PlatformBinaryResolution {
  * platform package first because it is the version we pinned, then a locally
  * linked binary, then whatever the host provides on PATH.
  *
+ * The platform package is probed under one name only. Its contents are ours to
+ * predict — the package ships the binary under its canonical name — so trying
+ * the alternative spellings there buys nothing but an extra `require.resolve`
+ * and a duplicate entry in `tried`, which reads to the user as the same
+ * location searched twice. The link-based tiers do try every spelling, because
+ * which one exists there is the installer's choice, not ours.
+ *
  * Returns rather than throws. The two callers want different things from a
  * miss: ast-grep cannot run at all without it, while a missing Vale binary
  * makes one engine unavailable and must not abort the others (D6b). Encoding
@@ -144,25 +181,33 @@ export function resolvePlatformBinary(
   );
 
   const candidates: Array<[label: string, path: string | undefined]> = [
-    ...spec.binaryNames.map((name): [string, string | undefined] => [
+    [
       platformPackageName(spec),
-      platformPackageBinary(spec, executableName(name)),
-    ]),
-    ...spec.binaryNames.map((name): [string, string | undefined] => [
+      platformPackageBinary(
+        spec,
+        executableName(spec.binaryNames[0] ?? spec.label)
+      ),
+    ],
+    ...linkNames(spec).map((name): [string, string | undefined] => [
       "node_modules/.bin",
       resolve(localBin, executableName(name)),
     ]),
-    ...spec.binaryNames.map((name): [string, string | undefined] => [
+    ...linkNames(spec).map((name): [string, string | undefined] => [
       "PATH",
       findOnPath(executableName(name)),
     ]),
   ];
 
+  // `tried` names *locations*, not candidates: a tier searched under two
+  // spellings is still one place the user can look, and repeating its label
+  // makes "Looked in: …" read as if we searched it twice.
+  const tried = [...new Set(candidates.map(([label]) => label))];
+
   for (const [, path] of candidates) {
     if (path !== undefined && isPlatformBinary(spec, path)) {
-      return { path, tried: candidates.map(([label]) => label) };
+      return { path, tried };
     }
   }
 
-  return { path: undefined, tried: candidates.map(([label]) => label) };
+  return { path: undefined, tried };
 }
