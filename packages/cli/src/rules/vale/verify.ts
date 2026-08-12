@@ -49,7 +49,32 @@ export function buildIsolatingConfig(cwd: string, ruleId: string): string {
   ].join("\n");
 }
 
-/** Fixture documents directly under `<rule-tests>/<rule>/<bucket>/`. */
+/**
+ * Whether a `readdir` failure genuinely means "that directory is not there".
+ *
+ * `ENOENT` is the path not existing; `ENOTDIR` is a path that exists but is a
+ * file, or that has a file for an ancestor. Every other code — `EACCES` above
+ * all — is a real IO problem, and reading it as "nothing here" is what makes an
+ * unreadable bucket indistinguishable from an unwritten one.
+ */
+function isMissingDirectory(error: unknown): boolean {
+  if (error === null || typeof error !== "object" || !("code" in error)) {
+    return false;
+  }
+  const { code } = error as NodeJS.ErrnoException;
+  return code === "ENOENT" || code === "ENOTDIR";
+}
+
+/**
+ * Fixture documents directly under `<rule-tests>/<rule>/<bucket>/`.
+ *
+ * A missing directory is an empty bucket; anything else rethrows. The buckets
+ * are read independently, so a swallowed `EACCES` on `pass/` would silently
+ * yield `[]` while `fail/` still had fixtures — the rule would not look
+ * one-sided, and could report `passed: true` having never checked the pass side
+ * at all. A permissions problem must not read as "no pass fixtures were
+ * written".
+ */
 async function fixtureFiles(
   cwd: string,
   ruleId: string,
@@ -61,8 +86,9 @@ async function fixtureFiles(
     return entries
       .filter((entry) => entry.isFile())
       .map((entry) => join(directory, entry.name));
-  } catch {
-    return [];
+  } catch (error) {
+    if (isMissingDirectory(error)) return [];
+    throw error;
   }
 }
 
@@ -74,6 +100,26 @@ function toRelativePosix(cwd: string, absolute: string): string {
     .join(posix.sep);
 }
 
+/**
+ * Which fixture buckets a rule actually populated.
+ *
+ * This replaces the earlier `empty: boolean`, which only distinguished "no
+ * fixtures at all" from everything else and so let a one-sided rule report
+ * `passed: true`. The four cases are kept apart because a caller wants to say
+ * different things about them: `"none"` is an unwritten rule, while
+ * `"fail-only"`/`"pass-only"` is a half-written one, which is the more
+ * misleading state of the two.
+ */
+export type ValeFixtureCoverage = "both" | "pass-only" | "fail-only" | "none";
+
+/** Classify a rule's buckets by how many documents each held. */
+function coverageOf(passCount: number, failCount: number): ValeFixtureCoverage {
+  if (passCount > 0 && failCount > 0) return "both";
+  if (passCount > 0) return "pass-only";
+  if (failCount > 0) return "fail-only";
+  return "none";
+}
+
 export interface ValeRuleVerification {
   ruleId: string;
   passed: boolean;
@@ -81,8 +127,14 @@ export interface ValeRuleVerification {
   missingFailures: string[];
   /** Fixtures that should have been clean and were not. */
   unexpectedFindings: string[];
-  /** No `pass/` and no `fail/` documents — nothing was actually proven. */
-  empty: boolean;
+  /**
+   * Which buckets held documents. Only `"both"` can be `passed: true`: a
+   * `fail/` fixture proves the rule fires, a `pass/` fixture proves it does not
+   * over-fire, and either alone is half a claim. A rule with only `pass/`
+   * fixtures passes with `missingFailures: []` without ever demonstrating the
+   * rule can fire at all.
+   */
+  fixtures: ValeFixtureCoverage;
 }
 
 export type ValeVerifyOutcome =
@@ -100,8 +152,9 @@ export async function discoverValeRuleTests(cwd: string): Promise<string[]> {
       .filter((entry) => entry.isDirectory())
       .map((entry) => entry.name)
       .toSorted();
-  } catch {
-    return [];
+  } catch (error) {
+    if (isMissingDirectory(error)) return [];
+    throw error;
   }
 }
 
@@ -116,24 +169,41 @@ export async function discoverValeRuleTests(cwd: string): Promise<string[]> {
  * so the expected set comes from disk rather than from the output: absence is
  * the signal for `pass/` and the failure for `fail/`, and neither can be read
  * off a payload that simply omits them.
+ *
+ * Both buckets have to hold at least one document before the rule can report
+ * `passed: true`. An empty fixture directory proves nothing, and reporting it
+ * as passing is how an unverified rule ships looking verified — but so is a
+ * rule with only `fail/` fixtures (never shown not to over-fire) or only
+ * `pass/` fixtures (never shown to fire at all, passing on an empty
+ * `missingFailures`). The one-sided cases are the same failure mode, one level
+ * less obvious, so `fixtures` records which buckets were populated and only
+ * `"both"` is verifiable.
+ *
+ * Non-`ok` outcomes come back as `{ outcome }` rather than a verification.
+ * The discriminant is deliberately not named for the unavailable case: it
+ * carries `timeout` and `failed` too, and a name like `unavailable` invites a
+ * caller to treat a genuine Vale failure as a skip.
  */
 export async function verifyValeRule(
   cwd: string,
   ruleId: string,
   options: { timeoutMs?: number } = {}
-): Promise<ValeRuleVerification | { unavailable: ValeRunOutcome }> {
+): Promise<ValeRuleVerification | { outcome: ValeRunOutcome }> {
   const [passFixtures, failFixtures] = await Promise.all([
     fixtureFiles(cwd, ruleId, "pass"),
     fixtureFiles(cwd, ruleId, "fail"),
   ]);
 
-  if (passFixtures.length === 0 && failFixtures.length === 0) {
+  // Short-circuited before Vale runs: the rule has to be edited either way, so
+  // there is nothing a subprocess could add that `fixtures` does not say.
+  const fixtures = coverageOf(passFixtures.length, failFixtures.length);
+  if (fixtures !== "both") {
     return {
       ruleId,
       passed: false,
       missingFailures: [],
       unexpectedFindings: [],
-      empty: true,
+      fixtures,
     };
   }
 
@@ -148,7 +218,7 @@ export async function verifyValeRule(
       paths: [toRelativePosix(cwd, valeRuleTestsDirectory(cwd, ruleId))],
       timeoutMs: options.timeoutMs,
     });
-    if (outcome.status !== "ok") return { unavailable: outcome };
+    if (outcome.status !== "ok") return { outcome };
 
     // Only findings for the rule under test count. The config isolates it, so
     // this should be every finding — filtering anyway means a leak shows up as
@@ -171,7 +241,7 @@ export async function verifyValeRule(
       passed: missingFailures.length === 0 && unexpectedFindings.length === 0,
       missingFailures,
       unexpectedFindings,
-      empty: false,
+      fixtures,
     };
   } finally {
     rmSync(configDirectory, { recursive: true, force: true });
@@ -196,8 +266,8 @@ export async function verifyValeRules(
 
   for (const ruleId of ruleIds) {
     const result = await verifyValeRule(cwd, ruleId, options);
-    if ("unavailable" in result) {
-      const outcome = result.unavailable;
+    if ("outcome" in result) {
+      const { outcome } = result;
       return {
         status: outcome.status === "unavailable" ? "unavailable" : "failed",
         message: "message" in outcome ? outcome.message : "Vale failed",
