@@ -168,6 +168,17 @@ function shebang(): Plugin {
   };
 }
 
+/** The entry chunk this build emitted under `name`, if it emitted one. */
+function findEntryChunk(
+  bundle: Rollup.OutputBundle,
+  name: string
+): Rollup.OutputChunk | undefined {
+  return Object.values(bundle).find(
+    (chunk): chunk is Rollup.OutputChunk =>
+      chunk.type === "chunk" && chunk.isEntry && chunk.name === name
+  );
+}
+
 /**
  * Refuse to emit a prompts entry that drags the CLI runtime along with it.
  *
@@ -198,40 +209,34 @@ function assertPromptsGraph(): Plugin {
   return {
     name: "assert-prompts-graph",
     generateBundle(_options, bundle) {
-      const entry = Object.values(bundle).find(
-        (chunk): chunk is Rollup.OutputChunk =>
-          chunk.type === "chunk" &&
-          chunk.isEntry &&
-          chunk.name === PROMPTS_ENTRY
-      );
+      const entry = findEntryChunk(bundle, PROMPTS_ENTRY);
       // Not an error: `build:self`/`build:dev` and any future single-entry
       // build legitimately emit no prompts entry. Nothing to check, not a
       // failure to check it.
       if (entry === undefined) return;
 
-      const binFile = Object.values(bundle).find(
-        (chunk): chunk is Rollup.OutputChunk =>
-          chunk.type === "chunk" && chunk.isEntry && chunk.name === BIN_ENTRY
-      )?.fileName;
+      const binFile = findEntryChunk(bundle, BIN_ENTRY)?.fileName;
 
       const seen = new Set<string>();
       const queue = [entry.fileName];
       while (queue.length > 0) {
-        const fileName = queue.pop()!;
-        if (seen.has(fileName)) continue;
-        seen.add(fileName);
+        // A chunk's file name, or — for anything rollup left external — the
+        // bare specifier itself, which is why the bundle lookup below can miss.
+        const imported = queue.pop()!;
+        if (seen.has(imported)) continue;
+        seen.add(imported);
 
-        const chunk = bundle[fileName];
+        const chunk = bundle[imported];
         if (chunk === undefined || chunk.type !== "chunk") {
           // Resolved to something outside the bundle: an external module.
           this.error(
-            `prompts entry graph imports ${fileName}; the render path must not ` +
+            `prompts entry graph imports ${imported}; the render path must not ` +
               `reach a host capability`
           );
         }
-        if (binFile !== undefined && fileName === binFile) {
+        if (imported === binFile) {
           this.error(
-            `prompts entry graph reaches the CLI entry (${fileName}); ` +
+            `prompts entry graph reaches the CLI entry (${imported}); ` +
               `importing @taskless/cli/prompts would load the command layer`
           );
         }
