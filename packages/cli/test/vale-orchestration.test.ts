@@ -1,4 +1,10 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import {
+  chmodSync,
+  mkdirSync,
+  mkdtempSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -13,6 +19,14 @@ import {
 import { findValeBinary } from "../src/rules/vale/binary";
 
 const withVale = findValeBinary().path === undefined ? describe.skip : describe;
+
+/**
+ * Tests that need mode bits to actually deny a read. Windows does not honour
+ * them and root bypasses them, so the directory would stay readable and the
+ * test would assert nothing.
+ */
+const readableModes =
+  process.platform === "win32" || process.getuid?.() === 0 ? it.skip : it;
 
 const workspaces: string[] = [];
 afterEach(() => {
@@ -88,6 +102,24 @@ describe("hasValeRules", () => {
   it("is true once a rule file exists", async () => {
     expect(await hasValeRules(makeMixedProject())).toBe(true);
   });
+
+  readableModes(
+    "propagates a rules directory that exists but cannot be read",
+    async () => {
+      // Only absence means "no rules". An unreadable directory answered
+      // `false` would skip Vale with no notice and no failure, which is the
+      // silent-disable the engine's failure/notice split exists to prevent.
+      const cwd = makeMixedProject();
+      const rules = join(cwd, ".taskless", "vale", "rules");
+      chmodSync(rules, 0o000);
+      try {
+        await expect(hasValeRules(cwd)).rejects.toThrow(/EACCES|EPERM/);
+      } finally {
+        // Restore before teardown, or the workspace cannot be removed.
+        chmodSync(rules, 0o755);
+      }
+    }
+  );
 });
 
 describe("deriveExitCode", () => {
@@ -207,6 +239,30 @@ describe("runEngines when Vale is unavailable", () => {
       new Error("ast-grep exploded")
     );
 
+    // Vale is mocked rather than run: what is under test is that one engine's
+    // rejection does not discard another's results, which has nothing to do
+    // with whether the optional Vale binary is installed. Left real, this
+    // asserted `source === "vale"` on every machine but only passed on the
+    // ones that happened to have the binary.
+    const run = await import("../src/rules/vale/run");
+    vi.spyOn(run, "runVale").mockResolvedValue({
+      status: "ok",
+      results: [
+        {
+          source: "vale",
+          ruleId: "mocked-vale-rule",
+          severity: "warning",
+          message: "Avoid 'simply'",
+          file: "doc.md",
+          range: {
+            start: { line: 1, column: 6 },
+            end: { line: 1, column: 12 },
+          },
+          matchedText: "simply",
+        },
+      ],
+    });
+
     const cwd = makeMixedProject();
     const dispatched = await runEngines({
       cwd,
@@ -216,12 +272,38 @@ describe("runEngines when Vale is unavailable", () => {
     });
 
     // Vale's findings survive the other engine's rejection...
-    expect(dispatched.results.some((result) => result.source === "vale")).toBe(
-      true
-    );
+    expect(
+      dispatched.results.some((result) => result.ruleId === "mocked-vale-rule")
+    ).toBe(true);
     // ...and the thrown engine is reported as a failure rather than swallowed.
     expect(dispatched.failures).toHaveLength(1);
     expect(dispatched.failures[0]).toContain("ast-grep exploded");
     expect(deriveExitCode(dispatched)).toBe(1);
   });
+
+  readableModes(
+    "reports an unreadable Vale rules directory as an engine failure",
+    async () => {
+      // The other half of the rule above: the throw from discovery reaches
+      // `failures` and the exit code, instead of Vale quietly contributing
+      // nothing and the run reading as clean.
+      const cwd = makeMixedProject();
+      const rules = join(cwd, ".taskless", "vale", "rules");
+      chmodSync(rules, 0o000);
+      try {
+        const dispatched = await runEngines({
+          cwd,
+          paths: ["app.js", "doc.md"],
+          astGrepSources: sgSources(cwd),
+          runtimeRules: [],
+        });
+
+        expect(dispatched.failures).toHaveLength(1);
+        expect(dispatched.failures[0]).toContain("vale engine failed");
+        expect(deriveExitCode(dispatched)).toBe(1);
+      } finally {
+        chmodSync(rules, 0o755);
+      }
+    }
+  );
 });
