@@ -162,6 +162,32 @@ asUser("verifyValeRule with an unreadable bucket", () => {
   });
 });
 
+describe("fixture buckets are flat", () => {
+  it("rejects a nested directory instead of silently skipping it", async () => {
+    // The dangerous case: Vale lints `rule-tests/<rule>` recursively, so a
+    // nested fixture IS linted, but a flat read never collects it. Skipping it
+    // quietly would let a nested `pass/` fixture fire with its finding
+    // discarded, and a nested `fail/` fixture never be required to fire —
+    // `passed: true` over fixtures that were never checked.
+    const cwd = makeProject(
+      { "no-simply": existence("simply") },
+      {
+        "no-simply": {
+          pass: { "clean.md": "Nothing objectionable.\n" },
+          fail: { "a.md": "Just simply do it.\n" },
+        },
+      }
+    );
+    mkdirSync(join(cwd, ".taskless", "vale", "rule-tests", "no-simply", "pass", "nested"), {
+      recursive: true,
+    });
+
+    await expect(verifyValeRule(cwd, "no-simply")).rejects.toThrow(
+      /fixture buckets are flat/i
+    );
+  });
+});
+
 withVale("verifyValeRule", () => {
   it("passes when every fail fixture fires and every pass fixture is clean", async () => {
     const cwd = makeProject(
