@@ -1,6 +1,6 @@
 import { execFile } from "node:child_process";
 import { readFile, readdir } from "node:fs/promises";
-import { dirname, resolve } from "node:path";
+import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { promisify } from "node:util";
 import { describe, expect, it } from "vitest";
@@ -236,24 +236,15 @@ describe("built prompts entry", () => {
 });
 
 /**
- * Whether `value` could be a module specifier at all.
+ * Module specifiers a **source** file imports, static and dynamic.
  *
- * The scan below is a regex over the whole chunk, and a built chunk embeds
- * every recipe as a string literal — so ordinary prose containing the words
- * `from "…"` is matched as an import. That is not hypothetical: the
- * engine-selection recipe contains `a different axis from "which engine"`, and
- * it failed this guard with `dist/prompts.js graph imports which engine`.
- *
- * A real specifier is a bare name, a scope, a path, or a `node:` builtin —
- * never whitespace-bearing and never arbitrary punctuation. Filtering on that
- * shape drops prose without weakening the check, because anything the bundle
- * genuinely imports still matches.
+ * Scoped to hand-written TypeScript on purpose. A regex is sound over a module
+ * someone wrote and unsound over one a bundler generated: a built chunk embeds
+ * every recipe as a string literal, so prose containing `from "…"` reads as an
+ * import. The built graph is checked in the build instead — see
+ * `assert-prompts-graph` in `vite.config.ts`, which reads rollup's resolved
+ * `imports`/`dynamicImports` rather than guessing at them from text.
  */
-function looksLikeSpecifier(value: string): boolean {
-  return /^(?:node:)?[@\w./-]+$/.test(value);
-}
-
-/** Module specifiers a built chunk imports, static and dynamic. */
 function importSpecifiers(source: string): string[] {
   const specifiers = new Set<string>();
   for (const match of source.matchAll(/\bfrom\s*["']([^"']+)["']/g)) {
@@ -265,7 +256,7 @@ function importSpecifiers(source: string): string[] {
   for (const match of source.matchAll(/\bimport\s*["']([^"']+)["']/g)) {
     specifiers.add(match[1]!);
   }
-  return [...specifiers].filter((specifier) => looksLikeSpecifier(specifier));
+  return [...specifiers];
 }
 
 describe("prompts entry carries no CLI runtime", () => {
@@ -295,31 +286,10 @@ describe("prompts entry carries no CLI runtime", () => {
     }
   });
 
-  it("never reaches the CLI entry or a host capability once built", async () => {
-    const seen = new Set<string>();
-    const queue = [distributionPromptsPath];
-
-    while (queue.length > 0) {
-      const file = queue.pop()!;
-      if (seen.has(file)) continue;
-      seen.add(file);
-      const source = await readFile(file, "utf8");
-      for (const specifier of importSpecifiers(source)) {
-        if (specifier.startsWith(".")) {
-          queue.push(resolve(dirname(file), specifier));
-          continue;
-        }
-        // A bare specifier here would be an unbundled runtime dependency; the
-        // lib build bundles everything except node builtins, so any survivor is
-        // a builtin the prompts graph has no business touching.
-        expect(specifier, `dist/prompts.js graph imports ${specifier}`).toBe(
-          "<nothing>"
-        );
-      }
-    }
-
-    expect(
-      [...seen].map((file) => file.replace(`${distributionDirectory}/`, ""))
-    ).not.toContain("index.js");
-  });
+  // The built graph is NOT asserted here. `assert-prompts-graph` in
+  // `vite.config.ts` fails the build if the prompts entry reaches the CLI entry
+  // or imports anything external, so a bundle that leaks cannot be emitted in
+  // the first place — there is no artifact left for a test to inspect. This
+  // file keeps the source-level constraint, which is about what we wrote rather
+  // than about what the build produced.
 });
