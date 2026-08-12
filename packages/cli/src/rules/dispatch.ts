@@ -80,6 +80,20 @@ export interface DispatchResult {
   failures: string[];
   /** Per-engine detail, for callers that report engine by engine. */
   outcomes: EngineOutcome[];
+  /**
+   * The process exit code this run implies.
+   *
+   * Two independent reasons to fail, and both are needed. An error-severity
+   * finding is the ordinary one. An engine failure is the one that is easy to
+   * miss: a Vale that timed out or rejected its config produces no findings, so
+   * without it a broken engine exits 0 and reads exactly like a clean run.
+   *
+   * Carried on the result rather than derived by each caller. It is a fact
+   * about a completed dispatch, fixed the moment the engines settle, so
+   * computing it once here removes the chance of two callers disagreeing about
+   * what counts as failure.
+   */
+  exitCode: number;
 }
 
 /**
@@ -192,25 +206,19 @@ export async function runEngines(
     };
   });
 
+  const results = outcomes.flatMap((outcome) => outcome.results);
+  const failures = outcomes.flatMap((outcome) => outcome.failure ?? []);
+
   return {
-    results: outcomes.flatMap((outcome) => outcome.results),
+    results,
     notices: outcomes.flatMap((outcome) => outcome.notice ?? []),
-    failures: outcomes.flatMap((outcome) => outcome.failure ?? []),
+    failures,
     outcomes,
+    exitCode:
+      results.some((finding) => finding.severity === "error") ||
+      failures.length > 0
+        ? 1
+        : 0,
   };
 }
 
-/**
- * The exit code for a completed check.
- *
- * Two independent reasons to fail, and both are needed. An error-severity
- * finding is the ordinary one. An engine failure is the one that is easy to
- * miss: a Vale that timed out or rejected its config produces no findings, so
- * without this a broken engine exits 0 and reads exactly like a clean run.
- */
-export function deriveExitCode(result: DispatchResult): number {
-  const hasErrorFinding = result.results.some(
-    (finding) => finding.severity === "error"
-  );
-  return hasErrorFinding || result.failures.length > 0 ? 1 : 0;
-}

@@ -10,12 +10,7 @@ import { join } from "node:path";
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import {
-  deriveExitCode,
-  hasValeRules,
-  runEngines,
-  type DispatchResult,
-} from "../src/rules/dispatch";
+import { hasValeRules, runEngines } from "../src/rules/dispatch";
 import { findValeBinary } from "../src/rules/vale/binary";
 
 const withVale = findValeBinary().path === undefined ? describe.skip : describe;
@@ -37,8 +32,12 @@ afterEach(() => {
 });
 
 /** A project with an sg rule, a vale rule, and a document tripping both. */
-function makeMixedProject(options?: { valeRules?: boolean }) {
+function makeMixedProject(options?: {
+  valeRules?: boolean;
+  sgSeverity?: "warning" | "error";
+}) {
   const valeRules = options?.valeRules ?? true;
+  const sgSeverity = options?.sgSeverity ?? "warning";
   const cwd = mkdtempSync(join(tmpdir(), "vale-orch-"));
   workspaces.push(cwd);
 
@@ -48,7 +47,7 @@ function makeMixedProject(options?: { valeRules?: boolean }) {
     [
       "id: no-eval",
       "language: javascript",
-      "severity: warning",
+      `severity: ${sgSeverity}`,
       "message: Avoid eval",
       "rule:",
       "  pattern: eval($$$ARGS)",
@@ -112,50 +111,48 @@ describe("hasValeRules", () => {
   );
 });
 
-describe("deriveExitCode", () => {
-  const base: DispatchResult = {
-    results: [],
-    notices: [],
-    failures: [],
-    outcomes: [],
-  };
+describe("exit code carried on the dispatch result", () => {
+  // Exercised through `runEngines` rather than against a pure helper, because
+  // the exit code is now a property of a completed dispatch. These use no Vale
+  // rules, so they run on every host regardless of the optional binary.
 
-  it("is 0 for a clean run", () => {
-    expect(deriveExitCode(base)).toBe(0);
+  it("is 0 when every finding is a warning", async () => {
+    const cwd = makeMixedProject({ valeRules: false });
+    const dispatched = await runEngines({
+      cwd,
+      paths: ["app.js"],
+      astGrepConfigPaths: sgConfigPaths,
+      runtimeRules: [],
+    });
+    expect(dispatched.results.length).toBeGreaterThan(0);
+    expect(dispatched.exitCode).toBe(0);
   });
 
-  it("is 0 when an engine is merely unavailable", () => {
-    // A notice is advisory. An unsupported arch must not fail a check the
-    // other engines completed.
-    expect(deriveExitCode({ ...base, notices: ["vale unavailable"] })).toBe(0);
-  });
-
-  it("is 1 for an engine failure even with no findings", () => {
-    // The case that is easy to miss: a Vale that timed out reports nothing, so
-    // without this a broken engine exits 0 and reads exactly like a clean run.
-    expect(deriveExitCode({ ...base, failures: ["vale timed out"] })).toBe(1);
-  });
-
-  it("ignores warning-severity findings", () => {
+  it("is 1 for an error-severity finding", async () => {
+    const cwd = makeMixedProject({ valeRules: false, sgSeverity: "error" });
+    const dispatched = await runEngines({
+      cwd,
+      paths: ["app.js"],
+      astGrepConfigPaths: sgConfigPaths,
+      runtimeRules: [],
+    });
     expect(
-      deriveExitCode({
-        ...base,
-        results: [
-          {
-            source: "vale",
-            ruleId: "r",
-            severity: "warning",
-            message: "m",
-            file: "a.md",
-            range: {
-              start: { line: 1, column: 1 },
-              end: { line: 1, column: 2 },
-            },
-            matchedText: "x",
-          },
-        ],
-      })
-    ).toBe(0);
+      dispatched.results.some((finding) => finding.severity === "error")
+    ).toBe(true);
+    expect(dispatched.exitCode).toBe(1);
+  });
+
+  it("is 0 for a clean run with nothing to report", async () => {
+    const cwd = makeMixedProject({ valeRules: false });
+    const dispatched = await runEngines({
+      cwd,
+      paths: ["doc.md"], // the sg rule is javascript-only, so nothing matches
+      astGrepConfigPaths: sgConfigPaths,
+      runtimeRules: [],
+    });
+    expect(dispatched.results).toEqual([]);
+    expect(dispatched.failures).toEqual([]);
+    expect(dispatched.exitCode).toBe(0);
   });
 });
 
@@ -217,7 +214,7 @@ describe("runEngines when Vale is unavailable", () => {
     expect(dispatched.notices[0]).toContain("Vale binary not found");
     // A skip, not a failure: the exit code is unaffected.
     expect(dispatched.failures).toEqual([]);
-    expect(deriveExitCode(dispatched)).toBe(0);
+    expect(dispatched.exitCode).toBe(0);
   });
 
   it("keeps a thrown engine from discarding the others' results", async () => {
@@ -269,7 +266,7 @@ describe("runEngines when Vale is unavailable", () => {
     // ...and the thrown engine is reported as a failure rather than swallowed.
     expect(dispatched.failures).toHaveLength(1);
     expect(dispatched.failures[0]).toContain("ast-grep exploded");
-    expect(deriveExitCode(dispatched)).toBe(1);
+    expect(dispatched.exitCode).toBe(1);
   });
 
   readableModes(
@@ -291,7 +288,7 @@ describe("runEngines when Vale is unavailable", () => {
 
         expect(dispatched.failures).toHaveLength(1);
         expect(dispatched.failures[0]).toContain("vale engine failed");
-        expect(deriveExitCode(dispatched)).toBe(1);
+        expect(dispatched.exitCode).toBe(1);
       } finally {
         chmodSync(rules, 0o755);
       }

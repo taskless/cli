@@ -2,7 +2,7 @@ import { resolve, join, isAbsolute, relative } from "node:path";
 import { stat } from "node:fs/promises";
 import { defineCommand } from "citty";
 
-import { deriveExitCode, hasValeRules, runEngines } from "../rules/dispatch";
+import { hasValeRules, runEngines } from "../rules/dispatch";
 import { formatText } from "../util/format";
 import { resolveSgConfigPath } from "../filesystem/sgconfig";
 import { ensureTasklessDirectory } from "../filesystem/directory";
@@ -412,9 +412,10 @@ export const checkCommand = defineCommand({
         }
         scanCounts = { errorCount, warningCount, findings: results.length };
 
-        // An engine failure fails the check even with no findings: a Vale that
-        // timed out reports nothing, which would otherwise read as clean.
-        const exitCode = deriveExitCode(dispatched);
+        // Computed by `runEngines`, not here: the exit code is a fact about a
+        // completed dispatch, and an engine failure has to fail the check even
+        // with no findings.
+        const { exitCode } = dispatched;
 
         if (args.json) {
           const output = checkOutputSchema.parse({
