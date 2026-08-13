@@ -2,7 +2,7 @@
 
 ### Requirement: Route is the local authoring classifier
 
-The CLI SHALL provide a `route` help recipe that instructs the agent to classify a rule-authoring request into one of four destinations — `create-legacy-rule`, `create-sg-rule`, `create-vale-rule`, or `create-runtime-rule` — using `taskless detect --json` signals plus the user's intent. The `route` recipe SHALL be biased to stay local, treating service generation as an escalation available when local authoring cannot express the rule rather than as a peer destination.
+The CLI SHALL provide a `route` help recipe that instructs the agent to classify a rule-authoring request into one of five destinations — `create-legacy-rule`, `create-sg-rule`, `create-vale-rule`, `create-runtime-rule`, or `create-remote-rule` — using `taskless detect --json` signals plus the user's intent. The `route` recipe SHALL read the user's login state before dispatching, since it determines which destinations are reachable. It SHALL remain biased to stay local: local authoring that works SHALL NOT be abandoned for the service.
 
 `route` SHALL decide the engine as part of this classification rather than deferring it to a separate topic. There is one decision, made from one reading of the evidence: whether a rule is expressible locally and which engine can express it are answered from the same signals, so splitting them costs a second fetch and a handoff without adding information.
 
@@ -14,16 +14,34 @@ Each destination SHALL be a topic an agent can fetch by name, so classifying pro
 - **THEN** the recipe SHALL direct the agent to run `taskless detect --json` and
   use its signals as input to the classification
 
-#### Scenario: Route classifies into one of four destinations
+#### Scenario: Route classifies into one of five destinations
 
 - **WHEN** the agent follows `route`
-- **THEN** it SHALL select exactly one of `create-legacy-rule`, `create-sg-rule`, `create-vale-rule`, or `create-runtime-rule`
+- **THEN** it SHALL select exactly one of `create-legacy-rule`, `create-sg-rule`, `create-vale-rule`, `create-runtime-rule`, or `create-remote-rule`
 - **AND** it SHALL fetch the corresponding recipe to perform the authoring
 
 #### Scenario: Every destination resolves to a recipe
 
 - **WHEN** any destination `route` can name is fetched
 - **THEN** a recipe of that exact name SHALL exist
+
+#### Scenario: Service generation is offered only where it is a choice
+
+- **WHEN** the rule is expressible locally AND the user is logged in
+- **THEN** `route` MAY offer `create-remote-rule` as an alternative and ask the user
+- **AND WHEN** the user is not logged in, or the rule is not expressible locally
+- **THEN** `route` SHALL NOT pose service generation as a choice, because it is not one
+
+#### Scenario: A logged-in runtime request routes straight to the service
+
+- **WHEN** the rule requires the runtime engine AND the user is logged in
+- **THEN** `route` SHALL name `create-remote-rule`
+- **AND** no recipe SHALL forward the agent from one destination to another
+
+#### Scenario: A logged-out runtime request reaches the explanation
+
+- **WHEN** the rule requires the runtime engine AND the user is not logged in
+- **THEN** `route` SHALL name `create-runtime-rule`
 
 #### Scenario: The engine is decided without a second fetch
 

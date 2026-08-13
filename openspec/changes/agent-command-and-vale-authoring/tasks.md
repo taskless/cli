@@ -13,8 +13,9 @@
 - [ ] 2.2 `git mv` `help/existing.txt` → `help/create-legacy-rule.txt`; retitle and update its header
 - [ ] 2.3 Flatten the `rule-*` topics to verb-noun single tokens (`rule-create` → `create-rule`, `rule-improve` → `improve-rule`, `rule-delete` → `delete-rule`, `rule-verify` → `verify-rule`), including their `.anonymous` variants. Decide `rule-meta` and `rule` deliberately — they are not creation verbs and may keep their names
 - [ ] 2.4 Author `help/create-vale-rule.txt`: the three artifacts (style file, `.vale.ini` section, `pass/`/`fail` fixtures), that the scaffold ships section-less so the first rule writes the first scope, and that a rule enabled outside a section is ignored by Vale. State the evidence that makes `vale` the right engine for a rule, since no chooser topic states it any more. Cross-reference `verify-rule`
-- [ ] 2.5 Author `help/create-runtime-rule.txt`: what a runtime rule is, where its `check.ts` lives, and why executing code requires login, reconciliation, and signing when the static tiers do not
-- [ ] 2.6 Rewrite `help/route.txt` to classify into the four `create-*-rule` destinations, applying the engine reasoning inline rather than deferring to a second fetch. Service generation is an escalation when local authoring cannot express the rule, not a fifth destination. It must name a command the agent can run verbatim
+- [ ] 2.5 Author `help/create-runtime-rule.txt` as the logged-**out** path: what a runtime rule is, where its `check.ts` lives, why executing code requires login, reconciliation, and signing when the static tiers do not, and how to obtain access. It must not forward to another recipe
+- [ ] 2.5a Merge `help/remote.txt` and `help/rule-create.txt` into `help/create-remote-rule.txt` (plus the `.anonymous` variant). A content merge, not a rename: both texts have material that survives, and the result must read as one procedure rather than two concatenated
+- [ ] 2.6 Rewrite `help/route.txt` to read login state early and classify into the five `create-*-rule` destinations, applying the engine reasoning inline rather than deferring to a second fetch. Offer `create-remote-rule` only where it is a genuine choice — locally expressible AND logged in. A logged-in runtime request routes straight to `create-remote-rule`; a logged-out one to `create-runtime-rule`. It must name a command the agent can run verbatim
 - [ ] 2.7 Merge `help/engine-selection.txt` into `help/route.txt` and delete it. Its three engine definitions, evidence-before-answer procedure, and boundary cases move into `route`; the per-engine criterion is restated in each `create-*-rule` recipe so a consumer reading one destination knows when it applies
 - [ ] 2.8 Re-home the engine-reasoning requirements that survive the merge — "Available code context outranks the phrasing of the request" and "Ambiguity resolves to an engine known to be available" now bind `route` and the destinations. Update `help-extensions.test.ts`, which asserts against the standalone topic
 
@@ -40,6 +41,7 @@
 ## 6. Verify
 
 - [ ] 6.1 `pnpm typecheck`, `pnpm lint`, `pnpm --filter @taskless/cli build`, `pnpm --filter @taskless/cli test`
-- [ ] 6.2 Run `taskless agent` with no argument, with each renamed topic, and with a removed name, confirming the index lists the new vocabulary and a removed name exits non-zero
+- [ ] 6.2 **Rehearse the recipes against a fresh agent.** For `route` and each `create-*-rule`, hand the text to a subagent with no prior context and ask it to describe the steps it would take and the commands it would run. Check its account against what the recipe intends — a recipe that reads correctly to its author and produces the wrong plan is the failure mode prose review cannot catch. Feed the corrections back into the text
+- [ ] 6.2a Run `taskless agent` with no argument, with each renamed topic, and with a removed name, confirming the index lists the new vocabulary and a removed name exits non-zero
 - [ ] 6.3 `pnpm openspec validate --all --strict` (note: `cli-rules` and `cli-update-engine` fail on `main` already and are unrelated)
 - [ ] 6.4 Archive the change
