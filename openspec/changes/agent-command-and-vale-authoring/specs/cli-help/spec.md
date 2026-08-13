@@ -33,20 +33,23 @@ The subcommand is named for its reader. It serves agents fetching a procedure, n
 - **WHEN** a user runs `taskless help check`
 - **THEN** the CLI SHALL NOT print recipe text for `check`
 
-### Requirement: Routing recipes reference engine selection
+### Requirement: Routing recipes name a destination, not a second decision
 
-The `route` recipe SHALL apply the engine-selection reasoning directly and name a concrete authoring topic, rather than referring the reader onward to select an engine. The `create-sg-rule` and `create-vale-rule` recipes SHALL reference `engine-selection` so an agent that arrives at one directly can confirm the engine is right for the rule in hand.
+The `route` recipe SHALL apply the engine reasoning directly and name a concrete `create-*-rule` topic, rather than referring the reader onward to a topic that selects an engine. No shipped recipe SHALL refer to `engine-selection`, which no longer exists.
+
+Each `create-*-rule` recipe SHALL instead point back at `route` for a reader who arrived at the wrong one, so recovery costs a re-decision rather than a second copy of the criterion (see "Every authoring recipe opens by orienting the reader").
 
 #### Scenario: Route names a destination without a second fetch
 
 - **WHEN** an agent follows `route`
-- **THEN** the recipe SHALL name one `create-*-rule` topic or `remote`
-- **AND** it SHALL NOT require fetching `engine-selection` first to do so
+- **THEN** the recipe SHALL name one `create-*-rule` topic
+- **AND** it SHALL NOT require fetching a separate engine-selection topic first to do so
 
-#### Scenario: Authoring recipes cross-reference engine selection
+#### Scenario: Authoring recipes point back rather than re-deciding
 
-- **WHEN** an agent reads `create-sg-rule` or `create-vale-rule`
-- **THEN** the recipe SHALL reference `taskless agent engine-selection` as the check that the engine matches the rule
+- **WHEN** an agent reads any `create-*-rule` recipe
+- **THEN** the recipe SHALL name `route` as where to go if this is the wrong destination
+- **AND** it SHALL NOT reference `engine-selection`
 
 ## ADDED Requirements
 

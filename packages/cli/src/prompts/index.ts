@@ -25,18 +25,24 @@ import { getRecipe, type RecipeOptions } from "./recipes.js";
  * {@link INTERNAL_TOPICS} accounts for every canonical recipe on disk.
  *
  * The list starts at what a consumer has actually asked for and grows on
- * demand. `static` is the canonical on-disk rule shape, the one topic the
- * generator's decision router can use server-side.
+ * demand. It is the authoring recipe for each engine a rule can be routed to,
+ * so a consumer that can decide a rule belongs to an engine can also reach the
+ * procedure for writing one. Exporting a chooser without its destinations
+ * reproduces, for the platform generator, the dead end this surface exists to
+ * remove.
  *
- * `engine-selection` is exported for the same consumer and the same reason
- * (D7 of `add-vale-rule-engine`). Choosing an engine is a decision the service
- * already makes — today as a binary `static | runtime` classifier that predates
- * Vale, and is therefore now wrong. Exporting the topic is what lets the
- * generator render the same guidance `taskless help` serves instead of keeping
- * a second copy free to drift, which is the divergence this module exists to
- * prevent.
+ * `engine-selection` used to be exported alongside them. It no longer exists:
+ * the criterion it carried now lives in `route`, stated once. `route` is not
+ * exported yet because it still contains local mechanics (`taskless detect`,
+ * on-device authoring) a Worker cannot run; until it is, a consumer gets each
+ * destination's own scope from these three and adjudicates genuinely ambiguous
+ * calls itself.
  */
-export const TOPICS = ["static", "engine-selection"] as const;
+export const TOPICS = [
+  "create-sg-rule",
+  "create-vale-rule",
+  "create-runtime-rule",
+] as const;
 
 /**
  * Recipes deliberately withheld from the export, recorded so they stay visible
@@ -46,29 +52,28 @@ export const TOPICS = ["static", "engine-selection"] as const;
  *   subcommand on a developer's machine. There is no caller for them outside
  *   the CLI that hosts those commands.
  * - Authoring recipes are unreachable server-side: `route` picks an authoring
- *   destination before the service is involved, `remote` states the boundary
- *   from the client's side, `detect` documents a CLI subprocess a Worker
- *   cannot spawn, `existing` targets a local toolchain, and `rule-meta` reads
- *   a `rule improve` sidecar file.
+ *   destination before the service is involved, `create-remote-rule` states
+ *   the boundary from the client's side, `detect` documents a CLI subprocess a
+ *   Worker cannot spawn, `create-legacy-rule` targets a local toolchain, and
+ *   `rule-meta` reads an `improve-rule` sidecar file.
  */
 export const INTERNAL_TOPICS = [
   "auth",
   "check",
   "ci",
+  "create-legacy-rule",
+  "create-remote-rule",
+  "delete-rule",
   "detect",
-  "existing",
+  "improve-rule",
   "info",
   "init",
   "onboard",
-  "remote",
   "route",
   "rule",
-  "rule-create",
-  "rule-delete",
-  "rule-improve",
   "rule-meta",
-  "rule-verify",
   "update",
+  "verify-rule",
 ] as const;
 
 /** A topic name the package exports. Unknown names fail to type-check. */

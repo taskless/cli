@@ -1,0 +1,113 @@
+# Topic: create-sg-rule     (CLI v%(CLI_VERSION)s / topic v1)
+
+## You are here
+This is `create-sg-rule`. It helps you write an ast-grep rule: a check
+over the structure of a single source file, authored on this machine.
+If that is not the kind of check you need, re-run `taskless agent route`
+and follow its decision rather than adapting this recipe.
+
+## Goal
+Produce a verified ast-grep rule and its test file, locally, without
+contacting the Taskless service. You derive the rule yourself, write it
+in the canonical on-disk shape, and validate it with `verify-rule` in a
+feedback loop. The files you produce match exactly what the service
+writes, so `check`, `improve-rule`, and `verify-rule` treat them
+identically.
+
+## Preconditions
+- `.taskless/` directory exists.
+- The agent can read/write files and run shell commands.
+- No auth required.
+
+## Artifacts
+
+A rule is complete when both of these exist:
+
+1. The rule at `.taskless/sg/rules/<id>.yml`.
+2. Its tests at `.taskless/sg/rule-tests/<id>-YYYYMMDD-test.yml`.
+
+## Steps
+
+1. **Learn the ast-grep rule format.** Consult the ast-grep rule
+   reference at https://ast-grep.github.io/guide/rule-config.html for
+   valid fields and operators (`pattern`, `kind`, `regex`,
+   `any`/`all`/`has`/`inside`/`not`) and meta-variable syntax. This
+   recipe does not embed the schema — read it from upstream rather than
+   writing a rule from memory.
+
+2. **Gather and confirm the pattern.** Make sure you have concrete
+   success cases (code that should pass) and failure cases (code that
+   should be flagged), the target language, and any exceptions. Search
+   the codebase for real instances and confirm exclusions with the user.
+
+3. **Check for an existing rule that already covers this.** Scan
+   `.taskless/sg/rules/` and read each rule's `message`, `note`, and
+   `rule` fields. If one overlaps, show the user and ask whether they
+   would rather improve it — `taskless agent improve-rule --anonymous`
+   iterates a rule locally.
+
+4. **Author the rule in the canonical shape.** Write the rule to
+   `.taskless/sg/rules/<id>.yml` with at minimum:
+   - `id` — kebab-case, matching the filename (e.g. `no-eval`)
+   - `language` — the target language
+   - `severity` — `error`, `warning`, `info`, or `hint`
+   - `message` — a concise single-line explanation
+   - `rule` — the ast-grep rule object
+
+   Optional but useful: `note` (multi-line guidance, supports markdown),
+   `fix` (auto-fix pattern), `ignores` (file patterns to skip).
+
+5. **Write the tests.** Write
+   `.taskless/sg/rule-tests/<id>-YYYYMMDD-test.yml` with the matching
+   `id` field plus `valid` and `invalid` arrays — at least two of each,
+   drawn from real code where you can. The `id` must match the rule's
+   `id` so ast-grep test filtering pairs them. These paths and this
+   shape are the same ones the service writes; do not invent a different
+   layout.
+
+6. **Run the verify feedback loop.** Run:
+   ```
+   npx @taskless/cli rule verify <id> --json
+   ```
+   - `success: true` → the rule passes. Go to step 7.
+   - `success: false` → read the per-layer errors and fix. Repeat up to
+     3 times.
+
+   | layer          | what a failure means                    | fix                                            |
+   |----------------|-----------------------------------------|------------------------------------------------|
+   | `schema`       | YAML doesn't match the ast-grep schema  | check field types against the upstream schema  |
+   | `requirements` | a Taskless-required field is missing    | add `id`/`language`/`severity`/`message`/`rule`|
+   | `tests`        | a case didn't behave as expected        | fix the rule pattern OR the test case          |
+
+   A `regex` without an accompanying `kind` fails `requirements` — the
+   two always travel together.
+
+7. **On success, report.** Show the rule and test file paths and a
+   one-line summary of what the rule detects. Suggest
+   `taskless agent check` to validate against the broader codebase.
+
+8. **On failure, escalate — with confirmation.** If after the feedback
+   loop the rule still cannot capture the user's cases:
+   - Delete the candidate `.taskless/sg/rules/<id>.yml` and its test file
+     so the repo is not left with a broken rule.
+   - Tell the user the local rule could not capture the cases, and that
+     generating via the Taskless service uses a generation and requires
+     login.
+   - Only after the user confirms, fetch `taskless agent
+     create-remote-rule` and follow it. Do not call the service silently.
+
+## Important Notes
+
+- Do NOT make any HTTP requests to taskless.io on this path.
+- Do NOT write to `.taskless/rule-metadata/` — locally authored rules
+  have no metadata sidecar; they iterate via file edits.
+- The verify loop is the quality gate. A clean failure is a legitimate
+  reason to escalate, but only with the user's confirmation (step 8).
+
+## See Also
+
+- `taskless agent route` — re-decide the destination
+- `taskless agent verify-rule` — the validation primitive step 6 calls
+- `taskless agent improve-rule` — iterate on a rule that already exists
+- `taskless agent create-remote-rule` — generate via the service (login)
+- `taskless agent check` — validate the new rule against the codebase

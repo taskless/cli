@@ -64,12 +64,23 @@ describe("taskless agent (no args)", () => {
     expect(result.stdout).toContain("Authoring recipes:");
     for (const topic of [
       "route",
-      "existing",
-      "static",
-      "remote",
-      "engine-selection",
+      "create-legacy-rule",
+      "create-sg-rule",
+      "create-vale-rule",
+      "create-runtime-rule",
+      "create-remote-rule",
     ]) {
       expect(result.stdout).toContain(topic);
+    }
+  });
+
+  it("no longer advertises the removed topic names", async () => {
+    const result = await runCli(["agent", "-d", cwd]);
+    // `static`/`existing`/`remote` were renamed and `engine-selection` was
+    // merged into `route`. Listing a name that resolves to nothing is worse
+    // than not listing it — the agent spends a fetch to learn it is gone.
+    for (const removed of ["engine-selection", "  existing", "  static"]) {
+      expect(result.stdout).not.toContain(removed);
     }
   });
 });
@@ -85,7 +96,14 @@ describe("taskless agent <routing topic>", () => {
     await rm(cwd, { recursive: true, force: true });
   });
 
-  it.each(["route", "existing", "static", "remote", "engine-selection"])(
+  it.each([
+    "route",
+    "create-legacy-rule",
+    "create-sg-rule",
+    "create-vale-rule",
+    "create-runtime-rule",
+    "create-remote-rule",
+  ])(
     "resolves the %s recipe without an unknown-topic error",
     async (topic) => {
       const result = await runCli(["agent", topic, "-d", cwd]);
@@ -93,6 +111,31 @@ describe("taskless agent <routing topic>", () => {
       expect(result.stdout).toContain(`# Topic: ${topic}`);
       expect(result.stdout).toContain("## Goal");
       expect(result.stderr).not.toContain("Unknown command");
+    }
+  );
+
+  // D9: a reader who arrived at the wrong recipe should find that out in the
+  // first line, where recovery is a re-decision, rather than after authoring
+  // the wrong artifact. Fixed shape across all five so it is recognisable.
+  it.each([
+    "create-legacy-rule",
+    "create-sg-rule",
+    "create-vale-rule",
+    "create-runtime-rule",
+    "create-remote-rule",
+  ])("opens %s with the orientation banner", async (topic) => {
+    const result = await runCli(["agent", topic, "-d", cwd]);
+    expect(result.stdout).toContain("## You are here");
+    expect(result.stdout).toContain(`This is \`${topic}\`.`);
+    expect(result.stdout).toContain("`taskless agent route`");
+  });
+
+  it.each(["existing", "static", "remote", "engine-selection", "rule-create"])(
+    "no longer resolves the removed topic %s",
+    async (topic) => {
+      const result = await runCli(["agent", topic, "-d", cwd]);
+      expect(result.exitCode).not.toBe(0);
+      expect(result.stderr).toContain("Unknown command");
     }
   );
 });
@@ -109,15 +152,15 @@ describe("taskless agent <topic>", () => {
   });
 
   it("returns the canonical recipe for a known topic", async () => {
-    const result = await runCli(["agent", "rule-create", "-d", cwd]);
+    const result = await runCli(["agent", "create-remote-rule", "-d", cwd]);
     expect(result.exitCode).toBe(0);
-    expect(result.stdout).toContain("# Topic: rule create");
+    expect(result.stdout).toContain("# Topic: create-remote-rule");
     expect(result.stdout).toContain("## Goal");
     expect(result.stdout).toContain("## Steps");
   });
 
   it("interpolates %(CLI_VERSION)s in the recipe header", async () => {
-    const result = await runCli(["agent", "rule-create", "-d", cwd]);
+    const result = await runCli(["agent", "create-remote-rule", "-d", cwd]);
     // Should contain a version pattern, not the literal placeholder.
     // Guard against both the legacy mustache syntax and the current
     // sprintf-js named-arg syntax leaking through.
@@ -127,7 +170,7 @@ describe("taskless agent <topic>", () => {
   });
 
   it("interpolates %(INPUT_SCHEMA)s for topics with a Zod input", async () => {
-    const result = await runCli(["agent", "rule-create", "-d", cwd]);
+    const result = await runCli(["agent", "create-remote-rule", "-d", cwd]);
     expect(result.stdout).not.toContain("{{INPUT_SCHEMA}}");
     expect(result.stdout).not.toContain("%(INPUT_SCHEMA)s");
     // Embedded schema includes the JSON Schema $schema URI
@@ -182,29 +225,17 @@ describe("taskless agent --anonymous (variant lookup)", () => {
     await rm(cwd, { recursive: true, force: true });
   });
 
-  it("returns the .anonymous variant when one exists (rule create)", async () => {
+  it("returns the .anonymous variant when one exists (improve-rule)", async () => {
     const result = await runCli([
       "agent",
-      "rule-create",
+      "improve-rule",
       "--anonymous",
       "-d",
       cwd,
     ]);
     expect(result.exitCode).toBe(0);
     // The anonymous recipe declares "(anonymous)" in its header
-    expect(result.stdout).toContain("# Topic: rule create (anonymous)");
-  });
-
-  it("returns the .anonymous variant for rule improve", async () => {
-    const result = await runCli([
-      "agent",
-      "rule-improve",
-      "--anonymous",
-      "-d",
-      cwd,
-    ]);
-    expect(result.exitCode).toBe(0);
-    expect(result.stdout).toContain("# Topic: rule improve (anonymous)");
+    expect(result.stdout).toContain("(anonymous)");
   });
 
   it("falls back to the canonical recipe when no variant exists (check)", async () => {
@@ -215,9 +246,28 @@ describe("taskless agent --anonymous (variant lookup)", () => {
     expect(anonymous.stdout).toBe(canonical.stdout);
   });
 
+  // `rule-create.anonymous.txt` used to be the local-only variant of the
+  // service recipe, which duplicated `static.txt` outright. `create-sg-rule`
+  // now *is* that path, so an `--anonymous` variant of the remote recipe would
+  // be "the local version of the remote one" — the contradiction `route`
+  // resolves. It falls back to the canonical text instead.
+  it("has no anonymous variant of the service recipe", async () => {
+    const canonical = await runCli(["agent", "create-remote-rule", "-d", cwd]);
+    const anonymous = await runCli([
+      "agent",
+      "create-remote-rule",
+      "--anonymous",
+      "-d",
+      cwd,
+    ]);
+    expect(anonymous.exitCode).toBe(0);
+    expect(anonymous.stdout).toBe(canonical.stdout);
+    expect(anonymous.stdout).not.toContain("(anonymous)");
+  });
+
   it("returns the canonical recipe when --anonymous is omitted", async () => {
-    const result = await runCli(["agent", "rule-create", "-d", cwd]);
-    expect(result.stdout).toContain("# Topic: rule create");
+    const result = await runCli(["agent", "improve-rule", "-d", cwd]);
+    expect(result.stdout).toContain("# Topic: rule improve");
     expect(result.stdout).not.toContain("(anonymous)");
   });
 });
@@ -233,52 +283,77 @@ describe("bare taskless (non-TTY) routes to the agent index", () => {
   });
 });
 
-describe("taskless agent engine-selection", () => {
+// D1: `engine-selection` was merged into `route`, so the engine reasoning it
+// carried has to still be reachable — from one fetch instead of two. These are
+// the assertions that used to guard the standalone topic, re-pointed at the
+// recipe that now owns them.
+describe("taskless agent route (absorbed engine reasoning)", () => {
   let cwd: string;
 
   beforeEach(async () => {
-    cwd = await mkdtemp(join(tmpdir(), "taskless-agent-engine-"));
+    cwd = await mkdtemp(join(tmpdir(), "taskless-agent-route-"));
   });
 
   afterEach(async () => {
     await rm(cwd, { recursive: true, force: true });
   });
 
-  it("names all three engines and puts evidence before the answer", async () => {
-    const result = await runCli(["agent", "engine-selection", "-d", cwd]);
+  it("puts the evidence before the destination", async () => {
+    const result = await runCli(["agent", "route", "-d", cwd]);
     expect(result.exitCode).toBe(0);
-    for (const engine of ["`sg`", "`vale`", "`runtime`"]) {
-      expect(result.stdout).toContain(engine);
-    }
-    expect(result.stdout).toContain("before naming an engine");
+    expect(result.stdout).toContain("before you name a destination");
   });
 
-  it("carries the three boundary cases", async () => {
-    const result = await runCli(["agent", "engine-selection", "-d", cwd]);
+  it("carries the boundary cases", async () => {
+    const result = await runCli(["agent", "route", "-d", cwd]);
     // Each is a wrong answer someone actually reaches for.
     expect(result.stdout).toContain("Prose about code is still prose");
     expect(result.stdout).toContain("one document at a time");
-    expect(result.stdout).toContain("Engine is not trust tier");
+    expect(result.stdout).toContain("Trust tier is not a destination");
   });
 
   it("states the ambiguity default as a property, not as `sg`", async () => {
-    const result = await runCli(["agent", "engine-selection", "-d", cwd]);
-    // D7: "choose an engine you know is available" stays correct on an
+    const result = await runCli(["agent", "route", "-d", cwd]);
+    // "choose an engine whose availability you can assert" stays correct on an
     // unsupported arch and server-side alike; naming `sg` outright would be
     // false on the host where `sg` is the missing one.
-    expect(result.stdout).toContain("choose an engine you know is");
-    expect(result.stdout).toContain("available");
+    expect(result.stdout).toContain("whose availability you can");
+    expect(result.stdout).toContain("There is no fixed fallback");
   });
 
-  it("stays out of the authoring-destination decision", async () => {
-    const result = await runCli(["agent", "engine-selection", "-d", cwd]);
-    // Scope guard (3.4): it may point at `route`, never re-decide it.
-    expect(result.stdout).toContain("is `route`, and it is a separate");
+  it("weighs the concrete form above the wording of the request", async () => {
+    const result = await runCli(["agent", "route", "-d", cwd]);
+    expect(result.stdout).toContain("outranks how the request was");
+  });
+
+  it("names all five destinations", async () => {
+    const result = await runCli(["agent", "route", "-d", cwd]);
+    for (const destination of [
+      "create-legacy-rule",
+      "create-sg-rule",
+      "create-vale-rule",
+      "create-runtime-rule",
+      "create-remote-rule",
+    ]) {
+      expect(result.stdout).toContain(destination);
+    }
+  });
+
+  it("splits the runtime destination on login state", async () => {
+    const result = await runCli(["agent", "route", "-d", cwd]);
+    // D7: reading login state early is what makes the destination set correct.
+    expect(result.stdout).toContain("info --json");
+    expect(result.stdout).toContain("logged out");
+  });
+
+  it("sends the reader to a command rather than a category", async () => {
+    const result = await runCli(["agent", "route", "-d", cwd]);
+    expect(result.stdout).toMatch(/agent create-vale-rule/);
   });
 
   it("follows the recipe header and section convention", async () => {
-    const result = await runCli(["agent", "engine-selection", "-d", cwd]);
-    expect(result.stdout).toContain("# Topic: engine-selection");
+    const result = await runCli(["agent", "route", "-d", cwd]);
+    expect(result.stdout).toContain("# Topic: route");
     for (const section of [
       "## Goal",
       "## Preconditions",

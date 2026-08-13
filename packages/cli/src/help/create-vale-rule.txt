@@ -1,0 +1,200 @@
+# Topic: create-vale-rule     (CLI v%(CLI_VERSION)s / topic v1)
+
+## You are here
+This is `create-vale-rule`. It helps you write a Vale rule: a check over
+the words of a document — prose, markup, and the prose parts of code.
+If that is not the kind of check you need, re-run `taskless agent route`
+and follow its decision rather than adapting this recipe.
+
+## Goal
+Produce a Vale rule that fires on the prose it should flag and stays
+quiet on the prose it should not, scoped to the files it is about.
+
+## Preconditions
+- `.taskless/` directory exists (it contains `vale/.vale.ini`).
+- The agent can read/write files and run shell commands.
+- No auth required.
+
+## The three artifacts
+
+A Vale rule is three files, not one. It is **incomplete until all three
+exist**, and the failure mode of skipping one is silence rather than an
+error — the rule verifies, the check runs, and nothing is ever reported.
+
+| # | Artifact  | Path                                                        |
+|---|-----------|-------------------------------------------------------------|
+| 1 | The style | `.taskless/vale/rules/<id>.yml`                             |
+| 2 | The scope | a section in `.taskless/vale/.vale.ini` enabling `rules.<id>`|
+| 3 | Fixtures  | `.taskless/vale/rule-tests/<id>/pass/` and `.../fail/`      |
+
+## Steps
+
+1. **Say what the rule reads, then pick an extension point.** Write one
+   sentence: "this fires when a document contains ___." Vale rules are
+   built by extending one of its checks, and the sentence tells you
+   which:
+
+   | If the rule is about…                                 | extends          |
+   |-------------------------------------------------------|------------------|
+   | words or phrases that should not appear               | `existence`      |
+   | preferring one term over another                      | `substitution`   |
+   | how something is capitalized (headings, product names)| `capitalization` |
+   | how many times something may appear                   | `occurrence`     |
+   | a word repeated back to back                          | `repetition`     |
+   | picking one of two acceptable spellings, consistently | `consistency`    |
+   | "if X appears, Y must also appear"                    | `conditional`    |
+   | readability or length thresholds                      | `metric`         |
+
+   There are eleven in total. When none of the above fits, read
+   https://docs.vale.sh/styles for `spelling`, `sequence`, and `script`
+   before inventing something — Vale has no facility for a rule that
+   does not extend one of these.
+
+2. **Write the style file** to `.taskless/vale/rules/<id>.yml`, where
+   `<id>` is kebab-case and matches the filename. Every rule carries:
+
+   | Field     | Required | Notes                                                   |
+   |-----------|----------|---------------------------------------------------------|
+   | `extends` | yes      | one of the extension points above                       |
+   | `message` | yes      | shown to the user; `%%s` interpolates the match          |
+   | `level`   | no       | `suggestion` (default), `warning`, or `error`           |
+   | `scope`   | no       | narrow to part of a document, e.g. `heading`, `paragraph`|
+   | `link`    | no       | a URL the reader can follow for the reasoning           |
+
+   Then the fields the chosen extension point adds. The three most
+   common:
+
+   ```yaml
+   # existence — flag these tokens wherever they appear
+   extends: existence
+   message: "Avoid '%%s' — it hides the work from the reader"
+   level: warning
+   ignorecase: true
+   tokens:
+     - simply
+     - just
+   ```
+
+   ```yaml
+   # substitution — flag the observed term, name the expected one
+   extends: substitution
+   message: "Use '%%s' instead of '%%s'"
+   level: warning
+   ignorecase: true
+   swap:
+     utilize: use
+     "in order to": to
+   ```
+
+   ```yaml
+   # capitalization — enforce a case pattern on a part of the document
+   extends: capitalization
+   message: "'%%s' should be in sentence case"
+   level: warning
+   scope: heading
+   match: $sentence
+   exceptions:
+     - Taskless
+     - API
+   ```
+
+   `match` takes `$sentence`, `$title`, `$lower`, `$upper`, or a literal
+   string to enforce verbatim (`Taskless`, for a product name).
+
+3. **Scope the rule by adding a section to `.taskless/vale/.vale.ini`.**
+   This is the step that is easy to skip and impossible to notice
+   skipping.
+
+   A scaffolded project ships **no section at all** — only `StylesPath`
+   and `MinAlertLevel` — because scope is the author's decision and the
+   scaffold will not guess it. So the first rule in a project also
+   writes the first section:
+
+   ```ini
+   StylesPath = .
+   MinAlertLevel = suggestion
+
+   [*.md]
+   BasedOnStyles =
+   rules.no-simply = YES
+   ```
+
+   Three things about that block:
+   - `[*.md]` is a glob over paths. Match it to the files the rule is
+     actually about — `[*.{md,mdx}]`, `[docs/**/*.md]`. Every file the
+     walk reaches that matches the glob is subject to every rule
+     enabled under it.
+   - `BasedOnStyles =` left empty says explicitly that no bundled style
+     loads, so the only findings are the rules you enabled. Write it
+     even though the default is already empty: it is what stops a later
+     edit from switching a whole style on by accident, and it is the
+     form `taskless check` uses when it verifies a rule in isolation.
+   - `rules.<id> = YES` enables the rule. `rules` is the style name:
+     `StylesPath = .` makes the `rules/` directory a style, so a file at
+     `vale/rules/no-simply.yml` is the check `rules.no-simply`.
+
+   If a section already covers the right files, add the rule to it
+   rather than opening a second one — a later section matching the same
+   files wins outright.
+
+   **A rule enabled outside a section does nothing.** Put
+   `rules.no-simply = YES` above the first `[…]` line and Vale does not
+   error: it prints `W101 'rules.no-simply' isn't a core option` to
+   stderr, exits zero, and reports no findings. The CLI surfaces that
+   diagnostic as a notice — if you see it, the assignment is in the
+   wrong place, not the rule.
+
+4. **Write the fixtures.** Two directories, both flat — Vale lints the
+   rule's whole tree, so a nested subdirectory is linted but never
+   checked, and the CLI rejects it rather than skipping it:
+
+   ```
+   .taskless/vale/rule-tests/<id>/pass/ok.md     # rule must stay quiet
+   .taskless/vale/rule-tests/<id>/fail/bad.md    # rule must fire
+   ```
+
+   Both buckets are required. A rule with only `fail/` fixtures has
+   never been shown to stay quiet, which is the half that catches an
+   over-broad pattern.
+
+   Give the fixtures an extension your section's glob matches. A `.txt`
+   fixture under a `[*.md]` section is never linted, so the `fail/`
+   document silently passes.
+
+5. **Check that it fires, and that it doesn't.** Run the rule against
+   each bucket:
+
+   ```
+   npx @taskless/cli check .taskless/vale/rule-tests/<id>/fail --json
+   npx @taskless/cli check .taskless/vale/rule-tests/<id>/pass --json
+   ```
+
+   The `fail/` run must report your rule; the `pass/` run must report
+   nothing. If `fail/` reports nothing, work down the list before
+   touching the pattern — the cause is usually further up:
+   - Is the assignment inside a section? (step 3)
+   - Does the section's glob match the fixture's extension? (step 4)
+   - Does `rules.<id>` match the filename under `vale/rules/`?
+   - Only then: does the pattern actually match the text?
+
+6. **Report.** Show the three paths you wrote, a one-line summary of
+   what the rule flags, and which files the section scopes it to — the
+   scope is a decision the user should see, not one buried in a config.
+   Suggest `taskless agent check` to run it over the whole project.
+
+## Important Notes
+
+- Vale reads one document at a time and has no cross-document view. A
+  rule about consistency *between* documents cannot be written here.
+- Prose inside code is still prose: comments and docstrings are Vale's
+  subject, and a rule about them belongs in a section whose glob covers
+  the source files.
+- Do NOT add a `[*]` section to widen a rule that isn't firing. It
+  applies every enabled rule to every file the walk reaches, which turns
+  one rule's scoping bug into every rule's false positives.
+
+## See Also
+
+- `taskless agent route` — re-decide the destination
+- `taskless agent check` — run every engine over the repo
+- `taskless agent create-sg-rule` — author a rule over code structure

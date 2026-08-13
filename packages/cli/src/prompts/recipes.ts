@@ -58,8 +58,8 @@ export function canonicalRecipeTopics(): string[] {
 // placeholder, the renderer substitutes the JSON Schema rendered from
 // this Zod source.
 const TOPIC_INPUT_SCHEMAS: Record<string, z.ZodType> = {
-  "rule-create": ruleCreateInputSchema,
-  "rule-improve": ruleImproveInputSchema,
+  "create-remote-rule": ruleCreateInputSchema,
+  "improve-rule": ruleImproveInputSchema,
 };
 
 /** Agent-fill marker used when the caller does not supply a real value. */

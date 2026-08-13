@@ -1,23 +1,23 @@
 # Topic: route     (CLI v%(CLI_VERSION)s / topic v1)
 
 ## Goal
-Decide where a rule-authoring request should be built: in a linter the
-repo ALREADY uses (`existing`), as a local ast-grep rule on this machine
-(`static`), or by the Taskless service (`remote`). This is the front
-door for "author/write/create a rule" requests. You stay local whenever
-you can reasonably build the rule on-device; you only send the user to
-the login-gated service when you are not reasonably confident the rule
-is locally solvable — or when a believed-local attempt has genuinely
-failed and the user confirms.
+Turn "write me a rule that…" into one command to run. This is the front
+door for every rule-authoring request, and it makes one decision — which
+of five recipes authors this rule — from one reading of the evidence.
+
+That single decision covers both halves that used to be asked
+separately: whether the rule can be built here, and which engine can
+express it. They are answered from the same signals, so they are
+answered together.
 
 ## Preconditions
 - A working repository the agent can read.
-- No auth required to route. (The `remote` destination requires login;
-  the `existing` and `static` destinations do not.)
+- No auth required to route. Login state is an *input* to the decision,
+  not a requirement of making it.
 
 ## Steps
 
-1. **Scan the repo.** Run:
+1. **Read the repository.** Run:
    ```
    npx @taskless/cli detect --json
    ```
@@ -36,62 +36,151 @@ failed and the user confirms.
    }
    ```
 
-2. **Write your reasoning BEFORE naming a destination.** Do not pick a
-   route first and justify it after. Write a short rationale covering:
-   - what the `detect` signals show (linters, languages, repo rule styles);
-   - whether an existing linter plausibly already covers this request;
-   - whether the pattern is expressible as a simple static ast-grep rule;
-   - your resulting confidence that the request is locally solvable.
-   The destination you choose in step 3 MUST follow from this rationale.
+2. **Read the login state.** Run:
+   ```
+   npx @taskless/cli info --json
+   ```
+   and note `loggedIn`. Do this now, not later: it changes which
+   destinations exist, so classifying first means classifying against a
+   set that may be wrong.
 
-3. **Choose the destination as a conclusion of the rationale:**
+   Reading it is not the same as asking about it. Do **not** open by
+   offering service generation — at this point neither you nor the user
+   knows whether this is a two-line pattern or something local authoring
+   cannot express, so the question costs a turn and cannot be answered
+   well.
 
-   - **Both an existing linter AND a local static rule fit** → do NOT
-     silently pick one. Present both to the user with trade-offs and let
-     them choose. Note that `remote` consumes a Taskless generation and
-     requires login, so it is for what cannot be solved locally — not a
-     default.
-   - **An existing linter clearly fits** (the repo uses it and it can
-     express this) → fetch `taskless help existing`.
-   - **You are reasonably confident it is a simple static ast-grep
-     pattern** → fetch `taskless help static`. Reasonable confidence is
-     enough here; you do not need certainty, because step 4 backstops a
-     wrong-but-reasonable bet.
-   - **You reasonably believe it CANNOT be solved locally** (a positive
-     judgment — e.g. it needs cross-file or semantic checks ast-grep can't
-     express) → fetch `taskless help remote`. Do not manufacture a
-     deliberate local failure to reach this; route here directly.
+3. **State the evidence before you name a destination.** Write one
+   sentence: *"to decide this, you must look at ___."* Then a short
+   rationale covering what `detect` showed, whether a linter the repo
+   already runs could express this, and what the rule needs to read.
 
-   These are three distinct states. If you genuinely cannot tell whether
-   the request is local or remote — mere uncertainty, not a belief that it
-   needs the service — ASK the user a clarifying question. Uncertainty is a
-   reason to ask, never a reason to spend a generation on `remote`.
+   Do this first, every time. Naming a destination and justifying it
+   afterwards is how prose-about-code ends up in `sg` and cross-file
+   questions end up in `vale`.
 
-4. **Failure fallback (try-verify-escalate).** If you committed to a
-   local `static` rule on reasonable confidence and it then FAILS
-   verification against the user's success/failure cases:
-   - Tell the user the local rule could not capture the cases.
-   - State that generating via the Taskless service uses a generation
-     and requires login.
-   - Call the service only after the user confirms. On yes, fetch
-     `taskless help remote`.
-   Never silently fall through from a failed local attempt to a service
-   call — the confirmation step is required.
+4. **Match the evidence to a destination.** The comparison is made here
+   and only here — the destination recipes describe their own scope and
+   deliberately do not restate this table.
+
+   | The rule is decided by…                                        | Destination          | Login |
+   |-----------------------------------------------------------------|----------------------|-------|
+   | a tool the repo already runs, in that tool's dialect            | `create-legacy-rule` | no    |
+   | **one file's syntax tree** — a call, an import, a JSX attribute, a type annotation | `create-sg-rule`     | no    |
+   | **a document's words** — docs, README, comments, commit bodies  | `create-vale-rule`   | no    |
+   | **more than one file, or something outside the files** — the repo graph, git metadata, build output, a resolved config chain | `create-runtime-rule` / `create-remote-rule` | see step 5 |
+
+   Sharpening the three engine rows, because most wrong answers are one
+   of these:
+
+   - **Relational correlation inside one file is still `sg`.** "A
+     `useEffect` whose dependency array omits a value used in its body"
+     is one file's tree. If exactly one file settles it, it is `sg`.
+   - **Prose about code is still prose.** "Comments must not say
+     'obviously'" is `vale` — the evidence is the words. "Every exported
+     function has a doc comment" is `sg` — the evidence is whether a node
+     exists above a declaration. Ask what you would have to *read* to
+     decide, not what the subject matter is.
+   - **Vale sees one document at a time.** "This term is spelled
+     consistently ACROSS the docs directory" is a graph question, so it
+     is runtime — even though it is entirely about prose.
+   - **Trust tier is not a destination.** `sg` and `vale` are both
+     static-tier: inert data, always run, no login, no reconcile, no
+     signing. Only runtime executes code. "Static vs runtime" is a
+     different axis from "which engine", and conflating them is what
+     makes a prose rule look like it needs an account.
+
+   Worked examples:
+
+   | Rule intent                                              | Evidence needed                           | Destination          |
+   |-----------------------------------------------------------|-------------------------------------------|----------------------|
+   | No `eval(...)` anywhere                                  | one file's call expressions               | `create-sg-rule`     |
+   | `useEffect` deps must include what the body reads        | one file's tree, correlated within it     | `create-sg-rule`     |
+   | Don't write "simply" or "just" in docs                   | a document's words                        | `create-vale-rule`   |
+   | Comments must not say "obviously"                        | a document's words (comments are prose)   | `create-vale-rule`   |
+   | Headings use sentence case                               | a document's markup                       | `create-vale-rule`   |
+   | Exported symbols must be used somewhere in the repo      | every file, correlated                    | runtime              |
+   | Product name spelled the same across all docs            | many documents, compared                  | runtime              |
+   | Files changed in the last release need a changelog entry | git metadata, not file contents           | runtime              |
+   | Imports must resolve through the tsconfig path aliases   | config chain resolution, outside the file | runtime              |
+
+5. **Split the runtime row on login state.** Runtime rules execute code,
+   so they run only against a server-verified signature:
+   - **logged in** → `create-remote-rule`. Go there directly; no recipe
+     forwards to another.
+   - **logged out** → `create-runtime-rule`, which explains the gate.
+
+6. **Offer the service only where it is a genuine choice.** When the
+   rule is expressible locally **and** the user is logged in, present
+   both and let them pick: a local rule you write and verify now, or a
+   generation that costs against their plan. Say which you would choose
+   and why.
+
+   Not logged in, or not locally expressible, are not choices — do not
+   pose them as one.
+
+7. **Name the command.** Finish by telling the user, or running, the
+   exact fetch for the destination you chose:
+   ```
+   npx @taskless/cli agent create-vale-rule
+   ```
+   A destination that is not a runnable command is a category, and a
+   category is not an answer.
+
+## When two destinations both fit
+
+- **A linter the repo already runs AND a local Taskless rule both fit** →
+  do not silently pick. Present both with trade-offs and let the user
+  choose.
+- **A rule that seems to need two engines is usually two rules.** Split
+  it and route each half, rather than forcing one engine to cover
+  evidence it cannot see.
+- **You genuinely cannot tell** → ask the user a clarifying question.
+  Uncertainty is a reason to ask; it is never a reason to spend a
+  generation.
+
+## Failure fallback (try-verify-escalate)
+
+If you committed to a local rule on reasonable confidence and it then
+fails against the user's cases:
+
+- Tell the user the local rule could not capture them.
+- State that generating via the service uses a generation and requires
+  login.
+- Call the service only after the user confirms. On yes, fetch
+  `taskless agent create-remote-rule`.
+
+Never fall through silently from a failed local attempt to a service
+call. A developer who watches a local attempt fail reads it as a
+Taskless failure, so only attempt local when you reasonably believe it
+will work.
 
 ## Important Notes
 
-- Reason first, route second. Do not name a destination before the
-  rationale is written.
-- Stay local when you reasonably can. `remote` is the path for what
-  cannot be solved on-device, and it costs a generation plus login.
-- A developer who watches a local attempt fail reads it as a Taskless
-  failure. Only attempt local when you reasonably believe it will work;
-  otherwise route `remote` upfront.
+- **Reason first, route second.** Do not name a destination before the
+  rationale in step 3 is written.
+- **What the code actually looks like outranks how the request was
+  phrased.** Where you can see the code or the diff, weigh the concrete
+  syntactic form present in the repository above the wording. The same
+  sentence routes to `create-sg-rule` when the repository contains a
+  form that correlates statically, and to runtime when the equivalent
+  check would have to normalize a captured value against a declaration
+  elsewhere.
+- **When it stays ambiguous, choose an engine whose availability you can
+  assert, and say that is why.** There is no fixed fallback. `sg` and
+  `vale` both ship as platform binaries, so either can be the missing one
+  on an unsupported architecture or where an install was blocked;
+  server-side the constraint is different again. A named default is
+  wrong in whichever situation it failed to anticipate.
+- **Stay local when you reasonably can.** Reasonable confidence is
+  enough to commit to a local rule — the failure fallback backstops a
+  wrong-but-reasonable bet.
 
 ## See Also
 
-- `taskless help existing` — author in a linter the repo already uses
-- `taskless help static` — author a local ast-grep rule (no login)
-- `taskless help remote` — generate via the Taskless service (login)
-- `taskless help engine-selection` — decide WHICH engine enforces the rule
-  (the next decision once the destination is settled)
+- `taskless agent create-legacy-rule` — author in a linter the repo already uses
+- `taskless agent create-sg-rule` — author a local ast-grep rule (no login)
+- `taskless agent create-vale-rule` — author a local Vale rule (no login)
+- `taskless agent create-runtime-rule` — the runtime tier, logged out
+- `taskless agent create-remote-rule` — generate via the service (login)
+- `taskless agent check` — run every engine over the repo

@@ -1,4 +1,11 @@
-# Topic: existing     (CLI v%(CLI_VERSION)s / topic v1)
+# Topic: create-legacy-rule     (CLI v%(CLI_VERSION)s / topic v1)
+
+## You are here
+This is `create-legacy-rule`. It helps you write a rule for a linter the
+repository already runs — ESLint, Ruff, RuboCop, Stylelint — in that
+tool's own dialect, so that tool enforces it.
+If that is not the kind of check you need, re-run `taskless agent route`
+and follow its decision rather than adapting this recipe.
 
 ## Goal
 Author a rule in a linter the repository ALREADY uses, expressed in that
@@ -52,6 +59,6 @@ then write the rule where that tool expects it.
 
 ## See Also
 
-- `taskless help route` — re-decide the destination if this no longer fits
-- `taskless help static` — author a local ast-grep rule instead
-- `taskless help remote` — generate via the Taskless service (login)
+- `taskless agent route` — re-decide the destination if this no longer fits
+- `taskless agent create-sg-rule` — author a local ast-grep rule instead
+- `taskless agent create-remote-rule` — generate via the service (login)

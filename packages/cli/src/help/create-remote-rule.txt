@@ -1,0 +1,141 @@
+# Topic: create-remote-rule     (CLI v%(CLI_VERSION)s / topic v1)
+
+## You are here
+This is `create-remote-rule`. It helps you have the Taskless service
+write a rule, when the rule is beyond what you can express on-device or
+the user has chosen to spend a generation on it.
+If that is not the kind of check you need, re-run `taskless agent route`
+and follow its decision rather than adapting this recipe.
+
+## Goal
+Enrich the user's description into a request the service can act on,
+submit it, and report what came back. The service generates the rule and
+writes the rule files; your job is everything on either side of that
+call.
+
+This recipe is the whole path — the boundary and the procedure. Do not
+go looking for a second topic to perform the submission.
+
+## Preconditions
+- `.taskless/` directory exists.
+- The user is logged in. This path requires auth.
+- The repository has a GitHub origin remote.
+- The request reached here through `route`, or through a local attempt
+  that failed and a user who confirmed the escalation.
+
+## Cost, and when this path is right
+
+A generation costs the user something and requires an account. That is
+why `route` prefers a local rule it can write and verify, and why this
+recipe is not a default.
+
+Two ways to legitimately be here:
+
+- **`route` sent you.** Either the rule is not expressible on-device, or
+  it is expressible and the user was offered the choice and took it.
+- **A local attempt failed and the user confirmed.** If you came from
+  `create-sg-rule`'s failure path, that recipe has already deleted the
+  broken candidate and asked. If it has not been asked, ask now — a
+  silent fall-through from a failed local attempt to a paid service call
+  is not acceptable, even when the service would obviously do better.
+
+## Steps
+
+1. **Confirm auth.** Run:
+   ```
+   npx @taskless/cli info --json
+   ```
+   Check `loggedIn`. If false, fetch `taskless agent auth` and follow the
+   login recipe before continuing. Do not build a request you cannot
+   submit.
+
+2. **Check for a rule that already covers this.** Scan
+   `.taskless/sg/rules/` and read each rule's `message`, `note`, and
+   `rule` fields. If one overlaps, show the user and ask whether they
+   would rather iterate on it — `taskless agent improve-rule` refines an
+   existing rule and is usually the better answer than a second rule
+   that half-overlaps the first.
+
+3. **Gather the request.** Even when the user supplied a description,
+   ask:
+   - What exact pattern should be flagged? Get concrete examples.
+   - In what language?
+   - Where is the pattern acceptable — are there contexts to exclude?
+
+   If you arrived from a failed local attempt, reuse the cases you
+   already gathered rather than asking again.
+
+4. **Enrich it.** This is the part that decides the quality of what
+   comes back:
+   - Search the codebase for real instances and show the user what you
+     found. Real matches beat invented ones.
+   - Ask for further success and failure cases, especially near-misses.
+   - Read `.gitignore`, the linter configs, and `tsconfig.json`'s
+     `exclude` for exclusion patterns the repo already believes in.
+     Present them as proposed defaults rather than applying them.
+   - Infer the primary language from the codebase and confirm it. Put it
+     in the `prompt` field.
+
+5. **Confirm before spending the generation.** Summarize the full
+   prompt, the success cases, the failure cases, and the exclusions.
+   This is the last point at which a misunderstanding is free.
+
+6. **Write the payload** to `.taskless/.tmp-rule-request.json`, matching
+   the input schema below.
+
+7. **Submit.** Run:
+   ```
+   npx @taskless/cli rule create --from .taskless/.tmp-rule-request.json --json
+   ```
+   This may take 30–60 seconds while the service generates the rule.
+
+8. **Clean up.** Delete `.taskless/.tmp-rule-request.json` whether the
+   call succeeded or failed.
+
+9. **Report.** The service writes the rule to `.taskless/sg/rules/<id>.yml`,
+   its tests to `.taskless/sg/rule-tests/<id>-YYYYMMDD-test.yml`, and
+   metadata to `.taskless/rule-metadata/<id>.yml`. These are the same
+   paths and the same shape a locally authored rule uses, so `check`,
+   `improve-rule`, and `verify-rule` treat them identically. Show the
+   user the paths and suggest `taskless agent check`.
+
+## Input schema
+
+The `--from` JSON file conforms to:
+
+```json
+%(INPUT_SCHEMA)s
+```
+
+Each entry in `successCases` and `failureCases` is a separate string.
+Multi-line code goes in one string with literal newlines.
+
+## Important Notes
+
+- Do NOT pre-build the rule yourself here. Submit the request and let
+  the service generate it; a hand-written rule attached to a generation
+  request is neither reviewed nor used.
+- The service owns rule-type selection. Today it generates ast-grep
+  rules under `.taskless/sg/rules/` — the same shape `create-sg-rule`
+  produces locally.
+
+## Errors
+
+With `--json`, failures emit `{ ok: false, code, message }`:
+
+| code                     | meaning                            | fix                                          |
+|--------------------------|------------------------------------|----------------------------------------------|
+| `AUTH_REQUIRED`          | not logged in                      | fetch `taskless agent auth`                  |
+| `NO_GITHUB_REMOTE`       | no GitHub origin remote            | tell the user; we cannot proceed             |
+| `INVALID_INPUT`          | `--from` JSON failed validation    | re-read the input schema, fix, retry         |
+| `NETWORK_ERROR`          | submit/poll failed                 | report and suggest retry                     |
+| `RULE_GENERATION_FAILED` | the service failed to generate     | report the message; suggest enriching prompt |
+| `RULE_UNSUPPORTED`       | plan lacks this generation type    | tell the user to enable it; do not retry     |
+
+## See Also
+
+- `taskless agent route` — the routing decision that leads here
+- `taskless agent auth` — log in before generating
+- `taskless agent create-sg-rule` — author a rule locally instead
+- `taskless agent improve-rule` — iterate on a rule that already exists
+- `taskless agent check` — validate the generated rule
