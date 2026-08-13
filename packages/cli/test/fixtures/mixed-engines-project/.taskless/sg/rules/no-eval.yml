@@ -1,0 +1,7 @@
+id: no-eval
+language: javascript
+severity: error
+rule:
+  pattern: eval($$$)
+message: Avoid using eval()
+note: eval() is unsafe. Use alternatives like Function() or JSON.parse().

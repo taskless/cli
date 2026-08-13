@@ -98,12 +98,21 @@ export async function runVale(
 
   // `--` separates flags from positional paths, so a path beginning with `-`
   // is not read as a flag.
+  // Vale needs somewhere to look. Given no input it prints its usage text and
+  // exits 0, which reaches the mapper as "not JSON" and reports the engine as
+  // failed on every run — so a whole-project `check`, which passes no paths at
+  // all, produced zero Vale findings and one spurious failure. ast-grep is the
+  // reason this is easy to miss: it takes its targets from the config and is
+  // content with none, so the two engines disagree about what "no paths" means.
+  // `cwd` is the project root, so `.` is the whole project.
+  const targets = paths.length > 0 ? paths : ["."];
   const argv = [
     "--config",
     configPath,
     "--output=JSON",
     "--no-exit",
-    ...(paths.length > 0 ? ["--", ...paths] : []),
+    "--",
+    ...targets,
   ];
 
   return new Promise<ValeRunOutcome>((resolve) => {

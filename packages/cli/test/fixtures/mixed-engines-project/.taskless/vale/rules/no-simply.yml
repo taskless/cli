@@ -1,0 +1,5 @@
+extends: existence
+message: "Avoid 'simply' — it hides the work from the reader"
+level: warning
+tokens:
+  - simply
