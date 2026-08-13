@@ -53,11 +53,31 @@ This matches how ast-grep rules are authored today: the agent writes the rule an
 - **THEN** it edits `.vale.ini` itself
 - **AND** the CLI SHALL NOT offer a subcommand that performs that edit
 
-### Requirement: The runtime authoring recipe states why it is gated
+### Requirement: The runtime authoring recipe is the logged-out path
 
-The `create-runtime-rule` recipe SHALL explain that runtime rules execute code and therefore require login, reconciliation, and signing, and SHALL state this as a property of executing code rather than as a property of the engine's capability.
+The `create-runtime-rule` recipe SHALL explain that runtime rules execute code and therefore require login, reconciliation, and signing, SHALL state this as a property of executing code rather than of the engine's capability, and SHALL say how to obtain access.
+
+It SHALL NOT forward the agent to another authoring recipe. A logged-in runtime request is routed to `create-remote-rule` by `route`, so this recipe is reached only when the gate is closed and exists to explain that one gate once.
 
 #### Scenario: The gate is explained where it is encountered
 
 - **WHEN** an agent follows `create-runtime-rule`
 - **THEN** the recipe SHALL state why the runtime tier is gated when the static tiers are not
+- **AND** it SHALL state how to obtain access
+
+#### Scenario: The recipe does not delegate
+
+- **WHEN** an agent follows `create-runtime-rule`
+- **THEN** it SHALL NOT be directed to fetch another authoring recipe to proceed
+
+### Requirement: Service generation is one recipe
+
+The CLI SHALL provide a single `create-remote-rule` recipe covering both the client-side boundary of service generation and the procedure itself — enriching the user's description, dispatching to the Taskless service, and reporting the result.
+
+Split across a boundary statement and a procedure, an agent fetches one only to learn it needs the other, which is the second fetch this change exists to remove.
+
+#### Scenario: One fetch reaches the whole procedure
+
+- **WHEN** an agent follows `create-remote-rule`
+- **THEN** the recipe SHALL carry both the boundary and the dispatch procedure
+- **AND** it SHALL NOT require fetching a second topic to complete the request

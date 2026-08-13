@@ -18,7 +18,7 @@ Separately, the scaffolded `.vale.ini` opens an unscoped `[*]`. A whole-project 
 **Non-Goals:**
 
 - **A `.vale.ini` writer.** The agent authors the section, exactly as it authors `sgconfig.yml` rule entries today. Construction moves to the downstream generator, consistent with `add-vale-rule-engine/design.md:107`.
-- Rule _generation_ for Vale via the service. `remote` remains the service path; this change gives the local path a destination.
+- Rule _generation_ for Vale via the service. `create-remote-rule` dispatches to the service as it does today; this change gives the local paths destinations and renames the remote one.
 - Renaming the `cli-help` capability file. The command renames; the spec keeps its name, so this change does not also move spec files (see D5).
 - Restricting Vale's feature set, or deciding build-output exclusion (tracked separately in #101).
 
@@ -26,7 +26,7 @@ Separately, the scaffolded `.vale.ini` opens an unscoped `[*]`. A whole-project 
 
 ### D1 — `route` and `engine-selection` merge into one topic
 
-There is one decision, made once. `route` absorbs the engine reasoning and returns one of the four `create-*-rule` topics. `engine-selection` ceases to exist as a separate topic.
+There is one decision, made once. `route` absorbs the engine reasoning and returns one of the five `create-*-rule` topics. `engine-selection` ceases to exist as a separate topic.
 
 This reverses the scoping `engine-selection` asserts today — that route decides destination, the topic decides engine, and locally the two compose. The separation is clean on paper and expensive in practice: it costs an agent two fetches and a correct handoff between them to answer one question, and the handoff is where an agent drops context. Worse, the two decisions are not independent in the direction the split assumes; "author this locally" and "which engine can express it" are answered from the same evidence, so splitting them means reading the same signals twice.
 
@@ -40,7 +40,7 @@ _Alternative rejected:_ export `route`. It is local-only by construction.
 
 ### D2 — Verb-noun names, single token, no aliases
 
-`create-sg-rule`, `create-vale-rule`, `create-runtime-rule`, `create-legacy-rule`. Not everything needs the noun — `route` stays `route`.
+`create-sg-rule`, `create-vale-rule`, `create-runtime-rule`, `create-legacy-rule`, `create-remote-rule`. Not everything needs the noun — `route` stays `route`.
 
 Hyphenated single tokens are the point rather than a side effect. A multi-word phrase invites an agent to paraphrase or reorder; a hyphenated token reads as a literal string to copy. This is the same reason the resolution stops joining positionals: with one token there is no order to get wrong.
 
@@ -86,18 +86,39 @@ No user data or on-disk state migrates. Existing projects keep whatever `.vale.i
 
 The rename is a hard cutover in one PR: recipes cross-reference each other by literal command, so a partial rename produces recipes pointing at commands that do not exist.
 
-### D6 — There is no `create-remote-rule`; `create-runtime-rule` covers the gated path
+### D6 — The logged-out gate is explained once, by `create-runtime-rule`
 
-`route` names four destinations, all engine-shaped. "Remote" is not a fifth engine — it describes who generates, which is a different question, and the one place it bites is the same place `create-runtime-rule` already has to speak: the user is logged out.
+"Remote" describes who generates rather than which engine, so the two are not peers in kind — but the place that matters is the same place `create-runtime-rule` has to speak anyway: the user is logged out.
 
-So `create-runtime-rule` owns the gated story end to end — why executing code requires login, reconciliation, and signing, and what to do when the user has none of them. A logged-out user meets one topic explaining one gate, rather than being routed to a topic about remoteness that then explains authentication.
+`create-runtime-rule` therefore owns the gated story — why executing code requires login, reconciliation, and signing, and how to get there. A logged-out user meets one topic explaining one gate, rather than being handed between a topic about remoteness and one about authentication.
 
 **What this leaves unresolved, deliberately.** `remote.txt` and `rule-create.txt` today serve a real and different flow: the service generating an _ast-grep_ rule when local authoring cannot. That is escalation, not a destination — `route` is already specified as biased local with the service as last resort — so it survives as a fallback inside `route` rather than as a peer of the four. Whether those two recipes keep their names, merge, or fold into `create-sg-rule`'s failure path is not settled here.
 
 _Alternative rejected:_ a fifth `create-remote-rule` destination. Puts a non-engine on an engine-shaped list, and splits the logged-out explanation across two topics.
 
+### D7 — Login state is read early; remote is offered only where it is a choice
+
+`route` reads login state near the top, before dispatching. It changes which destinations exist, so discovering it late means classifying against a set that may be wrong.
+
+It does **not** follow that the agent should open by asking "do you want remote generation?". At that point it does not know whether the rule is a two-line `sg` pattern or something local authoring cannot express, and neither does the user — the question costs a turn and cannot be answered well. Remote is offered when it is genuinely a choice: the rule is locally expressible **and** the user is logged in. Not logged in, or not locally expressible, are not choices and are not posed as one.
+
+This narrows the existing "biased to stay local" requirement rather than reversing it. The bias survives for the case it was written about — local authoring that _works_ is not abandoned for the service — while a logged-in user stops being steered away from a path they have already paid for.
+
+**No topic delegates to another.** A logged-in runtime request routes to `create-remote-rule` directly; `create-runtime-rule` is the logged-out path. Routing runtime through a topic that then forwards would reintroduce the second fetch D1 exists to remove, and would split the login explanation across two files.
+
+_Alternative rejected:_ offer remote unconditionally as step one. Reverses the local bias outright, and asks a question before the information exists to answer it.
+
+_Alternative rejected:_ `create-runtime-rule` checks login and forwards. Two fetches, and the reader meets the gate explanation only on one branch.
+
+### D8 — `remote` and `rule-create` merge into `create-remote-rule`
+
+`remote.txt` states the client-side boundary; `rule-create.txt` is the procedure that enriches a description, calls the API, and reports. Split across two topics, an agent fetches one to learn it needs the other.
+
+This is a content merge, not a rename: both texts have material that survives, and the result has to read as one procedure rather than two concatenated.
+
+_Alternative rejected:_ keep `remote` as a boundary statement and `create-remote-rule` as the procedure. Preserves the second fetch under new names.
+
 ## Open Questions
 
-- `remote.txt` and `rule-create.txt` are no longer named by `route`, but still implement service generation. Do they remain fetchable topics, fold into `create-sg-rule`'s escalation path, or merge with each other? Not settled by D6, and worth deciding before the sweep in task group 3 rewrites their cross-references.
-- Should `create-runtime-rule` explain the login requirement itself, or defer to `auth`? Stated as the former; worth confirming it does not duplicate `auth`.
+- Does `create-runtime-rule` duplicate `auth`? It now owns the login explanation for the runtime tier specifically; worth confirming the two do not drift.
 - Does the distributed engine criterion (D1) belong in each recipe's Preconditions or as a named section? Affects whether a consumer can extract it mechanically.
