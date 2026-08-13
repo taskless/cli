@@ -158,7 +158,15 @@ async function runValeEngine(options: DispatchOptions): Promise<EngineOutcome> {
   });
 
   if (outcome.status === "ok") {
-    return { engine: "vale", results: outcome.results };
+    // A zero-exit run that still wrote to stderr carries a diagnostic — most
+    // often a rule assignment Vale ignored for sitting outside a section. It
+    // rides through as a notice and never as a failure: the run succeeded, and
+    // letting it touch the exit code would fail checks over a warning.
+    return {
+      engine: "vale",
+      results: outcome.results,
+      ...(outcome.notice === undefined ? {} : { notice: outcome.notice }),
+    };
   }
   return outcome.blocking
     ? { engine: "vale", results: [], failure: outcome.message }

@@ -103,9 +103,12 @@ const createCommand = defineCommand({
 
     if (args.anonymous) {
       // Anonymous rule creation runs in the agent, not the CLI. Point the
-      // agent at the local-only recipe and exit cleanly.
+      // agent at the local-only recipe and exit cleanly. That recipe is
+      // `create-sg-rule`: authoring an ast-grep rule on-device with no service
+      // call is exactly what anonymous mode asks for, so it is the destination
+      // rather than an `--anonymous` variant of the service recipe.
       const message =
-        "Anonymous rule generation runs in the agent. Run `taskless agent rule-create --anonymous` to fetch the local-only recipe.";
+        "Anonymous rule generation runs in the agent. Run `taskless agent create-sg-rule` to fetch the local-only recipe.";
       if (args.json) {
         console.log(
           JSON.stringify(makeErrorEnvelope("INVALID_INPUT", message))
@@ -348,7 +351,7 @@ const improveCommand = defineCommand({
 
     if (args.anonymous) {
       const message =
-        "Anonymous rule improvement runs in the agent. Run `taskless agent rule-improve --anonymous` to fetch the local-only recipe.";
+        "Anonymous rule improvement runs in the agent. Run `taskless agent improve-rule --anonymous` to fetch the local-only recipe.";
       if (args.json) {
         console.log(
           JSON.stringify(makeErrorEnvelope("INVALID_INPUT", message))

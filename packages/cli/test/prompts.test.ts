@@ -30,12 +30,12 @@ const UNRESOLVED_PLACEHOLDER = /%\([A-Z_]+\)s/;
  * something the bundler or the type-checker resolves back to source.
  */
 async function importBuiltPrompts(): Promise<{
-  getPrompt: (topic: "static", options?: PromptOptions) => string;
+  getPrompt: (topic: "create-sg-rule", options?: PromptOptions) => string;
   TOPICS: readonly string[];
 }> {
   const url = pathToFileURL(distributionPromptsPath).href;
   return (await import(/* @vite-ignore */ url)) as {
-    getPrompt: (topic: "static", options?: PromptOptions) => string;
+    getPrompt: (topic: "create-sg-rule", options?: PromptOptions) => string;
     TOPICS: readonly string[];
   };
 }
@@ -62,12 +62,12 @@ describe("prompt rendering", () => {
   });
 
   it("renders the CLI version into the header", () => {
-    expect(getPrompt("static")).toContain(`CLI v${__VERSION__}`);
+    expect(getPrompt("create-sg-rule")).toContain(`CLI v${__VERSION__}`);
   });
 
   it.each([
-    ["rule-create", "prompt"],
-    ["rule-improve", "ruleId"],
+    ["create-remote-rule", "prompt"],
+    ["improve-rule", "ruleId"],
   ])("renders the JSON Schema for %s", (topic, property) => {
     const rendered = getRecipe(topic) ?? "";
     expect(rendered, `${topic} lost its schema`).not.toContain(
@@ -95,10 +95,10 @@ describe("prompt rendering", () => {
 
 describe("header suppression", () => {
   it("drops the header line and the blank line after it, leaving the body intact", () => {
-    const withHeader = getPrompt("static");
-    const withoutHeader = getPrompt("static", { header: false });
+    const withHeader = getPrompt("create-sg-rule");
+    const withoutHeader = getPrompt("create-sg-rule", { header: false });
 
-    expect(withHeader.startsWith("# Topic: static")).toBe(true);
+    expect(withHeader.startsWith("# Topic: create-sg-rule")).toBe(true);
     expect(withoutHeader.startsWith("# Topic:")).toBe(false);
     // The body is the same string, minus the header line and its blank line.
     expect(withoutHeader).toBe(withHeader.split("\n").slice(2).join("\n"));
@@ -117,22 +117,26 @@ describe("header suppression", () => {
   });
 
   it("keeps the header by default", () => {
-    expect(getPrompt("static")).toBe(getPrompt("static", { header: true }));
-    expect(getPrompt("static")).toBe(getPrompt("static", {}));
+    expect(getPrompt("create-sg-rule")).toBe(
+      getPrompt("create-sg-rule", { header: true })
+    );
+    expect(getPrompt("create-sg-rule")).toBe(getPrompt("create-sg-rule", {}));
   });
 });
 
 describe("anonymous variants", () => {
   it("returns the variant text for a topic that has one", () => {
-    const canonical = getRecipe("rule-create");
-    const anonymous = getRecipe("rule-create", { anonymous: true });
+    const canonical = getRecipe("improve-rule");
+    const anonymous = getRecipe("improve-rule", { anonymous: true });
     expect(anonymous).toBeDefined();
     expect(anonymous).not.toBe(canonical);
     expect(anonymous).toContain("(anonymous)");
   });
 
   it("falls back to the canonical recipe for a topic without one", () => {
-    expect(getRecipe("static", { anonymous: true })).toBe(getRecipe("static"));
+    expect(getRecipe("create-sg-rule", { anonymous: true })).toBe(
+      getRecipe("create-sg-rule")
+    );
   });
 });
 
@@ -145,8 +149,8 @@ describe("typed accessor", () => {
   });
 
   it("passes options through the map", () => {
-    expect(PROMPTS.static({ header: false })).toBe(
-      getPrompt("static", { header: false })
+    expect(PROMPTS["create-sg-rule"]({ header: false })).toBe(
+      getPrompt("create-sg-rule", { header: false })
     );
   });
 
@@ -220,7 +224,7 @@ describe("built prompts entry", () => {
 
   it("inlines every build define", async () => {
     const { getPrompt: getBuiltPrompt } = await importBuiltPrompts();
-    const rendered = getBuiltPrompt("static");
+    const rendered = getBuiltPrompt("create-sg-rule");
     expect(rendered).toContain(`CLI v${__VERSION__}`);
     expect(rendered).not.toMatch(/__[A-Z_]+__/);
     expect(rendered).not.toMatch(UNRESOLVED_PLACEHOLDER);
@@ -228,9 +232,9 @@ describe("built prompts entry", () => {
 
   it("renders identically from the built artifact and from source", async () => {
     const { getPrompt: getBuiltPrompt } = await importBuiltPrompts();
-    expect(getBuiltPrompt("static")).toBe(getPrompt("static"));
-    expect(getBuiltPrompt("static", { header: false })).toBe(
-      getPrompt("static", { header: false })
+    expect(getBuiltPrompt("create-sg-rule")).toBe(getPrompt("create-sg-rule"));
+    expect(getBuiltPrompt("create-sg-rule", { header: false })).toBe(
+      getPrompt("create-sg-rule", { header: false })
     );
   });
 });

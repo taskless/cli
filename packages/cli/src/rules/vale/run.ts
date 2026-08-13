@@ -55,9 +55,23 @@ export const VALE_TIMEOUT_MS = 60_000;
  *
  * `ok` is non-blocking even when it carries findings: severity decides the exit
  * code there, the same as for every other engine.
+ *
+ * `ok` also carries an optional `notice`: whatever Vale wrote to stderr while
+ * still exiting zero. That combination is not noise. Vale reports a rule
+ * assignment placed outside any section as `W101 … is ignoring it` — on stderr,
+ * with exit 0 and a well-formed empty result on stdout — so discarding it
+ * leaves an author with a rule that verifies, runs, and reports nothing.
+ * Surfacing it is what makes the section-less scaffold safe: the mistake it
+ * invites becomes legible instead of silent.
  */
 export type ValeRunOutcome =
-  | { status: "ok"; blocking: false; results: CheckResult[] }
+  | {
+      status: "ok";
+      blocking: false;
+      results: CheckResult[];
+      /** Vale's stderr on a zero-exit run, when it wrote any. */
+      notice?: string;
+    }
   | { status: "unavailable"; blocking: false; message: string }
   | { status: "timeout"; blocking: true; message: string }
   | { status: "failed"; blocking: true; message: string };
@@ -214,13 +228,23 @@ export async function runVale(
         return;
       }
 
+      // Exit was zero, so anything on stderr is a diagnostic about a run that
+      // otherwise succeeded — the `W101` ignored-assignment warning above all.
+      // Attached to every `ok` path so a diagnostic cannot be dropped by which
+      // branch happened to produce the (empty) results.
+      const diagnostic = stderrChunks.join("").trim();
+      const notice =
+        diagnostic === ""
+          ? {}
+          : { notice: `Vale reported while running: ${diagnostic}` };
+
       const stdout = stdoutChunks.join("").trim();
       if (stdout === "") {
         // Measured: Vale prints `{}` when it finds nothing, which parses and
         // maps to [] below. This branch is for a Vale that says nothing at all
         // — cheap insurance against JSON.parse("") reporting a clean run as a
         // failure.
-        settle({ status: "ok", blocking: false, results: [] });
+        settle({ status: "ok", blocking: false, results: [], ...notice });
         return;
       }
 
@@ -250,6 +274,7 @@ export async function runVale(
           status: "ok",
           blocking: false,
           results: toValeCheckResults(parsed as ValeOutput),
+          ...notice,
         });
       } catch (error) {
         settle({
