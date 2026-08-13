@@ -10,8 +10,8 @@ import {
 import { getTelemetry } from "../telemetry";
 import { getRecipe } from "../prompts/recipes";
 
-// Help-only recipe topics (no backing subcommand) that should still be
-// discoverable from the `taskless help` index. The rule-authoring front
+// Recipe-only topics (no backing subcommand) that should still be
+// discoverable from the `taskless agent` index. The rule-authoring front
 // door (`route`) and its destinations live here so an agent can find them.
 const RECIPE_TOPICS: ReadonlyArray<[string, string]> = [
   ["route", "Decide where to author a rule (existing/static/remote)"],
@@ -36,11 +36,11 @@ async function resolveDescription(
   return meta?.description ?? "";
 }
 
-export function createHelpCommand(subCommands: SubCommandsDef) {
+export function createAgentCommand(subCommands: SubCommandsDef) {
   return defineCommand({
     meta: {
-      name: "help",
-      description: "Show help for a command",
+      name: "agent",
+      description: "Return a recipe for an AI coding agent to follow",
     },
     args: {
       dir: {
@@ -67,14 +67,19 @@ export function createHelpCommand(subCommands: SubCommandsDef) {
           if (!argument.includes("=") && valueFlagSet.has(argument)) index++;
           continue;
         }
-        if (argument !== "help") positionals.push(argument);
+        if (argument !== "agent") positionals.push(argument);
       }
 
       const cwd = resolve(args.dir);
       const telemetry = await getTelemetry(cwd);
 
       if (positionals.length === 0) {
-        // cli_help with the index marker: agent fetched the topic list
+        // cli_help with the index marker: agent fetched the topic list.
+        // The event name stays `cli_help` even though the command is now
+        // `agent`: dashboards key on it, it is not part of any agent-facing
+        // contract, and renaming it in the same change that breaks the
+        // `TOPICS` export would take those dashboards dark for a reason
+        // unrelated to this change.
         telemetry.capture("cli_help", { topic: "(index)" });
 
         console.log("Taskless CLI\n");
@@ -89,7 +94,7 @@ export function createHelpCommand(subCommands: SubCommandsDef) {
 
         const entries: Array<[string, string]> = [];
         for (const [name, cmd] of Object.entries(subCommands)) {
-          if (name === "help") continue;
+          if (name === "agent") continue;
           const description = await resolveDescription(cmd);
           entries.push([name, description]);
         }
@@ -114,30 +119,44 @@ export function createHelpCommand(subCommands: SubCommandsDef) {
         );
         console.log("and use local-only behavior.");
         console.log(
-          "\nRun `taskless help <topic>` for the full recipe (e.g. `taskless help rule create`)."
+          "\nRun `taskless agent <topic>` for the full recipe (e.g. `taskless agent rule-create`)."
         );
         return;
       }
 
-      // Join positional args to form the lookup key
-      const key = positionals.join("-");
+      // Topics are addressed by exactly one token. Joining positionals into a
+      // key used to make `rule create` resolve `rule-create.txt`, which invited
+      // an agent to reorder or paraphrase a topic name and still get a hit.
+      // A single hyphenated token is a literal string to copy, so extra
+      // positionals are an error rather than something to guess at.
+      if (positionals.length > 1) {
+        telemetry.capture("cli_help", { topic: positionals.join(" ") });
+        console.error(`Too many arguments: ${positionals.join(" ")}`);
+        console.error(
+          "A topic is a single token. Run `taskless agent` for the topic index."
+        );
+        process.exitCode = 1;
+        return;
+      }
+
+      const key = positionals[0]!;
 
       // Anonymous variant lookup: prefer <topic>.anonymous.txt when
       // --anonymous is set, fall back to the canonical recipe. The lookup and
-      // the render both live in the shared prompts module, so `help` and the
+      // the render both live in the shared prompts module, so `agent` and the
       // `@taskless/cli/prompts` export emit the same text.
       const recipe = getRecipe(key, { anonymous: args.anonymous });
 
       if (recipe) {
         // cli_help: agent fetched a specific recipe (intent signal). The topic
         // is the served topic; filtering on it replaces the old per-topic events.
-        telemetry.capture("cli_help", { topic: positionals.join(" ") });
+        telemetry.capture("cli_help", { topic: key });
         console.log(recipe.trimEnd());
       } else {
         // cli_help for an unknown topic — still the attempted topic string.
-        telemetry.capture("cli_help", { topic: positionals.join(" ") });
-        console.error(`Unknown command: ${positionals.join(" ")}`);
-        console.error("Run `taskless help` for available commands.");
+        telemetry.capture("cli_help", { topic: key });
+        console.error(`Unknown command: ${key}`);
+        console.error("Run `taskless agent` for available topics.");
         process.exitCode = 1;
       }
     },

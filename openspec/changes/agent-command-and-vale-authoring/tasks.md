@@ -2,10 +2,12 @@
 
 ## 1. Rename the command
 
-- [ ] 1.1 Rename `packages/cli/src/commands/help.ts` to `agent.ts` and the exported command to `agent`. Register it in `src/index.ts`
-- [ ] 1.2 Remove the positional-join resolution (`positionals.join("-")`). Accept at most one positional; more than one is an error rather than a joined key. The unknown-topic message points at `taskless agent`
-- [ ] 1.3 Keep the telemetry event name `cli_help` or rename it deliberately — decide once and record it, since dashboards key on it. If renamed, note it in the changeset alongside the `TOPICS` break
-- [ ] 1.4 Update `help-extensions.test.ts`, `help-routing-telemetry.test.ts`, `anonymous-flag.test.ts`, `onboard.test.ts`, and `cli.test.ts` to invoke `agent`
+- [x] 1.1 Rename `packages/cli/src/commands/help.ts` to `agent.ts` and the exported command to `agent`. Register it in `src/index.ts`
+- [x] 1.2 Remove the positional-join resolution (`positionals.join("-")`). Accept at most one positional; more than one is an error rather than a joined key. The unknown-topic message points at `taskless agent`
+- [x] 1.3 Keep the telemetry event name `cli_help` or rename it deliberately — decide once and record it, since dashboards key on it. If renamed, note it in the changeset alongside the `TOPICS` break
+  - **Decision: keep `cli_help`.** Renaming it in the same change that breaks the `TOPICS` export would take the dashboards dark for a reason unrelated to this change, and agent-call volume needs to stay visible under the existing event. The event name is not part of any agent-facing contract, so it can be renamed later on its own. Recorded as a comment at the capture site in `agent.ts`; nothing to add to the changeset
+- [x] 1.4 Update `help-extensions.test.ts`, `help-routing-telemetry.test.ts`, `anonymous-flag.test.ts`, `onboard.test.ts`, and `cli.test.ts` to invoke `agent`
+  - Also required, not listed: `help-telemetry.test.ts` (imports `createHelpCommand` directly), `prompts.test.ts` (spawns `binPath help <topic>` for the parity test), and `cli-run.test.ts` (its `resolveCommandName` case named `help`)
 
 ## 2. Rename and add the authoring topics
 
