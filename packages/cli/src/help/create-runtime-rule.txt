@@ -1,0 +1,118 @@
+# Topic: create-runtime-rule     (CLI v%(CLI_VERSION)s / topic v1)
+
+## You are here
+This is `create-runtime-rule`. It helps you write a runtime rule: a
+check that runs your own code, because answering it needs more than one
+file — the repository graph, git metadata, build output, a resolved
+config chain.
+If that is not the kind of check you need, re-run `taskless agent route`
+and follow its decision rather than adapting this recipe.
+
+You are reading this recipe rather than `create-remote-rule` because the
+user is **not logged in**. That is the whole difference, and this recipe
+explains it once.
+
+## Goal
+Explain what a runtime rule is, why this tier is gated when the static
+tiers are not, and what the user has to do before one can run.
+
+## Preconditions
+- `.taskless/` directory exists.
+- The user is **not** logged in. If `taskless info --json` reports
+  `loggedIn: true`, you are in the wrong recipe — re-run
+  `taskless agent route`.
+
+## What a runtime rule is
+
+A rule directory under `.taskless/runtime/rules/<name>/` holding two
+kinds of file:
+
+| File          | Role                                                             |
+|---------------|------------------------------------------------------------------|
+| `*.yml`       | ast-grep capture rules that narrow which files the check looks at |
+| `check.ts`    | a module whose default export receives those matches and returns findings |
+
+The capture rules do the cheap work — if nothing matches, `check.ts` is
+never invoked. `check.ts` does the part no static engine can: hold two
+files at once, read git, resolve an alias, look outside the repository.
+
+That is also exactly why it is gated.
+
+## Why this tier is gated
+
+**Because it executes code, not because of what it can express.**
+
+`sg` and `vale` rules are inert data. Whatever is in them, the worst a
+malicious rule achieves is a wrong finding — `taskless check` runs them
+with no login, no network, and nothing to verify, because there is
+nothing to verify.
+
+A runtime rule's `check.ts` is a program that runs on the developer's
+machine with the developer's permissions. A rule file that arrives in a
+pull request is code that arrives in a pull request. So `check`:
+
+1. **Signs** each `check.ts` — a signature over the exact bytes on disk.
+2. **Reconciles** those signatures with the Taskless service, which
+   answers with the set it will vouch for.
+3. **Runs only what came back blessed.** Anything else is reported as
+   skipped, with the reason.
+
+Reconciliation is what makes the signature mean something: it is the
+service saying "this rule, these exact bytes, for this repository."
+Without a login there is nobody to ask, so there is no answer, so
+nothing runs.
+
+This is a property of executing code. It says nothing about whether a
+runtime rule is more or less capable, and it is not a quality tier —
+`sg` and `vale` rules are not less trusted, they are unexecuted.
+
+## What happens today, logged out
+
+Nothing breaks. `taskless check` still runs every static rule; each
+runtime rule it finds is listed as skipped with the reason
+`not authenticated — runtime rules were not verified and did not run`.
+
+So a runtime rule you write now is inert until the user logs in. Say
+that plainly rather than letting them discover it from a silent check.
+
+## Steps
+
+1. **Tell the user what their rule needs, and why it is gated.** Name
+   the evidence — "this has to compare two files", "this reads git
+   history" — and then the consequence: it has to run code, so it needs
+   an account. Do not present this as a limitation of the rule.
+
+2. **Point them at login.** Obtaining access is `auth`'s job, and this
+   recipe deliberately does not restate it:
+
+   ```
+   npx @taskless/cli agent auth
+   ```
+
+   Follow that recipe with the user. If they do not want an account,
+   stop here — say the rule cannot run without one, and offer to
+   reconsider whether a narrower version of the request could be
+   answered by a static rule instead. That is a new routing decision,
+   not a fallback you take on their behalf.
+
+3. **Once they are logged in, re-route.** Run
+   `npx @taskless/cli info --json` to confirm `loggedIn: true`, then
+   re-run `taskless agent route` with the original request. The
+   destination changes now that the gate is open.
+
+## Important Notes
+
+- `--dangerously-run-scripts` makes `check` execute runtime rules
+  without server verification. It exists for local iteration on a rule
+  you wrote yourself and just read. It is not a way to ship a rule to a
+  team, and suggesting it to work around a login turns a deliberate gate
+  into an unreviewed code-execution path on someone else's machine.
+- Do not author a `check.ts` and leave it in the repository unmentioned.
+  A skipped runtime rule reports nothing, which reads exactly like a
+  passing one.
+
+## See Also
+
+- `taskless agent auth` — log in, log out, check status
+- `taskless agent route` — re-decide once the login state changes
+- `taskless agent check` — see which rules ran and which were skipped

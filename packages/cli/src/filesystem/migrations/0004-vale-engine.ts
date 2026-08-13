@@ -34,8 +34,18 @@ const SG_CONFIG_CONTENT = `ruleDirs:\n  - rules\ntestConfigs:\n  - testDir: rule
  * nothing, Vale reports `{}`, and a prose check passes clean with every rule
  * silently disabled. Measured against the real binary, which is the only way
  * this is visible — the layout is identical either way.
+ *
+ * It carries **no section**, so a scaffolded project lints nothing until an
+ * author scopes something deliberately. An unscoped `[*]` would apply every
+ * enabled rule to every file the walk reaches, making the default the widest
+ * scope available rather than the narrowest — and scope is the author's
+ * decision to make. `create-vale-rule` teaches writing the first section; the
+ * mistake that invites (a `rules.<id> = YES` above the first `[…]` line, which
+ * Vale ignores with a `W101` on stderr and exit 0) is why `runVale` surfaces a
+ * zero-exit stderr as a notice. The two ship together: without the notice, this
+ * scaffold would trade a too-wide default for a silent one.
  */
-const VALE_CONFIG_CONTENT = `StylesPath = .\nMinAlertLevel = suggestion\n\n[*]\n`;
+const VALE_CONFIG_CONTENT = `StylesPath = .\nMinAlertLevel = suggestion\n`;
 
 /** Directories that must exist after the migration, tracked when empty. */
 const SCAFFOLD_DIRECTORIES = [

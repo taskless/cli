@@ -64,6 +64,33 @@ The recipe SHALL be named for the artifact it produces rather than for a trust t
 - **THEN** it SHALL write the rule on-device without requiring login or the
   Taskless API
 
+### Requirement: Available code context outranks the phrasing of the request
+
+Where code or diff context is available, `route` SHALL weigh the concrete syntactic form present in the repository above the wording of the request, since the same request routes differently depending on the form the code actually takes.
+
+This bound the standalone engine-selection topic. That topic is gone, but the reasoning is not — it now binds the place the decision is actually made.
+
+#### Scenario: Concrete form changes the engine
+
+- **WHEN** a rule is statically correlatable in the form the repository actually contains
+- **THEN** `route` selects `create-sg-rule`
+- **AND WHEN** the equivalent rule requires normalizing a captured value to match a declaration elsewhere
+- **THEN** it selects a runtime destination, despite an identically phrased request
+
+### Requirement: Ambiguity resolves to an engine known to be available
+
+When no engine is clearly indicated, `route` SHALL direct the reader to choose an engine whose availability can be asserted in the situation at hand, and to give that availability as the reason for the call. It SHALL NOT name a fixed fallback engine. Both `sg` and `vale` ship as platform binaries, so either can be the missing one on an unsupported architecture or where an install was blocked; server-side the constraint is different again, `sg` being the only ungated route. A named default is wrong in whichever of those situations it failed to anticipate, which is why the requirement is stated as a property rather than as a fact about any one engine.
+
+#### Scenario: Ambiguous request resolves to an assertably available engine
+
+- **WHEN** the available context does not disambiguate which engine can enforce a rule
+- **THEN** `route` selects an engine whose availability it can assert, and states that availability as the reasoning that made the call close
+
+#### Scenario: The default is never an unavailable engine
+
+- **WHEN** an engine is unavailable in the current environment, such as the Vale binary being absent
+- **THEN** the ambiguity default SHALL NOT name it
+
 ### Requirement: Trust tier is not an engine-selection input
 
 Engine reasoning SHALL NOT treat login, reconciliation, or signing as inputs to the engine choice: `sg` and `vale` are both static-tier, and only `runtime` carries those concerns, so trust tier is a distinct axis from which engine can express a rule.

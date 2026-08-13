@@ -22,18 +22,20 @@ What the requirement actually protects is not the version number but the notice.
 
 ## ADDED Requirements
 
-### Requirement: Exported topics cover both static-tier authoring paths
+### Requirement: Exported topics cover every engine a rule can be routed to
 
-`TOPICS` SHALL export the authoring recipe for each static-tier engine — `create-sg-rule` and `create-vale-rule` — alongside `engine-selection`.
+`TOPICS` SHALL export the authoring recipe for each engine — `create-sg-rule`, `create-vale-rule`, and `create-runtime-rule`.
 
-A consumer that can decide a rule belongs to `vale` must be able to reach the procedure for authoring one. Exporting the chooser without the Vale destination reproduces, for the platform generator, the dead end this change removes from the CLI.
+A consumer that can decide a rule belongs to an engine must be able to reach the procedure for authoring one. Exporting a chooser without its destinations reproduces, for the platform generator, the dead end this change removes from the CLI.
 
-#### Scenario: Both authoring paths are reachable from the export
+`engine-selection` leaves the export because it stops existing: the criterion it carried now lives in `route`, stated once. `route` is not exported here — it still contains local mechanics a Worker cannot run — so until it is, a consumer gets each destination's own scope from these three and adjudicates a genuinely ambiguous call itself.
+
+#### Scenario: Every engine's authoring path is reachable from the export
 
 - **WHEN** a consumer imports `TOPICS`
-- **THEN** it SHALL contain `create-sg-rule`, `create-vale-rule`, and `engine-selection`
+- **THEN** it SHALL contain `create-sg-rule`, `create-vale-rule`, and `create-runtime-rule`
 
 #### Scenario: The exported set follows the rename
 
 - **WHEN** a consumer imports `TOPICS`
-- **THEN** it SHALL NOT contain `static`, which no longer names a recipe
+- **THEN** it SHALL NOT contain `static` or `engine-selection`, neither of which names a recipe any more

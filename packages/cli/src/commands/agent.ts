@@ -14,11 +14,12 @@ import { getRecipe } from "../prompts/recipes";
 // discoverable from the `taskless agent` index. The rule-authoring front
 // door (`route`) and its destinations live here so an agent can find them.
 const RECIPE_TOPICS: ReadonlyArray<[string, string]> = [
-  ["route", "Decide where to author a rule (existing/static/remote)"],
-  ["existing", "Author a rule in a linter the repo already uses"],
-  ["static", "Author a local ast-grep rule on this machine (no login)"],
-  ["remote", "Generate a rule via the Taskless service (login)"],
-  ["engine-selection", "Decide which engine enforces a rule (sg/vale/runtime)"],
+  ["route", "Decide which recipe authors a rule (start here)"],
+  ["create-legacy-rule", "Author a rule in a linter the repo already uses"],
+  ["create-sg-rule", "Author a local ast-grep rule over code (no login)"],
+  ["create-vale-rule", "Author a local Vale rule over prose (no login)"],
+  ["create-runtime-rule", "The runtime tier, and why it needs an account"],
+  ["create-remote-rule", "Generate a rule via the Taskless service (login)"],
 ];
 
 async function unwrap<T>(resolvable: Resolvable<T>): Promise<T> {
@@ -119,7 +120,7 @@ export function createAgentCommand(subCommands: SubCommandsDef) {
         );
         console.log("and use local-only behavior.");
         console.log(
-          "\nRun `taskless agent <topic>` for the full recipe (e.g. `taskless agent rule-create`)."
+          "\nRun `taskless agent <topic>` for the full recipe (e.g. `taskless agent create-sg-rule`)."
         );
         return;
       }
