@@ -8,8 +8,11 @@ import { buildPath } from "../scan";
 import { findValeBinary, valeUnavailableMessage } from "./binary";
 import { asValeConfigError, toValeCheckResults, type ValeOutput } from "./map";
 
+/** Taskless's own directory, as a project-relative path. */
+const TASKLESS_DIRECTORY = ".taskless";
+
 /** The committed Vale config, relative to the project root. */
-export const COMMITTED_VALE_CONFIG = `.taskless/${ENGINE_LAYOUTS.vale.configFile}`;
+export const COMMITTED_VALE_CONFIG = `${TASKLESS_DIRECTORY}/${ENGINE_LAYOUTS.vale.configFile}`;
 
 /**
  * How long a single Vale invocation may run before it is killed.
@@ -96,8 +99,6 @@ export async function runVale(
   const paths = options.paths ?? [];
   const timeoutMs = options.timeoutMs ?? VALE_TIMEOUT_MS;
 
-  // `--` separates flags from positional paths, so a path beginning with `-`
-  // is not read as a flag.
   // Vale needs somewhere to look. Given no input it prints its usage text and
   // exits 0, which reaches the mapper as "not JSON" and reports the engine as
   // failed on every run — so a whole-project `check`, which passes no paths at
@@ -105,12 +106,30 @@ export async function runVale(
   // reason this is easy to miss: it takes its targets from the config and is
   // content with none, so the two engines disagree about what "no paths" means.
   // `cwd` is the project root, so `.` is the whole project.
-  const targets = paths.length > 0 ? paths : ["."];
+  const wholeProject = paths.length === 0;
+  const targets = wholeProject ? ["."] : paths;
+
+  // Walking the whole project reaches `.taskless/` too, and Vale has no reason
+  // to know that directory is ours: with a rule enabled it reports findings in
+  // the committed `.vale.ini` and in the user's own rule definitions — prose
+  // complaints about the machinery, pointing at files nobody wrote as prose.
+  // Section globs do not help, since `.taskless/README.md` matches `[*.md]` as
+  // readily as any document. `--glob` filters which files are walked without
+  // touching which rules apply to them, so a user's scoping still decides that.
+  //
+  // Applied ONLY when we chose `.` ourselves. An explicit path is a request,
+  // and silently declining to check a file someone named would be worse than
+  // checking one they did not.
+  const exclude = wholeProject ? [`--glob=!${TASKLESS_DIRECTORY}/**`] : [];
+
+  // `--` separates flags from positional paths, so a path beginning with `-`
+  // is not read as a flag.
   const argv = [
     "--config",
     configPath,
     "--output=JSON",
     "--no-exit",
+    ...exclude,
     "--",
     ...targets,
   ];

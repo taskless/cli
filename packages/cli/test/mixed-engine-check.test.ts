@@ -179,6 +179,54 @@ describe("check over a project with both engines", () => {
     });
   });
 
+  withVale("never lints Taskless's own directory", () => {
+    it("reports nothing under .taskless on a whole-project check", async () => {
+      // Vale has no reason to know `.taskless/` is ours, and a whole-project
+      // walk reaches it: with a rule enabled it reported findings in the
+      // committed `.vale.ini` and in the user's own rule definitions — prose
+      // complaints about the machinery. Section globs do not help, because
+      // `.taskless/README.md` matches `[*.md]` as readily as any document.
+      await writeFile(
+        join(project, ".taskless", "README.md"),
+        "This readme simply describes things, and obviously so.\n"
+      );
+
+      const { stdout } = await runCli(["check", "-d", project, "--json"]);
+      const output = JSON.parse(stdout.trim()) as CheckOutput;
+
+      // Vale still ran — otherwise this passes for the wrong reason.
+      expect(output.results.some((f) => f.source === "vale")).toBe(true);
+      expect(
+        output.results.filter((f) => f.file.startsWith(".taskless"))
+      ).toEqual([]);
+    });
+
+    it("still checks an explicitly named path inside .taskless", async () => {
+      // The exclusion is ours, not the user's. Naming a path is a request, and
+      // silently declining to check a file someone asked for would be worse
+      // than checking one they did not.
+      await writeFile(
+        join(project, ".taskless", "README.md"),
+        "This readme simply describes things.\n"
+      );
+
+      const { stdout } = await runCli([
+        "check",
+        "-d",
+        project,
+        "--json",
+        ".taskless/README.md",
+      ]);
+      const output = JSON.parse(stdout.trim()) as CheckOutput;
+
+      expect(
+        output.results.some(
+          (f) => f.source === "vale" && f.file === ".taskless/README.md"
+        )
+      ).toBe(true);
+    });
+  });
+
   withVale("the scaffolded config a real project starts from", () => {
     it("resolves a rule dropped into the scaffolded vale directory", async () => {
       // The guard for the bug this file found. `migrate-engine-layout` asserts
