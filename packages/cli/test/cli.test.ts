@@ -34,7 +34,7 @@ describe("cli", () => {
   });
 
   describe("no args", () => {
-    it("shows help text and exits with code 0", async () => {
+    it("shows the agent topic index and exits with code 0", async () => {
       const { stdout } = await execFileAsync("node", [binPath]);
       expect(stdout).toContain("taskless");
       expect(stdout).toContain("info");

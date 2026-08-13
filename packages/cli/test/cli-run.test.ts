@@ -9,7 +9,7 @@ describe("resolveCommandName", () => {
     [["check", "--json"], "check"],
     [["rule", "create"], "rule create"],
     [["rule"], "rule"],
-    [["help", "route"], "help"],
+    [["agent", "route"], "agent"],
     [["-d", "/tmp", "check"], "check"],
     [["--dir", "/tmp", "info"], "info"],
     [[], "(default)"],

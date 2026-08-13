@@ -105,7 +105,7 @@ const createCommand = defineCommand({
       // Anonymous rule creation runs in the agent, not the CLI. Point the
       // agent at the local-only recipe and exit cleanly.
       const message =
-        "Anonymous rule generation runs in the agent. Run `taskless help rule create --anonymous` to fetch the local-only recipe.";
+        "Anonymous rule generation runs in the agent. Run `taskless agent rule-create --anonymous` to fetch the local-only recipe.";
       if (args.json) {
         console.log(
           JSON.stringify(makeErrorEnvelope("INVALID_INPUT", message))
@@ -348,7 +348,7 @@ const improveCommand = defineCommand({
 
     if (args.anonymous) {
       const message =
-        "Anonymous rule improvement runs in the agent. Run `taskless help rule improve --anonymous` to fetch the local-only recipe.";
+        "Anonymous rule improvement runs in the agent. Run `taskless agent rule-improve --anonymous` to fetch the local-only recipe.";
       if (args.json) {
         console.log(
           JSON.stringify(makeErrorEnvelope("INVALID_INPUT", message))
