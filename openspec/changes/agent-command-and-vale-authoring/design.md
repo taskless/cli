@@ -32,9 +32,15 @@ This reverses the scoping `engine-selection` asserts today — that route decide
 
 **Where the reasoning goes for consumers outside the CLI.** The platform generator consumes `engine-selection` through `TOPICS` and has no `route` step, so merging cannot simply delete what it reads. Exporting `route` instead is wrong — it is built on `taskless detect --json` and local authoring, neither of which a Worker can do.
 
-The reasoning therefore **distributes to the destinations**: each `create-*-rule` recipe states the evidence that makes its engine the right one, and `route` applies those same tests to dispatch. A consumer choosing between `create-sg-rule` and `create-vale-rule` reads the criterion at the destination rather than fetching a chooser first. This keeps the exported surface honest — every exported topic is one a service-side consumer can actually act on — and it removes the class of drift where a chooser and its destinations disagree about when each applies.
+The criterion therefore lives **once, in `route`'s destination table**, which is where the comparison is actually made. Restating it in each destination would be the drift risk the merge was meant to remove, one level down.
+
+Each destination instead opens with a short orientation line naming what it is for and what to do if that is wrong — see D9. That is deliberately less than the full criterion: enough for a reader who arrived at the wrong recipe to notice and go back, not a second copy of the test.
+
+**What this costs the exported surface, stated plainly.** A consumer reading only `create-vale-rule` gets its scope ("prose and markup") but not the boundary cases that distinguish hard calls — prose-about-code, per-document versus cross-document. For picking between two destinations that is sufficient; for adjudicating a genuinely ambiguous rule it is not. If the generator needs the full test it will have to consume `route` or keep its own classifier, and that is a decision for the generator rather than something this change should pre-empt by duplicating prose.
 
 _Alternative rejected:_ keep `engine-selection` as a third exported topic that `route` also applies. Two statements of the same criterion, guaranteed to drift, and it preserves the second fetch for exactly the consumer we were trying to simplify.
+
+_Alternative rejected:_ restate the full criterion in every destination. Five copies of one test, and the first edit to any of them is a divergence nobody notices.
 
 _Alternative rejected:_ export `route`. It is local-only by construction.
 
@@ -118,7 +124,20 @@ This is a content merge, not a rename: both texts have material that survives, a
 
 _Alternative rejected:_ keep `remote` as a boundary statement and `create-remote-rule` as the procedure. Preserves the second fetch under new names.
 
+### D9 — Destinations orient, they do not re-decide
+
+Each `create-*-rule` recipe opens with a fixed-shape line: what topic the reader is in, what kinds of rule it helps write, and an instruction to revisit the routing decision if that is not what they need.
+
+Its job is self-correction, not classification. An agent that arrived at the wrong recipe — because it guessed, because a user named a topic directly, or because `route` was wrong — should discover that in the first line rather than after authoring the wrong artifact. Recovery is cheap there and expensive later.
+
+Keeping it to orientation is what stops it becoming a second criterion. The comparison between engines happens in one place; a destination only has to answer "am I the right place", which needs its own scope and nothing about the others.
+
+### D10 — `create-runtime-rule` defers to `auth`
+
+It explains why the runtime tier is gated — executing code requires reconciliation and signing — and points at `auth` for obtaining access, rather than restating the login procedure.
+
+An extra CLI turn is not a cost worth avoiding when each turn delivers something concrete: `auth` is maintained as the authority on login, and a copy inside a rule-authoring recipe is a copy that goes stale the first time login changes.
+
 ## Open Questions
 
-- Does `create-runtime-rule` duplicate `auth`? It now owns the login explanation for the runtime tier specifically; worth confirming the two do not drift.
-- Does the distributed engine criterion (D1) belong in each recipe's Preconditions or as a named section? Affects whether a consumer can extract it mechanically.
+- If the platform generator needs the full engine criterion rather than per-destination scope, does it consume `route` or keep its own classifier? Out of scope here (D1), but it is the one consumer this change leaves with less than it had.
