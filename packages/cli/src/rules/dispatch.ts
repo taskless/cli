@@ -58,7 +58,20 @@ export interface EngineOutcome {
 
 export interface DispatchOptions {
   cwd: string;
-  /** Target paths, already filtered to those that exist. */
+  /**
+   * Target paths, already filtered to those that exist.
+   *
+   * **Empty means "the whole project", and each engine is responsible for
+   * expressing that in its own terms.** The engines do not agree on what an
+   * empty target list means natively: ast-grep takes its targets from the
+   * config and is content with none, while Vale given no input prints its usage
+   * text and exits 0. Passing the empty list straight through therefore ran
+   * ast-grep correctly and reduced Vale to a parse failure on every whole-
+   * project check — findings silently absent, engine reported as broken.
+   *
+   * A new engine must decide what empty means for its own executor rather than
+   * assuming the caller narrowed it.
+   */
   paths: string[];
   /**
    * One `--config` path per ast-grep rule source, already resolved. The source
@@ -221,4 +234,3 @@ export async function runEngines(
         : 0,
   };
 }
-

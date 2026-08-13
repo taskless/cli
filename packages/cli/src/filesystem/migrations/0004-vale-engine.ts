@@ -256,7 +256,10 @@ async function ensureTrackedDirectory(path: string): Promise<void> {
  *
  * `rules/`, `rule-tests/`, and `sgconfig.yml` move under `sg/`; the runtime
  * tier moves to `runtime/rules/` and `runtime/rule-tests/`; `vale/` is
- * scaffolded with its native config but stays inert (no engine reads it yet).
+ * scaffolded with its native config, which `check` reads and runs alongside
+ * ast-grep. The scaffold enables no rules, so it is quiet until a user adds
+ * one — quiet, not inert, and the difference is why `VALE_CONFIG_CONTENT`
+ * above has to be a config Vale can actually resolve rules under.
  *
  * The move edits no file contents. `sgconfig.yml`'s `ruleDirs: [rules]` is
  * relative to the config file, so it stays valid after the move with no path
