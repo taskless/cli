@@ -75,10 +75,18 @@ have exercised a recipe nobody will receive.
 
 ## Next up: finish 2b (the harness), then 5.3/5.4, then group 3
 
-### 2b is mid-flight
+### 2b is mid-flight — read `iteration-log.md` first
 
-Three sandboxed subagents were launched to author a real Vale rule from the rendered
-recipe and had **not reported back** when the session ended. Their sandboxes are under
+**Run A has reported and is written up in `iteration-log.md`**, with its findings triaged
+against the source and a nine-item planned revision. It converged first try, which is
+worth reading skeptically: the step-5 debug ladder went untested, and the findings are
+mostly about rungs that ladder is missing. **Item 3 of the planned revision needs a
+decision, not a wording pass** — the recipe currently asserts fixture validation that no
+CLI command performs (see "A real gap" below).
+
+Runs B (`substitution`) and C (`capitalization`) had **not reported** when the session
+ended. The revision is deliberately batched until all three are in, so the recipe is
+revised once against three reports rather than three times against one. Their sandboxes are under
 the scratchpad at `vale-harness/sandbox-{a,b,c}`, each a real `init` scaffold, alongside
 `create-vale-rule.rendered.txt` (the dev-build render they were given). **That scratchpad
 is machine-local — on another machine, re-run the harness from scratch rather than looking
