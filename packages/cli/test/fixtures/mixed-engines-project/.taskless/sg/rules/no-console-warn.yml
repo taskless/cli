@@ -1,0 +1,6 @@
+id: no-console-warn
+language: javascript
+severity: warning
+rule:
+  pattern: console.warn($$$)
+message: Prefer a structured logger over console.warn()

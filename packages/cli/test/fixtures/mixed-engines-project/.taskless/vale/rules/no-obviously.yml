@@ -1,0 +1,5 @@
+extends: existence
+message: "Avoid 'obviously' — it tells the reader they should already know"
+level: error
+tokens:
+  - obviously

@@ -36,7 +36,7 @@ Rules are partitioned by the engine that runs them. Each engine directory holds
 that tool's own native config, its \`rules/\`, and its \`rule-tests/\`:
 
 - \`sg/\` - ast-grep: \`sgconfig.yml\`, generated rules (managed by Taskless), and their pass/fail test cases
-- \`vale/\` - Vale prose rules: \`.vale.ini\`. Scaffolded and inert; nothing runs it yet
+- \`vale/\` - Vale prose rules: \`.vale.ini\`, \`rules/\`, and their pass/fail fixtures. Run by \`check\` alongside ast-grep
 - \`runtime/\` - Rules that execute a \`check.ts\`, each in its own \`rules/<name>/\` directory
 `;
 
