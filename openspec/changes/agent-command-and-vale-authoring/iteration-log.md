@@ -25,7 +25,7 @@ Delete this file when the change is archived.
 | --- | ------ | --------------- | --------- |
 | A | flag hedging phrases in docs | `existence` | **yes, first try, zero retries** |
 | B | "sign in" is the verb, "login" the noun | `substitution` | **yes, first try, zero retries** |
-| C | it is `GitHub`, not `Github`/`github` | `capitalization` (literal match) | pending |
+| C | it is `GitHub`, not `Github`/`github` | ended up `substitution` | **one retry** |
 
 ### Run A — converged, and that is the problem
 
@@ -90,7 +90,112 @@ Run B's second half of that objection is **not** an artifact and stands: the doc
 uses `npx @taskless/cli <cmd>` for invocations and `taskless agent <topic>` for fetches
 without ever explaining the relationship. That is finding **e**.
 
-## Planned revision (not yet applied)
+### Run C — the only run that failed, and it found the worst defect
+
+The one intent that did not converge first try, and the one that earned the round. It
+also declined the extension point the recipe recommended, which is why it succeeded.
+
+**C1 — the field table was factually wrong, and it fails silently.** The table said
+"`%s` interpolates the match". For `substitution` that is false. Measured directly:
+
+```
+swap: {Github: GitHub},  message: "Use GitHub not %s",  document text: "Github"
+→ "Use GitHub not GitHub"      (matchedText: "Github")
+```
+
+A single `%s` interpolates the **replacement**. The correct form takes two, filling
+`(replacement, match)`. The recipe's own example block had it right while the normative
+table one paragraph above said the opposite — so an author who reads the table rather than
+copy-pasting the example ships a nonsense message. This is the worst defect found in the
+round because it **passes every check the recipe tells you to run**: the rule fires, both
+fixtures behave, the exit code is right, and only a human reading the message notices.
+
+**C2 — the extension-point table pointed at a check that cannot do the job.** The row read
+"how something is capitalized (headings, **product names**)" → `capitalization`, and a
+later line endorsed a literal `match` "for a product name". Measured, `match: GitHub`:
+
+```
+findings: 2
+  'Working with Github should be GitHub'                  matched: 'Working with Github'
+  'We host on Github and it is fine. should be GitHub'    matched: 'We host on Github and it is fine.'
+```
+
+`capitalization` applies `match` to a whole **scope** — a heading, a sentence — so it
+flags entire sentences and cannot express "this word, wherever it appears". Product-name
+spelling is a `substitution`. The recipe named the one use case in that row the check
+cannot serve, then reinforced it two lines later. The agent only avoided the trap because
+it already knew the check was scope-shaped.
+
+**C3 — the `pass/` bucket framing under-tests.** Step 4 justified the pass bucket as "the
+half that catches an over-broad pattern" but described it as prose that is *correct*.
+Correct prose proves nothing; the rule was never going to fire on it. The agent had to
+build a throwaway probe file — URLs, code spans, `GITHUB_TOKEN` — because the fixture
+model had no place for near-misses.
+
+**C4 — the debug ladder is one-sided.** Every rung addresses `fail/` reporting nothing.
+Nothing addresses `pass/` firing, which is the over-broad case the pass bucket exists for.
+
+**One of run C's recommendations was rejected on measurement.** It proposed warning that
+`ignorecase: true` would make the key `Github` also flag the correct `GitHub`. Measured:
+
+```
+ignorecase: true, swap {Github: GitHub}, text "Wrong github and Github here. Correct GitHub here."
+→ 2 findings: 'github', 'Github'      ('GitHub' NOT flagged)
+```
+
+Vale skips a match that already equals its replacement, so `ignorecase: false` is not
+needed to protect the correct spelling. Writing that warning in would have taught
+something false. The recipe states the measured behavior instead. Worth noting as the
+round's reminder that an agent's diagnosis is a lead, not a finding.
+
+## Round 1 outcome
+
+Two of three converged first try; the third took one retry and produced the two findings
+that mattered most. Against 2b.6 — "an intent the recipe never names, first try,
+uncorrected" — the recipe **passed for `existence` and `substitution` and failed for the
+product-name case**, which is the honest reading.
+
+Sixteen findings, fifteen accepted, one rejected on measurement. Every accepted finding is
+a defect in the prose, which is what 2b.6 says to treat them as.
+
+## Revision applied
+
+`create-vale-rule.txt` was rewritten against all three reports (200 → 286 lines). What
+changed, beyond the wording items:
+
+- **All eleven extension points** are in the table, with `capitalization` explicitly
+  scoped to "a whole heading or sentence" and product names routed to `substitution`.
+  The trap parenthetical and the literal-`match` endorsement are gone.
+- **A `%s` table**, per extension point, with the measured substitution behavior quoted.
+- **A new step 3, "tokens and swap keys are patterns, not literals"**: Go RE2, no
+  lookaround, implicit word boundaries, live metacharacters, first-wins on overlap, the
+  measured `ignorecase` behavior, `raw`/`nonword`, and the markdown scoping that spares
+  URLs and code spans. This one step carries findings c, l, n and C1's neighbours.
+- **Step 6 says to read `results[].ruleId`** and states plainly that `success` and the
+  exit code answer a different question — with the note that exit 1 on `fail/` is correct
+  for a `level: error` rule and exit 0 is correct for a `warning` one.
+- **`check <path>` is described as not scoped to the rule under test.**
+- **`MinAlertLevel` joins the debug ladder**, and the ladder gains a `pass/`-fires branch.
+- **The `pass/` bucket is now specified as near-misses**, not correct prose.
+- **The three names that must agree** are stated once, together, with the fact that a
+  mismatch is silent.
+- **Claims of CLI enforcement are removed.** "Nothing checks that you wrote all three" is
+  the honest statement of today's behavior, and step 7 says a whole-project `check` will
+  not report the fixtures because `.taskless/` is excluded from the walk.
+
+## Round 2 — in flight
+
+Re-run against the revised recipe with fresh agents and intents none of round 1 used:
+
+| Run | Intent | Extension point | Status |
+| --- | ------ | --------------- | ------ |
+| D | flag "click here" / "read more" as link text | `existence` | pending |
+| E | headings in sentence case, with exceptions | `capitalization` (its actual use case) | pending |
+
+E is the one that matters: it exercises the check whose guidance was wrong in round 1, on
+the use case it can actually serve.
+
+## Planned revision (applied — kept for the record)
 
 Batched until B and C report, so the recipe is revised once against all three rather than
 three times against one.
