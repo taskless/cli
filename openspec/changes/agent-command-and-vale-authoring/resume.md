@@ -75,18 +75,20 @@ have exercised a recipe nobody will receive.
 
 ## Next up: finish 2b (the harness), then 5.3/5.4, then group 3
 
-### 2b is mid-flight — read `iteration-log.md` first
+### 2b is done except its control run — read `iteration-log.md` for the evidence
 
-**Run A has reported and is written up in `iteration-log.md`**, with its findings triaged
-against the source and a nine-item planned revision. It converged first try, which is
-worth reading skeptically: the step-5 debug ladder went untested, and the findings are
-mostly about rungs that ladder is missing. **Item 3 of the planned revision needs a
-decision, not a wording pass** — the recipe currently asserts fixture validation that no
-CLI command performs (see "A real gap" below).
+Five sandboxed runs across two rounds, three extension points, twenty-five findings.
+**2b.1–2b.7 are complete and 2b.6 is met**: an agent given an intent the recipe never
+names now produces a working rule first try, uncorrected, for `existence`,
+`substitution` and `capitalization`. `create-vale-rule` went 200 → 356 lines across two
+revisions.
 
-Runs B (`substitution`) and C (`capitalization`) had **not reported** when the session
-ended. The revision is deliberately batched until all three are in, so the recipe is
-revised once against three reports rather than three times against one. Their sandboxes are under
+**Only 2b.8 remains** — run the same harness over `create-sg-rule` as a control. A failure
+there means the harness is wrong rather than the recipe. The procedure is below and the
+scratchpad sandboxes are machine-local, so re-create them.
+
+**One task is checked off with a caveat you should read: 2b.4.** "`verify` passes" cannot
+be satisfied — see "A real gap" below. It is the one open decision in this group. Their sandboxes are under
 the scratchpad at `vale-harness/sandbox-{a,b,c}`, each a real `init` scaffold, alongside
 `create-vale-rule.rendered.txt` (the dev-build render they were given). **That scratchpad
 is machine-local — on another machine, re-run the harness from scratch rather than looking
