@@ -22,6 +22,19 @@
 - [ ] 2.7a Give every `create-*-rule` recipe the same opening orientation line: what topic this is, what it helps you write, and revisit routing if that is not what you need. Fixed shape across all five so an agent recognises it; scope only, never the comparison between engines
 - [ ] 2.8 Re-home the engine-reasoning requirements that survive the merge — "Available code context outranks the phrasing of the request" and "Ambiguity resolves to an engine known to be available" now bind `route` and the destinations. Update `help-extensions.test.ts`, which asserts against the standalone topic
 
+## 2b. Prove the authoring recipes by executing them
+
+The recipes are the deliverable, and a recipe that reads well to its author while producing the wrong artifact is exactly what reviewing the prose cannot catch. Execute them instead.
+
+- [ ] 2b.1 `pnpm --filter @taskless/cli build:dev`. This target exists for this: `TASKLESS_BUILD_TARGET=dev` bakes `__TASKLESS_CLI__` as an **absolute path** to `dist-dev/index.js`, so recipe text carries a command that actually runs from any directory. Testing against `dist/` instead would exercise a recipe no reader ever receives, since theirs says `npx @taskless/cli`
+- [ ] 2b.2 Build the harness: scaffold a throwaway project in a temp directory using the built CLI, so the sandbox is a real `taskless init` scaffold — section-less `.vale.ini`, empty `vale/rules/` — and not a hand-made approximation of one
+- [ ] 2b.3 Hand a **fresh, non-forked** subagent only three things: the recipe text, the sandbox path, and a rule intent stated in plain words. It must NOT have repository access. With it, the agent finds the existing `no-simply.yml` and the mixed-engine fixture and copies them, and the loop tests our fixtures rather than our writing
+- [ ] 2b.4 Check the artifacts mechanically: a style file at `.taskless/vale/rules/<id>.yml` with valid `extends`/`message`/`level`; a **scoped section** in `.vale.ini` enabling `rules.<id>`; fixtures in both `pass/` and `fail/`. Then the assertion that matters — `check` reports the finding, and `verify` passes
+- [ ] 2b.5 Iterate across three intents that exercise different extension points — one `existence`, one `substitution` (prefer X over Y), one `capitalization` (headings, product names). Everything in this repo today is `existence`, so a recipe drafted from our own examples teaches token blocklists and nothing else. Vale has eleven extension points and most real prose rules are not blocklists
+- [ ] 2b.6 Every failure is a defect in the prose, not in the agent. Fix the recipe and re-run with a fresh agent. Converged when an agent, given an intent the recipe never names, produces a rule that fires on its `fail` fixture and stays quiet on its `pass` fixture, first try, uncorrected
+- [ ] 2b.7 Keep the iteration log — what failed, what changed, what finally held. It is the evidence the prose works, and the only part of this a reviewer can check without rerunning the loop
+- [ ] 2b.8 Run the same harness over `create-sg-rule` as a control. It documents a flow that already works, so a failure there means the harness is wrong rather than the recipe
+
 ## 3. Sweep the cross-references
 
 - [ ] 3.1 Replace every `taskless help ` occurrence with `taskless agent ` across `src/help/*.txt`, `src/**/*.ts`, `skills/taskless/SKILL.md`, `README.md`, and `packages/cli/README.md` (~306 occurrences, 77 files). Leave `CHANGELOG.md` alone — it is a historical record
@@ -44,7 +57,7 @@
 ## 6. Verify
 
 - [ ] 6.1 `pnpm typecheck`, `pnpm lint`, `pnpm --filter @taskless/cli build`, `pnpm --filter @taskless/cli test`
-- [ ] 6.2 **Rehearse the recipes against a fresh agent.** For `route` and each `create-*-rule`, hand the text to a subagent with no prior context and ask it to describe the steps it would take and the commands it would run. Check its account against what the recipe intends — a recipe that reads correctly to its author and produces the wrong plan is the failure mode prose review cannot catch. Feed the corrections back into the text
+- [ ] 6.2 **Rehearse `route` against a fresh agent.** Hand it the text with no prior context and a request to author a rule, then check which destination it names and why. Unlike the authoring recipes (2b), `route` produces a decision rather than artifacts, so the plan it describes is the only thing there is to check. Cover one case per destination, including a logged-out runtime request
 - [ ] 6.2a Run `taskless agent` with no argument, with each renamed topic, and with a removed name, confirming the index lists the new vocabulary and a removed name exits non-zero
 - [ ] 6.3 `pnpm openspec validate --all --strict` (note: `cli-rules` and `cli-update-engine` fail on `main` already and are unrelated)
 - [ ] 6.4 Archive the change
