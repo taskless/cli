@@ -3,7 +3,7 @@ import { join, resolve } from "node:path";
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-// Spy on telemetry by mocking the module the help command imports. The factory
+// Spy on telemetry by mocking the module the agent command imports. The factory
 // is invoked lazily at import time (same pattern as telemetry.test.ts).
 const capture = vi.fn();
 vi.mock("../src/telemetry", () => ({
@@ -13,7 +13,7 @@ vi.mock("../src/telemetry", () => ({
   shutdownTelemetry: () => Promise.resolve(),
 }));
 
-const { createHelpCommand } = await import("../src/commands/help");
+const { createAgentCommand } = await import("../src/commands/agent");
 
 interface RunnableCommand {
   run: (context: {
@@ -22,15 +22,15 @@ interface RunnableCommand {
   }) => Promise<void>;
 }
 
-async function runHelp(rawArguments: string[]): Promise<void> {
-  const command = createHelpCommand({}) as unknown as RunnableCommand;
+async function runAgent(rawArguments: string[]): Promise<void> {
+  const command = createAgentCommand({}) as unknown as RunnableCommand;
   await command.run({
     args: { dir: process.cwd(), anonymous: false },
     rawArgs: rawArguments,
   });
 }
 
-describe("help emits cli_help { topic }", () => {
+describe("agent emits cli_help { topic }", () => {
   let logSpy: ReturnType<typeof vi.spyOn>;
   let errorSpy: ReturnType<typeof vi.spyOn>;
 
@@ -46,18 +46,26 @@ describe("help emits cli_help { topic }", () => {
   });
 
   it("captures the served topic", async () => {
-    await runHelp(["help", "rule", "create"]);
-    expect(capture).toHaveBeenCalledWith("cli_help", { topic: "rule create" });
+    await runAgent(["agent", "rule-create"]);
+    expect(capture).toHaveBeenCalledWith("cli_help", { topic: "rule-create" });
   });
 
   it("captures the index marker for no topic", async () => {
-    await runHelp(["help"]);
+    await runAgent(["agent"]);
     expect(capture).toHaveBeenCalledWith("cli_help", { topic: "(index)" });
   });
 
   it("captures the attempted topic for an unknown topic", async () => {
-    await runHelp(["help", "nope"]);
+    await runAgent(["agent", "nope"]);
     expect(capture).toHaveBeenCalledWith("cli_help", { topic: "nope" });
+  });
+
+  // The rejected invocation is still an intent signal — it says an agent
+  // reached for a topic by phrase rather than by token — so it is captured
+  // under the same event with the attempted words joined for readability.
+  it("captures the attempted words when too many positionals are given", async () => {
+    await runAgent(["agent", "rule", "create"]);
+    expect(capture).toHaveBeenCalledWith("cli_help", { topic: "rule create" });
   });
 });
 

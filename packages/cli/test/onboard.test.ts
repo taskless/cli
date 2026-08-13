@@ -182,7 +182,7 @@ describe("taskless onboard", () => {
     expect(stderr).toContain("--mark-complete");
   });
 
-  it("`taskless help onboard` matches the recipe printed by `taskless onboard --force`", async () => {
+  it("`taskless agent onboard` matches the recipe printed by `taskless onboard --force`", async () => {
     // Pre-mark onboarded so the `onboard` path also prints the recipe via
     // --force, ensuring we compare recipe-vs-recipe rather than gate-vs-recipe.
     await mkdir(join(cwd, ".taskless"), { recursive: true });
@@ -192,11 +192,11 @@ describe("taskless onboard", () => {
       "utf8"
     );
 
-    const help = await runCli(["help", "onboard", "-d", cwd], cwd);
+    const agentRecipe = await runCli(["agent", "onboard", "-d", cwd], cwd);
     const onboard = await runCli(["onboard", "--force", "-d", cwd], cwd);
 
-    expect(help.exitCode).toBe(0);
+    expect(agentRecipe.exitCode).toBe(0);
     expect(onboard.exitCode).toBe(0);
-    expect(onboard.stdout.trim()).toBe(help.stdout.trim());
+    expect(onboard.stdout.trim()).toBe(agentRecipe.stdout.trim());
   });
 });

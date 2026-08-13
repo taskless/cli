@@ -156,11 +156,11 @@ describe("typed accessor", () => {
   });
 });
 
-describe("help command parity", () => {
+describe("agent command parity", () => {
   it.each([...TOPICS])(
-    "matches `taskless help %s` byte for byte",
+    "matches `taskless agent %s` byte for byte",
     async (topic) => {
-      const { stdout } = await execFileAsync("node", [binPath, "help", topic]);
+      const { stdout } = await execFileAsync("node", [binPath, "agent", topic]);
       // The command trims trailing whitespace before printing; console.log then
       // adds the single newline that stdout carries.
       expect(stdout.trimEnd()).toBe(getPrompt(topic).trimEnd());

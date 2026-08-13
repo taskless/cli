@@ -1,11 +1,11 @@
 import { defineCommand, runCommand, showUsage } from "citty";
 
+import { createAgentCommand } from "./commands/agent";
 import { authCommand } from "./commands/auth";
 import { checkCommand } from "./commands/check";
 import { detectCommand } from "./commands/detect";
 import { initCommand, updateCommand } from "./commands/init";
 import { infoCommand } from "./commands/info";
-import { createHelpCommand } from "./commands/help";
 import { onboardCommand } from "./commands/onboard";
 import { ruleCommand } from "./commands/rules";
 import {
@@ -27,7 +27,7 @@ const subCommands = {
   rule: ruleCommand,
 };
 
-const helpCommand = createHelpCommand(subCommands);
+const agentCommand = createAgentCommand(subCommands);
 
 const main = defineCommand({
   meta: {
@@ -55,7 +55,7 @@ const main = defineCommand({
   },
   subCommands: {
     ...subCommands,
-    help: helpCommand,
+    agent: agentCommand,
   },
   async run({ rawArgs, cmd }) {
     // citty always calls the parent's run handler, even after a subcommand.
@@ -90,7 +90,7 @@ const main = defineCommand({
     }
 
     // TTY → run the interactive wizard. Non-TTY → print a short preamble
-    // explaining the context and then delegate to `help` so agents and
+    // explaining the context and then delegate to `agent` so agents and
     // pipes see the topic index.
     if (process.stdout.isTTY === true && process.stdin.isTTY === true) {
       await runCommand(initCommand, { rawArgs });
@@ -101,11 +101,11 @@ const main = defineCommand({
       "Taskless CLI — non-interactive context detected.\n" +
         "  For interactive install, run from a terminal.\n" +
         "  For scripted install, run `taskless init --no-interactive`.\n" +
-        "  For agent recipes, run `taskless help` (no args) for the topic index.\n"
+        "  For agent recipes, run `taskless agent` (no args) for the topic index.\n"
     );
-    // Forward the parent's rawArgs (e.g. `-d <path>`) so the help command
+    // Forward the parent's rawArgs (e.g. `-d <path>`) so the agent command
     // doesn't mis-parse them as positional topic names.
-    await runCommand(helpCommand, { rawArgs: ["help", ...rawArgs] });
+    await runCommand(agentCommand, { rawArgs: ["agent", ...rawArgs] });
   },
 });
 

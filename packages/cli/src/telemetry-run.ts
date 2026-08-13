@@ -7,8 +7,8 @@ import { CLIError } from "./util/cli-error";
  * Derive the cli_run `command` property from the raw argv. Flags (and the
  * value after `-d`/`--dir`) are skipped; the first positional is the command,
  * and `rule` keeps its subcommand (e.g. `rule create`) since that distinction
- * is meaningful. `help`'s topic is recorded separately on cli_help, so the
- * command for a help invocation is just `help`.
+ * is meaningful. `agent`'s topic is recorded separately on cli_help, so the
+ * command for an agent invocation is just `agent`.
  */
 export function resolveCommandName(rawArguments: string[]): string {
   const valueFlags = new Set(["-d", "--dir"]);
