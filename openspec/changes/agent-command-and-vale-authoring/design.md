@@ -30,19 +30,23 @@ There is one decision, made once. `route` absorbs the engine reasoning and retur
 
 This reverses the scoping `engine-selection` asserts today — that route decides destination, the topic decides engine, and locally the two compose. The separation is clean on paper and expensive in practice: it costs an agent two fetches and a correct handoff between them to answer one question, and the handoff is where an agent drops context. Worse, the two decisions are not independent in the direction the split assumes; "author this locally" and "which engine can express it" are answered from the same evidence, so splitting them means reading the same signals twice.
 
-**Where the reasoning goes for consumers outside the CLI.** The platform generator consumes `engine-selection` through `TOPICS` and has no `route` step, so merging cannot simply delete what it reads. Exporting `route` instead is wrong — it is built on `taskless detect --json` and local authoring, neither of which a Worker can do.
+**Where the reasoning goes for consumers outside the CLI.** The platform generator consumes `engine-selection` through `TOPICS`, so merging cannot simply delete what it reads. `route` is expected to be exported in a later change, at which point it carries the criterion to the service directly; it is not exported here because it still contains local mechanics (`taskless detect --json`, on-device authoring) that a Worker cannot run, and untangling those is its own piece of work.
 
 The criterion therefore lives **once, in `route`'s destination table**, which is where the comparison is actually made. Restating it in each destination would be the drift risk the merge was meant to remove, one level down.
 
 Each destination instead opens with a short orientation line naming what it is for and what to do if that is wrong — see D9. That is deliberately less than the full criterion: enough for a reader who arrived at the wrong recipe to notice and go back, not a second copy of the test.
 
-**What this costs the exported surface, stated plainly.** A consumer reading only `create-vale-rule` gets its scope ("prose and markup") but not the boundary cases that distinguish hard calls — prose-about-code, per-document versus cross-document. For picking between two destinations that is sufficient; for adjudicating a genuinely ambiguous rule it is not. If the generator needs the full test it will have to consume `route` or keep its own classifier, and that is a decision for the generator rather than something this change should pre-empt by duplicating prose.
+**What this costs the exported surface, and for how long.** A consumer reading only `create-vale-rule` gets its scope ("prose and markup") but not the boundary cases that settle hard calls — prose-about-code, per-document versus cross-document. Sufficient for picking between destinations; not for adjudicating a genuinely ambiguous rule.
+
+That gap closes when `route` is exported. The service will hold the route prompt, which states when each engine applies, and needs no escalation path of its own — it is the escalation. It can then supply its own runtime prompt for its own agentic flow.
+
+Worth being clear about why the prompts are exported at all, because it changes what "enough" means: the goal is **consistency between the local and remote paths**, not transferring a capability the service lacks. The service can classify without us. What it should not do is classify _differently_ — a rule routed to `vale` locally and to `sg` server-side is the same request answered two ways, and that is the failure the shared surface exists to prevent.
 
 _Alternative rejected:_ keep `engine-selection` as a third exported topic that `route` also applies. Two statements of the same criterion, guaranteed to drift, and it preserves the second fetch for exactly the consumer we were trying to simplify.
 
 _Alternative rejected:_ restate the full criterion in every destination. Five copies of one test, and the first edit to any of them is a divergence nobody notices.
 
-_Alternative rejected:_ export `route`. It is local-only by construction.
+_Deferred, not rejected:_ export `route`. Its local mechanics need separating from its reasoning first, and doing that inside a change that already renames a command and five topics is how a rename becomes unreviewable.
 
 ### D2 — Verb-noun names, single token, no aliases
 
@@ -140,4 +144,4 @@ An extra CLI turn is not a cost worth avoiding when each turn delivers something
 
 ## Open Questions
 
-- If the platform generator needs the full engine criterion rather than per-destination scope, does it consume `route` or keep its own classifier? Out of scope here (D1), but it is the one consumer this change leaves with less than it had.
+- None outstanding.
