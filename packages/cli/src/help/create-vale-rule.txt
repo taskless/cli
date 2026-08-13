@@ -19,7 +19,7 @@ quiet on the prose it should not, scoped to the files it is about.
 
 A Vale rule is three files, not one. It is **incomplete until all three
 exist**, and the failure mode of skipping one is silence rather than an
-error — the rule verifies, the check runs, and nothing is ever reported.
+error — the rule runs, the check passes, and nothing is ever reported.
 
 | # | Artifact  | Path                                                        |
 |---|-----------|-------------------------------------------------------------|
@@ -27,42 +27,77 @@ error — the rule verifies, the check runs, and nothing is ever reported.
 | 2 | The scope | a section in `.taskless/vale/.vale.ini` enabling `rules.<id>`|
 | 3 | Fixtures  | `.taskless/vale/rule-tests/<id>/pass/` and `.../fail/`      |
 
+Nothing checks that you wrote all three. "Required" here means required
+to have a working rule, not required by a command that will stop you.
+
+**Three names must agree**, and nothing reports it when they don't:
+
+```
+.taskless/vale/rules/no-simply.yml       <- the filename
+.taskless/vale/rule-tests/no-simply/     <- the fixture directory
+rules.no-simply = YES                    <- the .vale.ini assignment
+```
+
+A mismatch is not an error. The rule simply never runs.
+
 ## Steps
 
 1. **Say what the rule reads, then pick an extension point.** Write one
    sentence: "this fires when a document contains ___." Vale rules are
-   built by extending one of its checks, and the sentence tells you
-   which:
+   built by extending one of its eleven checks, and the sentence tells
+   you which:
 
    | If the rule is about…                                 | extends          |
    |-------------------------------------------------------|------------------|
    | words or phrases that should not appear               | `existence`      |
-   | preferring one term over another                      | `substitution`   |
-   | how something is capitalized (headings, product names)| `capitalization` |
+   | preferring one term over another — **including the correct spelling of a product name** | `substitution` |
+   | the case of a whole heading or sentence               | `capitalization` |
    | how many times something may appear                   | `occurrence`     |
    | a word repeated back to back                          | `repetition`     |
    | picking one of two acceptable spellings, consistently | `consistency`    |
    | "if X appears, Y must also appear"                    | `conditional`    |
    | readability or length thresholds                      | `metric`         |
+   | a misspelling, against a dictionary                   | `spelling`       |
+   | phrases that must appear in a fixed order             | `sequence`       |
+   | anything the above cannot express (Tengo script)      | `script`         |
 
-   There are eleven in total. When none of the above fits, read
-   https://docs.vale.sh/styles for `spelling`, `sequence`, and `script`
-   before inventing something — Vale has no facility for a rule that
-   does not extend one of these.
+   **`capitalization` is about a whole scope, not a word.** It asks
+   whether an entire heading or sentence matches a case pattern. It
+   cannot express "the word GitHub, wherever it appears, is spelled
+   thus" — that is a `substitution`, because you are swapping a wrong
+   spelling for a right one. Reaching for `capitalization` on a product
+   name produces a rule that flags whole sentences: measured, a rule with
+   `match: GitHub` reports `We host on Github and it is fine. should be
+   GitHub`.
+
+   For the two this recipe does not describe, read
+   https://docs.vale.sh/styles before inventing something — Vale has no
+   facility for a rule that does not extend one of these eleven.
 
 2. **Write the style file** to `.taskless/vale/rules/<id>.yml`, where
    `<id>` is kebab-case and matches the filename. Every rule carries:
 
    | Field     | Required | Notes                                                   |
    |-----------|----------|---------------------------------------------------------|
-   | `extends` | yes      | one of the extension points above                       |
-   | `message` | yes      | shown to the user; `%%s` interpolates the match          |
+   | `extends` | yes      | one of the eleven above                                 |
+   | `message` | yes      | shown to the user; see the `%%s` table below            |
    | `level`   | no       | `suggestion` (default), `warning`, or `error`           |
    | `scope`   | no       | narrow to part of a document, e.g. `heading`, `paragraph`|
    | `link`    | no       | a URL the reader can follow for the reasoning           |
 
-   Then the fields the chosen extension point adds. The three most
-   common:
+   **What `%%s` fills with depends on the extension point.** Getting this
+   wrong is the one mistake in this recipe that passes every check below
+   — the rule fires, the fixtures are green, and only a human reading the
+   message sees that it is nonsense.
+
+   | extends        | `%%s` count | fills with, left to right |
+   |----------------|------------|---------------------------|
+   | `existence`    | one        | the matched text          |
+   | `substitution` | **two**    | the **replacement**, then the matched text |
+
+   Measured: a `substitution` message with a single `%%s` interpolates the
+   *replacement*, not the match, so `"Use GitHub not %%s"` against the text
+   `Github` renders `Use GitHub not GitHub`.
 
    ```yaml
    # existence — flag these tokens wherever they appear
@@ -76,7 +111,7 @@ error — the rule verifies, the check runs, and nothing is ever reported.
    ```
 
    ```yaml
-   # substitution — flag the observed term, name the expected one
+   # substitution — first %%s is the replacement, second is what was found
    extends: substitution
    message: "Use '%%s' instead of '%%s'"
    level: warning
@@ -87,7 +122,7 @@ error — the rule verifies, the check runs, and nothing is ever reported.
    ```
 
    ```yaml
-   # capitalization — enforce a case pattern on a part of the document
+   # capitalization — a whole heading must be in sentence case
    extends: capitalization
    message: "'%%s' should be in sentence case"
    level: warning
@@ -98,10 +133,36 @@ error — the rule verifies, the check runs, and nothing is ever reported.
      - API
    ```
 
-   `match` takes `$sentence`, `$title`, `$lower`, `$upper`, or a literal
-   string to enforce verbatim (`Taskless`, for a product name).
+   `match` takes `$sentence`, `$title`, `$lower`, or `$upper`. A literal
+   string is legal but means "this whole scope must read exactly that",
+   which is almost never what anyone wants — see step 1.
 
-3. **Scope the rule by adding a section to `.taskless/vale/.vale.ini`.**
+3. **Know what you are writing: `tokens` and `swap` keys are patterns,
+   not literals.** They compile as **Go RE2** regular expressions.
+
+   - `(?:…)`, `[…]`, `|`, `+`, `?` all work.
+   - **Lookahead and lookbehind do not exist in RE2.** A rule that needs
+     "X but not when followed by Y" cannot be written as a single
+     `substitution`; split it or narrow with `scope`.
+   - **Word boundaries are applied for you.** Measured: the key `Github`
+     does not fire inside `GithubToken`.
+   - **Regex metacharacters in a real phrase are live.** "maybe?" is a
+     pattern meaning "mayb" followed by an optional "e". Escape it.
+   - **Overlapping alternatives resolve first-wins**, one finding per
+     match. If `can login` and `login with` both match a sentence, you
+     get whichever is written first, once — not both.
+   - `ignorecase: true` matches any casing **and still skips text that
+     already equals the replacement.** Measured with `Github: GitHub`:
+     `github` and `Github` are flagged, `GitHub` is not. You do not need
+     `ignorecase: false` to protect the correct spelling.
+   - `raw` takes a full regex when `tokens` is too restrictive;
+     `nonword` removes the implicit boundaries.
+
+   Vale also understands the markup. In markdown, URLs and code spans are
+   not prose: measured, a `Github` key fires on `Plain Github here` and
+   not on `https://Github.com/x` or `` `Github/docs` ``.
+
+4. **Scope the rule by adding a section to `.taskless/vale/.vale.ini`.**
    This is the step that is easy to skip and impossible to notice
    skipping.
 
@@ -119,19 +180,20 @@ error — the rule verifies, the check runs, and nothing is ever reported.
    rules.no-simply = YES
    ```
 
-   Three things about that block:
+   - `StylesPath = .` resolves **relative to the directory holding
+     `.vale.ini`**, which is `.taskless/vale/`. That makes the `rules/`
+     directory beside it a style named `rules`, which is where the
+     `rules.` prefix comes from.
    - `[*.md]` is a glob over paths. Match it to the files the rule is
      actually about — `[*.{md,mdx}]`, `[docs/**/*.md]`. Every file the
-     walk reaches that matches the glob is subject to every rule
-     enabled under it.
-   - `BasedOnStyles =` left empty says explicitly that no bundled style
-     loads, so the only findings are the rules you enabled. Write it
-     even though the default is already empty: it is what stops a later
-     edit from switching a whole style on by accident, and it is the
-     form `taskless check` uses when it verifies a rule in isolation.
-   - `rules.<id> = YES` enables the rule. `rules` is the style name:
-     `StylesPath = .` makes the `rules/` directory a style, so a file at
-     `vale/rules/no-simply.yml` is the check `rules.no-simply`.
+     walk reaches that matches the glob is subject to every rule enabled
+     under it.
+   - `BasedOnStyles =` with an empty value is valid and says explicitly
+     that no bundled style loads. Write it: the default is already empty,
+     but it is what stops a later edit from switching a whole style on by
+     accident.
+   - `MinAlertLevel` is a floor. A rule whose `level` sits below it is
+     enabled and silent.
 
    If a section already covers the right files, add the rule to it
    rather than opening a second one — a later section matching the same
@@ -144,24 +206,27 @@ error — the rule verifies, the check runs, and nothing is ever reported.
    diagnostic as a notice — if you see it, the assignment is in the
    wrong place, not the rule.
 
-4. **Write the fixtures.** Two directories, both flat — Vale lints the
-   rule's whole tree, so a nested subdirectory is linted but never
-   checked, and the CLI rejects it rather than skipping it:
+5. **Write the fixtures.** Two directories, both flat. Vale lints the
+   rule's whole tree, so a fixture in a nested subdirectory is linted but
+   never counted against either bucket:
 
    ```
    .taskless/vale/rule-tests/<id>/pass/ok.md     # rule must stay quiet
    .taskless/vale/rule-tests/<id>/fail/bad.md    # rule must fire
    ```
 
-   Both buckets are required. A rule with only `fail/` fixtures has
-   never been shown to stay quiet, which is the half that catches an
-   over-broad pattern.
-
    Give the fixtures an extension your section's glob matches. A `.txt`
    fixture under a `[*.md]` section is never linted, so the `fail/`
    document silently passes.
 
-5. **Check that it fires, and that it doesn't.** Run the rule against
+   **The `pass/` bucket is not "correct prose".** Correct prose proves
+   nothing — the rule was never going to fire on it. Fill it with the
+   near-misses that would catch an over-broad pattern: the noun form you
+   are not flagging, the word inside a longer word, the term in a URL or
+   a code span, the correct spelling itself. That is the half of the
+   fixture set that has to work for you.
+
+6. **Check that it fires, and that it doesn't.** Run the rule against
    each bucket:
 
    ```
@@ -169,18 +234,39 @@ error — the rule verifies, the check runs, and nothing is ever reported.
    npx @taskless/cli check .taskless/vale/rule-tests/<id>/pass --json
    ```
 
-   The `fail/` run must report your rule; the `pass/` run must report
-   nothing. If `fail/` reports nothing, work down the list before
-   touching the pattern — the cause is usually further up:
-   - Is the assignment inside a section? (step 3)
-   - Does the section's glob match the fixture's extension? (step 4)
-   - Does `rules.<id>` match the filename under `vale/rules/`?
+   **Read `results`, not `success` and not the exit code.** `check` lints
+   the path you gave it against the whole config — it is not scoped to
+   the rule you are testing — so what you are looking for is entries in
+   `results` whose `ruleId` is yours:
+
+   - `fail/` → at least one `results` entry with `"ruleId": "<id>"`.
+   - `pass/` → no `results` entry with `"ruleId": "<id>"`.
+
+   `success` is about whether the run worked, not whether your fixture
+   behaved: a clean `fail/` run reports `"success": true` alongside the
+   findings you wanted. The exit code follows severity, so a `level:
+   error` rule exits 1 on `fail/` and a `level: warning` rule exits 0 —
+   both correct. Neither field answers the question you are asking.
+
+   If `fail/` reports nothing, work down this list before touching the
+   pattern — the cause is usually further up:
+   - Is the assignment inside a section?
+   - Does the section's glob match the fixture's extension?
+   - Is the rule's `level` at or above `MinAlertLevel`?
+   - Do the filename, the `rules.<id>` assignment, and the fixture
+     directory all agree?
    - Only then: does the pattern actually match the text?
 
-6. **Report.** Show the three paths you wrote, a one-line summary of
+   If `pass/` reports your rule, the pattern is too broad. Look for a
+   missing word boundary, an unescaped metacharacter, or a swap key that
+   also matches the form you meant to allow.
+
+7. **Report.** Show the three paths you wrote, a one-line summary of
    what the rule flags, and which files the section scopes it to — the
    scope is a decision the user should see, not one buried in a config.
-   Suggest `taskless agent check` to run it over the whole project.
+   Note that a whole-project `taskless check` will **not** report your
+   fixtures: `.taskless/` is excluded from the project walk, by design.
+   The fixtures are exercised by pointing `check` at them, as in step 6.
 
 ## Important Notes
 
