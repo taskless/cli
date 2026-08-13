@@ -23,10 +23,19 @@ import { CLIError } from "../../util/cli-error";
 const SG_CONFIG_CONTENT = `ruleDirs:\n  - rules\ntestConfigs:\n  - testDir: rule-tests\n`;
 
 /**
- * Minimal, inert `.vale.ini`. Nothing executes Vale yet; this exists so the
- * engine directory has its native config in the canonical place from day one.
+ * The scaffolded `.vale.ini`.
+ *
+ * `StylesPath` is the engine directory, NOT `rules/`. Vale treats StylesPath as
+ * a directory *of styles*, so a rule at `vale/rules/no-simply.yml` is the
+ * `no-simply` rule of the `rules` style, and its check is `rules.no-simply` —
+ * which is the name `stripRulesPrefix` in `vale/map.ts` exists to undo, and the
+ * shape `verify.ts` generates. Pointing StylesPath at `rules/` instead makes
+ * that same file a style directory with no rules in it: every check resolves to
+ * nothing, Vale reports `{}`, and a prose check passes clean with every rule
+ * silently disabled. Measured against the real binary, which is the only way
+ * this is visible — the layout is identical either way.
  */
-const VALE_CONFIG_CONTENT = `StylesPath = rules\nMinAlertLevel = suggestion\n\n[*]\n`;
+const VALE_CONFIG_CONTENT = `StylesPath = .\nMinAlertLevel = suggestion\n\n[*]\n`;
 
 /** Directories that must exist after the migration, tracked when empty. */
 const SCAFFOLD_DIRECTORIES = [
