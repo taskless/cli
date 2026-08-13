@@ -183,17 +183,71 @@ changed, beyond the wording items:
   the honest statement of today's behavior, and step 7 says a whole-project `check` will
   not report the fixtures because `.taskless/` is excluded from the walk.
 
-## Round 2 — in flight
+## Round 2
 
-Re-run against the revised recipe with fresh agents and intents none of round 1 used:
+Re-run against the revised recipe with fresh agents and intents round 1 never used.
 
-| Run | Intent | Extension point | Status |
-| --- | ------ | --------------- | ------ |
-| D | flag "click here" / "read more" as link text | `existence` | pending |
-| E | headings in sentence case, with exceptions | `capitalization` (its actual use case) | pending |
+| Run | Intent | Extension point | Converged |
+| --- | ------ | --------------- | --------- |
+| D | flag "click here" / "read more" as link text | `existence` + `scope: link` | **yes, first try, zero retries** |
+| E | headings in sentence case, with exceptions | `capitalization` (its actual use case) | **yes, first try, zero retries** |
 
-E is the one that matters: it exercises the check whose guidance was wrong in round 1, on
-the use case it can actually serve.
+**2b.6 is met.** Three extension points, five runs, and the only failure in the set was
+round 1's product-name case — whose cause was corrected and whose check (`capitalization`)
+now converges first try on the use case it can actually serve. Both round-2 agents
+independently reported that step 6's "read `results`, not `success`" saved them from
+misreading a clean `fail/` run, which is the round-1 fix working.
+
+Round 2 still found nine gaps, three of them defects in prose written *during* round 1's
+revision. Measured before acting on them, as before.
+
+| # | Finding | Verdict |
+| - | ------- | ------- |
+| r | The field table lists five common fields under "Every rule carries" and **omits every field a rule actually needs** — `tokens`, `swap`, `match`, `exceptions`. Run E's rule depended entirely on `exceptions`, which appeared only as an undocumented line in an example | **Real, and the round's biggest gap.** Fixed with a per-extension-point field table |
+| s | `scope` was documented as "e.g. `heading`, `paragraph`" — an example, not a list — for the field that decides where a rule looks. Run D's rule rested on `scope: link` existing; it guessed | **Real.** All sixteen markdown scopes now listed |
+| t | `match: $sentence` was never defined. "The difference between 'first letter capitalized, everything else lowercase' and 'proper nouns permitted' decides whether `Getting started with Kubernetes` fires" | **Real, and the answer matters.** Measured below |
+| u | Is `[click here](url)` prose? The recipe answered the inverse — what Vale *excludes* — and never said what link text is | **Real.** Measured below |
+| v | Word boundaries were stated for a single-word key only; multi-word behaviour left to assumption | **Real.** Measured: whole-phrase. `click here` does not fire inside `Clicking here` |
+| w | The `%%s` table covers 2 of 11 extension points while being billed as the authority on "the one mistake that passes every check" | **Real.** `capitalization` added (measured); the other eight now carry an explicit "don't guess, read it back off the finding" |
+| x | Step 3 (RE2, boundaries, `ignorecase`) is irrelevant to `capitalization`/`occurrence`/`metric` and had no skip marker, so run E read all of it looking for `exceptions` semantics | **Real.** Skip line added |
+| y | The pass-fixture advice was written for token rules only — "the word inside a longer word" is not a near-miss for a whole-scope check | **Real.** Now branches by rule shape, including "the same phrase *outside* the scope", which is the only thing that proves a `scope` works |
+| z | "a fixture in a nested subdirectory is linted but **never counted against either bucket**" references counting machinery the reader has never been shown — a leftover from when `verifyValeRule` was assumed reachable | **Real, my error.** Rewritten to describe what `check` actually does |
+| aa | The `BasedOnStyles =` rationale — "it stops a later edit from switching a whole style on by accident" — is not a real mechanism | **Real, my error.** Run D is right: an empty assignment prevents nothing. Replaced with the honest reason (it makes intent readable without knowing the default) |
+
+Run D repeated run B's objection to the absolute path in step 5. Same answer: `build:dev`
+artifact, already recorded as rejected.
+
+### Measured for round 2
+
+**`$sentence` is stricter than "sentence case".** First word capitalized, everything else
+lowercase — proper nouns included, unless listed in `exceptions`:
+
+| Heading | Result |
+| ------- | ------ |
+| `Getting started with the API` | quiet |
+| `Getting started with APIs` | quiet — an exception covers its plural |
+| `Taskless and the API` | quiet — an exception may lead the scope |
+| `Getting started with Kubernetes` | **fires** — a proper noun not listed |
+| `getting started lowercase` | **fires** — the first word must be capitalized |
+
+So `exceptions` is load-bearing: every proper noun the docs use must be listed or the rule
+flags correct headings. That is now in the recipe as a table, and it answers the question
+run E said it could not resolve (`APIs`, the plural of an exception, is covered).
+
+**Link text is prose; the URL is not.** With no `scope`, a `click here` token fired on both
+`[click here](https://example.com/x)` and the same phrase in an ordinary sentence. With
+`scope: link`, only the link. Both facts are now stated.
+
+## Round 2 revision applied
+
+`create-vale-rule.txt`, 286 → 356 lines. Per-extension-point field table; full `scope`
+list; `$sentence` semantics as a measured table; link-text scoping; whole-phrase
+boundaries; `capitalization` in the `%%s` table with honest guidance for the rest; a skip
+marker on step 3; pass-fixture advice branched by rule shape; and the two sentences of my
+own that run D correctly called out as describing machinery and mechanisms that do not
+exist.
+
+## Round 1 planned revision (applied — kept for the record)
 
 ## Planned revision (applied — kept for the record)
 

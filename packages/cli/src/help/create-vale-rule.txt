@@ -82,22 +82,48 @@ A mismatch is not an error. The rule simply never runs.
    | `extends` | yes      | one of the eleven above                                 |
    | `message` | yes      | shown to the user; see the `%%s` table below            |
    | `level`   | no       | `suggestion` (default), `warning`, or `error`           |
-   | `scope`   | no       | narrow to part of a document, e.g. `heading`, `paragraph`|
+   | `scope`   | no       | narrow to part of a document — see below                |
    | `link`    | no       | a URL the reader can follow for the reasoning           |
+
+   **`scope` decides where the rule looks**, so getting it wrong is a
+   silent over- or under-fire rather than an error. The useful values for
+   markdown: `heading` (and `heading.h1`…`heading.h6`), `paragraph`,
+   `sentence`, `list`, `blockquote`, `link`, `code`, `alt`, `summary`,
+   `table.header`, `table.cell`, `table.caption`, `figure.caption`,
+   `strong`, `emphasis`, `raw`. Omit it and the rule sees all prose.
+
+   **Then the fields the extension point adds** — this is where the rule
+   actually lives, and each check reads only its own:
+
+   | extends          | its fields                                                        |
+   |------------------|-------------------------------------------------------------------|
+   | `existence`      | `tokens` (a list) or `raw`; `ignorecase`, `nonword`, `exceptions`, `append` |
+   | `substitution`   | `swap` (a map of observed → expected); `ignorecase`, `nonword`, `exceptions` |
+   | `capitalization` | `match`; `exceptions`, `style` (with `$title`), `threshold`, `indicators`, `prefix` |
+   | `occurrence`     | `token`, `max` and/or `min`                                       |
+   | `repetition`     | `tokens`; `alpha`, `ignorecase`                                   |
+   | `consistency`    | `either` (a map of the two acceptable forms)                      |
+   | `conditional`    | `first`, `second`; `exceptions`                                   |
+   | `metric`         | `formula`, `condition`                                            |
 
    **What `%%s` fills with depends on the extension point.** Getting this
    wrong is the one mistake in this recipe that passes every check below
    — the rule fires, the fixtures are green, and only a human reading the
    message sees that it is nonsense.
 
-   | extends        | `%%s` count | fills with, left to right |
-   |----------------|------------|---------------------------|
-   | `existence`    | one        | the matched text          |
-   | `substitution` | **two**    | the **replacement**, then the matched text |
+   | extends          | `%%s` count | fills with, left to right |
+   |------------------|------------|---------------------------|
+   | `existence`      | one        | the matched text          |
+   | `substitution`   | **two**    | the **replacement**, then the matched text |
+   | `capitalization` | one        | the scope that failed (the whole heading or sentence) |
 
    Measured: a `substitution` message with a single `%%s` interpolates the
    *replacement*, not the match, so `"Use GitHub not %%s"` against the text
    `Github` renders `Use GitHub not GitHub`.
+
+   For the other eight, do not guess. Write the message, run step 6, and
+   read it back off the finding — no test you can write catches a wrong
+   `%%s`, so your own eyes on the rendered message are the check.
 
    ```yaml
    # existence — flag these tokens wherever they appear
@@ -137,15 +163,37 @@ A mismatch is not an error. The rule simply never runs.
    string is legal but means "this whole scope must read exactly that",
    which is almost never what anyone wants — see step 1.
 
+   **`$sentence` means first word capitalized, everything else lowercase
+   — proper nouns included.** It is not "sentence case allowing proper
+   nouns". Measured with `exceptions: [Taskless, API]` on headings:
+
+   | Heading                            | Result |
+   |------------------------------------|--------|
+   | `Getting started with the API`     | quiet  |
+   | `Getting started with APIs`        | quiet — an exception covers its plural |
+   | `Taskless and the API`             | quiet — an exception may lead the scope |
+   | `Getting started with Kubernetes`  | **fires** — a proper noun you did not list |
+   | `getting started lowercase`        | **fires** — the first word must be capitalized |
+   | `Getting Started With Title Case`  | **fires** |
+
+   So `exceptions` is not decoration: every proper noun, product name and
+   acronym the docs use has to be listed, or the rule flags correct
+   headings. Collect them from the docs before writing the rule, and
+   expect to add to the list.
+
 3. **Know what you are writing: `tokens` and `swap` keys are patterns,
    not literals.** They compile as **Go RE2** regular expressions.
+
+   *This step is about `tokens` and `swap` only. A `capitalization`,
+   `occurrence` or `metric` rule has neither — skip to step 4.*
 
    - `(?:…)`, `[…]`, `|`, `+`, `?` all work.
    - **Lookahead and lookbehind do not exist in RE2.** A rule that needs
      "X but not when followed by Y" cannot be written as a single
      `substitution`; split it or narrow with `scope`.
-   - **Word boundaries are applied for you.** Measured: the key `Github`
-     does not fire inside `GithubToken`.
+   - **Word boundaries are applied for you, around the whole pattern.**
+     Measured: `Github` does not fire inside `GithubToken`, and the
+     multi-word `click here` does not fire inside `Clicking here`.
    - **Regex metacharacters in a real phrase are live.** "maybe?" is a
      pattern meaning "mayb" followed by an optional "e". Escape it.
    - **Overlapping alternatives resolve first-wins**, one finding per
@@ -158,9 +206,17 @@ A mismatch is not an error. The rule simply never runs.
    - `raw` takes a full regex when `tokens` is too restrictive;
      `nonword` removes the implicit boundaries.
 
-   Vale also understands the markup. In markdown, URLs and code spans are
-   not prose: measured, a `Github` key fires on `Plain Github here` and
-   not on `https://Github.com/x` or `` `Github/docs` ``.
+   Vale also understands the markup, which decides what counts as text
+   before your pattern ever runs. Measured in markdown:
+
+   - **URLs and code spans are not prose.** A `Github` key fires on
+     `Plain Github here` and not on `https://Github.com/x` or
+     `` `Github/docs` ``.
+   - **Link text *is* prose.** In `[click here](https://example.com)`,
+     `click here` is matched — the URL is not. With no `scope`, a rule
+     fires on both link text and ordinary prose; `scope: link` narrows it
+     to link text alone. Measured: without a scope the token hit both the
+     link and the sentence; with `scope: link`, only the link.
 
 4. **Scope the rule by adding a section to `.taskless/vale/.vale.ini`.**
    This is the step that is easy to skip and impossible to notice
@@ -189,9 +245,10 @@ A mismatch is not an error. The rule simply never runs.
      walk reaches that matches the glob is subject to every rule enabled
      under it.
    - `BasedOnStyles =` with an empty value is valid and says explicitly
-     that no bundled style loads. Write it: the default is already empty,
-     but it is what stops a later edit from switching a whole style on by
-     accident.
+     that no bundled style loads. The default is already empty, so this
+     changes nothing today; write it because it makes the section's
+     intent readable to the next person, who would otherwise have to know
+     the default to know whether a style is missing or deliberately off.
    - `MinAlertLevel` is a floor. A rule whose `level` sits below it is
      enabled and silent.
 
@@ -206,9 +263,11 @@ A mismatch is not an error. The rule simply never runs.
    diagnostic as a notice — if you see it, the assignment is in the
    wrong place, not the rule.
 
-5. **Write the fixtures.** Two directories, both flat. Vale lints the
-   rule's whole tree, so a fixture in a nested subdirectory is linted but
-   never counted against either bucket:
+5. **Write the fixtures.** Two directories, both flat. Step 6 points
+   `check` at one bucket at a time and lints everything beneath it, so a
+   fixture in a nested subdirectory still gets linted — its findings just
+   arrive mixed into whichever bucket you were testing, where they prove
+   nothing. Keep both buckets one level deep:
 
    ```
    .taskless/vale/rule-tests/<id>/pass/ok.md     # rule must stay quiet
@@ -221,13 +280,24 @@ A mismatch is not an error. The rule simply never runs.
 
    **The `pass/` bucket is not "correct prose".** Correct prose proves
    nothing — the rule was never going to fire on it. Fill it with the
-   near-misses that would catch an over-broad pattern: the noun form you
-   are not flagging, the word inside a longer word, the term in a URL or
-   a code span, the correct spelling itself. That is the half of the
-   fixture set that has to work for you.
+   near-misses that would catch an over-broad pattern. What counts as a
+   near-miss depends on the rule's shape:
 
-6. **Check that it fires, and that it doesn't.** Run the rule against
-   each bucket:
+   - **`tokens`/`swap` rules** — the noun form you are not flagging, the
+     word inside a longer word, the term in a URL or a code span, the
+     correct spelling itself.
+   - **`scope`d rules** — the same phrase *outside* the scope. A rule
+     with `scope: link` needs the phrase in ordinary prose; a rule with
+     `scope: heading` needs it in body text. Without that, nothing proves
+     the scope is doing anything.
+   - **`capitalization` rules** — a scope that is entirely exceptions, a
+     scope whose exception word comes first, and the plural of an
+     exception.
+
+   That is the half of the fixture set that has to work for you.
+
+6. **Check that it fires, and that it doesn't.** Run each bucket, from
+   the project root — the paths below are relative to it:
 
    ```
    npx @taskless/cli check .taskless/vale/rule-tests/<id>/fail --json
