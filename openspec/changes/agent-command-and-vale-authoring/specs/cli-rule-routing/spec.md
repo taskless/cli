@@ -77,14 +77,14 @@ Engine reasoning SHALL NOT treat login, reconciliation, or signing as inputs to 
 
 ### Requirement: Engine reasoning lives in route and in each destination
 
-The engine criterion SHALL be stated in `route`, which applies it to dispatch, and in each `create-*-rule` recipe, which states the evidence that makes its own engine the right one. It SHALL NOT be stated in a separate chooser topic.
+The engine criterion SHALL be stated once, in `route`'s destination table, which is where the comparison between engines is made. It SHALL NOT be stated in a separate chooser topic, and SHALL NOT be restated in the destination recipes.
 
-Distributing it this way is what lets the reasoning stay exportable. A consumer outside the CLI has no `route` step and cannot run `taskless detect --json`, so a chooser topic is unusable to it; a destination that states its own criterion is usable by anything that can read one recipe. It also removes the drift class where a chooser and its destinations disagree about when each applies.
+One statement is the point. A criterion copied into each destination is five copies of one test, and the first edit to any of them is a divergence nobody notices — the drift this merge exists to remove, reappearing one level down. Destinations orient the reader to their own scope instead, which needs nothing about the other engines.
 
-#### Scenario: A destination states when it applies
+#### Scenario: The comparison lives in one place
 
-- **WHEN** an agent or consumer reads `create-sg-rule` or `create-vale-rule`
-- **THEN** the recipe SHALL state the evidence that makes that engine the right one for a rule
+- **WHEN** the embedded recipe set is inspected
+- **THEN** exactly one recipe SHALL state the criterion distinguishing the engines from each other
 
 #### Scenario: No separate chooser topic exists
 

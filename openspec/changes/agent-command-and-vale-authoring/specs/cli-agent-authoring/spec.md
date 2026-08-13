@@ -55,7 +55,7 @@ This matches how ast-grep rules are authored today: the agent writes the rule an
 
 ### Requirement: The runtime authoring recipe is the logged-out path
 
-The `create-runtime-rule` recipe SHALL explain that runtime rules execute code and therefore require login, reconciliation, and signing, SHALL state this as a property of executing code rather than of the engine's capability, and SHALL say how to obtain access.
+The `create-runtime-rule` recipe SHALL explain that runtime rules execute code and therefore require login, reconciliation, and signing, and SHALL state this as a property of executing code rather than of the engine's capability. It SHALL point at `auth` for obtaining access rather than restating the login procedure, which `auth` owns.
 
 It SHALL NOT forward the agent to another authoring recipe. A logged-in runtime request is routed to `create-remote-rule` by `route`, so this recipe is reached only when the gate is closed and exists to explain that one gate once.
 
@@ -63,7 +63,7 @@ It SHALL NOT forward the agent to another authoring recipe. A logged-in runtime 
 
 - **WHEN** an agent follows `create-runtime-rule`
 - **THEN** the recipe SHALL state why the runtime tier is gated when the static tiers are not
-- **AND** it SHALL state how to obtain access
+- **AND** it SHALL refer the reader to `auth` rather than restating how to log in
 
 #### Scenario: The recipe does not delegate
 
@@ -81,3 +81,20 @@ Split across a boundary statement and a procedure, an agent fetches one only to 
 - **WHEN** an agent follows `create-remote-rule`
 - **THEN** the recipe SHALL carry both the boundary and the dispatch procedure
 - **AND** it SHALL NOT require fetching a second topic to complete the request
+
+### Requirement: Every authoring recipe opens by orienting the reader
+
+Each `create-*-rule` recipe SHALL open with a line naming the topic the reader is in, the kinds of rule it helps write, and an instruction to revisit the routing decision if that is not what they need.
+
+The line SHALL orient, not classify: it states this recipe's own scope and SHALL NOT restate the criterion distinguishing the engines from each other, which `route` holds in one place. An agent that arrived at the wrong recipe — by guessing, by a user naming a topic directly, or because `route` was wrong — should discover it in the first line, where recovery is cheap, rather than after authoring the wrong artifact.
+
+#### Scenario: A misrouted reader is told how to recover
+
+- **WHEN** an agent opens any `create-*-rule` recipe
+- **THEN** the first lines SHALL name what that recipe helps write
+- **AND** SHALL instruct the agent to revisit its routing decision if it needs a different kind of check
+
+#### Scenario: The orientation is not a second criterion
+
+- **WHEN** the orientation line is read
+- **THEN** it SHALL describe only this recipe's scope, not the comparison between engines
