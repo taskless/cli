@@ -24,7 +24,7 @@ Delete this file when the change is archived.
 | Run | Intent | Extension point | Converged |
 | --- | ------ | --------------- | --------- |
 | A | flag hedging phrases in docs | `existence` | **yes, first try, zero retries** |
-| B | "sign in" is the verb, "login" the noun | `substitution` | pending |
+| B | "sign in" is the verb, "login" the noun | `substitution` | **yes, first try, zero retries** |
 | C | it is `GitHub`, not `Github`/`github` | `capitalization` (literal match) | pending |
 
 ### Run A — converged, and that is the problem
@@ -58,6 +58,38 @@ Findings, triaged. Verified against the source rather than taken on the agent's 
 Nothing in this list is a defect in the agent. Every one is a defect in the prose, which
 is what 2b.6 says to treat them as.
 
+### Run B — converged, and independently confirms A's three worst findings
+
+The agent produced `login-as-verb.yml` using regex `swap` keys, scoped it to `[*.md]`,
+wrote both buckets, and got four findings on `fail/` and zero on `pass/` first try. It
+also volunteered an extra probe — appending a sentence to `pass/` to test a false positive
+it suspected in the `to login` key — and re-ran the bucket. That is the behavior the
+recipe wants and does not currently ask for.
+
+Two runs, no shared context, and both independently reported **a**, **g**, and the
+fetch-versus-invoke ambiguity. Those are not taste.
+
+New findings on top of run A:
+
+| # | Finding | Verdict |
+| - | ------- | ------- |
+| l | `swap` keys are **Go RE2** regexes — `(?:…)` works, lookahead and lookbehind do not. The only example is two literal strings, so the agent guessed. A wrong guess fails as a **silent non-match**, the exact failure the recipe spends a section warning about | **Real, and the most valuable finding of the round.** Generalizes A's finding (c): both `tokens` and `swap` keys are patterns presented as literals |
+| m | `%s` **ordering** in a substitution message is asserted only by an example that reads correctly under either interpretation. First `%s` is the swap value, second is the matched text — confirmed only by running the tool | **Real.** Pairs with A's finding (i) on `%s` count |
+| n | Overlapping `swap` keys have undefined precedence. `can login` won over `login with`; `to logout` over `logout of`. First-alternative-wins is fine, but an author enumerating alternatives cannot tell how many findings a sentence yields, or which message | **Real** |
+| o | Step 1 says "eleven in total" and the table lists eight; the other three are named in the following paragraph, behind a URL. Eleven only via arithmetic across two paragraphs | **Real, trivial.** List all eleven |
+| p | `check <path>` lints everything under the path against the **whole config** — it is not scoped to the rule under test. With a second rule whose glob matches, the fail bucket reports both, and the recipe gives no vocabulary for that. Step 3 hints at the real isolation mechanism and never connects it to step 5 | **Real.** "Run the rule against each bucket" overstates what the command does |
+| q | `BasedOnStyles =` with an empty right-hand side: the recipe insists on it without saying whether an empty value is valid INI to Vale | Minor. Measured: valid, no warning. Worth one clause |
+
+**One finding rejected as a harness artifact, recorded so nobody "fixes" it:** run B
+objected that step 5 hardcodes an absolute path into someone's checkout
+(`node /Users/…/dist-dev/index.js check …`). That is `build:dev` doing its job — it
+rewrites `npx @taskless/cli` to an absolute path precisely so the harness command runs
+from any directory. The shipped recipe says `npx @taskless/cli`. No change.
+
+Run B's second half of that objection is **not** an artifact and stands: the document
+uses `npx @taskless/cli <cmd>` for invocations and `taskless agent <topic>` for fetches
+without ever explaining the relationship. That is finding **e**.
+
 ## Planned revision (not yet applied)
 
 Batched until B and C report, so the recipe is revised once against all three rather than
@@ -72,9 +104,19 @@ three times against one.
    user's call) or the recipe states them as author discipline rather than as something
    the CLI enforces. Do not leave the current wording; it is false.
 4. **Step 5 — add `MinAlertLevel` to the debug ladder**, above the pattern.
-5. **Step 2 — `tokens` are regexes.** Name `raw` and `nonword`, and say metacharacters are
-   live.
-6. **Step 2 — `%s` count follows the extension point.**
+5. **Step 2 — patterns, not literals.** Both `tokens` and `swap` keys are **Go RE2**
+   regexes: `(?:…)` works, lookahead and lookbehind do not, and metacharacters in a real
+   phrase are live. Name `raw` and `nonword`. State whether word boundaries are applied,
+   per extension point. Say that overlapping alternatives resolve first-wins. This one
+   item now carries findings c, l and n, and is the round's biggest single change.
+6. **Step 2 — `%s` count *and* order follow the extension point.** One for `existence`,
+   two for `substitution`, and in a substitution the first is the swap value, the second
+   the matched text.
+6a. **Step 1 — list all eleven extension points in the table**, rather than eight plus
+   three in prose behind a URL.
+6b. **Step 5 — `check <path>` is not scoped to the rule under test.** It lints everything
+   under the path against the whole config. Say so, rather than "run the rule against
+   each bucket".
 7. **Step 3 — `StylesPath` resolves relative to the config file**, and use one path root.
 8. **Step 2/3 — the three names that must agree**, said once as one fact.
 9. **Measure the fenced-code-block question**, then answer it in a line.
