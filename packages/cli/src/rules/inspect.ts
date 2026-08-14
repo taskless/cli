@@ -74,6 +74,20 @@ export async function verifyOneRule(
         if (typeof record.message !== "string") {
           errors.push(`${ruleId}.yml is missing the required 'message' key.`);
         }
+        // `consistency` is the one extension point that compiles the rule's
+        // own name into the pattern: Vale emits `(?P<<id>N>…)` named capture
+        // groups, and Go RE2 requires a group name to be word characters
+        // only. Measured against Vale 3.17.1, a hyphenated id fails the file
+        // with `E201 … invalid group name`, and because Vale takes one config
+        // for the whole run that failure takes **every** Vale rule in the
+        // project down with it. Caught here so the author hears it while
+        // writing one rule rather than as a project-wide engine outage. Every
+        // other extension point is measured fine with a hyphen.
+        if (record.extends === "consistency" && !/^\w+$/.test(ruleId)) {
+          errors.push(
+            `${ruleId} extends consistency, so its id becomes a regex group name and must be word characters only. Rename it without '-' (Vale would fail the whole run with E201).`
+          );
+        }
         const level = record.level;
         if (
           level !== undefined &&

@@ -2,15 +2,15 @@
 
 ## Goal
 Run the applicable rules against the codebase and report matches. Two
-rule kinds run: **static** ast-grep rules in `.taskless/sg/rules/`, and
-**runtime** rules in `.taskless/runtime/rules/` (a directory of ast-grep
+rule kinds run: **static** ast-grep rules in `.taskless/rules/sg/`, and
+**runtime** rules in `.taskless/rules/runtime/` (a directory of ast-grep
 capture rules plus a `check.ts`). Used standalone (full project scan),
 in CI (diff-only scan), or after rule create/improve to validate.
 
 ## Preconditions
 - `.taskless/` directory exists.
-- At least one rule exists in `.taskless/sg/rules/` or
-  `.taskless/runtime/rules/`. (If none exist, the CLI exits 0 with a
+- At least one rule exists in `.taskless/rules/sg/` or
+  `.taskless/rules/runtime/`. (If none exist, the CLI exits 0 with a
   friendly message suggesting `taskless rule create`.)
 - No auth required. Static rules always run; whether runtime rules run
   depends on auth state — see "What runs".
@@ -19,10 +19,10 @@ in CI (diff-only scan), or after rule create/improve to validate.
 
 `check` never requires auth. The two rule kinds run differently:
 
-- **Static rules** (`.taskless/sg/rules/*.yml`) are inert ast-grep patterns
+- **Static rules** (`.taskless/rules/sg/<id>/<id>.yml`) are inert ast-grep patterns
   and **always run**, in every mode, with no network call. The offline
   linter posture.
-- **Runtime rules** (`.taskless/runtime/rules/<name>/`) execute a
+- **Runtime rules** (`.taskless/rules/runtime/<name>/`) execute a
   `check.ts` — arbitrary code — so they run ONLY when that code is
   verified:
   - **Logged in** (token or API key) — each rule's `check.ts` is

@@ -3,7 +3,7 @@
 ## Goal
 Iterate on an existing ast-grep rule **locally** without contacting
 the Taskless API. You (the agent) edit the rule YAML directly, then
-validate with `rule verify` in a feedback loop.
+validate with `verify` and `test` in a feedback loop.
 
 ## Preconditions
 - `.taskless/` directory exists and contains the target rule.
@@ -13,8 +13,9 @@ validate with `rule verify` in a feedback loop.
 ## Steps
 
 1. **Identify the target rule.** If the user named one, use it.
-   Otherwise, list `.taskless/sg/rules/` and ask which one. Read the
-   rule file and any test file (`.taskless/sg/rule-tests/<id>-*.yml`).
+   Otherwise, list `.taskless/rules/sg/` and ask which one. Read the
+   rule file and any test file under
+   `.taskless/rules/sg/<id>/.tests/`.
 
 2. **Gather improvement guidance.** Ask:
    - Are there false positives (cases currently flagged but
@@ -31,17 +32,17 @@ validate with `rule verify` in a feedback loop.
    Summarize the planned change before editing.
 
 4. **Edit the rule file.** Make the change directly in
-   `.taskless/sg/rules/<id>.yml`. Preserve the existing `id`,
+   `.taskless/rules/sg/<id>/<id>.yml`. Preserve the existing `id`,
    `language`, and `severity` unless the user explicitly asked to
    change them.
 
 5. **Update test cases.** Add the new false-positive examples to the
    `valid:` list and the new false-negative examples to the
-   `invalid:` list in `.taskless/sg/rule-tests/<id>-*.yml`.
+   `invalid:` list in `.taskless/rules/sg/<id>/.tests/<id>-*.yml`.
 
 6. **Run the verify feedback loop.** Run:
    ```
-   npx @taskless/cli rule verify <id> --json
+   npx @taskless/cli test .taskless/rules/sg/<id> --json
    ```
    - If `success: true`: report success.
    - If `success: false`: read the per-layer errors, fix, re-run.
