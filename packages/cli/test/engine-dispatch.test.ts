@@ -241,11 +241,10 @@ describe("engine dispatch by directory", () => {
 
 describe("check dispatches by directory end to end", () => {
   let temporaryDirectory: string;
-  let tasklessDirectory: string;
 
   beforeEach(async () => {
     temporaryDirectory = await mkdtemp(join(tmpdir(), "tskl-dispatch-e2e-"));
-    tasklessDirectory = await seedMigratedProject(temporaryDirectory);
+    await seedMigratedProject(temporaryDirectory);
     await writeFile(
       join(temporaryDirectory, "src.ts"),
       'eval("danger");\n',
@@ -344,7 +343,14 @@ describe("service-delivered rule ingest", () => {
       join(tasklessDirectory, "rules", "sg", "no-eval", "no-eval.yml")
     );
     expect(testPath).toBe(
-      join(tasklessDirectory, "sg", "rule-tests", "no-eval-20260730-test.yml")
+      join(
+        tasklessDirectory,
+        "rules",
+        "sg",
+        "no-eval",
+        ".tests",
+        "no-eval-20260730-test.yml"
+      )
     );
   });
 
@@ -369,10 +375,19 @@ describe("service-delivered rule ingest", () => {
 
       // Both come to rest at the same `.taskless/`-relative path.
       expect(relative(temporaryDirectory, delivered)).toBe(
-        join(".taskless", "sg", "rules", "no-eval.yml")
+        join(".taskless", "rules", "sg", "no-eval", "no-eval.yml")
       );
       expect(
-        await exists(join(migrated, ".taskless", "sg", "rules", "no-eval.yml"))
+        await exists(
+          join(
+            migrated,
+            ".taskless",
+            "rules",
+            "sg",
+            "no-eval",
+            "no-eval.yml"
+          )
+        )
       ).toBe(true);
     } finally {
       await rm(migrated, { recursive: true, force: true });
@@ -428,21 +443,32 @@ describe("reconcile compatibility across the relayout", () => {
     await writeFile(join(legacyRule, "logs.yml"), RUNTIME_CAPTURE, "utf8");
     await writeFile(join(legacyRule, "check.ts"), RUNTIME_CHECK, "utf8");
 
-    const before = await signRuntimeChecks(
-      await discoverRuntimeRulesIn(join(tasklessDirectory, "runtime-rules"))
-    );
+    // Discovery reads the current layout only, so the pre-migration tree
+    // cannot be discovered — it is described directly. What the test is about
+    // is the signature, which is computed over `check.ts` bytes and must
+    // survive the move.
+    const before = await signRuntimeChecks([
+      {
+        name: "demo",
+        dir: legacyRule,
+        captureRules: [],
+        checkFile: join(legacyRule, "check.ts"),
+      },
+    ]);
     const beforeReport = reportRuntimeChecks(temporaryDirectory, before.signed);
 
     await ensureTasklessDirectory(temporaryDirectory);
 
     const after = await signRuntimeChecks(
-      await discoverRuntimeRulesIn(join(tasklessDirectory, "runtime", "rules"))
+      await discoverRuntimeRulesIn(
+        join(tasklessDirectory, "rules", "runtime")
+      )
     );
     const afterReport = reportRuntimeChecks(temporaryDirectory, after.signed);
 
     // The path follows the moved tree...
     expect(beforeReport[0]?.file).toBe(".taskless/runtime-rules/demo/check.ts");
-    expect(afterReport[0]?.file).toBe(".taskless/runtime/rules/demo/check.ts");
+    expect(afterReport[0]?.file).toBe(".taskless/rules/runtime/demo/check.ts");
     // ...while the signature — what the server joins on — does not change.
     expect(afterReport[0]?.signature).toBe(beforeReport[0]?.signature);
   });

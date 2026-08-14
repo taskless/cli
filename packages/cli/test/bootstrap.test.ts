@@ -228,7 +228,7 @@ describe("v0 → v1 migration", () => {
     await ensureTasklessDirectory(temporaryDirectory);
 
     const ruleContent = await readFile(
-      join(temporaryDirectory, ".taskless", "rules", "sg", "no-as-any.yml"),
+      join(temporaryDirectory, ".taskless", "rules", "sg", "no-as-any", "no-as-any.yml"),
       "utf8"
     );
     expect(ruleContent).toContain("no-as-any");
@@ -242,8 +242,10 @@ describe("v0 → v1 migration", () => {
       join(
         temporaryDirectory,
         ".taskless",
+        "rules",
         "sg",
-        "rule-tests",
+        "no-as-any",
+        ".tests",
         "no-as-any-20260326-test.yml"
       ),
       "utf8"
@@ -257,7 +259,7 @@ describe("v0 → v1 migration", () => {
     await ensureTasklessDirectory(temporaryDirectory);
 
     const keepStat = await stat(
-      join(temporaryDirectory, ".taskless", "rules", "sg", ".gitkeep")
+      join(temporaryDirectory, ".taskless", "rules", "vale", ".gitkeep")
     );
     expect(keepStat.isFile()).toBe(true);
   });

@@ -13,7 +13,10 @@ import { promisify } from "node:util";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { hasValeRules, runEngines } from "../src/rules/dispatch";
-import { assembleSgConfig } from "../src/rules/assemble";
+import {
+  assembleSgConfig,
+  assembleValeConfig,
+} from "../src/rules/assemble";
 import { findValeBinary } from "../src/rules/vale/binary";
 
 const withVale = findValeBinary().path === undefined ? describe.skip : describe;
@@ -175,7 +178,7 @@ describe("exit code carried on the dispatch result", () => {
     const dispatched = await runEngines({
       cwd,
       paths: ["app.js"],
-      astGrepConfigPath: undefined,
+      astGrepConfigPath: await assembleSgConfig(cwd),
       runtimeRules: [],
     });
     expect(
@@ -189,7 +192,7 @@ describe("exit code carried on the dispatch result", () => {
     const dispatched = await runEngines({
       cwd,
       paths: ["doc.md"], // the sg rule is javascript-only, so nothing matches
-      astGrepConfigPath: undefined,
+      astGrepConfigPath: await assembleSgConfig(cwd),
       runtimeRules: [],
     });
     expect(dispatched.results).toEqual([]);
@@ -201,10 +204,13 @@ describe("exit code carried on the dispatch result", () => {
 withVale("runEngines over a mixed corpus", () => {
   it("runs every executor and merges their findings into one set", async () => {
     const cwd = makeMixedProject();
+    // Vale reads the assembled run config, so a dispatch that never assembles
+    // has no config to point at — which would report as "no Vale findings".
+    await assembleValeConfig(cwd);
     const dispatched = await runEngines({
       cwd,
       paths: ["app.js", "doc.md"],
-      astGrepConfigPath: undefined,
+      astGrepConfigPath: await assembleSgConfig(cwd),
       runtimeRules: [],
     });
 
@@ -221,7 +227,7 @@ withVale("runEngines over a mixed corpus", () => {
     const dispatched = await runEngines({
       cwd,
       paths: ["app.js", "doc.md"],
-      astGrepConfigPath: undefined,
+      astGrepConfigPath: await assembleSgConfig(cwd),
       runtimeRules: [],
     });
     expect(dispatched.results.every((result) => result.source !== "vale")).toBe(
@@ -245,7 +251,7 @@ describe("runEngines when Vale is unavailable", () => {
     const dispatched = await runEngines({
       cwd,
       paths: ["app.js", "doc.md"],
-      astGrepConfigPath: undefined,
+      astGrepConfigPath: await assembleSgConfig(cwd),
       runtimeRules: [],
     });
 
@@ -297,7 +303,7 @@ describe("runEngines when Vale is unavailable", () => {
     const dispatched = await runEngines({
       cwd,
       paths: ["doc.md"],
-      astGrepConfigPath: undefined,
+      astGrepConfigPath: await assembleSgConfig(cwd),
       runtimeRules: [],
     });
 
@@ -324,7 +330,7 @@ describe("runEngines when Vale is unavailable", () => {
         const dispatched = await runEngines({
           cwd,
           paths: ["app.js", "doc.md"],
-          astGrepConfigPath: undefined,
+          astGrepConfigPath: await assembleSgConfig(cwd),
           runtimeRules: [],
         });
 

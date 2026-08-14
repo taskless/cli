@@ -143,9 +143,10 @@ describe("migrations 0004 + 0005 — one directory per rule", () => {
       await sha256(
         join(
           tasklessDirectory,
-          "runtime",
           "rules",
+          "runtime",
           "no-eval-runtime",
+          "captures",
           "capture.yml"
         )
       )
@@ -154,8 +155,8 @@ describe("migrations 0004 + 0005 — one directory per rule", () => {
       await sha256(
         join(
           tasklessDirectory,
-          "runtime",
           "rules",
+          "runtime",
           "no-eval-runtime",
           "check.ts"
         )
@@ -165,9 +166,10 @@ describe("migrations 0004 + 0005 — one directory per rule", () => {
       await sha256(
         join(
           tasklessDirectory,
+          "rules",
           "runtime",
-          "rule-tests",
           "no-eval-runtime",
+          ".tests",
           "fixture-a",
           "input.ts"
         )
@@ -179,9 +181,10 @@ describe("migrations 0004 + 0005 — one directory per rule", () => {
       await readFile(
         join(
           tasklessDirectory,
-          "runtime",
           "rules",
+          "runtime",
           "no-eval-runtime",
+          "captures",
           "capture.yml"
         ),
         "utf8"
@@ -255,13 +258,12 @@ describe("migrations 0004 + 0005 — one directory per rule", () => {
 
     await ensureTasklessDirectory(temporaryDirectory);
 
+    // The committed .vale.ini is gone; the run config is assembled and
+    // gitignored rather than scaffolded.
     expect(await exists(join(tasklessDirectory, "vale", ".vale.ini"))).toBe(
-      true
+      false
     );
-    for (const relative of [
-      ["vale", "rules"],
-      ["vale", "rule-tests"],
-    ]) {
+    for (const relative of [["rules", "vale"]]) {
       expect(
         await exists(join(tasklessDirectory, ...relative, ".gitkeep"))
       ).toBe(true);
@@ -334,22 +336,6 @@ describe("migrations 0004 + 0005 — one directory per rule", () => {
     expect(await exists(join(tasklessDirectory, "rule-tests"))).toBe(false);
   });
 
-  it("preserves an existing sg/sgconfig.yml rather than overwriting it", async () => {
-    await writeFile(
-      join(tasklessDirectory, "taskless.json"),
-      JSON.stringify({ version: 3 }),
-      "utf8"
-    );
-    const custom = "ruleDirs:\n  - rules\n# hand-edited\n";
-    await writeTree(tasklessDirectory, { "sg/sgconfig.yml": custom });
-
-    await ensureTasklessDirectory(temporaryDirectory);
-
-    expect(
-      await readFile(join(tasklessDirectory, "sg", "sgconfig.yml"), "utf8")
-    ).toBe(custom);
-  });
-
   it("refuses to start when a file occupies an engine directory", async () => {
     await writeFile(
       join(tasklessDirectory, "taskless.json"),
@@ -379,7 +365,8 @@ describe("migrations 0004 + 0005 — one directory per rule", () => {
     expect(await exists(join(tasklessDirectory, "rules", "runtime"))).toBe(
       false
     );
-    expect(await readFile(join(tasklessDirectory, "rules", "sg"), "utf8")).toBe(
+    // 0004 refuses before 0005 runs, so the occupied path is untouched.
+    expect(await readFile(join(tasklessDirectory, "sg", "rules"), "utf8")).toBe(
       "not a directory\n"
     );
   });
