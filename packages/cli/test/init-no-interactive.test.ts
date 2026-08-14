@@ -139,7 +139,7 @@ describe("taskless init --no-interactive", () => {
       await readFile(join(cwd, ".taskless", "taskless.json"), "utf8")
     ) as { version: number; install: Record<string, unknown> };
 
-    expect(manifest.version).toBe(4);
+    expect(manifest.version).toBe(5);
     expect(manifest.install).toBeDefined();
   });
 

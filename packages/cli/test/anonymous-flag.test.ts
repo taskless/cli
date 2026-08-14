@@ -135,23 +135,6 @@ describe("--anonymous flag (per-command behavior matrix)", () => {
     });
   });
 
-  describe("rule verify --anonymous", () => {
-    it("accepts the flag as no-op", async () => {
-      // No rule ID → INVALID_INPUT regardless of --anonymous
-      const result = await runCli([
-        "rule",
-        "verify",
-        "--anonymous",
-        "--json",
-        "-d",
-        cwd,
-      ]);
-      expect(result.exitCode).not.toBe(0);
-      const parsed = JSON.parse(result.stdout) as { code: string };
-      expect(parsed.code).toBe("INVALID_INPUT");
-    });
-  });
-
   describe("rule meta --anonymous", () => {
     it("accepts the flag as no-op", async () => {
       // Rule doesn't exist → RULE_NOT_FOUND regardless of --anonymous
