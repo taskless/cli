@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { cp, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { cp, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { promisify } from "node:util";
@@ -245,16 +245,23 @@ describe("check over a project with both engines", () => {
         const init = await runCli(["init", "--no-interactive", "-d", scaffold]);
         expect(init.exitCode).toBe(0);
 
-        const valeDirectory = join(scaffold, ".taskless", "vale");
+        // Author the rule the way a user would: one directory holding the
+        // style and the matcher that scopes it. No shared file is touched.
+        const ruleDirectory = join(
+          scaffold,
+          ".taskless",
+          "rules",
+          "vale",
+          "no-simply"
+        );
+        await mkdir(ruleDirectory, { recursive: true });
         await writeFile(
-          join(valeDirectory, "rules", "no-simply.yml"),
+          join(ruleDirectory, "no-simply.yml"),
           "extends: existence\nmessage: \"Avoid 'simply'\"\nlevel: warning\ntokens:\n  - simply\n"
         );
-        // Enable it the way a user would: one matcher in the committed config.
-        const config = await readFile(join(valeDirectory, ".vale.ini"), "utf8");
         await writeFile(
-          join(valeDirectory, ".vale.ini"),
-          `${config}\n[*.md]\nBasedOnStyles =\nrules.no-simply = YES\n`
+          join(ruleDirectory, ".vale.ini"),
+          "[*.md]\ntskl) rule = no-simply\nBasedOnStyles =\nno-simply.no-simply = YES\n"
         );
         await writeFile(join(scaffold, "doc.md"), "Just simply do it.\n");
 

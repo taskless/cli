@@ -11,6 +11,7 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { hasValeRules, runEngines } from "../src/rules/dispatch";
+import { assembleSgConfig } from "../src/rules/assemble";
 import { findValeBinary } from "../src/rules/vale/binary";
 
 const withVale = findValeBinary().path === undefined ? describe.skip : describe;
@@ -41,9 +42,11 @@ function makeMixedProject(options?: {
   const cwd = mkdtempSync(join(tmpdir(), "vale-orch-"));
   workspaces.push(cwd);
 
-  mkdirSync(join(cwd, ".taskless", "sg", "rules"), { recursive: true });
+  mkdirSync(join(cwd, ".taskless", "rules", "sg", "no-eval"), {
+    recursive: true,
+  });
   writeFileSync(
-    join(cwd, ".taskless", "sg", "rules", "no-eval.yml"),
+    join(cwd, ".taskless", "rules", "sg", "no-eval", "no-eval.yml"),
     [
       "id: no-eval",
       "language: javascript",
@@ -123,7 +126,7 @@ describe("exit code carried on the dispatch result", () => {
     const dispatched = await runEngines({
       cwd,
       paths: ["app.js"],
-      astGrepConfigPath: undefined,
+      astGrepConfigPath: await assembleSgConfig(cwd),
       runtimeRules: [],
     });
     expect(dispatched.results.length).toBeGreaterThan(0);
