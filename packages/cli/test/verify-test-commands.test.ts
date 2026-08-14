@@ -157,6 +157,29 @@ describe("verify checks components without requiring tests", () => {
     ).toContain("present but off");
   });
 
+  // Found by running the recipe's own worked `consistency` rule under the
+  // rule-directory layout. Vale compiles a consistency rule's name into its
+  // pattern as an RE2 group name, so a hyphen fails the file with E201 — and
+  // since Vale reads one config for the whole run, that one rule silences
+  // every Vale rule in the project. Caught at authoring time instead.
+  it("rejects a hyphenated id on a consistency rule", async () => {
+    await valeRule("ize-ise", {
+      config: SCOPED.replaceAll("no-simply", "ize-ise"),
+      style: `extends: consistency\nmessage: "Use '%s' consistently"\nlevel: warning\nnonword: true\neither:\n  organize: organise\n`,
+    });
+    const result = await runCli(["verify", "-d", cwd, "--json"]);
+    expect(result.exitCode).not.toBe(0);
+    expect(
+      (JSON.parse(result.stdout) as Report).rules[0]?.errors.join(" ")
+    ).toContain("group name");
+  });
+
+  it("accepts a hyphenated id on every other extension point", async () => {
+    await valeRule("no-simply", { config: SCOPED });
+    const result = await runCli(["verify", "-d", cwd, "--json"]);
+    expect(result.exitCode).toBe(0);
+  });
+
   it("names a bad level rather than leaving it to an engine failure", async () => {
     await valeRule("no-simply", {
       config: SCOPED,

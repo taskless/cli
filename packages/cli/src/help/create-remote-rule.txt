@@ -50,7 +50,7 @@ Two ways to legitimately be here:
    submit.
 
 2. **Check for a rule that already covers this.** Scan
-   `.taskless/sg/rules/` and read each rule's `message`, `note`, and
+   `.taskless/rules/sg/` and read each rule's `message`, `note`, and
    `rule` fields. If one overlaps, show the user and ask whether they
    would rather iterate on it — `taskless agent improve-rule` refines an
    existing rule and is usually the better answer than a second rule
@@ -92,11 +92,12 @@ Two ways to legitimately be here:
 8. **Clean up.** Delete `.taskless/.tmp-rule-request.json` whether the
    call succeeded or failed.
 
-9. **Report.** The service writes the rule to `.taskless/sg/rules/<id>.yml`,
-   its tests to `.taskless/sg/rule-tests/<id>-YYYYMMDD-test.yml`, and
+9. **Report.** The service writes the rule to
+   `.taskless/rules/sg/<id>/<id>.yml`, its tests to
+   `.taskless/rules/sg/<id>/.tests/<id>-YYYYMMDD-test.yml`, and
    metadata to `.taskless/rule-metadata/<id>.yml`. These are the same
    paths and the same shape a locally authored rule uses, so `check`,
-   `improve-rule`, and `verify-rule` treat them identically. Show the
+   `improve-rule`, `verify`, and `test` treat them identically. Show the
    user the paths and suggest `taskless agent check`.
 
 ## Input schema
@@ -116,7 +117,7 @@ Multi-line code goes in one string with literal newlines.
   the service generate it; a hand-written rule attached to a generation
   request is neither reviewed nor used.
 - The service owns rule-type selection. Today it generates ast-grep
-  rules under `.taskless/sg/rules/` — the same shape `create-sg-rule`
+  rules under `.taskless/rules/sg/` — the same shape `create-sg-rule`
   produces locally.
 
 ## Errors
