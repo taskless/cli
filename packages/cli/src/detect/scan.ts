@@ -4,7 +4,7 @@ import { resolve } from "node:path";
 
 import { parse as parseToml } from "smol-toml";
 
-import { ENGINE_LAYOUTS, LEGACY_RULES_DIRECTORY } from "../rules/engines";
+import { RULES_DIRECTORY } from "../rules/engines";
 
 export interface DetectedLinter {
   name: string;
@@ -429,10 +429,7 @@ function detectRuleStyles(
   nodeManifests: NodeManifest[]
 ): RuleStyle[] {
   const ruleStyles: RuleStyle[] = [];
-  for (const source of [
-    `.taskless/${ENGINE_LAYOUTS.sg.rulesDirectory}`,
-    `.taskless/${LEGACY_RULES_DIRECTORY}`,
-  ]) {
+  for (const source of [`.taskless/${RULES_DIRECTORY}/sg`]) {
     if (!existsSync(resolve(root, source))) continue;
     ruleStyles.push({
       source,

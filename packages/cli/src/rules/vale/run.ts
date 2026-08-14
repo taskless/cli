@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { StringDecoder } from "node:string_decoder";
 
 import type { CheckResult } from "../../types/check";
-import { ENGINE_LAYOUTS } from "../engines";
+import { ASSEMBLED_VALE_CONFIG } from "../engines";
 import { buildPath } from "../scan";
 import { findValeBinary, valeUnavailableMessage } from "./binary";
 import { asValeConfigError, toValeCheckResults, type ValeOutput } from "./map";
@@ -11,8 +11,14 @@ import { asValeConfigError, toValeCheckResults, type ValeOutput } from "./map";
 /** Taskless's own directory, as a project-relative path. */
 const TASKLESS_DIRECTORY = ".taskless";
 
-/** The committed Vale config, relative to the project root. */
-export const COMMITTED_VALE_CONFIG = `${TASKLESS_DIRECTORY}/${ENGINE_LAYOUTS.vale.configFile}`;
+/**
+ * The Vale config a run reads, relative to the project root.
+ *
+ * Assembled from every rule's own `.vale.ini` rather than committed — see
+ * `rules/assemble.ts`. Vale accepts exactly one `--config`, so per-rule
+ * configuration has to reach one file before it can be invoked.
+ */
+export { ASSEMBLED_VALE_CONFIG };
 
 /**
  * How long a single Vale invocation may run before it is killed.
@@ -77,25 +83,26 @@ export type ValeRunOutcome =
   | { status: "failed"; blocking: true; message: string };
 
 export interface ValeRunOptions {
-  /** Project root. Vale runs here, so its config paths resolve as committed. */
+  /** Project root. Vale runs here, so the config's relative paths resolve. */
   cwd: string;
   /** Target paths, relative to `cwd`. Empty means Vale's own default set. */
   paths?: string[];
-  /** Config path relative to `cwd`. Defaults to the committed engine config. */
+  /** Config path relative to `cwd`. Defaults to the assembled run config. */
   configPath?: string;
   timeoutMs?: number;
 }
 
 /**
- * Run Vale over `paths` using the committed config, and map what it reports.
+ * Run Vale over `paths` using the assembled run config, and map what it reports.
  *
  * `--no-exit` is what makes the exit code readable: without it Vale exits
  * non-zero merely because it found something, which is indistinguishable from
  * failing to run. With it, a non-zero exit means Vale itself failed.
  *
- * The config is read as committed rather than generated per run — it is the
- * source of truth for scoping (matchers), and rewriting it at check time would
- * mean the file a user edits is not the file that executes.
+ * The config is assembled from each rule's own `.vale.ini` rather than read
+ * from one committed file. The per-rule configs remain the source of truth for
+ * scoping, so the matchers a user edits are exactly the matchers that execute —
+ * assembly concatenates them in a deterministic order and adds nothing.
  */
 export async function runVale(
   options: ValeRunOptions
@@ -109,7 +116,7 @@ export async function runVale(
     };
   }
 
-  const configPath = options.configPath ?? COMMITTED_VALE_CONFIG;
+  const configPath = options.configPath ?? ASSEMBLED_VALE_CONFIG;
   const paths = options.paths ?? [];
   const timeoutMs = options.timeoutMs ?? VALE_TIMEOUT_MS;
 
@@ -125,7 +132,7 @@ export async function runVale(
 
   // Walking the whole project reaches `.taskless/` too, and Vale has no reason
   // to know that directory is ours: with a rule enabled it reports findings in
-  // the committed `.vale.ini` and in the user's own rule definitions — prose
+  // the rule configs and in the user's own rule definitions — prose
   // complaints about the machinery, pointing at files nobody wrote as prose.
   // Section globs do not help, since `.taskless/README.md` matches `[*.md]` as
   // readily as any document. `--glob` filters which files are walked without
@@ -291,5 +298,5 @@ export async function runVale(
 
 /** Absolute path of the committed Vale config for `cwd`. */
 export function valeConfigPath(cwd: string): string {
-  return join(cwd, COMMITTED_VALE_CONFIG);
+  return join(cwd, ASSEMBLED_VALE_CONFIG);
 }
