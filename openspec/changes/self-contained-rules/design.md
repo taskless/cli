@@ -66,10 +66,11 @@ _Alternative rejected:_ mirrored `rules/` and `tests/` trees. Uniform and requir
 
 `.tests/` rather than `tests/` because ast-grep's `ruleDirs` recurses and parses every `.yml` beneath as a rule. Measured, `tests/` and `__tests__/` both hard-fail the scan; a dot-directory is skipped, and `sg test` still reads it when `testDir` names it.
 
-This is a dependency on undocumented behavior and should be recorded as one. Two things make it acceptable:
+This is a dependency on undocumented behavior and should be recorded as one. Three things make it acceptable:
 
 - **The failure is loud.** If ast-grep stops skipping dot-directories, the scan fails with a parse error naming the file. It does not silently reinterpret a test as a rule, and it does not silently disable anything.
 - **A test pins it.** A fixture with a rule directory containing `.tests/` asserts the scan stays clean, so the assumption is checked on every run rather than remembered.
+- **The binary is version-pinned.** `@ast-grep/cli` and every platform package are pinned to an exact version (`0.41.0`), not a range, so this behavior cannot change under a project without a deliberate dependency bump. That bump is where the pinning test fires, which makes the discovery a migration task with a changelog to read rather than a mystery in someone's CI.
 
 The cost is real: dot-prefixing hides tests from a casual `ls`, and tests are the part of a rule most worth reading.
 
@@ -111,13 +112,23 @@ A path names one thing; an id does not. The same id can exist under `sg` and `va
 
 _Alternative rejected:_ keep `rule verify <id>` as an alias. It preserves the ambiguity case to save typing, in a command invoked from a recipe that can carry a path just as easily.
 
+### D9 — The legacy read paths are removed, not renamed
+
+`.taskless/rules/` is the new root. It is also `LEGACY_RULES_DIRECTORY`, the pre-`0004` flat location — the same string, now meaning something else. Found while implementing: the two collide exactly.
+
+The legacy read paths are removable rather than renameable because they are unreachable. `ensureTasklessDirectory` runs migrations before anything reads a rule, so `0004` has already moved `.taskless/rules/*.yml` to `sg/rules/`, and `0005` moves it again. A "legacy" lookup under the new layout would resolve `.taskless/rules/<id>.yml` inside a tree whose real contents are `rules/<engine>/<id>/` — reading the new root as if it were the old flat directory.
+
+So `LEGACY_RULES_DIRECTORY` and `LEGACY_RULE_TESTS_DIRECTORY` go, along with their readers in `verify.ts`, `detect/scan.ts`, and `commands/rules.ts`. Their error messages, which name the legacy path as a place a rule might be, go with them.
+
+_Alternative rejected:_ keep them under a new constant name. It preserves a fallback for a state migrations guarantee cannot exist, and the fallback would now point into the live tree. A stale read path that resolves to a real directory is worse than no fallback.
+
 ### D8 — `captures/`, not `matchers/`
 
 Runtime's ast-grep capture rules move to `captures/`. "Matcher" now has a precise meaning in the Vale spec — a `[<glob>]` ini section — and one word for two unrelated concepts in one `.taskless/` tree is a cost paid at every future reading.
 
 ## Risks / Trade-offs
 
-- **The dot-directory assumption is undocumented** → mitigated by a loud failure mode and a pinning test (D2), with materialization as the known fallback.
+- **The dot-directory assumption is undocumented** → mitigated by a loud failure mode, a pinning test, and an exact version pin on the binary, so a change arrives with a deliberate upgrade rather than silently (D2). Materialization is the recorded fallback.
 - **Assembly is a new failure surface** → a bug there disables rules silently, which is the failure this engine's design exists to prevent. Mitigated by asserting the assembled artifact byte-for-byte and asserting stability across runs.
 - **Two migrations touch the same tree in one stack** → `0004` and `0005` are both unreleased and both in this stack, so every consumer runs them as one upgrade and never observes the intermediate layout. The risk is to this repository's own fixtures, which tests cover.
 - **The recipe changes again** → `create-vale-rule` teaches the flat layout in detail and its nine worked rules were verified against it. The rule bodies are unaffected; only where the file sits and where scope is declared. The 2b harness re-runs against the new text.
@@ -127,6 +138,7 @@ Runtime's ast-grep capture rules move to `captures/`. "Matcher" now has a precis
 
 `0005` layers on `0004`; neither is released, and both ship in this stack, so consumers run them as a single upgrade.
 
+0. Note that `0004` has already emptied `.taskless/rules/` by moving it to `sg/rules/`, so the new root is free before `0005` writes into it. `0005` SHALL assert this rather than assume it: a top-level `*.yml` still sitting in `.taskless/rules/` means `0004` did not complete, and writing engine directories around it would interleave two layouts in one tree.
 1. Move `<engine>/rules/<id>.yml` → `rules/<engine>/<id>/<id>.yml`; for runtime, `runtime/rules/<id>/` → `rules/runtime/<id>/` with its `*.yml` capture rules into `captures/`.
 2. Move `<engine>/rule-tests/<id>*` → `rules/<engine>/<id>/.tests/`, preserving each engine's internal test shape.
 3. Split the committed `vale/.vale.ini`: each matcher carrying `tskl) rule = <id>` moves into that rule's own `.vale.ini`.
