@@ -104,7 +104,7 @@ describe("buildIsolatingConfig", () => {
 
   it("uses an absolute StylesPath, since the config lives in a temp dir", () => {
     const config = buildIsolatingConfig("/proj", "no-simply");
-    expect(config).toContain("StylesPath = /proj/.taskless/vale");
+    expect(config).toContain("StylesPath = /proj/.taskless/rules/vale");
   });
 
   it("loads no bundled styles", () => {
@@ -152,9 +152,10 @@ asUser("verifyValeRule with an unreadable bucket", () => {
     const passDirectory = join(
       cwd,
       ".taskless",
+      "rules",
       "vale",
-      "rule-tests",
       "no-simply",
+      ".tests",
       "pass"
     );
     chmodSync(passDirectory, 0o000);
