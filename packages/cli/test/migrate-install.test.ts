@@ -19,7 +19,7 @@ describe("install-state migrations", () => {
     await rm(temporaryDirectory, { recursive: true, force: true });
   });
 
-  it("fresh project reaches { version: 4, install: {} }", async () => {
+  it("fresh project reaches { version: 5, install: {} }", async () => {
     await ensureTasklessDirectory(temporaryDirectory);
 
     const manifest = JSON.parse(
@@ -29,7 +29,7 @@ describe("install-state migrations", () => {
       )
     ) as { version: number; install: Record<string, unknown> };
 
-    expect(manifest.version).toBe(4);
+    expect(manifest.version).toBe(5);
     expect(manifest.install).toEqual({});
   });
 
@@ -48,7 +48,7 @@ describe("install-state migrations", () => {
       await readFile(join(tasklessDirectory, "taskless.json"), "utf8")
     ) as { version: number; install: Record<string, unknown> };
 
-    expect(manifest.version).toBe(4);
+    expect(manifest.version).toBe(5);
     expect(manifest.install).toEqual({});
   });
 
@@ -76,7 +76,7 @@ describe("install-state migrations", () => {
     ) as { version: number; install: Record<string, unknown> };
 
     // Migration 3 strips the unused timestamp; everything else survives.
-    expect(manifest.version).toBe(4);
+    expect(manifest.version).toBe(5);
     expect(manifest.install).toEqual({
       cliVersion: "0.5.4",
       targets: { ".claude": { skills: ["taskless-check"] } },
@@ -102,7 +102,7 @@ describe("install-state migrations", () => {
       await readFile(join(tasklessDirectory, "taskless.json"), "utf8")
     ) as Record<string, unknown>;
 
-    expect(manifest.version).toBe(4);
+    expect(manifest.version).toBe(5);
     expect(manifest.install).toEqual({});
     expect(manifest.experimental).toEqual({
       flag: true,
@@ -124,7 +124,7 @@ describe("install-state migrations", () => {
       await readFile(join(tasklessDirectory, "taskless.json"), "utf8")
     ) as { version: number; install: Record<string, unknown> };
 
-    expect(manifest.version).toBe(4);
+    expect(manifest.version).toBe(5);
     expect(manifest.install).toEqual({});
   });
 

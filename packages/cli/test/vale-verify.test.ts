@@ -74,9 +74,10 @@ function makeProject(
       const directory = join(
         cwd,
         ".taskless",
+        "rules",
         "vale",
-        "rule-tests",
         ruleId,
+        ".tests",
         bucket
       );
       mkdirSync(directory, { recursive: true });
@@ -110,7 +111,7 @@ describe("buildIsolatingConfig", () => {
     expect(config).toContain("no-simply.no-simply = YES");
     // Precedence is positional, so a repeated assignment would be relying on
     // the very rule that bit the scoping spec.
-    expect(config.match(/rules\.no-simply/g)).toHaveLength(1);
+    expect(config.match(/no-simply\.no-simply/g)).toHaveLength(1);
     expect(config.match(/^\[.*]$/gm)).toHaveLength(1);
   });
 
@@ -181,7 +182,7 @@ asUser("verifyValeRule with an unreadable bucket", () => {
 
 describe("fixture buckets are flat", () => {
   it("rejects a nested directory instead of silently skipping it", async () => {
-    // The dangerous case: Vale lints `rule-tests/<rule>` recursively, so a
+    // The dangerous case: Vale lints the rule's `.tests/` recursively, so a
     // nested fixture IS linted, but a flat read never collects it. Skipping it
     // quietly would let a nested `pass/` fixture fire with its finding
     // discarded, and a nested `fail/` fixture never be required to fire —
@@ -247,7 +248,7 @@ withVale("verifyValeRule", () => {
     // A fixture that produces nothing is absent from Vale's output entirely,
     // so this can only be caught by comparing against the files on disk.
     expect(result.missingFailures).toEqual([
-      ".taskless/vale/rule-tests/no-simply/fail/quiet.md",
+      ".taskless/rules/vale/no-simply/.tests/fail/quiet.md",
     ]);
   });
 
@@ -264,7 +265,7 @@ withVale("verifyValeRule", () => {
     const result = verification(await verifyValeRule(cwd, "no-simply"));
     expect(result.passed).toBe(false);
     expect(result.unexpectedFindings).toEqual([
-      ".taskless/vale/rule-tests/no-simply/pass/oops.md",
+      ".taskless/rules/vale/no-simply/.tests/pass/oops.md",
     ]);
   });
 
