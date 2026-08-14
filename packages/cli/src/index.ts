@@ -5,6 +5,7 @@ import { authCommand } from "./commands/auth";
 import { checkCommand } from "./commands/check";
 import { detectCommand } from "./commands/detect";
 import { initCommand, updateCommand } from "./commands/init";
+import { testCommand, verifyCommand } from "./commands/verify";
 import { infoCommand } from "./commands/info";
 import { onboardCommand } from "./commands/onboard";
 import { ruleCommand } from "./commands/rules";
@@ -25,6 +26,8 @@ const subCommands = {
   auth: authCommand,
   onboard: onboardCommand,
   rule: ruleCommand,
+  verify: verifyCommand,
+  test: testCommand,
 };
 
 const agentCommand = createAgentCommand(subCommands);
