@@ -93,15 +93,25 @@ export function normalizeSeverity(severity: string): CheckResult["severity"] {
 }
 
 /**
- * Strip the `rules.` prefix Vale prepends to every check in our StylesPath.
+ * Reduce Vale's `<style>.<check>` identifier to the rule id Taskless uses.
  *
- * The style directory is named `rules`, so Vale reports `rules.no-simply` for
- * what Taskless calls `no-simply`. Stripping it here keeps `ruleId` the same
- * identity a user wrote, filed under, and sees from ast-grep — the prefix is an
- * artifact of Vale's config layout, not part of the rule's name.
+ * Vale names a check after the style directory that holds it. Each rule is its
+ * own style directory, so a rule filed as `no-simply` is reported as
+ * `no-simply.no-simply`. The doubled name is an artifact of Vale's config
+ * layout, not part of the rule's identity, and stripping it keeps `ruleId` the
+ * same string the user wrote, filed under, and sees from ast-grep.
+ *
+ * Only a check whose two halves match is collapsed. A `<style>.<check>` where
+ * they differ came from a style this CLI did not lay out — a user pointing at
+ * their own Vale styles — and rewriting that to half its name would report a
+ * finding under an id that identifies nothing.
  */
 export function stripRulesPrefix(check: string): string {
-  return check.startsWith("rules.") ? check.slice("rules.".length) : check;
+  const separator = check.indexOf(".");
+  if (separator === -1) return check;
+  const style = check.slice(0, separator);
+  const rule = check.slice(separator + 1);
+  return style === rule ? rule : check;
 }
 
 /**
