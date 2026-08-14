@@ -90,7 +90,7 @@ async function statOrUndefined(path: string) {
   try {
     return await stat(path);
   } catch {
-    return undefined;
+    return;
   }
 }
 

@@ -1,0 +1,9 @@
+id: no-eval
+language: JavaScript
+severity: error
+message: Avoid eval — it executes whatever string it is handed.
+note: |
+  `eval` runs arbitrary code with the caller's permissions. Parse the value
+  instead: `JSON.parse` for JSON, a real parser for anything else.
+rule:
+  pattern: eval($$$ARGS)

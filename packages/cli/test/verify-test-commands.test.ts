@@ -97,23 +97,19 @@ describe("verify addresses rules by path", () => {
       "id: shared\nlanguage: TypeScript\nseverity: error\nmessage: x\nrule:\n  pattern: eval($A)\n"
     );
 
-    const vale = JSON.parse(
-      (
-        await runCli([
-          "verify",
-          ".taskless/rules/vale/shared",
-          "-d",
-          cwd,
-          "--json",
-        ])
-      ).stdout
-    ) as Report;
+    const valeResult = await runCli([
+      "verify",
+      ".taskless/rules/vale/shared",
+      "-d",
+      cwd,
+      "--json",
+    ]);
+    const vale = JSON.parse(valeResult.stdout) as Report;
     expect(vale.rules).toHaveLength(1);
     expect(vale.rules[0]?.engine).toBe("vale");
 
-    const both = JSON.parse(
-      (await runCli(["verify", "-d", cwd, "--json"])).stdout
-    ) as Report;
+    const bothResult = await runCli(["verify", "-d", cwd, "--json"]);
+    const both = JSON.parse(bothResult.stdout) as Report;
     expect(both.rules.map((rule) => rule.engine).toSorted()).toEqual([
       "sg",
       "vale",

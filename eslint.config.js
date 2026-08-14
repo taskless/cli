@@ -28,6 +28,11 @@ export default tseslint.config(
       // Zero-dependency CommonJS workflow scripts (covered by their own
       // node:test suite); the app's TS/ESM-oriented rules don't apply.
       ".github/scripts/",
+      // The demo project. Its source is deliberately wrong — `example.cjs`
+      // calls `eval` so a rule has something to find — and its fixtures are
+      // prose written to be flagged. Linting it fails on content nobody wrote
+      // as source. `example-project.test.ts` is what keeps it honest.
+      "example/",
     ],
   },
   eslint.configs.recommended,
