@@ -42,6 +42,9 @@ const testLayerResultSchema = layerResultSchema.extend({
 });
 
 export const verifyOutputSchema = z.object({
+  engine: z
+    .literal("sg")
+    .describe("The engine that owns this rule, decided by where its file lives"),
   success: z.boolean().describe("True if all layers passed"),
   ruleId: z.string(),
   schema: layerResultSchema.describe("Layer 1: Zod schema validation"),
@@ -49,6 +52,39 @@ export const verifyOutputSchema = z.object({
     "Layer 2: Taskless requirement checks"
   ),
   tests: testLayerResultSchema.describe("Layer 3: sg test execution"),
+});
+
+/**
+ * Vale verification output.
+ *
+ * Deliberately not squeezed into the ast-grep shape. `sg` verification is three
+ * layers over a rule file and its test cases; Vale verification is one question
+ * asked of two fixture buckets — did every `fail/` document fire, did every
+ * `pass/` document stay quiet. Mapping the second onto `schema`/`requirements`/
+ * `tests` would invent two empty layers and lose the fixture coverage, which is
+ * the part that catches a rule that was never really verified.
+ *
+ * `engine` is the discriminant. A consumer branches on it before reading
+ * anything else, and adding an engine cannot silently change the meaning of a
+ * field another engine already emits.
+ */
+export const valeVerifyOutputSchema = z.object({
+  engine: z.literal("vale"),
+  success: z
+    .boolean()
+    .describe("True only when both buckets are populated and both behaved"),
+  ruleId: z.string(),
+  fixtures: z
+    .enum(["both", "pass-only", "fail-only", "none"])
+    .describe(
+      "Which fixture buckets held documents. Only 'both' can succeed: one bucket alone is half a claim"
+    ),
+  missingFailures: z
+    .array(z.string())
+    .describe("fail/ fixtures the rule should have flagged and did not"),
+  unexpectedFindings: z
+    .array(z.string())
+    .describe("pass/ fixtures the rule flagged and should not have"),
 });
 
 export const verifyErrorSchema = z.object({

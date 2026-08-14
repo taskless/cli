@@ -27,10 +27,12 @@ error — the rule runs, the check passes, and nothing is ever reported.
 | 2 | The scope | a section in `.taskless/vale/.vale.ini` enabling `rules.<id>`|
 | 3 | Fixtures  | `.taskless/vale/rule-tests/<id>/pass/` and `.../fail/`      |
 
-Nothing checks that you wrote all three. "Required" here means required
-to have a working rule, not required by a command that will stop you.
+`verify-rule` checks all three, and refuses a rule that has only one
+fixture bucket — a rule with no `fail/` was never shown to fire, and one
+with no `pass/` was never shown to stay quiet. Either alone is half a
+claim, so neither passes.
 
-**Three names must agree**, and nothing reports it when they don't:
+**Three names must agree:**
 
 ```
 .taskless/vale/rules/no-simply.yml       <- the filename
@@ -38,7 +40,14 @@ to have a working rule, not required by a command that will stop you.
 rules.no-simply = YES                    <- the .vale.ini assignment
 ```
 
-A mismatch is not an error. The rule simply never runs.
+`verify-rule` catches the first two: it builds its own config from the
+id you give it, so a misnamed rule file or fixture directory shows up as
+fixtures that never fired, or as no fixtures at all.
+
+**It cannot catch the third.** Verification runs in an isolated config
+of its own making, so a rule can verify perfectly and still be absent
+from the committed `.vale.ini` that `check` reads — verified, and never
+run. That assignment is the one thing you have to get right by looking.
 
 ## Steps
 
@@ -268,11 +277,10 @@ A mismatch is not an error. The rule simply never runs.
    diagnostic as a notice — if you see it, the assignment is in the
    wrong place, not the rule.
 
-5. **Write the fixtures.** Two directories, both flat. Step 6 points
-   `check` at one bucket at a time and lints everything beneath it, so a
-   fixture in a nested subdirectory still gets linted — its findings just
-   arrive mixed into whichever bucket you were testing, where they prove
-   nothing. Keep both buckets one level deep:
+5. **Write the fixtures.** Two directories, both flat. Vale lints the
+   rule's whole tree, so a document in a nested subdirectory would be
+   linted but never checked against either bucket — `verify-rule` rejects
+   one by name rather than skipping it. Keep both buckets one level deep:
 
    ```
    .taskless/vale/rule-tests/<id>/pass/ok.md     # rule must stay quiet
@@ -301,30 +309,47 @@ A mismatch is not an error. The rule simply never runs.
 
    That is the half of the fixture set that has to work for you.
 
-6. **Check that it fires, and that it doesn't.** Run each bucket, from
-   the project root — the paths below are relative to it:
+6. **Verify it.** One command, run from the project root:
+
+   ```
+   npx @taskless/cli rule verify <id> --json
+   ```
+
+   It runs your rule against both buckets in an isolated config — only
+   your rule enabled, no bundled styles — and answers the question the
+   fixtures were written to ask:
+
+   ```json
+   {"engine":"vale","success":true,"ruleId":"no-simply",
+    "fixtures":"both","missingFailures":[],"unexpectedFindings":[]}
+   ```
+
+   - `success: true` and `fixtures: "both"` is the only passing shape.
+   - `fixtures` other than `"both"` fails without running Vale: a rule
+     with one bucket has proved half of what it needs to.
+   - `missingFailures` names `fail/` documents that were not flagged.
+   - `unexpectedFindings` names `pass/` documents that were.
+
+   Exit code is 0 on success and 1 on any failure, so this one *is* safe
+   to script.
+
+   If you would rather see the raw findings — the message text, the line
+   numbers — run `check` against a bucket instead:
 
    ```
    npx @taskless/cli check .taskless/vale/rule-tests/<id>/fail --json
-   npx @taskless/cli check .taskless/vale/rule-tests/<id>/pass --json
    ```
 
-   **Read `results`, not `success` and not the exit code.** `check` lints
-   the path you gave it against the whole config — it is not scoped to
-   the rule you are testing — so what you are looking for is entries in
-   `results` whose `ruleId` is yours:
+   Read `results` there, not `success` and not the exit code. `check`
+   lints the path against the whole config rather than your rule alone,
+   `success` says the run worked rather than that the fixture behaved,
+   and the exit code follows severity — a `level: error` rule exits 1 on
+   `fail/` and a `warning` rule exits 0, both correct. `verify` is the
+   command that answers pass-or-fail; `check` is the one that shows you
+   the finding.
 
-   - `fail/` → at least one `results` entry with `"ruleId": "<id>"`.
-   - `pass/` → no `results` entry with `"ruleId": "<id>"`.
-
-   `success` is about whether the run worked, not whether your fixture
-   behaved: a clean `fail/` run reports `"success": true` alongside the
-   findings you wanted. The exit code follows severity, so a `level:
-   error` rule exits 1 on `fail/` and a `level: warning` rule exits 0 —
-   both correct. Neither field answers the question you are asking.
-
-   If `fail/` reports nothing, work down this list before touching the
-   pattern — the cause is usually further up:
+   If `fail/` documents show up in `missingFailures`, work down this list
+   before touching the pattern — the cause is usually further up:
    - Is the assignment inside a section?
    - Does the section's glob match the fixture's extension?
    - Is the rule's `level` at or above `MinAlertLevel`?
@@ -332,20 +357,20 @@ A mismatch is not an error. The rule simply never runs.
      directory all agree?
    - Only then: does the pattern actually match the text?
 
-   If `pass/` reports your rule, the pattern is too broad. Look for a
-   missing word boundary, an unescaped metacharacter, or a swap key that
-   also matches the form you meant to allow.
+   Anything in `unexpectedFindings` means the pattern is too broad. Look
+   for a missing word boundary, an unescaped metacharacter, or a swap key
+   that also matches the form you meant to allow.
 
 7. **Report.** Show the three paths you wrote, a one-line summary of
    what the rule flags, and which files the section scopes it to — the
    scope is a decision the user should see, not one buried in a config.
    Note that a whole-project `taskless check` will **not** report your
    fixtures: `.taskless/` is excluded from the project walk, by design.
-   The fixtures are exercised by pointing `check` at them, as in step 6.
+   `verify-rule` is what exercises them.
 
 ## Worked rules
 
-Eight rules that work, each paired with the near-miss that fails. Every
+Nine rules that work, each paired with the near-miss that fails. Every
 one was run against the bundled Vale; the "what goes wrong" lines are
 observed behavior, not warnings in principle. Find the entry closest to
 your intent and start there.
