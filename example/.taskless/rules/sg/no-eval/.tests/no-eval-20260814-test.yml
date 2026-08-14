@@ -1,0 +1,7 @@
+id: no-eval
+valid:
+  - "JSON.parse(raw)"
+  - "const evaluate = () => 1"
+invalid:
+  - "eval(raw)"
+  - 'eval("(" + raw + ")")'
