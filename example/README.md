@@ -1,24 +1,24 @@
 # A Taskless install, as it actually looks
 
-This is a small, real project with Taskless rules in it. Nothing here is a
-fixture assembled by a test — it is the layout you get, laid out the way you
-would find it, so you can read it before installing anything.
+This is a small project with Taskless rules in it. Everything here is real: the
+same layout you get after installing, so you can read it before you commit to
+anything.
 
 Two rules, one per engine.
 
 ## The files
 
-| Path           | What it is                                                     |
-| -------------- | -------------------------------------------------------------- |
-| `example.cjs`  | A CommonJS module that calls `eval` on file contents            |
-| `example.html` | A page with a Title Case heading and some hedging prose         |
-| `.taskless/`   | The rules, and nothing else — no build output, no cached state  |
+| Path           | What it is                                              |
+| -------------- | ------------------------------------------------------- |
+| `example.cjs`  | A CommonJS module that calls `eval` on file contents     |
+| `example.html` | A page with a Title Case heading and some hedging prose  |
+| `.taskless/`   | The rules. No build output, no cached state.             |
 
 ## What a rule looks like
 
-A rule is **one directory**, and it holds everything that defines it. Adding a
-rule means adding a directory; removing one means removing that directory. No
-shared file is edited either way.
+A rule is **one directory**. It holds everything that defines it. Adding a rule
+means adding a directory. Removing one means removing that directory. No shared
+file gets edited either way.
 
 ```
 .taskless/rules/
@@ -32,22 +32,21 @@ shared file is edited either way.
         .tests/pass/direct.md             prose it must leave alone
 ```
 
-Two things in there are worth explaining, because neither is obvious.
+Two details in there need explaining.
 
 **`.tests/` is dot-prefixed on purpose.** ast-grep discovers rules by walking
 the rules tree, and it reads every `.yml` it finds as a rule. A plain `tests/`
-directory would have it try to parse the test files as rules and fail the whole
-scan. A dot-directory is skipped by that walk while the test runner still finds
-it.
+directory would make it parse the test files as rules and fail the whole scan.
+A dot-directory gets skipped by that walk. The test runner still finds it.
 
-**Only Vale has a per-rule `.vale.ini`.** Vale cannot express "which files does
-this apply to" inside the rule file — it rejects unknown keys — so scope needs
-somewhere else to live. ast-grep puts its equivalent (`files`, `ignores`)
-inside the rule, so an `sg` rule needs no second file and does not get one.
+**Only Vale has a per-rule `.vale.ini`.** Vale can't express "which files does
+this apply to" inside the rule file, because it rejects unknown keys. Scope
+needs somewhere else to live. ast-grep puts its equivalent (`files`, `ignores`)
+inside the rule, so an `sg` rule gets no second file.
 
-You will not find a project-wide `.vale.ini` or `sgconfig.yml` here. Both are
-assembled from the per-rule configs when a check runs, and both are gitignored
-— they are build output, not something to edit.
+You won't find a project-wide `.vale.ini` or `sgconfig.yml` here. Both get
+assembled from the per-rule configs when a check runs, and both are gitignored.
+They're build output.
 
 ## What `check` reports
 
@@ -55,11 +54,11 @@ assembled from the per-rule configs when a check runs, and both are gitignored
 $ npx @taskless/cli check
 
   example.cjs:7:10
-  error[no-eval] Avoid eval — it executes whatever string it is handed.
+  error[no-eval] Avoid eval. It executes whatever string it's handed.
   > eval("(" + raw + ")")
 
   example.html:7:11
-  warning[no-simply] Avoid 'simply' — it tells the reader the work was easy, not what to do.
+  warning[no-simply] Avoid 'simply'. It tells the reader the work was easy.
   > simply
 
 2 issues (1 error, 1 warning) across 2 files
@@ -77,15 +76,13 @@ $ npx @taskless/cli verify     # are these rules well-formed?
 $ npx @taskless/cli test       # do they fire where they should, and only there?
 ```
 
-Both take a path — a rule directory, an engine directory, or nothing at all for
-everything. `test` runs `verify` first and stops if it fails, so a broken rule
-tells you what is broken rather than complaining that its fixtures are
-incomplete.
+Both take a path: a rule directory, an engine directory, or nothing at all for
+everything. `test` runs `verify` first and stops if it fails. That way a broken
+rule tells you what's broken.
 
 ## This example is tested
 
 `packages/cli/test/example-project.test.ts` runs `check`, `verify`, and `test`
-against this directory and asserts on what comes back. A demo that has drifted
-from the layout it demonstrates is worse than no demo, so if the layout changes
-and this stops being true, the build fails rather than leaving something
-misleading in the repository.
+against this directory and asserts on what comes back. A demo that's drifted
+from the layout it demonstrates is worse than no demo. If the layout changes
+and this stops being true, the build fails.
