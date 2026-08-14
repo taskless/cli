@@ -1,5 +1,5 @@
 extends: existence
-message: "Avoid '%s' — it tells the reader the work was easy, not what to do."
+message: "Avoid '%s'. It tells the reader the work was easy."
 level: warning
 ignorecase: true
 tokens:
