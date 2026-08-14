@@ -168,6 +168,27 @@ async function pruneEmpty(directory: string, relativePath: string): Promise<void
 }
 
 /**
+ * Rewrite a matcher's assignments from the old check name to the new one.
+ *
+ * **This is the difference between a migrated rule that runs and one that is
+ * silently disabled.** A Vale check is named `<style>.<rule>`, and the style is
+ * whatever directory `StylesPath` points at. Under the old flat layout
+ * (`StylesPath = .`, rules loose in `vale/rules/`) the style was `rules`, so
+ * assignments read `rules.<id> = YES`. This layout makes each rule directory
+ * its own style, so the same rule is now `<id>.<id>`.
+ *
+ * Carrying the old name across would leave a config Vale parses happily,
+ * reports nothing for, and exits zero on — the rule verified, the check ran,
+ * and no finding ever appeared. Found by migrating a real project and noticing
+ * the Vale rule stopped firing while ast-grep kept working.
+ */
+function retargetCheckName(lines: string[], ruleId: string): string[] {
+  const escaped = ruleId.replaceAll(/[$()*+.?[\\\]^{|}]/g, String.raw`\$&`);
+  const assignment = new RegExp(String.raw`^(\s*)rules\.` + escaped + String.raw`(\s*=)`);
+  return lines.map((line) => line.replace(assignment, `$1${ruleId}.${ruleId}$2`));
+}
+
+/**
  * Split the committed `vale/.vale.ini` into per-rule configs.
  *
  * Each matcher carrying a `tskl) rule = <id>` breadcrumb belongs to that rule.
@@ -207,12 +228,15 @@ async function splitValeConfig(directory: string): Promise<string[]> {
   const byRule = new Map<string, string[]>();
   const orphans: string[] = [];
   for (const block of blocks) {
-    const body = block.lines.join("\n").trimEnd();
-    if (body === "") continue;
     if (block.ruleId === undefined) {
-      orphans.push(body);
+      const body = block.lines.join("\n").trimEnd();
+      if (body !== "") orphans.push(body);
       continue;
     }
+    const body = retargetCheckName(block.lines, block.ruleId)
+      .join("\n")
+      .trimEnd();
+    if (body === "") continue;
     byRule.set(block.ruleId, [...(byRule.get(block.ruleId) ?? []), body]);
   }
 
