@@ -2,18 +2,18 @@
 
 ### Requirement: Rules are validated and tested by path, not by id
 
-The CLI SHALL provide `verify <path>` and `test <path>`. Both SHALL accept a path to a rule's canonical location or to any directory above it, and SHALL resolve the owning engine from the path's position under `.taskless/<engine>/rules/` rather than by parsing the file.
+The CLI SHALL provide `verify <path>` and `test <path>`. Both SHALL accept a path to a rule's canonical location or to any directory above it, and SHALL resolve the owning engine from the path's position under `.taskless/rules/<engine>/` rather than by parsing the file.
 
 An id does not name one thing. The same id can exist under `sg` and under `vale`, so an id-addressed command has to either guess or report an ambiguity; a path has neither problem. Resolving the engine from position — never from content — is the same rule dispatch follows, so a rule cannot be validated by one engine and executed by another.
 
 #### Scenario: A rule path resolves to its engine
 
-- **WHEN** `verify .taskless/vale/rules/no-simply` is run
+- **WHEN** `verify .taskless/rules/vale/no-simply` is run
 - **THEN** the CLI SHALL validate it as a Vale rule
 
 #### Scenario: The same id under two engines is not ambiguous
 
-- **WHEN** `no-simply` exists under both `sg/rules/` and `vale/rules/`
+- **WHEN** `no-simply` exists under both `rules/sg/` and `rules/vale/`
 - **THEN** each is addressed by its own path
 - **AND** neither command SHALL require the user to disambiguate
 
@@ -36,11 +36,11 @@ The two commands split because they have different preconditions. An agent part-
 
 Per engine, `verify` SHALL check:
 
-| Engine    | Components                                                                 |
-|-----------|----------------------------------------------------------------------------|
-| `sg`      | the rule file against the ast-grep schema and the Taskless required fields |
-| `vale`    | the style file against Vale's own validation, and the rule's `.vale.ini`   |
-| `runtime` | the rule directory holds `check.ts` and at least one capture rule          |
+| Engine    | Components                                                                     |
+|-----------|--------------------------------------------------------------------------------|
+| `sg`      | `<id>.yml` against the ast-grep schema and the Taskless required fields        |
+| `vale`    | `<id>.yml` against Vale's own validation, and the rule's `.vale.ini`           |
+| `runtime` | `check.ts` present, and at least one capture rule under `captures/`            |
 
 #### Scenario: A rule with no fixtures still verifies
 
