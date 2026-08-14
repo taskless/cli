@@ -57,7 +57,7 @@ describe("taskless onboard", () => {
     expect(stdout).toContain("## Goal");
 
     const manifest = await readJsonManifest(cwd);
-    expect(manifest.version).toBe(4);
+    expect(manifest.version).toBe(5);
     // init/onboard alone should not record onboarded
     const install = manifest.install as { onboarded?: boolean } | undefined;
     expect(install?.onboarded).toBeUndefined();

@@ -257,12 +257,10 @@ describe("check dispatches by directory end to end", () => {
     await rm(temporaryDirectory, { recursive: true, force: true });
   });
 
-  it("runs a rule under sg/rules", async () => {
-    await writeFile(
-      join(tasklessDirectory, "sg", "rules", "no-eval.yml"),
-      NO_EVAL_RULE,
-      "utf8"
-    );
+  it("runs a rule from its rule directory", async () => {
+    const rule = ruleDirectory(temporaryDirectory, "sg", "no-eval");
+    await mkdir(rule, { recursive: true });
+    await writeFile(join(rule, "no-eval.yml"), NO_EVAL_RULE, "utf8");
 
     const { stdout, exitCode } = await runCli([
       "check",
@@ -273,47 +271,6 @@ describe("check dispatches by directory end to end", () => {
     const output = parseJson(stdout);
     expect(exitCode).toBe(1); // error severity
     expect(output.results.map((r) => r.ruleId)).toEqual(["no-eval"]);
-  });
-
-  it("runs a rule that a producer wrote to the legacy rules/ path", async () => {
-    await mkdir(join(tasklessDirectory, "rules"), { recursive: true });
-    await writeFile(
-      join(tasklessDirectory, "rules", "no-eval.yml"),
-      NO_EVAL_RULE,
-      "utf8"
-    );
-
-    const { stdout } = await runCli([
-      "check",
-      "-d",
-      temporaryDirectory,
-      "--json",
-    ]);
-    expect(parseJson(stdout).results.map((r) => r.ruleId)).toEqual(["no-eval"]);
-  });
-
-  it("merges both layouts without reporting the same match twice", async () => {
-    await writeFile(
-      join(tasklessDirectory, "sg", "rules", "no-eval.yml"),
-      NO_EVAL_RULE,
-      "utf8"
-    );
-    await mkdir(join(tasklessDirectory, "rules"), { recursive: true });
-    await writeFile(
-      join(tasklessDirectory, "rules", "no-eval.yml"),
-      NO_EVAL_RULE,
-      "utf8"
-    );
-
-    const { stdout } = await runCli([
-      "check",
-      "-d",
-      temporaryDirectory,
-      "--json",
-    ]);
-    const results = parseJson(stdout).results;
-    expect(results).toHaveLength(1);
-    expect(results[0]?.ruleId).toBe("no-eval");
   });
 
   it("triggers the migration even though no sgconfig is generated first", async () => {
@@ -339,7 +296,16 @@ describe("check dispatches by directory end to end", () => {
         "no-eval",
       ]);
       expect(
-        await exists(join(legacy, ".taskless", "sg", "rules", "no-eval.yml"))
+        await exists(
+          join(
+            legacy,
+            ".taskless",
+            "rules",
+            "sg",
+            "no-eval",
+            "no-eval.yml"
+          )
+        )
       ).toBe(true);
     } finally {
       await rm(legacy, { recursive: true, force: true });
@@ -375,7 +341,7 @@ describe("service-delivered rule ingest", () => {
     );
 
     expect(rulePath).toBe(
-      join(tasklessDirectory, "sg", "rules", "no-eval.yml")
+      join(tasklessDirectory, "rules", "sg", "no-eval", "no-eval.yml")
     );
     expect(testPath).toBe(
       join(tasklessDirectory, "sg", "rule-tests", "no-eval-20260730-test.yml")
@@ -425,7 +391,7 @@ describe("service-delivered rule ingest", () => {
 
     // Nothing under any engine directory.
     for (const engine of ["sg", "vale", "runtime"]) {
-      const entries = await readdir(join(tasklessDirectory, engine, "rules"));
+      const entries = await readdir(join(tasklessDirectory, "rules", engine));
       expect(entries.filter((entry) => entry !== ".gitkeep")).toEqual([]);
     }
   });
