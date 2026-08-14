@@ -74,6 +74,11 @@ A mismatch is not an error. The rule simply never runs.
    https://docs.vale.sh/styles before inventing something — Vale has no
    facility for a rule that does not extend one of these eleven.
 
+   **Nine of them have a worked rule at the end of this recipe**, each
+   with the near-miss that fails and why. Read the one closest to your
+   intent before writing anything — the mistakes documented there are
+   observed, and most of them fail silently.
+
 2. **Write the style file** to `.taskless/vale/rules/<id>.yml`, where
    `<id>` is kebab-case and matches the filename. Every rule carries:
 
@@ -337,6 +342,190 @@ A mismatch is not an error. The rule simply never runs.
    Note that a whole-project `taskless check` will **not** report your
    fixtures: `.taskless/` is excluded from the project walk, by design.
    The fixtures are exercised by pointing `check` at them, as in step 6.
+
+## Worked rules
+
+Eight rules that work, each paired with the near-miss that fails. Every
+one was run against the bundled Vale; the "what goes wrong" lines are
+observed behavior, not warnings in principle. Find the entry closest to
+your intent and start there.
+
+### 1. Ban a word or phrase — `existence`
+
+> "Our docs shouldn't hedge."
+
+```yaml
+extends: existence
+message: "Avoid hedging: '%%s'"
+level: warning
+ignorecase: true
+tokens:
+  - we think
+  - it seems
+  - sort of
+```
+
+**Goes wrong:** dropping `ignorecase: true` when you meant any casing —
+`We think` at the start of a sentence then sails through. And a phrase
+with punctuation is a *pattern*: `maybe?` means "mayb" plus an optional
+"e", so it matches `mayb`. Escape it: `maybe\?`.
+
+### 2. Prefer one term over another — `substitution`
+
+> "Say 'sign in', not 'login', when it's a verb."
+
+```yaml
+extends: substitution
+message: "Use '%%s' instead of '%%s'"
+level: warning
+ignorecase: true
+swap:
+  'login (?:to|into)': sign in to
+  'to login': to sign in
+```
+
+**Goes wrong:** one `%%s` instead of two. Measured, `"Use sign in not
+%%s"` against `login to` renders **"Use sign in not sign in to"** — the
+replacement, twice. The rule fires, both fixtures pass, and only a human
+reading the message sees it. Two `%%s`, always, in that order.
+
+### 3. Enforce a product's spelling — `substitution`, not `capitalization`
+
+> "It's 'GitHub', never 'Github' or 'github'."
+
+```yaml
+extends: substitution
+message: "Use '%%s' instead of '%%s'"
+level: error
+ignorecase: true
+swap:
+  github: GitHub
+```
+
+**Goes wrong:** reaching for `capitalization` because the complaint is
+about capitals. Measured, `match: GitHub` flags whole sentences —
+`'We host on Github and it is fine. should be GitHub'` — because that
+check tests a *scope*, not a word. Note also that `ignorecase: true` is
+safe here: Vale skips text already equal to the replacement, so the
+correct `GitHub` is not flagged.
+
+### 4. Sentence-case headings — `capitalization`
+
+> "Headings are sentence case; our product names keep their capitals."
+
+```yaml
+extends: capitalization
+message: "'%%s' should be in sentence case"
+level: warning
+scope: heading
+match: $sentence
+exceptions:
+  - Taskless
+  - API
+  - Kubernetes
+```
+
+**Goes wrong:** a short `exceptions` list. `$sentence` lowercases
+everything after the first word, proper nouns included, so every product
+name and acronym in the docs must be listed or correct headings get
+flagged. Collect them from the docs first; expect to add more.
+
+### 5. Restrict a rule to link text — any check, plus `scope`
+
+> "'click here' is useless link text."
+
+```yaml
+extends: existence
+message: "Link text '%%s' says nothing — name the destination"
+level: warning
+scope: link
+ignorecase: true
+tokens:
+  - click here
+  - read more
+```
+
+**Goes wrong:** omitting `scope: link`. Measured, the token then fires
+on `[click here](…)` **and** on "click here to focus the search box" in
+ordinary prose, which is a false positive on a sentence that is fine.
+Whenever a rule is about a *place* in the document, the `pass/` fixture
+must contain the same phrase outside that place — otherwise nothing
+proves the scope works.
+
+### 6. Cap how often something appears — `occurrence`
+
+> "At most one exclamation mark per paragraph."
+
+```yaml
+extends: occurrence
+message: "Too many exclamation marks"
+level: warning
+scope: paragraph
+token: "!"
+max: 1
+```
+
+**Goes wrong:** forgetting `scope`. The count is per scope, so with no
+scope you are capping the whole document rather than the paragraph.
+Note `token` here is singular — this check takes one, not a `tokens` list.
+
+### 7. Catch a doubled word — `repetition`
+
+> "'the the' keeps slipping through review."
+
+```yaml
+extends: repetition
+message: "'%%s' is repeated"
+level: warning
+alpha: true
+tokens:
+  - '[^\s]+'
+```
+
+**Goes wrong:** leaving the pattern unquoted. Measured, an unquoted
+`[^\s]+` in YAML silently matches nothing — zero findings, no error, no
+diagnostic. Quote any pattern containing a backslash. This is the
+failure mode this recipe warns about most, arriving through YAML rather
+than through Vale.
+
+### 8. One spelling or the other, consistently — `consistency`
+
+> "Pick -ize or -ise and stick to it."
+
+```yaml
+extends: consistency
+message: "Use '%%s' consistently"
+level: warning
+nonword: true
+either:
+  organize: organise
+```
+
+**Goes wrong:** expecting it to pick a winner. It flags the *second*
+form once both appear in a document — it enforces internal consistency,
+not house style. If you want one specific spelling, that is a
+`substitution`.
+
+### 9. Require a definition — `conditional`
+
+> "An acronym must be spelled out before it's used."
+
+```yaml
+extends: conditional
+message: "'%%s' has no definition"
+level: warning
+scope: text
+ignorecase: false
+first: '\b([A-Z]{3,5})\b'
+second: '(?:\b[A-Z][a-z]+ )+\(([A-Z]{3,5})\)'
+```
+
+`first` is what must be justified; `second` is what justifies it.
+Measured: `Application Programming Interface (API)` licenses every later
+`API`, while an undefined `XYZ` is flagged.
+
+**Goes wrong:** swapping the two, which inverts the rule into "flag the
+definition when the acronym is missing".
 
 ## Important Notes
 
