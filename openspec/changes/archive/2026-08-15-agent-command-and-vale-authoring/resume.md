@@ -180,6 +180,37 @@ Also settled: pre-1.0, every backwards-incompatible change here is a **MINOR** b
 never MAJOR. The telemetry event stays `cli_help` (agent-call volume stays visible under
 the existing event).
 
+## PR #103 is stacked above this one
+
+`openspec/self-contained-rules` (branch still named `openspec/self-contained-vale-rules`),
+based on this branch. **Spec-only and green** — proposal, design, four spec deltas, tasks.
+`openspec validate self-contained-rules --strict` passes.
+
+It unifies the rule layout across all three engines: one directory per rule at
+`.taskless/rules/<engine>/<id>/` holding the rule, any config that engine needs, and its
+tests in `.tests/`. Plus path-addressed `verify`/`test` replacing `rule verify <id>`, and
+an `example/` project.
+
+**Implementation is approved and not started.** Follow `self-contained-rules/tasks.md`.
+One caveat that is easy to miss: task 1.5 deletes the legacy read paths, and it exists
+because `.taskless/rules/` is simultaneously the new root and the old
+`LEGACY_RULES_DIRECTORY`. That was found by starting the refactor, not by writing the
+proposal — see design D9. The partial `engines.ts` rewrite was reverted rather than
+pushed, so the PR stays spec-only; regenerating it is mechanical from D1/D2 and the
+task list, and worth writing *against* D9 rather than patching D9 in afterwards.
+
+Measured facts the implementation depends on, so nobody re-derives them:
+
+- ast-grep `ruleDirs` **recurses**; `tests/` and `__tests__/` inside a rule directory
+  hard-fail the scan; **`.tests/` is skipped**, and `sg test` still reads it via `testDir`.
+- Vale resolves `<id>/<id>.yml` as check `<id>.<id>` only under a `StylesPath` naming its
+  parent — nothing at all under `StylesPath = .`.
+- Vale rejects unknown keys in a style (`E201`), so scope cannot live in the style file.
+- A `.yml` sidecar in a style directory is loaded as a rule and fails; `.vale.ini` and
+  `.tests/` in the same place are ignored.
+- Migrations run before any read (`ensureTasklessDirectory`), which is why the legacy
+  paths are unreachable rather than merely stale.
+
 ## Outside this PR
 
 - **#99** — migrate subprocess handling to execa (inventory and sequencing already written up)
