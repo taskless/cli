@@ -30,7 +30,7 @@ routing flow reads `detect` to decide where a new rule should live.
      "languages": ["typescript", "javascript"],
      "ruleStyles": [
        {
-         "source": ".taskless/sg/rules",
+         "source": ".taskless/rules/sg",
          "description": "ast-grep rules with YAML metadata sidecars"
        }
      ]

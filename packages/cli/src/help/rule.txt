@@ -11,7 +11,7 @@ action you want.
 | Create a rule       | `taskless help rule create`                  |
 | Improve a rule      | `taskless help rule improve`                 |
 | Delete a rule       | `taskless help rule delete`                  |
-| Verify a rule       | `taskless help rule verify` (agent-internal) |
+| Verify a rule       | `taskless help verify-rule` (agent-internal) |
 | Read rule metadata  | `taskless help rule meta`   (agent-internal) |
 
 For local-only flows on create/improve, append `--anonymous` to the
