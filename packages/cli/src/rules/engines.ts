@@ -1,13 +1,12 @@
 import { readdir } from "node:fs/promises";
 import { join } from "node:path";
 
-import type { CheckResult } from "../types/check";
 import { CLIError } from "../util/cli-error";
 
 /**
- * Engines this CLI knows. The directory name under `.taskless/` **is** the
- * engine: dispatch reads the path and never parses a rule file to decide who
- * owns it.
+ * Engines this CLI knows. The directory name under `.taskless/rules/` **is**
+ * the engine: dispatch reads the path and never parses a rule file to decide
+ * who owns it.
  */
 export const ENGINES = ["sg", "vale", "runtime"] as const;
 
@@ -22,86 +21,181 @@ export type EngineExecutor =
 
 export interface EngineLayout {
   engine: EngineName;
-  /** Rules directory, relative to `.taskless/`. */
-  rulesDirectory: string;
-  /** Rule-tests directory, relative to `.taskless/`. */
-  ruleTestsDirectory: string;
-  /** The engine's native config, relative to `.taskless/`. */
-  configFile: string | undefined;
+  /**
+   * The file inside a rule directory that *is* the rule, as a function of the
+   * rule id. `sg` and `vale` name it after the rule; `runtime` always calls it
+   * `check.ts`, because the rule is a program rather than a document.
+   */
+  ruleFile: (ruleId: string) => string;
+  /**
+   * The engine's per-rule config file, or `undefined` where the engine has
+   * nothing to put in one.
+   *
+   * Only Vale has one, and not for symmetry: Vale cannot express a rule's scope
+   * inside the style file — measured, it rejects unknown keys with `E201` — so
+   * scope needs somewhere else to live. ast-grep carries `files`/`ignores`
+   * inside the rule itself, so an `sg` per-rule config would be a file every
+   * author creates, no author fills, and every reader learns to ignore.
+   */
+  ruleConfigFile: string | undefined;
+  /** Subdirectory holding ast-grep capture rules, for engines that use them. */
+  capturesDirectory: string | undefined;
   executor: EngineExecutor;
 }
+
+/**
+ * Everything defining a rule lives in one directory,
+ * `.taskless/rules/<engine>/<id>/`, the same shape for every engine. A rule is
+ * therefore one path — which is what lets `verify` and `test` take a path
+ * instead of an id, and what makes deleting a rule an `rm -rf` of one thing.
+ */
+export const RULES_DIRECTORY = "rules";
+
+/**
+ * A rule's tests, relative to its rule directory. **The dot is load-bearing.**
+ *
+ * ast-grep's `ruleDirs` recurses and parses every `.yml` beneath it as a rule,
+ * so a plain `tests/` directory inside a rule directory fails the entire scan
+ * with `Fail to parse yaml as RuleConfig: missing field 'language'`. Measured
+ * against the pinned ast-grep 0.41.0: `tests/` and `__tests__/` both hard-fail,
+ * a dot-directory is skipped by rule discovery, and `sg test` still reads it
+ * when `testDir` names it.
+ *
+ * That is undocumented behavior, and three things make depending on it
+ * acceptable. The failure is loud — a parse error naming the file, never a test
+ * silently reinterpreted as a rule. `engine-layout.test.ts` pins it, so it is
+ * checked on every run rather than remembered. And the binary is pinned to an
+ * exact version, so it cannot change without a deliberate bump, which is
+ * exactly where that test fires.
+ *
+ * If it ever does break, the recorded fallback is to materialize a rules-only
+ * tree for ast-grep and point `ruleDirs` at that (design D2).
+ */
+export const RULE_TESTS_DIRECTORY = ".tests";
 
 export const ENGINE_LAYOUTS = {
   sg: {
     engine: "sg",
-    rulesDirectory: "sg/rules",
-    ruleTestsDirectory: "sg/rule-tests",
-    configFile: "sg/sgconfig.yml",
+    ruleFile: (ruleId: string) => `${ruleId}.yml`,
+    ruleConfigFile: undefined,
+    capturesDirectory: undefined,
     executor: "ast-grep",
   },
   vale: {
     engine: "vale",
-    rulesDirectory: "vale/rules",
-    ruleTestsDirectory: "vale/rule-tests",
-    configFile: "vale/.vale.ini",
+    ruleFile: (ruleId: string) => `${ruleId}.yml`,
+    ruleConfigFile: ".vale.ini",
+    capturesDirectory: undefined,
     executor: "vale-runner",
   },
   runtime: {
     engine: "runtime",
-    rulesDirectory: "runtime/rules",
-    ruleTestsDirectory: "runtime/rule-tests",
-    configFile: undefined,
+    ruleFile: () => "check.ts",
+    ruleConfigFile: undefined,
+    // `captures/` rather than `matchers/`: "matcher" denotes a Vale `[<glob>]`
+    // config section elsewhere in this tree, and one word for two unrelated
+    // concepts is a cost paid at every future reading.
+    capturesDirectory: "captures",
     executor: "runtime-harness",
   },
 } satisfies Record<EngineName, EngineLayout>;
 
-/**
- * The committed ast-grep config, relative to the project root. It is authored
- * and persisted, never generated at check time: its `ruleDirs`/`testConfigs`
- * are relative to the config file, so it needs no rewriting to stay valid.
- *
- * Declared here beside the layout it derives from. `engines.ts` imports nothing
- * of ours but the error type, so both the filesystem and rules layers can reach
- * this constant without either pulling in the other's machinery.
- */
-export const COMMITTED_SG_CONFIG = `.taskless/${ENGINE_LAYOUTS.sg.configFile}`;
-
-/**
- * The pre-`0004` ast-grep locations. Still dispatched as ast-grep so an
- * unmigrated checkout — or a producer that keeps naming the old path — runs
- * rather than being silently ignored.
- */
-export const LEGACY_RULES_DIRECTORY = "rules";
-export const LEGACY_RULE_TESTS_DIRECTORY = "rule-tests";
-
-export function isKnownEngine(value: string): value is EngineName {
-  return (ENGINES as readonly string[]).includes(value);
+/** `.taskless/rules`, the root every rule lives under. */
+export function rulesRoot(cwd: string): string {
+  return join(cwd, ".taskless", RULES_DIRECTORY);
 }
 
-/** One engine directory's disposition for this run. */
+/** `.taskless/rules/<engine>`, the directory holding that engine's rules. */
+export function engineRulesDirectory(cwd: string, engine: EngineName): string {
+  return join(rulesRoot(cwd), engine);
+}
+
+/** `.taskless/rules/<engine>/<id>` — the one path that means "this rule". */
+export function ruleDirectory(
+  cwd: string,
+  engine: EngineName,
+  ruleId: string
+): string {
+  return join(engineRulesDirectory(cwd, engine), ruleId);
+}
+
+/** The file inside a rule directory that is the rule itself. */
+export function ruleFilePath(
+  cwd: string,
+  engine: EngineName,
+  ruleId: string
+): string {
+  return join(
+    ruleDirectory(cwd, engine, ruleId),
+    ENGINE_LAYOUTS[engine].ruleFile(ruleId)
+  );
+}
+
+/** A rule's tests directory. */
+export function ruleTestsDirectory(
+  cwd: string,
+  engine: EngineName,
+  ruleId: string
+): string {
+  return join(ruleDirectory(cwd, engine, ruleId), RULE_TESTS_DIRECTORY);
+}
+
+/** A rule's own engine config, for the one engine that has one. */
+export function ruleConfigPath(
+  cwd: string,
+  engine: EngineName,
+  ruleId: string
+): string | undefined {
+  const configFile = ENGINE_LAYOUTS[engine].ruleConfigFile;
+  if (configFile === undefined) return undefined;
+  return join(ruleDirectory(cwd, engine, ruleId), configFile);
+}
+
+/** A runtime rule's capture-rule directory. */
+export function ruleCapturesDirectory(
+  cwd: string,
+  engine: EngineName,
+  ruleId: string
+): string | undefined {
+  const capturesDirectory = ENGINE_LAYOUTS[engine].capturesDirectory;
+  if (capturesDirectory === undefined) return undefined;
+  return join(ruleDirectory(cwd, engine, ruleId), capturesDirectory);
+}
+
+/**
+ * The assembled engine configs, relative to the project root.
+ *
+ * Both are **generated per run and gitignored**. Vale accepts exactly one
+ * `--config` and ast-grep one `sgconfig.yml`, so per-rule configuration has to
+ * reach a single file before either tool can be invoked. Committing that file
+ * would recreate the shared, write-contended config this layout exists to
+ * remove, by a different route.
+ */
+export const ASSEMBLED_VALE_CONFIG = ".taskless/.vale.ini";
+export const ASSEMBLED_SG_CONFIG = ".taskless/.sgconfig.yml";
+
+/** One engine's disposition for this run. */
 export interface EngineDispatch {
   engine: EngineName;
-  /** Whether `.taskless/<engine>/` exists on disk. */
+  /** Whether `.taskless/rules/<engine>/` exists on disk. */
   present: boolean;
   executor: EngineExecutor;
 }
 
-/** Directory entries of `.taskless/`, or `[]` when it does not exist. */
-async function readTasklessEntries(cwd: string): Promise<Set<string>> {
+/** Directory names directly under `directory`, or `[]` when it is not there. */
+async function subdirectories(directory: string): Promise<string[]> {
   try {
-    const entries = await readdir(join(cwd, ".taskless"), {
-      withFileTypes: true,
-    });
-    return new Set(
-      entries.filter((entry) => entry.isDirectory()).map((entry) => entry.name)
-    );
+    const entries = await readdir(directory, { withFileTypes: true });
+    return entries
+      .filter((entry) => entry.isDirectory())
+      .map((entry) => entry.name);
   } catch {
-    return new Set();
+    return [];
   }
 }
 
 /**
- * Resolve which engine directories are present under `.taskless/`.
+ * Resolve which engine directories are present under `.taskless/rules/`.
  *
  * Only known engines are returned. A directory this CLI does not recognize is
  * ignored — never guessed at, never handed to another engine's parser — so a
@@ -111,7 +205,7 @@ async function readTasklessEntries(cwd: string): Promise<Set<string>> {
 export async function planEngineDispatch(
   cwd: string
 ): Promise<EngineDispatch[]> {
-  const directories = await readTasklessEntries(cwd);
+  const directories = new Set(await subdirectories(rulesRoot(cwd)));
   return ENGINES.map((engine) => ({
     engine,
     present: directories.has(engine),
@@ -119,112 +213,23 @@ export async function planEngineDispatch(
   }));
 }
 
-/** Rule ids (filename stems) of the `*.yml` files directly in `directory`. */
-async function listRuleIds(directory: string): Promise<string[]> {
-  try {
-    const entries = await readdir(directory);
-    return entries
-      .filter((entry) => entry.endsWith(".yml"))
-      .map((entry) => entry.slice(0, -".yml".length));
-  } catch {
-    return [];
-  }
-}
-
-/** A directory of ast-grep rule files, and where its tests live. */
-export interface AstGrepRuleSource {
-  /** Rules directory, relative to `.taskless/`. */
-  rulesDirectory: string;
-  /** Rule-tests directory, relative to `.taskless/`. */
-  ruleTestsDirectory: string;
-  /** Absolute path to the rules directory. */
-  absoluteRulesDirectory: string;
-  /** Rule ids found in the directory. */
-  ruleIds: string[];
-  /** Whether this is the pre-`0004` location. */
-  legacy: boolean;
-}
-
 /**
- * Every directory whose rules ast-grep should run: the `sg` engine directory
- * and, when it still holds rules, the legacy `.taskless/rules/`.
+ * Rule ids for one engine — the directory names under `.taskless/rules/<engine>`.
  *
- * A source with no rule files is omitted, so a scaffolded-but-empty `sg/rules/`
- * costs nothing. The `sg` source comes first; callers de-duplicate findings
- * ({@link dedupeFindings}) rather than dropping a source, since a rule id can
- * legitimately exist in only one of the two.
+ * A rule is a directory, so this lists directories rather than file stems. A
+ * stray *file* in an engine directory is not a rule and is skipped: the only
+ * thing that makes something a rule is being a directory in the right place.
+ *
+ * Sorted, because assembly order is a correctness constraint. Vale's matcher
+ * precedence is positional, so a config assembled in directory-iteration order
+ * would give a rule a different effective scope on different machines.
  */
-export async function discoverAstGrepRuleSources(
-  cwd: string
-): Promise<AstGrepRuleSource[]> {
-  const dispatch = await planEngineDispatch(cwd);
-  const sgPresent =
-    dispatch.find((entry) => entry.engine === "sg")?.present === true;
-
-  const candidates: Array<Omit<AstGrepRuleSource, "ruleIds">> = [];
-  if (sgPresent) {
-    const layout = ENGINE_LAYOUTS.sg;
-    candidates.push({
-      rulesDirectory: layout.rulesDirectory,
-      ruleTestsDirectory: layout.ruleTestsDirectory,
-      absoluteRulesDirectory: join(cwd, ".taskless", layout.rulesDirectory),
-      legacy: false,
-    });
-  }
-  candidates.push({
-    rulesDirectory: LEGACY_RULES_DIRECTORY,
-    ruleTestsDirectory: LEGACY_RULE_TESTS_DIRECTORY,
-    absoluteRulesDirectory: join(cwd, ".taskless", LEGACY_RULES_DIRECTORY),
-    legacy: true,
-  });
-
-  const sources: AstGrepRuleSource[] = [];
-  for (const candidate of candidates) {
-    const ruleIds = await listRuleIds(candidate.absoluteRulesDirectory);
-    if (ruleIds.length === 0) continue;
-    sources.push({ ...candidate, ruleIds });
-  }
-  return sources;
-}
-
-/**
- * Collapse findings that describe the same match. Scanning both `sg/rules/` and
- * the legacy `rules/` means a rule present in both reports twice; the finding
- * itself is the identity, so an identical match from either source is reported
- * once.
- */
-export function dedupeFindings(results: CheckResult[]): CheckResult[] {
-  const seen = new Set<string>();
-  const unique: CheckResult[] = [];
-  for (const result of results) {
-    const key = [
-      result.ruleId,
-      result.file,
-      result.range.start.line,
-      result.range.start.column,
-      result.range.end.line,
-      result.range.end.column,
-      result.message,
-    ].join("\u0000");
-    if (seen.has(key)) continue;
-    seen.add(key);
-    unique.push(result);
-  }
-  return unique;
-}
-
-/**
- * Candidate locations of a single ast-grep rule file, in resolution order:
- * the `sg` engine directory first, the legacy path second.
- */
-export function astGrepRuleFileCandidates(
+export async function listRuleIds(
   cwd: string,
-  ruleId: string
-): string[] {
-  return [
-    join(cwd, ".taskless", ENGINE_LAYOUTS.sg.rulesDirectory, `${ruleId}.yml`),
-    join(cwd, ".taskless", LEGACY_RULES_DIRECTORY, `${ruleId}.yml`),
-  ];
+  engine: EngineName
+): Promise<string[]> {
+  const ids = await subdirectories(engineRulesDirectory(cwd, engine));
+  return ids.toSorted((a, b) => a.localeCompare(b));
 }
 
 /**
@@ -234,8 +239,8 @@ export function astGrepRuleFileCandidates(
  * documents `rules[].content` as an ast-grep rule definition — so a payload
  * that identifies no engine **is** ast-grep. That default is permanent, not a
  * migration window: published CLIs keep receiving engine-less payloads, and it
- * files a delivered rule exactly where migration `0004` puts the same rule
- * already on disk.
+ * files a delivered rule exactly where the migrations put the same rule already
+ * on disk.
  *
  * Absence and an unrecognized value are different. An engine this CLI does not
  * know means the payload is newer than the CLI; defaulting it to `sg` would
@@ -261,10 +266,6 @@ export function resolveIngestEngine(payload: unknown): EngineName {
   return declared;
 }
 
-/** Candidate rule-test directories, in the same resolution order. */
-export function astGrepRuleTestDirectories(cwd: string): string[] {
-  return [
-    join(cwd, ".taskless", ENGINE_LAYOUTS.sg.ruleTestsDirectory),
-    join(cwd, ".taskless", LEGACY_RULE_TESTS_DIRECTORY),
-  ];
+export function isKnownEngine(value: string): value is EngineName {
+  return (ENGINES as readonly string[]).includes(value);
 }

@@ -1,8 +1,6 @@
 import { readdir } from "node:fs/promises";
-import { join } from "node:path";
-
 import type { CheckResult } from "../types/check";
-import { dedupeFindings, ENGINE_LAYOUTS, type EngineName } from "./engines";
+import { engineRulesDirectory, type EngineName } from "./engines";
 import { executeRuntimeRules } from "./runtime/harness";
 import type { RuntimeRule } from "./runtime/discover";
 import { runAstGrepScan } from "./scan";
@@ -29,10 +27,15 @@ const ABSENT_DIRECTORY_CODES = new Set(["ENOENT", "ENOTDIR"]);
  */
 export async function hasValeRules(cwd: string): Promise<boolean> {
   try {
-    const entries = await readdir(
-      join(cwd, ".taskless", ENGINE_LAYOUTS.vale.rulesDirectory)
-    );
-    return entries.some((entry) => entry.endsWith(".yml"));
+    // A rule is a *directory* now, so this counts directories rather than
+    // `*.yml` files. Looking for loose `.yml` here is how the whole engine
+    // would read as "no rules configured" against a correctly laid-out
+    // project — a silent skip, which is the failure this gate exists to make
+    // impossible.
+    const entries = await readdir(engineRulesDirectory(cwd, "vale"), {
+      withFileTypes: true,
+    });
+    return entries.some((entry) => entry.isDirectory());
   } catch (error) {
     const code = (error as NodeJS.ErrnoException).code;
     if (code !== undefined && ABSENT_DIRECTORY_CODES.has(code)) return false;
@@ -74,10 +77,11 @@ export interface DispatchOptions {
    */
   paths: string[];
   /**
-   * One `--config` path per ast-grep rule source, already resolved. The source
-   * each was derived from is the caller's concern; dispatch only runs configs.
+   * The assembled ast-grep `--config` path, or `undefined` when the project has
+   * no ast-grep rules. One config, because assembly produced one — dispatch
+   * runs it and does not know how it was built.
    */
-  astGrepConfigPaths: string[];
+  astGrepConfigPath: string | undefined;
   /** Runtime rules that survived planning. Empty means the harness is skipped. */
   runtimeRules: RuntimeRule[];
   runtimeTimeoutMs?: number;
@@ -110,23 +114,22 @@ export interface DispatchResult {
 }
 
 /**
- * ast-grep over every source, deduped.
+ * ast-grep over the assembled config.
  *
- * `sg/rules/` and the legacy `.taskless/rules/` are scanned separately, so a
- * rule present in both reports twice; the finding is its own identity, so
- * identical matches collapse.
+ * One scan, because there is one rule tree. The previous layout scanned the
+ * engine directory and the legacy directory separately and deduplicated the
+ * overlap; with a single tree there is no overlap to collapse.
  */
 async function runAstGrepEngine(
   options: DispatchOptions
 ): Promise<EngineOutcome> {
-  const results: CheckResult[] = [];
-  for (const configPath of options.astGrepConfigPaths) {
-    const scan = await runAstGrepScan(options.cwd, options.paths, {
-      configPath,
-    });
-    results.push(...scan.results);
+  if (options.astGrepConfigPath === undefined) {
+    return { engine: "sg", results: [] };
   }
-  return { engine: "sg", results: dedupeFindings(results) };
+  const scan = await runAstGrepScan(options.cwd, options.paths, {
+    configPath: options.astGrepConfigPath,
+  });
+  return { engine: "sg", results: scan.results };
 }
 
 /**

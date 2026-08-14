@@ -3,13 +3,12 @@ import { readdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, posix, relative, resolve, sep } from "node:path";
 
-import { ENGINE_LAYOUTS } from "../engines";
+import { listRuleIds, ruleTestsDirectory } from "../engines";
 import { runVale, type ValeRunOutcome } from "./run";
 
 /** Where a rule's fixtures live, relative to the project root. */
-export function valeRuleTestsDirectory(cwd: string, ruleId?: string): string {
-  const base = join(cwd, ".taskless", ENGINE_LAYOUTS.vale.ruleTestsDirectory);
-  return ruleId === undefined ? base : join(base, ruleId);
+export function valeRuleTestsDirectory(cwd: string, ruleId: string): string {
+  return ruleTestsDirectory(cwd, "vale", ruleId);
 }
 
 /** The styles root Vale resolves `rules.<name>` against. */
@@ -184,13 +183,20 @@ export type ValeVerifyOutcome =
   | { status: "unavailable"; message: string }
   | { status: "failed"; message: string };
 
-/** Rule ids that have a `rule-tests/<id>/` directory. */
+/**
+ * Rule ids that have a populated `.tests/` directory.
+ *
+ * Walks the rule directories rather than a shared tests root: a rule's tests
+ * live inside the rule, so "has tests" is a question about the rule directory.
+ */
 export async function discoverValeRuleTests(cwd: string): Promise<string[]> {
-  const entries = await directoryEntries(valeRuleTestsDirectory(cwd));
-  return entries
-    .filter((entry) => entry.isDirectory())
-    .map((entry) => entry.name)
-    .toSorted();
+  const ruleIds = await listRuleIds(cwd, "vale");
+  const withTests: string[] = [];
+  for (const ruleId of ruleIds) {
+    const entries = await directoryEntries(valeRuleTestsDirectory(cwd, ruleId));
+    if (entries.length > 0) withTests.push(ruleId);
+  }
+  return withTests;
 }
 
 /**

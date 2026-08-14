@@ -7,6 +7,7 @@ import init from "./migrations/0001-init";
 import installMigration from "./migrations/0002-install";
 import dropInstalledAt from "./migrations/0003-drop-installed-at";
 import valeEngine from "./migrations/0004-vale-engine";
+import ruleDirectories from "./migrations/0005-rule-directories";
 
 export interface TasklessInstallTarget {
   skills?: string[];
@@ -37,6 +38,7 @@ const migrations: Migrations = {
   "2": installMigration,
   "3": dropInstalledAt,
   "4": valeEngine,
+  "5": ruleDirectories,
 };
 
 /** Global flag that downgrades a too-new scaffold from an error to a skip. */

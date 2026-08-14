@@ -4,15 +4,15 @@ import { join } from "node:path";
 import { parse } from "yaml";
 
 import type { CaptureRule, MatchMode } from "../../types/runtime-rule";
-import { ENGINE_LAYOUTS } from "../engines";
+import { RULES_DIRECTORY } from "../engines";
 
 /**
  * Directory (relative to `.taskless/`) that holds runtime rules — the
  * `runtime` engine's own directory, so this tracks the engine layout rather
- * than repeating it. Migration `0004` moved the tree here from
- * `runtime-rules/` without touching a byte, so signatures are unaffected.
+ * than repeating it. Migrations `0004` and `0005` moved the tree here without
+ * touching a byte, so signatures are unaffected.
  */
-export const RUNTIME_RULES_DIR = ENGINE_LAYOUTS.runtime.rulesDirectory;
+export const RUNTIME_RULES_DIR = join(RULES_DIRECTORY, "runtime");
 
 /** A parsed capture `*.yml` of a runtime rule, with the fields the harness needs. */
 export interface LoadedCaptureRule {
@@ -128,7 +128,10 @@ export async function discoverRuntimeRulesIn(
   for (const entry of sorted) {
     if (!entry.isDirectory()) continue;
     const directory = join(root, entry.name);
-    const captureRules = await loadCaptureRules(directory);
+    // Capture rules live in `captures/`, not at the rule root. The name avoids
+    // "matcher", which denotes a Vale `[<glob>]` config section elsewhere in
+    // this same tree.
+    const captureRules = await loadCaptureRules(join(directory, "captures"));
     if (captureRules.length === 0) continue; // not a runtime rule
 
     // The check file is always `check.ts` inside the rule directory (per spec).

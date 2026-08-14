@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 
 import type { AstGrepMatch } from "../types/check";
 import { toCheckResult, type CheckResult } from "../types/check";
-import { COMMITTED_SG_CONFIG } from "./engines";
+import { ASSEMBLED_SG_CONFIG } from "./engines";
 import {
   isPlatformBinary,
   pathCommandName,
@@ -138,7 +138,7 @@ export async function runAstGrepScan(
     const argv = [
       "scan",
       "--config",
-      options.configPath ?? COMMITTED_SG_CONFIG,
+      options.configPath ?? ASSEMBLED_SG_CONFIG,
       "--json=stream",
       ...(paths.length > 0 ? ["--", ...paths] : []),
     ];

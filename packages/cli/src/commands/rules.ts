@@ -5,9 +5,6 @@ import { defineCommand } from "citty";
 import { ZodError } from "zod";
 
 import { resolveIdentity } from "../auth/identity";
-import { verifyRule } from "../rules/verify";
-import { verifyValeRule } from "../rules/vale/verify";
-import { rulefileOwners, ruleFileLocation } from "../rules/owner";
 import { submitRule, pollRuleStatus, iterateRule } from "../api/rules";
 import {
   writeRuleFile,
@@ -16,7 +13,7 @@ import {
   readRuleMetaFile,
   deleteRuleFiles,
 } from "../rules/files";
-import { ENGINE_LAYOUTS, LEGACY_RULES_DIRECTORY } from "../rules/engines";
+import { RULES_DIRECTORY } from "../rules/engines";
 import {
   inputSchema as createInputSchema,
   outputSchema as createOutputSchema,
@@ -26,10 +23,6 @@ import {
   outputSchema as improveOutputSchema,
 } from "../schemas/rules-improve";
 import { outputSchema as metaOutputSchema } from "../schemas/rules-meta";
-import {
-  verifyOutputSchema,
-  valeVerifyOutputSchema,
-} from "../schemas/rules-verify";
 import { getTelemetry } from "../telemetry";
 import { CLIError } from "../util/cli-error";
 import { type CLIErrorCode, makeErrorEnvelope } from "../types/errors";
@@ -667,9 +660,7 @@ const deleteCommand = defineCommand({
         }
         success = true;
       } else {
-        const message =
-          `Rule "${id}" not found in .taskless/${ENGINE_LAYOUTS.sg.rulesDirectory}/${id}.yml ` +
-          `or .taskless/${LEGACY_RULES_DIRECTORY}/${id}.yml`;
+        const message = `Rule "${id}" not found in .taskless/${RULES_DIRECTORY}/sg/${id}/`;
         if (args.json) {
           console.log(
             JSON.stringify(makeErrorEnvelope("RULE_NOT_FOUND", message))
@@ -688,227 +679,6 @@ const deleteCommand = defineCommand({
   },
 });
 
-/**
- * Verify a Vale rule against its fixture buckets.
- *
- * Split out because the two engines answer different questions and their
- * reports share no fields beyond `ruleId`/`success`. Vale's failure modes are
- * about the *fixtures*: a bucket nobody populated proves nothing, and reporting
- * that as a pass is how an unverified rule ships looking verified.
- */
-async function verifyValeRuleCommand(
-  cwd: string,
-  ruleId: string,
-  json: boolean
-): Promise<void> {
-  let result;
-  try {
-    result = await verifyValeRule(cwd, ruleId);
-  } catch (error) {
-    // A nested fixture directory throws rather than being skipped: Vale lints
-    // the rule's whole tree, so a nested document is linted but never checked
-    // against a bucket, and silently ignoring it would let half a rule's
-    // fixtures go unverified while it reported a pass.
-    const message = error instanceof Error ? error.message : String(error);
-    if (json) {
-      console.log(JSON.stringify(makeErrorEnvelope("INVALID_INPUT", message)));
-    } else {
-      console.error(`Error: ${message}`);
-    }
-    process.exitCode = 1;
-    return;
-  }
-
-  if ("outcome" in result) {
-    // Vale never ran. Not a verification result, and not a pass.
-    const { outcome } = result;
-    if (json) {
-      console.log(
-        JSON.stringify(
-          makeErrorEnvelope(
-            outcome.status === "unavailable"
-              ? "ENGINE_UNAVAILABLE"
-              : "SCAN_FAILED",
-            outcome.message
-          )
-        )
-      );
-    } else {
-      console.error(`Error: ${outcome.message}`);
-    }
-    process.exitCode = 1;
-    return;
-  }
-
-  if (json) {
-    console.log(
-      JSON.stringify(
-        valeVerifyOutputSchema.parse({
-          engine: "vale",
-          success: result.passed,
-          ruleId: result.ruleId,
-          fixtures: result.fixtures,
-          missingFailures: result.missingFailures,
-          unexpectedFindings: result.unexpectedFindings,
-        })
-      )
-    );
-  } else {
-    console.log(`Verifying Vale rule: ${result.ruleId}\n`);
-
-    const coverage: Record<typeof result.fixtures, string> = {
-      both: "✓ pass/ and fail/ both have documents",
-      "pass-only": "✗ no fail/ fixtures — the rule is never shown to fire",
-      "fail-only":
-        "✗ no pass/ fixtures — the rule is never shown to stay quiet",
-      none: "✗ no fixtures at all",
-    };
-    console.log(`Fixtures:     ${coverage[result.fixtures]}`);
-
-    console.log(
-      `Fires:        ${result.missingFailures.length === 0 ? "✓ every fail/ document was flagged" : "✗ some fail/ documents were not flagged"}`
-    );
-    for (const file of result.missingFailures) {
-      console.log(`  - ${file}`);
-    }
-
-    console.log(
-      `Stays quiet:  ${result.unexpectedFindings.length === 0 ? "✓ no pass/ document was flagged" : "✗ some pass/ documents were flagged"}`
-    );
-    for (const file of result.unexpectedFindings) {
-      console.log(`  - ${file}`);
-    }
-
-    console.log(
-      `\nResult: ${result.passed ? "✓ All checks passed" : "✗ Verification failed"}`
-    );
-  }
-
-  if (!result.passed) {
-    process.exitCode = 1;
-  }
-}
-
-const verifyCommand = defineCommand({
-  meta: {
-    name: "verify",
-    description:
-      "Validate a rule and run its tests (ast-grep) or its fixtures (Vale)",
-  },
-  args: {
-    dir: {
-      type: "string",
-      alias: "d",
-      description: "Working directory",
-    },
-    json: {
-      type: "boolean",
-      description: "Output as JSON",
-      default: false,
-    },
-    anonymous: {
-      type: "boolean",
-      description: "Accepted for compatibility; verify is purely local",
-      default: false,
-    },
-    id: {
-      type: "positional",
-      description: "Rule ID to verify",
-      required: false,
-    },
-  },
-  async run({ args }) {
-    const cwd = resolve(args.dir ?? process.cwd());
-
-    if (!args.id) {
-      if (args.json) {
-        console.log(
-          JSON.stringify(
-            makeErrorEnvelope("INVALID_INPUT", "Rule ID is required.")
-          )
-        );
-      } else {
-        console.error(
-          "Error: Rule ID is required.\n  Usage: taskless rule verify <id>"
-        );
-      }
-      process.exitCode = 1;
-      return;
-    }
-
-    // Which engine owns the rule is decided by where its file sits, the same
-    // way `dispatch` decides it, so a rule cannot be verified by one engine and
-    // run by another.
-    const ruleId = args.id;
-    const owners = await rulefileOwners(cwd, ruleId);
-
-    if (owners.length > 1) {
-      // Both engines hold this id. Verifying one silently would report on a
-      // file the user may not have meant, so name both and let them say which.
-      const message =
-        `Rule "${ruleId}" exists for more than one engine: ` +
-        owners.map((engine) => ruleFileLocation(engine, ruleId)).join(", ") +
-        ". Rename one so the id identifies a single rule.";
-      if (args.json) {
-        console.log(
-          JSON.stringify(makeErrorEnvelope("INVALID_INPUT", message))
-        );
-      } else {
-        console.error(`Error: ${message}`);
-      }
-      process.exitCode = 1;
-      return;
-    }
-
-    if (owners[0] === "vale") {
-      await verifyValeRuleCommand(cwd, ruleId, args.json);
-      return;
-    }
-
-    // No owner falls through to the ast-grep verifier, which already reports a
-    // missing rule file across its layers — including the legacy location.
-    const result = await verifyRule(cwd, ruleId);
-
-    if (args.json) {
-      console.log(JSON.stringify(verifyOutputSchema.parse({ engine: "sg", ...result })));
-    } else {
-      console.log(`Verifying rule: ${result.ruleId}\n`);
-
-      // Layer 1
-      console.log(
-        `Schema:       ${result.schema.valid ? "✓ valid" : "✗ invalid"}`
-      );
-      for (const error of result.schema.errors) {
-        console.log(`  - ${error}`);
-      }
-
-      // Layer 2
-      console.log(
-        `Requirements: ${result.requirements.valid ? "✓ valid" : "✗ invalid"}`
-      );
-      for (const error of result.requirements.errors) {
-        console.log(`  - ${error}`);
-      }
-
-      // Layer 3
-      console.log(
-        `Tests:        ${result.tests.valid ? "✓ passed" : "✗ failed"} (${String(result.tests.passed)} passed, ${String(result.tests.failed)} failed)`
-      );
-      for (const error of result.tests.errors) {
-        console.log(`  - ${error}`);
-      }
-
-      console.log(
-        `\nResult: ${result.success ? "✓ All checks passed" : "✗ Verification failed"}`
-      );
-    }
-
-    if (!result.success) {
-      process.exitCode = 1;
-    }
-  },
-});
-
 export const ruleCommand = defineCommand({
   meta: {
     name: "rule",
@@ -919,6 +689,5 @@ export const ruleCommand = defineCommand({
     improve: improveCommand,
     meta: metaCommand,
     delete: deleteCommand,
-    verify: verifyCommand,
   },
 });

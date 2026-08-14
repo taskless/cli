@@ -77,7 +77,6 @@ function makeMixedProject(options?: {
 }
 
 /** The committed config `makeMixedProject` writes, as `check` would resolve it. */
-const sgConfigPaths = [".taskless/sg/sgconfig.yml"];
 
 describe("hasValeRules", () => {
   it("is false for a scaffolded-but-empty rules directory", async () => {
@@ -121,7 +120,7 @@ describe("exit code carried on the dispatch result", () => {
     const dispatched = await runEngines({
       cwd,
       paths: ["app.js"],
-      astGrepConfigPaths: sgConfigPaths,
+      astGrepConfigPath: undefined,
       runtimeRules: [],
     });
     expect(dispatched.results.length).toBeGreaterThan(0);
@@ -133,7 +132,7 @@ describe("exit code carried on the dispatch result", () => {
     const dispatched = await runEngines({
       cwd,
       paths: ["app.js"],
-      astGrepConfigPaths: sgConfigPaths,
+      astGrepConfigPath: undefined,
       runtimeRules: [],
     });
     expect(
@@ -147,7 +146,7 @@ describe("exit code carried on the dispatch result", () => {
     const dispatched = await runEngines({
       cwd,
       paths: ["doc.md"], // the sg rule is javascript-only, so nothing matches
-      astGrepConfigPaths: sgConfigPaths,
+      astGrepConfigPath: undefined,
       runtimeRules: [],
     });
     expect(dispatched.results).toEqual([]);
@@ -162,7 +161,7 @@ withVale("runEngines over a mixed corpus", () => {
     const dispatched = await runEngines({
       cwd,
       paths: ["app.js", "doc.md"],
-      astGrepConfigPaths: sgConfigPaths,
+      astGrepConfigPath: undefined,
       runtimeRules: [],
     });
 
@@ -179,7 +178,7 @@ withVale("runEngines over a mixed corpus", () => {
     const dispatched = await runEngines({
       cwd,
       paths: ["app.js", "doc.md"],
-      astGrepConfigPaths: sgConfigPaths,
+      astGrepConfigPath: undefined,
       runtimeRules: [],
     });
     expect(dispatched.results.every((result) => result.source !== "vale")).toBe(
@@ -203,7 +202,7 @@ describe("runEngines when Vale is unavailable", () => {
     const dispatched = await runEngines({
       cwd,
       paths: ["app.js", "doc.md"],
-      astGrepConfigPaths: sgConfigPaths,
+      astGrepConfigPath: undefined,
       runtimeRules: [],
     });
 
@@ -255,7 +254,7 @@ describe("runEngines when Vale is unavailable", () => {
     const dispatched = await runEngines({
       cwd,
       paths: ["doc.md"],
-      astGrepConfigPaths: sgConfigPaths,
+      astGrepConfigPath: undefined,
       runtimeRules: [],
     });
 
@@ -282,7 +281,7 @@ describe("runEngines when Vale is unavailable", () => {
         const dispatched = await runEngines({
           cwd,
           paths: ["app.js", "doc.md"],
-          astGrepConfigPaths: sgConfigPaths,
+          astGrepConfigPath: undefined,
           runtimeRules: [],
         });
 
