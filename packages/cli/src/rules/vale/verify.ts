@@ -3,7 +3,7 @@ import { readdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, posix, relative, resolve, sep } from "node:path";
 
-import { listRuleIds, ruleTestsDirectory } from "../engines";
+import { listRuleIds, RULES_DIRECTORY, ruleTestsDirectory } from "../engines";
 import { runVale, type ValeRunOutcome } from "./run";
 
 /** Where a rule's fixtures live, relative to the project root. */
@@ -11,9 +11,9 @@ export function valeRuleTestsDirectory(cwd: string, ruleId: string): string {
   return ruleTestsDirectory(cwd, "vale", ruleId);
 }
 
-/** The styles root Vale resolves `rules.<name>` against. */
+/** The styles root Vale resolves `<id>.<id>` against. */
 function stylesPath(cwd: string): string {
-  return resolve(cwd, ".taskless", "vale");
+  return resolve(cwd, ".taskless", RULES_DIRECTORY, "vale");
 }
 
 /**
@@ -43,7 +43,7 @@ export function buildIsolatingConfig(cwd: string, ruleId: string): string {
     "",
     "[*]",
     "BasedOnStyles =",
-    `rules.${ruleId} = YES`,
+    `${ruleId}.${ruleId} = YES`,
     "",
   ].join("\n");
 }

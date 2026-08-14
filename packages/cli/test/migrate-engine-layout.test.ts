@@ -45,7 +45,11 @@ async function writeTree(
   }
 }
 
-describe("migration 0004 — engine-partitioned layout", () => {
+// 0004 and 0005 always run together — both are unreleased and both ship in the
+// same stack, so a user upgrades through the pair and never observes the
+// intermediate engine-partitioned layout. These assert the end state, which is
+// the only one anybody sees.
+describe("migrations 0004 + 0005 — one directory per rule", () => {
   let temporaryDirectory: string;
   let tasklessDirectory: string;
 
@@ -78,7 +82,7 @@ describe("migration 0004 — engine-partitioned layout", () => {
     });
   }
 
-  it("moves the ast-grep tree under sg/ without editing contents", async () => {
+  it("moves the ast-grep tree into rule directories without editing contents", async () => {
     await seedLegacyLayout();
     const beforeRule = await sha256(
       join(tasklessDirectory, "rules", "no-eval.yml")
@@ -88,19 +92,22 @@ describe("migration 0004 — engine-partitioned layout", () => {
     await ensureTasklessDirectory(temporaryDirectory);
 
     expect(
-      await sha256(join(tasklessDirectory, "sg", "rules", "no-eval.yml"))
-    ).toBe(beforeRule);
-    expect(await sha256(join(tasklessDirectory, "sg", "sgconfig.yml"))).toBe(
-      beforeConfig
-    );
-    expect(
-      await exists(
-        join(tasklessDirectory, "sg", "rule-tests", "no-eval-test.yml")
+      await sha256(
+        join(tasklessDirectory, "rules", "sg", "no-eval", "no-eval.yml")
       )
-    ).toBe(true);
+    ).toBe(beforeRule);
+    // The committed sgconfig is gone — assembly generates it per run — so its
+    // bytes are no longer preserved anywhere, only its content's effect.
+    expect(beforeConfig).toBeTruthy();
+    expect(await exists(join(tasklessDirectory, "sg", "sgconfig.yml"))).toBe(
+      false
+    );
 
-    // Legacy locations are gone once fully moved.
-    expect(await exists(join(tasklessDirectory, "rules"))).toBe(false);
+    // Test files land inside the rule they belong to. The name has no
+    // timestamp here, so 0005 cannot attribute it and leaves it behind —
+    // asserted in its own test below.
+
+    // Pre-0004 locations are gone once fully moved.
     expect(await exists(join(tasklessDirectory, "rule-tests"))).toBe(false);
     expect(await exists(join(tasklessDirectory, "sgconfig.yml"))).toBe(false);
   });
@@ -224,19 +231,26 @@ describe("migration 0004 — engine-partitioned layout", () => {
     );
   });
 
-  it("leaves an already-anchored gitignore untouched", async () => {
+  it("leaves an already-anchored gitignore entry untouched", async () => {
     await seedLegacyLayout();
     const original = ".env.local.json\n/sgconfig.yml\n.run/\n";
     await writeFile(join(tasklessDirectory, ".gitignore"), original, "utf8");
 
     await ensureTasklessDirectory(temporaryDirectory);
 
-    expect(await readFile(join(tasklessDirectory, ".gitignore"), "utf8")).toBe(
-      original
+    const contents = await readFile(
+      join(tasklessDirectory, ".gitignore"),
+      "utf8"
     );
+    // 0004 leaves the anchored entry alone; 0005 appends the two assembled
+    // configs, which are generated per run and must never be committed.
+    expect(contents).toContain("/sgconfig.yml");
+    expect(contents).toContain(".env.local.json");
+    expect(contents).toContain("/.vale.ini");
+    expect(contents).toContain("/.sgconfig.yml");
   });
 
-  it("scaffolds vale/ and gitkeeps every otherwise-empty directory", async () => {
+  it("scaffolds each engine and gitkeeps it while empty", async () => {
     await seedLegacyLayout();
 
     await ensureTasklessDirectory(temporaryDirectory);
@@ -255,35 +269,33 @@ describe("migration 0004 — engine-partitioned layout", () => {
 
     // Directories that received real content are not gitkeeped.
     expect(
-      await exists(join(tasklessDirectory, "sg", "rules", ".gitkeep"))
+      await exists(join(tasklessDirectory, "rules", "sg", ".gitkeep"))
     ).toBe(false);
     expect(
-      await exists(join(tasklessDirectory, "runtime", "rules", ".gitkeep"))
+      await exists(join(tasklessDirectory, "rules", "runtime", ".gitkeep"))
     ).toBe(false);
   });
 
-  it("scaffolds a full layout for a fresh project and bumps the version to 4", async () => {
+  it("scaffolds a full layout for a fresh project and bumps to the latest version", async () => {
     await ensureTasklessDirectory(temporaryDirectory);
 
     const manifest = JSON.parse(
       await readFile(join(tasklessDirectory, "taskless.json"), "utf8")
     ) as { version: number };
-    expect(manifest.version).toBe(4);
+    expect(manifest.version).toBe(5);
 
     for (const relative of [
-      ["sg", "rules"],
-      ["sg", "rule-tests"],
-      ["vale", "rules"],
-      ["vale", "rule-tests"],
-      ["runtime", "rules"],
-      ["runtime", "rule-tests"],
+      ["rules", "sg"],
+      ["rules", "vale"],
+      ["rules", "runtime"],
     ]) {
       expect(
         await exists(join(tasklessDirectory, ...relative, ".gitkeep"))
       ).toBe(true);
     }
+    // Both engine configs are assembled per run, so neither is scaffolded.
     expect(await exists(join(tasklessDirectory, "sg", "sgconfig.yml"))).toBe(
-      true
+      false
     );
 
     // The ignore pattern is anchored from the start for a fresh scaffold.
@@ -304,18 +316,22 @@ describe("migration 0004 — engine-partitioned layout", () => {
     await seedLegacyLayout();
     await ensureTasklessDirectory(temporaryDirectory);
     const after = await sha256(
-      join(tasklessDirectory, "sg", "rules", "no-eval.yml")
+      join(tasklessDirectory, "rules", "sg", "no-eval", "no-eval.yml")
     );
 
-    // Re-run the migration directly (runMigrations would short-circuit on version).
-    const { default: migration } =
-      await import("../src/filesystem/migrations/0004-vale-engine");
+    // Re-run 0005 directly (runMigrations would short-circuit on version).
+    const { default: migration } = await import(
+      "../src/filesystem/migrations/0005-rule-directories"
+    );
     await migration(tasklessDirectory);
 
     expect(
-      await sha256(join(tasklessDirectory, "sg", "rules", "no-eval.yml"))
+      await sha256(
+        join(tasklessDirectory, "rules", "sg", "no-eval", "no-eval.yml")
+      )
     ).toBe(after);
-    expect(await exists(join(tasklessDirectory, "rules"))).toBe(false);
+    // The pre-0004 flat locations stay gone; the rules tree is the new root.
+    expect(await exists(join(tasklessDirectory, "rule-tests"))).toBe(false);
   });
 
   it("preserves an existing sg/sgconfig.yml rather than overwriting it", async () => {
@@ -360,10 +376,10 @@ describe("migration 0004 — engine-partitioned layout", () => {
     expect(
       await exists(join(tasklessDirectory, "runtime-rules", "no-eval-capture"))
     ).toBe(true);
-    expect(await exists(join(tasklessDirectory, "runtime", "rules"))).toBe(
+    expect(await exists(join(tasklessDirectory, "rules", "runtime"))).toBe(
       false
     );
-    expect(await readFile(join(tasklessDirectory, "sg", "rules"), "utf8")).toBe(
+    expect(await readFile(join(tasklessDirectory, "rules", "sg"), "utf8")).toBe(
       "not a directory\n"
     );
   });
@@ -477,6 +493,6 @@ describe("migration 0004 — engine root occupied by a file", () => {
     expect(await exists(join(tasklessDirectory, "rules", "no-eval.yml"))).toBe(
       true
     );
-    expect(await exists(join(tasklessDirectory, "sg", "rules"))).toBe(false);
+    expect(await exists(join(tasklessDirectory, "rules", "sg"))).toBe(false);
   });
 });
