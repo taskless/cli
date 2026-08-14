@@ -126,6 +126,14 @@ _Alternative rejected:_ keep them under a new constant name. It preserves a fall
 
 Runtime's ast-grep capture rules move to `captures/`. "Matcher" now has a precise meaning in the Vale spec — a `[<glob>]` ini section — and one word for two unrelated concepts in one `.taskless/` tree is a cost paid at every future reading.
 
+### D10 — A `consistency` rule's id must be word characters only
+
+Vale compiles a `consistency` rule's own name into its pattern as a Go RE2 named capture group (`(?P<ize-ise2>…)`), and RE2 requires a group name to be word characters. Measured against Vale 3.17.1, an id containing `-` fails that file with `E201 … invalid group name`, and because Vale reads one config for the whole run it takes **every** Vale rule in the project down with it: 9 rules, 0 findings, one error.
+
+Found while re-running the recipe's own worked rules under this layout (task 5.6), where the id became the directory name and the check name at once.
+
+The layout makes this sharper rather than causing it, since the id is now three things at once, so it is caught in `verify` and stated in the recipe. Kebab-case remains correct for the other ten extension points; only `consistency` is constrained.
+
 ## Risks / Trade-offs
 
 - **The dot-directory assumption is undocumented** → mitigated by a loud failure mode, a pinning test, and an exact version pin on the binary, so a change arrives with a deliberate upgrade rather than silently (D2). Materialization is the recorded fallback.

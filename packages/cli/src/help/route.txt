@@ -31,7 +31,7 @@ answered together.
      "linters": [{ "name": "eslint", "evidence": ["packages/api/.eslintrc.json"] }],
      "languages": ["JavaScript", "TypeScript"],
      "ruleStyles": [
-       { "source": ".taskless/sg/rules", "description": "Existing Taskless ast-grep rules." }
+       { "source": ".taskless/rules/sg", "description": "Existing Taskless ast-grep rules." }
      ]
    }
    ```

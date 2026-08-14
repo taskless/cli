@@ -1,58 +1,95 @@
 # Topic: verify-rule     (CLI v%(CLI_VERSION)s / topic v2)
 
 ## Goal
-Validate a rule against the ast-grep schema and run its test cases.
-Primary consumer is the anonymous create/improve flow (the verify
-feedback loop), but agents can also call it directly to lint a rule.
+Check that a rule is well-formed (`verify`), then run its tests
+(`test`). Both address rules **by path**, so one command works the same
+for every engine. Primary consumer is the create/improve feedback loop,
+but agents can call either directly.
 
 ## Preconditions
-- `.taskless/sg/rules/<id>.yml` exists.
-- Optionally `.taskless/sg/rule-tests/<id>-*.yml` exists (test cases run
-  if present).
+- The rule exists at `.taskless/rules/<engine>/<id>/`.
+- Tests are optional for `verify` and are what `test` runs.
 - No auth required.
 
-## Steps
+## The two commands
 
 ```
-npx @taskless/cli rule verify <id> --json
+npx @taskless/cli verify <path> --json
+npx @taskless/cli test   <path> --json
 ```
 
-Three layers of validation run in order:
+`verify` asks whether the rule has the components its engine requires.
+It never runs the rule against anything, so it works on a rule whose
+tests do not exist yet. That is the point of splitting the two: an
+agent part-way through authoring needs to know the rule itself is valid
+before it can write a meaningful test for it.
 
-1. **Schema** — YAML conforms to the ast-grep rule schema.
-2. **Requirements** — Taskless-required fields present (`id`,
-   `language`, `severity`, `message`, `rule`); `regex` always
-   accompanied by `kind`.
-3. **Tests** — `sg test` runs the test file. Each `valid` case must
-   not match; each `invalid` case must match.
+`test` runs the rule's tests. **It runs `verify` first and stops on
+failure**, so a rule that is both malformed and under-fixtured reports
+the malformation. The fixture complaint is the less useful of the two
+and would otherwise bury the reason the rule could never have run.
 
-Output (JSON):
+What each engine is checked for:
+
+| engine    | `verify` checks                                                            | `test` runs                       |
+|-----------|----------------------------------------------------------------------------|-----------------------------------|
+| `sg`      | ast-grep schema, plus `id`/`language`/`severity`/`message`/`rule`, and `regex` accompanied by `kind` | the `valid`/`invalid` cases in `.tests/` |
+| `vale`    | style parses, `extends` and `message` present, `level` in vocabulary, and the rule's `.vale.ini` enables `<id>.<id>` under a matcher | the `.tests/pass/` and `.tests/fail/` buckets |
+| `runtime` | `check.ts` present, at least one capture rule in `captures/`                | reported as not run: runtime tests need the server harness |
+
+## What a path means
+
+The path is a location under `.taskless/rules/`, and the `<engine>`
+segment is what decides the engine. Nothing parses a rule file to work
+out who owns it, so the same id under two engines is never ambiguous.
+
+| Path                              | Scope                       |
+|-----------------------------------|-----------------------------|
+| `.taskless/rules/vale/no-simply`  | that one rule               |
+| `.taskless/rules/vale`            | every Vale rule             |
+| `.taskless/rules`                 | every rule (also the default when you pass no path) |
+
+A path outside `.taskless/rules/` is an error naming the path. So is a
+path inside it that holds no rule.
+
+## Output
+
+Both commands answer in the same shape, one entry per rule:
+
 ```json
 {
-  "ruleId": "no-eval",
-  "success": false,
-  "schema":       { "valid": true,  "errors": [] },
-  "requirements": { "valid": false, "errors": ["missing severity"] },
-  "tests":        { "valid": true,  "passed": 4, "failed": 0, "errors": [] }
+  "ok": false,
+  "rules": [
+    {"engine":"sg","ruleId":"no-eval","ok":true,"errors":[]},
+    {"engine":"vale","ruleId":"no-simply","ok":false,
+     "errors":["no-simply/.vale.ini never enables no-simply.no-simply, so the rule is present but off."]}
+  ]
 }
 ```
 
-When iterating in a feedback loop (anonymous create/improve), read
-the per-layer errors, fix the rule or tests, re-run. Cap at 3
-attempts and report to the user if still failing.
+- `ok` at the top is true only when every rule passed.
+- `errors` is one string per problem, written to be read by a person.
+- `test` adds `ran`, which is false when `verify` failed and the tests
+  never executed.
+
+Without `--json` the same information prints as a `✓`/`✗` line per rule
+with its errors indented beneath.
 
 ## Exit codes
 
-- `0` — All three layers passed.
-- `1` — Any layer failed (or `--json` missing required ID).
+- `0` — every rule in scope passed. An empty rules tree also exits 0: a
+  project that has not written a rule yet is an ordinary state, and
+  failing there would make `verify` unusable in CI on a fresh install.
+- `1` — any rule failed, or the path could not be resolved.
 
-## Errors
+## In a feedback loop
 
-| code             | meaning              | fix                              |
-|------------------|----------------------|----------------------------------|
-| `INVALID_INPUT`  | Rule ID not provided | Pass the rule ID positionally    |
+Run `verify` as soon as the rule file exists, fix what it names, then
+write tests and run `test`. Cap at 3 attempts and report to the user if
+it still fails.
 
 ## See Also
 
-- `taskless agent create-sg-rule` — primary consumer (loop)
-- `taskless agent improve-rule --anonymous` — primary consumer (loop)
+- `taskless agent create-sg-rule` — author an ast-grep rule
+- `taskless agent create-vale-rule` — author a Vale rule
+- `taskless agent improve-rule` — iterate on a rule that already exists

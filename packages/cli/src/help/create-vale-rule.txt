@@ -1,4 +1,4 @@
-# Topic: create-vale-rule     (CLI v%(CLI_VERSION)s / topic v1)
+# Topic: create-vale-rule     (CLI v%(CLI_VERSION)s / topic v2)
 
 ## You are here
 This is `create-vale-rule`. It helps you write a Vale rule: a check over
@@ -11,43 +11,49 @@ Produce a Vale rule that fires on the prose it should flag and stays
 quiet on the prose it should not, scoped to the files it is about.
 
 ## Preconditions
-- `.taskless/` directory exists (it contains `vale/.vale.ini`).
+- `.taskless/` directory exists.
 - The agent can read/write files and run shell commands.
 - No auth required.
 
-## The three artifacts
+## One rule, one directory
 
-A Vale rule is three files, not one. It is **incomplete until all three
-exist**, and the failure mode of skipping one is silence rather than an
-error — the rule runs, the check passes, and nothing is ever reported.
-
-| # | Artifact  | Path                                                        |
-|---|-----------|-------------------------------------------------------------|
-| 1 | The style | `.taskless/vale/rules/<id>.yml`                             |
-| 2 | The scope | a section in `.taskless/vale/.vale.ini` enabling `rules.<id>`|
-| 3 | Fixtures  | `.taskless/vale/rule-tests/<id>/pass/` and `.../fail/`      |
-
-`verify-rule` checks all three, and refuses a rule that has only one
-fixture bucket — a rule with no `fail/` was never shown to fire, and one
-with no `pass/` was never shown to stay quiet. Either alone is half a
-claim, so neither passes.
-
-**Three names must agree:**
+Everything that defines a Vale rule lives in
+`.taskless/rules/vale/<id>/`. Writing a rule means creating that
+directory. Deleting a rule means deleting it. No file outside it is
+touched either way, so two agents authoring two rules never collide.
 
 ```
-.taskless/vale/rules/no-simply.yml       <- the filename
-.taskless/vale/rule-tests/no-simply/     <- the fixture directory
-rules.no-simply = YES                    <- the .vale.ini assignment
+.taskless/rules/vale/no-simply/
+    no-simply.yml          the style: what the rule looks for
+    .vale.ini              the scope: which files it applies to
+    .tests/fail/bad.md     prose it must flag
+    .tests/pass/ok.md      prose it must leave alone
 ```
 
-`verify-rule` catches the first two: it builds its own config from the
-id you give it, so a misnamed rule file or fixture directory shows up as
-fixtures that never fired, or as no fixtures at all.
+The rule is **incomplete until the style and the config both exist**,
+and skipping the config fails silently rather than loudly: the rule
+parses, the check passes, and nothing is ever reported. `verify` exists
+to catch exactly that, so run it (step 6) before you believe a rule
+works.
 
-**It cannot catch the third.** Verification runs in an isolated config
-of its own making, so a rule can verify perfectly and still be absent
-from the committed `.vale.ini` that `check` reads — verified, and never
-run. That assignment is the one thing you have to get right by looking.
+**The id appears four times and all four must agree:**
+
+```
+.taskless/rules/vale/no-simply/           <- the directory
+.taskless/rules/vale/no-simply/no-simply.yml   <- the style file
+no-simply.no-simply = YES                 <- the assignment in .vale.ini
+tskl) rule = no-simply                    <- the breadcrumb in .vale.ini
+```
+
+The doubled `no-simply.no-simply` is not a typo. Vale names a check
+`<style>.<rule>`, and here the rule's own directory is the style, so
+both halves are the id. Anything else is a check that does not exist,
+which Vale accepts without complaint.
+
+You will not find a project-wide `.vale.ini` to edit. The config Vale
+actually reads is assembled from every rule's own file at check time
+and is gitignored. Editing it is pointless — the next check regenerates
+it.
 
 ## Steps
 
@@ -88,8 +94,17 @@ run. That assignment is the one thing you have to get right by looking.
    intent before writing anything — the mistakes documented there are
    observed, and most of them fail silently.
 
-2. **Write the style file** to `.taskless/vale/rules/<id>.yml`, where
-   `<id>` is kebab-case and matches the filename. Every rule carries:
+2. **Write the style file** to
+   `.taskless/rules/vale/<id>/<id>.yml`, where `<id>` is kebab-case and
+   names both the directory and the file.
+
+   **One exception: a `consistency` rule's id must be word characters
+   only** (`izeise`, not `ize-ise`). That check compiles the id into its
+   pattern as a regex group name, and a hyphen there fails the entire
+   Vale run. `verify` catches it. Kebab-case is correct for the other
+   ten.
+
+   Every rule carries:
 
    | Field     | Required | Notes                                                   |
    |-----------|----------|---------------------------------------------------------|
@@ -208,6 +223,11 @@ run. That assignment is the one thing you have to get right by looking.
    - **Word boundaries are applied for you, around the whole pattern.**
      Measured: `Github` does not fire inside `GithubToken`, and the
      multi-word `click here` does not fire inside `Clicking here`.
+   - **A hyphen is a boundary, so a hyphenated compound is not
+     protected.** `obviously` fires inside `obviously-named`, while
+     `obviously_stale` is safe because `_` is a word character. Do not
+     reach for a hyphenated compound as a `pass/` near-miss; it is the
+     case most likely to fire.
    - **Regex metacharacters in a real phrase are live.** "maybe?" is a
      pattern meaning "mayb" followed by an optional "e". Escape it.
    - **Overlapping alternatives resolve first-wins**, one finding per
@@ -232,63 +252,66 @@ run. That assignment is the one thing you have to get right by looking.
      to link text alone. Measured: without a scope the token hit both the
      link and the sentence; with `scope: link`, only the link.
 
-4. **Scope the rule by adding a section to `.taskless/vale/.vale.ini`.**
+4. **Scope the rule** by writing `.taskless/rules/vale/<id>/.vale.ini`.
    This is the step that is easy to skip and impossible to notice
-   skipping.
+   skipping. A rule with no config is enabled nowhere: it parses, it
+   runs, and it reports nothing.
 
-   A scaffolded project ships **no section at all** — only `StylesPath`
-   and `MinAlertLevel` — because scope is the author's decision and the
-   scaffold will not guess it. So the first rule in a project also
-   writes the first section:
+   The whole file, for a rule that applies to markdown:
 
    ```ini
-   StylesPath = .
-   MinAlertLevel = suggestion
-
+   # Which files this rule applies to.
    [*.md]
+   tskl) rule = no-simply
    BasedOnStyles =
-   rules.no-simply = YES
+   no-simply.no-simply = YES
    ```
 
-   - `StylesPath = .` resolves **relative to the directory holding
-     `.vale.ini`**, which is `.taskless/vale/`. That makes the `rules/`
-     directory beside it a style named `rules`, which is where the
-     `rules.` prefix comes from.
-   - `[*.md]` is a glob over paths. Match it to the files the rule is
-     actually about — `[*.{md,mdx}]`, `[docs/**/*.md]`. Every file the
-     walk reaches that matches the glob is subject to every rule enabled
-     under it.
-   - `BasedOnStyles =` with an empty value is valid and says explicitly
-     that no bundled style loads. The default is already empty, so this
-     changes nothing today; write it because it makes the section's
-     intent readable to the next person, who would otherwise have to know
-     the default to know whether a style is missing or deliberately off.
-   - `MinAlertLevel` is a floor. A rule whose `level` sits below it is
-     enabled and silent.
+   Four lines, and each one earns its place:
 
-   If a section already covers the right files, add the rule to it
-   rather than opening a second one — a later section matching the same
-   files wins outright.
+   - `[*.md]` is a **matcher**: a glob over paths, deciding which files
+     this rule sees. Match it to the files the rule is actually about,
+     such as `[*.{md,mdx}]` or `[docs/**/*.md]`. A rule can declare
+     several matchers if it needs to.
+   - `tskl) rule = <id>` is a breadcrumb Taskless reads to attribute the
+     matcher back to this rule after assembly interleaves every rule's
+     matchers into one file. Vale parses the key and ignores it. Write it
+     in every matcher you add, or the tooling loses track of who owns
+     what.
+   - `BasedOnStyles =` with an empty value says explicitly that no
+     bundled style loads. The default is already empty, so this changes
+     nothing today. Write it anyway: it tells the next reader that no
+     style is missing.
+   - `no-simply.no-simply = YES` turns the rule on. The first half is
+     the style, which is this rule's directory; the second is the check
+     inside it, which is the file. Both are the id.
 
-   **A rule enabled outside a section does nothing.** Put
-   `rules.no-simply = YES` above the first `[…]` line and Vale does not
-   error: it prints `W101 'rules.no-simply' isn't a core option` to
-   stderr, exits zero, and reports no findings. The CLI surfaces that
-   diagnostic as a notice — if you see it, the assignment is in the
-   wrong place, not the rule.
+   **Do NOT write `StylesPath` or `MinAlertLevel` here.** Those describe
+   the run rather than a rule, the assembler supplies them, and a copy
+   in a rule's config is dropped on the way in.
 
-5. **Write the fixtures.** Two directories, both flat. Vale lints the
-   rule's whole tree, so a document in a nested subdirectory would be
-   linted but never checked against either bucket — `verify-rule` rejects
-   one by name rather than skipping it. Keep both buckets one level deep:
+   Keep assignments underneath a matcher. An assignment above the first
+   `[…]` line belongs to no matcher, and Vale ignores it after warning
+   on stderr.
+
+5. **Write the fixtures.** Two directories inside the rule, both flat.
+   Vale lints the whole fixture tree, so a document nested a level
+   deeper would be linted and never checked against either bucket, which
+   `test` rejects by name rather than skipping. Keep both one level
+   deep:
 
    ```
-   .taskless/vale/rule-tests/<id>/pass/ok.md     # rule must stay quiet
-   .taskless/vale/rule-tests/<id>/fail/bad.md    # rule must fire
+   .taskless/rules/vale/<id>/.tests/pass/ok.md    # rule must stay quiet
+   .taskless/rules/vale/<id>/.tests/fail/bad.md   # rule must fire
    ```
 
-   Give the fixtures an extension your section's glob matches. A `.txt`
-   fixture under a `[*.md]` section is never linted, so the `fail/`
+   **The leading dot on `.tests/` is required.** ast-grep walks the
+   rules tree and parses every `.yml` it reaches as a rule, and a plain
+   `tests/` directory fails that scan for the whole project. A
+   dot-directory is skipped. Do not rename it.
+
+   Give the fixtures an extension your matcher's glob matches. A `.txt`
+   fixture under a `[*.md]` matcher is never linted, so the `fail/`
    document silently passes.
 
    **The `pass/` bucket is not "correct prose".** Correct prose proves
@@ -309,64 +332,69 @@ run. That assignment is the one thing you have to get right by looking.
 
    That is the half of the fixture set that has to work for you.
 
-6. **Verify it.** One command, run from the project root:
+6. **Verify, then test.** Two commands, both taking the rule's
+   directory as their argument, both run from the project root:
 
    ```
-   npx @taskless/cli rule verify <id> --json
+   npx @taskless/cli verify .taskless/rules/vale/<id> --json
+   npx @taskless/cli test   .taskless/rules/vale/<id> --json
    ```
 
-   It runs your rule against both buckets in an isolated config — only
-   your rule enabled, no bundled styles — and answers the question the
-   fixtures were written to ask:
+   `verify` asks whether the rule is well-formed: the style file parses,
+   `extends` and `message` are present, `level` is one Vale accepts, and
+   the config declares a matcher that enables `<id>.<id>`. It does **not**
+   need fixtures, so run it as soon as the style file exists.
+
+   `test` runs the rule against both buckets. It runs `verify` first and
+   stops if that fails, so a malformed rule tells you what is malformed
+   instead of complaining about fixtures.
+
+   Both report the same shape:
 
    ```json
-   {"engine":"vale","success":true,"ruleId":"no-simply",
-    "fixtures":"both","missingFailures":[],"unexpectedFindings":[]}
+   {"ok":true,"rules":[{"engine":"vale","ruleId":"no-simply",
+    "ok":true,"errors":[],"ran":true}]}
    ```
 
-   - `success: true` and `fixtures: "both"` is the only passing shape.
-   - `fixtures` other than `"both"` fails without running Vale: a rule
-     with one bucket has proved half of what it needs to.
-   - `missingFailures` names `fail/` documents that were not flagged.
-   - `unexpectedFindings` names `pass/` documents that were.
+   `ok` is the answer. `errors` names what failed, one string per
+   problem. Exit code is 0 when every rule passed and 1 otherwise, so
+   both are safe to script.
 
-   Exit code is 0 on success and 1 on any failure, so this one *is* safe
-   to script.
+   Pass a directory above a rule and every rule beneath it is checked,
+   reported one entry per rule. `.taskless/rules/vale` covers every Vale
+   rule; no argument at all covers the project.
 
-   If you would rather see the raw findings — the message text, the line
-   numbers — run `check` against a bucket instead:
+   If you would rather see the raw findings, the message text and the
+   line numbers, run `check` against a bucket instead:
 
    ```
-   npx @taskless/cli check .taskless/vale/rule-tests/<id>/fail --json
+   npx @taskless/cli check .taskless/rules/vale/<id>/.tests/fail --json
    ```
 
-   Read `results` there, not `success` and not the exit code. `check`
-   lints the path against the whole config rather than your rule alone,
-   `success` says the run worked rather than that the fixture behaved,
-   and the exit code follows severity — a `level: error` rule exits 1 on
-   `fail/` and a `warning` rule exits 0, both correct. `verify` is the
-   command that answers pass-or-fail; `check` is the one that shows you
-   the finding.
+   Read `results` there. Ignore `success` and the exit code: `success`
+   says the run worked rather than that the fixture behaved, and the
+   exit code follows severity, so a `level: error` rule exits 1 on
+   `fail/` while a `warning` rule exits 0 and both are correct. `test`
+   answers pass-or-fail; `check` shows you the finding.
 
-   If `fail/` documents show up in `missingFailures`, work down this list
-   before touching the pattern — the cause is usually further up:
-   - Is the assignment inside a section?
-   - Does the section's glob match the fixture's extension?
-   - Is the rule's `level` at or above `MinAlertLevel`?
-   - Do the filename, the `rules.<id>` assignment, and the fixture
-     directory all agree?
+   When a `fail/` document does not fire, work down this list before
+   touching the pattern. The cause is usually further up:
+   - Does the rule have a `.vale.ini` at all?
+   - Is the assignment underneath a `[…]` matcher?
+   - Is it spelled `<id>.<id>`, both halves the same?
+   - Does the matcher's glob match the fixture's extension?
    - Only then: does the pattern actually match the text?
 
-   Anything in `unexpectedFindings` means the pattern is too broad. Look
-   for a missing word boundary, an unescaped metacharacter, or a swap key
-   that also matches the form you meant to allow.
+   A `pass/` document that fires means the pattern is too broad. Look
+   for a missing word boundary, an unescaped metacharacter, or a swap
+   key that also matches the form you meant to allow.
 
-7. **Report.** Show the three paths you wrote, a one-line summary of
-   what the rule flags, and which files the section scopes it to — the
-   scope is a decision the user should see, not one buried in a config.
-   Note that a whole-project `taskless check` will **not** report your
-   fixtures: `.taskless/` is excluded from the project walk, by design.
-   `verify-rule` is what exercises them.
+7. **Report.** Show the rule directory you created and what is in it, a
+   one-line summary of what the rule flags, and the glob it is scoped
+   to. The scope is a decision the user should see rather than one
+   buried in a config. Note that a whole-project `taskless check` skips
+   your fixtures: `.taskless/` is excluded from the project walk, by
+   design. `test` is what exercises them.
 
 ## Worked rules
 
@@ -526,6 +554,14 @@ either:
   organize: organise
 ```
 
+**The id must be word characters only.** `consistency` is the one
+extension point that compiles the rule's own name into the pattern, as
+a `(?P<id>…)` capture group, and Go RE2 rejects a group name containing
+a hyphen. Measured: an id of `ize-ise` fails with `E201 … invalid group
+name` and takes **every** Vale rule in the project down with it, because
+Vale reads one config for the whole run. Name this one `izeise` or
+`spelling_variants`. Kebab-case is right everywhere else.
+
 **Goes wrong:** expecting it to pick a winner. It flags the *second*
 form once both appear in a document — it enforces internal consistency,
 not house style. If you want one specific spelling, that is a
@@ -557,11 +593,12 @@ definition when the acronym is missing".
 - Vale reads one document at a time and has no cross-document view. A
   rule about consistency *between* documents cannot be written here.
 - Prose inside code is still prose: comments and docstrings are Vale's
-  subject, and a rule about them belongs in a section whose glob covers
-  the source files.
-- Do NOT add a `[*]` section to widen a rule that isn't firing. It
-  applies every enabled rule to every file the walk reaches, which turns
-  one rule's scoping bug into every rule's false positives.
+  subject, and a rule about them belongs under a matcher whose glob
+  covers the source files.
+- Do NOT add a `[*]` matcher to widen a rule that isn't firing. Matchers
+  from every rule are assembled into one config, so `[*]` applies this
+  rule to every file the walk reaches and turns one rule's scoping bug
+  into a flood of false positives.
 
 ## See Also
 
