@@ -59,9 +59,13 @@ function makeProject(
 ): string {
   const cwd = mkdtempSync(join(tmpdir(), "vale-verify-"));
   workspaces.push(cwd);
-  mkdirSync(join(cwd, ".taskless", "vale", "rules"), { recursive: true });
+  // A rule is a directory; each `write` below creates its own.
   for (const [name, body] of Object.entries(rules)) {
-    writeFileSync(join(cwd, ".taskless", "vale", "rules", `${name}.yml`), body);
+    mkdirSync(join(cwd, ".taskless", "rules", "vale", name), { recursive: true });
+    writeFileSync(
+      join(cwd, ".taskless", "rules", "vale", name, `${name}.yml`),
+      body
+    );
   }
   for (const [ruleId, buckets] of Object.entries(fixtures)) {
     for (const bucket of ["pass", "fail"] as const) {
@@ -103,7 +107,7 @@ function bothBuckets(): string {
 describe("buildIsolatingConfig", () => {
   it("enables exactly one rule, once", () => {
     const config = buildIsolatingConfig("/proj", "no-simply");
-    expect(config).toContain("rules.no-simply = YES");
+    expect(config).toContain("no-simply.no-simply = YES");
     // Precedence is positional, so a repeated assignment would be relying on
     // the very rule that bit the scoping spec.
     expect(config.match(/rules\.no-simply/g)).toHaveLength(1);
@@ -191,20 +195,9 @@ describe("fixture buckets are flat", () => {
         },
       }
     );
-    mkdirSync(
-      join(
-        cwd,
-        ".taskless",
-        "vale",
-        "rule-tests",
-        "no-simply",
-        "pass",
-        "nested"
-      ),
-      {
-        recursive: true,
-      }
-    );
+    mkdirSync(join(cwd, ".taskless", "rules", "vale", "no-simply", ".tests", "pass", "nested"), {
+      recursive: true,
+    });
 
     await expect(verifyValeRule(cwd, "no-simply")).rejects.toThrow(
       /fixture buckets are flat/i

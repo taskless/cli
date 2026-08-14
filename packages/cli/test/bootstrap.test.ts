@@ -51,9 +51,9 @@ describe("ensureTasklessDirectory", () => {
     expect(gitignore).toContain("sgconfig.yml");
 
     // Engine-partitioned subdirectories exist (migration 0004)
-    const rulesStat = await stat(join(tasklessDirectory, "sg", "rules"));
+    const rulesStat = await stat(join(tasklessDirectory, "rules", "sg"));
     expect(rulesStat.isDirectory()).toBe(true);
-    const testsStat = await stat(join(tasklessDirectory, "sg", "rule-tests"));
+    const testsStat = await stat(join(tasklessDirectory, "rules", "sg"));
     expect(testsStat.isDirectory()).toBe(true);
   });
 
@@ -108,7 +108,7 @@ describe("ensureTasklessDirectory", () => {
     // Files from 001-init should exist
     const readmeStat = await stat(join(tasklessDirectory, "README.md"));
     expect(readmeStat.isFile()).toBe(true);
-    const rulesStat = await stat(join(tasklessDirectory, "sg", "rules"));
+    const rulesStat = await stat(join(tasklessDirectory, "rules", "sg"));
     expect(rulesStat.isDirectory()).toBe(true);
   });
 
@@ -228,7 +228,7 @@ describe("v0 → v1 migration", () => {
     await ensureTasklessDirectory(temporaryDirectory);
 
     const ruleContent = await readFile(
-      join(temporaryDirectory, ".taskless", "sg", "rules", "no-as-any.yml"),
+      join(temporaryDirectory, ".taskless", "rules", "sg", "no-as-any.yml"),
       "utf8"
     );
     expect(ruleContent).toContain("no-as-any");
@@ -257,7 +257,7 @@ describe("v0 → v1 migration", () => {
     await ensureTasklessDirectory(temporaryDirectory);
 
     const keepStat = await stat(
-      join(temporaryDirectory, ".taskless", "sg", "rules", ".gitkeep")
+      join(temporaryDirectory, ".taskless", "rules", "sg", ".gitkeep")
     );
     expect(keepStat.isFile()).toBe(true);
   });

@@ -7,10 +7,10 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { ensureTasklessDirectory } from "../src/filesystem/directory";
 import {
-  dedupeFindings,
-  discoverAstGrepRuleSources,
+  listRuleIds,
   planEngineDispatch,
   resolveIngestEngine,
+  ruleDirectory,
 } from "../src/rules/engines";
 import { writeRuleFile, writeRuleTestFile } from "../src/rules/files";
 import {
@@ -22,7 +22,6 @@ import {
   signRuntimeChecks,
 } from "../src/rules/runtime/run-set";
 import type { GeneratedRule } from "../src/api/rules";
-import type { CheckResult } from "../src/types/check";
 import { CLIError } from "../src/util/cli-error";
 
 const execFileAsync = promisify(execFile);
@@ -153,78 +152,63 @@ describe("engine dispatch by directory", () => {
       "runtime",
     ]);
 
-    // Its rules are never picked up as ast-grep sources.
-    const sources = await discoverAstGrepRuleSources(temporaryDirectory);
-    expect(
-      sources.every((source) => !source.rulesDirectory.includes("eslint"))
-    ).toBe(true);
+    // Its rules are never picked up as ast-grep rules.
+    expect(await listRuleIds(temporaryDirectory, "sg")).toEqual([]);
   });
 
-  it("finds ast-grep rules under sg/rules by directory alone", async () => {
-    await writeFile(
-      join(tasklessDirectory, "sg", "rules", "no-eval.yml"),
-      NO_EVAL_RULE,
-      "utf8"
-    );
+  it("finds ast-grep rules by their directory alone", async () => {
+    const rule = ruleDirectory(temporaryDirectory, "sg", "no-eval");
+    await mkdir(rule, { recursive: true });
+    await writeFile(join(rule, "no-eval.yml"), NO_EVAL_RULE, "utf8");
 
-    const sources = await discoverAstGrepRuleSources(temporaryDirectory);
-    expect(sources).toHaveLength(1);
-    expect(sources[0]).toMatchObject({
-      rulesDirectory: "sg/rules",
-      ruleTestsDirectory: "sg/rule-tests",
-      legacy: false,
-      ruleIds: ["no-eval"],
-    });
+    expect(await listRuleIds(temporaryDirectory, "sg")).toEqual(["no-eval"]);
   });
 
-  it("treats the legacy rules/ path as an ast-grep source", async () => {
-    await mkdir(join(tasklessDirectory, "rules"), { recursive: true });
+  // A rule is a directory. A loose file in the engine directory is not one, and
+  // treating it as a rule would resurrect the flat layout by accident.
+  it("ignores a loose file in an engine directory", async () => {
+    await mkdir(join(tasklessDirectory, "rules", "sg"), { recursive: true });
     await writeFile(
-      join(tasklessDirectory, "rules", "no-eval.yml"),
+      join(tasklessDirectory, "rules", "sg", "no-eval.yml"),
       NO_EVAL_RULE,
       "utf8"
     );
 
-    const sources = await discoverAstGrepRuleSources(temporaryDirectory);
-    expect(sources).toHaveLength(1);
-    expect(sources[0]).toMatchObject({ rulesDirectory: "rules", legacy: true });
+    expect(await listRuleIds(temporaryDirectory, "sg")).toEqual([]);
   });
 
-  it("returns both layouts, engine directory first, when both hold rules", async () => {
-    await writeFile(
-      join(tasklessDirectory, "sg", "rules", "no-eval.yml"),
-      NO_EVAL_RULE,
-      "utf8"
-    );
-    await mkdir(join(tasklessDirectory, "rules"), { recursive: true });
-    await writeFile(
-      join(tasklessDirectory, "rules", "no-eval.yml"),
-      NO_EVAL_RULE,
-      "utf8"
-    );
-
-    const sources = await discoverAstGrepRuleSources(temporaryDirectory);
-    expect(sources.map((source) => source.rulesDirectory)).toEqual([
-      "sg/rules",
-      "rules",
+  // Assembly order is a correctness constraint: Vale precedence is positional,
+  // so a directory-iteration order would give a rule a different effective
+  // scope per machine.
+  it("returns rule ids sorted", async () => {
+    for (const id of ["zebra", "alpha", "middle"]) {
+      const rule = ruleDirectory(temporaryDirectory, "sg", id);
+      await mkdir(rule, { recursive: true });
+      await writeFile(join(rule, `${id}.yml`), NO_EVAL_RULE, "utf8");
+    }
+    expect(await listRuleIds(temporaryDirectory, "sg")).toEqual([
+      "alpha",
+      "middle",
+      "zebra",
     ]);
   });
 
-  it("omits a rules directory that holds no rule files", async () => {
-    // The scaffold creates sg/rules with only a .gitkeep in it.
-    const sources = await discoverAstGrepRuleSources(temporaryDirectory);
-    expect(sources).toEqual([]);
+  it("reports no rules for a freshly scaffolded project", async () => {
+    expect(await listRuleIds(temporaryDirectory, "sg")).toEqual([]);
   });
 
-  it("discovers a runtime rule under runtime/rules/ and nothing else", async () => {
-    const runtimeRule = join(
-      tasklessDirectory,
+  it("discovers a runtime rule with its captures and nothing else", async () => {
+    const runtimeRule = ruleDirectory(
+      temporaryDirectory,
       "runtime",
-      "rules",
       "logs-abc12345"
     );
-    await mkdir(runtimeRule, { recursive: true });
-    await writeFile(join(runtimeRule, "logs.yml"), RUNTIME_CAPTURE, "utf8");
+    await mkdir(join(runtimeRule, "captures"), { recursive: true });
+    await writeFile(
+      join(runtimeRule, "captures", "logs.yml"),
+      RUNTIME_CAPTURE,
+      "utf8"
+    );
     await writeFile(join(runtimeRule, "check.ts"), RUNTIME_CHECK, "utf8");
 
     const discovered = await discoverRuntimeRules(temporaryDirectory);
@@ -232,25 +216,16 @@ describe("engine dispatch by directory", () => {
     expect(discovered[0]?.checkFile).toBe(join(runtimeRule, "check.ts"));
   });
 
-  it("treats a rule under sg/rules/ as static, never runtime", async () => {
+  it("treats a rule under the sg engine as static, never runtime", async () => {
     // Same capture shape, filed under the ast-grep engine: the directory
     // decides, so runtime discovery must not pick it up.
-    await writeFile(
-      join(tasklessDirectory, "sg", "rules", "logs.yml"),
-      RUNTIME_CAPTURE,
-      "utf8"
-    );
-    await writeFile(
-      join(tasklessDirectory, "sg", "rules", "check.ts"),
-      RUNTIME_CHECK,
-      "utf8"
-    );
+    const rule = ruleDirectory(temporaryDirectory, "sg", "logs");
+    await mkdir(join(rule, "captures"), { recursive: true });
+    await writeFile(join(rule, "captures", "logs.yml"), RUNTIME_CAPTURE, "utf8");
+    await writeFile(join(rule, "check.ts"), RUNTIME_CHECK, "utf8");
 
     expect(await discoverRuntimeRules(temporaryDirectory)).toEqual([]);
-    const sources = await discoverAstGrepRuleSources(temporaryDirectory);
-    expect(sources.map((source) => source.rulesDirectory)).toEqual([
-      "sg/rules",
-    ]);
+    expect(await listRuleIds(temporaryDirectory, "sg")).toEqual(["logs"]);
   });
 
   it("does not discover runtime rules left at the pre-migration path", async () => {
@@ -261,35 +236,6 @@ describe("engine dispatch by directory", () => {
     await writeFile(join(legacy, "check.ts"), RUNTIME_CHECK, "utf8");
 
     expect(await discoverRuntimeRules(temporaryDirectory)).toEqual([]);
-  });
-});
-
-function finding(overrides: Partial<CheckResult> = {}): CheckResult {
-  return {
-    source: "ast-grep",
-    ruleId: "no-eval",
-    severity: "error",
-    message: "avoid eval",
-    file: "src.ts",
-    range: {
-      start: { line: 1, column: 0 },
-      end: { line: 1, column: 9 },
-    },
-    matchedText: "eval(one)",
-    ...overrides,
-  };
-}
-
-describe("finding de-duplication", () => {
-  it("collapses identical matches reported by two sources", () => {
-    expect(dedupeFindings([finding(), finding()])).toHaveLength(1);
-  });
-
-  it("keeps distinct matches", () => {
-    const other = finding({
-      range: { start: { line: 9, column: 0 }, end: { line: 9, column: 9 } },
-    });
-    expect(dedupeFindings([finding(), other])).toHaveLength(2);
   });
 });
 
