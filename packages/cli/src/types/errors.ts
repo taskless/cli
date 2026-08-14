@@ -15,6 +15,11 @@ export type CLIErrorCode =
   | "INVALID_INPUT"
   | "NETWORK_ERROR"
   | "SCAN_FAILED"
+  // An engine binary is not present on this host — an ordinary state on an
+  // unsupported architecture, and distinct from the engine running and
+  // failing. Kept apart from SCAN_FAILED because the two ask the caller for
+  // different things: install something, versus fix something.
+  | "ENGINE_UNAVAILABLE"
   | "RECONCILE_FAILED"
   | "SCAFFOLD_VERSION_MISMATCH"
   | "SCAFFOLD_CONFLICT"
