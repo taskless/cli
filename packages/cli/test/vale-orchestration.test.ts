@@ -54,22 +54,25 @@ function makeMixedProject(options?: {
       "",
     ].join("\n")
   );
-  writeFileSync(
-    join(cwd, ".taskless", "sg", "sgconfig.yml"),
-    "ruleDirs:\n  - rules\n"
-  );
 
-  mkdirSync(join(cwd, ".taskless", "vale", "rules"), { recursive: true });
+  // A rule is a directory; each `write` below creates its own.
   if (valeRules) {
+    mkdirSync(join(cwd, ".taskless", "rules", "vale", "no-simply"), {
+      recursive: true,
+    });
     writeFileSync(
-      join(cwd, ".taskless", "vale", "rules", "no-simply.yml"),
+      join(cwd, ".taskless", "rules", "vale", "no-simply", "no-simply.yml"),
       `extends: existence\nmessage: "Avoid 'simply'"\nlevel: warning\ntokens:\n  - simply\n`
     );
   }
-  writeFileSync(
-    join(cwd, ".taskless", "vale", ".vale.ini"),
-    "StylesPath = .\nMinAlertLevel = suggestion\n\n[*.md]\nBasedOnStyles =\nrules.no-simply = YES\n"
-  );
+  // The per-rule config assembly reads. Written only when the rule exists, so
+  // a project with no Vale rules assembles to nothing.
+  if (valeRules) {
+    writeFileSync(
+      join(cwd, ".taskless", "rules", "vale", "no-simply", ".vale.ini"),
+      "[*.md]\ntskl) rule = no-simply\nBasedOnStyles =\nno-simply.no-simply = YES\n"
+    );
+  }
 
   writeFileSync(join(cwd, "app.js"), "eval('1 + 1');\n");
   writeFileSync(join(cwd, "doc.md"), "Just simply do it.\n");
@@ -98,7 +101,7 @@ describe("hasValeRules", () => {
       // `false` would skip Vale with no notice and no failure, which is the
       // silent-disable the engine's failure/notice split exists to prevent.
       const cwd = makeMixedProject();
-      const rules = join(cwd, ".taskless", "vale", "rules");
+      const rules = join(cwd, ".taskless", "rules", "vale");
       chmodSync(rules, 0o000);
       try {
         await expect(hasValeRules(cwd)).rejects.toThrow(/EACCES|EPERM/);
@@ -275,7 +278,7 @@ describe("runEngines when Vale is unavailable", () => {
       // `failures` and the exit code, instead of Vale quietly contributing
       // nothing and the run reading as clean.
       const cwd = makeMixedProject();
-      const rules = join(cwd, ".taskless", "vale", "rules");
+      const rules = join(cwd, ".taskless", "rules", "vale");
       chmodSync(rules, 0o000);
       try {
         const dispatched = await runEngines({

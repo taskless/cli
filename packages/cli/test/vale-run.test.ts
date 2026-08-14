@@ -26,7 +26,7 @@ afterEach(() => {
   }
 });
 
-/** A project with the committed Vale layout: `config` plus rule files. */
+/** A project with a rule directory per rule, plus a run config to invoke. */
 function makeProject(
   config: string,
   rules: Record<string, string>,
@@ -34,10 +34,17 @@ function makeProject(
 ): string {
   const cwd = mkdtempSync(join(tmpdir(), "vale-run-"));
   workspaces.push(cwd);
-  mkdirSync(join(cwd, ".taskless", "vale", "rules"), { recursive: true });
-  writeFileSync(join(cwd, ".taskless", "vale", ".vale.ini"), config);
+  // `runVale` reads the *assembled* config, which assembly writes here. These
+  // tests exercise the runner, so they write it directly rather than going
+  // through assembly.
+  mkdirSync(join(cwd, ".taskless"), { recursive: true });
+  writeFileSync(join(cwd, ".taskless", ".vale.ini"), config);
   for (const [name, body] of Object.entries(rules)) {
-    writeFileSync(join(cwd, ".taskless", "vale", "rules", `${name}.yml`), body);
+    mkdirSync(join(cwd, ".taskless", "rules", "vale", name), { recursive: true });
+    writeFileSync(
+      join(cwd, ".taskless", "rules", "vale", name, `${name}.yml`),
+      body
+    );
   }
   for (const [path, body] of Object.entries(documents)) {
     const full = join(cwd, path);
@@ -51,7 +58,7 @@ const existenceRule = (token: string, message: string) =>
   `extends: existence\nmessage: "${message}"\nlevel: warning\ntokens:\n  - ${token}\n`;
 
 /** StylesPath is relative to the config file, so `.` is `.taskless/vale/`. */
-const header = "StylesPath = .\nMinAlertLevel = suggestion\n";
+const header = "StylesPath = rules/vale\nMinAlertLevel = suggestion\n";
 
 describe("runVale when the binary is missing", () => {
   it("reports the engine unavailable instead of throwing", async () => {
@@ -74,7 +81,7 @@ describe("runVale when the binary is missing", () => {
 withVale("runVale against the real binary", () => {
   it("maps a finding to a CheckResult", async () => {
     const cwd = makeProject(
-      `${header}\n[*.md]\nrules.no-simply = YES\n`,
+      `${header}\n[*.md]\nno-simply.no-simply = YES\n`,
       { "no-simply": existenceRule("simply", "Avoid 'simply'") },
       { "doc.md": "One\nTwo\nJust simply do it.\n" }
     );
@@ -101,7 +108,7 @@ withVale("runVale against the real binary", () => {
 
   it("produces no findings, and no error, on a clean document", async () => {
     const cwd = makeProject(
-      `${header}\n[*.md]\nrules.no-simply = YES\n`,
+      `${header}\n[*.md]\nno-simply.no-simply = YES\n`,
       { "no-simply": existenceRule("simply", "Avoid 'simply'") },
       { "doc.md": "Nothing objectionable here.\n" }
     );
@@ -114,7 +121,7 @@ withVale("runVale against the real binary", () => {
 
   it("normalizes suggestion to hint", async () => {
     const cwd = makeProject(
-      `${header}\n[*.md]\nrules.soft = YES\n`,
+      `${header}\n[*.md]\nsoft.soft = YES\n`,
       {
         soft: `extends: existence\nmessage: "Consider rewording"\nlevel: suggestion\ntokens:\n  - perhaps\n`,
       },
@@ -140,7 +147,7 @@ withVale("runVale against the real binary", () => {
 
     it("scopes a rule to the paths its matcher includes", async () => {
       const cwd = makeProject(
-        `${header}\n[marketing/**]\nrules.no-simply = YES\n`,
+        `${header}\n[marketing/**]\nno-simply.no-simply = YES\n`,
         rules,
         documents
       );
@@ -162,7 +169,7 @@ withVale("runVale against the real binary", () => {
       // this test claimed "regardless of order" while testing one order, which
       // would have kept passing while the claim was false.
       const cwd = makeProject(
-        `${header}\n[marketing/**]\nrules.no-simply = YES\n\n[marketing/legacy/**]\nrules.no-simply = NO\n`,
+        `${header}\n[marketing/**]\nno-simply.no-simply = YES\n\n[marketing/legacy/**]\nno-simply.no-simply = NO\n`,
         rules,
         documents
       );
@@ -178,7 +185,7 @@ withVale("runVale against the real binary", () => {
       // Two `[*.md]` sections each enabling a different rule. Vale unions
       // them, so a document matching the glob runs both.
       const cwd = makeProject(
-        `${header}\n[*.md]\nrules.no-simply = YES\n\n[*.md]\nrules.no-very = YES\n`,
+        `${header}\n[*.md]\nno-simply.no-simply = YES\n\n[*.md]\nno-very.no-very = YES\n`,
         rules,
         { "doc.md": "Just simply do it, very quickly.\n" }
       );
@@ -216,7 +223,7 @@ withVale("runVale against the real binary", () => {
 
   it("terminates and reports a timeout rather than hanging", async () => {
     const cwd = makeProject(
-      `${header}\n[*.md]\nrules.no-simply = YES\n`,
+      `${header}\n[*.md]\nno-simply.no-simply = YES\n`,
       { "no-simply": existenceRule("simply", "Avoid 'simply'") },
       { "doc.md": "Just simply do it.\n" }
     );
@@ -254,7 +261,7 @@ withVale("ValeRunOutcome.blocking against the real binary", () => {
     // broken rule file read as "no Vale findings" — indistinguishable from a
     // clean run, and how a silently disabled engine ships.
     const cwd = makeProject(
-      `${header}\n[*.md]\nrules.no-simply = YES\n`,
+      `${header}\n[*.md]\nno-simply.no-simply = YES\n`,
       { "no-simply": existenceRule("simply", "Avoid 'simply'") },
       { "doc.md": "Just simply do it.\n" }
     );
@@ -281,7 +288,7 @@ withVale("ValeRunOutcome.blocking against the real binary", () => {
 
   it("marks findings non-blocking; severity decides the exit code", async () => {
     const cwd = makeProject(
-      `${header}\n[*.md]\nrules.no-simply = YES\n`,
+      `${header}\n[*.md]\nno-simply.no-simply = YES\n`,
       { "no-simply": existenceRule("simply", "Avoid 'simply'") },
       { "doc.md": "Just simply do it.\n" }
     );
