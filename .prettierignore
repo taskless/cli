@@ -10,3 +10,6 @@ __generated__
 
 # Worktrees are second checkouts; formatting them would touch other branches
 worktrees/
+
+# The demo project: deliberately-wrong source and prose fixtures.
+example/

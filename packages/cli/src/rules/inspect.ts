@@ -77,10 +77,11 @@ export async function verifyOneRule(
         const level = record.level;
         if (
           level !== undefined &&
-          !["suggestion", "warning", "error"].includes(String(level))
+          (typeof level !== "string" ||
+            !["suggestion", "warning", "error"].includes(level))
         ) {
           errors.push(
-            `${ruleId}.yml has level '${String(level)}'; it must be suggestion, warning, or error.`
+            `${ruleId}.yml has an invalid level; it must be suggestion, warning, or error.`
           );
         }
       }

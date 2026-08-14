@@ -100,7 +100,7 @@ async function runOverPath(options: {
   if (failed.length > 0) process.exitCode = 1;
 }
 
-const pathArgs = {
+const ruleTargetArguments = {
   dir: {
     type: "string",
     alias: "d",
@@ -124,7 +124,7 @@ export const verifyCommand = defineCommand({
     name: "verify",
     description: "Check that a rule has the components its engine requires",
   },
-  args: pathArgs,
+  args: ruleTargetArguments,
   async run({ args }) {
     const cwd = resolve(args.dir ?? process.cwd());
     await runOverPath({
@@ -144,7 +144,7 @@ export const testCommand = defineCommand({
     name: "test",
     description: "Run a rule's tests, after verifying the rule itself",
   },
-  args: pathArgs,
+  args: ruleTargetArguments,
   async run({ args }) {
     const cwd = resolve(args.dir ?? process.cwd());
     await runOverPath({
