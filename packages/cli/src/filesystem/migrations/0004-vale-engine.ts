@@ -25,15 +25,20 @@ const SG_CONFIG_CONTENT = `ruleDirs:\n  - rules\ntestConfigs:\n  - testDir: rule
 /**
  * The scaffolded `.vale.ini`.
  *
- * `StylesPath` is the engine directory, NOT `rules/`. Vale treats StylesPath as
- * a directory *of styles*, so a rule at `vale/rules/no-simply.yml` is the
- * `no-simply` rule of the `rules` style, and its check is `rules.no-simply` —
- * which is the name `stripRulesPrefix` in `vale/map.ts` exists to undo, and the
- * shape `verify.ts` generates. Pointing StylesPath at `rules/` instead makes
+ * `StylesPath` is the engine directory, NOT `rules/` — **for this layout**.
+ * Vale treats StylesPath as a directory *of styles*, so with rules flat in
+ * `vale/rules/`, `rules` is the style and a rule at `vale/rules/no-simply.yml`
+ * is the check `rules.no-simply`. Pointing StylesPath at `rules/` instead makes
  * that same file a style directory with no rules in it: every check resolves to
  * nothing, Vale reports `{}`, and a prose check passes clean with every rule
- * silently disabled. Measured against the real binary, which is the only way
- * this is visible — the layout is identical either way.
+ * silently disabled.
+ *
+ * **Do not carry that conclusion forward.** Migration `0005` moves each rule
+ * into its own directory, and there `StylesPath = rules/vale` is the *correct*
+ * setting and `.` is the one that resolves nothing — the exact reverse.
+ * StylesPath is a function of the layout, and the same value is right for one
+ * and silently wrong for the other. Both measured against the real binary,
+ * which is the only way either is visible: the files look identical.
  *
  * It carries **no section**, so a scaffolded project lints nothing until an
  * author scopes something deliberately. An unscoped `[*]` would apply every

@@ -3,11 +3,11 @@ import { stat } from "node:fs/promises";
 import { defineCommand } from "citty";
 
 import { hasValeRules, runEngines } from "../rules/dispatch";
+import { assembleEngineConfigs } from "../rules/assemble";
 import { formatText } from "../util/format";
-import { resolveSgConfigPath } from "../filesystem/sgconfig";
 import { ensureTasklessDirectory } from "../filesystem/directory";
 import {
-  discoverAstGrepRuleSources,
+  listRuleIds,
   planEngineDispatch,
 } from "../rules/engines";
 import { getTelemetry } from "../telemetry";
@@ -335,7 +335,7 @@ export const checkCommand = defineCommand({
       // executor, so none of them can be assumed to contribute nothing. A
       // directory that is not a known engine is still ignored rather than
       // handed to someone's parser.
-      const astGrepSources = await discoverAstGrepRuleSources(cwd);
+      const astGrepRuleIds = await listRuleIds(cwd, "sg");
       // Both halves matter: `executor` alone is read from the static layout
       // table and is therefore always `runtime-harness`, so gating on it only
       // would make this unconditionally true and the presence check decorative.
@@ -350,13 +350,13 @@ export const checkCommand = defineCommand({
         : [];
 
       // "No rules configured" has to mean *no engine* has any, not just these
-      // two: a project whose only rules live in `.taskless/vale/rules/` would
+      // two: a project whose only rules live in `.taskless/rules/vale/` would
       // otherwise return here and Vale would never be dispatched, which is a
       // silent skip of the engine the user actually configured. Asked last and
       // short-circuited, so the ordinary project with ast-grep or runtime rules
       // pays nothing and `runEngines` still owns the decision to spawn Vale.
       const noRuleFiles =
-        astGrepSources.length === 0 &&
+        astGrepRuleIds.length === 0 &&
         runtimeRules.length === 0 &&
         !(await hasValeRules(cwd));
 
@@ -392,13 +392,14 @@ export const checkCommand = defineCommand({
 
         // Every engine runs concurrently and merges into one result set. An
         // engine that cannot run reports a notice and the others still return.
-        const astGrepConfigPaths = await Promise.all(
-          astGrepSources.map((source) => resolveSgConfigPath(cwd, source))
-        );
+        // Assemble both engine configs from the per-rule tree. Each returns
+        // `undefined` when its engine has no rules, which dispatch reads as
+        // "nothing to run" rather than running an empty config.
+        const assembled = await assembleEngineConfigs(cwd);
         const dispatched = await runEngines({
           cwd,
           paths: existingPaths,
-          astGrepConfigPaths,
+          astGrepConfigPath: assembled.sg,
           runtimeRules: plan.execute,
           runtimeTimeoutMs: parseTimeoutMs(args.timeout),
         });
