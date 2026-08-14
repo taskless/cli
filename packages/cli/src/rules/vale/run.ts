@@ -4,6 +4,7 @@ import { StringDecoder } from "node:string_decoder";
 
 import type { CheckResult } from "../../types/check";
 import { ASSEMBLED_VALE_CONFIG } from "../engines";
+
 import { buildPath } from "../scan";
 import { findValeBinary, valeUnavailableMessage } from "./binary";
 import { asValeConfigError, toValeCheckResults, type ValeOutput } from "./map";
@@ -18,7 +19,7 @@ const TASKLESS_DIRECTORY = ".taskless";
  * `rules/assemble.ts`. Vale accepts exactly one `--config`, so per-rule
  * configuration has to reach one file before it can be invoked.
  */
-export { ASSEMBLED_VALE_CONFIG };
+export { ASSEMBLED_VALE_CONFIG } from "../engines";
 
 /**
  * How long a single Vale invocation may run before it is killed.
