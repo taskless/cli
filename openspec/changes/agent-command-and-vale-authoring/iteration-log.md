@@ -247,6 +247,42 @@ marker on step 3; pass-fixture advice branched by rule shape; and the two senten
 own that run D correctly called out as describing machinery and mechanisms that do not
 exist.
 
+## Round 3 — worked examples
+
+Both rounds converged, but every run had to *invent* its rule shape from three examples,
+and the near-misses each one flagged as "I guessed and happened to be right" were the
+recurring theme. The recipe explained the mechanics well and showed almost nothing.
+
+Added a **Worked rules** section: nine rules, one per extension point the recipe covers,
+each paired with the near-miss that fails and why. 356 → 545 lines.
+
+Every example is measured, and — the part that matters — the **YAML blocks were extracted
+from the rendered recipe and executed verbatim**, so what ships is what was tested rather
+than something adjacent to it:
+
+| # | Extension point | Result |
+| - | --------------- | ------ |
+| 1 | `existence` (hedging) | fires ×3 — `"Avoid hedging: 'We think'"` |
+| 2 | `substitution` (login → sign in) | fires ×2 — `"Use 'sign in to' instead of 'login to'"` |
+| 3 | `substitution` (GitHub) | fires ×2 on `Github`/`github`, **not** on the correct `GitHub` |
+| 4 | `capitalization` (sentence case) | fires ×1 on a Title Case heading |
+| 5 | `existence` + `scope: link` | fires ×1 — the link only, not the same phrase in prose |
+| 6 | `occurrence` (max 1 per paragraph) | fires ×1 |
+| 7 | `repetition` (doubled word) | fires ×1 — `"'is' is repeated"` |
+| 8 | `consistency` (-ize/-ise) | fires ×1 |
+| 9 | `conditional` (define the acronym) | fires ×1 on the undefined `XYZ`, not the defined `API` |
+
+**One near-miss was found by writing the examples, not by an agent.** An unquoted
+`[^\s]+` in a `repetition` rule's `tokens` matches nothing — zero findings, no error, no
+diagnostic. It is a YAML escaping failure that presents exactly like a Vale scoping
+failure, and it is now example 7's "goes wrong". Worth noting that this is the failure
+mode the recipe warns about most, arriving through a layer the recipe had not covered.
+
+Three other "goes wrong" entries are behaviors an agent would not guess: `consistency`
+enforces internal consistency rather than picking a winner (use `substitution` for house
+style); `occurrence` counts per `scope`, so omitting it caps the document; and
+`conditional`'s `first`/`second` invert the rule if swapped.
+
 ## Round 1 planned revision (applied — kept for the record)
 
 ## Planned revision (applied — kept for the record)
