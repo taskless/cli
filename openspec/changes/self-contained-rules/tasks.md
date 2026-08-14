@@ -10,6 +10,7 @@ Delivery shape: **stacked, merging down**, on top of `agent-command-and-vale-aut
 - [ ] 1.2 Pin the dot-directory assumption with a test: a rule directory containing `.tests/` with test YAML in it, asserting `sg scan` completes clean. This is the load-bearing undocumented behavior (design D2) and it must be checked on every run rather than remembered
 - [ ] 1.3 `hasValeRules` looks for flat `*.yml` under `vale/rules/` and would read a directory-shaped rule set as "no rules configured" — a silent skip of the whole engine. Fix it and add the test that would have caught it
 - [ ] 1.4 Runtime discovery reads capture rules from `captures/`; `check.ts` stays at the rule root
+- [ ] 1.5 **Delete `LEGACY_RULES_DIRECTORY` and `LEGACY_RULE_TESTS_DIRECTORY` and their readers** in `rules/verify.ts`, `detect/scan.ts`, and `commands/rules.ts`, including the error messages that name the legacy path as somewhere a rule might live. `.taskless/rules/` is now the new root and the legacy constant is the same string — a stale read path that resolves into the live tree is worse than none. Migrations run before any read (`ensureTasklessDirectory`), so the state they guard against cannot exist (design D9)
 
 ## 2. Assembly
 
@@ -22,6 +23,7 @@ Delivery shape: **stacked, merging down**, on top of `agent-command-and-vale-aut
 
 ## 3. Migration `0005`
 
+- [ ] 3.0 Assert `.taskless/rules/` holds no top-level `*.yml` before writing engine directories into it. `0004` empties it by moving it to `sg/rules/`, so a file still there means `0004` did not complete, and proceeding would interleave two layouts in one tree
 - [ ] 3.1 Move `<engine>/rules/<id>.yml` → `rules/<engine>/<id>/<id>.yml`; runtime `runtime/rules/<id>/` → `rules/runtime/<id>/`, its `*.yml` into `captures/`
 - [ ] 3.2 Move `<engine>/rule-tests/<id>*` → `rules/<engine>/<id>/.tests/`, preserving each engine's internal test shape
 - [ ] 3.3 Split the committed `vale/.vale.ini` — each matcher carrying `tskl) rule = <id>` into that rule's own config
