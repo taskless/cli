@@ -11,7 +11,7 @@ import {
 
 /** The finding from the spec's worked example, as Vale emits it. */
 const example: ValeFinding = {
-  Check: "rules.no-simply",
+  Check: "no-simply.no-simply",
   Severity: "warning",
   Line: 3,
   Span: [1, 7],
@@ -21,7 +21,7 @@ const example: ValeFinding = {
 
 describe("stripRulesPrefix", () => {
   it("strips the StylesPath prefix Vale prepends", () => {
-    expect(stripRulesPrefix("rules.no-simply")).toBe("no-simply");
+    expect(stripRulesPrefix("no-simply.no-simply")).toBe("no-simply");
   });
 
   it("leaves a check that carries no prefix alone", () => {
@@ -30,7 +30,9 @@ describe("stripRulesPrefix", () => {
 
   it("strips only the leading occurrence", () => {
     // A rule may legitimately contain the substring; only the prefix is ours.
-    expect(stripRulesPrefix("rules.rules.thing")).toBe("rules.thing");
+    // Only a doubled name collapses. `rules.thing` came from a style the CLI
+    // did not lay out, and halving it would report an id identifying nothing.
+    expect(stripRulesPrefix("rules.thing")).toBe("rules.thing");
     expect(stripRulesPrefix("house-rules.thing")).toBe("house-rules.thing");
   });
 });

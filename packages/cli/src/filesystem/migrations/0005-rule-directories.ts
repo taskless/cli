@@ -157,6 +157,26 @@ async function moveEngineTests(
   }
 }
 
+/**
+ * Create `rules/<engine>/` for every engine, tracked when empty.
+ *
+ * The scaffold is what tells an author where a rule goes, and what lets engine
+ * dispatch see that an engine exists at all. `0004` scaffolded its own layout
+ * and this migration prunes those directories, so without this a freshly
+ * migrated project would have no rules tree — every engine reporting "not
+ * present" and no obvious place to write the first rule.
+ */
+async function scaffoldEngineDirectories(directory: string): Promise<void> {
+  for (const engine of ENGINES) {
+    const path = join(directory, RULES_DIRECTORY, engine);
+    await mkdir(path, { recursive: true });
+    const entries = await entriesOf(path);
+    if (entries.length === 0) {
+      await writeFile(join(path, ".gitkeep"), "", "utf8");
+    }
+  }
+}
+
 /** Remove an engine's now-empty `0004` directories, leaving anything else. */
 async function pruneEmpty(directory: string, relativePath: string): Promise<void> {
   const path = join(directory, relativePath);
@@ -314,6 +334,7 @@ const migration: Migration = async (directory) => {
     await rm(join(directory, config), { force: true });
   }
 
+  await scaffoldEngineDirectories(directory);
   await ignoreGeneratedConfigs(directory);
 
   if (orphans.length > 0) {
