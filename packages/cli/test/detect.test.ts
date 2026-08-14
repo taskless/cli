@@ -226,10 +226,10 @@ describe("taskless detect", () => {
   });
 
   it("surfaces the repo's own Taskless rule styles", async () => {
-    await mkdir(join(cwd, ".taskless", "sg", "rules"), { recursive: true });
+    await mkdir(join(cwd, ".taskless", "rules", "sg"), { recursive: true });
     const result = await detect(cwd);
     expect(
-      result.ruleStyles.some((s) => s.source === ".taskless/sg/rules")
+      result.ruleStyles.some((s) => s.source === ".taskless/rules/sg")
     ).toBe(true);
   });
 
