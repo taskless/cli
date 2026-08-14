@@ -67,10 +67,18 @@ Its second job is to stop being wrong. A demo that drifts from the layout it dem
 
 ## 7. Verify
 
-- [ ] 7.1 `pnpm typecheck`, `pnpm lint`, `pnpm --filter @taskless/cli build`, `pnpm --filter @taskless/cli test`
-- [ ] 7.2 End-to-end: author two Vale rules with different globs, confirm each fires only in its own scope, and confirm deleting one directory leaves the other's scope untouched
-- [ ] 7.3 Confirm a hand-edited assembled config has no effect on the next check — it is regenerated
-- [ ] 7.4 Migrate a `0004`-shaped fixture through `0005` and confirm the rules still fire, the tests still run, and runtime signatures are unchanged
-- [ ] 7.5 `pnpm openspec validate --all --strict`. The `cli-agent-authoring` delta modifies a requirement #102 introduces, so this passes cleanly only once #102 archives
-- [ ] 7.6 Extend the changeset on the bottom of the stack: the rule layout, the removal of `rule verify`, the new `verify`/`test` commands
+- [x] 7.1 `pnpm typecheck`, `pnpm lint`, `pnpm --filter @taskless/cli build`, `pnpm --filter @taskless/cli test`
+- [x] 7.2 End-to-end: author two Vale rules with different globs, confirm each fires only in its own scope, and confirm deleting one directory leaves the other's scope untouched
+- [x] 7.3 Confirm a hand-edited assembled config has no effect on the next check — it is regenerated
+- [x] 7.4 Migrate a `0004`-shaped fixture through `0005` and confirm the rules still fire, the tests still run, and runtime signatures are unchanged
+- [x] 7.5 `pnpm openspec validate --all --strict`. The `cli-agent-authoring` delta modifies a requirement #102 introduces, so this passes cleanly only once #102 archives
+- [x] 7.6 Extend the changeset on the bottom of the stack: the rule layout, the removal of `rule verify`, the new `verify`/`test` commands
 - [ ] 7.7 Archive the change
+
+**7.7 is blocked on #102, and cannot be unblocked from here.** A change archives once, on whichever PR is the tip, and the gate requires `openspec/changes/` to hold no unarchived directory at all. `agent-command-and-vale-authoring` still has 14 open tasks (groups 3, 4, 5, 6 — the `taskless help` → `taskless agent` cross-reference sweep, the `TOPICS` export surface, and its own verification), so its directory has to stay. Archiving it early would delete the spec deltas for work that has not been done.
+
+The ordering is also one-way for a second reason already noted in 7.5: this change's `cli-agent-authoring` delta modifies a requirement #102 introduces, so #102 has to archive first for that delta to have a target.
+
+So: finish #102's groups 3–6, archive `agent-command-and-vale-authoring`, then archive this change. Both archives land on the tip PR.
+
+Note on 7.5: `cli-rules` and `cli-update-engine` fail `--strict` on `main` already and are unrelated to this stack (confirmed by diffing both specs against `origin/main` — this stack never touched them). `change/self-contained-rules` itself validates clean.
