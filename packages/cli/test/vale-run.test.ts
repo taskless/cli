@@ -205,7 +205,7 @@ withVale("runVale against the real binary", () => {
     // rather than as "no Vale findings", which is indistinguishable from a
     // clean run and is how a silently disabled engine ships.
     const cwd = makeProject(
-      `${header}\n[*.md]\nrules.bogus = YES\n`,
+      `${header}\n[*.md]\nbogus.bogus = YES\n`,
       {
         bogus: `extends: existence\nmessage: "test"\nlevel: catastrophe\ntokens:\n  - simply\n`,
       },
@@ -306,7 +306,7 @@ withVale("ValeRunOutcome.blocking against the real binary", () => {
 
   it("marks a rejected configuration blocking", async () => {
     const cwd = makeProject(
-      `${header}\n[*.md]\nrules.bogus = YES\n`,
+      `${header}\n[*.md]\nbogus.bogus = YES\n`,
       {
         bogus: `extends: existence\nmessage: "test"\nlevel: catastrophe\ntokens:\n  - simply\n`,
       },

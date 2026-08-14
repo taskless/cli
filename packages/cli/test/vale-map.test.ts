@@ -151,7 +151,7 @@ describe("toValeCheckResults", () => {
   it("pushes the file key down onto each finding", () => {
     const results = toValeCheckResults({
       "docs/a.md": [example],
-      "docs/b.md": [{ ...example, Check: "rules.no-very", Match: "very" }],
+      "docs/b.md": [{ ...example, Check: "no-very.no-very", Match: "very" }],
     });
     expect(results.map((result) => [result.file, result.ruleId])).toEqual([
       ["docs/a.md", "no-simply"],

@@ -55,7 +55,8 @@ async function move(source: string, destination: string): Promise<void> {
  */
 async function assertRootIsFree(directory: string): Promise<void> {
   const root = join(directory, RULES_DIRECTORY);
-  const stray = (await entriesOf(root))
+  const entries = await entriesOf(root);
+  const stray = entries
     .filter((entry) => entry.isFile() && entry.name.endsWith(".yml"))
     .map((entry) => entry.name);
   if (stray.length === 0) return;
@@ -180,9 +181,8 @@ async function scaffoldEngineDirectories(directory: string): Promise<void> {
 /** Remove an engine's now-empty `0004` directories, leaving anything else. */
 async function pruneEmpty(directory: string, relativePath: string): Promise<void> {
   const path = join(directory, relativePath);
-  const remaining = (await entriesOf(path)).filter(
-    (entry) => entry.name !== ".gitkeep"
-  );
+  const entries = await entriesOf(path);
+  const remaining = entries.filter((entry) => entry.name !== ".gitkeep");
   if (remaining.length > 0) return;
   await rm(path, { recursive: true, force: true });
 }

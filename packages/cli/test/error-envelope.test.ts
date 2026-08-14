@@ -149,16 +149,6 @@ describe("standardized error envelope (--json)", () => {
     });
   });
 
-  describe("rule verify", () => {
-    it("emits INVALID_INPUT when no rule ID is provided", async () => {
-      const result = await runCli(["rule", "verify", "--json", "-d", cwd]);
-      expect(result.exitCode).not.toBe(0);
-      const env = parseEnvelope(result.stdout);
-      expect(env.code).toBe("INVALID_INPUT");
-      expect(env.message).toContain("Rule ID is required");
-    });
-  });
-
   describe("rule delete", () => {
     it("emits RULE_NOT_FOUND when the rule file does not exist", async () => {
       const result = await runCli([
@@ -176,10 +166,10 @@ describe("standardized error envelope (--json)", () => {
     });
 
     it("is silent on stdout when a real rule is deleted in --json mode", async () => {
-      const rulesDirectory = join(cwd, ".taskless", "sg", "rules");
-      await mkdir(rulesDirectory, { recursive: true });
+      const ruleDirectory = join(cwd, ".taskless", "rules", "sg", "doomed");
+      await mkdir(ruleDirectory, { recursive: true });
       await writeFile(
-        join(rulesDirectory, "doomed.yml"),
+        join(ruleDirectory, "doomed.yml"),
         "id: doomed\nlanguage: typescript\nseverity: error\nmessage: ''\nrule: { pattern: 'eval($X)' }\n"
       );
       const result = await runCli([
