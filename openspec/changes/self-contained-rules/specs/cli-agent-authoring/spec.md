@@ -4,9 +4,9 @@
 
 The `create-vale-rule` recipe SHALL instruct the agent to produce three artifacts, and SHALL state that a rule is incomplete without all three:
 
-1. A Vale style file at `.taskless/vale/rules/<id>/<id>.yml`.
-2. That rule's own `.taskless/vale/rules/<id>/.vale.ini`, declaring the matchers that scope it and enabling it as `<id>.<id> = YES`.
-3. `pass/` and `fail/` fixture documents under `.taskless/vale/rule-tests/<id>/`.
+1. A Vale style file at `.taskless/rules/vale/<id>/<id>.yml`.
+2. That rule's own `.taskless/rules/vale/<id>/.vale.ini`, declaring the matchers that scope it and enabling it as `<id>.<id> = YES`.
+3. `pass/` and `fail/` fixture documents under `.taskless/rules/vale/<id>/.tests/`.
 
 The recipe SHALL state that scope is declared in the rule's own config, that no shared file is edited, and that the project-wide config is assembled rather than authored.
 

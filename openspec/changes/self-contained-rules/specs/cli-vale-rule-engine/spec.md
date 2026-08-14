@@ -2,7 +2,7 @@
 
 ### Requirement: Vale check executes against an assembled run config over the target paths
 
-The system SHALL assemble a run config from the per-rule configs and run `vale --config <assembled> --output=JSON --no-exit` over the resolved target paths. The assembled config SHALL set `StylesPath = rules` and `MinAlertLevel = suggestion`, so that every finding surfaces to the client for normalization and filtering.
+The system SHALL assemble a run config from the per-rule configs and run `vale --config <assembled> --output=JSON --no-exit` over the resolved target paths. The assembled config SHALL set `StylesPath` naming the Vale rules tree and `MinAlertLevel = suggestion`, so that every finding surfaces to the client for normalization and filtering.
 
 The config is assembled rather than committed because it has no single author. Every rule contributes its own matchers, and a shared committed file is one every rule's author must edit correctly — which is where the engine's silent failures were found in practice.
 
@@ -10,7 +10,7 @@ The assembled config SHALL be written where the run can read it and SHALL be git
 
 #### Scenario: Check runs Vale via the assembled config
 
-- **WHEN** the CLI runs a check and `.taskless/vale/rules/` contains rule directories
+- **WHEN** the CLI runs a check and `.taskless/rules/vale/` contains rule directories
 - **THEN** it assembles a run config from their per-rule configs and invokes Vale with it over the target paths
 
 #### Scenario: The assembled config is not a source file
@@ -21,12 +21,12 @@ The assembled config SHALL be written where the run can read it and SHALL be git
 
 #### Scenario: No Vale rules present
 
-- **WHEN** `.taskless/vale/rules/` contains no rule directories
+- **WHEN** `.taskless/rules/vale/` contains no rule directories
 - **THEN** the CLI does not invoke Vale and produces no Vale findings
 
 ### Requirement: Per-rule scoping is expressed in the rule's own Vale config
 
-The system SHALL express a Vale rule's scope through **matchers** — `[<glob>]` sections — declared in that rule's own `.taskless/vale/rules/<id>/.vale.ini`. Include is `<id>.<id> = YES`, exclude is `<id>.<id> = NO`.
+The system SHALL express a Vale rule's scope through **matchers** — `[<glob>]` sections — declared in that rule's own `.taskless/rules/vale/<id>/.vale.ini`. Include is `<id>.<id> = YES`, exclude is `<id>.<id> = NO`.
 
 Precedence is **positional**, and the system SHALL order matchers accordingly rather than relying on a disable to win on its own. Measured against Vale 3.17.1:
 
@@ -76,7 +76,7 @@ With each rule owning its config, a matcher's owner is given by the directory it
 
 ### Requirement: Vale rules are verified with per-rule fixture subdirectories
 
-The system SHALL verify a Vale rule from a `.taskless/vale/rule-tests/<rule>/` subdirectory containing `pass/` and `fail/` fixture documents. Because verification isolates one rule, the system SHALL generate an ephemeral config enabling only that rule — derived from the rule's own config so that verification exercises the scope the rule actually declares. Verification SHALL assert that every `fail/` fixture produces at least one finding for the rule and every `pass/` fixture produces none (mirroring ast-grep's `invalid`/`valid`).
+The system SHALL verify a Vale rule from a `.taskless/rules/vale/<rule>/.tests/` subdirectory containing `pass/` and `fail/` fixture documents. Because verification isolates one rule, the system SHALL generate an ephemeral config enabling only that rule — derived from the rule's own config so that verification exercises the scope the rule actually declares. Verification SHALL assert that every `fail/` fixture produces at least one finding for the rule and every `pass/` fixture produces none (mirroring ast-grep's `invalid`/`valid`).
 
 #### Scenario: Verification isolates the rule under test
 
@@ -98,7 +98,7 @@ The system SHALL verify a Vale rule from a `.taskless/vale/rule-tests/<rule>/` s
 
 ### Requirement: A Vale rule is a self-contained directory
 
-The system SHALL store a Vale rule as a directory `.taskless/vale/rules/<id>/` containing its style file `<id>.yml` and its own `.vale.ini`. No file outside that directory, other than the rule's fixtures, SHALL be required to define the rule.
+The system SHALL store a Vale rule as a directory `.taskless/rules/vale/<id>/` containing its style file `<id>.yml`, its own `.vale.ini`, and its fixtures under `.tests/`. No file outside that directory SHALL be required to define or verify the rule.
 
 Self-containment is what removes the engine's silent-failure class. A rule can be added, reviewed, moved, or deleted as one directory, and no two authors write the same file.
 
