@@ -1,4 +1,4 @@
-# Topic: rule meta     (CLI v%(CLI_VERSION)s / topic v1)
+# Topic: rule-meta     (CLI v%(CLI_VERSION)s / topic v2)
 
 ## Goal
 Read sidecar metadata for an API-generated rule. Used internally by
@@ -27,4 +27,4 @@ version, etc.
 
 ## See Also
 
-- `taskless help rule improve` — the primary consumer of this command
+- `taskless agent improve-rule` — the primary consumer of this command

@@ -12,7 +12,7 @@ you recognize one not on the list, apply the same patterns.
 ## Preconditions
 - `.taskless/` directory exists and contains at least one rule. (If
   no rules exist, instruct the user to fetch
-  `taskless help rule create` first — wiring CI with zero rules
+  `taskless agent route` first — wiring CI with zero rules
   produces an always-green check that gives false confidence.)
 - A local `taskless check` succeeds (or fails with real findings the
   user is OK with seeing in CI's first run).
@@ -66,7 +66,7 @@ main.
 
 Run `npx @taskless/cli check`:
 - Clean pass → proceed.
-- "No rules configured" → stop. Fetch `taskless help rule create`.
+- "No rules configured" → stop. Fetch `taskless agent route`.
 - Findings → tell the user CI will fail; ask whether to fix,
   suppress, or proceed knowing the first CI run will be red.
 
@@ -207,7 +207,7 @@ Show:
 
 ## Errors
 
-- **No rules** → fetch `taskless help rule create`. Don't write CI
+- **No rules** → fetch `taskless agent route`. Don't write CI
   config.
 - **Unrecognized CI** → produce a generic `.taskless/ci/check.sh`
   script implementing the six universal steps. Be upfront it's a
@@ -217,5 +217,5 @@ Show:
 
 ## See Also
 
-- `taskless help check` — the command being wired into CI
-- `taskless help rule create` — required if no rules exist yet
+- `taskless agent check` — the command being wired into CI
+- `taskless agent route` — required if no rules exist yet

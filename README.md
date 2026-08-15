@@ -28,7 +28,7 @@ Starting in v0.7, Taskless ships a **single consolidated skill** (`taskless`) pl
 |            |               | delete, check, auth, CI). Fetches the canonical recipe |
 |            |               | for the user's intent and follows it.                  |
 
-Available `taskless help` topics: `rule create`, `rule improve`, `rule delete`, `check`, `auth`, `ci`, `info`, `init`, `update`. Append `--anonymous` for the local-only flow on rule create/improve.
+Available `taskless agent` topics: `route`, `create-sg-rule`, `create-vale-rule`, `create-runtime-rule`, `create-remote-rule`, `improve-rule`, `delete-rule`, `check`, `auth`, `ci`, `info`, `init`, `update`. Run `taskless agent` with no topic for the index. Append `--anonymous` for the local-only flow on improve.
 
 ## CLI
 

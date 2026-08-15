@@ -1,4 +1,4 @@
-# Topic: rule verify     (CLI v%(CLI_VERSION)s / topic v1)
+# Topic: verify-rule     (CLI v%(CLI_VERSION)s / topic v2)
 
 ## Goal
 Validate a rule against the ast-grep schema and run its test cases.
@@ -54,5 +54,5 @@ attempts and report to the user if still failing.
 
 ## See Also
 
-- `taskless help rule create --anonymous` — primary consumer (loop)
-- `taskless help rule improve --anonymous` — primary consumer (loop)
+- `taskless agent create-sg-rule` — primary consumer (loop)
+- `taskless agent improve-rule --anonymous` — primary consumer (loop)
