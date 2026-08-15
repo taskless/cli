@@ -3,16 +3,14 @@
 ## Purpose
 
 TBD - created by archiving change local-rule-routing. Update Purpose after archive.
-
 ## Requirements
-
 ### Requirement: Route is the local authoring classifier
 
-The CLI SHALL provide a `route` help recipe that instructs the agent to classify
-a rule-authoring request into one of three destinations — `existing`, `static`,
-or `remote` — using `taskless detect --json` signals plus the user's intent. The
-`route` recipe SHALL be biased to stay local: it SHALL prefer `existing` or
-`static` and SHALL treat `remote` as the escalation of last resort.
+The CLI SHALL provide a `route` help recipe that instructs the agent to classify a rule-authoring request into one of five destinations — `create-legacy-rule`, `create-sg-rule`, `create-vale-rule`, `create-runtime-rule`, or `create-remote-rule` — using `taskless detect --json` signals plus the user's intent. The `route` recipe SHALL read the user's login state before dispatching, since it determines which destinations are reachable. It SHALL remain biased to stay local: local authoring that works SHALL NOT be abandoned for the service.
+
+`route` SHALL decide the engine as part of this classification rather than deferring it to a separate topic. There is one decision, made from one reading of the evidence: whether a rule is expressible locally and which engine can express it are answered from the same signals, so splitting them costs a second fetch and a handoff without adding information.
+
+Each destination SHALL be a topic an agent can fetch by name, so classifying produces a command to run rather than a category to interpret.
 
 #### Scenario: Route fetches detection before classifying
 
@@ -20,11 +18,39 @@ or `remote` — using `taskless detect --json` signals plus the user's intent. T
 - **THEN** the recipe SHALL direct the agent to run `taskless detect --json` and
   use its signals as input to the classification
 
-#### Scenario: Route classifies into one of three destinations
+#### Scenario: Route classifies into one of five destinations
 
 - **WHEN** the agent follows `route`
-- **THEN** it SHALL select exactly one of `existing`, `static`, or `remote`
+- **THEN** it SHALL select exactly one of `create-legacy-rule`, `create-sg-rule`, `create-vale-rule`, `create-runtime-rule`, or `create-remote-rule`
 - **AND** it SHALL fetch the corresponding recipe to perform the authoring
+
+#### Scenario: Every destination resolves to a recipe
+
+- **WHEN** any destination `route` can name is fetched
+- **THEN** a recipe of that exact name SHALL exist
+
+#### Scenario: Service generation is offered only where it is a choice
+
+- **WHEN** the rule is expressible locally AND the user is logged in
+- **THEN** `route` MAY offer `create-remote-rule` as an alternative and ask the user
+- **AND WHEN** the user is not logged in, or the rule is not expressible locally
+- **THEN** `route` SHALL NOT pose service generation as a choice, because it is not one
+
+#### Scenario: A logged-in runtime request routes straight to the service
+
+- **WHEN** the rule requires the runtime engine AND the user is logged in
+- **THEN** `route` SHALL name `create-remote-rule`
+- **AND** no recipe SHALL forward the agent from one destination to another
+
+#### Scenario: A logged-out runtime request reaches the explanation
+
+- **WHEN** the rule requires the runtime engine AND the user is not logged in
+- **THEN** `route` SHALL name `create-runtime-rule`
+
+#### Scenario: The engine is decided without a second fetch
+
+- **WHEN** the agent follows `route`
+- **THEN** it SHALL arrive at an engine-specific recipe without fetching a separate engine-selection topic
 
 ### Requirement: Route states reasoning before naming a destination
 
@@ -135,141 +161,89 @@ a default.
 
 ### Requirement: Existing recipe authors in the detected linter's dialect
 
-The CLI SHALL provide an `existing` help recipe that instructs the agent to
-author a rule in a linter already detected in the repository, expressed in that
-tool's own dialect. The recipe SHALL direct the agent to source authoring
-knowledge first from the repository's own existing rules and only then from the
-agent's own web research. The recipe SHALL NOT embed or rely on a Taskless-
-maintained catalog of linter rules.
+The CLI SHALL provide a `create-legacy-rule` help recipe that instructs the agent to author a rule in a linter already detected in the repository, expressed in that tool's own dialect. The recipe SHALL direct the agent to source authoring knowledge first from the repository's own existing rules and only then from the agent's own web research. The recipe SHALL NOT embed or rely on a Taskless-maintained catalog of linter rules.
+
+The recipe is named for the artifact it produces. "Existing" described the repository's state rather than the rule being written, which is not something an agent can address by name.
 
 #### Scenario: Repo-first knowledge sourcing
 
-- **WHEN** the agent follows `existing` for a detected linter
-- **THEN** it SHALL first mine the repository's existing rules of that kind for
-  house style
-- **AND** SHALL fall back to web research (WebFetch/WebSearch) only when the
-  repository signal is insufficient
-
-#### Scenario: Existing path is author-only
-
-- **WHEN** the agent authors a rule via `existing`
-- **THEN** the recipe SHALL make clear the user's own toolchain runs the rule and
-  that `taskless check` does not execute the external linter
+- **WHEN** the agent follows `create-legacy-rule`
+- **THEN** it SHALL read the repository's own rules for that linter before consulting any external source
 
 ### Requirement: Static recipe authors a verified local ast-grep rule
 
-The CLI SHALL provide a `static` help recipe that instructs the agent to author a
+The CLI SHALL provide a `create-sg-rule` help recipe that instructs the agent to author a
 local ast-grep rule on-device, without calling the Taskless service, and to
 verify it against the user's success and failure cases before reporting success.
 The recipe SHALL produce the canonical on-disk rule shape and paths used by remote
 generation so that `check`, `improve`, and `verify` see a single dialect.
 
+The recipe SHALL be named for the artifact it produces rather than for a trust tier. "Static" describes when a rule runs, which is a different axis from which engine enforces it, and naming the ast-grep authoring path after the tier taught the conflation that engine selection exists to correct.
+
 #### Scenario: Local authoring without the service
 
-- **WHEN** the agent follows `static`
+- **WHEN** the agent follows `create-sg-rule`
 - **THEN** it SHALL write the rule on-device without requiring login or the
   Taskless API
 
-#### Scenario: Verification gates success
-
-- **WHEN** the agent authors a static rule
-- **THEN** it SHALL verify the rule against the provided success/failure cases
-  before reporting the rule as complete
-
-#### Scenario: Canonical output shape
-
-- **WHEN** the agent writes a static rule to disk
-- **THEN** the files, paths, and shape SHALL match those produced by remote
-  generation
-
 ### Requirement: Remote recipe collects inputs and delegates to the service
 
-The CLI SHALL provide a `remote` help recipe that instructs the agent to gather
-the inputs required to call the Taskless service and to invoke the existing rule
-generation backend, which runs the service-side classifier and returns either a
-static or a runtime rule. The `remote` recipe SHALL require authentication and
-SHALL NOT itself decide static versus runtime.
+The CLI SHALL provide a `create-remote-rule` help recipe that instructs the agent to gather the inputs required to call the Taskless service and to invoke the existing rule generation backend, which runs the service-side classifier and returns either a static or a runtime rule. The recipe SHALL require authentication and SHALL NOT itself decide static versus runtime.
 
-#### Scenario: Remote requires authentication
+#### Scenario: The remote recipe requires authentication
 
-- **WHEN** the agent follows `remote` while logged out
-- **THEN** the recipe SHALL direct the agent to the authentication flow before
-  submitting the request
-
-#### Scenario: Static-versus-runtime is decided by the service
-
-- **WHEN** the agent submits an authored request via `remote`
-- **THEN** the recipe SHALL rely on the service to classify static versus runtime
-- **AND** SHALL NOT make that determination locally
-
-#### Scenario: Remote output matches local on-disk shape
-
-- **WHEN** the service returns a generated rule via `remote`
-- **THEN** the written files and paths SHALL match the shape produced by the
-  local `static` path
-
-### Requirement: An engine-selection topic states which engine can enforce a rule
-
-The CLI SHALL provide a knowledge topic that decides, for a requested rule, **which engine can enforce it** — `sg`, `vale`, or `runtime` — valued as the engine's on-disk directory name. The topic SHALL define each engine by the information a rule fundamentally needs:
-
-- **`sg`** — expressible as a pattern over a single file's syntax tree, including correlation between constructs within that same file via relational operators.
-- **`vale`** — the target is prose or markup content rather than code structure.
-- **`runtime`** — needs information no single file's syntax tree contains: cross-file consistency, import or call graph, comparison against a non-code file, file metadata, or values requiring normalization a static pattern cannot express.
-
-The topic SHALL instruct that the decision follow from what the rule fundamentally needs rather than how the request was phrased, and that the reasoning be stated before the engine is named.
-
-#### Scenario: Engine named for a single-file structural rule
-
-- **WHEN** the topic is applied to a request expressible as a pattern over one file's syntax tree
-- **THEN** it selects `sg`
-
-#### Scenario: Engine named for a prose rule
-
-- **WHEN** the topic is applied to a request targeting prose or markup content
-- **THEN** it selects `vale`
-
-#### Scenario: Engine named for a cross-file rule
-
-- **WHEN** the topic is applied to a request requiring information beyond a single file's syntax tree
-- **THEN** it selects `runtime`
-
-### Requirement: Engine selection is a separate axis from authoring destination
-
-The engine-selection topic SHALL decide only which engine enforces a rule, and SHALL NOT decide where the rule is authored — that remains the `route` topic's concern. Locally the two compose, `route` first and engine selection second.
-
-The topic SHALL NOT describe login, reconciliation, or signing as inputs to the engine choice: `sg` and `vale` are both static-tier, and only `runtime` carries those concerns, so trust tier is a distinct axis from engine selection.
-
-#### Scenario: Topic stays clear of authoring destination
-
-- **WHEN** the engine-selection topic is applied
-- **THEN** it names an engine and does not select among `existing`, `static`, or `remote` authoring destinations
-
-#### Scenario: Trust tier is not an engine-selection input
-
-- **WHEN** the topic distinguishes `sg` from `vale`
-- **THEN** it does so on the prose-versus-structure axis, not on any auth, reconcile, or signing property, since both are static-tier
+- **WHEN** the agent follows `create-remote-rule` while logged out
+- **THEN** the recipe SHALL direct the agent to `auth` rather than calling the service
 
 ### Requirement: Available code context outranks the phrasing of the request
 
-Where code or diff context is available, the engine-selection topic SHALL weigh the concrete syntactic form present in the repository above the wording of the request, since the same request routes differently depending on the form the code actually takes.
+Where code or diff context is available, `route` SHALL weigh the concrete syntactic form present in the repository above the wording of the request, since the same request routes differently depending on the form the code actually takes.
+
+This bound the standalone engine-selection topic. That topic is gone, but the reasoning is not — it now binds the place the decision is actually made.
 
 #### Scenario: Concrete form changes the engine
 
 - **WHEN** a rule is statically correlatable in the form the repository actually contains
-- **THEN** the topic selects `sg`
+- **THEN** `route` selects `create-sg-rule`
 - **AND WHEN** the equivalent rule requires normalizing a captured value to match a declaration elsewhere
-- **THEN** it selects `runtime`, despite an identically phrased request
+- **THEN** it selects a runtime destination, despite an identically phrased request
 
 ### Requirement: Ambiguity resolves to an engine known to be available
 
-When no engine is clearly indicated, the engine-selection topic SHALL direct the reader to choose an engine whose availability can be asserted in the situation at hand, and to give that availability as the reason for the call. The topic SHALL NOT name a fixed fallback engine. Both `sg` and `vale` ship as platform binaries, so either can be the missing one on an unsupported architecture or where an install was blocked; server-side the constraint is different again, `sg` being the only ungated route. A named default is wrong in whichever of those situations it failed to anticipate, which is why the requirement is stated as a property rather than as a fact about any one engine.
+When no engine is clearly indicated, `route` SHALL direct the reader to choose an engine whose availability can be asserted in the situation at hand, and to give that availability as the reason for the call. It SHALL NOT name a fixed fallback engine. Both `sg` and `vale` ship as platform binaries, so either can be the missing one on an unsupported architecture or where an install was blocked; server-side the constraint is different again, `sg` being the only ungated route. A named default is wrong in whichever of those situations it failed to anticipate, which is why the requirement is stated as a property rather than as a fact about any one engine.
 
 #### Scenario: Ambiguous request resolves to an assertably available engine
 
 - **WHEN** the available context does not disambiguate which engine can enforce a rule
-- **THEN** the topic selects an engine whose availability it can assert, and states that availability as the reasoning that made the call close
+- **THEN** `route` selects an engine whose availability it can assert, and states that availability as the reasoning that made the call close
 
 #### Scenario: The default is never an unavailable engine
 
 - **WHEN** an engine is unavailable in the current environment, such as the Vale binary being absent
 - **THEN** the ambiguity default SHALL NOT name it
+
+### Requirement: Trust tier is not an engine-selection input
+
+Engine reasoning SHALL NOT treat login, reconciliation, or signing as inputs to the engine choice: `sg` and `vale` are both static-tier, and only `runtime` carries those concerns, so trust tier is a distinct axis from which engine can express a rule.
+
+#### Scenario: Trust tier is not an engine-selection input
+
+- **WHEN** the reasoning distinguishes `sg` from `vale`
+- **THEN** it does so on the prose-versus-structure axis, not on any auth, reconcile, or signing property, since both are static-tier
+
+### Requirement: Engine reasoning lives in route and in each destination
+
+The engine criterion SHALL be stated once, in `route`'s destination table, which is where the comparison between engines is made. It SHALL NOT be stated in a separate chooser topic, and SHALL NOT be restated in the destination recipes.
+
+One statement is the point. A criterion copied into each destination is five copies of one test, and the first edit to any of them is a divergence nobody notices — the drift this merge exists to remove, reappearing one level down. Destinations orient the reader to their own scope instead, which needs nothing about the other engines.
+
+#### Scenario: The comparison lives in one place
+
+- **WHEN** the embedded recipe set is inspected
+- **THEN** exactly one recipe SHALL state the criterion distinguishing the engines from each other
+
+#### Scenario: No separate chooser topic exists
+
+- **WHEN** the embedded recipe set is inspected
+- **THEN** there SHALL be no topic whose only purpose is selecting among engines
+
