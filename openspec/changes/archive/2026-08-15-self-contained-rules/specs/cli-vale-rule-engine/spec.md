@@ -1,5 +1,43 @@
 ## MODIFIED Requirements
 
+### Requirement: Taskless breadcrumbs use a namespaced ignored key in the Vale config
+
+Any Taskless-owned breadcrumb the system records in a Vale config SHALL use a `tskl) <name> = <value>` key. The system SHALL NOT rely on Vale enforcing these keys; they are read only by Taskless tooling, and Vale's ini parser accepts and ignores them.
+
+With each rule owning its config, a matcher's owner is given by the directory it lives in, so the breadcrumb is no longer needed to locate a rule's matchers. It is retained to mark Taskless-owned matchers **within the assembled file**, where several rules' matchers are interleaved and provenance is otherwise lost.
+
+#### Scenario: Breadcrumb key is ignored by Vale
+
+- **WHEN** a config contains a `tskl) rule = no-simply` key
+- **THEN** Vale runs normally, ignoring the key, and Taskless tooling can read it back
+
+#### Scenario: Provenance survives assembly
+
+- **WHEN** matchers from several rules are assembled into one run config
+- **THEN** each SHALL carry the `tskl) rule` key naming the rule it came from
+
+### Requirement: Vale rules are verified with per-rule fixture subdirectories
+
+The system SHALL verify a Vale rule from a `.taskless/rules/vale/<rule>/.tests/` subdirectory containing `pass/` and `fail/` fixture documents. Because verification isolates one rule, the system SHALL generate an ephemeral config enabling only that rule — derived from the rule's own config so that verification exercises the scope the rule actually declares. Verification SHALL assert that every `fail/` fixture produces at least one finding for the rule and every `pass/` fixture produces none (mirroring ast-grep's `invalid`/`valid`).
+
+#### Scenario: Verification isolates the rule under test
+
+- **WHEN** verify runs for a rule and generates a config enabling only that rule
+- **THEN** findings from other rules SHALL NOT affect its result
+
+#### Scenario: Verification fails when a fail fixture does not trigger
+
+- **WHEN** a `fail/` fixture for a rule produces no finding
+- **THEN** verification reports a failure for that rule
+
+#### Scenario: A one-sided fixture set is not verified
+
+- **WHEN** a rule has `fail/` fixtures but no `pass/` fixtures, or `pass/` fixtures but no `fail/`
+- **THEN** verification reports the rule as unverified rather than passing
+- **AND** the result distinguishes a half-written fixture set from a rule with no fixtures at all
+
+## ADDED Requirements
+
 ### Requirement: Vale check executes against an assembled run config over the target paths
 
 The system SHALL assemble a run config from the per-rule configs and run `vale --config <assembled> --output=JSON --no-exit` over the resolved target paths. The assembled config SHALL set `StylesPath` naming the Vale rules tree and `MinAlertLevel = suggestion`, so that every finding surfaces to the client for normalization and filtering.
@@ -58,44 +96,6 @@ A rule SHALL NOT be able to override another rule's matchers. It cannot know its
 - **WHEN** two rules each declare a `[*.md]` matcher
 - **THEN** both rules run on a matching `.md` file (Vale merges the matchers)
 
-### Requirement: Taskless breadcrumbs use a namespaced ignored key in the Vale config
-
-Any Taskless-owned breadcrumb the system records in a Vale config SHALL use a `tskl) <name> = <value>` key. The system SHALL NOT rely on Vale enforcing these keys; they are read only by Taskless tooling, and Vale's ini parser accepts and ignores them.
-
-With each rule owning its config, a matcher's owner is given by the directory it lives in, so the breadcrumb is no longer needed to locate a rule's matchers. It is retained to mark Taskless-owned matchers **within the assembled file**, where several rules' matchers are interleaved and provenance is otherwise lost.
-
-#### Scenario: Breadcrumb key is ignored by Vale
-
-- **WHEN** a config contains a `tskl) rule = no-simply` key
-- **THEN** Vale runs normally, ignoring the key, and Taskless tooling can read it back
-
-#### Scenario: Provenance survives assembly
-
-- **WHEN** matchers from several rules are assembled into one run config
-- **THEN** each SHALL carry the `tskl) rule` key naming the rule it came from
-
-### Requirement: Vale rules are verified with per-rule fixture subdirectories
-
-The system SHALL verify a Vale rule from a `.taskless/rules/vale/<rule>/.tests/` subdirectory containing `pass/` and `fail/` fixture documents. Because verification isolates one rule, the system SHALL generate an ephemeral config enabling only that rule — derived from the rule's own config so that verification exercises the scope the rule actually declares. Verification SHALL assert that every `fail/` fixture produces at least one finding for the rule and every `pass/` fixture produces none (mirroring ast-grep's `invalid`/`valid`).
-
-#### Scenario: Verification isolates the rule under test
-
-- **WHEN** verify runs for a rule and generates a config enabling only that rule
-- **THEN** findings from other rules SHALL NOT affect its result
-
-#### Scenario: Verification fails when a fail fixture does not trigger
-
-- **WHEN** a `fail/` fixture for a rule produces no finding
-- **THEN** verification reports a failure for that rule
-
-#### Scenario: A one-sided fixture set is not verified
-
-- **WHEN** a rule has `fail/` fixtures but no `pass/` fixtures, or `pass/` fixtures but no `fail/`
-- **THEN** verification reports the rule as unverified rather than passing
-- **AND** the result distinguishes a half-written fixture set from a rule with no fixtures at all
-
-## ADDED Requirements
-
 ### Requirement: A Vale rule is a self-contained directory
 
 The system SHALL store a Vale rule as a directory `.taskless/rules/vale/<id>/` containing its style file `<id>.yml`, its own `.vale.ini`, and its fixtures under `.tests/`. No file outside that directory SHALL be required to define or verify the rule.
@@ -121,3 +121,17 @@ Scope SHALL NOT be expressed inside the style file. Measured: Vale rejects unkno
 - **WHEN** a rule directory is removed
 - **THEN** no other rule's scope changes
 - **AND** no shared file needs editing
+
+## REMOVED Requirements
+
+### Requirement: Vale check executes against the committed config over the target paths
+
+**Reason**: Superseded by "Vale check executes against an assembled run config over the target paths". There is no committed config: the file Vale reads is assembled from every rule's own config on each run and gitignored.
+
+### Requirement: Per-rule scoping is expressed via Vale config matchers
+
+**Reason**: Superseded by "Per-rule scoping is expressed in the rule's own Vale config". Matchers still express scope, but they live in the rule's directory rather than in one shared file every author edits.
+
+### Requirement: The scaffolded Vale config carries no section
+
+**Reason**: There is no scaffolded Vale config. `init` creates `.taskless/rules/vale/` and nothing else, because scope is declared per rule; verified against a fresh scaffold, which contains no `.ini` at all. A rule that declares no scope is now a `verify` error rather than a quiet no-op.

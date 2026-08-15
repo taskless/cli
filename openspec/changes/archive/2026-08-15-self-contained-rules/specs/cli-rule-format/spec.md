@@ -1,4 +1,4 @@
-## MODIFIED Requirements
+## ADDED Requirements
 
 ### Requirement: Rules are one directory each, partitioned by engine
 
@@ -77,8 +77,6 @@ The system SHALL place each Vale rule in its own directory `.taskless/rules/vale
 - **WHEN** a Vale rule directory contains `.tests/`
 - **THEN** Vale SHALL NOT load anything under it as a rule
 
-## ADDED Requirements
-
 ### Requirement: Runtime capture rules live in captures
 
 A runtime rule's ast-grep capture rules SHALL live in `captures/` inside the rule directory, and `check.ts` SHALL remain at the rule directory's root.
@@ -100,3 +98,21 @@ Each engine SHALL have one canonical on-disk location per rule — the rule dire
 - **WHEN** `verify` or `test` is given `.taskless/rules/<engine>/<id>/`
 - **THEN** it operates on exactly that rule
 - **AND** the engine is determined from the path without reading the rule
+
+## REMOVED Requirements
+
+### Requirement: Rules are partitioned into per-engine directories
+
+**Reason**: Superseded by "Rules are one directory each, partitioned by engine". The old requirement placed a rule as a bare file under an engine directory; a rule is now a directory holding its own file, config, and tests.
+
+### Requirement: Each engine's committed native config is the source of truth
+
+**Reason**: Superseded by "Each engine's native config is the source of truth". The committed per-engine config is gone: configs are per-rule and the file each tool reads is assembled per run and gitignored.
+
+### Requirement: Vale styles live under the rules StyleName
+
+**Reason**: Superseded by "Vale styles live under a per-rule StyleName". `StylesPath` now points at the Vale rules tree, so each rule directory is its own style and a rule resolves as `<id>.<id>` rather than `rules.<id>`.
+
+### Requirement: Both the legacy and engine-partitioned layouts are readable
+
+**Reason**: This change deletes the legacy read paths. Migrations run before any read, so an unmigrated tree cannot reach dispatch, and the legacy constant now names the same string as the new rules root — a stale read path resolving into the live tree is worse than none (design D9).
