@@ -4,7 +4,11 @@
 
 Defines build tooling, CI pipelines, and repository configuration including version sync, command generation, Turborepo setup, and GitHub Actions workflows.
 
-## Build Tooling
+## Requirements
+
+**Build tooling.** Grouped by a bold line rather than a heading: a second `##`
+inside the requirements section ends it, and every requirement after it
+stops being read.
 
 ### Requirement: tsx is available for build scripts
 
@@ -41,7 +45,7 @@ A `scripts/sync-skill-versions.ts` script SHALL read the version from `packages/
 
 ### Requirement: Slash command files are hand-authored
 
-Since the v0.7 consolidation, the single `commands/tskl/tskl.md` slash command is hand-authored rather than generated from a `SKILL.md` body. The command body intentionally differs from the skill body (it is a `$ARGUMENTS`-aware router), so the prior "copy SKILL.md body to command" generation script no longer applies.
+The single `commands/tskl/tskl.md` slash command SHALL be hand-authored rather than generated from a `SKILL.md` body. Its body intentionally differs from the skill body (it is a `$ARGUMENTS`-aware router), so the prior "copy SKILL.md body to command" generation script SHALL NOT be reintroduced.
 
 #### Scenario: Single hand-authored command file exists
 
@@ -84,7 +88,7 @@ The `packages/cli/package.json` SHALL NOT have a `release` script. Build and pub
 - **WHEN** inspecting `packages/cli/package.json` scripts
 - **THEN** there SHALL be no `release` key
 
-## Repository Configuration
+**Repository configuration.**
 
 ### Requirement: Turborepo is configured at the repo root
 
@@ -134,7 +138,7 @@ The root `pnpm typecheck` command SHALL invoke `turbo run typecheck`, which runs
 - **WHEN** `pnpm typecheck` is run at the repo root
 - **THEN** Turborepo SHALL execute `typecheck` in `@taskless/cli`
 
-## Continuous Integration
+**Continuous integration.**
 
 ### Requirement: CI workflow exists
 
@@ -247,7 +251,7 @@ The workflow SHALL NOT include any publish, release, or npm registry push steps.
 - **WHEN** inspecting the workflow file
 - **THEN** there SHALL be no steps that run `pnpm publish`, `npm publish`, or interact with an npm registry
 
-## Requirements
+**Release and publishing.**
 
 ### Requirement: Script-versioned packages are excluded from changesets
 
