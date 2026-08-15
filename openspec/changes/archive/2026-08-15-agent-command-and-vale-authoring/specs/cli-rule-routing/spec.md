@@ -91,6 +91,28 @@ When no engine is clearly indicated, `route` SHALL direct the reader to choose a
 - **WHEN** an engine is unavailable in the current environment, such as the Vale binary being absent
 - **THEN** the ambiguity default SHALL NOT name it
 
+### Requirement: Existing recipe authors in the detected linter's dialect
+
+The CLI SHALL provide a `create-legacy-rule` help recipe that instructs the agent to author a rule in a linter already detected in the repository, expressed in that tool's own dialect. The recipe SHALL direct the agent to source authoring knowledge first from the repository's own existing rules and only then from the agent's own web research. The recipe SHALL NOT embed or rely on a Taskless-maintained catalog of linter rules.
+
+The recipe is named for the artifact it produces. "Existing" described the repository's state rather than the rule being written, which is not something an agent can address by name.
+
+#### Scenario: Repo-first knowledge sourcing
+
+- **WHEN** the agent follows `create-legacy-rule`
+- **THEN** it SHALL read the repository's own rules for that linter before consulting any external source
+
+### Requirement: Remote recipe collects inputs and delegates to the service
+
+The CLI SHALL provide a `create-remote-rule` help recipe that instructs the agent to gather the inputs required to call the Taskless service and to invoke the existing rule generation backend, which runs the service-side classifier and returns either a static or a runtime rule. The recipe SHALL require authentication and SHALL NOT itself decide static versus runtime.
+
+#### Scenario: The remote recipe requires authentication
+
+- **WHEN** the agent follows `create-remote-rule` while logged out
+- **THEN** the recipe SHALL direct the agent to `auth` rather than calling the service
+
+## ADDED Requirements
+
 ### Requirement: Trust tier is not an engine-selection input
 
 Engine reasoning SHALL NOT treat login, reconciliation, or signing as inputs to the engine choice: `sg` and `vale` are both static-tier, and only `runtime` carries those concerns, so trust tier is a distinct axis from which engine can express a rule.
@@ -99,8 +121,6 @@ Engine reasoning SHALL NOT treat login, reconciliation, or signing as inputs to 
 
 - **WHEN** the reasoning distinguishes `sg` from `vale`
 - **THEN** it does so on the prose-versus-structure axis, not on any auth, reconcile, or signing property, since both are static-tier
-
-## ADDED Requirements
 
 ### Requirement: Engine reasoning lives in route and in each destination
 

@@ -1,4 +1,4 @@
-# Topic: rule delete     (CLI v%(CLI_VERSION)s / topic v1)
+# Topic: delete-rule     (CLI v%(CLI_VERSION)s / topic v2)
 
 ## Goal
 Remove a rule and its associated test files from `.taskless/`. Does
@@ -44,5 +44,5 @@ emitted from this command.
 
 ## See Also
 
-- `taskless help rule create` — make a new rule
-- `taskless help check` — run remaining rules to confirm nothing broke
+- `taskless agent route` — make a new rule
+- `taskless agent check` — run remaining rules to confirm nothing broke

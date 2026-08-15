@@ -278,6 +278,57 @@ describe("check over a project with both engines", () => {
         await rm(scaffold, { recursive: true, force: true });
       }
     });
+
+    // The pairing that keeps a per-rule config honest. Scope is the author's
+    // decision, which means the assignment can land above every matcher in
+    // their own `.vale.ini`. Vale does not error on that: it warns on stderr,
+    // exits zero, and returns a well-formed empty result, which is
+    // indistinguishable from a clean run. Surfacing the warning is the only
+    // thing standing between that mistake and a silently disabled rule.
+    //
+    // `verify` catches the coarser version of this (no matcher at all, or the
+    // check never enabled) — see `verify-test-commands.test.ts`. It cannot
+    // catch a misplaced assignment, because the file does contain a matcher
+    // and does name the check. Only Vale knows, and only at run time.
+    it("surfaces Vale's W101 when an assignment sits outside every matcher", async () => {
+      const scaffold = await mkdtemp(join(tmpdir(), "taskless-w101-"));
+      try {
+        const init = await runCli(["init", "--no-interactive", "-d", scaffold]);
+        expect(init.exitCode).toBe(0);
+
+        const rule = join(scaffold, ".taskless", "rules", "vale", "no-simply");
+        await mkdir(rule, { recursive: true });
+        await writeFile(
+          join(rule, "no-simply.yml"),
+          "extends: existence\nmessage: \"Avoid 'simply'\"\nlevel: warning\ntokens:\n  - simply\n"
+        );
+        // The mistake: enabled, but above the `[…]` line, so it belongs to no
+        // matcher. `verify` passes this — a matcher exists and the check is
+        // named — which is exactly why the run-time notice has to survive.
+        await writeFile(
+          join(rule, ".vale.ini"),
+          "no-simply.no-simply = YES\n[*.md]\ntskl) rule = no-simply\nBasedOnStyles =\n"
+        );
+        await writeFile(join(scaffold, "doc.md"), "Just simply do it.\n");
+
+        const verified = await runCli(["verify", "-d", scaffold, "--json"]);
+        expect(verified.exitCode).toBe(0);
+
+        const { stdout, stderr, exitCode } = await runCli([
+          "check",
+          "-d",
+          scaffold,
+        ]);
+
+        // Advisory, so the run still succeeds: nothing is broken, something is
+        // misplaced. Failing here would make an ignorable warning block a check.
+        expect(exitCode).toBe(0);
+        expect(`${stdout}${stderr}`).toContain("W101");
+        expect(`${stdout}${stderr}`).toContain("no-simply");
+      } finally {
+        await rm(scaffold, { recursive: true, force: true });
+      }
+    });
   });
 
   describe("whatever the host provides", () => {

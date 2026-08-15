@@ -90,6 +90,6 @@ it still fails.
 
 ## See Also
 
-- `taskless help create-sg-rule` — author an ast-grep rule
-- `taskless help create-vale-rule` — author a Vale rule
-- `taskless help improve-rule` — iterate on a rule that already exists
+- `taskless agent create-sg-rule` — author an ast-grep rule
+- `taskless agent create-vale-rule` — author a Vale rule
+- `taskless agent improve-rule` — iterate on a rule that already exists
