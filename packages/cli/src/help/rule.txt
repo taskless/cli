@@ -1,22 +1,24 @@
 # Topic: rule     (CLI v%(CLI_VERSION)s / topic v1)
 
 ## Goal
-Umbrella for rule operations. Use the specific subcommand for the
-action you want.
+Umbrella for rule operations. Fetch the topic for the action you want.
 
-## Subcommands
+## Topics
 
-| Subcommand          | Recipe                                       |
-|---------------------|----------------------------------------------|
-| Create a rule       | `taskless help rule create`                  |
-| Improve a rule      | `taskless help rule improve`                 |
-| Delete a rule       | `taskless help rule delete`                  |
-| Verify a rule       | `taskless help rule verify` (agent-internal) |
-| Read rule metadata  | `taskless help rule meta`   (agent-internal) |
+| Action              | Recipe                                        |
+|---------------------|-----------------------------------------------|
+| Create a rule       | `taskless agent route`                        |
+| Improve a rule      | `taskless agent improve-rule`                 |
+| Delete a rule       | `taskless agent delete-rule`                  |
+| Verify a rule       | `taskless agent verify-rule` (agent-internal) |
+| Read rule metadata  | `taskless agent rule-meta`   (agent-internal) |
 
-For local-only flows on create/improve, append `--anonymous` to the
-help fetch.
+`route` is the entry point for authoring: it reads the request and
+names the `create-*-rule` topic that fits, so you do not pick an engine
+yourself.
+
+For the local-only flow on improve, append `--anonymous`.
 
 ## See Also
 
-- `taskless help check` — run all configured rules
+- `taskless agent check` — run all configured rules

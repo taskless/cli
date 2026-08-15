@@ -1,4 +1,4 @@
-# Topic: rule improve (anonymous)     (CLI v%(CLI_VERSION)s / topic v1)
+# Topic: improve-rule (anonymous)     (CLI v%(CLI_VERSION)s / topic v2)
 
 ## Goal
 Iterate on an existing ast-grep rule **locally** without contacting
@@ -59,7 +59,7 @@ validate with `rule verify` in a feedback loop.
    - The updated rule file path
    - The updated test file path
    - A diff-style summary of what changed
-   Suggest fetching `taskless help check` to validate against the
+   Suggest fetching `taskless agent check` to validate against the
    broader codebase.
 
 ## Important Notes
@@ -83,6 +83,6 @@ The verify primitive returns structured errors per layer:
 
 ## See Also
 
-- `taskless help rule improve` — API-backed flow (auth required)
-- `taskless help rule create --anonymous` — make a new rule locally
-- `taskless help check` — validate the updated rule
+- `taskless agent improve-rule` — API-backed flow (auth required)
+- `taskless agent create-sg-rule` — make a new rule locally
+- `taskless agent check` — validate the updated rule

@@ -38,32 +38,33 @@ The recipes are the deliverable, and a recipe that reads well to its author whil
 - [x] 2b.5 Iterate across three intents that exercise different extension points — one `existence`, one `substitution` (prefer X over Y), one `capitalization` (headings, product names). Everything in this repo today is `existence`, so a recipe drafted from our own examples teaches token blocklists and nothing else. Vale has eleven extension points and most real prose rules are not blocklists
 - [x] 2b.6 Every failure is a defect in the prose, not in the agent. Fix the recipe and re-run with a fresh agent. Converged when an agent, given an intent the recipe never names, produces a rule that fires on its `fail` fixture and stays quiet on its `pass` fixture, first try, uncorrected
 - [x] 2b.7 Keep the iteration log — what failed, what changed, what finally held. It is the evidence the prose works, and the only part of this a reviewer can check without rerunning the loop
-- [ ] 2b.8 Run the same harness over `create-sg-rule` as a control. It documents a flow that already works, so a failure there means the harness is wrong rather than the recipe
+- [x] 2b.8 Run the same harness over `create-sg-rule` as a control. It documents a flow that already works, so a failure there means the harness is wrong rather than the recipe
 
 ## 3. Sweep the cross-references
 
-- [ ] 3.1 Replace every `taskless help ` occurrence with `taskless agent ` across `src/help/*.txt`, `src/**/*.ts`, `skills/taskless/SKILL.md`, `README.md`, and `packages/cli/README.md` (~306 occurrences, 77 files). Leave `CHANGELOG.md` alone — it is a historical record
-- [ ] 3.2 Update every reference to a renamed topic (`static`, `existing`, `rule create`, …) to its new single-token name
-- [ ] 3.3 Add a test asserting no shipped recipe contains the string `taskless help`, and that every topic named in a recipe's See Also resolves to an embedded file. A stale cross-reference is otherwise invisible until an agent runs it
+- [x] 3.1 Replace every `taskless help ` occurrence with `taskless agent ` across `src/help/*.txt`, `src/**/*.ts`, `skills/taskless/SKILL.md`, `README.md`, and `packages/cli/README.md` (~306 occurrences, 77 files). Leave `CHANGELOG.md` alone — it is a historical record
+- [x] 3.2 Update every reference to a renamed topic (`static`, `existing`, `rule create`, …) to its new single-token name
+- [x] 3.3 Add a test asserting no shipped recipe contains the string `taskless help`, and that every topic named in a recipe's See Also resolves to an embedded file. A stale cross-reference is otherwise invisible until an agent runs it
 
 ## 4. Update the export surface
 
-- [ ] 4.1 `TOPICS` becomes `["create-sg-rule", "create-vale-rule", "create-runtime-rule"]` and no longer exports `engine-selection`; move the renamed authoring topics through `INTERNAL_TOPICS` as their membership requires, keeping the two lists disjoint and jointly exhaustive over the recipe files
-- [ ] 4.2 Update `prompts.test.ts` — the membership test compares against the files on disk, so it fails until the rename is complete in both places
-- [ ] 4.3 Write the changeset as **MINOR** — pre-1.0, backwards-incompatible is MINOR — naming the removed topic names explicitly and stating that `@taskless/cli/prompts` consumers break on upgrade rather than at build time
+- [x] 4.1 `TOPICS` becomes `["create-sg-rule", "create-vale-rule", "create-runtime-rule"]` and no longer exports `engine-selection`; move the renamed authoring topics through `INTERNAL_TOPICS` as their membership requires, keeping the two lists disjoint and jointly exhaustive over the recipe files
+- [x] 4.2 Update `prompts.test.ts` — the membership test compares against the files on disk, so it fails until the rename is complete in both places
+- [x] 4.3 Write the changeset as **MINOR** — pre-1.0, backwards-incompatible is MINOR — naming the removed topic names explicitly and stating that `@taskless/cli/prompts` consumers break on upgrade rather than at build time
 
 ## 5. Scaffold and diagnostics (ships together)
 
 - [x] 5.1 `VALE_CONFIG_CONTENT` in `0004-vale-engine.ts` drops its `[*]` section, leaving `StylesPath` and `MinAlertLevel`
 - [x] 5.2 `runVale` captures stderr on a zero-exit run and returns it as a notice on the `ok` outcome; `runValeEngine` forwards it to `DispatchResult.notices`. A notice must not touch the exit code
   - **Pulled forward out of order, deliberately.** 2b tests `create-vale-rule` against a scaffolded project, and the recipe's central claim is that the scaffold ships section-less. Running the harness against a scaffold that still wrote `[*]` would have tested a recipe nobody will receive. Measured end to end afterwards: section-less scaffold + a top-level `rules.<id> = YES` now prints `Notice: Vale reported while running: W101 'rules.no-simply' isn't a core option; Vale is ignoring it.` and exits 0
-- [ ] 5.3 Test that a rule enabled outside a section produces a notice containing Vale's `W101` text and exits zero — this is the pairing that keeps 5.1 from reintroducing a silent disable
-- [ ] 5.4 Extend the mixed-engine integration test: a scaffolded project with a rule file and no section reports nothing and does not fail; adding a section makes the same rule fire
+- [x] 5.3 Test that a rule enabled outside a section produces a notice containing Vale's `W101` text and exits zero — this is the pairing that keeps 5.1 from reintroducing a silent disable
+- [x] 5.4 Extend the mixed-engine integration test: a scaffolded project with a rule file and no section reports nothing and does not fail; adding a section makes the same rule fire
+  - **Superseded immediately above this change in the stack.** `self-contained-rules` gives every Vale rule its own config, so "a rule file and no section" stops being a quiet no-op and becomes a `verify` error: nothing scopes it, so it can never run, and saying so is better than reporting nothing. This test is correct for the layout this change ships and is replaced there rather than carried forward. The W101 pairing in 5.3 does survive, because an assignment can still be written above its own matcher.
 
 ## 6. Verify
 
-- [ ] 6.1 `pnpm typecheck`, `pnpm lint`, `pnpm --filter @taskless/cli build`, `pnpm --filter @taskless/cli test`
-- [ ] 6.2 **Rehearse `route` against a fresh agent.** Hand it the text with no prior context and a request to author a rule, then check which destination it names and why. Unlike the authoring recipes (2b), `route` produces a decision rather than artifacts, so the plan it describes is the only thing there is to check. Cover one case per destination, including a logged-out runtime request
-- [ ] 6.2a Run `taskless agent` with no argument, with each renamed topic, and with a removed name, confirming the index lists the new vocabulary and a removed name exits non-zero
-- [ ] 6.3 `pnpm openspec validate --all --strict` (note: `cli-rules` and `cli-update-engine` fail on `main` already and are unrelated)
-- [ ] 6.4 Archive the change
+- [x] 6.1 `pnpm typecheck`, `pnpm lint`, `pnpm --filter @taskless/cli build`, `pnpm --filter @taskless/cli test`
+- [x] 6.2 **Rehearse `route` against a fresh agent.** Hand it the text with no prior context and a request to author a rule, then check which destination it names and why. Unlike the authoring recipes (2b), `route` produces a decision rather than artifacts, so the plan it describes is the only thing there is to check. Cover one case per destination, including a logged-out runtime request
+- [x] 6.2a Run `taskless agent` with no argument, with each renamed topic, and with a removed name, confirming the index lists the new vocabulary and a removed name exits non-zero
+- [x] 6.3 `pnpm openspec validate --all --strict` (note: `cli-rules` and `cli-update-engine` fail on `main` already and are unrelated)
+- [x] 6.4 Archive the change

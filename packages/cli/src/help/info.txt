@@ -63,5 +63,5 @@ failing.)
 
 ## See Also
 
-- `taskless help auth` — log in / log out / status detail
-- `taskless help check` — run rules against the codebase
+- `taskless agent auth` — log in / log out / status detail
+- `taskless agent check` — run rules against the codebase
