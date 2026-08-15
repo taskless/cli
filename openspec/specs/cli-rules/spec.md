@@ -34,7 +34,13 @@ The `taskless rule create` command SHALL accept a `--from <file>` flag specifyin
 
 ### Requirement: Rules create resolves identity from JWT and git remote
 
-`taskless rule create` resolves user identity from the stored JWT and the git remote per the existing identity resolution requirements. (Renamed to singular.)
+`taskless rule create` SHALL resolve user identity from the stored JWT and the git remote per the existing identity resolution requirements. (Renamed to singular.)
+
+#### Scenario: Identity comes from the token and the remote
+
+- **WHEN** an authenticated user runs `taskless rule create`
+- **THEN** the CLI SHALL take the organization from the stored JWT
+- **AND** it SHALL take the repository from the git remote rather than prompting for either
 
 ### Requirement: Rules create requires authentication
 
@@ -52,7 +58,13 @@ The `taskless rule create` command SHALL accept a `--from <file>` flag specifyin
 
 ### Requirement: Rules create submits to API and polls for results
 
-`taskless rule create` (without `--anonymous`) submits to the API and polls per the existing requirement. (Renamed to singular.)
+`taskless rule create` without `--anonymous` SHALL submit the request to the API and poll for the result per the existing requirement. (Renamed to singular.)
+
+#### Scenario: Submission returns a request to poll
+
+- **WHEN** an authenticated user runs `taskless rule create` without `--anonymous`
+- **THEN** the CLI SHALL submit the request to the API
+- **AND** it SHALL poll for the result until the generation completes or fails
 
 ### Requirement: Rules create uses a network interface with stub
 
@@ -79,51 +91,119 @@ The API calls for rule generation (`POST /cli/api/request` and `GET /cli/api/req
 
 ### Requirement: Rules create writes test files to disk
 
-`taskless rule create` SHALL write generated test files to `.taskless/rule-tests/<id>.yml` regardless of whether `--anonymous` was set. (Renamed; strengthened.)
+`taskless rule create` SHALL write generated test files into the rule's own directory, at `.taskless/rules/sg/<id>/.tests/`, regardless of whether `--anonymous` was set. (Renamed; strengthened; repathed for the rule-directory layout.)
+
+#### Scenario: Tests land inside the rule they cover
+
+- **WHEN** `taskless rule create` generates test cases for rule `<id>`
+- **THEN** the CLI SHALL write them under `.taskless/rules/sg/<id>/.tests/`
+- **AND** it SHALL do so whether or not `--anonymous` was set
 
 ### Requirement: Rules create outputs results
 
-`taskless rule create` outputs results per the existing requirement. (Renamed to singular.) Output SHALL be human-readable by default; `--json` produces machine-readable output. On failure with `--json` set, the output SHALL be the standardized error envelope `{ ok: false, code: "<CODE>", message: "<...>" }` per the `cli` capability requirements.
+`taskless rule create` SHALL output results per the existing requirement. (Renamed to singular.) Output SHALL be human-readable by default; `--json` produces machine-readable output. On failure with `--json` set, the output SHALL be the standardized error envelope `{ ok: false, code: "<CODE>", message: "<...>" }` per the `cli` capability requirements.
+
+#### Scenario: Failure under --json uses the error envelope
+
+- **WHEN** `taskless rule create --json` fails
+- **THEN** the CLI SHALL print `{ ok: false, code, message }` rather than prose
 
 ### Requirement: Rules create shows progress during polling
 
-`taskless rule create` shows progress per the existing requirement when polling the API (the `--anonymous` branch does not poll an API and SHOULD show progress for the local agent-driven steps if applicable). (Renamed to singular.)
+`taskless rule create` SHALL show progress while polling the API. The `--anonymous` branch polls nothing and SHOULD show progress for the local agent-driven steps where applicable. (Renamed to singular.)
+
+#### Scenario: Polling reports progress
+
+- **WHEN** `taskless rule create` is waiting on the API
+- **THEN** the CLI SHALL report progress rather than appearing to hang
 
 ### Requirement: Rules improve reads request from file
 
 `taskless rule improve` SHALL accept a `--from <file>` flag specifying a JSON file containing the iterate request. (Renamed to singular.)
 
+#### Scenario: The request is read from the named file
+
+- **WHEN** a user runs `taskless rule improve --from request.json`
+- **THEN** the CLI SHALL read the iterate request from that file
+
 ### Requirement: Rules improve requires authentication
 
 `taskless rule improve` SHALL require authentication unless `--anonymous` is set. (Renamed; new anonymous branch.)
 
+#### Scenario: Authentication is required without --anonymous
+
+- **WHEN** a logged-out user runs `taskless rule improve` without `--anonymous`
+- **THEN** the CLI SHALL exit non-zero and direct the user to authenticate
+
+#### Scenario: The anonymous branch skips authentication
+
+- **WHEN** a logged-out user runs `taskless rule improve --anonymous`
+- **THEN** the CLI SHALL run the local-only flow without requiring a login
+
 ### Requirement: Rules improve submits to iterate API and polls for results
 
-`taskless rule improve` (without `--anonymous`) submits and polls per the existing requirement. (Renamed.)
+`taskless rule improve` without `--anonymous` SHALL submit to the iterate API and poll for the result per the existing requirement. (Renamed.)
+
+#### Scenario: Submission returns a request to poll
+
+- **WHEN** an authenticated user runs `taskless rule improve` without `--anonymous`
+- **THEN** the CLI SHALL submit to the iterate API
+- **AND** it SHALL poll until the iteration completes or fails
 
 ### Requirement: Rules improve writes updated files to disk
 
 `taskless rule improve` SHALL write updated rule files to disk in both branches. (Renamed; strengthened.)
 
+#### Scenario: Both branches persist the updated rule
+
+- **WHEN** `taskless rule improve` completes, with or without `--anonymous`
+- **THEN** the CLI SHALL write the updated rule to its canonical location on disk
+
 ### Requirement: Rules improve outputs results
 
-`taskless rule improve` outputs results per the existing requirement. (Renamed.) Failure output with `--json` SHALL use the standardized error envelope.
+`taskless rule improve` SHALL output results per the existing requirement. (Renamed.) Failure output with `--json` SHALL use the standardized error envelope.
 
-### Requirement: Rules improve has a help entry
+#### Scenario: Failure under --json uses the error envelope
 
-`taskless help rule improve` SHALL return the recipe per `cli-help` requirements. (Renamed; the help filename becomes `rule-improve.txt` with an optional `rule-improve.anonymous.txt` variant.)
+- **WHEN** `taskless rule improve --json` fails
+- **THEN** the CLI SHALL print `{ ok: false, code, message }`
+
+### Requirement: Rules improve has an agent recipe
+
+`taskless agent improve-rule` SHALL return the recipe per `cli-help` requirements. The recipe file is `improve-rule.txt`, with an `improve-rule.anonymous.txt` variant for the local-only flow.
+
+#### Scenario: The recipe resolves by its single-token name
+
+- **WHEN** a user runs `taskless agent improve-rule`
+- **THEN** the CLI SHALL print the contents of `improve-rule.txt`
 
 ### Requirement: Rules delete removes rule and test files
 
-`taskless rule delete <id>` SHALL remove the corresponding rule file and any test files. (Renamed.) Accepts `--anonymous` as a no-op.
+`taskless rule delete <id>` SHALL remove the rule and everything that defines it. Under the rule-directory layout that is one directory, `.taskless/rules/<engine>/<id>/`, which carries the rule, any per-engine config, and its tests. (Renamed; repathed.) Accepts `--anonymous` as a no-op.
+
+#### Scenario: Deleting a rule removes its whole directory
+
+- **WHEN** a user runs `taskless rule delete no-eval`
+- **THEN** the CLI SHALL remove the rule's directory including its `.tests/`
+- **AND** no file belonging to that rule SHALL remain
 
 ### Requirement: Rules delete does not require authentication
 
-`taskless rule delete` does not require authentication per the existing requirement. (Renamed.)
+`taskless rule delete` SHALL NOT require authentication. Deleting a local file is not a service operation. (Renamed.)
+
+#### Scenario: Deletion works logged out
+
+- **WHEN** a logged-out user runs `taskless rule delete no-eval`
+- **THEN** the CLI SHALL delete the rule without requiring a login
 
 ### Requirement: Rules delete accepts the id argument
 
-`taskless rule delete <id>` accepts the rule ID as a positional argument per the existing requirement. (Renamed.)
+`taskless rule delete <id>` SHALL accept the rule ID as a positional argument per the existing requirement. (Renamed.)
+
+#### Scenario: The id is positional
+
+- **WHEN** a user runs `taskless rule delete no-eval`
+- **THEN** the CLI SHALL treat `no-eval` as the rule ID
 
 ### Requirement: Codegen script fetches official ast-grep rule schema
 
@@ -160,6 +240,16 @@ The codegen script SHALL extract the ast-grep version from `packages/cli/package
 - **THEN** the codegen script SHALL exit with a non-zero code and a descriptive error message
 - **AND** SHALL NOT overwrite an existing generated schema file
 
+### Requirement: The rule subcommand group no longer validates rules
+
+`taskless rule verify` SHALL NOT exist. Rule validation is addressed by path through the top-level `verify` and `test` commands, specified by the `cli-rule-validation` capability.
+
+#### Scenario: The removed subcommand does not resolve
+
+- **WHEN** a user runs `taskless rule verify no-eval`
+- **THEN** the CLI SHALL exit non-zero
+- **AND** it SHALL NOT validate a rule
+
 ### Requirement: Generated schema is importable at build time
 
 The generated JSON Schema file SHALL be importable by the CLI bundle via Vite. The import SHALL make the full JSON Schema object available at runtime without filesystem reads or network fetches.
@@ -169,31 +259,6 @@ The generated JSON Schema file SHALL be importable by the CLI bundle via Vite. T
 - **WHEN** the `rule verify` command needs the ast-grep schema
 - **THEN** it SHALL import the schema from `../generated/ast-grep-rule-schema.json`
 - **AND** the schema object SHALL be available synchronously at runtime
-
-### Requirement: Verify subcommand validates rules against ast-grep schema
-
-`taskless rule verify` SHALL validate rules against the ast-grep schema per the existing requirement. (Renamed from `rules verify` to `rule verify`.) Accepts `--anonymous` as a no-op.
-
-### Requirement: Verify performs three layers of validation
-
-`taskless rule verify` performs the three layers of validation per the existing requirement. (Renamed.)
-
-### Requirement: Verify supports JSON output
-
-`taskless rule verify --json` outputs results in the documented JSON shape. On failure, the standardized error envelope is used. (Renamed.)
-
-### Requirement: Verify schema mode dumps combined schema for agent consumption
-
-The `taskless rule verify --schema` mode is REMOVED in v0.7.0 — schemas are now embedded in `tskl help rule create` recipe output via `zod-to-json-schema`. (Renamed and superseded.)
-
-#### Scenario: --schema flag is no longer accepted
-
-- **WHEN** a user runs `taskless rule verify --schema`
-- **THEN** the CLI SHALL exit with an error indicating the flag is unknown
-
-### Requirement: Verify respects global flags
-
-`taskless rule verify` respects global flags including `--dir` per the existing requirement. (Renamed.) Also accepts the new `--anonymous` flag as a no-op.
 
 ### Requirement: Rule create supports anonymous local-only flow
 
@@ -232,7 +297,10 @@ When `taskless rule improve --anonymous` is invoked, the CLI SHALL execute the l
 - **THEN** the CLI SHALL NOT make any HTTP request to the Taskless API
 - **AND** SHALL update the target rule file
 
-## API Contract
+**API contract.** The requirements below describe the service endpoints the
+`rule` subcommands call. They are grouped by a bold line rather than a
+heading: a second `##` inside this section ends it, and everything after it
+stops being read as a requirement.
 
 ### Requirement: Rule generation request endpoint accepts a request and returns a requestId
 
@@ -352,7 +420,7 @@ Each rule in the `rules` array SHALL contain an `id` (string), a `content` objec
 
 ### Requirement: Generated rules may include test cases
 
-Each rule in the `rules` array MAY include a `tests` object containing `valid` (array of strings — code that should NOT trigger the rule) and `invalid` (array of strings — code that SHOULD trigger the rule).
+Each rule in the `rules` array MAY include a `tests` object. When present it SHALL contain `valid` (array of strings, code that must not trigger the rule) and `invalid` (array of strings, code that must trigger it).
 
 #### Scenario: Rule with test cases
 
