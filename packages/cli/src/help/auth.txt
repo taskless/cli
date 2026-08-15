@@ -73,5 +73,5 @@ report.
 
 ## See Also
 
-- `taskless help info` — see auth state and skill versions
-- `taskless help rule create` — first action that requires auth
+- `taskless agent info` — see auth state and skill versions
+- `taskless agent route` — first action that requires auth

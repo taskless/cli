@@ -40,7 +40,7 @@ only: they never change the exit code. Under `--json` they do NOT appear
 as warnings; instead an additive optional `skipped: [{ rule, reason }]`
 array is included alongside the unchanged `{ success, results }`. The
 authoritative allow-list is the server's; the CI backstop
-(`taskless help ci`) is the enforcement point for runtime rules.
+(`taskless agent ci`) is the enforcement point for runtime rules.
 
 ## Flags
 - `--json` — machine output (`{ success, results, skipped? }`).
@@ -125,5 +125,5 @@ When `--json` is set, failures emit `{ ok: false, code, message }`:
 
 ## See Also
 
-- `taskless help rule create` — add a rule if none exist
-- `taskless help ci` — wire `check` into a CI pipeline
+- `taskless agent route` — add a rule if none exist
+- `taskless agent ci` — wire `check` into a CI pipeline

@@ -50,5 +50,5 @@ what was removed.
 
 ## See Also
 
-- `taskless help info` — verify what's installed and check staleness
-- `taskless help auth` — authenticate after installing
+- `taskless agent info` — verify what's installed and check staleness
+- `taskless agent auth` — authenticate after installing

@@ -36,7 +36,7 @@ current project (`.claude/`, `.opencode/`, `.cursor/`, `.agents/`), asks which
 tools to enable Taskless for, and walks through the auth tradeoff before
 writing anything. Running `taskless` with no subcommand in a TTY also launches
 this wizard. Without a TTY, bare `taskless` prints a short context preamble
-followed by the topic index from `taskless help`.
+followed by the topic index from `taskless agent`.
 
 In v0.7+, there is exactly one skill (`taskless`) and one command (`tskl`) —
 no opt-in selection needed.
@@ -142,10 +142,10 @@ taskless rule delete no-console-log
 
 Lists available subcommands.
 
-### `taskless help [topic]`
+### `taskless agent [topic]`
 
 Returns agent-facing recipes. With no args, prints the topic index. With a
-topic (e.g. `taskless help rule create`), prints the full step-by-step recipe
+topic (e.g. `taskless agent route`), prints the full step-by-step recipe
 for that operation, including an embedded JSON Schema for any `--from` input
 and a table of stable error codes. Append `--anonymous` to fetch the
 local-only variant where one exists (currently `rule create`/`rule improve`).
@@ -159,7 +159,7 @@ relevant recipe on demand.
 Recognized on every command. Behavior matrix:
 
 - `rule create` / `rule improve` — exits with a pointer to
-  `taskless help <topic> --anonymous`. The local-only flow runs in the agent
+  `taskless agent <topic> --anonymous`. The local-only flow runs in the agent
   per the recipe variant.
 - `info` — skips the API/auth probe; reports local state only.
 - `auth login` — rejected (auth commands cannot be anonymous).

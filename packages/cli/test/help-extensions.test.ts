@@ -267,7 +267,7 @@ describe("taskless agent --anonymous (variant lookup)", () => {
 
   it("returns the canonical recipe when --anonymous is omitted", async () => {
     const result = await runCli(["agent", "improve-rule", "-d", cwd]);
-    expect(result.stdout).toContain("# Topic: rule improve");
+    expect(result.stdout).toContain("# Topic: improve-rule");
     expect(result.stdout).not.toContain("(anonymous)");
   });
 });

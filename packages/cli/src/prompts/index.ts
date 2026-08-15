@@ -11,7 +11,7 @@ import { getRecipe, type RecipeOptions } from "./recipes.js";
  * Public entry for `@taskless/cli/prompts`.
  *
  * Everything here renders through the same embedded recipe text and the same
- * render path `taskless help <topic>` serves, so the two surfaces cannot emit
+ * render path `taskless agent <topic>` serves, so the two surfaces cannot emit
  * different guidance. Nothing in this graph reaches the CLI runtime: no citty
  * command tree, no telemetry, no filesystem or network, so a Worker can import
  * it without dragging the CLI in behind it.

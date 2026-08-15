@@ -2,16 +2,39 @@
 "@taskless/cli": minor
 ---
 
-Add Vale as a second static-tier rule engine.
+Add Vale as a second static-tier rule engine, and rename the agent-facing command.
 
-`check` now dispatches by engine directory and runs ast-grep, Vale, and runtime
-rules concurrently, merging their findings into one result set. Vale rules live
-in `.taskless/vale/` and execute against the committed `.vale.ini`; an
-unavailable Vale reports itself and the other engines still return, while a Vale
-that times out or rejects its config fails the check rather than passing as a
-clean run. Vale rules are verified from `rule-tests/<rule>/pass|fail` fixtures
-against a generated per-rule config.
+`check` now dispatches by engine and runs ast-grep, Vale, and runtime rules
+concurrently, merging their findings into one result set. An unavailable Vale
+reports itself and the other engines still return. A Vale that times out or
+rejects its config fails the check rather than passing as a clean run.
 
-Adds the `engine-selection` knowledge topic — which engine enforces a given
-rule, and why — available from `taskless help engine-selection` and exported
-through `@taskless/cli/prompts`.
+**BREAKING: `taskless help <topic>` is now `taskless agent <topic>`.** The
+command is named for who reads it. Agents fetching a procedure are not asking
+for help, and the old name is gone rather than aliased.
+
+**BREAKING: topics are addressed by a single token.** `taskless help rule
+create` becomes `taskless agent create-sg-rule`; multiple positionals are no
+longer joined into a topic key. A topic name is now a literal string an agent
+copies rather than a phrase it can reorder. The renames:
+
+| Was                  | Now                                     |
+| -------------------- | --------------------------------------- |
+| `rule create`        | `create-sg-rule` / `create-remote-rule` |
+| `rule improve`       | `improve-rule`                          |
+| `rule delete`        | `delete-rule`                           |
+| `rule verify`        | `verify-rule`                           |
+| `rule meta`          | `rule-meta`                             |
+| `static`, `existing` | `route`                                 |
+| `engine-selection`   | `route`                                 |
+
+`route` now applies the engine reasoning itself and names a concrete
+`create-*-rule` topic, so `engine-selection`, `static`, and `existing` are
+removed rather than renamed. Their criterion is stated once, in `route`.
+
+**BREAKING for `@taskless/cli/prompts` consumers.** `engine-selection` is no
+longer exported. `TOPICS` is now `create-sg-rule`, `create-vale-rule`, and
+`create-runtime-rule`, so a consumer that decides an engine can reach the
+procedure for each destination. Because the export is a string union, a
+consumer passing the removed name dynamically breaks on upgrade rather than at
+build time.

@@ -44,5 +44,5 @@ non-zero with the error message on stderr.
 
 ## See Also
 
-- `taskless help init` — interactive variant (wizard with prompts)
-- `taskless help info` — verify what's installed and check staleness
+- `taskless agent init` — interactive variant (wizard with prompts)
+- `taskless agent info` — verify what's installed and check staleness

@@ -15,7 +15,7 @@ rules as a bullet list the user can choose to materialize via the
   is automatically satisfied.
 - A working repository the agent can read.
 - No auth required to surface candidates. (Materializing a rule via
-  `rule create` may require auth — fetch `taskless help auth` if
+  `rule create` may require auth — fetch `taskless agent auth` if
   needed at that point.)
 
 ## Steps
@@ -91,7 +91,7 @@ rules as a bullet list the user can choose to materialize via the
 
 6. **Offer materialization per bullet.** For each bullet, ask
    whether the user wants to turn it into a real Taskless rule. On
-   yes, fetch `taskless help rule create` and follow that recipe —
+   yes, fetch `taskless agent route` and follow that recipe —
    the user's accepted bullet becomes the rule description input.
 
 7. **Ask before marking onboarding complete.** When the user signals
@@ -117,6 +117,6 @@ rules as a bullet list the user can choose to materialize via the
 
 ## See Also
 
-- `taskless help rule create` — materialize an accepted bullet into a real rule
-- `taskless help check` — validate newly created rules against the codebase
-- `taskless help info` — inspect the current `.taskless/taskless.json` state
+- `taskless agent route` — materialize an accepted bullet into a real rule
+- `taskless agent check` — validate newly created rules against the codebase
+- `taskless agent info` — inspect the current `.taskless/taskless.json` state
