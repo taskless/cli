@@ -2,13 +2,13 @@
 
 ## Purpose
 
-Defines the `rules` subcommand group for the Taskless CLI, including `create`, `improve`, `delete`, and `verify` subcommands for managing ast-grep rules. Also documents the server-side API contract for rule generation endpoints.
+Defines the `rules` subcommand group for the Taskless CLI, including `create`, `improve`, `delete`, and `meta` subcommands for managing ast-grep rules. Also documents the server-side API contract for rule generation endpoints.
 
 ## Requirements
 
 ### Requirement: Rules subcommand group exists
 
-The CLI SHALL expose the rule operations under the `rule` (singular) subcommand group. The user-facing surface SHALL be `taskless rule create`, `taskless rule improve`, `taskless rule delete`, `taskless rule verify`, and `taskless rule meta`. The internal source filename (`packages/cli/src/commands/rules.ts`) MAY remain plural — only the user-visible subcommand name changes.
+The CLI SHALL expose the rule operations under the `rule` (singular) subcommand group. The user-facing surface SHALL be `taskless rule create`, `taskless rule improve`, `taskless rule delete`, and `taskless rule meta`. Rule validation is not part of this group — it is addressed by path through the top-level `verify` and `test` commands, specified by the `cli-rule-validation` capability. The internal source filename (`packages/cli/src/commands/rules.ts`) MAY remain plural — only the user-visible subcommand name changes.
 
 The previous plural form `taskless rules <subcommand>` SHALL NOT work in v0.7.0 — there is no compatibility alias.
 
@@ -82,12 +82,12 @@ The API calls for rule generation (`POST /cli/api/request` and `GET /cli/api/req
 
 ### Requirement: Rules create writes rule files to disk
 
-`taskless rule create` SHALL write the generated rule file to `.taskless/rules/<id>.yml` regardless of whether `--anonymous` was set. The agent invoking the command SHALL NOT be expected to write rule files itself. (Renamed to singular; this strengthens the existing requirement to apply to both branches.)
+`taskless rule create` SHALL write the generated rule file into the rule's own directory, at `.taskless/rules/sg/<id>/<id>.yml`, regardless of whether `--anonymous` was set. The agent invoking the command SHALL NOT be expected to write rule files itself. (Renamed to singular; this strengthens the existing requirement to apply to both branches.)
 
 #### Scenario: Both branches write rule files
 
 - **WHEN** `taskless rule create` succeeds (with or without `--anonymous`)
-- **THEN** `.taskless/rules/<id>.yml` SHALL exist on disk
+- **THEN** `.taskless/rules/sg/<id>/<id>.yml` SHALL exist on disk
 
 ### Requirement: Rules create writes test files to disk
 
@@ -256,7 +256,7 @@ The generated JSON Schema file SHALL be importable by the CLI bundle via Vite. T
 
 #### Scenario: Schema imported in verify command
 
-- **WHEN** the `rule verify` command needs the ast-grep schema
+- **WHEN** the `verify` command needs the ast-grep schema
 - **THEN** it SHALL import the schema from `../generated/ast-grep-rule-schema.json`
 - **AND** the schema object SHALL be available synchronously at runtime
 
@@ -266,8 +266,8 @@ When `taskless rule create --anonymous` is invoked, the CLI SHALL execute the lo
 
 1. NOT submit any request to the Taskless API
 2. Generate the ast-grep rule using local logic (Claude SDK, agent-driven generation, or whatever the migrated implementation prefers — see design.md)
-3. Write the rule file to `.taskless/rules/<id>.yml`
-4. Write any generated test files to `.taskless/rule-tests/<id>.yml`
+3. Write the rule file to `.taskless/rules/sg/<id>/<id>.yml`
+4. Write any generated test files into that rule's own directory, under `.taskless/rules/sg/<id>/.tests/`
 5. NOT write a metadata sidecar (the API-backed branch does)
 6. Return the same output format as the API-backed branch (paths to created files)
 
@@ -288,7 +288,7 @@ When `taskless rule improve --anonymous` is invoked, the CLI SHALL execute the l
 
 1. NOT submit any request to the Taskless API iterate endpoint
 2. Update the rule file in place using local logic
-3. Support the verify feedback loop by exposing the `rule verify` primitive that the agent invokes between edits
+3. Support the verify feedback loop by exposing the top-level `verify` primitive that the agent invokes between edits
 4. Return the same output format as the API-backed branch
 
 #### Scenario: rule improve --anonymous skips API
