@@ -1,3 +1,4 @@
+import { execFile } from "node:child_process";
 import {
   chmodSync,
   mkdirSync,
@@ -6,7 +7,8 @@ import {
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
+import { promisify } from "node:util";
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -78,6 +80,41 @@ function makeMixedProject(options?: {
 
 /** The committed config `makeMixedProject` writes, as `check` would resolve it. */
 const sgConfigPaths = [".taskless/sg/sgconfig.yml"];
+
+const execFileAsync = promisify(execFile);
+const binPath = resolve(import.meta.dirname, "../dist/index.js");
+
+/** Run the built CLI, tolerating a non-zero exit. */
+async function runCli(
+  args: string[]
+): Promise<{ stdout: string; exitCode: number }> {
+  try {
+    const { stdout } = await execFileAsync("node", [binPath, ...args]);
+    return { stdout, exitCode: 0 };
+  } catch (error) {
+    const execError = error as { stdout: string; code: number };
+    return { stdout: execError.stdout ?? "", exitCode: execError.code };
+  }
+}
+
+/** The `--json` line, ignoring any preceding migration notice. */
+function parseJson(stdout: string): {
+  success: boolean;
+  results: unknown[];
+  failures?: string[];
+  notices?: string[];
+} {
+  const line = stdout
+    .trim()
+    .split("\n")
+    .findLast((entry) => entry.trim().startsWith("{"));
+  return JSON.parse(line ?? "{}") as {
+    success: boolean;
+    results: unknown[];
+    failures?: string[];
+    notices?: string[];
+  };
+}
 
 describe("hasValeRules", () => {
   it("is false for a scaffolded-but-empty rules directory", async () => {
@@ -294,4 +331,39 @@ describe("runEngines when Vale is unavailable", () => {
       }
     }
   );
+});
+
+describe("an engine failure under --json", () => {
+  it("reaches the machine envelope, not only the suppressed warning", async () => {
+    // `warn()` is a no-op under `--json`, so without a field for it the
+    // consumer sees `{"success":false,"results":[]}` and cannot tell a broken
+    // engine from a clean run. A CI script reading that treats a dead engine
+    // as a pass.
+    const cwd = makeMixedProject({ valeRules: false });
+    // An unparseable rule file: ast-grep exits non-zero and the engine fails
+    // with no findings, the exact shape that used to read as clean.
+    writeFileSync(
+      join(cwd, ".taskless", "sg", "rules", "broken.yml"),
+      "id: broken\nlanguage: javascript\nrule:\n  bogusKey: nope\n"
+    );
+
+    const { stdout, exitCode } = await runCli(["check", "-d", cwd, "--json"]);
+    const output = parseJson(stdout);
+
+    expect(exitCode).toBe(1);
+    expect(output.success).toBe(false);
+    expect(output.results).toEqual([]);
+    expect(output.failures).toHaveLength(1);
+    expect(output.failures?.[0]).toContain("sg engine failed");
+  });
+
+  it("omits both fields when nothing failed, as `skipped` does", async () => {
+    const cwd = makeMixedProject({ valeRules: false });
+    const { stdout } = await runCli(["check", "-d", cwd, "doc.md", "--json"]);
+    const output = parseJson(stdout);
+
+    expect(output.success).toBe(true);
+    expect(output.failures).toBeUndefined();
+    expect(output.notices).toBeUndefined();
+  });
 });
