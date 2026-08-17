@@ -13,10 +13,7 @@ import { promisify } from "node:util";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { hasValeRules, runEngines } from "../src/rules/dispatch";
-import {
-  assembleSgConfig,
-  assembleValeConfig,
-} from "../src/rules/assemble";
+import { assembleSgConfig, assembleValeConfig } from "../src/rules/assemble";
 import { findValeBinary } from "../src/rules/vale/binary";
 
 const withVale = findValeBinary().path === undefined ? describe.skip : describe;
@@ -40,9 +37,16 @@ afterEach(() => {
 /** A project with an sg rule, a vale rule, and a document tripping both. */
 function makeMixedProject(options?: {
   valeRules?: boolean;
+  /**
+   * Whether the Vale rule ships a per-rule `.vale.ini`. Without one it enables
+   * itself nowhere, so assembly produces no blocks and writes no config — the
+   * "rule directory present, nothing to run" state.
+   */
+  valeConfig?: boolean;
   sgSeverity?: "warning" | "error";
 }) {
   const valeRules = options?.valeRules ?? true;
+  const valeConfig = options?.valeConfig ?? true;
   const sgSeverity = options?.sgSeverity ?? "warning";
   const cwd = mkdtempSync(join(tmpdir(), "vale-orch-"));
   workspaces.push(cwd);
@@ -75,7 +79,7 @@ function makeMixedProject(options?: {
   }
   // The per-rule config assembly reads. Written only when the rule exists, so
   // a project with no Vale rules assembles to nothing.
-  if (valeRules) {
+  if (valeRules && valeConfig) {
     writeFileSync(
       join(cwd, ".taskless", "rules", "vale", "no-simply", ".vale.ini"),
       "[*.md]\ntskl) rule = no-simply\nBasedOnStyles =\nno-simply.no-simply = YES\n"
@@ -167,6 +171,7 @@ describe("exit code carried on the dispatch result", () => {
       cwd,
       paths: ["app.js"],
       astGrepConfigPath: await assembleSgConfig(cwd),
+      valeConfigPath: undefined,
       runtimeRules: [],
     });
     expect(dispatched.results.length).toBeGreaterThan(0);
@@ -179,6 +184,7 @@ describe("exit code carried on the dispatch result", () => {
       cwd,
       paths: ["app.js"],
       astGrepConfigPath: await assembleSgConfig(cwd),
+      valeConfigPath: undefined,
       runtimeRules: [],
     });
     expect(
@@ -193,6 +199,7 @@ describe("exit code carried on the dispatch result", () => {
       cwd,
       paths: ["doc.md"], // the sg rule is javascript-only, so nothing matches
       astGrepConfigPath: await assembleSgConfig(cwd),
+      valeConfigPath: undefined,
       runtimeRules: [],
     });
     expect(dispatched.results).toEqual([]);
@@ -206,11 +213,12 @@ withVale("runEngines over a mixed corpus", () => {
     const cwd = makeMixedProject();
     // Vale reads the assembled run config, so a dispatch that never assembles
     // has no config to point at — which would report as "no Vale findings".
-    await assembleValeConfig(cwd);
+    const valeConfigPath = await assembleValeConfig(cwd);
     const dispatched = await runEngines({
       cwd,
       paths: ["app.js", "doc.md"],
       astGrepConfigPath: await assembleSgConfig(cwd),
+      valeConfigPath,
       runtimeRules: [],
     });
 
@@ -228,12 +236,52 @@ withVale("runEngines over a mixed corpus", () => {
       cwd,
       paths: ["app.js", "doc.md"],
       astGrepConfigPath: await assembleSgConfig(cwd),
+      valeConfigPath: await assembleValeConfig(cwd),
       runtimeRules: [],
     });
     expect(dispatched.results.every((result) => result.source !== "vale")).toBe(
       true
     );
     expect(dispatched.notices).toEqual([]);
+  });
+});
+
+describe("runEngines when a Vale rule directory assembles to nothing", () => {
+  // The case the rule-directory layout made reachable, and the reason dispatch
+  // gates on the config rather than on `hasValeRules`: a rule directory exists
+  // (so the directory count is non-zero) while every rule in it declares no
+  // matcher, so assembly writes no file and deletes none. Gating on the
+  // directory alone ran Vale against whatever `.taskless/.vale.ini` a previous
+  // run had left behind — or against a path that was never written at all.
+  it("does not invoke Vale, and reports a clean run", async () => {
+    const cwd = makeMixedProject({ valeConfig: false });
+
+    // A rule *directory* is present, so the old gate would have said "run".
+    expect(await hasValeRules(cwd)).toBe(true);
+    const valeConfigPath = await assembleValeConfig(cwd);
+    expect(valeConfigPath).toBeUndefined();
+
+    // Spied rather than inferred from the absence of findings: an unconfigured
+    // Vale reports nothing either way, so "no vale results" cannot tell a skip
+    // apart from a run against a stale config.
+    const run = await import("../src/rules/vale/run");
+    const runVale = vi.spyOn(run, "runVale");
+
+    const dispatched = await runEngines({
+      cwd,
+      paths: ["app.js", "doc.md"],
+      astGrepConfigPath: await assembleSgConfig(cwd),
+      valeConfigPath,
+      runtimeRules: [],
+    });
+
+    expect(runVale).not.toHaveBeenCalled();
+    expect(dispatched.results.every((result) => result.source !== "vale")).toBe(
+      true
+    );
+    expect(dispatched.notices).toEqual([]);
+    expect(dispatched.failures).toEqual([]);
+    expect(dispatched.exitCode).toBe(0);
   });
 });
 
@@ -252,6 +300,7 @@ describe("runEngines when Vale is unavailable", () => {
       cwd,
       paths: ["app.js", "doc.md"],
       astGrepConfigPath: await assembleSgConfig(cwd),
+      valeConfigPath: await assembleValeConfig(cwd),
       runtimeRules: [],
     });
 
@@ -304,6 +353,7 @@ describe("runEngines when Vale is unavailable", () => {
       cwd,
       paths: ["doc.md"],
       astGrepConfigPath: await assembleSgConfig(cwd),
+      valeConfigPath: await assembleValeConfig(cwd),
       runtimeRules: [],
     });
 
@@ -324,6 +374,9 @@ describe("runEngines when Vale is unavailable", () => {
       // `failures` and the exit code, instead of Vale quietly contributing
       // nothing and the run reading as clean.
       const cwd = makeMixedProject();
+      // Assembled while the directory is still readable: the failure under
+      // test is discovery's, not assembly's.
+      const valeConfigPath = await assembleValeConfig(cwd);
       const rules = join(cwd, ".taskless", "rules", "vale");
       chmodSync(rules, 0o000);
       try {
@@ -331,6 +384,7 @@ describe("runEngines when Vale is unavailable", () => {
           cwd,
           paths: ["app.js", "doc.md"],
           astGrepConfigPath: await assembleSgConfig(cwd),
+          valeConfigPath,
           runtimeRules: [],
         });
 

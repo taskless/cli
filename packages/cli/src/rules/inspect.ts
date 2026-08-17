@@ -9,7 +9,7 @@ import {
   ruleFilePath,
   type EngineName,
 } from "./engines";
-import { verifyRule } from "./verify";
+import { verifyRule, type VerifyResult } from "./verify";
 import { verifyValeRule } from "./vale/verify";
 import type { ResolvedRule } from "./resolve-path";
 
@@ -36,6 +36,32 @@ async function readYaml(path: string): Promise<unknown> {
 }
 
 /**
+ * ast-grep's verify verdict and the full layer result behind it, from **one**
+ * `verifyRule` call.
+ *
+ * `verify` and `test` want different halves of the same three-layer run:
+ * `verify` reads Layers 1–2, `test` needs Layer 3 as well. Asking twice —
+ * once for the verdict, once for the tests — assembled the config and spawned
+ * `sg test` twice for every rule, so `taskless test` paid two subprocesses per
+ * rule to produce one answer. Returning both halves from a single call keeps
+ * each caller's view unchanged and runs the layers once.
+ */
+async function verifySgRule(
+  cwd: string,
+  ruleId: string,
+  options?: { runTests?: boolean }
+): Promise<{ verification: RuleVerification; result: VerifyResult }> {
+  const result = await verifyRule(cwd, ruleId, options);
+  // The ast-grep verifier already layers schema and required fields; only its
+  // test layer is `test`'s business, so it is not part of the verdict here.
+  const errors = [...result.schema.errors, ...result.requirements.errors];
+  return {
+    verification: { engine: "sg", ruleId, ok: errors.length === 0, errors },
+    result,
+  };
+}
+
+/**
  * Check that a rule has the components its engine requires.
  *
  * Deliberately does **not** require tests. An agent part-way through authoring
@@ -50,11 +76,12 @@ export async function verifyOneRule(
   const errors: string[] = [];
 
   if (engine === "sg") {
-    // The ast-grep verifier already layers schema and required fields; only its
-    // test layer is `test`'s business, so it is not consulted here.
-    const result = await verifyRule(cwd, ruleId);
-    errors.push(...result.schema.errors, ...result.requirements.errors);
-    return { engine, ruleId, ok: errors.length === 0, errors };
+    // Layers 1–2 only: running the tests here would spawn `sg test` for a
+    // caller that never looks at the result.
+    const { verification } = await verifySgRule(cwd, ruleId, {
+      runTests: false,
+    });
+    return verification;
   }
 
   if (engine === "vale") {
@@ -169,15 +196,16 @@ export async function testOneRule(
   cwd: string,
   rule: ResolvedRule
 ): Promise<RuleTestResult> {
-  const verification = await verifyOneRule(cwd, rule);
-  if (!verification.ok) {
-    return { ...verification, ran: false };
-  }
-
   const { engine, ruleId } = rule;
 
   if (engine === "sg") {
-    const result = await verifyRule(cwd, ruleId);
+    // One call covers both halves. The verdict is still consulted first and
+    // still short-circuits, so the ordering above is unchanged — the tests
+    // simply already ran alongside the layers that decide it.
+    const { verification, result } = await verifySgRule(cwd, ruleId);
+    if (!verification.ok) {
+      return { ...verification, ran: false };
+    }
     return {
       engine,
       ruleId,
@@ -185,6 +213,11 @@ export async function testOneRule(
       errors: result.tests.errors,
       ran: true,
     };
+  }
+
+  const verification = await verifyOneRule(cwd, rule);
+  if (!verification.ok) {
+    return { ...verification, ran: false };
   }
 
   if (engine === "vale") {
