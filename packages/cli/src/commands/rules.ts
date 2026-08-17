@@ -32,7 +32,7 @@ import {
 } from "../schemas/rules-verify";
 import { getTelemetry } from "../telemetry";
 import { CLIError } from "../util/cli-error";
-import { type CLIErrorCode, makeErrorEnvelope } from "../types/errors";
+import { type CLIErrorCode, writeJsonError } from "../types/errors";
 
 /** Format today's date as YYYYMMDD */
 function getTimestamp(): string {
@@ -98,7 +98,7 @@ const createCommand = defineCommand({
       code: CLIErrorCode = "INTERNAL_ERROR"
     ): never {
       if (args.json) {
-        console.log(JSON.stringify(makeErrorEnvelope(code, message)));
+        writeJsonError(code, message);
       } else {
         console.error(`Error: ${message}`);
       }
@@ -115,9 +115,7 @@ const createCommand = defineCommand({
       const message =
         "Anonymous rule generation runs in the agent. Run `taskless agent create-sg-rule` to fetch the local-only recipe.";
       if (args.json) {
-        console.log(
-          JSON.stringify(makeErrorEnvelope("INVALID_INPUT", message))
-        );
+        writeJsonError("INVALID_INPUT", message);
       } else {
         console.error(message);
       }
@@ -346,7 +344,7 @@ const improveCommand = defineCommand({
       code: CLIErrorCode = "INTERNAL_ERROR"
     ): never {
       if (args.json) {
-        console.log(JSON.stringify(makeErrorEnvelope(code, message)));
+        writeJsonError(code, message);
       } else {
         console.error(`Error: ${message}`);
       }
@@ -358,9 +356,7 @@ const improveCommand = defineCommand({
       const message =
         "Anonymous rule improvement runs in the agent. Run `taskless agent improve-rule --anonymous` to fetch the local-only recipe.";
       if (args.json) {
-        console.log(
-          JSON.stringify(makeErrorEnvelope("INVALID_INPUT", message))
-        );
+        writeJsonError("INVALID_INPUT", message);
       } else {
         console.error(message);
       }
@@ -586,7 +582,7 @@ const metaCommand = defineCommand({
       code: CLIErrorCode = "INTERNAL_ERROR"
     ): never {
       if (args.json) {
-        console.log(JSON.stringify(makeErrorEnvelope(code, message)));
+        writeJsonError(code, message);
       } else {
         console.error(`Error: ${message}`);
       }
@@ -671,9 +667,7 @@ const deleteCommand = defineCommand({
           `Rule "${id}" not found in .taskless/${ENGINE_LAYOUTS.sg.rulesDirectory}/${id}.yml ` +
           `or .taskless/${LEGACY_RULES_DIRECTORY}/${id}.yml`;
         if (args.json) {
-          console.log(
-            JSON.stringify(makeErrorEnvelope("RULE_NOT_FOUND", message))
-          );
+          writeJsonError("RULE_NOT_FOUND", message);
         } else {
           console.error(`Error: ${message}`);
         }
@@ -711,7 +705,7 @@ async function verifyValeRuleCommand(
     // fixtures go unverified while it reported a pass.
     const message = error instanceof Error ? error.message : String(error);
     if (json) {
-      console.log(JSON.stringify(makeErrorEnvelope("INVALID_INPUT", message)));
+      writeJsonError("INVALID_INPUT", message);
     } else {
       console.error(`Error: ${message}`);
     }
@@ -723,15 +717,9 @@ async function verifyValeRuleCommand(
     // Vale never ran. Not a verification result, and not a pass.
     const { outcome } = result;
     if (json) {
-      console.log(
-        JSON.stringify(
-          makeErrorEnvelope(
-            outcome.status === "unavailable"
-              ? "ENGINE_UNAVAILABLE"
-              : "SCAN_FAILED",
-            outcome.message
-          )
-        )
+      writeJsonError(
+        outcome.status === "unavailable" ? "ENGINE_UNAVAILABLE" : "SCAN_FAILED",
+        outcome.message
       );
     } else {
       console.error(`Error: ${outcome.message}`);
@@ -750,6 +738,7 @@ async function verifyValeRuleCommand(
           fixtures: result.fixtures,
           missingFailures: result.missingFailures,
           unexpectedFindings: result.unexpectedFindings,
+          ...(result.notice === undefined ? {} : { notice: result.notice }),
         })
       )
     );
@@ -777,6 +766,13 @@ async function verifyValeRuleCommand(
     );
     for (const file of result.unexpectedFindings) {
       console.log(`  - ${file}`);
+    }
+
+    // Printed even on a pass, because that is the case it exists for: Vale
+    // exits zero and reports nothing while ignoring a misplaced assignment, so
+    // a clean verification is exactly when the author needs to hear it.
+    if (result.notice !== undefined) {
+      console.log(`\nNotice:       ${result.notice}`);
     }
 
     console.log(
@@ -822,11 +818,7 @@ const verifyCommand = defineCommand({
 
     if (!args.id) {
       if (args.json) {
-        console.log(
-          JSON.stringify(
-            makeErrorEnvelope("INVALID_INPUT", "Rule ID is required.")
-          )
-        );
+        writeJsonError("INVALID_INPUT", "Rule ID is required.");
       } else {
         console.error(
           "Error: Rule ID is required.\n  Usage: taskless rule verify <id>"
@@ -850,9 +842,7 @@ const verifyCommand = defineCommand({
         owners.map((engine) => ruleFileLocation(engine, ruleId)).join(", ") +
         ". Rename one so the id identifies a single rule.";
       if (args.json) {
-        console.log(
-          JSON.stringify(makeErrorEnvelope("INVALID_INPUT", message))
-        );
+        writeJsonError("INVALID_INPUT", message);
       } else {
         console.error(`Error: ${message}`);
       }
@@ -870,7 +860,9 @@ const verifyCommand = defineCommand({
     const result = await verifyRule(cwd, ruleId);
 
     if (args.json) {
-      console.log(JSON.stringify(verifyOutputSchema.parse({ engine: "sg", ...result })));
+      console.log(
+        JSON.stringify(verifyOutputSchema.parse({ engine: "sg", ...result }))
+      );
     } else {
       console.log(`Verifying rule: ${result.ruleId}\n`);
 

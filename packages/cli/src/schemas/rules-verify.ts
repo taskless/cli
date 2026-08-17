@@ -44,7 +44,9 @@ const testLayerResultSchema = layerResultSchema.extend({
 export const verifyOutputSchema = z.object({
   engine: z
     .literal("sg")
-    .describe("The engine that owns this rule, decided by where its file lives"),
+    .describe(
+      "The engine that owns this rule, decided by where its file lives"
+    ),
   success: z.boolean().describe("True if all layers passed"),
   ruleId: z.string(),
   schema: layerResultSchema.describe("Layer 1: Zod schema validation"),
@@ -85,6 +87,12 @@ export const valeVerifyOutputSchema = z.object({
   unexpectedFindings: z
     .array(z.string())
     .describe("pass/ fixtures the rule flagged and should not have"),
+  notice: z
+    .string()
+    .optional()
+    .describe(
+      "What Vale wrote to stderr while still exiting zero — a W101 ignored-assignment warning above all. Present only when Vale said something"
+    ),
 });
 
 export const verifyErrorSchema = z.object({
