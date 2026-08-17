@@ -82,6 +82,17 @@ export interface DispatchOptions {
    * runs it and does not know how it was built.
    */
   astGrepConfigPath: string | undefined;
+  /**
+   * The assembled Vale `--config` path, or `undefined` when assembly produced
+   * nothing to run.
+   *
+   * Distinct from "the project has a Vale rules directory". A rule directory can
+   * exist while every rule in it declares no config, and assembly then writes no
+   * file and deletes none — so gating on the directory alone ran Vale against a
+   * config left behind by a previous run, or against a path that was never
+   * written. The config is the only honest signal that there is Vale work.
+   */
+  valeConfigPath: string | undefined;
   /** Runtime rules that survived planning. Empty means the harness is skipped. */
   runtimeRules: RuntimeRule[];
   runtimeTimeoutMs?: number;
@@ -148,6 +159,13 @@ async function runAstGrepEngine(
  * way.
  */
 async function runValeEngine(options: DispatchOptions): Promise<EngineOutcome> {
+  // Mirrors the ast-grep skip: no assembled config means assembly found no
+  // work, and there is nothing to point Vale at. Checked before the directory
+  // gate because it is the stronger claim — a rules directory can be present
+  // while assembly yields nothing.
+  if (options.valeConfigPath === undefined) {
+    return { engine: "vale", results: [] };
+  }
   if (!(await hasValeRules(options.cwd))) {
     return { engine: "vale", results: [] };
   }
@@ -155,6 +173,7 @@ async function runValeEngine(options: DispatchOptions): Promise<EngineOutcome> {
   const outcome = await runVale({
     cwd: options.cwd,
     paths: options.paths,
+    configPath: options.valeConfigPath,
     timeoutMs: options.valeTimeoutMs,
   });
 

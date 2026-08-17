@@ -53,8 +53,10 @@ describe("ensureTasklessDirectory", () => {
     // Engine-partitioned subdirectories exist (migration 0004)
     const rulesStat = await stat(join(tasklessDirectory, "rules", "sg"));
     expect(rulesStat.isDirectory()).toBe(true);
-    const testsStat = await stat(join(tasklessDirectory, "rules", "sg"));
-    expect(testsStat.isDirectory()).toBe(true);
+    const valeStat = await stat(join(tasklessDirectory, "rules", "vale"));
+    expect(valeStat.isDirectory()).toBe(true);
+    const runtimeStat = await stat(join(tasklessDirectory, "rules", "runtime"));
+    expect(runtimeStat.isDirectory()).toBe(true);
   });
 
   it("is a no-op when already up-to-date", async () => {
@@ -228,7 +230,14 @@ describe("v0 → v1 migration", () => {
     await ensureTasklessDirectory(temporaryDirectory);
 
     const ruleContent = await readFile(
-      join(temporaryDirectory, ".taskless", "rules", "sg", "no-as-any", "no-as-any.yml"),
+      join(
+        temporaryDirectory,
+        ".taskless",
+        "rules",
+        "sg",
+        "no-as-any",
+        "no-as-any.yml"
+      ),
       "utf8"
     );
     expect(ruleContent).toContain("no-as-any");

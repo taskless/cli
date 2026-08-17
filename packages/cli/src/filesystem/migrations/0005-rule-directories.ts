@@ -1,9 +1,20 @@
-import { mkdir, readdir, readFile, rename, rm, writeFile } from "node:fs/promises";
+import {
+  mkdir,
+  readdir,
+  readFile,
+  rename,
+  rm,
+  writeFile,
+} from "node:fs/promises";
 import { dirname, join } from "node:path";
 
 import type { Migration } from "../types";
 import { CLIError } from "../../util/cli-error";
-import { ENGINES, RULE_TESTS_DIRECTORY, RULES_DIRECTORY } from "../../rules/engines";
+import {
+  ENGINES,
+  RULE_TESTS_DIRECTORY,
+  RULES_DIRECTORY,
+} from "../../rules/engines";
 
 /**
  * Where `0004` left each engine's rules and tests, relative to `.taskless/`.
@@ -87,7 +98,12 @@ async function moveEngineRules(
 
     if (engine === "runtime") {
       if (!entry.isDirectory()) continue;
-      const ruleDirectory = join(directory, RULES_DIRECTORY, engine, entry.name);
+      const ruleDirectory = join(
+        directory,
+        RULES_DIRECTORY,
+        engine,
+        entry.name
+      );
       await move(join(from, entry.name), ruleDirectory);
 
       // Capture rules move under `captures/`; `check.ts` stays at the root.
@@ -97,10 +113,7 @@ async function moveEngineRules(
         if (!inner.name.endsWith(".yml") && !inner.name.endsWith(".yaml")) {
           continue;
         }
-        await move(
-          join(ruleDirectory, inner.name),
-          join(captures, inner.name)
-        );
+        await move(join(ruleDirectory, inner.name), join(captures, inner.name));
       }
       continue;
     }
@@ -134,7 +147,13 @@ async function moveEngineTests(
       // vale / runtime: a directory per rule.
       await move(
         join(from, entry.name),
-        join(directory, RULES_DIRECTORY, engine, entry.name, RULE_TESTS_DIRECTORY)
+        join(
+          directory,
+          RULES_DIRECTORY,
+          engine,
+          entry.name,
+          RULE_TESTS_DIRECTORY
+        )
       );
       continue;
     }
@@ -179,7 +198,10 @@ async function scaffoldEngineDirectories(directory: string): Promise<void> {
 }
 
 /** Remove an engine's now-empty `0004` directories, leaving anything else. */
-async function pruneEmpty(directory: string, relativePath: string): Promise<void> {
+async function pruneEmpty(
+  directory: string,
+  relativePath: string
+): Promise<void> {
   const path = join(directory, relativePath);
   const entries = await entriesOf(path);
   const remaining = entries.filter((entry) => entry.name !== ".gitkeep");
@@ -204,8 +226,12 @@ async function pruneEmpty(directory: string, relativePath: string): Promise<void
  */
 function retargetCheckName(lines: string[], ruleId: string): string[] {
   const escaped = ruleId.replaceAll(/[$()*+.?[\\\]^{|}]/g, String.raw`\$&`);
-  const assignment = new RegExp(String.raw`^(\s*)rules\.` + escaped + String.raw`(\s*=)`);
-  return lines.map((line) => line.replace(assignment, `$1${ruleId}.${ruleId}$2`));
+  const assignment = new RegExp(
+    String.raw`^(\s*)rules\.` + escaped + String.raw`(\s*=)`
+  );
+  return lines.map((line) =>
+    line.replace(assignment, `$1${ruleId}.${ruleId}$2`)
+  );
 }
 
 /**
@@ -312,6 +338,16 @@ async function ignoreGeneratedConfigs(directory: string): Promise<void> {
  *
  * Content is moved, never rewritten, so runtime reconciliation signatures
  * survive. Idempotent: a tree already in the new shape has nothing to move.
+ *
+ * **Assumption: `0004` and `0005` ship in the same release.** The Vale split
+ * attributes a matcher only by its `tskl) rule = <id>` breadcrumb, which is
+ * something `0004` wrote — a hand-written `0004`-era `.vale.ini` would carry
+ * no breadcrumb and be reported as an orphan rather than split. That is
+ * accepted rather than guarded, because `0004` is unreleased: no published
+ * install can be sitting at version 4 with a config a person wrote by hand,
+ * so the case the fallback would serve does not exist. Should `0004` ever
+ * reach a release ahead of `0005`, this assumption expires and attribution
+ * needs a breadcrumb-free path.
  */
 const migration: Migration = async (directory) => {
   await assertRootIsFree(directory);
