@@ -3,13 +3,11 @@ import { join } from "node:path";
 
 import type { CheckResult } from "../types/check";
 import { dedupeFindings, ENGINE_LAYOUTS, type EngineName } from "./engines";
+import { isMissingDirectory } from "./errno";
 import { executeRuntimeRules } from "./runtime/harness";
 import type { RuntimeRule } from "./runtime/discover";
 import { runAstGrepScan } from "./scan";
 import { runVale } from "./vale/run";
-
-/** Errno values that mean "the directory is not there", and nothing worse. */
-const ABSENT_DIRECTORY_CODES = new Set(["ENOENT", "ENOTDIR"]);
 
 /**
  * Whether `.taskless/vale/rules/` holds anything to run.
@@ -34,8 +32,7 @@ export async function hasValeRules(cwd: string): Promise<boolean> {
     );
     return entries.some((entry) => entry.endsWith(".yml"));
   } catch (error) {
-    const code = (error as NodeJS.ErrnoException).code;
-    if (code !== undefined && ABSENT_DIRECTORY_CODES.has(code)) return false;
+    if (isMissingDirectory(error)) return false;
     throw error;
   }
 }
@@ -115,17 +112,22 @@ export interface DispatchResult {
  * `sg/rules/` and the legacy `.taskless/rules/` are scanned separately, so a
  * rule present in both reports twice; the finding is its own identity, so
  * identical matches collapse.
+ *
+ * The configs are scanned concurrently, for the same reason the engines are:
+ * each is an independent subprocess over the same paths, and a project holding
+ * both `sg/rules/` and the legacy `rules/` should not pay their latencies in
+ * series. `Promise.all` preserves input order in its output, so the flattened
+ * results are ordered by config exactly as the sequential loop left them.
  */
 async function runAstGrepEngine(
   options: DispatchOptions
 ): Promise<EngineOutcome> {
-  const results: CheckResult[] = [];
-  for (const configPath of options.astGrepConfigPaths) {
-    const scan = await runAstGrepScan(options.cwd, options.paths, {
-      configPath,
-    });
-    results.push(...scan.results);
-  }
+  const scans = await Promise.all(
+    options.astGrepConfigPaths.map((configPath) =>
+      runAstGrepScan(options.cwd, options.paths, { configPath })
+    )
+  );
+  const results: CheckResult[] = scans.flatMap((scan) => scan.results);
   return { engine: "sg", results: dedupeFindings(results) };
 }
 

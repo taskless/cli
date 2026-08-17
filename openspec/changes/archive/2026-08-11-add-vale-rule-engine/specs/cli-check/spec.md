@@ -13,5 +13,3 @@
 
 - **WHEN** the `vale` binary is unavailable but `.taskless/sg/` has rules
 - **THEN** the CLI reports the Vale engine as unavailable and still returns ast-grep results
-
-## MODIFIED Requirements
