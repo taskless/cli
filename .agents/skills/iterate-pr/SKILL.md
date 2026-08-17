@@ -246,11 +246,16 @@ exactly once, at the END of the work — so a PR that still carries an in-progre
 change directory will fail this check. Archiving on an intermediate PR is wrong:
 it would remove the change docs before the implementation PRs above it merge.
 
-The workflow's trigger is `pull_request.branches: [main]`, but do NOT read that
-as "it only runs on PRs whose base is `main`." Under GitHub's stacked-PR support
-a stacked PR targets `main` eventually and the filter matches that eventual
-target, so this workflow runs on mid-stack PRs as well. Expect to see the check
-on every PR in a stack and decide from stack position, not from the `on:` block.
+This workflow carries **no `branches:` filter** — that is why it runs on every
+PR in a stack, and it is the reliable way to get that behavior. Expect to see
+the check on every PR in a stack and decide from stack position, not from the
+`on:` block.
+
+Do not generalize from workflows that DO filter on `branches: [main]`. GitHub
+sometimes resolves a stacked PR's eventual target and matches on that, so such a
+workflow may appear on mid-stack PRs — but it stops without warning (see
+"two other failures that are structural" below). A filter-less trigger is the
+only dependable way to run everywhere.
 
 The archive job is also skipped while a PR is a **draft**. A spec-only proposal
 is its own tip until its implementation is stacked on top, so the gate would
@@ -300,13 +305,21 @@ Mid-stack PRs bypass the check on their base ref. If you see one failing it,
 look at that guard rather than reaching for the label, which would wrongly
 record the change as shipping no release note.
 
-**Do not read `on: pull_request: branches: [main]` as "this only runs on the
-bottom PR."** Under GitHub's stacked-PR support a stacked PR targets `main`
-eventually, and the filter matches that eventual target — so these workflows run
-on mid-stack PRs too. A workflow that must act only on the PR merging to `main`
-has to establish that from the base ref or its stack position. When judging
-whether a check "should even be running here," check the stack rather than the
-`on:` block.
+**`on: pull_request: branches: [main]` tells you nothing dependable about where
+a workflow runs.** GitHub sometimes resolves a stacked PR's eventual target and
+matches on that, so such a workflow may run on mid-stack PRs — and may also
+silently stop. Measured on the #71→#106 stack: every PR up to #102 got a
+`Validate` run, #103 and #106 got none, across 16 `pull_request` events that
+filter-less workflows handled fine. #103 reached "ready for review" as a
+~93-file change never linted, typechecked, or tested in CI.
+
+So: a workflow that must run **everywhere** carries no `branches:` filter (and
+names `ready_for_review` in `types:`, which is not in the default set). A
+workflow that must act only on the PR merging to `main` establishes that from
+the base ref or its stack position, inside the job. Either way, when judging
+whether a check "should even be running here," check the stack — and if a check
+you expected is simply **absent**, suspect the filter before assuming the PR is
+fine. An absent check reads like a passing one.
 
 ### Never leave a PR on red
 

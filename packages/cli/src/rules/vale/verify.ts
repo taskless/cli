@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join, posix, relative, resolve, sep } from "node:path";
 
 import { ENGINE_LAYOUTS } from "../engines";
+import { isMissingDirectory } from "../errno";
 import { runVale, type ValeRunOutcome } from "./run";
 
 /** Where a rule's fixtures live, relative to the project root. */
@@ -47,22 +48,6 @@ export function buildIsolatingConfig(cwd: string, ruleId: string): string {
     `rules.${ruleId} = YES`,
     "",
   ].join("\n");
-}
-
-/**
- * Whether a `readdir` failure genuinely means "that directory is not there".
- *
- * `ENOENT` is the path not existing; `ENOTDIR` is a path that exists but is a
- * file, or that has a file for an ancestor. Every other code — `EACCES` above
- * all — is a real IO problem, and reading it as "nothing here" is what makes an
- * unreadable bucket indistinguishable from an unwritten one.
- */
-function isMissingDirectory(error: unknown): boolean {
-  if (error === null || typeof error !== "object" || !("code" in error)) {
-    return false;
-  }
-  const { code } = error as NodeJS.ErrnoException;
-  return code === "ENOENT" || code === "ENOTDIR";
 }
 
 /**
@@ -254,9 +239,10 @@ export async function verifyValeRule(
 
   const configDirectory = mkdtempSync(join(tmpdir(), `vale-verify-${ruleId}-`));
   const configPath = join(configDirectory, ".vale.ini");
-  writeFileSync(configPath, buildIsolatingConfig(cwd, ruleId));
 
   try {
+    writeFileSync(configPath, buildIsolatingConfig(cwd, ruleId));
+
     const outcome = await runVale({
       cwd,
       configPath,

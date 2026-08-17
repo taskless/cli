@@ -110,9 +110,16 @@ Note how this interacts with the archive gate (see the OpenSpec archive check be
 - **The changeset belongs on the bottom PR**, the one that targets `main`. That is the only place it can live: a changeset added on the tip is invisible to the bottom PR's diff, so the check would fail on the PR that actually merges.
 - **Mid-stack PRs bypass the check**, because the base branch is not `main`. They inherit the base's changeset rather than adding one, so there is nothing for the check to find. **Do not label them `skip-changeset`** — the label records a deliberate "this change ships no release note," which is false here, and the bypass already handles it.
 
-The bypass is an in-step check on the base ref, and it is load-bearing. **`branches: [main]` no longer means "only the PR whose base is `main`."** Under GitHub's stacked-PR support, a PR in a stack is understood to target `main` eventually, so the filter matches on that eventual target and the workflow runs on mid-stack PRs as well — observed here on #73, #80, and #81, all with `openspec/partition-engine-*` bases.
+The bypass is an in-step check on the base ref, and it is load-bearing. **`branches: [main]` does not reliably mean either "only the PR whose base is `main`" or "every PR in the stack."** The filter matches the PR's base ref, but GitHub also resolves a stacked PR's _eventual_ target and sometimes matches on that instead, so the workflow runs on mid-stack PRs — observed on #73, #80, and #81, all with `openspec/partition-engine-*` bases.
 
-The general rule that follows: **any workflow whose correctness depends on "is this the PR that merges to `main`" must determine that itself** — from the base ref, or by resolving stack position — and cannot lean on the `on:` filter to scope it. If you see a mid-stack PR failing this check, look at that guard rather than reaching for the label.
+**Do not depend on that resolution. It is undocumented and it stops without warning.** On the #71→#93→#94→#95→#100→#102→#103→#106 stack, every PR up to #102 got a `Validate` run and **#103 and #106 got none** — across 16 `pull_request` events that filter-less workflows handled fine. #103 was a ~93-file change that reached "ready for review" having never been linted, typechecked, or tested in CI. Depth correlates (#102 is six hops from `main`, #103 seven) but nothing confirms a cap, and it was not a date cutoff: #102 kept getting runs after #103 had already stopped. A filter that works for six PRs and quietly fails on the seventh is worse than one that never worked, because nobody re-checks it.
+
+Two rules follow, and they pull in opposite directions:
+
+- **A workflow that must run everywhere carries no `branches:` filter at all.** Lint, typecheck, and tests have no interest in where a PR eventually merges. `ci.yml` dropped its filter for exactly this reason; `pr-check-openspec.yml` and `stack-breadcrumb.yml` never had one, which is why they kept running on #103. If you add such a workflow, also name `ready_for_review` in `types:` — it is not in the default set (`opened`/`synchronize`/`reopened`), so without it a draft marked ready gets no fresh run until someone happens to push again.
+- **A workflow whose correctness depends on "is this the PR that merges to `main`" must determine that itself** — from the base ref, or by resolving stack position — and cannot lean on the `on:` filter to scope it. If you see a mid-stack PR failing the changeset check, look at that guard rather than reaching for the label.
+
+The shared point: the `on:` filter is not a reliable answer to "where does this PR land." Let the workflow run, and decide inside it.
 
 Put the changeset at the base and every branch above inherits it, since a child contains its ancestors' commits.
 
