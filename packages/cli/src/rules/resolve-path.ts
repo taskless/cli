@@ -68,10 +68,21 @@ export async function resolveRulePath(
     return [{ engine, ruleId }];
   }
 
-  // A rule directory, or a stray file where one would be.
+  // A rule directory — and only a directory. A rule *is* a directory in this
+  // layout, so a plain file sitting in the slot where one belongs names no
+  // rule, and the tolerance one segment deeper does not extend to it: there
+  // `<rule>/<rule>.yml` is a real file inside a real rule, while here
+  // `<engine>/<something>.yml` is a leftover from the flat layout or a typo.
+  //
+  // Callers reach this after `ensureTasklessDirectory` has already migrated the
+  // flat layout, so anything still a file here was not a rule the migration
+  // recognised. Resolving it anyway produced a rule id like `no-eval.yml` and
+  // an error two layers down about `no-eval.yml/no-eval.yml.yml`; reporting it
+  // as not-found says the same thing about the path the user actually typed.
   const stats = await statOrUndefined(absolute);
-  if (stats === undefined) throw new RuleNotFoundError(target);
-  if (!stats.isDirectory()) return [{ engine, ruleId }];
+  if (stats === undefined || !stats.isDirectory()) {
+    throw new RuleNotFoundError(target);
+  }
   return [{ engine, ruleId }];
 }
 
