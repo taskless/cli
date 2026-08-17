@@ -152,6 +152,16 @@ export interface ValeRuleVerification {
    * rule can fire at all.
    */
   fixtures: ValeFixtureCoverage;
+  /**
+   * Vale's stderr from a run that still exited zero, when it wrote any.
+   *
+   * Carried on the verification rather than dropped at this seam because the
+   * `W101 … isn't a core option` warning — what Vale says about an assignment
+   * placed above the first `[…]` section — arrives on exactly this path: exit
+   * zero, empty findings, a rule that verifies clean while Vale ignores it.
+   * Absent when Vale was never run (a one-sided fixture set short-circuits).
+   */
+  notice?: string;
 }
 
 /**
@@ -263,6 +273,7 @@ export async function verifyValeRule(
       missingFailures,
       unexpectedFindings,
       fixtures,
+      ...(outcome.notice === undefined ? {} : { notice: outcome.notice }),
     };
   } finally {
     rmSync(configDirectory, { recursive: true, force: true });
