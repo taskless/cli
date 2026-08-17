@@ -18,19 +18,20 @@ create` becomes `taskless agent create-sg-rule`; multiple positionals are no
 longer joined into a topic key. A topic name is now a literal string an agent
 copies rather than a phrase it can reorder. The renames:
 
-| Was                  | Now                                     |
-| -------------------- | --------------------------------------- |
-| `rule create`        | `create-sg-rule` / `create-remote-rule` |
-| `rule improve`       | `improve-rule`                          |
-| `rule delete`        | `delete-rule`                           |
-| `rule verify`        | `verify-rule`                           |
-| `rule meta`          | `rule-meta`                             |
-| `static`, `existing` | `route`                                 |
-| `engine-selection`   | `route`                                 |
+| Was                | Now                                     |
+| ------------------ | --------------------------------------- |
+| `rule create`      | `create-sg-rule` / `create-remote-rule` |
+| `rule improve`     | `improve-rule`                          |
+| `rule delete`      | `delete-rule`                           |
+| `rule verify`      | `verify-rule`                           |
+| `rule meta`        | `rule-meta`                             |
+| `static`           | `create-sg-rule`                        |
+| `existing`         | `create-legacy-rule`                    |
+| `engine-selection` | `route`                                 |
 
 `route` now applies the engine reasoning itself and names a concrete
-`create-*-rule` topic, so `engine-selection`, `static`, and `existing` are
-removed rather than renamed. Their criterion is stated once, in `route`.
+`create-*-rule` topic, so `engine-selection` is removed rather than renamed —
+its criterion is stated once, in `route`.
 
 **BREAKING for `@taskless/cli/prompts` consumers.** `engine-selection` is no
 longer exported. `TOPICS` is now `create-sg-rule`, `create-vale-rule`, and
