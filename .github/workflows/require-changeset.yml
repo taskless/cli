@@ -54,7 +54,15 @@ jobs:
           # `Require a changeset` check run (e.g. run 30786954198, event
           # `pull_request`, head `openspec/partition-engine-2-dispatch`).
           #
-          # So `branches:` no longer scopes a workflow to the bottom of a stack.
+          # That resolution is undocumented and it also stops without warning:
+          # on the #71→#106 stack this workflow ran up to #102 and then produced
+          # no check run at all on #103 or #106. So `branches:` is unreliable in
+          # BOTH directions — it neither scopes a workflow to the bottom of a
+          # stack nor guarantees it reaches every PR. This guard stays because
+          # the first failure mode is the dangerous one here; a workflow that
+          # must reach every PR should instead carry no `branches:` filter, as
+          # `ci.yml` and `pr-check-openspec.yml` do.
+          #
           # Any job whose correctness depends on "is this the PR that merges to
           # main" has to establish that itself, as this one does.
           if [ "$BASE_REF" != "main" ]; then
