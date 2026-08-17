@@ -6,10 +6,7 @@ import { hasValeRules, runEngines } from "../rules/dispatch";
 import { assembleEngineConfigs } from "../rules/assemble";
 import { formatText } from "../util/format";
 import { ensureTasklessDirectory } from "../filesystem/directory";
-import {
-  listRuleIds,
-  planEngineDispatch,
-} from "../rules/engines";
+import { listRuleIds, planEngineDispatch } from "../rules/engines";
 import { getTelemetry } from "../telemetry";
 import { outputSchema as checkOutputSchema } from "../schemas/check";
 import { makeErrorEnvelope } from "../types/errors";
@@ -400,6 +397,7 @@ export const checkCommand = defineCommand({
           cwd,
           paths: existingPaths,
           astGrepConfigPath: assembled.sg,
+          valeConfigPath: assembled.vale,
           runtimeRules: plan.execute,
           runtimeTimeoutMs: parseTimeoutMs(args.timeout),
         });

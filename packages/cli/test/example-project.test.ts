@@ -89,10 +89,9 @@ withVale("the example project", () => {
     const result = await runCli(["verify", "-d", cwd, "--json"]);
     expect(result.exitCode).toBe(0);
     const report = parseJson<RuleReport>(result.stdout);
-    expect(report.rules.map((rule) => `${rule.engine}/${rule.ruleId}`)).toEqual([
-      "sg/no-eval",
-      "vale/no-simply",
-    ]);
+    expect(report.rules.map((rule) => `${rule.engine}/${rule.ruleId}`)).toEqual(
+      ["sg/no-eval", "vale/no-simply"]
+    );
   });
 
   it("passes the rules' own tests", async () => {
@@ -121,12 +120,24 @@ withVale("the example project", () => {
     const result = await runCli(["verify", "-d", cwd, "--json"]);
     expect(result.exitCode).toBe(0);
 
-    const { stdout } = await execFileAsync("git", [
-      "ls-files",
-      "--",
-      "example/.taskless",
-    ], { cwd: exampleSource });
-    expect(stdout).not.toContain(".vale.ini\n");
-    expect(stdout).not.toContain(".sgconfig.yml");
+    // The pathspec is relative to `cwd`, which is already `<repo>/example` —
+    // `example/.taskless` resolved to `example/example/.taskless`, matched
+    // nothing, and made the assertions below vacuous.
+    const { stdout } = await execFileAsync(
+      "git",
+      ["ls-files", "--", ".taskless"],
+      {
+        cwd: exampleSource,
+      }
+    );
+    expect(stdout).not.toBe("");
+
+    // Assert on the exact assembled paths, not basenames. A per-rule
+    // `.vale.ini` inside a rule directory is a legitimately committed source
+    // file — only the two files assembly writes at `.taskless/` are build
+    // output.
+    const tracked = stdout.split("\n");
+    expect(tracked).not.toContain(".taskless/.vale.ini");
+    expect(tracked).not.toContain(".taskless/.sgconfig.yml");
   });
 });
