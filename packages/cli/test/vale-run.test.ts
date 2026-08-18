@@ -40,7 +40,9 @@ function makeProject(
   mkdirSync(join(cwd, ".taskless"), { recursive: true });
   writeFileSync(join(cwd, ".taskless", ".vale.ini"), config);
   for (const [name, body] of Object.entries(rules)) {
-    mkdirSync(join(cwd, ".taskless", "rules", "vale", name), { recursive: true });
+    mkdirSync(join(cwd, ".taskless", "rules", "vale", name), {
+      recursive: true,
+    });
     writeFileSync(
       join(cwd, ".taskless", "rules", "vale", name, `${name}.yml`),
       body
@@ -219,6 +221,39 @@ withVale("runVale against the real binary", () => {
     // rejected and why.
     expect(outcome.message).toContain("E201");
     expect(outcome.message).toContain("bogus.yml");
+  });
+
+  it("carries Vale's zero-exit stderr as a notice", async () => {
+    // A section-less config: `rules.no-simply = YES` sits above the first
+    // `[…]` line, so Vale treats it as a core option, does not recognise it,
+    // and ignores it. Measured: `W101 … isn't a core option` on stderr, exit
+    // zero, an empty result on stdout. Without the notice this is a clean run
+    // with no findings — the rule is disabled and nothing says so.
+    const cwd = makeProject(
+      `${header}rules.no-simply = YES\n\n[*.md]\nBasedOnStyles =\n`,
+      { "no-simply": existenceRule("simply", "Avoid 'simply'") },
+      { "doc.md": "Just simply do it.\n" }
+    );
+
+    const outcome = await runVale({ cwd, paths: ["doc.md"] });
+    expect(outcome.status).toBe("ok");
+    if (outcome.status !== "ok") return;
+    expect(outcome.results).toEqual([]);
+    expect(outcome.notice).toContain("W101");
+    expect(outcome.notice).toContain("rules.no-simply");
+  });
+
+  it("reports no notice when Vale writes nothing to stderr", async () => {
+    const cwd = makeProject(
+      `${header}\n[*.md]\nrules.no-simply = YES\n`,
+      { "no-simply": existenceRule("simply", "Avoid 'simply'") },
+      { "doc.md": "Just simply do it.\n" }
+    );
+
+    const outcome = await runVale({ cwd, paths: ["doc.md"] });
+    expect(outcome.status).toBe("ok");
+    if (outcome.status !== "ok") return;
+    expect(outcome.notice).toBeUndefined();
   });
 
   it("terminates and reports a timeout rather than hanging", async () => {

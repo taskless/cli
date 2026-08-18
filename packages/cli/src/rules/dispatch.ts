@@ -1,13 +1,11 @@
 import { readdir } from "node:fs/promises";
 import type { CheckResult } from "../types/check";
 import { engineRulesDirectory, type EngineName } from "./engines";
+import { isMissingDirectory } from "./errno";
 import { executeRuntimeRules } from "./runtime/harness";
 import type { RuntimeRule } from "./runtime/discover";
 import { runAstGrepScan } from "./scan";
 import { runVale } from "./vale/run";
-
-/** Errno values that mean "the directory is not there", and nothing worse. */
-const ABSENT_DIRECTORY_CODES = new Set(["ENOENT", "ENOTDIR"]);
 
 /**
  * Whether `.taskless/vale/rules/` holds anything to run.
@@ -37,8 +35,7 @@ export async function hasValeRules(cwd: string): Promise<boolean> {
     });
     return entries.some((entry) => entry.isDirectory());
   } catch (error) {
-    const code = (error as NodeJS.ErrnoException).code;
-    if (code !== undefined && ABSENT_DIRECTORY_CODES.has(code)) return false;
+    if (isMissingDirectory(error)) return false;
     throw error;
   }
 }
@@ -130,6 +127,10 @@ export interface DispatchResult {
  * One scan, because there is one rule tree. The previous layout scanned the
  * engine directory and the legacy directory separately and deduplicated the
  * overlap; with a single tree there is no overlap to collapse.
+ *
+ * That also retires the concurrent-scan fix from the orchestration unit: the
+ * `Promise.all` there existed to stop two config paths paying their latencies
+ * in series, and a single tree leaves one path with nothing to overlap.
  */
 async function runAstGrepEngine(
   options: DispatchOptions

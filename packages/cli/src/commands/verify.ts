@@ -73,7 +73,7 @@ async function runOverPath(options: {
     return;
   }
 
-  const results = [];
+  const results: (RuleVerification | RuleTestResult)[] = [];
   for (const rule of rules) {
     results.push(await run(cwd, rule));
   }
@@ -88,6 +88,12 @@ async function runOverPath(options: {
       console.log(`${mark} ${result.engine}/${result.ruleId}`);
       for (const error of result.errors) {
         console.log(`    ${error}`);
+      }
+      // Printed even when the rule passed. A misplaced `.vale.ini` assignment
+      // makes Vale exit zero having enabled nothing, so the clean line above
+      // is exactly the moment the author needs to hear this.
+      if ("notice" in result && result.notice !== undefined) {
+        console.log(`    notice: ${result.notice}`);
       }
     }
     console.log(

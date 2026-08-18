@@ -38,6 +38,17 @@ export const outputSchema = z.object({
     .array(skippedRuntimeRuleSchema)
     .optional()
     .describe("Runtime rules present but not executed"),
+  // Human output for these is `warn()`, which is a no-op under `--json`. Absent
+  // from the envelope, a machine consumer reads `{"success":false,"results":[]}`
+  // for a Vale that died and cannot tell it from a clean run.
+  failures: z
+    .array(z.string())
+    .optional()
+    .describe("Engines that were present and failed"),
+  notices: z
+    .array(z.string())
+    .optional()
+    .describe("Advisory messages: engines that could not run"),
 });
 
 /** Error schema for `taskless check --json` on failure */

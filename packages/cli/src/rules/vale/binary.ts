@@ -1,4 +1,5 @@
 import {
+  pathCommandName,
   resolvePlatformBinary,
   type PlatformBinaryResolution,
   type PlatformBinarySpec,
@@ -54,11 +55,17 @@ export function resetValeBinaryCache(): void {
   cached = undefined;
 }
 
-/** An actionable message naming where we looked. */
+/**
+ * An actionable message naming where we looked.
+ *
+ * The PATH advice is spelled for the platform — `vale.exe` on Windows — rather
+ * than hardcoded, so a Windows user is not told to install a name that the
+ * resolver would not find there.
+ */
 export function valeUnavailableMessage(tried: string[]): string {
   return (
     `Vale binary not found. Looked in: ${tried.join(", ")}. Install a ` +
-    `supported platform build, or put \`vale\` on your PATH. Other engines ` +
-    `still ran.`
+    `supported platform build, or put \`${pathCommandName(VALE_BINARY)}\` on ` +
+    `your PATH. Other engines still ran.`
   );
 }

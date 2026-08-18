@@ -61,7 +61,9 @@ function makeProject(
   workspaces.push(cwd);
   // A rule is a directory; each `write` below creates its own.
   for (const [name, body] of Object.entries(rules)) {
-    mkdirSync(join(cwd, ".taskless", "rules", "vale", name), { recursive: true });
+    mkdirSync(join(cwd, ".taskless", "rules", "vale", name), {
+      recursive: true,
+    });
     writeFileSync(
       join(cwd, ".taskless", "rules", "vale", name, `${name}.yml`),
       body
@@ -91,6 +93,19 @@ function makeProject(
 
 const existence = (token: string) =>
   `extends: existence\nmessage: "Avoid '${token}'"\nlevel: warning\ntokens:\n  - ${token}\n`;
+
+/** A project whose single rule has both fixture buckets populated. */
+function bothBuckets(): string {
+  return makeProject(
+    { "no-simply": existence("simply") },
+    {
+      "no-simply": {
+        fail: { "a.md": "Just simply do it.\n" },
+        pass: { "c.md": "Nothing objectionable.\n" },
+      },
+    }
+  );
+}
 
 describe("buildIsolatingConfig", () => {
   it("enables exactly one rule, once", () => {
@@ -184,9 +199,21 @@ describe("fixture buckets are flat", () => {
         },
       }
     );
-    mkdirSync(join(cwd, ".taskless", "rules", "vale", "no-simply", ".tests", "pass", "nested"), {
-      recursive: true,
-    });
+    mkdirSync(
+      join(
+        cwd,
+        ".taskless",
+        "rules",
+        "vale",
+        "no-simply",
+        ".tests",
+        "pass",
+        "nested"
+      ),
+      {
+        recursive: true,
+      }
+    );
 
     await expect(verifyValeRule(cwd, "no-simply")).rejects.toThrow(
       /fixture buckets are flat/i
@@ -381,5 +408,57 @@ describe("verifyValeRules without a binary", () => {
     );
     const outcome = await verifyValeRules(cwd);
     expect(outcome.status).toBe("unavailable");
+  });
+});
+
+describe("verifyValeRule and Vale's notice", () => {
+  // The notice is the only thing that distinguishes a run Vale ignored from a
+  // run that found nothing: a `W101 … isn't a core option` warning goes to
+  // stderr with exit zero and an empty result, so a verification that drops it
+  // reports a clean pass for a rule Vale never applied. `runVale` is stubbed
+  // because the isolating config verification generates is always well-formed
+  // — the diagnostic is real, but no fixture layout can provoke it here.
+  const NOTICE =
+    "Vale reported while running: W101 'rules.no-simply' isn't a core option; Vale is ignoring it.";
+
+  it("carries the notice onto a verification that otherwise passes", async () => {
+    const cwd = bothBuckets();
+    const run = await import("../src/rules/vale/run");
+    vi.spyOn(run, "runVale").mockResolvedValue({
+      status: "ok",
+      blocking: false,
+      results: [
+        {
+          source: "vale",
+          ruleId: "no-simply",
+          severity: "warning",
+          message: "Avoid 'simply'",
+          file: ".taskless/rules/vale/no-simply/.tests/fail/a.md",
+          range: {
+            start: { line: 1, column: 6 },
+            end: { line: 1, column: 12 },
+          },
+          matchedText: "simply",
+        },
+      ],
+      notice: NOTICE,
+    });
+
+    const result = verification(await verifyValeRule(cwd, "no-simply"));
+    expect(result.passed).toBe(true);
+    expect(result.notice).toBe(NOTICE);
+  });
+
+  it("leaves the notice absent when Vale said nothing", async () => {
+    const cwd = bothBuckets();
+    const run = await import("../src/rules/vale/run");
+    vi.spyOn(run, "runVale").mockResolvedValue({
+      status: "ok",
+      blocking: false,
+      results: [],
+    });
+
+    const result = verification(await verifyValeRule(cwd, "no-simply"));
+    expect(result.notice).toBeUndefined();
   });
 });

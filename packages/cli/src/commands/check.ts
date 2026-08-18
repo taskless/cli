@@ -279,7 +279,10 @@ export const checkCommand = defineCommand({
     const telemetry = await getTelemetry(cwd);
 
     // Warnings/notices are advisory human output; suppress them under --json so
-    // the machine output stays the { success, results, skipped? } shape.
+    // the machine output stays the
+    // { success, results, skipped?, failures?, notices? } shape. Engine
+    // failures and notices are carried in that envelope instead, since a
+    // machine consumer cannot read stderr prose.
     const warn = (message: string) => {
       if (!args.json) console.error(message);
     };
@@ -421,6 +424,12 @@ export const checkCommand = defineCommand({
             success: exitCode === 0,
             results,
             ...(plan.skipped.length > 0 ? { skipped: plan.skipped } : {}),
+            ...(dispatched.failures.length > 0
+              ? { failures: dispatched.failures }
+              : {}),
+            ...(dispatched.notices.length > 0
+              ? { notices: dispatched.notices }
+              : {}),
           });
           console.log(JSON.stringify(output));
         } else {
