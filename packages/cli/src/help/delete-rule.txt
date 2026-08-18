@@ -1,12 +1,17 @@
 # Topic: delete-rule     (CLI v%(CLI_VERSION)s / topic v2)
 
 ## Goal
-Remove a rule and its associated test files from `.taskless/`. Does
-not contact the Taskless API; purely a local filesystem operation.
+Remove an ast-grep rule and its associated test files from
+`.taskless/`. Does not contact the Taskless API; purely a local
+filesystem operation.
+
+`rule delete` resolves ast-grep rules only. It takes a bare id, not a
+path, and looks for it under `.taskless/rules/sg/`. A Vale or runtime
+rule is deleted by removing its directory by hand.
 
 ## Preconditions
 - `.taskless/` directory exists.
-- The target rule directory exists at `.taskless/rules/<engine>/<id>/`.
+- The target rule directory exists at `.taskless/rules/sg/<id>/`.
 - No auth required.
 
 ## Steps
@@ -21,8 +26,8 @@ not contact the Taskless API; purely a local filesystem operation.
    ```
 
    The CLI removes:
-   - `.taskless/rules/<engine>/<id>/` — the whole directory, which
-     holds the rule, its `.tests/`, and any per-engine config
+   - `.taskless/rules/sg/<id>/` — the whole directory, which holds the
+     rule, its `.tests/`, and any per-rule config
    - `.taskless/rule-metadata/<id>.yml` (if present)
 
 3. **Report results.** Show the user what was deleted. If the rule
@@ -36,7 +41,7 @@ stdout; on success the command exits 0 silently (no envelope).
 
 | code             | meaning                  | fix                                  |
 |------------------|--------------------------|--------------------------------------|
-| `RULE_NOT_FOUND` | Rule file does not exist | Confirm the ID; list rules first     |
+| `RULE_NOT_FOUND` | No `rules/sg/<id>/`      | Confirm the ID; list rules first     |
 
 The rule ID is required as a positional argument; citty rejects a
 missing ID before the command body runs, so `INVALID_INPUT` is not

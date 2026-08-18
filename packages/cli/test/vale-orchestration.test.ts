@@ -1,3 +1,4 @@
+import { execFile } from "node:child_process";
 import {
   chmodSync,
   mkdirSync,
@@ -6,15 +7,13 @@ import {
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
+import { promisify } from "node:util";
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { hasValeRules, runEngines } from "../src/rules/dispatch";
-import {
-  assembleSgConfig,
-  assembleValeConfig,
-} from "../src/rules/assemble";
+import { assembleSgConfig, assembleValeConfig } from "../src/rules/assemble";
 import { findValeBinary } from "../src/rules/vale/binary";
 
 const withVale = findValeBinary().path === undefined ? describe.skip : describe;
@@ -38,9 +37,16 @@ afterEach(() => {
 /** A project with an sg rule, a vale rule, and a document tripping both. */
 function makeMixedProject(options?: {
   valeRules?: boolean;
+  /**
+   * Whether the Vale rule ships a per-rule `.vale.ini`. Without one it enables
+   * itself nowhere, so assembly produces no blocks and writes no config — the
+   * "rule directory present, nothing to run" state.
+   */
+  valeConfig?: boolean;
   sgSeverity?: "warning" | "error";
 }) {
   const valeRules = options?.valeRules ?? true;
+  const valeConfig = options?.valeConfig ?? true;
   const sgSeverity = options?.sgSeverity ?? "warning";
   const cwd = mkdtempSync(join(tmpdir(), "vale-orch-"));
   workspaces.push(cwd);
@@ -73,12 +79,23 @@ function makeMixedProject(options?: {
   }
   // The per-rule config assembly reads. Written only when the rule exists, so
   // a project with no Vale rules assembles to nothing.
-  if (valeRules) {
+  if (valeRules && valeConfig) {
     writeFileSync(
       join(cwd, ".taskless", "rules", "vale", "no-simply", ".vale.ini"),
       "[*.md]\ntskl) rule = no-simply\nBasedOnStyles =\nno-simply.no-simply = YES\n"
     );
   }
+
+  // Declare the schema version this fixture is already written in. Without it
+  // the tree reads as version 0, and the migrations dutifully "upgrade" a
+  // current-layout project into `.taskless/sg/rules/sg/` — the rules end up
+  // somewhere the scanner does not look, so `check` finds nothing and reports
+  // success. Only the tests that spawn the CLI run migrations, which is why
+  // the in-process `runEngines` tests never noticed.
+  writeFileSync(
+    join(cwd, ".taskless", "taskless.json"),
+    JSON.stringify({ version: 5, install: {} })
+  );
 
   writeFileSync(join(cwd, "app.js"), "eval('1 + 1');\n");
   writeFileSync(join(cwd, "doc.md"), "Just simply do it.\n");
@@ -86,6 +103,41 @@ function makeMixedProject(options?: {
 }
 
 /** The committed config `makeMixedProject` writes, as `check` would resolve it. */
+
+const execFileAsync = promisify(execFile);
+const binPath = resolve(import.meta.dirname, "../dist/index.js");
+
+/** Run the built CLI, tolerating a non-zero exit. */
+async function runCli(
+  args: string[]
+): Promise<{ stdout: string; exitCode: number }> {
+  try {
+    const { stdout } = await execFileAsync("node", [binPath, ...args]);
+    return { stdout, exitCode: 0 };
+  } catch (error) {
+    const execError = error as { stdout: string; code: number };
+    return { stdout: execError.stdout ?? "", exitCode: execError.code };
+  }
+}
+
+/** The `--json` line, ignoring any preceding migration notice. */
+function parseJson(stdout: string): {
+  success: boolean;
+  results: unknown[];
+  failures?: string[];
+  notices?: string[];
+} {
+  const line = stdout
+    .trim()
+    .split("\n")
+    .findLast((entry) => entry.trim().startsWith("{"));
+  return JSON.parse(line ?? "{}") as {
+    success: boolean;
+    results: unknown[];
+    failures?: string[];
+    notices?: string[];
+  };
+}
 
 describe("hasValeRules", () => {
   it("is false for a scaffolded-but-empty rules directory", async () => {
@@ -130,6 +182,7 @@ describe("exit code carried on the dispatch result", () => {
       cwd,
       paths: ["app.js"],
       astGrepConfigPath: await assembleSgConfig(cwd),
+      valeConfigPath: undefined,
       runtimeRules: [],
     });
     expect(dispatched.results.length).toBeGreaterThan(0);
@@ -142,6 +195,7 @@ describe("exit code carried on the dispatch result", () => {
       cwd,
       paths: ["app.js"],
       astGrepConfigPath: await assembleSgConfig(cwd),
+      valeConfigPath: undefined,
       runtimeRules: [],
     });
     expect(
@@ -156,6 +210,7 @@ describe("exit code carried on the dispatch result", () => {
       cwd,
       paths: ["doc.md"], // the sg rule is javascript-only, so nothing matches
       astGrepConfigPath: await assembleSgConfig(cwd),
+      valeConfigPath: undefined,
       runtimeRules: [],
     });
     expect(dispatched.results).toEqual([]);
@@ -169,11 +224,12 @@ withVale("runEngines over a mixed corpus", () => {
     const cwd = makeMixedProject();
     // Vale reads the assembled run config, so a dispatch that never assembles
     // has no config to point at — which would report as "no Vale findings".
-    await assembleValeConfig(cwd);
+    const valeConfigPath = await assembleValeConfig(cwd);
     const dispatched = await runEngines({
       cwd,
       paths: ["app.js", "doc.md"],
       astGrepConfigPath: await assembleSgConfig(cwd),
+      valeConfigPath,
       runtimeRules: [],
     });
 
@@ -191,12 +247,52 @@ withVale("runEngines over a mixed corpus", () => {
       cwd,
       paths: ["app.js", "doc.md"],
       astGrepConfigPath: await assembleSgConfig(cwd),
+      valeConfigPath: await assembleValeConfig(cwd),
       runtimeRules: [],
     });
     expect(dispatched.results.every((result) => result.source !== "vale")).toBe(
       true
     );
     expect(dispatched.notices).toEqual([]);
+  });
+});
+
+describe("runEngines when a Vale rule directory assembles to nothing", () => {
+  // The case the rule-directory layout made reachable, and the reason dispatch
+  // gates on the config rather than on `hasValeRules`: a rule directory exists
+  // (so the directory count is non-zero) while every rule in it declares no
+  // matcher, so assembly writes no file and deletes none. Gating on the
+  // directory alone ran Vale against whatever `.taskless/.vale.ini` a previous
+  // run had left behind — or against a path that was never written at all.
+  it("does not invoke Vale, and reports a clean run", async () => {
+    const cwd = makeMixedProject({ valeConfig: false });
+
+    // A rule *directory* is present, so the old gate would have said "run".
+    expect(await hasValeRules(cwd)).toBe(true);
+    const valeConfigPath = await assembleValeConfig(cwd);
+    expect(valeConfigPath).toBeUndefined();
+
+    // Spied rather than inferred from the absence of findings: an unconfigured
+    // Vale reports nothing either way, so "no vale results" cannot tell a skip
+    // apart from a run against a stale config.
+    const run = await import("../src/rules/vale/run");
+    const runVale = vi.spyOn(run, "runVale");
+
+    const dispatched = await runEngines({
+      cwd,
+      paths: ["app.js", "doc.md"],
+      astGrepConfigPath: await assembleSgConfig(cwd),
+      valeConfigPath,
+      runtimeRules: [],
+    });
+
+    expect(runVale).not.toHaveBeenCalled();
+    expect(dispatched.results.every((result) => result.source !== "vale")).toBe(
+      true
+    );
+    expect(dispatched.notices).toEqual([]);
+    expect(dispatched.failures).toEqual([]);
+    expect(dispatched.exitCode).toBe(0);
   });
 });
 
@@ -215,6 +311,7 @@ describe("runEngines when Vale is unavailable", () => {
       cwd,
       paths: ["app.js", "doc.md"],
       astGrepConfigPath: await assembleSgConfig(cwd),
+      valeConfigPath: await assembleValeConfig(cwd),
       runtimeRules: [],
     });
 
@@ -267,6 +364,7 @@ describe("runEngines when Vale is unavailable", () => {
       cwd,
       paths: ["doc.md"],
       astGrepConfigPath: await assembleSgConfig(cwd),
+      valeConfigPath: await assembleValeConfig(cwd),
       runtimeRules: [],
     });
 
@@ -287,6 +385,9 @@ describe("runEngines when Vale is unavailable", () => {
       // `failures` and the exit code, instead of Vale quietly contributing
       // nothing and the run reading as clean.
       const cwd = makeMixedProject();
+      // Assembled while the directory is still readable: the failure under
+      // test is discovery's, not assembly's.
+      const valeConfigPath = await assembleValeConfig(cwd);
       const rules = join(cwd, ".taskless", "rules", "vale");
       chmodSync(rules, 0o000);
       try {
@@ -294,6 +395,7 @@ describe("runEngines when Vale is unavailable", () => {
           cwd,
           paths: ["app.js", "doc.md"],
           astGrepConfigPath: await assembleSgConfig(cwd),
+          valeConfigPath,
           runtimeRules: [],
         });
 
@@ -305,4 +407,42 @@ describe("runEngines when Vale is unavailable", () => {
       }
     }
   );
+});
+
+describe("an engine failure under --json", () => {
+  it("reaches the machine envelope, not only the suppressed warning", async () => {
+    // `warn()` is a no-op under `--json`, so without a field for it the
+    // consumer sees `{"success":false,"results":[]}` and cannot tell a broken
+    // engine from a clean run. A CI script reading that treats a dead engine
+    // as a pass.
+    const cwd = makeMixedProject({ valeRules: false });
+    // An unparseable rule file: ast-grep exits non-zero and the engine fails
+    // with no findings, the exact shape that used to read as clean.
+    mkdirSync(join(cwd, ".taskless", "rules", "sg", "broken"), {
+      recursive: true,
+    });
+    writeFileSync(
+      join(cwd, ".taskless", "rules", "sg", "broken", "broken.yml"),
+      "id: broken\nlanguage: javascript\nrule:\n  bogusKey: nope\n"
+    );
+
+    const { stdout, exitCode } = await runCli(["check", "-d", cwd, "--json"]);
+    const output = parseJson(stdout);
+
+    expect(exitCode).toBe(1);
+    expect(output.success).toBe(false);
+    expect(output.results).toEqual([]);
+    expect(output.failures).toHaveLength(1);
+    expect(output.failures?.[0]).toContain("sg engine failed");
+  });
+
+  it("omits both fields when nothing failed, as `skipped` does", async () => {
+    const cwd = makeMixedProject({ valeRules: false });
+    const { stdout } = await runCli(["check", "-d", cwd, "doc.md", "--json"]);
+    const output = parseJson(stdout);
+
+    expect(output.success).toBe(true);
+    expect(output.failures).toBeUndefined();
+    expect(output.notices).toBeUndefined();
+  });
 });

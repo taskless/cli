@@ -1,13 +1,11 @@
 import { readdir } from "node:fs/promises";
 import type { CheckResult } from "../types/check";
 import { engineRulesDirectory, type EngineName } from "./engines";
+import { isMissingDirectory } from "./errno";
 import { executeRuntimeRules } from "./runtime/harness";
 import type { RuntimeRule } from "./runtime/discover";
 import { runAstGrepScan } from "./scan";
 import { runVale } from "./vale/run";
-
-/** Errno values that mean "the directory is not there", and nothing worse. */
-const ABSENT_DIRECTORY_CODES = new Set(["ENOENT", "ENOTDIR"]);
 
 /**
  * Whether `.taskless/vale/rules/` holds anything to run.
@@ -37,8 +35,7 @@ export async function hasValeRules(cwd: string): Promise<boolean> {
     });
     return entries.some((entry) => entry.isDirectory());
   } catch (error) {
-    const code = (error as NodeJS.ErrnoException).code;
-    if (code !== undefined && ABSENT_DIRECTORY_CODES.has(code)) return false;
+    if (isMissingDirectory(error)) return false;
     throw error;
   }
 }
@@ -82,6 +79,17 @@ export interface DispatchOptions {
    * runs it and does not know how it was built.
    */
   astGrepConfigPath: string | undefined;
+  /**
+   * The assembled Vale `--config` path, or `undefined` when assembly produced
+   * nothing to run.
+   *
+   * Distinct from "the project has a Vale rules directory". A rule directory can
+   * exist while every rule in it declares no config, and assembly then writes no
+   * file and deletes none — so gating on the directory alone ran Vale against a
+   * config left behind by a previous run, or against a path that was never
+   * written. The config is the only honest signal that there is Vale work.
+   */
+  valeConfigPath: string | undefined;
   /** Runtime rules that survived planning. Empty means the harness is skipped. */
   runtimeRules: RuntimeRule[];
   runtimeTimeoutMs?: number;
@@ -119,6 +127,10 @@ export interface DispatchResult {
  * One scan, because there is one rule tree. The previous layout scanned the
  * engine directory and the legacy directory separately and deduplicated the
  * overlap; with a single tree there is no overlap to collapse.
+ *
+ * That also retires the concurrent-scan fix from the orchestration unit: the
+ * `Promise.all` there existed to stop two config paths paying their latencies
+ * in series, and a single tree leaves one path with nothing to overlap.
  */
 async function runAstGrepEngine(
   options: DispatchOptions
@@ -148,6 +160,13 @@ async function runAstGrepEngine(
  * way.
  */
 async function runValeEngine(options: DispatchOptions): Promise<EngineOutcome> {
+  // Mirrors the ast-grep skip: no assembled config means assembly found no
+  // work, and there is nothing to point Vale at. Checked before the directory
+  // gate because it is the stronger claim — a rules directory can be present
+  // while assembly yields nothing.
+  if (options.valeConfigPath === undefined) {
+    return { engine: "vale", results: [] };
+  }
   if (!(await hasValeRules(options.cwd))) {
     return { engine: "vale", results: [] };
   }
@@ -155,6 +174,7 @@ async function runValeEngine(options: DispatchOptions): Promise<EngineOutcome> {
   const outcome = await runVale({
     cwd: options.cwd,
     paths: options.paths,
+    configPath: options.valeConfigPath,
     timeoutMs: options.valeTimeoutMs,
   });
 

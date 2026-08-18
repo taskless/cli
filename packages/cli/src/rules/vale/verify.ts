@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join, posix, relative, resolve, sep } from "node:path";
 
 import { listRuleIds, RULES_DIRECTORY, ruleTestsDirectory } from "../engines";
+import { isMissingDirectory } from "../errno";
 import { runVale, type ValeRunOutcome } from "./run";
 
 /** Where a rule's fixtures live, relative to the project root. */
@@ -46,22 +47,6 @@ export function buildIsolatingConfig(cwd: string, ruleId: string): string {
     `${ruleId}.${ruleId} = YES`,
     "",
   ].join("\n");
-}
-
-/**
- * Whether a `readdir` failure genuinely means "that directory is not there".
- *
- * `ENOENT` is the path not existing; `ENOTDIR` is a path that exists but is a
- * file, or that has a file for an ancestor. Every other code — `EACCES` above
- * all — is a real IO problem, and reading it as "nothing here" is what makes an
- * unreadable bucket indistinguishable from an unwritten one.
- */
-function isMissingDirectory(error: unknown): boolean {
-  if (error === null || typeof error !== "object" || !("code" in error)) {
-    return false;
-  }
-  const { code } = error as NodeJS.ErrnoException;
-  return code === "ENOENT" || code === "ENOTDIR";
 }
 
 /**
@@ -166,6 +151,16 @@ export interface ValeRuleVerification {
    * rule can fire at all.
    */
   fixtures: ValeFixtureCoverage;
+  /**
+   * Vale's stderr from a run that still exited zero, when it wrote any.
+   *
+   * Carried on the verification rather than dropped at this seam because the
+   * `W101 … isn't a core option` warning — what Vale says about an assignment
+   * placed above the first `[…]` section — arrives on exactly this path: exit
+   * zero, empty findings, a rule that verifies clean while Vale ignores it.
+   * Absent when Vale was never run (a one-sided fixture set short-circuits).
+   */
+  notice?: string;
 }
 
 /**
@@ -250,9 +245,10 @@ export async function verifyValeRule(
 
   const configDirectory = mkdtempSync(join(tmpdir(), `vale-verify-${ruleId}-`));
   const configPath = join(configDirectory, ".vale.ini");
-  writeFileSync(configPath, buildIsolatingConfig(cwd, ruleId));
 
   try {
+    writeFileSync(configPath, buildIsolatingConfig(cwd, ruleId));
+
     const outcome = await runVale({
       cwd,
       configPath,
@@ -283,6 +279,7 @@ export async function verifyValeRule(
       missingFailures,
       unexpectedFindings,
       fixtures,
+      ...(outcome.notice === undefined ? {} : { notice: outcome.notice }),
     };
   } finally {
     rmSync(configDirectory, { recursive: true, force: true });

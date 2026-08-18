@@ -158,10 +158,7 @@ async function validateRequirements(
 
 // --- Layer 3: Test execution ---
 
-async function runTests(
-  cwd: string,
-  ruleId: string
-): Promise<TestLayerResult> {
+async function runTests(cwd: string, ruleId: string): Promise<TestLayerResult> {
   // Assembly names every rule's `.tests/` as its own `testConfigs` entry, so
   // the filter below selects a rule whose tests ast-grep already knows how to
   // find.
@@ -249,9 +246,50 @@ async function runTests(
 
 // --- Main verify ---
 
+/** Layer 3, or the reason it was not run. Skips are errors, never a pass. */
+async function runTestLayer(
+  cwd: string,
+  ruleId: string,
+  requested: boolean,
+  hasTestFile: boolean
+): Promise<TestLayerResult> {
+  if (!requested) {
+    return {
+      valid: false,
+      errors: ["Skipped: tests were not requested"],
+      passed: 0,
+      failed: 0,
+    };
+  }
+  if (hasTestFile) return runTests(cwd, ruleId);
+  return {
+    valid: false,
+    errors: ["Skipped: no test file found"],
+    passed: 0,
+    failed: 0,
+  };
+}
+
+export interface VerifyRuleOptions {
+  /**
+   * Run Layer 3 — `sg test` over the rule's fixtures. Defaults to `true`.
+   *
+   * `false` stops after Layers 1–2, for a caller that only needs to know the
+   * rule is well-formed. Layer 3 assembles an ast-grep config and spawns a
+   * subprocess, so a caller that runs `verifyRule` for its schema verdict and
+   * then runs it again for its tests pays that twice per rule.
+   *
+   * When Layer 3 is skipped, `tests` carries the skip as an error and
+   * `success` is therefore `false`. That is deliberate: a result whose tests
+   * never ran must not read as a rule that passed.
+   */
+  runTests?: boolean;
+}
+
 export async function verifyRule(
   cwd: string,
-  ruleId: string
+  ruleId: string,
+  options?: VerifyRuleOptions
 ): Promise<VerifyResult> {
   if (!isValidRuleId(ruleId)) {
     const errorMessage = `Invalid rule ID "${ruleId}". Rule IDs must be lowercase alphanumeric with hyphens.`;
@@ -334,15 +372,14 @@ export async function verifyRule(
     >
   );
 
-  // Layer 3 — only if test file exists (Layer 2 checks this)
-  const testResult = requirementsResult.hasTestFile
-    ? await runTests(cwd, ruleId)
-    : {
-        valid: false,
-        errors: ["Skipped: no test file found"],
-        passed: 0,
-        failed: 0,
-      };
+  // Layer 3 — only when asked for, and only if a test file exists (Layer 2
+  // checks this).
+  const testResult = await runTestLayer(
+    cwd,
+    ruleId,
+    options?.runTests ?? true,
+    requirementsResult.hasTestFile ?? false
+  );
 
   return {
     success: schemaResult.valid && requirementsResult.valid && testResult.valid,

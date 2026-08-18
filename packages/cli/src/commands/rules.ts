@@ -25,7 +25,7 @@ import {
 import { outputSchema as metaOutputSchema } from "../schemas/rules-meta";
 import { getTelemetry } from "../telemetry";
 import { CLIError } from "../util/cli-error";
-import { type CLIErrorCode, makeErrorEnvelope } from "../types/errors";
+import { type CLIErrorCode, writeJsonError } from "../types/errors";
 
 /** Format today's date as YYYYMMDD */
 function getTimestamp(): string {
@@ -91,7 +91,7 @@ const createCommand = defineCommand({
       code: CLIErrorCode = "INTERNAL_ERROR"
     ): never {
       if (args.json) {
-        console.log(JSON.stringify(makeErrorEnvelope(code, message)));
+        writeJsonError(code, message);
       } else {
         console.error(`Error: ${message}`);
       }
@@ -108,9 +108,7 @@ const createCommand = defineCommand({
       const message =
         "Anonymous rule generation runs in the agent. Run `taskless agent create-sg-rule` to fetch the local-only recipe.";
       if (args.json) {
-        console.log(
-          JSON.stringify(makeErrorEnvelope("INVALID_INPUT", message))
-        );
+        writeJsonError("INVALID_INPUT", message);
       } else {
         console.error(message);
       }
@@ -339,7 +337,7 @@ const improveCommand = defineCommand({
       code: CLIErrorCode = "INTERNAL_ERROR"
     ): never {
       if (args.json) {
-        console.log(JSON.stringify(makeErrorEnvelope(code, message)));
+        writeJsonError(code, message);
       } else {
         console.error(`Error: ${message}`);
       }
@@ -351,9 +349,7 @@ const improveCommand = defineCommand({
       const message =
         "Anonymous rule improvement runs in the agent. Run `taskless agent improve-rule --anonymous` to fetch the local-only recipe.";
       if (args.json) {
-        console.log(
-          JSON.stringify(makeErrorEnvelope("INVALID_INPUT", message))
-        );
+        writeJsonError("INVALID_INPUT", message);
       } else {
         console.error(message);
       }
@@ -579,7 +575,7 @@ const metaCommand = defineCommand({
       code: CLIErrorCode = "INTERNAL_ERROR"
     ): never {
       if (args.json) {
-        console.log(JSON.stringify(makeErrorEnvelope(code, message)));
+        writeJsonError(code, message);
       } else {
         console.error(`Error: ${message}`);
       }
@@ -662,9 +658,7 @@ const deleteCommand = defineCommand({
       } else {
         const message = `Rule "${id}" not found in .taskless/${RULES_DIRECTORY}/sg/${id}/`;
         if (args.json) {
-          console.log(
-            JSON.stringify(makeErrorEnvelope("RULE_NOT_FOUND", message))
-          );
+          writeJsonError("RULE_NOT_FOUND", message);
         } else {
           console.error(`Error: ${message}`);
         }
