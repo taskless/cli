@@ -289,6 +289,46 @@ describe("a current-layout project with no taskless.json", () => {
     expect(result.exitCode).toBe(1);
   });
 
+  // A loose `*.yml` beside the engine directories is the one genuinely mixed
+  // shape: pre-0004 rule files and the current layout in the same tree. The
+  // stray file has to migrate — leaving it strands a rule the old layout owns —
+  // but the move is per-file, not the whole directory. Moving `rules/`
+  // wholesale to satisfy the stray would carry `sg/no-eval/` down with it, and
+  // 0005 only relocates loose `*.yml` from `sg/rules/`, so the buried rule
+  // never comes back: the exact bug, reached by a merge-conflict leftover
+  // instead of a missing manifest.
+  it("migrates a stray loose rule without burying the partitioned ones", async () => {
+    await writeTree(tasklessDirectory, {
+      "rules/sg/no-eval/no-eval.yml":
+        "id: no-eval\nlanguage: typescript\nseverity: error\nmessage: Avoid eval.\nrule:\n  pattern: eval($A)\n",
+      "rules/vale/.gitkeep": "",
+      "rules/runtime/.gitkeep": "",
+      "rules/some-old-rule.yml":
+        "id: some-old-rule\nlanguage: typescript\nseverity: error\nmessage: Avoid debugger.\nrule:\n  pattern: debugger\n",
+    });
+    await writeFile(join(cwd, "app.ts"), "eval(raw);\ndebugger;\n", "utf8");
+
+    const result = await runCli(["check", "-d", cwd, "--json"]);
+
+    // Both survive: the already-partitioned rule stays put, the stray one is
+    // relocated into the layout rather than left where 0005 refuses to run.
+    expect(
+      parseJson<CheckOutput>(result.stdout).results.map(
+        (finding) => `${finding.ruleId}:${finding.file}`
+      )
+    ).toEqual(
+      expect.arrayContaining(["no-eval:app.ts", "some-old-rule:app.ts"])
+    );
+    expect(result.exitCode).toBe(1);
+
+    const verified = await runCli(["verify", "-d", cwd, "--json"]);
+    expect(
+      parseJson<RuleReport>(verified.stdout)
+        .rules.map((rule) => `${rule.engine}/${rule.ruleId}`)
+        .toSorted()
+    ).toEqual(["sg/no-eval", "sg/some-old-rule"]);
+  });
+
   it("leaves the rule where the current layout puts it", async () => {
     await writeTree(tasklessDirectory, {
       "rules/sg/no-eval/no-eval.yml":
