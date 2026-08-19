@@ -10,7 +10,7 @@ brief a model.
 
 This capability publishes those recipes as a typed subpath export,
 `@taskless/cli/prompts`, rendered through the same embed and the same render
-path the `help` command uses. One source and one renderer means the two surfaces
+path the `agent` command uses. One source and one renderer means the two surfaces
 cannot drift into giving different guidance. The export carries no CLI runtime,
 so a Worker can import it without dragging in the command tree, and topic
 membership is an explicit hand-maintained list so a new recipe file cannot
@@ -47,7 +47,7 @@ The prompt export SHALL be sourced from the same embedded `agent/*.txt` content 
 
 #### Scenario: Parity between import and agent command
 
-- **WHEN** the `help` command renders topic `T` and a consumer calls `getPrompt("T")`
+- **WHEN** the `agent` command renders topic `T` and a consumer calls `getPrompt("T")`
 - **THEN** the two texts are identical, including under a non-prod build target where the CLI invocation is rewritten
 
 ### Requirement: The export returns fully-rendered prompt text
@@ -71,7 +71,7 @@ Calling a prompt SHALL return finished text with every `%(KEY)s` placeholder sub
 
 ### Requirement: The version header is suppressible
 
-Rendered prompts SHALL begin with a header line naming the topic and the CLI version. Because that version participates in an LLM consumer's prompt-cache key, `PromptOptions.header` SHALL allow suppressing it. It SHALL default to `true`, leaving the `help` command's output and all existing behavior unchanged.
+Rendered prompts SHALL begin with a header line naming the topic and the CLI version. Because that version participates in an LLM consumer's prompt-cache key, `PromptOptions.header` SHALL allow suppressing it. It SHALL default to `true`, leaving the `agent` command's output and all existing behavior unchanged.
 
 #### Scenario: Header suppressed for a cache-stable system prompt
 
@@ -80,7 +80,7 @@ Rendered prompts SHALL begin with a header line naming the topic and the CLI ver
 
 #### Scenario: Header present by default
 
-- **WHEN** a prompt is called with no options, or the `help` command renders a topic
+- **WHEN** a prompt is called with no options, or the `agent` command renders a topic
 - **THEN** the header line is present, exactly as it renders today
 
 #### Scenario: Build defines are inlined into the prompts entry
@@ -134,12 +134,12 @@ An automated check SHALL assert that the set of canonical `agent/*.txt` topics o
 
 #### Scenario: A new recipe file is added without being classified
 
-- **WHEN** a new canonical `help/<topic>.txt` is added and appears in neither the exported topics nor the internal-topics list
+- **WHEN** a new canonical `agent/<topic>.txt` is added and appears in neither the exported topics nor the internal-topics list
 - **THEN** the completeness check SHALL fail, requiring the author to either export the topic or record it as internal
 
 #### Scenario: An exported topic loses its recipe file
 
-- **WHEN** a topic remains in `PromptTopic` but its canonical `help/<topic>.txt` no longer exists
+- **WHEN** a topic remains in `PromptTopic` but its canonical `agent/<topic>.txt` no longer exists
 - **THEN** the completeness check SHALL fail, rather than the topic rendering empty or undefined at runtime
 
 #### Scenario: A deliberately internal recipe stays unexported
