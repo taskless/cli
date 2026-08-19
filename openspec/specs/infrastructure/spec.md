@@ -278,14 +278,14 @@ The workflow SHALL install pnpm using a version consistent with the `packageMana
 - **WHEN** the workflow installs dependencies
 - **THEN** the pnpm version used SHALL match the version specified in `packageManager`
 
-### Requirement: Workflow uses Node 22
+### Requirement: Workflow uses Node 24
 
-The workflow SHALL use Node.js version 22.
+The workflow SHALL use Node.js version 24.
 
-#### Scenario: Node version is 22
+#### Scenario: Node version is 24
 
 - **WHEN** the workflow runs
-- **THEN** Node.js 22 SHALL be the active runtime
+- **THEN** Node.js 24 SHALL be the active runtime
 
 ### Requirement: Workflow does not publish
 
