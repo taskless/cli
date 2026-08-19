@@ -1,7 +1,7 @@
 import { spawnSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
@@ -103,7 +103,10 @@ function project({ rules, tests = {}, sources = {} }: Project): string {
     writeFileSync(join(cwd, "rules", id, ".tests", `${id}-test.yml`), body);
   }
   for (const [path, body] of Object.entries(sources)) {
-    mkdirSync(join(cwd, "src"), { recursive: true });
+    // The parent of the path actually given, not a hardcoded `src/` — every
+    // case today happens to live under `src/`, and a future one that does not
+    // should not fail with ENOENT.
+    mkdirSync(dirname(join(cwd, path)), { recursive: true });
     writeFileSync(join(cwd, path), body);
   }
 
@@ -375,7 +378,8 @@ withSg("ast-grep vendor contract", () => {
     });
 
     it("colorizes the summary even when stdout is not a TTY", () => {
-      // Depended on by: stripAnsi in verify.ts. The escape sits between
+      // Depended on by: parseTestSummary stripping VT control characters
+      // before matching, in verify.ts. The escape sits between
       // `test result: ` and `ok`, i.e. INSIDE the phrase being matched, so a
       // parser that skipped stripping would fail to anchor on a passing run.
       // eslint-disable-next-line no-control-regex -- the escape IS the subject
@@ -393,6 +397,32 @@ withSg("ast-grep vendor contract", () => {
       );
       expect(test(passingProject(), "no-eval").stdout).not.toContain(
         "const a = 1"
+      );
+    });
+
+    it("indents every echoed line, so fixture text never reaches column 0", () => {
+      // Depended on by: parseTestSummary anchoring on `^`. This is what makes
+      // the anchor close the *class* rather than the one fixture in #112 — a
+      // fixture whose own text is a verbatim summary line is still echoed
+      // indented, so it cannot be mistaken for the summary. Multi-line, since
+      // the indent has to hold for continuation lines too.
+      const poison = "Error: test failed. 99 passed; 0 failed;";
+      const cwd = project({
+        rules: { "no-eval": rule("no-eval") },
+        tests: {
+          "no-eval": testFile("no-eval", [
+            `const a = 1;\n${poison}\nlet b = 2;`,
+          ]),
+        },
+      });
+      const { stdout } = test(cwd, "no-eval");
+
+      expect(stdout).toContain(`  ${poison}`);
+      expect(stdout).not.toMatch(
+        new RegExp(
+          `^${poison.replaceAll(/[.*+?^${}()|[\]\\]/g, String.raw`\$&`)}`,
+          "m"
+        )
       );
     });
 

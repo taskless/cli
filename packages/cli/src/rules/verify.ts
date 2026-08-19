@@ -1,6 +1,7 @@
 import { readFile, readdir } from "node:fs/promises";
 import { spawn } from "node:child_process";
 import { StringDecoder } from "node:string_decoder";
+import { stripVTControlCharacters } from "node:util";
 
 import { parse } from "yaml";
 
@@ -160,19 +161,6 @@ async function validateRequirements(
 // --- Layer 3: Test execution ---
 
 /**
- * Drop SGR escape sequences.
- *
- * ast-grep colorizes even when stdout is not a TTY, and the escape lands
- * *inside* the phrase we anchor on — `test result: \u001B[32mok\u001B[0m.` — so
- * stripping is a precondition for matching the summary at all, not cosmetics.
- * Pinned by `ast-grep-vendor-contract.test.ts`.
- */
-function stripAnsi(text: string): string {
-  // eslint-disable-next-line no-control-regex
-  return text.replaceAll(/\u001B\[[\d;]*m/g, "");
-}
-
-/**
  * The counts from `ast-grep test`'s summary line, or `undefined` if there is
  * none.
  *
@@ -190,6 +178,15 @@ function stripAnsi(text: string): string {
  * `improve-rule`, so they steer the next edit.
  *
  * The last summary line wins, since only the final one describes the whole run.
+ *
+ * Stripping first is a precondition, not cosmetics: ast-grep colorizes even
+ * when stdout is not a TTY, and the escape lands *inside* the phrase being
+ * anchored on — `test result: \u001B[32mok\u001B[0m.`.
+ *
+ * The anchor closes the poisoning class rather than just the one reported
+ * fixture: echoed source is indented two spaces by ast-grep, so a fixture whose
+ * own text reads `Error: test failed. 99 passed; 0 failed;` still cannot reach
+ * column 0. Both properties are pinned by `ast-grep-vendor-contract.test.ts`.
  */
 function parseTestSummary(
   output: string
@@ -197,7 +194,7 @@ function parseTestSummary(
   const summary =
     /^(?:test result: ok\.|Error: test failed\.) (\d+) passed; (\d+) failed;/gm;
   let found: { passed: number; failed: number } | undefined;
-  for (const match of stripAnsi(output).matchAll(summary)) {
+  for (const match of stripVTControlCharacters(output).matchAll(summary)) {
     found = { passed: Number(match[1]), failed: Number(match[2]) };
   }
   return found;
