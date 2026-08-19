@@ -59,3 +59,14 @@ jobs:
 
       - name: Test workflow scripts
         run: node --test .github/scripts/*.test.cjs
+
+      # Repo-wide, not changed-files-only: spec rot accumulates in the specs a
+      # PR does not touch, so a scoped check would never surface it.
+      - name: Validate specs
+        run: pnpm openspec validate --all --strict
+
+      # `--strict` validates what the parser read, not that it read the whole
+      # file. A second `##` inside `## Requirements` ends the section and every
+      # requirement below it becomes invisible — valid, unread, and green.
+      - name: Check spec requirement visibility
+        run: node .github/scripts/openspec-visibility.cjs

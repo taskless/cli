@@ -149,13 +149,25 @@ A GitHub Actions workflow file SHALL exist at `.github/workflows/ci.yml`.
 - **WHEN** inspecting the repository
 - **THEN** `.github/workflows/ci.yml` SHALL exist and be valid YAML
 
-### Requirement: Workflow triggers on PRs and main pushes
+### Requirement: Workflow triggers on every pull request and main pushes
 
-The workflow SHALL trigger on pull requests targeting the `main` branch and on pushes to the `main` branch.
+The workflow SHALL trigger on **every** pull request regardless of its base branch, and on pushes to the `main` branch. The `pull_request` trigger SHALL carry no `branches:` filter, and SHALL name `ready_for_review` alongside the default event types.
 
-#### Scenario: Pull request triggers workflow
+Lint, typecheck, and tests have no interest in where a pull request eventually merges, and a `branches: [main]` filter did not reliably reach stacked pull requests: GitHub sometimes resolves a stacked PR's eventual target and sometimes does not, so the filter ran for the lower PRs of a stack and silently stopped for the upper ones — leaving a large change at "ready for review" having never been linted, typechecked, or tested. A filter that works for six PRs and quietly fails on the seventh is worse than one that never worked, because nobody re-checks it. `ready_for_review` is not in the default event set, so without it a draft marked ready gets no fresh run until someone happens to push again.
+
+#### Scenario: Pull request targeting main triggers workflow
 
 - **WHEN** a pull request is opened or updated targeting `main`
+- **THEN** the CI workflow SHALL run
+
+#### Scenario: Stacked pull request triggers workflow
+
+- **WHEN** a pull request is opened or updated targeting a branch other than `main`
+- **THEN** the CI workflow SHALL run, because the trigger carries no `branches:` filter
+
+#### Scenario: Draft marked ready triggers workflow
+
+- **WHEN** a draft pull request is marked ready for review with no new commits
 - **THEN** the CI workflow SHALL run
 
 #### Scenario: Push to main triggers workflow
@@ -223,6 +235,39 @@ The workflow SHALL run `pnpm test` and the job SHALL fail if any tests fail.
 
 - **WHEN** a test suite has failures
 - **THEN** the test step SHALL fail and the workflow SHALL report failure
+
+### Requirement: Workflow validates the specs
+
+The workflow SHALL validate `openspec/specs/` on every run, with two checks, and the job SHALL fail if either reports a problem.
+
+The first check runs `openspec validate --all --strict` across every spec, not only the specs a pull request touches: spec rot accumulates in the files nobody is editing, so a changed-files-only check would never surface it.
+
+The second check verifies that every `### Requirement:` heading sits under `## Requirements`. This is not redundant with the first. A second `##` heading inside the requirements section ends it, and every requirement below becomes prose to the parser — not invalid, but unread, so `--strict` reports success having never looked at them. Measured before the check existed, `infrastructure` carried 20 requirements with 1 visible and `skills` carried 7 with 1, both passing `--strict` the entire time. A passing gate is an active claim that the spec was read, which makes a silently truncated spec worse than a red check. Topical grouping inside a requirements section therefore uses a bold lead-in line rather than a heading.
+
+#### Scenario: A malformed spec fails the workflow
+
+- **WHEN** a spec under `openspec/specs/` does not satisfy `--strict` validation
+- **THEN** the validation step SHALL fail and the workflow SHALL report failure
+
+#### Scenario: An untouched spec is still validated
+
+- **WHEN** a pull request changes no file under `openspec/specs/` but an existing spec is malformed
+- **THEN** the validation step SHALL still fail, because validation is repo-wide
+
+#### Scenario: A truncated requirements section fails the workflow
+
+- **WHEN** a spec contains a `### Requirement:` heading that a `##` heading has placed outside the `## Requirements` section
+- **THEN** the visibility step SHALL fail, naming the spec and the number of hidden requirements
+
+#### Scenario: A fenced requirement example does not fail the workflow
+
+- **WHEN** a spec contains a `### Requirement:` line inside a fenced code block as an illustration of the format
+- **THEN** the visibility step SHALL NOT count it, because fenced content is documentation rather than a requirement the parser reads
+
+#### Scenario: An unclosed code fence fails the workflow
+
+- **WHEN** a spec reaches end of file with a code fence still open, as happens when an opening fence is lost and its closer is left dangling
+- **THEN** the visibility step SHALL fail, because everything after that point is unreadable to the check as well as to the parser
 
 ### Requirement: Workflow uses pnpm matching packageManager field
 
