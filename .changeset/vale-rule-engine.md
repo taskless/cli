@@ -27,9 +27,6 @@ an engine directory, or nothing at all for the whole project, and both report
 one result per rule. Addressing by path rather than id removes the ambiguity
 that arose when two engines held the same rule id.
 
-Agent recipes are rewritten for the layout, and `taskless agent route` now
-carries the engine-selection reasoning that used to be its own topic.
-
 Projects on an older layout migrate automatically on the next command.
 
 **BREAKING: `taskless help <topic>` is now `taskless agent <topic>`.** The
@@ -54,7 +51,8 @@ copies rather than a phrase it can reorder. The renames:
 
 `route` now applies the engine reasoning itself and names a concrete
 `create-*-rule` topic, so `engine-selection` is removed rather than renamed —
-its criterion is stated once, in `route`.
+its criterion is stated once, in `route`. Every authoring recipe is rewritten
+for the rule-directory layout.
 
 **BREAKING for `@taskless/cli/prompts` consumers.** `engine-selection` is no
 longer exported. `TOPICS` is now `create-sg-rule`, `create-vale-rule`, and

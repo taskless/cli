@@ -86,6 +86,17 @@ function makeMixedProject(options?: {
     );
   }
 
+  // Declare the schema version this fixture is already written in. Without it
+  // the tree reads as version 0, and the migrations dutifully "upgrade" a
+  // current-layout project into `.taskless/sg/rules/sg/` — the rules end up
+  // somewhere the scanner does not look, so `check` finds nothing and reports
+  // success. Only the tests that spawn the CLI run migrations, which is why
+  // the in-process `runEngines` tests never noticed.
+  writeFileSync(
+    join(cwd, ".taskless", "taskless.json"),
+    JSON.stringify({ version: 5, install: {} })
+  );
+
   writeFileSync(join(cwd, "app.js"), "eval('1 + 1');\n");
   writeFileSync(join(cwd, "doc.md"), "Just simply do it.\n");
   return cwd;
@@ -407,8 +418,11 @@ describe("an engine failure under --json", () => {
     const cwd = makeMixedProject({ valeRules: false });
     // An unparseable rule file: ast-grep exits non-zero and the engine fails
     // with no findings, the exact shape that used to read as clean.
+    mkdirSync(join(cwd, ".taskless", "rules", "sg", "broken"), {
+      recursive: true,
+    });
     writeFileSync(
-      join(cwd, ".taskless", "sg", "rules", "broken.yml"),
+      join(cwd, ".taskless", "rules", "sg", "broken", "broken.yml"),
       "id: broken\nlanguage: javascript\nrule:\n  bogusKey: nope\n"
     );
 
