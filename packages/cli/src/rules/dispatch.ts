@@ -127,6 +127,10 @@ export interface DispatchResult {
  * One scan, because there is one rule tree. The previous layout scanned the
  * engine directory and the legacy directory separately and deduplicated the
  * overlap; with a single tree there is no overlap to collapse.
+ *
+ * That also retires the concurrent-scan fix from the orchestration unit: the
+ * `Promise.all` there existed to stop two config paths paying their latencies
+ * in series, and a single tree leaves one path with nothing to overlap.
  */
 async function runAstGrepEngine(
   options: DispatchOptions
