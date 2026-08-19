@@ -23,8 +23,11 @@ name: Claude Code Review (on demand)
 # (not `/merge`): it is the tree the author actually pushed, it matches what
 # `gh pr diff` and the inline-comment line anchors refer to, and unlike `/merge`
 # it still exists when the PR has conflicts — a review is exactly what you want
-# on a conflicted PR. `contents: read` is all this needs; do NOT "fix" a
-# checkout problem by reaching for `pull_request_target` or extra permissions.
+# on a conflicted PR. Reading a PR ref needs no more than the `contents: read`
+# this job already has — the write scopes below exist for posting comments, not
+# for the checkout. So do NOT "fix" a checkout problem by reaching for
+# `pull_request_target` or by widening permissions: neither was ever the
+# blocker, and both trade a read problem for a write capability.
 on:
   issue_comment:
     types: [created]
@@ -74,15 +77,19 @@ jobs:
       # build/lint/test, and every allowed tool reads the diff through `gh`
       # (the API), not through local history.
       - name: Checkout PR head
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
           ref: refs/pull/${{ steps.prep.outputs.pr }}/head
           fetch-depth: 1
+          # Nothing here writes to git, and this checkout is contributor-authored
+          # PR content — leaving the token in `.git/config` would put it a step
+          # away from anything that later runs in this tree.
+          persist-credentials: false
 
       # Note: claude-code-action adds its own 👀 reaction to the triggering
       # comment, so there's no explicit reaction step here.
       - name: Run Claude Code Review
-        uses: anthropics/claude-code-action@v1
+        uses: anthropics/claude-code-action@d40ddef4c030e508327d6e35a9c45f3368482c50 # v1
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           # Single tracking comment (in-progress → results), updated in place.
