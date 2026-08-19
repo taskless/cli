@@ -8,7 +8,7 @@ This capability covers:
 
 - **Subcommand surface**: three modes via flag combinations — default prints the recipe (refused when already complete), `--force` re-runs regardless of state, `--mark-complete` writes `install.onboarded: true`. `--force` and `--mark-complete` are mutually exclusive.
 - **Manifest gating and writes**: the optional 3-state `install.onboarded` field on `.taskless/taskless.json` (absent / `false` / `true`) is the single source of truth for whether onboarding is complete. Only this subcommand writes the field, and only via `--mark-complete`. The agent invokes `--mark-complete` only after explicit user confirmation per the recipe.
-- **Recipe embedding**: the recipe lives at `packages/cli/src/help/onboard.txt`, embedded into the CLI bundle at build time and rendered via the same sprintf-js path the help command uses (`taskless help onboard` returns the same content as `taskless onboard --force`).
+- **Recipe embedding**: the recipe lives at `packages/cli/src/agent/onboard.txt`, embedded into the CLI bundle at build time and rendered via the same sprintf-js path the `agent` command uses (`taskless agent onboard` returns the same content as `taskless onboard --force`).
 - **Telemetry**: emits `cli_onboard_recipe` (with a `forced` property), `cli_onboard_already_done`, and `cli_onboard_marked_complete` PostHog events on the appropriate code paths.
 
 ## Requirements
@@ -46,7 +46,7 @@ The CLI SHALL support a `taskless onboard` subcommand. The subcommand SHALL acce
 
 ### Requirement: Onboard gates on the onboarded manifest field
 
-When invoked without `--mark-complete`, the `taskless onboard` subcommand SHALL read `.taskless/taskless.json` and inspect the optional `install.onboarded` field. If the field equals `true` AND `--force` is not set, the subcommand SHALL print a short message stating the user is already onboarded and that `--force` re-runs the recipe, then exit with code 0 without printing the recipe. If the field is absent, `false`, or `--force` is set, the subcommand SHALL print the recipe content embedded from `packages/cli/src/help/onboard.txt` to stdout and exit with code 0.
+When invoked without `--mark-complete`, the `taskless onboard` subcommand SHALL read `.taskless/taskless.json` and inspect the optional `install.onboarded` field. If the field equals `true` AND `--force` is not set, the subcommand SHALL print a short message stating the user is already onboarded and that `--force` re-runs the recipe, then exit with code 0 without printing the recipe. If the field is absent, `false`, or `--force` is set, the subcommand SHALL print the recipe content embedded from `packages/cli/src/agent/onboard.txt` to stdout and exit with code 0.
 
 #### Scenario: Already onboarded without --force prints a short notice
 
@@ -113,23 +113,23 @@ When invoked with `--mark-complete`, the `taskless onboard` subcommand SHALL wri
 
 ### Requirement: Onboard recipe is embedded from help/onboard.txt
 
-The CLI build SHALL embed `packages/cli/src/help/onboard.txt` into the bundle via the same `import.meta.glob` mechanism used for other help topics. The `taskless onboard` subcommand SHALL read the recipe content from the embedded bundle, not from the filesystem at runtime. The embedded recipe SHALL be the same content returned by `taskless help onboard`.
+The CLI build SHALL embed `packages/cli/src/agent/onboard.txt` into the bundle via the same `import.meta.glob` mechanism used for other agent topics. The `taskless onboard` subcommand SHALL read the recipe content from the embedded bundle, not from the filesystem at runtime. The embedded recipe SHALL be the same content returned by `taskless agent onboard`.
 
 #### Scenario: Recipe is available without filesystem access
 
 - **WHEN** a user runs `taskless onboard` via `npx @taskless/cli`
 - **THEN** the recipe content SHALL be served from the embedded bundle
-- **AND** SHALL NOT require any filesystem reads under `packages/cli/src/help/`
+- **AND** SHALL NOT require any filesystem reads under `packages/cli/src/agent/`
 
-#### Scenario: Onboard and help return the same recipe
+#### Scenario: Onboard and agent return the same recipe
 
 - **WHEN** a user runs `taskless onboard --force` (recipe path)
-- **AND** a user runs `taskless help onboard`
+- **AND** a user runs `taskless agent onboard`
 - **THEN** the printed recipe content SHALL be identical between the two invocations
 
 ### Requirement: Onboard recipe follows the canonical recipe template and is conversational
 
-The `onboard.txt` file SHALL follow the canonical recipe template defined in the `cli-help` capability (header with CLI version + topic version, `## Goal`, `## Preconditions`, `## Steps`, `## Errors`, `## See Also`). The `## Steps` section SHALL describe a conversational discovery flow rather than a fixed sequence. Specifically, the recipe SHALL instruct the agent to:
+The `onboard.txt` file SHALL follow the canonical recipe template defined in the `cli-agent` capability (header with CLI version + topic version, `## Goal`, `## Preconditions`, `## Steps`, `## Errors`, `## See Also`). The `## Steps` section SHALL describe a conversational discovery flow rather than a fixed sequence. Specifically, the recipe SHALL instruct the agent to:
 
 1. Read `.taskless/taskless.json` and respect the `install.onboarded` field.
 2. Open the conversation with a short menu of known sources for rule candidates: codebase TODOs/FIXMEs (via ripgrep or built-in search), agent-memory files (CLAUDE.md, AGENTS.md, .cursorrules, etc.), recent PR review comments (when `gh` is available), and issue-tracker tickets (when a relevant MCP is detected).
@@ -168,10 +168,10 @@ The recipe SHALL warn the agent against marking onboarding complete without expl
 - **THEN** it SHALL instruct the agent to ask for explicit user confirmation before invoking `npx @taskless/cli onboard --mark-complete`
 - **AND** SHALL warn that the agent must NOT mark onboarding complete without that confirmation
 
-#### Scenario: Recipe references the rule create topic in See Also
+#### Scenario: Recipe references the rule-authoring route topic in See Also
 
 - **WHEN** the `## See Also` section is read
-- **THEN** it SHALL include a reference to `taskless help rule create`
+- **THEN** it SHALL include a reference to `taskless agent route`
 
 ### Requirement: Onboard emits intent telemetry
 

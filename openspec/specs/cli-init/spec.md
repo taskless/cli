@@ -349,18 +349,18 @@ The `init` subcommand SHALL use the resolved working directory from the global `
 
 ### Requirement: Bare taskless invocation launches the init wizard
 
-The CLI entry point SHALL delegate to `init` when invoked with no positional subcommand AND a TTY is attached. When stdout is NOT a TTY, bare `taskless` SHALL print a non-interactive preamble explaining the context, followed by the help index (instead of attempting the wizard or printing only top-level help).
+The CLI entry point SHALL delegate to `init` when invoked with no positional subcommand AND a TTY is attached. When stdout is NOT a TTY, bare `taskless` SHALL print a non-interactive preamble explaining the context, followed by the agent topic index (instead of attempting the wizard or printing only top-level help).
 
 #### Scenario: Bare taskless in a TTY launches the wizard
 
 - **WHEN** a user runs `taskless` with no subcommand and stdout is a TTY
 - **THEN** the CLI SHALL behave as if `taskless init` were invoked
 
-#### Scenario: Bare taskless without a TTY prints preamble + help index
+#### Scenario: Bare taskless without a TTY prints preamble + agent topic index
 
 - **WHEN** `taskless` is invoked with no subcommand and stdout is not a TTY
-- **THEN** the CLI SHALL print a short preamble noting the non-interactive context (e.g. "For interactive install, run from a terminal. For agent recipes, use: taskless help")
-- **AND** SHALL then print the help index (same content as `taskless help`)
+- **THEN** the CLI SHALL print a short preamble noting the non-interactive context (e.g. "For interactive install, run from a terminal. For agent recipes, run `taskless agent` (no args) for the topic index.")
+- **AND** SHALL then print the agent topic index (same content as `taskless agent`)
 - **AND** SHALL NOT launch the wizard
 - **AND** SHALL NOT silently install
 

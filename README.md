@@ -12,7 +12,7 @@ skills/
 commands/
   tskl/tskl.md                     # Single /tskl router command
 packages/
-  cli/                             # @taskless/cli — recipes live in cli/src/help/
+  cli/                             # @taskless/cli — recipes live in cli/src/agent/
 scripts/
   sync-skill-versions.ts           # Syncs metadata.version to CLI version
 .claude-plugin/                    # Claude Code Plugin Marketplace manifest
@@ -20,7 +20,7 @@ scripts/
 
 ## Skill
 
-Starting in v0.7, Taskless ships a **single consolidated skill** (`taskless`) plus a single `/tskl` slash command. The skill body is a small router; per-task instructions live behind `npx @taskless/cli help <topic>` and are fetched on demand.
+Starting in v0.7, Taskless ships a **single consolidated skill** (`taskless`) plus a single `/tskl` slash command. The skill body is a small router; per-task instructions live behind `npx @taskless/cli agent <topic>` and are fetched on demand.
 
 | Skill      | Command       | Description                                            |
 | ---------- | ------------- | ------------------------------------------------------ |
@@ -97,9 +97,9 @@ Tagging started at `v0.9.0`; earlier releases were not tagged.
 
 In v0.7+, new agent-facing instructions are added as **recipes**, not skills. To add a recipe:
 
-1. Create `packages/cli/src/help/<topic>.txt` following the canonical template (Goal / Preconditions / Steps / Input schema / Errors / See Also).
+1. Create `packages/cli/src/agent/<topic>.txt` following the canonical template (Goal / Preconditions / Steps / Input schema / Errors / See Also).
 2. Use `{{CLI_VERSION}}` and `{{INPUT_SCHEMA}}` placeholders for runtime interpolation.
-3. For topics with a substantively different local-only flow, add `<topic>.anonymous.txt`. The help command's variant lookup is automatic.
+3. For topics with a substantively different local-only flow, add `<topic>.anonymous.txt`. The `agent` command's variant lookup is automatic.
 4. Update the topic table in `skills/taskless/SKILL.md` and `commands/tskl/tskl.md` so agents can discover the new topic.
 
 ### Distribution channels

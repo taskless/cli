@@ -7,7 +7,7 @@ import { CLIError } from "./util/cli-error";
  * Derive the cli_run `command` property from the raw argv. Flags (and the
  * value after `-d`/`--dir`) are skipped; the first positional is the command,
  * and `rule` keeps its subcommand (e.g. `rule create`) since that distinction
- * is meaningful. `agent`'s topic is recorded separately on cli_help, so the
+ * is meaningful. `agent`'s topic is recorded separately on cli_agent, so the
  * command for an agent invocation is just `agent`.
  */
 export function resolveCommandName(rawArguments: string[]): string {

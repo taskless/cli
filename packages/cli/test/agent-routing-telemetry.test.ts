@@ -24,7 +24,7 @@ interface RunnableCommand {
   }) => Promise<void>;
 }
 
-describe("agent routing topics emit cli_help intent telemetry", () => {
+describe("agent routing topics emit cli_agent intent telemetry", () => {
   let logSpy: ReturnType<typeof vi.spyOn>;
 
   let exitCode: typeof process.exitCode;
@@ -44,8 +44,8 @@ describe("agent routing topics emit cli_help intent telemetry", () => {
     logSpy.mockRestore();
   });
 
-  // Every name here has a recipe in `src/help/`. That matters because the
-  // command captures `cli_help` on both branches — topic found and topic not
+  // Every name here has a recipe in `src/agent/`. That matters because the
+  // command captures `cli_agent` on both branches — topic found and topic not
   // found — so a list of removed topics would still satisfy the assertion
   // while pinning the unknown-topic path instead of routing. The exit code is
   // what tells the two apart: an unknown topic exits 1.
@@ -56,7 +56,7 @@ describe("agent routing topics emit cli_help intent telemetry", () => {
     "create-vale-rule",
     "create-runtime-rule",
     "create-remote-rule",
-  ])("captures cli_help for %s and resolves it", async (topic) => {
+  ])("captures cli_agent for %s and resolves it", async (topic) => {
     const command = createAgentCommand({}) as unknown as RunnableCommand;
     await command.run({
       args: { dir: process.cwd(), anonymous: false },
@@ -64,7 +64,7 @@ describe("agent routing topics emit cli_help intent telemetry", () => {
     });
 
     expect(capture).toHaveBeenCalledWith(
-      "cli_help",
+      "cli_agent",
       expect.objectContaining({ topic })
     );
     expect(process.exitCode).toBe(0);

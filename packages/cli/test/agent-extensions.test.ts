@@ -103,16 +103,13 @@ describe("taskless agent <routing topic>", () => {
     "create-vale-rule",
     "create-runtime-rule",
     "create-remote-rule",
-  ])(
-    "resolves the %s recipe without an unknown-topic error",
-    async (topic) => {
-      const result = await runCli(["agent", topic, "-d", cwd]);
-      expect(result.exitCode).toBe(0);
-      expect(result.stdout).toContain(`# Topic: ${topic}`);
-      expect(result.stdout).toContain("## Goal");
-      expect(result.stderr).not.toContain("Unknown command");
-    }
-  );
+  ])("resolves the %s recipe without an unknown-topic error", async (topic) => {
+    const result = await runCli(["agent", topic, "-d", cwd]);
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain(`# Topic: ${topic}`);
+    expect(result.stdout).toContain("## Goal");
+    expect(result.stderr).not.toContain("Unknown command");
+  });
 
   // D9: a reader who arrived at the wrong recipe should find that out in the
   // first line, where recovery is a re-decision, rather than after authoring
@@ -240,7 +237,13 @@ describe("taskless agent --anonymous (variant lookup)", () => {
 
   it("falls back to the canonical recipe when no variant exists (check)", async () => {
     const canonical = await runCli(["agent", "check", "-d", cwd]);
-    const anonymous = await runCli(["agent", "check", "--anonymous", "-d", cwd]);
+    const anonymous = await runCli([
+      "agent",
+      "check",
+      "--anonymous",
+      "-d",
+      cwd,
+    ]);
     expect(anonymous.exitCode).toBe(0);
     // Same body — falls back to check.txt since no check.anonymous.txt
     expect(anonymous.stdout).toBe(canonical.stdout);

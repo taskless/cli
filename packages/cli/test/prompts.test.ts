@@ -16,7 +16,7 @@ import { canonicalRecipeTopics, getRecipe } from "../src/prompts/recipes";
 
 const execFileAsync = promisify(execFile);
 
-const helpDirectory = resolve(import.meta.dirname, "../src/help");
+const recipeDirectory = resolve(import.meta.dirname, "../src/agent");
 const distributionDirectory = resolve(import.meta.dirname, "../dist");
 const binPath = resolve(distributionDirectory, "index.js");
 const distributionPromptsPath = resolve(distributionDirectory, "prompts.js");
@@ -42,7 +42,7 @@ async function importBuiltPrompts(): Promise<{
 
 /** Canonical `<topic>.txt` names on disk, excluding `.anonymous` variants. */
 async function canonicalTopicsOnDisk(): Promise<string[]> {
-  const entries = await readdir(helpDirectory);
+  const entries = await readdir(recipeDirectory);
   return entries
     .filter((name) => name.endsWith(".txt"))
     .map((name) => name.slice(0, -".txt".length))

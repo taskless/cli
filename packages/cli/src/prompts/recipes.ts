@@ -5,33 +5,33 @@ import { applyCliInvocation } from "../util/invocation";
 import { inputSchema as ruleCreateInputSchema } from "../schemas/rules-create";
 import { inputSchema as ruleImproveInputSchema } from "../schemas/rules-improve";
 
-// Help text files embedded at build time via Vite import.meta.glob.
+// Agent recipe files embedded at build time via Vite import.meta.glob.
 // Filename convention: <topic>.txt for the canonical recipe and
 // <topic>.anonymous.txt for the local-only variant (when the flow
 // genuinely differs).
 //
 // This module is the single embed and the single render path for the
-// recipes. Both the `help` command and the `@taskless/cli/prompts`
+// recipes. Both the `agent` command and the `@taskless/cli/prompts`
 // export consume it, so the two surfaces cannot drift. It must stay
 // free of the CLI runtime — no citty, telemetry, filesystem, or
 // network — so a Worker can import the prompts entry without pulling
 // the command tree in behind it.
-const helpFiles: Record<string, string> = import.meta.glob("../help/*.txt", {
+const recipeFiles: Record<string, string> = import.meta.glob("../agent/*.txt", {
   query: "?raw",
   import: "default",
   eager: true,
 });
 
 // Build two lookup maps:
-//   - helpMap: "rule-create"           → canonical recipe text
+//   - recipeMap: "rule-create"           → canonical recipe text
 //   - anonymousMap: "rule-create"      → anonymous variant text (if exists)
-function buildHelpMaps(): {
-  helpMap: Map<string, string>;
+function buildRecipeMaps(): {
+  recipeMap: Map<string, string>;
   anonymousMap: Map<string, string>;
 } {
-  const helpMap = new Map<string, string>();
+  const recipeMap = new Map<string, string>();
   const anonymousMap = new Map<string, string>();
-  for (const [path, content] of Object.entries(helpFiles)) {
+  for (const [path, content] of Object.entries(recipeFiles)) {
     const filename = path
       .split("/")
       .pop()
@@ -41,17 +41,17 @@ function buildHelpMaps(): {
       const topic = filename.slice(0, -".anonymous".length);
       anonymousMap.set(topic, content);
     } else {
-      helpMap.set(filename, content);
+      recipeMap.set(filename, content);
     }
   }
-  return { helpMap, anonymousMap };
+  return { recipeMap, anonymousMap };
 }
 
-const { helpMap, anonymousMap } = buildHelpMaps();
+const { recipeMap, anonymousMap } = buildRecipeMaps();
 
 /** The canonical `<topic>.txt` recipe names present in the build. */
 export function canonicalRecipeTopics(): string[] {
-  return [...helpMap.keys()];
+  return [...recipeMap.keys()];
 }
 
 // Topic → Zod input schema. When a recipe contains the %(INPUT_SCHEMA)s
@@ -149,7 +149,7 @@ function stripHeader(content: string): string {
 }
 
 /**
- * Look up a help topic from the embedded recipe map and return the rendered
+ * Look up an agent recipe topic from the embedded recipe map and return the rendered
  * text. Anonymous variants are preferred when `anonymous` is set and a
  * variant exists; otherwise the canonical recipe is returned. Returns
  * `undefined` when the topic is unknown.
@@ -159,8 +159,8 @@ export function getRecipe(
   options: RecipeOptions = {}
 ): string | undefined {
   const content = options.anonymous
-    ? (anonymousMap.get(topic) ?? helpMap.get(topic))
-    : helpMap.get(topic);
+    ? (anonymousMap.get(topic) ?? recipeMap.get(topic))
+    : recipeMap.get(topic);
   if (content === undefined) return undefined;
   return renderRecipe(content, topic, options);
 }

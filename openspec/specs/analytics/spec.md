@@ -150,7 +150,7 @@ CLI events SHALL use the `cli_` prefix, with the taxonomy organized as a
     `warningCount`, `findings`)
   - `cli_error` — a single failure event with `command` and `code` (a stable
     `CLIErrorCode`)
-- `cli_help` — fired when the help command serves a request, with a `topic`
+- `cli_agent` — fired when the `agent` command serves a request, with a `topic`
   property (the served topic; the exact literal `"(index)"` when invoked with no
   topic; the attempted topic for an unknown request). This replaces the previous
   `help_index`, `help_<topic>`, and `help_unknown` events.
@@ -168,16 +168,16 @@ Commands that carry no concrete state beyond the invocation (e.g. `info`,
 - **AND** SHALL receive a `cli_rule_created` event
 - **AND** SHALL NOT receive `cli_rule_create` or `cli_rule_create_completed`
 
-#### Scenario: Help fetch emits cli_help with a topic
+#### Scenario: Recipe fetch emits cli_agent with a topic
 
-- **WHEN** an agent runs `taskless help rule create`
-- **THEN** PostHog SHALL receive a `cli_help` event with `topic: "rule create"`
-- **AND** SHALL NOT receive a `help_rule_create` event
+- **WHEN** an agent runs `taskless agent create-sg-rule`
+- **THEN** PostHog SHALL receive a `cli_agent` event with `topic: "create-sg-rule"`
+- **AND** SHALL NOT receive a `help_create_sg_rule` event
 
-#### Scenario: Help with no topic emits cli_help with the index marker
+#### Scenario: Fetch with no topic emits cli_agent with the index marker
 
-- **WHEN** an agent runs `taskless help`
-- **THEN** PostHog SHALL receive a `cli_help` event with `topic: "(index)"`
+- **WHEN** an agent runs `taskless agent`
+- **THEN** PostHog SHALL receive a `cli_agent` event with `topic: "(index)"`
 - **AND** SHALL NOT receive a `help_index` event
 
 #### Scenario: A command failure emits cli_error
@@ -196,24 +196,24 @@ Commands that carry no concrete state beyond the invocation (e.g. `info`,
 The taxonomy SHALL keep wrong-topic re-routing derivable as a funnel signal from
 the new events:
 
-- A `cli_help { topic: A }` event not followed by the concrete event for topic A
+- A `cli_agent { topic: A }` event not followed by the concrete event for topic A
   (or by `cli_run` with the corresponding `command`), and then a subsequent
-  `cli_help { topic: B }`, indicates the agent fetched recipe A, did not act on
+  `cli_agent { topic: B }`, indicates the agent fetched recipe A, did not act on
   it, and re-routed to topic B.
-- A `cli_help` index-marker event followed by a `cli_help { topic }` event
+- A `cli_agent` index-marker event followed by a `cli_agent { topic }` event
   indicates the agent consulted the index before picking a topic (baseline).
-- A `cli_help { topic }` event with no subsequent acting `cli_run` and no further
-  `cli_help` event indicates the agent abandoned the action.
+- A `cli_agent { topic }` event with no subsequent acting `cli_run` and no further
+  `cli_agent` event indicates the agent abandoned the action.
 
 No additional events SHALL be added to capture this signal directly — it is
-derivable from the `cli_help` / `cli_run` sequence. Dashboards SHOULD surface
+derivable from the `cli_agent` / `cli_run` sequence. Dashboards SHOULD surface
 re-routing rates per topic.
 
 #### Scenario: Funnel data supports wrong-topic detection
 
 - **WHEN** dashboards are constructed in PostHog
-- **THEN** the `cli_help` (with `topic`) and `cli_run` (with `command`) events
-  SHALL be sufficient to compute "rate of `cli_help { topic }` not followed by a
+- **THEN** the `cli_agent` (with `topic`) and `cli_run` (with `command`) events
+  SHALL be sufficient to compute "rate of `cli_agent { topic }` not followed by a
   corresponding acting `cli_run` within N minutes"
 
 ### Requirement: Telemetry failures are silent
