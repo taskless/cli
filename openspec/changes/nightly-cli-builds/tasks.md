@@ -1,4 +1,4 @@
-Delivery shape: **stacked, merging forward**, three PRs (design D9). Group 1 is the bottom PR and carries the changeset; groups 3 and 4 are the two PRs above it. Groups 2 and 5 are human-gated prerequisites and are **not** code — they must be done by a maintainer in GitHub and npm settings, between merges.
+Delivery shape: **stacked, merging forward**, three PRs (design D9). Group 1 is the bottom PR and carries the changeset; groups 4 and 5 are the two PRs above it. Groups 2 and 3 are human-gated prerequisites and are **not** code — they must be done by a maintainer in GitHub and npm settings, between merges.
 
 ## 0. Prerequisites and facts to confirm before writing anything
 
@@ -18,20 +18,18 @@ Delivery shape: **stacked, merging forward**, three PRs (design D9). Group 1 is 
 - [ ] 1.8 Add the changeset for the whole change on this branch, before cutting the PRs above it; grow it as groups 3 and 4 land
 - [ ] 1.9 Verify on merge that the Version Packages PR flow still opens/updates normally and that an ordinary push instantiates no OIDC-capable job
 
-## 2. Human-gated prerequisite — the `npm-autopublish` environment
+## 2. Human-gated prerequisite — the `npm-autopublish` environment (before the nightly)
 
 - [ ] 2.1 **Maintainer action, in GitHub repository settings:** create an environment named `npm-autopublish` with **no required reviewers** and a deployment branch policy restricting it to `main`. An implementer cannot do this and cannot test around it — a workflow referencing a missing environment fails the run (D7, D8)
 - [ ] 2.2 Confirm via `gh api repos/taskless/cli/environments` that `npm-autopublish` exists, has no `required_reviewers`, and has the branch policy applied
 
-## 3. PR 2 — move Vale to `npm-autopublish` (depends on group 2)
+## 3. Human-gated prerequisite — trusted publishing for `@taskless/cli-nightly`
 
-- [ ] 3.1 Change the `publish` job's `environment:` in `release-vale.yml` from `npm-production` to `npm-autopublish`
-- [ ] 3.2 Update the header comment's "PUBLISHING IDENTITY" paragraph to name the new environment and to state the reason: the manifest-update PR is the review gate, and the CLI's exact pins mean an auto-published package reaches no user until someone bumps the pin (D7)
-- [ ] 3.3 Confirm the npm trusted-publisher bindings for all six `@taskless/vale-*` packages still authorize the workflow after the environment change — the binding names the workflow, and an environment change must not invalidate it. If npm's binding is environment-scoped, re-register before merging
-- [ ] 3.4 Verify with a `workflow_dispatch` `publish --force` run that the Vale set publishes with no approval click
-- [ ] 3.5 Do not merge this PR before 2.2 passes
+- [ ] 3.1 **Maintainer action, one time:** publish the first `@taskless/cli-nightly` version manually so the name exists — npm has nothing to bind a trusted publisher to until it does. Publish the packed tarball produced by the script in 4.1, not the package directory, so the name is not burned on a placeholder version (the trap `vale-binaries.yml` documents)
+- [ ] 3.2 **Maintainer action:** register the npm trusted-publisher binding for `@taskless/cli-nightly` against `release-cli-nightly.yml` and the `npm-autopublish` environment. There is no fallback token path, by design
+- [ ] 3.3 Confirm the binding, then merge PR 2
 
-## 4. PR 3 — the nightly (depends on group 5 for its first real run)
+## 4. PR 2 — the nightly (depends on groups 2 and 3 for its first real run)
 
 - [ ] 4.1 Add a pack script under `.github/scripts/` that rewrites `packages/cli/package.json` at pack time to `name: @taskless/cli-nightly` and the stamped version, leaving `bin`, `optionalDependencies`, and the committed manifest untouched — the same shape `vale-prepare.cjs` uses (D2)
 - [ ] 4.2 Compute the version as `<newVersion>-<yyyymmddhhmmss>x<short-sha>`, reading `newVersion` from the `changeset status --output=` JSON **file** at a repo-relative path (D3, 0.2)
@@ -43,13 +41,16 @@ Delivery shape: **stacked, merging forward**, three PRs (design D9). Group 1 is 
 - [ ] 4.8 Pin `npm` to the same version the other publish workflows pin, and keep `--ignore-scripts` on the install so no lifecycle code runs while the OIDC identity exists
 - [ ] 4.9 Write the header comment for the file: why `main` and not pull requests (unreviewed code under the `@taskless` scope, and the inverted trust split), why the two gates are in that order, and why the Version Packages merge needs no special case
 - [ ] 4.10 Document installing a nightly in the README — the package name, that `bin` is `taskless`, and that installing it alongside `@taskless/cli` globally collides and is unsupported
-- [ ] 4.11 Archive the change on this PR, as the tip of the stack
+- [ ] 4.11 Confirm a nightly actually published through `npm-autopublish` before PR 3 is opened — this run is what proves the environment and the OIDC handshake, and it is the whole reason the nightly precedes the Vale move (D9)
 
-## 5. Human-gated prerequisite — trusted publishing for `@taskless/cli-nightly`
+## 5. PR 3 — move Vale to `npm-autopublish` (depends on a proven nightly publish, group 4)
 
-- [ ] 5.1 **Maintainer action, one time:** publish the first `@taskless/cli-nightly` version manually so the name exists — npm has nothing to bind a trusted publisher to until it does. Publish the packed tarball produced by the script in 4.1, not the package directory, so the name is not burned on a placeholder version (the trap `vale-binaries.yml` documents)
-- [ ] 5.2 **Maintainer action:** register the npm trusted-publisher binding for `@taskless/cli-nightly` against `release-cli-nightly.yml` and the `npm-autopublish` environment. There is no fallback token path, by design
-- [ ] 5.3 Confirm the binding, then merge PR 3
+- [ ] 5.1 Change the `publish` job's `environment:` in `release-vale.yml` from `npm-production` to `npm-autopublish`
+- [ ] 5.2 Update the header comment's "PUBLISHING IDENTITY" paragraph to name the new environment and to state the reason: the manifest-update PR is the review gate, and the CLI's exact pins mean an auto-published package reaches no user until someone bumps the pin (D7)
+- [ ] 5.3 Confirm the npm trusted-publisher bindings for all six `@taskless/vale-*` packages still authorize the workflow after the environment change — the binding names the workflow, and an environment change must not invalidate it. If npm's binding is environment-scoped, re-register before merging
+- [ ] 5.4 Verify with a `workflow_dispatch` `publish --force` run that the Vale set publishes with no approval click
+- [ ] 5.5 Do not merge this PR before a nightly has published through `npm-autopublish` (4.11). Moving Vale first would risk breaking a working release path to enable a convenience; moving it second means the destination is proven
+- [ ] 5.6 Archive the change on this PR, as the tip of the stack
 
 ## 6. Verify the acceptance criteria on `main`
 

@@ -13,7 +13,9 @@ At the same time `release.yml` has grown two release designs in one file. The cr
 - **Add an `npm-autopublish` environment** for flows that publish without a human click, and **move the Vale platform packages into it.** `@taskless/cli` keeps `npm-production` and its required reviewer.
 - **Correct `release.yml`'s stale header claim** that `npm-production` has no required reviewers. It does — confirmed via `gh api repos/taskless/cli/environments` — and the comment has been asserting the opposite.
 
-**Two prerequisites are human-gated and cannot be worked around by an implementer:** the `npm-autopublish` environment must be created in repository settings, and a trusted-publisher binding for `@taskless/cli-nightly` must be registered on npm. Trusted publishing is configured per package and the package does not exist yet, so the first publish is a deliberate manual step. Until both are done the nightly workflow cannot be verified end to end. See design D7 and the delivery shape below.
+**Two prerequisites are human-gated and cannot be worked around by an implementer:** the `npm-autopublish` environment must be created in repository settings, and a trusted-publisher binding for `@taskless/cli-nightly` must be registered on npm. Trusted publishing is configured per package and the package does not exist yet, so the first publish is a deliberate manual step. Until both are done the nightly workflow cannot be verified end to end.
+
+**Delivery is stacked, merging forward, in three PRs: the workflow split, then the nightly, then the Vale move.** The nightly comes before the Vale move deliberately. `npm-autopublish` is an unproven credential path, and Vale's six trusted-publisher bindings were registered against `npm-production` — if they turn out to be environment-scoped, migrating Vale first breaks a working release path with no stored token to fall back on. The nightly exercises the same environment and the same OIDC handshake on a package where a failed first publish costs nothing. See design D8 for the prerequisites, D9 for the ordering, and D10 for the shape.
 
 ## Capabilities
 
