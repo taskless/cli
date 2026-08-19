@@ -8,7 +8,7 @@ At the same time `release.yml` has grown two release designs in one file. The cr
 
 - **Publish `@taskless/cli-nightly` from `main`.** Same source, same `bin: taskless`, published under a different name so nightlies never appear in `@taskless/cli`'s version history. Built from `main` only: the code has already passed review, and no contributor-authored text reaches the credentialed job.
 - **Version as `n.m.k-yyyymmddhhmmssx<sha>`** (e.g. `0.11.0-20260818123456x05b3c88`), where `n.m.k` is the bump `main`'s pending changesets propose. The timestamp sorts; the SHA identifies and dedupes.
-- **Gate on two questions, in order:** is `.changeset/` empty (nothing pending, nothing to build), and has this SHA already been published?
+- **Gate on two questions, in order:** are any changesets pending — any `.changeset/*.md` other than `README.md` (nothing pending, nothing to build), and has this SHA already been published?
 - **Split `release.yml` into four workflows,** one release design each: `release-cli-changeset.yml`, `release-cli.yml`, `release-vale.yml`, `release-cli-nightly.yml`.
 - **Add an `npm-autopublish` environment** for flows that publish without a human click, and **move the Vale platform packages into it.** `@taskless/cli` keeps `npm-production` and its required reviewer.
 - **Correct `release.yml`'s stale header claim** that `npm-production` has no required reviewers. It does — confirmed via `gh api repos/taskless/cli/environments` — and the comment has been asserting the opposite.

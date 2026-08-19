@@ -70,7 +70,9 @@ This deliberately differs from `@taskless/vale-*`, which stamps `n.m.k-yyyymmddh
 
 ### D4 — Two gates, in order: empty `.changeset/`, then unbuilt SHA
 
-**Gate 1 — is `.changeset/` empty?** No changeset files means nothing is pending: `main` is at its released version and there is no future `n.m.k` to name. This is a directory listing. It needs no tooling, runs before anything is installed, and is the cheapest possible early exit on the overwhelmingly common push.
+**Gate 1 — are any changesets pending?** No pending changeset means nothing is unreleased: `main` is at its released version and there is no future `n.m.k` to name. This runs before anything is installed, and is the cheapest possible early exit on the overwhelmingly common push.
+
+**It is not a bare directory listing.** `.changeset/` always contains `README.md` and `config.json` — `changesets init` writes both and nothing removes them — so the directory is never empty and a literal emptiness test would answer "pending" on every push, including the one case this gate exists to handle. The question is whether any `.changeset/*.md` other than `README.md` exists. `require-changeset.yml` already counts them exactly that way (`grep -viE '/README\.md$'`); use the same rule rather than inventing a second one.
 
 It also makes the Version Packages PR merge **self-handling, with no special case**. That merge consumes every changeset and bumps `package.json`, so on that push the directory is empty, no nightly is built, and `release-cli.yml` publishes the real release instead. The two flows do not need to know about each other.
 
@@ -168,7 +170,7 @@ The general form, worth carrying past this change:
 
 > **Prove a new credential path on something disposable before migrating something that works onto it.**
 
-The check on whether Vale's bindings are environment-scoped (task 4.2) is not dropped by this ordering — it is _informed_ by it. After a nightly has published through `npm-autopublish`, that check has a known-good reference to compare against instead of being a question asked in the dark.
+The check on whether Vale's bindings are environment-scoped (task 5.3) is not dropped by this ordering — it is _informed_ by it. After a nightly has published through `npm-autopublish`, that check has a known-good reference to compare against instead of being a question asked in the dark.
 
 - **Alternative — Vale first, because it is a one-line change:** rejected. Diff size is not risk. The one-line change is the one that can break a path people depend on; the workflow-sized change is the one that cannot.
 - **Alternative — migrate Vale and keep a stored token as a fallback:** rejected. Introducing a long-lived credential to de-risk a migration away from human approval gives back more than the migration is worth.
