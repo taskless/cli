@@ -63,7 +63,8 @@ export const RULES_DIRECTORY = "rules";
  *
  * That is undocumented behavior, and three things make depending on it
  * acceptable. The failure is loud — a parse error naming the file, never a test
- * silently reinterpreted as a rule. `engine-layout.test.ts` pins it, so it is
+ * silently reinterpreted as a rule. `ast-grep-vendor-contract.test.ts` pins it
+ * alongside the rest of ast-grep's observed behavior, so it is
  * checked on every run rather than remembered. And the binary is pinned to an
  * exact version, so it cannot change without a deliberate bump, which is
  * exactly where that test fires.

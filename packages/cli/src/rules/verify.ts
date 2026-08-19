@@ -1,5 +1,6 @@
 import { readFile, readdir } from "node:fs/promises";
 import { spawn } from "node:child_process";
+import { StringDecoder } from "node:string_decoder";
 
 import { parse } from "yaml";
 
@@ -158,6 +159,50 @@ async function validateRequirements(
 
 // --- Layer 3: Test execution ---
 
+/**
+ * Drop SGR escape sequences.
+ *
+ * ast-grep colorizes even when stdout is not a TTY, and the escape lands
+ * *inside* the phrase we anchor on — `test result: \u001B[32mok\u001B[0m.` — so
+ * stripping is a precondition for matching the summary at all, not cosmetics.
+ * Pinned by `ast-grep-vendor-contract.test.ts`.
+ */
+function stripAnsi(text: string): string {
+  // eslint-disable-next-line no-control-regex
+  return text.replaceAll(/\u001B\[[\d;]*m/g, "");
+}
+
+/**
+ * The counts from `ast-grep test`'s summary line, or `undefined` if there is
+ * none.
+ *
+ * `ast-grep test` has no structured output at 0.41.0 — `--help` offers nothing
+ * machine-readable — so the counts can only come from prose. What makes that
+ * defensible is anchoring: the match is the whole summary line, in one of the
+ * two exact forms ast-grep emits, rather than the first number in the stream
+ * that happens to be followed by "passed".
+ *
+ * That distinction is the bug in #112. A *failing* run echoes the offending
+ * test's source, so a fixture reading `const msg = '7 passed; 0 failed';` was
+ * matched ahead of `Error: test failed. 0 passed; 1 failed;` and the CLI
+ * reported 7 passed, 0 failed. Wrong counts, not a false pass — validity comes
+ * from the exit code — but those counts are fed back to the agent driving
+ * `improve-rule`, so they steer the next edit.
+ *
+ * The last summary line wins, since only the final one describes the whole run.
+ */
+function parseTestSummary(
+  output: string
+): { passed: number; failed: number } | undefined {
+  const summary =
+    /^(?:test result: ok\.|Error: test failed\.) (\d+) passed; (\d+) failed;/gm;
+  let found: { passed: number; failed: number } | undefined;
+  for (const match of stripAnsi(output).matchAll(summary)) {
+    found = { passed: Number(match[1]), failed: Number(match[2]) };
+  }
+  return found;
+}
+
 async function runTests(cwd: string, ruleId: string): Promise<TestLayerResult> {
   // Assembly names every rule's `.tests/` as its own `testConfigs` entry, so
   // the filter below selects a rule whose tests ast-grep already knows how to
@@ -192,14 +237,21 @@ async function runTests(cwd: string, ruleId: string): Promise<TestLayerResult> {
       }
     );
 
+    // One decoder per stream, not `chunk.toString()` per chunk. A multi-byte
+    // UTF-8 sequence split across a chunk boundary would otherwise have each
+    // half independently replaced with U+FFFD, and ast-grep echoes fixture
+    // source — arbitrary user text — into the output of a failing run. Same
+    // treatment `vale/run.ts` already gives its streams.
+    const stdoutDecoder = new StringDecoder("utf8");
+    const stderrDecoder = new StringDecoder("utf8");
     const stdoutChunks: string[] = [];
     const stderrChunks: string[] = [];
 
     child.stdout.on("data", (chunk: Buffer) => {
-      stdoutChunks.push(chunk.toString());
+      stdoutChunks.push(stdoutDecoder.write(chunk));
     });
     child.stderr.on("data", (chunk: Buffer) => {
-      stderrChunks.push(chunk.toString());
+      stderrChunks.push(stderrDecoder.write(chunk));
     });
 
     child.on("error", () => {
@@ -212,14 +264,20 @@ async function runTests(cwd: string, ruleId: string): Promise<TestLayerResult> {
     });
 
     child.on("close", (code) => {
-      const output = stdoutChunks.join("") + stderrChunks.join("");
+      // Flush whatever partial multi-byte sequence each decoder is holding, so
+      // a stream that ends mid-character contributes its replacement char once
+      // rather than leaving bytes unaccounted for.
+      stdoutChunks.push(stdoutDecoder.end());
+      stderrChunks.push(stderrDecoder.end());
 
-      // Parse pass/fail counts from sg test output
-      // sg test outputs: "test result: ok. 3 passed; 0 failed;"
-      const passedMatch = /(\d+)\s+passed/i.exec(output);
-      const failedMatch = /(\d+)\s+failed/i.exec(output);
-      const passed = passedMatch ? Number(passedMatch[1]) : 0;
-      const failed = failedMatch ? Number(failedMatch[1]) : 0;
+      // Both streams, because ast-grep prints the passing summary to stdout and
+      // the failing one to stderr. Joined with a newline so the summary stays
+      // at the start of a line for the anchored match.
+      const output = `${stdoutChunks.join("")}\n${stderrChunks.join("")}`;
+
+      const summary = parseTestSummary(output);
+      const passed = summary?.passed ?? 0;
+      const failed = summary?.failed ?? 0;
 
       if (code === 0) {
         resolve({ valid: true, errors: [], passed, failed });

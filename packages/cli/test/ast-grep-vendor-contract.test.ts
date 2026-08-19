@@ -1,0 +1,519 @@
+import { spawnSync } from "node:child_process";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
+import { afterEach, describe, expect, it } from "vitest";
+
+import { assembleSgConfig } from "../src/rules/assemble";
+import { ruleDirectory, ruleTestsDirectory } from "../src/rules/engines";
+import { buildPath, findSgBinary } from "../src/rules/scan";
+
+/**
+ * ast-grep's observable behaviour, pinned.
+ *
+ * Everything here is a property of a **vendored third-party binary**, exact-
+ * pinned at `0.41.0` in `packages/cli/package.json`. Our own tests assert that
+ * our code behaves correctly *given* these; this file asserts the givens, so an
+ * ast-grep bump that changes one fails here — naming the assumption and the
+ * code that rests on it — instead of surfacing downstream.
+ *
+ * It matters more here than for Vale, because the ast-grep failure mode is
+ * quiet: `runAstGrepScan` treats exit 0 and 1 as normal and silently discards
+ * stdout lines that do not parse, so a scan that matched nothing because
+ * discovery changed is indistinguishable from a clean codebase.
+ *
+ * Each case says what breaks if it changes. These invoke the binary directly
+ * rather than through `runAstGrepScan` or `runTests`, deliberately: a test that
+ * went through our wrapper would be asserting our interpretation of ast-grep,
+ * which is the thing under test everywhere else.
+ */
+
+/**
+ * `findSgBinary` throws rather than returning `undefined` — ast-grep has no
+ * degraded mode — so absence is caught here to skip rather than to fail.
+ */
+const binary = ((): string | undefined => {
+  try {
+    return findSgBinary();
+  } catch {
+    return undefined;
+  }
+})();
+const withSg = binary === undefined ? describe.skip : describe;
+
+const workspaces: string[] = [];
+afterEach(() => {
+  for (const workspace of workspaces.splice(0)) {
+    rmSync(workspace, { recursive: true, force: true });
+  }
+});
+
+const rule = (id: string, severity = "error") =>
+  [
+    `id: ${id}`,
+    "language: TypeScript",
+    `severity: ${severity}`,
+    `message: no eval`,
+    "note: prefer a real parser",
+    "rule:",
+    "  pattern: eval($$$A)",
+    "",
+  ].join("\n");
+
+/** Valid test YAML, and invalid *rule* YAML — it carries no `language`. */
+const testFile = (id: string, invalid: string[], valid: string[] = []) =>
+  [
+    `id: ${id}`,
+    "valid:",
+    ...valid.map((source) => `  - ${JSON.stringify(source)}`),
+    "invalid:",
+    ...invalid.map((source) => `  - ${JSON.stringify(source)}`),
+    "",
+  ].join("\n");
+
+interface Project {
+  /** Rule id to rule YAML. Each becomes `rules/<id>/<id>.yml`. */
+  rules: Record<string, string>;
+  /** Rule id to test YAML, written to `rules/<id>/.tests/<id>-test.yml`. */
+  tests?: Record<string, string>;
+  /** Path relative to the project root, to file contents. */
+  sources?: Record<string, string>;
+}
+
+/**
+ * A throwaway ast-grep project.
+ *
+ * The `sgconfig.yml` is written literally rather than through
+ * `assembleSgConfig`, so what is pinned is the binary's response to a config,
+ * not our assembler's idea of one. The two relocated discovery cases at the
+ * bottom of this file are the deliberate exception: there, our layout is the
+ * thing being checked against discovery.
+ */
+function project({ rules, tests = {}, sources = {} }: Project): string {
+  const cwd = mkdtempSync(join(tmpdir(), "sg-contract-"));
+  workspaces.push(cwd);
+
+  for (const [id, body] of Object.entries(rules)) {
+    mkdirSync(join(cwd, "rules", id), { recursive: true });
+    writeFileSync(join(cwd, "rules", id, `${id}.yml`), body);
+  }
+  for (const [id, body] of Object.entries(tests)) {
+    mkdirSync(join(cwd, "rules", id, ".tests"), { recursive: true });
+    writeFileSync(join(cwd, "rules", id, ".tests", `${id}-test.yml`), body);
+  }
+  for (const [path, body] of Object.entries(sources)) {
+    mkdirSync(join(cwd, "src"), { recursive: true });
+    writeFileSync(join(cwd, path), body);
+  }
+
+  writeFileSync(
+    join(cwd, "sgconfig.yml"),
+    [
+      "ruleDirs:",
+      "  - rules",
+      "testConfigs:",
+      ...Object.keys(tests).map((id) => `  - testDir: rules/${id}/.tests`),
+      "",
+    ].join("\n")
+  );
+  return cwd;
+}
+
+const run = (cwd: string, argv: string[]) =>
+  spawnSync(binary as string, argv, {
+    cwd,
+    encoding: "utf8",
+    env: { ...process.env, PATH: buildPath() },
+  });
+
+/** `scan`, exactly as `runAstGrepScan` invokes it. */
+const scan = (cwd: string, config = "sgconfig.yml") =>
+  run(cwd, ["scan", "--config", config, "--json=stream"]);
+
+/** `test`, exactly as `runTests` invokes it. */
+const test = (cwd: string, ruleId: string) =>
+  run(cwd, [
+    "test",
+    "-c",
+    "sgconfig.yml",
+    "--skip-snapshot-tests",
+    "--filter",
+    `^${ruleId}$`,
+  ]);
+
+/** One eval call, at line 0 column 10 of `src/a.ts`. */
+const evalSource = { "src/a.ts": 'const x = eval("1");\n' };
+
+/** Exit status of scanning one finding declared at `severity`. */
+const statusAt = (severity: string) =>
+  scan(
+    project({
+      rules: { "no-eval": rule("no-eval", severity) },
+      sources: evalSource,
+    })
+  ).status;
+
+/** A rule whose fixtures all pass. */
+const passingProject = () =>
+  project({
+    rules: { "no-eval": rule("no-eval") },
+    tests: { "no-eval": testFile("no-eval", ["eval(x)"], ["const a = 1"]) },
+  });
+
+/**
+ * A failing case whose fixture text reads like a summary line. This is the
+ * poisoning case from issue #112, kept here as the fixture that makes the echo
+ * behaviour concrete.
+ */
+const failingProject = () =>
+  project({
+    rules: { "no-eval": rule("no-eval") },
+    tests: {
+      "no-eval": testFile("no-eval", ["const msg = '7 passed; 0 failed';"]),
+    },
+  });
+
+withSg("ast-grep vendor contract", () => {
+  it("reports its own name in --version", () => {
+    // Depended on by: AST_GREP_BINARY.identity (/ast-grep/i) in scan.ts. The
+    // resolver runs each candidate because `@ast-grep/cli`'s postinstall can
+    // leave a placeholder text file at the binary path. If ast-grep stops
+    // saying "ast-grep" here, findSgBinary rejects the real binary and throws
+    // "ast-grep binary not found" — fatal for every sg rule.
+    const result = spawnSync(binary as string, ["--version"], {
+      encoding: "utf8",
+    });
+    expect(result.status).toBe(0);
+    expect(`${result.stdout}${result.stderr}`).toMatch(/ast-grep/i);
+  });
+
+  describe("--json=stream", () => {
+    it("emits one JSON object per line on stdout, with nothing else", () => {
+      // Depended on by: runAstGrepScan reading stdout through readline and
+      // JSON.parsing each line, discarding anything that does not parse. An
+      // interleaved status line would be swallowed silently; a change to a
+      // pretty-printed array would make EVERY line unparseable and report an
+      // empty scan as a clean codebase.
+      const cwd = project({
+        rules: { "no-eval": rule("no-eval") },
+        sources: {
+          ...evalSource,
+          "src/b.ts": 'const y = eval("2");\n',
+        },
+      });
+      const result = scan(cwd);
+      const lines = result.stdout.split("\n").filter((line) => line !== "");
+      expect(lines).toHaveLength(2);
+      for (const line of lines) {
+        expect(() => {
+          JSON.parse(line);
+        }).not.toThrow();
+      }
+      // The "N error(s) found" banner goes to stderr, not into the stream.
+      expect(result.stderr).toContain("error(s) found");
+    });
+
+    it("carries the field names AstGrepMatch reads", () => {
+      // Depended on by: AstGrepMatch in types/check.ts and toCheckResult. A
+      // rename arrives as `undefined` inside a CheckResult rather than as an
+      // error — a finding with no message, or no file.
+      const cwd = project({
+        rules: { "no-eval": rule("no-eval") },
+        sources: evalSource,
+      });
+      const match = JSON.parse(scan(cwd).stdout.split("\n")[0] ?? "") as Record<
+        string,
+        unknown
+      >;
+      for (const field of [
+        "ruleId",
+        "severity",
+        "message",
+        "note",
+        "text",
+        "file",
+        "range",
+      ]) {
+        expect(match, `missing ${field}`).toHaveProperty(field);
+      }
+      expect(match.ruleId).toBe("no-eval");
+      expect(match.text).toBe('eval("1")');
+      expect(match.file).toBe("src/a.ts");
+      // `replacement` appears only for a rule with a `fix`; toCheckResult maps
+      // it to an optional `fix`, so its absence here is the contract too.
+      expect(match).not.toHaveProperty("replacement");
+    });
+
+    it("reports range line and column 0-based", () => {
+      // Depended on by: util/format.ts and rules/runtime/narrow.ts, which both
+      // render `line + 1` / `column + 1`. If ast-grep ever emitted 1-based
+      // positions, every reported location would be off by one — no error,
+      // just quietly wrong. `const x = eval("1");` puts the match at line 0,
+      // columns 10-19.
+      const cwd = project({
+        rules: { "no-eval": rule("no-eval") },
+        sources: evalSource,
+      });
+      const match = JSON.parse(scan(cwd).stdout.split("\n")[0] ?? "") as {
+        range: {
+          start: { line: number; column: number };
+          end: { line: number; column: number };
+        };
+      };
+      expect(match.range.start).toEqual({ line: 0, column: 10 });
+      expect(match.range.end).toEqual({ line: 0, column: 19 });
+    });
+  });
+
+  describe("severity", () => {
+    it("emits hint, info, warning and error verbatim", () => {
+      // Depended on by: AstGrepMatch.severity, typed as exactly those four.
+      // Anything else arrives as a CheckResult with a severity outside the
+      // union — TypeScript believes a value the binary never promised.
+      for (const severity of ["hint", "info", "warning", "error"]) {
+        const cwd = project({
+          rules: { "no-eval": rule("no-eval", severity) },
+          sources: evalSource,
+        });
+        const match = JSON.parse(scan(cwd).stdout.split("\n")[0] ?? "") as {
+          severity: string;
+        };
+        expect(match.severity).toBe(severity);
+      }
+    });
+
+    it("accepts exactly [hint info warning error off] and rejects the rest", () => {
+      // The vocabulary is FIVE values, one more than AstGrepMatch's union —
+      // `off` is accepted in a rule but disables it, so it can never appear in
+      // output (asserted below). A rule at any other severity fails the parse
+      // rather than reaching us, which is what keeps the four-value union safe.
+      const cwd = project({
+        rules: { "no-eval": rule("no-eval", "catastrophe") },
+        sources: evalSource,
+      });
+      const result = scan(cwd);
+      expect(result.stderr).toContain(
+        "unknown variant `catastrophe`, expected one of `hint`, `info`, `warning`, `error`, `off`"
+      );
+    });
+
+    it("runs no rule at severity off, so `off` never reaches the stream", () => {
+      const cwd = project({
+        rules: { "no-eval": rule("no-eval", "off") },
+        sources: evalSource,
+      });
+      const result = scan(cwd);
+      expect(result.status).toBe(0);
+      expect(result.stdout.trim()).toBe("");
+    });
+  });
+
+  describe("scan exit codes", () => {
+    // Depended on by: runAstGrepScan's boundary — "exit 1 means error-severity
+    // matches were found; exit > 1 means the binary or config failed." That
+    // single comparison is the whole difference between findings and engine
+    // failure. If a config error ever exited 1, a broken engine would be
+    // reported as a clean scan with no results.
+
+    it("exits 0 for findings below error severity", () => {
+      expect(statusAt("warning")).toBe(0);
+      expect(statusAt("info")).toBe(0);
+    });
+
+    it("exits 1 for error-severity findings", () => {
+      expect(statusAt("error")).toBe(1);
+    });
+
+    it("exits above 1 when the config or a rule cannot be read", () => {
+      // Measured at 0.41.0: 6 for a missing config, 8 for an unparseable rule.
+      // Only `> 1` is depended on; the exact numbers are recorded so a change
+      // in them is visible without being treated as a break.
+      const missing = scan(
+        project({ rules: { "no-eval": rule("no-eval") } }),
+        "nope.yml"
+      );
+      expect(missing.status).toBeGreaterThan(1);
+      expect(missing.status).toBe(6);
+
+      const unparseable = scan(
+        project({
+          rules: { "no-eval": rule("no-eval", "catastrophe") },
+          sources: evalSource,
+        })
+      );
+      expect(unparseable.status).toBeGreaterThan(1);
+      expect(unparseable.status).toBe(8);
+    });
+  });
+
+  describe("sg test", () => {
+    it("prints `test result: ok. N passed; M failed;` to stdout and exits 0", () => {
+      // Depended on by: parseTestSummary in verify.ts, which anchors on this
+      // exact wording, and by runTests keying validity off exit 0. If the
+      // wording changes, the counts read 0/0 and verify falls through to the
+      // exit-code snippet — degraded rather than wrong, and this test is what
+      // announces it.
+      const result = test(passingProject(), "no-eval");
+      expect(result.status).toBe(0);
+      expect(result.stdout).toContain("test result:");
+      expect(result.stdout).toMatch(
+        /test result: .*ok.*\. 1 passed; 0 failed;/
+      );
+    });
+
+    it("prints `Error: test failed. N passed; M failed;` to stderr and exits 4", () => {
+      // The failure summary lands on STDERR, not stdout, which is why verify
+      // scans both streams. The exit code is 4 — not 1 — and runTests treats
+      // any non-zero as failure, so nothing depends on the number today; it is
+      // pinned because a future 0-on-failure would read as a pass.
+      const outcome = test(failingProject(), "no-eval");
+      expect(outcome.status).toBe(4);
+      expect(outcome.stderr).toMatch(
+        /Error: test failed\. 0 passed; 1 failed;/
+      );
+    });
+
+    it("colorizes the summary even when stdout is not a TTY", () => {
+      // Depended on by: stripAnsi in verify.ts. The escape sits between
+      // `test result: ` and `ok`, i.e. INSIDE the phrase being matched, so a
+      // parser that skipped stripping would fail to anchor on a passing run.
+      // eslint-disable-next-line no-control-regex -- the escape IS the subject
+      const greenOk = /\u001B\[32mok\u001B\[0m/;
+      expect(test(passingProject(), "no-eval").stdout).toMatch(greenOk);
+    });
+
+    it("echoes the offending source on failure, and nothing on success", () => {
+      // This is the root of #112: fixture text is reproduced verbatim into the
+      // output of a failing run, so an unanchored `/(\d+)\s+passed/` can match
+      // the fixture instead of the summary. A passing run echoes nothing, which
+      // is why the old parser was only ever wrong on failures.
+      expect(test(failingProject(), "no-eval").stdout).toContain(
+        "const msg = '7 passed; 0 failed';"
+      );
+      expect(test(passingProject(), "no-eval").stdout).not.toContain(
+        "const a = 1"
+      );
+    });
+
+    it("needs --skip-snapshot-tests for an invalid case with no baseline", () => {
+      // Depended on by: runTests passing the flag. Without it, every invalid
+      // case in a rule that has never had snapshots recorded fails with "No
+      // baseline found" — a rule that is correct reported as failing.
+      const cwd = passingProject();
+      const withoutFlag = run(cwd, [
+        "test",
+        "-c",
+        "sgconfig.yml",
+        "--filter",
+        "^no-eval$",
+      ]);
+      expect(withoutFlag.status).not.toBe(0);
+      expect(withoutFlag.stdout).toContain("baseline found");
+    });
+
+    it("treats --filter as an unanchored regex", () => {
+      // Depended on by: runTests building `^${escapeRegExp(ruleId)}$`. The
+      // anchors are load-bearing — without them, verifying `no-eval` would also
+      // run `no-eval-strict`'s cases and report its failures against the wrong
+      // rule.
+      const cwd = project({
+        rules: {
+          "no-eval": rule("no-eval"),
+          "no-eval-strict": rule("no-eval-strict"),
+        },
+        tests: {
+          "no-eval": testFile("no-eval", ["eval(x)"]),
+          "no-eval-strict": testFile("no-eval-strict", ["eval(x)"]),
+        },
+      });
+      const anchored = run(cwd, [
+        "test",
+        "-c",
+        "sgconfig.yml",
+        "--skip-snapshot-tests",
+        "--filter",
+        "^no-eval$",
+      ]);
+      expect(anchored.stdout).toContain("1 passed; 0 failed;");
+
+      const unanchored = run(cwd, [
+        "test",
+        "-c",
+        "sgconfig.yml",
+        "--skip-snapshot-tests",
+        "--filter",
+        "no-eval",
+      ]);
+      expect(unanchored.stdout).toContain("2 passed; 0 failed;");
+    });
+  });
+
+  /**
+   * Relocated from `engine-layout.test.ts`, which existed only for these two.
+   *
+   * ast-grep's `ruleDirs` recurses and parses every `.yml` beneath it as a
+   * rule, so a rule's tests have to live somewhere the rule walk does not
+   * reach. A dot-directory is skipped; `tests/` and `__tests__/` are not, and
+   * either fails the whole scan with `missing field 'language'`.
+   *
+   * Documented at `engines.ts` (RULE_TESTS_DIRECTORY) and `assemble.ts`
+   * (assembleSgConfig). These two cases go through our own layout helpers
+   * deliberately — what is being pinned is that OUR directory names survive
+   * ast-grep's discovery. If it ever breaks, the recorded fallback is to
+   * materialize a rules-only tree for ast-grep (design D2).
+   */
+  describe("the .tests/ directory is invisible to rule discovery", () => {
+    const RULE = rule("no-eval");
+    const TEST_FILE = testFile("no-eval", ["eval(x)"], ["const a = 1"]);
+
+    /** A throwaway root carrying our committed rule layout. */
+    function layout(): { cwd: string; directory: string } {
+      const cwd = mkdtempSync(join(tmpdir(), "sg-contract-layout-"));
+      workspaces.push(cwd);
+      const directory = ruleDirectory(cwd, "sg", "no-eval");
+      mkdirSync(directory, { recursive: true });
+      writeFileSync(join(directory, "no-eval.yml"), RULE);
+      return { cwd, directory };
+    }
+
+    it("scans clean with test YAML inside a rule's .tests/", async () => {
+      const { cwd } = layout();
+      const tests = ruleTestsDirectory(cwd, "sg", "no-eval");
+      mkdirSync(tests, { recursive: true });
+      writeFileSync(join(tests, "no-eval-20260101-test.yml"), TEST_FILE);
+      mkdirSync(join(cwd, "src"), { recursive: true });
+      writeFileSync(join(cwd, "src", "a.ts"), 'const x = eval("1");\n');
+
+      const configPath = await assembleSgConfig(cwd);
+      expect(configPath).toBeDefined();
+
+      // The rule fires — exit 1, error severity — which proves discovery ran;
+      // the test file beneath it was never parsed as a rule, which is the
+      // property being pinned. A parse failure produces no JSON at all.
+      const result = scan(cwd, configPath ?? "");
+      expect(result.status).toBe(1);
+      const findings = result.stdout
+        .split("\n")
+        .filter((line) => line !== "")
+        .map((line) => JSON.parse(line) as { ruleId: string });
+      expect(findings.map((finding) => finding.ruleId)).toEqual(["no-eval"]);
+    });
+
+    it("fails the whole scan if the same file sits in a non-dot directory", async () => {
+      // Deliberately NOT `.tests/` — this is the layout the dot exists to
+      // avoid. A test file is invalid rule YAML: it has no `language`.
+      const { cwd, directory } = layout();
+      mkdirSync(join(directory, "tests"), { recursive: true });
+      writeFileSync(
+        join(directory, "tests", "no-eval-20260101-test.yml"),
+        TEST_FILE
+      );
+
+      const configPath = await assembleSgConfig(cwd);
+      const result = scan(cwd, configPath ?? "");
+      expect(result.status).toBeGreaterThan(1);
+      expect(result.stderr).toContain("missing field `language`");
+    });
+  });
+});
