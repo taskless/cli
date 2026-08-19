@@ -26,6 +26,8 @@ The nightly SHALL be built from the same source and the same build as the releas
 
 A nightly version SHALL take the form `<n.m.k>-<yyyymmddhhmmss>x<sha>`, where `n.m.k` is the version the default branch's pending release metadata proposes, `yyyymmddhhmmss` is the build time, and `sha` is the short commit hash.
 
+The pending release metadata describes every package it releases, so `n.m.k` SHALL be selected by matching the CLI package's name, and SHALL NOT be taken by position. Position is correct only while the CLI is the sole package under release management, and a version taken from another package publishes successfully while naming a release that was never proposed.
+
 The timestamp SHALL precede the commit hash, so that lexical comparison of the prerelease identifier orders builds chronologically. The prerelease identifier SHALL contain a non-digit separator between the timestamp and the hash, so that the identifier is never all-digits — an all-digit prerelease identifier is compared numerically and may not begin with a zero, which a hash beginning with `0` would otherwise violate.
 
 #### Scenario: A nightly version is stamped
@@ -37,6 +39,11 @@ The timestamp SHALL precede the commit hash, so that lexical comparison of the p
 
 - **WHEN** the short commit hash consists only of digits and begins with `0`
 - **THEN** the published version SHALL still be a valid semantic version
+
+#### Scenario: The anticipated version is selected by package, not by position
+
+- **WHEN** the pending release metadata describes more than one package
+- **THEN** the nightly version SHALL use the entry naming the CLI package
 
 #### Scenario: Nightlies sort chronologically
 
