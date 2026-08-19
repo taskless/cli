@@ -88,13 +88,25 @@ const REQUIRED_DIRECTORIES: string[][] = (() => {
 })();
 
 /**
- * Trees moved by this migration, as [legacy path, engine-partitioned path]
- * relative to `.taskless/`. Every move is content-preserving: runtime capture
- * bytes determine their server-side reconciliation hashes, so a rewrite here
- * would invalidate every signature.
+ * The `rules/` move, kept apart from `MOVES` because it is the only one whose
+ * source path means two different things and so the only one the migration
+ * has to reason about. Singling it out here beats re-deriving "is this the
+ * rules move" from the array's shape on every iteration below.
+ */
+const RULES_MOVE: [string[], string[]] = [["rules"], ["sg", "rules"]];
+
+/**
+ * The remaining trees moved by this migration, as [legacy path,
+ * engine-partitioned path] relative to `.taskless/`. Every one of these names
+ * is pre-`0004`-only — no later layout uses `rule-tests/`, `sgconfig.yml`,
+ * `runtime-rules/`, or `runtime-rule-tests/` at the `.taskless/` root — so on
+ * a current tree they simply do not exist and their moves are no-ops.
+ *
+ * Every move is content-preserving: runtime capture bytes determine their
+ * server-side reconciliation hashes, so a rewrite here would invalidate every
+ * signature.
  */
 const MOVES: Array<[string[], string[]]> = [
-  [["rules"], ["sg", "rules"]],
   [["rule-tests"], ["sg", "rule-tests"]],
   [["sgconfig.yml"], ["sg", "sgconfig.yml"]],
   [["runtime-rules"], ["runtime", "rules"]],
@@ -102,11 +114,20 @@ const MOVES: Array<[string[], string[]]> = [
 ];
 
 /**
- * Is `.taskless/rules/` already partitioned by engine — i.e. newer than this
- * migration rather than older?
+ * What layout is `.taskless/rules/` in right now?
  *
- * `rules/` is the one path in `MOVES` that means two different things. It is
- * the pre-`0004` flat location (`rules/<id>.yml`) *and* the root of the layout
+ * - `legacy` — pre-`0004`, or absent. The whole directory moves.
+ * - `partitioned` — already the layout `0005` establishes. Nothing moves.
+ * - `mixed` — both at once. Only the loose rule files move.
+ */
+type RulesLayout = "legacy" | "partitioned" | "mixed";
+
+/**
+ * Read `.taskless/rules/` and say which layout it is in, plus the loose rule
+ * files found at its root.
+ *
+ * `rules/` is the one moved path that means two different things. It is the
+ * pre-`0004` flat location (`rules/<id>.yml`) *and* the root of the layout
  * `0005` establishes (`rules/<engine>/<id>/`), so the same move that upgrades
  * an old tree wrecks a current one.
  *
@@ -121,19 +142,33 @@ const MOVES: Array<[string[], string[]]> = [
  *
  * The two shapes are distinguishable by what they hold: pre-`0004` holds loose
  * rule *files* (`rules/<id>.yml`), the current layout holds engine
- * *directories*. Recognition keys on exactly those two signals — at least one
- * directory named for an engine, and no loose `*.yml` at the root — which is
- * the same signal `0005`'s `assertRootIsFree` reads from the other side.
+ * *directories*. Recognition keys on exactly those two signals, and the loose
+ * `*.yml` half is the same signal `0005`'s `assertRootIsFree` reads from the
+ * other side.
  *
  * Deliberately not "every entry is an engine directory": a single unrelated
  * entry beside the real ones is ordinary (macOS writes `.DS_Store` the moment
  * a folder is opened in Finder, `.gitignore` notwithstanding), and under a
- * strict rule it would flip the guard off and move a live `rules/` tree
- * wholesale — reproducing the exact bug this guard exists to prevent. A tree
- * that still holds pre-`0004` rule files is genuinely mixed, and that one does
- * migrate, because leaving it alone would strand rules the old layout owns.
+ * strict rule it would report `legacy` and move a live `rules/` tree wholesale
+ * — reproducing the exact bug this exists to prevent. A symlinked engine
+ * directory counts for the same reason: `Dirent.isDirectory()` is `false` for
+ * a symlink, and the cost of guessing wrong is asymmetric — over-recognising
+ * declines a move, under-recognising loses rules.
+ *
+ * **`mixed` is why this reports a layout rather than a boolean.** A tree that
+ * still holds pre-`0004` rule files beside engine directories has to migrate
+ * those files — leaving them strands rules the old layout owns, and `0005`
+ * refuses to run while they sit there. But the move that serves them is
+ * per-file: renaming the whole directory to satisfy one stray `.yml` carries
+ * every already-partitioned rule down with it, and `0005`'s `moveEngineRules`
+ * only relocates loose `*.yml` from `sg/rules/` — a directory entry is
+ * skipped, so the buried tree never comes back and `pruneEmpty` leaves it
+ * there. Same silent-clean-pass failure, reached from a merge-conflict
+ * leftover instead of a missing manifest.
  */
-async function rulesArePartitionedByEngine(root: string): Promise<boolean> {
+async function inspectRulesLayout(
+  root: string
+): Promise<{ layout: RulesLayout; looseRuleFiles: string[] }> {
   let entries;
   try {
     entries = await readdir(root, { withFileTypes: true });
@@ -143,16 +178,26 @@ async function rulesArePartitionedByEngine(root: string): Promise<boolean> {
     // moves directories on the strength of what it reads here: swallowing it
     // would relocate a tree whose contents were never actually inspected.
     const code = (error as NodeJS.ErrnoException).code;
-    if (code === "ENOENT" || code === "ENOTDIR") return false;
+    if (code === "ENOENT" || code === "ENOTDIR") {
+      return { layout: "legacy", looseRuleFiles: [] };
+    }
     throw error;
   }
-  if (
-    !entries.some((entry) => entry.isDirectory() && isKnownEngine(entry.name))
-  )
-    return false;
-  return !entries.some(
-    (entry) => entry.isFile() && entry.name.endsWith(".yml")
+
+  const hasEngineDirectory = entries.some(
+    (entry) =>
+      (entry.isDirectory() || entry.isSymbolicLink()) &&
+      isKnownEngine(entry.name)
   );
+  const looseRuleFiles = entries
+    .filter((entry) => entry.isFile() && entry.name.endsWith(".yml"))
+    .map((entry) => entry.name);
+
+  if (!hasEngineDirectory) return { layout: "legacy", looseRuleFiles };
+  return {
+    layout: looseRuleFiles.length === 0 ? "partitioned" : "mixed",
+    looseRuleFiles,
+  };
 }
 
 async function pathExists(path: string): Promise<boolean> {
@@ -341,16 +386,25 @@ async function ensureTrackedDirectory(path: string): Promise<void> {
 const migration: Migration = async (directory) => {
   await assertNoDirectoryConflicts(directory);
 
-  // Only `rules/` needs this check. The other four sources — `rule-tests/`,
-  // `sgconfig.yml`, `runtime-rules/`, `runtime-rule-tests/` — are names no
-  // later layout uses, so on a current tree they simply do not exist and their
-  // moves are already no-ops.
-  const skipRulesMove = await rulesArePartitionedByEngine(
-    join(directory, "rules")
-  );
+  // Only `rules/` needs this check; see `inspectRulesLayout` for why, and for
+  // why `mixed` moves files rather than the directory.
+  const [rulesFrom, rulesTo] = RULES_MOVE;
+  const rules = await inspectRulesLayout(join(directory, ...rulesFrom));
+  if (rules.layout === "legacy") {
+    await movePreservingContent(
+      join(directory, ...rulesFrom),
+      join(directory, ...rulesTo)
+    );
+  } else if (rules.layout === "mixed") {
+    for (const name of rules.looseRuleFiles) {
+      await movePreservingContent(
+        join(directory, ...rulesFrom, name),
+        join(directory, ...rulesTo, name)
+      );
+    }
+  }
 
   for (const [from, to] of MOVES) {
-    if (skipRulesMove && from.length === 1 && from[0] === "rules") continue;
     await movePreservingContent(
       join(directory, ...from),
       join(directory, ...to)
