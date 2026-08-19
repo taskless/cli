@@ -37,7 +37,7 @@ describe("shipped recipes name only commands that exist", () => {
     for (const file of await recipeFiles()) {
       const source = await readFile(join(recipeDirectory, file), "utf8");
       for (const [index, line] of source.split("\n").entries()) {
-        if (line.includes("taskless help")) {
+        if (/(?:taskless|@taskless\/cli) help\b/.test(line)) {
           offenders.push(`${file}:${String(index + 1)}: ${line.trim()}`);
         }
       }
@@ -54,8 +54,13 @@ describe("shipped recipes name only commands that exist", () => {
     for (const file of await recipeFiles()) {
       const source = await readFile(join(recipeDirectory, file), "utf8");
       for (const [index, line] of source.split("\n").entries()) {
-        // `taskless agent <topic>`, however it is punctuated around.
-        for (const match of line.matchAll(/taskless agent ([a-z][a-z-]*)/g)) {
+        // `taskless agent <topic>` however it is punctuated around, and the
+        // `npx @taskless/cli agent <topic>` form recipes use when the CLI is
+        // not assumed to be on PATH. Both are anchored on a package/binary
+        // name so that prose ("the agent should…") is not read as a citation.
+        for (const match of line.matchAll(
+          /(?:taskless|@taskless\/cli) agent ([a-z][a-z-]*)/g
+        )) {
           const topic = match[1];
           if (topic !== undefined && !topics.has(topic)) {
             dangling.push(`${file}:${String(index + 1)} cites '${topic}'`);
