@@ -13,7 +13,7 @@ import { dirname, join } from "node:path";
 
 import type { Migration } from "../types";
 import { CLIError } from "../../util/cli-error";
-import { ENGINES } from "../../rules/engines";
+import { isKnownEngine } from "../../rules/engines";
 
 /**
  * Default `sgconfig.yml` written when a project has none to move. `ruleDirs`
@@ -119,24 +119,39 @@ const MOVES: Array<[string[], string[]]> = [
  * failure is not an error the user can see — it is a project that quietly
  * stopped being checked.
  *
- * The two shapes are distinguishable with certainty: pre-`0004` holds rule
- * *files*, the current layout holds only engine *directories*. Recognition is
- * therefore strict — every entry must be a directory named for an engine, and
- * there must be at least one. A mixed or partial tree is not evidence of the
- * new layout, so it still migrates, which keeps a genuinely old project moving
- * forward at the cost of doing nothing clever with a tree nobody produces.
+ * The two shapes are distinguishable by what they hold: pre-`0004` holds loose
+ * rule *files* (`rules/<id>.yml`), the current layout holds engine
+ * *directories*. Recognition keys on exactly those two signals — at least one
+ * directory named for an engine, and no loose `*.yml` at the root — which is
+ * the same signal `0005`'s `assertRootIsFree` reads from the other side.
+ *
+ * Deliberately not "every entry is an engine directory": a single unrelated
+ * entry beside the real ones is ordinary (macOS writes `.DS_Store` the moment
+ * a folder is opened in Finder, `.gitignore` notwithstanding), and under a
+ * strict rule it would flip the guard off and move a live `rules/` tree
+ * wholesale — reproducing the exact bug this guard exists to prevent. A tree
+ * that still holds pre-`0004` rule files is genuinely mixed, and that one does
+ * migrate, because leaving it alone would strand rules the old layout owns.
  */
 async function rulesArePartitionedByEngine(root: string): Promise<boolean> {
   let entries;
   try {
     entries = await readdir(root, { withFileTypes: true });
-  } catch {
-    return false; // No `rules/` at all — nothing to protect.
+  } catch (error) {
+    // No `rules/` at all — nothing to protect. Anything else (a permission
+    // problem, an I/O error) is unhealthy filesystem state, and this migration
+    // moves directories on the strength of what it reads here: swallowing it
+    // would relocate a tree whose contents were never actually inspected.
+    const code = (error as NodeJS.ErrnoException).code;
+    if (code === "ENOENT" || code === "ENOTDIR") return false;
+    throw error;
   }
-  if (entries.length === 0) return false;
-  return entries.every(
-    (entry) =>
-      entry.isDirectory() && (ENGINES as readonly string[]).includes(entry.name)
+  if (
+    !entries.some((entry) => entry.isDirectory() && isKnownEngine(entry.name))
+  )
+    return false;
+  return !entries.some(
+    (entry) => entry.isFile() && entry.name.endsWith(".yml")
   );
 }
 
