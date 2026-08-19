@@ -1,4 +1,4 @@
-Delivery shape: **stacked, merging forward**, three PRs (design D9). Group 1 is the bottom PR and carries the changeset; groups 4 and 5 are the two PRs above it. Groups 2 and 3 are human-gated prerequisites and are **not** code — they must be done by a maintainer in GitHub and npm settings, between merges.
+Delivery shape: **stacked, merging forward**, three PRs (design D9). Group 1 is the bottom PR and carries the changeset; groups 4 and 5 are the two PRs above it. Groups 2 and 3 are human-gated and are **not** code — a maintainer in GitHub and npm settings, between merges.
 
 ## 0. Prerequisites and facts to confirm before writing anything
 
@@ -25,16 +25,18 @@ Delivery shape: **stacked, merging forward**, three PRs (design D9). Group 1 is 
 
 ## 3. Human-gated prerequisite — trusted publishing for `@taskless/cli-nightly`
 
-- [ ] 3.1 **Maintainer action, one time:** publish the first `@taskless/cli-nightly` version manually so the name exists — npm has nothing to bind a trusted publisher to until it does. Publish the packed tarball produced by the script in 4.1, not the package directory, so the name is not burned on a placeholder version (the trap `vale-binaries.yml` documents)
+**This group runs while PR 2 is open and unmerged, not before it exists.** It needs the pack script from task 4.1, which PR 2 introduces — so unlike group 2, it cannot be done ahead of the code. The order is: open PR 2, run its pack script from that branch, do the one-time publish and binding below, then merge PR 2. Vale's equivalent step reads as a clean prerequisite only because `vale-prepare.cjs` was already on `main` when it was written; nothing is on `main` here yet.
+
+- [ ] 3.1 **Maintainer action, one time:** publish the first `@taskless/cli-nightly` version manually so the name exists — npm has nothing to bind a trusted publisher to until it does. Run the pack script from task 4.1 **on PR 2's branch** and publish the tarball it produces, not the package directory, so the name is not burned on a placeholder version (the trap `vale-binaries.yml` documents)
 - [ ] 3.2 **Maintainer action:** register the npm trusted-publisher binding for `@taskless/cli-nightly` against `release-cli-nightly.yml` and the `npm-autopublish` environment. There is no fallback token path, by design
-- [ ] 3.3 Confirm the binding, then merge PR 2
+- [ ] 3.3 Confirm the binding, then merge PR 2 — the binding must exist before the first automated publish, or PR 2 merges into a workflow whose first run fails the OIDC handshake
 
 ## 4. PR 2 — the nightly (depends on groups 2 and 3 for its first real run)
 
 - [ ] 4.1 Add a pack script under `.github/scripts/` that rewrites `packages/cli/package.json` at pack time to `name: @taskless/cli-nightly` and the stamped version, leaving `bin`, `optionalDependencies`, and the committed manifest untouched — the same shape `vale-prepare.cjs` uses (D2)
 - [ ] 4.2 Compute the version as `<newVersion>-<yyyymmddhhmmss>x<short-sha>`, reading `newVersion` from the `changeset status --output=` JSON **file** at a repo-relative path (D3, 0.2). **Select the entry by `name === "@taskless/cli"`, never `[0]`** — the output is an array of every package the pending changesets release, and index 0 is only the CLI while it is the sole changesets-managed package. Taking `[0]` stamps the nightly with another package's version the day a second one is added, and nothing fails loudly when it does
 - [ ] 4.3 Keep the `x` separator and cover it with a test: a short SHA of all digits beginning with `0` must still produce a valid semantic version. This is the one detail most likely to be "simplified" away by a later reader who sees it as decoration (D3)
-- [ ] 4.4 Create `.github/workflows/release-cli-nightly.yml` triggered on push to `main`, with gate 1 as a **directory listing of `.changeset/`** that runs before any dependency install, and gate 2 as `npm view @taskless/cli-nightly versions --json` filtered for a version ending in `x<sha>` (D4)
+- [ ] 4.4 Create `.github/workflows/release-cli-nightly.yml` triggered on push to `main`, with gate 1 as a **listing of `.changeset/*.md` excluding `README.md`** that runs before any dependency install (`.changeset/` also permanently holds `README.md` and `config.json`, so a bare emptiness test is never true — `require-changeset.yml` already counts them this way with `grep -viE '/README\.md$'`), and gate 2 as `npm view @taskless/cli-nightly versions --json` filtered for a version ending in `x<sha>` (D4)
 - [ ] 4.5 Keep the gates credential-free and in their own job, so the publish job — and therefore the OIDC identity — exists only for a run that will actually publish
 - [ ] 4.6 Publish with `--provenance --access public --tag latest`. `--tag latest` is mandatory: every version is a prerelease and npm will not move the default tag onto one unless told to, so without it the package has versions and no default (D3)
 - [ ] 4.7 Pass no untrusted text through `${{ }}` into any `run:` body; route computed values through `env:`, following `release-vale.yml`'s rule
@@ -55,7 +57,7 @@ Delivery shape: **stacked, merging forward**, three PRs (design D9). Group 1 is 
 ## 6. Verify the acceptance criteria on `main`
 
 - [ ] 6.1 A push to `main` with pending changesets publishes `@taskless/cli-nightly@<proposedBump>-<timestamp>x<sha>` with the default tag and provenance
-- [ ] 6.2 A push to `main` with an empty `.changeset/` publishes no nightly **and exits before installing anything** — check the run log, not just the outcome
+- [ ] 6.2 A push to `main` carrying no pending changeset — `.changeset/` holding only `README.md` and `config.json` — publishes no nightly **and exits before installing anything** — check the run log, not just the outcome
 - [ ] 6.3 A workflow re-run on an already-built SHA publishes nothing
 - [ ] 6.4 The merge of a Version Packages PR publishes the real release and no nightly, with no special case in either workflow
 - [ ] 6.5 Vale publishes with no click; `@taskless/cli` still waits for one
