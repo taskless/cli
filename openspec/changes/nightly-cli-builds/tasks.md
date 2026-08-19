@@ -4,7 +4,7 @@ Delivery shape: **stacked, merging forward**, three PRs (design D9). Group 1 is 
 
 - [ ] 0.1 Re-confirm the live environment configuration with `gh api repos/taskless/cli/environments` — the correction in 1.4 depends on `npm-production` still having `required_reviewers`
 - [ ] 0.2 Confirm `changeset status --output=<relative-path>` on this repository writes `[{ name, type, oldVersion, newVersion }]`, and re-confirm both traps: an absolute path silently writes nothing, and stdout carries unrelated workspace-version warnings so the JSON file is the only source to read
-- [ ] 0.3 Confirm the currently published `@taskless/cli-nightly` name is unclaimed on npm
+- [ ] 0.3 Confirm the `@taskless/cli-nightly` name is unclaimed on npm
 
 ## 1. PR 1 — split the release workflows (no behavior change)
 
@@ -15,7 +15,7 @@ Delivery shape: **stacked, merging forward**, three PRs (design D9). Group 1 is 
 - [ ] 1.5 Rename `.github/workflows/vale-binaries.yml` → `.github/workflows/release-vale.yml` with no behavior change, preserving the whole header comment
 - [ ] 1.6 Delete `.github/workflows/release.yml`
 - [ ] 1.7 Check for references to the old filenames — branch protection required checks, `pr-check-openspec.yml`, `require-changeset.yml`, `stack-breadcrumb.yml`, README and docs — and update anything that names `release.yml` or `Vale Binaries`. A renamed workflow means a renamed check, and a required check that no longer reports blocks merges silently
-- [ ] 1.8 Add the changeset for the whole change on this branch, before cutting the PRs above it; grow it as groups 3 and 4 land
+- [ ] 1.8 Add the changeset on this branch, before cutting the PRs above it, describing **this PR's scope only** — the workflow split. The stack merges forward, so `CLAUDE.md` requires each unit to extend the changeset with what it actually landed rather than the base promising the whole change up front; a reviewer reading it should see only what has merged. Groups 4 and 5 each extend the same file (never add a second changeset)
 - [ ] 1.9 Verify on merge that the Version Packages PR flow still opens/updates normally and that an ordinary push instantiates no OIDC-capable job
 
 ## 2. Human-gated prerequisite — the `npm-autopublish` environment (before the nightly)
@@ -32,7 +32,7 @@ Delivery shape: **stacked, merging forward**, three PRs (design D9). Group 1 is 
 ## 4. PR 2 — the nightly (depends on groups 2 and 3 for its first real run)
 
 - [ ] 4.1 Add a pack script under `.github/scripts/` that rewrites `packages/cli/package.json` at pack time to `name: @taskless/cli-nightly` and the stamped version, leaving `bin`, `optionalDependencies`, and the committed manifest untouched — the same shape `vale-prepare.cjs` uses (D2)
-- [ ] 4.2 Compute the version as `<newVersion>-<yyyymmddhhmmss>x<short-sha>`, reading `newVersion` from the `changeset status --output=` JSON **file** at a repo-relative path (D3, 0.2)
+- [ ] 4.2 Compute the version as `<newVersion>-<yyyymmddhhmmss>x<short-sha>`, reading `newVersion` from the `changeset status --output=` JSON **file** at a repo-relative path (D3, 0.2). **Select the entry by `name === "@taskless/cli"`, never `[0]`** — the output is an array of every package the pending changesets release, and index 0 is only the CLI while it is the sole changesets-managed package. Taking `[0]` stamps the nightly with another package's version the day a second one is added, and nothing fails loudly when it does
 - [ ] 4.3 Keep the `x` separator and cover it with a test: a short SHA of all digits beginning with `0` must still produce a valid semantic version. This is the one detail most likely to be "simplified" away by a later reader who sees it as decoration (D3)
 - [ ] 4.4 Create `.github/workflows/release-cli-nightly.yml` triggered on push to `main`, with gate 1 as a **directory listing of `.changeset/`** that runs before any dependency install, and gate 2 as `npm view @taskless/cli-nightly versions --json` filtered for a version ending in `x<sha>` (D4)
 - [ ] 4.5 Keep the gates credential-free and in their own job, so the publish job — and therefore the OIDC identity — exists only for a run that will actually publish

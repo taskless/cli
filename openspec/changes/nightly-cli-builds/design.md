@@ -58,6 +58,10 @@ Reads as: _the future `0.11.0`, built at that time, from that commit._ Both halv
 
 **`--tag latest` on publish is mandatory.** Every version here is a semver prerelease, and npm will not move `latest` onto a prerelease unless told to. Without it, `npm i @taskless/cli-nightly` resolves nothing useful — the package would have versions and no default. `vale-binaries.yml` already records this lesson; this is the second package to need it.
 
+**There is no tag bookkeeping beyond that, deliberately.** `latest` is correct in every instance this package ever produces: each publish is the newest build of `main`, and nobody resolves a nightly by range — the prerelease component exists to make the version sortable and traceable, not to offer a channel to pin. So there is no second dist-tag to maintain, no promotion step, and no state that can drift.
+
+The case worth naming, since a reviewer will reach for it: a publish that succeeds while the tag move does not, leaving a version on the registry that `latest` does not point at. Gate 2 tests existence, so a re-run on that same commit is skipped and does not repair it. That is accepted rather than mitigated. The condition lasts until the next nightly, which is the next push to `main` with changesets pending, and that publish sets `latest` correctly with no intervention. Building a re-tag path would add a repair mechanism, and a state for it to detect, for a window that closes on its own — and it is worth remembering that gate 2 skipping a re-run is right on its own terms: identical bytes, nothing new to publish.
+
 This deliberately differs from `@taskless/vale-*`, which stamps `n.m.k-yyyymmddhhmmss` with no SHA. Vale republishes upstream binaries and has no commit of ours to key on.
 
 - **Alternative — `0.11.0-nightly.N` with an incrementing counter:** rejected. It needs state outside the build to know `N`, and it cannot answer "was this SHA built?" without a lookup table.
@@ -89,7 +93,11 @@ Only past both gates does the build run, taking `newVersion` from `changeset sta
 ]
 ```
 
-Two verified traps, both silent: **the path must be repo-relative** — an absolute `/tmp/...` path fails to write the file without failing the command — and **the JSON file is authoritative, not stdout**, which also carries unrelated workspace-version warnings. Read the file.
+Three traps, all silent.
+
+**The path must be repo-relative** — an absolute `/tmp/...` path fails to write the file without failing the command. **The JSON file is authoritative, not stdout**, which also carries unrelated workspace-version warnings. Read the file.
+
+And **the output is an array, so select by name, never by index.** It lists every package the pending changesets release. `[0]` is `@taskless/cli` only for as long as the CLI is the sole changesets-managed package, and the six `@taskless/vale-*` packages already sit in the changesets `ignore` list precisely because a second managed package is a thing that happens. The day one is added, `[0]` stamps the nightly with another package's version — a wrong version that publishes successfully and looks plausible. Match on `name === "@taskless/cli"`.
 
 **Chore merges.** A chore adds no changeset, so it never _starts_ a nightly. It will produce a new nightly if changesets are already pending, because the SHA moved and gate 2 is per-SHA. That is accepted: the nightly claims to be "this commit of `main`," and a chore does produce a new commit of `main`. If it becomes noisy, the fix is an additional gate on `packages/cli/**` having changed since the last nightly — deliberately not built now, because the cost is a version string nobody will notice.
 
