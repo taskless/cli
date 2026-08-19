@@ -32,7 +32,7 @@ the placeholder is never itself published.
 
 ## Where the binary comes from
 
-The binary is not stored in this repository. `.github/workflows/vale-binaries.yml`
+The binary is not stored in this repository. `.github/workflows/release-vale.yml`
 downloads `vale_<version>_Linux_arm64.tar.gz` from the upstream
 release, checks the archive's SHA256 against the digest committed in
 `.github/scripts/vale-manifest.json`, refuses to go further on a mismatch, and

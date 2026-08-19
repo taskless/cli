@@ -1,0 +1,133 @@
+# SPDX-License-Identifier: MIT
+# Publish @taskless/cli to npm. Adapted from the pattern in
+# thecodedrift/firebot-script-music-to-my-ears and hardened for npm publishing.
+#
+# TWO JOBS IN ONE FILE, ON PURPOSE:
+#
+#   check    Decides whether main's version needs publishing — with NO npm
+#            credential and NO OIDC identity. It runs on every push to main and
+#            reads packages/cli/package.json (repo source) via `node -p`, so
+#            nothing untrusted is interpolated into a shell.
+#
+#   publish  Exists only when `check` says yes — i.e. right after the Version
+#            Packages PR merges, when the version in the manifest is one npm has
+#            never seen. It authenticates with a SHORT-LIVED token minted via
+#            GitHub OIDC (npm trusted publishing); there is NO stored NPM_TOKEN
+#            anywhere to exfiltrate.
+#
+# The gate and the job it gates MUST stay in the same file. The gate's real work
+# is not saving a minute of CI — it is keeping an OIDC-capable job from being
+# instantiated at all on an ordinary merge. Split across two files, a later edit
+# that reads only the publish half would see a job with `id-token: write` and no
+# visible reason for the `needs:`, and drop it.
+#
+# The untrusted half of the release lives in `release-cli-changeset.yml`, which
+# holds no credential. By the time this workflow publishes, the changesets have
+# already been consumed into the merged CHANGELOG, so this job builds from
+# reviewed, merged source only.
+#
+# Residual perimeter, stated honestly: the publish job builds merged repo code,
+# so "what can merge to main" is the real boundary. That is enforced by branch
+# protection on main. `--ignore-scripts` keeps dependency lifecycle hooks from
+# running while the OIDC identity is available; only our own build runs. No
+# `pull_request_target` and no `${{ }}` interpolation of untrusted text into any
+# `run:` — the two classic token-exfiltration footguns.
+#
+# NO CONCURRENCY GROUP HERE, deliberately — do not add one for tidiness. The
+# credential-free gate already makes a duplicate run a no-op: the second run
+# sees the version on npm and does nothing. The residual TOCTOU (two runs both
+# observing "not published") is handled the way release-vale.yml handles it —
+# a failed publish is treated as possibly-already-published rather than as a
+# fresh error, because a version is immutable and the losing run is trying to
+# publish bytes the winner already shipped. Serializing would buy nothing the
+# gate does not already provide, at the cost of queueing a release behind
+# unrelated pushes.
+#
+# Action refs are pinned to commit SHAs (supply-chain hardening); the trailing
+# comment records the human-readable tag.
+
+name: Release CLI
+
+on:
+  push:
+    branches: [main]
+
+# No workflow-wide grants; each job requests exactly what it needs.
+permissions: {}
+
+jobs:
+  # Publish only a version npm has never seen. On an ordinary feature merge the
+  # version is unchanged (already on npm) so this is false; it flips true only
+  # on the merge of the Version Packages PR — so ordinary pushes never
+  # instantiate an OIDC-capable job or touch the npm-production environment.
+  check:
+    name: Check for a new version
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read # checkout + read package.json
+    outputs:
+      publish: ${{ steps.check.outputs.publish }}
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false # no git writes here; don't leave the token in git config
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 24
+      - id: check
+        run: |
+          name=$(node -p "require('./packages/cli/package.json').name")
+          version=$(node -p "require('./packages/cli/package.json').version")
+          if npm view "$name@$version" version >/dev/null 2>&1; then
+            echo "publish=false" >> "$GITHUB_OUTPUT"
+            echo "$name@$version already published — nothing to do."
+          else
+            echo "publish=true" >> "$GITHUB_OUTPUT"
+            echo "Will publish $name@$version."
+          fi
+
+  publish:
+    name: Publish to npm
+    # Gate on the credential-free check: this job — and therefore the OIDC
+    # identity + npm-production environment — only exists for an actual release.
+    needs: check
+    if: needs.check.outputs.publish == 'true'
+    runs-on: ubuntu-latest
+    # Environment is the scoping/audit boundary for the release and where the
+    # npm trusted-publisher for @taskless/cli is bound. npm-production carries a
+    # REQUIRED REVIEWER and a protected-branches deployment policy, so this job
+    # waits for a human to approve the deployment before it starts — the merge
+    # of the Version Packages PR is not by itself enough to ship. That click is
+    # deliberate and is the gate on what users get by default: a publish here
+    # moves the `latest` tag that every `npm i @taskless/cli` resolves. Flows
+    # that reach no user by default (the Vale platform packages, nightlies) use
+    # npm-autopublish instead and are gated by code review rather than a click.
+    environment: npm-production
+    permissions:
+      contents: read # checkout only
+      id-token: write # OIDC → short-lived npm auth + build provenance
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false # publish authenticates via OIDC/npm, not git creds
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 24
+          cache: pnpm
+          registry-url: https://registry.npmjs.org
+      - run: pnpm install --frozen-lockfile --ignore-scripts
+
+      # OIDC trusted publishing + provenance need npm >= 11.5.1. Pin the version
+      # (not @latest) so the release is deterministic and a new npm release
+      # can't change publish behavior unreviewed; bump this intentionally.
+      # --ignore-scripts: no lifecycle code runs while the OIDC identity exists.
+      - run: npm install -g npm@12.0.1 --ignore-scripts
+
+      - run: pnpm --filter @taskless/cli build
+
+      # OIDC handshake happens here (id-token: write + registry-url + a
+      # registered trusted publisher). No token in env. `--provenance` attaches
+      # a signed build-provenance attestation.
+      - run: npm publish --provenance --access public
+        working-directory: packages/cli

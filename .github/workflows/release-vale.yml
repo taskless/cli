@@ -1,10 +1,11 @@
 # SPDX-License-Identifier: MIT
 # Vale platform packages — detect upstream releases, then publish @taskless/vale-*.
 #
-# Standalone by design. This workflow does not touch release.yml and release.yml
-# does not touch these packages: they are in the changesets `ignore` list, their
-# versions are stamped here rather than bumped by a changeset, and release.yml's
-# "is main's version on npm yet?" check reads packages/cli/package.json only.
+# Standalone by design. This workflow does not touch the CLI release workflows
+# and they do not touch these packages: the platform packages are in the
+# changesets `ignore` list, their versions are stamped here rather than bumped
+# by a changeset, and release-cli.yml's "is main's version on npm yet?" check
+# reads packages/cli/package.json only.
 #
 # TWO PHASES, because the trust boundary is code review (design D6):
 #
@@ -29,7 +30,7 @@
 # the distinction between them is worth stating precisely because half of it is
 # a trap (design D5).
 #
-# A check against the STAMPED version — the thing release.yml uses — cannot work
+# A check against the STAMPED version — the thing release-cli.yml uses — cannot work
 # here: every publish stamps <valeVersion>-<yyyymmddhhmmss>, a version npm has
 # never seen, so it would answer "not published" every time and could never
 # suppress anything.

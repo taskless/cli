@@ -85,21 +85,29 @@ Only past both gates does the build run, taking `newVersion` from `changeset sta
 **Reading the bump.** `changeset status --output=<relative-path>` writes:
 
 ```json
-[
-  {
-    "name": "@taskless/cli",
-    "type": "minor",
-    "oldVersion": "0.10.2",
-    "newVersion": "0.11.0"
-  }
-]
+{
+  "changesets": [{ "releases": [], "summary": "…", "id": "…" }],
+  "releases": [
+    {
+      "name": "@taskless/cli",
+      "type": "minor",
+      "oldVersion": "0.10.2",
+      "changesets": ["…"],
+      "newVersion": "0.11.0"
+    }
+  ]
+}
 ```
 
-Three traps, all silent.
+Verified against this repository on 2026-08-19 with `@changesets/cli` as pinned here. Note the shape: the file is an **object**, and the per-package entries live under `releases`, not at the root. The bump is `data.releases.find((r) => r.name === "@taskless/cli").newVersion`.
 
-**The path must be repo-relative** — an absolute `/tmp/...` path fails to write the file without failing the command. **The JSON file is authoritative, not stdout**, which also carries unrelated workspace-version warnings. Read the file.
+Three traps.
 
-And **the output is an array, so select by name, never by index.** It lists every package the pending changesets release. `[0]` is `@taskless/cli` only for as long as the CLI is the sole changesets-managed package, and the six `@taskless/vale-*` packages already sit in the changesets `ignore` list precisely because a second managed package is a thing that happens. The day one is added, `[0]` stamps the nightly with another package's version — a wrong version that publishes successfully and looks plausible. Match on `name === "@taskless/cli"`.
+**The path must be repo-relative.** `--output` is resolved against the process working directory with no special case for a leading `/`, so `--output=/tmp/status.json` targets `<cwd>/tmp/status.json`. If that directory happens to exist the file is written somewhere nobody looks; if it does not, the command fails with `ENOENT` on a path the caller never named — which is what it does from the repo root here. Neither outcome puts a file at `/tmp`.
+
+**The JSON file is authoritative, not stdout**, which also carries unrelated workspace-version warnings (one line per `@taskless/vale-*` package, repeated per changeset — 18 lines in the current tree). Read the file.
+
+And **`releases` is an array, so select by name, never by index.** It lists every package the pending changesets release. `[0]` is `@taskless/cli` only for as long as the CLI is the sole changesets-managed package, and the six `@taskless/vale-*` packages already sit in the changesets `ignore` list precisely because a second managed package is a thing that happens. The day one is added, `[0]` stamps the nightly with another package's version — a wrong version that publishes successfully and looks plausible. Match on `name === "@taskless/cli"`.
 
 **Chore merges.** A chore adds no changeset, so it never _starts_ a nightly. It will produce a new nightly if changesets are already pending, because the SHA moved and gate 2 is per-SHA. That is accepted: the nightly claims to be "this commit of `main`," and a chore does produce a new commit of `main`. If it becomes noisy, the fix is an additional gate on `packages/cli/**` having changed since the last nightly — deliberately not built now, because the cost is a version string nobody will notice.
 

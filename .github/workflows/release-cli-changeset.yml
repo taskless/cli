@@ -1,0 +1,69 @@
+# SPDX-License-Identifier: MIT
+# Version Packages PR for @taskless/cli. Adapted from the pattern in
+# thecodedrift/firebot-script-music-to-my-ears.
+#
+# THIS WORKFLOW CANNOT PUBLISH, and that is its entire security property.
+#
+# It reads contributor-authored changesets (UNTRUSTED text) and folds them into
+# a CHANGELOG and a pull request body. It holds NO npm credential and NO OIDC
+# identity, so a crafted changeset or PR body has nothing here to steal and
+# nothing to escape into. The changeset TEXT is fully consumed at this stage and
+# never reaches a credentialed job: by the time `release-cli.yml` publishes, the
+# Version Packages PR has merged and there are no changesets left to read.
+#
+# That is why the publish lives in its own file rather than a job below. Keeping
+# untrusted text and an OIDC identity in one file invites a later edit that
+# hands one to the other — e.g. an `outputs:` carrying changeset-derived text
+# into a `run:` in a job holding `id-token: write`.
+#
+# There is no `publish:` input on the changesets action, deliberately. Supplying
+# one would turn this job into a publisher while it is still holding untrusted
+# input, which is the arrangement the split exists to prevent.
+#
+# CONCURRENCY is required here specifically. Two pushes racing on the
+# `changeset-release/main` branch is a real failure: both would force the branch
+# and one PR would end up describing versions the other computed.
+#
+# Action refs are pinned to commit SHAs (supply-chain hardening); the trailing
+# comment records the human-readable tag.
+
+name: Release CLI Version PR
+
+on:
+  push:
+    branches: [main]
+
+# Serialize so two pushes can't race the Version Packages PR branch.
+concurrency: release-${{ github.ref }}
+
+# No workflow-wide grants; the job requests exactly what it needs.
+permissions: {}
+
+jobs:
+  version:
+    name: Version Packages PR
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # push the changeset-release/main branch
+      pull-requests: write # open/update the Version Packages PR
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          fetch-depth: 0
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile --ignore-scripts
+
+      # `version: pnpm bump` runs `changeset version` AND `sync-skill-versions`,
+      # so the bumped version is propagated into skills/recipes in the same PR.
+      # No `publish:` input — this job can never publish.
+      - uses: changesets/action@a45c4d594aa4e2c509dc14a9f2b3b67ba3780d0d # v1
+        with:
+          version: pnpm bump
+          commit: "chore: version packages"
+          title: "chore: version packages"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
