@@ -2,9 +2,9 @@
 
 ## Purpose
 
-The CLI's `help/*.txt` recipes are the authoritative guidance Taskless gives an
+The CLI's `agent/*.txt` recipes are the authoritative guidance Taskless gives an
 agent about authoring and operating rules. Until now the only way to read them
-was to run `taskless help`, which puts them out of reach of anything that cannot
+was to run `taskless agent`, which puts them out of reach of anything that cannot
 spawn the CLI — notably the service-side generator, which needs the same text to
 brief a model.
 
@@ -15,10 +15,12 @@ cannot drift into giving different guidance. The export carries no CLI runtime,
 so a Worker can import it without dragging in the command tree, and topic
 membership is an explicit hand-maintained list so a new recipe file cannot
 silently become public API.
+
 ## Requirements
+
 ### Requirement: The package exposes knowledge prompts via a dedicated import
 
-The package SHALL expose its knowledge prompts (the `help/*.txt` recipes) through a subpath export `@taskless/cli/prompts`, built into `dist` and listed in `files`, so consumers can import them without invoking the CLI.
+The package SHALL expose its knowledge prompts (the `agent/*.txt` recipes) through a subpath export `@taskless/cli/prompts`, built into `dist` and listed in `files`, so consumers can import them without invoking the CLI.
 
 #### Scenario: Importing a prompt by topic
 
@@ -39,11 +41,11 @@ The export SHALL provide a `PromptTopic` union of the available canonical topics
 - **WHEN** a consumer calls `PROMPTS.static()` with no arguments
 - **THEN** it returns the same string as `getPrompt("static")`
 
-### Requirement: The export and the help command share one source and one renderer
+### Requirement: The export and the agent command share one source and one renderer
 
-The prompt export SHALL be sourced from the same embedded `help/*.txt` content that `commands/help.ts` serves, and SHALL render it through the same render path, with no duplicated embedding and no duplicated interpolation logic. Both surfaces SHALL return identical text for the same topic and equivalent options.
+The prompt export SHALL be sourced from the same embedded `agent/*.txt` content that `commands/agent.ts` serves, and SHALL render it through the same render path, with no duplicated embedding and no duplicated interpolation logic. Both surfaces SHALL return identical text for the same topic and equivalent options.
 
-#### Scenario: Parity between import and help command
+#### Scenario: Parity between import and agent command
 
 - **WHEN** the `help` command renders topic `T` and a consumer calls `getPrompt("T")`
 - **THEN** the two texts are identical, including under a non-prod build target where the CLI invocation is rewritten
@@ -126,9 +128,9 @@ What the requirement actually protects is not the version number but the notice.
 
 ### Requirement: Topic membership is explicit and verified against the recipe files
 
-`PromptTopic` SHALL be derived from an explicit, hand-maintained list of exported topics rather than inferred from whatever recipe files are present, so that adding or removing a `help/*.txt` file cannot silently change the public API. Recipe files deliberately withheld from the export SHALL be recorded in an explicit internal-topics list.
+`PromptTopic` SHALL be derived from an explicit, hand-maintained list of exported topics rather than inferred from whatever recipe files are present, so that adding or removing an `agent/*.txt` file cannot silently change the public API. Recipe files deliberately withheld from the export SHALL be recorded in an explicit internal-topics list.
 
-An automated check SHALL assert that the set of canonical `help/*.txt` topics on disk is exactly the union of the exported topics and the internal-topics list, failing when the two diverge in either direction.
+An automated check SHALL assert that the set of canonical `agent/*.txt` topics on disk is exactly the union of the exported topics and the internal-topics list, failing when the two diverge in either direction.
 
 #### Scenario: A new recipe file is added without being classified
 
@@ -162,4 +164,3 @@ A consumer that can decide a rule belongs to an engine must be able to reach the
 
 - **WHEN** a consumer imports `TOPICS`
 - **THEN** it SHALL NOT contain `static` or `engine-selection`, neither of which names a recipe any more
-

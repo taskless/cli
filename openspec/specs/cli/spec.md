@@ -31,7 +31,7 @@ The package SHALL declare a `bin` field in `package.json` pointing to the built 
 
 ### Requirement: CLI builds with Vite
 
-The CLI SHALL use Vite in library mode to produce a single bundled ESM output file. The build configuration SHALL live in `packages/cli/vite.config.ts`. The Vite build SHALL embed skills from `skills/`, commands from `commands/taskless/`, and help text files from `packages/cli/src/help/` via `import.meta.glob` with raw file imports. The build SHALL assert that every embedded skill's `metadata.version` matches the CLI's `package.json` version, failing with an error if any mismatch is detected.
+The CLI SHALL use Vite in library mode to produce a single bundled ESM output file. The build configuration SHALL live in `packages/cli/vite.config.ts`. The Vite build SHALL embed skills from `skills/`, commands from `commands/taskless/`, and agent recipe files from `packages/cli/src/agent/` via `import.meta.glob` with raw file imports. The build SHALL assert that every embedded skill's `metadata.version` matches the CLI's `package.json` version, failing with an error if any mismatch is detected.
 
 #### Scenario: Build produces executable output
 
@@ -48,10 +48,10 @@ The CLI SHALL use Vite in library mode to produce a single bundled ESM output fi
 - **WHEN** `pnpm build` is run in `packages/cli/`
 - **THEN** every `.md` file under `commands/taskless/` at the repo root SHALL be embedded in the output bundle
 
-#### Scenario: Build embeds help text files
+#### Scenario: Build embeds agent recipe files
 
 - **WHEN** `pnpm build` is run in `packages/cli/`
-- **THEN** every `.txt` file under `packages/cli/src/help/` SHALL be embedded in the output bundle
+- **THEN** every `.txt` file under `packages/cli/src/agent/` SHALL be embedded in the output bundle
 
 #### Scenario: Build fails on version mismatch
 
@@ -69,12 +69,12 @@ The CLI SHALL have a `packages/cli/tsconfig.json` that extends `../../tsconfig.b
 
 ### Requirement: CLI stub entry point
 
-The CLI entry point SHALL use citty to define a main command with subcommand support and a global `-d` (alias `--dir`) argument that sets the working directory, a global `--json` boolean argument for machine-readable output, and a global `--schema` boolean argument for printing JSON Schema definitions. When invoked with no arguments, the CLI SHALL display help text listing available subcommands. The CLI SHALL externalize Node.js built-in modules and bundle all other dependencies. The `check` subcommand, the `auth` subcommand group, the `rules` subcommand group, and the `help` subcommand SHALL be registered alongside existing subcommands. The `update-engine` subcommand SHALL NOT be registered.
+The CLI entry point SHALL use citty to define a main command with subcommand support and a global `-d` (alias `--dir`) argument that sets the working directory, a global `--json` boolean argument for machine-readable output, and a global `--schema` boolean argument for printing JSON Schema definitions. When invoked with no arguments, the CLI SHALL display help text listing available subcommands. The CLI SHALL externalize Node.js built-in modules and bundle all other dependencies. The `check` subcommand, the `auth` subcommand group, the `rules` subcommand group, and the `agent` subcommand SHALL be registered alongside existing subcommands. The `update-engine` subcommand SHALL NOT be registered.
 
 #### Scenario: Running the CLI with no arguments shows help
 
 - **WHEN** the CLI is executed with no arguments
-- **THEN** it SHALL print help text to stdout listing available subcommands including `help`
+- **THEN** it SHALL print help text to stdout listing available subcommands including `agent`
 - **AND** the help text SHALL NOT list `update-engine`
 
 #### Scenario: Running the CLI with an unknown subcommand shows help
@@ -151,8 +151,8 @@ The CLI entry point SHALL use citty to define a main command with subcommand sup
 
 #### Scenario: Help subcommand is registered
 
-- **WHEN** a user runs `taskless help`
-- **THEN** the CLI SHALL route to the help subcommand handler
+- **WHEN** a user runs `taskless agent`
+- **THEN** the CLI SHALL route to the `agent` subcommand handler
 
 ### Requirement: CLI manages .taskless/.gitignore
 

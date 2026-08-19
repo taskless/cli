@@ -170,7 +170,7 @@ The API calls for rule generation (`POST /cli/api/request` and `GET /cli/api/req
 
 ### Requirement: Rules improve has an agent recipe
 
-`taskless agent improve-rule` SHALL return the recipe per `cli-help` requirements. The recipe file is `improve-rule.txt`, with an `improve-rule.anonymous.txt` variant for the local-only flow.
+`taskless agent improve-rule` SHALL return the recipe per `cli-agent` requirements. The recipe file is `improve-rule.txt`, with an `improve-rule.anonymous.txt` variant for the local-only flow.
 
 #### Scenario: The recipe resolves by its single-token name
 

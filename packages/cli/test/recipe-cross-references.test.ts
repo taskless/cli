@@ -14,14 +14,14 @@ import { describe, expect, it } from "vitest";
  * imports, and a prose cross-reference is not one, so there is no structured
  * answer to ask it for.
  */
-const helpDirectory = resolve(import.meta.dirname, "../src/help");
+const recipeDirectory = resolve(import.meta.dirname, "../src/agent");
 
 async function recipeFiles(): Promise<string[]> {
-  const entries = await readdir(helpDirectory);
+  const entries = await readdir(recipeDirectory);
   return entries.filter((entry) => entry.endsWith(".txt")).toSorted();
 }
 
-/** Topic names that resolve, i.e. `<topic>.txt` exists in the help directory. */
+/** Topic names that resolve, i.e. `<topic>.txt` exists in the recipe directory. */
 async function embeddedTopics(): Promise<Set<string>> {
   const files = await recipeFiles();
   return new Set(
@@ -35,7 +35,7 @@ describe("shipped recipes name only commands that exist", () => {
   it("contains no reference to the former `taskless help` command", async () => {
     const offenders: string[] = [];
     for (const file of await recipeFiles()) {
-      const source = await readFile(join(helpDirectory, file), "utf8");
+      const source = await readFile(join(recipeDirectory, file), "utf8");
       for (const [index, line] of source.split("\n").entries()) {
         if (line.includes("taskless help")) {
           offenders.push(`${file}:${String(index + 1)}: ${line.trim()}`);
@@ -52,7 +52,7 @@ describe("shipped recipes name only commands that exist", () => {
     const dangling: string[] = [];
 
     for (const file of await recipeFiles()) {
-      const source = await readFile(join(helpDirectory, file), "utf8");
+      const source = await readFile(join(recipeDirectory, file), "utf8");
       for (const [index, line] of source.split("\n").entries()) {
         // `taskless agent <topic>`, however it is punctuated around.
         for (const match of line.matchAll(/taskless agent ([a-z][a-z-]*)/g)) {
@@ -73,7 +73,7 @@ describe("shipped recipes name only commands that exist", () => {
   it("opens each recipe with a header naming its own topic", async () => {
     const mismatched: string[] = [];
     for (const file of await recipeFiles()) {
-      const source = await readFile(join(helpDirectory, file), "utf8");
+      const source = await readFile(join(recipeDirectory, file), "utf8");
       const topic = file.replace(/(\.anonymous)?\.txt$/, "");
       const firstLine = source.split("\n")[0] ?? "";
       if (!firstLine.startsWith(`# Topic: ${topic}`)) {

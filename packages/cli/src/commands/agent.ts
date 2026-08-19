@@ -75,13 +75,11 @@ export function createAgentCommand(subCommands: SubCommandsDef) {
       const telemetry = await getTelemetry(cwd);
 
       if (positionals.length === 0) {
-        // cli_help with the index marker: agent fetched the topic list.
-        // The event name stays `cli_help` even though the command is now
-        // `agent`: dashboards key on it, it is not part of any agent-facing
-        // contract, and renaming it in the same change that breaks the
-        // `TOPICS` export would take those dashboards dark for a reason
-        // unrelated to this change.
-        telemetry.capture("cli_help", { topic: "(index)" });
+        // cli_agent with the index marker: agent fetched the topic list.
+        // The event was renamed from `cli_help` to match the command; the
+        // rename is a hard cut with no dual-emit, so PostHog dashboards keyed
+        // on the old name need updating.
+        telemetry.capture("cli_agent", { topic: "(index)" });
 
         console.log("Taskless CLI\n");
         console.log(
@@ -131,7 +129,7 @@ export function createAgentCommand(subCommands: SubCommandsDef) {
       // A single hyphenated token is a literal string to copy, so extra
       // positionals are an error rather than something to guess at.
       if (positionals.length > 1) {
-        telemetry.capture("cli_help", { topic: positionals.join(" ") });
+        telemetry.capture("cli_agent", { topic: positionals.join(" ") });
         console.error(`Too many arguments: ${positionals.join(" ")}`);
         console.error(
           "A topic is a single token. Run `taskless agent` for the topic index."
@@ -149,13 +147,13 @@ export function createAgentCommand(subCommands: SubCommandsDef) {
       const recipe = getRecipe(key, { anonymous: args.anonymous });
 
       if (recipe) {
-        // cli_help: agent fetched a specific recipe (intent signal). The topic
+        // cli_agent: agent fetched a specific recipe (intent signal). The topic
         // is the served topic; filtering on it replaces the old per-topic events.
-        telemetry.capture("cli_help", { topic: key });
+        telemetry.capture("cli_agent", { topic: key });
         console.log(recipe.trimEnd());
       } else {
-        // cli_help for an unknown topic — still the attempted topic string.
-        telemetry.capture("cli_help", { topic: key });
+        // cli_agent for an unknown topic — still the attempted topic string.
+        telemetry.capture("cli_agent", { topic: key });
         console.error(`Unknown command: ${key}`);
         console.error("Run `taskless agent` for available topics.");
         process.exitCode = 1;

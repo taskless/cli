@@ -84,8 +84,8 @@ The body SHALL be no more than 80 lines of markdown to keep the always-loaded su
 #### Scenario: Skill body lists available topics including onboard
 
 - **WHEN** the skill body is read by an agent
-- **THEN** it SHALL include a table or list mapping user intents to the corresponding `tskl help <topic>` invocations
-- **AND** the table SHALL include a row for `onboard` mapped to `npx @taskless/cli help onboard` (or equivalent invocation of the onboard topic)
+- **THEN** it SHALL include a table or list mapping user intents to the corresponding `tskl agent <topic>` invocations
+- **AND** the table SHALL include a row for `onboard` mapped to `npx @taskless/cli agent onboard` (or equivalent invocation of the onboard topic)
 
 #### Scenario: Skill body checks for .taskless directory
 

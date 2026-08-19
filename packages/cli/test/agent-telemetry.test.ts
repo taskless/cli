@@ -30,7 +30,7 @@ async function runAgent(rawArguments: string[]): Promise<void> {
   });
 }
 
-describe("agent emits cli_help { topic }", () => {
+describe("agent emits cli_agent { topic }", () => {
   let logSpy: ReturnType<typeof vi.spyOn>;
   let errorSpy: ReturnType<typeof vi.spyOn>;
 
@@ -47,17 +47,17 @@ describe("agent emits cli_help { topic }", () => {
 
   it("captures the served topic", async () => {
     await runAgent(["agent", "rule-create"]);
-    expect(capture).toHaveBeenCalledWith("cli_help", { topic: "rule-create" });
+    expect(capture).toHaveBeenCalledWith("cli_agent", { topic: "rule-create" });
   });
 
   it("captures the index marker for no topic", async () => {
     await runAgent(["agent"]);
-    expect(capture).toHaveBeenCalledWith("cli_help", { topic: "(index)" });
+    expect(capture).toHaveBeenCalledWith("cli_agent", { topic: "(index)" });
   });
 
   it("captures the attempted topic for an unknown topic", async () => {
     await runAgent(["agent", "nope"]);
-    expect(capture).toHaveBeenCalledWith("cli_help", { topic: "nope" });
+    expect(capture).toHaveBeenCalledWith("cli_agent", { topic: "nope" });
   });
 
   // The rejected invocation is still an intent signal — it says an agent
@@ -65,13 +65,13 @@ describe("agent emits cli_help { topic }", () => {
   // under the same event with the attempted words joined for readability.
   it("captures the attempted words when too many positionals are given", async () => {
     await runAgent(["agent", "rule", "create"]);
-    expect(capture).toHaveBeenCalledWith("cli_help", { topic: "rule create" });
+    expect(capture).toHaveBeenCalledWith("cli_agent", { topic: "rule create" });
   });
 });
 
-// Rather than asserting "no help_* event" inside every behavioral test above,
-// prove it once at the source: after this change lands, no legacy help_* event
-// name is emitted anywhere in the CLI.
+// Rather than asserting "no legacy event" inside every behavioral test above,
+// prove it once at the source: no legacy help_* event name, and no `cli_help`
+// capture, remains anywhere in the CLI.
 function collectSourceFiles(directory: string): string[] {
   const files: string[] = [];
   for (const entry of readdirSync(directory, { withFileTypes: true })) {
@@ -82,12 +82,14 @@ function collectSourceFiles(directory: string): string[] {
   return files;
 }
 
-describe("no legacy help_* event remains in the CLI source", () => {
-  it("emits no help_* event-name literal under src/", () => {
+describe("no legacy help telemetry event remains in the CLI source", () => {
+  it("emits no help_* or cli_help event name under src/", () => {
     const sourceDirectory = resolve(import.meta.dirname, "../src");
     // Match a string/template literal that begins with help_ (e.g. "help_index",
-    // "help_unknown", or a `help_${...}` topic event).
-    const legacyHelpEvent = /["`]help_/;
+    // "help_unknown", or a `help_${...}` topic event), or a capture call still
+    // using the pre-rename `cli_help` name. The `cli_help` arm is anchored to
+    // the capture call so prose explaining the rename does not trip it.
+    const legacyHelpEvent = /["`]help_|capture\(\s*["'`]cli_help/;
     const offenders = collectSourceFiles(sourceDirectory).filter((file) =>
       legacyHelpEvent.test(readFileSync(file, "utf8"))
     );

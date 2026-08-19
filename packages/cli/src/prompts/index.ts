@@ -20,7 +20,7 @@ import { getRecipe, type RecipeOptions } from "./recipes.js";
 /**
  * Topics exported as public API. Hand-maintained rather than derived from the
  * recipe files, because an exported name is a promise held for a major version
- * and a new `help/*.txt` must not be able to publish one by existing. The
+ * and a new `agent/*.txt` must not be able to publish one by existing. The
  * completeness check in `test/prompts.test.ts` asserts this list plus
  * {@link INTERNAL_TOPICS} accounts for every canonical recipe on disk.
  *
@@ -94,7 +94,7 @@ export function getPrompt(topic: PromptTopic, options?: PromptOptions): string {
   const rendered = getRecipe(topic, options);
   if (rendered === undefined) {
     throw new Error(
-      `No recipe is embedded for prompt topic "${topic}". This is a packaging fault: TOPICS lists a topic with no help/${topic}.txt behind it.`
+      `No recipe is embedded for prompt topic "${topic}". This is a packaging fault: TOPICS lists a topic with no agent/${topic}.txt behind it.`
     );
   }
   return rendered;

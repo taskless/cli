@@ -1,12 +1,14 @@
-# CLI Help
+# CLI Agent
 
 ## Purpose
 
-TBD — Defines the help subcommand for the `@taskless/cli` package, including help text display, embedding, and formatting.
-## Requirements
-### Requirement: Help subcommand displays rich help text for commands
+Defines the `agent` subcommand for the `@taskless/cli` package, including recipe display, embedding, and formatting.
 
-The CLI SHALL support an `agent` subcommand that accepts at most one positional argument identifying a topic AND an optional `--anonymous` boolean flag. Topics SHALL be addressed by a single token; the subcommand SHALL NOT join multiple positionals into a topic key. When a topic is provided, the subcommand SHALL look up a matching help text file embedded at build time using the following resolution order:
+## Requirements
+
+### Requirement: Agent subcommand serves recipes for commands
+
+The CLI SHALL support an `agent` subcommand that accepts at most one positional argument identifying a topic AND an optional `--anonymous` boolean flag. Topics SHALL be addressed by a single token; the subcommand SHALL NOT join multiple positionals into a topic key. When a topic is provided, the subcommand SHALL look up a matching recipe file embedded at build time using the following resolution order:
 
 1. If `--anonymous` is set AND `<topic>.anonymous.txt` exists in the embedded map, return that file.
 2. Otherwise, return `<topic>.txt`.
@@ -37,23 +39,23 @@ The subcommand is named for its reader. It serves agents fetching a procedure, n
 - **WHEN** a user runs `taskless help check`
 - **THEN** the CLI SHALL NOT print recipe text for `check`
 
-### Requirement: Help text files are embedded at build time
+### Requirement: Recipe files are embedded at build time
 
-Help text files SHALL be located at `packages/cli/src/help/` as plain `.txt` files. The Vite build SHALL embed these files into the CLI bundle via `import.meta.glob` with raw imports. A help file SHALL exist for every registered command and subcommand.
+Recipe files SHALL be located at `packages/cli/src/agent/` as plain `.txt` files. The Vite build SHALL embed these files into the CLI bundle via `import.meta.glob` with raw imports. A recipe file SHALL exist for every registered command and subcommand.
 
-#### Scenario: Help files are available without filesystem access
+#### Scenario: Recipe files are available without filesystem access
 
-- **WHEN** the CLI is invoked via `npx @taskless/cli help check`
-- **THEN** the help text SHALL be served from the embedded bundle without reading the filesystem
+- **WHEN** the CLI is invoked via `npx @taskless/cli agent check`
+- **THEN** the recipe SHALL be served from the embedded bundle without reading the filesystem
 
-#### Scenario: Help file naming convention
+#### Scenario: Recipe file naming convention
 
-- **WHEN** a help file is created for the `rule create` subcommand
-- **THEN** the file SHALL be named `rule-create.txt` in `packages/cli/src/help/`
+- **WHEN** a recipe file is created for the `rule create` subcommand
+- **THEN** the file SHALL be named `rule-create.txt` in `packages/cli/src/agent/`
 
-### Requirement: Help text files follow a consistent format
+### Requirement: Recipe files follow a consistent format
 
-Every help text file at `packages/cli/src/help/<topic>.txt` SHALL follow the canonical recipe template: a single-line header `# Topic: <name>     (CLI v%(CLI_VERSION)s / topic v<n>)`, followed by `## Goal`, `## Preconditions`, `## Steps`, optional `## Input schema` (for recipes that take `--from`), `## Errors`, and `## See Also` sections in that order. Recipe templates SHALL use sprintf-js `%(KEY)s` named-argument placeholders for all substitution. The header SHALL embed `%(CLI_VERSION)s` for the CLI version. Topics that document a `--from` input SHALL embed `%(INPUT_SCHEMA)s` inside the `## Input schema` fenced code block. The topic version integer in the header SHALL be a literal value maintained by the recipe author and bumped when the recipe changes meaningfully.
+Every recipe file at `packages/cli/src/agent/<topic>.txt` SHALL follow the canonical recipe template: a single-line header `# Topic: <name>     (CLI v%(CLI_VERSION)s / topic v<n>)`, followed by `## Goal`, `## Preconditions`, `## Steps`, optional `## Input schema` (for recipes that take `--from`), `## Errors`, and `## See Also` sections in that order. Recipe templates SHALL use sprintf-js `%(KEY)s` named-argument placeholders for all substitution. The header SHALL embed `%(CLI_VERSION)s` for the CLI version. Topics that document a `--from` input SHALL embed `%(INPUT_SCHEMA)s` inside the `## Input schema` fenced code block. The topic version integer in the header SHALL be a literal value maintained by the recipe author and bumped when the recipe changes meaningfully.
 
 #### Scenario: Recipe contains all template sections
 
@@ -100,13 +102,13 @@ Recipe authors SHALL escape any literal `%` character in recipe content as `%%` 
 
 #### Scenario: No legacy placeholder syntax remains in recipes
 
-- **WHEN** any `<topic>.txt` file under `packages/cli/src/help/` is read
+- **WHEN** any `<topic>.txt` file under `packages/cli/src/agent/` is read
 - **THEN** it SHALL NOT contain a `{{KEY}}` mustache-style placeholder
 - **AND** all substitution SHALL be expressed as `%(KEY)s` sprintf-js named arguments
 
-### Requirement: onboard topic is registered in the help index
+### Requirement: onboard topic is registered in the agent index
 
-A help topic `onboard` SHALL be registered. The CLI SHALL embed `packages/cli/src/help/onboard.txt` at build time via the existing `import.meta.glob` mechanism. `taskless agent onboard` SHALL print the contents of `onboard.txt`. The topic SHALL appear in the output of `taskless agent` (the index) with a one-line summary describing it as the post-install rule-discovery flow.
+An agent topic `onboard` SHALL be registered. The CLI SHALL embed `packages/cli/src/agent/onboard.txt` at build time via the existing `import.meta.glob` mechanism. `taskless agent onboard` SHALL print the contents of `onboard.txt`. The topic SHALL appear in the output of `taskless agent` (the index) with a one-line summary describing it as the post-install rule-discovery flow.
 
 #### Scenario: The onboard topic returns the recipe
 
@@ -120,20 +122,20 @@ A help topic `onboard` SHALL be registered. The CLI SHALL embed `packages/cli/sr
 - **THEN** the topic index SHALL include a row for `onboard`
 - **AND** the row SHALL describe it as the post-install rule-discovery flow
 
-### Requirement: help_onboard intent telemetry
+### Requirement: onboard intent telemetry
 
-Fetching the `onboard` topic SHALL emit the command's single intent event, `cli_help`, carrying `onboard` as its `topic` property.
+Fetching the `onboard` topic SHALL emit the command's single intent event, `cli_agent`, carrying `onboard` as its `topic` property.
 
 Per-topic event names (`help_onboard` and siblings) are not emitted. One event with a topic property is filterable the same way and does not grow the event vocabulary every time a topic is added or renamed, which this change would otherwise have to do for every rename below.
 
 #### Scenario: Fetching onboard captures its topic
 
 - **WHEN** an agent runs `taskless agent onboard`
-- **THEN** PostHog SHALL receive a `cli_help` event whose `topic` property is `onboard`
+- **THEN** PostHog SHALL receive a `cli_agent` event whose `topic` property is `onboard`
 
-### Requirement: Routing topics are registered in the help system
+### Requirement: Routing topics are registered in the agent system
 
-The help system SHALL register `route` and each `create-*-rule` recipe as embedded topics, retrievable via `taskless agent <topic>` and listed in the topic index, consistent with the existing topic embedding and format requirements.
+The agent system SHALL register `route` and each `create-*-rule` recipe as embedded topics, retrievable via `taskless agent <topic>` and listed in the topic index, consistent with the existing topic embedding and format requirements.
 
 `existing`, `static`, and `remote` are no longer topics. `route` applies the criterion they carried and names a concrete destination, so an agent reaches an authoring recipe in one fetch.
 
@@ -156,16 +158,16 @@ The help system SHALL register `route` and each `create-*-rule` recipe as embedd
 
 ### Requirement: Routing topics emit intent telemetry
 
-Fetching a routing recipe SHALL emit the command's single intent event, `cli_help`, carrying the served topic as its `topic` property.
+Fetching a routing recipe SHALL emit the command's single intent event, `cli_agent`, carrying the served topic as its `topic` property.
 
 #### Scenario: Intent is captured for routing recipes
 
 - **WHEN** the agent fetches `route` or any `create-*-rule` topic
-- **THEN** the command SHALL capture a `cli_help` event whose `topic` property is that topic name
+- **THEN** the command SHALL capture a `cli_agent` event whose `topic` property is that topic name
 
 ### Requirement: Anonymous variant lookup uses a compile-time map
 
-The help command SHALL construct, at build time, a Set of topic names that have a corresponding `<topic>.anonymous.txt` file. Lookup at runtime SHALL be O(1). The Set SHALL be derived from `import.meta.glob` matching `*.anonymous.txt` in the help directory.
+The `agent` command SHALL construct, at build time, a Set of topic names that have a corresponding `<topic>.anonymous.txt` file. Lookup at runtime SHALL be O(1). The Set SHALL be derived from `import.meta.glob` matching `*.anonymous.txt` in the recipe directory.
 
 #### Scenario: Topics with variants are detected at build time
 
@@ -195,9 +197,9 @@ For every recipe topic that documents a CLI command accepting `--from <file>`, t
 - **WHEN** a user runs `taskless agent improve-rule`
 - **THEN** the output SHALL contain an `## Input schema` section with the rule-improve JSON Schema
 
-### Requirement: Help command emits intent telemetry
+### Requirement: Agent command emits intent telemetry
 
-The `agent` command SHALL emit one PostHog event, `cli_help`, on every invocation, carrying a `topic` property:
+The `agent` command SHALL emit one PostHog event, `cli_agent`, on every invocation, carrying a `topic` property:
 
 - the served topic when a positional resolves to a known topic
 - the attempted topic string when it resolves to none
@@ -207,12 +209,12 @@ The `agent` command SHALL emit one PostHog event, `cli_help`, on every invocatio
 #### Scenario: Topic fetch captures the topic
 
 - **WHEN** an agent runs `taskless agent create-sg-rule`
-- **THEN** PostHog SHALL receive a `cli_help` event whose `topic` property is `create-sg-rule`
+- **THEN** PostHog SHALL receive a `cli_agent` event whose `topic` property is `create-sg-rule`
 
 #### Scenario: Index fetch captures the index
 
 - **WHEN** an agent runs `taskless agent` (no args)
-- **THEN** PostHog SHALL receive a `cli_help` event whose `topic` property is `(index)`
+- **THEN** PostHog SHALL receive a `cli_agent` event whose `topic` property is `(index)`
 
 ### Requirement: Routing recipes name a destination, not a second decision
 
@@ -240,4 +242,3 @@ No embedded recipe SHALL contain the string `taskless help`. Recipes cross-refer
 
 - **WHEN** the embedded recipe set is inspected
 - **THEN** no recipe SHALL contain `taskless help`
-

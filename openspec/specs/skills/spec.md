@@ -10,7 +10,7 @@ Defines the structure, conventions, and distribution model for Taskless skills, 
 
 The single skill SHALL be defined at `skills/taskless/SKILL.md` with YAML frontmatter (`name`, `description`, `metadata`) followed by markdown instructions. The `name` field SHALL be exactly `taskless` (no per-task prefix). The `metadata` field SHALL include `author`, `version`, and `commandName: tskl` keys. The `version` SHALL be used for staleness detection when the skill is installed into target repositories.
 
-The skill body SHALL begin by instructing the agent that it does NOT have step-by-step instructions for any Taskless action and that recipes must be fetched via `npx @taskless/cli agent <topic>` before proceeding. The body SHALL NOT contain inline step-by-step recipes for any individual task — those live in `packages/cli/src/help/<topic>.txt` files served by the help subcommand.
+The skill body SHALL begin by instructing the agent that it does NOT have step-by-step instructions for any Taskless action and that recipes must be fetched via `npx @taskless/cli agent <topic>` before proceeding. The body SHALL NOT contain inline step-by-step recipes for any individual task — those live in `packages/cli/src/agent/<topic>.txt` files served by the `agent` subcommand.
 
 #### Scenario: Skill directory contains valid SKILL.md
 
@@ -20,7 +20,7 @@ The skill body SHALL begin by instructing the agent that it does NOT have step-b
 - **AND** the `metadata` field SHALL include `author: taskless`, `version` (string matching CLI package version), and `commandName: tskl`
 - **AND** the markdown body SHALL contain the router instructions described above (no per-task recipes inline)
 
-#### Scenario: Skill body delegates to CLI help
+#### Scenario: Skill body delegates to the CLI agent command
 
 - **WHEN** the skill body is read
 - **THEN** it SHALL instruct the agent to fetch the canonical recipe via `npx @taskless/cli agent <topic>` before performing any Taskless action
