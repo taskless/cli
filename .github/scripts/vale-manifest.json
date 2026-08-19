@@ -12,7 +12,7 @@
     "the archive is verified before anything is unpacked from it.",
     "",
     "`asset` is a template; {version} is replaced with valeVersion. The detect",
-    "phase of .github/workflows/vale-binaries.yml rewrites valeVersion and every",
+    "phase of .github/workflows/release-vale.yml rewrites valeVersion and every",
     "sha256 from upstream's checksums file, and leaves the templates alone."
   ],
   "valeVersion": "3.17.1",
