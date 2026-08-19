@@ -80,7 +80,7 @@
 #
 # Action refs are pinned to commit SHAs; the trailing comment records the tag.
 
-name: Vale Binaries
+name: Release Vale
 
 on:
   # Detect only. Weekly is a deliberate cadence choice: a Vale security release
@@ -111,7 +111,7 @@ on:
 permissions: {}
 
 # One at a time, so a scheduled detect cannot race a publish.
-concurrency: vale-binaries
+concurrency: release-vale
 
 jobs:
   detect:
