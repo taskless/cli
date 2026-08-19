@@ -318,6 +318,54 @@ describe("verifyRule", () => {
       expect.stringContaining("message")
     );
   });
+
+  it("reads the counts off the summary line, not off echoed fixture text", async () => {
+    // Regression for #112. `ast-grep test` echoes the source of a FAILING case
+    // into its output, and the old parser took the first `(\d+)\s+passed`
+    // anywhere in stdout+stderr — so this fixture made a run whose summary says
+    // `0 passed; 1 failed;` report 7 passed, 0 failed. Wrong counts rather than
+    // a false pass (validity comes from the exit code), but the counts are what
+    // `improve-rule` feeds back to an agent iterating on the rule.
+    const rulesDirectory = join(temporaryDirectory, ".taskless", "sg", "rules");
+    const testsDirectory = join(
+      temporaryDirectory,
+      ".taskless",
+      "sg",
+      "rule-tests"
+    );
+    await mkdir(rulesDirectory, { recursive: true });
+    await mkdir(testsDirectory, { recursive: true });
+
+    await writeFile(
+      join(rulesDirectory, "no-eval.yml"),
+      stringify({
+        id: "no-eval",
+        language: "typescript",
+        severity: "error",
+        message: "Do not use eval()",
+        rule: { pattern: "eval($$$)" },
+      }),
+      "utf8"
+    );
+
+    // The invalid case contains no `eval(...)`, so the rule does not fire and
+    // ast-grep echoes it back as a failure — carrying its numbers with it.
+    await writeFile(
+      join(testsDirectory, "no-eval-20260330-test.yml"),
+      stringify({
+        id: "no-eval",
+        valid: [],
+        invalid: ["const msg = '7 passed; 0 failed';"],
+      }),
+      "utf8"
+    );
+
+    const result = await verifyRule(temporaryDirectory, "no-eval");
+
+    expect(result.tests.valid).toBe(false);
+    expect(result.tests.passed).toBe(0);
+    expect(result.tests.failed).toBe(1);
+  });
 });
 
 describe("getSchemaPayload", () => {
