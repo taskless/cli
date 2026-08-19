@@ -13,6 +13,18 @@ name: Claude Code Review (on demand)
 #   - no `contents: write`, so it cannot push commits;
 #   - fires ONLY on a maintainer's comment (author_association gate), so an
 #     outside contributor on a fork can never trigger it.
+#
+# The checkout MUST be the PR's own ref, never the default one. Neither
+# `issue_comment` nor `pull_request_review_comment` is a PR event, so
+# actions/checkout with no `ref:` lands on the DEFAULT BRANCH — the review then
+# reads `main` while claiming to review the PR. Files a PR adds or renames are
+# simply absent, and nothing reports red (the job still succeeds). So the PR
+# number is resolved FIRST and the checkout is pinned to it. `refs/pull/N/head`
+# (not `/merge`): it is the tree the author actually pushed, it matches what
+# `gh pr diff` and the inline-comment line anchors refer to, and unlike `/merge`
+# it still exists when the PR has conflicts — a review is exactly what you want
+# on a conflicted PR. `contents: read` is all this needs; do NOT "fix" a
+# checkout problem by reaching for `pull_request_target` or extra permissions.
 on:
   issue_comment:
     types: [created]
@@ -38,13 +50,11 @@ jobs:
       id-token: write
 
     steps:
-      # Note: claude-code-action adds its own 👀 reaction to the triggering
-      # comment, so there's no explicit reaction step here.
-      - name: Checkout repository
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 1
-
+      # Resolved BEFORE checkout: the checkout ref depends on it. The PR number
+      # lives in a different payload field per event — `issue.number` on
+      # issue_comment, `pull_request.number` on pull_request_review_comment —
+      # and each is absent on the other event, so branch on `event_name` rather
+      # than relying on a `||` fallback over a null.
       - name: Prepare review context
         id: prep
         run: |
@@ -60,6 +70,17 @@ jobs:
             } >> "$GITHUB_OUTPUT"
           fi
 
+      # `fetch-depth: 1` is enough: the prompt forbids running the project's
+      # build/lint/test, and every allowed tool reads the diff through `gh`
+      # (the API), not through local history.
+      - name: Checkout PR head
+        uses: actions/checkout@v4
+        with:
+          ref: refs/pull/${{ steps.prep.outputs.pr }}/head
+          fetch-depth: 1
+
+      # Note: claude-code-action adds its own 👀 reaction to the triggering
+      # comment, so there's no explicit reaction step here.
       - name: Run Claude Code Review
         uses: anthropics/claude-code-action@v1
         with:
