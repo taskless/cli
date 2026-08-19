@@ -56,6 +56,9 @@ $ npx @taskless/cli check
   example.cjs:7:10
   error[no-eval] Avoid eval. It executes whatever string it's handed.
   > eval("(" + raw + ")")
+  note: `eval` runs arbitrary code with the caller's permissions. Parse the value
+instead: `JSON.parse` for JSON, a real parser for anything else.
+
 
   example.html:7:11
   warning[no-simply] Avoid 'simply'. It tells the reader the work was easy.
@@ -66,6 +69,21 @@ $ npx @taskless/cli check
 
 One finding from each engine, merged into one report. The exit code follows
 severity, so this run exits 1 on the `error`.
+
+## Running it yourself, in this repo
+
+`npx @taskless/cli` fetches the published CLI. To run the one in this
+checkout, build it first and then call it from here:
+
+```
+pnpm --filter @taskless/cli build     # from the repo root
+cd example
+../packages/cli/dist/index.js check
+```
+
+Substitute that path for `npx @taskless/cli` in every command below.
+Note that `check` writes the two assembled configs into `.taskless/`, so
+expect them to appear after the first run. Both are gitignored.
 
 ## Checking the rules themselves
 

@@ -29,6 +29,15 @@ export interface RuleTestResult {
   errors: string[];
   /** Absent when `verify` failed and the tests never ran. */
   ran: boolean;
+  /**
+   * Something the engine said about its own configuration, as opposed to about
+   * the rule. Vale reports a misplaced `.vale.ini` assignment this way: it
+   * exits zero and finds nothing, so the run looks clean precisely when the
+   * rule was never enabled. Carried separately from `errors` because it does
+   * not make the result a failure — and surfaced even on a pass, since a pass
+   * is the case it exists for.
+   */
+  notice?: string;
 }
 
 async function readYaml(path: string): Promise<unknown> {
@@ -245,7 +254,14 @@ export async function testOneRule(
     for (const file of result.unexpectedFindings) {
       errors.push(`pass fixture wrongly fired: ${file}`);
     }
-    return { engine, ruleId, ok: result.passed, errors, ran: true };
+    return {
+      engine,
+      ruleId,
+      ok: result.passed,
+      errors,
+      ran: true,
+      ...(result.notice === undefined ? {} : { notice: result.notice }),
+    };
   }
 
   // Runtime rules execute code, so their tests run through the harness under

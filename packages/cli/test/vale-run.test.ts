@@ -40,7 +40,9 @@ function makeProject(
   mkdirSync(join(cwd, ".taskless"), { recursive: true });
   writeFileSync(join(cwd, ".taskless", ".vale.ini"), config);
   for (const [name, body] of Object.entries(rules)) {
-    mkdirSync(join(cwd, ".taskless", "rules", "vale", name), { recursive: true });
+    mkdirSync(join(cwd, ".taskless", "rules", "vale", name), {
+      recursive: true,
+    });
     writeFileSync(
       join(cwd, ".taskless", "rules", "vale", name, `${name}.yml`),
       body

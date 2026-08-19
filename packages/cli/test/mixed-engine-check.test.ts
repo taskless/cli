@@ -279,32 +279,40 @@ describe("check over a project with both engines", () => {
       }
     });
 
-    // The pairing that keeps the section-less scaffold safe. Dropping `[*]`
-    // from the scaffold means scope is the author's decision, which is right,
-    // and it also means the first rule someone writes can land its assignment
-    // above every matcher. Vale does not error on that: it warns on stderr,
+    // The pairing that keeps a per-rule config honest. Scope is the author's
+    // decision, which means the assignment can land above every matcher in
+    // their own `.vale.ini`. Vale does not error on that: it warns on stderr,
     // exits zero, and returns a well-formed empty result, which is
     // indistinguishable from a clean run. Surfacing the warning is the only
     // thing standing between that mistake and a silently disabled rule.
+    //
+    // `verify` catches the coarser version of this (no matcher at all, or the
+    // check never enabled) — see `verify-test-commands.test.ts`. It cannot
+    // catch a misplaced assignment, because the file does contain a matcher
+    // and does name the check. Only Vale knows, and only at run time.
     it("surfaces Vale's W101 when an assignment sits outside every matcher", async () => {
       const scaffold = await mkdtemp(join(tmpdir(), "taskless-w101-"));
       try {
         const init = await runCli(["init", "--no-interactive", "-d", scaffold]);
         expect(init.exitCode).toBe(0);
 
-        const valeDirectory = join(scaffold, ".taskless", "vale");
+        const rule = join(scaffold, ".taskless", "rules", "vale", "no-simply");
+        await mkdir(rule, { recursive: true });
         await writeFile(
-          join(valeDirectory, "rules", "no-simply.yml"),
+          join(rule, "no-simply.yml"),
           "extends: existence\nmessage: \"Avoid 'simply'\"\nlevel: warning\ntokens:\n  - simply\n"
         );
-        // The mistake: enabled, but above the first `[…]` line, so it belongs
-        // to no matcher.
-        const config = await readFile(join(valeDirectory, ".vale.ini"), "utf8");
+        // The mistake: enabled, but above the `[…]` line, so it belongs to no
+        // matcher. `verify` passes this — a matcher exists and the check is
+        // named — which is exactly why the run-time notice has to survive.
         await writeFile(
-          join(valeDirectory, ".vale.ini"),
-          `${config}\nrules.no-simply = YES\n`
+          join(rule, ".vale.ini"),
+          "no-simply.no-simply = YES\n[*.md]\ntskl) rule = no-simply\nBasedOnStyles =\n"
         );
         await writeFile(join(scaffold, "doc.md"), "Just simply do it.\n");
+
+        const verified = await runCli(["verify", "-d", scaffold, "--json"]);
+        expect(verified.exitCode).toBe(0);
 
         const { stdout, stderr, exitCode } = await runCli([
           "check",
@@ -317,49 +325,6 @@ describe("check over a project with both engines", () => {
         expect(exitCode).toBe(0);
         expect(`${stdout}${stderr}`).toContain("W101");
         expect(`${stdout}${stderr}`).toContain("no-simply");
-      } finally {
-        await rm(scaffold, { recursive: true, force: true });
-      }
-    });
-
-    // The other half: a rule file with no matcher enabling it at all. This is
-    // the state a scaffold plus a half-finished rule leaves behind, and `check`
-    // must neither report it nor fail on it — reporting would be a lie and
-    // failing would break a project mid-authoring.
-    it("reports nothing and does not fail when no matcher enables the rule", async () => {
-      const scaffold = await mkdtemp(join(tmpdir(), "taskless-unscoped-"));
-      try {
-        const init = await runCli(["init", "--no-interactive", "-d", scaffold]);
-        expect(init.exitCode).toBe(0);
-        await writeFile(
-          join(scaffold, ".taskless", "vale", "rules", "no-simply.yml"),
-          "extends: existence\nmessage: \"Avoid 'simply'\"\nlevel: warning\ntokens:\n  - simply\n"
-        );
-        await writeFile(join(scaffold, "doc.md"), "Just simply do it.\n");
-
-        const quiet = await runCli(["check", "-d", scaffold, "--json"]);
-        expect(quiet.exitCode).toBe(0);
-        expect(
-          (JSON.parse(quiet.stdout.trim()) as CheckOutput).results.filter(
-            (finding) => finding.source === "vale"
-          )
-        ).toEqual([]);
-
-        // Adding the matcher is the whole difference. Same rule, same
-        // document, now scoped.
-        const configPath = join(scaffold, ".taskless", "vale", ".vale.ini");
-        await writeFile(
-          configPath,
-          `${await readFile(configPath, "utf8")}\n[*.md]\nBasedOnStyles =\nrules.no-simply = YES\n`
-        );
-
-        const loud = await runCli(["check", "-d", scaffold, "--json"]);
-        expect(
-          (JSON.parse(loud.stdout.trim()) as CheckOutput).results.some(
-            (finding) =>
-              finding.source === "vale" && finding.ruleId === "no-simply"
-          )
-        ).toBe(true);
       } finally {
         await rm(scaffold, { recursive: true, force: true });
       }

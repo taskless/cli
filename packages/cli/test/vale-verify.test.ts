@@ -61,7 +61,9 @@ function makeProject(
   workspaces.push(cwd);
   // A rule is a directory; each `write` below creates its own.
   for (const [name, body] of Object.entries(rules)) {
-    mkdirSync(join(cwd, ".taskless", "rules", "vale", name), { recursive: true });
+    mkdirSync(join(cwd, ".taskless", "rules", "vale", name), {
+      recursive: true,
+    });
     writeFileSync(
       join(cwd, ".taskless", "rules", "vale", name, `${name}.yml`),
       body
@@ -197,9 +199,21 @@ describe("fixture buckets are flat", () => {
         },
       }
     );
-    mkdirSync(join(cwd, ".taskless", "rules", "vale", "no-simply", ".tests", "pass", "nested"), {
-      recursive: true,
-    });
+    mkdirSync(
+      join(
+        cwd,
+        ".taskless",
+        "rules",
+        "vale",
+        "no-simply",
+        ".tests",
+        "pass",
+        "nested"
+      ),
+      {
+        recursive: true,
+      }
+    );
 
     await expect(verifyValeRule(cwd, "no-simply")).rejects.toThrow(
       /fixture buckets are flat/i
@@ -419,7 +433,7 @@ describe("verifyValeRule and Vale's notice", () => {
           ruleId: "no-simply",
           severity: "warning",
           message: "Avoid 'simply'",
-          file: ".taskless/vale/rule-tests/no-simply/fail/a.md",
+          file: ".taskless/rules/vale/no-simply/.tests/fail/a.md",
           range: {
             start: { line: 1, column: 6 },
             end: { line: 1, column: 12 },
