@@ -149,7 +149,7 @@ The CLI entry point SHALL use citty to define a main command with subcommand sup
 - **WHEN** a user runs `taskless rule`
 - **THEN** the CLI SHALL route to the rule subcommand group
 
-#### Scenario: Help subcommand is registered
+#### Scenario: Agent subcommand is registered
 
 - **WHEN** a user runs `taskless agent`
 - **THEN** the CLI SHALL route to the `agent` subcommand handler
