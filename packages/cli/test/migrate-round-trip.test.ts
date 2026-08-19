@@ -265,6 +265,30 @@ describe("a current-layout project with no taskless.json", () => {
     expect(result.exitCode).toBe(1);
   });
 
+  // A `.DS_Store` beside the engine directories is not a different layout — it
+  // is a macOS project someone opened in Finder. Recognising the tree only when
+  // *every* entry is an engine directory would move a live `rules/` wholesale
+  // on the strength of that file, which is the bug, not a corner of it.
+  it("still finds its rules with a stray entry beside the engine directories", async () => {
+    await writeTree(tasklessDirectory, {
+      "rules/sg/no-eval/no-eval.yml":
+        "id: no-eval\nlanguage: typescript\nseverity: error\nmessage: Avoid eval.\nrule:\n  pattern: eval($A)\n",
+      "rules/vale/.gitkeep": "",
+      "rules/runtime/.gitkeep": "",
+      "rules/.DS_Store": "   Bud1",
+    });
+    await writeFile(join(cwd, "app.ts"), "eval(raw);\n", "utf8");
+
+    const result = await runCli(["check", "-d", cwd, "--json"]);
+
+    expect(
+      parseJson<CheckOutput>(result.stdout).results.map(
+        (finding) => `${finding.ruleId}:${finding.file}`
+      )
+    ).toContain("no-eval:app.ts");
+    expect(result.exitCode).toBe(1);
+  });
+
   it("leaves the rule where the current layout puts it", async () => {
     await writeTree(tasklessDirectory, {
       "rules/sg/no-eval/no-eval.yml":
