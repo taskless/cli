@@ -115,7 +115,7 @@ async function seedVersion4Project(): Promise<void> {
     "vale/.vale.ini":
       "StylesPath = rules\nMinAlertLevel = suggestion\n\n[*.md]\ntskl) rule = no-simply\nBasedOnStyles =\nrules.no-simply = YES\n",
     "vale/rules/no-simply.yml":
-      'extends: existence\nmessage: "Avoid \'%s\'"\nlevel: warning\nignorecase: true\ntokens:\n  - simply\n',
+      "extends: existence\nmessage: \"Avoid '%s'\"\nlevel: warning\nignorecase: true\ntokens:\n  - simply\n",
     "vale/rule-tests/no-simply/fail/bad.md": "You simply do it.\n",
     "vale/rule-tests/no-simply/pass/ok.md": "You do it.\n",
 
@@ -168,11 +168,9 @@ withVale("a version-4 project upgraded through 0005", () => {
     const result = await runCli(["verify", "-d", cwd, "--json"]);
     const report = parseJson<RuleReport>(result.stdout);
     // Engine order follows the `ENGINES` declaration, not the alphabet.
-    expect(report.rules.map((rule) => `${rule.engine}/${rule.ruleId}`)).toEqual([
-      "sg/no-eval",
-      "vale/no-simply",
-      "runtime/no-eval-runtime",
-    ]);
+    expect(report.rules.map((rule) => `${rule.engine}/${rule.ruleId}`)).toEqual(
+      ["sg/no-eval", "vale/no-simply", "runtime/no-eval-runtime"]
+    );
     expect(report.rules.flatMap((rule) => rule.errors)).toEqual([]);
     expect(result.exitCode).toBe(0);
   });
@@ -201,7 +199,12 @@ withVale("a version-4 project upgraded through 0005", () => {
 
     await runCli(["check", "-d", cwd, "--json"]);
 
-    const moved = join(tasklessDirectory, "rules", "runtime", "no-eval-runtime");
+    const moved = join(
+      tasklessDirectory,
+      "rules",
+      "runtime",
+      "no-eval-runtime"
+    );
     expect(await sha256(join(moved, "captures", "capture.yml"))).toBe(
       before.capture
     );
@@ -224,5 +227,58 @@ withVale("a version-4 project upgraded through 0005", () => {
         "utf8"
       )
     ).toBe(first);
+  });
+});
+
+/**
+ * A project already in the current layout whose `taskless.json` is missing.
+ *
+ * `readRawManifest` reports version 0 for an absent manifest, so every
+ * migration runs — including `0004`, whose `rules/` → `sg/rules/` move
+ * predates the layout this tree is already in. Unguarded it buries the rules
+ * at `sg/rules/sg/<id>/`, `0005` scaffolds empty engine directories over the
+ * gap, and `check` reports a clean pass on a project it no longer scans.
+ *
+ * Deliberately outside `withVale`: ast-grep alone is enough to see whether the
+ * rules survived, and this is the case that must never regress silently.
+ */
+describe("a current-layout project with no taskless.json", () => {
+  it("still finds its rules instead of reporting a clean pass", async () => {
+    await writeTree(tasklessDirectory, {
+      "rules/sg/no-eval/no-eval.yml":
+        "id: no-eval\nlanguage: typescript\nseverity: error\nmessage: Avoid eval.\nrule:\n  pattern: eval($A)\n",
+      "rules/vale/.gitkeep": "",
+      "rules/runtime/.gitkeep": "",
+    });
+    await writeFile(join(cwd, "app.ts"), "eval(raw);\n", "utf8");
+
+    const result = await runCli(["check", "-d", cwd, "--json"]);
+
+    expect(
+      parseJson<CheckOutput>(result.stdout).results.map(
+        (finding) => `${finding.ruleId}:${finding.file}`
+      )
+    ).toContain("no-eval:app.ts");
+    // An error-severity match is exit 1. Exit 0 here is the bug: a project
+    // whose rules were moved out from under it looks indistinguishable from a
+    // project that passes.
+    expect(result.exitCode).toBe(1);
+  });
+
+  it("leaves the rule where the current layout puts it", async () => {
+    await writeTree(tasklessDirectory, {
+      "rules/sg/no-eval/no-eval.yml":
+        "id: no-eval\nlanguage: typescript\nseverity: error\nmessage: Avoid eval.\nrule:\n  pattern: eval($A)\n",
+      "rules/vale/.gitkeep": "",
+      "rules/runtime/.gitkeep": "",
+    });
+
+    await runCli(["check", "-d", cwd, "--json"]);
+
+    const verified = await runCli(["verify", "-d", cwd, "--json"]);
+    const report = parseJson<RuleReport>(verified.stdout);
+    expect(report.rules.map((rule) => `${rule.engine}/${rule.ruleId}`)).toEqual(
+      ["sg/no-eval"]
+    );
   });
 });

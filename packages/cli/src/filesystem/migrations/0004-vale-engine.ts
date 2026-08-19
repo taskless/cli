@@ -13,6 +13,7 @@ import { dirname, join } from "node:path";
 
 import type { Migration } from "../types";
 import { CLIError } from "../../util/cli-error";
+import { ENGINES } from "../../rules/engines";
 
 /**
  * Default `sgconfig.yml` written when a project has none to move. `ruleDirs`
@@ -99,6 +100,45 @@ const MOVES: Array<[string[], string[]]> = [
   [["runtime-rules"], ["runtime", "rules"]],
   [["runtime-rule-tests"], ["runtime", "rule-tests"]],
 ];
+
+/**
+ * Is `.taskless/rules/` already partitioned by engine — i.e. newer than this
+ * migration rather than older?
+ *
+ * `rules/` is the one path in `MOVES` that means two different things. It is
+ * the pre-`0004` flat location (`rules/<id>.yml`) *and* the root of the layout
+ * `0005` establishes (`rules/<engine>/<id>/`), so the same move that upgrades
+ * an old tree wrecks a current one.
+ *
+ * That collision is reachable, because a `.taskless/` with no `taskless.json`
+ * reads as version 0 and runs **every** migration — a project whose manifest
+ * was never committed, or was deleted, arrives here in the 0005 shape. Moving
+ * `rules/` then produces `.taskless/sg/rules/sg/<id>/<id>.yml`; `0005`
+ * afterwards scaffolds fresh empty engine directories over the hole, and
+ * `check` scans a tree with no rules in it and exits 0 on a clean report. The
+ * failure is not an error the user can see — it is a project that quietly
+ * stopped being checked.
+ *
+ * The two shapes are distinguishable with certainty: pre-`0004` holds rule
+ * *files*, the current layout holds only engine *directories*. Recognition is
+ * therefore strict — every entry must be a directory named for an engine, and
+ * there must be at least one. A mixed or partial tree is not evidence of the
+ * new layout, so it still migrates, which keeps a genuinely old project moving
+ * forward at the cost of doing nothing clever with a tree nobody produces.
+ */
+async function rulesArePartitionedByEngine(root: string): Promise<boolean> {
+  let entries;
+  try {
+    entries = await readdir(root, { withFileTypes: true });
+  } catch {
+    return false; // No `rules/` at all — nothing to protect.
+  }
+  if (entries.length === 0) return false;
+  return entries.every(
+    (entry) =>
+      entry.isDirectory() && (ENGINES as readonly string[]).includes(entry.name)
+  );
+}
 
 async function pathExists(path: string): Promise<boolean> {
   try {
@@ -286,7 +326,16 @@ async function ensureTrackedDirectory(path: string): Promise<void> {
 const migration: Migration = async (directory) => {
   await assertNoDirectoryConflicts(directory);
 
+  // Only `rules/` needs this check. The other four sources — `rule-tests/`,
+  // `sgconfig.yml`, `runtime-rules/`, `runtime-rule-tests/` — are names no
+  // later layout uses, so on a current tree they simply do not exist and their
+  // moves are already no-ops.
+  const skipRulesMove = await rulesArePartitionedByEngine(
+    join(directory, "rules")
+  );
+
   for (const [from, to] of MOVES) {
+    if (skipRulesMove && from.length === 1 && from[0] === "rules") continue;
     await movePreservingContent(
       join(directory, ...from),
       join(directory, ...to)
