@@ -48,8 +48,35 @@ const { join, relative, resolve } = require("node:path");
 const REPO_ROOT = join(__dirname, "..", "..");
 const DEFAULT_SPECS_DIRECTORY = join(REPO_ROOT, "openspec", "specs");
 
-const REQUIREMENTS_HEADING = "## Requirements";
-const REQUIREMENT_PREFIX = "### Requirement:";
+/**
+ * HEADING RECOGNITION MIRRORS OPENSPEC'S, DELIBERATELY. This check is only
+ * meaningful where it agrees with the parser it is speaking for, so these
+ * patterns are copied from OpenSpec's own:
+ *
+ *   markdown-parser.js   /^(#{1,6})\s+(.+)$/        section boundaries
+ *   requirement-blocks.js /^##\s+Requirements\s*$/i  the section itself
+ *                         /^##\s+/                   what ends it
+ *                         /^###\s*Requirement:\s*(.+)\s*$/
+ *
+ * Two consequences are worth stating because they look like bugs.
+ *
+ * NO LEADING-SPACE TOLERANCE, ON PURPOSE. CommonMark accepts up to three
+ * spaces before an ATX heading; OpenSpec does not — every one of its patterns
+ * is anchored at column 0. So an indented `   ## Grouping` is prose to the
+ * parser and does NOT end the requirements section. Widening this to `^ {0,3}##`
+ * would make the check stricter than the thing it checks and report hidden
+ * requirements that are, in fact, read — the opposite of the failure it exists
+ * to catch. `fenceOf` tolerates leading spaces because CommonMark's fence rule
+ * is what governs fences here; headings are governed by OpenSpec's rule.
+ *
+ * WHITESPACE AFTER THE HASHES IS TOLERATED, ALSO ON PURPOSE. OpenSpec matches
+ * `\s`, not a literal space, so `##\tGrouping` really does end the section and
+ * `###  Requirement:` really is a requirement. Matching only a single space
+ * would miss both — a hidden requirement reported visible.
+ */
+const REQUIREMENTS_HEADING = /^##\s+Requirements\s*$/i;
+const SECTION_HEADING = /^##\s/;
+const REQUIREMENT_HEADING = /^###\s*Requirement:/;
 
 /**
  * A fence opens on ``` or ~~~ (up to three leading spaces, per CommonMark) and
@@ -90,9 +117,9 @@ function countRequirements(source) {
       continue;
     }
 
-    if (line.startsWith("## ")) {
-      inRequirements = line.trim() === REQUIREMENTS_HEADING;
-    } else if (line.startsWith(REQUIREMENT_PREFIX)) {
+    if (SECTION_HEADING.test(line)) {
+      inRequirements = REQUIREMENTS_HEADING.test(line);
+    } else if (REQUIREMENT_HEADING.test(line)) {
       total += 1;
       if (inRequirements) {
         visible += 1;
@@ -133,14 +160,24 @@ function checkSpecs(specsDirectory = DEFAULT_SPECS_DIRECTORY) {
   }));
 }
 
-function main({ argv = process.argv.slice(2) } = {}) {
+/**
+ * `log`/`error` are injectable so tests can assert on the report without
+ * reassigning the global console — a mutation that is only safe while
+ * `node --test` runs this file's tests sequentially, and would start losing or
+ * crossing output the day anything here gains concurrency.
+ */
+function main({
+  argv = process.argv.slice(2),
+  log = console.log,
+  error = console.error,
+} = {}) {
   const specsDirectory = argv[0]
     ? resolve(process.cwd(), argv[0])
     : DEFAULT_SPECS_DIRECTORY;
   const results = checkSpecs(specsDirectory);
 
   if (results.length === 0) {
-    console.error(`No specs found under ${specsDirectory}`);
+    error(`No specs found under ${specsDirectory}`);
     return { results, ok: false };
   }
 
@@ -152,7 +189,7 @@ function main({ argv = process.argv.slice(2) } = {}) {
         : result.unclosedFence
           ? "UNCLOSED"
           : "ok      ";
-    console.log(
+    log(
       `  ${status}  ${name}  ${result.visible}/${result.total} requirement(s) visible`
     );
   }
@@ -161,28 +198,28 @@ function main({ argv = process.argv.slice(2) } = {}) {
     (result) => result.hidden > 0 || result.unclosedFence
   );
   if (broken.length === 0) {
-    console.log(
+    log(
       `\nEvery requirement in ${results.length} spec(s) is visible to the parser.`
     );
     return { results, ok: true };
   }
 
-  console.error("");
+  error("");
   for (const result of broken) {
     const name = displayPath(result.path);
     if (result.hidden > 0) {
-      console.error(
+      error(
         `${name}: ${result.hidden} requirement(s) hidden by a '##' heading inside '## Requirements' (${result.visible} of ${result.total} visible)`
       );
     }
     if (result.unclosedFence) {
-      console.error(
+      error(
         `${name}: a code fence is still open at end of file, so everything after it is unreadable to this check and to the parser (likely a lost opening fence leaving its closer dangling)`
       );
     }
   }
   if (broken.some((result) => result.hidden > 0)) {
-    console.error(
+    error(
       "\nA '##' heading ends the requirements section. Use a bold lead-in line for topical grouping instead, so the requirements below it stay readable to the parser."
     );
   }
