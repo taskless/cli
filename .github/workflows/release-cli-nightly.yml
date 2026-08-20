@@ -1,0 +1,252 @@
+# SPDX-License-Identifier: MIT
+# Publish @taskless/cli-nightly — the CLI as it stands on main, between releases.
+#
+# A nightly is the same build as the release it anticipates, published under a
+# different name and a stamped prerelease version (design D2/D3). The rename
+# happens at pack time in .github/scripts/nightly-pack.cjs; the committed
+# packages/cli/package.json is never changed, so @taskless/cli's own version
+# history contains releases and nothing else.
+#
+# PUSH TO main, NEVER A PULL REQUEST. This is a security property, not a
+# convenience. A PR-triggered publish would invert the split release-cli.yml
+# exists to maintain: contributor-authored text would flow into a job holding an
+# OIDC identity, and UNREVIEWED code would be published to npm under the
+# @taskless scope. Building from main means the failure cannot arise — the only
+# code that can be published is code that already merged. (A PR-side trigger is
+# also measurably stale: a changeset is written early and the implementation
+# lands after it, by 7 and 11 commits on the two branches measured for D1.)
+#
+# TWO GATES, IN THIS ORDER (design D4):
+#
+#   1. Are any changesets pending? No pending changeset means nothing is
+#      unreleased: main is at its released version and there is no future n.m.k
+#      to name. This is a file listing. It runs BEFORE any dependency install,
+#      because it is false on the overwhelmingly common push and there is no
+#      cheaper place to exit.
+#
+#   2. Does this commit already have a nightly? Versions ending in `x<sha>`
+#      belong to this commit, so a re-run — or any future trigger that fires
+#      twice for one commit — publishes nothing.
+#
+# The order matters: gate 1 costs a `find`, gate 2 costs a registry round trip.
+# Only past both does anything get installed, built, or credentialed.
+#
+# THE VERSION PACKAGES MERGE NEEDS NO SPECIAL CASE, and that falls out of gate 1
+# rather than being arranged. That merge consumes every changeset and bumps
+# packages/cli/package.json, so on that push .changeset/ holds only its README
+# and config, gate 1 is false, and no nightly is built — while release-cli.yml
+# sees a version npm has not got and publishes the real release. Neither
+# workflow knows about the other, and neither has a rule naming the other's
+# commit.
+#
+# GATES ARE CREDENTIAL-FREE AND LIVE IN THEIR OWN JOB, exactly as in
+# release-cli.yml. The point is not saving CI minutes: it is that the
+# OIDC-capable `publish` job is never INSTANTIATED for a run that will not
+# publish. Keep the two jobs in this file together for the same reason
+# release-cli.yml keeps its `check` and `publish` together — a later edit that
+# reads only the publish half would see `id-token: write` with no visible reason
+# for the `needs:` and drop it.
+#
+# NO CONCURRENCY GROUP, deliberately (design D6). Gate 2 is per-SHA, and two
+# runs for one SHA cannot both publish; the `npm view` guard immediately before
+# `npm publish` closes the remaining window between the gate job's answer and
+# the publish, the same way release-cli.yml and release-vale.yml do.
+#
+# PUBLISHING IDENTITY: npm trusted publishing, a short-lived OIDC-minted token
+# bound to the `npm-autopublish` environment, with no stored NPM_TOKEN anywhere.
+# `npm-autopublish` has no required reviewer — an unattended flow cannot use
+# npm-production, which does — and earns that with a deployment branch policy
+# restricting it to main. Approval gates what users get by default; code review
+# gates what gets published, and for a nightly the code review already happened
+# on the merge (design D7). The trusted-publisher binding is registered PER
+# PACKAGE on npmjs.com and there is nothing to bind until the name exists, so
+# the FIRST publish of @taskless/cli-nightly is a deliberate one-time manual
+# step by a maintainer. There is no fallback token path here on purpose.
+#
+# BOOTSTRAPPING THE PACKAGE NAME, once:
+#
+#     pnpm exec changeset status --output=nightly-status.json
+#     node .github/scripts/nightly-pack.cjs \
+#       --status nightly-status.json --sha "$(git rev-parse --short=7 HEAD)"
+#     npm publish --access public --tag latest .nightly-dist/*.tgz
+#
+# Publish the packed tarball rather than the package directory: a bare
+# `npm publish` in packages/cli would burn the name on @taskless/cli's committed
+# name and version. Provenance is omitted from the manual step (it needs a CI
+# OIDC identity); register the trusted publisher afterwards and every later
+# publish gets it.
+#
+# Action refs are pinned to commit SHAs; the trailing comment records the tag.
+
+name: Release CLI Nightly
+
+on:
+  push:
+    branches: [main]
+
+# No workflow-wide grants; each job asks for exactly what it needs.
+permissions: {}
+
+jobs:
+  gate:
+    name: "nightly gate"
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read # checkout only
+    outputs:
+      should_publish: ${{ steps.gate.outputs.should_publish }}
+      short_sha: ${{ steps.gate.outputs.short_sha }}
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false # nothing here writes to git
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 24
+
+      # No dependency install in this job, by design — gate 1 is the reason the
+      # workflow can decide before installing anything, and nightly-pack.cjs is
+      # zero-dependency CommonJS, so gate 2 can reuse its tested matcher without
+      # one either.
+      - id: gate
+        run: |
+          set -euo pipefail
+
+          # GATE 1 — are any changesets pending?
+          #
+          # NOT a bare directory listing: .changeset/ permanently holds README.md
+          # and config.json, so it is never empty and `ls | wc -l` would report
+          # "pending" on every push forever. The question is whether any
+          # .changeset/*.md OTHER than the template README exists.
+          # require-changeset.yml counts them with exactly this rule; keep the
+          # two in agreement rather than inventing a second definition of "a
+          # changeset."
+          pending=$(find .changeset -maxdepth 1 -name '*.md' | grep -viE '/README\.md$' || true)
+          if [ -z "$pending" ]; then
+            echo "should_publish=false" >> "$GITHUB_OUTPUT"
+            echo "No pending changesets — main is at its released version, so there is no nightly to build."
+            exit 0
+          fi
+          echo "Pending changeset(s):"
+          echo "$pending" | sed 's/^/  - /'
+
+          # A FIXED abbreviation length. `git rev-parse --short` scales the
+          # length with the size of the repository, so an unpinned length would
+          # eventually produce an 8-character sha that no longer matches the
+          # 7-character suffix of every nightly published before it — gate 2
+          # would stop deduping, silently, at a moment unrelated to any change
+          # here.
+          short_sha=$(git rev-parse --short=7 HEAD)
+          echo "short_sha=$short_sha" >> "$GITHUB_OUTPUT"
+
+          # GATE 2 — does this commit already have a nightly?
+          #
+          # A list-and-filter rather than a point lookup: the timestamp precedes
+          # the sha in the version, so the exact string is not known until the
+          # build computes it.
+          #
+          # The `|| versions='[]'` REPLACES the captured output rather than
+          # appending to it, and that is the whole point: `npm view --json` on a
+          # 404 prints an error OBJECT to stdout and exits non-zero, so the
+          # obvious `$(npm view … || echo '[]')` yields that object followed by
+          # `[]` — measured — which is not parseable JSON. (hasNightlyForSha
+          # also treats a non-array, non-string value as no versions, so the
+          # error object alone would be handled; this keeps the JSON valid.)
+          versions=$(npm view @taskless/cli-nightly versions --json 2>/dev/null) || versions='[]'
+          if SHORT_SHA="$short_sha" node -e '
+            const { hasNightlyForSha } = require("./.github/scripts/nightly-pack.cjs");
+            let raw = "";
+            process.stdin
+              .on("data", (chunk) => { raw += chunk; })
+              .on("end", () => {
+                const versions = JSON.parse(raw.trim() || "[]");
+                process.exit(hasNightlyForSha(versions, process.env.SHORT_SHA) ? 0 : 1);
+              });
+          ' <<< "$versions"; then
+            echo "should_publish=false" >> "$GITHUB_OUTPUT"
+            echo "A nightly ending in x${short_sha} is already published — nothing to do."
+          else
+            echo "should_publish=true" >> "$GITHUB_OUTPUT"
+            echo "Will build a nightly for ${short_sha}."
+          fi
+
+  publish:
+    name: Publish the nightly to npm
+    # Gate on the credential-free job: this job — and therefore the OIDC
+    # identity and the npm-autopublish environment — only exists for a run that
+    # will actually publish.
+    needs: gate
+    if: needs.gate.outputs.should_publish == 'true'
+    runs-on: ubuntu-latest
+    # The scoping and audit boundary for the nightly, and where the npm trusted
+    # publisher for @taskless/cli-nightly is bound. No required reviewer, by
+    # design; its deployment branch policy restricts it to main.
+    environment: npm-autopublish
+    permissions:
+      contents: read # checkout only
+      id-token: write # OIDC → short-lived npm auth + build provenance
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false # publish authenticates via OIDC, not git creds
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 24
+          cache: pnpm
+          registry-url: https://registry.npmjs.org
+      # --ignore-scripts: no dependency lifecycle code runs while an OIDC
+      # identity is available in this job.
+      - run: pnpm install --frozen-lockfile --ignore-scripts
+
+      # OIDC trusted publishing and provenance need npm >= 11.5.1. Pinned to the
+      # same version release-cli.yml and release-vale.yml pin, not @latest, so
+      # publish behavior cannot change unreviewed; bump all three together.
+      - run: npm install -g npm@12.0.1 --ignore-scripts
+
+      - run: pnpm --filter @taskless/cli build
+
+      # The JSON FILE is authoritative, not stdout: `changeset status` also
+      # emits one workspace-version warning per @taskless/vale-* package per
+      # changeset (18 lines in the current tree). The path must be
+      # REPO-RELATIVE — `--output` resolves against the working directory with
+      # no special case for a leading `/`, so `--output=/tmp/status.json` means
+      # `<cwd>/tmp/status.json` and fails with ENOENT from the repo root.
+      - run: pnpm exec changeset status --output=nightly-status.json
+
+      # Rewrites packages/cli/package.json to the nightly name and the stamped
+      # version, packs, and restores the manifest. The sha comes from the gate
+      # job so both gates and the stamp describe the same commit at the same
+      # abbreviation length, and it is routed through `env:` rather than
+      # interpolated into the shell body.
+      - id: pack
+        env:
+          SHORT_SHA: ${{ needs.gate.outputs.short_sha }}
+        run: |
+          node .github/scripts/nightly-pack.cjs \
+            --status nightly-status.json \
+            --sha "$SHORT_SHA" \
+            --out .nightly-dist
+
+      # `--tag latest` is required, not cosmetic: every version here is a semver
+      # prerelease by construction, and npm will not move the default tag onto a
+      # prerelease unless told to. Without it the package would have versions
+      # and no default, and `npm i @taskless/cli-nightly` would resolve nothing.
+      # These are not preview builds — they are the only builds of this package.
+      #
+      # The `npm view` guard immediately before the publish is what makes the
+      # missing concurrency group safe. Gate 2 runs in a SEPARATE JOB, so
+      # between its answer and this line another run can publish for the same
+      # commit; asking again at the moment it matters is idempotent rather than
+      # merely ordered. release-cli.yml and release-vale.yml guard the same way.
+      - name: Publish (skipping a version already on npm)
+        env:
+          NIGHTLY_VERSION: ${{ steps.pack.outputs.version }}
+          NIGHTLY_TARBALL: ${{ steps.pack.outputs.tarball }}
+        run: |
+          set -euo pipefail
+          if npm view "@taskless/cli-nightly@${NIGHTLY_VERSION}" version >/dev/null 2>&1; then
+            echo "@taskless/cli-nightly@${NIGHTLY_VERSION} is already published — nothing to do."
+          else
+            npm publish --provenance --access public --tag latest "$NIGHTLY_TARBALL"
+          fi

@@ -52,7 +52,12 @@ Reads as: _the future `0.11.0`, built at that time, from that commit._ Both halv
 - **The timestamp sorts.** It is fixed-width and leading, so an ASCII-lexical comparison of the prerelease identifier orders builds chronologically. A bare SHA does not sort at all, and "which nightly is newer" is the first question anyone asks.
 - **The SHA identifies and dedupes.** It answers "should this run?" — if a published version ends in `x<sha>`, the commit already has a nightly and a re-run is a no-op.
 
-**The `x` is load-bearing, not decoration.** Semver compares a dot-separated prerelease identifier consisting only of digits _numerically_, and forbids a leading zero in a numeric identifier. `20260818123456` followed by a short SHA of `05b3c88` would, without the `x`, be a single all-digit identifier for roughly one commit in sixteen — intermittently invalid, which is the worst failure cadence available. The `x` makes the identifier alphanumeric, so the numeric rule never applies.
+**The `x` is load-bearing, not decoration**, and it defends against two different simplifications — measured against the semver grammar while building this, because the first version of this paragraph conflated them:
+
+- **`<timestamp>.<sha>`** — a dot starts a _new_ prerelease identifier, so an all-digit short SHA beginning with `0` becomes a numeric identifier with a leading zero, which semver forbids outright. Invalid for roughly one commit in sixteen: intermittent, the worst failure cadence available.
+- **`<timestamp><sha>`** — a bare concatenation is still _valid_ (the timestamp's leading digit is never `0`), but for an all-digit SHA it is a single 21-digit numeric identifier. Semver compares numeric identifiers numerically, and 21 digits is past what a double represents exactly, so chronological ordering — the entire reason the timestamp leads — stops being reliable without anything failing.
+
+The `x` makes the identifier alphanumeric, so the numeric rule never applies and comparison stays lexical for every SHA.
 
 **Dedupe is a list-and-filter, not a point lookup.** Because the timestamp precedes the SHA, the exact version string is not known before the run computes it. `npm view @taskless/cli-nightly versions --json` and test for a version ending in `x<sha>`.
 
@@ -70,9 +75,9 @@ This deliberately differs from `@taskless/vale-*`, which stamps `n.m.k-yyyymmddh
 
 ### D4 — Two gates, in order: empty `.changeset/`, then unbuilt SHA
 
-**Gate 1 — are any changesets pending?** No pending changeset means nothing is unreleased: `main` is at its released version and there is no future `n.m.k` to name. This runs before anything is installed, and is the cheapest possible early exit on the overwhelmingly common push.
+**Gate 1 — are any changesets pending?** No pending changeset means nothing is unreleased: `main` is at its released version and there is no future `n.m.k` to name. It needs no tooling, runs before anything is installed, and is the cheapest possible early exit on the overwhelmingly common push.
 
-**It is not a bare directory listing.** `.changeset/` always contains `README.md` and `config.json` — `changesets init` writes both and nothing removes them — so the directory is never empty and a literal emptiness test would answer "pending" on every push, including the one case this gate exists to handle. The question is whether any `.changeset/*.md` other than `README.md` exists. `require-changeset.yml` already counts them exactly that way (`grep -viE '/README\.md$'`); use the same rule rather than inventing a second one.
+It is a file listing but **not a bare directory listing**, and the difference is the whole gate. `.changeset/` permanently holds `README.md` and `config.json` — `changesets init` writes both and nothing removes them — so the directory is never empty and `ls | wc -l` would report "pending" on every push forever, including the one case this gate exists to handle: the Version Packages merge. The question is whether any `.changeset/*.md` other than the template `README.md` exists — the rule `require-changeset.yml` already uses (`grep -viE '/README\.md$'`). Reuse it rather than minting a second definition of "a changeset."
 
 It also makes the Version Packages PR merge **self-handling, with no special case**. That merge consumes every changeset and bumps `package.json`, so on that push the directory is empty, no nightly is built, and `release-cli.yml` publishes the real release instead. The two flows do not need to know about each other.
 

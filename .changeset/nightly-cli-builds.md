@@ -23,3 +23,19 @@ Neither is a required check.
 The header comments also get one correction: they claimed `npm-production` had
 no required reviewers, and it has had one all along, so a release has always
 waited for a human approval that the file said was not there.
+
+Publish unreleased work on `main` as `@taskless/cli-nightly`.
+
+Every push to `main` that has changesets pending now publishes the CLI under a
+second package name, stamped `<next-version>-<yyyymmddhhmmss>x<short-sha>` — so
+merged-but-unreleased behavior is installable with `npx @taskless/cli-nightly`.
+A nightly is the same build as the release it anticipates and keeps the
+`taskless` executable, so it is a drop-in; the rename happens at pack time, so
+`@taskless/cli`'s own version history stays releases-only. Installing both
+globally collides on the binary and is unsupported.
+
+Two credential-free gates decide whether anything is built — pending changesets
+first (before any install), then whether the commit already has a nightly — so
+the publishing job is never instantiated on an ordinary push, and the merge of a
+Version Packages PR publishes the real release and no nightly with no rule
+special-casing it.
