@@ -33,15 +33,19 @@
 # `pull_request_target` and no `${{ }}` interpolation of untrusted text into any
 # `run:` — the two classic token-exfiltration footguns.
 #
-# NO CONCURRENCY GROUP HERE, deliberately — do not add one for tidiness. The
-# credential-free gate already makes a duplicate run a no-op: the second run
-# sees the version on npm and does nothing. The residual TOCTOU (two runs both
-# observing "not published") is handled the way release-vale.yml handles it —
-# a failed publish is treated as possibly-already-published rather than as a
-# fresh error, because a version is immutable and the losing run is trying to
-# publish bytes the winner already shipped. Serializing would buy nothing the
-# gate does not already provide, at the cost of queueing a release behind
-# unrelated pushes.
+# NO CONCURRENCY GROUP HERE, deliberately — do not add one for tidiness. Two
+# things stand in for serialization, and the second is the one that matters.
+# The credential-free `check` gate makes the ordinary duplicate a no-op: the
+# second run sees the version on npm and never instantiates this job. But
+# `check` is a SEPARATE JOB, so between its answer and the publish there is a
+# window where another run can ship the same version — serialization would
+# close that window, and a gate in another job does not.
+#
+# What closes it is the `npm view` guard immediately before `npm publish`,
+# below. Asking again at the moment it matters is idempotent rather than merely
+# ordered: it also covers a re-run of this workflow against a version an
+# earlier attempt already published, which serialization does nothing about.
+# `release-vale.yml` guards each tarball the same way, for the same reason.
 #
 # Action refs are pinned to commit SHAs (supply-chain hardening); the trailing
 # comment records the human-readable tag.
@@ -129,5 +133,29 @@ jobs:
       # OIDC handshake happens here (id-token: write + registry-url + a
       # registered trusted publisher). No token in env. `--provenance` attaches
       # a signed build-provenance attestation.
-      - run: npm publish --provenance --access public
+      #
+      # The `npm view` guard immediately before the publish is what makes the
+      # missing concurrency group safe, and it has to live HERE rather than in
+      # the `check` job. `check` runs in a separate job, so between its answer
+      # and this line there is a window in which another run can publish the
+      # same version; serializing the workflow would close that window, but so
+      # does asking again at the moment it matters. Re-asking is the better of
+      # the two: it is idempotent rather than merely ordered, so it also covers
+      # a re-run of this workflow on a version an earlier attempt already
+      # published — which serialization does nothing about.
+      #
+      # This mirrors `release-vale.yml`, which guards each tarball the same way
+      # for the same reason. Without it, the losing run of a race fails with
+      # npm's "cannot publish over the previously published version", which
+      # reads as a broken release rather than as a duplicate that was already
+      # handled.
+      - name: Publish (skipping a version already on npm)
         working-directory: packages/cli
+        run: |
+          name=$(node -p "require('./package.json').name")
+          version=$(node -p "require('./package.json').version")
+          if npm view "$name@$version" version >/dev/null 2>&1; then
+            echo "$name@$version is already published — nothing to do."
+          else
+            npm publish --provenance --access public
+          fi
