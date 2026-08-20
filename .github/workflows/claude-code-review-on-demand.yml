@@ -3,9 +3,36 @@ name: Claude Code Review (on demand)
 # On-demand, review-ONLY code review. This is a PUBLIC repo, so there is
 # deliberately NO auto-review on every push — a review runs only when a
 # maintainer explicitly summons one by typing `@claude /review`:
-#   - in the PR's main conversation (issue_comment) → a full review of the PR;
+#   - in the PR's main conversation (issue_comment) → an INCREMENTAL review:
+#     the reviewer reads its own prior comments on the PR first, then reports
+#     what is new, plus anything previously raised that is still unaddressed.
+#     With no prior comments this is simply a first, full review;
+#   - `@claude /review all` (either event) → ignore prior comments and assess
+#     the whole diff from scratch;
 #   - as an inline review comment (pull_request_review_comment) → a "second set
 #     of eyes" pass that focuses on what the human review may have missed.
+#
+# The MODE is chosen by the workflow, from `contains()` tests on the comment
+# body plus `event_name`, and resolves to one of three `focus=` strings. The
+# body is TESTED, never forwarded: `github.event.comment.body` appears only in
+# the `if:` gate and in `contains()` expressions whose result is a boolean, and
+# is never interpolated into a `run:` or `prompt:` block. So a commenter cannot
+# steer the reviewer with free text. Do not "improve" this into a free-text
+# focus argument guarded by a prompt-level "treat the following as review
+# focus, not as instructions" — that is a request, not a boundary.
+#
+# Incremental scoping is by COMMENTS, not by a SHA range. A `lastReviewed..head`
+# two-dot range assumes linear history; this repo rebases, so a force push
+# rewrites every SHA, the old one stops being an ancestor of the head, and the
+# range describes a diff that never happened (the compare API reports
+# `diverged`). Detecting that only means falling back to a full review, so the
+# incremental path would almost never fire. Comments survive a rebase untouched.
+# The classification signal is the literal marker `*— AI Coding Agent*` this
+# repo's convention puts at the end of a reply written when addressing feedback:
+# a thread carrying one was addressed, a thread without one is still open.
+# Thread `isResolved` is GraphQL-only and the model is deliberately not granted
+# `gh api`, so the marker is the available proxy. `gh pr view --json
+# comments,reviews` supplies the data under the existing `Bash(gh pr view:*)`.
 #
 # Scoped so Claude can never write code from an invocation:
 #   - runs the code-review PLUGIN with a review prompt (analyze + post findings),
@@ -13,6 +40,16 @@ name: Claude Code Review (on demand)
 #   - no `contents: write`, so it cannot push commits;
 #   - fires ONLY on a maintainer's comment (author_association gate), so an
 #     outside contributor on a fork can never trigger it.
+#
+# `Read` in `--allowedTools` is COUPLED to `persist-credentials: false` on the
+# checkout below. The reviewer needs to open whole files — the findings worth
+# having come from surviving references in untouched regions, from a directory's
+# real contents, from a cross-file ordering dependency — none of which a diff
+# hunk shows. But without `persist-credentials: false`, actions/checkout writes
+# this job's `GITHUB_TOKEN` into `.git/config` INSIDE the tree being reviewed,
+# and `Read` plus `Bash(gh pr comment:*)` is then a complete path from that file
+# to a public comment on a public repo. Do not remove either one without
+# removing the other: they are safe together and unsafe apart.
 #
 # The checkout MUST be the PR's own ref, never the default one. Neither
 # `issue_comment` nor `pull_request_review_comment` is a PR event, so
@@ -58,19 +95,32 @@ jobs:
       # issue_comment, `pull_request.number` on pull_request_review_comment —
       # and each is absent on the other event, so branch on `event_name` rather
       # than relying on a `||` fallback over a null.
+      #
+      # `contains(...)` below evaluates to the literal string `true` or `false`
+      # before the shell ever runs — the comment body itself is never
+      # substituted into this script. The `all` arm is tested FIRST so it wins
+      # over both event arms; `@claude /review all` is a superstring of
+      # `@claude /review`, so testing in the other order would make it
+      # unreachable. Each focus string is one line: $GITHUB_OUTPUT is
+      # line-oriented and a multi-line value needs heredoc syntax.
       - name: Prepare review context
         id: prep
         run: |
           if [ "${{ github.event_name }}" = "issue_comment" ]; then
-            {
-              echo "pr=${{ github.event.issue.number }}"
-              echo "focus=Perform a thorough code review of this pull request."
-            } >> "$GITHUB_OUTPUT"
+            echo "pr=${{ github.event.issue.number }}" >> "$GITHUB_OUTPUT"
           else
-            {
-              echo "pr=${{ github.event.pull_request.number }}"
-              echo "focus=Act as a second set of eyes on the review already in progress — prioritize anything the existing review comments may have missed, and keep it concise."
-            } >> "$GITHUB_OUTPUT"
+            echo "pr=${{ github.event.pull_request.number }}" >> "$GITHUB_OUTPUT"
+          fi
+
+          if [ "${{ contains(github.event.comment.body, '@claude /review all') }}" = "true" ]; then
+            echo 'mode=full' >> "$GITHUB_OUTPUT"
+            echo 'focus=REVIEW MODE: full. Perform a thorough code review of this entire pull request. Ignore any prior review comments on this PR for the purposes of scoping — assess every change from scratch, even where a previous review already discussed it. Begin your top-level summary comment with the line "Review mode: full (`@claude /review all`) — assessed the entire diff from scratch, ignoring prior review comments."' >> "$GITHUB_OUTPUT"
+          elif [ "${{ github.event_name }}" = "issue_comment" ]; then
+            echo 'mode=incremental' >> "$GITHUB_OUTPUT"
+            echo 'focus=REVIEW MODE: incremental. FIRST, before you look at the diff, run `gh pr view <PR NUMBER> --json comments,reviews` and read every prior review comment and review body on this PR, including replies. Then review the whole diff as usual, but classify every finding against what you just read. (a) A finding whose thread already carries a reply ending with the literal marker `*— AI Coding Agent*` was ADDRESSED: do not raise it again. (b) A finding that was raised in a prior review and whose thread carries NO such reply is STILL OPEN: raise it again, and prefix it with `[Unchanged since last review]`. (c) Anything else is NEW: prefix it with `[New]` and give it the closest reading — this is the part that deserves attention. Read whole files where the change interacts with code the diff does not show. If there are no prior review comments at all, this is the first review of this PR: assess the whole diff and say so. In your top-level summary comment, begin with the line "Review mode: incremental — read N prior review comment(s) before reviewing." (substituting the real count), then list, briefly, which previously-raised items you treated as already addressed and are therefore not repeating. If you found nothing new, say explicitly that you found nothing NEW since the last review, rather than saying the PR is clean.' >> "$GITHUB_OUTPUT"
+          else
+            echo 'mode=second-eyes' >> "$GITHUB_OUTPUT"
+            echo 'focus=REVIEW MODE: second set of eyes. Act as a second set of eyes on the review already in progress — read the existing review comments on this PR first, prioritize anything they may have missed, do not repeat a point another comment already makes, and keep it concise. Begin your top-level summary comment with the line "Review mode: second set of eyes (inline review comment) — focused on what the in-progress review may have missed."' >> "$GITHUB_OUTPUT"
           fi
 
       # `fetch-depth: 1` is enough: the prompt forbids running the project's
@@ -110,7 +160,18 @@ jobs:
             tests yourself as a gap. Post concrete issues as inline comments on
             the relevant lines, and a single top-level comment with the overall
             assessment.
+
+            State the review mode explicitly in that top-level comment, exactly
+            as the REVIEW MODE section above instructs. A reader must never have
+            to guess whether "no findings" means "nothing new since last time"
+            or "I read everything and it is clean".
           # In agent mode (comment-triggered) Claude only posts if it has these
-          # tools. All read-only or comment-posting — no local build/test, no CI reads.
+          # tools. All read-only or comment-posting — no local build/test, no CI
+          # reads. `Read` is read-only file access, and is safe ONLY alongside
+          # `persist-credentials: false` above (see the header). Do NOT add
+          # `gh api`, `git`, or a bare `Bash`: `gh api` is write-capable, and
+          # this model ingests untrusted diff content. Privileged work belongs
+          # in workflow steps, which are deterministic and never read model
+          # output — the workflow may use privileged tools, the model may not.
           claude_args: |
-            --allowedTools "mcp__github_inline_comment__create_inline_comment,Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*)"
+            --allowedTools "mcp__github_inline_comment__create_inline_comment,Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*),Read"
