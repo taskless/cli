@@ -50,15 +50,28 @@ const DEFAULT_SPECS_DIRECTORY = join(REPO_ROOT, "openspec", "specs");
 
 /**
  * HEADING RECOGNITION MIRRORS OPENSPEC'S, DELIBERATELY. This check is only
- * meaningful where it agrees with the parser it is speaking for, so these
- * patterns are copied from OpenSpec's own:
+ * meaningful where it agrees with the parser it is speaking for — and the
+ * parser it speaks for is the one `openspec validate` runs: `MarkdownParser`
+ * (core/validation/validator.js constructs it, core/parsers/markdown-parser.js
+ * defines it). Its rules are:
  *
- *   markdown-parser.js   /^(#{1,6})\s+(.+)$/        section boundaries
- *   requirement-blocks.js /^##\s+Requirements\s*$/i  the section itself
- *                         /^##\s+/                   what ends it
- *                         /^###\s*Requirement:\s*(.+)\s*$/
+ *   /^(#{1,6})\s+(.+)$/                  what counts as a heading at all
+ *   findSection(..., 'Requirements')     the section, matched case-insensitively
+ *   getContentUntilNextHeader(i, 2)      any heading of level <= 2 ends it
+ *   parseRequirements(section)           EVERY `###` child is a requirement
  *
- * Two consequences are worth stating because they look like bugs.
+ * `requirement-blocks.js` carries a second, stricter set of patterns
+ * (`/^###\s*Requirement:\s*(.+)\s*$/` and friends). Those serve the delta/edit
+ * path, not validation, and where the two disagree this check follows the
+ * validating parser. Three consequences are worth stating because they look
+ * like bugs.
+ *
+ * A `#` HEADING ENDS THE SECTION TOO. `getContentUntilNextHeader` breaks on any
+ * heading whose level is <= the section's, so inside `## Requirements` a
+ * level-1 `# Something` truncates it exactly as a `##` does. Matching only
+ * `^##\s` here would report every requirement below such a heading as visible
+ * while the parser never reads one of them — the silent truncation this file
+ * exists to catch, reproduced in the checker.
  *
  * NO LEADING-SPACE TOLERANCE, ON PURPOSE. CommonMark accepts up to three
  * spaces before an ATX heading; OpenSpec does not — every one of its patterns
@@ -69,13 +82,16 @@ const DEFAULT_SPECS_DIRECTORY = join(REPO_ROOT, "openspec", "specs");
  * to catch. `fenceOf` tolerates leading spaces because CommonMark's fence rule
  * is what governs fences here; headings are governed by OpenSpec's rule.
  *
- * WHITESPACE AFTER THE HASHES IS TOLERATED, ALSO ON PURPOSE. OpenSpec matches
- * `\s`, not a literal space, so `##\tGrouping` really does end the section and
- * `###  Requirement:` really is a requirement. Matching only a single space
- * would miss both — a hidden requirement reported visible.
+ * WHITESPACE AFTER THE HASHES IS TOLERATED, AND SO IS A MISSING TITLE. OpenSpec
+ * matches `\s`, not a literal space, so `##\tGrouping` really does end the
+ * section and `###  Requirement:` really is a requirement. And because
+ * `parseRequirements` promotes every `###` child of the section, a title-less
+ * `### Requirement:` is a requirement to the validating parser as well —
+ * demanding a non-empty title (`\s*\S`) would stop counting a heading the
+ * parser does read.
  */
 const REQUIREMENTS_HEADING = /^##\s+Requirements\s*$/i;
-const SECTION_HEADING = /^##\s/;
+const SECTION_HEADING = /^#{1,2}\s/;
 const REQUIREMENT_HEADING = /^###\s*Requirement:/;
 
 /**

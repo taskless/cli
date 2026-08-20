@@ -91,6 +91,40 @@ test("a tab after '##' ends the section, matching OpenSpec's '\\s'", () => {
   });
 });
 
+test("a '#' heading ends the section, matching the parser's level rule", () => {
+  // getContentUntilNextHeader(startLine, 2) breaks on any heading of level <= 2,
+  // so a level-1 heading truncates `## Requirements` exactly as a `##` does.
+  // Verified against MarkdownParser: it reads 1 requirement from this source.
+  const levelOneHeading = CLEAN_SPEC.replace(
+    "### Requirement: Second thing",
+    "# Interlude\n\n### Requirement: Second thing"
+  );
+  assert.deepEqual(countRequirements(levelOneHeading), {
+    total: 2,
+    visible: 1,
+    hidden: 1,
+    unclosedFence: false,
+  });
+});
+
+test("a title-less '### Requirement:' still counts", () => {
+  // parseRequirements promotes every `###` child of the section regardless of
+  // its title, so MarkdownParser reads this as a requirement (verified). The
+  // stricter /^###\s*Requirement:\s*(.+)\s*$/ in requirement-blocks.js governs
+  // the delta/edit path, not validation — following it here would stop counting
+  // a heading the validating parser does read.
+  const titleless = CLEAN_SPEC.replace(
+    "### Requirement: Second thing",
+    "### Requirement:"
+  );
+  assert.deepEqual(countRequirements(titleless), {
+    total: 2,
+    visible: 2,
+    hidden: 0,
+    unclosedFence: false,
+  });
+});
+
 test("an indented '##' is prose, not a section boundary", () => {
   // CommonMark allows up to three spaces before an ATX heading; OpenSpec's
   // parsers are all anchored at column 0 and do not. Widening this check to
