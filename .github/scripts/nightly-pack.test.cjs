@@ -15,6 +15,7 @@ const {
   hasNightlyForSha,
   isValidVersion,
   selectProposedVersion,
+  buildNightlyReadme,
 } = require("./nightly-pack.cjs");
 
 /** The CLI manifest as committed, so these tests fail if it drifts out of shape. */
@@ -205,4 +206,18 @@ test("hasNightlyForSha matches on the trailing x<sha>", () => {
     hasNightlyForSha(["0.11.0-20260818123456x05b3c880"], "05b3c88"),
     false
   );
+});
+
+test("the nightly ships its own README, not the CLI's", () => {
+  const version = "0.11.0-20260818123456x05b3c88";
+  const readme = buildNightlyReadme(version);
+
+  // It has to name itself, or the package page reads as documentation for a
+  // package the reader did not install.
+  assert.match(readme, /^# @taskless\/cli-nightly/);
+  // And it has to point somewhere useful rather than restating the docs.
+  assert.match(readme, /npmjs\.com\/package\/@taskless\/cli/);
+  assert.ok(readme.includes(version), "names the build it describes");
+  // The collision is the one thing a reader can get wrong destructively.
+  assert.match(readme, /[Dd]o not install both globally/);
 });

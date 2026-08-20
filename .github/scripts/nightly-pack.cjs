@@ -179,6 +179,41 @@ function applyNightlyIdentity(packageJson, version) {
  * right after its bootstrap publish. Normalizing both is the difference between
  * a working gate and one that skips every build for a day.
  */
+/**
+ * The README the nightly ships, replacing the CLI's own.
+ *
+ * npm always includes README.md in a tarball regardless of `files`, so without
+ * this the nightly's package page shows @taskless/cli's documentation —
+ * install instructions for a different package, under a name that is not the
+ * one being read about. Someone landing there from a search would follow them
+ * and never learn this is a prerelease of something else.
+ *
+ * Deliberately minimal: it says what the package is, points at the real one,
+ * and does not duplicate documentation that would then need to stay in sync
+ * with a file it was copied from.
+ */
+function buildNightlyReadme(version) {
+  return [
+    `# ${NIGHTLY_PACKAGE}`,
+    "",
+    `Nightly build of [\`${SOURCE_PACKAGE}\`](https://www.npmjs.com/package/${SOURCE_PACKAGE}) — the same source and the same build, published from an unreleased commit on \`main\`.`,
+    "",
+    "**For documentation, installation, and support, see " +
+      `[\`${SOURCE_PACKAGE}\`](https://www.npmjs.com/package/${SOURCE_PACKAGE}).**`,
+    "",
+    "## What this is",
+    "",
+    `This build is \`${version}\`. The version reads as \`<next release>-<UTC build time>x<commit>\`, so it names the release it anticipates, when it was built, and the commit it came from.`,
+    "",
+    `It installs the same \`taskless\` executable as the release. **Do not install both globally** — they collide on that name, and that configuration is not supported.`,
+    "",
+    "Nightlies exist to exercise merged-but-unreleased work. They are not release candidates and carry no stability guarantee.",
+    "",
+    `Source: https://github.com/taskless/cli`,
+    "",
+  ].join("\n");
+}
+
 function hasNightlyForSha(versions, shortSha) {
   const sha = String(shortSha ?? "").toLowerCase();
   if (!SHORT_SHA_PATTERN.test(sha)) {
@@ -257,7 +292,11 @@ function main() {
   // rewrite has to be real — but it lives only for the length of the pack, and
   // the restore is in `finally` so a failed pack does not strand a rewritten
   // manifest in the working tree.
+  const readmePath = join(packageDirectory, "README.md");
+  const committedReadme = readFileSync(readmePath, "utf8");
+
   writeFileSync(packageJsonPath, `${JSON.stringify(nightly, null, 2)}\n`);
+  writeFileSync(readmePath, buildNightlyReadme(version));
   let packed;
   try {
     packed = spawnSync(
@@ -267,6 +306,7 @@ function main() {
     );
   } finally {
     writeFileSync(packageJsonPath, committed);
+    writeFileSync(readmePath, committedReadme);
   }
 
   if (packed.error) {
@@ -294,6 +334,7 @@ module.exports = {
   applyNightlyIdentity,
   buildNightlyVersion,
   formatStampTimestamp,
+  buildNightlyReadme,
   hasNightlyForSha,
   isValidVersion,
   selectProposedVersion,
