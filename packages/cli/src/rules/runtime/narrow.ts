@@ -3,6 +3,7 @@ import { copyFile, mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { createInterface } from "node:readline";
 import { join } from "node:path";
+import { StringDecoder } from "node:string_decoder";
 
 import { stringify } from "yaml";
 
@@ -45,25 +46,31 @@ function runSg(
       stdio: ["ignore", "pipe", "pipe"],
       env: { ...process.env, PATH: buildPath() },
     });
+    // One decoder for the stream — see the note in `runAstGrepScan`. stdout is
+    // read through `node:readline`, which already decodes across boundaries.
+    const stderrDecoder = new StringDecoder("utf8");
     const stderrChunks: string[] = [];
     const rl = createInterface({ input: child.stdout });
     rl.on("line", onLine);
     child.stderr.on("data", (chunk: Buffer) =>
-      stderrChunks.push(chunk.toString())
+      stderrChunks.push(stderrDecoder.write(chunk))
     );
     child.on("error", reject);
     child.on("close", (code, signal) => {
+      stderrChunks.push(stderrDecoder.end());
       // ast-grep exits 1 when matches are found — expected. A `null` code means
       // the process was killed by a signal (e.g. OOM); treat that and any exit
       // >1 as a real failure rather than silently dropping matches.
       if (code === null || code > 1) {
         const cause =
           code === null ? `signal ${String(signal)}` : `exit ${String(code)}`;
+        // Test the joined text, not the chunk count: the decoder's final flush
+        // pushes an empty string on a stream that ended cleanly, so counting
+        // chunks would append a bare `: ` to every message.
+        const stderr = stderrChunks.join("").trim();
         reject(
           new Error(
-            `ast-grep narrow failed (${cause})${
-              stderrChunks.length > 0 ? `: ${stderrChunks.join("").trim()}` : ""
-            }`
+            `ast-grep narrow failed (${cause})${stderr === "" ? "" : `: ${stderr}`}`
           )
         );
         return;

@@ -1,6 +1,7 @@
 import { spawn } from "node:child_process";
 import { dirname, resolve } from "node:path";
 import { createInterface } from "node:readline";
+import { StringDecoder } from "node:string_decoder";
 import { fileURLToPath } from "node:url";
 
 import type { AstGrepMatch } from "../types/check";
@@ -149,6 +150,18 @@ export async function runAstGrepScan(
     });
 
     const results: CheckResult[] = [];
+
+    // One decoder for the stream, not `chunk.toString()` per chunk. A
+    // multi-byte UTF-8 sequence split across a chunk boundary would otherwise
+    // have each half independently replaced with U+FFFD, and the bytes are
+    // unrecoverable by the time the pieces are joined. What ast-grep writes
+    // here is the message a user reads when it rejects a rule file — naming a
+    // rule id or a path, which is exactly where a non-ASCII character shows up.
+    // Same treatment `vale/run.ts` and `verify.ts` already give their streams.
+    //
+    // stdout needs no decoder: it is consumed through `node:readline`, which
+    // handles character boundaries itself.
+    const stderrDecoder = new StringDecoder("utf8");
     const stderrChunks: string[] = [];
 
     const rl = createInterface({ input: child.stdout });
@@ -164,7 +177,7 @@ export async function runAstGrepScan(
     });
 
     child.stderr.on("data", (chunk: Buffer) => {
-      stderrChunks.push(chunk.toString());
+      stderrChunks.push(stderrDecoder.write(chunk));
     });
 
     child.on("error", (error) => {
@@ -183,6 +196,11 @@ export async function runAstGrepScan(
     });
 
     child.on("close", (code) => {
+      // Flush whatever partial multi-byte sequence the decoder is holding, so a
+      // stream that ends mid-character contributes its replacement char once
+      // rather than leaving bytes unaccounted for.
+      stderrChunks.push(stderrDecoder.end());
+
       // ast-grep exits 1 when error-severity matches found — that's expected
       // Only treat spawn/binary failures (exit > 1) as errors
       if (code !== null && code > 1) {
