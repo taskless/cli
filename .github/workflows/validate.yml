@@ -1,0 +1,116 @@
+name: Validate
+
+on:
+  push:
+    branches: [main]
+  # No `branches:` filter, deliberately. Lint, typecheck, and tests have no
+  # interest in where a PR eventually merges, and filtering on `main` silently
+  # skipped this workflow on stacked PRs.
+  #
+  # The filter matches the PR's base ref, but GitHub also resolves a stacked
+  # PR's *eventual* target and matches on that — so `branches: [main]` did run
+  # on PRs based on another branch, until it stopped. Measured on the
+  # #71→#93→#94→#95→#100→#102→#103→#106 stack: every PR up to #102 got a
+  # `Validate` run, while #103 and #106 got none, across 16 `pull_request`
+  # events that other workflows handled fine. A filter that works for six PRs
+  # and quietly fails on the seventh is worse than one that never worked,
+  # because nobody re-checks it.
+  #
+  # `ready_for_review` is NOT in the default set (opened/synchronize/reopened)
+  # and must be named: without it a draft marked ready gets no fresh run until
+  # something happens to push again, which is exactly the state #103 sat in.
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: Validate
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v6
+
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Build
+        run: pnpm build
+
+      - name: Test
+        run: pnpm test
+
+      - name: Test workflow scripts
+        run: node --test .github/scripts/*.test.cjs
+
+      # Repo-wide, not changed-files-only: spec rot accumulates in the specs a
+      # PR does not touch, so a scoped check would never surface it.
+      - name: Validate specs
+        run: pnpm openspec validate --all --strict
+
+      # `--strict` validates what the parser read, not that it read the whole
+      # file. A second `##` inside `## Requirements` ends the section and every
+      # requirement below it becomes invisible — valid, unread, and green.
+      - name: Check spec requirement visibility
+        run: node .github/scripts/openspec-visibility.cjs
+
+      # Main only, deliberately. An unarchived change directory is the NORMAL
+      # state of a pull request — a change is archived exactly once, on the last
+      # slice of the work — so any PR-time gate has to guess at stack position to
+      # avoid firing on in-flight work, and it guesses wrong often enough that
+      # people learn to ignore it. `main` has no such ambiguity: whatever sits
+      # under openspec/changes/ once the work has landed is debris, and this is
+      # the one place that can be said without qualification.
+      #
+      # This replaces both a merge-time archive gate (false positives on every
+      # mid-stack PR) and a nightly staleness sweep (a second opinion about the
+      # same directory, dated from git history). Neither is needed: main going
+      # red is a standing signal that there is something to clean up, and it
+      # clears the moment the change is archived.
+      #
+      # Known and accepted: a stack that merges FORWARD lands its change
+      # directory on main and archives it only on the final slice, so main runs
+      # red for as long as that stack is draining. Nothing is blocked by it —
+      # branch protection reads the PR's own `Validate`, not main's — and the
+      # alternative is dating directories from git history to guess at intent,
+      # which is the check this one replaces. Merging the stack DOWN (see
+      # CLAUDE.md) keeps main clean throughout.
+      - name: Check for unarchived OpenSpec changes on main
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: |
+          set -euo pipefail
+
+          if [ ! -d openspec/changes ]; then
+            echo "openspec/changes does not exist — nothing to check."
+            exit 0
+          fi
+
+          UNARCHIVED=$(find openspec/changes -mindepth 1 -maxdepth 1 -type d ! -name archive)
+
+          if [ -n "$UNARCHIVED" ]; then
+            echo "::error::main is carrying unarchived OpenSpec change directories:"
+            echo "$UNARCHIVED" | sed 's|^|  - |'
+            echo ""
+            echo "The work has landed, so these are debris. Archive each one (e.g. /openspec-archive-change <name>), which moves it to openspec/changes/archive/YYYY-MM-DD-<name>/, and push to main."
+            echo "If a change is still in flight on an open stack, land or close that stack — main should not hold an in-progress change once its branches are gone."
+            exit 1
+          fi
+
+          echo "No unarchived OpenSpec changes on main — OK."

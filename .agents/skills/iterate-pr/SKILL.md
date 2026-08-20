@@ -238,72 +238,33 @@ Run `${CLAUDE_SKILL_ROOT}/scripts/fetch_pr_checks.py` to get structured failure 
 
 **Wait if pending:** If review bot checks (sentry, warden, cursor, bugbot, seer, codeql) are still running, wait before proceeding—they post actionable feedback that must be evaluated. Informational bots (codecov) are not worth waiting for.
 
-#### Stacked PRs: ignore the OpenSpec Archive Check unless this is the last PR in the chain
+#### No PR check asks whether the OpenSpec change is archived
 
-The `PR OpenSpec Archive Check` (workflow `pr-check-openspec.yml`) fails whenever
-any unarchived directory exists under `openspec/changes/`. A change is archived
-exactly once, at the END of the work — so a PR that still carries an in-progress
-change directory will fail this check. Archiving on an intermediate PR is wrong:
-it would remove the change docs before the implementation PRs above it merge.
+A change is archived exactly once, at the END of the work, so an unarchived
+directory under `openspec/changes/` is the normal state of a pull request. There
+is no PR-time gate for it — the earlier one had to infer stack position to avoid
+firing on in-flight work, and a check that is expected-red on most of a stack
+teaches people to ignore red.
 
-This workflow carries **no `branches:` filter** — that is why it runs on every
-PR in a stack, and it is the reliable way to get that behavior. Expect to see
-the check on every PR in a stack and decide from stack position, not from the
-`on:` block.
+The archive signal lives on `main` instead: a step in `validate.yml` runs on
+push events only and fails while `main` carries an unarchived change directory.
+If you see it red on `main`, the fix is to archive the change via the OpenSpec
+archive flow — which moves `openspec/changes/<name>/` to
+`openspec/changes/archive/YYYY-MM-DD-<name>/` — or to land the stack that is
+still holding it open.
 
-Do not generalize from workflows that DO filter on `branches: [main]`. GitHub
-sometimes resolves a stacked PR's eventual target and matches on that, so such a
-workflow may appear on mid-stack PRs — but it stops without warning (see
-"two other failures that are structural" below). A filter-less trigger is the
-only dependable way to run everywhere.
+Practically, on a PR: archive when the PR is the last in the chain, and leave
+the change directory alone otherwise. Nothing will fail either way.
 
-The archive job is also skipped while a PR is a **draft**. A spec-only proposal
-is its own tip until its implementation is stacked on top, so the gate would
-otherwise demand it archive a change nobody has built yet, and it would sit red
-for as long as the proposal is open. A draft cannot merge, and the check runs on
-`ready_for_review`, so nothing unarchived can reach `main` — if a proposal PR is
-red on this check, mark it ready only when its implementation is stacked
-beneath it.
+#### Stacked PRs: two other check behaviours worth knowing
 
-When the archive check does run and fail, decide ONE thing before treating it as
-actionable: **is this PR the last in the chain (the tip)?** A PR is the tip when
-no other OPEN PR targets its head branch as a base:
-
-```bash
-HEAD=$(gh pr view --json headRefName --jq '.headRefName')
-gh pr list --state open --base "$HEAD" --json number
-```
-
-An empty list → nothing is stacked on top → this PR is the tip.
-
-Then:
-
-- **Not the tip** (some open PR is stacked on this one) → IGNORE the
-  `PR OpenSpec Archive Check` failure. Do NOT archive the change on this PR.
-  Treat the check as expected-red and do not let it block the iterate loop
-  (still address every other failing check and all feedback normally).
-- **The tip** (nothing stacked on top — including an ordinary standalone PR) →
-  the change MUST be archived before merge. Archive it via the OpenSpec archive
-  flow, which moves `openspec/changes/<name>/` to the dated archive directory
-  `openspec/changes/archive/YYYY-MM-DD-<name>/` (do not invent a different
-  location), then commit and push so the check goes green.
-
-This rule applies ONLY to the OpenSpec Archive Check. Every other check is
-handled normally regardless of stack position.
-
-#### Stacked PRs: two other failures that are structural, not regressions
-
-**`Require a changeset` on the bottom PR.** The check looks for a
-`.changeset/*.md` added in that PR's own diff, so the bottom PR — the one
-targeting `main` — is the only place a changeset can satisfy it. If it fails
-there, move the changeset DOWN to the bottom branch rather than labelling
-anything `skip-changeset`; every branch above inherits it, since a child
-contains its ancestors' commits. Extend that one file as later PRs land; never
-add a second changeset per PR.
-
-Mid-stack PRs bypass the check on their base ref. If you see one failing it,
-look at that guard rather than reaching for the label, which would wrongly
-record the change as shipping no release note.
+**`Changeset` warns, it does not fail.** It looks for a `.changeset/*.md` added
+or modified anywhere between `main` and this PR's head, which covers every
+branch below it in the stack. A warning means no changeset exists anywhere in
+the stack. If the change ships user-visible behaviour, add one on the BOTTOM
+branch rather than labelling anything `skip-changeset`; every branch above
+inherits it, since a child contains its ancestors' commits. Extend that one file
+as later PRs land; never add a second changeset per PR.
 
 **`on: pull_request: branches: [main]` tells you nothing dependable about where
 a workflow runs.** GitHub sometimes resolves a stacked PR's eventual target and

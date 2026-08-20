@@ -1,0 +1,96 @@
+name: Changeset
+
+# Advisory, never blocking. A pull request that ships a release note should add
+# a `.changeset/<name>.md`; this job says so when one is missing and gets out of
+# the way otherwise.
+#
+# It used to fail, and the failure did not survive contact with stacked pull
+# requests. One change gets ONE changeset, which lives on the bottom branch, so
+# the file is *added* in exactly one PR's own diff and inherited by every branch
+# above it. A per-PR gate therefore had to reason about stack position to know
+# whether an absent changeset was a real omission — via a base-ref guard that
+# GitHub's stacked-PR handling made unreliable in both directions, and a
+# `skip-changeset` label that got applied to silence the check rather than to
+# record "this ships no release note." What was left was a red check people had
+# learned to route around, which is worse than no check.
+#
+# So the question it asks is now the one that has a dependable answer: does a
+# changeset exist ANYWHERE in this branch's stack — the full diff against
+# `main`, which includes every ancestor branch's commits? If yes, the change is
+# covered no matter which PR carries the file. If no, warn, and leave the call
+# to the author.
+
+on:
+  # No `branches:` filter: the check is advisory, so it should reach every PR in
+  # a stack, and a filter is not a dependable way to scope one anyway. It runs
+  # everywhere and answers the stack question itself, below. `ready_for_review`
+  # is not in the default event set and must be named.
+  pull_request:
+    types: [opened, reopened, synchronize, ready_for_review]
+
+permissions:
+  contents: read
+
+jobs:
+  changeset:
+    name: Changeset
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0 # need `origin/main` to diff the whole stack against
+
+      - name: Look for a changeset in this stack
+        env:
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          HEAD_REF: ${{ github.head_ref }}
+          LABELS: ${{ join(github.event.pull_request.labels.*.name, ',') }}
+        run: |
+          set -euo pipefail
+
+          # The changesets "Version Packages" PR consumes changesets — removing
+          # them is its whole job — so it legitimately has none.
+          if [ "$HEAD_REF" = "changeset-release/main" ]; then
+            echo "Version Packages PR (changeset-release/main) — no changeset expected."
+            exit 0
+          fi
+
+          # Kept only to keep deliberate no-release-note PRs (docs, CI, chores,
+          # the vale-binaries bot) quiet. It suppresses a warning now, not a
+          # failure, so it can no longer be used to force a merge through.
+          case ",${LABELS}," in
+            *,skip-changeset,*)
+              echo "The 'skip-changeset' label is present — no release note expected."
+              exit 0
+              ;;
+          esac
+
+          # Three dots: merge-base of `main` and this head, so the range is
+          # everything the stack has added, including the ancestor branches
+          # below this PR. A changeset on the bottom branch counts for every PR
+          # above it, which is the arrangement this repo asks for.
+          #
+          # Additions AND modifications, because one change gets one changeset:
+          # a stack landing forward finds its release note already on `main` and
+          # the right move is to extend that file, not add a second entry for
+          # something that ships once.
+          FOUND=$(git diff --name-only --diff-filter=AM "origin/main...$HEAD_SHA" -- '.changeset/*.md' \
+            | grep -viE '/README\.md$' || true)
+
+          if [ -n "$FOUND" ]; then
+            echo "Changeset(s) present in this stack:"
+            echo "$FOUND" | sed 's/^/  - /'
+            exit 0
+          fi
+
+          echo "::warning::No changeset found anywhere in this stack. If this pull request changes published behaviour, run \`pnpm changeset\` on the bottom branch of the stack. If it ships no release note (docs / CI / chore), ignore this or apply the \`skip-changeset\` label."
+          {
+            echo "### No changeset in this stack"
+            echo ""
+            echo "Nothing under \`.changeset/\` was added or modified between \`main\` and this branch, including the branches below it."
+            echo ""
+            echo "- Ships user-visible behaviour → run \`pnpm changeset\` on the **bottom** branch of the stack, so every branch above inherits it."
+            echo "- Ships no release note (docs, CI, chore) → nothing to do. Apply \`skip-changeset\` to silence this."
+            echo ""
+            echo "_This is a warning. It does not block the merge._"
+          } >> "$GITHUB_STEP_SUMMARY"
