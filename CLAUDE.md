@@ -101,35 +101,43 @@ The proposal states which of these the change is, and why. Decide it while writi
 
 The deciding question between forward and down is only this: **can each unit reach production on its own without breaking anything?** If landing unit 1 alone would leave `check` broken, tests failing, or a migration half-applied, the answer is no and the stack merges down. Do not assume forward because it is tidier — verify it, since "each unit is safe" is a claim about behavior, not intent.
 
-Note how this interacts with the archive gate (see the OpenSpec archive check below): a change is archived exactly once, on whichever PR is the tip. Mid-stack PRs are expected to carry an unarchived change directory and the gate skips them.
+Note how this interacts with archiving: a change is archived exactly once, on whichever PR is the tip. No PR check asks about that — an unarchived change directory is the normal state of a pull request, so a PR-time gate can only guess at stack position, and it guessed wrong often enough to be ignored. The only check is on `main` (a step in `validate.yml`, push events only), which goes red while `main` carries an unarchived change directory. A stack that merges **down** keeps `main` clean throughout; a stack that merges **forward** leaves `main` red until its final slice archives the change. Nothing is blocked by that red — branch protection reads each PR's own `Validate` — but it is a standing reminder that the stack is unfinished.
 
 ### One changeset, at the bottom of the stack, grown as the stack grows
 
-`require-changeset.yml` looks for a `.changeset/*.md` **added in that PR's own diff**. On a stack that means:
+`changeset.yml` looks for a `.changeset/*.md` added or modified **anywhere between `main` and the PR's head** — the whole stack, since a child branch contains its ancestors' commits. It **warns and never fails**: a missing changeset is a judgement call about whether the change ships a release note, and the workflow is not in a position to make it.
 
-- **The changeset belongs on the bottom PR**, the one that targets `main`. That is the only place it can live: a changeset added on the tip is invisible to the bottom PR's diff, so the check would fail on the PR that actually merges.
-- **Mid-stack PRs bypass the check**, because the base branch is not `main`. They inherit the base's changeset rather than adding one, so there is nothing for the check to find. **Do not label them `skip-changeset`** — the label records a deliberate "this change ships no release note," which is false here, and the bypass already handles it.
+That is a deliberate retreat from a gate. A per-PR requirement had to reason about stack position to tell a real omission from a file that simply lives further down, and the `skip-changeset` label ended up being applied to silence a red check rather than to record "this ships no release note." The label survives, but it now suppresses a warning, so it can no longer be used to force a merge through.
 
-The bypass is an in-step check on the base ref, and it is load-bearing. **`branches: [main]` does not reliably mean either "only the PR whose base is `main`" or "every PR in the stack."** The filter matches the PR's base ref, but GitHub also resolves a stacked PR's _eventual_ target and sometimes matches on that instead, so the workflow runs on mid-stack PRs — observed on #73, #80, and #81, all with `openspec/partition-engine-*` bases.
+The placement rules are unchanged, because they are about review quality rather than about passing a check:
+
+- **The changeset belongs on the bottom PR**, the one that targets `main`. It is the first branch every other one inherits from, and the one that carries the release note to `main` if the stack lands forward.
+- **Never add a second changeset per PR.** One change ships once and gets one release note; a later PR extends the existing file.
+
+### `branches:` filters do not tell you where a workflow runs
+
+**`branches: [main]` does not reliably mean either "only the PR whose base is `main`" or "every PR in the stack."** The filter matches the PR's base ref, but GitHub also resolves a stacked PR's _eventual_ target and sometimes matches on that instead, so a filtered workflow runs on mid-stack PRs — observed on #73, #80, and #81, all with `openspec/partition-engine-*` bases.
 
 **Do not depend on that resolution. It is undocumented and it stops without warning.** On the #71→#93→#94→#95→#100→#102→#103→#106 stack, every PR up to #102 got a `Validate` run and **#103 and #106 got none** — across 16 `pull_request` events that filter-less workflows handled fine. #103 was a ~93-file change that reached "ready for review" having never been linted, typechecked, or tested in CI. Depth correlates (#102 is six hops from `main`, #103 seven) but nothing confirms a cap, and it was not a date cutoff: #102 kept getting runs after #103 had already stopped. A filter that works for six PRs and quietly fails on the seventh is worse than one that never worked, because nobody re-checks it.
 
 Two rules follow, and they pull in opposite directions:
 
-- **A workflow that must run everywhere carries no `branches:` filter at all.** Lint, typecheck, and tests have no interest in where a PR eventually merges. `ci.yml` dropped its filter for exactly this reason; `pr-check-openspec.yml` and `stack-breadcrumb.yml` never had one, which is why they kept running on #103. If you add such a workflow, also name `ready_for_review` in `types:` — it is not in the default set (`opened`/`synchronize`/`reopened`), so without it a draft marked ready gets no fresh run until someone happens to push again.
-- **A workflow whose correctness depends on "is this the PR that merges to `main`" must determine that itself** — from the base ref, or by resolving stack position — and cannot lean on the `on:` filter to scope it. If you see a mid-stack PR failing the changeset check, look at that guard rather than reaching for the label.
+- **A workflow that must run everywhere carries no `branches:` filter at all.** Lint, typecheck, and tests have no interest in where a PR eventually merges. `validate.yml`, `changeset.yml`, and `stack-breadcrumb.yml` all carry no filter, which is why they kept running on #103. If you add such a workflow, also name `ready_for_review` in `types:` — it is not in the default set (`opened`/`synchronize`/`reopened`), so without it a draft marked ready gets no fresh run until someone happens to push again.
+- **A workflow whose correctness depends on "is this the PR that merges to `main`" must determine that itself** — from the base ref, or by resolving stack position — and cannot lean on the `on:` filter to scope it. Better still, ask a question that does not depend on stack position at all: `changeset.yml` diffs against `main` rather than against its base, and the archive check moved off pull requests entirely.
 
 The shared point: the `on:` filter is not a reliable answer to "where does this PR land." Let the workflow run, and decide inside it.
 
+### Growing the changeset
+
 Put the changeset at the base and every branch above inherits it, since a child contains its ancestors' commits.
 
-**Write it on the base branch before you cut the children.** Inheritance only runs forward in time: a child branched before the file existed does not carry it, and "grown as the stack grows" has nothing to grow. What makes this easy to miss is that the natural moment to write a release note is when you finish a unit — which is exactly the moment you are standing on a child branch, several branches above the only diff `require-changeset` reads. On the #71/#93/#94/#95 stack the changeset was written on the tip instead; the bottom PR looked fine only because it carried `skip-changeset`, and the moment that label came off, `Require a changeset` went red there.
+**Write it on the base branch before you cut the children.** Inheritance only runs forward in time: a child branched before the file existed does not carry it, and "grown as the stack grows" has nothing to grow. What makes this easy to miss is that the natural moment to write a release note is when you finish a unit — which is exactly the moment you are standing on a child branch, several branches above the base. A changeset stranded on the tip still reaches `main` when a stack merges down, but on a forward-merging stack it means every PR below it lands with no release note.
 
 **Grow it incrementally when the stack merges forward.** Each PR extends the changeset with its own scope rather than the base describing the whole future change up front. A reviewer reading the changeset then sees only what has actually landed, and is not asked to evaluate a release note that promises more than the diff in front of them. When you extend it, edit the same file on the branch you are working on — never add a second changeset per PR, or one change becomes several release notes for what merges to `main` exactly once.
 
 **When the stack merges down, that reasoning does not apply.** Nothing reaches `main` until everything does — a single protected merge carries the whole stack — so a changeset describing the complete change is accurate at the only moment it is ever read, and no reviewer is asked to approve more than what lands. Growing it per unit is still friendlier to review, but there it is a preference, not a correctness constraint.
 
-What _is_ a correctness constraint in both shapes is where the file lives: **on the bottom branch, present in the bottom PR's own diff.** That is the only diff `require-changeset` ever evaluates.
+In both shapes the file belongs **on the bottom branch**. Nothing enforces that any more, so it is on you: a forward-merging stack publishes from `main` as each slice lands, and only a changeset that is already there gets read.
 
 ### Landing a stack: merge _down_, then one merge to `main`
 
@@ -172,7 +180,7 @@ This happens when the **parent** PR is merged with `--delete-branch`: deleting t
 
 - **Projects-classic deprecation** breaks some GraphQL-backed `gh` commands (e.g. `gh pr reopen`). Workaround: use the REST API for PR state changes (`gh api --method PATCH .../pulls/<n> -f state=open`).
 - **`gh pr update-branch` may not exist** in the installed `gh`; update locally (`git merge origin/main` on the up-to-date remote branch) and push.
-- **Stack-aware OpenSpec archive check** (`pr-check-openspec.yml`) skips on non-tip PRs and runs on the tip; "tip" recomputes as branches merge, so it lands green when the archiving PR reaches `main`.
+- **No PR-time OpenSpec archive check.** An unarchived change directory on a pull request is expected, not a failure. The only signal is `main`'s own `Validate` run, which goes red while `main` carries one.
 - **Clean up local branches** once the stack lands: `git fetch --prune`, then delete the branches that merged (`git branch --merged main`).
 
 ## OpenSpec Apply

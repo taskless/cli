@@ -140,14 +140,14 @@ The root `pnpm typecheck` command SHALL invoke `turbo run typecheck`, which runs
 
 **Continuous integration.**
 
-### Requirement: CI workflow exists
+### Requirement: Validation workflow exists
 
-A GitHub Actions workflow file SHALL exist at `.github/workflows/ci.yml`.
+A GitHub Actions workflow file SHALL exist at `.github/workflows/validate.yml`, and its job SHALL be named `Validate` to match the required status check configured on `main`.
 
 #### Scenario: Workflow file is present
 
 - **WHEN** inspecting the repository
-- **THEN** `.github/workflows/ci.yml` SHALL exist and be valid YAML
+- **THEN** `.github/workflows/validate.yml` SHALL exist and be valid YAML
 
 ### Requirement: Workflow triggers on every pull request and main pushes
 
@@ -269,6 +269,27 @@ The second check verifies that every `### Requirement:` heading sits under `## R
 - **WHEN** a spec reaches end of file with a code fence still open, as happens when an opening fence is lost and its closer is left dangling
 - **THEN** the visibility step SHALL fail, because everything after that point is unreadable to the check as well as to the parser
 
+### Requirement: Unarchived OpenSpec changes fail on main only
+
+The workflow SHALL fail when `main` carries a directory under `openspec/changes/` other than `archive/`, and SHALL make that check on `push` events to `main` only. No pull request check SHALL require a change to be archived.
+
+An unarchived change directory is the normal state of a pull request — a change is archived exactly once, on the last slice of the work — so a pull-request gate has to infer stack position to avoid firing on work still in flight, and a check that is expected-red across most of a stack trains people to ignore red. On `main` the question has an unambiguous answer: once the work has landed, whatever remains under `openspec/changes/` is debris. A stack that merges forward leaves `main` red until its final slice archives the change; that red blocks nothing, because branch protection reads each pull request's own `Validate` run.
+
+#### Scenario: Unarchived change on main fails the workflow
+
+- **WHEN** a commit is pushed to `main` and a directory other than `archive/` exists under `openspec/changes/`
+- **THEN** the workflow SHALL fail, naming each unarchived directory
+
+#### Scenario: Unarchived change on a pull request does not fail
+
+- **WHEN** a pull request carries an unarchived change directory under `openspec/changes/`
+- **THEN** the workflow SHALL NOT fail for it, because the check is skipped on pull request events
+
+#### Scenario: Archived changes pass
+
+- **WHEN** a commit is pushed to `main` and `openspec/changes/` holds only `archive/`
+- **THEN** the check SHALL succeed
+
 ### Requirement: Workflow uses pnpm matching packageManager field
 
 The workflow SHALL install pnpm using a version consistent with the `packageManager` field in the root `package.json`.
@@ -315,4 +336,25 @@ Workspace packages whose versions are assigned by a release workflow SHALL be li
 #### Scenario: A platform-package change needs no changeset
 
 - **WHEN** a pull request modifies only workflow-versioned platform packages
-- **THEN** the changeset requirement check does not fail for the absence of a changeset
+- **THEN** the changeset check does not fail for the absence of a changeset
+
+### Requirement: The changeset check is advisory and stack-aware
+
+A GitHub Actions workflow SHALL report whether a `.changeset/*.md` other than the template README is added or modified anywhere between `main` and a pull request's head commit. It SHALL emit a warning when none is found and SHALL NOT fail the pull request in any case.
+
+The range is the whole stack, not the pull request's own diff: one change gets one changeset, it lives on the bottom branch, and every branch above inherits it because a child contains its ancestors' commits. Asking each pull request to add its own file made a correct arrangement look like an omission, which is what the `skip-changeset` label was being used to silence. Whether a change ships a release note is a judgement the workflow cannot make, so it reports and leaves the call to the author.
+
+#### Scenario: A changeset on a lower branch of the stack satisfies the check
+
+- **WHEN** a pull request adds no changeset but a branch below it in the stack does
+- **THEN** the check SHALL report the changeset as present, because the diff is taken against `main`
+
+#### Scenario: No changeset anywhere in the stack warns without failing
+
+- **WHEN** no changeset is added or modified between `main` and the pull request's head
+- **THEN** the check SHALL emit a warning and SHALL still conclude successfully
+
+#### Scenario: The Version Packages pull request is exempt
+
+- **WHEN** the pull request's head branch is `changeset-release/main`
+- **THEN** the check SHALL pass without a warning, because consuming changesets is that pull request's purpose
