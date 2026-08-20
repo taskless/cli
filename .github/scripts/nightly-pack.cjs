@@ -20,18 +20,37 @@
  * (the same arrangement as vale-release.cjs), while `main()` runs only when the
  * file is invoked directly.
  *
- * Usage:
- *   node .github/scripts/nightly-pack.cjs --status <file> --sha <short-sha> [--out <dir>]
+ * TWO MODES, AND THE VERSION IS COMPUTED IN EXACTLY ONE OF THEM.
  *
- *   --status  the JSON file written by `changeset status --output=<path>`.
- *             MUST be a repo-relative path when produced: `--output` resolves
- *             against the process working directory with no special case for a
- *             leading `/`, so `--output=/tmp/status.json` means
- *             `<cwd>/tmp/status.json` and fails with ENOENT from the repo root.
- *   --sha     the short commit hash to stamp into the version.
- *   --out     where to write the .tgz (default: .nightly-dist at the repo root).
+ *   node .github/scripts/nightly-pack.cjs --print-version --status <file> --sha <short-sha>
+ *   node .github/scripts/nightly-pack.cjs --version <version> [--out <dir>]
  *
- * Writes `version` and `tarball` to $GITHUB_OUTPUT when it is set.
+ *   --print-version  stamp the version from the pending changesets, the current
+ *                    UTC time, and the sha; print it and set the `version`
+ *                    output. Packs nothing.
+ *   --status         the JSON file written by `changeset status --output=<path>`.
+ *                    MUST be a repo-relative path when produced: `--output`
+ *                    resolves against the process working directory with no
+ *                    special case for a leading `/`, so
+ *                    `--output=/tmp/status.json` means `<cwd>/tmp/status.json`
+ *                    and fails with ENOENT from the repo root.
+ *   --sha            the short commit hash to stamp into the version.
+ *   --version        the already-stamped version to pack under.
+ *   --out            where to write the .tgz (default: .nightly-dist at the
+ *                    repo root).
+ *
+ * The split exists because the version has a SECOND consumer: the CLI build
+ * bakes `npx @taskless/cli-nightly@<version>` into every skill, command, and
+ * recipe it emits (TASKLESS_NIGHTLY_VERSION, see
+ * packages/cli/scripts/build-target.ts). A version computed independently in
+ * each place is computed from a different clock, so the shipped instructions
+ * would name a version that was never published — an agent sent to a package
+ * that 404s, or worse, silently to `@taskless/cli`. Pack mode therefore CANNOT
+ * recompute: it takes `--version` and rejects `--status`/`--sha` outright,
+ * rather than merely happening not to look at the clock.
+ *
+ * Writes `version` (both modes) and `tarball` (pack mode) to $GITHUB_OUTPUT
+ * when it is set.
  */
 
 const {
@@ -214,6 +233,54 @@ function buildNightlyReadme(version) {
   ].join("\n");
 }
 
+/**
+ * Turn what `npm view <pkg> versions --json` actually produced into a list of
+ * versions — or throw, because gate 2 has no safe default.
+ *
+ * THREE OUTCOMES, NOT TWO. The gate's job is suppression, so "I could not tell"
+ * must not collapse into "nothing published." It would not surface as a failed
+ * publish either: the version carries a timestamp, so a re-run after a parse
+ * failure mints a DIFFERENT version for the SAME commit and publishes it
+ * successfully — two nightlies for one sha, no error anywhere. The blanket
+ * `|| versions='[]'` this replaces did exactly that for any registry hiccup.
+ *
+ *   exit 0, JSON array or bare string → those versions. `--json` yields a bare
+ *     STRING for a package with exactly one version, which the nightly package
+ *     is once, right after its bootstrap publish.
+ *   exit != 0 with an E404 error object → an empty list. The package genuinely
+ *     does not exist yet; this is the bootstrap day and the only non-zero exit
+ *     that means "nothing published."
+ *   anything else — unparseable output, an empty body, a different error code,
+ *     an unexpected shape → THROW, and let the caller fail the job.
+ */
+function parseVersionsResponse(raw, exitStatus) {
+  const text = String(raw ?? "").trim();
+  const status = Number(exitStatus ?? 0);
+  let parsed;
+  if (text.length > 0) {
+    try {
+      parsed = JSON.parse(text);
+    } catch {
+      throw new Error(
+        `npm view did not return JSON (exit ${status}): ${text.slice(0, 200)}`
+      );
+    }
+  }
+
+  if (status !== 0) {
+    if (parsed && parsed.error && parsed.error.code === "E404") return [];
+    throw new Error(
+      `npm view failed with exit ${status} and no E404 — refusing to assume this commit has no nightly: ${text.slice(0, 200)}`
+    );
+  }
+
+  if (typeof parsed === "string") return [parsed];
+  if (Array.isArray(parsed)) return parsed;
+  throw new Error(
+    `npm view returned neither a version list nor a version (exit ${status}): ${text.slice(0, 200)}`
+  );
+}
+
 function hasNightlyForSha(versions, shortSha) {
   const sha = String(shortSha ?? "").toLowerCase();
   if (!SHORT_SHA_PATTERN.test(sha)) {
@@ -238,16 +305,33 @@ function requireValue(argv, index, flag) {
   return value;
 }
 
+/**
+ * Parse argv into one of the two modes, and refuse anything that would let the
+ * pack recompute a version the build has already been given.
+ *
+ * `printVersion: true` → `{ status, sha }`. `printVersion: false` →
+ * `{ version, out }`. The flags of one mode are an ERROR in the other; a pack
+ * that quietly ignored `--sha` would be a pack that could be handed a stale
+ * version and a fresh sha and publish the disagreement.
+ */
 function parseArguments(argv) {
-  const options = { out: join(REPO_ROOT, ".nightly-dist") };
+  const options = {
+    out: join(REPO_ROOT, ".nightly-dist"),
+    printVersion: false,
+  };
   for (let index = 0; index < argv.length; index += 1) {
     const argument = argv[index];
-    if (argument === "--status") {
+    if (argument === "--print-version") {
+      options.printVersion = true;
+    } else if (argument === "--status") {
       index += 1;
       options.status = resolve(requireValue(argv, index, "--status"));
     } else if (argument === "--sha") {
       index += 1;
       options.sha = requireValue(argv, index, "--sha");
+    } else if (argument === "--version") {
+      index += 1;
+      options.version = requireValue(argv, index, "--version");
     } else if (argument === "--out") {
       index += 1;
       options.out = resolve(requireValue(argv, index, "--out"));
@@ -255,11 +339,34 @@ function parseArguments(argv) {
       throw new Error(`unknown argument: ${argument}`);
     }
   }
-  if (!options.status) {
-    throw new Error("--status is required");
+
+  if (options.printVersion) {
+    if (options.version) {
+      throw new Error("--version is not accepted with --print-version");
+    }
+    if (!options.status) {
+      throw new Error("--status is required with --print-version");
+    }
+    if (!options.sha) {
+      throw new Error("--sha is required with --print-version");
+    }
+    return options;
   }
-  if (!options.sha) {
-    throw new Error("--sha is required");
+
+  if (!options.version) {
+    throw new Error(
+      "--version is required; stamp it once with --print-version and pass the same value to the build and to this pack"
+    );
+  }
+  if (options.status || options.sha) {
+    throw new Error(
+      "--status/--sha are only for --print-version; packing uses the version it was given and never recomputes one"
+    );
+  }
+  if (!isValidVersion(options.version)) {
+    throw new Error(
+      `--version is not a valid semantic version: ${JSON.stringify(options.version)}`
+    );
   }
   return options;
 }
@@ -273,13 +380,21 @@ function setOutput(key, value) {
 
 function main() {
   const options = parseArguments(process.argv.slice(2));
-  const status = JSON.parse(readFileSync(options.status, "utf8"));
-  const version = buildNightlyVersion({
-    baseVersion: selectProposedVersion(status),
-    date: new Date(),
-    shortSha: options.sha,
-  });
 
+  if (options.printVersion) {
+    const status = JSON.parse(readFileSync(options.status, "utf8"));
+    const version = buildNightlyVersion({
+      baseVersion: selectProposedVersion(status),
+      date: new Date(),
+      shortSha: options.sha,
+    });
+    // Only the version on stdout, so `$(… --print-version …)` is usable.
+    console.log(version);
+    setOutput("version", version);
+    return;
+  }
+
+  const version = options.version;
   const packageDirectory = join(REPO_ROOT, "packages", "cli");
   const packageJsonPath = join(packageDirectory, "package.json");
   const committed = readFileSync(packageJsonPath, "utf8");
@@ -337,6 +452,8 @@ module.exports = {
   buildNightlyReadme,
   hasNightlyForSha,
   isValidVersion,
+  parseArguments,
+  parseVersionsResponse,
   selectProposedVersion,
 };
 

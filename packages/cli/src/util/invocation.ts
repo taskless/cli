@@ -1,8 +1,11 @@
 /**
  * The published CLI invocation baked into skill, command, and recipe source.
- * Build targets other than prod rewrite it to a local path so a locally built
+ * Build targets other than prod rewrite it: to a local path so a locally built
  * CLI can be dogfooded in this repo (`build:self`) or validated from another
- * repo (`build:dev`). See `vite.config.ts` and the root `package.json` scripts.
+ * repo (`build:dev`), and to `npx @taskless/cli-nightly@<version>` for a
+ * nightly, whose shipped instructions must name the package the reader actually
+ * installed rather than the released one. See `scripts/build-target.ts`,
+ * `vite.config.ts`, and the root `package.json` scripts.
  */
 const PROD_INVOCATION = "npx @taskless/cli";
 
@@ -11,9 +14,11 @@ const PROD_INVOCATION = "npx @taskless/cli";
  * invocation (`__TASKLESS_CLI__`).
  *
  * A no-op for prod builds, where the define equals {@link PROD_INVOCATION}, so
- * emitted content stays byte-identical to source. For `dev`/`self` builds it
- * swaps both the bare form and the `@latest`-pinned form (the version-pinned
- * form first, so the bare replacement can't leave a dangling `@latest`).
+ * emitted content stays byte-identical to source. For `dev`/`self`/`nightly`
+ * builds it swaps both the bare form and the `@latest`-pinned form (the
+ * version-pinned form first, so the bare replacement can't leave a dangling
+ * `@latest` — which for a nightly would read
+ * `npx @taskless/cli-nightly@<version>@latest`).
  */
 export function applyCliInvocation(content: string): string {
   if (__TASKLESS_CLI__ === PROD_INVOCATION) return content;

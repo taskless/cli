@@ -63,12 +63,32 @@
 # the FIRST publish of @taskless/cli-nightly is a deliberate one-time manual
 # step by a maintainer. There is no fallback token path here on purpose.
 #
-# BOOTSTRAPPING THE PACKAGE NAME, once:
+# ONE VERSION, TWO CONSUMERS. The stamped version is not only the published
+# version: the CLI build bakes `npx @taskless/cli-nightly@<version>` into every
+# skill, command, and recipe the nightly ships, so an agent reading them calls
+# the package the user actually installed rather than the released
+# `@taskless/cli`. That means the version has to exist BEFORE the build, and the
+# build and the pack must use the same one — two `new Date()` calls a build
+# apart would ship instructions naming a version that was never published.
+# `nightly-pack.cjs --print-version` stamps it once; the build reads it from
+# TASKLESS_NIGHTLY_VERSION and the pack takes it as `--version`, which is the
+# only version input pack mode accepts (it rejects `--status`/`--sha`, so it
+# cannot recompute one).
 #
+# BOOTSTRAPPING THE PACKAGE NAME, once — the same three inputs in the same
+# order, including the build, which produces the `dist/` the tarball carries:
+#
+#     pnpm install --frozen-lockfile
 #     pnpm exec changeset status --output=nightly-status.json
-#     node .github/scripts/nightly-pack.cjs \
-#       --status nightly-status.json --sha "$(git rev-parse --short=7 HEAD)"
+#     VERSION=$(node .github/scripts/nightly-pack.cjs --print-version \
+#       --status nightly-status.json --sha "$(git rev-parse --short=7 HEAD)")
+#     TASKLESS_NIGHTLY_VERSION="$VERSION" pnpm --filter @taskless/cli build:nightly
+#     node .github/scripts/nightly-pack.cjs --version "$VERSION"
 #     npm publish --access public --tag latest .nightly-dist/*.tgz
+#
+# `build:nightly` emits to `packages/cli/dist` — the same directory as an
+# ordinary build, because `files: ["dist"]` is what npm packs — so it overwrites
+# a local prod build. Run `pnpm --filter @taskless/cli build` afterwards.
 #
 # Publish the packed tarball rather than the package directory: a bare
 # `npm publish` in packages/cli would burn the name on @taskless/cli's committed
@@ -145,30 +165,59 @@ jobs:
           # the sha in the version, so the exact string is not known until the
           # build computes it.
           #
-          # The `|| versions='[]'` REPLACES the captured output rather than
-          # appending to it, and that is the whole point: `npm view --json` on a
-          # 404 prints an error OBJECT to stdout and exits non-zero, so the
-          # obvious `$(npm view … || echo '[]')` yields that object followed by
-          # `[]` — measured — which is not parseable JSON. (hasNightlyForSha
-          # also treats a non-array, non-string value as no versions, so the
-          # error object alone would be handled; this keeps the JSON valid.)
-          versions=$(npm view @taskless/cli-nightly versions --json 2>/dev/null) || versions='[]'
-          if SHORT_SHA="$short_sha" node -e '
-            const { hasNightlyForSha } = require("./.github/scripts/nightly-pack.cjs");
+          # THE ANSWER IS THREE-WAY, NOT TWO. "Already built", "not built", and
+          # "could not tell" are different, and the third must fail the job.
+          # A gate whose only job is suppression must not fail open: the version
+          # carries a timestamp, so a re-run after an unreadable registry
+          # response mints a DIFFERENT version for the SAME commit and publishes
+          # it successfully — two nightlies for one sha, with no error anywhere.
+          # An earlier `|| versions='[]'` did exactly that for any hiccup.
+          #
+          # The npm exit status is captured and handed to the classifier rather
+          # than being collapsed here, because ONE non-zero exit is legitimate:
+          # `npm view --json` on a 404 prints an `{"error":{"code":"E404"}}`
+          # object to stdout (measured) and exits 1, which on the bootstrap day
+          # genuinely means "nothing published yet." Every other failure — a
+          # different error code, truncated output, anything unparseable —
+          # raises. parseVersionsResponse in nightly-pack.cjs draws that line
+          # and is unit-tested; this step only routes its exit code.
+          set +e
+          versions=$(npm view @taskless/cli-nightly versions --json 2>/dev/null)
+          npm_status=$?
+          SHORT_SHA="$short_sha" NPM_STATUS="$npm_status" node -e '
+            const { hasNightlyForSha, parseVersionsResponse } = require("./.github/scripts/nightly-pack.cjs");
             let raw = "";
             process.stdin
               .on("data", (chunk) => { raw += chunk; })
               .on("end", () => {
-                const versions = JSON.parse(raw.trim() || "[]");
-                process.exit(hasNightlyForSha(versions, process.env.SHORT_SHA) ? 0 : 1);
+                try {
+                  const versions = parseVersionsResponse(raw, process.env.NPM_STATUS);
+                  process.exit(hasNightlyForSha(versions, process.env.SHORT_SHA) ? 0 : 1);
+                } catch (error) {
+                  console.error(error.message);
+                  // 2, never 1: exit 1 is the "no nightly for this sha" answer,
+                  // and an uncaught throw would be indistinguishable from it.
+                  process.exit(2);
+                }
               });
-          ' <<< "$versions"; then
-            echo "should_publish=false" >> "$GITHUB_OUTPUT"
-            echo "A nightly ending in x${short_sha} is already published — nothing to do."
-          else
-            echo "should_publish=true" >> "$GITHUB_OUTPUT"
-            echo "Will build a nightly for ${short_sha}."
-          fi
+          ' <<< "$versions"
+          gate_status=$?
+          set -e
+
+          case "$gate_status" in
+            0)
+              echo "should_publish=false" >> "$GITHUB_OUTPUT"
+              echo "A nightly ending in x${short_sha} is already published — nothing to do."
+              ;;
+            1)
+              echo "should_publish=true" >> "$GITHUB_OUTPUT"
+              echo "Will build a nightly for ${short_sha}."
+              ;;
+            *)
+              echo "::error::Could not determine whether ${short_sha} already has a nightly; refusing to publish a possible duplicate."
+              exit 1
+              ;;
+          esac
 
   publish:
     name: Publish the nightly to npm
@@ -204,28 +253,53 @@ jobs:
       # publish behavior cannot change unreviewed; bump all three together.
       - run: npm install -g npm@12.0.1 --ignore-scripts
 
-      - run: pnpm --filter @taskless/cli build
-
       # The JSON FILE is authoritative, not stdout: `changeset status` also
       # emits one workspace-version warning per @taskless/vale-* package per
       # changeset (18 lines in the current tree). The path must be
       # REPO-RELATIVE — `--output` resolves against the working directory with
       # no special case for a leading `/`, so `--output=/tmp/status.json` means
       # `<cwd>/tmp/status.json` and fails with ENOENT from the repo root.
+      #
+      # This now runs BEFORE the build, because the build needs the version.
       - run: pnpm exec changeset status --output=nightly-status.json
 
-      # Rewrites packages/cli/package.json to the nightly name and the stamped
-      # version, packs, and restores the manifest. The sha comes from the gate
-      # job so both gates and the stamp describe the same commit at the same
+      # THE VERSION IS STAMPED HERE, ONCE, and every later step is handed it.
+      # Both the build and the pack consume it; if each computed its own, they
+      # would read the clock a build apart and the skills inside the tarball
+      # would name a version that was never published. The sha comes from the
+      # gate job so the gates and the stamp describe the same commit at the same
       # abbreviation length, and it is routed through `env:` rather than
       # interpolated into the shell body.
-      - id: pack
+      - id: version
         env:
           SHORT_SHA: ${{ needs.gate.outputs.short_sha }}
         run: |
           node .github/scripts/nightly-pack.cjs \
+            --print-version \
             --status nightly-status.json \
-            --sha "$SHORT_SHA" \
+            --sha "$SHORT_SHA"
+
+      # `build:nightly` bakes `npx @taskless/cli-nightly@<version>` into every
+      # skill, command, and recipe it emits, so an agent following a nightly's
+      # instructions calls the package the user installed rather than the
+      # released @taskless/cli. The target REFUSES to build without a valid
+      # TASKLESS_NIGHTLY_VERSION — falling back to the released invocation would
+      # be the silent bug this exists to prevent. Output goes to
+      # packages/cli/dist, the directory `files: ["dist"]` packs.
+      - env:
+          TASKLESS_NIGHTLY_VERSION: ${{ steps.version.outputs.version }}
+        run: pnpm --filter @taskless/cli build:nightly
+
+      # Rewrites packages/cli/package.json to the nightly name and the stamped
+      # version, packs, and restores the manifest. Pack mode takes the version
+      # and cannot derive one: it rejects --status/--sha outright, so it is not
+      # possible for this tarball's version to differ from the one built above.
+      - id: pack
+        env:
+          NIGHTLY_VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          node .github/scripts/nightly-pack.cjs \
+            --version "$NIGHTLY_VERSION" \
             --out .nightly-dist
 
       # `--tag latest` is required, not cosmetic: every version here is a semver
@@ -241,7 +315,7 @@ jobs:
       # merely ordered. release-cli.yml and release-vale.yml guard the same way.
       - name: Publish (skipping a version already on npm)
         env:
-          NIGHTLY_VERSION: ${{ steps.pack.outputs.version }}
+          NIGHTLY_VERSION: ${{ steps.version.outputs.version }}
           NIGHTLY_TARBALL: ${{ steps.pack.outputs.tarball }}
         run: |
           set -euo pipefail

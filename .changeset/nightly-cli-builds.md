@@ -39,3 +39,18 @@ first (before any install), then whether the commit already has a nightly — so
 the publishing job is never instantiated on an ordinary push, and the merge of a
 Version Packages PR publishes the real release and no nightly with no rule
 special-casing it.
+
+A nightly now ships instructions for itself. The skills, commands, and recipes
+a nightly installs name `npx @taskless/cli-nightly@<version>` — pinned to the
+build being installed — instead of `npx @taskless/cli`. Previously a nightly
+carried the released CLI's text verbatim, so an agent following it ran the
+released binary: no error, just instructions for a different package, on a
+build installed precisely to exercise unreleased behavior. The version is
+stamped once and passed to both the build and the pack, so the version the
+instructions name is always the version on npm, and a nightly build without a
+valid version fails rather than falling back.
+
+The nightly's duplicate-suppression gate also now fails closed. An unreadable
+registry response used to read as "this commit has no nightly", and since each
+build stamps a fresh timestamp, a re-run after one would have published a
+second nightly for the same commit successfully and silently.

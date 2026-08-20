@@ -22,6 +22,29 @@ The nightly SHALL be built from the same source and the same build as the releas
 - **THEN** it SHALL provide the `taskless` executable
 - **AND** it SHALL resolve the same pinned platform dependencies as the corresponding release
 
+### Requirement: A nightly's shipped instructions name the nightly package
+
+The skills, commands, and recipes a nightly installs SHALL instruct an agent to invoke the nightly package, pinned to the version that shipped them, rather than the released package. A nightly is installed to exercise unreleased behavior; instructions naming the released package would send the agent to a different build with nothing reporting an error.
+
+The version named in those instructions SHALL be the same version the nightly is published under. It SHALL therefore be determined once and supplied to both the build and the packaging step, and the packaging step SHALL NOT be able to determine it independently — a version determined twice is determined from two different clocks, and the instructions would name a version that was never published.
+
+When a nightly build is requested without a valid version, the build SHALL fail. It SHALL NOT emit instructions naming the released package.
+
+#### Scenario: A nightly's recipes name the nightly package
+
+- **WHEN** an agent requests a recipe from an installed nightly
+- **THEN** the rendered recipe SHALL invoke the nightly package at the version that nightly was published under
+
+#### Scenario: The published version and the instructed version agree
+
+- **WHEN** a nightly is published
+- **THEN** the version its shipped instructions name SHALL be the version it was published under
+
+#### Scenario: A nightly build without a valid version fails
+
+- **WHEN** a nightly build is requested and no valid version is supplied
+- **THEN** the build SHALL fail with an error naming the missing input
+
 ### Requirement: A nightly version names the release it anticipates, the time, and the commit
 
 A nightly version SHALL take the form `<n.m.k>-<yyyymmddhhmmss>x<sha>`, where `n.m.k` is the version the default branch's pending release metadata proposes, `yyyymmddhhmmss` is the build time, and `sha` is the short commit hash.
@@ -67,6 +90,8 @@ First, whether any release metadata is pending. When none is pending, nothing is
 
 Second, whether this commit already has a nightly. Published versions SHALL be queried and tested for one whose prerelease identifier ends with the short commit hash; if one exists, no nightly SHALL be built.
 
+This second gate SHALL distinguish three outcomes: a nightly exists for the commit, no nightly exists for it, and the published versions could not be determined. The third SHALL fail the run rather than being treated as the second. Because each build stamps a fresh timestamp, treating an undeterminable answer as "none exists" publishes a second, differently-versioned nightly for the same commit and reports no error. A response indicating the package does not exist yet SHALL be treated as "no nightly exists", since it is the state before the first publish.
+
 The proposed `n.m.k` SHALL be read from the release tool's structured output file rather than from its console output, which also carries unrelated diagnostics.
 
 #### Scenario: Nothing pending publishes nothing
@@ -85,6 +110,17 @@ The proposed `n.m.k` SHALL be read from the release tool's structured output fil
 
 - **WHEN** the nightly flow runs again for a commit that already has a published nightly
 - **THEN** no nightly SHALL be published
+
+#### Scenario: An undeterminable published-version list fails the run
+
+- **WHEN** the published versions cannot be determined, and the response does not indicate that the package is unpublished
+- **THEN** the run SHALL fail
+- **AND** no nightly SHALL be published
+
+#### Scenario: An unpublished package is not a failure
+
+- **WHEN** the nightly package has never been published
+- **THEN** the gate SHALL treat the commit as having no nightly and the run SHALL continue
 
 #### Scenario: A chore commit alongside pending work still yields a nightly
 

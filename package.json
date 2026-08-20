@@ -8,6 +8,7 @@
     "build": "pnpm build:compile",
     "build:compile": "turbo run build",
     "build:dev": "pnpm --filter @taskless/cli build:dev",
+    "build:nightly": "pnpm --filter @taskless/cli build:nightly",
     "build:self": "run-s build:self:compile build:self:install",
     "build:self:compile": "pnpm --filter @taskless/cli build:self",
     "build:self:install": "node packages/cli/dist-self/index.js init --no-interactive",
