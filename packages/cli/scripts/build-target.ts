@@ -1,0 +1,155 @@
+import { resolve } from "node:path";
+
+/**
+ * How a build target decides what CLI invocation is baked into the skill,
+ * command, and recipe content it emits.
+ *
+ * This lives beside `vite.config.ts` rather than inside it so the resolution is
+ * unit-testable: every function here is pure over an explicit environment,
+ * which is the only way to assert that a `nightly` build with no version fails
+ * instead of silently emitting the released invocation.
+ */
+
+/** The npm package a nightly is published under (see `nightly-pack.cjs`). */
+const NIGHTLY_PACKAGE = "@taskless/cli-nightly";
+
+/**
+ * The env var carrying the exact version a nightly build is being made for.
+ *
+ * It is REQUIRED for the `nightly` target and is never computed here. The
+ * version is stamped once — by `nightly-pack.cjs --print-version` — and handed
+ * to both the build and the pack, because a version computed twice is computed
+ * from two different clocks: the build would advertise `…x<sha>` at one
+ * timestamp while the published tarball carried another, and every instruction
+ * in the nightly would name a version that does not exist on npm.
+ */
+export const NIGHTLY_VERSION_ENV = "TASKLESS_NIGHTLY_VERSION";
+
+/**
+ * Each build target emits to its own directory so prod, dev, and self builds
+ * never overwrite one another. Keyed by TASKLESS_BUILD_TARGET; anything other
+ * than a key here is treated as prod.
+ *
+ * `nightly` IS THE EXCEPTION: it emits to `dist`, the same directory as prod,
+ * and a local `build:nightly` therefore OVERWRITES a prod build in place. That
+ * is not an oversight — the nightly tarball is packed from `packages/cli` with
+ * `files: ["dist"]` and `bin: ./dist/index.js`, so `dist` is the only directory
+ * npm would carry. Run `pnpm --filter @taskless/cli build` afterwards to get an
+ * ordinary `dist` back; `pnpm cli` runs whatever is there.
+ */
+export const OUT_DIRS = {
+  prod: "dist",
+  dev: "dist-dev",
+  self: "dist-self",
+  nightly: "dist",
+} as const;
+
+export type BuildTarget = keyof typeof OUT_DIRS;
+
+/** The official semver 2.0.0 grammar, from semver.org. */
+const SEMVER_PATTERN =
+  /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-((?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\.(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?(?:\+([0-9a-zA-Z-]+(?:\.[0-9a-zA-Z-]+)*))?$/;
+
+/** A build environment: `process.env`, or a literal in a test. */
+export type BuildEnvironment = Record<string, string | undefined>;
+
+export function resolveBuildTarget(environment: BuildEnvironment): BuildTarget {
+  const target = environment.TASKLESS_BUILD_TARGET;
+  return target === "dev" || target === "self" || target === "nightly"
+    ? target
+    : "prod";
+}
+
+export function resolveOutputDirectory(environment: BuildEnvironment): string {
+  return OUT_DIRS[resolveBuildTarget(environment)];
+}
+
+/**
+ * The version a `nightly` build is stamped for, or a thrown error.
+ *
+ * THIS MUST NEVER FALL BACK. A nightly whose version is missing or malformed
+ * has no correct invocation to emit, and the plausible-looking fallback —
+ * `npx @taskless/cli` — is precisely the bug the nightly target exists to fix:
+ * an agent sent to the released package after someone installed a nightly to
+ * exercise unreleased behavior. A build error is loud; a wrong string is not.
+ */
+export function resolveNightlyVersion(environment: BuildEnvironment): string {
+  const version = environment[NIGHTLY_VERSION_ENV];
+  if (version === undefined || version.length === 0) {
+    throw new Error(
+      `TASKLESS_BUILD_TARGET=nightly requires ${NIGHTLY_VERSION_ENV}; ` +
+        `compute it once with "node .github/scripts/nightly-pack.cjs --print-version …" ` +
+        `and pass the same value to the build and the pack.`
+    );
+  }
+  if (!SEMVER_PATTERN.test(version)) {
+    throw new Error(
+      `${NIGHTLY_VERSION_ENV} is not a valid semantic version: ${JSON.stringify(version)}`
+    );
+  }
+  return version;
+}
+
+/**
+ * The CLI invocation baked into emitted skill/command/recipe content, chosen by
+ * the TASKLESS_BUILD_TARGET env var (see package.json build:dev/build:self/
+ * build:nightly):
+ *   - prod (default): the published `npx @taskless/cli`
+ *   - dev:  an absolute path, for validating this build from another repo
+ *   - self: a repo-root-relative path, for dogfooding inside this repo
+ *   - nightly: `npx @taskless/cli-nightly@<version>`, PINNED to the exact
+ *     version being published — a floating `@taskless/cli-nightly` would send
+ *     an agent to whatever nightly is newest, which is not the build whose
+ *     skills it is reading.
+ * The dev/self paths point at their own output directory (dist-dev/dist-self).
+ *
+ * `packageDirectory` is `packages/cli`, used only by the `dev` target, which
+ * emits an absolute path.
+ */
+export function resolveCliInvocation(
+  environment: BuildEnvironment,
+  packageDirectory: string
+): string {
+  switch (resolveBuildTarget(environment)) {
+    case "self": {
+      return `node packages/cli/${OUT_DIRS.self}/index.js`;
+    }
+    case "dev": {
+      return `node ${resolve(packageDirectory, OUT_DIRS.dev, "index.js")}`;
+    }
+    case "nightly": {
+      return `npx ${NIGHTLY_PACKAGE}@${resolveNightlyVersion(environment)}`;
+    }
+    default: {
+      return "npx @taskless/cli";
+    }
+  }
+}
+
+/**
+ * A one-time banner prepended to canonical skill/command bodies for local
+ * builds, so an agent that's told to call the local CLI knows how to produce it
+ * if the build artifact is missing. Empty for prod (no banner is emitted).
+ *
+ * ALSO EMPTY FOR `nightly`, deliberately. The banner exists for one reason:
+ * `dev`/`self` invocations name a filesystem path that may not exist yet, and
+ * the agent needs to be told how to create it. A nightly's invocation is a
+ * published, version-pinned package that `npx` resolves on any machine, so
+ * there is no such failure to pre-empt — and the invocation itself already
+ * reads `@taskless/cli-nightly@<version>`, which says everything a banner
+ * would. Adding one would put a permanent build-provenance notice into the body
+ * of every installed skill, where it is noise on every read.
+ */
+export function resolveCliNotice(
+  environment: BuildEnvironment,
+  packageDirectory: string
+): string {
+  const target = resolveBuildTarget(environment);
+  if (target !== "self" && target !== "dev") return "";
+  const rebuild = target === "self" ? "pnpm build:self" : "pnpm build:dev";
+  return (
+    `> **Local Taskless build.** The commands below call a locally built CLI ` +
+    `(\`${resolveCliInvocation(environment, packageDirectory)}\`). If that ` +
+    `path does not exist yet, run \`${rebuild}\` from the repo root first.`
+  );
+}

@@ -7,60 +7,33 @@ import { defineConfig } from "vite";
 import tsconfigPaths from "vite-tsconfig-paths";
 
 import { SKILL_CATALOG } from "./src/install/catalog";
+import {
+  OUT_DIRS,
+  resolveBuildTarget,
+  resolveCliInvocation,
+  resolveCliNotice,
+  resolveOutputDirectory,
+} from "./scripts/build-target";
 
 const pkg = JSON.parse(
   readFileSync(resolve(import.meta.dirname, "package.json"), "utf8")
 ) as { version: string };
 
-// Each build target emits to its own directory so prod, dev, and self builds
-// never overwrite one another. Keyed by TASKLESS_BUILD_TARGET; anything other
-// than "dev"/"self" is treated as prod.
-const OUT_DIRS = {
-  prod: "dist",
-  dev: "dist-dev",
-  self: "dist-self",
-} as const;
+// Target resolution lives in ./scripts/build-target.ts so it can be unit-tested
+// (test/build-target.test.ts) over an explicit environment. Everything below
+// binds those pure functions to this process and this package directory.
+const buildTarget = resolveBuildTarget(process.env);
+const outDir = resolveOutputDirectory(process.env);
+const cliInvocation = resolveCliInvocation(process.env, import.meta.dirname);
+const cliNotice = resolveCliNotice(process.env, import.meta.dirname);
 
-function resolveBuildTarget(): keyof typeof OUT_DIRS {
-  const target = process.env.TASKLESS_BUILD_TARGET;
-  return target === "dev" || target === "self" ? target : "prod";
-}
-
-function resolveOutDir(): string {
-  return OUT_DIRS[resolveBuildTarget()];
-}
-
-// The CLI invocation baked into emitted skill/command/recipe content, chosen
-// by the TASKLESS_BUILD_TARGET env var (see package.json build:dev/build:self):
-//   - prod (default): the published `npx @taskless/cli`
-//   - dev:  an absolute path, for validating this build from another repo
-//   - self: a repo-root-relative path, for dogfooding inside this repo
-// The dev/self paths point at their own output directory (dist-dev/dist-self).
-function resolveCliInvocation(): string {
-  switch (resolveBuildTarget()) {
-    case "self": {
-      return `node packages/cli/${OUT_DIRS.self}/index.js`;
-    }
-    case "dev": {
-      return `node ${resolve(import.meta.dirname, OUT_DIRS.dev, "index.js")}`;
-    }
-    default: {
-      return "npx @taskless/cli";
-    }
-  }
-}
-
-// A one-time banner prepended to canonical skill/command bodies for non-prod
-// builds, so an agent that's told to call the local CLI knows how to produce it
-// if the build artifact is missing. Empty for prod (no banner is emitted).
-function resolveCliNotice(): string {
-  const target = process.env.TASKLESS_BUILD_TARGET;
-  if (target !== "self" && target !== "dev") return "";
-  const rebuild = target === "self" ? "pnpm build:self" : "pnpm build:dev";
-  return (
-    `> **Local Taskless build.** The commands below call a locally built CLI ` +
-    `(\`${resolveCliInvocation()}\`). If that path does not exist yet, run ` +
-    `\`${rebuild}\` from the repo root first.`
+// A nightly emits to `dist` — the same directory as prod, because that is what
+// the tarball carries (see OUT_DIRS). Say so at the call site rather than
+// leaving it to be discovered when `pnpm cli` starts naming a nightly.
+if (buildTarget === "nightly") {
+  console.warn(
+    `[taskless] nightly build (${cliInvocation}) — emitting to ${OUT_DIRS.nightly}/, ` +
+      `overwriting any prod build there. Run "pnpm --filter @taskless/cli build" to restore it.`
   );
 }
 
@@ -160,7 +133,7 @@ function shebang(): Plugin {
     writeBundle(options, bundle) {
       for (const [fileName, chunk] of Object.entries(bundle)) {
         if (isBinEntry(chunk)) {
-          const outPath = resolve(options.dir ?? resolveOutDir(), fileName);
+          const outPath = resolve(options.dir ?? outDir, fileName);
           chmodSync(outPath, 0o755);
         }
       }
@@ -249,8 +222,8 @@ function assertPromptsGraph(): Plugin {
 export default defineConfig({
   define: {
     __VERSION__: JSON.stringify(pkg.version),
-    __TASKLESS_CLI__: JSON.stringify(resolveCliInvocation()),
-    __TASKLESS_CLI_NOTICE__: JSON.stringify(resolveCliNotice()),
+    __TASKLESS_CLI__: JSON.stringify(cliInvocation),
+    __TASKLESS_CLI_NOTICE__: JSON.stringify(cliNotice),
   },
   plugins: [
     tsconfigPaths(),
@@ -259,7 +232,7 @@ export default defineConfig({
     assertPromptsGraph(),
   ],
   build: {
-    outDir: resolveOutDir(),
+    outDir,
     lib: {
       entry: {
         [BIN_ENTRY]: resolve(import.meta.dirname, "src/index.ts"),

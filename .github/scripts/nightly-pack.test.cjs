@@ -14,6 +14,8 @@ const {
   formatStampTimestamp,
   hasNightlyForSha,
   isValidVersion,
+  parseArguments,
+  parseVersionsResponse,
   selectProposedVersion,
   buildNightlyReadme,
 } = require("./nightly-pack.cjs");
@@ -220,4 +222,152 @@ test("the nightly ships its own README, not the CLI's", () => {
   assert.ok(readme.includes(version), "names the build it describes");
   // The collision is the one thing a reader can get wrong destructively.
   assert.match(readme, /[Dd]o not install both globally/);
+});
+
+// The two modes, and the one property that matters between them: the version is
+// stamped ONCE (--print-version) and handed to both the CLI build and the pack.
+// If the pack could stamp its own, the two would read different clocks, and the
+// skills shipped inside the tarball would name a version that was never
+// published.
+test("packing takes a version and cannot compute one", () => {
+  const options = parseArguments([
+    "--version",
+    "0.11.0-20260818123456x05b3c88",
+    "--out",
+    ".nightly-dist",
+  ]);
+  assert.equal(options.printVersion, false);
+  assert.equal(options.version, "0.11.0-20260818123456x05b3c88");
+
+  // The inputs a version could be recomputed from are rejected outright, rather
+  // than accepted-and-ignored.
+  assert.throws(
+    () =>
+      parseArguments([
+        "--version",
+        "0.11.0-20260818123456x05b3c88",
+        "--sha",
+        "05b3c88",
+      ]),
+    /only for --print-version/
+  );
+  assert.throws(
+    () =>
+      parseArguments([
+        "--version",
+        "0.11.0-20260818123456x05b3c88",
+        "--status",
+        "nightly-status.json",
+      ]),
+    /only for --print-version/
+  );
+
+  // And packing without one is an error, never a stamped-on-the-spot fallback.
+  assert.throws(() => parseArguments(["--out", ".nightly-dist"]), /--version/);
+  assert.throws(
+    () => parseArguments(["--version", "not-a-version"]),
+    /not a valid semantic version/
+  );
+});
+
+test("--print-version stamps from the status file and the sha", () => {
+  const options = parseArguments([
+    "--print-version",
+    "--status",
+    "nightly-status.json",
+    "--sha",
+    "05b3c88",
+  ]);
+  assert.equal(options.printVersion, true);
+  assert.equal(options.sha, "05b3c88");
+  assert.match(options.status, /nightly-status\.json$/);
+
+  assert.throws(
+    () => parseArguments(["--print-version", "--sha", "05b3c88"]),
+    /--status is required/
+  );
+  assert.throws(
+    () => parseArguments(["--print-version", "--status", "s.json"]),
+    /--sha is required/
+  );
+  assert.throws(
+    () =>
+      parseArguments([
+        "--print-version",
+        "--status",
+        "s.json",
+        "--sha",
+        "05b3c88",
+        "--version",
+        "0.11.0-20260818123456x05b3c88",
+      ]),
+    /not accepted with --print-version/
+  );
+});
+
+// Gate 2 fails CLOSED. The three outcomes are distinct, and "could not tell"
+// is not "nothing published" — a re-run after an unreadable response would
+// stamp a new timestamp for the same commit and publish a second nightly for
+// it, successfully and silently, which is the one thing this gate exists to
+// prevent.
+test("parseVersionsResponse separates found, not-found, and unreadable", () => {
+  // exit 0, a list — the ordinary case.
+  assert.deepEqual(
+    parseVersionsResponse('["0.11.0-20260818123456x05b3c88"]', 0),
+    ["0.11.0-20260818123456x05b3c88"]
+  );
+
+  // exit 0, a bare STRING — what `--json` yields for a package with exactly one
+  // version, which this package is right after its bootstrap publish.
+  assert.deepEqual(
+    parseVersionsResponse('"0.11.0-20260818123456x05b3c88"', 0),
+    ["0.11.0-20260818123456x05b3c88"]
+  );
+
+  // The one legitimate non-zero exit: the package does not exist yet. npm
+  // prints this object to STDOUT and exits 1 (measured against a real 404).
+  assert.deepEqual(
+    parseVersionsResponse(
+      JSON.stringify({
+        error: {
+          code: "E404",
+          summary:
+            "Not Found - GET https://registry.npmjs.org/@taskless%2fcli-nightly",
+        },
+      }),
+      1
+    ),
+    []
+  );
+
+  // Everything else raises rather than reporting an empty list.
+  assert.throws(
+    () => parseVersionsResponse("<html>502 Bad Gateway</html>", 0),
+    /did not return JSON/,
+    "non-JSON output must not read as no versions"
+  );
+  assert.throws(
+    () => parseVersionsResponse('["0.11.0-2026', 0),
+    /did not return JSON/,
+    "truncated output must not read as no versions"
+  );
+  assert.throws(
+    () => parseVersionsResponse("", 0),
+    /neither a version list nor a version/,
+    "an empty body must not read as no versions"
+  );
+  assert.throws(
+    () =>
+      parseVersionsResponse(
+        JSON.stringify({ error: { code: "EAI_AGAIN" } }),
+        1
+      ),
+    /no E404/,
+    "a network failure must not read as no versions"
+  );
+  assert.throws(
+    () => parseVersionsResponse("", 1),
+    /no E404/,
+    "a bare non-zero exit must not read as no versions"
+  );
 });

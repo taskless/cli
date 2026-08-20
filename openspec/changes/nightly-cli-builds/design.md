@@ -38,6 +38,18 @@ Publishing prereleases into `@taskless/cli` would fill its version list with bui
 The rename is a **pack-time rewrite of `packages/cli/package.json`**, exactly as `vale-prepare.cjs` already stamps the Vale packages. The committed `package.json` is unchanged, so nothing about the ordinary release path is touched, and a nightly is byte-for-byte the same build as the release it anticipates apart from `name` and `version`.
 
 - **`bin` stays `taskless`.** A nightly is a drop-in for the real thing, so every documented invocation, every skill, and every recipe works unchanged against it. Installing both globally collides on the binary; that is not a supported configuration and does not need to be.
+
+  **One correction to that, found while implementing it.** "Works unchanged" holds for a `taskless …` invocation, and does _not_ hold for the `npx @taskless/cli …` form the skills, commands, and recipes are written in. Shipped verbatim, a nightly instructs an agent to `npx @taskless/cli` — the **released** CLI. Someone installs a nightly precisely to exercise unreleased behavior, and their agent silently runs the released binary instead. Nothing errors; the instructions are simply for a different package.
+
+  So a nightly is a **build target**, not only a pack-time rename. `packages/cli/vite.config.ts` already rewrites that invocation for the `dev` and `self` targets via the `__TASKLESS_CLI__` define; `nightly` joins them and rewrites it to `npx @taskless/cli-nightly@<version>`, **pinned to the exact version being published** — a floating `@taskless/cli-nightly` would send the agent to whatever nightly is newest, which is not the build whose skills it is reading.
+
+  Three consequences follow, each of which had to be decided rather than inherited:
+  - **The version is stamped once and passed to both steps.** It is now an input to the build, not only an output of the pack. Computing it in each place means two `new Date()` calls a build apart, so the skills would advertise one version while the tarball carried another — every instruction in the nightly naming a version that does not exist on npm. `nightly-pack.cjs` therefore grew a `--print-version` mode, and its pack mode takes `--version` and **rejects `--status`/`--sha`**: it is not possible for the pack to recompute, rather than merely unlikely to.
+  - **A missing or malformed version fails the build.** The plausible fallback — `npx @taskless/cli` — is the exact bug this exists to fix, and it fails silently. A build error is the only acceptable behavior.
+  - **`nightly` emits to `dist`**, unlike `dev`/`self`, because `files: ["dist"]` and `bin: ./dist/index.js` are what npm packs. A local `build:nightly` therefore overwrites a prod build; the build prints that at the call site rather than leaving it to be discovered when `pnpm cli` starts naming a nightly.
+
+  No build notice is prepended for `nightly`. The `dev`/`self` banner exists because their invocation is a filesystem path that may not exist yet; a published, version-pinned package always resolves, and the invocation already reads `@taskless/cli-nightly@<version>`, which says what a banner would — permanently, in the body of every installed skill.
+
 - **`optionalDependencies` are untouched.** The nightly points at the same published, pinned Vale and ast-grep platform packages. It does not fork them, and it does not get a nightly of them.
 - **`--provenance` stays on.** The attestation matters more for an unattended publish, not less.
 
@@ -84,6 +96,8 @@ It also makes the Version Packages PR merge **self-handling, with no special cas
 Because gate 1 is a directory check, the workflow never depends on how `changeset status` behaves with nothing pending — a behavior we would otherwise have to pin down and keep pinned down.
 
 **Gate 2 — has this SHA already been published?** A version ending in `x<sha>` means the commit has a nightly. Re-runs, and any future trigger that fires twice for one commit, publish nothing.
+
+**Gate 2 answers three ways, and fails closed.** "Already built", "not built", and "could not tell" are different answers, and the third fails the job. The first implementation collapsed the third into the second — a blanket `|| versions='[]'`, plus an uncaught `JSON.parse` whose non-zero exit landed in the same branch as "no nightly found" — which fails **open** on the one gate whose entire job is suppression. The consequence is not a failed publish: because the version carries a timestamp, a re-run after an unreadable registry response mints a _different_ version for the _same_ commit and publishes it successfully. Two nightlies for one SHA, no error anywhere. The one non-zero exit that legitimately means "nothing published" is a 404 — `npm view --json` prints an `{"error":{"code":"E404"}}` object to stdout and exits 1, which is the bootstrap day — and distinguishing that from a parse failure is the whole of the fix. The classification lives in `parseVersionsResponse` in `nightly-pack.cjs`, unit-tested, and the workflow step only routes its exit code (`0` skip, `1` build, anything else fail).
 
 Only past both gates does the build run, taking `newVersion` from `changeset status` as `n.m.k`.
 
