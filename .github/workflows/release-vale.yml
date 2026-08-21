@@ -58,13 +58,34 @@
 # tarball through the artifact keeps 0755 intact end to end.
 #
 # PUBLISHING IDENTITY is inherited, not reinvented: npm trusted publishing, a
-# short-lived OIDC-minted token bound to the `npm-production` environment, with
-# no stored NPM_TOKEN anywhere. That binding is registered PER PACKAGE on
-# npmjs.com and there is nothing to bind until the package name exists, so the
-# FIRST publish of each of the six names is a deliberate one-time manual step by
-# a maintainer, who then registers the trusted publisher. This workflow assumes
-# that has already happened for every name in the manifest, and there is no
-# fallback token path here on purpose.
+# short-lived OIDC-minted token, with no stored NPM_TOKEN anywhere. That binding
+# is registered PER PACKAGE on npmjs.com, and it names this workflow's FILENAME
+# and its environment — so renaming this file or changing `environment:` below
+# breaks every publish until the six bindings are re-registered to match. There
+# is nothing to bind until the package name exists, so the FIRST publish of each
+# of the six names is a deliberate one-time manual step by a maintainer, who
+# then registers the trusted publisher. This workflow assumes that has already
+# happened for every name in the manifest, and there is no fallback token path
+# here on purpose.
+#
+# APPROVAL POLICY: the environment is `npm-autopublish`, which has NO required
+# reviewer — unlike `npm-production`, where @taskless/cli still waits for a
+# click. That is not a relaxation, because the review already happened
+# somewhere better: the manifest-update pull request IS the gate. A human reads
+# the upstream Vale version and all six SHA256 digests there, and only merging
+# it can start a publish at all. An environment approval would be a second copy
+# of that same gate, asked at a point where nothing is left to decide — the
+# bytes were fixed when the digests were reviewed, and a reviewer standing at
+# the publish step has no new information to act on. Approvals that decide
+# nothing get clicked without being read, which weakens the one that matters.
+#
+# What still bounds an unattended publish: the deployment branch policy on
+# `npm-autopublish` restricts it to `main`, so no branch can reach the credential
+# by adding a job that names the environment; and publishing a platform package
+# changes no consumer, because the CLI pins each one exactly and a new version
+# reaches a user only when someone reviews a bump to that pin. Do not "simplify"
+# this back onto `npm-production` to make the two release workflows match — they
+# differ on purpose, and the reason is the pin, not the package.
 #
 # BOOTSTRAPPING A NEW PACKAGE NAME, once:
 #
@@ -271,8 +292,12 @@ jobs:
     needs: prepare
     runs-on: ubuntu-latest
     # The scoping and audit boundary for the release, and where the npm trusted
-    # publisher for each @taskless/vale-* package is bound.
-    environment: npm-production
+    # publisher for each @taskless/vale-* package is bound. Reviewer-free by
+    # design (see APPROVAL POLICY in the header): the manifest pull request is
+    # the gate, and this environment's branch policy still confines the
+    # credential to `main`. Changing this name requires re-registering all six
+    # bindings on npmjs.com first — the environment is part of the binding.
+    environment: npm-autopublish
     permissions:
       contents: read
       id-token: write # OIDC → short-lived npm auth + build provenance
