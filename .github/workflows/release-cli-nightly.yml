@@ -471,6 +471,43 @@ jobs:
             exit 1
           fi
           echo "Publishing from ${actual}, which Validate passed on."
+
+      # RESTORES A REF THE `push` TRIGGER USED TO PROVIDE FOR FREE, and without
+      # which `changeset status` below cannot run at all.
+      #
+      # `changeset status` resolves the base branch from .changeset/config.json
+      # (`baseBranch: main`) and shells out to `git merge-base main HEAD`. Under
+      # the old `push` trigger, checkout was given no `ref:` and so checked out
+      # `refs/heads/main`, which creates a LOCAL `main` branch as a side effect
+      # — and that side effect, not anything deliberate, is what made the
+      # command work. Three nightlies published on top of it.
+      #
+      # Moving to `workflow_run` (#132) requires an explicit `ref:` — an empty
+      # one silently falls back to the default branch — but checking out a bare
+      # sha lands in DETACHED HEAD with no branches at all, so `main` stopped
+      # resolving and every run failed with:
+      #
+      #     Failed to find where HEAD diverged from "main".
+      #     Does "main" exist and it's synced with remote?
+      #
+      # Reproduced outside CI with `git fetch --depth=1 origin <sha>` +
+      # `git checkout --detach FETCH_HEAD`, which yields exactly
+      # `fatal: Not a valid object name main`.
+      #
+      # Pointing `main` at HEAD is not an approximation of the old behavior, it
+      # IS the old behavior: on a push to main the checked-out commit and the
+      # `main` branch were the same commit, so `merge-base` returned HEAD then
+      # too. `getChangedPackagesSinceRef` was already a no-op here and stays
+      # one; the `releases` array this step is read for comes from the
+      # `.changeset/*.md` files, not from a git diff.
+      #
+      # Do NOT "fix" this with `fetch-depth: 0` instead. That fetches every ref
+      # into `refs/remotes/origin/*`, and a bare `main` does not resolve through
+      # a remote-tracking ref — it would cost a full clone on every run and
+      # still fail.
+      - name: Give changesets the `main` ref it diffs against
+        run: git branch -f main HEAD
+
       - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
