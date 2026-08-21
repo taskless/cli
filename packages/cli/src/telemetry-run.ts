@@ -1,6 +1,7 @@
 import { resolve } from "node:path";
 
 import type { TelemetryClient } from "./telemetry";
+import { splitRawArguments } from "./util/argv";
 import { CLIError } from "./util/cli-error";
 
 /**
@@ -11,16 +12,7 @@ import { CLIError } from "./util/cli-error";
  * command for an agent invocation is just `agent`.
  */
 export function resolveCommandName(rawArguments: string[]): string {
-  const valueFlags = new Set(["-d", "--dir"]);
-  const positionals: string[] = [];
-  for (let index = 0; index < rawArguments.length; index++) {
-    const argument = rawArguments[index]!;
-    if (argument.startsWith("-")) {
-      if (!argument.includes("=") && valueFlags.has(argument)) index++;
-      continue;
-    }
-    positionals.push(argument);
-  }
+  const { positionals } = splitRawArguments(rawArguments);
 
   if (positionals.length === 0) return "(default)";
   const top = positionals[0]!;
