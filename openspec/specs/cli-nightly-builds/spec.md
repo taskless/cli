@@ -190,3 +190,38 @@ Nightly publishing SHALL authenticate with a short-lived credential minted for t
 - **WHEN** a nightly is published
 - **THEN** the published version SHALL carry a build-provenance attestation
 - **AND** no long-lived registry token SHALL be present in the environment
+
+### Requirement: A published nightly is announced on the pending release pull request
+
+When a nightly is published, the open pull request that carries the pending release metadata SHALL be annotated with a delimited build-info region naming the published package, the version, the commit it was built from, and the time it was built — so the reviewers of that pull request can install and exercise the work it describes.
+
+Every fact in that region SHALL be derived from the version the publish stamped, not determined independently. The version already encodes the build time and the commit, and a second determination reads a second clock.
+
+The region SHALL be placed at the end of the pull request body, SHALL replace any region a previous publish left rather than adding to it, and SHALL be restored if a human deletes it. It SHALL NOT modify any other managed region on that body.
+
+The annotation SHALL depend on the publish having succeeded, and SHALL be performed by a job that holds permission to write pull requests and holds no publishing credential — the ability to publish under the organization's scope and the ability to rewrite pull request text SHALL NOT be held by one job.
+
+#### Scenario: A publish annotates the open release pull request
+
+- **WHEN** a nightly is published and a pull request carrying the pending release metadata is open
+- **THEN** that pull request's body SHALL end with a build-info region naming the published package, version, commit, and build time
+
+#### Scenario: Repeated publishes replace the region
+
+- **WHEN** a second nightly is published while the same pull request is open
+- **THEN** the pull request SHALL carry exactly one build-info region, describing the most recent publish
+
+#### Scenario: No open release pull request is not a failure
+
+- **WHEN** a nightly is published and no pull request carrying pending release metadata is open
+- **THEN** the run SHALL succeed and annotate nothing
+
+#### Scenario: An unanswered query is a failure
+
+- **WHEN** the query for the pull request fails
+- **THEN** the run SHALL fail rather than treat the failure as "no pull request is open"
+
+#### Scenario: A suppressed nightly annotates nothing
+
+- **WHEN** a push publishes no nightly
+- **THEN** no job holding permission to write pull requests SHALL be instantiated for it

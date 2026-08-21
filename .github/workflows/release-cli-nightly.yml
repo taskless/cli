@@ -163,6 +163,48 @@
 # only version input pack mode accepts (it rejects `--status`/`--sha`, so it
 # cannot recompute one).
 #
+# ANNOUNCING THE NIGHTLY ON THE VERSION PACKAGES PR. A nightly exists so the
+# work sitting in pending changesets can be RUN before it is released, and the
+# pull request where that audience already is, is the changesets "Version
+# Packages" PR — the one that lists exactly those changesets. So after a
+# publish, a third job writes a `<!-- nightly -->` … `<!-- /nightly -->` region
+# at the END of that body. The region is REMOVED AND RE-APPENDED on every
+# publish rather than edited in place: deleting it is a supported thing for a
+# human to do, and a body someone has reordered then converges instead of
+# accumulating one block per day.
+#
+# The reasoning that belongs with the reader of this file, in the order it is
+# likely to be questioned:
+#
+#   WHY A THIRD JOB. Writing a PR body needs `pull-requests: write`. Granting
+#   that to `publish` would widen what a compromised step there can reach from
+#   "publish a package under the @taskless scope" to "publish a package AND
+#   rewrite pull request text" — including the text of the PR that gates the
+#   next release. It is the same boundary the gate/publish split already draws,
+#   drawn once more. The two capabilities never coexist in one job.
+#
+#   WHY IT PARSES THE VERSION INSTEAD OF MEASURING ANYTHING. The stamp is
+#   `<n.m.k>-<yyyymmddhhmmss>x<sha>`, so it already carries the build time and
+#   the commit. A fresh `Date.now()` would print a time disagreeing with the
+#   version on the line above it, and a fresh `git rev-parse` a sha the
+#   published tarball does not carry. This is the THIRD consumer of the
+#   stamped-once rule (build, pack, breadcrumb) and it obeys it by reading the
+#   version backwards — see parseStampedVersion in nightly-breadcrumb.cjs.
+#
+#   WHY "NO PULL REQUEST" IS SUCCESS AND "NO ANSWER" IS NOT. See the job's own
+#   comment below; the distinction is the same fail-open closed in gate 2.
+#
+#   WHY NOT stack-breadcrumb.cjs. Its REGION_PATTERN hardcodes the name `stack`
+#   and its upsert is keyed to PR numbers; neither generalizes to a singleton
+#   region under another name. The two regions do coexist on one body — a
+#   Version Packages PR can be in a stack — and neither pattern can match the
+#   other's markers, which nightly-breadcrumb.test.cjs covers directly.
+#
+#   WHY THE REGION NAMES @taskless/cli-nightly. Issue #128 wrote the install
+#   line as `npx @taskless/cli@<version>`. That version exists only under the
+#   nightly name (D2), so the literal line would 404 — or, worse, resolve to
+#   the last RELEASE and look like it worked.
+#
 # BOOTSTRAPPING THE PACKAGE NAME, once — the same three inputs in the same
 # order, including the build, which produces the `dist/` the tarball carries:
 #
@@ -364,6 +406,12 @@ jobs:
     needs: gate
     if: needs.gate.outputs.should_publish == 'true'
     runs-on: ubuntu-latest
+    # The stamped version, for the breadcrumb job below. Published exactly once
+    # (see "ONE VERSION, TWO CONSUMERS" above) and passed on, never recomputed —
+    # a second stamp would read a second clock and name a version that was
+    # never published.
+    outputs:
+      version: ${{ steps.version.outputs.version }}
     # The scoping and audit boundary for the nightly, and where the npm trusted
     # publisher for @taskless/cli-nightly is bound. No required reviewer, by
     # design; its deployment branch policy restricts it to main.
@@ -509,3 +557,76 @@ jobs:
           else
             npm publish --provenance --access public --tag latest "$NIGHTLY_TARBALL"
           fi
+
+  # A THIRD JOB, AND IT HOLDS NO CREDENTIAL. Writing a pull request body needs
+  # `pull-requests: write`, and adding that to `publish` would widen what a
+  # compromised step there can reach from "publish a package under the
+  # @taskless scope" to "publish a package AND rewrite pull request text" —
+  # including the text of the pull request that gates the next release. So the
+  # split already drawn between `gate` and `publish` is drawn once more: this
+  # job has `pull-requests: write` and NOTHING ELSE — no `id-token`, no write
+  # access to contents, no environment, no npm identity. The two capabilities
+  # never coexist in one job.
+  #
+  # `needs: publish` is the "block on a successful publish" requirement: a job
+  # whose dependency was skipped does not run, so a suppressed nightly (either
+  # gate false) never reaches this, and neither does a failed publish.
+  #
+  # NO OPEN VERSION PACKAGES PULL REQUEST IS NORMAL AND MUST SUCCEED QUIETLY.
+  # `changeset-release/main` exists only while changesets are pending, and a
+  # nightly can publish in the seconds before changesets opens it. A cosmetic
+  # breadcrumb must never fail a run that already published to npm. That is NOT
+  # the same as the query failing — `gh api` exiting non-zero fails the step,
+  # because "there is no pull request" and "I could not find out" are different
+  # answers and only one of them is fine.
+  breadcrumb:
+    name: Link the nightly on the Version Packages PR
+    needs: publish
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read # checkout only — the script lives in this repo
+      pull-requests: write # the one capability this job exists to use
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false # gh authenticates with GITHUB_TOKEN below
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 24
+
+      # No dependency install: nightly-breadcrumb.cjs is zero-dependency
+      # CommonJS, for the same reason the gate job's matcher is.
+      - id: breadcrumb
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          OWNER: ${{ github.repository_owner }}
+          # The version the publish job stamped. Routed through `env:` rather
+          # than interpolated into the shell body, as everywhere else here.
+          NIGHTLY_VERSION: ${{ needs.publish.outputs.version }}
+        run: |
+          set -euo pipefail
+
+          # A plain query, allowed to fail. No `|| echo '[]'`: a fallback here
+          # would turn an API error into "no pull request found" and the run
+          # would go green having silently skipped the update.
+          gh api "repos/${REPO}/pulls?state=open&head=${OWNER}:changeset-release/main" > nightly-pulls.json
+
+          node .github/scripts/nightly-breadcrumb.cjs \
+            --version "$NIGHTLY_VERSION" \
+            --pulls nightly-pulls.json \
+            --out nightly-body.md
+
+      # `gh api -X PATCH`, never `gh pr edit`: the GraphQL path `gh pr edit`
+      # takes is broken by GitHub's Projects (classic) deprecation (see
+      # CLAUDE.md, "Editing an existing PR").
+      - if: steps.breadcrumb.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PULL_NUMBER: ${{ steps.breadcrumb.outputs.pull_number }}
+        run: |
+          set -euo pipefail
+          gh api -X PATCH "repos/${REPO}/pulls/${PULL_NUMBER}" \
+            -f body="$(cat nightly-body.md)" > /dev/null
+          echo "Updated #${PULL_NUMBER} with the nightly build info."
