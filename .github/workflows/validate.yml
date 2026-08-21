@@ -1,3 +1,8 @@
+# THIS NAME IS AN INTERFACE, NOT A LABEL. `release-cli-nightly.yml` triggers on
+# `workflow_run: workflows: [Validate]`, which matches this string and not this
+# file's path — a nightly is only published from a commit this workflow passed
+# on. Rename it and the nightly stops firing permanently, with no error
+# anywhere and nothing turning red. Rename both together, or neither.
 name: Validate
 
 on:

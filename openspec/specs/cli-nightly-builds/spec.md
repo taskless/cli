@@ -12,9 +12,9 @@ The CLI SHALL be published as `@taskless/cli-nightly` from commits on the defaul
 
 The nightly SHALL be built from the same source and the same build as the release it anticipates, differing only in the published package name and version. Its executable SHALL remain `taskless`, so every documented invocation works unchanged against a nightly.
 
-#### Scenario: A push to the default branch with unreleased work publishes a nightly
+#### Scenario: A validated push to the default branch with unreleased work publishes a nightly
 
-- **WHEN** a commit is pushed to the default branch and release-pending metadata exists for the CLI
+- **WHEN** a commit is pushed to the default branch, the repository's validation suite passes for that commit, and release-pending metadata exists for the CLI
 - **THEN** `@taskless/cli-nightly` SHALL be published for that commit
 
 #### Scenario: A pull request publishes nothing
@@ -87,6 +87,40 @@ Every nightly version is a semantic-version prerelease, which a registry does no
 
 - **WHEN** `@taskless/cli-nightly` is installed with no version or tag specified
 - **THEN** the most recently published nightly SHALL be installed
+
+### Requirement: A nightly is published only from a commit that passed validation
+
+A nightly SHALL be published only from a commit for which the repository's validation suite — build, lint, typecheck, and tests — has already reported success. A nightly asserts that the default branch works at that commit; a publish that races validation asserts only that the commit exists.
+
+The decision SHALL be driven by validation's reported outcome rather than by the event that produced the commit, and SHALL distinguish three states: validation succeeded, validation did not succeed, and validation has not reported. The third SHALL NOT be treated as the first. A non-successful outcome SHALL leave visible evidence that the nightly was considered and declined, so that "declined" is distinguishable from "never triggered".
+
+Success SHALL be tested for explicitly. An outcome SHALL NOT be accepted on the grounds that it is not a failure, because a validation run may end without either succeeding or failing.
+
+The commit built and published SHALL be the commit validation reported on, and SHALL NOT be inferred from the state of the default branch at the time the decision is made, which may have advanced. When that commit cannot be identified, the run SHALL fail rather than fall back to any other commit.
+
+Validation's outcome SHALL gate the publish regardless of why validation failed. No exemption is made for a failure the run's author judges cosmetic: nothing downstream can tell a repository-hygiene failure from a failing test suite, and a rule that publishes on some red states publishes on all of them.
+
+#### Scenario: Failing validation publishes nothing
+
+- **WHEN** validation does not succeed for a commit on the default branch
+- **THEN** no nightly SHALL be published for that commit
+- **AND** the declined publish SHALL be observable
+
+#### Scenario: An inconclusive validation outcome is not a success
+
+- **WHEN** validation ends without succeeding — cancelled, timed out, skipped, or otherwise inconclusive
+- **THEN** no nightly SHALL be published
+
+#### Scenario: The published commit is the validated commit
+
+- **WHEN** further commits reach the default branch while validation of an earlier commit is still running
+- **THEN** the nightly SHALL be built from the commit validation reported on, not from the newer tip
+
+#### Scenario: An unidentifiable commit fails the run
+
+- **WHEN** the commit validation reported on cannot be determined
+- **THEN** the run SHALL fail
+- **AND** no nightly SHALL be published
 
 ### Requirement: A nightly build is bounded by pending release metadata and by the commit
 
