@@ -81,11 +81,17 @@ const REGION_CLOSE = "<!-- /nightly -->";
 const REGION_PATTERN = /<!-- nightly -->[\S\s]*?<!-- \/nightly -->/;
 
 /**
- * The same pattern, global — a SEPARATE object rather than a `g` flag on the
- * one above, because a global regex carries `lastIndex` between `test()` calls
- * and would answer `hasRegion` differently on alternate invocations.
+ * Every region TOGETHER WITH the blank lines around it — the seam that removing
+ * it leaves behind. A SEPARATE object rather than a `g` flag on the one above,
+ * because a global regex carries `lastIndex` between `test()` calls and would
+ * answer `hasRegion` differently on alternate invocations.
+ *
+ * Capturing the surrounding newlines is what keeps this from touching prose. A
+ * blanket `\n{3,}` → `\n\n` pass over the whole body would also collapse an
+ * intentional run of blank lines somewhere else in the description — on every
+ * publish, silently rewriting text this file does not own.
  */
-const ALL_REGIONS_PATTERN = new RegExp(REGION_PATTERN.source, "g");
+const REGION_SEAM_PATTERN = new RegExp(`\\n*${REGION_PATTERN.source}\\n*`, "g");
 
 /**
  * The stamped prerelease identifier, anchored to the end: `-<14 digits>x<sha>`.
@@ -144,28 +150,31 @@ function hasRegion(body) {
 }
 
 /**
- * Strip every nightly region from `body`, tidying only the whitespace the
- * removal itself left behind (a 3+ newline seam collapses to a blank line,
- * trailing whitespace goes). When there was no region the body is returned
- * BYTE-FOR-BYTE — a description that legitimately contains a run of blank
- * lines, or an indented code block, is never reflowed by a run that had nothing
- * to remove.
+ * Strip every nightly region from `body`, touching ONLY the whitespace at the
+ * seam the removal leaves behind.
+ *
+ * The normalization is scoped to the match, not applied to the body: the
+ * pattern eats the blank lines on either side of the region and the replacer
+ * decides what belongs there — a blank line when the region sat between two
+ * pieces of prose, nothing when it sat at the top or the bottom. Prose
+ * elsewhere is never rewritten, so an intentional run of blank lines in the
+ * description survives every republish. (A blanket `\n{3,}` → `\n\n` pass would
+ * collapse it, silently, on a body this file does not own.)
+ *
+ * A body with no region is returned unchanged apart from `trimEnd()`.
  */
 function stripRegion(body) {
   const text = String(body ?? "");
   if (!hasRegion(text)) {
     return text.trimEnd();
   }
-  return (
-    text
-      .replaceAll(ALL_REGIONS_PATTERN, "")
-      .replaceAll(/\n{3,}/g, "\n\n")
-      // Leading blank lines only ever appear here when the region sat at the very
-      // top of the body; the first line's own indentation is untouched, so a
-      // description opening with an indented code block is not reflowed.
-      .replace(/^\n+/, "")
-      .trimEnd()
-  );
+  return text
+    .replaceAll(REGION_SEAM_PATTERN, (match, offset, full) => {
+      const atStart = offset === 0;
+      const atEnd = offset + match.length === full.length;
+      return atStart || atEnd ? "" : "\n\n";
+    })
+    .trimEnd();
 }
 
 /**

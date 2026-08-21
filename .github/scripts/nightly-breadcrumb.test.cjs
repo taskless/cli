@@ -150,6 +150,37 @@ test("a region sitting mid-body is moved to the end, not duplicated", () => {
   assert.equal(annotated.match(/<!-- nightly -->/g).length, 1);
 });
 
+// Copilot review on #133: normalization must be scoped to the seam the removal
+// leaves, not applied to the whole body. Blank lines the author put somewhere
+// else are content, and a republish must not rewrite them.
+test("blank lines elsewhere in the description survive a republish", () => {
+  const authored = [
+    "# Releases",
+    "",
+    "",
+    "",
+    "Deliberate breathing room above this line.",
+    "",
+    "",
+    "And below it.",
+  ].join("\n");
+
+  const once = upsertRegion(authored, VERSION);
+  assert.equal(once, `${authored}\n\n${renderRegion(VERSION)}`);
+
+  // The republish is the dangerous one: it strips the region it wrote last
+  // time, which is when a body-wide collapse would fire.
+  const twice = upsertRegion(once, NEXT_VERSION);
+  assert.equal(twice, `${authored}\n\n${renderRegion(NEXT_VERSION)}`);
+  assert.ok(twice.startsWith(authored));
+  assert.equal(stripRegion(twice), authored);
+});
+
+test("the seam left by a mid-body region becomes exactly one blank line", () => {
+  const body = `above\n\n${renderRegion(VERSION)}\n\nbelow`;
+  assert.equal(stripRegion(body), "above\n\nbelow");
+});
+
 test("stripRegion returns a region-free body byte-for-byte", () => {
   // Deliberately whitespace-heavy: a run that has nothing to remove must not
   // reflow prose, and an indented code block must survive.

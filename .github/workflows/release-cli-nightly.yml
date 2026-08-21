@@ -594,6 +594,25 @@ jobs:
         with:
           node-version: 24
 
+      # A LOST UPDATE IS POSSIBLE HERE, AND IS ACCEPTED (Copilot review, #133).
+      # A pull request body is replaced whole: GitHub offers no field-level
+      # patch and no compare-and-swap — PATCH on a pull request honors no
+      # `If-Match` — so every writer is doing read-modify-write against a
+      # resource two others also touch. changesets regenerates this body on each
+      # push to its branch, and stack-breadcrumb.yml rewrites it when the pull
+      # request is stacked. A write landing between the GET below and the PATCH
+      # is therefore lost, and no arrangement of these API calls prevents it.
+      #
+      # It is accepted because all three writers are ADDITIVE AND SELF-HEALING,
+      # so a lost update costs one cycle rather than data: if changesets wins,
+      # the next nightly re-appends its region; if this job wins, changesets
+      # rewrites the release notes on the next push; the stack breadcrumb
+      # reconciles on its own dispatch. Coordinating them — a lock, or routing
+      # all three through one workflow — would buy consistency for a cosmetic
+      # region by coupling a release workflow to a breadcrumb, which is the
+      # worse trade. Reach for that only if a writer appears whose content
+      # cannot be reconstructed.
+      #
       # No dependency install: nightly-breadcrumb.cjs is zero-dependency
       # CommonJS, for the same reason the gate job's matcher is.
       - id: breadcrumb
@@ -612,6 +631,9 @@ jobs:
           # would go green having silently skipped the update.
           gh api "repos/${REPO}/pulls?state=open&head=${OWNER}:changeset-release/main" > nightly-pulls.json
 
+          # Writes nightly-body.md only when the body actually changes, and
+          # exits 0 with changed=false when there is no open Version Packages
+          # pull request at all.
           node .github/scripts/nightly-breadcrumb.cjs \
             --version "$NIGHTLY_VERSION" \
             --pulls nightly-pulls.json \
