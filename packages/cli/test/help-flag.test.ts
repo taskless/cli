@@ -5,6 +5,8 @@ import { join, resolve } from "node:path";
 import { promisify } from "node:util";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { hasHelpFlag, splitRawArguments } from "../src/util/argv";
+
 const execFileAsync = promisify(execFile);
 const binPath = resolve(import.meta.dirname, "../dist/index.js");
 
@@ -70,6 +72,24 @@ describe("--help below the root", () => {
     expect(await readdir(temporaryDirectory)).toEqual([]);
   });
 
+  // `--` is the escape hatch `check` supports so a path beginning with `-` can
+  // still be scanned. Intercepting help before dispatch must not eat it.
+  it("does not read a path after -- as a help request", async () => {
+    const { stdout } = await execFileAsync("node", [
+      binPath,
+      "check",
+      "-d",
+      temporaryDirectory,
+      "--json",
+      "--",
+      "-h",
+    ]);
+
+    expect(stdout).not.toContain("USAGE");
+    const parsed = JSON.parse(stdout.trim()) as { success: boolean };
+    expect(parsed.success).toBe(true);
+  });
+
   it("leaves the root's --help unchanged", async () => {
     const { stdout } = await execFileAsync("node", [binPath, "--help"]);
 
@@ -77,6 +97,50 @@ describe("--help below the root", () => {
     expect(stdout).toContain("USAGE");
     expect(stdout).toContain("COMMANDS");
     expect(stdout).toContain("Manage authentication with taskless.io");
+  });
+});
+
+describe("splitRawArguments", () => {
+  it("treats the token after -d/--dir as a value, not a positional", () => {
+    expect(splitRawArguments(["-d", "/tmp", "check"])).toEqual({
+      positionals: ["check"],
+      flags: ["-d"],
+    });
+  });
+
+  it("treats everything after -- as a positional", () => {
+    expect(splitRawArguments(["check", "--", "-h", "--json"])).toEqual({
+      positionals: ["check", "-h", "--json"],
+      flags: ["--"],
+    });
+  });
+
+  it("does not swallow -- as the value of -d", () => {
+    expect(splitRawArguments(["-d", "--", "src"])).toEqual({
+      positionals: ["src"],
+      flags: ["-d", "--"],
+    });
+  });
+
+  it("accepts command-specific value flags", () => {
+    expect(
+      splitRawArguments(["check", "--timeout", "5", "src"], ["--timeout"])
+        .positionals
+    ).toEqual(["check", "src"]);
+  });
+});
+
+describe("hasHelpFlag", () => {
+  it.each([
+    [["check", "--help"], true],
+    [["auth", "login", "-h"], true],
+    [["-d", "/tmp", "check", "--help"], true],
+    [["check"], false],
+    // A path after `--`, and a directory that reads like a flag, are values.
+    [["check", "--", "-h"], false],
+    [["-d", "-h", "check"], false],
+  ])("resolves %j to %s", (argv, expected) => {
+    expect(hasHelpFlag(argv)).toBe(expected);
   });
 });
 

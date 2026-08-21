@@ -15,7 +15,7 @@ import {
   shutdownTelemetry,
 } from "./telemetry";
 import { emitRunEvents, resolveCommandName, resolveCwd } from "./telemetry-run";
-import { hasHelpFlag, splitRawArguments } from "./util/argv";
+import { DIR_FLAGS, hasHelpFlag, splitRawArguments } from "./util/argv";
 import { showResolvedUsage } from "./util/help";
 import { CLIError } from "./util/cli-error";
 
@@ -67,23 +67,17 @@ const main = defineCommand({
     // Only take action when no positional args (i.e. no subcommand) were
     // provided. A value following `-d`/`--dir` is a flag value, not a
     // positional, so splitRawArguments skips it.
-    if (splitRawArguments(rawArgs).positionals.length > 0) {
+    const { positionals, flags } = splitRawArguments(rawArgs);
+    if (positionals.length > 0) {
       return;
     }
 
     // Only delegate to `init` when the only flags present are ones init
-    // also understands (`-d` / `--dir`). Version/json flags and any unknown
-    // flags should fall through to citty's default help instead of silently
-    // launching the wizard. (`--help`/`-h` never reach here — they are
-    // intercepted before dispatch below.)
-    const onlyInitFlags = rawArgs.every((argument, index) => {
-      if (!argument.startsWith("-")) {
-        const previous = rawArgs[index - 1];
-        return previous === "-d" || previous === "--dir";
-      }
-      if (argument === "-d" || argument === "--dir") return true;
-      return false;
-    });
+    // also understands (`-d` / `--dir`). Version/json flags, a bare `--`, and
+    // any unknown flags should fall through to citty's default help instead of
+    // silently launching the wizard. (`--help`/`-h` never reach here — they
+    // are intercepted before dispatch below.)
+    const onlyInitFlags = flags.every((flag) => DIR_FLAGS.has(flag));
     if (!onlyInitFlags) {
       await showUsage(cmd);
       return;
