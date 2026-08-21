@@ -8,7 +8,9 @@ const {
   NIGHTLY_PACKAGE,
   VERSION_PR_BRANCH,
   hasRegion,
+  isNewerBuild,
   parseArguments,
+  readRegionVersion,
   parseStampedVersion,
   renderRegion,
   selectVersionPullRequest,
@@ -36,6 +38,8 @@ test("parseStampedVersion reads the build time and sha back out of the version",
   assert.deepEqual(parseStampedVersion(VERSION), {
     builtAt: "2026-08-18 12:34:56",
     shortSha: "05b3c88",
+    // The raw stamp is kept so builds can be ordered without re-parsing.
+    stamp: "20260818123456",
   });
 });
 
@@ -188,12 +192,59 @@ test("stripRegion returns a region-free body byte-for-byte", () => {
   assert.equal(stripRegion(body), body.trimEnd());
 });
 
+/** The shape the pulls endpoint returns, trimmed to what the selector reads. */
+const pull = (number, ref, base = "main") => ({
+  number,
+  state: "open",
+  head: { ref },
+  base: { ref: base },
+  body: "",
+});
+
 test("selectVersionPullRequest finds the open Version Packages pull request", () => {
-  const pulls = [
-    { number: 12, state: "open", head: { ref: "feat/other" }, body: "" },
-    { number: 74, state: "open", head: { ref: VERSION_PR_BRANCH }, body: "hi" },
-  ];
+  const pulls = [pull(12, "feat/other"), pull(74, VERSION_PR_BRANCH)];
   assert.equal(selectVersionPullRequest(pulls).number, 74);
+});
+
+// claude[bot] review on #133: GitHub allows several open PRs from one head
+// branch to different bases, so matching the head alone can annotate the wrong
+// one — whichever the API happened to list first.
+test("a same-head pull request targeting another base is not selected", () => {
+  const decoy = pull(90, VERSION_PR_BRANCH, "some/test-base");
+  const real = pull(74, VERSION_PR_BRANCH);
+
+  // Listed FIRST, so a head-only `.find()` would return it.
+  assert.equal(selectVersionPullRequest([decoy, real]).number, 74);
+  assert.equal(selectVersionPullRequest([decoy]), undefined);
+});
+
+test("a pull request with no base is not selected", () => {
+  assert.equal(
+    selectVersionPullRequest([
+      { number: 74, state: "open", head: { ref: VERSION_PR_BRANCH } },
+    ]),
+    undefined
+  );
+});
+
+test("readRegionVersion reads back the version a publish wrote", () => {
+  assert.equal(readRegionVersion(upsertRegion(DESCRIPTION, VERSION)), VERSION);
+  assert.equal(readRegionVersion(DESCRIPTION), undefined);
+  assert.equal(readRegionVersion(""), undefined);
+});
+
+// The cross-run race: `needs:` orders jobs inside ONE run, and this workflow
+// has no concurrency group on purpose, so an older run's breadcrumb job can
+// reach the write after a newer one did.
+test("isNewerBuild keeps the write monotonic", () => {
+  assert.equal(isNewerBuild(NEXT_VERSION, VERSION), true);
+  assert.equal(isNewerBuild(VERSION, NEXT_VERSION), false);
+  assert.equal(isNewerBuild(VERSION, VERSION), false);
+  assert.equal(isNewerBuild(VERSION, undefined), true);
+  // A base-version bump does not reorder builds: the stamp decides.
+  assert.equal(isNewerBuild("0.12.0-20260817000000xaaaaaaa", VERSION), false);
+  // A region edited past recognition is treated as absent and rewritten.
+  assert.equal(isNewerBuild(VERSION, "hand-edited"), true);
 });
 
 // The whole point of the "no open pull request" branch: it is a normal state,

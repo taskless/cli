@@ -39,6 +39,19 @@
  * on different names and neither pattern can match the other's markers; this
  * one never rewrites a region it does not own.
  *
+ * THE CONVERSE DOES NOT HOLD, AND CANNOT BE FIXED FROM HERE. If the Version
+ * Packages pull request is ever part of a stack that carries `<!-- PR:N -->`
+ * regions, stack-breadcrumb.cjs's `canonicalizeBody` re-lays the whole body as
+ * breadcrumb → description → carried regions. Its `ownDescription` strips only
+ * the regions IT owns, so this one travels inside "description" and lands
+ * ABOVE the carried blocks — no longer at the end. Nothing here runs at that
+ * moment, so "at the end" is a property of each write rather than of the body
+ * for all time (the spec says so in those words). The next publish moves the
+ * region back, which is the same self-healing the lost-update window relies on
+ * — see the workflow header. Teaching the other canonicalizer about this
+ * region would be the real fix, and it belongs in that file, on a change that
+ * can test it there.
+ *
  * There is NO GitHub I/O here. The workflow fetches the pull request list with
  * `gh api` and applies the body with `gh api -X PATCH` (never `gh pr edit` —
  * its GraphQL path is broken by GitHub's Projects-classic deprecation), so this
@@ -70,8 +83,21 @@ const NIGHTLY_PACKAGE = "@taskless/cli-nightly";
 /** The head branch changesets opens its "Version Packages" pull request from. */
 const VERSION_PR_BRANCH = "changeset-release/main";
 
+/** The base branch that pull request targets — matched, not assumed. */
+const DEFAULT_BRANCH = "main";
+
 const REGION_OPEN = "<!-- nightly -->";
 const REGION_CLOSE = "<!-- /nightly -->";
+
+/**
+ * The install line inside a region, which is where the version a previous
+ * publish wrote can be read back from. Built from `NIGHTLY_PACKAGE` rather than
+ * spelled out, so renaming the package cannot leave the reader looking for a
+ * name the renderer no longer writes.
+ */
+const INSTALL_LINE_PATTERN = new RegExp(
+  `\`npx ${NIGHTLY_PACKAGE.replaceAll(/[$()*+.?[\\\]^{|}]/g, String.raw`\$&`)}@([^\`\\s]+)\``
+);
 
 /**
  * The whole region, opening marker through closing marker. Non-greedy, so two
@@ -127,7 +153,9 @@ function parseStampedVersion(version) {
   if (Number.isNaN(parsed.getTime())) {
     throw new Error(`stamped version carries an impossible time: ${version}`);
   }
-  return { builtAt, shortSha: sha };
+  // `stamp` is the raw 14 digits: fixed-width and UTC, so a lexical compare of
+  // two of them orders the builds (see isNewerBuild).
+  return { builtAt, shortSha: sha, stamp };
 }
 
 /** Render the region for `version`, markers included, with no trailing newline. */
@@ -197,11 +225,23 @@ function upsertRegion(body, version) {
  * returned, or `undefined` when there is none.
  *
  * `undefined` is a NORMAL answer, not an error: the branch exists only while
- * changesets are pending. The head ref is still matched here rather than
- * trusted from the query string, so a widened or mistyped filter cannot lead to
- * this writing its region onto an unrelated pull request.
+ * changesets are pending.
+ *
+ * BOTH REFS ARE MATCHED HERE, not just the head, and neither is trusted from
+ * the query string. GitHub allows several open pull requests from ONE head
+ * branch to different bases, so `head=<owner>:changeset-release/main` alone can
+ * return more than one — a second PR opened from that branch for testing, say —
+ * and a `.find()` on the head ref would then write this region onto whichever
+ * the API happened to list first. The one this workflow means is the one
+ * changesets opens, which targets the default branch. The workflow's query
+ * filters on both as well; this is the check that holds if that query is ever
+ * widened or mistyped.
  */
-function selectVersionPullRequest(pulls, branch = VERSION_PR_BRANCH) {
+function selectVersionPullRequest(
+  pulls,
+  branch = VERSION_PR_BRANCH,
+  base = DEFAULT_BRANCH
+) {
   if (!Array.isArray(pulls)) {
     throw new Error(
       "the pulls response is not an array — expected the body of GET /repos/{owner}/{repo}/pulls"
@@ -212,8 +252,57 @@ function selectVersionPullRequest(pulls, branch = VERSION_PR_BRANCH) {
       pull &&
       pull.head &&
       pull.head.ref === branch &&
+      pull.base &&
+      pull.base.ref === base &&
       (pull.state === undefined || pull.state === "open")
   );
+}
+
+/**
+ * The version named by the region already on `body`, or `undefined` when there
+ * is none (or when the region has been edited past recognition).
+ */
+function readRegionVersion(body) {
+  const region = REGION_PATTERN.exec(String(body ?? ""));
+  if (!region) {
+    return undefined;
+  }
+  const match = INSTALL_LINE_PATTERN.exec(region[0]);
+  return match ? match[1] : undefined;
+}
+
+/**
+ * Is `candidate` a LATER build than `existing`? Used to keep this write
+ * monotonic.
+ *
+ * ORDERING ACROSS RUNS IS NOT GUARANTEED BY `needs:`. That only orders jobs
+ * within one run, and this workflow deliberately has no concurrency group (see
+ * the file header — gate 2 is per-SHA, so two runs cannot both publish). Two
+ * pushes to `main` in quick succession therefore start two independent runs,
+ * and nothing stops the OLDER run's breadcrumb job from reaching the PATCH
+ * after the newer one did. Without this check that older job would leave the
+ * pull request advertising a build that has already been superseded — an
+ * install line pointing at yesterday's nightly, with every run green.
+ *
+ * A concurrency group would be the wrong instrument: it would also cancel
+ * in-progress PUBLISHES, trading a cosmetic staleness for a lost package. The
+ * comparison is on the 14-digit UTC stamp, which is fixed-width, so a lexical
+ * compare orders builds chronologically for any base version (design D3 chose
+ * that layout for exactly this).
+ */
+function isNewerBuild(candidate, existing) {
+  if (existing === undefined) {
+    return true;
+  }
+  let existingStamp;
+  try {
+    existingStamp = parseStampedVersion(existing).stamp;
+  } catch {
+    // The region was edited into something unrecognizable. Treat it as absent
+    // and rewrite it: a body carrying a broken region should converge.
+    return true;
+  }
+  return parseStampedVersion(candidate).stamp > existingStamp;
 }
 
 function requireValue(argv, index, flag) {
@@ -271,8 +360,22 @@ function main() {
     return;
   }
 
-  const body = upsertRegion(pull.body ?? "", options.version);
   setOutput("pull_number", pull.number);
+
+  // Monotonic: an older run that reaches this point after a newer one wrote
+  // must not roll the pull request back to the build it published. See
+  // isNewerBuild — job ordering across runs is not guaranteed and a concurrency
+  // group would cancel publishes to fix a cosmetic race.
+  const present = readRegionVersion(pull.body ?? "");
+  if (!isNewerBuild(options.version, present)) {
+    console.log(
+      `#${pull.number} already names ${present}, which is not older than ${options.version} — leaving it alone.`
+    );
+    setOutput("changed", "false");
+    return;
+  }
+
+  const body = upsertRegion(pull.body ?? "", options.version);
   if (body === (pull.body ?? "")) {
     console.log(`#${pull.number} already carries this build's region.`);
     setOutput("changed", "false");
@@ -285,12 +388,15 @@ function main() {
 }
 
 module.exports = {
+  DEFAULT_BRANCH,
   NIGHTLY_PACKAGE,
   REGION_CLOSE,
   REGION_OPEN,
   VERSION_PR_BRANCH,
   hasRegion,
+  isNewerBuild,
   parseArguments,
+  readRegionVersion,
   parseStampedVersion,
   renderRegion,
   selectVersionPullRequest,

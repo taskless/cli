@@ -629,7 +629,14 @@ jobs:
           # A plain query, allowed to fail. No `|| echo '[]'`: a fallback here
           # would turn an API error into "no pull request found" and the run
           # would go green having silently skipped the update.
-          gh api "repos/${REPO}/pulls?state=open&head=${OWNER}:changeset-release/main" > nightly-pulls.json
+          #
+          # `base=main` is not redundant with `head=`. GitHub allows several
+          # open pull requests from ONE head branch to different bases, so the
+          # head filter alone can return more than one and the script would
+          # annotate whichever was listed first. The script re-checks both refs
+          # for the same reason, so widening this query cannot silently widen
+          # what gets written.
+          gh api "repos/${REPO}/pulls?state=open&head=${OWNER}:changeset-release/main&base=main" > nightly-pulls.json
 
           # Writes nightly-body.md only when the body actually changes, and
           # exits 0 with changed=false when there is no open Version Packages
