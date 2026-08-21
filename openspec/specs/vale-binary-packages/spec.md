@@ -91,7 +91,7 @@ Platform packages SHALL be versioned and published by a workflow dedicated to th
 
 A published-version check cannot bound these runs — every run stamps a previously unused timestamp — so the upstream comparison SHALL be what prevents redundant publishing.
 
-That workflow SHALL publish without a human approval step, using the reviewer-free publishing environment. Its review gate is the manifest-update pull request, where a human reviews the upstream version and every checksum before anything may be published; an environment approval would be a second copy of a gate that already exists, at a point where nothing is being decided. The publish remains bounded by the branch policy on that environment and by the requirement below that a published platform package changes no consumer.
+That workflow SHALL publish without a human approval step, using the reviewer-free publishing environment. Its review gate is the manifest-update pull request, where a human reviews the upstream version and every checksum before anything may be published; an environment approval would be a second copy of a gate that already exists, at a point where nothing is being decided. The publish remains bounded by the branch policy on that environment and by the requirement below that a published platform package changes no consumer. Because removing the approval leaves the branch restriction as the only control over where a publish may run from, that restriction SHALL be enforced twice — once by the environment's configuration and once by the workflow itself, so that neither can be relaxed without the other noticing.
 
 #### Scenario: Upstream unchanged publishes nothing
 
@@ -113,6 +113,11 @@ That workflow SHALL publish without a human approval step, using the reviewer-fr
 - **WHEN** the publish phase runs after a merged manifest update
 - **THEN** it SHALL proceed without waiting for an environment approval
 - **AND** it SHALL run in the reviewer-free publishing environment, restricted to the default branch
+
+#### Scenario: A publish requested from another branch does nothing
+
+- **WHEN** a publish is requested manually from a ref other than the default branch
+- **THEN** no package is published, and this SHALL hold independently of the publishing environment's configuration
 
 #### Scenario: Ordinary pushes do not publish platform packages
 

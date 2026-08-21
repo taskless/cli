@@ -290,6 +290,31 @@ jobs:
   publish:
     name: Publish to npm
     needs: prepare
+    # DELIBERATE DUPLICATE of the `npm-autopublish` deployment branch policy.
+    # The duplication IS the point: two independent controls, one of which lives
+    # in a settings page and one of which lives here, in a file that cannot
+    # change without code review. Do not delete this as redundant with the
+    # environment — the environment is exactly what it is defending against.
+    #
+    # This became load-bearing when the required reviewer went away. Under
+    # `npm-production` an off-`main` publish had to get past the branch policy
+    # AND a human clicking approve; with the reviewer gone the branch policy is
+    # the only thing left, and a settings edit by someone who does not know it
+    # is load-bearing silently enables publishing from any branch. That failure
+    # is an ABSENCE, so nothing goes red when it happens.
+    #
+    # One expression covers both ways this job can be reached. The `push` path
+    # is already `branches: [main]`, so the guard is a no-op there and costs
+    # nothing. The `workflow_dispatch` path is the real case: a dispatch runs
+    # from whatever ref it was launched on, and `github.ref` is that ref.
+    #
+    # Only `publish` is guarded, on purpose. `gate` and `prepare` hold no
+    # environment, no id-token, and only `contents: read`, so running them off
+    # `main` publishes nothing — it is a useful dry run of the digest
+    # verification and the pack. Guarding them instead would protect this job
+    # only by inference through `needs:`, which is one control with a spare
+    # rather than two controls.
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     # The scoping and audit boundary for the release, and where the npm trusted
     # publisher for each @taskless/vale-* package is bound. Reviewer-free by
