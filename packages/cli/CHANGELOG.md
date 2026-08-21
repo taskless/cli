@@ -1,5 +1,243 @@
 # @taskless/cli
 
+## 0.11.0
+
+### Minor Changes
+
+- f7ee186: Partition `.taskless/` by rule engine. Migration `0004` moves ast-grep rules to `sg/rules/` and `sg/rule-tests/`, the runtime tree to `runtime/rules/` and `runtime/rule-tests/`, and scaffolds an inert `vale/`. Files move byte-for-byte, so runtime rule signatures survive.
+
+  The directory a rule sits in now **is** its engine: dispatch reads the path and never parses a rule file to decide who owns it. `check` runs ast-grep against the committed `.taskless/sg/sgconfig.yml` instead of generating an ephemeral config each run.
+
+  A rule engine the CLI does not recognize is now rejected with a message instead of failing silently: an unsupported engine from the server previously exited 0 with no output, which read as success.
+
+  Runtime rules are discovered under `runtime/rules/` rather than the pre-migration `runtime-rules/`. Migration `0004` moves that tree byte-for-byte, so the signatures the server validates are unchanged.
+
+  `check` and `rule verify` read the committed `.taskless/sg/sgconfig.yml` rather than writing an ephemeral config on every run, so the config ast-grep uses is the one you can edit and review. A pre-migration rule set still gets a generated config, so an unmigrated project keeps running.
+
+  Existing projects keep working without action. The pre-`0004` `.taskless/rules/` still runs as ast-grep, and a delivered rule that names no engine is still treated as ast-grep — a rule engine this CLI does not recognize is rejected rather than guessed at. A migration that would have to merge a file into an engine directory now refuses up front with `SCAFFOLD_CONFLICT` rather than failing part-way.
+
+- d4fca88: Add a `@taskless/cli/prompts` subpath export exposing the CLI's knowledge prompts as importable, topic-keyed render functions.
+
+  `getPrompt(topic, options?)` and the `PROMPTS` map return fully rendered recipe text, with every `%(KEY)s` placeholder already resolved from values the package holds, so a consumer never handles a template dialect. Topic names are typed as `PromptTopic` and start at `static`, the one recipe a service-side consumer can act on; everything else stays internal until a consumer needs it. `PromptOptions` covers the anonymous variant, a `packageManagerDlx` override, and `header: false` for callers placing the text in an LLM system prompt, where the CLI version in the header would otherwise churn the prompt-cache key on every publish.
+
+  The export is sourced from the same embedded recipes and the same render path `taskless help <topic>` serves, so the two surfaces cannot drift, and it carries no CLI runtime, so a Worker can import it without pulling in the command tree.
+
+- 6b07695: Ship Vale as per-platform binary packages.
+
+  The CLI now declares `@taskless/vale-<os>-<cpu>` as `optionalDependencies` pinned
+  to an exact version, so installing it also brings down a verified Vale binary for
+  the host platform — no lifecycle script, and nothing to download at runtime. Only
+  the matching platform installs; unsupported hosts install cleanly with none
+  present and continue to fall back to a `vale` found on `PATH`.
+
+- 0e03ee9: Add Vale as a second static-tier rule engine, give every engine one rule layout, and rename the agent-facing command.
+
+  `check` now dispatches by engine and runs ast-grep, Vale, and runtime rules
+  concurrently, merging their findings into one result set. An unavailable Vale
+  reports itself and the other engines still return. A Vale that times out or
+  rejects its config fails the check rather than passing as a clean run.
+
+  **Every rule is now one directory**, `.taskless/rules/<engine>/<id>/`, holding
+  the rule, any per-engine config, and its tests in `.tests/`. Writing a rule
+  means creating a directory and deleting one means `rm -rf`. Nothing outside it
+  is touched either way, so concurrent authors never collide on a shared file.
+
+  Vale rules carry their own `.vale.ini` declaring which files they apply to.
+  The single config Vale reads is assembled from those per-rule files on each
+  run, gitignored, and regenerated, so hand edits to it have no effect. ast-grep
+  keeps its `files`/`ignores` inside the rule and needs no second file.
+
+  **`rule verify` is replaced by two path-addressed commands.** `verify <path>`
+  checks that a rule has the components its engine requires and needs no tests,
+  so it works while you're still authoring. `test <path>` runs the rule's tests,
+  after running `verify` and stopping if that fails. Both take a rule directory,
+  an engine directory, or nothing at all for the whole project, and both report
+  one result per rule. Addressing by path rather than id removes the ambiguity
+  that arose when two engines held the same rule id.
+
+  Projects on an older layout migrate automatically on the next command.
+
+  **BREAKING: `taskless help <topic>` is now `taskless agent <topic>`.** The
+  command is named for who reads it. Agents fetching a procedure are not asking
+  for help, and the old name is gone rather than aliased.
+
+  **BREAKING: topics are addressed by a single token.** `taskless help rule
+create` becomes `taskless agent create-sg-rule`; multiple positionals are no
+  longer joined into a topic key. A topic name is now a literal string an agent
+  copies rather than a phrase it can reorder. The renames:
+
+  | Was                | Now                                     |
+  | ------------------ | --------------------------------------- |
+  | `rule create`      | `create-sg-rule` / `create-remote-rule` |
+  | `rule improve`     | `improve-rule`                          |
+  | `rule delete`      | `delete-rule`                           |
+  | `rule verify`      | `verify-rule`                           |
+  | `rule meta`        | `rule-meta`                             |
+  | `static`           | `create-sg-rule`                        |
+  | `existing`         | `create-legacy-rule`                    |
+  | `engine-selection` | `route`                                 |
+
+  `route` now applies the engine reasoning itself and names a concrete
+  `create-*-rule` topic, so `engine-selection` is removed rather than renamed —
+  its criterion is stated once, in `route`. Every authoring recipe is rewritten
+  for the rule-directory layout.
+
+  **BREAKING for `@taskless/cli/prompts` consumers.** `engine-selection` is no
+  longer exported. `TOPICS` is now `create-sg-rule`, `create-vale-rule`, and
+  `create-runtime-rule`, so a consumer that decides an engine can reach the
+  procedure for each destination. Because the export is a string union, a
+  consumer passing the removed name dynamically breaks on upgrade rather than at
+  build time.
+
+### Patch Changes
+
+- 87abaf3: Fix the pass/fail counts reported when a rule's `ast-grep` tests fail.
+
+  `ast-grep test` echoes the source of a failing test case, and `verify` scraped
+  its counts with unanchored regexes over stdout and stderr combined — so a
+  fixture containing text like `'7 passed; 0 failed'` was read as the summary and
+  `verify` reported `✗ failed (7 passed, 0 failed)` for a run that actually had 0
+  passed and 1 failed. The counts are now read from the summary line itself
+  (`test result: ok.` / `Error: test failed.`), with ANSI colors stripped first.
+
+  This only affected the reported numbers, never the pass/fail verdict, which
+  comes from the exit code — but those numbers are handed to the agent driving
+  `improve-rule`, where a wrong count can steer the next edit. Test output is also
+  now decoded with a `StringDecoder` per stream, so a multi-byte character split
+  across a chunk boundary is no longer mangled.
+
+- 1fb9dda: Rewrite the CLI README around what you actually do with Taskless: installing it,
+  driving it from your coding agent with the `taskless` skill and `/tskl` command,
+  running `taskless check` in CI, and where to find the docs. Telemetry — and the
+  two environment variables that turn it off — is now stated plainly instead of
+  being left to the source.
+- f13d501: Stop corrupting non-ASCII characters in ast-grep's error output.
+
+  `runAstGrepScan` and the runtime narrow both decoded ast-grep's stderr one
+  chunk at a time with `chunk.toString()`. A multi-byte UTF-8 sequence split
+  across a chunk boundary was decoded as two invalid sequences, and both halves
+  became replacement characters before the pieces were joined — the original
+  bytes unrecoverable by then. Each stream now uses a single `StringDecoder`,
+  flushed on close, matching what the Vale runner and `verify` already do.
+
+  The corrupted text only ever reached an error message, so no scan result was
+  ever wrong. But that message is the one a user reads when ast-grep rejects a
+  rule file, naming a rule id or a path — which is exactly where a non-ASCII
+  character turns up.
+
+- 87392fa: Make `--help` work on every command, instead of running the command.
+
+  `taskless check --help` printed no usage — it ran `check`. So did every other
+  subcommand: `--help` was parsed as an unrecognized flag and the command body
+  executed anyway, which meant asking `init` how it works installed skills, and
+  asking `check` how it works migrated the `.taskless/` scaffold. The only place
+  help worked was the bare `taskless --help`, whose own output tells you to run
+  `taskless <command> --help`.
+
+  `--help` and `-h` are now recognized at every depth, including nested commands
+  (`taskless auth login --help` describes `login`, not `auth`), and a working
+  directory passed before the command (`taskless -d ./repo check --help`) no
+  longer confuses which command you asked about. The usage text itself is
+  unchanged, and nothing else about how commands run has changed.
+
+- 32da4f9: Stop the engine-partition migration from relocating a rules tree that is already partitioned.
+
+  A `.taskless/` with no `taskless.json` — a manifest that was never committed, or was deleted — reads as version 0, so every migration runs against it. Migration `0004` then applied its `rules/` → `sg/rules/` move to a tree already in the current layout, burying every rule at `.taskless/sg/rules/sg/<id>/`; `0005` scaffolded fresh empty engine directories over the gap. Nothing errored. `check` scanned a tree with no rules in it and exited 0 on a clean report, so a project that had silently stopped being checked was indistinguishable from one that passes.
+
+  `0004` now reads the shape of `.taskless/rules/` before moving it. A tree holding engine directories and no loose rule files is newer than the migration, not older, so it is left alone. A genuinely pre-`0004` tree of flat `rules/<id>.yml` files still moves wholesale, as before. And a tree holding both — an already-partitioned layout with a stray `rules/<id>.yml` beside it, as a merge-conflict leftover produces — migrates only the stray files: moving the directory to collect them would carry the partitioned rules down with it, and `0005` never brings them back, which is the same silent clean pass by another route.
+
+- 0cc713e: Split the release pipeline so each workflow file carries one release design.
+
+  `release.yml` held two jobs with opposite trust properties behind one header.
+  It is now `release-cli-changeset.yml` — which reads contributor-authored
+  changesets and opens the Version Packages PR holding no npm credential and no
+  OIDC identity — and `release-cli.yml`, which keeps the credential-free
+  "is this version already on npm?" gate together with the publish job it
+  protects, so an OIDC-capable job is never instantiated on an ordinary merge.
+  `vale-binaries.yml` is renamed `release-vale.yml` to match.
+
+  The build and publish steps themselves are unchanged — same triggers, same
+  `permissions: {}`, same action pins, same OIDC trusted publishing behind the
+  same `npm-production` approval. Two operational details do differ: `check` and
+  `publish` no longer share the `release-*` concurrency group, and the release
+  now runs as two workflow runs instead of one, so its check contexts are
+  `Release CLI Version PR / …` and `Release CLI / …` rather than `Release / …`.
+  Neither is a required check.
+
+  The header comments also get one correction: they claimed `npm-production` had
+  no required reviewers, and it has had one all along, so a release has always
+  waited for a human approval that the file said was not there.
+
+  Publish unreleased work on `main` as `@taskless/cli-nightly`.
+
+  Every push to `main` that has changesets pending now publishes the CLI under a
+  second package name, stamped `<next-version>-<yyyymmddhhmmss>x<short-sha>` — so
+  merged-but-unreleased behavior is installable with `npx @taskless/cli-nightly`.
+  A nightly is the same build as the release it anticipates and keeps the
+  `taskless` executable, so it is a drop-in; the rename happens at pack time, so
+  `@taskless/cli`'s own version history stays releases-only. Installing both
+  globally collides on the binary and is unsupported.
+
+  Two credential-free gates decide whether anything is built — pending changesets
+  first (before any install), then whether the commit already has a nightly — so
+  the publishing job is never instantiated on an ordinary push, and the merge of a
+  Version Packages PR publishes the real release and no nightly with no rule
+  special-casing it.
+
+  A nightly now ships instructions for itself. The skills, commands, and recipes
+  a nightly installs name `npx @taskless/cli-nightly@<version>` — pinned to the
+  build being installed — instead of `npx @taskless/cli`. Previously a nightly
+  carried the released CLI's text verbatim, so an agent following it ran the
+  released binary: no error, just instructions for a different package, on a
+  build installed precisely to exercise unreleased behavior. The version is
+  stamped once and passed to both the build and the pack, so the version the
+  instructions name is always the version on npm, and a nightly build without a
+  valid version fails rather than falling back.
+
+  The nightly's duplicate-suppression gate also now fails closed. An unreadable
+  registry response used to read as "this commit has no nightly", and since each
+  build stamps a fresh timestamp, a re-run after one would have published a
+  second nightly for the same commit successfully and silently.
+
+- a7ec7a1: Complete the `help` → `agent` rename. The user-facing command was renamed in
+  0.10.0, but the internals kept the old name: the recipe directory moved from
+  `packages/cli/src/help/` to `packages/cli/src/agent/`, the `cli-help` OpenSpec
+  capability is now `cli-agent`, and the shipped skill and `/tskl` command no
+  longer tell agents to run the removed `npx @taskless/cli help <topic>` (they
+  now use `agent`, with the single-token topic names — `route`, `improve-rule`,
+  `delete-rule`, `create-sg-rule`, and siblings).
+
+  **Telemetry rename (hard cut, no dual-emit).** The `cli_help` event is renamed
+  to `cli_agent`. The `topic` property is unchanged. PostHog dashboards keyed on
+  `cli_help` will need updating — nothing is emitted under the old name.
+
+- db8adfa: Resolve the ast-grep binary without relying on an install-time step, and drop
+  the `@ast-grep/cli` wrapper from what consumers install.
+  - **The wrapper moves to `devDependencies`.** The seven `@ast-grep/cli-<platform>`
+    packages were already declared in `optionalDependencies`, and the CLI already
+    resolved them by path — the wrapper was a leftover whose only job is a
+    `postinstall` that hardlinks the binary into itself so its `bin` entries work.
+    Nothing here invoked those entries. Consumers now install only the platform
+    package matching their host, and the wrapper's `postinstall` — which leaves a
+    placeholder text file where the binary should be under `pnpm dlx`'s strict
+    isolation — is out of the shipped product entirely. It stays as a
+    `devDependency` because `fetch-ast-grep-schema` reads its version.
+  - **Platform packages are pinned exactly at `0.41.0`.** They were carets, and the
+    wrapper had been enforcing alignment implicitly by pinning its own
+    `optionalDependencies`; without it, two hosts could resolve different ast-grep
+    versions against the same rules and disagree about findings. Held at `0.41.0`
+    rather than taking upstream's `0.45.0`, so this change stays structural.
+  - **Binary resolution exhausts every candidate before failing.** It now searches
+    the platform package, `node_modules/.bin`, then `sg` and `ast-grep` on `PATH`,
+    and throws naming what it tried. Previously it returned a bare `"sg"` and let
+    `spawn`'s `ENOENT` be the error, from a caller that could not say where it had
+    looked.
+
+  Alpine improves as a side effect: upstream publishes no musl build and marks its
+  Linux packages `libc: ["glibc"]`, so today the wrapper's `postinstall` resolves a
+  package that does not exist and exits 1, failing the install wherever dependency
+  scripts run. Installing now succeeds and resolution falls through to `PATH`.
+
 ## 0.10.2
 
 ### Patch Changes
