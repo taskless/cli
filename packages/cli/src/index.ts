@@ -15,6 +15,8 @@ import {
   shutdownTelemetry,
 } from "./telemetry";
 import { emitRunEvents, resolveCommandName, resolveCwd } from "./telemetry-run";
+import { hasHelpFlag, splitRawArguments } from "./util/argv";
+import { showResolvedUsage } from "./util/help";
 import { CLIError } from "./util/cli-error";
 
 const subCommands = {
@@ -64,21 +66,16 @@ const main = defineCommand({
     // citty always calls the parent's run handler, even after a subcommand.
     // Only take action when no positional args (i.e. no subcommand) were
     // provided. A value following `-d`/`--dir` is a flag value, not a
-    // positional, so skip it when scanning.
-    const hasPositional = rawArgs.some((argument, index) => {
-      if (argument.startsWith("-")) return false;
-      const previous = rawArgs[index - 1];
-      if (previous === "-d" || previous === "--dir") return false;
-      return true;
-    });
-    if (hasPositional) {
+    // positional, so splitRawArguments skips it.
+    if (splitRawArguments(rawArgs).positionals.length > 0) {
       return;
     }
 
     // Only delegate to `init` when the only flags present are ones init
-    // also understands (`-d` / `--dir`). Help/version/json flags and
-    // any unknown flags should fall through to citty's default help instead
-    // of silently launching the wizard.
+    // also understands (`-d` / `--dir`). Version/json flags and any unknown
+    // flags should fall through to citty's default help instead of silently
+    // launching the wizard. (`--help`/`-h` never reach here — they are
+    // intercepted before dispatch below.)
     const onlyInitFlags = rawArgs.every((argument, index) => {
       if (!argument.startsWith("-")) {
         const previous = rawArgs[index - 1];
@@ -122,7 +119,13 @@ const startedAt = Date.now();
 const startIdentity = await resolveRunIdentity(runCwd);
 let thrown: unknown;
 try {
-  await runCommand(main, { rawArgs: rawArguments });
+  // Help is intercepted here, before dispatch, because citty implements
+  // `--help` only in runMain — and runMain exits the process on both its help
+  // and error paths, which would skip the `finally` below and drop the cli_run
+  // denominator. Rendering here returns normally instead.
+  await (hasHelpFlag(rawArguments)
+    ? showResolvedUsage(main, rawArguments)
+    : runCommand(main, { rawArgs: rawArguments }));
 } catch (error) {
   // CLIError = expected failure. Most throw sites (the `fail()` helpers) print
   // and set exitCode first and mark themselves `reported`; one that does not
