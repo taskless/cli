@@ -16,6 +16,7 @@ const {
   isValidVersion,
   parseArguments,
   parseVersionsResponse,
+  selectPackedFilename,
   selectProposedVersion,
   buildNightlyReadme,
 } = require("./nightly-pack.cjs");
@@ -369,5 +370,61 @@ test("parseVersionsResponse separates found, not-found, and unreadable", () => {
     () => parseVersionsResponse("", 1),
     /no E404/,
     "a bare non-zero exit must not read as no versions"
+  );
+});
+
+// npm 12 changed `npm pack --json` from an array to an object keyed by package
+// name. Destructuring the object as an array threw `object is not iterable`
+// after a SUCCESSFUL pack, one step short of publishing, on the first nightly
+// built after the npm pin moved to 12.0.1. The two payloads below are the
+// shapes npm 11.9.0 and npm 12.0.1 were measured printing for the same
+// manifest, reduced to the fields this function reads.
+test("selectPackedFilename reads both shapes npm emits", () => {
+  const entry = {
+    id: "@taskless/cli-nightly@0.11.0-20260818123456x05b3c88",
+    name: "@taskless/cli-nightly",
+    version: "0.11.0-20260818123456x05b3c88",
+    filename: "taskless-cli-nightly-0.11.0-20260818123456x05b3c88.tgz",
+  };
+
+  // npm <= 11: an array of pack results.
+  assert.equal(
+    selectPackedFilename(JSON.stringify([entry])),
+    "taskless-cli-nightly-0.11.0-20260818123456x05b3c88.tgz"
+  );
+
+  // npm 12: the same results, keyed by package name.
+  assert.equal(
+    selectPackedFilename(JSON.stringify({ [entry.name]: entry })),
+    "taskless-cli-nightly-0.11.0-20260818123456x05b3c88.tgz"
+  );
+});
+
+// The tarball this returns is the one that gets published, so every shape it
+// cannot read must raise. Returning undefined would build `<out>/undefined`
+// and fail somewhere further away, or publish something unintended.
+test("selectPackedFilename refuses anything it cannot read as one tarball", () => {
+  assert.throws(
+    () => selectPackedFilename("npm error code E404"),
+    /did not return JSON/
+  );
+  assert.throws(() => selectPackedFilename(""), /did not return JSON/);
+  assert.throws(
+    () => selectPackedFilename("[]"),
+    /reported 0 tarballs/,
+    "an empty result is not a tarball to publish"
+  );
+  assert.throws(
+    () =>
+      selectPackedFilename(
+        JSON.stringify([{ filename: "a.tgz" }, { filename: "b.tgz" }])
+      ),
+    /reported 2 tarballs/,
+    "picking the first of several would publish an arbitrary one"
+  );
+  assert.throws(
+    () =>
+      selectPackedFilename(JSON.stringify([{ name: "@taskless/cli-nightly" }])),
+    /reported no filename/
   );
 });

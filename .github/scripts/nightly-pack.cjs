@@ -297,6 +297,52 @@ function hasNightlyForSha(versions, shortSha) {
   return list.some((version) => String(version).endsWith(`x${sha}`));
 }
 
+/**
+ * The tarball `npm pack --json` says it wrote, from either shape npm emits.
+ *
+ * npm CHANGED THIS SHAPE, and the change is silent unless you look. npm <= 11
+ * prints an ARRAY of pack results; npm 12 prints an OBJECT KEYED BY PACKAGE
+ * NAME whose values are those same results. `const [entry] = JSON.parse(…)`
+ * reads the first correctly and throws `object is not iterable` on the
+ * second — which is what the first nightly built after the npm pin moved to
+ * 12.0.1 did, after a successful pack, one step short of publishing.
+ *
+ * Both shapes are accepted rather than the pinned one alone: the pin exists so
+ * publish behavior cannot change unreviewed, not so this script may assume a
+ * single npm. It is also run locally, where npm is whatever the developer has.
+ *
+ * EXACTLY ONE ENTRY IS REQUIRED. packages/cli is one package and this pack
+ * names one tarball to publish; more than one means npm packed something this
+ * script did not intend, and picking the first would publish an arbitrary one
+ * of them.
+ */
+function selectPackedFilename(stdout) {
+  const text = String(stdout ?? "").trim();
+  let parsed;
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    throw new Error(`npm pack did not return JSON: ${text.slice(0, 200)}`);
+  }
+
+  const entries = Array.isArray(parsed)
+    ? parsed
+    : parsed && typeof parsed === "object"
+      ? Object.values(parsed)
+      : [];
+  if (entries.length !== 1) {
+    throw new Error(
+      `npm pack reported ${entries.length} tarballs, expected exactly 1: ${text.slice(0, 200)}`
+    );
+  }
+
+  const filename = entries[0] && entries[0].filename;
+  if (typeof filename !== "string" || filename.length === 0) {
+    throw new Error(`npm pack reported no filename: ${text.slice(0, 200)}`);
+  }
+  return filename;
+}
+
 function requireValue(argv, index, flag) {
   const value = argv[index];
   if (value === undefined || value.length === 0 || value.startsWith("--")) {
@@ -435,8 +481,7 @@ function main() {
 
   // npm reports the filename it chose; deriving it from the package name would
   // be re-deriving what the tool already told us.
-  const [entry] = JSON.parse(packed.stdout);
-  const tarball = join(options.out, entry.filename);
+  const tarball = join(options.out, selectPackedFilename(packed.stdout));
   console.log(`packed ${tarball}`);
 
   setOutput("version", version);
@@ -454,6 +499,7 @@ module.exports = {
   isValidVersion,
   parseArguments,
   parseVersionsResponse,
+  selectPackedFilename,
   selectProposedVersion,
 };
 
