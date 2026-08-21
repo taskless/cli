@@ -197,7 +197,9 @@ When a nightly is published, the open pull request that carries the pending rele
 
 Every fact in that region SHALL be derived from the version the publish stamped, not determined independently. The version already encodes the build time and the commit, and a second determination reads a second clock.
 
-The region SHALL be placed at the end of the pull request body, SHALL replace any region a previous publish left rather than adding to it, and SHALL be restored if a human deletes it. It SHALL NOT modify any other managed region on that body.
+Each publish SHALL append the region at the end of the body it writes, SHALL replace any region a previous publish left rather than adding to it, and SHALL be restored if a human deletes it. It SHALL NOT modify any other managed region on that body.
+
+Placement is asserted of the write, not of the body for all time: other writers maintain their own regions on the same body and may re-lay it, moving this region out of last place. A publish SHALL return the region to the end rather than leave it where it was found. A publish SHALL NOT overwrite a region naming a build newer than its own.
 
 The annotation SHALL depend on the publish having succeeded, and SHALL be performed by a job that holds permission to write pull requests and holds no publishing credential — the ability to publish under the organization's scope and the ability to rewrite pull request text SHALL NOT be held by one job.
 
@@ -210,6 +212,16 @@ The annotation SHALL depend on the publish having succeeded, and SHALL be perfor
 
 - **WHEN** a second nightly is published while the same pull request is open
 - **THEN** the pull request SHALL carry exactly one build-info region, describing the most recent publish
+
+#### Scenario: Another writer moves the region
+
+- **WHEN** another writer re-lays the body and the region no longer sits at the end
+- **THEN** the next publish SHALL move it back to the end rather than leave it in place or write a second one
+
+#### Scenario: An older build does not overwrite a newer one
+
+- **WHEN** the region on the pull request names a build newer than the one being announced
+- **THEN** the body SHALL be left unchanged
 
 #### Scenario: No open release pull request is not a failure
 
