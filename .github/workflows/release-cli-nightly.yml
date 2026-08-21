@@ -280,12 +280,19 @@ jobs:
           echo "Pending changeset(s):"
           echo "$pending" | sed 's/^/  - /'
 
-          # A FIXED abbreviation length. `git rev-parse --short` scales the
+          # A PINNED abbreviation length. `git rev-parse --short` scales the
           # length with the size of the repository, so an unpinned length would
           # eventually produce an 8-character sha that no longer matches the
           # 7-character suffix of every nightly published before it — gate 2
           # would stop deduping, silently, at a moment unrelated to any change
           # here.
+          #
+          # Pinned, not fixed, and the difference is worth knowing: `--short=<n>`
+          # sets a MINIMUM width and git still lengthens past it to keep the
+          # abbreviation unambiguous. It holds the floor steady, which is what
+          # gate 2's suffix match needs; it is not a guarantee of exactly seven
+          # characters, so nothing downstream may assume the width (raised in
+          # review on #132 — see the publish job's prefix test).
           short_sha=$(git rev-parse --short=7 HEAD)
           echo "short_sha=$short_sha" >> "$GITHUB_OUTPUT"
 
@@ -395,9 +402,24 @@ jobs:
           # sha is stamped into the version below. If the two jobs somehow saw
           # different commits, the dedupe answer belongs to one of them and the
           # tarball to the other.
-          actual_short=$(git rev-parse --short=7 HEAD)
-          if [ "$actual_short" != "$GATE_SHORT_SHA" ]; then
-            echo "::error::The gate job decided for ${GATE_SHORT_SHA} but this job holds ${actual_short}; refusing to publish."
+          #
+          # TESTED AS A PREFIX, NOT RE-ABBREVIATED AND COMPARED. `--short=<n>`
+          # is a MINIMUM width, not a fixed one: git lengthens an abbreviation
+          # whenever it is ambiguous in the object database of the job that runs
+          # it. Two jobs abbreviating the SAME commit can therefore disagree —
+          # and a string comparison would fail the run with "the gate decided
+          # for X but this job holds Y" while nothing whatsoever is wrong
+          # (raised in review on #132). A prefix test cannot do that: every
+          # abbreviation of this commit, at any width, is a prefix of its full
+          # sha. It is also the invariant actually wanted — "the short sha about
+          # to be stamped into the version names THIS commit" — rather than a
+          # proxy for it.
+          if [ -z "$GATE_SHORT_SHA" ]; then
+            echo "::error::The gate job published no short_sha; refusing to publish a version stamped from an unknown commit."
+            exit 1
+          fi
+          if [ "${VALIDATED_SHA#"$GATE_SHORT_SHA"}" = "$VALIDATED_SHA" ]; then
+            echo "::error::The gate job decided for ${GATE_SHORT_SHA}, which does not name ${VALIDATED_SHA}; refusing to publish."
             exit 1
           fi
           echo "Publishing from ${actual}, which Validate passed on."
