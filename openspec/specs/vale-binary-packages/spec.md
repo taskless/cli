@@ -91,6 +91,8 @@ Platform packages SHALL be versioned and published by a workflow dedicated to th
 
 A published-version check cannot bound these runs — every run stamps a previously unused timestamp — so the upstream comparison SHALL be what prevents redundant publishing.
 
+That workflow SHALL publish without a human approval step, using the reviewer-free publishing environment. Its review gate is the manifest-update pull request, where a human reviews the upstream version and every checksum before anything may be published; an environment approval would be a second copy of a gate that already exists, at a point where nothing is being decided. The publish remains bounded by the branch policy on that environment and by the requirement below that a published platform package changes no consumer.
+
 #### Scenario: Upstream unchanged publishes nothing
 
 - **WHEN** the workflow runs and the latest upstream Vale release is already published as a platform package
@@ -105,6 +107,12 @@ A published-version check cannot bound these runs — every run stamps a previou
 
 - **WHEN** that pull request is merged
 - **THEN** every supported platform package is stamped with the same version and published together, verified against the checksums that were just reviewed
+
+#### Scenario: Publishing needs no approval click
+
+- **WHEN** the publish phase runs after a merged manifest update
+- **THEN** it SHALL proceed without waiting for an environment approval
+- **AND** it SHALL run in the reviewer-free publishing environment, restricted to the default branch
 
 #### Scenario: Ordinary pushes do not publish platform packages
 
