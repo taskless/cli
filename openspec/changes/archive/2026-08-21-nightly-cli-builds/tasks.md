@@ -16,20 +16,20 @@ Delivery shape: **stacked, merging forward**, three PRs (design D9). Group 1 is 
 - [x] 1.6 Delete `.github/workflows/release.yml`
 - [x] 1.7 Check for references to the old filenames — branch protection required checks, `pr-check-openspec.yml`, `require-changeset.yml`, `stack-breadcrumb.yml`, README and docs — and update anything that names `release.yml` or `Vale Binaries`. A renamed workflow means a renamed check, and a required check that no longer reports blocks merges silently
 - [x] 1.8 Add the changeset on this branch, before cutting the PRs above it, describing **this PR's scope only** — the workflow split. The stack merges forward, so `CLAUDE.md` requires each unit to extend the changeset with what it actually landed rather than the base promising the whole change up front; a reviewer reading it should see only what has merged. Groups 4 and 5 each extend the same file (never add a second changeset)
-- [ ] 1.9 Verify on merge that the Version Packages PR flow still opens/updates normally and that an ordinary push instantiates no OIDC-capable job
+- 1.9 **Deferred to #131** — verify on merge that the Version Packages PR flow still opens/updates normally and that an ordinary push instantiates no OIDC-capable job. Not observed; the split merged but nothing has watched a version-PR cycle through it end to end
 
 ## 2. Human-gated prerequisite — the `npm-autopublish` environment (before the nightly)
 
-- [ ] 2.1 **Maintainer action, in GitHub repository settings:** create an environment named `npm-autopublish` with **no required reviewers** and a deployment branch policy restricting it to `main`. An implementer cannot do this and cannot test around it — a workflow referencing a missing environment fails the run (D7, D8). **As of 2026-08-19 `npm-autopublish` already exists** (created 2026-08-18) with no protection rules — but also with `deployment_branch_policy: null`, i.e. no branch restriction at all. Only the branch policy is outstanding; do not re-create the environment
-- [ ] 2.2 Confirm via `gh api repos/taskless/cli/environments` that `npm-autopublish` exists, has no `required_reviewers`, and has the branch policy applied
+- [x] 2.1 **Maintainer action, in GitHub repository settings:** create an environment named `npm-autopublish` with **no required reviewers** and a deployment branch policy restricting it to `main`. An implementer cannot do this and cannot test around it — a workflow referencing a missing environment fails the run (D7, D8). **As of 2026-08-19 `npm-autopublish` already exists** (created 2026-08-18) with no protection rules — but also with `deployment_branch_policy: null`, i.e. no branch restriction at all. Only the branch policy is outstanding; do not re-create the environment. **Applied and confirmed 2026-08-20**
+- [x] 2.2 Confirm via `gh api repos/taskless/cli/environments` that `npm-autopublish` exists, has no `required_reviewers`, and has the branch policy applied. **Confirmed 2026-08-20:** no `required_reviewers`, and `deployment_branch_policy: {custom_branch_policies: true, protected_branches: false}` with exactly one policy, `branch: main`. Note it is the **explicit** custom-policy form rather than the derived `protected_branches: true` — that matters, because the derived form would silently extend publish rights to any branch that later becomes protected
 
 ## 3. Human-gated prerequisite — trusted publishing for `@taskless/cli-nightly`
 
 **This group runs while PR 2 is open and unmerged, not before it exists.** It needs the pack script from task 4.1, which PR 2 introduces — so unlike group 2, it cannot be done ahead of the code. The order is: open PR 2, run its pack script from that branch, do the one-time publish and binding below, then merge PR 2. Vale's equivalent step reads as a clean prerequisite only because `vale-prepare.cjs` was already on `main` when it was written; nothing is on `main` here yet.
 
-- [ ] 3.1 **Maintainer action, one time:** publish the first `@taskless/cli-nightly` version manually so the name exists — npm has nothing to bind a trusted publisher to until it does. Run the pack script from task 4.1 **on PR 2's branch** and publish the tarball it produces, not the package directory, so the name is not burned on a placeholder version (the trap `vale-binaries.yml` documents)
-- [ ] 3.2 **Maintainer action:** register the npm trusted-publisher binding for `@taskless/cli-nightly` against `release-cli-nightly.yml` and the `npm-autopublish` environment. There is no fallback token path, by design
-- [ ] 3.3 Confirm the binding, then merge PR 2 — the binding must exist before the first automated publish, or PR 2 merges into a workflow whose first run fails the OIDC handshake
+- [x] 3.1 **Maintainer action, one time:** publish the first `@taskless/cli-nightly` version manually so the name exists — npm has nothing to bind a trusted publisher to until it does. Run the pack script from task 4.1 **on PR 2's branch** and publish the tarball it produces, not the package directory, so the name is not burned on a placeholder version (the trap `vale-binaries.yml` documents). **Done:** `0.11.0-20260820055459x599d3f3` is published with `dist-tags.latest` pointing at it. Note the SHA it names no longer exists — it was a merge commit removed by a later rebase — so this version proves the name is claimed and nothing more
+- 3.2 **Deferred to #131** — register (or confirm) the npm trusted-publisher binding for `@taskless/cli-nightly` against `release-cli-nightly.yml` and the `npm-autopublish` environment. There is no fallback token path, by design. This was briefly marked done on the strength of `npm view` showing a published version; that is evidence of the manual bootstrap in 3.1, not of a binding. npm exposes no read API for bindings, so it must be checked in the web UI
+- 3.3 **Partly done, remainder deferred to #131** — PR 2 merged. The binding was never independently confirmed, so the first automated publish is also the first test of the OIDC handshake
 
 ## 4. PR 2 — the nightly (depends on groups 2 and 3 for its first real run)
 
@@ -43,25 +43,32 @@ Delivery shape: **stacked, merging forward**, three PRs (design D9). Group 1 is 
 - [x] 4.8 Pin `npm` to the same version the other publish workflows pin, and keep `--ignore-scripts` on the install so no lifecycle code runs while the OIDC identity exists
 - [x] 4.9 Write the header comment for the file: why `main` and not pull requests (unreviewed code under the `@taskless` scope, and the inverted trust split), why the two gates are in that order, and why the Version Packages merge needs no special case
 - [x] 4.10 Document installing a nightly in the README — the package name, that `bin` is `taskless`, and that installing it alongside `@taskless/cli` globally collides and is unsupported
-- [ ] 4.11 Confirm a nightly actually published through `npm-autopublish` before PR 3 is opened — this run is what proves the environment and the OIDC handshake, and it is the whole reason the nightly precedes the Vale move (D9)
+- 4.11 **Deferred to #131** — confirm a nightly actually published through `npm-autopublish`. This run is what proves the environment and the OIDC handshake, and it is the whole reason the nightly precedes the Vale move (D9). It has not happened: the only published nightly is the manual bootstrap from 3.1
 - [x] 4.12 Give the CLI build a `nightly` target so a nightly's shipped skills, commands, and recipes name `npx @taskless/cli-nightly@<version>` rather than `npx @taskless/cli` (D2). Extend `resolveBuildTarget`/`resolveCliInvocation`/`OUT_DIRS`, reading the version from `TASKLESS_NIGHTLY_VERSION`, and **fail the build when it is missing or malformed** — falling back to the released invocation is the silent bug this fixes. `nightly` emits to `dist`, unlike `dev`/`self`, because that is what `files: ["dist"]` packs, so it overwrites a local prod build; say so at the call site. **The version must be stamped exactly once and passed to both the build and the pack** — hence `--print-version`, and a pack mode that takes `--version` and rejects `--status`/`--sha` so it _cannot_ recompute from a second clock
 - [x] 4.13 Close the fail-open in gate 2 (Copilot review on PR #122): any unreadable `npm view` response landed in the same branch as "no nightly found", so a re-run after a registry hiccup would stamp a new timestamp for the same commit and publish a duplicate nightly successfully, with no error. Classify three ways — present, absent, unreadable — keeping the E404-on-stdout case as a genuine "nothing published yet", and fail the job on anything else
 
-## 5. PR 3 — move Vale to `npm-autopublish` (depends on a proven nightly publish, group 4)
+## 5. Deferred to issue #131 — the Vale move and the acceptance verification
 
-- [ ] 5.1 Change the `publish` job's `environment:` in `release-vale.yml` from `npm-production` to `npm-autopublish`
-- [ ] 5.2 Update the header comment's "PUBLISHING IDENTITY" paragraph to name the new environment and to state the reason: the manifest-update PR is the review gate, and the CLI's exact pins mean an auto-published package reaches no user until someone bumps the pin (D7)
-- [ ] 5.3 Confirm the npm trusted-publisher bindings for all six `@taskless/vale-*` packages still authorize the workflow after the environment change — the binding names the workflow, and an environment change must not invalidate it. If npm's binding is environment-scoped, re-register before merging
-- [ ] 5.4 Verify with a `workflow_dispatch` `publish --force` run that the Vale set publishes with no approval click
-- [ ] 5.5 Do not merge this PR before a nightly has published through `npm-autopublish` (4.11). Moving Vale first would risk breaking a working release path to enable a convenience; moving it second means the destination is proven
-- [ ] 5.6 Archive the change on this PR, as the tip of the stack
+**Groups 5 and 6 were removed from this change rather than carried out.** They
+are tracked in full at https://github.com/taskless/cli/issues/131.
 
-## 6. Verify the acceptance criteria on `main`
+`main` had been failing `Check for unarchived OpenSpec changes on main` on every
+push since `162afa0`, because this change directory was still sitting under
+`openspec/changes/`. Issue #127 will make a red `main` suppress nightly
+publishing outright, so a red `main` had stopped being cosmetic. Archiving
+cleared it immediately; the remaining work is a workflow-configuration change
+(move `release-vale.yml` to `npm-autopublish`) plus verification, both of which
+stand alone and neither of which any requirement in this change's spec delta
+depends on.
 
-- [ ] 6.1 A push to `main` with pending changesets publishes `@taskless/cli-nightly@<proposedBump>-<timestamp>x<sha>` with the default tag and provenance
-- [ ] 6.2 A push to `main` carrying no pending changeset — `.changeset/` holding only `README.md` and `config.json` — publishes no nightly **and exits before installing anything** — check the run log, not just the outcome
-- [ ] 6.3 A workflow re-run on an already-built SHA publishes nothing
-- [ ] 6.4 The merge of a Version Packages PR publishes the real release and no nightly, with no special case in either workflow
-- [ ] 6.5 Vale publishes with no click; `@taskless/cli` still waits for one
-- [ ] 6.6 `release-cli-changeset.yml` still holds the original concurrency group, and no other release workflow has acquired one
-- [ ] 6.7 Install a published nightly in a clean directory and confirm `taskless --version` reports the nightly version and the CLI runs
+The `vale-binary-packages` spec delta was removed from this change along with
+them. Archiving would otherwise have written into the published spec that the
+Vale workflow "SHALL publish without a human approval step, using the
+reviewer-free publishing environment" — which is false: `release-vale.yml` still
+names `npm-production`, which has a required reviewer. A spec is the thing later
+readers trust, so a requirement describing work that was deferred is worse than
+no requirement at all. It moves to #131 with the change that makes it true.
+
+What is NOT deferred, and is genuinely done, is every requirement in the remaining delta:
+the workflow split, the pack script, the build target, both publish gates, and
+the version stamp all shipped in PRs #116, #119 and #122.
