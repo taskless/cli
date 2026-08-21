@@ -7,14 +7,94 @@
 # packages/cli/package.json is never changed, so @taskless/cli's own version
 # history contains releases and nothing else.
 #
-# PUSH TO main, NEVER A PULL REQUEST. This is a security property, not a
-# convenience. A PR-triggered publish would invert the split release-cli.yml
-# exists to maintain: contributor-authored text would flow into a job holding an
-# OIDC identity, and UNREVIEWED code would be published to npm under the
-# @taskless scope. Building from main means the failure cannot arise — the only
-# code that can be published is code that already merged. (A PR-side trigger is
-# also measurably stale: a changeset is written early and the implementation
-# lands after it, by 7 and 11 commits on the two branches measured for D1.)
+# A VALIDATED COMMIT ON main, NEVER A PULL REQUEST. This is a security property,
+# not a convenience. A PR-triggered publish would invert the split
+# release-cli.yml exists to maintain: contributor-authored text would flow into
+# a job holding an OIDC identity, and UNREVIEWED code would be published to npm
+# under the @taskless scope. Building from main means the failure cannot arise —
+# the only code that can be published is code that already merged. (A PR-side
+# trigger is also measurably stale: a changeset is written early and the
+# implementation lands after it, by 7 and 11 commits on the two branches
+# measured for D1.)
+#
+# TRIGGERED BY `Validate` FINISHING, NOT BY THE PUSH ITSELF (issue #127; the
+# requirement is "A nightly is published only from a commit that passed
+# validation" in openspec/specs/cli-nightly-builds/spec.md). Publishing has to
+# mean "this commit builds, lints, typechecks and tests cleanly." A second
+# workflow listening to the same `push` event only means "this commit exists":
+# Validate and this file ran in PARALLEL. `workflow_run` is the only trigger
+# GitHub offers that fires after another workflow's verdict.
+#
+# THIS IS OBSERVED, NOT THEORETICAL. On 3f114d6, Validate FAILED at 00:24:27 and
+# @taskless/cli-nightly@0.11.0-20260821002453x3f114d6 published 26 seconds later
+# at 00:24:53, taking dist-tags.latest. Read the caveat honestly: that failure
+# was the OpenSpec hygiene gate rather than a broken build, so those bytes were
+# probably fine. That is the argument FOR this change, not against it — nothing
+# in the old arrangement could tell "red for bookkeeping" from "red because the
+# tests fail", and it published on both.
+#
+# THE COST IS LATENCY, AND IT IS THE INTENDED TRADE. The two workflows used to
+# start together; a nightly now waits the full Validate wall clock (~1m10s on
+# recent runs) before its gates even begin. Publishing an artifact nobody has
+# checked is not faster, it is just earlier.
+#
+# THE ABSENCE OF A VERDICT IS THE ABSENCE OF A RUN, and that is the property to
+# protect above the mechanism. There is no "Validate has not reported yet" state
+# for this file to misread, because nothing here comes into existence until
+# Validate has reported. The three answers are structurally distinct: Validate
+# passed (this run's jobs execute), Validate did not pass (this run exists with
+# every job skipped), Validate never reported (no run at all). A gate that
+# polled for the check from inside this workflow would have to tell "not started
+# yet" from "passed" using the same absent answer, and would be wrong in the
+# direction that publishes.
+#
+# FOUR CONDITIONS ON THE GATE JOB, EACH LOAD-BEARING. Do not collapse them:
+#
+#   * `conclusion == 'success'` — a POSITIVE test. `!= 'failure'` would admit
+#     `cancelled`, `timed_out`, `skipped`, `neutral`, `action_required`, and the
+#     null conclusion, i.e. six ways of not having passed read as passing.
+#   * `event == 'push'` — Validate also runs on every pull request, including
+#     from forks, and this is the boundary that keeps those out. It is what
+#     makes the `pull_request_target`-shaped hazard (.github/copilot-instructions.md)
+#     inapplicable here: no run of this workflow ever checks out a pull request
+#     head.
+#   * `head_branch == 'main'` — validate.yml's push trigger is already filtered
+#     to main, but a trust boundary must not be spread across two files, one of
+#     which is free to change its filter. Note it CANNOT stand alone: a fork
+#     whose own default branch is called `main` produces a Validate run with
+#     `head_branch: main`, which is why the `event` test above is the actual
+#     fork boundary and this one is the branch one.
+#   * `head_repository.full_name == github.repository` — redundant given
+#     `event == 'push'`, kept deliberately as a second, independent reason the
+#     fork case cannot reach a checkout. The cost is one line.
+#
+# `github.sha` IS NOT THE TESTED COMMIT under `workflow_run` — it is the tip of
+# the default branch when the event fired, which on a busy day is a later commit
+# that Validate has said nothing about. Every checkout here therefore carries an
+# explicit `ref: github.event.workflow_run.head_sha`, and both jobs then assert
+# that HEAD is that commit. That assertion is not ceremony: an EMPTY `ref:`
+# makes actions/checkout fall back to the default branch and succeed, so a
+# missing head_sha would publish an unvalidated commit with nothing reporting an
+# error — the same fail-open shape gate 2 was already fixed for. Gate 2 is
+# per-SHA, so a wrong SHA also silently stops deduplicating.
+#
+# THIS FILE ALWAYS RUNS FROM main's COPY. GitHub loads a `workflow_run` workflow
+# from the default branch, whatever the triggering run was. Two consequences: an
+# edit here cannot be exercised on its own pull request, so the first proof is
+# the first qualifying push after it merges; and the workflow deciding to
+# publish is reviewed separately from the code it publishes.
+#
+# `workflows: [Validate]` MATCHES validate.yml's `name:`, NOT ITS PATH. Renaming
+# that string stops every nightly, permanently, with no error anywhere — gate 1
+# is false on most pushes anyway, so nobody would notice the silence.
+# validate.yml carries a comment on its `name:` saying so; keep the two in
+# agreement.
+#
+# Every Validate run on a pull request also produces a run of this workflow with
+# all jobs skipped. That Actions-tab noise is accepted: a `branches:` filter on
+# the trigger would hide it, but it matches `head_branch`, which a fork controls,
+# so putting it there would dress a filter up as the security boundary it cannot
+# be. Let the workflow run and decide inside it (CLAUDE.md).
 #
 # TWO GATES, IN THIS ORDER (design D4):
 #
@@ -38,6 +118,14 @@
 # sees a version npm has not got and publishes the real release. Neither
 # workflow knows about the other, and neither has a rule naming the other's
 # commit.
+#
+# That survives the move to `workflow_run` unchanged, and it survives it twice
+# over. The Version Packages merge is an ordinary push to main, so Validate runs
+# on it and this workflow is triggered exactly as before — and gate 1 is still
+# false, because that merge consumed the changesets. And in the case where
+# Validate does not run at all for some push, the nightly not running is already
+# the desired outcome, so the failure mode of the new trigger points the same
+# way as gate 1 does.
 #
 # GATES ARE CREDENTIAL-FREE AND LIVE IN THEIR OWN JOB, exactly as in
 # release-cli.yml. The point is not saving CI minutes: it is that the
@@ -101,8 +189,13 @@
 name: Release CLI Nightly
 
 on:
-  push:
-    branches: [main]
+  # Not `push`. See the header: a nightly may only be built from a commit
+  # `Validate` has already passed on, and this is the only trigger that fires
+  # after another workflow's verdict. `workflows:` matches validate.yml's
+  # `name:` — renaming it there silently retires this file.
+  workflow_run:
+    workflows: [Validate]
+    types: [completed]
 
 # No workflow-wide grants; each job asks for exactly what it needs.
 permissions: {}
@@ -111,15 +204,52 @@ jobs:
   gate:
     name: "nightly gate"
     runs-on: ubuntu-latest
+    # GATE 0, and the only one that cannot be expressed as a step: was this a
+    # SUCCESSFUL Validate run, on a PUSH, to main, in THIS repository? Each
+    # clause is explained in the header; all four are required and none is
+    # implied by another. A job-level `if` is where this belongs — there is no
+    # workflow-level `if`, and `publish` needs `gate`, so a skipped `gate`
+    # skips the OIDC-capable job with it.
+    if: >-
+      github.event.workflow_run.conclusion == 'success'
+      && github.event.workflow_run.event == 'push'
+      && github.event.workflow_run.head_branch == 'main'
+      && github.event.workflow_run.head_repository.full_name == github.repository
     permissions:
       contents: read # checkout only
     outputs:
       should_publish: ${{ steps.gate.outputs.should_publish }}
       short_sha: ${{ steps.gate.outputs.short_sha }}
     steps:
+      # `ref:` is MANDATORY under workflow_run. Without it checkout takes
+      # `github.sha`, which here is the default branch tip at event time, not
+      # the commit Validate tested.
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
+          ref: ${{ github.event.workflow_run.head_sha }}
           persist-credentials: false # nothing here writes to git
+      - name: Confirm the checkout is the commit Validate passed on
+        env:
+          VALIDATED_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          set -euo pipefail
+
+          # An empty `ref:` is not an error to actions/checkout — it falls back
+          # to the default branch and succeeds. So "no head_sha in the payload"
+          # would otherwise present as a normal run against a commit nobody
+          # validated, and gate 2 would dedupe against the wrong sha at the same
+          # time. Absent must not read as fine.
+          if [ -z "$VALIDATED_SHA" ]; then
+            echo "::error::The workflow_run payload carried no head_sha; refusing to build a nightly from an unidentified commit."
+            exit 1
+          fi
+
+          actual=$(git rev-parse HEAD)
+          if [ "$actual" != "$VALIDATED_SHA" ]; then
+            echo "::error::Checked out ${actual} but Validate passed on ${VALIDATED_SHA}; refusing to build a nightly from a commit that was not validated."
+            exit 1
+          fi
+          echo "Building from ${actual}, which Validate passed on."
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 24
@@ -235,9 +365,42 @@ jobs:
       contents: read # checkout only
       id-token: write # OIDC → short-lived npm auth + build provenance
     steps:
+      # Same explicit `ref:` as the gate job, for the same reason, and asserted
+      # again here rather than trusted from there. This is the job that produces
+      # the bytes: `gate` proved that some job checked out the validated commit,
+      # not that this one did.
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
+          ref: ${{ github.event.workflow_run.head_sha }}
           persist-credentials: false # publish authenticates via OIDC, not git creds
+      - name: Confirm the checkout is the commit Validate passed on
+        env:
+          VALIDATED_SHA: ${{ github.event.workflow_run.head_sha }}
+          GATE_SHORT_SHA: ${{ needs.gate.outputs.short_sha }}
+        run: |
+          set -euo pipefail
+
+          if [ -z "$VALIDATED_SHA" ]; then
+            echo "::error::The workflow_run payload carried no head_sha; refusing to publish from an unidentified commit."
+            exit 1
+          fi
+
+          actual=$(git rev-parse HEAD)
+          if [ "$actual" != "$VALIDATED_SHA" ]; then
+            echo "::error::Checked out ${actual} but Validate passed on ${VALIDATED_SHA}; refusing to publish a commit that was not validated."
+            exit 1
+          fi
+
+          # The gates were evaluated against a short sha, and that same short
+          # sha is stamped into the version below. If the two jobs somehow saw
+          # different commits, the dedupe answer belongs to one of them and the
+          # tarball to the other.
+          actual_short=$(git rev-parse --short=7 HEAD)
+          if [ "$actual_short" != "$GATE_SHORT_SHA" ]; then
+            echo "::error::The gate job decided for ${GATE_SHORT_SHA} but this job holds ${actual_short}; refusing to publish."
+            exit 1
+          fi
+          echo "Publishing from ${actual}, which Validate passed on."
       - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
