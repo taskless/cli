@@ -624,9 +624,35 @@ jobs:
       contents: read # checkout only — the script lives in this repo
       pull-requests: write # the one capability this job exists to use
     steps:
+      # `ref:` is MANDATORY under workflow_run here too, for the same reason it
+      # is on the other two jobs: without it checkout takes `github.sha`, the
+      # default branch tip at event time, and this job would run a COPY OF THE
+      # SCRIPT that is not the one Validate passed on — while announcing a
+      # nightly built from a different commit. Cosmetic output does not lower
+      # the bar; it is the same fail-open, and it reads as a normal run.
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
+          ref: ${{ github.event.workflow_run.head_sha }}
           persist-credentials: false # gh authenticates with GITHUB_TOKEN below
+      - name: Confirm the checkout is the commit Validate passed on
+        env:
+          VALIDATED_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          set -euo pipefail
+
+          # An empty `ref:` is not an error to actions/checkout — it falls back
+          # to the default branch and succeeds. Absent must not read as fine.
+          if [ -z "$VALIDATED_SHA" ]; then
+            echo "::error::The workflow_run payload carried no head_sha; refusing to annotate from an unidentified commit."
+            exit 1
+          fi
+
+          actual=$(git rev-parse HEAD)
+          if [ "$actual" != "$VALIDATED_SHA" ]; then
+            echo "::error::Checked out ${actual} but Validate passed on ${VALIDATED_SHA}; refusing to annotate with a script from an unvalidated commit."
+            exit 1
+          fi
+          echo "Annotating from ${actual}, which Validate passed on."
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 24
