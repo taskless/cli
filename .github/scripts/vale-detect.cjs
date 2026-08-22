@@ -22,11 +22,21 @@
  * had just discovered would be verifying nothing.
  *
  * Usage:
- *   node .github/scripts/vale-detect.cjs [--write]
+ *   node .github/scripts/vale-detect.cjs [--write] [--json]
  *
  *   --write  rewrite vale-manifest.json in place when upstream is ahead.
  *            Without it the script only reports, which is what a local
  *            "what would this do?" run wants.
+ *
+ *   --json   print `{ pinned, upstream, ahead }` and nothing else, then stop
+ *            before the checksums download. update-badges.cjs needs the
+ *            comparison and nothing else, and the alternative — scraping the
+ *            "pinned: X   upstream latest: vY" line this script prints for a
+ *            human — would rebuild, with a regex, a fact this script already
+ *            holds as data. Implies read-only: --json never writes the
+ *            manifest, because the badge run is not the run that proposes a
+ *            pin, and skipping the checksums fetch is not a shortcut but the
+ *            point (nothing is being verified here).
  *
  * Outputs (appended to $GITHUB_OUTPUT when set):
  *   update            "true" when upstream is ahead
@@ -93,15 +103,23 @@ async function main({
   latestTag = fetchLatestTag,
   text = fetchText,
 } = {}) {
+  const json = argv.includes("--json");
   const write = argv.includes("--write");
+  // --json is a reporting mode and --write is a writing one. Refusing the
+  // combination beats silently dropping whichever flag loses, since the caller
+  // that passed both is wrong about what it is asking for.
+  if (json && write) {
+    throw new Error("--json is read-only; it cannot be combined with --write");
+  }
+  // Everything a human wants to read is noise on stdout when a caller is
+  // reading structured output from it.
+  const log = json ? () => {} : (line) => console.log(line);
   const manifest = assertManifest(
     JSON.parse(readFileSync(MANIFEST_PATH, "utf8"))
   );
 
   const upstreamTag = await latestTag(manifest.upstream.repository);
-  console.log(
-    `pinned: ${manifest.valeVersion}   upstream latest: ${upstreamTag}`
-  );
+  log(`pinned: ${manifest.valeVersion}   upstream latest: ${upstreamTag}`);
 
   // Decide whether to go on with the two pure predicates directly, rather than
   // by calling planManifestUpdate with a placeholder checksums payload. That
@@ -110,12 +128,30 @@ async function main({
   // makes it throw ("parsed to no entries") on exactly the runs that have
   // something to propose. The cheap check has to be the cheap check.
   const upstreamVersion = parseReleaseTag(upstreamTag);
-  if (!isUpstreamAhead(manifest.valeVersion, upstreamVersion)) {
-    console.log("Upstream is not ahead of the pinned version. Nothing to do.");
+  const ahead = isUpstreamAhead(manifest.valeVersion, upstreamVersion);
+
+  // The structured answer, which is all a --json caller wanted. Reported here
+  // rather than after the checksums fetch below: that download exists to
+  // propose a manifest, and a badge run proposes nothing.
+  const comparison = {
+    pinned: manifest.valeVersion,
+    upstream: upstreamVersion,
+    ahead,
+  };
+  if (json) {
+    console.log(JSON.stringify(comparison));
+    setOutput("update", String(ahead));
+    setOutput("vale_version", upstreamVersion);
+    setOutput("pinned_version", manifest.valeVersion);
+    return comparison;
+  }
+
+  if (!ahead) {
+    log("Upstream is not ahead of the pinned version. Nothing to do.");
     setOutput("update", "false");
     setOutput("vale_version", upstreamVersion);
     setOutput("pinned_version", manifest.valeVersion);
-    return;
+    return comparison;
   }
 
   // Only now is the checksums file worth downloading: it belongs to a release
@@ -144,6 +180,7 @@ async function main({
   setOutput("update", "true");
   setOutput("vale_version", plan.upstreamVersion);
   setOutput("pinned_version", plan.pinnedVersion);
+  return comparison;
 }
 
 // Exported (and only self-invoking as a script) so vale-detect.test.cjs can run

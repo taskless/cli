@@ -49,15 +49,15 @@ function checksumsFor(version) {
  * Run main() with both fetches stubbed and $GITHUB_OUTPUT pointed at a temp
  * file, then return the parsed step outputs plus which URLs were fetched.
  */
-async function runDetect({ upstreamTag, checksums }) {
+async function runDetect({ upstreamTag, checksums, argv = [] }) {
   const directory = mkdtempSync(join(tmpdir(), "vale-detect-test-"));
   const outputPath = join(directory, "github-output");
   const previous = process.env.GITHUB_OUTPUT;
   const fetched = [];
   process.env.GITHUB_OUTPUT = outputPath;
   try {
-    await main({
-      argv: [],
+    const comparison = await main({
+      argv,
       latestTag: async () => upstreamTag,
       text: async (url) => {
         fetched.push(url);
@@ -73,7 +73,7 @@ async function runDetect({ upstreamTag, checksums }) {
           return [line.slice(0, at), line.slice(at + 1)];
         })
     );
-    return { outputs, fetched };
+    return { comparison, outputs, fetched };
   } finally {
     if (previous === undefined) {
       delete process.env.GITHUB_OUTPUT;
@@ -123,6 +123,48 @@ test("detect: an upstream tag behind the pin is also a no-op", async () => {
 
   assert.equal(outputs.update, "false");
   assert.deepEqual(fetched, []);
+});
+
+test("detect: --json reports the comparison without fetching checksums", async () => {
+  // What update-badges.cjs consumes. It takes the RETURN value rather than the
+  // printed line, but both are asserted here: the printed line is the contract
+  // for anything calling the script from a shell.
+  const lines = [];
+  const original = console.log;
+  console.log = (line) => lines.push(line);
+  let result;
+  try {
+    result = await runDetect({
+      upstreamTag: "v3.99.0",
+      checksums: "",
+      argv: ["--json"],
+    });
+  } finally {
+    console.log = original;
+  }
+
+  assert.deepEqual(result.comparison, {
+    pinned: MANIFEST.valeVersion,
+    upstream: "3.99.0",
+    ahead: true,
+  });
+  assert.equal(lines.length, 1);
+  assert.deepEqual(JSON.parse(lines[0]), result.comparison);
+  // The badge needs the comparison, not the digests, so the ahead path stops
+  // before the download the manifest proposal would need.
+  assert.deepEqual(result.fetched, []);
+  assert.equal(result.outputs.update, "true");
+});
+
+test("detect: --json refuses to be combined with --write", async () => {
+  await assert.rejects(
+    runDetect({
+      upstreamTag: "v3.99.0",
+      checksums: "",
+      argv: ["--json", "--write"],
+    }),
+    /--json is read-only/
+  );
 });
 
 test("detect: a checksums file missing a platform aborts", async () => {

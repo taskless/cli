@@ -3,6 +3,8 @@
 [![npm](https://img.shields.io/npm/v/@taskless/cli)](https://www.npmjs.com/package/@taskless/cli)
 [![build](https://img.shields.io/github/actions/workflow/status/taskless/cli/validate.yml?branch=main)](https://github.com/taskless/cli/actions/workflows/validate.yml?query=branch%3Amain)
 [![nightly](https://img.shields.io/badge/nightly-npm-blue)](https://www.npmjs.com/package/@taskless/cli-nightly)
+[![vale](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/taskless/cli/main/.shields/vale.json)](https://github.com/errata-ai/vale/releases)
+[![sg](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/taskless/cli/main/.shields/sg.json)](https://github.com/ast-grep/ast-grep/releases)
 
 CLI companion for [Taskless](https://taskless.io). Designed to work with agent skills to add constraints that improve coding agent output.
 
