@@ -28,10 +28,19 @@ const { join } = require("node:path");
 
 const { main, planBadge } = require("./update-badges.cjs");
 
+const { isAhead } = require("./sg-detect.cjs");
+
+/**
+ * A stubbed detect result, with `ahead` computed the way production computes
+ * it. `pinned !== upstream` was close enough for every case here, but it would
+ * have mismodelled the one that matters — upstream BEHIND the pin, which is
+ * `ahead: false` and must stay green — so a later test could have asserted
+ * against a comparison the real scripts can never produce.
+ */
 const comparisonOf = (pinned, upstream) => ({
   pinned,
   upstream,
-  ahead: pinned !== upstream,
+  ahead: isAhead(pinned, upstream),
 });
 
 /** Run main() against a temp directory seeded with `files`. */
@@ -177,6 +186,37 @@ test("badges: the payload carries only the shields endpoint schema", () => {
     "message",
     "color",
   ]);
+});
+
+test("badges: an upstream version behind the pin stays green", () => {
+  // The case the old test helper could not express: `pinned !== upstream` is
+  // true here, but nothing is ahead of us and the badge must not go yellow.
+  const planned = planBadge({
+    label: "sg",
+    comparison: comparisonOf("0.45.1", "0.41.0"),
+    today: "2026-08-22",
+    previous: undefined,
+  });
+
+  assert.equal(planned.color, "green");
+});
+
+test("badges: a date in the future is treated as stale, not as fresh", () => {
+  // A skewed clock or a hand edit must not produce a date that outlives every
+  // later run. A negative age is stale.
+  const planned = planBadge({
+    label: "vale",
+    comparison: comparisonOf("3.17.1", "3.18.0"),
+    today: "2026-08-22",
+    previous: {
+      schemaVersion: 1,
+      label: "vale",
+      message: "3.17.1 · 2027-01-01",
+      color: "yellow",
+    },
+  });
+
+  assert.equal(planned.message, "3.17.1 · 2026-08-22");
 });
 
 test("badges: a payload written the same day is left alone", () => {
