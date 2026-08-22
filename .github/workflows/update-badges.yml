@@ -1,0 +1,114 @@
+# SPDX-License-Identifier: MIT
+# Refresh the shields endpoint payloads for the toolchain badges.
+#
+# `.shields/vale.json` and `.shields/sg.json` are the only badge values this
+# repository computes for itself. Shields cannot answer "is there a newer
+# upstream we have not pinned", so the comparison runs here and the color rule
+# lives in `.github/scripts/update-badges.cjs`, under code review like anything
+# else. Everything else in the README's badge row is a shields built-in or a
+# static badge and needs nothing from this file.
+#
+# WHY THIS IS ITS OWN WORKFLOW AND NOT A JOB IN A PUBLISHING ONE.
+#
+# It needs `contents: write`, because writing a badge means committing to
+# `main`. `release-cli.yml`, `release-cli-nightly.yml`, and `release-vale.yml`
+# each hold `id-token: write` and an npm OIDC publishing identity. Keeping the
+# two apart in SEPARATE FILES makes the separation structural: there is no
+# arrangement of jobs here that a later edit could get wrong, because the
+# credentialed workflows are not in this file to be edited. A job added to a
+# release workflow would put a write token and a publishing identity one
+# `permissions:` block away from each other, and the only thing keeping them
+# apart would be whoever reviews the next change to that file. Do not merge
+# this into a release workflow to save a file.
+#
+# WHY IT IS NOT FOLDED INTO release-vale.yml SPECIFICALLY. That workflow's
+# detect phase opens a pull request when upstream Vale is ahead. The badge has
+# to be YELLOW while that pull request is open and green once it merges, so the
+# payload cannot live in that pull request's own diff — it would go yellow at
+# exactly the moment it should go green. It has to reach `main` independently
+# of the change it is warning about.
+#
+# WHY THE SCHEDULE, AND WHY A BADGE COMMIT DOES NOT LOOP.
+#
+# `validate.yml` triggers on every push to `main` with NO `paths` filter, and
+# since #132 the nightly publishes on `Validate` completing. So a commit here
+# costs one Validate run and, if changesets are pending, one nightly publish.
+# That chain terminates only because what is committed depends on UPSTREAM
+# moving, not on us pushing:
+#
+#   badge commit → Validate → nightly workflow_run → nightly publishes
+#     → next scheduled badge run finds the same upstream versions
+#       → writes nothing → no commit → chain over.
+#
+# A badge derived from each nightly would NOT terminate: publish → commit →
+# Validate → publish, forever. The nightly gate cannot stop it, because it
+# dedupes per-sha and every badge commit is a new sha. That is why the nightly
+# badge in the README is a plain static one with no version in it, and why
+# nothing in this workflow ever reads a nightly version.
+#
+# The same reasoning bounds the cost of this workflow. The schedule is daily so
+# an upstream release is noticed within a day, but `update-badges.cjs` rewrites
+# a payload only when the rendered badge actually changes — and the date it
+# renders advances only once a week — so a quiet week produces at most one
+# commit per badge, not seven.
+#
+# THE DATE IN THE MESSAGE IS THE POINT, NOT DECORATION. A badge that stopped
+# being updated looks identical to one whose value has not changed. Rendering
+# `vale | 3.17.1 · 2026-08-21` means a reader can tell "upstream has been
+# quiet" from "this job died in April" without opening anything.
+#
+# Action refs are pinned to commit SHAs; the trailing comment records the tag.
+
+name: Update badges
+
+on:
+  # Upstream's release cadence, not ours. This answers "what is upstream
+  # doing", which has nothing to do with our own pushes or releases — hence a
+  # schedule rather than a trigger on any repository event.
+  schedule:
+    - cron: "17 6 * * *"
+
+  # For "upstream just released, do not wait until tomorrow".
+  workflow_dispatch:
+
+# No workflow-wide grants; the one job asks for exactly what it needs.
+permissions: {}
+
+# One at a time, so two runs cannot both decide to commit the same payload.
+concurrency: update-badges
+
+jobs:
+  update:
+    name: Refresh toolchain badges
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # commit the refreshed payloads to main
+    steps:
+      # Credentials persist because this job pushes. It holds no npm identity,
+      # no id-token, and runs nothing it downloaded.
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 24
+
+      # No install step: the scripts are zero-dependency CommonJS. GITHUB_TOKEN
+      # is passed only to raise the GitHub API rate limit on the Vale release
+      # lookup; both endpoints (GitHub releases, the npm registry) are public.
+      - id: badges
+        run: node .github/scripts/update-badges.cjs --write
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # Guarded on the script's own answer rather than on `git diff`, so the
+      # decision is made in the tested code path rather than restated in shell.
+      # Nothing from a workflow expression is interpolated into this body.
+      - name: Commit the refreshed payloads
+        if: steps.badges.outputs.changed == 'true'
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add .shields
+          git commit -m "chore(badges): refresh upstream toolchain badges"
+          git push origin HEAD:main
