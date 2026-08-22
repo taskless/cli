@@ -110,11 +110,17 @@ function planBadge({ label, comparison, today, previous }) {
   const color = comparison.ahead ? "yellow" : "green";
   const before = parseMessage(previous?.message);
 
+  // A committed date in the FUTURE — a skewed runner clock, a hand edit — has
+  // a negative age, which `age < STALE_AFTER_DAYS` would read as freshly
+  // written and keep forever. That is the one way this rule could produce a
+  // badge that never self-corrects, so a negative age counts as stale.
+  const age = daysBetween(before.date ?? today, today);
   const keepDate =
     before.date !== undefined &&
     before.version === comparison.pinned &&
     previous?.color === color &&
-    daysBetween(before.date, today) < STALE_AFTER_DAYS;
+    age >= 0 &&
+    age < STALE_AFTER_DAYS;
 
   return {
     schemaVersion: 1,
@@ -152,9 +158,14 @@ async function main({
   const write = argv.includes("--write");
   const today = formatDate(now);
 
+  // Concurrent, because the two lookups are independent: one hits the GitHub
+  // releases API and the other the npm registry, and neither informs the other.
+  // Awaiting them in sequence inside the array literal made a scheduled run
+  // wait out both round trips end to end for no reason.
+  const [vale, sg] = await Promise.all([detect.vale(), detect.sg()]);
   const badges = [
-    { label: "vale", file: "vale.json", comparison: await detect.vale() },
-    { label: "sg", file: "sg.json", comparison: await detect.sg() },
+    { label: "vale", file: "vale.json", comparison: vale },
+    { label: "sg", file: "sg.json", comparison: sg },
   ];
 
   let changed = false;

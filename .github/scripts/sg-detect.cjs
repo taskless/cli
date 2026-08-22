@@ -156,9 +156,15 @@ function collectPinnedVersion(packageJson) {
  * itself asks for and is a small fraction of the full document, which carries
  * every version's metadata. Both expose `dist-tags`, which is the only field
  * read here.
+ *
+ * The scope separator is percent-encoded, as vale-gate.cjs does. The registry
+ * happens to serve `/@ast-grep/cli` unescaped today — that was checked against
+ * the real endpoint — but `/@scope%2Fname` is the documented form, it is what
+ * the rest of this directory uses, and relying on a redirect nobody promised is
+ * a strange thing to do to save one call.
  */
 async function fetchLatestVersion(packageName) {
-  const url = `${REGISTRY}/${packageName}`;
+  const url = `${REGISTRY}/${packageName.replace("/", "%2F")}`;
   const response = await fetch(url, {
     headers: {
       accept: "application/vnd.npm.install-v1+json",

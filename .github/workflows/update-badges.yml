@@ -103,6 +103,17 @@ jobs:
       # Guarded on the script's own answer rather than on `git diff`, so the
       # decision is made in the tested code path rather than restated in shell.
       # Nothing from a workflow expression is interpolated into this body.
+      #
+      # RETRIED, because losing a race here is the ordinary case rather than an
+      # exceptional one: any pull request merging between the checkout and this
+      # push makes `main` a non-fast-forward, and a bare push would fail the job
+      # and leave the badge stale until tomorrow's schedule. Rebasing our single
+      # commit onto the new tip and pushing again is exactly what a human would
+      # do, and `.shields/` is touched by nothing else, so the rebase cannot
+      # meet a conflict from an ordinary merge.
+      #
+      # Bounded at three attempts. A push that keeps losing is not a race any
+      # more, and a job that retries forever hides whatever is actually wrong.
       - name: Commit the refreshed payloads
         if: steps.badges.outputs.changed == 'true'
         run: |
@@ -111,4 +122,16 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add .shields
           git commit -m "chore(badges): refresh upstream toolchain badges"
-          git push origin HEAD:main
+
+          for attempt in 1 2 3; do
+            if git push origin HEAD:main; then
+              echo "Pushed on attempt ${attempt}."
+              exit 0
+            fi
+            echo "Push rejected on attempt ${attempt}; rebasing onto the new main."
+            git fetch origin main
+            git rebase origin/main
+          done
+
+          echo "::error::could not push the badge commit after 3 attempts"
+          exit 1
