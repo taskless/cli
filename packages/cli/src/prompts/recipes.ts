@@ -1,7 +1,11 @@
 import { sprintf } from "sprintf-js";
 import { z } from "zod";
 
-import { applyCliInvocation } from "../util/invocation";
+import {
+  applyCliInvocation,
+  buildInvocation,
+  isProductionInvocation,
+} from "../util/invocation";
 import { inputSchema as ruleCreateInputSchema } from "../schemas/rules-create";
 import { inputSchema as ruleImproveInputSchema } from "../schemas/rules-improve";
 
@@ -65,6 +69,16 @@ const TOPIC_INPUT_SCHEMAS: Record<string, z.ZodType> = {
 /** Agent-fill marker used when the caller does not supply a real value. */
 const PACKAGE_MANAGER_DLX_MARKER = "<package-manager-dlx>";
 
+/**
+ * Agent-fill marker for the CLI invocation itself.
+ *
+ * Deliberately NOT `npx @taskless/cli`. A prod build that was not told how it
+ * was launched does not know, and the recipes are read by an agent that can be
+ * asked to supply the answer — so asking is strictly better than guessing a
+ * launcher the reader may not have.
+ */
+const TASKLESS_CLI_MARKER = "<taskless-cli>";
+
 /** Options accepted by the shared render path. */
 export interface RecipeOptions {
   /**
@@ -82,6 +96,26 @@ export interface RecipeOptions {
    * @default "<package-manager-dlx>"
    */
   packageManagerDlx?: string;
+  /**
+   * Value substituted for the `%(TASKLESS_CLI)s` placeholder: the full command
+   * a reader would type to run this CLI, launcher and package specifier
+   * included (`npx @taskless/cli@latest`, `pnpm dlx @taskless/cli-nightly@…`).
+   *
+   * THIS IS AN ARGUMENT, NEVER AN AMBIENT READ. Detecting the launcher needs
+   * `process.argv` and `process.env`, and this module is imported by Workers
+   * without `nodejs_compat`, where a module-scope `process` read throws at
+   * import time. `assert-prompts-graph` in `vite.config.ts` would not catch it
+   * either — `process` is a global, not an import — so the constraint is kept
+   * by shape: the CLI detects and passes the value in (see
+   * `src/util/package-manager.ts`), and a host that imports
+   * `@taskless/cli/prompts` passes nothing and gets the marker.
+   *
+   * Omitting it falls back to this build's own invocation when the build is
+   * not prod, and to the agent-fill marker otherwise.
+   *
+   * @default "<taskless-cli>"
+   */
+  invocation?: string;
   /**
    * Include the `# Topic: <name> (CLI v<version> / topic vN)` first line.
    * Suppressing it drops the CLI version from the text, which matters to
@@ -104,15 +138,21 @@ export interface RecipeOptions {
  * - Agent-fill markers (e.g. `PACKAGE_MANAGER_DLX`) — rendered as
  *   `<lower-kebab-name>` so the consuming agent knows to substitute.
  */
-function renderRecipe(
+export function buildVariables(
   content: string,
   topic: string,
   options: RecipeOptions = {}
-): string {
+): Record<string, string> {
   const variables: Record<string, string> = {
     CLI_VERSION: __VERSION__,
     PACKAGE_MANAGER_DLX:
       options.packageManagerDlx ?? PACKAGE_MANAGER_DLX_MARKER,
+    // Three steps, in descending order of how much the resolver actually
+    // knows: the caller was told how the CLI was launched; the build is a
+    // nightly/dev/self that knows what it is; nobody knows, so ask the agent.
+    TASKLESS_CLI:
+      options.invocation ??
+      (isProductionInvocation() ? TASKLESS_CLI_MARKER : buildInvocation()),
   };
   if (content.includes("%(INPUT_SCHEMA)s")) {
     const schema = TOPIC_INPUT_SCHEMAS[topic];
@@ -120,7 +160,60 @@ function renderRecipe(
       ? JSON.stringify(z.toJSONSchema(schema), null, 2)
       : "(no input schema for this topic)";
   }
-  const rendered = sprintf(applyCliInvocation(content), variables);
+  return variables;
+}
+
+/**
+ * The sprintf variable names a template actually contains, in the order
+ * sprintf-js asks for them, de-duplicated.
+ *
+ * ASKS THE PARSER, DOES NOT RE-DERIVE IT. `sprintf-js` exports no parser
+ * (`sprintf`/`vsprintf` only), but its named-argument lookup is plain property
+ * access on the value object — so rendering against a `Proxy` that records
+ * every key it is asked for makes sprintf's own parse report the variable
+ * list. A regex over the template would be the weaker tool
+ * `.conventions/STYLEGUIDE-CODE.md` forbids here: it would report names inside
+ * a fenced example the parser never reaches, and would miss anything the
+ * library's grammar accepts that the pattern does not.
+ *
+ * THE RENDERED OUTPUT OF THIS PASS IS DISCARDED, and must be. sprintf collapses
+ * an escaped `%%` to a literal `%` while parsing, irreversibly — text that has
+ * been through it is no longer a valid template, so it can never be what
+ * {@link getRawRecipe} hands back.
+ */
+function collectVariables(template: string): string[] {
+  const seen = new Set<string>();
+  const recorder = new Proxy(
+    {},
+    {
+      get(_target, key) {
+        if (typeof key === "string") seen.add(key);
+        return "";
+      },
+      has() {
+        return true;
+      },
+    }
+  );
+  sprintf(template, recorder);
+  return [...seen];
+}
+
+/** A recipe's text plus the sprintf variables its template contains. */
+export interface RecipeText {
+  text: string;
+  variables: string[];
+}
+
+function renderRecipe(
+  content: string,
+  topic: string,
+  options: RecipeOptions = {}
+): string {
+  const rendered = sprintf(
+    applyCliInvocation(content),
+    buildVariables(content, topic, options)
+  );
   return options.header === false ? stripHeader(rendered) : rendered;
 }
 
@@ -158,9 +251,56 @@ export function getRecipe(
   topic: string,
   options: RecipeOptions = {}
 ): string | undefined {
-  const content = options.anonymous
-    ? (anonymousMap.get(topic) ?? recipeMap.get(topic))
-    : recipeMap.get(topic);
+  const content = lookupRecipe(topic, options);
   if (content === undefined) return undefined;
   return renderRecipe(content, topic, options);
+}
+
+/** The embedded source text for a topic, honoring the anonymous fallback. */
+function lookupRecipe(
+  topic: string,
+  options: RecipeOptions
+): string | undefined {
+  return options.anonymous
+    ? (anonymousMap.get(topic) ?? recipeMap.get(topic))
+    : recipeMap.get(topic);
+}
+
+/**
+ * The **unrendered** template for a topic, plus the variables it contains.
+ *
+ * `text` is the source recipe with the build-target invocation rewrite applied
+ * and nothing else. The rewrite belongs here: it is build-target substitution
+ * rather than templating, and omitting it would make the raw text render to
+ * something the CLI never emits. Every `%(KEY)s` is left standing so a host
+ * that knows a value this package cannot know — its own launcher, its own
+ * package manager — can render the text itself.
+ *
+ * Returns `undefined` for an unknown topic, matching {@link getRecipe}. The
+ * public accessors in `./index.ts` turn that into a throw.
+ */
+export function getRawRecipe(
+  topic: string,
+  options: RecipeOptions = {}
+): RecipeText | undefined {
+  const content = lookupRecipe(topic, options);
+  if (content === undefined) return undefined;
+  const template = applyCliInvocation(content);
+  return {
+    text: options.header === false ? stripHeader(template) : template,
+    variables: collectVariables(template),
+  };
+}
+
+/** A topic's rendered text plus the variables its template contains. */
+export function getRenderedRecipe(
+  topic: string,
+  options: RecipeOptions = {}
+): RecipeText | undefined {
+  const content = lookupRecipe(topic, options);
+  if (content === undefined) return undefined;
+  return {
+    text: renderRecipe(content, topic, options),
+    variables: collectVariables(applyCliInvocation(content)),
+  };
 }
