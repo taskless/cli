@@ -1,4 +1,4 @@
-# Topic: onboard     (CLI v%(CLI_VERSION)s / topic v1)
+# Topic: onboard     (CLI v%(CLI_VERSION)s / topic v2)
 
 ## Goal
 Help a user who has just installed Taskless go from zero rules to a
@@ -17,6 +17,9 @@ rules as a bullet list the user can choose to materialize via the
 - No auth required to surface candidates. (Materializing a rule via
   `rule create` may require auth — fetch `taskless agent auth` if
   needed at that point.)
+- The criterion for where a rule belongs lives in `taskless agent
+  route` and is not restated here. This recipe reads it; it does not
+  duplicate it.
 
 ## Steps
 
@@ -27,7 +30,27 @@ rules as a bullet list the user can choose to materialize via the
    but if the user is invoking the recipe directly via the skill,
    confirm with the user before running a long discovery pass.
 
-2. **Open the conversation about sources.** Tell the user you can mine
+2. **Learn the routing surface before you propose anything.** A
+   candidate this repository cannot express is not a candidate, and
+   you cannot tell which is which until you know two things:
+
+   ```
+   npx @taskless/cli agent route
+   npx @taskless/cli detect --json
+   ```
+
+   Read `route` for the destination criterion — which rules are
+   decided by one file's syntax tree, by a document's words, by a
+   tool the repo already runs, or by evidence outside the files.
+   Read `detect --json` for what this repository actually has:
+   `linters`, `languages`, and `ruleStyles`.
+
+   Do this before step 5, not after. Proposing first and routing
+   afterwards is how a bullet list ends up carrying candidates that
+   nothing can enforce. You are not choosing a destination command
+   here — that happens per accepted bullet in step 6.
+
+3. **Open the conversation about sources.** Tell the user you can mine
    several places for rule candidates and ask which ones they want to
    include. Default sources you should always offer:
 
@@ -48,13 +71,13 @@ rules as a bullet list the user can choose to materialize via the
    team wiki, an internal docs site, a specific design doc, a Slack
    channel export?" The user often knows about sources you don't.
 
-3. **Probe tool availability before promising a scan.** For each
+4. **Probe tool availability before promising a scan.** For each
    source the user picks, verify the tool exists before committing
    to it. Don't tell the user "I'll scan PR comments" if `gh` isn't
    installed — say "PR comments need the GitHub CLI, or equivalent; want me to skip
    this or wait while you install these tools?"
 
-4. **Scan with high-signal filtering.** For each chosen source:
+5. **Scan with high-signal filtering.** For each chosen source:
 
    - **Filter for repeated patterns.** A reviewer comment that
      appears across multiple PRs is a much stronger rule candidate
@@ -68,33 +91,42 @@ rules as a bullet list the user can choose to materialize via the
      formatters already handle those; Taskless rules earn their
      keep on semantic patterns.
 
-5. **Synthesize the bullet list.** Present findings as a single
+6. **Synthesize the bullet list.** Present findings as a single
    bullet list the user can scan quickly. One bullet per
    hypothetical rule, in this format:
 
    ```
-   - <kebab-case-name>: <one-line description of what it would enforce>
+   - <kebab-case-name> [<destination>]: <one-line description of what it would enforce>
    ```
 
-   Example:
+   `<destination>` is the routing call you reached in step 2 — one of
+   `legacy`, `sg`, `vale`, or `runtime`. Example:
 
    ```
-   - no-direct-db-access: Prevent controllers from importing the DB module directly; route through the service layer.
-   - require-zod-validation: Flag API handlers that read request bodies without parsing them through a Zod schema first.
-   - no-console-log-in-handlers: Disallow console.log inside HTTP handlers; use the structured logger instead.
+   - no-direct-db-access [sg]: Prevent controllers from importing the DB module directly; route through the service layer.
+   - require-zod-validation [sg]: Flag API handlers that read request bodies without parsing them through a Zod schema first.
+   - avoid-hedging-in-docs [vale]: Flag "simply" and "just" in documentation; they hide the step the reader is stuck on.
+   - exports-must-be-used [runtime]: Flag exported symbols nothing in the repo imports.
    ```
+
+   The annotation is provisional — it tells the user what kind of rule
+   this would be, and it is why an unroutable candidate never reaches
+   the list. `route` adjudicates for real at materialization time, and
+   may land somewhere else once it has the rule's full description.
 
    Order the bullets by your judgment of impact (frequency in the
    source × severity of the issue × ease of enforcement). Don't
    inflate the list — three high-quality candidates beat ten
    speculative ones.
 
-6. **Offer materialization per bullet.** For each bullet, ask
+7. **Offer materialization per bullet.** For each bullet, ask
    whether the user wants to turn it into a real Taskless rule. On
-   yes, fetch `taskless agent route` and follow that recipe —
-   the user's accepted bullet becomes the rule description input.
+   yes, follow the `taskless agent route` recipe you already fetched
+   in step 2 — the user's accepted bullet becomes the rule
+   description input. Re-fetch it only if it has fallen out of
+   context.
 
-7. **Ask before marking onboarding complete.** When the user signals
+8. **Ask before marking onboarding complete.** When the user signals
    they're done (they've materialized everything they want, or
    they've said "that's enough for now"), explicitly ask: "Do you
    want me to mark Taskless as onboarded? You won't be re-asked to
@@ -117,6 +149,9 @@ rules as a bullet list the user can choose to materialize via the
 
 ## See Also
 
-- `taskless agent route` — materialize an accepted bullet into a real rule
+- `taskless agent route` — the destination criterion; read it before
+  proposing candidates, and follow it to materialize an accepted one
+- `taskless agent detect` — what this repository already lints and
+  authors, which bounds what a candidate can be
 - `taskless agent check` — validate newly created rules against the codebase
 - `taskless agent info` — inspect the current `.taskless/taskless.json` state
