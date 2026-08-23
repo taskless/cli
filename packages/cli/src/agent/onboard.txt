@@ -11,22 +11,22 @@ rules as a bullet list the user can choose to materialize via the
 
 ## Preconditions
 - `.taskless/` directory exists (Taskless is installed). The
-  `taskless onboard` subcommand bootstraps it on first run, so this
+  `%(TASKLESS_CLI)s onboard` subcommand bootstraps it on first run, so this
   is automatically satisfied.
 - A working repository the agent can read.
 - No auth required to surface candidates. (Materializing a rule via
-  `rule create` may require auth — fetch `taskless agent auth` if
+  `rule create` may require auth — fetch `%(TASKLESS_CLI)s agent auth` if
   needed at that point.)
-- The criterion for where a rule belongs lives in `taskless agent
-  route` and is not restated here. This recipe reads it; it does not
-  duplicate it.
+- The criterion for where a rule belongs lives in
+  `%(TASKLESS_CLI)s agent route` and is not restated here. This recipe
+  reads it; it does not duplicate it.
 
 ## Steps
 
 1. **Read the manifest first.** Run
-   `npx @taskless/cli info --json` and check whether
+   `%(TASKLESS_CLI)s info --json` and check whether
    `.taskless/taskless.json` reports `install.onboarded: true`. The
-   `taskless onboard` subcommand has already gated on this for you,
+   `%(TASKLESS_CLI)s onboard` subcommand has already gated on this for you,
    but if the user is invoking the recipe directly via the skill,
    confirm with the user before running a long discovery pass.
 
@@ -35,8 +35,8 @@ rules as a bullet list the user can choose to materialize via the
    you cannot tell which is which until you know two things:
 
    ```
-   npx @taskless/cli agent route
-   npx @taskless/cli detect --json
+   %(TASKLESS_CLI)s agent route
+   %(TASKLESS_CLI)s detect --json
    ```
 
    Read `route` for the destination criterion — which rules are
@@ -123,10 +123,10 @@ rules as a bullet list the user can choose to materialize via the
 
 7. **Offer materialization per bullet.** For each bullet, ask
    whether the user wants to turn it into a real Taskless rule. On
-   yes, follow the `taskless agent route` recipe you already fetched
-   when you learned the routing surface — the user's accepted bullet
-   becomes the rule description input. Re-fetch it only if it has
-   fallen out of context.
+   yes, follow the `%(TASKLESS_CLI)s agent route` recipe you already
+   fetched when you learned the routing surface — the user's accepted
+   bullet becomes the rule description input. Re-fetch it only if it
+   has fallen out of context.
 
 8. **Ask before marking onboarding complete.** When the user signals
    they're done (they've materialized everything they want, or
@@ -136,7 +136,7 @@ rules as a bullet list the user can choose to materialize via the
    on explicit yes — run:
 
    ```
-   npx @taskless/cli onboard --mark-complete
+   %(TASKLESS_CLI)s onboard --mark-complete
    ```
 
    Do NOT mark onboarding complete on your own initiative. Do NOT
@@ -151,9 +151,9 @@ rules as a bullet list the user can choose to materialize via the
 
 ## See Also
 
-- `taskless agent route` — the destination criterion; read it before
-  proposing candidates, and follow it to materialize an accepted one
-- `taskless agent detect` — what this repository already lints and
-  authors, which bounds what a candidate can be
-- `taskless agent check` — validate newly created rules against the codebase
-- `taskless agent info` — inspect the current `.taskless/taskless.json` state
+- `%(TASKLESS_CLI)s agent route` — the destination criterion; read it
+  before proposing candidates, and follow it to materialize an accepted one
+- `%(TASKLESS_CLI)s agent detect` — what this repository already lints
+  and authors, which bounds what a candidate can be
+- `%(TASKLESS_CLI)s agent check` — validate newly created rules against the codebase
+- `%(TASKLESS_CLI)s agent info` — inspect the current `.taskless/taskless.json` state

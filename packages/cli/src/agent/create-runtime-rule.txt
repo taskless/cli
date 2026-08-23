@@ -5,7 +5,7 @@ This is `create-runtime-rule`. It helps you write a runtime rule: a
 check that runs your own code, because answering it needs more than one
 file — the repository graph, git metadata, build output, a resolved
 config chain.
-If that is not the kind of check you need, re-run `taskless agent route`
+If that is not the kind of check you need, re-run `%(TASKLESS_CLI)s agent route`
 and follow its decision rather than adapting this recipe.
 
 You are reading this recipe rather than `create-remote-rule` because the
@@ -18,9 +18,9 @@ tiers are not, and what the user has to do before one can run.
 
 ## Preconditions
 - `.taskless/` directory exists.
-- The user is **not** logged in. If `taskless info --json` reports
+- The user is **not** logged in. If `%(TASKLESS_CLI)s info --json` reports
   `loggedIn: true`, you are in the wrong recipe — re-run
-  `taskless agent route`.
+  `%(TASKLESS_CLI)s agent route`.
 
 ## What a runtime rule is
 
@@ -46,7 +46,7 @@ That is also exactly why it is gated.
 **Because it executes code, not because of what it can express.**
 
 `sg` and `vale` rules are inert data. Whatever is in them, the worst a
-malicious rule achieves is a wrong finding — `taskless check` runs them
+malicious rule achieves is a wrong finding — `%(TASKLESS_CLI)s check` runs them
 with no login, no network, and nothing to verify, because there is
 nothing to verify.
 
@@ -71,7 +71,7 @@ runtime rule is more or less capable, and it is not a quality tier —
 
 ## What happens today, logged out
 
-Nothing breaks. `taskless check` still runs every static rule; each
+Nothing breaks. `%(TASKLESS_CLI)s check` still runs every static rule; each
 runtime rule it finds is listed as skipped with the reason
 `not authenticated — runtime rules were not verified and did not run`.
 
@@ -89,7 +89,7 @@ that plainly rather than letting them discover it from a silent check.
    recipe deliberately does not restate it:
 
    ```
-   npx @taskless/cli agent auth
+   %(TASKLESS_CLI)s agent auth
    ```
 
    Follow that recipe with the user. If they do not want an account,
@@ -99,8 +99,8 @@ that plainly rather than letting them discover it from a silent check.
    not a fallback you take on their behalf.
 
 3. **Once they are logged in, re-route.** Run
-   `npx @taskless/cli info --json` to confirm `loggedIn: true`, then
-   re-run `taskless agent route` with the original request. The
+   `%(TASKLESS_CLI)s info --json` to confirm `loggedIn: true`, then
+   re-run `%(TASKLESS_CLI)s agent route` with the original request. The
    destination changes now that the gate is open.
 
 ## Important Notes
@@ -116,6 +116,6 @@ that plainly rather than letting them discover it from a silent check.
 
 ## See Also
 
-- `taskless agent auth` — log in, log out, check status
-- `taskless agent route` — re-decide once the login state changes
-- `taskless agent check` — see which rules ran and which were skipped
+- `%(TASKLESS_CLI)s agent auth` — log in, log out, check status
+- `%(TASKLESS_CLI)s agent route` — re-decide once the login state changes
+- `%(TASKLESS_CLI)s agent check` — see which rules ran and which were skipped
