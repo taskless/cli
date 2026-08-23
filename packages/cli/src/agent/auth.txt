@@ -20,14 +20,14 @@ Pick the branch matching the user's intent.
 
 1. Run:
    ```
-   npx @taskless/cli auth login
+   %(TASKLESS_CLI)s auth login
    ```
 2. The CLI prints a URL and a device code. Tell the user to open the
    URL and enter the code.
 3. The CLI polls until the token is approved. On success, the token
    is written to `.taskless/.env.local.json` and a confirmation is
    printed.
-4. Report success. Suggest `taskless info` to verify identity.
+4. Report success. Suggest `%(TASKLESS_CLI)s info` to verify identity.
 
 The `--anonymous` flag is rejected on `auth login` — it errors with
 "auth commands cannot be anonymous". Don't pass it.
@@ -36,7 +36,7 @@ The `--anonymous` flag is rejected on `auth login` — it errors with
 
 1. Run:
    ```
-   npx @taskless/cli auth logout
+   %(TASKLESS_CLI)s auth logout
    ```
 2. The CLI removes the saved token (or reports "Not logged in" if
    none was present).
@@ -46,7 +46,7 @@ The `--anonymous` flag is rejected on `auth login` — it errors with
 
 1. Run:
    ```
-   npx @taskless/cli auth
+   %(TASKLESS_CLI)s auth
    ```
 2. Output is one of:
    - "Not logged in." (with hint to run `auth login`)
@@ -61,7 +61,7 @@ The `--anonymous` flag is rejected on `auth login` — it errors with
 standardized `{ ok: false, code, message }` envelope is written to
 stdout (and human text on stderr is suppressed). On success in
 `--json` mode, the commands exit 0 silently — no success envelope is
-emitted. The status path (`taskless auth` with no subcommand) accepts
+emitted. The status path (`%(TASKLESS_CLI)s auth` with no subcommand) accepts
 `--json` for forward-compat but currently has no error paths to
 report.
 
@@ -69,9 +69,9 @@ report.
 |------------------|-------------------------------------------------------------------------------------------|------------------------------|
 | `INVALID_INPUT`  | `--anonymous` passed to `auth login` (rejected: auth commands cannot be anonymous)        | Don't pass `--anonymous`     |
 | `NETWORK_ERROR`  | Device flow / token endpoint unreachable, or the device code expired before approval      | Check connectivity; retry    |
-| `AUTH_REQUIRED`  | The user denied the authorization request in their browser                                | Re-run `taskless auth login` |
+| `AUTH_REQUIRED`  | The user denied the authorization request in their browser                                | Re-run `%(TASKLESS_CLI)s auth login` |
 
 ## See Also
 
-- `taskless agent info` — see auth state and skill versions
-- `taskless agent route` — first action that requires auth
+- `%(TASKLESS_CLI)s agent info` — see auth state and skill versions
+- `%(TASKLESS_CLI)s agent route` — first action that requires auth

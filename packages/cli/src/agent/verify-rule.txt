@@ -14,8 +14,8 @@ but agents can call either directly.
 ## The two commands
 
 ```
-npx @taskless/cli verify <path> --json
-npx @taskless/cli test   <path> --json
+%(TASKLESS_CLI)s verify <path> --json
+%(TASKLESS_CLI)s test   <path> --json
 ```
 
 `verify` asks whether the rule has the components its engine requires.
@@ -90,6 +90,6 @@ it still fails.
 
 ## See Also
 
-- `taskless agent create-sg-rule` — author an ast-grep rule
-- `taskless agent create-vale-rule` — author a Vale rule
-- `taskless agent improve-rule` — iterate on a rule that already exists
+- `%(TASKLESS_CLI)s agent create-sg-rule` — author an ast-grep rule
+- `%(TASKLESS_CLI)s agent create-vale-rule` — author a Vale rule
+- `%(TASKLESS_CLI)s agent improve-rule` — iterate on a rule that already exists

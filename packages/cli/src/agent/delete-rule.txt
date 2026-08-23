@@ -22,7 +22,7 @@ rule is deleted by removing its directory by hand.
 
 2. **Invoke the CLI.** Run:
    ```
-   npx @taskless/cli rule delete <id>
+   %(TASKLESS_CLI)s rule delete <id>
    ```
 
    The CLI removes:
@@ -49,5 +49,5 @@ emitted from this command.
 
 ## See Also
 
-- `taskless agent route` — make a new rule
-- `taskless agent check` — run remaining rules to confirm nothing broke
+- `%(TASKLESS_CLI)s agent route` — make a new rule
+- `%(TASKLESS_CLI)s agent check` — run remaining rules to confirm nothing broke

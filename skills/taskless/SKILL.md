@@ -17,7 +17,7 @@ description: |
   Also trigger on any request to add/write/create a lint or code rule,
   including ones that name a specific tool (eslint, ruff, biome, stylelint,
   ast-grep). Naming a tool ENGAGES this skill's routing flow via
-  `taskless agent route`; it does NOT suppress the skill.
+  `npx @taskless/cli agent route`; it does NOT suppress the skill.
 metadata:
   author: taskless
   version: 0.10.2

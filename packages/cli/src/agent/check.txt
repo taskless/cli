@@ -11,7 +11,7 @@ in CI (diff-only scan), or after rule create/improve to validate.
 - `.taskless/` directory exists.
 - At least one rule exists in `.taskless/rules/sg/` or
   `.taskless/rules/runtime/`. (If none exist, the CLI exits 0 with a
-  friendly message suggesting `taskless rule create`.)
+  friendly message suggesting `%(TASKLESS_CLI)s rule create`.)
 - No auth required. Static rules always run; whether runtime rules run
   depends on auth state — see "What runs".
 
@@ -40,7 +40,7 @@ only: they never change the exit code. Under `--json` they do NOT appear
 as warnings; instead an additive optional `skipped: [{ rule, reason }]`
 array is included alongside the unchanged `{ success, results }`. The
 authoritative allow-list is the server's; the CI backstop
-(`taskless agent ci`) is the enforcement point for runtime rules.
+(`%(TASKLESS_CLI)s agent ci`) is the enforcement point for runtime rules.
 
 ## Flags
 - `--json` — machine output (`{ success, results, skipped? }`).
@@ -56,15 +56,15 @@ authoritative allow-list is the server's; the CI backstop
 
 2. **Invoke the CLI.** Either:
    ```
-   npx @taskless/cli check --json
+   %(TASKLESS_CLI)s check --json
    ```
    or, scoped to specific paths:
    ```
-   npx @taskless/cli check --json src/foo.ts src/bar.ts
+   %(TASKLESS_CLI)s check --json src/foo.ts src/bar.ts
    ```
    or, against a git diff:
    ```
-   npx @taskless/cli check --json $(git diff --name-only main...HEAD)
+   %(TASKLESS_CLI)s check --json $(git diff --name-only main...HEAD)
    ```
    Paths that don't exist on disk are silently filtered, so you can
    pipe raw `git diff` output directly without pre-filtering.
@@ -125,5 +125,5 @@ When `--json` is set, failures emit `{ ok: false, code, message }`:
 
 ## See Also
 
-- `taskless agent route` — add a rule if none exist
-- `taskless agent ci` — wire `check` into a CI pipeline
+- `%(TASKLESS_CLI)s agent route` — add a rule if none exist
+- `%(TASKLESS_CLI)s agent ci` — wire `check` into a CI pipeline
