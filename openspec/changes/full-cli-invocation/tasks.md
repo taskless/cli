@@ -28,9 +28,9 @@ Delivery shape: **stacked, merging DOWN**, five PRs. Group 1 is the bottom branc
 
 ## 4. PR 4 — recipe normalization, part B
 
-- [ ] 4.1 Normalize the remaining recipes the same way
-- [ ] 4.2 Normalize `skills/taskless/SKILL.md` and `commands/tskl/tskl.md`. These are not rendered through the recipe renderer, so they keep the literal `npx @taskless/cli` that `applyCliInvocation` already rewrites — verify which of the two treatments each file needs rather than assuming
-- [ ] 4.3 Verify no recipe still names a bare `taskless` binary
+- [x] 4.1 Normalize the remaining recipes the same way
+- [x] 4.2 Normalize `skills/taskless/SKILL.md` and `commands/tskl/tskl.md`. These are not rendered through the recipe renderer, so they keep the literal `npx @taskless/cli` that `applyCliInvocation` already rewrites — verify which of the two treatments each file needs rather than assuming
+- [x] 4.3 Verify no recipe still names a bare `taskless` binary
 
 ## 5. PR 5 (tip) — cross-reference checking and the archive
 
