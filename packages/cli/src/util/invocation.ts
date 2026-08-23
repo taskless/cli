@@ -7,7 +7,25 @@
  * installed rather than the released one. See `scripts/build-target.ts`,
  * `vite.config.ts`, and the root `package.json` scripts.
  */
-const PROD_INVOCATION = "npx @taskless/cli";
+export const PROD_INVOCATION = "npx @taskless/cli";
+
+/**
+ * Whether this build's invocation is the released one.
+ *
+ * `false` means the build knows exactly what it is — a `nightly` pinned to its
+ * published version, or a `dev`/`self` path — and its instructions must say so
+ * rather than naming `@taskless/cli`. `true` means the build is the released
+ * package and has no idea how it was launched, which is a different situation
+ * from knowing it was launched as `npx @taskless/cli`.
+ */
+export function isProductionInvocation(): boolean {
+  return __TASKLESS_CLI__ === PROD_INVOCATION;
+}
+
+/** This build's invocation, whatever the target. */
+export function buildInvocation(): string {
+  return __TASKLESS_CLI__;
+}
 
 /**
  * Rewrite the canonical `npx @taskless/cli` invocation to the build-target
@@ -21,7 +39,7 @@ const PROD_INVOCATION = "npx @taskless/cli";
  * `npx @taskless/cli-nightly@<version>@latest`).
  */
 export function applyCliInvocation(content: string): string {
-  if (__TASKLESS_CLI__ === PROD_INVOCATION) return content;
+  if (isProductionInvocation()) return content;
   return content
     .replaceAll(`${PROD_INVOCATION}@latest`, __TASKLESS_CLI__)
     .replaceAll(PROD_INVOCATION, __TASKLESS_CLI__);

@@ -5,7 +5,13 @@
 // `moduleResolution: node16`/`nodenext`, which is a trap we would be shipping
 // rather than hitting ourselves. Both the type-checker and Vite map `.js` back
 // to this `.ts` source, so nothing else changes.
-import { getRecipe, type RecipeOptions } from "./recipes.js";
+import {
+  getRawRecipe,
+  getRecipe,
+  getRenderedRecipe,
+  type RecipeOptions,
+  type RecipeText,
+} from "./recipes.js";
 
 /**
  * Public entry for `@taskless/cli/prompts`.
@@ -91,13 +97,63 @@ export type PromptOptions = RecipeOptions;
  * {@link TOPICS} and the recipe files have diverged.
  */
 export function getPrompt(topic: PromptTopic, options?: PromptOptions): string {
-  const rendered = getRecipe(topic, options);
-  if (rendered === undefined) {
+  return required(getRecipe(topic, options), topic);
+}
+
+/**
+ * A prompt's text together with the sprintf variable names its template
+ * contains. The names come from `sprintf-js`'s own parse, not from a pattern
+ * match over the text.
+ */
+export type Instructions = RecipeText;
+
+/**
+ * Render a prompt and report which variables its template carries.
+ *
+ * `text` is byte-identical to {@link getPrompt} for the same arguments; the
+ * addition is `variables`, which tells a consumer what this topic's template
+ * was parameterized by without making them parse it.
+ *
+ * @throws when the topic has no canonical recipe in the build.
+ */
+export function getInstructions(
+  topic: PromptTopic,
+  options?: PromptOptions
+): Instructions {
+  return required(getRenderedRecipe(topic, options), topic);
+}
+
+/**
+ * The **unrendered** template for a prompt, plus the variables it contains.
+ *
+ * Use this when the host knows a value the package cannot: which launcher the
+ * reader will actually use, which package manager the target repository runs.
+ * Render it with `sprintf-js`'s named-argument form; the text is the source
+ * template verbatim, so its `%%` escapes are intact and it is safe to render
+ * exactly once.
+ *
+ * @throws when the topic has no canonical recipe in the build.
+ */
+export function getRawInstructions(
+  topic: PromptTopic,
+  options?: PromptOptions
+): Instructions {
+  return required(getRawRecipe(topic, options), topic);
+}
+
+/**
+ * Turn a missing topic into the same packaging-fault error {@link getPrompt}
+ * raises. `getRecipe` keeps its `undefined` contract because the `agent`
+ * command must tell an unknown topic apart from a failure; the public
+ * accessors do not, because an unknown `PromptTopic` cannot type-check.
+ */
+function required<T>(value: T | undefined, topic: string): T {
+  if (value === undefined) {
     throw new Error(
       `No recipe is embedded for prompt topic "${topic}". This is a packaging fault: TOPICS lists a topic with no agent/${topic}.txt behind it.`
     );
   }
-  return rendered;
+  return value;
 }
 
 /** Every exported topic as a render function, keyed by topic name. */
