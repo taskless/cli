@@ -200,3 +200,66 @@ describe("taskless onboard", () => {
     expect(onboard.stdout.trim()).toBe(agentRecipe.stdout.trim());
   });
 });
+
+// #140: the bullet list is authored before anything establishes what this
+// repository can express, so an unroutable candidate reaches the user looking
+// exactly like a good one. These guard the ordering and the annotation that
+// makes the difference visible — and the boundary that keeps `route`'s
+// criterion from being copied into a second recipe that can drift from it.
+describe("onboard recipe establishes the routing surface first", () => {
+  let cwd: string;
+
+  beforeEach(async () => {
+    cwd = await mkdtemp(join(tmpdir(), "taskless-onboard-route-"));
+  });
+
+  afterEach(async () => {
+    await rm(cwd, { recursive: true, force: true });
+  });
+
+  it("sends the agent to both `route` and `detect` before it proposes", async () => {
+    const { stdout, exitCode } = await runCli(
+      ["agent", "onboard", "-d", cwd],
+      cwd
+    );
+
+    expect(exitCode).toBe(0);
+    expect(stdout).toMatch(/agent route/);
+    expect(stdout).toMatch(/detect --json/);
+  });
+
+  it("puts the routing step ahead of the bullet list, not after it", async () => {
+    // The ordering is the whole fix. A recipe that mentions `route` somewhere
+    // is what shipped before; what matters is that it is read while the list
+    // is still being decided.
+    const { stdout } = await runCli(["agent", "onboard", "-d", cwd], cwd);
+
+    const routing = stdout.indexOf("Learn the routing surface");
+    const synthesis = stdout.indexOf("Synthesize the bullet list");
+
+    expect(routing).toBeGreaterThan(-1);
+    expect(synthesis).toBeGreaterThan(-1);
+    expect(routing).toBeLessThan(synthesis);
+  });
+
+  it("carries the destination in the bullet format", async () => {
+    const { stdout } = await runCli(["agent", "onboard", "-d", cwd], cwd);
+
+    expect(stdout).toContain("- <kebab-case-name> [<destination>]:");
+    // The annotation is only useful if the agent knows the vocabulary, so the
+    // recipe names the set rather than leaving it to be inferred.
+    for (const destination of ["legacy", "sg", "vale", "runtime"]) {
+      expect(stdout).toContain(`\`${destination}\``);
+    }
+  });
+
+  it("defers the real decision to `route` rather than settling it here", async () => {
+    const { stdout } = await runCli(["agent", "onboard", "-d", cwd], cwd);
+
+    expect(stdout).toContain("provisional");
+    // `route.txt` states the comparison is made there and only there. If this
+    // recipe ever grows the destination table, this is what notices.
+    expect(stdout).not.toContain("The rule is decided by");
+    expect(stdout).not.toContain("create-remote-rule");
+  });
+});
