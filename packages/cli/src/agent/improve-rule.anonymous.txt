@@ -42,7 +42,7 @@ validate with `verify` and `test` in a feedback loop.
 
 6. **Run the verify feedback loop.** Run:
    ```
-   npx @taskless/cli test .taskless/rules/sg/<id> --json
+   %(TASKLESS_CLI)s test .taskless/rules/sg/<id> --json
    ```
    - If `success: true`: report success.
    - If `success: false`: read the per-layer errors, fix, re-run.
@@ -60,7 +60,7 @@ validate with `verify` and `test` in a feedback loop.
    - The updated rule file path
    - The updated test file path
    - A diff-style summary of what changed
-   Suggest fetching `taskless agent check` to validate against the
+   Suggest fetching `%(TASKLESS_CLI)s agent check` to validate against the
    broader codebase.
 
 ## Important Notes
@@ -84,6 +84,6 @@ The verify primitive returns structured errors per layer:
 
 ## See Also
 
-- `taskless agent improve-rule` — API-backed flow (auth required)
-- `taskless agent create-sg-rule` — make a new rule locally
-- `taskless agent check` — validate the updated rule
+- `%(TASKLESS_CLI)s agent improve-rule` — API-backed flow (auth required)
+- `%(TASKLESS_CLI)s agent create-sg-rule` — make a new rule locally
+- `%(TASKLESS_CLI)s agent check` — validate the updated rule
