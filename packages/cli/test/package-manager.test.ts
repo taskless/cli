@@ -80,6 +80,35 @@ describe("detectLauncher", () => {
       undefined,
     ],
     [
+      // The other half of that pair, and the one that actually bites: every
+      // pnpm entry point sets the agent, so a repository that merely contains
+      // a directory named `dlx` must not read as a dlx launch.
+      "a dlx directory outside the pnpm cache is not pnpm dlx",
+      context("/repo/dlx/node_modules/.bin/taskless", {
+        npm_config_user_agent: PNPM_AGENT,
+      }),
+      undefined,
+    ],
+    [
+      "a trailing dlx segment has no cache hash after it",
+      context("/Users/dev/Library/Caches/pnpm/dlx", {
+        npm_config_user_agent: PNPM_AGENT,
+      }),
+      undefined,
+    ],
+    [
+      // Windows keeps the dlx cache under `pnpm-cache`, not `pnpm`.
+      "pnpm dlx from the Windows cache directory",
+      {
+        env: { npm_config_user_agent: PNPM_AGENT },
+        argv: [
+          String.raw`C:\node.exe`,
+          String.raw`C:\Users\dev\AppData\Local\pnpm-cache\dlx\9f8e7d\node_modules\.bin\taskless`,
+        ],
+      },
+      "pnpm-dlx",
+    ],
+    [
       "a node_modules/.bin shim under npm says nothing",
       context("/repo/node_modules/.bin/taskless", {
         npm_config_user_agent: NPM_AGENT,
