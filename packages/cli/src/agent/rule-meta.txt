@@ -12,7 +12,7 @@ the `rule improve` recipe to fetch the `ticketId` needed for iteration.
 ## Steps
 
 ```
-npx @taskless/cli rule meta <id> --json
+%(TASKLESS_CLI)s rule meta <id> --json
 ```
 
 Returns the metadata fields: `ticketId`, `generatedAt`, schema
@@ -27,4 +27,4 @@ version, etc.
 
 ## See Also
 
-- `taskless agent improve-rule` — the primary consumer of this command
+- `%(TASKLESS_CLI)s agent improve-rule` — the primary consumer of this command

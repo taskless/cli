@@ -15,14 +15,14 @@ right command when they need to install or upgrade.
 
 The user should run:
 ```
-npx @taskless/cli
+%(TASKLESS_CLI)s
 ```
 (no subcommand). In a TTY this launches the interactive wizard. In
 non-TTY contexts it prints the topic index instead.
 
 For scripted installs (CI, Dockerfiles):
 ```
-npx @taskless/cli init --no-interactive
+%(TASKLESS_CLI)s init --no-interactive
 ```
 
 The wizard will:
@@ -50,5 +50,5 @@ what was removed.
 
 ## See Also
 
-- `taskless agent info` — verify what's installed and check staleness
-- `taskless agent auth` — authenticate after installing
+- `%(TASKLESS_CLI)s agent info` — verify what's installed and check staleness
+- `%(TASKLESS_CLI)s agent auth` — authenticate after installing

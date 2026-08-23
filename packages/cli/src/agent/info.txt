@@ -13,12 +13,12 @@ which version of the CLI/skills the agent is talking to.
 
 1. **Invoke the CLI** with JSON output:
    ```
-   npx @taskless/cli info --json
+   %(TASKLESS_CLI)s info --json
    ```
    For an offline/local-only state report (no auth probe), pass
    `--anonymous`:
    ```
-   npx @taskless/cli info --json --anonymous
+   %(TASKLESS_CLI)s info --json --anonymous
    ```
 
 2. **Parse the response.** Shape:
@@ -46,7 +46,7 @@ which version of the CLI/skills the agent is talking to.
    - Auth: logged in as <user> (orgs) OR not logged in
 
 4. **Suggest reinit on staleness.** If any skill has `current: false`,
-   suggest `npx @taskless/cli` to reinstall and pull the latest
+   suggest `%(TASKLESS_CLI)s` to reinstall and pull the latest
    bundle.
 
 ## Errors
@@ -63,5 +63,5 @@ failing.)
 
 ## See Also
 
-- `taskless agent auth` — log in / log out / status detail
-- `taskless agent check` — run rules against the codebase
+- `%(TASKLESS_CLI)s agent auth` — log in / log out / status detail
+- `%(TASKLESS_CLI)s agent check` — run rules against the codebase
