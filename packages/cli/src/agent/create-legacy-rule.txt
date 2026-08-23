@@ -4,7 +4,7 @@
 This is `create-legacy-rule`. It helps you write a rule for a linter the
 repository already runs — ESLint, Ruff, RuboCop, Stylelint — in that
 tool's own dialect, so that tool enforces it.
-If that is not the kind of check you need, re-run `taskless agent route`
+If that is not the kind of check you need, re-run `%(TASKLESS_CLI)s agent route`
 and follow its decision rather than adapting this recipe.
 
 ## Goal
@@ -15,13 +15,13 @@ rules — you source the knowledge from the repo first and the web second,
 then write the rule where that tool expects it.
 
 ## Preconditions
-- The repo has a detected linter (confirm via `taskless detect --json`).
+- The repo has a detected linter (confirm via `%(TASKLESS_CLI)s detect --json`).
 - The agent can read/write files and fetch web pages.
 - No auth required.
 
 ## Steps
 
-1. **Confirm the target tool.** Use `taskless detect --json` to identify
+1. **Confirm the target tool.** Use `%(TASKLESS_CLI)s detect --json` to identify
    which linter is configured. If more than one could host this rule,
    ask the user which tool should own it.
 
@@ -47,7 +47,7 @@ then write the rule where that tool expects it.
 
 5. **Report, and be explicit about who runs it.** Show the file(s) you
    changed. Make clear that the user's OWN toolchain runs this rule —
-   `taskless check` does NOT execute external linters. Tell the user how
+   `%(TASKLESS_CLI)s check` does NOT execute external linters. Tell the user how
    to run their linter to see it fire (e.g. their existing lint script).
 
 ## Important Notes
@@ -59,6 +59,6 @@ then write the rule where that tool expects it.
 
 ## See Also
 
-- `taskless agent route` — re-decide the destination if this no longer fits
-- `taskless agent create-sg-rule` — author a local ast-grep rule instead
-- `taskless agent create-remote-rule` — generate via the service (login)
+- `%(TASKLESS_CLI)s agent route` — re-decide the destination if this no longer fits
+- `%(TASKLESS_CLI)s agent create-sg-rule` — author a local ast-grep rule instead
+- `%(TASKLESS_CLI)s agent create-remote-rule` — generate via the service (login)

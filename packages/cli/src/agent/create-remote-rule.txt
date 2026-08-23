@@ -4,7 +4,7 @@
 This is `create-remote-rule`. It helps you have the Taskless service
 write a rule, when the rule is beyond what you can express on-device or
 the user has chosen to spend a generation on it.
-If that is not the kind of check you need, re-run `taskless agent route`
+If that is not the kind of check you need, re-run `%(TASKLESS_CLI)s agent route`
 and follow its decision rather than adapting this recipe.
 
 ## Goal
@@ -43,16 +43,16 @@ Two ways to legitimately be here:
 
 1. **Confirm auth.** Run:
    ```
-   npx @taskless/cli info --json
+   %(TASKLESS_CLI)s info --json
    ```
-   Check `loggedIn`. If false, fetch `taskless agent auth` and follow the
+   Check `loggedIn`. If false, fetch `%(TASKLESS_CLI)s agent auth` and follow the
    login recipe before continuing. Do not build a request you cannot
    submit.
 
 2. **Check for a rule that already covers this.** Scan
    `.taskless/rules/sg/` and read each rule's `message`, `note`, and
    `rule` fields. If one overlaps, show the user and ask whether they
-   would rather iterate on it — `taskless agent improve-rule` refines an
+   would rather iterate on it — `%(TASKLESS_CLI)s agent improve-rule` refines an
    existing rule and is usually the better answer than a second rule
    that half-overlaps the first.
 
@@ -85,7 +85,7 @@ Two ways to legitimately be here:
 
 7. **Submit.** Run:
    ```
-   npx @taskless/cli rule create --from .taskless/.tmp-rule-request.json --json
+   %(TASKLESS_CLI)s rule create --from .taskless/.tmp-rule-request.json --json
    ```
    This may take 30–60 seconds while the service generates the rule.
 
@@ -98,7 +98,7 @@ Two ways to legitimately be here:
    metadata to `.taskless/rule-metadata/<id>.yml`. These are the same
    paths and the same shape a locally authored rule uses, so `check`,
    `improve-rule`, `verify`, and `test` treat them identically. Show the
-   user the paths and suggest `taskless agent check`.
+   user the paths and suggest `%(TASKLESS_CLI)s agent check`.
 
 ## Input schema
 
@@ -126,7 +126,7 @@ With `--json`, failures emit `{ ok: false, code, message }`:
 
 | code                     | meaning                            | fix                                          |
 |--------------------------|------------------------------------|----------------------------------------------|
-| `AUTH_REQUIRED`          | not logged in                      | fetch `taskless agent auth`                  |
+| `AUTH_REQUIRED`          | not logged in                      | fetch `%(TASKLESS_CLI)s agent auth`                  |
 | `NO_GITHUB_REMOTE`       | no GitHub origin remote            | tell the user; we cannot proceed             |
 | `INVALID_INPUT`          | `--from` JSON failed validation    | re-read the input schema, fix, retry         |
 | `NETWORK_ERROR`          | submit/poll failed                 | report and suggest retry                     |
@@ -135,8 +135,8 @@ With `--json`, failures emit `{ ok: false, code, message }`:
 
 ## See Also
 
-- `taskless agent route` — the routing decision that leads here
-- `taskless agent auth` — log in before generating
-- `taskless agent create-sg-rule` — author a rule locally instead
-- `taskless agent improve-rule` — iterate on a rule that already exists
-- `taskless agent check` — validate the generated rule
+- `%(TASKLESS_CLI)s agent route` — the routing decision that leads here
+- `%(TASKLESS_CLI)s agent auth` — log in before generating
+- `%(TASKLESS_CLI)s agent create-sg-rule` — author a rule locally instead
+- `%(TASKLESS_CLI)s agent improve-rule` — iterate on a rule that already exists
+- `%(TASKLESS_CLI)s agent check` — validate the generated rule

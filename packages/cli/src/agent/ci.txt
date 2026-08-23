@@ -1,7 +1,7 @@
 # Topic: ci     (CLI v%(CLI_VERSION)s / topic v1)
 
 ## Goal
-Wire `taskless check` into the user's existing CI so rules run
+Wire `%(TASKLESS_CLI)s check` into the user's existing CI so rules run
 automatically on pushes and pull requests. Integrate with what they
 already have — never replace or edit their main pipeline.
 
@@ -12,9 +12,9 @@ you recognize one not on the list, apply the same patterns.
 ## Preconditions
 - `.taskless/` directory exists and contains at least one rule. (If
   no rules exist, instruct the user to fetch
-  `taskless agent route` first — wiring CI with zero rules
+  `%(TASKLESS_CLI)s agent route` first — wiring CI with zero rules
   produces an always-green check that gives false confidence.)
-- A local `taskless check` succeeds (or fails with real findings the
+- A local `%(TASKLESS_CLI)s check` succeeds (or fails with real findings the
   user is OK with seeing in CI's first run).
 - No auth required for CI — `check` is unauthenticated by default.
   (Optionally tokenized as a server-enforced backstop; see step 7.)
@@ -42,9 +42,9 @@ which CI they use. If multiple match, ask which should run Taskless.
 
 ### 2. Agree on the scan pattern
 
-- **Full scan** — `taskless check`. Scans everything. Best for runs
+- **Full scan** — `%(TASKLESS_CLI)s check`. Scans everything. Best for runs
   on the main/default branch.
-- **Diff scan** — `taskless check $(git diff --name-only ...)`.
+- **Diff scan** — `%(TASKLESS_CLI)s check $(git diff --name-only ...)`.
   Faster for PR builds. Per-CI diff target var:
 
   | CI                  | Target branch variable                       |
@@ -56,7 +56,7 @@ which CI they use. If multiple match, ask which should run Taskless.
   | Azure Pipelines     | `System.PullRequest.TargetBranch`            |
   | Bitbucket Pipelines | `BITBUCKET_PR_DESTINATION_BRANCH`            |
 
-  `taskless check` silently filters paths that don't exist, so raw
+  `%(TASKLESS_CLI)s check` silently filters paths that don't exist, so raw
   `git diff --name-only` output can pipe in directly.
 
 **Recommended default:** diff scan on PRs, full scan on pushes to
@@ -64,9 +64,9 @@ main.
 
 ### 3. Verify locally first
 
-Run `npx @taskless/cli check`:
+Run `%(TASKLESS_CLI)s check`:
 - Clean pass → proceed.
-- "No rules configured" → stop. Fetch `taskless agent route`.
+- "No rules configured" → stop. Fetch `%(TASKLESS_CLI)s agent route`.
 - Findings → tell the user CI will fail; ask whether to fix,
   suppress, or proceed knowing the first CI run will be red.
 
@@ -96,9 +96,12 @@ Canonical paths:
 The reference template — translate the same shape (checkout with
 full history, set up Node, conditional check) for other CIs.
 
-Substitute `%(PACKAGE_MANAGER_DLX)s` with `npx @taskless/cli`,
-`pnpm dlx @taskless/cli`, `yarn dlx @taskless/cli`, or
-`bunx @taskless/cli` based on `pnpm-lock.yaml`/`yarn.lock`/`bun.lockb`.
+Substitute `%(PACKAGE_MANAGER_DLX)s` with the CI runner's own launcher —
+`npx`, `pnpm dlx`, `yarn dlx`, or `bunx` based on
+`pnpm-lock.yaml`/`yarn.lock`/`bun.lockb` — followed by the same package
+`%(TASKLESS_CLI)s` names. That is a question about the repository you are
+wiring up, not about how this recipe was fetched, which is why it stays a
+separate placeholder.
 
 ```yaml
 name: Taskless
@@ -158,7 +161,7 @@ different structure for CircleCI. The six steps stay the same.
 
 ### 7. Authentication in CI (optional backstop)
 
-`taskless check` does NOT require authentication. The generated CI
+`%(TASKLESS_CLI)s check` does NOT require authentication. The generated CI
 config works out of the box with no secrets and scans all local rules.
 
 Static ast-grep rules always run in CI with no secrets. **Runtime
@@ -191,7 +194,7 @@ the user explicitly asks to run authenticated commands (e.g.
 
 - **pnpm**: `pnpm dlx` works but has slow cold starts. If the user's
   pipeline already sets up pnpm, suggest adding `@taskless/cli` as a
-  dev dep and calling it via `pnpm taskless check`.
+  dev dep and calling it via `pnpm %(TASKLESS_CLI)s check`.
 - **Yarn v1 (classic)**: doesn't support `yarn dlx`. Use `npx`.
 - **Bun**: `bunx` works.
 
@@ -207,7 +210,7 @@ Show:
 
 ## Errors
 
-- **No rules** → fetch `taskless agent route`. Don't write CI
+- **No rules** → fetch `%(TASKLESS_CLI)s agent route`. Don't write CI
   config.
 - **Unrecognized CI** → produce a generic `.taskless/ci/check.sh`
   script implementing the six universal steps. Be upfront it's a
@@ -217,5 +220,5 @@ Show:
 
 ## See Also
 
-- `taskless agent check` — the command being wired into CI
-- `taskless agent route` — required if no rules exist yet
+- `%(TASKLESS_CLI)s agent check` — the command being wired into CI
+- `%(TASKLESS_CLI)s agent route` — required if no rules exist yet
