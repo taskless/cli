@@ -269,11 +269,14 @@ No embedded recipe SHALL contain the string `taskless help`. Recipes cross-refer
 
 ### Requirement: Recipes name the CLI by its full invocation
 
-Every instruction in shipped agent-facing content that tells a reader to run the Taskless CLI SHALL express the CLI as `%(TASKLESS_CLI)s`, followed by the subcommand and its arguments. This applies to the recipe sources under `packages/cli/src/agent/`, to `skills/taskless/SKILL.md`, and to `commands/tskl/tskl.md`.
+Every instruction in shipped agent-facing content that tells a reader to run the Taskless CLI SHALL name the CLI by the invocation the build resolves for the reader, followed by the subcommand and its arguments — never by a hand-written one. Two mechanisms deliver that, because the content travels by two different paths:
 
-Content SHALL NOT name the CLI as a bare `taskless` binary, because it is not installed on `PATH` for the overwhelming majority of readers, and SHALL NOT hardcode a launcher-and-package string such as `npx @taskless/cli`, because that is the fact `%(TASKLESS_CLI)s` exists to hold in one place. Prose that mentions the product, a config filename, or a directory (`taskless.config`, `.taskless/`) is unaffected — the requirement is about executable instructions.
+- Recipe sources under `packages/cli/src/agent/` SHALL express the CLI as `%(TASKLESS_CLI)s`, which the recipe renderer substitutes at render time.
+- `skills/taskless/SKILL.md` and `commands/tskl/tskl.md` are not rendered through the recipe renderer, so they SHALL carry the canonical `npx @taskless/cli` string, which `applyCliInvocation` rewrites to the build target's invocation when the content is emitted.
 
-An automated check SHALL fail when a bare `` `taskless <subcommand>` `` invocation appears in a recipe source, so the normalization cannot silently regress as recipes are edited.
+Content SHALL NOT name the CLI as a bare `taskless` binary, because it is not installed on `PATH` for the overwhelming majority of readers. A recipe source SHALL NOT hardcode a launcher-and-package string such as `npx @taskless/cli` either, because that is the fact `%(TASKLESS_CLI)s` exists to hold in one place — the string is canonical only in the two files above, where it is the rewrite anchor rather than a hardcoding. Prose that mentions the product, a config filename, or a directory (`taskless.config`, `.taskless/`) is unaffected — the requirement is about executable instructions.
+
+An automated check SHALL fail when a bare `` `taskless <subcommand>` `` invocation, or a hardcoded `npx @taskless/cli`, appears in a recipe source, so the normalization cannot silently regress as recipes are edited. The check SHALL read the subcommand names from the CLI's own registry rather than restating them, so a newly added subcommand is covered without a second edit. It does not extend to `skills/taskless/SKILL.md` or `commands/tskl/tskl.md`, whose rewrite anchor is the very string it flags and which quote invocations as example user utterances.
 
 #### Scenario: A recipe instructs the reader to run a subcommand
 
@@ -294,3 +297,5 @@ An automated check SHALL fail when a bare `` `taskless <subcommand>` `` invocati
 
 - **WHEN** the check that recipe cross-references cite only topics that resolve is run
 - **THEN** it SHALL operate on rendered recipe text, where the invocation is a stable literal, rather than on source text where it is a placeholder
+- **AND** it SHALL anchor on the invocation the running build actually renders, so the check does not pass vacuously under a `nightly`, `dev`, or `self` build whose rendered invocation names neither `taskless` nor `@taskless/cli`
+- **AND** it SHALL fail when it finds no cross-reference at all, since an empty result is otherwise indistinguishable from every reference resolving
