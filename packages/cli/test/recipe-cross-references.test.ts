@@ -77,6 +77,36 @@ const HARDCODED_INVOCATION = new RegExp(
     String.raw`)\b)`
 );
 
+/**
+ * The two places a literal invocation is CORRECT, and why. Both are prose
+ * *about* invocations rather than an instruction to run one, which is the
+ * distinction the regex cannot draw on its own.
+ *
+ * Kept as content matches rather than line numbers so an edit above them does
+ * not silently move the exemption onto a different line. If the prose changes
+ * enough that a snippet stops matching, the staleness test below fails — which
+ * is the intended outcome: a reworded exception deserves to be re-justified,
+ * not silently carried forward.
+ */
+const ALLOWED_HARDCODED: { file: string; snippet: string; why: string }[] = [
+  {
+    file: "ci.txt",
+    snippet: "`npx @taskless/cli`, `pnpm dlx @taskless/cli`,",
+    why: "Enumerates what %(PACKAGE_MANAGER_DLX)s expands to. Naming the four complete invocations IS the documentation; substituting the variable here would define the placeholder in terms of itself.",
+  },
+  {
+    file: "ci.txt",
+    snippet: "`pnpm taskless check`",
+    why: "That `taskless` is the binary pnpm resolves from the WIRED REPO's node_modules/.bin when @taskless/cli is their dev dependency — a foreign binary, not this CLI's invocation. %(TASKLESS_CLI)s would render `pnpm npx @taskless/cli check`.",
+  },
+];
+
+function isAllowed(file: string, line: string): boolean {
+  return ALLOWED_HARDCODED.some(
+    (entry) => entry.file === file && line.includes(entry.snippet)
+  );
+}
+
 async function recipeFiles(): Promise<string[]> {
   const entries = await readdir(recipeDirectory);
   return entries.filter((entry) => entry.endsWith(".txt")).toSorted();
@@ -180,7 +210,7 @@ describe("recipes defer the CLI invocation to the renderer", () => {
     for (const file of await recipeFiles()) {
       const source = await readFile(join(recipeDirectory, file), "utf8");
       for (const [index, line] of source.split("\n").entries()) {
-        if (HARDCODED_INVOCATION.test(line)) {
+        if (HARDCODED_INVOCATION.test(line) && !isAllowed(file, line)) {
           offenders.push(`${file}:${String(index + 1)}: ${line.trim()}`);
         }
       }
@@ -189,6 +219,27 @@ describe("recipes defer the CLI invocation to the renderer", () => {
     // certainly do not have on PATH; `npx @taskless/cli check` in a nightly
     // sends them to the released package. Both are `%(TASKLESS_CLI)s check`.
     expect(offenders).toEqual([]);
+  });
+
+  // An allowlist nobody rechecks is how a guard quietly stops guarding. Each
+  // entry must still match a line the regex would otherwise flag: if the prose
+  // was reworded, or the exception removed, the entry is dead and the reason
+  // attached to it no longer describes anything.
+  it("carries no stale entry in the hardcoded-invocation allowlist", async () => {
+    const stale: string[] = [];
+    for (const entry of ALLOWED_HARDCODED) {
+      const source = await readFile(join(recipeDirectory, entry.file), "utf8");
+      const stillNeeded = source
+        .split("\n")
+        .some(
+          (line) =>
+            line.includes(entry.snippet) && HARDCODED_INVOCATION.test(line)
+        );
+      if (!stillNeeded) {
+        stale.push(`${entry.file}: "${entry.snippet}" no longer matches`);
+      }
+    }
+    expect(stale).toEqual([]);
   });
 
   it("renders a real invocation into every recipe that names the CLI", async () => {
