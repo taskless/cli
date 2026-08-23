@@ -13,12 +13,12 @@ Delivery shape: **stacked, merging DOWN**, five PRs. Group 1 is the bottom branc
 
 ## 2. PR 2 — launcher detection and the `getCliPrefix` fix
 
-- [ ] 2.1 Rewrite `src/util/package-manager.ts` around `detectLauncher({ env, argv })`, pure over an injected context. Recognize npx (`_npx` path segment in `argv[1]`, or `npm_command === "exec"` with `npm_lifecycle_event === "npx"`) and pnpm dlx (`pnpm/` user agent **and** a `dlx` path segment). Everything else is `undefined`
-- [ ] 2.2 Derive the package specifier from `__TASKLESS_CLI__`: a `npx `-prefixed invocation yields its specifier (pinned to `@latest` when it carries no version), and a path-form invocation is returned verbatim with no launcher applied
-- [ ] 2.3 Reimplement `getCliPrefix()` over the two, keeping `npx <spec>` as the display default when detection is unknown. The five call sites are unchanged
-- [ ] 2.4 Pass `invocation: detectCliInvocation(...)` from `src/commands/agent.ts` into `getRecipe`
-- [ ] 2.5 Rewrite `test/package-manager.test.ts` as a table over injected contexts — its current premise, that the user agent answers the question, is what this change refutes. Cover npx by path, npx by env, pnpm dlx, pnpm run (must not be dlx), pnpm exec, a `node_modules/.bin` shim, and an empty environment
-- [ ] 2.6 Confirm `test/prompts.test.ts`'s spawned-CLI byte-parity still holds: the test spawns `node dist/index.js` under a pnpm-run environment, which detection must report as unknown, so the CLI and the export both render the marker
+- [x] 2.1 Rewrite `src/util/package-manager.ts` around `detectLauncher({ env, argv })`, pure over an injected context. Recognize npx (`_npx` path segment in `argv[1]`, or `npm_command === "exec"` with `npm_lifecycle_event === "npx"`) and pnpm dlx (`pnpm/` user agent **and** a `dlx` path segment). Everything else is `undefined`
+- [x] 2.2 Derive the package specifier from `__TASKLESS_CLI__`: a `npx `-prefixed invocation yields its specifier (pinned to `@latest` when it carries no version), and a path-form invocation is returned verbatim with no launcher applied
+- [x] 2.3 Reimplement `getCliPrefix()` over the two, keeping `npx <spec>` as the display default when detection is unknown. The five call sites are unchanged
+- [x] 2.4 Pass `invocation: detectCliInvocation(...)` from `src/commands/agent.ts` into `getRecipe`
+- [x] 2.5 Rewrite `test/package-manager.test.ts` as a table over injected contexts — its current premise, that the user agent answers the question, is what this change refutes. Cover npx by path, npx by env, pnpm dlx, pnpm run (must not be dlx), pnpm exec, a `node_modules/.bin` shim, and an empty environment
+- [x] 2.6 Confirm `test/prompts.test.ts`'s spawned-CLI byte-parity still holds: the test spawns `node dist/index.js` under a pnpm-run environment, which detection must report as unknown, so the CLI and the export both render the marker
 
 ## 3. PR 3 — recipe normalization, part A
 

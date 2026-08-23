@@ -9,6 +9,10 @@ import {
 
 import { getTelemetry } from "../telemetry";
 import { getRecipe } from "../prompts/recipes";
+import {
+  detectCliInvocation,
+  processLauncherContext,
+} from "../util/package-manager";
 
 // Recipe-only topics (no backing subcommand) that should still be
 // discoverable from the `taskless agent` index. The rule-authoring front
@@ -144,7 +148,16 @@ export function createAgentCommand(subCommands: SubCommandsDef) {
       // --anonymous is set, fall back to the canonical recipe. The lookup and
       // the render both live in the shared prompts module, so `agent` and the
       // `@taskless/cli/prompts` export emit the same text.
-      const recipe = getRecipe(key, { anonymous: args.anonymous });
+      //
+      // The invocation is detected HERE and passed in, never read inside the
+      // prompts module: that module is imported by Workers without
+      // `nodejs_compat`, where a module-scope `process` read throws at import
+      // time. When the launcher is unknown the value is `undefined` and the
+      // renderer falls back to its agent-fill marker.
+      const recipe = getRecipe(key, {
+        anonymous: args.anonymous,
+        invocation: detectCliInvocation(processLauncherContext()),
+      });
 
       if (recipe) {
         // cli_agent: agent fetched a specific recipe (intent signal). The topic
