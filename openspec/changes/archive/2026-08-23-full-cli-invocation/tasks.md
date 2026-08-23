@@ -34,7 +34,7 @@ Delivery shape: **stacked, merging DOWN**, five PRs. Group 1 is the bottom branc
 
 ## 5. PR 5 (tip) — cross-reference checking and the archive
 
-- [ ] 5.1 Move `test/recipe-cross-references.test.ts` from scanning recipe source to scanning rendered recipes, where the invocation is a stable literal. Match the marker alongside the existing spellings
-- [ ] 5.2 Add the regression guard: no bare `` `taskless <subcommand>` `` in any `src/agent/*.txt`, naming the offending file and line
-- [ ] 5.3 Archive the change to `openspec/changes/archive/<date>-full-cli-invocation/`
-- [ ] 5.4 Run every gate on the tip: build, test, typecheck, lint, `openspec validate --strict`
+- [x] 5.1 Move `test/recipe-cross-references.test.ts` from scanning recipe source to scanning rendered recipes, where the invocation is a stable literal. Match the marker alongside the existing spellings
+- [x] 5.2 Add the regression guard: no bare `` `taskless <subcommand>` `` in any `src/agent/*.txt`, naming the offending file and line
+- [x] 5.3 Archive the change to `openspec/changes/archive/<date>-full-cli-invocation/`
+- [x] 5.4 Run every gate on the tip: build, test, typecheck, lint, `openspec validate --strict`
