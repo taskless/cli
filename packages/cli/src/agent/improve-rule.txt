@@ -87,15 +87,15 @@ The `--from` JSON file conforms to:
 
 When `--json` is set, failures emit `{ ok: false, code, message }`:
 
-| code                     | meaning                                | fix                                          |
-|--------------------------|----------------------------------------|----------------------------------------------|
-| `AUTH_REQUIRED`          | not logged in                          | fetch `%(TASKLESS_CLI)s agent auth`                   |
-| `NO_GITHUB_REMOTE`       | no GitHub origin remote                | tell the user; we cannot proceed             |
-| `INVALID_INPUT`          | `--from` JSON failed validation        | re-read input schema, fix, retry             |
-| `RULE_NOT_FOUND`         | metadata missing for the given rule    | use anonymous variant or recreate via create |
-| `NETWORK_ERROR`          | API submit/poll failed                 | report and suggest retry                     |
-| `RULE_GENERATION_FAILED` | API returned a generation failure      | report; suggest enriching guidance/references |
-| `RULE_UNSUPPORTED`        | plan lacks this generation type        | tell the user to enable it; do not retry      |
+| code                     | meaning                             | fix                                           |
+|--------------------------|-------------------------------------|-----------------------------------------------|
+| `AUTH_REQUIRED`          | not logged in                       | fetch `%(TASKLESS_CLI)s agent auth`           |
+| `NO_GITHUB_REMOTE`       | no GitHub origin remote             | tell the user; we cannot proceed              |
+| `INVALID_INPUT`          | `--from` JSON failed validation     | re-read input schema, fix, retry              |
+| `RULE_NOT_FOUND`         | metadata missing for the given rule | use anonymous variant or recreate via create  |
+| `NETWORK_ERROR`          | API submit/poll failed              | report and suggest retry                      |
+| `RULE_GENERATION_FAILED` | API returned a generation failure   | report; suggest enriching guidance/references |
+| `RULE_UNSUPPORTED`       | plan lacks this generation type     | tell the user to enable it; do not retry      |
 
 ## See Also
 

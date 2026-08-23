@@ -3,9 +3,9 @@ import { readFile, readdir } from "node:fs/promises";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { promisify } from "node:util";
-import { describe, expect, it } from "vitest";
 
 import { sprintf } from "sprintf-js";
+import { describe, expect, it } from "vitest";
 
 import {
   PROMPTS,

@@ -65,11 +65,11 @@ emitted. The status path (`%(TASKLESS_CLI)s auth` with no subcommand) accepts
 `--json` for forward-compat but currently has no error paths to
 report.
 
-| code             | meaning                                                                                   | fix                          |
-|------------------|-------------------------------------------------------------------------------------------|------------------------------|
-| `INVALID_INPUT`  | `--anonymous` passed to `auth login` (rejected: auth commands cannot be anonymous)        | Don't pass `--anonymous`     |
-| `NETWORK_ERROR`  | Device flow / token endpoint unreachable, or the device code expired before approval      | Check connectivity; retry    |
-| `AUTH_REQUIRED`  | The user denied the authorization request in their browser                                | Re-run `%(TASKLESS_CLI)s auth login` |
+| code            | meaning                                                                              | fix                                  |
+|-----------------|--------------------------------------------------------------------------------------|--------------------------------------|
+| `INVALID_INPUT` | `--anonymous` passed to `auth login` (rejected: auth commands cannot be anonymous)   | Don't pass `--anonymous`             |
+| `NETWORK_ERROR` | Device flow / token endpoint unreachable, or the device code expired before approval | Check connectivity; retry            |
+| `AUTH_REQUIRED` | The user denied the authorization request in their browser                           | Re-run `%(TASKLESS_CLI)s auth login` |
 
 ## See Also
 

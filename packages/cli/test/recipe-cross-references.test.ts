@@ -78,12 +78,44 @@ const HARDCODED_INVOCATION = new RegExp(
 );
 
 /**
+ * The regex alone cannot tell an invocation from prose that happens to read
+ * like one: `test` is a subcommand AND an ordinary English word, so "the
+ * taskless test suite" would be reported as a hardcoded invocation and fail
+ * CI on a sentence nobody should have to reword.
+ *
+ * An invocation is always *code* — a fenced block or an inline code span — so
+ * that is where the guard looks. Checking only inline spans would be the
+ * tempting simplification and the wrong one: a raw command on its own line
+ * inside a fence carries no backticks, and that is the likelier way to write
+ * one by hand.
+ */
+function codeFragments(source: string): { line: number; text: string }[] {
+  const fragments: { line: number; text: string }[] = [];
+  let inFence = false;
+  for (const [index, line] of source.split("\n").entries()) {
+    if (/^\s*```/.test(line)) {
+      inFence = !inFence;
+      continue;
+    }
+    if (inFence) {
+      fragments.push({ line: index + 1, text: line });
+      continue;
+    }
+    for (const span of line.matchAll(/`([^`]+)`/g)) {
+      fragments.push({ line: index + 1, text: span[1] ?? "" });
+    }
+  }
+  return fragments;
+}
+
+/**
  * The two places a literal invocation is CORRECT, and why. Both are prose
  * *about* invocations rather than an instruction to run one, which is the
  * distinction the regex cannot draw on its own.
  *
  * Kept as content matches rather than line numbers so an edit above them does
- * not silently move the exemption onto a different line. If the prose changes
+ * not silently move the exemption onto a different line. The snippets match
+ * the code fragment's text, which carries no surrounding backticks. If the prose changes
  * enough that a snippet stops matching, the staleness test below fails — which
  * is the intended outcome: a reworded exception deserves to be re-justified,
  * not silently carried forward.
@@ -91,12 +123,12 @@ const HARDCODED_INVOCATION = new RegExp(
 const ALLOWED_HARDCODED: { file: string; snippet: string; why: string }[] = [
   {
     file: "ci.txt",
-    snippet: "`npx @taskless/cli`, `pnpm dlx @taskless/cli`,",
+    snippet: "npx @taskless/cli",
     why: "Enumerates what %(PACKAGE_MANAGER_DLX)s expands to. Naming the four complete invocations IS the documentation; substituting the variable here would define the placeholder in terms of itself.",
   },
   {
     file: "ci.txt",
-    snippet: "`pnpm taskless check`",
+    snippet: "pnpm taskless check",
     why: "That `taskless` is the binary pnpm resolves from the WIRED REPO's node_modules/.bin when @taskless/cli is their dev dependency — a foreign binary, not this CLI's invocation. %(TASKLESS_CLI)s would render `pnpm npx @taskless/cli check`.",
   },
 ];
@@ -209,9 +241,9 @@ describe("recipes defer the CLI invocation to the renderer", () => {
     const offenders: string[] = [];
     for (const file of await recipeFiles()) {
       const source = await readFile(join(recipeDirectory, file), "utf8");
-      for (const [index, line] of source.split("\n").entries()) {
-        if (HARDCODED_INVOCATION.test(line) && !isAllowed(file, line)) {
-          offenders.push(`${file}:${String(index + 1)}: ${line.trim()}`);
+      for (const { line, text } of codeFragments(source)) {
+        if (HARDCODED_INVOCATION.test(text) && !isAllowed(file, text)) {
+          offenders.push(`${file}:${String(line)}: ${text.trim()}`);
         }
       }
     }
@@ -229,17 +261,39 @@ describe("recipes defer the CLI invocation to the renderer", () => {
     const stale: string[] = [];
     for (const entry of ALLOWED_HARDCODED) {
       const source = await readFile(join(recipeDirectory, entry.file), "utf8");
-      const stillNeeded = source
-        .split("\n")
-        .some(
-          (line) =>
-            line.includes(entry.snippet) && HARDCODED_INVOCATION.test(line)
-        );
+      const stillNeeded = codeFragments(source).some(
+        ({ text }) =>
+          text.includes(entry.snippet) && HARDCODED_INVOCATION.test(text)
+      );
       if (!stillNeeded) {
         stale.push(`${entry.file}: "${entry.snippet}" no longer matches`);
       }
     }
     expect(stale).toEqual([]);
+  });
+
+  // The narrowing is only worth having if it still catches what it is for, so
+  // this pins both halves: prose is ignored, code is not.
+  it.each([
+    ["the taskless test suite is green", false, "prose naming a subcommand"],
+    ["run the taskless check before pushing", false, "prose, unfenced"],
+    ["`taskless check`", true, "inline code span"],
+    ["`npx @taskless/cli check`", true, "hardcoded launcher, inline"],
+    ["`%(TASKLESS_CLI)s check`", false, "the correct form"],
+    ["a rule under `.taskless/rules/foo.yml`", false, "a path, not a binary"],
+  ])("scans %j → flagged=%s (%s)", (line, expected) => {
+    const flagged = codeFragments(line).some((fragment) =>
+      HARDCODED_INVOCATION.test(fragment.text)
+    );
+    expect(flagged).toBe(expected);
+  });
+
+  it("still flags a raw invocation on its own line inside a fence", () => {
+    const fenced = ["Run it:", "```", "taskless check", "```"].join("\n");
+    const flagged = codeFragments(fenced).some((fragment) =>
+      HARDCODED_INVOCATION.test(fragment.text)
+    );
+    expect(flagged).toBe(true);
   });
 
   it("renders a real invocation into every recipe that names the CLI", async () => {

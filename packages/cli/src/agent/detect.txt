@@ -53,9 +53,9 @@ routing flow reads `detect` to decide where a new rule should live.
 
 When `--json` is set, failures emit `{ ok: false, code, message }`:
 
-| code              | meaning                          | fix                       |
-|-------------------|----------------------------------|---------------------------|
-| `INTERNAL_ERROR`  | Internal schema validation       | Report; likely a CLI bug  |
+| code             | meaning                    | fix                      |
+|------------------|----------------------------|--------------------------|
+| `INTERNAL_ERROR` | Internal schema validation | Report; likely a CLI bug |
 
 ## See Also
 

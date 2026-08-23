@@ -124,14 +124,14 @@ Multi-line code goes in one string with literal newlines.
 
 With `--json`, failures emit `{ ok: false, code, message }`:
 
-| code                     | meaning                            | fix                                          |
-|--------------------------|------------------------------------|----------------------------------------------|
-| `AUTH_REQUIRED`          | not logged in                      | fetch `%(TASKLESS_CLI)s agent auth`                  |
-| `NO_GITHUB_REMOTE`       | no GitHub origin remote            | tell the user; we cannot proceed             |
-| `INVALID_INPUT`          | `--from` JSON failed validation    | re-read the input schema, fix, retry         |
-| `NETWORK_ERROR`          | submit/poll failed                 | report and suggest retry                     |
-| `RULE_GENERATION_FAILED` | the service failed to generate     | report the message; suggest enriching prompt |
-| `RULE_UNSUPPORTED`       | plan lacks this generation type    | tell the user to enable it; do not retry     |
+| code                     | meaning                         | fix                                          |
+|--------------------------|---------------------------------|----------------------------------------------|
+| `AUTH_REQUIRED`          | not logged in                   | fetch `%(TASKLESS_CLI)s agent auth`          |
+| `NO_GITHUB_REMOTE`       | no GitHub origin remote         | tell the user; we cannot proceed             |
+| `INVALID_INPUT`          | `--from` JSON failed validation | re-read the input schema, fix, retry         |
+| `NETWORK_ERROR`          | submit/poll failed              | report and suggest retry                     |
+| `RULE_GENERATION_FAILED` | the service failed to generate  | report the message; suggest enriching prompt |
+| `RULE_UNSUPPORTED`       | plan lacks this generation type | tell the user to enable it; do not retry     |
 
 ## See Also
 

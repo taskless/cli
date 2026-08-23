@@ -63,12 +63,12 @@ answered together.
    and only here — the destination recipes describe their own scope and
    deliberately do not restate this table.
 
-   | The rule is decided by…                                        | Destination          | Login |
-   |-----------------------------------------------------------------|----------------------|-------|
-   | a tool the repo already runs, in that tool's dialect            | `create-legacy-rule` | no    |
-   | **one file's syntax tree** — a call, an import, a JSX attribute, a type annotation | `create-sg-rule`     | no    |
-   | **a document's words** — docs, README, comments, commit bodies  | `create-vale-rule`   | no    |
-   | **more than one file, or something outside the files** — the repo graph, git metadata, build output, a resolved config chain | `create-runtime-rule` / `create-remote-rule` | see step 5 |
+| The rule is decided by…                                                                                                      | Destination                                  | Login      |
+|------------------------------------------------------------------------------------------------------------------------------|----------------------------------------------|------------|
+| a tool the repo already runs, in that tool's dialect                                                                         | `create-legacy-rule`                         | no         |
+| **one file's syntax tree** — a call, an import, a JSX attribute, a type annotation                                           | `create-sg-rule`                             | no         |
+| **a document's words** — docs, README, comments, commit bodies                                                               | `create-vale-rule`                           | no         |
+| **more than one file, or something outside the files** — the repo graph, git metadata, build output, a resolved config chain | `create-runtime-rule` / `create-remote-rule` | see step 5 |
 
    Sharpening the three engine rows, because most wrong answers are one
    of these:
@@ -92,17 +92,17 @@ answered together.
 
    Worked examples:
 
-   | Rule intent                                              | Evidence needed                           | Destination          |
-   |-----------------------------------------------------------|-------------------------------------------|----------------------|
-   | No `eval(...)` anywhere                                  | one file's call expressions               | `create-sg-rule`     |
-   | `useEffect` deps must include what the body reads        | one file's tree, correlated within it     | `create-sg-rule`     |
-   | Don't write "simply" or "just" in docs                   | a document's words                        | `create-vale-rule`   |
-   | Comments must not say "obviously"                        | a document's words (comments are prose)   | `create-vale-rule`   |
-   | Headings use sentence case                               | a document's markup                       | `create-vale-rule`   |
-   | Exported symbols must be used somewhere in the repo      | every file, correlated                    | runtime              |
-   | Product name spelled the same across all docs            | many documents, compared                  | runtime              |
-   | Files changed in the last release need a changelog entry | git metadata, not file contents           | runtime              |
-   | Imports must resolve through the tsconfig path aliases   | config chain resolution, outside the file | runtime              |
+| Rule intent                                              | Evidence needed                           | Destination        |
+|----------------------------------------------------------|-------------------------------------------|--------------------|
+| No `eval(...)` anywhere                                  | one file's call expressions               | `create-sg-rule`   |
+| `useEffect` deps must include what the body reads        | one file's tree, correlated within it     | `create-sg-rule`   |
+| Don't write "simply" or "just" in docs                   | a document's words                        | `create-vale-rule` |
+| Comments must not say "obviously"                        | a document's words (comments are prose)   | `create-vale-rule` |
+| Headings use sentence case                               | a document's markup                       | `create-vale-rule` |
+| Exported symbols must be used somewhere in the repo      | every file, correlated                    | runtime            |
+| Product name spelled the same across all docs            | many documents, compared                  | runtime            |
+| Files changed in the last release need a changelog entry | git metadata, not file contents           | runtime            |
+| Imports must resolve through the tsconfig path aliases   | config chain resolution, outside the file | runtime            |
 
 5. **Split the runtime row on login state.** Runtime rules execute code,
    so they run only against a server-verified signature:

@@ -62,19 +62,19 @@ it.
    built by extending one of its eleven checks, and the sentence tells
    you which:
 
-   | If the rule is about…                                 | extends          |
-   |-------------------------------------------------------|------------------|
-   | words or phrases that should not appear               | `existence`      |
-   | preferring one term over another — **including the correct spelling of a product name** | `substitution` |
-   | the case of a whole heading or sentence               | `capitalization` |
-   | how many times something may appear                   | `occurrence`     |
-   | a word repeated back to back                          | `repetition`     |
-   | picking one of two acceptable spellings, consistently | `consistency`    |
-   | "if X appears, Y must also appear"                    | `conditional`    |
-   | readability or length thresholds                      | `metric`         |
-   | a misspelling, against a dictionary                   | `spelling`       |
-   | phrases that must appear in a fixed order             | `sequence`       |
-   | anything the above cannot express (Tengo script)      | `script`         |
+| If the rule is about…                                                                   | extends          |
+|-----------------------------------------------------------------------------------------|------------------|
+| words or phrases that should not appear                                                 | `existence`      |
+| preferring one term over another — **including the correct spelling of a product name** | `substitution`   |
+| the case of a whole heading or sentence                                                 | `capitalization` |
+| how many times something may appear                                                     | `occurrence`     |
+| a word repeated back to back                                                            | `repetition`     |
+| picking one of two acceptable spellings, consistently                                   | `consistency`    |
+| "if X appears, Y must also appear"                                                      | `conditional`    |
+| readability or length thresholds                                                        | `metric`         |
+| a misspelling, against a dictionary                                                     | `spelling`       |
+| phrases that must appear in a fixed order                                               | `sequence`       |
+| anything the above cannot express (Tengo script)                                        | `script`         |
 
    **`capitalization` is about a whole scope, not a word.** It asks
    whether an entire heading or sentence matches a case pattern. It
@@ -106,13 +106,13 @@ it.
 
    Every rule carries:
 
-   | Field     | Required | Notes                                                   |
-   |-----------|----------|---------------------------------------------------------|
-   | `extends` | yes      | one of the eleven above                                 |
-   | `message` | yes      | shown to the user; see the `%%s` table below            |
-   | `level`   | no       | `suggestion` (default), `warning`, or `error`           |
-   | `scope`   | no       | narrow to part of a document — see below                |
-   | `link`    | no       | a URL the reader can follow for the reasoning           |
+| Field     | Required | Notes                                         |
+|-----------|----------|-----------------------------------------------|
+| `extends` | yes      | one of the eleven above                       |
+| `message` | yes      | shown to the user; see the `%%s` table below  |
+| `level`   | no       | `suggestion` (default), `warning`, or `error` |
+| `scope`   | no       | narrow to part of a document — see below      |
+| `link`    | no       | a URL the reader can follow for the reasoning |
 
    **`scope` decides where the rule looks**, so getting it wrong is a
    silent over- or under-fire rather than an error. The useful values for
@@ -124,27 +124,27 @@ it.
    **Then the fields the extension point adds** — this is where the rule
    actually lives, and each check reads only its own:
 
-   | extends          | its fields                                                        |
-   |------------------|-------------------------------------------------------------------|
-   | `existence`      | `tokens` (a list) or `raw`; `ignorecase`, `nonword`, `exceptions`, `append` |
-   | `substitution`   | `swap` (a map of observed → expected); `ignorecase`, `nonword`, `exceptions` |
-   | `capitalization` | `match`; `exceptions`, `style` (with `$title`), `threshold`, `indicators`, `prefix` |
-   | `occurrence`     | `token`, `max` and/or `min`                                       |
-   | `repetition`     | `tokens`; `alpha`, `ignorecase`                                   |
-   | `consistency`    | `either` (a map of the two acceptable forms)                      |
-   | `conditional`    | `first`, `second`; `exceptions`                                   |
-   | `metric`         | `formula`, `condition`                                            |
+| extends          | its fields                                                                          |
+|------------------|-------------------------------------------------------------------------------------|
+| `existence`      | `tokens` (a list) or `raw`; `ignorecase`, `nonword`, `exceptions`, `append`         |
+| `substitution`   | `swap` (a map of observed → expected); `ignorecase`, `nonword`, `exceptions`        |
+| `capitalization` | `match`; `exceptions`, `style` (with `$title`), `threshold`, `indicators`, `prefix` |
+| `occurrence`     | `token`, `max` and/or `min`                                                         |
+| `repetition`     | `tokens`; `alpha`, `ignorecase`                                                     |
+| `consistency`    | `either` (a map of the two acceptable forms)                                        |
+| `conditional`    | `first`, `second`; `exceptions`                                                     |
+| `metric`         | `formula`, `condition`                                                              |
 
    **What `%%s` fills with depends on the extension point.** Getting this
    wrong is the one mistake in this recipe that passes every check below
    — the rule fires, the fixtures are green, and only a human reading the
    message sees that it is nonsense.
 
-   | extends          | `%%s` count | fills with, left to right |
-   |------------------|------------|---------------------------|
-   | `existence`      | one        | the matched text          |
-   | `substitution`   | **two**    | the **replacement**, then the matched text |
-   | `capitalization` | one        | the scope that failed (the whole heading or sentence) |
+| extends          | `%%s` count | fills with, left to right                             |
+|------------------|-------------|-------------------------------------------------------|
+| `existence`      | one         | the matched text                                      |
+| `substitution`   | **two**     | the **replacement**, then the matched text            |
+| `capitalization` | one         | the scope that failed (the whole heading or sentence) |
 
    Measured: a `substitution` message with a single `%%s` interpolates the
    *replacement*, not the match, so `"Use GitHub not %%s"` against the text
@@ -196,14 +196,14 @@ it.
    — proper nouns included.** It is not "sentence case allowing proper
    nouns". Measured with `exceptions: [Taskless, API]` on headings:
 
-   | Heading                            | Result |
-   |------------------------------------|--------|
-   | `Getting started with the API`     | quiet  |
-   | `Getting started with APIs`        | quiet — an exception covers its plural |
-   | `Taskless and the API`             | quiet — an exception may lead the scope |
-   | `Getting started with Kubernetes`  | **fires** — a proper noun you did not list |
-   | `getting started lowercase`        | **fires** — the first word must be capitalized |
-   | `Getting Started With Title Case`  | **fires** |
+| Heading                           | Result                                         |
+|-----------------------------------|------------------------------------------------|
+| `Getting started with the API`    | quiet                                          |
+| `Getting started with APIs`       | quiet — an exception covers its plural         |
+| `Taskless and the API`            | quiet — an exception may lead the scope        |
+| `Getting started with Kubernetes` | **fires** — a proper noun you did not list     |
+| `getting started lowercase`       | **fires** — the first word must be capitalized |
+| `Getting Started With Title Case` | **fires**                                      |
 
    So `exceptions` is not decoration: every proper noun, product name and
    acronym the docs use has to be listed, or the rule flags correct

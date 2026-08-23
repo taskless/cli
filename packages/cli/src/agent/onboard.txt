@@ -145,9 +145,9 @@ rules as a bullet list the user can choose to materialize via the
 
 ## Errors
 
-| code                | meaning                                       | fix                                  |
-|---------------------|-----------------------------------------------|--------------------------------------|
-| `ALREADY_ONBOARDED` | `install.onboarded` is true and no `--force`  | suggest `--force` or skip onboarding |
+| code                | meaning                                      | fix                                  |
+|---------------------|----------------------------------------------|--------------------------------------|
+| `ALREADY_ONBOARDED` | `install.onboarded` is true and no `--force` | suggest `--force` or skip onboarding |
 
 ## See Also
 

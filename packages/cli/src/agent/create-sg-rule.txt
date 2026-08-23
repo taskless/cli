@@ -102,11 +102,11 @@ whole rule.
    - `ok: true` → go to step 7.
    - `ok: false` → read `errors` and fix. Repeat up to 3 times.
 
-   | what `errors` says                      | fix                                            |
-   |-----------------------------------------|------------------------------------------------|
-   | the YAML doesn't match the schema       | check field types against the upstream schema  |
-   | a Taskless-required field is missing    | add `id`/`language`/`severity`/`message`/`rule`|
-   | a case didn't behave as expected        | fix the rule pattern OR the test case          |
+| what `errors` says                   | fix                                             |
+|--------------------------------------|-------------------------------------------------|
+| the YAML doesn't match the schema    | check field types against the upstream schema   |
+| a Taskless-required field is missing | add `id`/`language`/`severity`/`message`/`rule` |
+| a case didn't behave as expected     | fix the rule pattern OR the test case           |
 
    A `regex` without an accompanying `kind` fails verification — the two
    always travel together.
