@@ -7,6 +7,7 @@ import { detectCommand } from "./commands/detect";
 import { initCommand, updateCommand } from "./commands/init";
 import { testCommand, verifyCommand } from "./commands/verify";
 import { infoCommand } from "./commands/info";
+import { type SubcommandName } from "./commands/names";
 import { onboardCommand } from "./commands/onboard";
 import { ruleCommand } from "./commands/rules";
 import {
@@ -19,6 +20,11 @@ import { DIR_FLAGS, hasHelpFlag, splitRawArguments } from "./util/argv";
 import { showResolvedUsage } from "./util/help";
 import { CLIError } from "./util/cli-error";
 
+// `satisfies` against the name list (minus `agent`, which is constructed from
+// this record below) is what keeps `SUBCOMMAND_NAMES` honest: adding a command
+// here without naming it there — or naming one there that is never registered —
+// fails typecheck instead of quietly drifting away from every consumer that
+// reads the list.
 const subCommands = {
   init: initCommand,
   update: updateCommand,
@@ -30,7 +36,7 @@ const subCommands = {
   rule: ruleCommand,
   verify: verifyCommand,
   test: testCommand,
-};
+} satisfies Record<Exclude<SubcommandName, "agent">, unknown>;
 
 const agentCommand = createAgentCommand(subCommands);
 
@@ -61,7 +67,7 @@ const main = defineCommand({
   subCommands: {
     ...subCommands,
     agent: agentCommand,
-  },
+  } satisfies Record<SubcommandName, unknown>,
   async run({ rawArgs, cmd }) {
     // citty always calls the parent's run handler, even after a subcommand.
     // Only take action when no positional args (i.e. no subcommand) were

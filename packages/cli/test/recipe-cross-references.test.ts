@@ -2,7 +2,9 @@ import { readdir, readFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
+import { SUBCOMMAND_NAMES } from "../src/commands/names";
 import { getRecipe } from "../src/prompts/recipes";
+import { buildInvocation } from "../src/util/invocation";
 
 /**
  * Recipes cite each other by topic name, in prose. Nothing resolves those
@@ -24,9 +26,41 @@ import { getRecipe } from "../src/prompts/recipes";
  */
 const recipeDirectory = resolve(import.meta.dirname, "../src/agent");
 
-/** The CLI's subcommands, as a recipe would name one. */
-const SUBCOMMANDS =
-  "agent|auth|check|detect|info|init|onboard|rule|test|update|verify";
+function escapeRegExp(literal: string): string {
+  return literal.replaceAll(/[$()*+.?[\\\]^{|}]/g, String.raw`\$&`);
+}
+
+/**
+ * The CLI's subcommands, as a recipe would name one — read from the registry
+ * in `src/commands/names.ts` rather than restated here. A restated list is a
+ * blind spot with a delay on it: a subcommand added to the CLI but forgotten
+ * here drops out of the alternation, and the guard below stops flagging a
+ * hand-written `taskless <that-command>` without anything going red.
+ */
+const SUBCOMMANDS = SUBCOMMAND_NAMES.map((name) => escapeRegExp(name)).join(
+  "|"
+);
+
+/**
+ * Every spelling the CLI can carry in RENDERED recipe text, longest first so
+ * the alternation prefers the most specific.
+ *
+ * `<taskless-cli>` is what a prod build with no detected launcher renders, and
+ * `buildInvocation()` is whatever THIS build bakes in — `npx @taskless/cli` for
+ * prod, `npx @taskless/cli-nightly@<version>` for a nightly, and a bare
+ * `node <path>/index.js` for `dev`/`self`. That last one is why the list is
+ * derived rather than written out: a fixed `taskless|@taskless/cli` anchor
+ * matches nothing under `TASKLESS_BUILD_TARGET=self`, so every citation check
+ * below would find zero citations and pass without checking anything. The two
+ * bare legacy spellings stay in the list so a citation that regresses to one of
+ * them is still checked rather than silently skipped.
+ */
+const CLI_NAMES = [
+  escapeRegExp(buildInvocation()),
+  "<taskless-cli>",
+  "@taskless/cli",
+  "taskless",
+].join("|");
 
 /**
  * A CLI invocation spelled out in a recipe source instead of deferred to
@@ -74,7 +108,7 @@ describe("shipped recipes name only commands that exist", () => {
     const offenders: string[] = [];
     for (const [file, rendered] of await renderedRecipes()) {
       for (const [index, line] of rendered.split("\n").entries()) {
-        if (/(?:taskless|@taskless\/cli|<taskless-cli>) help\b/.test(line)) {
+        if (new RegExp(String.raw`(?:${CLI_NAMES}) help\b`).test(line)) {
           offenders.push(`${file}:${String(index + 1)}: ${line.trim()}`);
         }
       }
@@ -87,19 +121,19 @@ describe("shipped recipes name only commands that exist", () => {
   it("cites only topics that resolve to an embedded recipe", async () => {
     const topics = await embeddedTopics();
     const dangling: string[] = [];
+    const citation = new RegExp(
+      String.raw`(?:${CLI_NAMES}) agent ([a-z][a-z-]*)`,
+      "g"
+    );
+    let cited = 0;
 
     for (const [file, rendered] of await renderedRecipes()) {
       for (const [index, line] of rendered.split("\n").entries()) {
-        // `<taskless-cli> agent <topic>` is what the invocation renders to
-        // under a prod build with no detected launcher, and it is the form
-        // every recipe now uses. The two older spellings stay matched so a
-        // citation that regresses to one of them is still checked rather than
-        // silently skipped.
-        for (const match of line.matchAll(
-          /(?:taskless|@taskless\/cli|<taskless-cli>) agent ([a-z][a-z-]*)/g
-        )) {
+        for (const match of line.matchAll(citation)) {
           const topic = match[1];
-          if (topic !== undefined && !topics.has(topic)) {
+          if (topic === undefined) continue;
+          cited += 1;
+          if (!topics.has(topic)) {
             dangling.push(`${file}:${String(index + 1)} cites '${topic}'`);
           }
         }
@@ -107,6 +141,13 @@ describe("shipped recipes name only commands that exist", () => {
     }
 
     expect(dangling).toEqual([]);
+    // An empty `dangling` is the same result whether every citation resolved or
+    // the pattern matched none of them, and the second reads as a pass. Recipes
+    // cross-reference each other heavily, so a run that finds no citation at
+    // all has stopped measuring the thing it reports on.
+    expect(cited, "found no recipe cross-references to check").toBeGreaterThan(
+      10
+    );
   });
 
   // Every recipe is reachable by the name its filename implies. A header that
@@ -152,8 +193,13 @@ describe("recipes defer the CLI invocation to the renderer", () => {
 
   it("renders a real invocation into every recipe that names the CLI", async () => {
     const rendered = await renderedRecipes();
-    const naming = rendered.filter(([, text]) =>
-      text.includes("<taskless-cli>")
+    // Same build-target reasoning as CLI_NAMES: a prod build with no detected
+    // launcher renders the `<taskless-cli>` marker, every other target renders
+    // its own invocation, and hardcoding the marker would make this assert
+    // nothing under `dev`/`self`.
+    const naming = rendered.filter(
+      ([, text]) =>
+        text.includes("<taskless-cli>") || text.includes(buildInvocation())
     );
     // Nearly every recipe tells the reader to run something; if this drops to
     // a handful, the normalization has been undone rather than improved.
