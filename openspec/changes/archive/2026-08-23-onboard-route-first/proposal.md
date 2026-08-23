@@ -48,9 +48,13 @@ no TypeScript, nothing that can be half-landed.
 - **Modified**: `packages/cli/src/agent/onboard.txt` (topic v1 → v2).
 - **Unchanged**: `packages/cli/src/agent/route.txt` — the criterion stays
   where it is, and this change deliberately adds no second copy of it.
-- **Unchanged**: all TypeScript. `packages/cli/test/onboard.test.ts`
-  asserts only the header and `## Goal`, and no test pins the topic
-  version, so the existing suite passes as written.
+- **Modified**: `packages/cli/test/onboard.test.ts` gains a `describe`
+  block pinning the route-first ordering, the annotated bullet format,
+  and the absence of `route`'s destination table. The recipe text is
+  materially more pinned after this change than before it — the
+  existing assertions checked only the header and `## Goal`.
+- **Unchanged**: all TypeScript under `src/`. No test pins the topic
+  version, so the `v1 → v2` bump breaks nothing.
 - **Out of scope**: surfacing whether `sg` and `vale` are actually
   resolvable on the host. `detect --json` reports `linters` /
   `languages` / `ruleStyles` and says nothing about engine

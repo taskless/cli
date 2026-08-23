@@ -45,10 +45,11 @@ rules as a bullet list the user can choose to materialize via the
    Read `detect --json` for what this repository actually has:
    `linters`, `languages`, and `ruleStyles`.
 
-   Do this before step 5, not after. Proposing first and routing
-   afterwards is how a bullet list ends up carrying candidates that
-   nothing can enforce. You are not choosing a destination command
-   here — that happens per accepted bullet in step 6.
+   Do this before you synthesize the bullet list, not after.
+   Proposing first and routing afterwards is how a bullet list ends
+   up carrying candidates that nothing can enforce. You are not
+   choosing a destination command here — that happens per accepted
+   bullet when you offer materialization.
 
 3. **Open the conversation about sources.** Tell the user you can mine
    several places for rule candidates and ask which ones they want to
@@ -99,7 +100,8 @@ rules as a bullet list the user can choose to materialize via the
    - <kebab-case-name> [<destination>]: <one-line description of what it would enforce>
    ```
 
-   `<destination>` is the routing call you reached in step 2 — one of
+   `<destination>` is the routing call you reached when you learned
+   the routing surface — one of
    `legacy`, `sg`, `vale`, or `runtime`. Example:
 
    ```
@@ -122,9 +124,9 @@ rules as a bullet list the user can choose to materialize via the
 7. **Offer materialization per bullet.** For each bullet, ask
    whether the user wants to turn it into a real Taskless rule. On
    yes, follow the `taskless agent route` recipe you already fetched
-   in step 2 — the user's accepted bullet becomes the rule
-   description input. Re-fetch it only if it has fallen out of
-   context.
+   when you learned the routing surface — the user's accepted bullet
+   becomes the rule description input. Re-fetch it only if it has
+   fallen out of context.
 
 8. **Ask before marking onboarding complete.** When the user signals
    they're done (they've materialized everything they want, or
