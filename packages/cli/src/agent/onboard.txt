@@ -11,19 +11,19 @@ rules as a bullet list the user can choose to materialize via the
 
 ## Preconditions
 - `.taskless/` directory exists (Taskless is installed). The
-  `taskless onboard` subcommand bootstraps it on first run, so this
+  `%(TASKLESS_CLI)s onboard` subcommand bootstraps it on first run, so this
   is automatically satisfied.
 - A working repository the agent can read.
 - No auth required to surface candidates. (Materializing a rule via
-  `rule create` may require auth — fetch `taskless agent auth` if
+  `rule create` may require auth — fetch `%(TASKLESS_CLI)s agent auth` if
   needed at that point.)
 
 ## Steps
 
 1. **Read the manifest first.** Run
-   `npx @taskless/cli info --json` and check whether
+   `%(TASKLESS_CLI)s info --json` and check whether
    `.taskless/taskless.json` reports `install.onboarded: true`. The
-   `taskless onboard` subcommand has already gated on this for you,
+   `%(TASKLESS_CLI)s onboard` subcommand has already gated on this for you,
    but if the user is invoking the recipe directly via the skill,
    confirm with the user before running a long discovery pass.
 
@@ -91,7 +91,7 @@ rules as a bullet list the user can choose to materialize via the
 
 6. **Offer materialization per bullet.** For each bullet, ask
    whether the user wants to turn it into a real Taskless rule. On
-   yes, fetch `taskless agent route` and follow that recipe —
+   yes, fetch `%(TASKLESS_CLI)s agent route` and follow that recipe —
    the user's accepted bullet becomes the rule description input.
 
 7. **Ask before marking onboarding complete.** When the user signals
@@ -102,7 +102,7 @@ rules as a bullet list the user can choose to materialize via the
    on explicit yes — run:
 
    ```
-   npx @taskless/cli onboard --mark-complete
+   %(TASKLESS_CLI)s onboard --mark-complete
    ```
 
    Do NOT mark onboarding complete on your own initiative. Do NOT
@@ -117,6 +117,6 @@ rules as a bullet list the user can choose to materialize via the
 
 ## See Also
 
-- `taskless agent route` — materialize an accepted bullet into a real rule
-- `taskless agent check` — validate newly created rules against the codebase
-- `taskless agent info` — inspect the current `.taskless/taskless.json` state
+- `%(TASKLESS_CLI)s agent route` — materialize an accepted bullet into a real rule
+- `%(TASKLESS_CLI)s agent check` — validate newly created rules against the codebase
+- `%(TASKLESS_CLI)s agent info` — inspect the current `.taskless/taskless.json` state

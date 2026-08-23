@@ -22,9 +22,9 @@ Delivery shape: **stacked, merging DOWN**, five PRs. Group 1 is the bottom branc
 
 ## 3. PR 3 — recipe normalization, part A
 
-- [ ] 3.1 Replace every bare `` `taskless <subcommand>` `` and every `npx @taskless/cli <subcommand>` with `%(TASKLESS_CLI)s <subcommand>` across the heaviest recipes. Leave prose mentions of the product, `taskless.config`, and `.taskless/` alone
-- [ ] 3.2 Leave `ci.txt`'s `%(PACKAGE_MANAGER_DLX)s` occurrences in place — they answer what the _consuming repo's_ CI should type, which is a different question from how this process was launched. Its one prose reference to `npx @taskless/cli` becomes `%(TASKLESS_CLI)s`
-- [ ] 3.3 Note in the PR body that `onboard.txt` conflicts with PR #142, which lands first
+- [x] 3.1 Replace every bare `` `taskless <subcommand>` `` and every `npx @taskless/cli <subcommand>` with `%(TASKLESS_CLI)s <subcommand>` across the heaviest recipes. Leave prose mentions of the product, `taskless.config`, and `.taskless/` alone
+- [x] 3.2 Leave `ci.txt`'s `%(PACKAGE_MANAGER_DLX)s` occurrences in place — they answer what the _consuming repo's_ CI should type, which is a different question from how this process was launched. Its one prose reference to `npx @taskless/cli` becomes `%(TASKLESS_CLI)s`
+- [x] 3.3 Note in the PR body that `onboard.txt` conflicts with PR #142, which lands first
 
 ## 4. PR 4 — recipe normalization, part B
 
