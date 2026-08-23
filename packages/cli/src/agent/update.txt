@@ -4,12 +4,12 @@
 Update Taskless skills in the user's coding-agent tools to the
 latest bundled version. Non-interactive — no wizard, no prompts.
 Installs to all detected tool locations using the same logic as
-`taskless init --no-interactive`, but exposed as its own subcommand
+`%(TASKLESS_CLI)s init --no-interactive`, but exposed as its own subcommand
 so the agent can run it directly without explaining flags.
 
 This is the right command when the user has Taskless already
 installed and just wants to refresh to a new version (e.g. after
-running `npx @taskless/cli@latest`).
+running `%(TASKLESS_CLI)s`).
 
 ## Preconditions
 - None at the user level. Works in any directory.
@@ -20,7 +20,7 @@ running `npx @taskless/cli@latest`).
 ## Steps
 
 ```
-npx @taskless/cli update
+%(TASKLESS_CLI)s update
 ```
 
 The CLI:
@@ -44,5 +44,5 @@ non-zero with the error message on stderr.
 
 ## See Also
 
-- `taskless agent init` — interactive variant (wizard with prompts)
-- `taskless agent info` — verify what's installed and check staleness
+- `%(TASKLESS_CLI)s agent init` — interactive variant (wizard with prompts)
+- `%(TASKLESS_CLI)s agent info` — verify what's installed and check staleness
