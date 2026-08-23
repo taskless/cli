@@ -8,7 +8,9 @@ The export SHALL provide `getInstructions(topic, options?)` and `getRawInstructi
 
 Both SHALL throw on a topic with no embedded recipe, matching `getPrompt`. The existing internal `getRecipe` accessor SHALL continue to return `undefined` for an unknown topic; the `agent` command distinguishes an unknown topic from a failure and cannot use a throwing accessor.
 
-`variables` SHALL be identical between the two functions for the same topic, since both describe the same template.
+`variables` SHALL be identical between the two functions for the same topic and options, since both describe the same template.
+
+`variables` SHALL describe the `text` that accessor returns. When `header: false` drops the header line, variables that appear only in that line (every recipe header carries `%(CLI_VERSION)s`) SHALL NOT be reported.
 
 #### Scenario: Rendered instructions match the existing accessor
 
@@ -19,6 +21,11 @@ Both SHALL throw on a topic with no embedded recipe, matching `getPrompt`. The e
 
 - **WHEN** a consumer renders `getRawInstructions(t).text` with sprintf-js against the same variable values the package used
 - **THEN** the result SHALL equal `getInstructions(t).text`
+
+#### Scenario: A header-less accessor does not report header-only variables
+
+- **WHEN** a consumer calls either accessor with `{ header: false }` for a topic whose only `%(CLI_VERSION)s` placeholder is in the header line
+- **THEN** `variables` SHALL NOT contain `CLI_VERSION`
 
 #### Scenario: An unknown topic throws
 
