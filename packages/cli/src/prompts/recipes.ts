@@ -210,10 +210,21 @@ function renderRecipe(
   topic: string,
   options: RecipeOptions = {}
 ): string {
-  const rendered = sprintf(
-    applyCliInvocation(content),
-    buildVariables(content, topic, options)
-  );
+  return renderTemplate(applyCliInvocation(content), topic, options);
+}
+
+/**
+ * Render an already-invocation-rewritten template. Split out from
+ * {@link renderRecipe} so a caller that needs the rewritten template for
+ * something else — {@link getRenderedRecipe}, which also reports the
+ * template's variables — rewrites once and passes it in.
+ */
+function renderTemplate(
+  template: string,
+  topic: string,
+  options: RecipeOptions = {}
+): string {
+  const rendered = sprintf(template, buildVariables(template, topic, options));
   return options.header === false ? stripHeader(rendered) : rendered;
 }
 
@@ -286,9 +297,14 @@ export function getRawRecipe(
   const content = lookupRecipe(topic, options);
   if (content === undefined) return undefined;
   const template = applyCliInvocation(content);
+  // `variables` describes the string we hand back, so it is collected from the
+  // post-strip text — not the full template. Every header line carries
+  // %(CLI_VERSION)s, so collecting before the strip would report a variable
+  // the returned `text` no longer contains.
+  const text = options.header === false ? stripHeader(template) : template;
   return {
-    text: options.header === false ? stripHeader(template) : template,
-    variables: collectVariables(template),
+    text,
+    variables: collectVariables(text),
   };
 }
 
@@ -299,8 +315,14 @@ export function getRenderedRecipe(
 ): RecipeText | undefined {
   const content = lookupRecipe(topic, options);
   if (content === undefined) return undefined;
+  const template = applyCliInvocation(content);
+  // Variables come from the *template*, never from the rendered text — sprintf
+  // has already collapsed `%%` to a literal `%` there — but from the same slice
+  // of it that `text` reflects, so a header-less rendering does not report the
+  // header's %(CLI_VERSION)s.
+  const source = options.header === false ? stripHeader(template) : template;
   return {
-    text: renderRecipe(content, topic, options),
-    variables: collectVariables(applyCliInvocation(content)),
+    text: renderTemplate(template, topic, options),
+    variables: collectVariables(source),
   };
 }

@@ -178,6 +178,45 @@ describe("raw and rendered instructions", () => {
     }
   });
 
+  it("reports variables for the text it returns when the header is dropped", async () => {
+    // The header line carries %(CLI_VERSION)s, so a header-less accessor must
+    // not keep reporting a variable its own `text` no longer contains.
+    const topics = await canonicalTopicsOnDisk();
+    let droppedSomewhere = false;
+
+    for (const topic of topics) {
+      const raw = getRawRecipe(topic, { header: false })!;
+      const rendered = getRenderedRecipe(topic, { header: false })!;
+
+      expect(
+        rendered.variables.toSorted(),
+        `${topic} raw/rendered differ`
+      ).toEqual(raw.variables.toSorted());
+      for (const name of raw.variables) {
+        expect(
+          raw.text,
+          `${topic} reports ${name} but the text has no placeholder for it`
+        ).toContain(`%(${name})`);
+      }
+
+      const withHeader = getRawRecipe(topic)!.variables;
+      expect(
+        withHeader,
+        `${topic} gained a variable by dropping the header`
+      ).toEqual(expect.arrayContaining(raw.variables));
+      if (
+        withHeader.includes("CLI_VERSION") &&
+        !raw.variables.includes("CLI_VERSION")
+      ) {
+        droppedSomewhere = true;
+      }
+    }
+
+    expect(droppedSomewhere, "no recipe exercises a header-only variable").toBe(
+      true
+    );
+  });
+
   it("keeps `%%` escaped in raw text and collapses it once rendered", async () => {
     // sprintf collapses `%%` to `%` irreversibly while parsing, which is why
     // the raw text must be the source template and never the output of the
