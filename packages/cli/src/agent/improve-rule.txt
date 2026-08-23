@@ -8,7 +8,7 @@ is to gather the right ruleId + guidance + supporting references and
 to report the result.
 
 If the user wants the local-only flow (no API call), fetch
-`taskless agent improve-rule --anonymous` instead.
+`%(TASKLESS_CLI)s agent improve-rule --anonymous` instead.
 
 ## Preconditions
 - User is logged in.
@@ -21,8 +21,8 @@ If the user wants the local-only flow (no API call), fetch
 
 ## Steps
 
-1. **Confirm auth.** Run `npx @taskless/cli info --json` and check
-   `loggedIn`. If false, fetch `taskless agent auth`.
+1. **Confirm auth.** Run `%(TASKLESS_CLI)s info --json` and check
+   `loggedIn`. If false, fetch `%(TASKLESS_CLI)s agent auth`.
 
 2. **Identify the rule to improve.** If the user named one, use it.
    Otherwise, list rules in `.taskless/rules/sg/` and ask which one.
@@ -30,11 +30,11 @@ If the user wants the local-only flow (no API call), fetch
 
 3. **Fetch the rule's metadata.** Run:
    ```
-   npx @taskless/cli rule meta <id> --json
+   %(TASKLESS_CLI)s rule meta <id> --json
    ```
    This returns the `ticketId` needed for the iterate request. If the
    metadata is missing, the rule cannot be iterated via API — fetch
-   `taskless agent improve-rule --anonymous` instead.
+   `%(TASKLESS_CLI)s agent improve-rule --anonymous` instead.
 
 4. **Gather improvement guidance.** Ask the user what should change:
    - Are there false positives we need to exclude?
@@ -60,7 +60,7 @@ If the user wants the local-only flow (no API call), fetch
 
 8. **Invoke the CLI.** Run:
    ```
-   npx @taskless/cli rule improve --from .taskless/.tmp-improve-request.json --json
+   %(TASKLESS_CLI)s rule improve --from .taskless/.tmp-improve-request.json --json
    ```
    This may take 30–60 seconds while the API generates the update.
 
@@ -69,7 +69,7 @@ If the user wants the local-only flow (no API call), fetch
 
 10. **Report results.** The CLI overwrites the rule file (and its
     test file) with the updated version. Show the file paths and a
-    summary of what changed. Suggest fetching `taskless agent check`
+    summary of what changed. Suggest fetching `%(TASKLESS_CLI)s agent check`
     to validate.
 
 ## Input schema
@@ -81,7 +81,7 @@ The `--from` JSON file conforms to:
 ```
 
 `ruleId` is the original rule's ticket ID (returned by
-`taskless rule meta <id> --json`), not the YAML file name.
+`%(TASKLESS_CLI)s rule meta <id> --json`), not the YAML file name.
 
 ## Errors
 
@@ -89,7 +89,7 @@ When `--json` is set, failures emit `{ ok: false, code, message }`:
 
 | code                     | meaning                                | fix                                          |
 |--------------------------|----------------------------------------|----------------------------------------------|
-| `AUTH_REQUIRED`          | not logged in                          | fetch `taskless agent auth`                   |
+| `AUTH_REQUIRED`          | not logged in                          | fetch `%(TASKLESS_CLI)s agent auth`                   |
 | `NO_GITHUB_REMOTE`       | no GitHub origin remote                | tell the user; we cannot proceed             |
 | `INVALID_INPUT`          | `--from` JSON failed validation        | re-read input schema, fix, retry             |
 | `RULE_NOT_FOUND`         | metadata missing for the given rule    | use anonymous variant or recreate via create |
@@ -99,6 +99,6 @@ When `--json` is set, failures emit `{ ok: false, code, message }`:
 
 ## See Also
 
-- `taskless agent improve-rule --anonymous` — local-only flow
-- `taskless agent route` — make a new rule from scratch
-- `taskless agent check` — validate the updated rule
+- `%(TASKLESS_CLI)s agent improve-rule --anonymous` — local-only flow
+- `%(TASKLESS_CLI)s agent route` — make a new rule from scratch
+- `%(TASKLESS_CLI)s agent check` — validate the updated rule

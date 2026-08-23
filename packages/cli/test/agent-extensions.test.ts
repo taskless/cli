@@ -124,7 +124,10 @@ describe("taskless agent <routing topic>", () => {
     const result = await runCli(["agent", topic, "-d", cwd]);
     expect(result.stdout).toContain("## You are here");
     expect(result.stdout).toContain(`This is \`${topic}\`.`);
-    expect(result.stdout).toContain("`taskless agent route`");
+    // Recipes name the CLI through `%(TASKLESS_CLI)s`, which renders as the
+    // agent-fill marker here: this is a prod build spawned as `node dist/…`,
+    // so nothing knows which launcher the reader has.
+    expect(result.stdout).toContain("`<taskless-cli> agent route`");
   });
 
   it.each(["existing", "static", "remote", "engine-selection", "rule-create"])(

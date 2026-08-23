@@ -3,7 +3,7 @@
 ## You are here
 This is `create-sg-rule`. It helps you write an ast-grep rule: a check
 over the structure of a single source file, authored on this machine.
-If that is not the kind of check you need, re-run `taskless agent route`
+If that is not the kind of check you need, re-run `%(TASKLESS_CLI)s agent route`
 and follow its decision rather than adapting this recipe.
 
 ## Goal
@@ -59,7 +59,7 @@ whole rule.
 3. **Check for an existing rule that already covers this.** Scan
    `.taskless/rules/sg/` and read each rule's `message`, `note`, and
    `rule` fields. If one overlaps, show the user and ask whether they
-   would rather improve it — `taskless agent improve-rule --anonymous`
+   would rather improve it — `%(TASKLESS_CLI)s agent improve-rule --anonymous`
    iterates a rule locally.
 
 4. **Author the rule in the canonical shape.** Write the rule to
@@ -85,8 +85,8 @@ whole rule.
 6. **Run the verify feedback loop.** Both commands take the rule's
    directory as their argument:
    ```
-   npx @taskless/cli verify .taskless/rules/sg/<id> --json
-   npx @taskless/cli test   .taskless/rules/sg/<id> --json
+   %(TASKLESS_CLI)s verify .taskless/rules/sg/<id> --json
+   %(TASKLESS_CLI)s test   .taskless/rules/sg/<id> --json
    ```
    `verify` asks whether the rule is well-formed: the YAML matches the
    ast-grep schema and every Taskless-required field is present. It
@@ -117,7 +117,7 @@ whole rule.
 
 7. **On success, report.** Show the rule directory and what is in it,
    plus a one-line summary of what the rule detects. Suggest
-   `taskless agent check` to validate against the broader codebase.
+   `%(TASKLESS_CLI)s agent check` to validate against the broader codebase.
 
 8. **On failure, escalate — with confirmation.** If after the feedback
    loop the rule still cannot capture the user's cases:
@@ -127,7 +127,7 @@ whole rule.
    - Tell the user the local rule could not capture the cases, and that
      generating via the Taskless service uses a generation and requires
      login.
-   - Only after the user confirms, fetch `taskless agent
+   - Only after the user confirms, fetch `%(TASKLESS_CLI)s agent
      create-remote-rule` and follow it. Do not call the service silently.
 
 ## Important Notes
@@ -140,8 +140,8 @@ whole rule.
 
 ## See Also
 
-- `taskless agent route` — re-decide the destination
-- `taskless agent verify-rule` — the `verify` and `test` commands step 6 calls
-- `taskless agent improve-rule` — iterate on a rule that already exists
-- `taskless agent create-remote-rule` — generate via the service (login)
-- `taskless agent check` — validate the new rule against the codebase
+- `%(TASKLESS_CLI)s agent route` — re-decide the destination
+- `%(TASKLESS_CLI)s agent verify-rule` — the `verify` and `test` commands step 6 calls
+- `%(TASKLESS_CLI)s agent improve-rule` — iterate on a rule that already exists
+- `%(TASKLESS_CLI)s agent create-remote-rule` — generate via the service (login)
+- `%(TASKLESS_CLI)s agent check` — validate the new rule against the codebase

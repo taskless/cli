@@ -19,7 +19,7 @@ answered together.
 
 1. **Read the repository.** Run:
    ```
-   npx @taskless/cli detect --json
+   %(TASKLESS_CLI)s detect --json
    ```
    This returns the configured linters, languages, and the repo's own
    rule styles. It is deterministic and offline — use it as ground truth
@@ -38,7 +38,7 @@ answered together.
 
 2. **Read the login state.** Run:
    ```
-   npx @taskless/cli info --json
+   %(TASKLESS_CLI)s info --json
    ```
    and note `loggedIn`. Do this now, not later: it changes which
    destinations exist, so classifying first means classifying against a
@@ -122,7 +122,7 @@ answered together.
 7. **Name the command.** Finish by telling the user, or running, the
    exact fetch for the destination you chose:
    ```
-   npx @taskless/cli agent create-vale-rule
+   %(TASKLESS_CLI)s agent create-vale-rule
    ```
    A destination that is not a runnable command is a category, and a
    category is not an answer.
@@ -148,7 +148,7 @@ fails against the user's cases:
 - State that generating via the service uses a generation and requires
   login.
 - Call the service only after the user confirms. On yes, fetch
-  `taskless agent create-remote-rule`.
+  `%(TASKLESS_CLI)s agent create-remote-rule`.
 
 Never fall through silently from a failed local attempt to a service
 call. A developer who watches a local attempt fail reads it as a
@@ -178,9 +178,9 @@ will work.
 
 ## See Also
 
-- `taskless agent create-legacy-rule` — author in a linter the repo already uses
-- `taskless agent create-sg-rule` — author a local ast-grep rule (no login)
-- `taskless agent create-vale-rule` — author a local Vale rule (no login)
-- `taskless agent create-runtime-rule` — the runtime tier, logged out
-- `taskless agent create-remote-rule` — generate via the service (login)
-- `taskless agent check` — run every engine over the repo
+- `%(TASKLESS_CLI)s agent create-legacy-rule` — author in a linter the repo already uses
+- `%(TASKLESS_CLI)s agent create-sg-rule` — author a local ast-grep rule (no login)
+- `%(TASKLESS_CLI)s agent create-vale-rule` — author a local Vale rule (no login)
+- `%(TASKLESS_CLI)s agent create-runtime-rule` — the runtime tier, logged out
+- `%(TASKLESS_CLI)s agent create-remote-rule` — generate via the service (login)
+- `%(TASKLESS_CLI)s agent check` — run every engine over the repo

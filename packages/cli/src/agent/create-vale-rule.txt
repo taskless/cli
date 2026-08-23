@@ -3,7 +3,7 @@
 ## You are here
 This is `create-vale-rule`. It helps you write a Vale rule: a check over
 the words of a document — prose, markup, and the prose parts of code.
-If that is not the kind of check you need, re-run `taskless agent route`
+If that is not the kind of check you need, re-run `%(TASKLESS_CLI)s agent route`
 and follow its decision rather than adapting this recipe.
 
 ## Goal
@@ -336,8 +336,8 @@ it.
    directory as their argument, both run from the project root:
 
    ```
-   npx @taskless/cli verify .taskless/rules/vale/<id> --json
-   npx @taskless/cli test   .taskless/rules/vale/<id> --json
+   %(TASKLESS_CLI)s verify .taskless/rules/vale/<id> --json
+   %(TASKLESS_CLI)s test   .taskless/rules/vale/<id> --json
    ```
 
    `verify` asks whether the rule is well-formed: the style file parses,
@@ -368,7 +368,7 @@ it.
    line numbers, run `check` against a bucket instead:
 
    ```
-   npx @taskless/cli check .taskless/rules/vale/<id>/.tests/fail --json
+   %(TASKLESS_CLI)s check .taskless/rules/vale/<id>/.tests/fail --json
    ```
 
    Read `results` there. Ignore `success` and the exit code: `success`
@@ -392,7 +392,7 @@ it.
 7. **Report.** Show the rule directory you created and what is in it, a
    one-line summary of what the rule flags, and the glob it is scoped
    to. The scope is a decision the user should see rather than one
-   buried in a config. Note that a whole-project `taskless check` skips
+   buried in a config. Note that a whole-project `%(TASKLESS_CLI)s check` skips
    your fixtures: `.taskless/` is excluded from the project walk, by
    design. `test` is what exercises them.
 
@@ -602,6 +602,6 @@ definition when the acronym is missing".
 
 ## See Also
 
-- `taskless agent route` — re-decide the destination
-- `taskless agent check` — run every engine over the repo
-- `taskless agent create-sg-rule` — author a rule over code structure
+- `%(TASKLESS_CLI)s agent route` — re-decide the destination
+- `%(TASKLESS_CLI)s agent check` — run every engine over the repo
+- `%(TASKLESS_CLI)s agent create-sg-rule` — author a rule over code structure
