@@ -5,14 +5,24 @@ import { pathToFileURL } from "node:url";
 import { promisify } from "node:util";
 import { describe, expect, it } from "vitest";
 
+import { sprintf } from "sprintf-js";
+
 import {
   PROMPTS,
   TOPICS,
   INTERNAL_TOPICS,
+  getInstructions,
   getPrompt,
+  getRawInstructions,
   type PromptOptions,
 } from "../src/prompts/index";
-import { canonicalRecipeTopics, getRecipe } from "../src/prompts/recipes";
+import {
+  buildVariables,
+  canonicalRecipeTopics,
+  getRawRecipe,
+  getRecipe,
+  getRenderedRecipe,
+} from "../src/prompts/recipes";
 
 const execFileAsync = promisify(execFile);
 
@@ -90,6 +100,125 @@ describe("prompt rendering", () => {
 
   it("returns undefined for an unknown topic", () => {
     expect(getRecipe("no-such-topic")).toBeUndefined();
+  });
+});
+
+/**
+ * The `TASKLESS_CLI` value for a set of options. Resolution is asserted on the
+ * variables table rather than on rendered recipe text: the table is where the
+ * three-step decision is made, and its answer is the same whether or not any
+ * given recipe happens to cite the CLI.
+ */
+function invocationVariable(options?: PromptOptions): string {
+  return buildVariables("", "any-topic", options).TASKLESS_CLI!;
+}
+
+describe("the CLI invocation variable", () => {
+  const TASKLESS_CLI = invocationVariable;
+
+  it("renders the agent-fill marker from a prod build with no invocation", () => {
+    // The test build is prod, so no build-target invocation is available and
+    // nothing was passed in. The marker is the correct answer; `npx
+    // @taskless/cli` would be a guess about a launcher the reader may not use.
+    expect(TASKLESS_CLI()).toBe("<taskless-cli>");
+    expect(TASKLESS_CLI({})).toBe("<taskless-cli>");
+  });
+
+  it("renders a supplied invocation verbatim", () => {
+    expect(TASKLESS_CLI({ invocation: "pnpm dlx @taskless/cli@latest" })).toBe(
+      "pnpm dlx @taskless/cli@latest"
+    );
+    expect(TASKLESS_CLI({ invocation: "node dist/index.js" })).toBe(
+      "node dist/index.js"
+    );
+  });
+
+  it("is provided on every render, alongside the other markers", () => {
+    const table = buildVariables("", "any-topic");
+    expect(Object.keys(table).toSorted()).toEqual([
+      "CLI_VERSION",
+      "PACKAGE_MANAGER_DLX",
+      "TASKLESS_CLI",
+    ]);
+    // INPUT_SCHEMA stays conditional on the placeholder being present.
+    expect(buildVariables("%(INPUT_SCHEMA)s", "improve-rule")).toHaveProperty(
+      "INPUT_SCHEMA"
+    );
+  });
+});
+
+describe("raw and rendered instructions", () => {
+  it("round-trips: rendering the raw template reproduces the rendered text", async () => {
+    for (const topic of await canonicalTopicsOnDisk()) {
+      const raw = getRawRecipe(topic);
+      const rendered = getRenderedRecipe(topic);
+      expect(raw, `no raw recipe for ${topic}`).toBeDefined();
+      expect(rendered, `no rendered recipe for ${topic}`).toBeDefined();
+      expect(
+        sprintf(raw!.text, buildVariables(raw!.text, topic)),
+        `${topic} does not round-trip`
+      ).toBe(rendered!.text);
+    }
+  });
+
+  it("reports the same variables from both forms, and only real ones", async () => {
+    for (const topic of await canonicalTopicsOnDisk()) {
+      const raw = getRawRecipe(topic)!;
+      expect(getRenderedRecipe(topic)!.variables.toSorted()).toEqual(
+        raw.variables.toSorted()
+      );
+      // Every name sprintf asked for must be one the renderer can answer, or
+      // the recipe carries a placeholder nothing resolves.
+      const table = buildVariables(raw.text, topic);
+      for (const name of raw.variables) {
+        expect(table, `${topic} names an unresolvable ${name}`).toHaveProperty(
+          name
+        );
+      }
+    }
+  });
+
+  it("keeps `%%` escaped in raw text and collapses it once rendered", async () => {
+    // sprintf collapses `%%` to `%` irreversibly while parsing, which is why
+    // the raw text must be the source template and never the output of the
+    // variable-collecting pass.
+    const topics = await canonicalTopicsOnDisk();
+    const escaped = topics
+      .map((topic) => ({ topic, raw: getRawRecipe(topic)!.text }))
+      .filter(({ raw }) => raw.includes("%%"));
+
+    expect(escaped.length, "no recipe exercises a `%%` escape").toBeGreaterThan(
+      0
+    );
+    for (const { topic, raw } of escaped) {
+      const rendered = getRecipe(topic) ?? "";
+      expect(rendered, `${topic} kept its escape`).not.toContain("%%");
+      expect(sprintf(raw, buildVariables(raw, topic))).toBe(rendered);
+    }
+  });
+
+  it("exposes both forms as public API and matches getPrompt", () => {
+    for (const topic of TOPICS) {
+      expect(getInstructions(topic).text).toBe(getPrompt(topic));
+      expect(getRawInstructions(topic).variables).toEqual(
+        getInstructions(topic).variables
+      );
+      // Raw is a template, rendered is not.
+      expect(getRawInstructions(topic).text).not.toBe(
+        getInstructions(topic).text
+      );
+    }
+  });
+
+  it("throws on an unknown topic while getRecipe still returns undefined", () => {
+    // @ts-expect-error "no-such-topic" is not a member of PromptTopic
+    expect(() => getInstructions("no-such-topic")).toThrow(/packaging fault/);
+    // @ts-expect-error "no-such-topic" is not a member of PromptTopic
+    expect(() => getRawInstructions("no-such-topic")).toThrow(
+      /packaging fault/
+    );
+    expect(getRawRecipe("no-such-topic")).toBeUndefined();
+    expect(getRenderedRecipe("no-such-topic")).toBeUndefined();
   });
 });
 
