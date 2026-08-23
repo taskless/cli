@@ -81,6 +81,23 @@ function inPnpmDlxCache(segments: readonly string[]): boolean {
 }
 
 /**
+ * Whether `argv[1]` runs out of npx's package cache, as opposed to merely
+ * passing through some directory named `_npx`.
+ *
+ * The cache shape is `<npm cache>/_npx/<hash>/node_modules/.bin/<bin>`, so a
+ * real hit has at least one segment after `_npx`. Unlike {@link inPnpmDlxCache}
+ * this cannot also validate the segment *before* it: the npm cache location is
+ * configurable (`npm_config_cache`), so the parent has no fixed name to check.
+ * The trailing-segment requirement is the part that is checkable, and a
+ * directory named `_npx` at the very end of a path is not a cache root.
+ */
+function inNpxCache(segments: readonly string[]): boolean {
+  return segments.some(
+    (segment, index) => segment === "_npx" && index + 1 < segments.length
+  );
+}
+
+/**
  * Which launcher started this process, or `undefined` when nothing says.
  *
  * `undefined` is a real answer, not a failure. Every caller has a better
@@ -94,7 +111,7 @@ export function detectLauncher(context: LauncherContext): Launcher | undefined {
   // npx: the cache directory is the strong signal; the env pair is what npx
   // sets for the script it runs, and covers a launch whose path was resolved
   // through a symlink.
-  if (segments.includes("_npx")) return "npx";
+  if (inNpxCache(segments)) return "npx";
   if (
     context.env.npm_command === "exec" &&
     context.env.npm_lifecycle_event === "npx"

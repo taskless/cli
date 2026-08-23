@@ -7,6 +7,10 @@ import { readManifest, writeManifest } from "../filesystem/migrate";
 import { getRecipe } from "../prompts/recipes";
 import { getTelemetry } from "../telemetry";
 import { CLIError } from "../util/cli-error";
+import {
+  detectCliInvocation,
+  processLauncherContext,
+} from "../util/package-manager";
 
 /**
  * One-line trailer printed by `taskless init` (and the wizard) after a
@@ -95,7 +99,14 @@ export const onboardCommand = defineCommand({
       return;
     }
 
-    const recipe = getRecipe("onboard");
+    // Detected here rather than inside the prompts module, which Workers
+    // import without `nodejs_compat`. `taskless onboard` is the ONLY serving
+    // path for this recipe — it is not a topic `agent` dispatches — so
+    // omitting this renders every invocation in it as the agent-fill marker
+    // for anyone running a published build.
+    const recipe = getRecipe("onboard", {
+      invocation: detectCliInvocation(processLauncherContext()),
+    });
     if (recipe === undefined) {
       // Should not happen — onboard.txt is embedded at build time.
       console.error("Internal error: onboard recipe is not available.");

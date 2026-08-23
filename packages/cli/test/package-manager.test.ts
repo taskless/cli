@@ -40,6 +40,14 @@ describe("detectLauncher", () => {
       "npx",
     ],
     [
+      // The npx counterpart to the `dlx` false positive below: a trailing
+      // directory someone named `_npx` is not a cache root, and nothing else
+      // in this context says npx.
+      "a path ending in a directory named _npx, with no npm env",
+      context("/repo/tools/_npx", { npm_config_user_agent: NPM_AGENT }),
+      undefined,
+    ],
+    [
       "npx, by the environment it sets for the script it runs",
       context("/somewhere/opaque/taskless", {
         npm_command: "exec",
