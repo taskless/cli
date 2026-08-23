@@ -201,6 +201,56 @@ describe("taskless onboard", () => {
   });
 });
 
+// #141: `taskless onboard` is the ONLY serving path for onboard.txt — it is
+// not a topic `agent` dispatches — so it must detect and pass the invocation
+// itself. The byte-parity test above cannot catch a regression here: both
+// paths spawn a bare `node dist/index.js`, under which detection correctly
+// returns undefined for BOTH, so they agree on marker-filled output while
+// taking different code paths. Only a launcher-shaped environment separates
+// them.
+describe("onboard renders a real invocation, not the agent-fill marker", () => {
+  let cwd: string;
+
+  // The env npx sets, per the observations behind `detectLauncher`.
+  const npxEnvironment = {
+    npm_config_user_agent: "npm/11.8.0 node/v24.13.1 darwin arm64",
+    npm_lifecycle_event: "npx",
+    npm_command: "exec",
+  };
+
+  async function runUnderNpx(args: string[]): Promise<string> {
+    const { stdout } = await execFileAsync("node", [binPath, ...args], {
+      cwd,
+      env: { ...process.env, ...npxEnvironment },
+    });
+    return stdout;
+  }
+
+  beforeEach(async () => {
+    cwd = await mkdtemp(join(tmpdir(), "taskless-onboard-invocation-"));
+  });
+
+  afterEach(async () => {
+    await rm(cwd, { recursive: true, force: true });
+  });
+
+  it("resolves the invocation when launched through npx", async () => {
+    const stdout = await runUnderNpx(["onboard", "-d", cwd]);
+
+    expect(stdout).toContain("npx @taskless/cli");
+    expect(stdout).not.toContain("<taskless-cli>");
+  });
+
+  it("agrees with `agent onboard` under the same launcher", async () => {
+    // The parity the bare-spawn test intends to assert, under an environment
+    // where the two paths can actually disagree.
+    const viaOnboard = await runUnderNpx(["onboard", "--force", "-d", cwd]);
+    const viaAgent = await runUnderNpx(["agent", "onboard", "-d", cwd]);
+
+    expect(viaOnboard.trim()).toBe(viaAgent.trim());
+  });
+});
+
 // #140: the bullet list is authored before anything establishes what this
 // repository can express, so an unroutable candidate reaches the user looking
 // exactly like a good one. These guard the ordering and the annotation that
