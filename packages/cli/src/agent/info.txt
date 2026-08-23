@@ -53,9 +53,9 @@ which version of the CLI/skills the agent is talking to.
 
 When `--json` is set, failures emit `{ ok: false, code, message }`:
 
-| code              | meaning                          | fix                       |
-|-------------------|----------------------------------|---------------------------|
-| `INTERNAL_ERROR`  | Internal schema validation       | Report; likely a CLI bug  |
+| code             | meaning                    | fix                      |
+|------------------|----------------------------|--------------------------|
+| `INTERNAL_ERROR` | Internal schema validation | Report; likely a CLI bug |
 
 (Network errors during the auth probe are silently swallowed —
 `info` falls back to reporting `loggedIn: false` rather than

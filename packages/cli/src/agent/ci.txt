@@ -25,17 +25,17 @@ you recognize one not on the list, apply the same patterns.
 
 Scan the repo root for CI config files. Hints (not exhaustive):
 
-| File / directory                          | CI system           |
-|-------------------------------------------|---------------------|
-| `.github/workflows/*.yml`                 | GitHub Actions      |
-| `.gitlab-ci.yml`                          | GitLab CI           |
-| `.circleci/config.yml`                    | CircleCI            |
-| `Jenkinsfile`                             | Jenkins             |
-| `azure-pipelines.yml`                     | Azure Pipelines     |
-| `bitbucket-pipelines.yml`                 | Bitbucket Pipelines |
-| `.buildkite/`                             | Buildkite           |
-| `.drone.yml`                              | Drone               |
-| `.travis.yml`                             | Travis CI           |
+| File / directory          | CI system           |
+|---------------------------|---------------------|
+| `.github/workflows/*.yml` | GitHub Actions      |
+| `.gitlab-ci.yml`          | GitLab CI           |
+| `.circleci/config.yml`    | CircleCI            |
+| `Jenkinsfile`             | Jenkins             |
+| `azure-pipelines.yml`     | Azure Pipelines     |
+| `bitbucket-pipelines.yml` | Bitbucket Pipelines |
+| `.buildkite/`             | Buildkite           |
+| `.drone.yml`              | Drone               |
+| `.travis.yml`             | Travis CI           |
 
 Sum up what you found and confirm with the user. If zero match, ask
 which CI they use. If multiple match, ask which should run Taskless.
@@ -47,14 +47,14 @@ which CI they use. If multiple match, ask which should run Taskless.
 - **Diff scan** — `%(TASKLESS_CLI)s check $(git diff --name-only ...)`.
   Faster for PR builds. Per-CI diff target var:
 
-  | CI                  | Target branch variable                       |
-  |---------------------|----------------------------------------------|
-  | GitHub Actions      | `github.base_ref`                            |
-  | GitLab CI           | `CI_MERGE_REQUEST_TARGET_BRANCH_NAME`        |
-  | CircleCI            | `CIRCLE_BRANCH` (fetch main and diff against)|
-  | Jenkins             | `env.CHANGE_TARGET`                          |
-  | Azure Pipelines     | `System.PullRequest.TargetBranch`            |
-  | Bitbucket Pipelines | `BITBUCKET_PR_DESTINATION_BRANCH`            |
+| CI                  | Target branch variable                        |
+|---------------------|-----------------------------------------------|
+| GitHub Actions      | `github.base_ref`                             |
+| GitLab CI           | `CI_MERGE_REQUEST_TARGET_BRANCH_NAME`         |
+| CircleCI            | `CIRCLE_BRANCH` (fetch main and diff against) |
+| Jenkins             | `env.CHANGE_TARGET`                           |
+| Azure Pipelines     | `System.PullRequest.TargetBranch`             |
+| Bitbucket Pipelines | `BITBUCKET_PR_DESTINATION_BRANCH`             |
 
   `%(TASKLESS_CLI)s check` silently filters paths that don't exist, so raw
   `git diff --name-only` output can pipe in directly.
@@ -81,15 +81,15 @@ Rules:
 
 Canonical paths:
 
-| CI                  | File path                                    |
-|---------------------|----------------------------------------------|
-| GitHub Actions      | `.github/workflows/taskless.yml` (standalone, no include needed) |
-| GitLab CI           | `.taskless/ci/gitlab.yml` (user adds `include`)                 |
-| CircleCI            | `.taskless/ci/circleci-job.yml` (no include — user copies job) |
-| Jenkins             | `.taskless/ci/taskless.Jenkinsfile` (user `load()`s)            |
+| CI                  | File path                                                           |
+|---------------------|---------------------------------------------------------------------|
+| GitHub Actions      | `.github/workflows/taskless.yml` (standalone, no include needed)    |
+| GitLab CI           | `.taskless/ci/gitlab.yml` (user adds `include`)                     |
+| CircleCI            | `.taskless/ci/circleci-job.yml` (no include — user copies job)      |
+| Jenkins             | `.taskless/ci/taskless.Jenkinsfile` (user `load()`s)                |
 | Azure Pipelines     | `.taskless/ci/azure-taskless.yml` (user references via `template:`) |
-| Bitbucket Pipelines | `.taskless/ci/bitbucket-pipelines.yml` (user merges manually)   |
-| Other               | `.taskless/ci/<system>.<ext>` + clear wiring instructions       |
+| Bitbucket Pipelines | `.taskless/ci/bitbucket-pipelines.yml` (user merges manually)       |
+| Other               | `.taskless/ci/<system>.<ext>` + clear wiring instructions           |
 
 ### 5. GitHub Actions reference template
 

@@ -76,11 +76,11 @@ validate with `verify` and `test` in a feedback loop.
 
 The verify primitive returns structured errors per layer:
 
-| layer          | what failure means                           | fix                                       |
-|----------------|----------------------------------------------|-------------------------------------------|
-| `schema`       | YAML doesn't match ast-grep schema           | Fix rule structure                         |
-| `requirements` | Missing Taskless-required field              | Add `id`/`language`/`severity`/etc.        |
-| `tests`        | A test case behaved unexpectedly             | Fix the rule pattern OR the test case      |
+| layer          | what failure means                 | fix                                   |
+|----------------|------------------------------------|---------------------------------------|
+| `schema`       | YAML doesn't match ast-grep schema | Fix rule structure                    |
+| `requirements` | Missing Taskless-required field    | Add `id`/`language`/`severity`/etc.   |
+| `tests`        | A test case behaved unexpectedly   | Fix the rule pattern OR the test case |
 
 ## See Also
 

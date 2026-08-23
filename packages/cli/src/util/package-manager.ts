@@ -171,10 +171,10 @@ export function detectCliInvocation(
  * marker would be useless here and a guessed launcher is useless in a recipe.
  */
 export function getCliPrefix(): string {
-  const detected = detectCliInvocation(processLauncherContext());
-  if (detected !== undefined) return detected;
   const specifier = pinnedSpecifier();
-  return specifier === undefined
-    ? buildInvocation()
-    : `${LAUNCHER_COMMANDS.npx} ${specifier}`;
+  // A path-form build has no launcher to choose, so there is nothing to
+  // default to — the same reason `detectCliInvocation` returns early on it.
+  if (specifier === undefined) return buildInvocation();
+  const launcher = detectLauncher(processLauncherContext());
+  return `${LAUNCHER_COMMANDS[launcher ?? "npx"]} ${specifier}`;
 }

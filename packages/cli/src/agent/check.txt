@@ -119,9 +119,9 @@ authoritative allow-list is the server's; the CI backstop
 
 When `--json` is set, failures emit `{ ok: false, code, message }`:
 
-| code           | meaning                            | fix                              |
-|----------------|------------------------------------|----------------------------------|
-| `SCAN_FAILED`  | ast-grep scan errored              | Report; check rule YAML validity |
+| code          | meaning               | fix                              |
+|---------------|-----------------------|----------------------------------|
+| `SCAN_FAILED` | ast-grep scan errored | Report; check rule YAML validity |
 
 ## See Also
 

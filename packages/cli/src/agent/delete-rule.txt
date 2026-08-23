@@ -39,9 +39,9 @@ rule is deleted by removing its directory by hand.
 When `--json` is set, failures emit `{ ok: false, code, message }` on
 stdout; on success the command exits 0 silently (no envelope).
 
-| code             | meaning                  | fix                                  |
-|------------------|--------------------------|--------------------------------------|
-| `RULE_NOT_FOUND` | No `rules/sg/<id>/`      | Confirm the ID; list rules first     |
+| code             | meaning             | fix                              |
+|------------------|---------------------|----------------------------------|
+| `RULE_NOT_FOUND` | No `rules/sg/<id>/` | Confirm the ID; list rules first |
 
 The rule ID is required as a positional argument; citty rejects a
 missing ID before the command body runs, so `INVALID_INPUT` is not

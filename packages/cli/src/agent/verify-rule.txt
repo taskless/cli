@@ -31,11 +31,11 @@ and would otherwise bury the reason the rule could never have run.
 
 What each engine is checked for:
 
-| engine    | `verify` checks                                                            | `test` runs                       |
-|-----------|----------------------------------------------------------------------------|-----------------------------------|
-| `sg`      | ast-grep schema, plus `id`/`language`/`severity`/`message`/`rule`, and `regex` accompanied by `kind` | the `valid`/`invalid` cases in `.tests/` |
-| `vale`    | style parses, `extends` and `message` present, `level` in vocabulary, and the rule's `.vale.ini` enables `<id>.<id>` under a matcher | the `.tests/pass/` and `.tests/fail/` buckets |
-| `runtime` | `check.ts` present, at least one capture rule in `captures/`                | reported as not run: runtime tests need the server harness |
+| engine    | `verify` checks                                                                                                                      | `test` runs                                                |
+|-----------|--------------------------------------------------------------------------------------------------------------------------------------|------------------------------------------------------------|
+| `sg`      | ast-grep schema, plus `id`/`language`/`severity`/`message`/`rule`, and `regex` accompanied by `kind`                                 | the `valid`/`invalid` cases in `.tests/`                   |
+| `vale`    | style parses, `extends` and `message` present, `level` in vocabulary, and the rule's `.vale.ini` enables `<id>.<id>` under a matcher | the `.tests/pass/` and `.tests/fail/` buckets              |
+| `runtime` | `check.ts` present, at least one capture rule in `captures/`                                                                         | reported as not run: runtime tests need the server harness |
 
 ## What a path means
 
@@ -43,11 +43,11 @@ The path is a location under `.taskless/rules/`, and the `<engine>`
 segment is what decides the engine. Nothing parses a rule file to work
 out who owns it, so the same id under two engines is never ambiguous.
 
-| Path                              | Scope                       |
-|-----------------------------------|-----------------------------|
-| `.taskless/rules/vale/no-simply`  | that one rule               |
-| `.taskless/rules/vale`            | every Vale rule             |
-| `.taskless/rules`                 | every rule (also the default when you pass no path) |
+| Path                             | Scope                                               |
+|----------------------------------|-----------------------------------------------------|
+| `.taskless/rules/vale/no-simply` | that one rule                                       |
+| `.taskless/rules/vale`           | every Vale rule                                     |
+| `.taskless/rules`                | every rule (also the default when you pass no path) |
 
 A path outside `.taskless/rules/` is an error naming the path. So is a
 path inside it that holds no rule.

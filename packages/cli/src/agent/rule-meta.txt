@@ -20,10 +20,10 @@ version, etc.
 
 ## Errors
 
-| code             | meaning                              | fix                                |
-|------------------|--------------------------------------|------------------------------------|
-| `RULE_NOT_FOUND` | metadata sidecar missing             | Use anonymous improve flow instead |
-| `INVALID_INPUT`  | metadata file malformed              | File is corrupted; re-create rule  |
+| code             | meaning                  | fix                                |
+|------------------|--------------------------|------------------------------------|
+| `RULE_NOT_FOUND` | metadata sidecar missing | Use anonymous improve flow instead |
+| `INVALID_INPUT`  | metadata file malformed  | File is corrupted; re-create rule  |
 
 ## See Also
 

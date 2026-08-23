@@ -27,10 +27,10 @@ tiers are not, and what the user has to do before one can run.
 A rule directory under `.taskless/rules/runtime/<name>/` holding two
 kinds of file:
 
-| Path              | Role                                                             |
-|-------------------|------------------------------------------------------------------|
-| `captures/*.yml`  | ast-grep capture rules that narrow which files the check looks at |
-| `check.ts`        | a module whose default export receives those matches and returns findings |
+| Path             | Role                                                                      |
+|------------------|---------------------------------------------------------------------------|
+| `captures/*.yml` | ast-grep capture rules that narrow which files the check looks at         |
+| `check.ts`       | a module whose default export receives those matches and returns findings |
 
 `verify` fails a runtime rule with no capture rule in `captures/`,
 because `check.ts` would then never be invoked.
