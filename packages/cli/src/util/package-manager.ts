@@ -53,6 +53,34 @@ function launchPathSegments(context: LauncherContext): string[] {
 }
 
 /**
+ * The directory pnpm keeps its dlx cache under, which is the store directory
+ * rather than a fixed name: `…/pnpm/dlx/<hash>/…` on macOS and Linux,
+ * `…\pnpm-cache\dlx\<hash>\…` on Windows. Matching `pnpm` with an optional
+ * suffix covers both without accepting an unrelated parent directory.
+ */
+const PNPM_STORE_SEGMENT = /^pnpm(?:[-_][\w.-]+)?$/;
+
+/**
+ * Whether `argv[1]` runs out of pnpm's dlx cache, as opposed to merely passing
+ * through some directory a person named `dlx`.
+ *
+ * The cache shape is `<pnpm store>/dlx/<hash>/…`, so a real hit has a pnpm
+ * store segment immediately before `dlx` and at least one segment after it.
+ * Requiring only a bare `dlx` segment would misread an ordinary `pnpm run` in
+ * any repository that happens to contain a directory of that name — a milder
+ * recurrence of the user-agent bug this module exists to fix.
+ */
+function inPnpmDlxCache(segments: readonly string[]): boolean {
+  return segments.some(
+    (segment, index) =>
+      segment === "dlx" &&
+      index > 0 &&
+      PNPM_STORE_SEGMENT.test(segments[index - 1] ?? "") &&
+      index + 1 < segments.length
+  );
+}
+
+/**
  * Which launcher started this process, or `undefined` when nothing says.
  *
  * `undefined` is a real answer, not a failure. Every caller has a better
@@ -76,9 +104,9 @@ export function detectLauncher(context: LauncherContext): Launcher | undefined {
 
   // pnpm dlx: BOTH signals are required. The user agent alone is set by every
   // pnpm entry point, and a bare `dlx` path segment alone could be any
-  // directory someone happened to name that.
+  // directory someone happened to name that — hence the full cache shape.
   const userAgent = context.env.npm_config_user_agent ?? "";
-  if (userAgent.startsWith("pnpm/") && segments.includes("dlx")) {
+  if (userAgent.startsWith("pnpm/") && inPnpmDlxCache(segments)) {
     return "pnpm-dlx";
   }
 
