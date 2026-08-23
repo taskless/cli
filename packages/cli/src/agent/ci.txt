@@ -96,12 +96,14 @@ Canonical paths:
 The reference template — translate the same shape (checkout with
 full history, set up Node, conditional check) for other CIs.
 
-Substitute `%(PACKAGE_MANAGER_DLX)s` with the CI runner's own launcher —
-`npx`, `pnpm dlx`, `yarn dlx`, or `bunx` based on
-`pnpm-lock.yaml`/`yarn.lock`/`bun.lockb` — followed by the same package
-`%(TASKLESS_CLI)s` names. That is a question about the repository you are
-wiring up, not about how this recipe was fetched, which is why it stays a
-separate placeholder.
+Substitute `%(PACKAGE_MANAGER_DLX)s` with the CI runner's own complete
+invocation — `npx @taskless/cli`, `pnpm dlx @taskless/cli`,
+`yarn dlx @taskless/cli`, or `bunx @taskless/cli` — picking the launcher
+from `pnpm-lock.yaml`/`yarn.lock`/`bun.lockb`. It is a whole command on
+its own, exactly as the template uses it; never combine it with
+`%(TASKLESS_CLI)s`. Which launcher the repository you are wiring up should
+run is a different question from how this recipe was fetched, which is why
+it stays a separate placeholder.
 
 ```yaml
 name: Taskless
@@ -194,7 +196,9 @@ the user explicitly asks to run authenticated commands (e.g.
 
 - **pnpm**: `pnpm dlx` works but has slow cold starts. If the user's
   pipeline already sets up pnpm, suggest adding `@taskless/cli` as a
-  dev dep and calling it via `pnpm %(TASKLESS_CLI)s check`.
+  dev dep and calling it via `pnpm taskless check`. That `taskless` is the
+  binary pnpm resolves from the wired repo's own `node_modules/.bin`, not
+  this CLI's invocation, so it is not `%(TASKLESS_CLI)s`.
 - **Yarn v1 (classic)**: doesn't support `yarn dlx`. Use `npx`.
 - **Bun**: `bunx` works.
 
