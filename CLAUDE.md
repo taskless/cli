@@ -184,13 +184,14 @@ Practically, landing a stack now looks like:
 gh pr merge <bottom> --repo <owner>/<repo> --rebase
 git fetch origin
 git rebase -S origin/main            # in the next branch's worktree
-git push --force-with-lease=<branch>:$(git rev-parse origin/<branch>)
+git push origin --force-with-lease=<branch>:$(git rev-parse origin/<branch>) <branch>
 ```
 
-Two things that will bite:
+Three things that will bite:
 
 - **Branch protection is `strict_up_to_date: true`,** so the next PR reports `mergeable_state: "behind"` until you rebase it. That is not a conflict; it is the protection asking for the rebase you owe it.
 - **Right after a merge, `rebaseable` reads `null`** while GitHub recomputes. Poll until it is a boolean rather than treating `null` as "not mergeable" — reading it as a failure is what stranded commits mid-stack before.
+- **Read the lease SHA from the remote, not from memory.** `--force-with-lease=<branch>:<sha>` fails with `stale info` when `<sha>` is not what the remote currently holds — which includes the case where *you* rebased the branch a moment ago and reached for its old tip. `$(git rev-parse origin/<branch>)` after a `git fetch` is the value that works. The failure looks like the shallow-clone symptom in the git section above and is not: check whether the SHA is simply out of date before concluding anything about the clone.
 
 ### Rebase-and-merge lands unsigned commits on `main`
 
@@ -206,11 +207,22 @@ Nothing is wrong and nothing needs fixing on `main`. Know it so that `%G?` on a 
 
 This happens when the **parent** PR is merged with `--delete-branch`: deleting the parent's head branch (which is the child's base) closes the **child** PR. Two PRs are involved — the merged parent (`<parent>`) and the closed child (`<child>`); `<branch>` is the deleted base, i.e. the parent's head branch.
 
-1. Restore the deleted base branch ref at the **parent** merge commit's second parent (the deleted branch's pre-merge tip). Resolve the merge commit from `<parent>` — the PR that actually merged — **not** the closed child (it's unmerged, so its `mergeCommit` is `null` and `git rev-parse` would fail), and **not** `origin/main^2` (only that second parent while the parent merge is still `main`'s tip; any later merge, or a squash/rebase tip, makes it the wrong SHA):
+1. Restore the deleted base branch from **GitHub's own copy of the parent's head**, `refs/pull/<parent>/head`. GitHub keeps that ref after the branch is deleted and after the PR is merged, and it points at the pre-merge tip:
+
    ```bash
-   MERGE_SHA=$(gh pr view <parent> --repo <owner>/<repo> --json mergeCommit --jq .mergeCommit.oid)
-   gh api --method POST repos/<owner>/<repo>/git/refs -f ref=refs/heads/<branch> -f sha=$(git rev-parse "$MERGE_SHA^2")
+   SHA=$(git ls-remote origin "refs/pull/<parent>/head" | cut -f1)
+   gh api --method POST repos/<owner>/<repo>/git/refs -f ref=refs/heads/<branch> -f sha="$SHA"
    ```
+
+   **Do not reach for the merge commit's second parent.** The older form here was:
+
+   ```bash
+   git rev-parse "$MERGE_SHA^2"   # WRONG under rebase-and-merge
+   ```
+
+   `^2` needs the merge commit to *have* two parents, which is true only of a merge-commit merge. Rebase replays the branch as linear single-parent commits, so `^2` fails with "unknown revision" — and this repository is rebase-only, so it fails always. `refs/pull/<n>/head` is correct under every merge method, which is the better reason to prefer it.
+
+   Take the ref from `<parent>` — the PR that actually merged — not from the closed child, whose head is a different branch.
 2. Reopen the child via **REST** (GraphQL `gh pr reopen` fails on the Projects-classic deprecation):
    `gh api --method PATCH repos/<owner>/<repo>/pulls/<child> -f state=open`
 3. Retarget it: `gh pr edit <child> --base main` (only works once it's open).
