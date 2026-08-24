@@ -316,10 +316,15 @@ it.
      not what the rule means, narrow the glob rather than accepting it.
      These land here despite reading like markup, so a `scope:` value
      has nothing to act on in them: %(VALE_PLAINTEXT_FORMATS)s
-   - **cannot be read at all** — Vale supports these formats but shells
-     out to an external converter to parse them, and this CLI ships none
-     of those converters:
+   - **not supported** — Vale parses these only by shelling out to an
+     external program, and this build does not support any format that
+     needs one:
      %(VALE_CONVERTER_FORMATS)s
+
+     Do not tell the user to install the program. Taskless excludes these
+     files from the run whatever is installed, so that a repository
+     checks the same way on every machine; `.xml` could not work anyway,
+     since an XSLT stylesheet is specific to the document.
 
    **A single unreadable file fails the whole Vale pass.** Vale exits 2
    with an `E100` runtime error and abandons the run — `--no-exit` does

@@ -48,3 +48,24 @@ expression goes path-wise, at which point a bare `*.adoc` stops matching
 tested. Vale's error output is also decoded now rather than forwarded verbatim,
 so a failure reads as a sentence naming the missing program instead of a
 five-field JSON object.
+
+**These formats are now stated as unsupported rather than as needing a tool.**
+The notice used to end "Install it and put it on your PATH to have these files
+checked", which offered a path this build does not ship, does not test, and for
+`.xml` cannot deliver — an XSLT stylesheet is specific to the document, so no
+install makes it lintable. It also made behaviour host-dependent: macOS ships
+`/usr/bin/xsltproc` and typical Linux CI images do not, so the same repository
+checked differently depending on the machine. The exclusion is unconditional
+for that reason, and the programs are still named as the reason rather than as
+a remedy.
+
+The comment tier was reconciled against Vale's own documentation at
+docs.vale.sh/formats/code, which adds `.bsh`, `.csx`, `.pod`, `.py3` and `.sbt`
+once measured. It also documents `.pyi`, `.qml` and `.scss` as comment-aware,
+and on the pinned 3.17.1 a bare non-comment line in each of them lints — so they
+stay in the plaintext tier. That divergence is the argument for probing rather
+than transcribing: the docs describe the current Vale, this build pins an older
+one, and copying the list would have shipped `.scss` as comment-aware and been
+wrong. `.pod` is a reminder of how easily this is misread — it lints Perl
+comments but not POD blocks, so probing it with `=head1` looks like no support
+at all.

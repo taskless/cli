@@ -395,13 +395,21 @@ withVale("Vale vendor contract", () => {
  * See taskless/cli#151.
  */
 /** The comment syntax Vale must see through, per extension. */
+/**
+ * A correct comment for `extension`, which is the whole difficulty of this
+ * file: a wrong delimiter reads exactly like absent support. `.css` looks
+ * unsupported if fed `//` and is comment-aware with a block comment; `.pod` is
+ * linted as Perl, so a `#` comment fires while a `=head1` POD block does not.
+ */
 function comment(extension: string): string {
   const HASH = new Set([
     ".jl",
     ".pl",
     ".pm",
     ".ps1",
+    ".pod",
     ".py",
+    ".py3",
     ".pyw",
     ".r",
     ".R",
@@ -546,6 +554,11 @@ withVale("Vale engine capabilities", () => {
     ".rmd": "Fine.\n\n```{r}\nsimply <- 1\n```\n",
     ".tex": "% simply in a comment\nFine.\n",
     ".typ": "// simply\nFine.\n",
+    // Documented by Vale as comment-aware, measured as plaintext on the pinned
+    // binary — the construct here is the comment a parser would have skipped.
+    ".pyi": "# simply\nFine.\n",
+    ".qml": "// simply\nFine.\n",
+    ".scss": "// simply\nFine.\n",
   };
 
   it("covers every extension in VALE_PLAINTEXT_EXTENSIONS", () => {

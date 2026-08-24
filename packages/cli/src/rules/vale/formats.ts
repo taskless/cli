@@ -81,11 +81,16 @@ export const TASKLESS_DIRECTORY = ".taskless";
  * Vale": the moment Vale learns a format, it starts routing that extension to a
  * parser, and if that parser shells out, an extension missing from the table is
  * a crash rather than a plain-text read. Vale 3.18.0 is the live example — it
- * adds Typst, which converts through `typst2vast`, so `.typ` stops being the
+ * adds Typst, which parses through `typst2vast`, so `.typ` stops being the
  * plaintext read it is today and upgrading the `@taskless/vale-*` packages
  * without re-measuring would reintroduce exactly this bug under a new
  * extension. Re-measure the whole table on every bump; the per-extension cases
  * in `vale-vendor-contract.test.ts` are how.
+ *
+ * Note what the exclusion policy buys here. Because a format needing an
+ * external program is never supported, a newly-converter-backed extension has
+ * one correct destination rather than a judgement call, and the answer does not
+ * depend on what happens to be installed on the machine running `check`.
  */
 
 /**
@@ -240,10 +245,10 @@ export function skippedFilesNotice(files: string[]): string | undefined {
       : sample.join(", ");
 
   return (
-    `Vale did not check ${String(files.length)} file(s): ${listed}. Vale ` +
-    `supports these formats, but parsing them needs an external converter ` +
-    `(${converters.join(", ")}) that this build does not ship. Install it and ` +
-    `put it on your PATH to have these files checked; every other file was ` +
-    `checked normally.`
+    `Vale did not check ${String(files.length)} file(s): ${listed}. These ` +
+    `formats are not supported by this build — Vale parses them only through ` +
+    `an external program (${converters.join(", ")}), which this build does ` +
+    `not ship and does not check for. Scope the rule to a supported format; ` +
+    `every other file was checked normally.`
   );
 }
