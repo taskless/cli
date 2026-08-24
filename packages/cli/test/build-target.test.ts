@@ -6,6 +6,7 @@ import {
   resolveBuildTarget,
   resolveCliInvocation,
   resolveCliNotice,
+  resolveCliVersion,
   resolveOutputDirectory,
 } from "../scripts/build-target";
 
@@ -46,6 +47,23 @@ describe("build target resolution", () => {
   });
 });
 
+describe("the version a build reports as its own", () => {
+  // Only nightly diverges. dev/self/prod all run from a checkout whose
+  // package.json IS the version they are, so reading it is correct there.
+  it.each(["prod", "dev", "self"])(
+    "uses the committed package version for the %s target",
+    (target) => {
+      expect(
+        resolveCliVersion({ TASKLESS_BUILD_TARGET: target }, "0.10.2")
+      ).toBe("0.10.2");
+    }
+  );
+
+  it("uses the committed package version when no target is set", () => {
+    expect(resolveCliVersion({}, "0.10.2")).toBe("0.10.2");
+  });
+});
+
 describe("the nightly target", () => {
   // The whole point of the target: a nightly's skills, commands, and recipes
   // must send an agent to the package the reader installed. Without the
@@ -55,6 +73,26 @@ describe("the nightly target", () => {
     expect(resolveCliInvocation(nightlyEnvironment, PACKAGE_DIR)).toBe(
       `npx @taskless/cli-nightly@${NIGHTLY_VERSION}`
     );
+  });
+
+  // #148: the reported symptom. A nightly installed to exercise unreleased
+  // behavior wrote `install.cliVersion: 0.10.2` — the release it anticipates —
+  // while the skills emitted beside it pinned the nightly it actually was.
+  // The version is stamped at pack time and the committed manifest is
+  // deliberately left alone, so `package.json` cannot answer this.
+  it("reports the stamped version as its own, not the committed one", () => {
+    expect(resolveCliVersion(nightlyEnvironment, "0.10.2")).toBe(
+      NIGHTLY_VERSION
+    );
+  });
+
+  // Same refusal as the invocation: a nightly that cannot name its own version
+  // has nothing correct to report, and the plausible fallback is the wrong
+  // answer that started #148.
+  it("refuses to report a version when the stamp is missing", () => {
+    expect(() =>
+      resolveCliVersion({ TASKLESS_BUILD_TARGET: "nightly" }, "0.10.2")
+    ).toThrow(NIGHTLY_VERSION_ENV);
   });
 
   // `dist`, unlike dev/self — the tarball is packed with `files: ["dist"]` and
