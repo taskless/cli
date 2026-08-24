@@ -60,4 +60,22 @@ export const RULE_EXAMPLES = [
       },
     },
   },
+  {
+    description:
+      'Object pattern with `strictness: ast` — detect fetch() with any trailing arguments. A `$$$` next to a comma does NOT mean "zero or more": the comma is itself a node, and under the default `smart` strictness every node in the pattern must match, so `fetch($URL, $$$REST)` skips `fetch(url)` entirely and matches only calls with two or more arguments. Write the pattern as an object with `strictness: ast` to compare named AST nodes and ignore the separator. `strictness` is only valid inside a pattern object — at rule level ast-grep rejects it as an unknown field — and an object pattern also needs `context` plus `selector`. A leading `$$$` (`fetch($$$REST, $LAST)`) is the mirror case and `strictness: ast` does not rescue it; use `any` with one branch per arity instead. A standalone `$$$` with no comma beside it already matches zero arguments and needs none of this.',
+    rule: {
+      id: "no-bare-fetch",
+      language: "typescript",
+      severity: "warning",
+      message: "Pass explicit options to fetch().",
+      note: "Set a timeout and headers rather than relying on the defaults.",
+      rule: {
+        pattern: {
+          context: "fetch($URL, $$$REST)",
+          selector: "call_expression",
+          strictness: "ast",
+        },
+      },
+    },
+  },
 ];

@@ -1,4 +1,5 @@
 import { readFile, readdir } from "node:fs/promises";
+import { join } from "node:path";
 import { spawn } from "node:child_process";
 import { StringDecoder } from "node:string_decoder";
 import { stripVTControlCharacters } from "node:util";
@@ -41,9 +42,36 @@ export interface RequirementsResult extends LayerResult {
   hasTestFile: boolean;
 }
 
+/**
+ * Which fixture buckets a rule actually populated.
+ *
+ * The sg counterpart of `ValeFixtureCoverage`, and kept in the same four
+ * states for the same reason: a caller wants to say different things about
+ * them. `"none"` is an unwritten rule, while `"valid-only"`/`"invalid-only"`
+ * is a half-written one, which is the more misleading state of the two.
+ *
+ * The buckets here are the `valid:`/`invalid:` keys of ast-grep's own test
+ * YAML rather than Vale's `pass/`/`fail/` directories, so the names follow
+ * ast-grep's vocabulary.
+ */
+export type SgFixtureCoverage = "both" | "valid-only" | "invalid-only" | "none";
+
 export interface TestLayerResult extends LayerResult {
   passed: number;
   failed: number;
+  /**
+   * Which buckets held sources. Only `"both"` can be `valid: true`: an
+   * `invalid:` fixture proves the rule fires, a `valid:` fixture proves it
+   * does not over-fire, and either alone is half a claim.
+   *
+   * Without this, `ast-grep test` reports an empty `invalid:` bucket as
+   * `1 passed; 0 failed` and exits zero, so a rule that has never been shown
+   * to match anything reports `ok: true, ran: true` — the exact state a
+   * `foo($A, $$$)` pattern lands in, since the pattern's comma is a node that
+   * a one-argument call has no counterpart for and the rule silently matches
+   * nothing an author expected it to.
+   */
+  fixtures: SgFixtureCoverage;
 }
 
 export interface VerifyResult {
@@ -158,6 +186,69 @@ async function validateRequirements(
   return { valid: errors.length === 0, errors, hasTestFile };
 }
 
+/** Classify a rule's buckets by how many sources each held. */
+function coverageOf(
+  validCount: number,
+  invalidCount: number
+): SgFixtureCoverage {
+  if (validCount > 0 && invalidCount > 0) return "both";
+  if (validCount > 0) return "valid-only";
+  if (invalidCount > 0) return "invalid-only";
+  return "none";
+}
+
+/**
+ * Count what the author actually put in each bucket, across every test file
+ * the rule owns.
+ *
+ * Read from the author's own YAML rather than derived from `ast-grep test`'s
+ * output: the counts are already structured in the file, and the run says
+ * nothing useful about them — an empty `invalid:` bucket still reports
+ * `1 passed; 0 failed` and exits zero.
+ *
+ * A file that cannot be read or parsed contributes nothing. `sg test` reports
+ * malformed test YAML itself, and guessing at a bucket count from a file we
+ * could not parse would be a worse error than the one already being raised.
+ */
+async function fixtureCoverage(
+  cwd: string,
+  ruleId: string
+): Promise<SgFixtureCoverage> {
+  const directory = ruleTestsDirectory(cwd, "sg", ruleId);
+  let entries: string[];
+  try {
+    entries = await readdir(directory);
+  } catch {
+    return "none";
+  }
+
+  let validCount = 0;
+  let invalidCount = 0;
+  for (const entry of entries) {
+    if (!entry.startsWith(`${ruleId}-`) || !entry.endsWith("-test.yml")) {
+      continue;
+    }
+    let parsed: unknown;
+    try {
+      parsed = parse(await readFile(join(directory, entry), "utf8"));
+    } catch {
+      continue;
+    }
+    if (
+      parsed === null ||
+      typeof parsed !== "object" ||
+      Array.isArray(parsed)
+    ) {
+      continue;
+    }
+    const buckets = parsed as Record<string, unknown>;
+    if (Array.isArray(buckets.valid)) validCount += buckets.valid.length;
+    if (Array.isArray(buckets.invalid)) invalidCount += buckets.invalid.length;
+  }
+
+  return coverageOf(validCount, invalidCount);
+}
+
 // --- Layer 3: Test execution ---
 
 /**
@@ -200,7 +291,10 @@ function parseTestSummary(
   return found;
 }
 
-async function runTests(cwd: string, ruleId: string): Promise<TestLayerResult> {
+async function runTests(
+  cwd: string,
+  ruleId: string
+): Promise<Omit<TestLayerResult, "fixtures">> {
   // Assembly names every rule's `.tests/` as its own `testConfigs` entry, so
   // the filter below selects a rule whose tests ast-grep already knows how to
   // find.
@@ -314,14 +408,26 @@ async function runTestLayer(
       errors: ["Skipped: tests were not requested"],
       passed: 0,
       failed: 0,
+      fixtures: "none",
     };
   }
-  if (hasTestFile) return runTests(cwd, ruleId);
+  if (hasTestFile) {
+    // Both halves, because a green `sg test` run is not on its own evidence
+    // the rule fires: ast-grep is content to report an empty `invalid:`
+    // bucket as a pass. Coverage is read from the fixtures rather than from
+    // the run, and a one-sided set fails the layer however the run went.
+    const [fixtures, result] = await Promise.all([
+      fixtureCoverage(cwd, ruleId),
+      runTests(cwd, ruleId),
+    ]);
+    return { ...result, valid: result.valid && fixtures === "both", fixtures };
+  }
   return {
     valid: false,
     errors: ["Skipped: no test file found"],
     passed: 0,
     failed: 0,
+    fixtures: "none",
   };
 }
 
@@ -353,7 +459,13 @@ export async function verifyRule(
       ruleId,
       schema: { valid: false, errors: [errorMessage] },
       requirements: { valid: false, errors: [errorMessage] },
-      tests: { valid: false, errors: [errorMessage], passed: 0, failed: 0 },
+      tests: {
+        valid: false,
+        errors: [errorMessage],
+        passed: 0,
+        failed: 0,
+        fixtures: "none",
+      },
     };
   }
 
@@ -388,6 +500,7 @@ export async function verifyRule(
         errors: ["Cannot run tests: rule file not found"],
         passed: 0,
         failed: 0,
+        fixtures: "none",
       },
     };
   }
@@ -410,6 +523,7 @@ export async function verifyRule(
         errors: ["Cannot run tests: invalid YAML"],
         passed: 0,
         failed: 0,
+        fixtures: "none",
       },
     };
   }
