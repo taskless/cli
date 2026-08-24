@@ -1,4 +1,4 @@
-# Topic: create-vale-rule     (CLI v%(CLI_VERSION)s / topic v2)
+# Topic: create-vale-rule     (CLI v%(CLI_VERSION)s / topic v3)
 
 ## You are here
 This is `create-vale-rule`. It helps you write a Vale rule: a check over
@@ -271,8 +271,10 @@ it.
 
    - `[*.md]` is a **matcher**: a glob over paths, deciding which files
      this rule sees. Match it to the files the rule is actually about,
-     such as `[*.{md,mdx}]` or `[docs/**/*.md]`. A rule can declare
-     several matchers if it needs to.
+     such as `[*.{md,markdown}]` or `[docs/**/*.md]`. A rule can declare
+     several matchers if it needs to. Before you widen a glob, check the
+     reach table below — what Vale does to a file it cannot parse is not
+     "nothing".
    - `tskl) rule = <id>` is a breadcrumb Taskless reads to attribute the
      matcher back to this rule after assembly interleaves every rule's
      matchers into one file. Vale parses the key and ignores it. Write it
@@ -293,6 +295,36 @@ it.
    Keep assignments underneath a matcher. An assignment above the first
    `[…]` line belongs to no matcher, and Vale ignores it after warning
    on stderr.
+
+   **What a matcher's glob is allowed to catch.** Vale (v%(VALE_VERSION)s)
+   treats a file one of four ways, decided by extension. The lists are
+   rendered from the pinned Vale version, not written out here, so they
+   track the shipped binary.
+
+   - **markup** — the document is prose and the format's own non-prose
+     constructs are skipped. This is the tier every `scope:` value
+     assumes; `scope: heading` has nothing to find outside it:
+     %(VALE_MARKUP_FORMATS)s
+   - **comment text only** — the comments are linted and the code body
+     is invisible, which is exactly right for "comments must not say
+     'obviously'":
+     %(VALE_COMMENT_FORMATS)s
+   - **plaintext fallback** — everything else, `.yml` `.toml` `.sh`
+     `.sql` and every extension not named above included. There is no
+     parser, so the whole file is linted as prose: a rule matched to
+     YAML flags key names and values, not just the comments. If that is
+     not what the rule means, narrow the glob rather than accepting it.
+   - **cannot be read at all** — Vale supports these formats but shells
+     out to an external converter to parse them, and this CLI ships none
+     of those converters:
+     %(VALE_CONVERTER_FORMATS)s
+
+   **A single unreadable file fails the whole Vale pass.** Vale exits 2
+   with an `E100` runtime error and abandons the run — `--no-exit` does
+   not suppress it — so every other Vale rule over every other file goes
+   unreported. `[*.{md,mdx}]` is not a slightly wider `[*.md]`; it is a
+   matcher that takes `check` down the first time the repo grows an
+   `.mdx` file. Never put one of those extensions in a glob.
 
 5. **Write the fixtures.** Two directories inside the rule, both flat.
    Vale lints the whole fixture tree, so a document nested a level

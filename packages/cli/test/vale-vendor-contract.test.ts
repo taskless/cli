@@ -6,6 +6,15 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { findValeBinary } from "../src/rules/vale/binary";
+import {
+  VALE_COMMENT_EXTENSIONS,
+  VALE_CONVERTER_DEPENDENT,
+  VALE_MARKUP_EXTENSIONS,
+  VALE_VERSION,
+  valeCommentList,
+  valeConverterList,
+  valeMarkupList,
+} from "../src/rules/capabilities";
 
 /**
  * Vale's observable behaviour, pinned.
@@ -349,5 +358,188 @@ withVale("Vale vendor contract", () => {
     expect(result.status).toBe(0);
     const parsed = JSON.parse(result.stdout) as Record<string, unknown[]>;
     expect(parsed["doc.md"]).toHaveLength(1);
+  });
+});
+
+/**
+ * The reach `src/rules/capabilities.ts` publishes, pinned by probe.
+ *
+ * A separate top-level block from the contract suite above, because it asserts
+ * something different: those cases pin how Vale behaves when we drive it, these
+ * pin a constant we transcribed *from* it.
+ *
+ * PROBE-MEASURED, BECAUSE VALE SELF-REPORTS NOTHING. There is no `--list-formats`
+ * and no capability listing anywhere in the binary, so the only way to know
+ * which tier an extension lands in is to lint a file and look at what came
+ * back. Each tier therefore has its own discriminating fixture rather than a
+ * shared one — on ordinary prose all three tiers are indistinguishable, which
+ * is exactly how a wrong claim would survive a lazier test:
+ *
+ * - **markup** is separated from plaintext by a construct only a real parser
+ *   skips (a fenced code block, an Org `#` line, an HTML comment).
+ * - **comment-only** is separated from plaintext by the NEGATIVE — the same
+ *   token on a bare non-comment line must yield nothing. A file type that fires
+ *   on both is the plaintext fallback wearing a code extension.
+ * - **converter-dependent** is separated from everything by failing.
+ *
+ * See taskless/cli#151.
+ */
+/** The comment syntax Vale must see through, per extension. */
+function comment(extension: string): string {
+  const HASH = new Set([
+    ".jl",
+    ".pl",
+    ".pm",
+    ".ps1",
+    ".py",
+    ".pyw",
+    ".r",
+    ".R",
+    ".rb",
+  ]);
+  if (HASH.has(extension)) return "# simply\n";
+  if (extension === ".css") return "/* simply */\n";
+  if (extension === ".hs" || extension === ".lua") return "-- simply\n";
+  if (extension === ".clj") return "; simply\n";
+  return "// simply\n";
+}
+
+withVale("Vale engine capabilities", () => {
+  /** A project whose single rule applies to every extension. */
+  const anyExtension = (documents: Record<string, string>) =>
+    project(
+      `${header}\n[*]\nrules.no-simply = YES\n`,
+      { "no-simply": existence("simply") },
+      documents
+    );
+
+  /** Findings Vale reports for one document, under `--no-exit`. */
+  function findings(name: string, body: string): unknown[] {
+    const cwd = anyExtension({ [name]: body });
+    const result = runRaw(cwd, [name], ["--no-exit"]);
+    expect(result.status, `${name}: ${result.stderr}`).toBe(0);
+    const parsed = JSON.parse(result.stdout || "{}") as Record<
+      string,
+      unknown[]
+    >;
+    return parsed[name] ?? [];
+  }
+
+  /**
+   * Prose Vale must find in a markup document, plus a construct it must skip.
+   * The second half is the whole test: without it, `.md` and `.zzz` behave
+   * identically and the markup tier asserts nothing.
+   */
+  const MARKUP_FIXTURES: Record<string, { prose: string; skipped: string }> = {
+    ".md": {
+      prose: "We simply do it.\n",
+      skipped: "Fine.\n\n```\nsimply\n```\n",
+    },
+    ".markdown": {
+      prose: "We simply do it.\n",
+      skipped: "Fine.\n\n```\nsimply\n```\n",
+    },
+    ".org": { prose: "We simply do it.\n", skipped: "# simply\nFine.\n" },
+    ".htm": {
+      prose: "<p>We simply do it.</p>\n",
+      skipped: "<!-- simply -->\n",
+    },
+    ".html": {
+      prose: "<p>We simply do it.</p>\n",
+      skipped: "<!-- simply -->\n",
+    },
+    ".xhtml": {
+      prose: "<p>We simply do it.</p>\n",
+      skipped: "<!-- simply -->\n",
+    },
+  };
+
+  it("reports the pinned version", () => {
+    // VALE_VERSION is rendered beside the reach lists in route.txt and
+    // create-vale-rule.txt, so it is the attribution for every claim below.
+    // It also gates one of them: Vale 3.18.0 parses MDX natively, and a bump
+    // past it must move `.mdx` out of VALE_CONVERTER_DEPENDENT.
+    const result = spawnSync(binary as string, ["--version"], {
+      encoding: "utf8",
+    });
+    expect(result.stdout.trim()).toBe(`vale version ${VALE_VERSION}`);
+  });
+
+  it("covers every markup extension in VALE_MARKUP_EXTENSIONS", () => {
+    // A fixture missing here would let an extension be added to the constant
+    // without ever being probed, which is the drift the constant exists to
+    // prevent.
+    expect(Object.keys(MARKUP_FIXTURES).toSorted()).toEqual(
+      [...VALE_MARKUP_EXTENSIONS].toSorted()
+    );
+  });
+
+  it.each([...VALE_MARKUP_EXTENSIONS])(
+    "parses %s as markup: prose is linted, the format's own syntax is not",
+    (extension) => {
+      const fixture = MARKUP_FIXTURES[extension]!;
+      expect(findings(`doc${extension}`, fixture.prose)).toHaveLength(1);
+      expect(
+        findings(`skip${extension}`, fixture.skipped),
+        `${extension} linted a construct a real parser would skip — it is the plaintext fallback, not markup`
+      ).toHaveLength(0);
+    }
+  );
+
+  it.each([...VALE_COMMENT_EXTENSIONS])(
+    "lints comment text but not the code body in %s",
+    (extension) => {
+      expect(
+        findings(`c${extension}`, comment(extension)),
+        `${extension} did not lint its comment text`
+      ).toHaveLength(1);
+      expect(
+        findings(`b${extension}`, "simply\n"),
+        `${extension} linted a bare non-comment line — it is the plaintext fallback, not comment-aware`
+      ).toHaveLength(0);
+    }
+  );
+
+  it("lints an unrecognized extension as whole-file prose", () => {
+    // The fallback, stated as an assertion because it is a routing hazard
+    // rather than a convenience: `.yml` has no parser, so a Vale rule scoped to
+    // YAML flags key names and values, not only the comments. Both lines below
+    // are findings, and neither is a comment.
+    expect(findings("workflow.yml", "name: simply\n")).toHaveLength(1);
+    expect(findings("script.sh", "simply\n")).toHaveLength(1);
+    expect(findings("unknown.zzz", "simply\n")).toHaveLength(1);
+  });
+
+  it.each(
+    VALE_CONVERTER_DEPENDENT.flatMap(({ extensions, converter }) =>
+      extensions.map((extension) => [extension, converter] as const)
+    )
+  )("fails the whole run on %s, needing %s", (extension, converter) => {
+    // The blast radius is the point. Vale exits 2 and abandons the RUN, not
+    // the file — `--no-exit` does not suppress it — so one such file caught
+    // by any rule's glob silences every other Vale rule over every other
+    // file. That is why route.txt and create-vale-rule.txt both say never to
+    // put these extensions in a matcher.
+    const cwd = anyExtension({
+      [`doc${extension}`]: "We simply do it.\n",
+    });
+    const result = runRaw(cwd, [`doc${extension}`], ["--no-exit"]);
+    expect(result.status, `${extension} no longer fails`).not.toBe(0);
+    const output = `${result.stdout}${result.stderr}`;
+    expect(output).toContain("E100");
+    // The converter name is what makes the failure actionable, and what
+    // keeps the recipes honest about this being a missing external tool
+    // rather than absent support in Vale.
+    expect(output).toContain(converter.replace(/^an /, "").split(" ")[0]!);
+  });
+
+  it("renders each list as recipe prose with no gaps", () => {
+    expect(valeMarkupList().split(", ")).toEqual([...VALE_MARKUP_EXTENSIONS]);
+    expect(valeCommentList().split(", ")).toEqual([...VALE_COMMENT_EXTENSIONS]);
+    for (const { extensions, converter } of VALE_CONVERTER_DEPENDENT) {
+      expect(valeConverterList()).toContain(
+        `${extensions.join("/")} (needs ${converter})`
+      );
+    }
   });
 });

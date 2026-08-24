@@ -8,6 +8,14 @@ import {
 } from "../util/invocation";
 import { inputSchema as ruleCreateInputSchema } from "../schemas/rules-create";
 import { inputSchema as ruleImproveInputSchema } from "../schemas/rules-improve";
+import {
+  AST_GREP_VERSION,
+  VALE_VERSION,
+  astGrepLanguageList,
+  valeCommentList,
+  valeConverterList,
+  valeMarkupList,
+} from "../rules/capabilities";
 
 // Agent recipe files embedded at build time via Vite import.meta.glob.
 // Filename convention: <topic>.txt for the canonical recipe and
@@ -145,6 +153,18 @@ export function buildVariables(
 ): Record<string, string> {
   const variables: Record<string, string> = {
     CLI_VERSION: __VERSION__,
+    // Engine reach, from the pinned engine versions rather than transcribed
+    // into a recipe. A `.txt` carrying these lists by hand would go stale on
+    // the next binary bump with nothing to catch it, and stale prose about
+    // what an engine can read is worse than the silence it replaced — an agent
+    // acts on it. `src/rules/capabilities.ts` is the single place a bump edits,
+    // and the two vendor-contract tests fail until it agrees with the binary.
+    AST_GREP_VERSION,
+    AST_GREP_LANGUAGES: astGrepLanguageList(),
+    VALE_VERSION,
+    VALE_MARKUP_FORMATS: valeMarkupList(),
+    VALE_COMMENT_FORMATS: valeCommentList(),
+    VALE_CONVERTER_FORMATS: valeConverterList(),
     PACKAGE_MANAGER_DLX:
       options.packageManagerDlx ?? PACKAGE_MANAGER_DLX_MARKER,
     // Three steps, in descending order of how much the resolver actually

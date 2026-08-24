@@ -136,9 +136,15 @@ describe("the CLI invocation variable", () => {
   it("is provided on every render, alongside the other markers", () => {
     const table = buildVariables("", "any-topic");
     expect(Object.keys(table).toSorted()).toEqual([
+      "AST_GREP_LANGUAGES",
+      "AST_GREP_VERSION",
       "CLI_VERSION",
       "PACKAGE_MANAGER_DLX",
       "TASKLESS_CLI",
+      "VALE_COMMENT_FORMATS",
+      "VALE_CONVERTER_FORMATS",
+      "VALE_MARKUP_FORMATS",
+      "VALE_VERSION",
     ]);
     // INPUT_SCHEMA stays conditional on the placeholder being present.
     expect(buildVariables("%(INPUT_SCHEMA)s", "improve-rule")).toHaveProperty(
@@ -433,11 +439,20 @@ function importSpecifiers(source: string): string[] {
 
 describe("prompts entry carries no CLI runtime", () => {
   // Everything the render path is allowed to reach: embedded text, the two leaf
-  // Zod schemas, the invocation rewrite, and the templating library.
+  // Zod schemas, the invocation rewrite, the engine capability constants, and
+  // the templating library.
+  //
+  // `../rules/capabilities` earns its place by being pure data — the reach of
+  // the pinned `sg` and Vale binaries, transcribed rather than probed at render
+  // time. It sits under `src/rules/` beside its subject rather than in
+  // `src/prompts/`, but it imports nothing at all, so it cannot drag the
+  // command layer in behind it. The vendor-contract tests, which do spawn the
+  // binaries, are what keep it honest; see taskless/cli#151.
   const ALLOWED_SOURCE_IMPORTS = new Set([
     "sprintf-js",
     "zod",
     "../util/invocation",
+    "../rules/capabilities",
     "../schemas/rules-create",
     "../schemas/rules-improve",
     "./recipes.js",
