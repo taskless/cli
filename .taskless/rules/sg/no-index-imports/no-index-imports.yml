@@ -1,0 +1,20 @@
+id: no-index-imports
+language: TypeScript
+severity: warning
+message: Import directly from the source file, not from a barrel index.
+note: |
+  Barrel exports hide where a symbol is defined, make tree-shaking less
+  predictable, and invite circular imports. Import the module that declares
+  the symbol instead of the `index` that re-exports it.
+
+  Third-party packages that publish a barrel as their public API are fine —
+  this rule only matches relative specifiers.
+ignores:
+  - "**/test/**"
+  - "**/*.test.ts"
+rule:
+  kind: string_fragment
+  regex: '^\.{1,2}(/[^/]+)*/index(\.js|\.ts)?$'
+  inside:
+    kind: import_statement
+    stopBy: end

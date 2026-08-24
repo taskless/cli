@@ -1,0 +1,9 @@
+id: no-eval
+valid:
+  - const config = JSON.parse(raw);
+  - const handler = handlers[name];
+  - const fn = () => compute(input);
+invalid:
+  - eval(userInput);
+  - const fn = Function("return " + expression);
+  - const fn = new Function("a", "b", "return a + b");

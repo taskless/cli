@@ -1,0 +1,22 @@
+id: no-pii-in-telemetry
+language: TypeScript
+severity: error
+message: Do not send PII in a telemetry call. Identify with internal IDs only.
+note: |
+  PostHog identity uses `jwt.sub`, `jwt.orgId`, and the XDG anonymous UUID.
+  Email addresses, display names, and real names must never reach
+  `capture()`, `identify()`, or `groupIdentify()`.
+
+  See .conventions/posthog.md — Privacy.
+rule:
+  kind: pair
+  has:
+    field: key
+    kind: property_identifier
+    regex: '^(email|userEmail|displayName|fullName|firstName|lastName|username)$'
+  inside:
+    stopBy: end
+    any:
+      - pattern: $CLIENT.capture($$$)
+      - pattern: $CLIENT.identify($$$)
+      - pattern: $CLIENT.groupIdentify($$$)
