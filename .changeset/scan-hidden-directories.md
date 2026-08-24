@@ -26,3 +26,18 @@ fires on the CLI's own rule files — a finding in a directory the user did not
 author and cannot edit without disabling their rule. The exclusion applies only
 when `check` walks the whole project on its own; an explicit path stays a
 request, which is the rule the Vale runner already follows.
+
+`.git/` is excluded on the same terms. ast-grep has no exclusion of its own for
+it and `.gitignore` does not list it, so the default hidden-directory skip was
+the only thing holding it back: without this, a whole-project `check` descended
+into `.git/objects` and `.git/logs` on every run, and `.git/hooks/*` scripts
+matched language rules never meant to lint VCS internals.
+
+Both engines now decide "whole project" the same way, and it is no longer
+`paths.length === 0`. An explicit `.` is normalized to the literal path `"."`
+before it reaches either runner, so a length test read the most ordinary way of
+asking for a whole-project check as a user-named path and skipped the exclusions
+— `check` was clean while `check .` reported findings inside `.taskless/`. Vale
+was already wrong in the same way and for the same reason, independently of the
+hidden-directory change, so the predicate is now shared rather than written
+twice.

@@ -6,6 +6,7 @@ import type { CheckResult } from "../../types/check";
 import { ASSEMBLED_VALE_CONFIG } from "../engines";
 
 import { buildPath } from "../scan";
+import { isWholeProjectWalk } from "../walk-scope";
 import { findValeBinary, valeUnavailableMessage } from "./binary";
 import { asValeConfigError, toValeCheckResults, type ValeOutput } from "./map";
 
@@ -128,7 +129,14 @@ export async function runVale(
   // reason this is easy to miss: it takes its targets from the config and is
   // content with none, so the two engines disagree about what "no paths" means.
   // `cwd` is the project root, so `.` is the whole project.
-  const wholeProject = paths.length === 0;
+  //
+  // `isWholeProjectWalk` rather than `paths.length === 0`: `check .` arrives
+  // here with `paths = ["."]`, which a length test reads as a user-named path
+  // and so skips the `.taskless/` exclusion below. Vale reads hidden
+  // directories by default, so that route reported prose findings inside
+  // `.taskless/` on any `check .`, independently of the ast-grep fix in this
+  // change. Same defect, same signal, one line apart.
+  const wholeProject = isWholeProjectWalk(paths);
   const targets = wholeProject ? ["."] : paths;
 
   // Walking the whole project reaches `.taskless/` too, and Vale has no reason
