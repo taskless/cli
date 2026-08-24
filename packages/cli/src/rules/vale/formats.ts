@@ -106,12 +106,24 @@ export const CONVERTER_DEPENDENT_EXTENSIONS: readonly string[] = [
 /**
  * The converter Vale would need for `path`, or `undefined` if it needs none.
  *
- * Extension comparison is lowercased: `README.RST` is a reStructuredText file
- * to Vale on a case-insensitive filesystem, and letting case decide would make
- * the crash reappear on exactly one platform.
+ * Extension comparison is **case-sensitive, because Vale's own routing is**.
+ * Measured against the pinned binary: `docs/guide.adoc` exits 2 with
+ * `E100 [lintAdoc]`, while `docs/guide.ADOC` and `docs/guide.AdOc` are read as
+ * plain text and exit 0 with findings — including when the uppercase spelling
+ * names a lowercase file on a case-insensitive filesystem, since Vale routes on
+ * the path string it was handed, not on the name the disk holds.
+ *
+ * This used to lowercase, on the assumption that a case-insensitive filesystem
+ * would make `README.RST` reStructuredText to Vale. It does not, and the
+ * assumption cost accuracy in the one place this function is read: a file Vale
+ * had linted perfectly well was named in the skip notice as one it never
+ * checked. Matching Vale exactly is what keeps the notice true, and it is the
+ * same discipline as the tier table — measure the binary, do not reason about
+ * it. `vale-vendor-contract.test.ts` pins the measurement, so a Vale that
+ * becomes case-insensitive turns red here before it can crash a user's run.
  */
 export function converterFor(path: string): string | undefined {
-  return VALE_CONVERTER_BY_EXTENSION[extname(path).toLowerCase()];
+  return VALE_CONVERTER_BY_EXTENSION[extname(path)];
 }
 
 /**
@@ -173,6 +185,14 @@ const UNWALKED_DIRECTORIES = new Set([
  * into dot-directories, so a `.github/adr/0001.adoc` is skipped by Vale and
  * goes unnamed here. That under-reports a notice; it never suppresses a
  * finding, and it never lets the crash back in.
+ *
+ * Every match is re-checked through `converterFor` before it is kept, and that
+ * is not belt-and-braces. Node's `glob` inherits the filesystem's own case
+ * folding, so on macOS `**\/*.{adoc,…}` matches `docs/GUIDE.ADOC` — a file Vale
+ * routes to its plain-text reader and lints normally. Left unfiltered, the
+ * notice would claim a checked file was skipped, and it would claim it on
+ * exactly one platform. `converterFor` is the one place that knows how Vale
+ * routes, so the walk defers to it rather than trusting the pattern.
  */
 export async function findConverterDependentFiles(
   cwd: string,
@@ -203,7 +223,7 @@ export async function findConverterDependentFiles(
         cwd,
         exclude: (entry) => UNWALKED_DIRECTORIES.has(basename(String(entry))),
       })) {
-        found.add(match);
+        if (converterFor(match) !== undefined) found.add(match);
       }
     } catch {
       // A target that is not a directory, an unreadable subtree, a platform
@@ -219,11 +239,15 @@ export async function findConverterDependentFiles(
  * The user-facing sentence for a set of skipped files, or `undefined` when
  * nothing was skipped.
  *
- * Phrased as "this build cannot parse", not "Vale does not support": Vale
+ * Phrased as "not supported by this build", not "Vale does not support": Vale
  * supports every one of these formats, and telling a user otherwise sends them
- * to the wrong project's issue tracker. It names the converter because that is
- * the one thing they can act on — installing `asciidoctor` puts the files back
- * in scope with no change on our side.
+ * to the wrong project's issue tracker.
+ *
+ * It names the converter as an *explanation*, never as an instruction. A format
+ * that needs an external program is not supported here, full stop — so the
+ * sentence must not read as "install `asciidoctor` and this will work", because
+ * the exclusion is unconditional and does not consult the host. The action
+ * offered is the one that actually works: scope the rule to a supported format.
  */
 export function skippedFilesNotice(files: string[]): string | undefined {
   if (files.length === 0) return undefined;
