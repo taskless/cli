@@ -388,8 +388,10 @@ withVale("Vale vendor contract", () => {
  * - **plaintext** is the tier that needs no separating — a bare line fires —
  *   but the entries listed in it do: each names a construct a parser WOULD have
  *   skipped, and the probe asserts Vale lints it. That is the assertion that
- *   `.tex` and `.rmd` are not markup, and it is the one the first hand-written
- *   table got backwards.
+ *   `.tex`, `.mkd` and `.mkdn` are not markup, and it is the one the first
+ *   hand-written table got backwards. It is also the assertion that expires: on
+ *   3.17.1 `.rmd` belonged here, and 3.18.0 gave it a real parser and moved it
+ *   into MARKUP_FIXTURES.
  * - **converter-dependent** is separated from everything by failing.
  *
  * See taskless/cli#151.
@@ -467,9 +469,14 @@ withVale("Vale engine capabilities", () => {
       skipped: "Fine.\n\n```\nsimply\n```\n",
     },
     ".org": { prose: "We simply do it.\n", skipped: "# simply\nFine.\n" },
-    // Native as of 3.18.0. `.mdx` arrived from the converter tier and `.rmd`
-    // and `.qmd` from plaintext, so all three are new claims, not carried over.
+    // Native as of 3.18.0. `.mdx` arrived from the converter tier, `.rmd` from
+    // plaintext, and `.qmd` and `.myst` are new rows — four new claims, none of
+    // them carried over from the 3.17.1 table.
     ".mdx": {
+      prose: "We simply do it.\n",
+      skipped: "Fine.\n\n```\nsimply\n```\n",
+    },
+    ".myst": {
       prose: "We simply do it.\n",
       skipped: "Fine.\n\n```\nsimply\n```\n",
     },
@@ -498,11 +505,10 @@ withVale("Vale engine capabilities", () => {
   it("reports the pinned version", () => {
     // VALE_VERSION is rendered beside the reach lists in route.txt and
     // create-vale-rule.txt, so it is the attribution for every claim below.
-    // It also gates two of them, in opposite directions: Vale 3.18.0 parses MDX
-    // natively, so a bump past it moves `.mdx` from converter-dependent to
-    // markup — and the same release adds a Typst converter, so it moves `.typ`
-    // from plaintext to `converter:typst2vast`. A bump re-measures the whole
-    // table; these two are only the rows already known to move.
+    // 3.18.0 moved rows in both directions: `.mdx` gained a native parser and
+    // left the converter tier, while `.typ` gained a `typst2vast` converter and
+    // entered it. A bump re-measures the whole table — the fixtures below are
+    // the record of the last time that was done, not a forecast of the next.
     const result = spawnSync(binary as string, ["--version"], {
       encoding: "utf8",
     });
@@ -564,7 +570,7 @@ withVale("Vale engine capabilities", () => {
    * its spelling suggests would have skipped.
    *
    * Vale lints it, which is the whole finding: `.tex` is not TeX to Vale and
-   * `.rmd` is not R Markdown. The mirror image of the markup fixtures — same
+   * `.mkd` is not Markdown. The mirror image of the markup fixtures — same
    * documents, opposite expectation.
    */
   const PLAINTEXT_FIXTURES: Record<string, string> = {
@@ -573,8 +579,9 @@ withVale("Vale engine capabilities", () => {
     ".tex": "% simply in a comment\nFine.\n",
     // Documented by Vale as comment-aware, measured as plaintext on the pinned
     // binary — the construct here is the comment a parser would have skipped.
-    // `.qml` and `.scss` were here until 3.18.0 gave them real parsers, which
-    // is why the tier is re-measured on every bump rather than carried over.
+    // `.qml` and `.scss` were here until 3.18.0 gave them real parsers, and
+    // `.rmd` left for MARKUP_FIXTURES in the same bump, which is why the tier is
+    // re-measured on every bump rather than carried over.
     ".pyi": "# simply\nFine.\n",
   };
 

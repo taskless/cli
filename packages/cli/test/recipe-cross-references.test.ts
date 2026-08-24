@@ -385,7 +385,11 @@ describe("recipes state engine reach from the pinned versions", () => {
     // author `.mdx` is unsupported costs them a format Vale reads fine, and
     // telling them `.typ` is readable takes their whole Vale pass down.
     expect(route).toContain("`.mdx` is supported");
-    expect(route).toContain("`.typ`");
+    // `.typ` alone would pass on the converter list rendered above, which names
+    // it whatever the prose says. Pin the hazard sentence instead, so dropping
+    // the warning fails here even while the extension is still mentioned.
+    expect(route).toContain("`.typ` moved the other way");
+    expect(route).toContain("`[*.{md,typ}]`");
   });
 
   it("names ast-grep's languages in rendered create-sg-rule.txt", async () => {
