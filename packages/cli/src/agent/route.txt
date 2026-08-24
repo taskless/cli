@@ -98,8 +98,12 @@ answered together.
    - **ast-grep (v%(AST_GREP_VERSION)s) parses:** %(AST_GREP_LANGUAGES)s.
 
      Those spellings are ast-grep's own and go into a rule's `language:`
-     field verbatim. Nothing local validates that field, so a plausible
-     `C++` or `yaml` passes `verify` and fails inside the binary.
+     field verbatim. Nothing local validates that field — the vendored
+     schema types it as a bare string with no enum — so the first thing
+     with an opinion is the binary. It accepts some off-list aliases
+     (`C++` and `cpp` both reach the Cpp parser), but a name it does not
+     know at all, like `C#` for `CSharp`, aborts config parsing and
+     takes every other rule's report down with it. Copy from the list.
 
      **A GitHub Actions workflow is `Yaml`, and `Yaml` is on that list.**
      A rule about `.github/workflows/*.yml` is an `sg` rule; sending it
