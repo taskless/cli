@@ -28,3 +28,15 @@ to upgrade to; write the pattern as an object with `strictness: ast` to ignore
 the separator, or use `any:` with one branch per arity. `verify --schema` now
 carries a worked example, and the behaviour is pinned against the vendored
 binary so a bump that changes it fails loudly.
+
+`create-sg-rule` states all of this where a pattern is written: the arity table
+measured against the pinned binary, both remedies and the fact that
+`strictness: ast` moves a trailing `$$$` from two arguments to one rather than
+to zero, and the fixture requirement with a case on each side of an arity
+boundary. It also names ast-grep's `language:` vocabulary from the same pinned
+constants — nothing local validates that field, an unrecognized spelling takes
+the whole scan down, and `Tsx` is a different parser from `TypeScript` rather
+than an alias. `improve-rule` gains the two notes that matter when a rule is
+rewritten rather than written: read the pattern for a comma-adjacent `$$$`
+before reporting it as too narrow, and re-check both fixture buckets after the
+service returns a narrowed rule.

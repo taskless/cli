@@ -1,4 +1,4 @@
-# Topic: create-sg-rule     (CLI v%(CLI_VERSION)s / topic v2)
+# Topic: create-sg-rule     (CLI v%(CLI_VERSION)s / topic v3)
 
 ## You are here
 This is `create-sg-rule`. It helps you write an ast-grep rule: a check
@@ -66,7 +66,7 @@ whole rule.
    `.taskless/rules/sg/<id>/<id>.yml`, where `<id>` is kebab-case and
    names both the directory and the file. At minimum:
    - `id` — kebab-case, matching the filename (e.g. `no-eval`)
-   - `language` — the target language
+   - `language` — the target language, in ast-grep's spelling (below)
    - `severity` — `error`, `warning`, `info`, or `hint`
    - `message` — a concise single-line explanation
    - `rule` — the ast-grep rule object
@@ -74,7 +74,71 @@ whole rule.
    Optional but useful: `note` (multi-line guidance, supports markdown),
    `fix` (auto-fix pattern), `ignores` (file patterns to skip).
 
-5. **Write the tests.** Write
+   **`language` is ast-grep's vocabulary, and nothing here validates
+   it.** The vendored rule schema types the field as a bare string with
+   no enum and `verify` never reads it, so the first thing that has an
+   opinion is the binary. ast-grep (v%(AST_GREP_VERSION)s) parses:
+
+     %(AST_GREP_LANGUAGES)s
+
+   Copy a spelling from that list rather than typing one that looks
+   right. Off-list spellings fail two different ways and neither is
+   caught locally: one ast-grep does not recognize at all takes the
+   whole scan down (`did not match any variant of untagged enum
+   SgLang`, so every other rule goes unreported too), and one it
+   recognizes but that names the wrong parser reports nothing and looks
+   like a clean codebase.
+
+   Two specific traps:
+   - **Do not copy from `detect --json`.** It reports the
+     *repository's* languages in a different vocabulary — it says
+     `C++` where the list above says `Cpp`.
+   - **`Tsx` and `TypeScript` are two parsers, not aliases.** A rule
+     over `.tsx` files that declares `TypeScript` does not match JSX
+     syntax; it does not read those files at all.
+
+5. **Check any variadic pattern against the separator trap.** A `$$$`
+   next to a comma does not mean "zero or more". The `,` in the pattern
+   is itself an AST node, and under ast-grep's default `smart`
+   strictness every node in the pattern must match — so a call with no
+   comma cannot match a pattern that has one. Measured against the
+   ast-grep this CLI ships (v%(AST_GREP_VERSION)s), given the four calls
+   `foo()`, `foo(1)`, `foo(1,2)`, and `foo(1,2,3)`:
+
+| pattern            | what it matches                              |
+|--------------------|----------------------------------------------|
+| `foo($$$)`         | all four, `foo()` included                   |
+| `foo($A, $$$)`     | `foo(1,2)` and `foo(1,2,3)` — never `foo(1)` |
+| `foo($$$, $A)`     | `foo(1)` alone                               |
+| `foo($A, $$$, $B)` | `foo(1,2)` alone                             |
+
+   A standalone `$$$` needs none of this — it is the comma beside it
+   that narrows the pattern. The two remedies are not the same:
+
+   - **Trailing `$$$`** — write the pattern as an object with
+     `strictness: ast`, which compares named AST nodes and ignores the
+     separator. An object pattern also requires `context` and
+     `selector`:
+     ```yaml
+     rule:
+       pattern:
+         context: foo($A, $$$)
+         selector: call_expression
+         strictness: ast
+     ```
+     This moves the boundary from two arguments to one, **not to
+     zero** — `$A` still has to bind something, so `foo()` is still
+     unmatched. And `strictness` is valid only inside the pattern
+     object: at rule level ast-grep rejects it as an unknown field and
+     fails the whole scan.
+   - **Leading `$$$`** — `strictness: ast` does not rescue it. Use
+     `any` with one branch per arity you mean to cover.
+
+   This is upstream's intended behaviour (ast-grep/ast-grep#1365,
+   closed as working-as-intended), not a bug waiting on a release:
+   0.45.2 behaves identically, so there is no version to wait for.
+
+6. **Write the tests.** Write
    `.taskless/rules/sg/<id>/.tests/<id>-YYYYMMDD-test.yml` with the matching
    `id` field plus `valid` and `invalid` arrays — at least two of each,
    drawn from real code where you can. The `id` must match the rule's
@@ -82,7 +146,19 @@ whole rule.
    shape are the same ones the service writes; do not invent a different
    layout.
 
-6. **Run the verify feedback loop.** Both commands take the rule's
+   **Both arrays must be non-empty, and `test` fails the rule if either
+   one is.** An empty `invalid:` is not a neutral starting point to fill
+   in later: ast-grep reports `1 passed; 0 failed` and exits zero over
+   no cases at all, so a rule that matches nothing anywhere looks
+   exactly like a rule that works. The `invalid:` bucket is the only
+   thing that demonstrates the rule can fire.
+
+   Where the rule has an arity boundary — anything from step 5 — put a
+   case on each side of it. A pattern that starts at two arguments when
+   it was meant to start at one passes a test suite whose fixtures all
+   have two.
+
+7. **Run the verify feedback loop.** Both commands take the rule's
    directory as their argument:
    ```
    %(TASKLESS_CLI)s verify .taskless/rules/sg/<id> --json
@@ -99,7 +175,7 @@ whole rule.
    {"ok":true,"rules":[{"engine":"sg","ruleId":"no-eval",
     "ok":true,"errors":[],"ran":true}]}
    ```
-   - `ok: true` → go to step 7.
+   - `ok: true` → go to step 8.
    - `ok: false` → read `errors` and fix. Repeat up to 3 times.
 
 | what `errors` says                   | fix                                             |
@@ -115,11 +191,11 @@ whole rule.
    one entry per rule in the report. `.taskless/rules/sg` covers every
    ast-grep rule; no argument at all covers the project.
 
-7. **On success, report.** Show the rule directory and what is in it,
+8. **On success, report.** Show the rule directory and what is in it,
    plus a one-line summary of what the rule detects. Suggest
    `%(TASKLESS_CLI)s agent check` to validate against the broader codebase.
 
-8. **On failure, escalate — with confirmation.** If after the feedback
+9. **On failure, escalate — with confirmation.** If after the feedback
    loop the rule still cannot capture the user's cases:
    - Delete the candidate `.taskless/rules/sg/<id>/` directory so the
      repo is not left with a broken rule. One `rm -rf` removes the rule
@@ -136,12 +212,12 @@ whole rule.
 - Do NOT write to `.taskless/rule-metadata/` — locally authored rules
   have no metadata sidecar; they iterate via file edits.
 - The verify loop is the quality gate. A clean failure is a legitimate
-  reason to escalate, but only with the user's confirmation (step 8).
+  reason to escalate, but only with the user's confirmation (step 9).
 
 ## See Also
 
 - `%(TASKLESS_CLI)s agent route` — re-decide the destination
-- `%(TASKLESS_CLI)s agent verify-rule` — the `verify` and `test` commands step 6 calls
+- `%(TASKLESS_CLI)s agent verify-rule` — the `verify` and `test` commands step 7 calls
 - `%(TASKLESS_CLI)s agent improve-rule` — iterate on a rule that already exists
 - `%(TASKLESS_CLI)s agent create-remote-rule` — generate via the service (login)
 - `%(TASKLESS_CLI)s agent check` — validate the new rule against the codebase
