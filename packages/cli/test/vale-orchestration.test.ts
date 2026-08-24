@@ -446,3 +446,42 @@ describe("an engine failure under --json", () => {
     expect(output.notices).toBeUndefined();
   });
 });
+
+withVale("a repository containing a converter-dependent file", () => {
+  it("still reports its Markdown findings, and says what it skipped", async () => {
+    // End to end, through the built CLI, because the failure this covers was
+    // whole-run: one `.adoc` aborted Vale before it serialized anything, so
+    // every Markdown finding in the project disappeared while `check` still
+    // exited non-zero for an unrelated ast-grep finding — a dead engine
+    // wearing a normal red check.
+    const cwd = makeMixedProject();
+    // Widen the rule past `[*.md]`. Vale only routes a file to a parser when
+    // the configuration gives it a check to run, so the crash is unreachable
+    // while every matcher is Markdown-only.
+    writeFileSync(
+      join(cwd, ".taskless", "rules", "vale", "no-simply", ".vale.ini"),
+      "[*]\ntskl) rule = no-simply\nBasedOnStyles =\nno-simply.no-simply = YES\n"
+    );
+    writeFileSync(join(cwd, "guide.adoc"), "= Guide\n\nJust simply do it.\n");
+    mkdirSync(join(cwd, "docs"), { recursive: true });
+    writeFileSync(join(cwd, "docs", "api.rst"), "API\n===\n\nsimply\n");
+
+    const { stdout } = await runCli(["check", "-d", cwd, "--json"]);
+    const output = parseJson(stdout);
+
+    // The findings survive...
+    expect(
+      output.results.some(
+        (result) => (result as { source?: string }).source === "vale"
+      )
+    ).toBe(true);
+    // ...and it is a skip, not an engine failure.
+    expect(output.failures).toBeUndefined();
+    // ...and the skip is said out loud, naming both the file and the fix.
+    const notices = (output.notices ?? []).join("\n");
+    expect(notices).toContain("guide.adoc");
+    expect(notices).toContain("docs/api.rst");
+    expect(notices).toContain("asciidoctor");
+    expect(notices).toContain("rst2html");
+  });
+});
