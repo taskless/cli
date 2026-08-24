@@ -12,6 +12,7 @@ import {
   resolveBuildTarget,
   resolveCliInvocation,
   resolveCliNotice,
+  resolveCliVersion,
   resolveOutputDirectory,
 } from "./scripts/build-target";
 
@@ -221,7 +222,7 @@ function assertPromptsGraph(): Plugin {
 
 export default defineConfig({
   define: {
-    __VERSION__: JSON.stringify(pkg.version),
+    __VERSION__: JSON.stringify(resolveCliVersion(process.env, pkg.version)),
     __TASKLESS_CLI__: JSON.stringify(cliInvocation),
     __TASKLESS_CLI_NOTICE__: JSON.stringify(cliNotice),
   },

@@ -91,6 +91,33 @@ export function resolveNightlyVersion(environment: BuildEnvironment): string {
 }
 
 /**
+ * The version this build should report as its own — `__VERSION__`, which backs
+ * `taskless --version`, the `%(CLI_VERSION)s` recipe header, the `cliVersion`
+ * telemetry property, and the `install.cliVersion` written into
+ * `.taskless/taskless.json`.
+ *
+ * For every target but `nightly` this is the committed package version. A
+ * nightly is the exception because its version is stamped at pack time and the
+ * manifest in version control is deliberately left alone — so reading
+ * `package.json` at build time yields the version of the release the nightly
+ * ANTICIPATES, not the version it is published as.
+ *
+ * Getting this wrong is quiet rather than loud. A nightly installed to exercise
+ * unreleased behavior records `install.cliVersion` as the last release, so the
+ * manifest disagrees with the skills emitted beside it — which pin the exact
+ * nightly — and anyone reading the manifest to answer "what installed this?"
+ * gets a version that never wrote it.
+ */
+export function resolveCliVersion(
+  environment: BuildEnvironment,
+  packageVersion: string
+): string {
+  return resolveBuildTarget(environment) === "nightly"
+    ? resolveNightlyVersion(environment)
+    : packageVersion;
+}
+
+/**
  * The CLI invocation baked into emitted skill/command/recipe content, chosen by
  * the TASKLESS_BUILD_TARGET env var (see package.json build:dev/build:self/
  * build:nightly):
