@@ -337,8 +337,10 @@ export const VALE_CONVERTER_DEPENDENT: readonly ValeConverterFormat[] =
  */
 export const VALE_CONVERTER_CHECKERS: Readonly<Record<string, string>> = {
   ".rst": "lintRST",
+  ".rest": "lintRST",
   ".adoc": "lintAdoc",
   ".asciidoc": "lintAdoc",
+  ".asc": "lintAdoc",
   ".xml": "lintXML",
   ".dita": "lintDITA",
   ".mdx": "lintMDX",
