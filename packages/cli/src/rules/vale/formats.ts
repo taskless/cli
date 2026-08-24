@@ -1,6 +1,11 @@
 import { glob } from "node:fs/promises";
 import { basename, extname } from "node:path";
 
+import {
+  VALE_CONVERTER_BY_EXTENSION,
+  VALE_CONVERTER_DEPENDENT_EXTENSIONS,
+} from "../capabilities";
+
 /**
  * Taskless's own directory, as a project-relative path.
  *
@@ -30,13 +35,28 @@ export const TASKLESS_DIRECTORY = ".taskless";
  * in a repo that already had an ast-grep finding, "every Vale rule stopped
  * running" was indistinguishable from a normal red check.
  *
+ * ## The table lives in `rules/capabilities.ts`
+ *
+ * `VALE_FORMAT_TIERS` there is the single measured record of what Vale does
+ * with an extension, and everything in this module is derived from it — the
+ * exclusion list, the glob, and the converter named in the notice. Nothing here
+ * restates a tier, because a second copy is precisely how two independently
+ * measured tables came to disagree about six extensions.
+ *
+ * `capabilities.ts` is the home rather than this file because the same tiers
+ * are read by two consumers with incompatible constraints: this module, which
+ * runs Vale, and `src/prompts/recipes.ts`, which renders the tiers into the
+ * agent recipes and must stay free of every host capability (`node:fs` here
+ * would fail `assert-prompts-graph` at build time). Pure data satisfies both.
+ *
  * ## Asserting known support rather than dodging known breakage
  *
- * The tiers below are **measured against the pinned binary**, not read off
- * Vale's documentation, and `vale-formats.test.ts` re-measures every entry
- * against the real binary on every run. A format whose tier changes — or a
- * converter Vale starts requiring for a format we currently call native — turns
- * that test red before it can turn a user's check silently green.
+ * The tiers are **measured against the pinned binary**, not read off Vale's
+ * documentation, and `vale-vendor-contract.test.ts` re-measures every entry
+ * against the real binary on every run, each tier by the property only that
+ * tier has. A format whose tier changes — or a converter Vale starts requiring
+ * for a format we currently call native — turns that test red before it can
+ * turn a user's check silently green.
  *
  * The reason the operative list is the *converter* tier rather than the native
  * one deserves stating, because "allowlist what we know works" reads like it
@@ -54,74 +74,19 @@ export const TASKLESS_DIRECTORY = ".taskless";
  * makes an exclusion honest rather than a denylist with a nice name: shelling
  * out is a property of a short, closed set of markup formats, and an extension
  * outside that set falls through to Vale's plain-text reader, which has no
- * converter to be missing. `MARKUP_FORMAT_TIERS` is the assertion — it names
- * what we measured and what we concluded — and the exclusion is derived from
- * it, so the two cannot drift.
+ * converter to be missing.
  *
  * **That property is pinned to the vendored binary, and a version bump is what
  * breaks it.** "Unknown to us" is safe only while it also means "unknown to
  * Vale": the moment Vale learns a format, it starts routing that extension to a
- * parser, and if that parser shells out, an extension missing from this table is
+ * parser, and if that parser shells out, an extension missing from the table is
  * a crash rather than a plain-text read. Vale 3.18.0 is the live example — it
- * added Typst, which converts through `typst2vast`, so upgrading the
- * `@taskless/vale-*` packages without re-measuring would reintroduce exactly
- * this bug under a new extension. Re-measure the table on every bump; the
- * per-extension cases in `vale-formats.test.ts` are how.
- *
- * TODO(capabilities): `packages/cli/src/rules/capabilities.ts` is being built
- * in parallel to hold pinned engine-capability constants, Vale format tiers
- * among them. This table is the single place those tiers live today; move it
- * there wholesale at integration rather than copying entries out of it.
+ * adds Typst, which converts through `typst2vast`, so `.typ` stops being the
+ * plaintext read it is today and upgrading the `@taskless/vale-*` packages
+ * without re-measuring would reintroduce exactly this bug under a new
+ * extension. Re-measure the whole table on every bump; the per-extension cases
+ * in `vale-vendor-contract.test.ts` are how.
  */
-export type ValeFormatTier =
-  /** Vale parses it in-process. Safe to hand over. */
-  | "native"
-  /** Vale shells out to a program we do not ship. Must not be handed over. */
-  | "external-converter";
-
-/** One markup extension, the tier we measured it in, and why. */
-export interface ValeFormatSupport {
-  tier: ValeFormatTier;
-  /**
-   * The program Vale invokes, for `external-converter` entries. Named in the
-   * user-facing notice so "skipped" comes with something to act on.
-   */
-  converter?: string;
-}
-
-/**
- * Every markup extension Vale routes to a syntax-aware parser, tiered.
- *
- * Measured against `@taskless/vale-*` 3.17.1 by linting a one-line file per
- * extension under a `[*]` matcher and recording whether Vale returned findings
- * or aborted with `E100`.
- *
- * `.asc` is the entry worth pointing at: it is a third AsciiDoc spelling, it
- * crashes exactly like `.adoc`, and it was not in the bug report. It is here
- * because the tiers were measured rather than transcribed.
- */
-export const MARKUP_FORMAT_TIERS: Readonly<Record<string, ValeFormatSupport>> =
-  {
-    ".md": { tier: "native" },
-    ".markdown": { tier: "native" },
-    ".mdown": { tier: "native" },
-    ".mkdn": { tier: "native" },
-    ".mkd": { tier: "native" },
-    ".html": { tier: "native" },
-    ".htm": { tier: "native" },
-    ".xhtml": { tier: "native" },
-    ".org": { tier: "native" },
-    ".tex": { tier: "native" },
-    ".rmd": { tier: "native" },
-    ".adoc": { tier: "external-converter", converter: "asciidoctor" },
-    ".asciidoc": { tier: "external-converter", converter: "asciidoctor" },
-    ".asc": { tier: "external-converter", converter: "asciidoctor" },
-    ".rst": { tier: "external-converter", converter: "rst2html" },
-    ".rest": { tier: "external-converter", converter: "rst2html" },
-    ".xml": { tier: "external-converter", converter: "an XSLT stylesheet" },
-    ".dita": { tier: "external-converter", converter: "dita" },
-    ".mdx": { tier: "external-converter", converter: "mdx2vast" },
-  };
 
 /**
  * Extensions Vale must never be handed, lowercase, leading dot, sorted.
@@ -129,12 +94,9 @@ export const MARKUP_FORMAT_TIERS: Readonly<Record<string, ValeFormatSupport>> =
  * Derived from the tier table rather than written out again, so adding a
  * measured entry there is the whole change.
  */
-export const CONVERTER_DEPENDENT_EXTENSIONS: readonly string[] = Object.entries(
-  MARKUP_FORMAT_TIERS
-)
-  .filter(([, support]) => support.tier === "external-converter")
-  .map(([extension]) => extension)
-  .toSorted();
+export const CONVERTER_DEPENDENT_EXTENSIONS: readonly string[] = [
+  ...VALE_CONVERTER_DEPENDENT_EXTENSIONS,
+].toSorted();
 
 /**
  * The converter Vale would need for `path`, or `undefined` if it needs none.
@@ -144,7 +106,7 @@ export const CONVERTER_DEPENDENT_EXTENSIONS: readonly string[] = Object.entries(
  * the crash reappear on exactly one platform.
  */
 export function converterFor(path: string): string | undefined {
-  return MARKUP_FORMAT_TIERS[extname(path).toLowerCase()]?.converter;
+  return VALE_CONVERTER_BY_EXTENSION[extname(path).toLowerCase()];
 }
 
 /**

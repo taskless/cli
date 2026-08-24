@@ -144,6 +144,7 @@ describe("the CLI invocation variable", () => {
       "VALE_COMMENT_FORMATS",
       "VALE_CONVERTER_FORMATS",
       "VALE_MARKUP_FORMATS",
+      "VALE_PLAINTEXT_FORMATS",
       "VALE_VERSION",
     ]);
     // INPUT_SCHEMA stays conditional on the placeholder being present.

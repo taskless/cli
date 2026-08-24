@@ -11,11 +11,14 @@ import {
   VALE_CONVERTER_CHECKERS,
   VALE_CONVERTER_DEPENDENT,
   VALE_CONVERTER_DEPENDENT_EXTENSIONS,
+  VALE_FORMAT_TIERS,
   VALE_MARKUP_EXTENSIONS,
+  VALE_PLAINTEXT_EXTENSIONS,
   VALE_VERSION,
   valeCommentList,
   valeConverterList,
   valeMarkupList,
+  valePlaintextList,
 } from "../src/rules/capabilities";
 
 /**
@@ -382,6 +385,11 @@ withVale("Vale vendor contract", () => {
  * - **comment-only** is separated from plaintext by the NEGATIVE — the same
  *   token on a bare non-comment line must yield nothing. A file type that fires
  *   on both is the plaintext fallback wearing a code extension.
+ * - **plaintext** is the tier that needs no separating — a bare line fires —
+ *   but the entries listed in it do: each names a construct a parser WOULD have
+ *   skipped, and the probe asserts Vale lints it. That is the assertion that
+ *   `.tex` and `.rmd` are not markup, and it is the one the first hand-written
+ *   table got backwards.
  * - **converter-dependent** is separated from everything by failing.
  *
  * See taskless/cli#151.
@@ -441,6 +449,10 @@ withVale("Vale engine capabilities", () => {
       prose: "We simply do it.\n",
       skipped: "Fine.\n\n```\nsimply\n```\n",
     },
+    ".mdown": {
+      prose: "We simply do it.\n",
+      skipped: "Fine.\n\n```\nsimply\n```\n",
+    },
     ".org": { prose: "We simply do it.\n", skipped: "# simply\nFine.\n" },
     ".htm": {
       prose: "<p>We simply do it.</p>\n",
@@ -459,12 +471,30 @@ withVale("Vale engine capabilities", () => {
   it("reports the pinned version", () => {
     // VALE_VERSION is rendered beside the reach lists in route.txt and
     // create-vale-rule.txt, so it is the attribution for every claim below.
-    // It also gates one of them: Vale 3.18.0 parses MDX natively, and a bump
-    // past it must move `.mdx` out of VALE_CONVERTER_DEPENDENT.
+    // It also gates two of them, in opposite directions: Vale 3.18.0 parses MDX
+    // natively, so a bump past it moves `.mdx` from converter-dependent to
+    // markup — and the same release adds a Typst converter, so it moves `.typ`
+    // from plaintext to `converter:typst2vast`. A bump re-measures the whole
+    // table; these two are only the rows already known to move.
     const result = spawnSync(binary as string, ["--version"], {
       encoding: "utf8",
     });
     expect(result.stdout.trim()).toBe(`vale version ${VALE_VERSION}`);
+  });
+
+  it("probes every row of VALE_FORMAT_TIERS", () => {
+    // The table is the claim and this is its coverage check: every extension in
+    // it is reached by one of the tier suites below, so a row cannot be added
+    // without being measured. Reconciling two independently written tables
+    // turned up six rows that disagreed, every one of them in a tier nothing
+    // probed.
+    const probed = [
+      ...VALE_MARKUP_EXTENSIONS,
+      ...VALE_COMMENT_EXTENSIONS,
+      ...VALE_PLAINTEXT_EXTENSIONS,
+      ...VALE_CONVERTER_DEPENDENT.flatMap(({ extensions }) => extensions),
+    ].toSorted();
+    expect(probed).toEqual(Object.keys(VALE_FORMAT_TIERS).toSorted());
   });
 
   it("covers every markup extension in VALE_MARKUP_EXTENSIONS", () => {
@@ -499,6 +529,47 @@ withVale("Vale engine capabilities", () => {
         findings(`b${extension}`, "simply\n"),
         `${extension} linted a bare non-comment line — it is the plaintext fallback, not comment-aware`
       ).toHaveLength(0);
+    }
+  );
+
+  /**
+   * For each listed plaintext extension, the construct a parser for the format
+   * its spelling suggests would have skipped.
+   *
+   * Vale lints it, which is the whole finding: `.tex` is not TeX to Vale and
+   * `.rmd` is not R Markdown. The mirror image of the markup fixtures — same
+   * documents, opposite expectation.
+   */
+  const PLAINTEXT_FIXTURES: Record<string, string> = {
+    ".mkd": "Fine.\n\n```\nsimply\n```\n",
+    ".mkdn": "Fine.\n\n```\nsimply\n```\n",
+    ".rmd": "Fine.\n\n```{r}\nsimply <- 1\n```\n",
+    ".tex": "% simply in a comment\nFine.\n",
+    ".typ": "// simply\nFine.\n",
+  };
+
+  it("covers every extension in VALE_PLAINTEXT_EXTENSIONS", () => {
+    expect(Object.keys(PLAINTEXT_FIXTURES).toSorted()).toEqual(
+      [...VALE_PLAINTEXT_EXTENSIONS].toSorted()
+    );
+  });
+
+  it.each([...VALE_PLAINTEXT_EXTENSIONS])(
+    "reads %s as plaintext, lint-through-syntax and all",
+    (extension) => {
+      // A bare line fires: the tier of last resort has no syntax to hide behind.
+      expect(
+        findings(`bare${extension}`, "simply\n"),
+        `${extension} ignored a bare line — it has a parser, and is not plaintext`
+      ).toHaveLength(1);
+      // And the format's own non-prose syntax fires too, which is what makes it
+      // plaintext rather than markup. `.mkdn` and `.mkd` are the cautionary
+      // pair: they read as Markdown spellings and Vale lints straight through a
+      // fenced code block in both.
+      expect(
+        findings(`syntax${extension}`, PLAINTEXT_FIXTURES[extension]!),
+        `${extension} skipped its own syntax — it is parsed, and belongs in a markup or comment tier`
+      ).toHaveLength(1);
     }
   );
 
@@ -563,6 +634,9 @@ withVale("Vale engine capabilities", () => {
   it("renders each list as recipe prose with no gaps", () => {
     expect(valeMarkupList().split(", ")).toEqual([...VALE_MARKUP_EXTENSIONS]);
     expect(valeCommentList().split(", ")).toEqual([...VALE_COMMENT_EXTENSIONS]);
+    expect(valePlaintextList().split(", ")).toEqual([
+      ...VALE_PLAINTEXT_EXTENSIONS,
+    ]);
     for (const { extensions, converter } of VALE_CONVERTER_DEPENDENT) {
       expect(valeConverterList()).toContain(
         `${extensions.join("/")} (needs ${converter})`

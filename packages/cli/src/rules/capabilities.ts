@@ -99,78 +99,182 @@ export const AST_GREP_LANGUAGES = [
 export const VALE_VERSION = "3.17.1";
 
 /**
+ * Which tier Vale routes an extension to.
+ *
+ * `converter:<program>` carries the program's own name in the tier, so one
+ * table row states both the tier and the thing a user would install. The name
+ * is the one Vale prints in its `E100` text, because that is the string a
+ * reader will search for.
+ */
+export type ValeFormatTier =
+  /** Parsed in-process: the document is prose, its own syntax is skipped. */
+  | "markup"
+  /** Parsed in-process: comment text is linted, the code body is invisible. */
+  | "comment"
+  /** No parser: the whole file is linted as one block of prose. */
+  | "plaintext"
+  /** Vale shells out to a program the `@taskless/vale-*` packages do not ship. */
+  | `converter:${string}`;
+
+/** The `ValeFormatTier` prefix that marks a converter-dependent format. */
+const CONVERTER_TIER_PREFIX = "converter:";
+
+/**
+ * EVERY MEASURED VALE EXTENSION, AND ITS TIER. THE ONLY TABLE.
+ *
+ * Adding an extension is one line here; every list, glob, notice and test below
+ * derives from this record, so there is no second place to keep in step. Two
+ * branches once measured this independently and produced two tables that
+ * disagreed about six extensions — that is what this single record exists to
+ * make impossible.
+ *
+ * MEASURED, NOT DOCUMENTED, AND MEASURED BY A DISCRIMINATING PROBE. Ordinary
+ * prose fires in all three readable tiers, so it can never separate them. Each
+ * tier is pinned by the property only that tier has, in
+ * `test/vale-vendor-contract.test.ts`:
+ *
+ * - **markup** — a construct only a real parser skips yields ZERO (a fenced
+ *   code block, an Org `#` line, an HTML comment).
+ * - **comment** — the token in a comment yields one finding and the same token
+ *   on a bare non-comment line yields ZERO. A type that fires on both is the
+ *   plaintext fallback wearing a code extension.
+ * - **plaintext** — a bare line yields a finding. Listed only where the tier is
+ *   surprising: `.tex`, `.rmd`, `.mkd` and `.mkdn` all look like markup and are
+ *   not. Everything unnamed lands here too, which is why this tier does not
+ *   need to be exhaustive.
+ * - **converter** — a non-zero exit whose output carries `E100` and the
+ *   program's name.
+ *
+ * Measured spellings, not families. `.mdown` is native Markdown and `.mkd` and
+ * `.mkdn` are not; `.asc` is a third AsciiDoc spelling that crashes exactly
+ * like `.adoc`; `.ditamap` is plaintext while `.dita` needs `dita`. Case is
+ * part of the key — `.r` and `.R` were both measured, `.PY` was measured and is
+ * not comment-aware. Add a row only after probing it; the contract test refuses
+ * to take one on faith.
+ *
+ * A VERSION BUMP INVALIDATES THIS TABLE — RE-MEASURE THE WHOLE OF IT. The tiers
+ * are a property of {@link VALE_VERSION}'s binary, and the dangerous direction
+ * is a format Vale *learns*: an extension missing from this table is read as
+ * plain text today, but the moment Vale routes it to a converter the same
+ * omission is a crash that takes down every Vale rule in the run. Vale 3.18.0
+ * is the known incoming case in both directions — it parses MDX natively, and
+ * it adds a Typst converter, so `.typ` moves from `plaintext` to
+ * `converter:typst2vast` on that bump while `.mdx` moves to `markup`. Neither
+ * happens on its own; re-probe every row.
+ */
+export const VALE_FORMAT_TIERS: Readonly<Record<string, ValeFormatTier>> = {
+  // markup — parsed, the format's own constructs skipped
+  ".htm": "markup",
+  ".html": "markup",
+  ".markdown": "markup",
+  ".md": "markup",
+  ".mdown": "markup",
+  ".org": "markup",
+  ".xhtml": "markup",
+  // comment text only — the code body is invisible
+  ".c": "comment",
+  ".c++": "comment",
+  ".cc": "comment",
+  ".clj": "comment",
+  ".cpp": "comment",
+  ".cs": "comment",
+  ".css": "comment",
+  ".cxx": "comment",
+  ".go": "comment",
+  ".h": "comment",
+  ".h++": "comment",
+  ".hpp": "comment",
+  ".hs": "comment",
+  ".java": "comment",
+  ".jl": "comment",
+  ".js": "comment",
+  ".jsx": "comment",
+  ".less": "comment",
+  ".lua": "comment",
+  ".php": "comment",
+  ".pl": "comment",
+  ".pm": "comment",
+  ".proto": "comment",
+  ".ps1": "comment",
+  ".py": "comment",
+  ".pyw": "comment",
+  ".r": "comment",
+  ".R": "comment",
+  ".rb": "comment",
+  ".rs": "comment",
+  ".sass": "comment",
+  ".scala": "comment",
+  ".swift": "comment",
+  ".ts": "comment",
+  ".tsx": "comment",
+  // plaintext, and surprising about it — these look parsed and are not
+  ".mkd": "plaintext",
+  ".mkdn": "plaintext",
+  ".rmd": "plaintext",
+  ".tex": "plaintext",
+  ".typ": "plaintext",
+  // converter-dependent — Vale supports the format, we ship no converter
+  ".adoc": "converter:asciidoctor",
+  ".asc": "converter:asciidoctor",
+  ".asciidoc": "converter:asciidoctor",
+  ".dita": "converter:dita",
+  ".mdx": "converter:mdx2vast",
+  ".rest": "converter:rst2html",
+  ".rst": "converter:rst2html",
+  ".xml": "converter:xsltproc and an XSLT stylesheet",
+};
+
+/** Every extension in `tier`, in table order. */
+function extensionsInTier(tier: ValeFormatTier): string[] {
+  return Object.entries(VALE_FORMAT_TIERS)
+    .filter(([, entry]) => entry === tier)
+    .map(([extension]) => extension);
+}
+
+/**
  * Extensions Vale parses as markup: the whole document is prose, and the
  * format's own non-prose constructs are excluded.
- *
- * MEASURED, NOT DOCUMENTED. Each entry was distinguished from the plaintext
- * fallback by a construct only a real parser skips — a fenced code block for
- * Markdown, a `#` line for Org, an HTML comment for the HTML family — because
- * on ordinary prose a markup parse and a plaintext parse are indistinguishable.
  *
  * The HTML entries carry a consequence worth stating to an author: prose
  * outside an element is not linted, so a bare sentence in a `.html` file yields
  * nothing.
  */
-export const VALE_MARKUP_EXTENSIONS = [
-  ".htm",
-  ".html",
-  ".markdown",
-  ".md",
-  ".org",
-  ".xhtml",
-] as const;
+export const VALE_MARKUP_EXTENSIONS: readonly string[] =
+  extensionsInTier("markup");
 
 /**
  * Extensions where Vale lints **comment text only** and ignores the code body.
- *
- * MEASURED BY THE NEGATIVE, which is the only test that separates this tier
- * from the plaintext fallback: a token inside a comment yields a finding, and
- * the same token on a bare non-comment line yields nothing. A file type that
- * fires on both is plaintext, not comment-aware.
- *
- * Case-sensitive, and not closed over the obvious aliases. `.r` and `.R` are
- * both here because both were measured; `.PY` was measured and is not
- * comment-aware, and neither are `.hh`/`.hxx` despite `.h`/`.hpp` being. Add an
- * entry only after probing it — the contract test below refuses to take one on
- * faith.
  */
-export const VALE_COMMENT_EXTENSIONS = [
-  ".c",
-  ".c++",
-  ".cc",
-  ".clj",
-  ".cpp",
-  ".cs",
-  ".css",
-  ".cxx",
-  ".go",
-  ".h",
-  ".h++",
-  ".hpp",
-  ".hs",
-  ".java",
-  ".jl",
-  ".js",
-  ".jsx",
-  ".less",
-  ".lua",
-  ".php",
-  ".pl",
-  ".pm",
-  ".proto",
-  ".ps1",
-  ".py",
-  ".pyw",
-  ".r",
-  ".R",
-  ".rb",
-  ".rs",
-  ".sass",
-  ".scala",
-  ".swift",
-  ".ts",
-  ".tsx",
-] as const;
+export const VALE_COMMENT_EXTENSIONS: readonly string[] =
+  extensionsInTier("comment");
+
+/**
+ * Extensions measured into the plaintext fallback whose spelling suggests
+ * otherwise.
+ *
+ * Not exhaustive and not meant to be — every unnamed extension is plaintext
+ * too. These are the ones an author would reasonably assume were parsed, so
+ * they are worth naming in a recipe rather than leaving to "everything else".
+ */
+export const VALE_PLAINTEXT_EXTENSIONS: readonly string[] =
+  extensionsInTier("plaintext");
+
+/**
+ * The converter each converter-dependent extension needs, keyed by extension.
+ *
+ * The lookup `rules/vale/formats.ts` uses to name a converter in the skip
+ * notice. Keys are lowercase because every measured converter format is; a
+ * caller comparing an extension off the filesystem must lowercase it first, or
+ * `README.RST` becomes a crash on case-insensitive platforms only.
+ */
+export const VALE_CONVERTER_BY_EXTENSION: Readonly<Record<string, string>> =
+  Object.fromEntries(
+    Object.entries(VALE_FORMAT_TIERS).flatMap(([extension, tier]) =>
+      tier.startsWith(CONVERTER_TIER_PREFIX)
+        ? [[extension, tier.slice(CONVERTER_TIER_PREFIX.length)]]
+        : []
+    )
+  );
 
 /** A format Vale supports upstream but cannot read without an external tool. */
 export interface ValeConverterFormat {
@@ -178,6 +282,22 @@ export interface ValeConverterFormat {
   extensions: readonly string[];
   /** The executable or artifact Vale looks for, named in its own E100 text. */
   converter: string;
+}
+
+/** The converter-dependent extensions grouped by the program they need. */
+function groupByConverter(): ValeConverterFormat[] {
+  const groups = new Map<string, string[]>();
+  for (const [extension, converter] of Object.entries(
+    VALE_CONVERTER_BY_EXTENSION
+  )) {
+    const existing = groups.get(converter);
+    if (existing === undefined) groups.set(converter, [extension]);
+    else existing.push(extension);
+  }
+  return [...groups].map(([converter, extensions]) => ({
+    converter,
+    extensions,
+  }));
 }
 
 /**
@@ -195,18 +315,9 @@ export interface ValeConverterFormat {
  * caught by a rule's glob takes down the entire Vale pass, including every
  * other rule and every other file — so `[*.{md,mdx}]` is not a slightly wider
  * matcher than `[*.md]`, it is a broken one.
- *
- * VERSION-SENSITIVE. Vale 3.18.0 parses MDX natively, so a bump past it moves
- * `.mdx` out of this list; that is a {@link VALE_VERSION} edit plus an entry
- * removal here, and the contract test fails until both happen.
  */
-export const VALE_CONVERTER_DEPENDENT: readonly ValeConverterFormat[] = [
-  { extensions: [".rst"], converter: "rst2html" },
-  { extensions: [".adoc", ".asciidoc"], converter: "asciidoctor" },
-  { extensions: [".xml"], converter: "xsltproc and an XSLT stylesheet" },
-  { extensions: [".dita"], converter: "dita" },
-  { extensions: [".mdx"], converter: "mdx2vast" },
-];
+export const VALE_CONVERTER_DEPENDENT: readonly ValeConverterFormat[] =
+  groupByConverter();
 
 /**
  * Vale's checker tag per converter-dependent extension, from the `E100` text.
@@ -235,7 +346,7 @@ export const VALE_CONVERTER_CHECKERS: Readonly<Record<string, string>> = {
 
 /** Every converter-dependent extension, flattened. */
 export const VALE_CONVERTER_DEPENDENT_EXTENSIONS: readonly string[] =
-  VALE_CONVERTER_DEPENDENT.flatMap((format) => format.extensions);
+  Object.keys(VALE_CONVERTER_BY_EXTENSION);
 
 /** `Bash, C, Cpp, …` — the ast-grep language list as recipe prose. */
 export function astGrepLanguageList(): string {
@@ -250,6 +361,16 @@ export function valeMarkupList(): string {
 /** `.c, .c++, …` — Vale's comment-only extensions as recipe prose. */
 export function valeCommentList(): string {
   return VALE_COMMENT_EXTENSIONS.join(", ");
+}
+
+/**
+ * `.mkd, .mkdn, …` — the plaintext extensions worth naming, as recipe prose.
+ *
+ * Rendered rather than written into the recipe because the surprising cases are
+ * exactly the ones a hand-written list gets wrong.
+ */
+export function valePlaintextList(): string {
+  return VALE_PLAINTEXT_EXTENSIONS.join(", ");
 }
 
 /**

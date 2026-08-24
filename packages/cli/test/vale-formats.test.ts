@@ -5,6 +5,7 @@ import { join } from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
+import { VALE_FORMAT_TIERS } from "../src/rules/capabilities";
 import { findValeBinary } from "../src/rules/vale/binary";
 import {
   buildValeGlob,
@@ -12,19 +13,21 @@ import {
   converterExclusionGlobs,
   converterFor,
   findConverterDependentFiles,
-  MARKUP_FORMAT_TIERS,
   skippedFilesNotice,
 } from "../src/rules/vale/formats";
 import { runVale } from "../src/rules/vale/run";
 
 /**
- * The format tiers, and the exclusion derived from them.
+ * The exclusion derived from the format tiers, and the run that uses it.
  *
- * Split the way `vale-vendor-contract.test.ts` splits: the cases that run the
- * real binary assert what Vale *does* with each extension, and the rest assert
- * what our code does given that. A Vale upgrade that moves a format between
- * tiers should fail in the first group, naming the format, rather than
- * resurfacing as an engine that stopped reporting.
+ * WHAT VALE DOES WITH AN EXTENSION IS NOT ASSERTED HERE. `VALE_FORMAT_TIERS`
+ * lives in `src/rules/capabilities.ts` and every row of it is re-measured
+ * against the real binary in `vale-vendor-contract.test.ts` ("Vale engine
+ * capabilities"), each tier by the discriminating property only that tier has.
+ * This file asserts what our code does *given* those tiers, plus the end-to-end
+ * behaviour of a run that contains a converter-dependent file. Two files
+ * probing the same extension with different fixtures is how a weaker probe gets
+ * to overrule a stronger one, so the probing happens in exactly one of them.
  */
 
 const binary = findValeBinary().path;
@@ -73,15 +76,16 @@ describe("the format tier table", () => {
     // One place, so the merge with `capabilities.ts` is mechanical: adding a
     // measured entry to the table is the entire change, and no second list can
     // fall behind it.
-    const expected = Object.entries(MARKUP_FORMAT_TIERS)
-      .filter(([, support]) => support.tier === "external-converter")
+    const expected = Object.entries(VALE_FORMAT_TIERS)
+      .filter(([, tier]) => tier.startsWith("converter:"))
       .map(([extension]) => extension)
       .toSorted();
+    expect(expected.length).toBeGreaterThan(0);
     expect([...CONVERTER_DEPENDENT_EXTENSIONS]).toEqual(expected);
     // Every excluded format names the program a user would install. A skip the
     // user cannot act on is only marginally better than a silent one.
     for (const extension of CONVERTER_DEPENDENT_EXTENSIONS) {
-      expect(MARKUP_FORMAT_TIERS[extension]?.converter).toBeTruthy();
+      expect(converterFor(`doc${extension}`)).toBeTruthy();
     }
   });
 
@@ -107,6 +111,17 @@ describe("the format tier table", () => {
     expect(converterFor("script.py")).toBeUndefined();
     expect(converterFor("Makefile")).toBeUndefined();
     expect(converterFor("notes.md")).toBeUndefined();
+  });
+
+  it("hands over the formats measured as plaintext, converter-free", () => {
+    // `.tex`, `.rmd`, `.mkd` and `.mkdn` all read as markup and are not — the
+    // first table to be written by hand put `.tex` and `.rmd` in the native
+    // tier. Being wrong about the tier is survivable; being wrong about needing
+    // a converter is not, because it excludes a file Vale would have linted
+    // perfectly well. This is that half of the claim.
+    for (const extension of [".tex", ".rmd", ".mkd", ".mkdn", ".typ"]) {
+      expect(converterFor(`doc${extension}`)).toBeUndefined();
+    }
   });
 });
 
@@ -306,32 +321,3 @@ withVale(
     });
   }
 );
-
-withVale("Vale format tiers, measured against the pinned binary", () => {
-  // The assertion behind "assert known support". Every extension in the table
-  // is re-measured here, so a Vale release that starts or stops needing a
-  // converter for a format turns this red — naming the format — instead of
-  // either crashing a user's whole check or silently excluding a format Vale
-  // can now read perfectly well.
-  for (const [extension, support] of Object.entries(MARKUP_FORMAT_TIERS)) {
-    it(`${extension} is ${support.tier}`, () => {
-      const cwd = makeProject({ [`probe${extension}`]: "simply\n" });
-      const result = spawnSync(
-        binary as string,
-        [
-          "--config",
-          join(".taskless", ".vale.ini"),
-          "--output=JSON",
-          "--no-exit",
-          "--",
-          `probe${extension}`,
-        ],
-        { cwd, encoding: "utf8" }
-      );
-
-      const crashed =
-        result.status !== 0 && `${result.stderr}`.includes("E100");
-      expect(crashed).toBe(support.tier === "external-converter");
-    });
-  }
-});
