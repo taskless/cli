@@ -165,17 +165,8 @@ async function validateRequirements(
     }
   }
 
-  // A rule's tests live inside the rule directory, so there is one place to
-  // look and no resolution order to get wrong.
-  let hasTestFile = false;
-  try {
-    const entries = await readdir(ruleTestsDirectory(cwd, "sg", ruleId));
-    hasTestFile = entries.some(
-      (f) => f.startsWith(`${ruleId}-`) && f.endsWith("-test.yml")
-    );
-  } catch {
-    // No tests directory — hasTestFile stays false.
-  }
+  const testFiles = await discoverRuleTestFiles(cwd, ruleId);
+  const hasTestFile = testFiles.length > 0;
   if (!hasTestFile) {
     errors.push(
       `No test file found for rule "${ruleId}" in ` +
@@ -184,6 +175,39 @@ async function validateRequirements(
   }
 
   return { valid: errors.length === 0, errors, hasTestFile };
+}
+
+/**
+ * Every file in a rule's own `.tests/` directory that the naming convention
+ * claims for this rule, as absolute paths.
+ *
+ * A rule's tests live inside the rule directory, so there is one place to look
+ * and no resolution order to get wrong. Stated once because two callers ask the
+ * same question in the same `verifyRule()` pass — `validateRequirements` for
+ * "are there any tests at all", `fixtureCoverage` for "what is in them" — and a
+ * change to the convention has to move both at once or they disagree.
+ *
+ * The filename is all this decides. What ast-grep will actually RUN is keyed on
+ * the file's own `id:` field, which is a separate question, asked where it
+ * matters (see {@link fixtureCoverage}).
+ */
+async function discoverRuleTestFiles(
+  cwd: string,
+  ruleId: string
+): Promise<string[]> {
+  const directory = ruleTestsDirectory(cwd, "sg", ruleId);
+  let entries: string[];
+  try {
+    entries = await readdir(directory);
+  } catch {
+    // No tests directory — the rule owns no test files.
+    return [];
+  }
+  return entries
+    .filter(
+      (entry) => entry.startsWith(`${ruleId}-`) && entry.endsWith("-test.yml")
+    )
+    .map((entry) => join(directory, entry));
 }
 
 /** Classify a rule's buckets by how many sources each held. */
@@ -209,28 +233,25 @@ function coverageOf(
  * A file that cannot be read or parsed contributes nothing. `sg test` reports
  * malformed test YAML itself, and guessing at a bucket count from a file we
  * could not parse would be a worse error than the one already being raised.
+ *
+ * Only a file whose own `id:` is this rule counts, which is a stricter test
+ * than the filename it was found by. `sg test --filter ^<id>$` resolves cases
+ * against that field, so a file named for `no-eval` but carrying
+ * `id: no-alert-scratch` — a draft copied from another rule — is never executed
+ * for `no-eval`. Counting its buckets here would report coverage for fixtures
+ * that never ran, which is the same "never shown to fire" gap this check
+ * exists to close, reached through the filename rather than an empty bucket.
  */
 async function fixtureCoverage(
   cwd: string,
   ruleId: string
 ): Promise<SgFixtureCoverage> {
-  const directory = ruleTestsDirectory(cwd, "sg", ruleId);
-  let entries: string[];
-  try {
-    entries = await readdir(directory);
-  } catch {
-    return "none";
-  }
-
   let validCount = 0;
   let invalidCount = 0;
-  for (const entry of entries) {
-    if (!entry.startsWith(`${ruleId}-`) || !entry.endsWith("-test.yml")) {
-      continue;
-    }
+  for (const file of await discoverRuleTestFiles(cwd, ruleId)) {
     let parsed: unknown;
     try {
-      parsed = parse(await readFile(join(directory, entry), "utf8"));
+      parsed = parse(await readFile(file, "utf8"));
     } catch {
       continue;
     }
@@ -242,6 +263,7 @@ async function fixtureCoverage(
       continue;
     }
     const buckets = parsed as Record<string, unknown>;
+    if (buckets.id !== ruleId) continue;
     if (Array.isArray(buckets.valid)) validCount += buckets.valid.length;
     if (Array.isArray(buckets.invalid)) invalidCount += buckets.invalid.length;
   }

@@ -461,6 +461,31 @@ describe("verifyRule", () => {
       expect(result.tests.fixtures).toBe("both");
       expect(result.tests.valid).toBe(true);
     });
+
+    it("ignores a file in the rule's directory whose own id is another rule", async () => {
+      // The filename says `no-eval`, the `id:` inside says otherwise — the
+      // shape a draft copied from another rule arrives in. `sg test --filter
+      // ^no-eval$` resolves cases against that `id:`, so these fixtures never
+      // run; counting them would report coverage the rule never earned.
+      await coverageProject(temporaryDirectory, { valid: ["const x = 1;"] });
+      await writeFile(
+        join(
+          temporaryDirectory,
+          ".taskless",
+          "sg",
+          "rule-tests",
+          "no-eval-20260331-test.yml"
+        ),
+        stringify({
+          id: "no-alert-scratch",
+          invalid: ["eval('alert(1)')"],
+        }),
+        "utf8"
+      );
+      const result = await verifyRule(temporaryDirectory, "no-eval");
+      expect(result.tests.fixtures).toBe("valid-only");
+      expect(result.tests.valid).toBe(false);
+    });
   });
 });
 

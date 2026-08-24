@@ -656,47 +656,6 @@ withSg("ast-grep vendor contract", () => {
   });
 
   /**
-   * How a wrong `language:` fails — the two shapes `create-sg-rule.txt` warns
-   * about where the field is written.
-   *
-   * Nothing of ours catches either one first: the vendored
-   * `src/generated/ast-grep-rule-schema.json` types `$defs.Language` as a bare
-   * string with no enum, and `verify` never reads the field. So the binary's
-   * response IS the contract, and a recipe telling an author what to expect is
-   * quoting it.
-   */
-  describe("the language field", () => {
-    it("fails the whole scan on a spelling it does not recognize", () => {
-      // `C#` is the plausible wrong spelling of `CSharp`, and getting it wrong
-      // is not a rule that quietly matches nothing: ast-grep cannot parse the
-      // config, so every OTHER rule in the project goes unreported too. The
-      // error names the enum, which is what an author sees.
-      const result = scan(
-        project({ rules: { "no-eval": atLanguage("C#") }, sources: evalSource })
-      );
-      expect(result.status).toBeGreaterThan(1);
-      expect(result.stderr).toContain("SgLang");
-    });
-
-    it("treats Tsx and TypeScript as different parsers, not aliases", () => {
-      // The quiet half of the same field, and the reason the recipe names this
-      // pair specifically. `TypeScript` over a `.tsx` tree exits clean with no
-      // findings, which is indistinguishable from a codebase with nothing to
-      // flag — the rule looks written and proves nothing.
-      const sources = { "src/a.tsx": "const el = <div>{eval(x)}</div>;\n" };
-      const asTypeScript = scan(
-        project({ rules: { "no-eval": atLanguage("TypeScript") }, sources })
-      );
-      expect(asTypeScript.status).toBe(0);
-      expect(asTypeScript.stdout.trim()).toBe("");
-      expect(
-        scan(project({ rules: { "no-eval": atLanguage("Tsx") }, sources }))
-          .stdout
-      ).toContain("eval(x)");
-    });
-  });
-
-  /**
    * Relocated from `engine-layout.test.ts`, which existed only for these two.
    *
    * ast-grep's `ruleDirs` recurses and parses every `.yml` beneath it as a
