@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import {
   mkdir,
   mkdtemp,
+  readdir,
   readFile,
   rm,
   stat,
@@ -314,6 +315,62 @@ describe("migrations 0004 + 0005 — one directory per rule", () => {
     ).not.toContain("sgconfig.yml");
   });
 
+  // Assembly names every rule's `.tests/` as a `testConfigs` entry, and
+  // ast-grep 0.41.0 aborts the whole invocation on one it cannot read (exit 6,
+  // `Cannot read rule directory ...`) — which `--filter` does not scope away.
+  // A migrated rule with no tests directory therefore failed `taskless test`
+  // for every *other* rule in the project. The fixture above already produces
+  // one: `no-eval`'s test file carries no timestamp, so 0005 cannot attribute
+  // it and the rule arrives with nothing moved into it.
+  it("gives every ast-grep rule a tests directory", async () => {
+    await seedLegacyLayout();
+
+    await ensureTasklessDirectory(temporaryDirectory);
+
+    const sgRoot = join(tasklessDirectory, "rules", "sg");
+    const entries = await readdir(sgRoot, { withFileTypes: true });
+    const ruleIds = entries
+      .filter((entry) => entry.isDirectory())
+      .map((entry) => entry.name);
+    expect(ruleIds).toContain("no-eval");
+
+    for (const ruleId of ruleIds) {
+      const tests = join(sgRoot, ruleId, ".tests");
+      expect(await exists(tests), `${ruleId} has a .tests/`).toBe(true);
+    }
+
+    // Git does not track empty directories, so a `.tests/` created here and
+    // left empty would never reach CI or a fresh clone and the failure would
+    // come back there. The `.gitkeep` is committed, not gitignored —
+    // `.taskless/.gitignore` carries only the two generated configs.
+    expect(await exists(join(sgRoot, "no-eval", ".tests", ".gitkeep"))).toBe(
+      true
+    );
+    const gitignore = await readFile(
+      join(tasklessDirectory, ".gitignore"),
+      "utf8"
+    );
+    expect(gitignore).not.toContain(".gitkeep");
+  });
+
+  // A `.gitkeep` is not a test. `verify` counts a test file only when it
+  // matches `<id>-*-test.yml`, so the repaired rule still reports honestly
+  // rather than turning into a silent pass.
+  it("does not gitkeep a tests directory that received a real test", async () => {
+    await seedLegacyLayout();
+    await writeTree(tasklessDirectory, {
+      "rule-tests/no-var-20250101-test.yml": "id: no-var\nvalid:\n  - foo()\n",
+      "rules/no-var.yml":
+        "id: no-var\nlanguage: typescript\nrule:\n  pattern: var $A = $B\n",
+    });
+
+    await ensureTasklessDirectory(temporaryDirectory);
+
+    const tests = join(tasklessDirectory, "rules", "sg", "no-var", ".tests");
+    expect(await exists(join(tests, "no-var-20250101-test.yml"))).toBe(true);
+    expect(await exists(join(tests, ".gitkeep"))).toBe(false);
+  });
+
   it("is idempotent — a second run changes nothing", async () => {
     await seedLegacyLayout();
     await ensureTasklessDirectory(temporaryDirectory);
@@ -322,9 +379,8 @@ describe("migrations 0004 + 0005 — one directory per rule", () => {
     );
 
     // Re-run 0005 directly (runMigrations would short-circuit on version).
-    const { default: migration } = await import(
-      "../src/filesystem/migrations/0005-rule-directories"
-    );
+    const { default: migration } =
+      await import("../src/filesystem/migrations/0005-rule-directories");
     await migration(tasklessDirectory);
 
     expect(

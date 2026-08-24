@@ -1,12 +1,16 @@
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import {
+  mkdir,
+  mkdtemp,
+  readFile,
+  rm,
+  stat,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import {
-  assembleSgConfig,
-  assembleValeConfig,
-} from "../src/rules/assemble";
+import { assembleSgConfig, assembleValeConfig } from "../src/rules/assemble";
 import { ruleDirectory, ruleTestsDirectory } from "../src/rules/engines";
 
 let cwd: string;
@@ -32,13 +36,23 @@ async function valeRule(id: string, config: string): Promise<void> {
 
 /** Lay down an ast-grep rule with a test file. */
 async function sgRule(id: string): Promise<void> {
+  await sgRuleWithoutTests(id);
+  await mkdir(ruleTestsDirectory(cwd, "sg", id), { recursive: true });
+}
+
+/**
+ * Lay down an ast-grep rule that has no `.tests/` at all.
+ *
+ * The state a nightly-migrated project is in, and the state a hand-made
+ * `mkdir .taskless/rules/sg/<id>/` reaches on any version.
+ */
+async function sgRuleWithoutTests(id: string): Promise<void> {
   const directory = ruleDirectory(cwd, "sg", id);
   await mkdir(directory, { recursive: true });
   await writeFile(
     join(directory, `${id}.yml`),
     `id: ${id}\nlanguage: TypeScript\nseverity: error\nmessage: x\nrule:\n  pattern: eval($A)\n`
   );
-  await mkdir(ruleTestsDirectory(cwd, "sg", id), { recursive: true });
 }
 
 describe("Vale config assembly", () => {
@@ -149,5 +163,52 @@ describe("ast-grep config assembly", () => {
 
   it("writes nothing when there are no ast-grep rules", async () => {
     expect(await assembleSgConfig(cwd)).toBeUndefined();
+  });
+
+  // ast-grep 0.41.0 aborts the whole invocation on a `testDir` it cannot read
+  // (exit 6), and `--filter` does not scope that away — so a single rule with
+  // no `.tests/` would fail every *other* rule's test run, naming a rule its
+  // author never touched.
+  it("omits a testDir whose directory is not on disk", async () => {
+    await sgRule("has-tests");
+    await sgRuleWithoutTests("no-tests");
+
+    const path = await assembleSgConfig(cwd);
+    const contents = await readFile(join(cwd, path ?? ""), "utf8");
+
+    expect(contents).toContain("- testDir: rules/sg/has-tests/.tests");
+    expect(contents).not.toContain("no-tests");
+  });
+
+  it("emits no testDir that is missing from disk, for any rule", async () => {
+    await sgRule("alpha");
+    await sgRuleWithoutTests("beta");
+    await sgRule("gamma");
+
+    const path = await assembleSgConfig(cwd);
+    const contents = await readFile(join(cwd, path ?? ""), "utf8");
+
+    const prefix = "  - testDir: ";
+    const emitted = contents
+      .split("\n")
+      .filter((line) => line.startsWith(prefix))
+      .map((line) => line.slice(prefix.length));
+    expect(emitted.length).toBeGreaterThan(0);
+    for (const directory of emitted) {
+      const stats = await stat(join(cwd, ".taskless", directory));
+      expect(stats.isDirectory(), `${directory} is a directory`).toBe(true);
+    }
+  });
+
+  // `testConfigs:` with no entries under it is accepted by ast-grep 0.41.0 —
+  // measured for both `sg test` and `sg scan` — so a project where no rule has
+  // tests yet still gets a config both commands can read.
+  it("still emits a config when no rule has a tests directory", async () => {
+    await sgRuleWithoutTests("only-rule");
+
+    const path = await assembleSgConfig(cwd);
+    const contents = await readFile(join(cwd, path ?? ""), "utf8");
+
+    expect(contents).toBe("ruleDirs:\n  - rules/sg\ntestConfigs:\n");
   });
 });

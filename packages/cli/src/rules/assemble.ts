@@ -1,4 +1,4 @@
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
 import { dirname, join, posix, relative, sep } from "node:path";
 
 import {
@@ -39,6 +39,16 @@ function tasklessRelative(...segments: string[]): string {
 /** Normalize a filesystem path to POSIX separators for config output. */
 function toPosix(path: string): string {
   return path.split(sep).join(posix.sep);
+}
+
+/** Whether `path` is a directory on disk. */
+async function isDirectory(path: string): Promise<boolean> {
+  try {
+    const stats = await stat(path);
+    return stats.isDirectory();
+  } catch {
+    return false;
+  }
 }
 
 /**
@@ -137,6 +147,19 @@ export async function assembleValeConfig(
  *
  * `testConfigs` gets one entry per rule, because each rule keeps its tests
  * inside its own directory. Sorted with the rule ids, so the file is stable.
+ *
+ * A rule whose `.tests/` is not on disk is left out of `testConfigs`
+ * entirely. **ast-grep 0.41.0 treats a missing `testDir` as fatal to the whole
+ * invocation** — `Cannot read rule directory ...`, exit 6 — and `--filter` does
+ * not scope that away, so emitting the entry regardless would let one rule fail
+ * every other rule's test run, with an error naming a rule its author never
+ * touched. Migration `0005` now creates the directory, but that does not make
+ * this check redundant: `runMigrations` short-circuits once the manifest reads
+ * version 5, so a project a nightly already stamped never re-runs the amended
+ * migration, and a hand-made `mkdir .taskless/rules/sg/<id>/` reaches the same
+ * state on any version. Nothing becomes a silent pass — `verify` still reports
+ * "No test file found" and `test` still reports "Skipped: no test file found",
+ * both of which read the rule directory rather than this config.
  */
 export async function assembleSgConfig(
   cwd: string
@@ -145,9 +168,15 @@ export async function assembleSgConfig(
   if (ruleIds.length === 0) return undefined;
 
   const rulesDirectory = tasklessRelative(RULES_DIRECTORY, "sg");
-  const testDirectories = ruleIds.map((ruleId) =>
-    toPosix(relative(join(cwd, ".taskless"), ruleTestsDirectory(cwd, "sg", ruleId)))
+  const candidates = ruleIds.map((ruleId) =>
+    ruleTestsDirectory(cwd, "sg", ruleId)
   );
+  const present = await Promise.all(
+    candidates.map((path) => isDirectory(path))
+  );
+  const testDirectories = candidates
+    .filter((_, index) => present[index])
+    .map((path) => toPosix(relative(join(cwd, ".taskless"), path)));
 
   const contents = [
     "ruleDirs:",
