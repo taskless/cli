@@ -153,16 +153,25 @@ describe("the skipped-files notice", () => {
     expect(skippedFilesNotice([])).toBeUndefined();
   });
 
-  it("names the files, the converter, and that the rest was checked", () => {
-    const notice = skippedFilesNotice(["docs/guide.adoc", "spec/api.rst"]);
+  it("names the files and says the format is unsupported, not that a tool is missing", () => {
+    const notice =
+      skippedFilesNotice(["docs/guide.adoc", "spec/api.rst"]) ?? "";
     expect(notice).toContain("docs/guide.adoc");
     expect(notice).toContain("spec/api.rst");
+    expect(notice).toContain("every other file was checked normally");
+    // The programs are still named — they are the REASON, and a user reading
+    // "asciidoctor" understands what kind of gap this is.
     expect(notice).toContain("asciidoctor");
     expect(notice).toContain("rst2html");
-    expect(notice).toContain("every other file was checked normally");
-    // Vale supports these formats; this build cannot parse them. Telling a user
-    // otherwise sends them to the wrong project's issue tracker.
-    expect(notice).toContain("Vale supports these formats");
+    // But the notice must not read as an offer. We do not support any format
+    // that needs an external program, so telling a user to install one promises
+    // a path that is untested, and for `.xml` impossible — an XSLT stylesheet is
+    // specific to the document. It would also make behaviour host-dependent:
+    // macOS ships /usr/bin/xsltproc and Linux CI images do not, so the same
+    // repository would check differently per machine.
+    expect(notice).toContain("not supported by this build");
+    expect(notice).not.toMatch(/install/i);
+    expect(notice).not.toMatch(/\bPATH\b/);
   });
 
   it("summarizes rather than printing an unbounded file list", () => {

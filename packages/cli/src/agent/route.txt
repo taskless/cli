@@ -124,10 +124,15 @@ answered together.
        scoped to YAML flags the code as readily as the comments. That is
        rarely what was asked for — say so before writing it. These read
        like markup and are not: %(VALE_PLAINTEXT_FORMATS)s
-     - *cannot be read at all* — Vale supports these formats but shells
-       out to an external converter to parse them, and this CLI ships
-       none of those converters:
+     - *not supported* — Vale parses these only by shelling out to an
+       external program, and this build does not support any format that
+       needs one:
        %(VALE_CONVERTER_FORMATS)s
+
+       Installing the program does not change this. Taskless excludes
+       these files from the Vale run whatever is on the machine, so that
+       a repository checks the same way everywhere rather than depending
+       on what a given host happens to have available.
 
        **One such file fails the entire Vale pass, not just that file.**
        Vale exits 2 with an `E100` runtime error, `--no-exit` does not

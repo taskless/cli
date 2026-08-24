@@ -156,11 +156,24 @@ const CONVERTER_TIER_PREFIX = "converter:";
  * are a property of {@link VALE_VERSION}'s binary, and the dangerous direction
  * is a format Vale *learns*: an extension missing from this table is read as
  * plain text today, but the moment Vale routes it to a converter the same
- * omission is a crash that takes down every Vale rule in the run. Vale 3.18.0
- * is the known incoming case in both directions — it parses MDX natively, and
- * it adds a Typst converter, so `.typ` moves from `plaintext` to
- * `converter:typst2vast` on that bump while `.mdx` moves to `markup`. Neither
- * happens on its own; re-probe every row.
+ * omission is a crash that takes down every Vale rule in the run.
+ *
+ * Vale 3.18.0 is the known incoming bump, and it moves rows in three different
+ * directions — which is why "re-measure" is not boilerplate here:
+ *
+ * - `.mdx` gains a native parser, so it moves `converter:mdx2vast` → `markup`
+ *   and becomes supported.
+ * - `.typ` gains a parser that shells out to `typst2vast`
+ *   (https://docs.vale.sh/formats/typst), so it moves `plaintext` →
+ *   `converter:typst2vast`. That is the dangerous direction: today it is read
+ *   as prose, and after the bump the same row would crash the run. It also
+ *   stays unsupported permanently, since we do not support formats needing an
+ *   external program.
+ * - MyST, Quarto and QDoc arrive with parsers needing no external program, so
+ *   they become genuinely supportable and want `markup` rows once measured.
+ *
+ * All four are documented as requiring v3.18.0 or later, so none of them is
+ * reachable from {@link VALE_VERSION}. Re-probe every row on the bump.
  */
 export const VALE_FORMAT_TIERS: Readonly<Record<string, ValeFormatTier>> = {
   // markup — parsed, the format's own constructs skipped
@@ -174,11 +187,13 @@ export const VALE_FORMAT_TIERS: Readonly<Record<string, ValeFormatTier>> = {
   // comment text only — the code body is invisible
   ".c": "comment",
   ".c++": "comment",
+  ".bsh": "comment",
   ".cc": "comment",
   ".clj": "comment",
   ".cpp": "comment",
   ".cs": "comment",
   ".css": "comment",
+  ".csx": "comment",
   ".cxx": "comment",
   ".go": "comment",
   ".h": "comment",
@@ -194,15 +209,18 @@ export const VALE_FORMAT_TIERS: Readonly<Record<string, ValeFormatTier>> = {
   ".php": "comment",
   ".pl": "comment",
   ".pm": "comment",
+  ".pod": "comment",
   ".proto": "comment",
   ".ps1": "comment",
   ".py": "comment",
+  ".py3": "comment",
   ".pyw": "comment",
   ".r": "comment",
   ".R": "comment",
   ".rb": "comment",
   ".rs": "comment",
   ".sass": "comment",
+  ".sbt": "comment",
   ".scala": "comment",
   ".swift": "comment",
   ".ts": "comment",
@@ -213,6 +231,14 @@ export const VALE_FORMAT_TIERS: Readonly<Record<string, ValeFormatTier>> = {
   ".rmd": "plaintext",
   ".tex": "plaintext",
   ".typ": "plaintext",
+  // plaintext HERE, though Vale's own docs list them as comment-tier. The docs
+  // describe the CURRENT Vale; we pin 3.17.1. Measured on the pinned binary a
+  // bare non-comment line lints, which is the plaintext signature. Transcribing
+  // the docs would have shipped these as comment-tier and been wrong for this
+  // build — the case for probing rather than copying.
+  ".pyi": "plaintext",
+  ".qml": "plaintext",
+  ".scss": "plaintext",
   // converter-dependent — Vale supports the format, we ship no converter
   ".adoc": "converter:asciidoctor",
   ".asc": "converter:asciidoctor",
