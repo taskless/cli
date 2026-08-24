@@ -156,6 +156,23 @@ const evalSource = { "src/a.ts": 'const x = eval("1");\n' };
 /** `rule("no-eval")` with its `language:` swapped for another spelling. */
 const atLanguage = (language: string) =>
   rule("no-eval").replace("language: TypeScript", `language: ${language}`);
+/** Four calls at increasing arity, one per line, for the `$$$` cases below. */
+const aritySource = {
+  "src/a.ts": "foo();\nfoo(1);\nfoo(1,2);\nfoo(1,2,3);\n",
+};
+
+/** A rule whose `rule:` body is given verbatim, already indented. */
+const arityRule = (body: string) =>
+  [
+    "id: arity",
+    "language: TypeScript",
+    "severity: error",
+    "message: arity",
+    "note: n",
+    "rule:",
+    body,
+    "",
+  ].join("\n");
 
 /** Exit status of scanning one finding declared at `severity`. */
 const statusAt = (severity: string) =>
@@ -165,6 +182,13 @@ const statusAt = (severity: string) =>
       sources: evalSource,
     })
   ).status;
+
+/** The call each finding matched, in file order — i.e. the arities accepted. */
+const arityMatches = (body: string): string[] =>
+  scan(project({ rules: { arity: arityRule(body) }, sources: aritySource }))
+    .stdout.split("\n")
+    .filter((line) => line !== "")
+    .map((line) => (JSON.parse(line) as { text: string }).text);
 
 /** A rule whose fixtures all pass. */
 const passingProject = () =>
@@ -544,6 +568,89 @@ withSg("ast-grep vendor contract", () => {
         scan(project({ rules: { "no-eval": atLanguage("Tsx") }, sources }))
           .stdout
       ).toContain("eval(x)");
+    });
+  });
+
+  /**
+   * What `$$$` does next to a comma — the mechanism behind #152.
+   *
+   * Depended on by: every recipe and curated example that tells an author how
+   * to write a variadic pattern, and by the `strictness: ast` example in
+   * `verify-examples.ts`. The failure mode is the quiet one this whole file
+   * exists for: a pattern that reads as "any number of arguments" silently
+   * matches a narrower set, the rule finds nothing, and `check` reports a
+   * clean codebase.
+   *
+   * Upstream considers this working as intended (ast-grep/ast-grep#1365) and
+   * 0.45.2 behaves identically, so a version bump is not a fix. What a bump
+   * could do is change it — which is what these cases are here to catch.
+   */
+  describe("$$$ next to a comma", () => {
+    it("matches a zero-argument call when $$$ stands alone", () => {
+      // The reported bug, and it is not real in this shape: a lone `$$$` does
+      // mean "zero or more". `$$$` binding nothing was never the problem.
+      expect(arityMatches("  pattern: foo($$$)")).toEqual([
+        "foo()",
+        "foo(1)",
+        "foo(1,2)",
+        "foo(1,2,3)",
+      ]);
+    });
+
+    it("does NOT match a one-argument call for a trailing $A, $$$", () => {
+      // The real bug. The pattern's `,` is itself a node, and under the
+      // default `smart` strictness every node in the pattern must match — so
+      // `foo(1)`, which has no comma, fails. The pattern reads as ">= 1
+      // argument" and behaves as ">= 2".
+      expect(arityMatches("  pattern: foo($A, $$$)")).toEqual([
+        "foo(1,2)",
+        "foo(1,2,3)",
+      ]);
+    });
+
+    it("matches only the one-argument call for a leading $$$, $A", () => {
+      // The mirror case, and the more surprising one: the separator forces a
+      // comma, `$A` claims the last argument, and `$$$` is left unable to
+      // spread — so this collapses to exactly one arity rather than widening.
+      expect(arityMatches("  pattern: foo($$$, $A)")).toEqual(["foo(1)"]);
+    });
+
+    it("matches only the two-argument call when $$$ sits between two metavars", () => {
+      // Both separators bind, so the "any number in the middle" reading is
+      // wrong in both directions at once.
+      expect(arityMatches("  pattern: foo($A, $$$, $B)")).toEqual(["foo(1,2)"]);
+    });
+
+    it("widens a trailing $A, $$$ to one argument under strictness: ast", () => {
+      // The author-side remedy, and the reason `strictness` has to sit INSIDE
+      // the pattern object: at rule level ast-grep rejects it as an unknown
+      // field. `ast` compares named AST nodes and ignores the comma, so the
+      // boundary moves from ">= 2" to ">= 1" — it does NOT reach `foo()`,
+      // because `$A` still has to bind something.
+      expect(
+        arityMatches(
+          [
+            "  pattern:",
+            "    context: foo($A, $$$)",
+            "    selector: call_expression",
+            "    strictness: ast",
+          ].join("\n")
+        )
+      ).toEqual(["foo(1)", "foo(1,2)", "foo(1,2,3)"]);
+    });
+
+    it("accepts strictness only inside the pattern object, not at rule level", () => {
+      // Pins the placement the remedy depends on. At rule level this is not a
+      // no-op that quietly leaves `smart` in force — ast-grep fails the scan.
+      const cwd = project({
+        rules: {
+          arity: arityRule("  pattern: foo($A, $$$)\n  strictness: ast"),
+        },
+        sources: aritySource,
+      });
+      const result = scan(cwd);
+      expect(result.status).toBeGreaterThan(1);
+      expect(result.stderr).toContain("strictness");
     });
   });
 

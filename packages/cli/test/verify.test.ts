@@ -6,6 +6,37 @@ import { stringify } from "yaml";
 
 import { verifyRule, getSchemaPayload } from "../src/rules/verify";
 
+/**
+ * A rule that fires on `eval(...)`, plus one test file holding exactly the
+ * buckets given. Mirrors the Vale coverage cases in `vale-verify.test.ts`,
+ * which build the same four shapes out of `pass/` and `fail/` directories.
+ */
+async function coverageProject(
+  cwd: string,
+  buckets: { valid?: string[]; invalid?: string[] }
+): Promise<void> {
+  const rulesDirectory = join(cwd, ".taskless", "sg", "rules");
+  const testsDirectory = join(cwd, ".taskless", "sg", "rule-tests");
+  await mkdir(rulesDirectory, { recursive: true });
+  await mkdir(testsDirectory, { recursive: true });
+  await writeFile(
+    join(rulesDirectory, "no-eval.yml"),
+    stringify({
+      id: "no-eval",
+      language: "typescript",
+      severity: "error",
+      message: "Do not use eval()",
+      rule: { pattern: "eval($$$)" },
+    }),
+    "utf8"
+  );
+  await writeFile(
+    join(testsDirectory, "no-eval-20260330-test.yml"),
+    stringify({ id: "no-eval", ...buckets }),
+    "utf8"
+  );
+}
+
 describe("verifyRule", () => {
   let temporaryDirectory: string;
 
@@ -365,6 +396,71 @@ describe("verifyRule", () => {
     expect(result.tests.valid).toBe(false);
     expect(result.tests.passed).toBe(0);
     expect(result.tests.failed).toBe(1);
+  });
+
+  describe("fixture coverage", () => {
+    it("does not report success for a rule with no fixtures", async () => {
+      // Both buckets present and both empty. `ast-grep test` calls this
+      // `1 passed; 0 failed` and exits zero, so without the coverage check the
+      // rule reports a clean pass having demonstrated nothing at all.
+      await coverageProject(temporaryDirectory, { valid: [], invalid: [] });
+      const result = await verifyRule(temporaryDirectory, "no-eval");
+      expect(result.tests.fixtures).toBe("none");
+      expect(result.tests.valid).toBe(false);
+      expect(result.success).toBe(false);
+    });
+
+    it("does not report success for a rule with only valid fixtures", async () => {
+      // The misleading half, and the shape #152 arrived as: every fixture is
+      // a source the rule should stay quiet on, so the run is trivially green
+      // and the rule has never been shown to match anything.
+      await coverageProject(temporaryDirectory, { valid: ["const x = 1;"] });
+      const result = await verifyRule(temporaryDirectory, "no-eval");
+      expect(result.tests.fixtures).toBe("valid-only");
+      expect(result.tests.valid).toBe(false);
+    });
+
+    it("does not report success for a rule with only invalid fixtures", async () => {
+      // The rule is shown to fire and never shown not to over-fire.
+      await coverageProject(temporaryDirectory, {
+        invalid: ["eval('alert(1)')"],
+      });
+      const result = await verifyRule(temporaryDirectory, "no-eval");
+      expect(result.tests.fixtures).toBe("invalid-only");
+      expect(result.tests.valid).toBe(false);
+    });
+
+    it("reports both buckets for a rule that populated each", async () => {
+      await coverageProject(temporaryDirectory, {
+        valid: ["const x = 1;"],
+        invalid: ["eval('alert(1)')"],
+      });
+      const result = await verifyRule(temporaryDirectory, "no-eval");
+      expect(result.tests.fixtures).toBe("both");
+      expect(result.tests.valid).toBe(true);
+      expect(result.success).toBe(true);
+    });
+
+    it("sums buckets across every test file the rule owns", async () => {
+      // Coverage is a property of the rule, not of one file: an author who
+      // splits `valid:` and `invalid:` across two dated test files has still
+      // made the whole claim.
+      await coverageProject(temporaryDirectory, { valid: ["const x = 1;"] });
+      await writeFile(
+        join(
+          temporaryDirectory,
+          ".taskless",
+          "sg",
+          "rule-tests",
+          "no-eval-20260331-test.yml"
+        ),
+        stringify({ id: "no-eval", invalid: ["eval('alert(1)')"] }),
+        "utf8"
+      );
+      const result = await verifyRule(temporaryDirectory, "no-eval");
+      expect(result.tests.fixtures).toBe("both");
+      expect(result.tests.valid).toBe(true);
+    });
   });
 });
 

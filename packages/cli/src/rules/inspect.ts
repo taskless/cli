@@ -215,11 +215,23 @@ export async function testOneRule(
     if (!verification.ok) {
       return { ...verification, ran: false };
     }
+    const errors = [...result.tests.errors];
+    // Mirrors the Vale branch below, and for the same reason: a rule that
+    // populated only one bucket has proved only half of what a rule claims.
+    // `ast-grep test` will not say so — an empty `invalid:` bucket is
+    // `1 passed; 0 failed`, exit zero — so the message has to come from here.
+    if (result.tests.fixtures !== "both") {
+      errors.push(
+        result.tests.fixtures === "none"
+          ? `${ruleId} has no fixtures, so nothing shows it fires or stays quiet.`
+          : `${ruleId} has only ${result.tests.fixtures.replace("-only", "")}: fixtures — half a claim.`
+      );
+    }
     return {
       engine,
       ruleId,
       ok: result.tests.valid,
-      errors: result.tests.errors,
+      errors,
       ran: true,
     };
   }
