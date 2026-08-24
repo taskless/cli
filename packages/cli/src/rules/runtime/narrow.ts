@@ -7,7 +7,7 @@ import { StringDecoder } from "node:string_decoder";
 
 import { stringify } from "yaml";
 
-import { buildPath, findSgBinary } from "../scan";
+import { buildPath, findSgBinary, sgWalkArgv } from "../scan";
 import type { Match } from "../../types/runtime-rule";
 import type { LoadedCaptureRule, RuntimeRule } from "./discover";
 
@@ -38,6 +38,12 @@ function runSg(
       "scan",
       "--config",
       configPath,
+      // The narrow is a `sg scan` over the user's project, so it walks it on
+      // the same terms `runAstGrepScan` does — reaching `.github/`, and not
+      // reaching `.taskless/`. A capture rule blind to the first would report
+      // nothing for a workflow file; one that reached the second would anchor a
+      // runtime rule on the CLI's own config.
+      ...sgWalkArgv(paths),
       ...extraArguments,
       ...(paths.length > 0 ? ["--", ...paths] : []),
     ];

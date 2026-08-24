@@ -195,6 +195,103 @@ describe("check", () => {
     expect(stdout).toContain("no-eval");
   });
 
+  it("scans hidden directories without abandoning .gitignore", async () => {
+    // ast-grep's walker skips dot-directories by default, so every `sg` rule
+    // was blind to `.github/`, `.circleci/`, `.vscode/` and friends — a silent
+    // false negative that let `check` exit 0 on a file it flags correctly one
+    // directory over. The fix passes `--no-ignore hidden`, and this pins both
+    // halves of it: the hidden file is reported, and the gitignored one is
+    // still skipped (which `--no-ignore vcs` would have broken).
+    await cp(fixturesDirectory, temporaryDirectory, { recursive: true });
+    await mkdir(join(temporaryDirectory, ".github", "workflows"), {
+      recursive: true,
+    });
+    await writeFile(
+      join(temporaryDirectory, ".github", "workflows", "hook.js"),
+      'eval("in-dot-github");\n'
+    );
+    await mkdir(join(temporaryDirectory, "build"), { recursive: true });
+    await writeFile(
+      join(temporaryDirectory, "build", "bundle.js"),
+      'eval("in-ignored-output");\n'
+    );
+    await writeFile(join(temporaryDirectory, ".gitignore"), "build/\n");
+    // ast-grep reads `.gitignore` only inside a repository, so the negative
+    // half of this test needs one to be meaningful.
+    await execFileAsync("git", ["init", "-q"], { cwd: temporaryDirectory });
+
+    const { stdout, exitCode } = await runCli([
+      "check",
+      "-d",
+      temporaryDirectory,
+      "--json",
+    ]);
+
+    expect(exitCode).toBe(1);
+    const parsed = JSON.parse(stdout.trim()) as {
+      results: Array<{ file: string }>;
+    };
+    const files = parsed.results.map((result) => result.file);
+    expect(files).toContain(join(".github", "workflows", "hook.js"));
+    expect(files).not.toContain(join("build", "bundle.js"));
+  });
+
+  it("does not flag the CLI's own rule files under .taskless/", async () => {
+    // `.taskless/` is hidden, so scanning it was never intended — it only
+    // became reachable when `--no-ignore hidden` was added. Every rule
+    // definition is structured YAML carrying `id:`, `language:`, `severity:`,
+    // `message:` and `rule:`, so an ordinary user-written Yaml rule fires on
+    // the CLI's own config: a false positive in a directory the user cannot
+    // edit without disabling their rule. Both halves are asserted, because the
+    // exclusion must not undo the hidden-directory fix it rides along with.
+    const ruleDirectory = join(
+      temporaryDirectory,
+      ".taskless",
+      "rules",
+      "sg",
+      "no-severity-key"
+    );
+    await mkdir(ruleDirectory, { recursive: true });
+    await writeFile(
+      join(ruleDirectory, "no-severity-key.yml"),
+      [
+        "id: no-severity-key",
+        "language: Yaml",
+        "severity: error",
+        "rule:",
+        "  pattern:",
+        '    context: "severity: error"',
+        "    selector: block_mapping_pair",
+        "message: found a severity key",
+      ].join("\n")
+    );
+    await mkdir(join(temporaryDirectory, ".github", "workflows"), {
+      recursive: true,
+    });
+    await writeFile(
+      join(temporaryDirectory, ".github", "workflows", "ci.yml"),
+      "name: ci\nseverity: error\n"
+    );
+
+    const { stdout, exitCode } = await runCli([
+      "check",
+      "-d",
+      temporaryDirectory,
+      "--json",
+    ]);
+
+    expect(exitCode).toBe(1);
+    const parsed = JSON.parse(stdout.trim()) as {
+      results: Array<{ file: string }>;
+    };
+    const files = parsed.results.map((result) => result.file);
+    // The rule still reaches the hidden directory it is meant to.
+    expect(files).toContain(join(".github", "workflows", "ci.yml"));
+    // ...but never the rule file that defines it, which says `severity: error`
+    // for reasons that have nothing to do with the project being checked.
+    expect(files.some((file) => file.includes(".taskless"))).toBe(false);
+  });
+
   describe("positional path arguments", () => {
     it("scans only the specified file when a path is passed", async () => {
       await cp(fixturesDirectory, temporaryDirectory, { recursive: true });
