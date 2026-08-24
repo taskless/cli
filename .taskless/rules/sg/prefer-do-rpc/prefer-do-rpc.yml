@@ -1,0 +1,14 @@
+id: prefer-do-rpc
+language: TypeScript
+severity: warning
+message: Use DurableObjectRPC<T> for cross-worker Durable Object access.
+note: |
+  `DurableObjectStub<T>` does not Promise-wrap method returns, so a
+  cross-worker RPC call type-checks against a synchronous signature it will
+  never have. `DurableObjectRPC<T>` from `@taskless/shared/rpc` wraps every
+  method return in `Promise<>`.
+
+  A `get()` used from inside the worker that owns the DO is the one case
+  where `DurableObjectStub<T>` is correct — silence this rule there.
+rule:
+  pattern: $EXPR as DurableObjectStub<$T>

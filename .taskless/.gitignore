@@ -1,2 +1,4 @@
 .env.local.json
-sgconfig.yml
+/sgconfig.yml
+/.vale.ini
+/.sgconfig.yml

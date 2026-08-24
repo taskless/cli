@@ -1,0 +1,31 @@
+id: no-regex-over-build-output
+valid:
+  - |
+    it("renders from the built artifact", async () => {
+      const builtEntry = join(root, "dist/prompts.js");
+      const { getPrompt } = await import(pathToFileURL(builtEntry).href);
+      expect(getPrompt("engine-selection")).toBe(sourceRecipe);
+    });
+  - |
+    it("spawns the built CLI", async () => {
+      const builtCli = join(root, "dist/index.js");
+      const { stdout } = await execFileAsync("node", [builtCli, "help"]);
+      expect(stdout).toContain("Usage:");
+    });
+  - |
+    function importSpecifiers(source: string): string[] {
+      const found = [...source.matchAll(/\bfrom\s*["']([^"']+)["']/g)];
+      return found.map((match) => match[1]!);
+    }
+invalid:
+  - |
+    it("imports nothing forbidden", async () => {
+      const source = readFileSync(join(root, "dist/prompts.js"), "utf8");
+      const specifiers = [...source.matchAll(/\bfrom\s*["']([^"']+)["']/g)];
+      expect(specifiers).toEqual([]);
+    });
+  - |
+    it("bundles no node builtins", async () => {
+      const bundle = await readFile("dist/index.js", "utf8");
+      expect(bundle.match(/require\(["']node:fs["']\)/)).toBeNull();
+    });
