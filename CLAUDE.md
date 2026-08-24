@@ -15,6 +15,12 @@ When creating or modifying files, you **MUST** follow these conventions:
 
 When running Taskless CLI commands in this repo, use `pnpm cli` instead of `pnpm dlx @taskless/cli@latest`. This runs the locally built CLI at `./packages/cli/dist/index.js`.
 
+**`pnpm cli` runs the last build, not the working tree.** `dist/` is a build artifact and nothing rebuilds it for you, so a stale `dist/` serves stale behavior — including stale `agent <topic>` recipes, which are embedded into the bundle at build time rather than fetched over the network. Run `pnpm build` first whenever the answer depends on current source.
+
+This is not hypothetical. An agent followed `pnpm cli agent create-sg-rule` from a `dist/` built 26 commits earlier and got topic **v2** while HEAD served **v3**. The revision it missed was the one documenting that `language:` takes ast-grep's own spelling, so four new rules were authored with an off-list lowercase `typescript`. That one happened to reach the right parser — a name ast-grep does not recognize at all aborts config parsing and takes every other rule's report down with it, silently.
+
+**The installed Taskless skill pins a published nightly**, recorded as `install.cliVersion` in `.taskless/taskless.json`, and every command in `.taskless/skills/taskless/SKILL.md` carries that pin. The pin and `pnpm cli` disagree exactly when `dist/` is behind HEAD, and neither is automatically right: the pin is a real build of some commit, `pnpm cli` is this tree only after you rebuild it. Rebuild, then prefer `pnpm cli` — it is the only one that can reflect uncommitted work. Note that the nightly package is blocked by a deny rule here, so `pnpm build` is the practical way to get current recipes, not a fallback.
+
 When running OpenSpec commands in this repo, use `pnpm openspec` instead of a bare `openspec`. The bare command is not on `PATH` here and is blocked by a deny rule.
 
 ## Git Command Help for Agents
@@ -159,7 +165,7 @@ git merge-base --is-ancestor origin/<tip-branch> origin/<bottom-branch>
 git diff --stat origin/<bottom-branch> origin/<tip-branch>   # empty = fully absorbed
 ```
 
-An empty diff with differing SHAs is the *expected* healthy state after a rebase merge, not evidence of a problem. If the diff is genuinely non-empty, reconcile from the tip — a tip branch contains the whole stack — then re-check the diff and push.
+An empty diff with differing SHAs is the _expected_ healthy state after a rebase merge, not evidence of a problem. If the diff is genuinely non-empty, reconcile from the tip — a tip branch contains the whole stack — then re-check the diff and push.
 
 ### Never `--delete-branch` mid-stack
 
@@ -176,7 +182,7 @@ gh api repos/{owner}/{repo} --jq '"squash=\(.allow_squash_merge) merge=\(.allow_
 
 `gh pr merge --merge` and `--squash` both fail. Use `gh pr merge <n> --rebase`.
 
-**This is the expensive case for a stack, and there is no cheaper option available.** Rebase-and-merge replays the branch onto `main` as *new commits with new SHAs*. Every child then contains the pre-rebase versions of its ancestors' commits, so the child is not merely behind — its history diverged. After each merge you must rebase the next branch onto the updated `main` and force-push it. The old guidance to prefer merge-commits so children stay clean no longer applies; that door is closed.
+**This is the expensive case for a stack, and there is no cheaper option available.** Rebase-and-merge replays the branch onto `main` as _new commits with new SHAs_. Every child then contains the pre-rebase versions of its ancestors' commits, so the child is not merely behind — its history diverged. After each merge you must rebase the next branch onto the updated `main` and force-push it. The old guidance to prefer merge-commits so children stay clean no longer applies; that door is closed.
 
 Practically, landing a stack now looks like:
 
@@ -191,7 +197,7 @@ Three things that will bite:
 
 - **Branch protection is `strict_up_to_date: true`,** so the next PR reports `mergeable_state: "behind"` until you rebase it. That is not a conflict; it is the protection asking for the rebase you owe it.
 - **Right after a merge, `rebaseable` reads `null`** while GitHub recomputes. Poll until it is a boolean rather than treating `null` as "not mergeable" — reading it as a failure is what stranded commits mid-stack before.
-- **Read the lease SHA from the remote, not from memory.** `--force-with-lease=<branch>:<sha>` fails with `stale info` when `<sha>` is not what the remote currently holds — which includes the case where *you* rebased the branch a moment ago and reached for its old tip. `$(git rev-parse origin/<branch>)` after a `git fetch` is the value that works. The failure looks like the shallow-clone symptom in the git section above and is not: check whether the SHA is simply out of date before concluding anything about the clone.
+- **Read the lease SHA from the remote, not from memory.** `--force-with-lease=<branch>:<sha>` fails with `stale info` when `<sha>` is not what the remote currently holds — which includes the case where _you_ rebased the branch a moment ago and reached for its old tip. `$(git rev-parse origin/<branch>)` after a `git fetch` is the value that works. The failure looks like the shallow-clone symptom in the git section above and is not: check whether the SHA is simply out of date before concluding anything about the clone.
 
 ### Rebase-and-merge lands unsigned commits on `main`
 
@@ -220,9 +226,10 @@ This happens when the **parent** PR is merged with `--delete-branch`: deleting t
    git rev-parse "$MERGE_SHA^2"   # WRONG under rebase-and-merge
    ```
 
-   `^2` needs the merge commit to *have* two parents, which is true only of a merge-commit merge. Rebase replays the branch as linear single-parent commits, so `^2` fails with "unknown revision" — and this repository is rebase-only, so it fails always. `refs/pull/<n>/head` is correct under every merge method, which is the better reason to prefer it.
+   `^2` needs the merge commit to _have_ two parents, which is true only of a merge-commit merge. Rebase replays the branch as linear single-parent commits, so `^2` fails with "unknown revision" — and this repository is rebase-only, so it fails always. `refs/pull/<n>/head` is correct under every merge method, which is the better reason to prefer it.
 
    Take the ref from `<parent>` — the PR that actually merged — not from the closed child, whose head is a different branch.
+
 2. Reopen the child via **REST** (GraphQL `gh pr reopen` fails on the Projects-classic deprecation):
    `gh api --method PATCH repos/<owner>/<repo>/pulls/<child> -f state=open`
 3. Retarget it: `gh pr edit <child> --base main` (only works once it's open).
