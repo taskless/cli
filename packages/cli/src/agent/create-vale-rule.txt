@@ -329,16 +329,21 @@ it.
    **A single unreadable file fails the whole Vale pass.** Vale exits 2
    with an `E100` runtime error and abandons the run — `--no-exit` does
    not suppress it — so every other Vale rule over every other file goes
-   unreported. `[*.{md,mdx}]` is not a slightly wider `[*.md]`; it is a
-   matcher that takes `check` down the first time the repo grows an
-   `.mdx` file. Never put one of those extensions in a glob.
+   unreported. `[*.{md,typ}]` is not a slightly wider `[*.md]`; it is a
+   matcher that takes `check` down the first time the repo grows a
+   `.typ` file. Never put one of those extensions in a glob.
 
-   **MDX is not supported yet.** Vale v%(VALE_VERSION)s reads `.mdx` only
-   through `mdx2vast`, which this CLI does not ship. Vale 3.18.0 parses
-   MDX natively, and a CLI update carrying that Vale is expected to
-   bring MDX support with it. Until then, scope the rule to `.md` and
-   say that `.mdx` is not supported yet rather than offering a matcher
-   that covers it.
+   That example changed with Vale v%(VALE_VERSION)s, which is the point:
+   the dangerous extension is whichever one the list above says needs a
+   program, not the one you remember. `.mdx` was the example until this
+   release parsed it natively, and `.typ` took its place.
+
+   **`.mdx` is supported** as of Vale v%(VALE_VERSION)s, which parses it
+   natively rather than shelling out. `[*.{md,mdx}]` is a legitimate
+   matcher again — the example this recipe used to warn about is no
+   longer the broken one. Check the lists above rather than reaching for
+   that memory: `.typ` moved the opposite way in the same release, so a
+   matcher covering Typst is now the one that takes the run down.
 
 5. **Write the fixtures.** Two directories inside the rule, both flat.
    Vale lints the whole fixture tree, so a document nested a level

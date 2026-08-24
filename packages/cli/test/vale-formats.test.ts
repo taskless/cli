@@ -126,9 +126,17 @@ describe("the format tier table", () => {
     // tier. Being wrong about the tier is survivable; being wrong about needing
     // a converter is not, because it excludes a file Vale would have linted
     // perfectly well. This is that half of the claim.
-    for (const extension of [".tex", ".rmd", ".mkd", ".mkdn", ".typ"]) {
+    for (const extension of [".tex", ".mkd", ".mkdn", ".pyi"]) {
       expect(converterFor(`doc${extension}`)).toBeUndefined();
     }
+    // The other half, and the reason this list is re-derived rather than
+    // remembered: `.typ` was plaintext until Vale 3.18.0 gave Typst a parser
+    // that shells out, so the same extension that must NOT be excluded on one
+    // version must be excluded on the next.
+    expect(converterFor("doc.typ")).toBe("typst2vast");
+    // `.mdx` went the other way in the same release — native now, so excluding
+    // it would drop a file Vale reads perfectly well.
+    expect(converterFor("doc.mdx")).toBeUndefined();
   });
 });
 

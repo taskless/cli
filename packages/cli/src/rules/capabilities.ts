@@ -96,7 +96,7 @@ export const AST_GREP_LANGUAGES = [
  * Pinned against the binary by `test/vale-vendor-contract.test.ts`
  * ("engine capabilities" → "reports the pinned version").
  */
-export const VALE_VERSION = "3.17.1";
+export const VALE_VERSION = "3.18.0";
 
 /**
  * Which tier Vale routes an extension to.
@@ -181,8 +181,11 @@ export const VALE_FORMAT_TIERS: Readonly<Record<string, ValeFormatTier>> = {
   ".html": "markup",
   ".markdown": "markup",
   ".md": "markup",
+  ".mdx": "markup",
   ".mdown": "markup",
   ".org": "markup",
+  ".qmd": "markup",
+  ".rmd": "markup",
   ".xhtml": "markup",
   // comment text only — the code body is invisible
   ".c": "comment",
@@ -212,6 +215,8 @@ export const VALE_FORMAT_TIERS: Readonly<Record<string, ValeFormatTier>> = {
   ".pod": "comment",
   ".proto": "comment",
   ".ps1": "comment",
+  ".qdoc": "comment",
+  ".qml": "comment",
   ".py": "comment",
   ".py3": "comment",
   ".pyw": "comment",
@@ -220,6 +225,7 @@ export const VALE_FORMAT_TIERS: Readonly<Record<string, ValeFormatTier>> = {
   ".rb": "comment",
   ".rs": "comment",
   ".sass": "comment",
+  ".scss": "comment",
   ".sbt": "comment",
   ".scala": "comment",
   ".swift": "comment",
@@ -228,23 +234,19 @@ export const VALE_FORMAT_TIERS: Readonly<Record<string, ValeFormatTier>> = {
   // plaintext, and surprising about it — these look parsed and are not
   ".mkd": "plaintext",
   ".mkdn": "plaintext",
-  ".rmd": "plaintext",
   ".tex": "plaintext",
-  ".typ": "plaintext",
   // plaintext HERE, though Vale's own docs list them as comment-tier. The docs
   // describe the CURRENT Vale; we pin 3.17.1. Measured on the pinned binary a
   // bare non-comment line lints, which is the plaintext signature. Transcribing
   // the docs would have shipped these as comment-tier and been wrong for this
   // build — the case for probing rather than copying.
   ".pyi": "plaintext",
-  ".qml": "plaintext",
-  ".scss": "plaintext",
   // converter-dependent — Vale supports the format, we ship no converter
   ".adoc": "converter:asciidoctor",
   ".asc": "converter:asciidoctor",
   ".asciidoc": "converter:asciidoctor",
   ".dita": "converter:dita",
-  ".mdx": "converter:mdx2vast",
+  ".typ": "converter:typst2vast",
   ".rest": "converter:rst2html",
   ".rst": "converter:rst2html",
   ".xml": "converter:xsltproc and an XSLT stylesheet",
@@ -369,7 +371,7 @@ export const VALE_CONVERTER_CHECKERS: Readonly<Record<string, string>> = {
   ".asc": "lintAdoc",
   ".xml": "lintXML",
   ".dita": "lintDITA",
-  ".mdx": "lintMDX",
+  ".typ": "lintTypst",
 };
 
 /** Every converter-dependent extension, flattened. */

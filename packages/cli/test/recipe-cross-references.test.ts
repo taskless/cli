@@ -380,10 +380,12 @@ describe("recipes state engine reach from the pinned versions", () => {
     // The consequence, not just the list. A recipe that names `.mdx` without
     // saying it takes the whole pass down has not conveyed the hazard.
     expect(route).toContain("E100");
-    // MDX is a "not yet", not a "never" — Vale 3.18.0 parses it natively. An
-    // agent told only that it is unreadable would tell a user MDX is
-    // unsupported, full stop.
-    expect(route).toContain("MDX is not supported yet");
+    // The pair that swapped in 3.18.0, asserted by name because getting either
+    // backwards is a user-visible error in opposite directions: telling an
+    // author `.mdx` is unsupported costs them a format Vale reads fine, and
+    // telling them `.typ` is readable takes their whole Vale pass down.
+    expect(route).toContain("`.mdx` is supported");
+    expect(route).toContain("`.typ`");
   });
 
   it("names ast-grep's languages in rendered create-sg-rule.txt", async () => {
@@ -414,7 +416,12 @@ describe("recipes state engine reach from the pinned versions", () => {
     // this pins the warning rather than the absence of the string.
     expect(recipe).toContain("Never put one of those extensions in a glob.");
     expect(recipe).toContain(valePlaintextList());
-    expect(recipe).toContain("MDX is not supported yet");
+    expect(recipe).toContain("`.mdx` is supported");
+    // The cautionary glob must name a currently-dangerous extension. It said
+    // `[*.{md,mdx}]` until 3.18.0 made that matcher legitimate, which is
+    // exactly the kind of staleness a version bump introduces silently.
+    expect(recipe).toContain("[*.{md,typ}]");
+    expect(recipe).not.toContain("[*.{md,mdx}] is not");
     // No date. The bump is expected, not scheduled, and a recipe that implies
     // otherwise is stale the moment it slips.
     expect(recipe).not.toMatch(/\b20\d\d-\d\d\b/);
