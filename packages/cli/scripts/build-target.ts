@@ -118,6 +118,46 @@ export function resolveCliVersion(
 }
 
 /**
+ * Refuse to emit a nightly whose two version-bearing defines disagree.
+ *
+ * A post-mortem guard, not a hypothetical one. #148 shipped because
+ * `__VERSION__` and `__TASKLESS_CLI__` are *derived* from the same stamp but
+ * were not *checked* against each other: the invocation read
+ * `TASKLESS_NIGHTLY_VERSION` and the version read `package.json`, so one
+ * artifact simultaneously announced v0.10.2 and sent every agent to
+ * v0.11.0-…. Nothing failed. The disagreement was only visible by comparing
+ * two outputs of the same build against each other, which is exactly what
+ * nobody does.
+ *
+ * They are coupled by construction today. This exists so that if a later
+ * refactor decouples them — a second env var, a cached value, a default
+ * reintroduced "for local builds" — the build stops instead of shipping the
+ * same silent mismatch again. The check is cheap and it fires at the only
+ * moment the two values are both in hand.
+ *
+ * Deliberately asks the resolved defines rather than scanning the emitted
+ * bundle: the build already holds the structured values, and re-deriving them
+ * from generated text would be the weaker tool (see the styleguide's
+ * "verify build output in the build").
+ */
+export function assertVersionConsistency(
+  environment: BuildEnvironment,
+  version: string,
+  invocation: string
+): void {
+  if (resolveBuildTarget(environment) !== "nightly") return;
+  if (invocation.endsWith(`@${version}`)) return;
+  throw new Error(
+    `nightly build is inconsistent with itself: it reports version ` +
+      `${JSON.stringify(version)} but its invocation is ` +
+      `${JSON.stringify(invocation)}. These must name the same version — a ` +
+      `build that announces one version and sends agents to another is ` +
+      `taskless/cli#148. Both derive from ${NIGHTLY_VERSION_ENV}; if they no ` +
+      `longer do, that is the bug.`
+  );
+}
+
+/**
  * The CLI invocation baked into emitted skill/command/recipe content, chosen by
  * the TASKLESS_BUILD_TARGET env var (see package.json build:dev/build:self/
  * build:nightly):

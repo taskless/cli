@@ -8,6 +8,7 @@ import tsconfigPaths from "vite-tsconfig-paths";
 
 import { SKILL_CATALOG } from "./src/install/catalog";
 import {
+  assertVersionConsistency,
   OUT_DIRS,
   resolveBuildTarget,
   resolveCliInvocation,
@@ -220,9 +221,15 @@ function assertPromptsGraph(): Plugin {
   };
 }
 
+const cliVersion = resolveCliVersion(process.env, pkg.version);
+
+// Fails the build rather than emitting an artifact whose version and
+// invocation disagree — the shape of taskless/cli#148.
+assertVersionConsistency(process.env, cliVersion, cliInvocation);
+
 export default defineConfig({
   define: {
-    __VERSION__: JSON.stringify(resolveCliVersion(process.env, pkg.version)),
+    __VERSION__: JSON.stringify(cliVersion),
     __TASKLESS_CLI__: JSON.stringify(cliInvocation),
     __TASKLESS_CLI_NOTICE__: JSON.stringify(cliNotice),
   },
