@@ -6,6 +6,11 @@ import { dirname, join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { assembleSgConfig } from "../src/rules/assemble";
+import {
+  AST_GREP_LANGUAGES,
+  AST_GREP_VERSION,
+  astGrepLanguageList,
+} from "../src/rules/capabilities";
 import { ruleDirectory, ruleTestsDirectory } from "../src/rules/engines";
 import { buildPath, findSgBinary } from "../src/rules/scan";
 
@@ -545,5 +550,94 @@ withSg("ast-grep vendor contract", () => {
       expect(result.status).toBeGreaterThan(1);
       expect(result.stderr).toContain("missing field `language`");
     });
+  });
+});
+
+/**
+ * The language reach `src/rules/capabilities.ts` publishes, pinned to the
+ * binary that actually parses.
+ *
+ * Kept in its own top-level block rather than folded into the contract suite
+ * above: those cases are about how ast-grep *behaves* when we drive it, and
+ * these are about a constant we transcribed from it. A bump that adds or drops
+ * a language fails here, which is the entire reason the list is a constant
+ * instead of prose inside `route.txt` — transcribed prose in a `.txt` has
+ * nothing to go red, and a stale claim about what an engine can read is worse
+ * than the silence it replaced, because an agent acts on it.
+ *
+ * See taskless/cli#151.
+ */
+/**
+ * The bracketed list from `sg run -h`, which is the only place ast-grep
+ * enumerates this. Not derived from anything we generate: the vendored
+ * `src/generated/ast-grep-rule-schema.json` types `$defs.Language` as a bare
+ * string with no enum, and `verify` never validates a rule's `language`, so our
+ * own artifacts cannot answer the question.
+ */
+function reportedLanguages(): string[] {
+  const help = spawnSync(binary as string, ["run", "-h"], {
+    encoding: "utf8",
+  });
+  expect(help.status).toBe(0);
+  const listed = /Supported languages are:\s*\[([^\]]*)\]/.exec(
+    `${help.stdout}${help.stderr}`
+  );
+  expect(
+    listed,
+    "`sg run -h` no longer prints a bracketed language list"
+  ).not.toBeNull();
+  return (listed?.[1] ?? "")
+    .split(",")
+    .map((name) => name.trim())
+    .filter((name) => name !== "");
+}
+
+withSg("ast-grep engine capabilities", () => {
+  it("reports the pinned version", () => {
+    // AST_GREP_VERSION is what route.txt renders next to the language list, so
+    // an agent reading "ast-grep (v0.41.0) parses: …" is being told which
+    // binary the claim came from. A bump that updates package.json and forgets
+    // the constant makes that attribution a lie.
+    const result = spawnSync(binary as string, ["--version"], {
+      encoding: "utf8",
+    });
+    expect(result.stdout.trim()).toBe(`ast-grep ${AST_GREP_VERSION}`);
+  });
+
+  it("parses exactly the languages AST_GREP_LANGUAGES claims", () => {
+    // Set equality in BOTH directions on purpose. A missing language narrows
+    // what `route` believes is buildable locally and escalates rules to the
+    // runtime tier for no reason; an extra one sends an agent to write a rule
+    // whose `language:` the binary then rejects.
+    expect([...reportedLanguages()].toSorted()).toEqual(
+      [...AST_GREP_LANGUAGES].toSorted()
+    );
+  });
+
+  it("lists Yaml, so a GitHub Actions workflow is an sg rule", () => {
+    // The named case from taskless/cli#151: two Actions workflow rules were
+    // routed to `runtime` — which needs a login — because nothing in the
+    // recipe said ast-grep parses YAML. Asserted by name rather than left to
+    // fall out of the set-equality above, so the answer to that issue cannot
+    // regress into an implication nobody rereads.
+    expect(reportedLanguages()).toContain("Yaml");
+    expect(AST_GREP_LANGUAGES).toContain("Yaml");
+  });
+
+  it("spells languages the way a rule's `language:` field must", () => {
+    // ast-grep's vocabulary is not `detect --json`'s: `detect` reports the
+    // repository's languages as `C++`, and a rule that copies that spelling
+    // through fails inside the binary rather than in `verify`.
+    expect(AST_GREP_LANGUAGES).toContain("Cpp");
+    expect(AST_GREP_LANGUAGES).not.toContain("C++");
+    expect(AST_GREP_LANGUAGES).not.toContain("yaml");
+  });
+
+  it("renders the list as recipe prose with no gaps", () => {
+    const rendered = astGrepLanguageList();
+    for (const language of AST_GREP_LANGUAGES) {
+      expect(rendered).toContain(language);
+    }
+    expect(rendered.split(", ")).toHaveLength(AST_GREP_LANGUAGES.length);
   });
 });

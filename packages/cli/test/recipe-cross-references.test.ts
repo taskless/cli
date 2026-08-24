@@ -4,6 +4,12 @@ import { describe, expect, it } from "vitest";
 
 import { SUBCOMMAND_NAMES } from "../src/commands/names";
 import { getRecipe } from "../src/prompts/recipes";
+import {
+  astGrepLanguageList,
+  valeCommentList,
+  valeConverterList,
+  valeMarkupList,
+} from "../src/rules/capabilities";
 import { buildInvocation } from "../src/util/invocation";
 
 /**
@@ -315,5 +321,73 @@ describe("recipes defer the CLI invocation to the renderer", () => {
         "%(TASKLESS_CLI)s"
       );
     }
+  });
+});
+
+/**
+ * `route` is the only recipe that states what each local engine can read, and
+ * it states it through `%(…)s` variables resolved from
+ * `src/rules/capabilities.ts` rather than by transcribing two lists into the
+ * `.txt`. A transcription would go stale on the next engine bump with nothing
+ * to catch it, and a stale claim about engine reach is worse than the silence
+ * it replaced — an agent acts on it and escalates a buildable rule to the
+ * runtime tier, which needs a login. That is taskless/cli#151.
+ *
+ * The vendor-contract tests pin the constants to the binaries; these pin that
+ * the constants reach the text an agent is handed.
+ */
+/** One rendered recipe, or a failure naming the topic rather than `undefined`. */
+async function rendered(file: string): Promise<string> {
+  const all = await renderedRecipes();
+  const found = all.find(([name]) => name === file);
+  expect(found, `no rendered recipe for ${file}`).toBeDefined();
+  return found![1];
+}
+
+describe("recipes state engine reach from the pinned versions", () => {
+  // Same shape as "renders a real invocation into every recipe that names the
+  // CLI": a placeholder that survives rendering reaches the agent as literal
+  // `%(AST_GREP_LANGUAGES)s`, which reads as a variable it is supposed to fill
+  // in — the worst possible failure for a recipe whose job is to state facts.
+  it("leaves no unsubstituted marker in any rendered recipe", async () => {
+    const leaked: string[] = [];
+    for (const [file, text] of await renderedRecipes()) {
+      for (const match of text.matchAll(/%\([A-Z_]+\)s/g)) {
+        leaked.push(`${file}: ${match[0]}`);
+      }
+    }
+    expect(leaked).toEqual([]);
+  });
+
+  it("names ast-grep's languages in rendered route.txt", async () => {
+    const route = await rendered("route.txt");
+    // Yaml is the issue's own question — an Actions workflow is YAML, and
+    // nothing told the agent ast-grep parses it. TypeScript is the control: a
+    // language nobody doubts, so a route.txt that lost the list entirely fails
+    // here too rather than passing on a lucky substring.
+    expect(route).toContain("Yaml");
+    expect(route).toContain("TypeScript");
+    expect(route).toContain(astGrepLanguageList());
+  });
+
+  it("names Vale's three readable tiers and its unreadable one", async () => {
+    const route = await rendered("route.txt");
+    expect(route).toContain(valeMarkupList());
+    expect(route).toContain(valeCommentList());
+    expect(route).toContain(valeConverterList());
+    // The consequence, not just the list. A recipe that names `.mdx` without
+    // saying it takes the whole pass down has not conveyed the hazard.
+    expect(route).toContain("E100");
+  });
+
+  it("repeats the reach where a Vale matcher is written", async () => {
+    // create-vale-rule.txt is where a glob is authored, which is the only
+    // place the converter-dependent extensions can actually do damage.
+    const recipe = await rendered("create-vale-rule.txt");
+    expect(recipe).toContain(valeConverterList());
+    // The recipe used to offer `[*.{md,mdx}]` as a worked example of widening
+    // a matcher. It may still cite it — as the counter-example it now is — so
+    // this pins the warning rather than the absence of the string.
+    expect(recipe).toContain("Never put one of those extensions in a glob.");
   });
 });
