@@ -22,3 +22,9 @@ This also corrects `taskless --version`, the CLI version in recipe headers, and
 the `cliVersion` telemetry property on nightly builds. Released builds are
 unaffected. A nightly that cannot determine its own version now fails the build
 rather than quietly reporting the released one.
+
+The build now also refuses to emit a nightly whose reported version and
+embedded invocation disagree. Both derive from the same stamp, so they cannot
+diverge today — but that was true of the two values in this bug as well, right
+up until one of them started reading `package.json` instead. Deriving from one
+source is not the same as being checked against it.

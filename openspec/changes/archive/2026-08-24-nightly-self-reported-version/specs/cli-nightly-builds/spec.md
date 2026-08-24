@@ -10,6 +10,8 @@ A nightly build with no stamp available SHALL fail rather than report the commit
 
 Builds other than nightly SHALL report the committed package version, which for those targets is the version they are.
 
+A nightly build SHALL verify, before emitting, that the version it reports and the version its embedded invocation names are the same. Deriving both from one stamp is not sufficient on its own: the two were derived from a single source and still diverged, because nothing compared them.
+
 #### Scenario: A nightly records its own version when it installs
 
 - **WHEN** a nightly installs into a project
@@ -26,6 +28,12 @@ Builds other than nightly SHALL report the committed package version, which for 
 - **WHEN** a nightly build is attempted with no version stamp available
 - **THEN** the build SHALL fail
 - **AND** SHALL NOT fall back to the committed package version
+
+#### Scenario: A nightly that disagrees with itself is not emitted
+
+- **WHEN** a nightly build's reported version and the invocation it embeds name different versions
+- **THEN** the build SHALL fail
+- **AND** SHALL NOT emit the artifact
 
 #### Scenario: A released build reports the committed version
 

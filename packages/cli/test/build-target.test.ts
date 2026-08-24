@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  assertVersionConsistency,
   NIGHTLY_VERSION_ENV,
   OUT_DIRS,
   resolveBuildTarget,
@@ -61,6 +62,61 @@ describe("the version a build reports as its own", () => {
 
   it("uses the committed package version when no target is set", () => {
     expect(resolveCliVersion({}, "0.10.2")).toBe("0.10.2");
+  });
+});
+
+// #148 post-mortem. The two defines were DERIVED from one stamp but never
+// CHECKED against each other, so a single artifact announced one version and
+// sent every agent to another, silently. These pin the guard that makes that
+// state unbuildable rather than merely unlikely.
+describe("a build must agree with itself about its version", () => {
+  it("refuses a nightly whose invocation names a different version", () => {
+    expect(() =>
+      assertVersionConsistency(
+        nightlyEnvironment,
+        "0.10.2",
+        `npx @taskless/cli-nightly@${NIGHTLY_VERSION}`
+      )
+    ).toThrow(/inconsistent with itself/);
+  });
+
+  // The exact shape of the shipped bug, named in the message so whoever hits
+  // this next has the history rather than just the assertion.
+  it("names the issue and the env var both values derive from", () => {
+    expect(() =>
+      assertVersionConsistency(
+        nightlyEnvironment,
+        "0.10.2",
+        `npx @taskless/cli-nightly@${NIGHTLY_VERSION}`
+      )
+    ).toThrow(new RegExp(String.raw`148[\s\S]*` + NIGHTLY_VERSION_ENV));
+  });
+
+  it("accepts a nightly whose two values agree", () => {
+    expect(() =>
+      assertVersionConsistency(
+        nightlyEnvironment,
+        NIGHTLY_VERSION,
+        `npx @taskless/cli-nightly@${NIGHTLY_VERSION}`
+      )
+    ).not.toThrow();
+  });
+
+  // A version pin is meaningless for the other targets: prod names a floating
+  // package deliberately, and dev/self name a filesystem path. Asserting there
+  // would fail every ordinary build.
+  it.each([
+    ["prod", "npx @taskless/cli"],
+    ["dev", "node /repo/packages/cli/dist-dev/index.js"],
+    ["self", "node packages/cli/dist-self/index.js"],
+  ])("does not constrain the %s target", (target, invocation) => {
+    expect(() =>
+      assertVersionConsistency(
+        { TASKLESS_BUILD_TARGET: target },
+        "0.10.2",
+        invocation
+      )
+    ).not.toThrow();
   });
 });
 

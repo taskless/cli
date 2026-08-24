@@ -3,7 +3,9 @@
 ## Purpose
 
 TBD - created by archiving change nightly-cli-builds. Update Purpose after archive.
+
 ## Requirements
+
 ### Requirement: Unreleased work on the default branch is installable as a nightly package
 
 The CLI SHALL be published as `@taskless/cli-nightly` from commits on the default branch that carry unreleased work, so that merged-but-unreleased behavior can be installed and exercised. Nightlies SHALL NOT be published from pull requests: only code that has already merged, and therefore already passed review, is eligible.
@@ -246,6 +248,8 @@ A nightly build with no stamp available SHALL fail rather than report the commit
 
 Builds other than nightly SHALL report the committed package version, which for those targets is the version they are.
 
+A nightly build SHALL verify, before emitting, that the version it reports and the version its embedded invocation names are the same. Deriving both from one stamp is not sufficient on its own: the two were derived from a single source and still diverged, because nothing compared them.
+
 #### Scenario: A nightly records its own version when it installs
 
 - **WHEN** a nightly installs into a project
@@ -263,6 +267,12 @@ Builds other than nightly SHALL report the committed package version, which for 
 - **THEN** the build SHALL fail
 - **AND** SHALL NOT fall back to the committed package version
 
+#### Scenario: A nightly that disagrees with itself is not emitted
+
+- **WHEN** a nightly build's reported version and the invocation it embeds name different versions
+- **THEN** the build SHALL fail
+- **AND** SHALL NOT emit the artifact
+
 #### Scenario: A released build reports the committed version
 
 - **WHEN** a non-nightly build is asked for its version
@@ -272,4 +282,3 @@ Builds other than nightly SHALL report the committed package version, which for 
 
 - **WHEN** a nightly build has run
 - **THEN** the CLI package manifest in version control SHALL still declare the released version
-
