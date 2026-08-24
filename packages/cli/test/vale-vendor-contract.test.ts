@@ -417,6 +417,11 @@ function comment(extension: string): string {
   ]);
   if (HASH.has(extension)) return "# simply\n";
   if (extension === ".css") return "/* simply */\n";
+  // Vale 3.18.0 parses PHP with tree-sitter, so a comment only counts inside
+  // real PHP — on 3.17.1 a bare `// simply` was linted without the open tag.
+  if (extension === ".php") return "<?php\n// simply\n";
+  // QDoc documentation lives in a `/*! */` block, not an ordinary comment.
+  if (extension === ".qdoc") return "/*!\n    simply\n*/\n";
   if (extension === ".hs" || extension === ".lua") return "-- simply\n";
   if (extension === ".clj") return "; simply\n";
   return "// simply\n";
@@ -462,6 +467,20 @@ withVale("Vale engine capabilities", () => {
       skipped: "Fine.\n\n```\nsimply\n```\n",
     },
     ".org": { prose: "We simply do it.\n", skipped: "# simply\nFine.\n" },
+    // Native as of 3.18.0. `.mdx` arrived from the converter tier and `.rmd`
+    // and `.qmd` from plaintext, so all three are new claims, not carried over.
+    ".mdx": {
+      prose: "We simply do it.\n",
+      skipped: "Fine.\n\n```\nsimply\n```\n",
+    },
+    ".qmd": {
+      prose: "We simply do it.\n",
+      skipped: "Fine.\n\n```{r}\nsimply <- 1\n```\n",
+    },
+    ".rmd": {
+      prose: "We simply do it.\n",
+      skipped: "Fine.\n\n```{r}\nsimply <- 1\n```\n",
+    },
     ".htm": {
       prose: "<p>We simply do it.</p>\n",
       skipped: "<!-- simply -->\n",
@@ -551,14 +570,12 @@ withVale("Vale engine capabilities", () => {
   const PLAINTEXT_FIXTURES: Record<string, string> = {
     ".mkd": "Fine.\n\n```\nsimply\n```\n",
     ".mkdn": "Fine.\n\n```\nsimply\n```\n",
-    ".rmd": "Fine.\n\n```{r}\nsimply <- 1\n```\n",
     ".tex": "% simply in a comment\nFine.\n",
-    ".typ": "// simply\nFine.\n",
     // Documented by Vale as comment-aware, measured as plaintext on the pinned
     // binary — the construct here is the comment a parser would have skipped.
+    // `.qml` and `.scss` were here until 3.18.0 gave them real parsers, which
+    // is why the tier is re-measured on every bump rather than carried over.
     ".pyi": "# simply\nFine.\n",
-    ".qml": "// simply\nFine.\n",
-    ".scss": "// simply\nFine.\n",
   };
 
   it("covers every extension in VALE_PLAINTEXT_EXTENSIONS", () => {

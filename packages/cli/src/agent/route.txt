@@ -137,13 +137,15 @@ answered together.
        **One such file fails the entire Vale pass, not just that file.**
        Vale exits 2 with an `E100` runtime error, `--no-exit` does not
        suppress it, and every other Vale rule over every other file goes
-       unreported. A matcher written as `[*.{md,mdx}]` is not a wider
+       unreported. A matcher written as `[*.{md,typ}]` is not a wider
        `[*.md]` — it is a broken one.
 
-       **MDX is not supported yet.** Vale 3.18.0 parses MDX natively and
-       a CLI update carrying that Vale is expected to bring it; on
-       v%(VALE_VERSION)s, `.mdx` needs `mdx2vast` and this CLI ships
-       none. Tell the user MDX is not supported yet and scope to `.md`.
+       **`.mdx` is supported** as of Vale v%(VALE_VERSION)s, which
+       parses it natively — it needs no external program and belongs
+       with the other markup formats above. `.typ` moved the other way
+       in the same release: Typst now parses through `typst2vast`, so a
+       Typst file is excluded rather than read as prose the way it was
+       before. Both are measured, not assumed.
 
    **A language on neither list does not route to runtime by default.**
    Check `create-legacy-rule` first: the repo may already run a linter
