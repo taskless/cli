@@ -625,6 +625,28 @@ withVale("Vale engine capabilities", () => {
     expect(output).toContain(`[${VALE_CONVERTER_CHECKERS[extension]!}]`);
   });
 
+  it("routes to a converter by EXACT-case extension", () => {
+    // The half of the case question only the binary can answer, and it is not
+    // the intuitive one: Vale routes on the extension exactly as spelled, so
+    // an uppercase converter-dependent extension falls through to the
+    // plain-text reader instead of crashing. `converterFor` matches this
+    // exactly, which is why it no longer lowercases — a lowercasing lookup
+    // named files in the skip notice that Vale had linted normally.
+    //
+    // Pinned rather than assumed because the direction matters in both ways.
+    // If a future Vale becomes case-insensitive, `doc.ADOC` starts exiting
+    // non-zero, this case goes red, and the lowercasing has to come back
+    // before the crash reaches a user's run.
+    for (const extension of VALE_CONVERTER_DEPENDENT_EXTENSIONS) {
+      const upper = extension.toUpperCase();
+      const name = `doc${upper}`;
+      const cwd = anyExtension({ [name]: "We simply do it.\n" });
+      const result = runRaw(cwd, [name], ["--no-exit"]);
+      expect(result.status, `${upper} now needs a converter`).toBe(0);
+      expect(`${result.stdout}${result.stderr}`).not.toContain("E100");
+    }
+  });
+
   it("names a checker for every converter-dependent extension", () => {
     // Set-equality, so an extension added to one and not the other fails here
     // rather than throwing on an undefined tag inside the probe above.

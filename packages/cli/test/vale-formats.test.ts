@@ -98,11 +98,18 @@ describe("the format tier table", () => {
     }
   });
 
-  it("reads the extension case-insensitively", () => {
-    // A case-insensitive filesystem hands Vale `README.RST` as
-    // reStructuredText. Letting case decide would put the crash back on macOS
-    // and Windows only.
-    expect(converterFor("docs/README.RST")).toBe("rst2html");
+  it("reads the extension case-sensitively, exactly as Vale routes it", () => {
+    // Measured, not assumed: `doc.adoc` exits 2 with `E100 [lintAdoc]` while
+    // `doc.ADOC` is read as plain text and exits 0 with findings — even when
+    // the uppercase spelling names a lowercase file on a case-insensitive
+    // filesystem, because Vale routes on the path string it was handed. This
+    // function used to lowercase on the opposite assumption, which named a
+    // file Vale had linted normally as one it never checked. The vendor
+    // contract pins the binary's half of this.
+    expect(converterFor("docs/README.rst")).toBe("rst2html");
+    expect(converterFor("docs/README.RST")).toBeUndefined();
+    expect(converterFor("guide.ADOC")).toBeUndefined();
+    expect(converterFor("guide.AdOc")).toBeUndefined();
   });
 
   it("treats an unmeasured extension as needing no converter", () => {
@@ -203,6 +210,24 @@ describe("finding converter-dependent files", () => {
     expect(await findConverterDependentFiles(cwd, ["a.md", "d.adoc"])).toEqual([
       "d.adoc",
     ]);
+  });
+
+  it("does not name an uppercase-extension file Vale lints normally", async () => {
+    // Node's `glob` folds case with the filesystem, so on macOS the pattern
+    // matches `docs/GUIDE.ADOC` — but Vale routes that to its plain-text
+    // reader and lints it. Naming it in the notice would tell the user a file
+    // was skipped that was checked, on one platform only. The walk defers to
+    // `converterFor`, which is the only thing that models Vale's routing.
+    const cwd = makeProject({
+      "docs/GUIDE.ADOC": "= T\n",
+      "docs/real.adoc": "= T\n",
+    });
+    expect(await findConverterDependentFiles(cwd, [])).toEqual([
+      "docs/real.adoc",
+    ]);
+    expect(await findConverterDependentFiles(cwd, ["docs/GUIDE.ADOC"])).toEqual(
+      []
+    );
   });
 });
 
