@@ -177,6 +177,15 @@ async function moveEngineTests(
   }
 }
 
+/** Create `path` and drop a `.gitkeep` in it when it would otherwise be empty. */
+async function ensureTrackedDirectory(path: string): Promise<void> {
+  await mkdir(path, { recursive: true });
+  const entries = await entriesOf(path);
+  if (entries.length === 0) {
+    await writeFile(join(path, ".gitkeep"), "", "utf8");
+  }
+}
+
 /**
  * Create `rules/<engine>/` for every engine, tracked when empty.
  *
@@ -188,12 +197,42 @@ async function moveEngineTests(
  */
 async function scaffoldEngineDirectories(directory: string): Promise<void> {
   for (const engine of ENGINES) {
-    const path = join(directory, RULES_DIRECTORY, engine);
-    await mkdir(path, { recursive: true });
-    const entries = await entriesOf(path);
-    if (entries.length === 0) {
-      await writeFile(join(path, ".gitkeep"), "", "utf8");
-    }
+    await ensureTrackedDirectory(join(directory, RULES_DIRECTORY, engine));
+  }
+}
+
+/**
+ * Give every ast-grep rule a `.tests/`, tracked when it holds nothing else.
+ *
+ * Up to here `.tests/` only ever appeared as a side effect of moving a test
+ * *into* it, so a rule that had no test at version 3 — or one whose test file
+ * did not match the `<id>-YYYYMMDD-test.yml` shape `moveEngineTests` can
+ * attribute — arrived at version 5 with no tests directory at all.
+ *
+ * **That is not a cosmetic gap.** Assembly names every rule's `.tests/` as a
+ * `testConfigs` entry, and ast-grep 0.41.0 aborts the entire invocation when
+ * one of them is missing (`Cannot read rule directory ...`, exit 6) — which
+ * `--filter` does not scope away. One rule with no tests therefore failed
+ * `taskless test` for every *other* rule in the project, with an error naming a
+ * rule the author had never touched. Measured against 0.41.0: an empty
+ * `.tests/`, and one holding only a `.gitkeep`, are both accepted by `sg test`
+ * and `sg scan`.
+ *
+ * The `.gitkeep` is what makes the repair survive a commit. Git does not track
+ * empty directories, so a `.tests/` created here and left empty would never
+ * reach CI or a fresh clone, and the failure would come back there. It is
+ * committed rather than ignored — `.taskless/.gitignore` carries only the two
+ * generated configs — and never reads as a test: `verify` counts a test file
+ * only when it matches `<id>-*-test.yml`, so such a rule still reports "No test
+ * file found" rather than quietly passing.
+ */
+async function ensureSgTestDirectories(directory: string): Promise<void> {
+  const engineRoot = join(directory, RULES_DIRECTORY, "sg");
+  for (const entry of await entriesOf(engineRoot)) {
+    if (!entry.isDirectory()) continue;
+    await ensureTrackedDirectory(
+      join(engineRoot, entry.name, RULE_TESTS_DIRECTORY)
+    );
   }
 }
 
@@ -370,6 +409,7 @@ const migration: Migration = async (directory) => {
     await rm(join(directory, config), { force: true });
   }
 
+  await ensureSgTestDirectories(directory);
   await scaffoldEngineDirectories(directory);
   await ignoreGeneratedConfigs(directory);
 
