@@ -7,6 +7,7 @@ import { fileURLToPath } from "node:url";
 import type { AstGrepMatch } from "../types/check";
 import { toCheckResult, type CheckResult } from "../types/check";
 import { ASSEMBLED_SG_CONFIG } from "./engines";
+import { isWholeProjectWalk } from "./walk-scope";
 import {
   isPlatformBinary,
   pathCommandName,
@@ -131,6 +132,16 @@ export interface ScanOptions {
  * from the Vale runner, which keeps its own copy for the same reason.
  */
 const TASKLESS_DIRECTORY = ".taskless";
+const GIT_DIRECTORY = ".git";
+
+/**
+ * Directories kept out of a whole-project walk, each with its own reason.
+ *
+ * ast-grep honors repeated `--globs` flags — measured against 0.41.0, two
+ * exclusions both apply, unlike Vale's `--glob`, where the last one silently
+ * wins. So this is a list rather than one combined brace pattern.
+ */
+const EXCLUDED_DIRECTORIES = [TASKLESS_DIRECTORY, GIT_DIRECTORY] as const;
 
 /**
  * How every `sg scan` we spawn is told to walk the project.
@@ -164,10 +175,24 @@ const TASKLESS_DIRECTORY = ".taskless";
  * was measured to miss a `.taskless/` nested inside a monorepo package, which
  * is the same CLI-managed config one level down.
  *
- * The exclusion is applied **only** for a whole-project scan, matching what the
- * Vale runner already does and for its reason: an explicit path is a request,
- * and silently declining to check a file someone named would be worse than
- * checking one they did not.
+ * **A `--globs` exclusion of `.git/`**, on the same terms. Measured against
+ * 0.41.0: ast-grep has no exclusion of its own for it, so `--no-ignore hidden`
+ * makes `.git/` reachable along with every other dot-directory, and a
+ * whole-project scan descended into `.git/objects`, `.git/logs` and
+ * `.git/hooks`. That is wasted work proportional to repository history on every
+ * run, and `.git/hooks/*` are real source files that match language rules never
+ * meant to lint VCS internals. `.gitignore` does not cover this — `.git/` is not
+ * in it — so the default hidden-directory skip was the only thing holding it
+ * back. Repeated `--globs` flags were measured to both apply, unlike Vale's
+ * `--glob` where the last one silently wins, so the two exclusions are separate
+ * flags rather than one brace pattern.
+ *
+ * Both exclusions are applied **only** for a whole-project walk, matching what
+ * the Vale runner does and for its reason: an explicit path is a request, and
+ * silently declining to check a file someone named would be worse than checking
+ * one they did not. "Whole project" is {@link isWholeProjectWalk} rather than
+ * `paths.length === 0` — see that function for why the difference is
+ * load-bearing rather than cosmetic.
  *
  * Measured interactions worth keeping in mind if this is ever changed:
  * `--globs` survives `--no-ignore hidden` rather than being overridden by it,
@@ -178,8 +203,12 @@ const TASKLESS_DIRECTORY = ".taskless";
  * `engines.ts`).
  */
 export function sgWalkArgv(paths: string[]): string[] {
-  const exclude =
-    paths.length === 0 ? ["--globs", `!**/${TASKLESS_DIRECTORY}/**`] : [];
+  const exclude = isWholeProjectWalk(paths)
+    ? EXCLUDED_DIRECTORIES.flatMap((directory) => [
+        "--globs",
+        `!**/${directory}/**`,
+      ])
+    : [];
   return ["--no-ignore", "hidden", ...exclude];
 }
 

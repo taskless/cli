@@ -292,6 +292,130 @@ describe("check", () => {
     expect(files.some((file) => file.includes(".taskless"))).toBe(false);
   });
 
+  it.each([["."], ["./"]])(
+    "excludes .taskless/ when the whole project is named as %j",
+    async (positional) => {
+      // `filterExistingPaths` normalizes a positional resolving to cwd into the
+      // literal string ".", so `check .` arrives with `paths = ["."]`. Gating
+      // the exclusion on `paths.length === 0` read that as a user-named path
+      // and skipped it, which put the self-flagging bug back for a near-default
+      // invocation. Naming the project is not naming the config inside it.
+      const ruleDirectory = join(
+        temporaryDirectory,
+        ".taskless",
+        "rules",
+        "sg",
+        "no-severity-key"
+      );
+      await mkdir(ruleDirectory, { recursive: true });
+      await writeFile(
+        join(ruleDirectory, "no-severity-key.yml"),
+        [
+          "id: no-severity-key",
+          "language: Yaml",
+          "severity: error",
+          "rule:",
+          "  pattern:",
+          '    context: "severity: error"',
+          "    selector: block_mapping_pair",
+          "message: found a severity key",
+        ].join("\n")
+      );
+      await mkdir(join(temporaryDirectory, ".github", "workflows"), {
+        recursive: true,
+      });
+      await writeFile(
+        join(temporaryDirectory, ".github", "workflows", "ci.yml"),
+        "name: ci\nseverity: error\n"
+      );
+
+      const { stdout, exitCode } = await runCli([
+        "check",
+        "-d",
+        temporaryDirectory,
+        "--json",
+        positional,
+      ]);
+
+      expect(exitCode).toBe(1);
+      const parsed = JSON.parse(stdout.trim()) as {
+        results: Array<{ file: string }>;
+      };
+      const files = parsed.results.map((result) => result.file);
+      expect(files).toContain(join(".github", "workflows", "ci.yml"));
+      expect(files.some((file) => file.includes(".taskless"))).toBe(false);
+    }
+  );
+
+  it("does not descend into .git/ on a whole-project scan", async () => {
+    // ast-grep has no exclusion of its own for `.git/`, and `.gitignore` does
+    // not list it, so the default hidden-directory skip was the only thing
+    // keeping it out of the walk — exactly what `--no-ignore hidden` removes.
+    // `.git/hooks/*` are real source files, so they match language rules that
+    // were never meant to lint VCS internals.
+    await cp(fixturesDirectory, temporaryDirectory, { recursive: true });
+    await mkdir(join(temporaryDirectory, ".git", "hooks"), { recursive: true });
+    await writeFile(
+      join(temporaryDirectory, ".git", "hooks", "pre-commit.js"),
+      'eval("in-git-hooks");\n'
+    );
+
+    const { stdout } = await runCli([
+      "check",
+      "-d",
+      temporaryDirectory,
+      "--json",
+    ]);
+
+    const parsed = JSON.parse(stdout.trim()) as {
+      results: Array<{ file: string }>;
+    };
+    const files = parsed.results.map((result) => result.file);
+    expect(files.some((file) => file.includes(".git"))).toBe(false);
+  });
+
+  it("still checks .taskless/ when it is named explicitly", async () => {
+    // The other half of the rule the exclusion follows: naming a path is a
+    // request, and declining to check a file someone asked about would be worse
+    // than checking one they did not. This is what keeps the exclusion from
+    // becoming an unconditional blind spot.
+    const ruleDirectory = join(
+      temporaryDirectory,
+      ".taskless",
+      "rules",
+      "sg",
+      "no-severity-key"
+    );
+    await mkdir(ruleDirectory, { recursive: true });
+    await writeFile(
+      join(ruleDirectory, "no-severity-key.yml"),
+      [
+        "id: no-severity-key",
+        "language: Yaml",
+        "severity: error",
+        "rule:",
+        "  pattern:",
+        '    context: "severity: error"',
+        "    selector: block_mapping_pair",
+        "message: found a severity key",
+      ].join("\n")
+    );
+
+    const { stdout } = await runCli([
+      "check",
+      "-d",
+      temporaryDirectory,
+      "--json",
+      ".taskless",
+    ]);
+
+    const parsed = JSON.parse(stdout.trim()) as {
+      results: Array<{ file: string }>;
+    };
+    const files = parsed.results.map((result) => result.file);
+    expect(files.some((file) => file.includes(".taskless"))).toBe(true);
+  });
+
   describe("positional path arguments", () => {
     it("scans only the specified file when a path is passed", async () => {
       await cp(fixturesDirectory, temporaryDirectory, { recursive: true });
