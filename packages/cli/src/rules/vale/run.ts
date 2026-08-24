@@ -8,10 +8,14 @@ import { ASSEMBLED_VALE_CONFIG } from "../engines";
 import { buildPath } from "../scan";
 import { isWholeProjectWalk } from "../walk-scope";
 import { findValeBinary, valeUnavailableMessage } from "./binary";
+import {
+  buildValeGlob,
+  converterExclusionGlobs,
+  findConverterDependentFiles,
+  skippedFilesNotice,
+  TASKLESS_DIRECTORY,
+} from "./formats";
 import { asValeConfigError, toValeCheckResults, type ValeOutput } from "./map";
-
-/** Taskless's own directory, as a project-relative path. */
-const TASKLESS_DIRECTORY = ".taskless";
 
 /**
  * The Vale config a run reads, relative to the project root.
@@ -84,6 +88,44 @@ export type ValeRunOutcome =
   | { status: "timeout"; blocking: true; message: string }
   | { status: "failed"; blocking: true; message: string };
 
+/**
+ * Vale's stderr, rendered as a sentence instead of a JSON blob.
+ *
+ * Vale reports its own errors as a one-object JSON document on stderr —
+ * `{Line, Path, Text, Code, Span}` with `Text` carrying embedded newlines. Piped
+ * straight into a failure message that lands amid a check's findings, it reads
+ * as a stack trace: the actionable half (`asciidoctor not found`) is four lines
+ * into a structure whose other four fields say nothing. Same reasoning as
+ * decoding ast-grep's stderr rather than forwarding bytes — the message is the
+ * only thing the user has to act on.
+ *
+ * Anything that is not that shape is returned untouched. A best-effort decoder
+ * that swallows what it cannot read would be worse than none.
+ */
+function describeValeStderr(stderr: string): string {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(stderr);
+  } catch {
+    return stderr;
+  }
+  const error = asValeConfigError(parsed);
+  if (error === undefined) return stderr;
+
+  const text = error.Text.split("\n")
+    .map((line) => line.trim())
+    .filter((line) => line !== "")
+    .join(" ");
+  // The code stays in the message, and is prepended only when `Text` does not
+  // already open with it. Vale is inconsistent about that — `E100` repeats the
+  // code in its text and `E201` does not — and the code is what a user searches
+  // for, so losing it while "improving" the message would be a downgrade.
+  const code = text.startsWith(error.Code) ? "" : `${error.Code}: `;
+  return `${code}${text}${
+    error.Path === undefined || error.Path === "" ? "" : ` in ${error.Path}`
+  }`;
+}
+
 export interface ValeRunOptions {
   /** Project root. Vale runs here, so the config's relative paths resolve. */
   cwd: string;
@@ -139,18 +181,42 @@ export async function runVale(
   const wholeProject = isWholeProjectWalk(paths);
   const targets = wholeProject ? ["."] : paths;
 
-  // Walking the whole project reaches `.taskless/` too, and Vale has no reason
-  // to know that directory is ours: with a rule enabled it reports findings in
-  // the rule configs and in the user's own rule definitions — prose
-  // complaints about the machinery, pointing at files nobody wrote as prose.
-  // Section globs do not help, since `.taskless/README.md` matches `[*.md]` as
-  // readily as any document. `--glob` filters which files are walked without
-  // touching which rules apply to them, so a user's scoping still decides that.
+  // Two exclusions reach Vale, and they have to travel together because Vale
+  // accepts exactly one `--glob` and the last one wins — pass two flags and the
+  // first is silently discarded, which is how an exclusion becomes a no-op that
+  // still looks applied on the command line.
   //
-  // Applied ONLY when we chose `.` ourselves. An explicit path is a request,
-  // and silently declining to check a file someone named would be worse than
+  // `.taskless/**` keeps Vale out of our own directory. Walking the whole
+  // project reaches it too, and Vale has no reason to know that directory is
+  // ours: with a rule enabled it reports findings in the rule configs and in the
+  // user's own rule definitions — prose complaints about the machinery, pointing
+  // at files nobody wrote as prose. Section globs do not help, since
+  // `.taskless/README.md` matches `[*.md]` as readily as any document. Applied
+  // ONLY when we chose `.` ourselves: an explicit path is a request, and
+  // silently declining to check a file someone named would be worse than
   // checking one they did not.
-  const exclude = wholeProject ? [`--glob=!${TASKLESS_DIRECTORY}/**`] : [];
+  //
+  // The converter-dependent formats are excluded on **every** run, named path or
+  // not, and that asymmetry is deliberate. Handing Vale one `.adoc` on a host
+  // with no `asciidoctor` does not check that file badly — it aborts the entire
+  // Vale process before any result is written, taking every other file's
+  // findings with it. Honouring the request would cost the user the rest of
+  // their check, so the request is declined and reported instead. See
+  // `formats.ts` for the tier table this is derived from.
+  const exclude = [
+    ...(wholeProject ? [`${TASKLESS_DIRECTORY}/**`] : []),
+    ...converterExclusionGlobs(),
+  ];
+  const globArgument = buildValeGlob(exclude);
+  const globFlags = globArgument === undefined ? [] : [globArgument];
+
+  // Asked before the run rather than inferred from it. Vale never reports what
+  // its walker declined to open, so once the glob has done its job the skipped
+  // files are unrecoverable from the output — and a fix whose only visible
+  // effect is that some findings are quietly missing is the bug it replaced.
+  const skipped = skippedFilesNotice(
+    await findConverterDependentFiles(options.cwd, paths)
+  );
 
   // `--` separates flags from positional paths, so a path beginning with `-`
   // is not read as a flag.
@@ -159,7 +225,7 @@ export async function runVale(
     configPath,
     "--output=JSON",
     "--no-exit",
-    ...exclude,
+    ...globFlags,
     "--",
     ...targets,
   ];
@@ -239,7 +305,9 @@ export async function runVale(
         settle({
           status: "failed",
           blocking: true,
-          message: `Vale exited ${String(code)}${stderr === "" ? "" : `: ${stderr}`}`,
+          message: `Vale exited ${String(code)}${
+            stderr === "" ? "" : `: ${describeValeStderr(stderr)}`
+          }`,
         });
         return;
       }
@@ -249,10 +317,18 @@ export async function runVale(
       // Attached to every `ok` path so a diagnostic cannot be dropped by which
       // branch happened to produce the (empty) results.
       const diagnostic = stderrChunks.join("").trim();
+      // Both advisories share one field, so they are joined rather than one
+      // overwriting the other: a project can perfectly well have a section-less
+      // rule assignment *and* an AsciiDoc file, and dropping either message
+      // would be a silent skip wearing the other's clothes.
+      const advisories = [
+        ...(skipped === undefined ? [] : [skipped]),
+        ...(diagnostic === ""
+          ? []
+          : [`Vale reported while running: ${diagnostic}`]),
+      ];
       const notice =
-        diagnostic === ""
-          ? {}
-          : { notice: `Vale reported while running: ${diagnostic}` };
+        advisories.length === 0 ? {} : { notice: advisories.join("\n") };
 
       const stdout = stdoutChunks.join("").trim();
       if (stdout === "") {
