@@ -32,11 +32,26 @@ the property only that tier has, since ordinary prose fires in all of them — s
 a version bump that moves a format between tiers fails there instead of silently
 turning the engine off again.
 
-The recipes now say MDX is not supported _yet_, rather than unsupported: Vale
-3.18.0 parses it natively and a CLI update carrying that Vale is expected to
-bring it. The same release adds a Typst converter, which will move `.typ` out of
-the plaintext tier, so the table carries a standing instruction to re-measure
-every row on a version bump.
+The engine moves to Vale 3.18.0 in the same release, and the table carries a
+standing instruction to re-measure every row on a version bump — so every row
+was re-probed against the new binary rather than carried over. Eight moved.
+`.mdx` gains a native parser and leaves the unsupported tier, so a matcher like
+`[*.{md,mdx}]` — the worked example above — is legitimate again, and `[*.{md,typ}]`
+takes its place as the broken one. `.typ` moved the opposite way: Typst now
+parses through `typst2vast`, an external program this build does not ship, so a
+Typst file is excluded from the run rather than read as prose the way 3.17.1
+read it. `.rmd` and the new `.qmd` and `.myst` are parsed as markup, and `.qml`,
+`.scss` and the new `.qdoc` are comment-aware where they previously fell through
+to plain text.
+
+The `.typ` move is the one that mattered to get right. An extension missing from
+the table is read as prose, which is harmless — but the moment Vale routes it to
+a converter, that same omission is a crash that takes down every Vale rule in
+the run. Bumping the binary without re-measuring would have introduced exactly
+the failure this table exists to prevent, under an extension nobody was
+watching. Re-probing also caught one change the release notes do not mention:
+PHP comment extraction now requires a real `<?php` tag, where 3.17.1 linted a
+bare `//` comment without one.
 
 Two details are load-bearing and were both wrong on the first attempt. Vale
 honours exactly one `--glob` and keeps the last, so the `.taskless/` exclusion
@@ -62,10 +77,10 @@ a remedy.
 The comment tier was reconciled against Vale's own documentation at
 docs.vale.sh/formats/code, which adds `.bsh`, `.csx`, `.pod`, `.py3` and `.sbt`
 once measured. It also documents `.pyi`, `.qml` and `.scss` as comment-aware,
-and on the pinned 3.17.1 a bare non-comment line in each of them lints — so they
-stay in the plaintext tier. That divergence is the argument for probing rather
-than transcribing: the docs describe the current Vale, this build pins an older
-one, and copying the list would have shipped `.scss` as comment-aware and been
-wrong. `.pod` is a reminder of how easily this is misread — it lints Perl
+and on 3.17.1 a bare non-comment line in each of them lints. 3.18.0 makes the
+claim true for `.qml` and `.scss` and still not for `.pyi`, which stays in the
+plaintext tier. That divergence is the argument for probing rather than
+transcribing: the docs describe whatever Vale is current, and copying the list
+would have shipped `.pyi` as comment-aware and been wrong for both builds. `.pod` is a reminder of how easily this is misread — it lints Perl
 comments but not POD blocks, so probing it with `=head1` looks like no support
 at all.

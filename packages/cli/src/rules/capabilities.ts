@@ -139,9 +139,9 @@ const CONVERTER_TIER_PREFIX = "converter:";
  *   on a bare non-comment line yields ZERO. A type that fires on both is the
  *   plaintext fallback wearing a code extension.
  * - **plaintext** — a bare line yields a finding. Listed only where the tier is
- *   surprising: `.tex`, `.rmd`, `.mkd` and `.mkdn` all look like markup and are
- *   not. Everything unnamed lands here too, which is why this tier does not
- *   need to be exhaustive.
+ *   surprising: `.tex`, `.mkd` and `.mkdn` all look like markup and are not.
+ *   Everything unnamed lands here too, which is why this tier does not need to
+ *   be exhaustive.
  * - **converter** — a non-zero exit whose output carries `E100` and the
  *   program's name.
  *
@@ -158,22 +158,33 @@ const CONVERTER_TIER_PREFIX = "converter:";
  * plain text today, but the moment Vale routes it to a converter the same
  * omission is a crash that takes down every Vale rule in the run.
  *
- * Vale 3.18.0 is the known incoming bump, and it moves rows in three different
- * directions — which is why "re-measure" is not boilerplate here:
+ * The 3.17.1 → 3.18.0 bump is what that warning looks like in practice. Every
+ * row below was re-probed against the 3.18.0 binary, and eight moved, in three
+ * different directions — which is why "re-measure" is not boilerplate here:
  *
- * - `.mdx` gains a native parser, so it moves `converter:mdx2vast` → `markup`
- *   and becomes supported.
- * - `.typ` gains a parser that shells out to `typst2vast`
- *   (https://docs.vale.sh/formats/typst), so it moves `plaintext` →
- *   `converter:typst2vast`. That is the dangerous direction: today it is read
- *   as prose, and after the bump the same row would crash the run. It also
- *   stays unsupported permanently, since we do not support formats needing an
- *   external program.
- * - MyST, Quarto and QDoc arrive with parsers needing no external program, so
- *   they become genuinely supportable and want `markup` rows once measured.
+ * - `.mdx` gained a native parser: `converter:mdx2vast` → `markup`. It is
+ *   supported now, and `[*.{md,mdx}]` is a legitimate matcher again.
+ * - `.typ` gained a parser that shells out to `typst2vast`
+ *   (https://docs.vale.sh/formats/typst): `plaintext` →
+ *   `converter:typst2vast`. That is the dangerous direction — 3.17.1 read it as
+ *   prose, and the same row on 3.18.0 crashes the run. It stays unsupported
+ *   permanently, since we do not support formats needing an external program.
+ * - `.rmd` gained a real Markdown parser, so it left the "looks like markup and
+ *   is not" list above: `plaintext` → `markup`.
+ * - `.qml` and `.scss` gained parsers that see their comments: `plaintext` →
+ *   `comment`. Vale's docs had claimed both for years; on 3.17.1 the claim was
+ *   measurably false and on 3.18.0 it is true.
+ * - `.qmd` (Quarto) and `.myst` (MyST) measured as `markup`, and `.qdoc` as
+ *   `comment` — QDoc documentation lives in a doc-comment block, so it is
+ *   comment extraction rather than the markup tier a first reading of the
+ *   release notes suggests, and probing it with bare prose reads as no support
+ *   at all. All three are new rows, none of them reachable on 3.17.1.
  *
- * All four are documented as requiring v3.18.0 or later, so none of them is
- * reachable from {@link VALE_VERSION}. Re-probe every row on the bump.
+ * PHP also changed without the release notes saying so: comment extraction now
+ * needs a real `<?php` tag, where 3.17.1 linted a bare `//` comment without
+ * one. The tier did not move, but the probe had to. Re-probe every row on the
+ * next bump, by the discriminating property and by each language's own comment
+ * syntax — a wrong delimiter reads exactly like absent support.
  */
 export const VALE_FORMAT_TIERS: Readonly<Record<string, ValeFormatTier>> = {
   // markup — parsed, the format's own constructs skipped
@@ -183,6 +194,7 @@ export const VALE_FORMAT_TIERS: Readonly<Record<string, ValeFormatTier>> = {
   ".md": "markup",
   ".mdx": "markup",
   ".mdown": "markup",
+  ".myst": "markup",
   ".org": "markup",
   ".qmd": "markup",
   ".rmd": "markup",
@@ -235,11 +247,12 @@ export const VALE_FORMAT_TIERS: Readonly<Record<string, ValeFormatTier>> = {
   ".mkd": "plaintext",
   ".mkdn": "plaintext",
   ".tex": "plaintext",
-  // plaintext HERE, though Vale's own docs list them as comment-tier. The docs
-  // describe the CURRENT Vale; we pin 3.17.1. Measured on the pinned binary a
-  // bare non-comment line lints, which is the plaintext signature. Transcribing
-  // the docs would have shipped these as comment-tier and been wrong for this
-  // build — the case for probing rather than copying.
+  // plaintext HERE, though Vale's own docs list it as comment-tier. Measured on
+  // the pinned 3.18.0 binary a bare non-comment line lints, which is the
+  // plaintext signature. `.qml` and `.scss` sat here for the same reason until
+  // 3.18.0 made the docs true for them; `.pyi` is the row where transcribing
+  // the docs would still ship the wrong tier — the case for probing rather than
+  // copying.
   ".pyi": "plaintext",
   // converter-dependent — Vale supports the format, we ship no converter
   ".adoc": "converter:asciidoctor",
@@ -339,10 +352,12 @@ function groupByConverter(): ValeConverterFormat[] {
  *
  * The blast radius is what makes this worth surfacing at routing time rather
  * than at authoring time: Vale exits 2 with an `E100` runtime error and
- * abandons the run, and `--no-exit` does not suppress it. One `.mdx` file
+ * abandons the run, and `--no-exit` does not suppress it. One `.typ` file
  * caught by a rule's glob takes down the entire Vale pass, including every
- * other rule and every other file — so `[*.{md,mdx}]` is not a slightly wider
- * matcher than `[*.md]`, it is a broken one.
+ * other rule and every other file — so `[*.{md,typ}]` is not a slightly wider
+ * matcher than `[*.md]`, it is a broken one. (`[*.{md,mdx}]` was that example
+ * until 3.18.0 gave MDX a native parser — the membership of this tier is a
+ * property of {@link VALE_VERSION}, and so is the worked example.)
  */
 export const VALE_CONVERTER_DEPENDENT: readonly ValeConverterFormat[] =
   groupByConverter();
