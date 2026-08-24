@@ -126,6 +126,63 @@ export interface ScanOptions {
   configPath?: string;
 }
 
+/**
+ * The project directory this CLI owns. Declared locally rather than imported
+ * from the Vale runner, which keeps its own copy for the same reason.
+ */
+const TASKLESS_DIRECTORY = ".taskless";
+
+/**
+ * How every `sg scan` we spawn is told to walk the project.
+ *
+ * One function rather than a constant per call site, because both scan call
+ * sites — {@link runAstGrepScan} and the runtime narrow — need exactly these
+ * flags on exactly these terms, and a third would too. ast-grep's
+ * `sgconfig.yml` has no equivalent knob, so this cannot live in the assembled
+ * config; the argv is the only place it can be expressed.
+ *
+ * **`--no-ignore hidden`**, always. It lets the walker descend into
+ * dot-directories, which it refuses to do by default. Without it no `sg` rule
+ * could match anything under `.github/`, `.circleci/`, `.vscode/` or
+ * `.husky/` — a silent false negative, since `check` reported nothing and
+ * exited 0. Vale has no such blind spot, so the two static engines disagreed
+ * about whether `.github/` existed at all. Measured against the pinned ast-grep
+ * 0.41.0, `hidden` is the only value that reaches those directories: `dot`,
+ * `exclude`, `global` and `parent` all left `.github/` unscanned. Deliberately
+ * **not** passed is `vcs`, which stops `.gitignore` being respected and was
+ * measured to pull `dist/` into the scan — a rule has no business reporting
+ * findings in build output or vendored dependencies.
+ *
+ * **A `--globs` exclusion of `.taskless/`**, when we are the ones who chose to
+ * walk the whole project. That directory is hidden, so it was never scanned
+ * before and reaching it is not a fix: it is CLI-managed config the user did
+ * not author. Every rule definition in it is structured YAML carrying `id:`,
+ * `language:`, `severity:`, `message:` and `rule:` keys, so any reasonable
+ * user-written Yaml rule fires on the CLI's own rule files — an unfixable false
+ * positive in a directory the user cannot edit without disabling their rule.
+ * The `**` prefix on the glob is load-bearing: a root-anchored `.taskless/**`
+ * was measured to miss a `.taskless/` nested inside a monorepo package, which
+ * is the same CLI-managed config one level down.
+ *
+ * The exclusion is applied **only** for a whole-project scan, matching what the
+ * Vale runner already does and for its reason: an explicit path is a request,
+ * and silently declining to check a file someone named would be worse than
+ * checking one they did not.
+ *
+ * Measured interactions worth keeping in mind if this is ever changed:
+ * `--globs` survives `--no-ignore hidden` rather than being overridden by it,
+ * and neither flag touches rule discovery — `ruleDirs` reads the rules out of
+ * `.taskless/` by its own walk, so excluding that path from the *scan* does not
+ * stop the rules from loading, and a rule's `.tests/` directory is still
+ * skipped rather than parsed as a rule (see `RULE_TESTS_DIRECTORY` in
+ * `engines.ts`).
+ */
+export function sgWalkArgv(paths: string[]): string[] {
+  const exclude =
+    paths.length === 0 ? ["--globs", `!**/${TASKLESS_DIRECTORY}/**`] : [];
+  return ["--no-ignore", "hidden", ...exclude];
+}
+
 /** Run ast-grep scan and return parsed results */
 export async function runAstGrepScan(
   cwd: string,
@@ -141,6 +198,7 @@ export async function runAstGrepScan(
       "--config",
       options.configPath ?? ASSEMBLED_SG_CONFIG,
       "--json=stream",
+      ...sgWalkArgv(paths),
       ...(paths.length > 0 ? ["--", ...paths] : []),
     ];
     const child = spawn(sgBinary, argv, {
