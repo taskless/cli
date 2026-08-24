@@ -1,0 +1,36 @@
+id: no-regex-over-build-output
+language: TypeScript
+severity: warning
+message: Do not re-derive a fact about build output by regex-scanning it.
+note: |
+  A test that reads from `dist/` and then runs a regex over the contents is
+  reconstructing something the build already knew, with a weaker tool. Move
+  the invariant into the build — a rollup/vite plugin can ask the resolved
+  chunk graph directly and fail the build.
+
+  Using a built artifact is fine: import it and assert on behavior, or spawn
+  the built CLI and assert on its output. This rule fires only on parsing it.
+
+  Scoped to the enclosing function, not the file: a helper that regexes
+  hand-written source is sound even when the same file elsewhere loads a
+  built artifact.
+
+  See .conventions/STYLEGUIDE-CODE.md — "Verify Build Output In The Build".
+files:
+  - "**/test/**"
+  - "**/*.test.ts"
+rule:
+  any:
+    - pattern: $SRC.matchAll($RE)
+    - pattern: $SRC.match($RE)
+  inside:
+    stopBy: end
+    any:
+      - kind: function_declaration
+      - kind: arrow_function
+      - kind: function_expression
+      - kind: method_definition
+    has:
+      stopBy: end
+      kind: string_fragment
+      regex: 'dist/'

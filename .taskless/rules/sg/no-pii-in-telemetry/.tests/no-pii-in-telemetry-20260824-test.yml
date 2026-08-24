@@ -1,0 +1,25 @@
+id: no-pii-in-telemetry
+valid:
+  - |
+    posthog.capture({
+      distinctId,
+      event: "cli_rule_create",
+      properties: { cli: xdgUuid, anonymous: false },
+      groups: { organization: orgId },
+    });
+  - |
+    posthog.identify({ distinctId, properties: { cli: xdgUuid } });
+  - |
+    const user = { email: account.email, displayName: account.name };
+invalid:
+  - |
+    posthog.capture({
+      distinctId,
+      event: "cli_auth_login_completed",
+      properties: { cli: xdgUuid, email: account.email },
+    });
+  - |
+    posthog.identify({
+      distinctId,
+      properties: { cli: xdgUuid, displayName: account.name },
+    });

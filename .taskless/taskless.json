@@ -1,13 +1,18 @@
 {
-  "version": 2,
+  "version": 5,
   "install": {
     "targets": {
+      ".taskless": {
+        "skills": ["taskless"],
+        "commands": ["tskl.md"],
+        "mode": "canonical"
+      },
       ".claude": {
         "skills": ["taskless"],
-        "commands": ["tskl.md"]
+        "commands": ["tskl.md"],
+        "mode": "reference"
       }
     },
-    "installedAt": "2026-05-11T16:38:34.273Z",
-    "cliVersion": "0.6.0"
+    "cliVersion": "0.11.0-20260824213902xf26a7b0"
   }
 }

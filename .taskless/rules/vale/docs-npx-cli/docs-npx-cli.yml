@@ -1,0 +1,8 @@
+extends: substitution
+message: "Use '%s' instead of '%s' — docs use the normalized invocation for external consumers"
+level: error
+ignorecase: false
+scope: [raw, code, text]
+swap:
+  'pnpm dlx @taskless/cli': npx @taskless/cli
+  'pnpm cli': npx @taskless/cli

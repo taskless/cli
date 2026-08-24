@@ -1,0 +1,10 @@
+extends: existence
+message: "Avoid '%s' — it hides the step the reader is stuck on"
+level: warning
+ignorecase: true
+tokens:
+  - simply
+  - obviously
+  - of course
+  - trivially
+  - it should be clear

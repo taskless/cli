@@ -1,0 +1,40 @@
+id: no-pull-request-branches-filter
+language: Yaml
+severity: error
+message: A pull_request trigger must not carry a branches filter.
+note: |
+  The filter matches the PR's base ref, but GitHub also resolves a stacked
+  PR's *eventual* target and sometimes matches on that instead. So
+  `branches: [main]` does run on mid-stack PRs — until it stops, with no
+  error and nothing turning red.
+
+  Measured on the #71→#93→#94→#95→#100→#102→#103→#106 stack: every PR up to
+  #102 got a `Validate` run and #103 and #106 got none, across 16
+  `pull_request` events that filter-less workflows handled fine. #103 was a
+  ~93-file change that reached "ready for review" having never been linted,
+  typechecked, or tested in CI.
+
+  A workflow that must run everywhere carries no `branches:` filter at all.
+  A workflow whose correctness depends on "is this the PR that merges to
+  main" must determine that inside the job — from the base ref, or by
+  resolving stack position — not from the `on:` filter.
+
+  A `branches:` filter under `push:` is unaffected and correct.
+
+  See CLAUDE.md — "branches: filters do not tell you where a workflow runs".
+files:
+  - ".github/workflows/*.yml"
+  - ".github/workflows/*.yaml"
+rule:
+  kind: block_mapping_pair
+  has:
+    field: key
+    kind: flow_node
+    regex: '^branches$'
+  inside:
+    stopBy: end
+    kind: block_mapping_pair
+    has:
+      field: key
+      kind: flow_node
+      regex: '^pull_request$'

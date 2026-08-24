@@ -1,0 +1,10 @@
+id: no-index-imports
+valid:
+  - import { runWizard } from "./wizard/wizard";
+  - import { getRecipe } from "./recipes.js";
+  - import { getSandbox } from "@cloudflare/sandbox";
+  - import { PostHog } from "posthog-node";
+invalid:
+  - import { runWizard } from "./index";
+  - import { getRecipe } from "../src/prompts/index";
+  - import { buildInstallPlan } from "../install/index.js";

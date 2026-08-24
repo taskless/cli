@@ -1,0 +1,31 @@
+id: no-pull-request-branches-filter
+valid:
+  - |
+    on:
+      push:
+        branches: [main]
+      pull_request:
+        types: [opened, synchronize, reopened, ready_for_review]
+  - |
+    on:
+      push:
+        branches: [main]
+        paths:
+          - ".github/scripts/vale-manifest.json"
+  - |
+    on:
+      workflow_run:
+        workflows: [Validate]
+        types: [completed]
+invalid:
+  - |
+    on:
+      pull_request:
+        branches: [main]
+  - |
+    on:
+      push:
+        branches: [main]
+      pull_request:
+        branches: [main]
+        types: [opened, synchronize, reopened]
