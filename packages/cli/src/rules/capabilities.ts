@@ -203,10 +203,35 @@ export interface ValeConverterFormat {
 export const VALE_CONVERTER_DEPENDENT: readonly ValeConverterFormat[] = [
   { extensions: [".rst"], converter: "rst2html" },
   { extensions: [".adoc", ".asciidoc"], converter: "asciidoctor" },
-  { extensions: [".xml"], converter: "an XSLT transform" },
+  { extensions: [".xml"], converter: "xsltproc and an XSLT stylesheet" },
   { extensions: [".dita"], converter: "dita" },
   { extensions: [".mdx"], converter: "mdx2vast" },
 ];
+
+/**
+ * Vale's checker tag per converter-dependent extension, from the `E100` text.
+ *
+ * This is the host-independent half of the failure. The prose after the tag is
+ * not: `.xml` reports `xsltproc not found` where the program is absent and
+ * `no XSLT transform provided` where it is present, and the two are split by
+ * platform — macOS ships `/usr/bin/xsltproc`, the Linux CI image does not. A
+ * contract test that matched on the program name therefore passed locally and
+ * failed in CI, which is how this list came to exist.
+ *
+ * `.xml` is also the one entry whose converter is not sufficient on its own. An
+ * XSLT transform is document-specific, so there is no default to ship and
+ * installing `xsltproc` does not make `.xml` lintable — unlike `asciidoctor`,
+ * which genuinely fixes `.adoc`. That is why its `converter` names the
+ * stylesheet as well as the program.
+ */
+export const VALE_CONVERTER_CHECKERS: Readonly<Record<string, string>> = {
+  ".rst": "lintRST",
+  ".adoc": "lintAdoc",
+  ".asciidoc": "lintAdoc",
+  ".xml": "lintXML",
+  ".dita": "lintDITA",
+  ".mdx": "lintMDX",
+};
 
 /** Every converter-dependent extension, flattened. */
 export const VALE_CONVERTER_DEPENDENT_EXTENSIONS: readonly string[] =

@@ -27,3 +27,13 @@ converter, and this CLI ships none of them — so one such file caught by a
 rule's glob exits 2 with an `E100` and abandons the whole run, silencing every
 other Vale rule over every other file. `create-vale-rule` had been offering
 `[*.{md,mdx}]` as its example of widening a matcher.
+
+`.xml` is the one entry where naming the converter is not enough. It needs
+`xsltproc` **and** an XSLT stylesheet, and a stylesheet is document-specific, so
+there is nothing to ship and installing the program does not make `.xml`
+lintable — unlike `asciidoctor`, which genuinely fixes `.adoc`. Vale says so
+differently depending on the host, too: `xsltproc not found` where the program is
+absent, `no XSLT transform provided` where it is present, and macOS ships
+`/usr/bin/xsltproc` while a typical Linux CI image does not. The contract test
+now asserts Vale's checker tag, which is the same everywhere, rather than a
+substring of the converter name.

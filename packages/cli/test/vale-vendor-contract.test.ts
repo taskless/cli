@@ -8,7 +8,9 @@ import { afterEach, describe, expect, it } from "vitest";
 import { findValeBinary } from "../src/rules/vale/binary";
 import {
   VALE_COMMENT_EXTENSIONS,
+  VALE_CONVERTER_CHECKERS,
   VALE_CONVERTER_DEPENDENT,
+  VALE_CONVERTER_DEPENDENT_EXTENSIONS,
   VALE_MARKUP_EXTENSIONS,
   VALE_VERSION,
   valeCommentList,
@@ -514,7 +516,7 @@ withVale("Vale engine capabilities", () => {
     VALE_CONVERTER_DEPENDENT.flatMap(({ extensions, converter }) =>
       extensions.map((extension) => [extension, converter] as const)
     )
-  )("fails the whole run on %s, needing %s", (extension, converter) => {
+  )("fails the whole run on %s, needing %s", (extension) => {
     // The blast radius is the point. Vale exits 2 and abandons the RUN, not
     // the file — `--no-exit` does not suppress it — so one such file caught
     // by any rule's glob silences every other Vale rule over every other
@@ -527,10 +529,35 @@ withVale("Vale engine capabilities", () => {
     expect(result.status, `${extension} no longer fails`).not.toBe(0);
     const output = `${result.stdout}${result.stderr}`;
     expect(output).toContain("E100");
-    // The converter name is what makes the failure actionable, and what
-    // keeps the recipes honest about this being a missing external tool
-    // rather than absent support in Vale.
-    expect(output).toContain(converter.replace(/^an /, "").split(" ")[0]!);
+    // Assert the checker tag, not the prose after it. The tag is the same
+    // everywhere; the prose is not — `.xml` says `xsltproc not found` where
+    // the program is absent and `no XSLT transform provided` where it is
+    // present, and macOS ships `/usr/bin/xsltproc` while the Linux CI image
+    // does not. Deriving the expectation from our own `converter` string
+    // (`replace(/^an /, "").split(" ")[0]`) matched `XSLT` locally and failed
+    // in CI on exactly that split — a host-dependent assertion dressed up as a
+    // vendor contract. `converter` is still asserted, one level up, against
+    // our own data where no binary is involved.
+    expect(output).toContain(`[${VALE_CONVERTER_CHECKERS[extension]!}]`);
+  });
+
+  it("names a checker for every converter-dependent extension", () => {
+    // Set-equality, so an extension added to one and not the other fails here
+    // rather than throwing on an undefined tag inside the probe above.
+    expect(Object.keys(VALE_CONVERTER_CHECKERS).toSorted()).toEqual(
+      [...VALE_CONVERTER_DEPENDENT_EXTENSIONS].toSorted()
+    );
+  });
+
+  it("names something installable for every converter-dependent format", () => {
+    // The actionability claim the probe used to make, asserted against our own
+    // data instead of against a vendor string that varies by host. `.xml` is
+    // deliberately allowed to name two things: the program AND the stylesheet,
+    // because installing the program alone does not make `.xml` lintable.
+    for (const { extensions, converter } of VALE_CONVERTER_DEPENDENT) {
+      expect(converter, `${extensions.join("/")} names no tool`).not.toBe("");
+      expect(converter).toMatch(/^[a-z]/);
+    }
   });
 
   it("renders each list as recipe prose with no gaps", () => {
