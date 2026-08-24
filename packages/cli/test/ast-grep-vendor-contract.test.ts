@@ -626,8 +626,12 @@ withSg("ast-grep engine capabilities", () => {
 
   it("spells languages the way a rule's `language:` field must", () => {
     // ast-grep's vocabulary is not `detect --json`'s: `detect` reports the
-    // repository's languages as `C++`, and a rule that copies that spelling
-    // through fails inside the binary rather than in `verify`.
+    // repository's languages as `C++`. These assertions are about the
+    // canonical list, NOT about what the binary rejects — measured at 0.41.0,
+    // `C++` and `cpp` are accepted aliases for Cpp. The recipe tells authors
+    // to copy from this list because an unrecognized name (`C#`) aborts the
+    // whole scan and a wrong-parser name reports nothing; see `the language
+    // field` suite for the cases that pin those two failures.
     expect(AST_GREP_LANGUAGES).toContain("Cpp");
     expect(AST_GREP_LANGUAGES).not.toContain("C++");
     expect(AST_GREP_LANGUAGES).not.toContain("yaml");

@@ -46,8 +46,13 @@ export const AST_GREP_VERSION = "0.41.0";
  *
  * SPELLINGS ARE ast-grep's, NOT ours and not `detect`'s. `Cpp`, `CSharp`,
  * `JavaScript`, `Tsx` — a rule's `language:` field is handed to ast-grep
- * unchanged, and `verify` does not check it, so a plausible-looking `C++` or
- * `yaml` reaches the binary and fails there.
+ * unchanged and `verify` does not check it, so the binary is the first thing
+ * with an opinion. MEASURED at 0.41.0: it accepts some off-list aliases
+ * (`C++` and `cpp` both resolve to Cpp), so an off-list spelling is not
+ * reliably an error. The two real failures are a name ast-grep does not know
+ * at all (`C#`), which aborts config parsing so every rule goes unreported,
+ * and a valid name for the wrong parser (`TypeScript` over `.tsx`), which
+ * reports nothing and reads as a clean codebase. Neither is caught locally.
  *
  * Pinned by set-equality against the binary in
  * `test/ast-grep-vendor-contract.test.ts`, so a version bump that adds or drops
