@@ -147,21 +147,60 @@ Merge each PR **down** into its parent's branch, from the tip to the bottom:
 - Bring the bottom branch up to date with `main`, let `Validate` pass, then do the **single** protected merge to `main`.
 - Result: one CI cycle instead of N, and every PR gets a real **Merged** badge (not "closed/absorbed").
 
-**Merge the down-merges one at a time, not in a loop.** Merging a child immediately invalidates the parent PR's mergeability (`gh pr merge` fails with "Pull Request is not mergeable") until GitHub recomputes. In a tight loop this makes merges land **out of order**, which strands the tip's commits part-way down the stack (e.g. `skill`/`eval` never propagate past `help`). Merge each PR, wait a few seconds, confirm the next is `MERGEABLE`, then continue. After the down-merges, verify the bottom branch actually contains the tip before the final merge:
+**Merge the down-merges one at a time, not in a loop.** Merging a child immediately invalidates the parent PR's mergeability until GitHub recomputes — `gh pr merge` fails with "Pull Request is not mergeable", and the API reports `rebaseable: null`. In a tight loop this makes merges land **out of order**, which strands the tip's commits part-way down the stack (e.g. `skill`/`eval` never propagate past `help`). Merge each PR, wait for the next to report a boolean `rebaseable`, then continue.
+
+**Verify by content, not by ancestry.** Rebase-and-merge replays commits under new SHAs, so the tip's original commits are never ancestors of the branch that absorbed them, and the obvious check reports a false `STRANDED`:
 
 ```bash
-git merge-base --is-ancestor origin/<tip-branch> origin/<bottom-branch> && echo "OK" || echo "STRANDED"
+# WRONG under rebase-and-merge — fails even when everything landed
+git merge-base --is-ancestor origin/<tip-branch> origin/<bottom-branch>
+
+# Right: ask whether the content differs
+git diff --stat origin/<bottom-branch> origin/<tip-branch>   # empty = fully absorbed
 ```
 
-If stranded, reconcile from the tip (a tip branch contains the entire stack): on the bottom branch, `git merge origin/main` then `git merge origin/<tip-branch>`, confirm the only diff vs. the tip is whatever landed on `main` separately, and push.
+An empty diff with differing SHAs is the *expected* healthy state after a rebase merge, not evidence of a problem. If the diff is genuinely non-empty, reconcile from the tip — a tip branch contains the whole stack — then re-check the diff and push.
 
 ### Never `--delete-branch` mid-stack
 
 `gh pr merge <n> --delete-branch` on a stacked PR **closes the child** PR (its base branch vanishes) instead of retargeting it. Leave branches in place during the stack; clean them up only after the whole stack has landed.
 
-### Use merge-commit, not squash, for a stack
+### Rebase is the only merge method, and a stack pays for it
 
-Stacked branches share commits (each child contains its ancestors). Prefer explicit `gh pr merge --merge` — `--merge` keeps children clean, while squash rewrites the parent into a new commit the children don't have, forcing a manual `git merge origin/main` reconciliation on every child between merges and inviting phantom conflicts.
+`main` keeps a linear history, so the repository allows **rebase-and-merge only** — squash and merge-commit are both disabled. Confirm rather than assume, since this changed:
+
+```bash
+gh api repos/{owner}/{repo} --jq '"squash=\(.allow_squash_merge) merge=\(.allow_merge_commit) rebase=\(.allow_rebase_merge)"'
+# squash=false merge=false rebase=true
+```
+
+`gh pr merge --merge` and `--squash` both fail. Use `gh pr merge <n> --rebase`.
+
+**This is the expensive case for a stack, and there is no cheaper option available.** Rebase-and-merge replays the branch onto `main` as *new commits with new SHAs*. Every child then contains the pre-rebase versions of its ancestors' commits, so the child is not merely behind — its history diverged. After each merge you must rebase the next branch onto the updated `main` and force-push it. The old guidance to prefer merge-commits so children stay clean no longer applies; that door is closed.
+
+Practically, landing a stack now looks like:
+
+```bash
+gh pr merge <bottom> --repo <owner>/<repo> --rebase
+git fetch origin
+git rebase -S origin/main            # in the next branch's worktree
+git push --force-with-lease=<branch>:$(git rev-parse origin/<branch>)
+```
+
+Two things that will bite:
+
+- **Branch protection is `strict_up_to_date: true`,** so the next PR reports `mergeable_state: "behind"` until you rebase it. That is not a conflict; it is the protection asking for the rebase you owe it.
+- **Right after a merge, `rebaseable` reads `null`** while GitHub recomputes. Poll until it is a boolean rather than treating `null` as "not mergeable" — reading it as a failure is what stranded commits mid-stack before.
+
+### Rebase-and-merge lands unsigned commits on `main`
+
+Commits are signed locally (`git commit -S`, mandatory above), but **GitHub rewrites them when it rebases, and does not re-sign.** Every commit on `main` reports `N`:
+
+```bash
+git log --format='%G? %h %s' -5 origin/main   # N, N, N, …
+```
+
+Nothing is wrong and nothing needs fixing on `main`. Know it so that `%G?` on a merged commit is not mistaken for a signing failure, and so a fresh commit reading `N` **before** it reaches `main` is recognised as the real problem it is — that one means `-S` was missed.
 
 ### Recovery if a child PR gets closed by base-branch deletion
 
