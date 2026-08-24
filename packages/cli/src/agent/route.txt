@@ -122,7 +122,8 @@ answered together.
        `.sql` and every unnamed extension included. There is no parser,
        so the file is linted as one block of prose, and a Vale rule
        scoped to YAML flags the code as readily as the comments. That is
-       rarely what was asked for — say so before writing it.
+       rarely what was asked for — say so before writing it. These read
+       like markup and are not: %(VALE_PLAINTEXT_FORMATS)s
      - *cannot be read at all* — Vale supports these formats but shells
        out to an external converter to parse them, and this CLI ships
        none of those converters:
@@ -133,6 +134,11 @@ answered together.
        suppress it, and every other Vale rule over every other file goes
        unreported. A matcher written as `[*.{md,mdx}]` is not a wider
        `[*.md]` — it is a broken one.
+
+       **MDX is not supported yet.** Vale 3.18.0 parses MDX natively and
+       a CLI update carrying that Vale is expected to bring it; on
+       v%(VALE_VERSION)s, `.mdx` needs `mdx2vast` and this CLI ships
+       none. Tell the user MDX is not supported yet and scope to `.md`.
 
    **A language on neither list does not route to runtime by default.**
    Check `create-legacy-rule` first: the repo may already run a linter

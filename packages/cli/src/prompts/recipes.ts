@@ -15,6 +15,7 @@ import {
   valeCommentList,
   valeConverterList,
   valeMarkupList,
+  valePlaintextList,
 } from "../rules/capabilities";
 
 // Agent recipe files embedded at build time via Vite import.meta.glob.
@@ -164,6 +165,7 @@ export function buildVariables(
     VALE_VERSION,
     VALE_MARKUP_FORMATS: valeMarkupList(),
     VALE_COMMENT_FORMATS: valeCommentList(),
+    VALE_PLAINTEXT_FORMATS: valePlaintextList(),
     VALE_CONVERTER_FORMATS: valeConverterList(),
     PACKAGE_MANAGER_DLX:
       options.packageManagerDlx ?? PACKAGE_MANAGER_DLX_MARKER,

@@ -9,6 +9,7 @@ import {
   valeCommentList,
   valeConverterList,
   valeMarkupList,
+  valePlaintextList,
 } from "../src/rules/capabilities";
 import { buildInvocation } from "../src/util/invocation";
 
@@ -375,9 +376,14 @@ describe("recipes state engine reach from the pinned versions", () => {
     expect(route).toContain(valeMarkupList());
     expect(route).toContain(valeCommentList());
     expect(route).toContain(valeConverterList());
+    expect(route).toContain(valePlaintextList());
     // The consequence, not just the list. A recipe that names `.mdx` without
     // saying it takes the whole pass down has not conveyed the hazard.
     expect(route).toContain("E100");
+    // MDX is a "not yet", not a "never" — Vale 3.18.0 parses it natively. An
+    // agent told only that it is unreadable would tell a user MDX is
+    // unsupported, full stop.
+    expect(route).toContain("MDX is not supported yet");
   });
 
   it("names ast-grep's languages in rendered create-sg-rule.txt", async () => {
@@ -407,5 +413,10 @@ describe("recipes state engine reach from the pinned versions", () => {
     // a matcher. It may still cite it — as the counter-example it now is — so
     // this pins the warning rather than the absence of the string.
     expect(recipe).toContain("Never put one of those extensions in a glob.");
+    expect(recipe).toContain(valePlaintextList());
+    expect(recipe).toContain("MDX is not supported yet");
+    // No date. The bump is expected, not scheduled, and a recipe that implies
+    // otherwise is stale the moment it slips.
+    expect(recipe).not.toMatch(/\b20\d\d-\d\d\b/);
   });
 });

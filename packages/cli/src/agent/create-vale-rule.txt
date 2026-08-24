@@ -314,6 +314,8 @@ it.
      parser, so the whole file is linted as prose: a rule matched to
      YAML flags key names and values, not just the comments. If that is
      not what the rule means, narrow the glob rather than accepting it.
+     These land here despite reading like markup, so a `scope:` value
+     has nothing to act on in them: %(VALE_PLAINTEXT_FORMATS)s
    - **cannot be read at all** — Vale supports these formats but shells
      out to an external converter to parse them, and this CLI ships none
      of those converters:
@@ -325,6 +327,13 @@ it.
    unreported. `[*.{md,mdx}]` is not a slightly wider `[*.md]`; it is a
    matcher that takes `check` down the first time the repo grows an
    `.mdx` file. Never put one of those extensions in a glob.
+
+   **MDX is not supported yet.** Vale v%(VALE_VERSION)s reads `.mdx` only
+   through `mdx2vast`, which this CLI does not ship. Vale 3.18.0 parses
+   MDX natively, and a CLI update carrying that Vale is expected to
+   bring MDX support with it. Until then, scope the rule to `.md` and
+   say that `.mdx` is not supported yet rather than offering a matcher
+   that covers it.
 
 5. **Write the fixtures.** Two directories inside the rule, both flat.
    Vale lints the whole fixture tree, so a document nested a level

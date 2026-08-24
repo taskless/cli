@@ -19,12 +19,24 @@ same way any ordinary failing check does.
 `runVale` now excludes the converter-dependent extensions from Vale's own walk,
 so the rest of the project is checked normally and the skipped files are named
 in a notice that says which converter would put them back in scope. The tiers
-live in one table in `rules/vale/formats.ts`, measured against the pinned binary
-rather than transcribed from documentation — which is how `.asc`, a third
-AsciiDoc spelling that crashes identically and was not in the bug report, ended
-up covered. A per-extension test re-measures every entry against the real Vale,
-so a version bump that moves a format between tiers fails there instead of
-silently turning the engine off again.
+live in one table in `rules/capabilities.ts` — the same record the agent recipes
+render their format lists from — measured against the pinned binary rather than
+transcribed from documentation. That is how `.asc` and `.rest`, a third AsciiDoc
+spelling and a second reStructuredText one that crash identically and were in
+neither bug report, ended up covered. Measurement also corrected four
+extensions that a documentation reading had put in the wrong tier: `.tex`,
+`.rmd`, `.mkd` and `.mkdn` are all read as plain text by this Vale, not parsed,
+so excluding them would have dropped files Vale lints perfectly well. A
+per-extension test re-measures every row against the real Vale — each tier by
+the property only that tier has, since ordinary prose fires in all of them — so
+a version bump that moves a format between tiers fails there instead of silently
+turning the engine off again.
+
+The recipes now say MDX is not supported _yet_, rather than unsupported: Vale
+3.18.0 parses it natively and a CLI update carrying that Vale is expected to
+bring it. The same release adds a Typst converter, which will move `.typ` out of
+the plaintext tier, so the table carries a standing instruction to re-measure
+every row on a version bump.
 
 Two details are load-bearing and were both wrong on the first attempt. Vale
 honours exactly one `--glob` and keeps the last, so the `.taskless/` exclusion
