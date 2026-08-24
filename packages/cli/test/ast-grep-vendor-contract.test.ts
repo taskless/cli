@@ -156,6 +156,7 @@ const evalSource = { "src/a.ts": 'const x = eval("1");\n' };
 /** `rule("no-eval")` with its `language:` swapped for another spelling. */
 const atLanguage = (language: string) =>
   rule("no-eval").replace("language: TypeScript", `language: ${language}`);
+
 /** Four calls at increasing arity, one per line, for the `$$$` cases below. */
 const aritySource = {
   "src/a.ts": "foo();\nfoo(1);\nfoo(1,2);\nfoo(1,2,3);\n",
@@ -173,10 +174,6 @@ const arityRule = (body: string) =>
     body,
     "",
   ].join("\n");
-
-/** `rule("no-eval")` with its `language:` swapped for another spelling. */
-const atLanguage = (language: string) =>
-  rule("no-eval").replace("language: TypeScript", `language: ${language}`);
 
 /** Exit status of scanning one finding declared at `severity`. */
 const statusAt = (severity: string) =>
