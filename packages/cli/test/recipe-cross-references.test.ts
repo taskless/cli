@@ -380,6 +380,24 @@ describe("recipes state engine reach from the pinned versions", () => {
     expect(route).toContain("E100");
   });
 
+  it("names ast-grep's languages in rendered create-sg-rule.txt", async () => {
+    // create-sg-rule.txt is where a `language:` field is actually written, and
+    // it is the one field nothing local validates — the vendored schema types
+    // it as a bare string and `verify` never reads it. So the spellings have to
+    // reach the recipe, or the first thing with an opinion is the binary.
+    const recipe = await rendered("create-sg-rule.txt");
+    expect(recipe).toContain(astGrepLanguageList());
+    // `Tsx` by name: a reader who assumes it is an alias of `TypeScript`
+    // writes a rule that reads `.tsx` files not at all, and this pins the
+    // warning rather than letting it fall out of the list above.
+    expect(recipe).toContain("Tsx");
+    // Asserted per-file as well as in the sweep above, because this recipe is
+    // the one that renders BOTH the version and the language list: a marker
+    // that survives here reaches an agent as a variable it thinks it should
+    // fill in, in the middle of the field it is being warned about.
+    expect(recipe).not.toMatch(/%\([A-Z_]+\)s/);
+  });
+
   it("repeats the reach where a Vale matcher is written", async () => {
     // create-vale-rule.txt is where a glob is authored, which is the only
     // place the converter-dependent extensions can actually do damage.

@@ -1,4 +1,4 @@
-# Topic: improve-rule     (CLI v%(CLI_VERSION)s / topic v2)
+# Topic: improve-rule     (CLI v%(CLI_VERSION)s / topic v3)
 
 ## Goal
 Iterate on an existing Taskless rule. The CLI submits the user's
@@ -42,6 +42,16 @@ If the user wants the local-only flow (no API call), fetch
    - Is the message confusing or misleading?
    - Should the severity change?
 
+   **"It doesn't fire on X" is often the `$$$` separator, not a pattern
+   that is merely too narrow.** Read the rule's pattern for a `$$$`
+   sitting next to a comma before you write that guidance. The comma is
+   itself an AST node that has to match, so `f($A, $$$)` never sees a
+   one-argument call and `f($$$, $A)` sees only one-argument calls — the
+   pattern reads as variadic and is not. `%(TASKLESS_CLI)s agent create-sg-rule`
+   carries the arity table and both remedies. Guidance that asks to
+   widen the rule when the fix is `strictness: ast` sends the iterate
+   endpoint after the wrong change, and it will oblige.
+
 5. **Collect supporting references.** Ask the user for any code
    examples that should be:
    - **Not flagged** (currently flagged but shouldn't be) — false
@@ -71,6 +81,16 @@ If the user wants the local-only flow (no API call), fetch
     test file) with the updated version. Show the file paths and a
     summary of what changed. Suggest fetching `%(TASKLESS_CLI)s agent check`
     to validate.
+
+    **Confirm both fixture buckets are still non-empty.** `test` fails
+    an ast-grep rule whose `valid:` or `invalid:` array is empty, and
+    narrowing a pattern to kill a false positive is exactly how
+    `invalid:` ends up with nothing the rule still matches. Run
+    ```
+    %(TASKLESS_CLI)s test .taskless/rules/sg/<id> --json
+    ```
+    on the returned files rather than trusting them, and add a fixture
+    the new pattern does match if that bucket came back empty.
 
 ## Input schema
 
