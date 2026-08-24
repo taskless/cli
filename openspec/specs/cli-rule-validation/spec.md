@@ -1,8 +1,11 @@
 # cli-rule-validation Specification
 
 ## Purpose
+
 TBD - created by archiving change self-contained-rules. Update Purpose after archive.
+
 ## Requirements
+
 ### Requirement: Rules are validated and tested by path, not by id
 
 The CLI SHALL provide `verify <path>` and `test <path>`. Both SHALL accept a path to a rule's canonical location or to any directory above it, and SHALL resolve the owning engine from the path's position under `.taskless/rules/<engine>/` rather than by parsing the file.
@@ -39,11 +42,11 @@ The two commands split because they have different preconditions. An agent part-
 
 Per engine, `verify` SHALL check:
 
-| Engine    | Components                                                                     |
-|-----------|--------------------------------------------------------------------------------|
-| `sg`      | `<id>.yml` against the ast-grep schema and the Taskless required fields        |
-| `vale`    | `<id>.yml` against Vale's own validation, and the rule's `.vale.ini`           |
-| `runtime` | `check.ts` present, and at least one capture rule under `captures/`            |
+| Engine    | Components                                                              |
+| --------- | ----------------------------------------------------------------------- |
+| `sg`      | `<id>.yml` against the ast-grep schema and the Taskless required fields |
+| `vale`    | `<id>.yml` against Vale's own validation, and the rule's `.vale.ini`    |
+| `runtime` | `check.ts` present, and at least one capture rule under `captures/`     |
 
 #### Scenario: A rule with no fixtures still verifies
 
@@ -62,6 +65,8 @@ Per engine, `verify` SHALL check:
 
 Ordering is the point. When a rule is both malformed and under-fixtured, the fixture complaint is the less useful of the two errors and is the one that surfaces first if the checks run in the other order — so the author is told their fixtures are incomplete while the reason the rule could never have run goes unmentioned.
 
+A rule that populates only one bucket has proved only half of what a rule claims, whatever its engine. An engine SHALL NOT be trusted to report this itself: `ast-grep test` reports an empty `invalid:` bucket as `1 passed; 0 failed` and exits zero, so a rule that has never matched anything is indistinguishable from one that passed.
+
 #### Scenario: A malformed rule reports the malformation, not the fixtures
 
 - **WHEN** `test` runs against a rule that is both invalid and missing a fixture bucket
@@ -75,6 +80,14 @@ Ordering is the point. When a rule is both malformed and under-fixtured, the fix
 - **AND** every `pass/` document SHALL produce none
 - **AND** a rule populating only one bucket SHALL be reported as unverified rather than passing
 
+#### Scenario: ast-grep fixtures are counted per bucket
+
+- **WHEN** `test` runs against an ast-grep rule
+- **THEN** the `valid:` and `invalid:` entries SHALL be counted across every `-test.yml` file the rule owns
+- **AND** a rule populating only one bucket SHALL be reported as unverified rather than passing
+- **AND** a rule whose buckets are all empty or absent SHALL be reported as unverified rather than passing
+- **AND** a green `ast-grep test` run SHALL NOT on its own be sufficient to report the rule as passing
+
 ### Requirement: The generation loop runs verify and test
 
 The rule generation loop SHALL run `verify` and then `test` against a newly authored or newly delivered rule, and SHALL treat a failure of either as a rule that is not ready to report as complete.
@@ -84,4 +97,3 @@ The rule generation loop SHALL run `verify` and then `test` against a newly auth
 - **WHEN** a rule is authored locally or written by the service
 - **THEN** the loop SHALL run `verify` and `test` against its path
 - **AND** SHALL surface a failure rather than reporting the rule as written
-
