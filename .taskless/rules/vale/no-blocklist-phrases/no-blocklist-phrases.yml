@@ -1,0 +1,33 @@
+extends: existence
+message: "'%s' is on the house blocklist. Say the thing plainly instead."
+level: error
+ignorecase: true
+tokens:
+  # Reflexive agreement openers
+  - "you[''’]re absolutely right"
+  - "you[''’]re right"
+  - 'great point'
+  - 'good catch'
+  # Borrowed voice
+  - 'it hits different'
+  - 'the one thing I keep coming back to'
+  - 'I found the smoking gun'
+  - 'bottom line'
+  - 'load-bearing'
+  - 'belt and suspenders'
+  # Filler intensifiers
+  - 'and honestly'
+  # Performative candor
+  - 'the honest truth'
+  - "let[''’]s be honest"
+  - 'to be honest'
+  - 'the hard truth'
+  - 'real talk'
+  # "land" for a decision or agreement. The literal senses are fine (a plane
+  # lands, a PR lands), so only the decision collocations are listed. A bare
+  # 'landed on' was measured firing on "the plane landed on time"; 'we landed'
+  # already covers "we landed on the second option", so it earned nothing.
+  - 'we landed'
+  - 'what we landed'
+  - 'the decision landed'
+  - 'glad it landed'
