@@ -103,6 +103,7 @@ it.
    facility for a rule that does not extend one of these twelve, and an
    `extends` outside the set is not a rule that misbehaves: Vale exits 2
    and **every** Vale rule in the project goes unreported for that run.
+   `verify` rejects it before Vale is invoked, and names the twelve.
 
    **The other seven have a worked rule at the end of this recipe**,
    nine rules between them, each with the near-miss that fails and why.
@@ -149,8 +150,8 @@ it.
    rejected by Vale: `scope: fenced` loads, runs, and matches nothing.
    It is the worst of the three failures on this page, because unlike a
    bad `extends` or a foreign field it does not even take the run down to
-   tell you — the rule is simply inert, forever. Copy the value from the
-   table below rather than typing it.
+   tell you — the rule is simply inert, forever. `verify` rejects a scope
+   outside the table below, which is the only layer that ever will.
 
    Every value below was measured against Vale v%(VALE_VERSION)s by
    authoring a rule with that scope and a document the rule had to flag.
@@ -207,8 +208,9 @@ it.
    Measured: `~banana` and `text & ~banana` both fire on everything,
    because there is no such scope to subtract. A typo inside a `~` does
    not narrow the rule and does not widen it visibly — it removes the
-   exclusion you wrote the rule for. Check the spelling inside a `~`
-   against the table as carefully as a bare one.
+   exclusion you wrote the rule for. `verify` checks the operands inside
+   `~` and `&` as strictly as a bare one, for exactly this reason — the
+   one place it is deliberately stricter than Vale itself.
 
    **`scope` is per-rule, and rules do not interact.** Taskless assembles
    every rule's matchers into one config for the run, which invites the
@@ -263,8 +265,8 @@ it.
    `tokens` on an `occurrence` check gives
    `E201 … has invalid keys: 'tokens'`, exit 2, and — because Vale reads
    one assembled config per run — **no** Vale rule in the project reports
-   anything. Take the field names from the table above rather than from
-   memory: this is the mistake with the widest blast radius.
+   anything. `verify` rejects the rule before Vale is invoked, so this
+   cannot reach `check`.
 
    **Two checks are exempt, and that is not a licence.** Measured,
    `consistency` and `spelling` accept any key at all: `bananafield:
@@ -617,9 +619,18 @@ it.
    ```
 
    `verify` asks whether the rule is well-formed: the style file parses,
-   `extends` and `message` are present, `level` is one Vale accepts, and
-   the config declares a matcher that enables `<id>.<id>`. It does **not**
-   need fixtures, so run it as soon as the style file exists.
+   `extends` names one of the twelve checks, `message` is present, `level`
+   is one Vale accepts, every `scope` operand is one Vale honors, every
+   field belongs to the check the rule extends, and the config declares a
+   matcher that enables `<id>.<id>`. It does **not** need fixtures, so run
+   it as soon as the style file exists.
+
+   Those checks are measured against Vale v%(VALE_VERSION)s rather than
+   transcribed from its docs, and they run **before** Vale is invoked.
+   That ordering matters for two of them: an unknown `extends` and a
+   foreign field each fail the whole Vale run rather than just this rule,
+   so letting either reach the binary would take every other Vale rule's
+   findings down with it.
 
    `test` runs the rule against both buckets. It runs `verify` first and
    stops if that fails, so a malformed rule tells you what is malformed

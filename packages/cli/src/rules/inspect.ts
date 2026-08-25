@@ -9,6 +9,7 @@ import {
   ruleFilePath,
   type EngineName,
 } from "./engines";
+import { validateValeRule } from "../schemas/vale-rule";
 import { verifyRule, type VerifyResult } from "./verify";
 import { verifyValeRule } from "./vale/verify";
 import type { ResolvedRule } from "./resolve-path";
@@ -97,19 +98,17 @@ export async function verifyOneRule(
     const stylePath = ruleFilePath(cwd, engine, ruleId);
     try {
       const style = await readYaml(stylePath);
-      if (typeof style !== "object" || style === null) {
-        errors.push(`${ruleId}.yml is not a YAML mapping.`);
-      } else {
-        // `extends` and `message` are Vale's own required keys. Checking them
-        // here means an author hears about a missing one from `verify` rather
-        // than as an E201 buried in an engine failure at check time.
+      // Layer 1 for `vale`, the counterpart of the ast-grep schema layer:
+      // `extends`, `message`, `level`, the `scope` grammar, and the per-check
+      // field tables, all measured against the pinned binary. It runs here,
+      // before Vale is ever invoked, because two of the three defects it
+      // catches are not local — Vale reads one assembled config per run, so an
+      // unknown `extends` or a foreign field takes down every other Vale
+      // rule's findings rather than just this one's.
+      errors.push(...validateValeRule(ruleId, style).errors);
+
+      if (typeof style === "object" && style !== null) {
         const record = style as Record<string, unknown>;
-        if (typeof record.extends !== "string") {
-          errors.push(`${ruleId}.yml is missing the required 'extends' key.`);
-        }
-        if (typeof record.message !== "string") {
-          errors.push(`${ruleId}.yml is missing the required 'message' key.`);
-        }
         // `consistency` is the one extension point that compiles the rule's
         // own name into the pattern: Vale emits `(?P<<id>N>…)` named capture
         // groups, and Go RE2 requires a group name to be word characters
@@ -122,16 +121,6 @@ export async function verifyOneRule(
         if (record.extends === "consistency" && !/^\w+$/.test(ruleId)) {
           errors.push(
             `${ruleId} extends consistency, so its id becomes a regex group name and must be word characters only. Rename it without '-' (Vale would fail the whole run with E201).`
-          );
-        }
-        const level = record.level;
-        if (
-          level !== undefined &&
-          (typeof level !== "string" ||
-            !["suggestion", "warning", "error"].includes(level))
-        ) {
-          errors.push(
-            `${ruleId}.yml has an invalid level; it must be suggestion, warning, or error.`
           );
         }
       }
