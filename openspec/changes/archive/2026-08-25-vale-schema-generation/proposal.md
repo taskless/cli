@@ -20,7 +20,7 @@ A method that can make that mistake is worth writing down once, correctly.
 - **The generator fails loudly rather than emitting a short enum.** If the `'extends' key must be one of [...]` line stops matching, it errors. A truncated enum is _stricter_ than the binary, which is the direction that blocks working rules.
 - **A divergence report ships with the artifact.** Where the binary and Vale's documentation disagree, the disagreement is written to `vale-vocabulary-report.md` rather than silently dropped on one side or the other.
 - **The three fatal-shape checks stay hand-written.** A `sequence` with no `tokens`, a `sequence` whose `tokens` is not a list, and a `metric` with a `formula` and no `condition` each panic the binary. That is behavior a field table cannot express, so it stays a `.check()` beside the union.
-- **No behavior change.** All 86 existing corpus rows pass unmodified against the generated schema; two rows are added for ground the generation newly measured.
+- **No behavior change.** All 86 existing corpus rows pass unmodified against the generated schema; two rows are added to cover ground the generation newly measured.
 
 ## Capabilities
 
