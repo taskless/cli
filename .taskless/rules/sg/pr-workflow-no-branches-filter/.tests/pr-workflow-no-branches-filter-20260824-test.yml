@@ -1,4 +1,4 @@
-id: no-pull-request-branches-filter
+id: pr-workflow-no-branches-filter
 valid:
   - |
     on:
