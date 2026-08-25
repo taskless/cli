@@ -557,8 +557,23 @@ const FIELDS: ValeCorpusEntry[] = [
     control: "We utilize it simply.\n",
     expected: "accepted",
   },
-  // The two checks that validate nothing. A schema that was strict here would
-  // reject rules the binary runs happily.
+  // Strict versus permissive, asked the same way of all three candidates, with
+  // a key no check has rather than a real field borrowed from another one.
+  //
+  // `sequence` belongs with the strict ten, and the row exists because that is
+  // easy to get wrong: probe a *tokenless* sequence rule and Vale panics
+  // instead of reporting, so a probe grepping for `has invalid keys` scores it
+  // as permissive. Give the rule its `tokens` and it rejects the unknown key
+  // like every other strict check. See `shape/sequence-without-tokens` below.
+  {
+    name: "field/sequence+unknown",
+    construct: "an unknown field on a sequence check",
+    rule: 'extends: sequence\nmessage: "x"\nlevel: warning\ntokens:\n  - pattern: a\n  - tag: NN\nbananafield: true\n',
+    control: "This is a dog and a simply cat.\n",
+    expected: "rejected",
+  },
+  // The two checks that really do validate nothing. A schema that was strict
+  // here would reject rules the binary runs happily.
   {
     name: "field/consistency+unknown",
     construct: "an unknown field on a consistency check",
@@ -572,6 +587,51 @@ const FIELDS: ValeCorpusEntry[] = [
     rule: 'extends: spelling\nmessage: "x %s"\nlevel: warning\nbananafield: true\n',
     control: "This is definately speled simply wrongly.\n",
     expected: "accepted",
+  },
+];
+
+/**
+ * Shapes that panic the binary.
+ *
+ * Every key in these rules is a legal field of its check — it is the *shape*
+ * that is fatal. Measured, each ends the process with a Go stack trace:
+ *
+ * ```
+ * panic: interface conversion: interface {} is nil, not []interface {}
+ * ```
+ *
+ * That is a wider blast radius than `E201`. An `E201` names a file and a line;
+ * a panic names no rule at all, produces no findings for anything in the
+ * project, and gives an author nothing to act on. `verify` is the last place
+ * these can be caught.
+ *
+ * They are also a standing warning about how these measurements are taken. A
+ * panic contains no `has invalid keys` string, so any probe that greps for that
+ * phrase reads a panicking rule as *accepted* — which is exactly how a
+ * tokenless `sequence` rule came to look like proof that `sequence` validates
+ * nothing. The verdict below comes from the exit status, not from a grep.
+ */
+const SHAPES: ValeCorpusEntry[] = [
+  {
+    name: "shape/sequence-without-tokens",
+    construct: "a sequence check with no tokens",
+    rule: 'extends: sequence\nmessage: "x"\nlevel: warning\n',
+    control: "This is a dog and a simply cat.\n",
+    expected: "rejected",
+  },
+  {
+    name: "shape/sequence-tokens-not-a-list",
+    construct: "a sequence check whose tokens is not a list",
+    rule: 'extends: sequence\nmessage: "x"\nlevel: warning\ntokens: simply\n',
+    control: "This is a dog and a simply cat.\n",
+    expected: "rejected",
+  },
+  {
+    name: "shape/metric-formula-without-condition",
+    construct: "a metric check with a formula and no condition",
+    rule: 'extends: metric\nmessage: "x"\nlevel: warning\nformula: |\n  (characters / words)\n',
+    control: "Antidisestablishmentarianism prevails simply everywhere.\n",
+    expected: "rejected",
   },
 ];
 
@@ -621,6 +681,7 @@ export const VALE_CORPUS: readonly ValeCorpusEntry[] = [
   ...INVALID_SCOPES,
   ...DIVERGENCES,
   ...FIELDS,
+  ...SHAPES,
   ...HEADER,
 ];
 

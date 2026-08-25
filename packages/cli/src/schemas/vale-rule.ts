@@ -444,29 +444,104 @@ const CHECK_FIELDS = {
  * hand-written key walk. The members are spelled out rather than mapped over
  * {@link CHECK_FIELDS} so that each `z.literal` survives into {@link ValeRule}.
  */
-const valeBodySchema = z.discriminatedUnion(
-  "extends",
-  [
-    check("existence", CHECK_FIELDS.existence),
-    check("substitution", CHECK_FIELDS.substitution),
-    check("capitalization", CHECK_FIELDS.capitalization),
-    check("occurrence", CHECK_FIELDS.occurrence),
-    check("repetition", CHECK_FIELDS.repetition),
-    check("conditional", CHECK_FIELDS.conditional),
-    check("metric", CHECK_FIELDS.metric),
-    check("readability", CHECK_FIELDS.readability),
-    check("sequence", CHECK_FIELDS.sequence),
-    check("script", CHECK_FIELDS.script),
-    permissiveCheck("consistency"),
-    permissiveCheck("spelling"),
-  ],
-  {
-    // Unreachable in practice — the header rejects an unknown `extends` first,
-    // with a message naming all twelve. Supplied so that if the two ever drift
-    // apart the fallback is still a sentence rather than "Invalid input".
-    error: () => `extends must be one of: ${VALE_CHECK_TYPES.join(", ")}.`,
+/**
+ * Field shapes that crash the binary outright.
+ *
+ * These are not field-table facts, which is why they sit apart from the union:
+ * every key involved is a legal field of its check. It is the *shape* that is
+ * fatal. Measured against Vale 3.18.0, each of the three below ends the process
+ * with a Go stack trace —
+ *
+ * ```
+ * panic: interface conversion: interface {} is nil, not []interface {}
+ * ```
+ *
+ * — which is a wider blast radius than `E201`. An `E201` is at least a
+ * diagnostic naming a file and a line; a panic is a stack trace with no rule
+ * name in it, no findings for any rule, and nothing an author can act on. This
+ * is the last place `verify` can say anything useful at all.
+ *
+ * It is also the reason a probe must never be trusted to a grep. A panic
+ * contains no `has invalid keys` string, so a probe looking for that phrase
+ * scores a panicking rule as *accepted* — which is exactly how `sequence` came
+ * to look like a check that validates nothing. It is strict; a tokenless
+ * `sequence` rule simply never reaches the validation.
+ */
+function fatalShapeMessages(
+  rule: Record<string, unknown>
+): { path: PropertyKey[]; message: string }[] {
+  const fatal: { path: PropertyKey[]; message: string }[] = [];
+
+  if (rule.extends === "sequence") {
+    if (rule.tokens === undefined) {
+      fatal.push({
+        path: ["tokens"],
+        message:
+          "a sequence check needs 'tokens'. Without it Vale does not report " +
+          "an error — it panics, ending the run with a Go stack trace and no " +
+          "findings for any rule in the project.",
+      });
+    } else if (!Array.isArray(rule.tokens)) {
+      fatal.push({
+        path: ["tokens"],
+        message:
+          `a sequence check's 'tokens' must be a list, not ` +
+          `${typeof rule.tokens}. Vale panics on any other shape, ending the ` +
+          `run with a Go stack trace and no findings for any rule in the ` +
+          `project.`,
+      });
+    }
   }
-);
+
+  if (
+    rule.extends === "metric" &&
+    rule.formula !== undefined &&
+    rule.condition === undefined
+  ) {
+    fatal.push({
+      path: ["condition"],
+      message:
+        "a metric check with a 'formula' also needs a 'condition'. Vale " +
+        "panics on a formula it has nothing to compare, ending the run with " +
+        "a Go stack trace and no findings for any rule in the project.",
+    });
+  }
+
+  return fatal;
+}
+
+const valeBodySchema = z
+  .discriminatedUnion(
+    "extends",
+    [
+      check("existence", CHECK_FIELDS.existence),
+      check("substitution", CHECK_FIELDS.substitution),
+      check("capitalization", CHECK_FIELDS.capitalization),
+      check("occurrence", CHECK_FIELDS.occurrence),
+      check("repetition", CHECK_FIELDS.repetition),
+      check("conditional", CHECK_FIELDS.conditional),
+      check("metric", CHECK_FIELDS.metric),
+      check("readability", CHECK_FIELDS.readability),
+      check("sequence", CHECK_FIELDS.sequence),
+      check("script", CHECK_FIELDS.script),
+      permissiveCheck("consistency"),
+      permissiveCheck("spelling"),
+    ],
+    {
+      // Unreachable in practice — the header rejects an unknown `extends` first,
+      // with a message naming all twelve. Supplied so that if the two ever drift
+      // apart the fallback is still a sentence rather than "Invalid input".
+      error: () => `extends must be one of: ${VALE_CHECK_TYPES.join(", ")}.`,
+    }
+    // Runs only once the field tables have passed, which is the right order: a
+    // shape can only be fatal if every key in it was legal to begin with.
+  )
+  .check((context) => {
+    const rule = context.value as Record<string, unknown>;
+    for (const { path, message } of fatalShapeMessages(rule)) {
+      context.issues.push({ code: "custom", input: rule, path, message });
+    }
+  });
 
 /** A Vale style file, as the schema understands one. */
 export type ValeRule = z.infer<typeof valeBodySchema>;
