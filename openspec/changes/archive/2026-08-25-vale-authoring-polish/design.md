@@ -170,10 +170,42 @@ case-sensitive too — `level: WARNING` and `extends: Existence` are both
 rejected. The schema therefore compares field names case-insensitively and
 `extends`/`level` values exactly, which is what the binary does.
 
-**`consistency` and `spelling` accept any key at all.** `bananafield: true` on
-either loads without complaint and is ignored — they do not use the strict
-decode the other ten do. The schema cannot be strict about their fields without
-rejecting rules the binary accepts, so it is not.
+**`consistency` and `spelling` accept any key at all — and only those two.**
+`bananafield: true` on either loads without complaint and is ignored; they do
+not use the strict decode the other ten do. The schema cannot be strict about
+their fields without rejecting rules the binary accepts, so it is not.
+
+The split was re-probed across all twelve with a nonsense key rather than a real
+field borrowed from another check, because `sequence` reads as permissive under
+a careless probe and is not:
+
+| Strict (10)                                                                                                                             | Permissive (2)            |
+| --------------------------------------------------------------------------------------------------------------------------------------- | ------------------------- |
+| `capitalization`, `conditional`, `existence`, `metric`, `occurrence`, `readability`, `repetition`, `script`, `sequence`, `substitution` | `consistency`, `spelling` |
+
+**Why `sequence` misleads, and why it matters more than the answer.** Probe it
+with `extends: sequence` + `message` + an unknown key and Vale reports no
+invalid keys — so a probe that greps its output for `has invalid keys` scores it
+permissive. It is not: give the rule its `tokens` and it rejects the unknown key
+like every other strict check. What happens without `tokens` is worse than an
+`E201`:
+
+```
+panic: interface conversion: interface {} is nil, not []interface {}
+```
+
+The process dies. A panic contains no `has invalid keys` string, so the grep
+sees a clean run. **A measurement taken by grepping for an error string cannot
+tell "no error" from "no output".** Every verdict in the corpus is read from the
+exit status instead.
+
+That probe turned up three shapes that end the process rather than reporting
+anything — a `sequence` with no `tokens`, a `sequence` whose `tokens` is not a
+list, and a `metric` with a `formula` and no `condition`. They are a wider blast
+radius than `E201`: an `E201` names a file and a line, a panic names no rule at
+all and produces no findings for anything in the project. `verify` rejects all
+three, in a `checkFatalShapes` pass that runs after the field tables — a shape
+can only be fatal if every key in it was legal to begin with.
 
 ### The failure modes, re-measured
 
