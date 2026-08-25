@@ -23,7 +23,7 @@ The recipe SHALL additionally carry the guidance below. Each item is a failure o
 - **How to scope a rule out**, not only in: a second matcher assigning `<id>.<id> = NO`.
 - **That a bare word finds senses you did not mean**, and that narrowing to a collocation is checked by writing the `pass/` fixture from the literal sense first.
 - **That fixture design follows the rule's subject**: when the subject normally appears in code, the `fail/` fixture SHALL contain it inline, fenced, and in prose.
-- **The `limit` and `vocab` common fields**, which the recipe's field table omits.
+- **The `limit` common field and the per-check `vocab` field**, which the recipe's field table omits. `vocab` SHALL NOT be presented as a field every check accepts: measured, five of the twelve reject it and raise `E201`.
 
 #### Scenario: Authoring produces all three artifacts
 

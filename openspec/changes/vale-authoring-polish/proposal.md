@@ -12,7 +12,7 @@ Measured against the pinned Vale 3.18.0, the engine does not close these. `exten
 
 - **`verify` validates a Vale rule file structurally**, before Vale sees it, against a schema that models the check types and their fields. Today it validates `level` and the presence of the rule's `.vale.ini`, and nothing else — `extends: nonsense` verifies clean.
 - **The schema is hand-authored and pinned to `VALE_VERSION`**, because there is nothing to generate it from. Vale publishes no JSON Schema; the machine-readable field knowledge exists only behind its paid cloud MCP at `api.vale.sh/mcp`, which `verify` cannot depend on. The vendor-contract test is what stops the schema drifting from the binary.
-- **`scope` gains a real enum**, including the hierarchical forms, the v3.17.0+ inline scopes, and the v3.18.0+ `meta` scopes — and accepts the `~` negation and `&` chaining syntax that the recipe never documents and that a naive enum would reject.
+- **`scope` gains a real enum**, including the hierarchical forms, the v3.17.0+ inline scopes, and the v3.18.0+ `frontmatter` scopes — and accepts the `~` negation and `&` chaining syntax that the recipe never documents and that a naive enum would reject.
 - **The `create-vale-rule` recipe closes the gaps that produce silent rules**: the measured scope table, `nonword` for punctuation tokens, how to scope a rule _out_ (the recipe only explains scoping in), fixture design for a subject that normally appears in code, and the `limit`/`vocab` fields it omits.
 - **No breaking change.** Every rule that verifies today continues to verify; the schema only rejects rules the engine was already going to ignore or fail on.
 

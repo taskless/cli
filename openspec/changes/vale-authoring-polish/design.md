@@ -50,7 +50,7 @@ This is the same relationship `capabilities.ts` already has with the format tier
 
 The recipe presents `scope` as a single value. Measured, the binary accepts a bare string, a list, `~` negation, and `&` chaining — `~code`, `[~code]`, and `text & ~code` all parse and behave. A schema modeling `scope` as a flat enum would reject valid rules, which is worse than the gap it closes, so the enum applies to the _operands_ and the schema accepts the operators around them.
 
-The vocabulary is also larger than the recipe's list: `heading` with levels, the `table.*` and `figure.caption` forms, `list`, `paragraph`, `sentence`, `blockquote`, `alt`, `summary`, `raw`, the v3.17.0+ inline scopes (`link`, `code`, `strong`, `emphasis`), `text.class.<name>`, the v3.18.0+ `meta` and `meta.class.<kind>`, and `comment.line` / `comment.block`.
+The vocabulary is also larger than the recipe's list: `heading` with levels, the `table.*` and `figure.caption` forms, `list`, `paragraph`, `sentence`, `blockquote`, `alt`, `summary`, `raw`, the v3.17.0+ inline scopes (`link`, `code`, `strong`, `emphasis`), `text.class.<name>`, the v3.18.0+ `frontmatter` and `frontmatter.<key>`, and `comment.line` / `comment.block`.
 
 `scope` is the highest-value field in the schema, because it is the one field nothing downstream ever validates. An invalid scope is not an error anywhere in the stack — it is a rule that matches nothing.
 
@@ -120,8 +120,8 @@ treats them as separate checks with disjoint fields (`metrics`/`grade` versus
 Measured firing: `text`, `code`, `raw`, `heading`, `heading.h1`–`h6`,
 `paragraph`, `sentence`, `list`, `blockquote`, `link`, `alt`, `summary`,
 `strong`, `emphasis`, `table`, `table.header`, `table.cell`, `table.caption`,
-`comment`, `comment.line`, `comment.block`, `frontmatter`, `frontmatter.<key>`,
-`text.class.<name>`.
+`figure.caption`, `comment`, `comment.line`, `comment.block`, `frontmatter`,
+`frontmatter.<key>`, `text.class.<name>`.
 
 Reach, on one document holding the token in prose, in an inline span, and in a
 fenced block: `text` → 1, `code` → 1, `[code, text]` → 2, `raw` → 3. `raw`

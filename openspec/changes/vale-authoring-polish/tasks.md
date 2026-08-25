@@ -14,7 +14,7 @@
 - [x] 2.5 Document scoping a rule _out_ with a second matcher assigning `NO`.
 - [x] 2.6 Add the collocation guidance: narrow a banned word to a collocation, and write the `pass/` fixture from the literal sense first.
 - [x] 2.7 Add the fixture rule for a subject that appears in code: `fail/` must carry it inline, fenced, and in prose.
-- [x] 2.8 Add `limit` and `vocab` to the common-fields table, and note that Vale requires `.yml` rather than `.yaml`.
+- [x] 2.8 Add `limit` to the common-fields table and `vocab` to the per-check table, and note that Vale requires `.yml` rather than `.yaml`. `vocab` is not a common field: it is rejected by `occurrence`, `metric`, `readability`, `script` and `sequence`.
 - [x] 2.9 State that fixtures run under an isolating config, so passing tests do not prove the matcher reaches any real file.
 - [x] 2.10 Update the recipe's cross-reference tests if the added sections change what they assert. No change needed: `recipe-cross-references.test.ts` asserts the rendered format lists, which the new sections do not touch, and the full suite is green.
 - [x] 2.11 Write the changeset on this branch, so the stack inherits it.
@@ -22,7 +22,7 @@
 ## 3. The schema (unit 2)
 
 - [ ] 3.1 Author the schema from the measurements in group 1, alongside `packages/cli/src/generated/ast-grep-rule-schema.json`. Pin it to `VALE_VERSION`.
-- [ ] 3.2 Model the common header fields: `extends`, `message`, `level`, `scope`, `link`, `limit`, `vocab`.
+- [ ] 3.2 Model the common header fields: `extends`, `message`, `level`, `scope`, `link`, `limit`, `action`, `description`, `name`. `vocab` is per-check, not common, and belongs in 3.4.
 - [ ] 3.3 Model `scope` as a grammar over an enum of operands, accepting a string, a list, `~`, and `&`.
 - [ ] 3.4 Model the per-check field tables, so a field belonging to another check type is rejected before `E201` can suppress the engine.
 - [ ] 3.5 Decide and record how strictly to treat a value whose status the measurements left unclear. The design's rule is to accept it.

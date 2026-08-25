@@ -26,13 +26,15 @@ pinned Vale binary rather than as a caution in principle:
   fixture from the literal sense first.
 - **Fixture design for a subject that appears in code**: `fail/` must carry it
   inline, fenced, and in prose.
-- **`limit` and `vocab`** in the common-fields table, and that Vale loads only
-  `.yml` — a style file renamed to `.yaml` is silently not loaded at all.
+- **`limit`** in the common-fields table, **`vocab`** with the per-check fields
+  it actually belongs to, and that Vale loads only `.yml` — a style file renamed
+  to `.yaml` is silently not loaded at all.
 - **Fixtures run under an isolating config**, so a green `test` is not evidence
   the rule's matcher glob reaches any real file.
 
 Vale's check types are now enumerated from the binary rather than the docs.
 There are **twelve**, not eleven: the docs fold `readability` into `metric`.
-The per-check field tables are measured the same way, which corrects two
-published claims — `capitalization` rejects `prefixes`/`suffixes`, and
-`occurrence` rejects `exceptions`.
+The per-check field tables are measured the same way, which corrects three
+published claims: `capitalization` takes `prefix` (singular) and rejects
+`prefixes` and `suffixes`, `capitalization` rejects `ignorecase`, and
+`occurrence` rejects `exceptions` and `vocab`.
