@@ -156,9 +156,19 @@ Every check accepts `extends`, `message`, `level`, `scope`, `link`, `limit`,
 `substitution`, `capitalization`, `conditional`, `repetition` and **rejected**
 by `occurrence`, `metric`, `readability`, `script`, `sequence`.
 
-The per-check additions are in the recipe's table. Two published claims are
-wrong against the binary: `capitalization` rejects `prefixes`, `suffixes` and
-`ignorecase`; `occurrence` rejects `exceptions`.
+The per-check additions are in the recipe's table. Three published claims are
+wrong against the binary: `capitalization` takes `prefix` (singular) and rejects
+`prefixes` and `suffixes`; `capitalization` rejects `ignorecase`; `occurrence`
+rejects `exceptions` and `vocab`.
+
+**Field keys are matched case-insensitively — but `extends`, `message` and
+`level` are not.** Vale decodes a check's own fields through a case-insensitive
+map, so `Tokens:` and `ignoreCase:` are read exactly as their lowercase
+spellings. The three header keys are read separately and literally: `EXTENDS:`
+fails with "Missing the required 'extends' key". Their _values_ are
+case-sensitive too — `level: WARNING` and `extends: Existence` are both
+rejected. The schema therefore compares field names case-insensitively and
+`extends`/`level` values exactly, which is what the binary does.
 
 **`consistency` and `spelling` accept any key at all.** `bananafield: true` on
 either loads without complaint and is ignored — they do not use the strict

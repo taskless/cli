@@ -226,7 +226,7 @@ it.
 |------------------|------------------------------------------------------------------------------|
 | `existence`      | `tokens` (a list) or `raw`; `ignorecase`, `nonword`, `exceptions`, `append`  |
 | `substitution`   | `swap` (a map of observed → expected); `ignorecase`, `nonword`, `exceptions`, `capitalize`, `pos` |
-| `capitalization` | `match`; `style` (with `$title`), `exceptions`, `threshold`, `indicators`    |
+| `capitalization` | `match`; `style` (with `$title`), `exceptions`, `threshold`, `indicators`, `prefix` |
 | `occurrence`     | `token`, `max` and/or `min`; `ignorecase`                                    |
 | `repetition`     | `tokens`; `alpha`, `ignorecase`, `exceptions`, `max`                         |
 | `consistency`    | `either` (a map of the two acceptable forms); `ignorecase`, `nonword`        |
@@ -238,10 +238,18 @@ it.
 | `script`         | `script` (Tengo source)                                                      |
 
    The list above is measured, not transcribed: every entry was added to
-   a minimal rule of that check and the run watched for `E201`. Two
-   corrections fall out of it, both against the published docs —
-   `capitalization` rejects `prefixes`/`suffixes` and `ignorecase`, and
-   `occurrence` rejects `exceptions` and `vocab`.
+   a minimal rule of that check and the run watched for `E201`. Three
+   corrections fall out of it, all against the published docs —
+   `capitalization` takes `prefix` (singular) and rejects both `prefixes`
+   and `suffixes`, it rejects `ignorecase`, and `occurrence` rejects
+   `exceptions` and `vocab`.
+
+   **Field names are matched case-insensitively, but `extends`, `message`
+   and `level` are not.** Measured: `Tokens:` and `ignoreCase:` are read
+   exactly as their lowercase spellings, while `EXTENDS:` fails with
+   "Missing the required 'extends' key". Their *values* are case-sensitive
+   too — `level: WARNING` and `extends: Existence` are both rejected.
+   Write everything lowercase and none of this can bite you.
 
    **A field from the wrong check is the loudest failure Vale has.**
    `tokens` on an `occurrence` check gives
