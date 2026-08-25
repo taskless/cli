@@ -38,3 +38,29 @@ The per-check field tables are measured the same way, which corrects three
 published claims: `capitalization` takes `prefix` (singular) and rejects
 `prefixes` and `suffixes`, `capitalization` rejects `ignorecase`, and
 `occurrence` rejects `exceptions` and `vocab`.
+
+`verify` now schema-checks a Vale rule structurally, before Vale is invoked.
+It previously validated `level` and the presence of the rule's `.vale.ini`, so
+`extends: nonsense` and `scope: fenced` both verified clean. It now also checks:
+
+- **`extends`** against the twelve check types, naming the accepted set.
+- **`scope`** as a grammar over measured operands — a bare value, a list, `~`
+  negation, `&` chaining — rather than a flat enum, which would have rejected
+  working rules. It is deliberately stricter than Vale in one place: a negation
+  over an operand Vale does not know (`~fenced`) fires on everything, having
+  silently lost its exclusion, and is rejected.
+- **Per-check fields**, so a field belonging to another check type is caught
+  before Vale reports `E201`. `consistency` and `spelling` are exempt because
+  the binary accepts any key on those two.
+
+The ordering is the point for two of the three: Vale reads one assembled config
+per run, so an unknown `extends` or a foreign field reaching the binary takes
+down **every** Vale rule's findings, not just the offending rule's.
+
+The schema is hand-authored, because Vale publishes no JSON Schema and its
+machine-readable field knowledge is behind a paid hosted MCP. What holds it to
+the binary is a corpus of 82 minimal rules, each with a document it must flag,
+run through both the vendored Vale and the schema, asserting the two agree —
+with guards so that a rule which "did not fire" because its fixture was
+unreachable cannot pass as a measurement. A Vale upgrade that changes the
+vocabulary fails a test that names the value.

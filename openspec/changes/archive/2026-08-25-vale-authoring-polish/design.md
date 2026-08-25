@@ -191,7 +191,13 @@ silent case is `scope`, alone — which makes `scope` the highest-value field in
 the schema for exactly the reason the decision above gives, and makes the other
 two a blast-radius argument rather than a silence argument.
 
+## Resolved during implementation
+
+- **Eleven check types or twelve?** Twelve, and the binary settles it rather than a judgement call — see _Measured against Vale 3.18.0_.
+- **How much of the per-check field table to encode.** The full table, as recommended, for ten of the twelve. `consistency` and `spelling` are encoded as **permissive**: measured, they accept any key at all, so there is no `E201` to make unreachable and a strict table there would only reject rules that work. That is the accept-when-unclear rule applied to a case where the measurement was in fact clear and went the other way.
+- **How strictly to treat a value the measurements left unclear.** Nothing was left unclear in the end. `figure.caption` looked ambiguous until the reach guard showed the control was at fault, and `meta` looked ambiguous until `frontmatter` turned out to be the real name — both resolved by measurement rather than by the fallback. The rule stands unused, which is the outcome to prefer.
+- **One place the schema is deliberately stricter than the binary.** `scope: ~fenced` fires on everything, because there is no `fenced` to subtract, so the binary "accepts" it in the only sense an exit code can express. What the author gets is a rule whose exclusion was silently deleted, which is precisely the class of failure this change exists to close, so `verify` rejects it. It is recorded as a `divergence` row in the corpus, asserted as a disagreement rather than skipped, so the exception is countable.
+
 ## Open Questions
 
-- **How much of the per-check field table to encode.** The full table makes `E201` unreachable; a partial one still leaves the engine-wide suppression possible for the fields it omits. Recommend the full table, since `E201` is the failure with the widest blast radius, but the cost is that every check type must be transcribed and measured rather than just the common header.
 - **Whether `verify` should also report each matcher's selected-file count.** Out of scope here, but adjacent: a matcher glob that reaches nothing produces a rule that is well formed, enabled, green, and inert — the one silent failure this change does not close.
