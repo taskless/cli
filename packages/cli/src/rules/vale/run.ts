@@ -218,9 +218,29 @@ export async function runVale(
   // `.gitignore` already — which is precisely why the two engines disagreed
   // about which files the project contains. Asked only when we chose `.`
   // ourselves, so `check worktrees/probe` still checks what it was handed.
-  const ignoredEntries = wholeProject
-    ? await listGitIgnoredEntries(options.cwd)
-    : [];
+  //
+  // Started together with the converter-dependent scan below, because neither
+  // answer feeds the other: the ignore list shapes the `--glob` argument, the
+  // scan shapes the skipped-files notice, and only the `.filter` further down
+  // ever brings the two together. Awaited in series they would charge every
+  // whole-project run a git subprocess and then a directory walk, back to
+  // back, before the Vale subprocess has even been spawned.
+  //
+  // The notice half of that pair is asked before the run rather than inferred
+  // from it. Vale never reports what its walker declined to open, so once the
+  // glob has done its job the skipped files are unrecoverable from the output,
+  // and a fix whose only visible effect is that some findings are quietly
+  // missing is the bug it replaced.
+  //
+  // The ignored paths are filtered back out for the same reason the notice
+  // exists at all: it must describe the run that happened. An `.adoc` inside
+  // `worktrees/` is not a file this run declined to convert, it is a file this
+  // run was never going to look at, and naming it would send the reader to
+  // investigate a directory the fix above deliberately excluded.
+  const [ignoredEntries, converterDependent] = await Promise.all([
+    wholeProject ? listGitIgnoredEntries(options.cwd) : [],
+    findConverterDependentFiles(options.cwd, paths),
+  ]);
 
   const exclude = [
     ...(wholeProject
@@ -234,20 +254,6 @@ export async function runVale(
   const globArgument = buildValeGlob(exclude);
   const globFlags = globArgument === undefined ? [] : [globArgument];
 
-  // Asked before the run rather than inferred from it. Vale never reports what
-  // its walker declined to open, so once the glob has done its job the skipped
-  // files are unrecoverable from the output — and a fix whose only visible
-  // effect is that some findings are quietly missing is the bug it replaced.
-  //
-  // The ignored paths are filtered back out for the same reason the notice
-  // exists at all: it must describe the run that happened. An `.adoc` inside
-  // `worktrees/` is not a file this run declined to convert — it is a file this
-  // run was never going to look at, and naming it would send the reader to
-  // investigate a directory the fix above deliberately excluded.
-  const converterDependent = await findConverterDependentFiles(
-    options.cwd,
-    paths
-  );
   const skipped = skippedFilesNotice(
     converterDependent.filter((file) => !isGitIgnoredPath(file, ignoredEntries))
   );
