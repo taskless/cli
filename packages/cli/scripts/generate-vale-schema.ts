@@ -144,12 +144,13 @@ type ProbeOutcome =
  *
  * **This config is the sibling of `buildIsolatingConfig` in
  * `src/rules/vale/verify.ts`, and the two are kept deliberately separate.**
- * They share three load-bearing details, documented there: `MinAlertLevel =
- * suggestion`, an empty `BasedOnStyles =`, and exactly one assignment of the
- * enabled key in exactly one matcher. They differ on the fourth, which is why
- * this is not a call to that function: `buildIsolatingConfig` needs an
- * absolute `StylesPath` because it writes its config to a temp directory while
- * the styles stay in the user's `.taskless/rules/vale/<id>` tree, whereas this
+ * They agree on three details: `MinAlertLevel = suggestion`, an empty
+ * `BasedOnStyles =`, and exactly one assignment of the enabled key in exactly
+ * one matcher, the last two of which that docstring explains are load-bearing.
+ * They differ on the fourth, which is why this is not a call to that function:
+ * `buildIsolatingConfig` needs an absolute `StylesPath` because it writes its
+ * config to a temp directory while the styles stay in the user's
+ * `.taskless/rules/vale/<id>` tree, whereas this
  * probe owns the whole temp directory and points at a `styles/probe/probe.yml`
  * beside the config. Reuse would mean staging a fake `.taskless` layout in tmp
  * just to satisfy a path convention no probe has. If a future requirement is
