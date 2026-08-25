@@ -11,11 +11,7 @@ CLI companion for [Taskless](https://taskless.io). Designed to work with agent s
 ## Install
 
 ```bash
-# npm
 npx @taskless/cli
-
-# pnpm
-pnpm dlx @taskless/cli
 ```
 
 Run with no arguments in a terminal to launch the installer, which detects the
