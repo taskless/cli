@@ -8,7 +8,11 @@ import { parse as yamlParse } from "yaml";
 
 import { findValeBinary } from "../src/rules/vale/binary";
 import { VALE_VERSION } from "../src/rules/capabilities";
-import { VALE_CHECK_TYPES, validateValeRule } from "../src/schemas/vale-rule";
+import {
+  VALE_CHECK_TYPES,
+  VALE_PERMISSIVE_CHECKS,
+  validateValeRule,
+} from "../src/schemas/vale-rule";
 import {
   REACH_PROBE,
   VALE_CORPUS,
@@ -283,6 +287,46 @@ withVale("Vale schema contract", () => {
   });
 });
 
+/**
+ * The exemption, stated as a test rather than only as a comment.
+ *
+ * `consistency` and `spelling` are the two checks Vale loads without a strict
+ * field decode, so a foreign key on either is ignored instead of raising
+ * `E201`. The schema follows the binary and leaves those two loose. That is a
+ * deliberate hole in the `E201` net, and a hole is worth a test: without one,
+ * a later pass could add a field table for either check, tighten it to match
+ * the docs, and turn "Vale ignores this" into a rule the schema rejects and
+ * Vale runs. This needs no binary; it asks what the schema does.
+ */
+describe("the permissive checks stay permissive", () => {
+  it("accepts a foreign field on every permissive check", () => {
+    for (const check of VALE_PERMISSIVE_CHECKS) {
+      const { valid, errors } = validateValeRule(
+        "demo",
+        parseYaml(unknownField(check))
+      );
+      expect(
+        valid,
+        `${check} rejected a foreign field: ${errors.join("; ")}`
+      ).toBe(true);
+    }
+  });
+
+  it("rejects a foreign field on every other check", () => {
+    const permissive = new Set<string>(VALE_PERMISSIVE_CHECKS);
+    for (const check of VALE_CHECK_TYPES) {
+      if (permissive.has(check)) continue;
+      const { errors } = validateValeRule(
+        "demo",
+        parseYaml(unknownField(check))
+      );
+      expect(errors.join("\n"), `${check} accepted a foreign field`).toContain(
+        "'bananafield' is not a field"
+      );
+    }
+  });
+});
+
 // --- Helpers -----------------------------------------------------------------
 
 /**
@@ -296,4 +340,9 @@ function parseYaml(source: string): unknown {
 
 function parse(entry: ValeCorpusEntry): unknown {
   return parseYaml(entry.rule);
+}
+
+/** A minimal rule of `check` carrying one field that belongs to no check. */
+function unknownField(check: string): string {
+  return `extends: ${check}\nmessage: "x"\nbananafield: true\n`;
 }

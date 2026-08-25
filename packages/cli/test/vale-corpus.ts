@@ -594,10 +594,17 @@ const FIELDS: ValeCorpusEntry[] = [
  * Shapes that panic the binary.
  *
  * Every key in these rules is a legal field of its check — it is the *shape*
- * that is fatal. Measured, each ends the process with a Go stack trace:
+ * that is fatal. Measured, each ends the process with a Go stack trace. The
+ * `sequence` rows panic while the rule is compiled:
  *
  * ```
  * panic: interface conversion: interface {} is nil, not []interface {}
+ * ```
+ *
+ * and the `metric` rows panic later, while the rule runs on a document:
+ *
+ * ```
+ * panic: interface conversion: interface {} is float64, not bool
  * ```
  *
  * That is a wider blast radius than `E201`. An `E201` names a file and a line;
@@ -630,6 +637,25 @@ const SHAPES: ValeCorpusEntry[] = [
     name: "shape/metric-formula-without-condition",
     construct: "a metric check with a formula and no condition",
     rule: 'extends: metric\nmessage: "x"\nlevel: warning\nformula: |\n  (characters / words)\n',
+    control: "Antidisestablishmentarianism prevails simply everywhere.\n",
+    expected: "rejected",
+  },
+  // The two rows below are the same panic reached through a *present* key, and
+  // they are why the schema's guard is structural rather than a check for
+  // `undefined`. `condition:` with nothing after the colon is the likelier of
+  // the two to be typed by hand, and YAML hands it over as null, not as a
+  // missing key.
+  {
+    name: "shape/metric-condition-null",
+    construct: "a metric check whose condition key has no value",
+    rule: 'extends: metric\nmessage: "x"\nlevel: warning\nformula: |\n  (characters / words)\ncondition:\n',
+    control: "Antidisestablishmentarianism prevails simply everywhere.\n",
+    expected: "rejected",
+  },
+  {
+    name: "shape/metric-condition-blank",
+    construct: "a metric check whose condition is a blank string",
+    rule: 'extends: metric\nmessage: "x"\nlevel: warning\nformula: |\n  (characters / words)\ncondition: "   "\n',
     control: "Antidisestablishmentarianism prevails simply everywhere.\n",
     expected: "rejected",
   },
