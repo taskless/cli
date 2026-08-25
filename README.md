@@ -12,7 +12,7 @@ skills/
 commands/
   tskl/tskl.md                     # Single /tskl router command
 packages/
-  cli/                             # @taskless/cli — recipes live in cli/src/agent/
+  cli/                             # @taskless/cli, recipes live in cli/src/agent/
 scripts/
   sync-skill-versions.ts           # Syncs metadata.version to CLI version
 .claude-plugin/                    # Claude Code Plugin Marketplace manifest
@@ -46,7 +46,7 @@ content it installs. Three build targets pick that string, all driven by the
 `TASKLESS_BUILD_TARGET` env var via Vite `define` (same source files, no edits):
 
 Each target also emits to its own directory so the three never overwrite one
-another — prod → `dist/`, dev → `dist-dev/`, self → `dist-self/` (all
+another. Prod → `dist/`, dev → `dist-dev/`, self → `dist-self/` (all
 gitignored):
 
 | Command           | Output dir   | Baked invocation                            | Use for                                                                              |
@@ -56,12 +56,12 @@ gitignored):
 | `pnpm build:self` | `dist-self/` | `node packages/cli/dist-self/index.js`      | Dogfooding **in this repo** (path is repo-root-relative; run the CLI from the root). |
 
 `pnpm build:self` builds the CLI with the relative invocation and then runs
-`taskless init --no-interactive` to install into this repo — so `.claude` gets
+`taskless init --no-interactive` to install into this repo, so `.claude` gets
 real reference stubs that delegate to the canonical `.taskless/` content, exactly
 like any other install. (This replaces the former raw-symlink `link-skills`
 step, so local dogfooding always matches a true install.)
 
-> The `dev`/`self` invocations are local paths and must never be published —
+> The `dev`/`self` invocations are local paths and must never be published:
 > only `pnpm build` (or `pnpm package`) produces a release artifact.
 
 ## Releasing taskless/cli
@@ -79,7 +79,7 @@ pnpm test               # Run all tests, confirm no errors
 git add -A              # Stage all changes
 git commit -m "chore: Releases vx.y.z"  # Commit with new version number
 git push origin main    # Push the release commit
-pnpm release            # Dry run — prints publish command when ready
+pnpm release            # Dry run, prints publish command when ready
 pnpm release:production # Publish to npm (prompts for 2FA OTP)
 ```
 
@@ -109,7 +109,7 @@ npx @taskless/cli-nightly@latest --version   # or: npm i -g @taskless/cli-nightl
   when both are installed globally.** That is not a supported configuration: a
   nightly is a drop-in for the release it anticipates, not a companion to it.
   Use one or the other globally, or install the nightly into a project.
-- Versions look like `0.11.0-20260818123456x05b3c88` — the release the nightly
+- Versions look like `0.11.0-20260818123456x05b3c88`. The release the nightly
   anticipates, the UTC build time, and the commit it was built from. Every one
   of them is a prerelease, and the newest always carries the `latest` tag, so
   installing with no version gives you the most recent nightly.
@@ -129,6 +129,6 @@ In v0.7+, new agent-facing instructions are added as **recipes**, not skills. To
 
 ### Distribution channels
 
-- **`taskless init`** — CLI installs the consolidated skill to `.claude/skills/taskless/` and the command to `.claude/commands/tskl/`
-- **Claude Code Plugin Marketplace** — `.claude-plugin/marketplace.json` and `plugin.json`
-- **Vercel Skills CLI** — `npx skills add` discovers skills from `skills/` directory
+- **`taskless init`**: CLI installs the consolidated skill to `.claude/skills/taskless/` and the command to `.claude/commands/tskl/`
+- **Claude Code Plugin Marketplace**: `.claude-plugin/marketplace.json` and `plugin.json`
+- **Vercel Skills CLI**: `npx skills add` discovers skills from `skills/` directory
