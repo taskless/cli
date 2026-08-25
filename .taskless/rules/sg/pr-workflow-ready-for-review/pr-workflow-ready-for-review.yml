@@ -1,0 +1,40 @@
+id: pr-workflow-ready-for-review
+language: Yaml
+severity: warning
+message: A pull_request types list should name ready_for_review.
+note: |
+  `ready_for_review` is not in the default set (`opened`, `synchronize`,
+  `reopened`), so a workflow that names `types:` at all must name it
+  explicitly or a draft marked ready gets no fresh run until something
+  happens to push again.
+
+  That is the state #103 sat in: a ~93-file change reached "ready for
+  review" having never been linted, typechecked, or tested in CI.
+
+  A workflow that reacts to PR metadata rather than to PR readiness may
+  legitimately omit it. Say so in the workflow if you do.
+
+  See CLAUDE.md — "A workflow that must run everywhere carries no
+  branches: filter at all".
+files:
+  - ".github/workflows/*.yml"
+  - ".github/workflows/*.yaml"
+rule:
+  kind: block_mapping_pair
+  has:
+    field: key
+    kind: flow_node
+    regex: '^types$'
+  not:
+    has:
+      field: value
+      stopBy: end
+      kind: flow_node
+      regex: 'ready_for_review'
+  inside:
+    stopBy: end
+    kind: block_mapping_pair
+    has:
+      field: key
+      kind: flow_node
+      regex: '^pull_request$'
