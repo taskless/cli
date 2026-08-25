@@ -38,7 +38,11 @@ name: Stack Breadcrumb
 on:
   pull_request:
     # Tree SHAPE only — no `synchronize` (a head push never changes membership).
-    types: [opened, reopened, edited, closed]
+    # `ready_for_review` is not in the default set and is named deliberately: a
+    # draft becoming ready is the moment the PR joins the reviewable stack, and
+    # without it the breadcrumb keeps describing the PR as a draft until some
+    # other event happens to fire.
+    types: [opened, reopened, edited, ready_for_review, closed]
   repository_dispatch:
     types: [stack-reconcile]
   workflow_dispatch:
