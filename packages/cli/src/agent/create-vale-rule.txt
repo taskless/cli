@@ -169,7 +169,7 @@ it.
 | `table.header`         | header cells                                              |
 | `table.cell`           | body cells                                                |
 | `table.caption`        | a table's caption                                         |
-| `figure.caption`       | a figure's caption                                        |
+| `figure.caption`       | a figure's caption — but see below                        |
 | `frontmatter`          | every YAML front-matter value                             |
 | `frontmatter.<key>`    | one front-matter key's value                              |
 | `text.class.<name>`    | HTML elements carrying that class                         |
@@ -182,6 +182,14 @@ it.
    found one, `code` found one, `[code, text]` found two, `raw` found all
    three. If you want prose and inline code but not fenced blocks, write
    the list — `raw` is not "a bit wider", it is everything.
+
+   **Vale drops everything inside a `<figure>` element.** Measured: a
+   `<figcaption>` nested in `<figure>` is invisible to *every* scope,
+   `text` and `raw` included, so a `scope: figure.caption` rule over a
+   normally-marked-up figure reports nothing and looks like a bad scope.
+   A bare `<figcaption>` is linted, and `figure.caption` fires on it. If a
+   fixture is not firing, check whether its subject is inside a `<figure>`
+   before you touch the pattern.
 
    **`scope` also takes `~` and `&`.** `~code` is everything but inline
    code; `text & ~code` chains two operands; a list (`[code, text]`) is a

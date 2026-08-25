@@ -138,13 +138,16 @@ Two corrections to this document's own earlier draft:
   `frontmatter.<key>`, which is what the binary carries (`text.frontmatter.`)
   and what fires. `meta` and `meta.class.<kind>` never fired in Markdown,
   MDX, or HTML.
-- **`figure.caption` is in the binary's vocabulary** (`text.figure.caption`) but
-  no control could be made to fire for it in a format this build can lint
-  without an external converter — `<figcaption>` content did not reach even a
-  `scope: text` control in HTML, and AsciiDoc and reStructuredText need
-  `asciidoctor`/`rst2html`, which Taskless excludes. It is accepted by the
-  schema on the accept-when-unclear rule and carried in the corpus as an
-  explicitly unproven operand rather than as a passing row.
+- **`figure.caption` fires, but only once you find a control it can reach.**
+  The obvious control — a `<figcaption>` nested inside `<figure>` — never fires,
+  and neither does a `scope: text` control over the same document: Vale drops
+  everything inside a `<figure>` element before any check runs. A bare
+  `<figcaption>` is linted normally, and `scope: figure.caption` fires on it in
+  both HTML and Markdown. This is the case task 5.4 exists for: without the
+  known-valid control alongside it, the first result would have been recorded as
+  "the binary ignores this scope" and the operand wrongly dropped from the enum.
+  (AsciiDoc and reStructuredText, the other formats with figure captions, need
+  `asciidoctor`/`rst2html`, which Taskless excludes.)
 
 ### Per-check fields, and two checks that validate nothing
 
