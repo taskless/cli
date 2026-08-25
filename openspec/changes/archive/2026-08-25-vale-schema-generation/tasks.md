@@ -46,7 +46,7 @@
 ## 7. Prove it against the corpus
 
 - [x] 7.1 All 86 existing corpus rows pass unmodified. No row edited to fit the output.
-- [x] 7.2 Add rows for ground the generation newly measured: `comment.line` and `comment.block` in the TypeScript tier. 88 rows.
+- [x] 7.2 Add rows to cover ground the generation newly measured: `comment.line` and `comment.block` in the TypeScript tier. 88 rows.
 - [x] 7.3 Record the three earlier claims that did not reproduce — `figure.caption`, `comment.block`, and the `.ts` requirement — in design.md.
 - [x] 7.4 `pnpm typecheck`, `pnpm lint`, `pnpm test` green.
 - [x] 7.5 `pnpm build`, then verify the real CLI by hand on a broken rule.
