@@ -36,6 +36,22 @@ const layerResultSchema = z.object({
   errors: z.array(z.string()).describe("Human-readable error messages"),
 });
 
+/**
+ * Layer 1, which alone can also report something true that is not a failure.
+ *
+ * An sg rule spelled `language: typescript` reaches the right parser and
+ * verifies clean, but `TypeScript` is how ast-grep spells it. That is worth
+ * saying on a rule that passed, so it cannot ride in `errors`.
+ */
+const schemaLayerResultSchema = layerResultSchema.extend({
+  notice: z
+    .string()
+    .optional()
+    .describe(
+      "Something true about the rule that does not make it invalid — an accepted-but-off-list `language:` spelling above all. Present only when there is something to say"
+    ),
+});
+
 const testLayerResultSchema = layerResultSchema.extend({
   passed: z.number().describe("Number of test cases that passed"),
   failed: z.number().describe("Number of test cases that failed"),
@@ -49,7 +65,9 @@ export const verifyOutputSchema = z.object({
     ),
   success: z.boolean().describe("True if all layers passed"),
   ruleId: z.string(),
-  schema: layerResultSchema.describe("Layer 1: Zod schema validation"),
+  schema: schemaLayerResultSchema.describe(
+    "Layer 1: Zod schema validation, plus the `language:` check the vendored JSON Schema cannot express"
+  ),
   requirements: layerResultSchema.describe(
     "Layer 2: Taskless requirement checks"
   ),

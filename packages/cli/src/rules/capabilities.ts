@@ -13,8 +13,10 @@
  * render time:
  *
  * - `src/generated/ast-grep-rule-schema.json` types `$defs.Language` as a bare
- *   string with no enum, and `verify` never validates a rule's `language`, so
- *   any spelling passes our own checks and fails only inside ast-grep.
+ *   string with no enum — its only hint is an `example` reading `"typescript"`,
+ *   which is not even the canonical spelling — so the vendored schema cannot
+ *   answer the question. `verify` answers it from the constants below instead
+ *   (see `validateLanguage` in `verify.ts`).
  * - `detect --json` reports the *repository's* languages in a different
  *   vocabulary — `C++` where ast-grep says `Cpp` — and says nothing about what
  *   an engine can parse.
@@ -46,13 +48,14 @@ export const AST_GREP_VERSION = "0.41.0";
  *
  * SPELLINGS ARE ast-grep's, NOT ours and not `detect`'s. `Cpp`, `CSharp`,
  * `JavaScript`, `Tsx` — a rule's `language:` field is handed to ast-grep
- * unchanged and `verify` does not check it, so the binary is the first thing
- * with an opinion. MEASURED at 0.41.0: it accepts some off-list aliases
- * (`C++` and `cpp` both resolve to Cpp), so an off-list spelling is not
- * reliably an error. The two real failures are a name ast-grep does not know
- * at all (`C#`), which aborts config parsing so every rule goes unreported,
- * and a valid name for the wrong parser (`TypeScript` over `.tsx`), which
- * reports nothing and reads as a clean codebase. Neither is caught locally.
+ * unchanged, so the binary has the final opinion. MEASURED at 0.41.0: it
+ * accepts more than this list — case variants and a fixed set of extension
+ * aliases, both enumerated in {@link AST_GREP_LANGUAGE_ALIASES} — so an
+ * off-list spelling is not on its own an error. The two real failures are a
+ * name ast-grep does not know at all (`C#`), which aborts config parsing so
+ * every rule goes unreported, and a valid name for the wrong parser
+ * (`TypeScript` over `.tsx`), which reports nothing and reads as a clean
+ * codebase. `verify` catches both; see `verify.ts`.
  *
  * Pinned by set-equality against the binary in
  * `test/ast-grep-vendor-contract.test.ts`, so a version bump that adds or drops
@@ -87,6 +90,102 @@ export const AST_GREP_LANGUAGES = [
   "TypeScript",
   "Yaml",
 ] as const;
+
+/** One of the spellings {@link AST_GREP_LANGUAGES} lists, canonically cased. */
+export type AstGrepLanguage = (typeof AST_GREP_LANGUAGES)[number];
+
+/**
+ * The spellings ast-grep also accepts that are not on the canonical list,
+ * mapped to the language each resolves to.
+ *
+ * Keys are lowercase because ast-grep's own matching is case-insensitive:
+ * `TYPESCRIPT`, `Cs` and `GOLANG` all resolve at 0.41.0. That makes the whole
+ * accepted vocabulary "the canonical list plus these, compared lowercased",
+ * which is what {@link resolveAstGrepLanguage} implements.
+ *
+ * A RULE'S `language:` FIELD AND `sg run --lang` DO NOT SHARE A VOCABULARY.
+ * Measured at 0.41.0: `--lang C++` is rejected outright while a rule declaring
+ * `language: C++` parses fine. Every value here was probed through a real
+ * config, because that is the only thing a rule file is ever fed to.
+ *
+ * THIS IS THE ONE LIST HERE THE BINARY CANNOT BE ASKED TO ENUMERATE. `sg run
+ * -h` prints the canonical list, so `AST_GREP_LANGUAGES` above is checked by
+ * set-equality against it; nothing prints the aliases. Each entry is instead
+ * pinned by *probing*, in the "language aliases" suite of
+ * `test/ast-grep-vendor-contract.test.ts`: every key is fed to the binary in a
+ * config and the resolution is read back out of the scan stream's own
+ * `language` field — ast-grep reports the canonical name it settled on, so the
+ * mapping is the binary's answer rather than ours. The same suite feeds a
+ * sweep of near-misses (`h`, `mjs`, `sh`, `tf`, `csx`) and asserts they are
+ * rejected, so a bump that ADDS an alias fails there too.
+ *
+ * Whitespace is not folded, deliberately: `language: "ts "` is rejected by the
+ * binary, so accepting it here would pass a rule that cannot run.
+ */
+export const AST_GREP_LANGUAGE_ALIASES: Readonly<
+  Record<string, AstGrepLanguage>
+> = {
+  "c++": "Cpp",
+  cc: "Cpp",
+  cs: "CSharp",
+  cxx: "Cpp",
+  ex: "Elixir",
+  golang: "Go",
+  hs: "Haskell",
+  js: "JavaScript",
+  jsx: "JavaScript",
+  kt: "Kotlin",
+  py: "Python",
+  rb: "Ruby",
+  rs: "Rust",
+  sol: "Solidity",
+  ts: "TypeScript",
+  yml: "Yaml",
+};
+
+/** Every canonical name, keyed by its own lowercase spelling. */
+const CANONICAL_BY_LOWERCASE = new Map<string, AstGrepLanguage>(
+  AST_GREP_LANGUAGES.map((name) => [name.toLowerCase(), name])
+);
+
+/**
+ * The language ast-grep would parse `spelling` as, or `undefined` if it would
+ * reject the config outright.
+ *
+ * `undefined` is the fatal case, not a stylistic one: an unrecognized name
+ * fails `SgLang` deserialization, which aborts parsing of the single config
+ * Taskless assembles for the run — so every *other* sg rule goes unreported
+ * with it.
+ */
+export function resolveAstGrepLanguage(
+  spelling: string
+): AstGrepLanguage | undefined {
+  // NOT trimmed. Measured at 0.41.0, ast-grep rejects `"ts "` — folding the
+  // whitespace here would call a rule valid that the binary refuses to load.
+  const key = spelling.toLowerCase();
+  return CANONICAL_BY_LOWERCASE.get(key) ?? AST_GREP_LANGUAGE_ALIASES[key];
+}
+
+/**
+ * The `.ts` / `.tsx` split — the one pair of ast-grep languages that share a
+ * family and read disjoint file extensions.
+ *
+ * MEASURED at 0.41.0: a `TypeScript` rule over a `.tsx` tree exits zero having
+ * matched nothing, and a `Tsx` rule scans `.tsx` only. That is the quiet
+ * failure of the two, because "no findings" is exactly what a clean codebase
+ * looks like. Pinned by "treats Tsx and TypeScript as different parsers, not
+ * aliases" in `test/ast-grep-vendor-contract.test.ts`.
+ *
+ * Kept to this pair deliberately. Every other language's extensions would be a
+ * second vendored table with no measured backing, and the trap only exists
+ * where two languages look like spellings of one thing.
+ */
+export const AST_GREP_TSX_SPLIT: Readonly<
+  Partial<Record<AstGrepLanguage, string>>
+> = {
+  TypeScript: "ts",
+  Tsx: "tsx",
+};
 
 /**
  * The Vale release carried by the `@taskless/vale-<platform>` packages pinned

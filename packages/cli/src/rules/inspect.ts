@@ -20,6 +20,14 @@ export interface RuleVerification {
   ruleId: string;
   ok: boolean;
   errors: string[];
+  /**
+   * Something true about the rule that does not make it invalid. An sg rule
+   * spelled `language: typescript` reaches the right parser and fails nothing,
+   * but the canonical spelling is `TypeScript` — worth saying, not worth
+   * failing. Surfaced even on a pass, for the same reason
+   * {@link RuleTestResult.notice} is.
+   */
+  notice?: string;
 }
 
 /** What `test` concluded about one rule. */
@@ -66,7 +74,15 @@ async function verifySgRule(
   // test layer is `test`'s business, so it is not part of the verdict here.
   const errors = [...result.schema.errors, ...result.requirements.errors];
   return {
-    verification: { engine: "sg", ruleId, ok: errors.length === 0, errors },
+    verification: {
+      engine: "sg",
+      ruleId,
+      ok: errors.length === 0,
+      errors,
+      ...(result.schema.notice === undefined
+        ? {}
+        : { notice: result.schema.notice }),
+    },
     result,
   };
 }
@@ -222,6 +238,9 @@ export async function testOneRule(
       ok: result.tests.valid,
       errors,
       ran: true,
+      ...(verification.notice === undefined
+        ? {}
+        : { notice: verification.notice }),
     };
   }
 

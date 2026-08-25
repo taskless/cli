@@ -7,9 +7,11 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import { assembleSgConfig } from "../src/rules/assemble";
 import {
+  AST_GREP_LANGUAGE_ALIASES,
   AST_GREP_LANGUAGES,
   AST_GREP_VERSION,
   astGrepLanguageList,
+  resolveAstGrepLanguage,
 } from "../src/rules/capabilities";
 import { ruleDirectory, ruleTestsDirectory } from "../src/rules/engines";
 import { buildPath, findSgBinary } from "../src/rules/scan";
@@ -156,6 +158,110 @@ const evalSource = { "src/a.ts": 'const x = eval("1");\n' };
 /** `rule("no-eval")` with its `language:` swapped for another spelling. */
 const atLanguage = (language: string) =>
   rule("no-eval").replace("language: TypeScript", `language: ${language}`);
+
+/**
+ * A rule declaring `language` verbatim, over a pattern given verbatim.
+ *
+ * `atLanguage` cannot serve the alias cases: it keeps `eval($$$A)`, which only
+ * parses as JavaScript-family source. Each language below needs a pattern its
+ * own grammar accepts.
+ */
+const langRule = (language: string, pattern: string) =>
+  [
+    "id: lang",
+    `language: ${language}`,
+    "severity: error",
+    "message: lang",
+    "note: n",
+    "rule:",
+    `  pattern: ${pattern}`,
+    "",
+  ].join("\n");
+
+/**
+ * One file per language that has an alias, holding an identifier `zzz` the
+ * pattern beside it matches.
+ *
+ * Sources are deliberately the smallest thing each grammar accepts, because
+ * the assertion is about which parser ast-grep picked, not about matching.
+ * `CSharp` is the one that needs more than a bare identifier pattern — measured
+ * at 0.41.0, `pattern: zzz` parses but matches nothing there.
+ */
+const languageFixture: Record<
+  string,
+  { file: string; source: string; pattern: string }
+> = {
+  Cpp: { file: "src/a.cpp", source: "int zzz = 1;\n", pattern: "zzz" },
+  CSharp: {
+    file: "src/a.cs",
+    source: "class A { void M() { int zzz = 1; } }\n",
+    pattern: "int zzz = 1",
+  },
+  Elixir: { file: "src/a.ex", source: "zzz = 1\n", pattern: "zzz" },
+  Go: {
+    file: "src/a.go",
+    source: "package main\n\nvar zzz = 1\n",
+    pattern: "zzz",
+  },
+  Haskell: { file: "src/a.hs", source: "zzz = 1\n", pattern: "zzz" },
+  JavaScript: { file: "src/a.js", source: "var zzz = 1\n", pattern: "zzz" },
+  Kotlin: { file: "src/a.kt", source: "val zzz = 1\n", pattern: "zzz" },
+  Python: { file: "src/a.py", source: "zzz = 1\n", pattern: "zzz" },
+  Ruby: { file: "src/a.rb", source: "zzz = 1\n", pattern: "zzz" },
+  Rust: {
+    file: "src/a.rs",
+    source: "fn main() { let zzz = 1; }\n",
+    pattern: "zzz",
+  },
+  Solidity: {
+    file: "src/a.sol",
+    source: "contract A { uint zzz = 1; }\n",
+    pattern: "zzz",
+  },
+  TypeScript: { file: "src/a.ts", source: "var zzz = 1\n", pattern: "zzz" },
+  Yaml: { file: "src/a.yml", source: "zzz: 1\n", pattern: "zzz" },
+};
+
+/**
+ * The canonical language ast-grep says it used, for a rule that declared
+ * `spelling`.
+ *
+ * READ OUT OF THE BINARY, NOT ASSUMED. Every match on the `--json=stream`
+ * output carries a `language` field naming the parser that produced it, so an
+ * alias's resolution is ast-grep's own answer rather than a claim of ours
+ * inferred from which files got scanned.
+ */
+const resolvedLanguage = (spelling: string, expected: string) => {
+  const fixture = languageFixture[expected];
+  if (fixture === undefined) throw new Error(`no fixture for ${expected}`);
+  const line = scan(
+    project({
+      rules: { lang: langRule(spelling, fixture.pattern) },
+      sources: { [fixture.file]: fixture.source },
+    })
+  )
+    .stdout.split("\n")
+    .find((text) => text !== "");
+  return line === undefined
+    ? undefined
+    : (JSON.parse(line) as { language: string }).language;
+};
+
+/**
+ * Whether ast-grep recognized `language: <spelling>` as a language at all.
+ *
+ * KEYED ON `SgLang`, NOT ON THE EXIT STATUS. Every rule that fails to load
+ * exits 8 with the same top-line `Cannot parse rule` message, and `pattern:
+ * zzz` is legitimately unparseable in several grammars (`Html` wants a `kind`)
+ * — so status alone cannot tell "not a language" from "not a pattern". The
+ * `Caused by` chain does: `did not match any variant of untagged enum SgLang`
+ * appears only for an unrecognized name, and it is the exact failure this
+ * whole suite exists to keep out of `check`.
+ */
+const languageRecognized = (spelling: string) =>
+  !scan(
+    project({ rules: { lang: langRule(spelling, "zzz") } })
+  ).stderr.includes("SgLang");
 
 /** Four calls at increasing arity, one per line, for the `$$$` cases below. */
 const aritySource = {
@@ -570,6 +676,51 @@ withSg("ast-grep vendor contract", () => {
           .stdout
       ).toContain("eval(x)");
     });
+
+    it("accepts every canonical name lowercased", () => {
+      // `verify` compares lowercased (see `resolveAstGrepLanguage`), which is
+      // only safe because the binary does too. If a bump ever made one name
+      // case-sensitive, `verify` would start passing a rule ast-grep refuses.
+      for (const language of AST_GREP_LANGUAGES) {
+        expect(
+          languageRecognized(language.toLowerCase()),
+          `${language.toLowerCase()} was rejected`
+        ).toBe(true);
+      }
+    });
+
+    it("resolves every alias to the language AST_GREP_LANGUAGE_ALIASES claims", () => {
+      // The alias table is the ONE thing in `capabilities.ts` the binary
+      // cannot be asked to enumerate — `sg run -h` prints only the canonical
+      // list. So each entry is probed instead, and the resolution is read back
+      // out of the scan stream rather than inferred.
+      for (const [alias, canonical] of Object.entries(
+        AST_GREP_LANGUAGE_ALIASES
+      )) {
+        expect(resolvedLanguage(alias, canonical), alias).toBe(canonical);
+      }
+    });
+
+    it("rejects the near-misses that are not aliases", () => {
+      // The direction the table cannot self-check: a bump that ADDS an alias
+      // leaves `verify` failing a rule that now works. These are the spellings
+      // an author is most likely to reach for — a header extension, a module
+      // extension, a shell name, a Terraform name, a script suffix — and all
+      // five were measured as rejected at 0.41.0.
+      for (const spelling of ["h", "hpp", "mjs", "cjs", "sh", "tf", "csx"]) {
+        expect(languageRecognized(spelling), `${spelling} was accepted`).toBe(
+          false
+        );
+      }
+    });
+
+    it("does not fold surrounding whitespace", () => {
+      // Why `resolveAstGrepLanguage` deliberately does not trim: a trimming
+      // resolver would call this rule valid and ast-grep would still refuse to
+      // load the config.
+      expect(languageRecognized('"ts "')).toBe(false);
+      expect(resolveAstGrepLanguage("ts ")).toBeUndefined();
+    });
   });
 
   /**
@@ -742,8 +893,9 @@ withSg("ast-grep vendor contract", () => {
  * The bracketed list from `sg run -h`, which is the only place ast-grep
  * enumerates this. Not derived from anything we generate: the vendored
  * `src/generated/ast-grep-rule-schema.json` types `$defs.Language` as a bare
- * string with no enum, and `verify` never validates a rule's `language`, so our
- * own artifacts cannot answer the question.
+ * string with no enum, so our own generated artifacts cannot answer the question.
+ * `verify` does validate a rule's `language` — against `AST_GREP_LANGUAGES` and
+ * `AST_GREP_LANGUAGE_ALIASES`, which is exactly why both are pinned here.
  */
 function reportedLanguages(): string[] {
   const help = spawnSync(binary as string, ["run", "-h"], {

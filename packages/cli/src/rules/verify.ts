@@ -12,6 +12,13 @@ import {
   findRegexWithoutKind,
 } from "../schemas/ast-grep-rule";
 import { pathPrefixed, schemaLayer } from "../schemas/layer";
+import {
+  AST_GREP_TSX_SPLIT,
+  AST_GREP_VERSION,
+  astGrepLanguageList,
+  resolveAstGrepLanguage,
+  type AstGrepLanguage,
+} from "./capabilities";
 import { ensureTasklessDirectory } from "../filesystem/directory";
 import { assembleSgConfig } from "./assemble";
 import {
@@ -37,6 +44,19 @@ function escapeRegExp(s: string): string {
 export interface LayerResult {
   valid: boolean;
   errors: string[];
+}
+
+/**
+ * Layer 1's verdict, plus anything true about the rule that is worth saying
+ * without failing it.
+ *
+ * The `notice` carries the non-fatal half of the `language:` check — an
+ * accepted-but-off-list spelling, or a `files:` glob a valid language cannot
+ * reach. Separate from `errors` for the same reason `RuleTestResult.notice` is:
+ * it must be sayable on a rule that passed, and it must not turn CI red.
+ */
+export interface SchemaLayerResult extends LayerResult {
+  notice?: string;
 }
 
 export interface RequirementsResult extends LayerResult {
@@ -78,7 +98,7 @@ export interface TestLayerResult extends LayerResult {
 export interface VerifyResult {
   success: boolean;
   ruleId: string;
-  schema: LayerResult;
+  schema: SchemaLayerResult;
   requirements: LayerResult;
   tests: TestLayerResult;
 }
@@ -110,6 +130,131 @@ function validateSchema(ruleData: unknown): LayerResult {
   // ast-grep's messages come from an upstream JSON Schema and are generic
   // ("expected string"), so the path is what makes them actionable.
   return schemaLayer(astGrepRuleSchema.safeParse(ruleData), pathPrefixed);
+}
+
+/**
+ * The canonical language a misspelling was probably reaching for, if there is
+ * an obvious one.
+ *
+ * Deliberately not a fuzzy match. It folds exactly the two shapes a human
+ * types when the canonical name is a word for a symbol — `C#` and `c-sharp`
+ * both fold to `csharp` — and otherwise offers nothing, because a wrong guess
+ * here costs more than silence: the full accepted list is printed either way.
+ */
+function suggestLanguage(spelling: string): AstGrepLanguage | undefined {
+  return resolveAstGrepLanguage(
+    spelling
+      .toLowerCase()
+      .replaceAll("#", "sharp")
+      .replaceAll(/[\s_-]+/g, "")
+  );
+}
+
+/**
+ * The file extensions a `files:` glob explicitly names, lowercased.
+ *
+ * Only what the glob *states*. `src/**` names none and is not evidence of
+ * anything, which is the point: this feeds a check that must never fire on a
+ * rule whose scope it cannot actually read.
+ */
+function globExtensions(glob: string): string[] {
+  const segment = glob.split("/").at(-1) ?? "";
+  const dot = segment.lastIndexOf(".");
+  if (dot === -1) return [];
+  const suffix = segment.slice(dot + 1).toLowerCase();
+  // `**\/*.{ts,tsx}` — globset supports brace alternation, so one glob can name
+  // several extensions.
+  const braced = /^\{([^}]*)\}$/.exec(suffix);
+  return (braced?.[1] === undefined ? [suffix] : braced[1].split(","))
+    .map((extension) => extension.trim())
+    .filter((extension) => /^[a-z\d]+$/.test(extension));
+}
+
+/**
+ * The `language:` field, against what ast-grep will actually do with it.
+ *
+ * Nothing else in the pipeline asks. The vendored JSON Schema types the field
+ * as a bare string (its only hint is an `example` of `"typescript"`, which is
+ * not even the canonical spelling), so Layer 1's zod pass accepts anything, and
+ * the first component with an opinion is the binary at `check` time. Both of
+ * its verdicts are bad places to learn this:
+ *
+ * - A name ast-grep does not recognize fails `SgLang` deserialization, which
+ *   aborts parsing of the ONE config Taskless assembles per run. Every other sg
+ *   rule goes unreported with it, so a single typo blinds the engine. That is
+ *   an error here.
+ * - A recognized name for the wrong parser reports nothing at all and is
+ *   indistinguishable from a clean codebase. Only the `TypeScript`/`Tsx` pair
+ *   can be checked from the rule file alone — see {@link AST_GREP_TSX_SPLIT} —
+ *   and it is checked against `files:`, which is the form the trap takes in
+ *   practice.
+ *
+ * Case variants and ast-grep's extension aliases are ACCEPTED, not rejected.
+ * ast-grep resolves them itself (`typescript`, `TYPESCRIPT`, `ts` all reach
+ * TypeScript at 0.41.0), so failing them would fail rules that demonstrably
+ * work — including every rule already written against the lowercase spelling
+ * ast-grep's own schema shows as its example. They get a notice instead.
+ *
+ * See taskless/cli#165.
+ */
+function validateLanguage(ruleData: Record<string, unknown>): {
+  errors: string[];
+  notices: string[];
+} {
+  const errors: string[] = [];
+  const notices: string[] = [];
+
+  const declared = ruleData.language;
+  // A missing or non-string `language` is already reported — by Layer 2's
+  // required-fields pass and by zod respectively — and saying it twice in
+  // different words would only make the real message harder to find.
+  if (typeof declared !== "string" || declared === "") {
+    return { errors, notices };
+  }
+
+  const canonical = resolveAstGrepLanguage(declared);
+  if (canonical === undefined) {
+    const suggestion = suggestLanguage(declared);
+    errors.push(
+      `language: "${declared}" is not a language ast-grep ${AST_GREP_VERSION} accepts. ` +
+        `It aborts config parsing, so every other sg rule in the project goes unreported too. ` +
+        (suggestion === undefined ? "" : `Did you mean "${suggestion}"? `) +
+        `Accepted spellings: ${astGrepLanguageList()}.`
+    );
+    return { errors, notices };
+  }
+
+  if (declared !== canonical) {
+    notices.push(
+      `language: "${declared}" works — ast-grep resolves it to ${canonical} — but ${canonical} is how ast-grep spells it.`
+    );
+  }
+
+  const own = AST_GREP_TSX_SPLIT[canonical];
+  const files = ruleData.files;
+  if (own !== undefined && Array.isArray(files)) {
+    const sibling = own === "ts" ? "tsx" : "ts";
+    const siblingLanguage = own === "ts" ? "Tsx" : "TypeScript";
+    const named = new Set(
+      files
+        .filter((glob): glob is string => typeof glob === "string")
+        .flatMap((glob) => globExtensions(glob))
+    );
+    if (named.has(sibling)) {
+      const message =
+        `${canonical} does not parse .${sibling} files — ${siblingLanguage} is a separate parser, not an alias, ` +
+        `so those globs match nothing and check reports a clean codebase.`;
+      if (named.has(own)) {
+        notices.push(`files: some globs name .${sibling}. ${message}`);
+      } else {
+        errors.push(
+          `files: every glob names .${sibling}, but language is ${canonical}. ${message}`
+        );
+      }
+    }
+  }
+
+  return { errors, notices };
 }
 
 // --- Layer 2: Taskless requirements ---
@@ -548,17 +693,28 @@ export async function verifyRule(
     };
   }
 
-  // Layer 1
-  const schemaResult = validateSchema(ruleData);
+  const ruleRecord = (
+    ruleData && typeof ruleData === "object" && !Array.isArray(ruleData)
+      ? ruleData
+      : {}
+  ) as Record<string, unknown>;
+
+  // Layer 1, plus the `language:` field the vendored JSON Schema cannot type.
+  const parsed = validateSchema(ruleData);
+  const language = validateLanguage(ruleRecord);
+  const schemaResult: SchemaLayerResult = {
+    valid: parsed.valid && language.errors.length === 0,
+    errors: [...parsed.errors, ...language.errors],
+    ...(language.notices.length === 0
+      ? {}
+      : { notice: language.notices.join(" ") }),
+  };
 
   // Layer 2
   const requirementsResult = await validateRequirements(
     cwd,
     ruleId,
-    (ruleData && typeof ruleData === "object" ? ruleData : {}) as Record<
-      string,
-      unknown
-    >
+    ruleRecord
   );
 
   // Layer 3 — only when asked for, and only if a test file exists (Layer 2

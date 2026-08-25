@@ -37,6 +37,32 @@ async function coverageProject(
   );
 }
 
+/**
+ * `no-eval`, with its `language:` swapped and any extra top-level keys merged
+ * in. No test file, so Layer 3 is skipped — every case below reads
+ * `result.schema`, which Layers 2 and 3 cannot reach.
+ */
+async function ruleWithLanguage(
+  cwd: string,
+  language: unknown,
+  extra: Record<string, unknown> = {}
+): Promise<void> {
+  const rulesDirectory = join(cwd, ".taskless", "sg", "rules");
+  await mkdir(rulesDirectory, { recursive: true });
+  await writeFile(
+    join(rulesDirectory, "no-eval.yml"),
+    stringify({
+      id: "no-eval",
+      language,
+      severity: "error",
+      message: "Do not use eval()",
+      rule: { pattern: "eval($$$)" },
+      ...extra,
+    }),
+    "utf8"
+  );
+}
+
 describe("verifyRule", () => {
   let temporaryDirectory: string;
 
@@ -396,6 +422,164 @@ describe("verifyRule", () => {
     expect(result.tests.valid).toBe(false);
     expect(result.tests.passed).toBe(0);
     expect(result.tests.failed).toBe(1);
+  });
+
+  /**
+   * The `language:` field — taskless/cli#165.
+   *
+   * Layer 1's zod pass cannot answer any of these: the vendored JSON Schema
+   * types `language` as a bare string. What ast-grep does with each spelling is
+   * pinned separately, against the binary, in
+   * `test/ast-grep-vendor-contract.test.ts`.
+   */
+  describe("the language field", () => {
+    it("fails a rule whose language ast-grep does not recognize", async () => {
+      // The loud failure, and the reason it is an error rather than a notice:
+      // ast-grep cannot deserialize the name, so it abandons the whole config
+      // and every other sg rule in the project goes unreported with it.
+      await ruleWithLanguage(temporaryDirectory, "nonsense");
+      const result = await verifyRule(temporaryDirectory, "no-eval", {
+        runTests: false,
+      });
+      expect(result.schema.valid).toBe(false);
+      expect(result.schema.errors.join("\n")).toContain(
+        'language: "nonsense" is not a language ast-grep'
+      );
+    });
+
+    it("names the accepted spellings in the error", async () => {
+      // An author who reached for `C#` needs to be told the word `CSharp`, not
+      // merely that they were wrong. The full list is printed too, so a
+      // spelling the suggestion cannot fold still lands somewhere useful.
+      await ruleWithLanguage(temporaryDirectory, "C#");
+      const result = await verifyRule(temporaryDirectory, "no-eval", {
+        runTests: false,
+      });
+      const errors = result.schema.errors.join("\n");
+      expect(errors).toContain('Did you mean "CSharp"?');
+      expect(errors).toContain("Accepted spellings: Bash, C, Cpp");
+    });
+
+    it("accepts a case variant and says how ast-grep spells it", async () => {
+      // The deliberate non-breaking half. ast-grep resolves `typescript`
+      // itself — it is the very spelling its own JSON Schema shows as the
+      // field's `example` — so rules already written this way keep working and
+      // hear about the canonical name instead of failing.
+      await ruleWithLanguage(temporaryDirectory, "typescript");
+      const result = await verifyRule(temporaryDirectory, "no-eval", {
+        runTests: false,
+      });
+      expect(result.schema.valid).toBe(true);
+      expect(result.schema.notice).toContain(
+        "TypeScript is how ast-grep spells it"
+      );
+    });
+
+    it("accepts an extension alias ast-grep resolves", async () => {
+      // `ts` is not on the canonical list and is not a case variant of
+      // anything on it, but ast-grep accepts it. Rejecting it would fail a
+      // rule that demonstrably works — the opposite of the bug being fixed.
+      await ruleWithLanguage(temporaryDirectory, "ts");
+      const result = await verifyRule(temporaryDirectory, "no-eval", {
+        runTests: false,
+      });
+      expect(result.schema.valid).toBe(true);
+      expect(result.schema.notice).toContain('"ts" works');
+    });
+
+    it("says nothing at all about the canonical spelling", async () => {
+      await ruleWithLanguage(temporaryDirectory, "TypeScript");
+      const result = await verifyRule(temporaryDirectory, "no-eval", {
+        runTests: false,
+      });
+      expect(result.schema.valid).toBe(true);
+      expect(result.schema.notice).toBeUndefined();
+    });
+
+    it("fails a TypeScript rule scoped only to .tsx files", async () => {
+      // The quiet failure. `Tsx` and `TypeScript` are separate parsers, so
+      // this rule matches nothing, exits zero, and reads as a clean codebase —
+      // the state that is indistinguishable from success at check time.
+      await ruleWithLanguage(temporaryDirectory, "TypeScript", {
+        files: ["src/**/*.tsx"],
+      });
+      const result = await verifyRule(temporaryDirectory, "no-eval", {
+        runTests: false,
+      });
+      expect(result.schema.valid).toBe(false);
+      expect(result.schema.errors.join("\n")).toContain(
+        "every glob names .tsx, but language is TypeScript"
+      );
+    });
+
+    it("only notices when some globs do reach the declared language", async () => {
+      // Half the scope is dead, half works. Failing here would fail a rule
+      // that reports real findings, so this is worth saying and not worth
+      // failing — and brace alternation is one glob naming two extensions.
+      await ruleWithLanguage(temporaryDirectory, "TypeScript", {
+        files: ["src/**/*.{ts,tsx}"],
+      });
+      const result = await verifyRule(temporaryDirectory, "no-eval", {
+        runTests: false,
+      });
+      expect(result.schema.valid).toBe(true);
+      expect(result.schema.notice).toContain("some globs name .tsx");
+    });
+
+    it("says nothing about globs that name no extension", async () => {
+      // `src/**` states nothing about extensions, so there is nothing to
+      // conclude. A check that guessed here would fire on correct rules.
+      await ruleWithLanguage(temporaryDirectory, "TypeScript", {
+        files: ["src/**"],
+      });
+      const result = await verifyRule(temporaryDirectory, "no-eval", {
+        runTests: false,
+      });
+      expect(result.schema.valid).toBe(true);
+      expect(result.schema.notice).toBeUndefined();
+    });
+
+    it("catches the mirror image: Tsx scoped only to .ts", async () => {
+      await ruleWithLanguage(temporaryDirectory, "Tsx", {
+        files: ["src/**/*.ts"],
+      });
+      const result = await verifyRule(temporaryDirectory, "no-eval", {
+        runTests: false,
+      });
+      expect(result.schema.valid).toBe(false);
+      expect(result.schema.errors.join("\n")).toContain(
+        "every glob names .ts, but language is Tsx"
+      );
+    });
+
+    it("leaves a missing language to the required-fields layer", async () => {
+      // Reported once, in the layer that owns it. Two messages for one
+      // omission only makes the useful one harder to find.
+      const rulesDirectory = join(
+        temporaryDirectory,
+        ".taskless",
+        "sg",
+        "rules"
+      );
+      await mkdir(rulesDirectory, { recursive: true });
+      await writeFile(
+        join(rulesDirectory, "no-eval.yml"),
+        stringify({
+          id: "no-eval",
+          severity: "error",
+          message: "Do not use eval()",
+          rule: { pattern: "eval($$$)" },
+        }),
+        "utf8"
+      );
+      const result = await verifyRule(temporaryDirectory, "no-eval", {
+        runTests: false,
+      });
+      expect(result.schema.errors.join("\n")).not.toContain("Accepted");
+      expect(result.requirements.errors).toContain(
+        "Missing required field: language"
+      );
+    });
   });
 
   describe("fixture coverage", () => {
