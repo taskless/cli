@@ -103,7 +103,6 @@ it.
    facility for a rule that does not extend one of these twelve, and an
    `extends` outside the set is not a rule that misbehaves: Vale exits 2
    and **every** Vale rule in the project goes unreported for that run.
-   `verify` catches it before Vale is invoked.
 
    **Nine of them have a worked rule at the end of this recipe**, each
    with the near-miss that fails and why. Read the one closest to your
@@ -142,7 +141,8 @@ it.
    rejected by Vale: `scope: fenced` loads, runs, and matches nothing.
    It is the worst of the three failures on this page, because unlike a
    bad `extends` or a foreign field it does not even take the run down to
-   tell you — the rule is simply inert, forever. `verify` rejects it.
+   tell you — the rule is simply inert, forever. Copy the value from the
+   table below rather than typing it.
 
    Every value below was measured against Vale v%(VALE_VERSION)s by
    authoring a rule with that scope and a document the rule had to flag.
@@ -199,8 +199,8 @@ it.
    Measured: `~banana` and `text & ~banana` both fire on everything,
    because there is no such scope to subtract. A typo inside a `~` does
    not narrow the rule and does not widen it visibly — it removes the
-   exclusion you wrote the rule for. `verify` checks the operands inside
-   `~` and `&` for exactly this reason.
+   exclusion you wrote the rule for. Check the spelling inside a `~`
+   against the table as carefully as a bare one.
 
    **`scope` is per-rule, and rules do not interact.** Taskless assembles
    every rule's matchers into one config for the run, which invites the
@@ -255,8 +255,8 @@ it.
    `tokens` on an `occurrence` check gives
    `E201 … has invalid keys: 'tokens'`, exit 2, and — because Vale reads
    one assembled config per run — **no** Vale rule in the project reports
-   anything. `verify` rejects the rule before Vale is invoked so this
-   cannot reach `check`.
+   anything. Take the field names from the table above rather than from
+   memory: this is the mistake with the widest blast radius.
 
    **Two checks are exempt, and that is not a licence.** Measured,
    `consistency` and `spelling` accept any key at all: `bananafield:
