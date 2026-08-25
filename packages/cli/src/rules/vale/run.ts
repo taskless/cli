@@ -5,6 +5,11 @@ import { StringDecoder } from "node:string_decoder";
 import type { CheckResult } from "../../types/check";
 import { ASSEMBLED_VALE_CONFIG } from "../engines";
 
+import {
+  gitIgnoredExclusionGlobs,
+  isGitIgnoredPath,
+  listGitIgnoredEntries,
+} from "../git-ignored";
 import { buildPath } from "../scan";
 import { isWholeProjectWalk } from "../walk-scope";
 import { findValeBinary, valeUnavailableMessage } from "./binary";
@@ -203,8 +208,27 @@ export async function runVale(
   // findings with it. Honouring the request would cost the user the rest of
   // their check, so the request is declined and reported instead. See
   // `formats.ts` for the tier table this is derived from.
+  //
+  // What git ignores, on a whole-project walk only — same terms as
+  // `.taskless/**` above, and for a sharper version of the same reason. Vale
+  // has no notion of a VCS: it walked into build output, vendored trees, and a
+  // git worktree at `worktrees/<name>/`, which is a complete second checkout,
+  // so every prose rule fired again against another branch's documents
+  // (taskless/cli#166). ast-grep needed no equivalent — its walker honors
+  // `.gitignore` already — which is precisely why the two engines disagreed
+  // about which files the project contains. Asked only when we chose `.`
+  // ourselves, so `check worktrees/probe` still checks what it was handed.
+  const ignoredEntries = wholeProject
+    ? await listGitIgnoredEntries(options.cwd)
+    : [];
+
   const exclude = [
-    ...(wholeProject ? [`${TASKLESS_DIRECTORY}/**`] : []),
+    ...(wholeProject
+      ? [
+          `${TASKLESS_DIRECTORY}/**`,
+          ...gitIgnoredExclusionGlobs(ignoredEntries),
+        ]
+      : []),
     ...converterExclusionGlobs(),
   ];
   const globArgument = buildValeGlob(exclude);
@@ -214,8 +238,18 @@ export async function runVale(
   // its walker declined to open, so once the glob has done its job the skipped
   // files are unrecoverable from the output — and a fix whose only visible
   // effect is that some findings are quietly missing is the bug it replaced.
+  //
+  // The ignored paths are filtered back out for the same reason the notice
+  // exists at all: it must describe the run that happened. An `.adoc` inside
+  // `worktrees/` is not a file this run declined to convert — it is a file this
+  // run was never going to look at, and naming it would send the reader to
+  // investigate a directory the fix above deliberately excluded.
+  const converterDependent = await findConverterDependentFiles(
+    options.cwd,
+    paths
+  );
   const skipped = skippedFilesNotice(
-    await findConverterDependentFiles(options.cwd, paths)
+    converterDependent.filter((file) => !isGitIgnoredPath(file, ignoredEntries))
   );
 
   // `--` separates flags from positional paths, so a path beginning with `-`
