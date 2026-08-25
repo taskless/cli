@@ -10,7 +10,7 @@ install time.
 Nothing else: no `bin` entry, no JavaScript, and no lifecycle script. A consumer
 locates the executable by resolving this package and running the file by path,
 so the binary is usable even where the consuming package manager refuses to run
-dependency build scripts — which pnpm 10 does by default.
+dependency build scripts, which pnpm 10 does by default.
 
 `os` and `cpu` are declared, so this package installs only on a matching host
 and is skipped everywhere else without failing the install.

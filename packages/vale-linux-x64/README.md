@@ -10,7 +10,7 @@ install time.
 Nothing else: no `bin` entry, no JavaScript, and no lifecycle script. A consumer
 locates the executable by resolving this package and running the file by path,
 so the binary is usable even where the consuming package manager refuses to run
-dependency build scripts — which pnpm 10 does by default.
+dependency build scripts, which pnpm 10 does by default.
 
 `os` and `cpu` are declared, so this package installs only on a matching host
 and is skipped everywhere else without failing the install.
@@ -43,9 +43,9 @@ the same digest upstream publishes in `vale_<version>_checksums.txt`.
 
 ## glibc, and why there is no musl package
 
-Vale's Linux build is dynamically linked against glibc — `ELF 64-bit LSB
+Vale's Linux build is dynamically linked against glibc (`ELF 64-bit LSB
 executable, dynamically linked, interpreter /lib64/ld-linux-x86-64.so.2, for
-GNU/Linux 3.2.0` — so it is not a static Go binary and it does not run on
+GNU/Linux 3.2.0`), so it is not a static Go binary and it does not run on
 musl-based distributions such as Alpine. Upstream publishes no musl asset, so
 there is nothing to package for those hosts; they fall back to a `vale` found
 on `PATH`.

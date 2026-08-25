@@ -26,7 +26,7 @@ each of them. For scripted installs, skip the prompts:
 npx @taskless/cli init --no-interactive
 ```
 
-New to Taskless? Run `npx @taskless/cli onboard` after installing — it walks your
+New to Taskless? Run `npx @taskless/cli onboard` after installing. It walks your
 agent through your codebase and suggests a starter set of rules.
 
 ## How to Use via Agents
@@ -40,7 +40,7 @@ asked for, then follows it.
 /tskl add taskless to CI
 ```
 
-Plain language works too — "write a taskless rule for X", "run taskless check",
+Plain language works too: "write a taskless rule for X", "run taskless check",
 "taskless login" all engage the skill. You rarely need to run the CLI yourself.
 
 To see what the agent sees, run `npx @taskless/cli agent` for the topic index, or
@@ -60,7 +60,7 @@ npx @taskless/cli check --json                            # machine-readable
 
 Paths that no longer exist are dropped silently, so raw `git diff` output can be
 piped in without pre-filtering. Static rules need no login and make no network
-calls, so CI needs no secrets. Runtime rules — which execute code — only run once
+calls, so CI needs no secrets. Runtime rules (which execute code) only run once
 the server has verified their signature; otherwise they are reported as skipped
 and never change the exit code.
 
@@ -70,27 +70,27 @@ system you already use rather than replacing it.
 ## Why Teams Choose Taskless
 
 - **Constraints, not suggestions.** Rules are real files in your repo, enforced
-  by ast-grep, Vale, and runtime checks — the same result every run, for every
+  by ast-grep, Vale, and runtime checks: the same result every run, for every
   agent and every human.
 - **The same rules in the editor and in CI.** One command, one exit code.
 - **Works with the agent you already have.** One skill installs into Claude Code,
-  Cursor, and OpenCode — plus the `/tskl` command wherever the tool supports slash
-  commands — with a plain `.agents/` fallback when none is detected.
+  Cursor, and OpenCode, plus the `/tskl` command wherever the tool supports slash
+  commands, with a plain `.agents/` fallback when none is detected.
 - **Nothing to run locally.** No daemon, no install step in CI, no auth for the
   checks that matter most.
 
 ## Docs
 
-- [docs.taskless.io](https://docs.taskless.io) — guides and reference
-- [taskless.io](https://taskless.io) — the product
-- [github.com/taskless/cli](https://github.com/taskless/cli) — source and issues
+- [docs.taskless.io](https://docs.taskless.io): guides and reference
+- [taskless.io](https://taskless.io): the product
+- [github.com/taskless/cli](https://github.com/taskless/cli): source and issues
 
 <details>
 <summary><strong>Other</strong></summary>
 
 ### Telemetry
 
-The CLI reports anonymous usage — which command ran, whether it succeeded, how
+The CLI reports anonymous usage (which command ran, whether it succeeded, how
 long it took, and counts of findings. It never sends rule content, prompts, or
 matched source. Disable it by setting either environment variable:
 
