@@ -503,31 +503,40 @@ function fatalShapeMessages(
  * that is what carries each `z.literal` into {@link ValeRule}; a mapped union
  * infers `extends: string` and the type stops saying anything. The cost is
  * that this list is hand-maintained while the vocabulary it draws from is
- * derived — so a Vale release that adds or renames a check type would leave a
+ * derived, so a Vale release that adds or renames a check type would leave a
  * member missing here, and the schema would reject a rule the binary runs.
  *
- * This block closes that gap at import: every derived check type must appear
- * below exactly once, and must be classified as either strict or permissive.
- * The failure is then a sentence naming the check, rather than a rule that
- * mysteriously stops verifying six months later.
+ * This block closes that gap at import, and it reads the discriminants off
+ * *these members* rather than off a second list of names. A name list would
+ * only prove that the list agrees with the vocabulary: a maintainer could
+ * satisfy the guard by adding the name and never adding the `check(...)` call,
+ * leaving the union a member short while the error that prompted the edit went
+ * away. Asking the members themselves means the only way to satisfy the guard
+ * is to build the member. Every derived check type must appear here exactly
+ * once, and must be classified as either strict or permissive. The failure is
+ * then a sentence naming the check, rather than a rule that mysteriously stops
+ * verifying six months later.
  */
 const UNION_MEMBERS = [
-  "existence",
-  "substitution",
-  "capitalization",
-  "occurrence",
-  "repetition",
-  "conditional",
-  "metric",
-  "readability",
-  "sequence",
-  "script",
-  "consistency",
-  "spelling",
+  check("existence", CHECK_FIELDS.existence),
+  check("substitution", CHECK_FIELDS.substitution),
+  check("capitalization", CHECK_FIELDS.capitalization),
+  check("occurrence", CHECK_FIELDS.occurrence),
+  check("repetition", CHECK_FIELDS.repetition),
+  check("conditional", CHECK_FIELDS.conditional),
+  check("metric", CHECK_FIELDS.metric),
+  check("readability", CHECK_FIELDS.readability),
+  check("sequence", CHECK_FIELDS.sequence),
+  check("script", CHECK_FIELDS.script),
+  permissiveCheck("consistency"),
+  permissiveCheck("spelling"),
 ] as const;
 
 {
-  const spelled = new Set<string>(UNION_MEMBERS);
+  const discriminants = UNION_MEMBERS.map(
+    (member) => member.shape.extends.value
+  );
+  const spelled = new Set<string>(discriminants);
   const derived = new Set<string>(VALE_CHECK_TYPES);
   const missing = [...derived].filter((name) => !spelled.has(name));
   const extra = [...spelled].filter((name) => !derived.has(name));
@@ -558,25 +567,25 @@ const UNION_MEMBERS = [
         `Re-run the generator: pnpm generate:vale-schema.`
     );
   }
+  if (spelled.size !== discriminants.length) {
+    // "Exactly once" is a real requirement rather than tidiness: zod matches a
+    // discriminated union by discriminant, so a second member for a check that
+    // already has one is dead code that no rule ever reaches.
+    const repeated = [...spelled].filter(
+      (name) => discriminants.filter((other) => other === name).length > 1
+    );
+    throw new Error(
+      `the schema's union has more than one ${repeated.join(", ")} ` +
+        `member, and only the first is reachable. Remove the duplicate in ` +
+        `src/schemas/vale-rule.ts.`
+    );
+  }
 }
 
 const valeBodySchema = z
   .discriminatedUnion(
     "extends",
-    [
-      check("existence", CHECK_FIELDS.existence),
-      check("substitution", CHECK_FIELDS.substitution),
-      check("capitalization", CHECK_FIELDS.capitalization),
-      check("occurrence", CHECK_FIELDS.occurrence),
-      check("repetition", CHECK_FIELDS.repetition),
-      check("conditional", CHECK_FIELDS.conditional),
-      check("metric", CHECK_FIELDS.metric),
-      check("readability", CHECK_FIELDS.readability),
-      check("sequence", CHECK_FIELDS.sequence),
-      check("script", CHECK_FIELDS.script),
-      permissiveCheck("consistency"),
-      permissiveCheck("spelling"),
-    ],
+    UNION_MEMBERS,
     {
       // Unreachable in practice — the header rejects an unknown `extends` first,
       // with a message naming all twelve. Supplied so that if the two ever drift

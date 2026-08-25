@@ -36,6 +36,11 @@ function stylesPath(cwd: string): string {
  *   positional (a later matcher wins; a repeat inside one matcher is
  *   discarded), so a config that assigned it twice would be relying on the
  *   rule that bit the scoping spec.
+ *
+ * `scripts/generate-vale-schema.ts` builds a second isolating config for its
+ * probes. It cannot call this one, because it owns its whole temp directory
+ * and so has no absolute StylesPath to hand over, but it shares the other two
+ * details above. A new requirement found here belongs there too.
  */
 export function buildIsolatingConfig(cwd: string, ruleId: string): string {
   return [
