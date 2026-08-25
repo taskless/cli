@@ -93,8 +93,92 @@ No migration. The schema layer is additive, and it only rejects rules that the e
 
 The stack lands forward in two units, per the proposal: the recipe text first, then the schema and its `verify` layer. If the second unit needs to be reverted, the first stands on its own.
 
+## Measured against Vale 3.18.0
+
+Everything below was obtained by authoring a rule and running the vendored
+binary directly, in a temporary project with `BasedOnStyles =` so no bundled
+style could contribute a finding. Where a verdict is "did not fire", a
+known-valid control was run against the same document first.
+
+### Twelve check types, and the binary says so itself
+
+An `extends` outside the set is **not** silently ignored. Vale rejects the file,
+exits 2, and names the whole set:
+
+```
+'extends' key must be one of [capitalization conditional consistency existence
+occurrence repetition substitution readability spelling sequence metric script].
+```
+
+That resolves eleven-versus-twelve without a judgement call: **twelve**. The
+docs' eleven omits `readability`, which they fold into `metric`; the binary
+treats them as separate checks with disjoint fields (`metrics`/`grade` versus
+`formula`/`condition`), and each rejects the other's.
+
+### `scope` is a grammar, and the operand vocabulary is not the docs'
+
+Measured firing: `text`, `code`, `raw`, `heading`, `heading.h1`–`h6`,
+`paragraph`, `sentence`, `list`, `blockquote`, `link`, `alt`, `summary`,
+`strong`, `emphasis`, `table`, `table.header`, `table.cell`, `table.caption`,
+`comment`, `comment.line`, `comment.block`, `frontmatter`, `frontmatter.<key>`,
+`text.class.<name>`.
+
+Reach, on one document holding the token in prose, in an inline span, and in a
+fenced block: `text` → 1, `code` → 1, `[code, text]` → 2, `raw` → 3. `raw`
+subsumes the other two.
+
+`~` negation, `&` chaining, and the list form all parse and behave. **A negation
+over an unrecognized operand is a silent no-op** — `~fenced` and `text & ~fenced`
+both fire on everything, so a typo inside a `~` removes the exclusion rather than
+narrowing anything.
+
+Two corrections to this document's own earlier draft:
+
+- **There is no `meta` scope.** The v3.18.0 addition is `frontmatter` and
+  `frontmatter.<key>`, which is what the binary carries (`text.frontmatter.`)
+  and what fires. `meta` and `meta.class.<kind>` never fired in Markdown,
+  MDX, or HTML.
+- **`figure.caption` is in the binary's vocabulary** (`text.figure.caption`) but
+  no control could be made to fire for it in a format this build can lint
+  without an external converter — `<figcaption>` content did not reach even a
+  `scope: text` control in HTML, and AsciiDoc and reStructuredText need
+  `asciidoctor`/`rst2html`, which Taskless excludes. It is accepted by the
+  schema on the accept-when-unclear rule and carried in the corpus as an
+  explicitly unproven operand rather than as a passing row.
+
+### Per-check fields, and two checks that validate nothing
+
+Every check accepts `extends`, `message`, `level`, `scope`, `link`, `limit`,
+`action`, `description`, `name`. `vocab` is accepted by `existence`,
+`substitution`, `capitalization`, `conditional`, `repetition` and **rejected**
+by `occurrence`, `metric`, `readability`, `script`, `sequence`.
+
+The per-check additions are in the recipe's table. Two published claims are
+wrong against the binary: `capitalization` rejects `prefixes`, `suffixes` and
+`ignorecase`; `occurrence` rejects `exceptions`.
+
+**`consistency` and `spelling` accept any key at all.** `bananafield: true` on
+either loads without complaint and is ignored — they do not use the strict
+decode the other ten do. The schema cannot be strict about their fields without
+rejecting rules the binary accepts, so it is not.
+
+### The failure modes, re-measured
+
+| Rule defect              | Binary                                           |
+| ------------------------ | ------------------------------------------------ |
+| `extends: nonsense`      | rejected, exit 2, **every** Vale rule unreported |
+| foreign field            | `E201`, exit 2, **every** Vale rule unreported   |
+| `scope: fenced`          | loads, runs, matches nothing — no error anywhere |
+| style file named `.yaml` | not loaded at all — no error, no warning         |
+
+**One row of the table in Context is wrong and is corrected here.** It claimed
+`extends: nonsense` "verifies clean and simply matches nothing". Against 3.18.0
+it does not: it is the same engine-wide suppression as `E201`. The genuinely
+silent case is `scope`, alone — which makes `scope` the highest-value field in
+the schema for exactly the reason the decision above gives, and makes the other
+two a blast-radius argument rather than a silence argument.
+
 ## Open Questions
 
-- **Eleven check types or twelve?** To be resolved by enumeration against the vendored binary during implementation.
 - **How much of the per-check field table to encode.** The full table makes `E201` unreachable; a partial one still leaves the engine-wide suppression possible for the fields it omits. Recommend the full table, since `E201` is the failure with the widest blast radius, but the cost is that every check type must be transcribed and measured rather than just the common header.
 - **Whether `verify` should also report each matcher's selected-file count.** Out of scope here, but adjacent: a matcher glob that reaches nothing produces a rule that is well formed, enabled, green, and inert — the one silent failure this change does not close.
