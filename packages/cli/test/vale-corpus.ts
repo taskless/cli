@@ -1,12 +1,21 @@
 /**
  * The corpus that makes `src/schemas/vale-rule.ts` true.
  *
- * The schema is a hand transcription — Vale publishes no JSON Schema, and the
- * machine-readable field knowledge sits behind its paid hosted MCP. What makes
- * a transcription trustworthy is not care in the writing; it is this table.
- * Every entry is a minimal rule plus a document the rule must flag, run through
- * **both** the vendored binary and the schema in
- * `vale-schema-contract.test.ts`, asserting the two agree.
+ * The schema's vocabulary is derived from the vendored binary by
+ * `scripts/generate-vale-schema.ts` — Vale publishes no JSON Schema, and the
+ * machine-readable field knowledge sits behind its paid hosted MCP, so the only
+ * thing left to ask is the binary. Every entry below is a minimal rule plus a
+ * document the rule must flag, run through **both** the vendored binary and the
+ * schema in `vale-schema-contract.test.ts`, asserting the two agree.
+ *
+ * A derivation needs this table for a different reason than a transcription
+ * did, and needs it just as much. A transcription could be wrong because
+ * someone mistyped; a derivation can be wrong because the generator asked the
+ * wrong question — a membership probe that misreads a crash as an acceptance,
+ * a scope fixture that never carried the construct it claimed to test. The
+ * generator cannot catch either, because both are errors in its own method.
+ * This table can, because it asks the binary a different question: not "is this
+ * a legal key" but "does this whole rule do what a rule is for".
  *
  * ## Why a verdict is not an exit code
  *
@@ -322,6 +331,23 @@ const SCOPES: ValeCorpusEntry[] = [
     scope: "comment.block",
     control: "/*\n simply block\n*/\nconst x = 1;\n",
     ext: "js",
+  },
+  // The same two operands one tier over. `comment.*` is the only family whose
+  // membership depends on which parser the extension routes to, so a row that
+  // only ever asks JavaScript is asserting less than it looks like it is —
+  // "fires in a source file" and "fires in *this* source file" are different
+  // claims, and the schema makes the wider one.
+  {
+    name: "scope/comment.line-ts",
+    scope: "comment.line",
+    control: "// simply line\nconst x: number = 1;\n",
+    ext: "ts",
+  },
+  {
+    name: "scope/comment.block-ts",
+    scope: "comment.block",
+    control: "/*\n simply block\n*/\nconst x: number = 1;\n",
+    ext: "ts",
   },
   // The operators. `scope` is a grammar, not an enum: a flat enum would reject
   // every one of these, which is worse than the gap the schema closes.
