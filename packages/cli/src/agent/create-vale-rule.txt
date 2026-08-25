@@ -59,8 +59,19 @@ it.
 
 1. **Say what the rule reads, then pick an extension point.** Write one
    sentence: "this fires when a document contains ___." Vale rules are
-   built by extending one of its eleven checks, and the sentence tells
-   you which:
+   built by extending one of its twelve checks, and the sentence tells
+   you which. Twelve is measured, not counted off the docs: give Vale
+   v%(VALE_VERSION)s an `extends` it does not know and it names the whole
+   set back at you —
+
+   ```
+   'extends' key must be one of [capitalization conditional consistency
+   existence occurrence repetition substitution readability spelling
+   sequence metric script].
+   ```
+
+   The docs enumerate eleven, folding `readability` into `metric`. They
+   are separate checks with separate fields.
 
 | If the rule is about…                                                                   | extends          |
 |-----------------------------------------------------------------------------------------|------------------|
@@ -71,7 +82,8 @@ it.
 | a word repeated back to back                                                            | `repetition`     |
 | picking one of two acceptable spellings, consistently                                   | `consistency`    |
 | "if X appears, Y must also appear"                                                      | `conditional`    |
-| readability or length thresholds                                                        | `metric`         |
+| a document-level length or ratio threshold                                              | `metric`         |
+| a readability grade, against a named formula                                            | `readability`    |
 | a misspelling, against a dictionary                                                     | `spelling`       |
 | phrases that must appear in a fixed order                                               | `sequence`       |
 | anything the above cannot express (Tengo script)                                        | `script`         |
@@ -85,9 +97,13 @@ it.
    `match: GitHub` reports `We host on Github and it is fine. should be
    GitHub`.
 
-   For the two this recipe does not describe, read
-   https://docs.vale.sh/styles before inventing something — Vale has no
-   facility for a rule that does not extend one of these eleven.
+   For the five this recipe has no worked example of — `metric`,
+   `readability`, `spelling`, `sequence`, `script` — read
+   https://docs.vale.sh/styles before inventing something. Vale has no
+   facility for a rule that does not extend one of these twelve, and an
+   `extends` outside the set is not a rule that misbehaves: Vale exits 2
+   and **every** Vale rule in the project goes unreported for that run.
+   `verify` catches it before Vale is invoked.
 
    **Nine of them have a worked rule at the end of this recipe**, each
    with the near-miss that fails and why. Read the one closest to your
@@ -102,38 +118,136 @@ it.
    only** (`izeise`, not `ize-ise`). That check compiles the id into its
    pattern as a regex group name, and a hyphen there fails the entire
    Vale run. `verify` catches it. Kebab-case is correct for the other
-   ten.
+   eleven.
 
    Every rule carries:
 
 | Field     | Required | Notes                                         |
 |-----------|----------|-----------------------------------------------|
-| `extends` | yes      | one of the eleven above                       |
+| `extends` | yes      | one of the twelve above                       |
 | `message` | yes      | shown to the user; see the `%%s` table below  |
 | `level`   | no       | `suggestion` (default), `warning`, or `error` |
 | `scope`   | no       | narrow to part of a document — see below      |
 | `link`    | no       | a URL the reader can follow for the reasoning |
+| `limit`   | no       | cap findings from this rule per scope         |
+| `vocab`   | no       | `false` opts the rule out of `Vocab` filtering |
+
+   **The file extension must be `.yml`.** Measured: rename a working
+   style file to `.yaml` and Vale loads nothing — no error, no warning,
+   zero findings, and `<id>.<id> = YES` still parses. It is
+   indistinguishable from a rule whose pattern never matched.
 
    **`scope` decides where the rule looks**, so getting it wrong is a
-   silent over- or under-fire rather than an error. The useful values for
-   markdown: `heading` (and `heading.h1`…`heading.h6`), `paragraph`,
-   `sentence`, `list`, `blockquote`, `link`, `code`, `alt`, `summary`,
-   `table.header`, `table.cell`, `table.caption`, `figure.caption`,
-   `strong`, `emphasis`, `raw`. Omit it and the rule sees all prose.
+   silent under-fire rather than an error. An unrecognized scope is not
+   rejected by Vale: `scope: fenced` loads, runs, and matches nothing.
+   It is the worst of the three failures on this page, because unlike a
+   bad `extends` or a foreign field it does not even take the run down to
+   tell you — the rule is simply inert, forever. `verify` rejects it.
+
+   Every value below was measured against Vale v%(VALE_VERSION)s by
+   authoring a rule with that scope and a document the rule had to flag.
+   "Fires" means the finding appeared; a scope that never fired is not on
+   this list.
+
+| `scope`                | reaches                                                   |
+|------------------------|-----------------------------------------------------------|
+| *(omitted)*            | everything the format exposes as prose                    |
+| `text`                 | prose only — not inline code, not fenced blocks           |
+| `code`                 | inline code spans only                                    |
+| `raw`                  | the unparsed document: prose, inline code, fenced blocks  |
+| `heading`              | every heading                                             |
+| `heading.h1`…`h6`      | headings of that level                                    |
+| `paragraph`            | one paragraph at a time                                   |
+| `sentence`             | one sentence at a time                                    |
+| `list`                 | list items                                                |
+| `blockquote`           | quoted blocks                                             |
+| `link`                 | link text, not the URL                                    |
+| `alt`                  | image alt text                                            |
+| `summary`              | `<summary>` of a disclosure                               |
+| `strong`, `emphasis`   | bold and italic runs                                      |
+| `table`                | any part of a table                                       |
+| `table.header`         | header cells                                              |
+| `table.cell`           | body cells                                                |
+| `table.caption`        | a table's caption                                         |
+| `figure.caption`       | a figure's caption                                        |
+| `frontmatter`          | every YAML front-matter value                             |
+| `frontmatter.<key>`    | one front-matter key's value                              |
+| `text.class.<name>`    | HTML elements carrying that class                         |
+| `comment`              | every comment, in a comment-tier format                   |
+| `comment.line`         | `//`-style comments                                       |
+| `comment.block`        | `/* … */`-style comments                                  |
+
+   **`raw` subsumes `code` and `text`.** Measured on one document holding
+   the token in prose, in an inline span, and in a fenced block: `text`
+   found one, `code` found one, `[code, text]` found two, `raw` found all
+   three. If you want prose and inline code but not fenced blocks, write
+   the list — `raw` is not "a bit wider", it is everything.
+
+   **`scope` also takes `~` and `&`.** `~code` is everything but inline
+   code; `text & ~code` chains two operands; a list (`[code, text]`) is a
+   union. All three parse and behave.
+
+   **A negation over a scope Vale does not know is a silent no-op.**
+   Measured: `~banana` and `text & ~banana` both fire on everything,
+   because there is no such scope to subtract. A typo inside a `~` does
+   not narrow the rule and does not widen it visibly — it removes the
+   exclusion you wrote the rule for. `verify` checks the operands inside
+   `~` and `&` for exactly this reason.
+
+   **`scope` is per-rule, and rules do not interact.** Taskless assembles
+   every rule's matchers into one config for the run, which invites the
+   assumption that one rule's `scope` narrows another's, or that two
+   rules over the same file compete. They do not: each check carries its
+   own scope and is evaluated independently. If a rule is over-firing,
+   the cause is in that rule's own `scope` and glob, never in a
+   neighbour's.
+
+   **A `raw`-scoped rule cannot be turned off in a document.** Vale's
+   `<!-- vale <id>.<id> = NO -->` directive is applied to the *parsed*
+   document, and `raw` reads the unparsed one. Measured: a `text`-scoped
+   rule is silenced by the directive; the same rule at `raw` fires
+   through it. So a rule about a shell command, a flag, or a package name
+   needs `raw` — commands live in fenced blocks, which nothing else
+   reaches — and takes that trade: it can no longer be exempted case by
+   case, only removed.
 
    **Then the fields the extension point adds** — this is where the rule
    actually lives, and each check reads only its own:
 
-| extends          | its fields                                                                          |
-|------------------|-------------------------------------------------------------------------------------|
-| `existence`      | `tokens` (a list) or `raw`; `ignorecase`, `nonword`, `exceptions`, `append`         |
-| `substitution`   | `swap` (a map of observed → expected); `ignorecase`, `nonword`, `exceptions`        |
-| `capitalization` | `match`; `exceptions`, `style` (with `$title`), `threshold`, `indicators`, `prefix` |
-| `occurrence`     | `token`, `max` and/or `min`                                                         |
-| `repetition`     | `tokens`; `alpha`, `ignorecase`                                                     |
-| `consistency`    | `either` (a map of the two acceptable forms)                                        |
-| `conditional`    | `first`, `second`; `exceptions`                                                     |
-| `metric`         | `formula`, `condition`                                                              |
+| extends          | its fields                                                                   |
+|------------------|------------------------------------------------------------------------------|
+| `existence`      | `tokens` (a list) or `raw`; `ignorecase`, `nonword`, `exceptions`, `append`  |
+| `substitution`   | `swap` (a map of observed → expected); `ignorecase`, `nonword`, `exceptions`, `capitalize`, `pos` |
+| `capitalization` | `match`; `style` (with `$title`), `exceptions`, `threshold`, `indicators`    |
+| `occurrence`     | `token`, `max` and/or `min`; `ignorecase`                                    |
+| `repetition`     | `tokens`; `alpha`, `ignorecase`, `exceptions`, `max`                         |
+| `consistency`    | `either` (a map of the two acceptable forms); `ignorecase`, `nonword`        |
+| `conditional`    | `first`, `second`; `exceptions`, `ignorecase`                                |
+| `metric`         | `formula`, `condition`                                                       |
+| `readability`    | `metrics` (a list of formula names), `grade`                                 |
+| `spelling`       | `aff`, `dic`, `custom`, `filters`, `ignore`, `threshold`                     |
+| `sequence`       | `tokens` (each a `pattern`/`tag` map); `ignorecase`                          |
+| `script`         | `script` (Tengo source)                                                      |
+
+   The list above is measured, not transcribed: every entry was added to
+   a minimal rule of that check and the run watched for `E201`. Two
+   corrections fall out of it, both against the published docs —
+   `capitalization` rejects `prefixes`/`suffixes` and `ignorecase`, and
+   `occurrence` rejects `exceptions` and `vocab`.
+
+   **A field from the wrong check is the loudest failure Vale has.**
+   `tokens` on an `occurrence` check gives
+   `E201 … has invalid keys: 'tokens'`, exit 2, and — because Vale reads
+   one assembled config per run — **no** Vale rule in the project reports
+   anything. `verify` rejects the rule before Vale is invoked so this
+   cannot reach `check`.
+
+   **Two checks are exempt, and that is not a licence.** Measured,
+   `consistency` and `spelling` accept any key at all: `bananafield:
+   true` on either loads without complaint and is ignored. A misspelled
+   field on those two is a silent no-op instead of a loud one, so the
+   schema cannot catch a typo there and neither can Vale. Read the field
+   list twice when writing those two.
 
    **What `%%s` fills with depends on the extension point.** Getting this
    wrong is the one mistake in this recipe that passes every check below
@@ -239,6 +353,42 @@ it.
      `ignorecase: false` to protect the correct spelling.
    - `raw` takes a full regex when `tokens` is too restrictive;
      `nonword` removes the implicit boundaries.
+   - **A token made only of punctuation can never match without
+     `nonword: true`.** The boundaries above are `\b`, which needs a word
+     character on the inside. An em dash has none, on either side.
+     Measured against `This is a sentence — with an em dash.`:
+
+     ```yaml
+     # fires on nothing, ever — and reports no error
+     extends: existence
+     message: "Use a comma, not an em dash"
+     tokens:
+       - '—'
+     ```
+
+     ```yaml
+     # fires
+     extends: existence
+     message: "Use a comma, not an em dash"
+     nonword: true
+     tokens:
+       - '—'
+     ```
+
+     The first rule verifies, tests green if its `fail/` fixture is
+     missing the dash, and reports nothing forever. Any token whose
+     pattern contains no `\w` — punctuation, an emoji, a bare symbol —
+     needs `nonword: true`.
+
+   - **A bare word finds senses you did not mean.** `landed on` in a rule
+     about jargon also matches "the plane landed on time"; `simply` in a
+     rule about hedging also matches "simply connected" in a maths doc.
+     Narrow the token to the **collocation** you actually object to
+     (`landed on a decision`, not `landed on`), and check that you got it
+     right by writing the `pass/` fixture from the literal sense *first*:
+     put the innocent sentence in `pass/` before you write the guilty one
+     in `fail/`. A rule whose `pass/` bucket was written afterwards tends
+     to contain only sentences the author already knew were safe.
 
    Vale also understands the markup, which decides what counts as text
    before your pattern ever runs. Measured in markdown:
@@ -287,6 +437,29 @@ it.
    - `no-simply.no-simply = YES` turns the rule on. The first half is
      the style, which is this rule's directory; the second is the check
      inside it, which is the file. Both are the id.
+
+   **Scope a rule *out* with a second matcher, not a cleverer glob.** A
+   glob says which files a rule sees; it has no way to say "these but not
+   those". The exclusion is a second matcher that assigns `NO`, and
+   because precedence here is positional — a later matcher wins — the
+   exclusion goes **after** the inclusion:
+
+   ```ini
+   # Every markdown file…
+   [*.md]
+   tskl) rule = no-simply
+   BasedOnStyles =
+   no-simply.no-simply = YES
+
+   # …except the changelog, which quotes release notes verbatim.
+   [CHANGELOG.md]
+   tskl) rule = no-simply
+   no-simply.no-simply = NO
+   ```
+
+   Write the breadcrumb in the second matcher too, or assembly attributes
+   it to nobody. Reversing the two blocks silently re-enables the rule on
+   the file you meant to exempt, and nothing reports that.
 
    **Do NOT write `StylesPath` or `MinAlertLevel` here.** Those describe
    the run rather than a rule, the assembler supplies them, and a copy
@@ -382,6 +555,34 @@ it.
      exception.
 
    That is the half of the fixture set that has to work for you.
+
+   **When the rule's subject normally appears in code, the `fail/`
+   fixture must carry it three ways** — inline in a code span, inside a
+   fenced block, and in ordinary prose — in that one document. A rule
+   about a command, a flag, a package name or an env var has a subject
+   that lives in fenced blocks in every real README, and the default
+   scope cannot see fenced blocks at all. A `fail/` fixture written only
+   in prose therefore fires, goes green, and the rule then catches none
+   of the real violations. Measured on one document holding the token in
+   all three places: the default scope found one of three, `raw` found
+   three. If the fixture fires on the prose line and not on the other
+   two, the answer is `scope: raw` — see step 2 for what that costs.
+
+   **Fixtures run under a config that isolates this rule, so a green
+   `test` is not evidence the rule reaches any real file.** `test`
+   generates its own `.vale.ini` pointing at the fixture directory and
+   enabling only `<id>.<id>`; your rule's own matcher globs are not
+   consulted. So a glob of `packages/cli/src/**/*.ts` that matches
+   nothing in the repository still produces a rule that verifies, tests
+   green, and reports forever. The only check for that is a real
+   `check` over a real file:
+
+   ```
+   %(TASKLESS_CLI)s check <a real path the rule should flag> --json
+   ```
+
+   Do that once, on a file you have deliberately made violate the rule,
+   before you believe the rule works.
 
 6. **Verify, then test.** Two commands, both taking the rule's
    directory as their argument, both run from the project root:

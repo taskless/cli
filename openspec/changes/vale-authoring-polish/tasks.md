@@ -1,23 +1,23 @@
 ## 1. Measure the binary before writing anything down
 
-- [ ] 1.1 Enumerate the check types the vendored Vale accepts, and resolve the docs' eleven against the MCP guide's twelve. Record the measured list and how it was obtained.
-- [ ] 1.2 Enumerate the accepted `scope` operands, including the hierarchical forms, the v3.17.0+ inline scopes, and the v3.18.0+ `meta` scopes. Confirm `~` negation and `&` chaining parse.
-- [ ] 1.3 For each check type, measure which fields it accepts and which it rejects with `E201`. This is the per-check table the schema encodes.
-- [ ] 1.4 Confirm the failure modes the design asserts still hold on the pinned binary: `extends: nonsense` and `scope: fenced` verify clean and match nothing; a foreign field throws `E201` and suppresses every other Vale rule's findings.
+- [x] 1.1 Enumerate the check types the vendored Vale accepts, and resolve the docs' eleven against the MCP guide's twelve. Record the measured list and how it was obtained.
+- [x] 1.2 Enumerate the accepted `scope` operands, including the hierarchical forms, the v3.17.0+ inline scopes, and the v3.18.0+ `meta` scopes. Confirm `~` negation and `&` chaining parse. **There is no `meta` scope**: the v3.18.0 addition is `frontmatter`/`frontmatter.<key>`, which is what fires. Negation over an unrecognized operand is a silent no-op. See design.md → Measured against Vale 3.18.0.
+- [x] 1.3 For each check type, measure which fields it accepts and which it rejects with `E201`. This is the per-check table the schema encodes.
+- [x] 1.4 Confirm the failure modes the design asserts still hold on the pinned binary: `extends: nonsense` and `scope: fenced` verify clean and match nothing; a foreign field throws `E201` and suppresses every other Vale rule's findings. **One half did not hold.** `extends: nonsense` is rejected outright on 3.18.0 — exit 2, whole run suppressed, same blast radius as `E201`. `scope: fenced` is the only genuinely silent case. Corrected in design.md.
 
 ## 2. Recipe gaps (unit 1, lands alone)
 
-- [ ] 2.1 Add the measured scope table to `create-vale-rule`, and state that `raw` subsumes `code` and `text`.
-- [ ] 2.2 State that `scope` is per-rule and that rules do not interact, despite the single assembled config.
-- [ ] 2.3 State that a `raw`-scoped rule cannot be suppressed by `<!-- vale Rule = NO -->`, and that a rule about a command needs `raw`.
-- [ ] 2.4 Add `nonword: true` for punctuation-only tokens, with the em-dash rule as the worked case.
-- [ ] 2.5 Document scoping a rule _out_ with a second matcher assigning `NO`.
-- [ ] 2.6 Add the collocation guidance: narrow a banned word to a collocation, and write the `pass/` fixture from the literal sense first.
-- [ ] 2.7 Add the fixture rule for a subject that appears in code: `fail/` must carry it inline, fenced, and in prose.
-- [ ] 2.8 Add `limit` and `vocab` to the common-fields table, and note that Vale requires `.yml` rather than `.yaml`.
-- [ ] 2.9 State that fixtures run under an isolating config, so passing tests do not prove the matcher reaches any real file.
-- [ ] 2.10 Update the recipe's cross-reference tests if the added sections change what they assert.
-- [ ] 2.11 Write the changeset on this branch, so the stack inherits it.
+- [x] 2.1 Add the measured scope table to `create-vale-rule`, and state that `raw` subsumes `code` and `text`.
+- [x] 2.2 State that `scope` is per-rule and that rules do not interact, despite the single assembled config.
+- [x] 2.3 State that a `raw`-scoped rule cannot be suppressed by `<!-- vale Rule = NO -->`, and that a rule about a command needs `raw`.
+- [x] 2.4 Add `nonword: true` for punctuation-only tokens, with the em-dash rule as the worked case.
+- [x] 2.5 Document scoping a rule _out_ with a second matcher assigning `NO`.
+- [x] 2.6 Add the collocation guidance: narrow a banned word to a collocation, and write the `pass/` fixture from the literal sense first.
+- [x] 2.7 Add the fixture rule for a subject that appears in code: `fail/` must carry it inline, fenced, and in prose.
+- [x] 2.8 Add `limit` and `vocab` to the common-fields table, and note that Vale requires `.yml` rather than `.yaml`.
+- [x] 2.9 State that fixtures run under an isolating config, so passing tests do not prove the matcher reaches any real file.
+- [x] 2.10 Update the recipe's cross-reference tests if the added sections change what they assert. No change needed: `recipe-cross-references.test.ts` asserts the rendered format lists, which the new sections do not touch, and the full suite is green.
+- [x] 2.11 Write the changeset on this branch, so the stack inherits it.
 
 ## 3. The schema (unit 2)
 
