@@ -20,6 +20,7 @@ import {
   valeMarkupList,
   valePlaintextList,
 } from "../src/rules/capabilities";
+import { VALE_CHECK_TYPES } from "../src/schemas/vale-rule";
 
 /**
  * Vale's observable behaviour, pinned.
@@ -701,5 +702,70 @@ withVale("Vale engine capabilities", () => {
         `${extensions.join("/")} (needs ${converter})`
       );
     }
+  });
+});
+
+/** The set Vale prints when rejecting an unknown `extends`. */
+function enumeratedCheckTypes(): string[] {
+  const cwd = project(
+    `${header}\n[*.md]\nrules.bogus = YES\n`,
+    { bogus: 'extends: nonsense\nmessage: "x"\nlevel: warning\n' },
+    { "doc.md": "Just simply do it.\n" }
+  );
+  const result = runRaw(cwd, ["doc.md"], ["--no-exit"]);
+  const message = `${result.stdout}${result.stderr}`;
+  const listed = /'extends' key must be one of \[([^\]]+)]/.exec(message);
+  const names = listed?.[1];
+  if (names === undefined) {
+    throw new Error(`Vale no longer enumerates its check types: ${message}`);
+  }
+  return names.split(/\s+/).filter(Boolean).toSorted();
+}
+
+/**
+ * The check-type vocabulary, straight from the binary.
+ *
+ * Separate from the corpus in `vale-schema-contract.test.ts`, which measures
+ * *behavior* — that a rule of each type fires. This asks the binary to
+ * enumerate the set itself, which it does when handed an `extends` it does not
+ * know. It is the version-bump tripwire: a Vale release that adds, drops or
+ * renames a check type fails here and names the value, rather than leaving
+ * `VALE_CHECK_TYPES` quietly wrong.
+ */
+withVale("check types", () => {
+  it("rejects an unknown extends instead of ignoring it", () => {
+    // Depended on by: the schema layer's claim that this defect has the same
+    // blast radius as E201 rather than being the silent case. If Vale ever
+    // starts ignoring an unknown `extends`, the rule becomes inert instead of
+    // fatal and the recipe's wording is wrong.
+    const cwd = project(
+      `${header}\n[*.md]\nrules.bogus = YES\nrules.no-simply = YES\n`,
+      {
+        bogus: 'extends: nonsense\nmessage: "x"\nlevel: warning\n',
+        "no-simply": existence("simply"),
+      },
+      { "doc.md": "Just simply do it.\n" }
+    );
+    const result = runRaw(cwd, ["doc.md"], ["--no-exit"]);
+    expect(result.status).not.toBe(0);
+    // And it takes the other rule down with it: one config per run.
+    expect(result.stdout).not.toContain("no-simply");
+  });
+
+  it("enumerates exactly the check types the schema encodes", () => {
+    // Depended on by: VALE_CHECK_TYPES in src/schemas/vale-rule.ts. A value
+    // there that Vale does not list makes `verify` accept a rule that takes
+    // the whole run down; a value Vale lists that is missing there makes
+    // `verify` reject a rule that works.
+    expect(enumeratedCheckTypes()).toEqual([...VALE_CHECK_TYPES].toSorted());
+  });
+
+  it("counts twelve, not the eleven the documentation enumerates", () => {
+    // The docs fold `readability` into `metric`. They are separate checks with
+    // disjoint fields, and each rejects the other's — see the corpus.
+    const enumerated = enumeratedCheckTypes();
+    expect(enumerated).toHaveLength(12);
+    expect(enumerated).toContain("readability");
+    expect(enumerated).toContain("metric");
   });
 });
