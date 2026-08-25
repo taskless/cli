@@ -5,15 +5,21 @@
  * and the machine-readable field knowledge exists only behind the hosted MCP
  * server at `api.vale.sh/mcp`, which is a paid product and unavailable to
  * `verify`. So unlike `ast-grep-rule.ts` — which runs `z.fromJSONSchema()` over
- * an upstream artifact fetched per tag — everything here is a
- * **transcription**, and a transcription drifts.
+ * an upstream artifact fetched per tag — there is nothing here to fetch.
  *
- * What makes it trustworthy is not care in the writing. It is
- * `test/vale-corpus.ts`: a table of minimal rules, each with a document it must
- * flag, run through the vendored binary and through this module, asserting the
- * two agree. Every value enumerated below was measured accepted by the binary
- * that way. A Vale bump that changes the vocabulary fails that test naming the
- * field, rather than leaving this file quietly wrong.
+ * There is, however, a binary that answers questions. Every vocabulary this
+ * module enumerates is **derived** from it by `scripts/generate-vale-schema.ts`
+ * and lives in `../generated/vale-vocabulary.ts`: check types and levels read
+ * out of the error Vale raises when it enumerates its own accepted set, field
+ * tables probed key by key, scope operands measured firing on a fixture. This
+ * file is the validation layer over that vocabulary, not a second copy of it.
+ *
+ * The distinction matters because it changes what a Vale bump costs. A
+ * transcription drifts silently and is re-authored by hand; a derivation is
+ * re-run, and where the answer moved, the artifact's diff says so. What holds
+ * both to the binary is unchanged: `test/vale-corpus.ts` is a table of minimal
+ * rules, each with a document it must flag, run through the vendored binary and
+ * through this module, asserting the two agree.
  *
  * Two directions of error, and they are not symmetric:
  *
@@ -22,6 +28,14 @@
  * - **Too strict** — a rule the binary accepts is rejected. That is worse: it
  *   blocks work that would have functioned. Where a measurement is ambiguous,
  *   accept.
+ *
+ * That asymmetry is also the honest limit of the generator. Field tables and
+ * scope operands are established by *membership*: Vale's `E201` names the key
+ * you got wrong and never the ones you could have used, and an unknown scope
+ * raises nothing at all. So both are verified rather than discovered, and a
+ * real field nobody proposed is absent — the too-strict direction. The
+ * generator's candidate list is seeded accordingly, and its provenance is
+ * documented there.
  *
  * ## Shape
  *
@@ -43,48 +57,60 @@
 
 import { z } from "zod";
 
+import {
+  VALE_CHECK_FIELDS,
+  VALE_CHECK_TYPES,
+  VALE_COMMON_FIELDS,
+  VALE_LEVELS,
+  VALE_PERMISSIVE_CHECKS,
+  VALE_SCOPE_OPERANDS as DERIVED_SCOPE_OPERANDS,
+  VALE_SCOPE_PREFIXES,
+  VALE_VOCABULARY_VERSION,
+} from "../generated/vale-vocabulary";
 import { VALE_VERSION } from "../rules/capabilities";
 import { schemaLayer, type SchemaLayerResult } from "./layer";
 
+export {
+  VALE_CHECK_TYPES,
+  VALE_LEVELS,
+  VALE_PERMISSIVE_CHECKS,
+} from "../generated/vale-vocabulary";
+
 /**
- * Vale's check types, quoted from the binary rather than the documentation.
+ * The Vale release both the vocabulary and the vendored binary refer to.
  *
- * Obtained by giving Vale an `extends` it does not know, which is not silently
- * ignored — it fails the file, exits 2, and enumerates the set:
+ * Regenerating the artifact and bumping {@link VALE_VERSION} are two separate
+ * edits and nothing sequences them. If they ever disagree, every enum in this
+ * module is a measurement of some *other* Vale — which is precisely the drift
+ * deriving the vocabulary was meant to end.
  *
- * ```
- * 'extends' key must be one of [capitalization conditional consistency
- * existence occurrence repetition substitution readability spelling sequence
- * metric script].
- * ```
+ * The conditional type is what settles it. Both sides are string literal types,
+ * so the compiler can decide the question: on a mismatch the alias resolves to
+ * `never`, the assignment below is rejected, and the build fails naming this
+ * line. A runtime `if` would have thrown instead — later, on whichever command
+ * happened to load the schema first, in front of a user rather than an author.
  *
- * That settles the eleven-versus-twelve question the docs and Vale's own MCP
- * guide disagree on: **twelve**. The docs' eleven folds `readability` into
- * `metric`; the binary treats them as separate checks whose fields are
- * disjoint, and each rejects the other's.
- *
- * Sorted here rather than left in the binary's order, so the value `verify`
- * prints to an author reads predictably.
+ * Every message in this module interpolates this rather than
+ * {@link VALE_VERSION}, so the assertion cannot be quietly orphaned.
  */
-export const VALE_CHECK_TYPES = [
-  "capitalization",
-  "conditional",
-  "consistency",
-  "existence",
-  "metric",
-  "occurrence",
-  "readability",
-  "repetition",
-  "script",
-  "sequence",
-  "spelling",
-  "substitution",
-] as const;
+type PinnedValeVersion =
+  typeof VALE_VOCABULARY_VERSION extends typeof VALE_VERSION
+    ? typeof VALE_VERSION
+    : never;
 
+const PINNED_VALE_VERSION: PinnedValeVersion = VALE_VERSION;
+
+/**
+ * The name of one of Vale's twelve check types.
+ *
+ * The set itself is derived: an unknown `extends` is not silently ignored, so
+ * the binary fails the file and enumerates its own accepted values, and the
+ * generator reads them back out. That is what settles the eleven-versus-twelve
+ * question the docs and Vale's own MCP guide disagree on — the docs' eleven
+ * folds `readability` into `metric`, and the binary treats them as separate
+ * checks whose fields are disjoint.
+ */
 export type ValeCheckType = (typeof VALE_CHECK_TYPES)[number];
-
-/** Vale's three severities. The value is case-sensitive: `WARNING` is rejected. */
-export const VALE_LEVELS = ["suggestion", "warning", "error"] as const;
 
 /**
  * The keys Vale reads literally, before the case-insensitive field decode.
@@ -105,49 +131,22 @@ const HEADER_KEYS = new Set(["extends", "message", "level"]);
 /**
  * The `scope` operands the binary was measured honoring.
  *
- * Each was established by authoring a rule with that scope over a document the
- * rule had to flag, and confirming the finding appeared. A scope that never
- * fired for any control is not here.
+ * Each was derived by authoring a rule with that scope over a fixture carrying
+ * its construct and confirming the finding appeared, with an independent reach
+ * probe proving the fixture was linted at all. An operand that never fired is
+ * not here, whatever the documentation says about it.
  *
  * This is the highest-value list in the module, because `scope` is the one
  * field nothing downstream ever validates. An unrecognized `extends` fails the
  * run loudly; an unrecognized field raises `E201`. An unrecognized **scope**
- * loads, runs, and matches nothing — no error, anywhere, ever.
- *
- * Note what is *not* here: `meta` and `meta.class.<kind>`. The v3.18.0 addition
- * is `frontmatter` / `frontmatter.<key>`, which is the vocabulary the binary
- * carries and the one that fires.
+ * loads, runs, and matches nothing — no error, anywhere, ever. It is also the
+ * list with no oracle: `extends` and `level` enumerate themselves, and this
+ * one has to be proposed and then measured, which is why the generator emits
+ * `vale-vocabulary-report.md` alongside it. Two entries there are worth
+ * knowing: `meta` and `meta.class.<kind>` are documented and never fire, and
+ * `frontmatter` / `frontmatter.<key>` fire while being documented nowhere.
  */
-const SCOPE_OPERANDS = new Set([
-  "text",
-  "code",
-  "raw",
-  "heading",
-  "heading.h1",
-  "heading.h2",
-  "heading.h3",
-  "heading.h4",
-  "heading.h5",
-  "heading.h6",
-  "paragraph",
-  "sentence",
-  "list",
-  "blockquote",
-  "link",
-  "alt",
-  "summary",
-  "strong",
-  "emphasis",
-  "table",
-  "table.header",
-  "table.cell",
-  "table.caption",
-  "figure.caption",
-  "frontmatter",
-  "comment",
-  "comment.line",
-  "comment.block",
-]);
+const SCOPE_OPERANDS = new Set<string>(DERIVED_SCOPE_OPERANDS);
 
 /**
  * Scope families whose tail is author-supplied and cannot be enumerated.
@@ -157,13 +156,18 @@ const SCOPE_OPERANDS = new Set([
  * neither has a closed set — rejecting an unfamiliar tail would be the
  * "too strict" failure against a value the binary honors.
  */
-const SCOPE_PREFIXES = ["frontmatter.", "text.class."];
+const SCOPE_PREFIXES: readonly string[] = VALE_SCOPE_PREFIXES;
 
-/** Operands, for the message `verify` shows an author. */
+/**
+ * Operands, for the message `verify` shows an author.
+ *
+ * The open families are spelled with a placeholder tail rather than omitted:
+ * an author told only that `frontmatter.title` is wrong, with no mention of
+ * `frontmatter.<name>` in the accepted set, learns the wrong lesson.
+ */
 export const VALE_SCOPE_OPERANDS: readonly string[] = [
   ...SCOPE_OPERANDS,
-  "frontmatter.<key>",
-  "text.class.<name>",
+  ...SCOPE_PREFIXES.map((prefix) => `${prefix}<name>`),
 ].toSorted();
 
 function isScopeOperand(operand: string): boolean {
@@ -207,11 +211,11 @@ function scopeMessages(scope: string): string[] {
     if (isScopeOperand(operand)) continue;
     messages.push(
       negated
-        ? `scope: "~${operand}" negates a scope Vale ${VALE_VERSION} does ` +
+        ? `scope: "~${operand}" negates a scope Vale ${PINNED_VALE_VERSION} does ` +
             `not have, so it subtracts nothing and the rule fires everywhere — ` +
             `the exclusion you wrote it for is silently gone. Vale does not ` +
             `report this, so verify does. ${scopeVocabulary}`
-        : `scope: "${operand}" is not a Vale ${VALE_VERSION} scope. Vale ` +
+        : `scope: "${operand}" is not a Vale ${PINNED_VALE_VERSION} scope. Vale ` +
             `does not reject an unknown scope — the rule loads, runs, and ` +
             `matches nothing. ${scopeVocabulary}`
     );
@@ -246,7 +250,7 @@ const valeHeaderSchema = z
     ) {
       fail(
         ["extends"],
-        `extends "${extendsValue}" is not a Vale ${VALE_VERSION} check type. ` +
+        `extends "${extendsValue}" is not a Vale ${PINNED_VALE_VERSION} check type. ` +
           `Vale fails the whole run over this, taking every other Vale rule's ` +
           `findings with it. Accepted: ${VALE_CHECK_TYPES.join(", ")}.`
       );
@@ -314,23 +318,24 @@ function canonicalKeys(rule: Record<string, unknown>): Record<string, unknown> {
 // --- Stage 2: the per-check field tables -------------------------------------
 
 /**
- * Fields every check accepts, whatever it extends.
+ * Fields every strict check accepts, whatever it extends.
  *
- * `vocab` is deliberately absent: five of the twelve reject it, so it is listed
- * per check instead. Values are `unknown` throughout — the binary decides what
- * a field's type means, and guessing here would be the "too strict" failure
- * against types nothing measured.
+ * Derived as the *intersection* of the twelve measured field tables rather
+ * than declared, which is a stronger statement than a hand-written list: no
+ * one had to remember that `vocab` does not belong here because five checks
+ * reject it — the intersection simply does not contain it.
+ *
+ * Values are `unknown` throughout. The binary decides what a field's type
+ * means, and guessing here would be the "too strict" failure against types
+ * nothing measured.
  */
-const commonFields = {
+const commonFields: Record<string, z.ZodType> = {
+  ...Object.fromEntries(
+    VALE_COMMON_FIELDS.map((field) => [field, z.unknown()])
+  ),
   extends: z.string(),
   message: z.string(),
   level: z.string().optional(),
-  scope: z.unknown(),
-  link: z.unknown(),
-  limit: z.unknown(),
-  action: z.unknown(),
-  description: z.unknown(),
-  name: z.unknown(),
 };
 
 /** The field names above, for the message a rejected field gets. */
@@ -368,9 +373,10 @@ function check(name: ValeCheckType, fields: readonly string[]) {
 /**
  * The two checks that validate nothing.
  *
- * Measured: `bananafield: true` on a `consistency` or a `spelling` rule loads
- * without complaint and is ignored. They do not use the strict decode the other
- * ten do, so the binary raises no `E201` for a foreign field there.
+ * Derived by offering every check a sentinel key no check has: `consistency`
+ * and `spelling` load without complaint and ignore it. They do not use the
+ * strict decode the other ten do, so the binary raises no `E201` for a foreign
+ * field there.
  *
  * `z.looseObject` follows the binary rather than the docs. Being strict here
  * would reject rules that work — the "too strict" direction — to catch a typo
@@ -381,60 +387,21 @@ function permissiveCheck(name: ValeCheckType) {
   return z.looseObject({ ...commonFields, extends: z.literal(name) });
 }
 
-export const VALE_PERMISSIVE_CHECKS: readonly ValeCheckType[] = [
-  "consistency",
-  "spelling",
-];
-
 /**
- * The per-check field tables, measured by adding each candidate to a minimal
- * rule of that check and watching for `E201: has invalid keys`.
+ * The per-check field tables, derived rather than transcribed.
  *
- * Kept as a table rather than inlined into the union below, because this *is*
- * the measurement — the union is only how it gets enforced. Three entries
- * contradict Vale's published docs, and the binary wins: `capitalization` takes
- * `prefix` **singular** and rejects `prefixes` and `suffixes`; `capitalization`
- * rejects `ignorecase`; `occurrence` rejects `exceptions` and `vocab`.
+ * Each name here was proposed by the generator's candidate list, added to a
+ * minimal working rule of that check, and confirmed by the binary. Three
+ * entries contradict Vale's published docs and the binary wins:
+ * `capitalization` takes `prefix` **singular** and rejects `prefixes` and
+ * `suffixes`; `capitalization` rejects `ignorecase`; `occurrence` rejects
+ * `exceptions` and `vocab`. All three names stay in the generator's candidate
+ * list precisely so that those stay recorded findings rather than omissions.
  *
  * `consistency` and `spelling` are absent on purpose — see
  * {@link permissiveCheck}.
  */
-const CHECK_FIELDS = {
-  existence: [
-    "tokens",
-    "raw",
-    "ignorecase",
-    "nonword",
-    "exceptions",
-    "append",
-    "vocab",
-  ],
-  substitution: [
-    "swap",
-    "ignorecase",
-    "nonword",
-    "exceptions",
-    "capitalize",
-    "pos",
-    "vocab",
-  ],
-  capitalization: [
-    "match",
-    "style",
-    "exceptions",
-    "threshold",
-    "indicators",
-    "prefix",
-    "vocab",
-  ],
-  occurrence: ["token", "max", "min", "ignorecase"],
-  repetition: ["tokens", "alpha", "ignorecase", "exceptions", "max", "vocab"],
-  conditional: ["first", "second", "exceptions", "ignorecase", "vocab"],
-  metric: ["formula", "condition"],
-  readability: ["metrics", "grade"],
-  sequence: ["tokens", "ignorecase"],
-  script: ["script"],
-} as const;
+const CHECK_FIELDS = VALE_CHECK_FIELDS;
 
 /**
  * The `E201` class, as schema shape.
@@ -527,6 +494,70 @@ function fatalShapeMessages(
   }
 
   return fatal;
+}
+
+/**
+ * The union's members, spelled out, and the guard that keeps them honest.
+ *
+ * They are spelled out rather than mapped over {@link CHECK_FIELDS} because
+ * that is what carries each `z.literal` into {@link ValeRule}; a mapped union
+ * infers `extends: string` and the type stops saying anything. The cost is
+ * that this list is hand-maintained while the vocabulary it draws from is
+ * derived — so a Vale release that adds or renames a check type would leave a
+ * member missing here, and the schema would reject a rule the binary runs.
+ *
+ * This block closes that gap at import: every derived check type must appear
+ * below exactly once, and must be classified as either strict or permissive.
+ * The failure is then a sentence naming the check, rather than a rule that
+ * mysteriously stops verifying six months later.
+ */
+const UNION_MEMBERS = [
+  "existence",
+  "substitution",
+  "capitalization",
+  "occurrence",
+  "repetition",
+  "conditional",
+  "metric",
+  "readability",
+  "sequence",
+  "script",
+  "consistency",
+  "spelling",
+] as const;
+
+{
+  const spelled = new Set<string>(UNION_MEMBERS);
+  const derived = new Set<string>(VALE_CHECK_TYPES);
+  const missing = [...derived].filter((name) => !spelled.has(name));
+  const extra = [...spelled].filter((name) => !derived.has(name));
+  const permissive = new Set<string>(VALE_PERMISSIVE_CHECKS);
+  const unclassified = [...derived].filter(
+    (name) => !permissive.has(name) && !(name in CHECK_FIELDS)
+  );
+
+  if (missing.length > 0) {
+    throw new Error(
+      `Vale ${PINNED_VALE_VERSION} has a ${missing.join(", ")} check and the schema's ` +
+        `union does not, so every rule extending it would be rejected. Add ` +
+        `the member in src/schemas/vale-rule.ts.`
+    );
+  }
+  if (extra.length > 0) {
+    throw new Error(
+      `the schema's union has a ${extra.join(", ")} member and Vale ` +
+        `${PINNED_VALE_VERSION} has no such check, so those rules would verify clean ` +
+        `and then fail the whole run. Remove the member in ` +
+        `src/schemas/vale-rule.ts.`
+    );
+  }
+  if (unclassified.length > 0) {
+    throw new Error(
+      `${unclassified.join(", ")} is in neither the derived field tables nor ` +
+        `the permissive set, so there is nothing to build a union member from. ` +
+        `Re-run the generator: pnpm generate:vale-schema.`
+    );
+  }
 }
 
 const valeBodySchema = z
