@@ -11,6 +11,7 @@ import {
   TASKLESS_REQUIRED_FIELDS,
   findRegexWithoutKind,
 } from "../schemas/ast-grep-rule";
+import { pathPrefixed, schemaLayer } from "../schemas/layer";
 import { ensureTasklessDirectory } from "../filesystem/directory";
 import { assembleSgConfig } from "./assemble";
 import {
@@ -104,14 +105,11 @@ export function getSchemaPayload(): Record<string, unknown> {
 // --- Layer 1: Schema validation ---
 
 function validateSchema(ruleData: unknown): LayerResult {
-  const result = astGrepRuleSchema.safeParse(ruleData);
-  if (result.success) {
-    return { valid: true, errors: [] };
-  }
-  const errors = result.error.issues.map(
-    (issue) => `${issue.path.join(".")}: ${issue.message}`
-  );
-  return { valid: false, errors };
+  // Shared with the Vale path, so a rule that fails validation fails the same
+  // way whichever engine wrote it. `pathPrefixed` is the half that differs:
+  // ast-grep's messages come from an upstream JSON Schema and are generic
+  // ("expected string"), so the path is what makes them actionable.
+  return schemaLayer(astGrepRuleSchema.safeParse(ruleData), pathPrefixed);
 }
 
 // --- Layer 2: Taskless requirements ---
