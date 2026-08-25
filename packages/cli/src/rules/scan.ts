@@ -164,6 +164,18 @@ const EXCLUDED_DIRECTORIES = [TASKLESS_DIRECTORY, GIT_DIRECTORY] as const;
  * measured to pull `dist/` into the scan — a rule has no business reporting
  * findings in build output or vendored dependencies.
  *
+ * That omission is the whole of this engine's `.gitignore` handling, and it is
+ * load-bearing rather than incidental: ast-grep's walker is the `ignore` crate,
+ * so leaving `vcs` off is what keeps a bare scan out of `worktrees/`, `dist/`
+ * and vendored trees. Re-measured for taskless/cli#166 against 0.41.0 — a bare
+ * scan reports nothing under a gitignored `worktrees/probe/`, and nothing under
+ * a hidden-*and*-ignored `packages/cli/.turbo/` either, which is the case that
+ * would show up if `--no-ignore hidden` had ever disabled more than hidden-file
+ * skipping. Vale, which honors none of this, is handed the same set explicitly;
+ * see `rules/git-ignored.ts` for why the two engines need different amounts of
+ * help to agree. `test/check-gitignore.test.ts` pins both sides, so a later
+ * edit to this argv cannot quietly hand the ignored tree back to the scan.
+ *
  * **A `--globs` exclusion of `.taskless/`**, when we are the ones who chose to
  * walk the whole project. That directory is hidden, so it was never scanned
  * before and reaching it is not a fix: it is CLI-managed config the user did
