@@ -35,7 +35,6 @@ Available `taskless agent` topics: `route`, `create-sg-rule`, `create-vale-rule`
 The `@taskless/cli` package provides a CLI agent for Taskless workflows. It's recommended to always call the `latest` tag unless you know you need a specific version:
 
 ```bash
-pnpm dlx @taskless/cli@latest info
 npx @taskless/cli@latest info
 ```
 
