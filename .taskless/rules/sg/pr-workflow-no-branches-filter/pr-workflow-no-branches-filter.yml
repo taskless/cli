@@ -1,4 +1,4 @@
-id: no-pull-request-branches-filter
+id: pr-workflow-no-branches-filter
 language: Yaml
 severity: error
 message: A pull_request trigger must not carry a branches filter.
