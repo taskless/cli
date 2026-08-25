@@ -449,14 +449,21 @@ const CHECK_FIELDS = {
  *
  * These are not field-table facts, which is why they sit apart from the union:
  * every key involved is a legal field of its check. It is the *shape* that is
- * fatal. Measured against Vale 3.18.0, each of the three below ends the process
- * with a Go stack trace —
+ * fatal. Measured against Vale 3.18.0, each of the shapes below ends the
+ * process with a Go stack trace. The two `sequence` shapes fail while the rule
+ * is compiled:
  *
  * ```
  * panic: interface conversion: interface {} is nil, not []interface {}
  * ```
  *
- * — which is a wider blast radius than `E201`. An `E201` is at least a
+ * and the `metric` shape fails later, while the rule runs on a document:
+ *
+ * ```
+ * panic: interface conversion: interface {} is float64, not bool
+ * ```
+ *
+ * Either is a wider blast radius than `E201`. An `E201` is at least a
  * diagnostic naming a file and a line; a panic is a stack trace with no rule
  * name in it, no findings for any rule, and nothing an author can act on. This
  * is the last place `verify` can say anything useful at all.
@@ -493,18 +500,30 @@ function fatalShapeMessages(
     }
   }
 
-  if (
-    rule.extends === "metric" &&
-    rule.formula !== undefined &&
-    rule.condition === undefined
-  ) {
-    fatal.push({
-      path: ["condition"],
-      message:
-        "a metric check with a 'formula' also needs a 'condition'. Vale " +
-        "panics on a formula it has nothing to compare, ending the run with " +
-        "a Go stack trace and no findings for any rule in the project.",
-    });
+  if (rule.extends === "metric" && rule.formula !== undefined) {
+    // Structural, like the `sequence` arm above, because "was the key
+    // supplied" is the wrong question. Measured against 3.18.0, the panic
+    // follows the *value*: an absent `condition`, a `condition:` written with
+    // no value (YAML parses that to null, which is not `undefined`), and a
+    // blank string all reach the same panic. Other types are not this guard's
+    // business: `condition: 5`, a list, a map, or a bool fails the decode
+    // cleanly with an `E201`, which is a diagnostic an author can read.
+    const condition = rule.condition;
+    const unusable =
+      condition === undefined ||
+      condition === null ||
+      (typeof condition === "string" && condition.trim() === "");
+    if (unusable) {
+      fatal.push({
+        path: ["condition"],
+        message:
+          "a metric check with a 'formula' also needs a 'condition' holding " +
+          "a comparison, such as '> 1'. An absent, empty, or blank one is " +
+          "the same thing to Vale: it panics on a formula it has nothing to " +
+          "compare, ending the run with a Go stack trace and no findings for " +
+          "any rule in the project.",
+      });
+    }
   }
 
   return fatal;
