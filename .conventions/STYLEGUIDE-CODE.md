@@ -124,7 +124,7 @@ interface GitHubComment {
 
 ### Export Types Referenced by Public API Signatures
 
-**DO NOT** remove `export` from types that are transitively referenced by exported functions, values, or other exported types — even if tools like knip report them as "unused exports." With `declaration: true` in `tsconfig`, TypeScript requires all types in exported signatures to be exported themselves.
+**DO NOT** remove `export` from types that are transitively referenced by exported functions, values, or other exported types, even if tools like knip report them as "unused exports." With `declaration: true` in `tsconfig`, TypeScript requires all types in exported signatures to be exported themselves.
 
 Before removing an `export` from a type, check whether any exported function or value references it in its signature (parameters, return types, or fields of other exported types).
 
@@ -150,7 +150,7 @@ interface LayerResult { ... }  // breaks declaration emit for VerifyResult
 
 - Knip tracks direct import usage, not transitive type reachability through exported signatures
 - Removing these exports causes `declaration: true` to fail with "exported function has or is using private name" errors
-- The fix is tedious — each type must be re-exported individually, often across multiple review cycles
+- The fix is tedious: each type must be re-exported individually, often across multiple review cycles
 
 ## Cross-Worker Durable Object Access
 
@@ -201,7 +201,7 @@ import type { UserDO, GitHubOrganizationDO } from "@taskless/storage";
 
 ### Verify Build Output In The Build, Not By Parsing It
 
-**A failing build is still a valid test — of the build.** When an invariant is about a build artifact, enforce it where the artifact is produced. If a bundle must not contain something, the build should refuse to emit it, rather than emitting it and leaving a test to go looking afterwards. An invariant enforced at production time cannot be violated; one enforced afterwards can only be detected.
+**A failing build is still a valid test of the build.** When an invariant is about a build artifact, enforce it where the artifact is produced. If a bundle must not contain something, the build should refuse to emit it, rather than emitting it and leaving a test to go looking afterwards. An invariant enforced at production time cannot be violated; one enforced afterwards can only be detected.
 
 **DO NOT** reconstruct a fact about generated output by parsing that output.
 
@@ -240,7 +240,7 @@ for (const specifier of specifiers) {
 }
 ```
 
-**Tests that _use_ a built artifact are fine.** Importing the built entry and asserting on its behavior, or spawning the built CLI and asserting on its output, are ordinary tests. The rule is not "tests must not touch build output" — it is that tests must not re-derive what the build already knew.
+**Tests that _use_ a built artifact are fine.** Importing the built entry and asserting on its behavior, or spawning the built CLI and asserting on its output, are ordinary tests. The rule is not "tests must not touch build output". It is that tests must not re-derive what the build already knew.
 
 ```typescript
 // ✅ Fine - uses the artifact, asserts on behavior
@@ -252,19 +252,19 @@ const { stdout } = await execFileAsync("node", [builtCli, "help"]);
 expect(stdout).toContain("Usage:");
 ```
 
-**Do not add a dependency in order to test an assertion.** If a test needs a parser to make sense of an artifact, that is the signal the check is in the wrong place — the generator already has the structured data. Reach for a new devDependency only when several tests need it and nothing in the existing toolchain can answer the question.
+**Do not add a dependency in order to test an assertion.** If a test needs a parser to make sense of an artifact, that is the signal the check is in the wrong place: the generator already has the structured data. Reach for a new devDependency only when several tests need it and nothing in the existing toolchain can answer the question.
 
-**Worked example.** `packages/cli/test/prompts.test.ts` asserted that the built `dist/prompts.js` chunk graph never reaches the CLI entry or a host capability, by regex-scanning the built JavaScript for `from "…"` to reconstruct the import graph. A built chunk embeds every help recipe as a string literal, and the `engine-selection` recipe contains the phrase `a different axis from "which engine"` — so the scan reported `dist/prompts.js graph imports which engine`. Prose was read as an import.
+**Worked example.** `packages/cli/test/prompts.test.ts` asserted that the built `dist/prompts.js` chunk graph never reaches the CLI entry or a host capability, by regex-scanning the built JavaScript for `from "…"` to reconstruct the import graph. A built chunk embeds every help recipe as a string literal, and the `engine-selection` recipe contains the phrase `a different axis from "which engine"`, so the scan reported `dist/prompts.js graph imports which engine`. Prose was read as an import.
 
 The fixes that did not work, and why:
 
-| Attempt                                                          | Why it was rejected                                                                                                                                                                                                                                                                                 |
-| ---------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Filter candidates by specifier shape (`/^(?:node:)?[@\w./-]+$/`) | Passed only because that phrase contains a space. Measured against the real bundle the regex yields `["which engine"]` and the filter drops it — but `differs from "static-tier"` is a bare hyphenated name with no whitespace and would have been reported. The guard held by luck of punctuation. |
-| Add `es-module-lexer` as a devDependency                         | Parsed the graph correctly, but bought a dependency — and a second major version, since vite already pulls 1.7.0 transitively — to serve a single test.                                                                                                                                             |
-| Anchor the regex to line-start                                   | Matched the lexer exactly on today's bundles, but required `from` on the same line as `import`. A future bundler that wrapped a long import would silently stop detecting real imports — trading a loud false positive for a quiet false negative in the guard whose entire job is catching a leak. |
+| Attempt                                                          | Why it was rejected                                                                                                                                                                                                                                                                                |
+| ---------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Filter candidates by specifier shape (`/^(?:node:)?[@\w./-]+$/`) | Passed only because that phrase contains a space. Measured against the real bundle the regex yields `["which engine"]` and the filter drops it, but `differs from "static-tier"` is a bare hyphenated name with no whitespace and would have been reported. The guard held by luck of punctuation. |
+| Add `es-module-lexer` as a devDependency                         | Parsed the graph correctly, but bought a dependency, and a second major version since vite already pulls 1.7.0 transitively, to serve a single test.                                                                                                                                               |
+| Anchor the regex to line-start                                   | Matched the lexer exactly on today's bundles, but required `from` on the same line as `import`. A future bundler that wrapped a long import would silently stop detecting real imports, trading a loud false positive for a quiet false negative in the guard whose entire job is catching a leak. |
 
-The resolution: rollup's `OutputChunk` already exposes `imports` and `dynamicImports` — the exact resolved graph. The check moved into a vite plugin that fails the build, and the test was deleted.
+The resolution: rollup's `OutputChunk` already exposes `imports` and `dynamicImports`, the exact resolved graph. The check moved into a vite plugin that fails the build, and the test was deleted.
 
 The same reasoning forbids adding a YAML parser to assert on generated config, or an HTML parser to assert on rendered output. In each case the generator knows the answer and the test is guessing at it.
 
@@ -272,7 +272,7 @@ The same reasoning forbids adding a YAML parser to assert on generated config, o
 
 - An invariant enforced at production time cannot be violated; one enforced afterwards can only be detected
 - Parsing generated text reconstructs information the generator already had, using a weaker tool
-- A check that needs a parser is a check in the wrong place — move it to where the structured data lives
+- A check that needs a parser is a check in the wrong place; move it to where the structured data lives
 - A build that fails is a faster, earlier signal than a test that fails, and it cannot be skipped
 - Regexes over generated output are brittle in the worst direction: they break on content that merely resembles code, and they quietly stop matching when the generator's formatting changes
 
