@@ -12,7 +12,7 @@ families — plus a divergence report. `src/schemas/vale-rule.ts` imports it and
 stays what it was: the zod layer, the scope grammar, and the error messages that
 explain blast radius to an author. Nothing about `verify`'s behavior changes; all
 86 existing corpus rows pass against the generated schema unmodified, and two
-were added for ground the generation newly measured.
+were added to cover ground the generation newly measured.
 
 What a transcription lost was not the answer but the question. Every value in the
 previous schema _was_ measured — by a script that was then discarded, leaving the
