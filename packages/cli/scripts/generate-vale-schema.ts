@@ -57,6 +57,8 @@ import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import type { ValeConfigError } from "../src/rules/vale/map.js";
+
 const scriptDirectory = dirname(fileURLToPath(import.meta.url));
 const PACKAGE_ROOT = resolve(scriptDirectory, "..");
 const OUTPUT_PATH = resolve(
@@ -85,6 +87,7 @@ const REPORT_PATH = resolve(
  */
 const { findValeBinary } = await import("../src/rules/vale/binary.js");
 const { VALE_VERSION } = await import("../src/rules/capabilities.js");
+const { asValeConfigError } = await import("../src/rules/vale/map.js");
 
 const resolution = findValeBinary();
 if (resolution.path === undefined) {
@@ -110,15 +113,6 @@ const VALE = resolution.path;
 
 // --- The probe ---------------------------------------------------------------
 
-/** Vale's structured diagnostic, as `--output=JSON` writes it to stderr. */
-interface ValeDiagnostic {
-  Line: number;
-  Path: string;
-  Text: string;
-  Code: string;
-  Span: number;
-}
-
 /**
  * What one run of the binary did, as a closed set of outcomes.
  *
@@ -129,7 +123,7 @@ interface ValeDiagnostic {
  */
 type ProbeOutcome =
   | { kind: "clean"; findings: number }
-  | { kind: "diagnostic"; diagnostic: ValeDiagnostic }
+  | { kind: "diagnostic"; diagnostic: ValeConfigError }
   | { kind: "panic"; trace: string }
   | {
       kind: "unrecognized";
@@ -147,6 +141,20 @@ type ProbeOutcome =
  *
  * `--no-exit` suppresses the non-zero status Vale returns merely for *finding*
  * something, so a non-zero status here means the config itself failed.
+ *
+ * **This config is the sibling of `buildIsolatingConfig` in
+ * `src/rules/vale/verify.ts`, and the two are kept deliberately separate.**
+ * They share three load-bearing details, documented there: `MinAlertLevel =
+ * suggestion`, an empty `BasedOnStyles =`, and exactly one assignment of the
+ * enabled key in exactly one matcher. They differ on the fourth, which is why
+ * this is not a call to that function: `buildIsolatingConfig` needs an
+ * absolute `StylesPath` because it writes its config to a temp directory while
+ * the styles stay in the user's `.taskless/rules/vale/<id>` tree, whereas this
+ * probe owns the whole temp directory and points at a `styles/probe/probe.yml`
+ * beside the config. Reuse would mean staging a fake `.taskless` layout in tmp
+ * just to satisfy a path convention no probe has. If a future requirement is
+ * discovered against either recipe (another key Vale needs to isolate a rule),
+ * apply it to both.
  */
 function probe(
   rule: string,
@@ -213,8 +221,14 @@ function probe(
  * returns `undefined` and becomes {@link ProbeOutcome} `unrecognized`, which
  * every caller treats as fatal. That is the point: an unreadable diagnostic
  * must never be mistaken for a clean run.
+ *
+ * The shape check itself is {@link asValeConfigError}, the one the CLI already
+ * runs over the same payload at runtime. Deriving against a second local copy
+ * of `{Code, Text, ...}` would mean a future change to Vale's diagnostic
+ * envelope has to be found twice, and nothing would report the half that was
+ * missed.
  */
-function readDiagnostic(stderr: string): ValeDiagnostic | undefined {
+function readDiagnostic(stderr: string): ValeConfigError | undefined {
   const trimmed = stderr.trim();
   if (trimmed === "") return undefined;
   let parsed: unknown;
@@ -223,16 +237,7 @@ function readDiagnostic(stderr: string): ValeDiagnostic | undefined {
   } catch {
     return undefined;
   }
-  const first: unknown = Array.isArray(parsed) ? parsed[0] : parsed;
-  if (typeof first !== "object" || first === null) return undefined;
-  const candidate = first as Partial<ValeDiagnostic>;
-  if (
-    typeof candidate.Text !== "string" ||
-    typeof candidate.Code !== "string"
-  ) {
-    return undefined;
-  }
-  return candidate as ValeDiagnostic;
+  return asValeConfigError(Array.isArray(parsed) ? parsed[0] : parsed);
 }
 
 /**
