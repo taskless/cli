@@ -171,6 +171,26 @@ function globExtensions(glob: string): string[] {
 }
 
 /**
+ * The glob string out of one `files:` entry, in either shape ast-grep accepts.
+ *
+ * `RuleFileGlob` is `anyOf` a bare pattern string and `{ glob, caseInsensitive? }`
+ * (see `src/generated/ast-grep-rule-schema.json`), and `assemble.ts` passes
+ * `files:` through untouched, so both shapes reach the binary as written.
+ * Reading only the string form would leave the object form scanning nothing,
+ * which is a silent pass rather than a missed error message: the check below
+ * fires on what a glob *names*, so an entry it cannot read looks exactly like
+ * an entry that names nothing.
+ */
+function globPattern(entry: unknown): string | undefined {
+  if (typeof entry === "string") return entry;
+  if (typeof entry === "object" && entry !== null && "glob" in entry) {
+    const { glob } = entry as { glob: unknown };
+    if (typeof glob === "string") return glob;
+  }
+  return undefined;
+}
+
+/**
  * The `language:` field, against what ast-grep will actually do with it.
  *
  * Nothing else in the pipeline asks. The vendored JSON Schema types the field
@@ -237,7 +257,8 @@ function validateLanguage(ruleData: Record<string, unknown>): {
     const siblingLanguage = own === "ts" ? "Tsx" : "TypeScript";
     const named = new Set(
       files
-        .filter((glob): glob is string => typeof glob === "string")
+        .map((entry) => globPattern(entry))
+        .filter((glob): glob is string => glob !== undefined)
         .flatMap((glob) => globExtensions(glob))
     );
     if (named.has(sibling)) {

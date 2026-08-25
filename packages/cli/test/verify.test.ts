@@ -552,6 +552,38 @@ describe("verifyRule", () => {
       );
     });
 
+    it("reads the object form of a files: entry", async () => {
+      // `RuleFileGlob` is a string OR `{ glob, caseInsensitive? }`, and
+      // assemble.ts passes `files:` to ast-grep untouched, so both shapes run.
+      // Reading only the string form makes the object form scan nothing, which
+      // looks identical to a rule whose globs name no extension: no error, no
+      // notice, and the wrong-parser trap goes unreported.
+      await ruleWithLanguage(temporaryDirectory, "TypeScript", {
+        files: [{ glob: "src/**/*.tsx" }],
+      });
+      const result = await verifyRule(temporaryDirectory, "no-eval", {
+        runTests: false,
+      });
+      expect(result.schema.valid).toBe(false);
+      expect(result.schema.errors.join("\n")).toContain(
+        "every glob names .tsx, but language is TypeScript"
+      );
+    });
+
+    it("mixes the two files: shapes in one rule", async () => {
+      // Nothing requires an author to pick one form, and `caseInsensitive`
+      // is the reason to reach for the object one. Half the scope is dead, so
+      // this is the notice case, exactly as it is for two plain strings.
+      await ruleWithLanguage(temporaryDirectory, "TypeScript", {
+        files: ["src/**/*.ts", { glob: "src/**/*.TSX", caseInsensitive: true }],
+      });
+      const result = await verifyRule(temporaryDirectory, "no-eval", {
+        runTests: false,
+      });
+      expect(result.schema.valid).toBe(true);
+      expect(result.schema.notice).toContain("some globs name .tsx");
+    });
+
     it("leaves a missing language to the required-fields layer", async () => {
       // Reported once, in the layer that owns it. Two messages for one
       // omission only makes the useful one harder to find.
