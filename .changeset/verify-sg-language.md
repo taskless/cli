@@ -26,3 +26,7 @@ rejected, since ast-grep accepts them itself: `typescript`, `TYPESCRIPT` and
 `ts` all reach TypeScript. They get a notice naming the canonical spelling, so
 rules already written the lowercase way — including the ones in this
 repository — keep passing.
+
+The `files:` scan reads both shapes ast-grep allows for a glob entry, the plain
+string and the `{ glob, caseInsensitive }` object, so the wrong-parser check is
+not silently skipped for rules written the second way.
