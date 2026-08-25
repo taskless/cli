@@ -104,10 +104,11 @@ it.
    `extends` outside the set is not a rule that misbehaves: Vale exits 2
    and **every** Vale rule in the project goes unreported for that run.
 
-   **Nine of them have a worked rule at the end of this recipe**, each
-   with the near-miss that fails and why. Read the one closest to your
-   intent before writing anything — the mistakes documented there are
-   observed, and most of them fail silently.
+   **The other seven have a worked rule at the end of this recipe**,
+   nine rules between them, each with the near-miss that fails and why.
+   Read the one closest to your intent before writing anything — the
+   mistakes documented there are observed, and most of them fail
+   silently.
 
 2. **Write the style file** to
    `.taskless/rules/vale/<id>/<id>.yml`, where `<id>` is kebab-case and
@@ -129,7 +130,14 @@ it.
 | `scope`   | no       | narrow to part of a document — see below      |
 | `link`    | no       | a URL the reader can follow for the reasoning |
 | `limit`   | no       | cap findings from this rule per scope         |
-| `vocab`   | no       | `false` opts the rule out of `Vocab` filtering |
+
+   **`vocab` is not one of these.** It reads as though it were, but it is
+   a per-check field: measured, only `existence`, `substitution`,
+   `capitalization`, `conditional` and `repetition` accept it, and
+   `occurrence`, `metric`, `readability`, `script` and `sequence` reject
+   it. On one of those five it raises `E201` and takes every other Vale
+   rule in the project down with it. It is listed with the per-check
+   fields below.
 
    **The file extension must be `.yml`.** Measured: rename a working
    style file to `.yaml` and Vale loads nothing — no error, no warning,
@@ -224,13 +232,13 @@ it.
 
 | extends          | its fields                                                                   |
 |------------------|------------------------------------------------------------------------------|
-| `existence`      | `tokens` (a list) or `raw`; `ignorecase`, `nonword`, `exceptions`, `append`  |
-| `substitution`   | `swap` (a map of observed → expected); `ignorecase`, `nonword`, `exceptions`, `capitalize`, `pos` |
-| `capitalization` | `match`; `style` (with `$title`), `exceptions`, `threshold`, `indicators`, `prefix` |
+| `existence`      | `tokens` (a list) or `raw`; `ignorecase`, `nonword`, `exceptions`, `append`, `vocab` |
+| `substitution`   | `swap` (a map of observed → expected); `ignorecase`, `nonword`, `exceptions`, `capitalize`, `pos`, `vocab` |
+| `capitalization` | `match`; `style` (with `$title`), `exceptions`, `threshold`, `indicators`, `prefix`, `vocab` |
 | `occurrence`     | `token`, `max` and/or `min`; `ignorecase`                                    |
-| `repetition`     | `tokens`; `alpha`, `ignorecase`, `exceptions`, `max`                         |
+| `repetition`     | `tokens`; `alpha`, `ignorecase`, `exceptions`, `max`, `vocab`                |
 | `consistency`    | `either` (a map of the two acceptable forms); `ignorecase`, `nonword`        |
-| `conditional`    | `first`, `second`; `exceptions`, `ignorecase`                                |
+| `conditional`    | `first`, `second`; `exceptions`, `ignorecase`, `vocab`                       |
 | `metric`         | `formula`, `condition`                                                       |
 | `readability`    | `metrics` (a list of formula names), `grade`                                 |
 | `spelling`       | `aff`, `dic`, `custom`, `filters`, `ignore`, `threshold`                     |
@@ -280,7 +288,7 @@ it.
    *replacement*, not the match, so `"Use GitHub not %%s"` against the text
    `Github` renders `Use GitHub not GitHub`.
 
-   For the other eight, do not guess. Write the message, run step 6, and
+   For the other nine, do not guess. Write the message, run step 6, and
    read it back off the finding — no test you can write catches a wrong
    `%%s`, so your own eyes on the rendered message are the check.
 
