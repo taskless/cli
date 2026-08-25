@@ -69,6 +69,39 @@ export const VALE_COMMON_FIELDS = [
 ] as const;
 
 /**
+ * The keys Vale reads literally, before the case-insensitive field decode.
+ *
+ * Not probed and not discovered. Every base rule the generator runs carries
+ * all three, so they are members of every check by construction. They are
+ * emitted so that the schema's header stage and this generator read one copy
+ * of the fact rather than two hand-typed ones. It is the fact that decides
+ * which spellings survive canonicalisation, so a drift between two copies
+ * would change validation without changing either list visibly.
+ */
+export const VALE_HEADER_FIELDS = ["extends", "level", "message"] as const;
+
+/**
+ * The keys Vale reads off the raw mapping, before the case-insensitive decode.
+ *
+ * Measured per key as a two-run differential: the lowercase spelling runs
+ * clean, and the capitalised one either runs clean too or draws an `E201`.
+ * The set is wider than the three header keys, which is the reason it is
+ * derived instead of written down: `scope` and `name` are read literally as
+ * well, so `Scope: fenced` fails the run where `Tokens:` is simply decoded.
+ *
+ * A consumer must not lowercase these. Doing so turns a rule Vale refuses to
+ * load into one that validates clean, and for `scope` it also routes the value
+ * past the only grammar check it ever gets.
+ */
+export const VALE_LITERAL_KEYS = [
+  "extends",
+  "level",
+  "message",
+  "name",
+  "scope",
+] as const;
+
+/**
  * Each strict check's own fields — its measured table minus the common ones.
  *
  * Membership only: `E201` names the key you got wrong and never the ones you

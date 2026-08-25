@@ -38,9 +38,10 @@ function stylesPath(cwd: string): string {
  *   rule that bit the scoping spec.
  *
  * `scripts/generate-vale-schema.ts` builds a second isolating config for its
- * probes. It cannot call this one, because it owns its whole temp directory
- * and so has no absolute StylesPath to hand over, but it shares the other two
- * details above. A new requirement found here belongs there too.
+ * probes, and `runOne` in `test/vale-schema-contract.test.ts` a third. Neither
+ * can call this one, because each owns its whole temp directory and so has no
+ * absolute StylesPath to hand over, but both share the other two details
+ * above. A new requirement found here belongs in both of them too.
  */
 export function buildIsolatingConfig(cwd: string, ruleId: string): string {
   return [

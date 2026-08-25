@@ -50,6 +50,27 @@ const withVale = binary === undefined ? describe.skip : describe;
 /** Where the corpus rule id lands, and therefore what `verify` would call it. */
 const RULE_ID = "corpus";
 
+/**
+ * Run one corpus rule over its control, in a config isolated from everything
+ * else, and read back a three-way verdict.
+ *
+ * **This is the third copy of the isolating-config recipe**, alongside
+ * `probe()` in `scripts/generate-vale-schema.ts` and `buildIsolatingConfig` in
+ * `src/rules/vale/verify.ts`, whose docstrings cross-reference each other. All
+ * three agree on `MinAlertLevel = suggestion`, an empty `BasedOnStyles =`, and
+ * exactly one assignment of the enabled key in exactly one matcher. This copy
+ * differs from `buildIsolatingConfig` the same way `probe()` does: it owns its
+ * whole temp directory, so it has no absolute `StylesPath` to hand over, and
+ * differs from `probe()` only in naming the style after {@link RULE_ID}, so
+ * that a failure prints the id `verify` would use.
+ *
+ * It stays separate because it answers a different question: `probe()` returns
+ * a probe outcome the generator interprets as evidence about a *key*,
+ * while this returns the accepted/ignored/rejected verdict the differential
+ * compares against the schema. A future requirement discovered against any of
+ * the three recipes (another key Vale needs to isolate a rule) belongs in all
+ * three.
+ */
 function runOne(rule: string, control: string, extension: string): ValeVerdict {
   const cwd = mkdtempSync(join(tmpdir(), "vale-corpus-"));
   try {

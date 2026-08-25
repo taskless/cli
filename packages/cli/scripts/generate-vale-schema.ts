@@ -153,9 +153,12 @@ type ProbeOutcome =
  * `.taskless/rules/vale/<id>` tree, whereas this
  * probe owns the whole temp directory and points at a `styles/probe/probe.yml`
  * beside the config. Reuse would mean staging a fake `.taskless` layout in tmp
- * just to satisfy a path convention no probe has. If a future requirement is
- * discovered against either recipe (another key Vale needs to isolate a rule),
- * apply it to both.
+ * just to satisfy a path convention no probe has.
+ *
+ * `runOne` in `test/vale-schema-contract.test.ts` is a third copy, for the same
+ * reason as this one and differing only in the style name. If a future
+ * requirement is discovered against any of the three recipes (another key Vale
+ * needs to isolate a rule), apply it to all three.
  */
 function probe(
   rule: string,
@@ -515,6 +518,11 @@ function toYaml(rule: Record<string, unknown>): string {
  * Probing them would also be actively unsound: the probe value is arbitrary,
  * and `extends: true` reaches a bare `interface{}` to `string` conversion that
  * panics the process rather than reporting anything.
+ *
+ * Emitted as `VALE_HEADER_FIELDS` rather than kept local, because the schema
+ * needs the same three names to decide which keys survive canonicalisation.
+ * Hand-typing them in both files would put the fact that decides the casing
+ * behaviour in two places with nothing holding them together.
  */
 const HEADER_FIELDS = ["extends", "message", "level"];
 
@@ -665,6 +673,93 @@ for (const check of strictChecks) {
     (field) => !commonFields.includes(field)
   );
 }
+
+// --- Stage 2b: which keys survive a differently-cased spelling ---------------
+
+/**
+ * A value that makes each common field valid on an `existence` rule.
+ *
+ * The casing probe below is a differential, and a differential needs both runs
+ * to differ in exactly one thing. If the value were arbitrary the lowercase
+ * control would fail for reasons of its own, and "the capitalised spelling was
+ * rejected" would stop being a statement about casing. Each value here was
+ * chosen so the lowercase control runs clean, and the script checks that it
+ * does rather than assuming it.
+ */
+const CASING_VALUES: Record<string, unknown> = {
+  action: { name: "remove" },
+  description: "a description",
+  extends: "existence",
+  level: "warning",
+  limit: 1,
+  link: "https://example.test",
+  message: "x %s",
+  name: "a name",
+  scope: "raw",
+};
+
+/**
+ * Build an `existence` rule carrying `field` under the spelling given.
+ *
+ * The three header keys are candidates too, so the default for whichever field
+ * is under test is removed before the spelling is added. That is what lets
+ * `Extends:` be measured at all: the rule it produces has no `extends` key,
+ * which is precisely the state Vale complains about.
+ */
+function casingProbe(field: string, spelling: string): ProbeOutcome {
+  const rule: Record<string, unknown> = {
+    extends: "existence",
+    message: "x %s",
+    level: "warning",
+    tokens: ["simply"],
+  };
+  delete rule[field];
+  rule[spelling] = must(CASING_VALUES[field], `a casing value for '${field}'`);
+  return probe(toYaml(rule), "Just simply do it.\n", "md");
+}
+
+/**
+ * The keys Vale reads literally, measured rather than assumed.
+ *
+ * Vale decodes a check's own fields through a case-insensitive map, so
+ * `Tokens:` means `tokens:`. A handful of keys are read off the raw mapping
+ * before that decode ever runs, and for those a differently-cased spelling is
+ * not a synonym: the literal read finds nothing, and the leftover key then
+ * reaches the field decode as an unknown one and draws an `E201`.
+ *
+ * This is measured because assuming it was wrong. The obvious three are
+ * `extends`, `message` and `level`, and they are not the whole set: `scope`
+ * and `name` are read literally too, so `Scope: fenced` fails the run where
+ * `Tokens:` does not. A schema that lowercased `Scope` to `scope` would accept
+ * a rule Vale refuses to load, and worse, would route it past the scope
+ * grammar that is the only thing checking that value at all.
+ *
+ * The probe is a two-run differential per field: the lowercase spelling must
+ * run clean, and then the capitalised one either runs clean too (decoded) or
+ * draws a diagnostic (read literally). Anything else is fatal rather than
+ * guessed at, because both wrong answers are real: a key wrongly listed here
+ * makes the schema reject a spelling Vale accepts, and a key wrongly omitted
+ * makes it accept one Vale refuses.
+ *
+ * Scope of the claim: the common fields, which is what the schema's
+ * canonicalisation can act on, since it runs before the check type is known.
+ * A per-check field read literally would not be caught here.
+ */
+const literalKeys: string[] = [];
+for (const field of commonFields) {
+  const control = casingProbe(field, field);
+  if (control.kind !== "clean") {
+    fatal(`the lowercase casing control for '${field}'`, control);
+  }
+  const capitalised = field.charAt(0).toUpperCase() + field.slice(1);
+  const variant = casingProbe(field, capitalised);
+  if (variant.kind === "clean") continue;
+  if (variant.kind !== "diagnostic") {
+    fatal(`the '${capitalised}' casing probe`, variant);
+  }
+  literalKeys.push(field);
+}
+console.log(`Keys read literally: ${literalKeys.toSorted().join(", ")}`);
 
 // --- Stage 3: the scope operands ---------------------------------------------
 
@@ -945,7 +1040,14 @@ const SCOPE_CANDIDATES: readonly ScopeCandidate[] = [
 
 type ScopeVerdict = "fires" | "silent" | "unreachable";
 
-/** The reach probe: proves a fixture was linted at all, independent of scope. */
+/**
+ * The reach probe: proves a fixture was linted at all, independent of scope.
+ *
+ * `REACH_PROBE` in `test/vale-corpus.ts` is the same technique over the corpus
+ * controls, with its own token and level. See its docstring for why the two are
+ * separate literals; a change to what makes a reach probe reliable belongs in
+ * both.
+ */
 const REACH_RULE =
   'extends: existence\nmessage: "x %s"\nlevel: error\nscope: raw\nnonword: true\ntokens:\n  - bogus\n';
 
@@ -1186,6 +1288,37 @@ ${literalList(permissiveChecks.toSorted())}
  */
 export const VALE_COMMON_FIELDS = [
 ${literalList(commonFields)}
+] as const;
+
+/**
+ * The keys Vale reads literally, before the case-insensitive field decode.
+ *
+ * Not probed and not discovered. Every base rule the generator runs carries
+ * all three, so they are members of every check by construction. They are
+ * emitted so that the schema's header stage and this generator read one copy
+ * of the fact rather than two hand-typed ones. It is the fact that decides
+ * which spellings survive canonicalisation, so a drift between two copies
+ * would change validation without changing either list visibly.
+ */
+export const VALE_HEADER_FIELDS = [
+${literalList(HEADER_FIELDS.toSorted())}
+] as const;
+
+/**
+ * The keys Vale reads off the raw mapping, before the case-insensitive decode.
+ *
+ * Measured per key as a two-run differential: the lowercase spelling runs
+ * clean, and the capitalised one either runs clean too or draws an \`E201\`.
+ * The set is wider than the three header keys, which is the reason it is
+ * derived instead of written down: \`scope\` and \`name\` are read literally as
+ * well, so \`Scope: fenced\` fails the run where \`Tokens:\` is simply decoded.
+ *
+ * A consumer must not lowercase these. Doing so turns a rule Vale refuses to
+ * load into one that validates clean, and for \`scope\` it also routes the value
+ * past the only grammar check it ever gets.
+ */
+export const VALE_LITERAL_KEYS = [
+${literalList(literalKeys.toSorted())}
 ] as const;
 
 /**

@@ -10,9 +10,23 @@ and emits `src/generated/vale-vocabulary.ts` — twelve check types, three level
 ten per-check field tables, twenty-eight scope operands, two open scope
 families — plus a divergence report. `src/schemas/vale-rule.ts` imports it and
 stays what it was: the zod layer, the scope grammar, and the error messages that
-explain blast radius to an author. Nothing about `verify`'s behavior changes; all
-86 existing corpus rows pass against the generated schema unmodified, and two
-were added to cover ground the generation newly measured.
+explain blast radius to an author. Every corpus row that predates the generation
+passes against the generated schema unmodified, and rows were added to cover
+ground the generation newly measured.
+
+One of those measurements found a real gap. Vale decodes a check's own fields
+case-insensitively, so `Tokens:` means `tokens:`, but a few keys are read off
+the raw mapping before that decode and are not synonyms of their capitalised
+spellings. Assuming that set was the three header keys was wrong: `scope` and
+`name` are read literally too, so `Scope: raw` fails the run with
+`E201 has invalid keys: 'scope'` while the schema, having lowercased it, was
+accepting it. For `scope` that was the worse half of the bug, because
+canonicalising the key also routed the value past the scope grammar, which is
+the only thing that ever inspects it. The set is now derived as a per-key
+two-run differential (the lowercase spelling must run clean; the capitalised one
+either runs clean too or draws a diagnostic) and emitted as
+`VALE_LITERAL_KEYS`, with corpus rows for `Scope:`, `Name:` and, as the contrast
+that keeps them from proving too much, `Tokens:`.
 
 What a transcription lost was not the answer but the question. Every value in the
 previous schema _was_ measured — by a script that was then discarded, leaving the
