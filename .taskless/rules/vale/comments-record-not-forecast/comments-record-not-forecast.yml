@@ -1,0 +1,15 @@
+extends: existence
+message: "'%s' forecasts. Record what was measured, and date the claim."
+level: warning
+ignorecase: true
+tokens:
+  - 'the known incoming'
+  - 'the incoming bump'
+  - 'the upcoming release'
+  - 'in a future release'
+  - 'when we bump'
+  - 'once we upgrade'
+  - 'once we bump'
+  - 'we anticipate'
+  - 'is expected to become'
+  - 'will likely become'

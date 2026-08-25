@@ -13,3 +13,6 @@ worktrees/
 
 # The demo project: deliberately-wrong source and prose fixtures.
 example/
+
+# Taskless rule fixtures: deliberately-wrong prose and source.
+.taskless/
