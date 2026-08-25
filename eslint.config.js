@@ -28,6 +28,12 @@ export default tseslint.config(
       // Zero-dependency CommonJS workflow scripts (covered by their own
       // node:test suite); the app's TS/ESM-oriented rules don't apply.
       ".github/scripts/",
+      // Taskless rule fixtures. A rule's `.tests/` holds inputs written to be
+      // flagged, and a rule about source comments needs `.ts` fixtures
+      // specifically — Vale picks its comments-only tier by extension. They are
+      // not part of any tsconfig, so the type-aware rules fail to parse them.
+      // `taskless verify` and `taskless test` are what keep them honest.
+      ".taskless/",
       // The demo project. Its source is deliberately wrong — `example.cjs`
       // calls `eval` so a rule has something to find — and its fixtures are
       // prose written to be flagged. Linting it fails on content nobody wrote

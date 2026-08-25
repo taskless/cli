@@ -3,16 +3,25 @@
   "install": {
     "targets": {
       ".taskless": {
-        "skills": ["taskless"],
-        "commands": ["tskl.md"],
+        "skills": [
+          "taskless"
+        ],
+        "commands": [
+          "tskl.md"
+        ],
         "mode": "canonical"
       },
       ".claude": {
-        "skills": ["taskless"],
-        "commands": ["tskl.md"],
+        "skills": [
+          "taskless"
+        ],
+        "commands": [
+          "tskl.md"
+        ],
         "mode": "reference"
       }
     },
-    "cliVersion": "0.11.0-20260824213902xf26a7b0"
+    "cliVersion": "0.11.0-20260824213902xf26a7b0",
+    "onboarded": true
   }
 }
