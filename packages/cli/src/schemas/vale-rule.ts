@@ -44,7 +44,9 @@
  * 1. **The header.** Vale reads `extends`, `message` and `level` literally,
  *    before it decodes anything else, and gives up if they are wrong. `scope`
  *    rides along because it is common to all twelve checks and is a grammar
- *    rather than a value.
+ *    rather than a value. It is also, measured, read literally itself, which is
+ *    why the set of literally-read keys is derived rather than assumed to be
+ *    the header three.
  * 2. **The check's own fields**, as a `z.discriminatedUnion` on `extends`.
  *    That is Vale's `E201` class expressed as schema shape: a strict object per
  *    check type, so a field belonging to another one is rejected by the union
@@ -61,7 +63,9 @@ import {
   VALE_CHECK_FIELDS,
   VALE_CHECK_TYPES,
   VALE_COMMON_FIELDS,
+  VALE_HEADER_FIELDS,
   VALE_LEVELS,
+  VALE_LITERAL_KEYS,
   VALE_PERMISSIVE_CHECKS,
   VALE_SCOPE_OPERANDS as DERIVED_SCOPE_OPERANDS,
   VALE_SCOPE_PREFIXES,
@@ -115,16 +119,35 @@ export type ValeCheckType = (typeof VALE_CHECK_TYPES)[number];
 /**
  * The keys Vale reads literally, before the case-insensitive field decode.
  *
- * Measured: `Tokens:` and `ignoreCase:` are read exactly as their lowercase
- * spellings, but `EXTENDS:` fails with "Missing the required 'extends' key" and
- * `Message:` with the same for `message`. `LEVEL: warning` is stranger still —
- * it reaches the field decode as `level`, which the header reader has already
- * removed, so it comes back as `E201 has invalid keys: 'level'`.
+ * Measured, and wider than it looks. `Tokens:` and `ignoreCase:` are read
+ * exactly as their lowercase spellings, but `EXTENDS:` fails with "Missing the
+ * required 'extends' key" and `Message:` with the same for `message`.
+ * `LEVEL: warning` is stranger still: it reaches the field decode as `level`,
+ * which the header reader has already removed, so it comes back as
+ * `E201 has invalid keys: 'level'`. `Scope:` and `Name:` behave the same way.
  *
- * {@link canonicalKeys} reproduces that split, which is why these three are
- * named as a set.
+ * That last pair is why this is a derived set rather than the three header
+ * keys typed out here. `scope` and `name` are ordinary members of every
+ * check's field table, so they look like body fields, and lowercasing them
+ * would have made `Scope: fenced` validate clean against a rule Vale refuses
+ * to load. For `scope` it is worse than an equality of outcomes: the grammar
+ * in {@link scopeMessages} is the only thing that ever inspects that value, and
+ * a canonicalised `Scope` reaches stage 2 as a plain `z.unknown()` field.
+ *
+ * {@link canonicalKeys} reproduces the split, which is why these are named as
+ * a set.
  */
-const HEADER_KEYS = new Set(["extends", "message", "level"]);
+const LITERAL_KEYS = new Set<string>(VALE_LITERAL_KEYS);
+
+/**
+ * The three keys stage 1 gives real types to.
+ *
+ * A subset of {@link LITERAL_KEYS}, and a different statement: these are the
+ * keys Vale needs before it can decode a check at all, so the schema types them
+ * rather than leaving them `unknown`. Generated alongside the rest of the
+ * vocabulary so this file and the generator read one copy of the fact.
+ */
+const TYPED_HEADER_KEYS = new Set<string>(VALE_HEADER_FIELDS);
 
 // --- The scope grammar -------------------------------------------------------
 
@@ -274,6 +297,16 @@ const valeHeaderSchema = z
 
     // `scope` is common to all twelve checks, so it is stated once here rather
     // than repeated across every member of the union below.
+    //
+    // Read case-sensitively, which is the measured behaviour rather than an
+    // oversight. `scope` is one of the keys Vale reads literally, so `Scope:`
+    // is not a synonym for it: the binary fails the run with
+    // `E201 has invalid keys: 'scope'`. {@link LITERAL_KEYS} keeps that
+    // spelling out of canonicalisation, so stage 2's strict object rejects it
+    // exactly as Vale does, and the grammar here never has to guess which
+    // spelling it is looking at. Lowercasing it instead would be the worst of
+    // both: a rule Vale refuses to load would validate clean, having reached
+    // stage 2 as a plain `z.unknown()` field with the grammar below skipped.
     const { scope } = rule;
     if (scope === undefined) return;
     if (typeof scope !== "string" && !Array.isArray(scope)) {
@@ -310,7 +343,7 @@ function canonicalKeys(rule: Record<string, unknown>): Record<string, unknown> {
   const canonical: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(rule)) {
     const lower = key.toLowerCase();
-    canonical[HEADER_KEYS.has(lower) && key !== lower ? key : lower] = value;
+    canonical[LITERAL_KEYS.has(lower) && key !== lower ? key : lower] = value;
   }
   return canonical;
 }
@@ -330,8 +363,17 @@ function canonicalKeys(rule: Record<string, unknown>): Record<string, unknown> {
  * nothing measured.
  */
 const commonFields: Record<string, z.ZodType> = {
+  // The header keys are filtered out rather than left to be overwritten. They
+  // are part of the measured intersection, so an unfiltered spread creates all
+  // three as `z.unknown()` and the typed entries below survive only because a
+  // later key in an object literal wins. That is a real dependency on line
+  // order for the typing of `extends`, `message` and `level`, and nothing in
+  // the shape of the code says so; filtering makes the override the structure
+  // instead of a side effect of it.
   ...Object.fromEntries(
-    VALE_COMMON_FIELDS.map((field) => [field, z.unknown()])
+    VALE_COMMON_FIELDS.filter((field) => !TYPED_HEADER_KEYS.has(field)).map(
+      (field) => [field, z.unknown()]
+    )
   ),
   extends: z.string(),
   message: z.string(),

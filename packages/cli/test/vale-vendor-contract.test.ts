@@ -6,6 +6,7 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { findValeBinary } from "../src/rules/vale/binary";
+import { asValeConfigError } from "../src/rules/vale/map";
 import {
   VALE_COMMENT_EXTENSIONS,
   VALE_CONVERTER_CHECKERS,
@@ -705,7 +706,19 @@ withVale("Vale engine capabilities", () => {
   });
 });
 
-/** The set Vale prints when rejecting an unknown `extends`. */
+/**
+ * The set Vale prints when rejecting an unknown `extends`.
+ *
+ * Structure first, free text second, the same order `enumerateFromBinary` in
+ * `scripts/generate-vale-schema.ts` uses over the same diagnostic, and for the
+ * same reason. This function feeds `VALE_CHECK_TYPES`, which the schema treats
+ * as authoritative, and **a truncated enum is stricter than the binary**: a
+ * loose scan of concatenated `stdout`+`stderr` that half-matched a changed
+ * message would quietly shrink the vocabulary and start rejecting rules Vale
+ * runs. So the exit status, the JSON envelope and the `E201` code are all
+ * checked before the `Text` is read at all, and anything unfamiliar throws
+ * rather than guesses.
+ */
 function enumeratedCheckTypes(): string[] {
   const cwd = project(
     `${header}\n[*.md]\nrules.bogus = YES\n`,
@@ -713,13 +726,55 @@ function enumeratedCheckTypes(): string[] {
     { "doc.md": "Just simply do it.\n" }
   );
   const result = runRaw(cwd, ["doc.md"], ["--no-exit"]);
-  const message = `${result.stdout}${result.stderr}`;
-  const listed = /'extends' key must be one of \[([^\]]+)]/.exec(message);
+  if (result.status === 0) {
+    throw new Error(
+      `Vale ${VALE_VERSION} no longer fails the run over an unknown ` +
+        `'extends'. stdout: ${result.stdout}`
+    );
+  }
+
+  // `asValeConfigError` is the CLI's own guard over this payload, reused
+  // rather than re-stated, so a change to Vale's diagnostic envelope has one
+  // place to be found instead of three.
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(result.stderr.trim());
+  } catch {
+    throw new Error(
+      `Vale ${VALE_VERSION} did not answer an unknown 'extends' with a JSON ` +
+        `diagnostic on stderr: ${result.stderr}`
+    );
+  }
+  const diagnostic = asValeConfigError(
+    Array.isArray(parsed) ? parsed[0] : parsed
+  );
+  if (diagnostic === undefined) {
+    throw new Error(
+      `Vale ${VALE_VERSION} answered with a payload that is not a config ` +
+        `error: ${result.stderr}`
+    );
+  }
+  if (diagnostic.Code !== "E201") {
+    throw new Error(
+      `expected diagnostic code E201 for an unknown 'extends', got ` +
+        `${diagnostic.Code} ("${diagnostic.Text}"). Refusing to read a ` +
+        `vocabulary out of an error shape this test does not know.`
+    );
+  }
+
+  const listed = /^'extends'[^[\]]*\[([^\]]+)]\.?$/.exec(
+    diagnostic.Text.trim()
+  );
   const names = listed?.[1];
   if (names === undefined) {
-    throw new Error(`Vale no longer enumerates its check types: ${message}`);
+    throw new Error(
+      `Vale ${VALE_VERSION} answered "${diagnostic.Text}", which no longer ` +
+        `matches the enumeration shape this test reads. A short enum is ` +
+        `STRICTER than the binary, so a partial parse would start rejecting ` +
+        `rules Vale accepts. Fix the pattern against the new message.`
+    );
   }
-  return names.split(/\s+/).filter(Boolean).toSorted();
+  return names.trim().split(/\s+/).filter(Boolean).toSorted();
 }
 
 /**

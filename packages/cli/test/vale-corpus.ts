@@ -724,6 +724,44 @@ const HEADER: ValeCorpusEntry[] = [
     control: PROSE,
     expected: "rejected",
   },
+  // `scope` and `name` are the rows that make the split measurable rather than
+  // assumed. Both are ordinary members of every check's field table, so they
+  // read like body fields, and both are in fact read literally: Vale answers a
+  // capitalised spelling with `E201 has invalid keys`, not with the silent
+  // synonym `Tokens:` gets. Canonicalising either one to lowercase makes a rule
+  // Vale refuses to load validate clean, and for `scope` it also routes the
+  // value past the grammar that is the only thing checking it.
+  {
+    name: "header/scope-wrong-case-key",
+    construct: "Scope, spelled with a capital",
+    rule: existence("Scope: raw\n"),
+    control: PROSE,
+    expected: "rejected",
+  },
+  {
+    name: "header/scope-wrong-case-key-unknown-operand",
+    construct: "Scope, spelled with a capital, naming a scope Vale lacks",
+    rule: existence("Scope: fenced\n"),
+    control: THREE_PLACES,
+    expected: "rejected",
+  },
+  {
+    name: "header/name-wrong-case-key",
+    construct: "Name, spelled with a capital",
+    rule: existence('Name: "a name"\n'),
+    control: PROSE,
+    expected: "rejected",
+  },
+  // The contrast that keeps the rows above from proving too much: a field that
+  // is NOT read literally is a plain synonym, and rejecting it would be the
+  // too-strict failure against a spelling the binary honors.
+  {
+    name: "header/tokens-wrong-case-key",
+    construct: "Tokens, spelled with a capital",
+    rule: 'extends: existence\nmessage: "x %s"\nlevel: warning\nTokens:\n  - simply\n',
+    control: PROSE,
+    expected: "accepted",
+  },
 ];
 
 export const VALE_CORPUS: readonly ValeCorpusEntry[] = [
@@ -737,5 +775,19 @@ export const VALE_CORPUS: readonly ValeCorpusEntry[] = [
   ...HEADER,
 ];
 
-/** The reach guard's rule: it must fire on every control in the corpus. */
+/**
+ * The reach guard's rule: it must fire on every control in the corpus.
+ *
+ * Same technique as `REACH_RULE` in `scripts/generate-vale-schema.ts`: a
+ * `scope: raw` existence rule with `nonword: true`, used to prove a fixture was
+ * linted at all before any "did not fire" verdict is trusted. The two are
+ * deliberately separate values rather than one shared constant, because the
+ * only things they share are the two fields that make the technique work: the
+ * token differs (`simply`, the word every control here carries, versus the
+ * generator's own `bogus`), and so does the level. A shared constant would have
+ * to be a builder taking both, living in a module reachable from `scripts/` and
+ * `test/` alike, which is more machinery than two one-line literals earn. What
+ * they do share is the technique, so a change to what makes a reach probe
+ * reliable (a field Vale starts requiring, say) belongs in both.
+ */
 export const REACH_PROBE = existence("scope: raw\nnonword: true\n");
