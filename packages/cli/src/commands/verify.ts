@@ -14,6 +14,7 @@ import {
   resolveRulePath,
   RuleNotFoundError,
 } from "../rules/resolve-path";
+import { outputSchema as verifyTestOutputSchema } from "../schemas/verify-test";
 import { makeErrorEnvelope } from "../types/errors";
 
 /**
@@ -37,7 +38,10 @@ async function runOverPath(options: {
 }): Promise<void> {
   const { cwd, target, json, label, run } = options;
 
-  await ensureTasklessDirectory(cwd);
+  // Both commands need a current layout before a path means anything, so this
+  // migrates as a precondition. The report is what lets the run say it did:
+  // carried into the `--json` envelope below, and printed for a person.
+  const migrated = await ensureTasklessDirectory(cwd);
 
   let rules;
   try {
@@ -66,7 +70,15 @@ async function runOverPath(options: {
     // has not written a rule yet, and failing here would make `verify` unusable
     // in CI on a fresh install.
     if (json) {
-      console.log(JSON.stringify({ ok: true, rules: [] }));
+      console.log(
+        JSON.stringify(
+          verifyTestOutputSchema.parse({
+            ok: true,
+            rules: [],
+            ...(migrated === undefined ? {} : { migrated }),
+          })
+        )
+      );
     } else {
       console.log(`No rules found under ${target}.`);
     }
@@ -81,7 +93,15 @@ async function runOverPath(options: {
   const failed = results.filter((result) => !result.ok);
 
   if (json) {
-    console.log(JSON.stringify({ ok: failed.length === 0, rules: results }));
+    console.log(
+      JSON.stringify(
+        verifyTestOutputSchema.parse({
+          ok: failed.length === 0,
+          rules: results,
+          ...(migrated === undefined ? {} : { migrated }),
+        })
+      )
+    );
   } else {
     for (const result of results) {
       const mark = result.ok ? "✓" : "✗";

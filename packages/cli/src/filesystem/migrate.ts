@@ -3,6 +3,7 @@ import { join } from "node:path";
 
 import { CLIError } from "../util/cli-error";
 import type { Migrations } from "./types";
+import { diffSnapshots, snapshotPaths, type TreeChanges } from "./snapshot";
 import init from "./migrations/0001-init";
 import installMigration from "./migrations/0002-install";
 import dropInstalledAt from "./migrations/0003-drop-installed-at";
@@ -158,11 +159,62 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
+/**
+ * What one migration run changed, in a form a caller can print or hand to a
+ * machine consumer.
+ *
+ * The migration is a precondition of `check` and `verify` rather than a side
+ * effect, so it will keep happening automatically. What this makes possible is
+ * for the run that triggered it to *say so*: without a report, a caller reading
+ * `{"success":true}` has no way to learn that the working tree was rewritten
+ * underneath it, and an unexplained diff is left looking like someone else's.
+ */
+export interface MigrationReport {
+  /** Scaffold version found on disk before anything ran. */
+  from: number;
+  /** Scaffold version written on completion. */
+  to: number;
+  /** Every migration applied, in the order they ran. */
+  applied: number[];
+  /** Files the run added, rewrote, or deleted, relative to the project root. */
+  files: TreeChanges;
+}
+
+/** Paths a migration can write, relative to the project root. */
+const WATCHED_PATHS = [".taskless", ".gitignore"];
+
+/** Cap on how many paths the human notice lists before summarizing. */
+const NOTICE_PATH_LIMIT = 20;
+
+/** Render {@link MigrationReport} as the completion notice a person reads. */
+export function formatMigrationNotice(report: MigrationReport): string {
+  const { added, modified, removed } = report.files;
+  const lines = [
+    ...added.map((path) => `  + ${path}`),
+    ...modified.map((path) => `  ~ ${path}`),
+    ...removed.map((path) => `  - ${path}`),
+  ];
+  const total = lines.length;
+  const shown =
+    total > NOTICE_PATH_LIMIT
+      ? [
+          ...lines.slice(0, NOTICE_PATH_LIMIT),
+          `  ... and ${String(total - NOTICE_PATH_LIMIT)} more`,
+        ]
+      : lines;
+  const headline =
+    `Migrated .taskless/ from schema version ${String(report.from)} to ` +
+    `${String(report.to)}: ${String(added.length)} added, ` +
+    `${String(modified.length)} modified, ${String(removed.length)} removed.`;
+  return total === 0 ? headline : [headline, ...shown].join("\n");
+}
+
 export interface RunMigrationsOptions {
   /**
-   * Called once before the first pending migration runs. Defaults to a
-   * bare `console.error` notice. Callers that own their own UI can pass a
-   * custom handler to route the notice through their logger.
+   * Called once before the first pending migration runs and once after the
+   * run completes, the second time with the file-by-file summary. Defaults to
+   * a bare `console.error` notice. Callers that own their own UI can pass a
+   * custom handler to route the notices through their logger.
    */
   onNotice?: (message: string) => void;
   /**
@@ -181,20 +233,24 @@ export interface RunMigrationsOptions {
  * Throws when the manifest's version is *newer* than the highest migration
  * this CLI knows: an older CLI cannot safely read a layout written by a newer
  * one, so it fails loudly rather than half-reading it.
+ *
+ * Returns a {@link MigrationReport} when something ran, and `undefined` when
+ * nothing did. The distinction is the point: a caller must be able to tell
+ * "the tree was rewritten" from "nothing happened" without guessing.
  */
 export async function runMigrations(
   tasklessDirectory: string,
   options: RunMigrationsOptions = {}
-): Promise<void> {
+): Promise<MigrationReport | undefined> {
   const sorted = sortedMigrations(migrations);
-  if (sorted.length === 0) return;
+  if (sorted.length === 0) return undefined;
 
   const maxVersion = sorted.at(-1)![0];
   const { version } = await readRawManifest(tasklessDirectory);
 
   if (version > maxVersion) {
     if (options.allowVersionMismatches ?? hasVersionMismatchOverride()) {
-      return;
+      return undefined;
     }
     throw new CLIError(
       `This project's .taskless/ scaffold is version ${String(version)}, but this CLI only understands version ${String(maxVersion)}. ` +
@@ -204,12 +260,23 @@ export async function runMigrations(
   }
 
   if (version === maxVersion) {
-    return;
+    return undefined;
   }
 
   const pending = sorted.filter(([v]) => v > version);
   const notice = options.onNotice ?? ((message) => console.error(message));
-  notice("Migrating to latest .taskless/ schema...");
+  notice(
+    `Migrating .taskless/ from schema version ${String(version)} to ${String(maxVersion)}...`
+  );
+
+  // Observed rather than self-reported: the migrations write through plain
+  // `fs` calls in five separate modules, and asking each to keep a list of
+  // what it touched would leave the report only as honest as its bookkeeping.
+  // Hashing the tree before and after answers the question the caller is
+  // actually asking, which is what changed on disk.
+  const projectRoot = join(tasklessDirectory, "..");
+  const before = await snapshotPaths(projectRoot, WATCHED_PATHS);
+
   for (const [v, migrate] of pending) {
     try {
       await migrate(tasklessDirectory);
@@ -238,4 +305,16 @@ export async function runMigrations(
     ...latestRaw,
     version: maxVersion,
   });
+
+  const report: MigrationReport = {
+    from: version,
+    to: maxVersion,
+    applied: pending.map(([v]) => v),
+    files: diffSnapshots(
+      before,
+      await snapshotPaths(projectRoot, WATCHED_PATHS)
+    ),
+  };
+  notice(formatMigrationNotice(report));
+  return report;
 }
