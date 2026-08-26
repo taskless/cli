@@ -370,3 +370,70 @@ describe("taskless agent route (absorbed engine reasoning)", () => {
     }
   });
 });
+
+/**
+ * The two guards for #179. `route` omitting the destination is the good path;
+ * the recipe's own check is what holds when an agent reaches it directly, from
+ * a cached plan, or from routing guidance older than the constraint. Neither
+ * is sufficient alone: the first is advisory, the second is late.
+ */
+describe("the GitHub-owner constraint is guarded twice", () => {
+  let cwd: string;
+
+  beforeEach(async () => {
+    cwd = await mkdtemp(join(tmpdir(), "taskless-ghguard-"));
+  });
+
+  afterEach(async () => {
+    await rm(cwd, { recursive: true, force: true });
+  });
+
+  it("route reads ghOwner from the info call it already makes", async () => {
+    const result = await runCli(["agent", "route", "-d", cwd]);
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain("ghOwner");
+    // Read from the payload, not re-derived, so the offer matches what the
+    // CLI enforces.
+    expect(result.stdout).toContain("rather than running `git` yourself");
+  });
+
+  it("route drops remote generation when there is no owner", async () => {
+    const result = await runCli(["agent", "route", "-d", cwd]);
+    expect(result.stdout).toContain("Drop remote generation");
+    expect(result.stdout).toContain("[unknown]");
+  });
+
+  it("route says the omission is not fixable by logging in", async () => {
+    // The failure most likely to be misread as an auth problem. An agent that
+    // sends the user to `auth login` wastes a turn and lands back here.
+    const result = await runCli(["agent", "route", "-d", cwd]);
+    expect(result.stdout).toContain("not fixed by `auth login`");
+  });
+
+  it("the remote recipe guards the constraint itself", async () => {
+    const result = await runCli(["agent", "create-remote-rule", "-d", cwd]);
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain("Check the GitHub owner first");
+    expect(result.stdout).toContain("ghOwner");
+    // Stop before the expensive part, not after it.
+    expect(result.stdout).toContain("stop here");
+  });
+
+  it("the remote recipe documents every code the populations raise", async () => {
+    const result = await runCli(["agent", "create-remote-rule", "-d", cwd]);
+    for (const code of [
+      "NOT_A_GIT_REPOSITORY",
+      "NO_ORIGIN_REMOTE",
+      "UNSUPPORTED_REMOTE_HOST",
+      // Retained for compatibility, so it must stay documented too.
+      "NO_GITHUB_REMOTE",
+    ]) {
+      expect(result.stdout).toContain(code);
+    }
+  });
+
+  it("the remote recipe does not send the user to auth login for it", async () => {
+    const result = await runCli(["agent", "create-remote-rule", "-d", cwd]);
+    expect(result.stdout).toContain("`auth login` does not fix it");
+  });
+});

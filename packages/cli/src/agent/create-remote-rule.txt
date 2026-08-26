@@ -19,9 +19,37 @@ go looking for a second topic to perform the submission.
 ## Preconditions
 - `.taskless/` directory exists.
 - The user is logged in. This path requires auth.
-- The repository has a GitHub origin remote.
+- The project has a GitHub owner. **Check this yourself before collecting
+  anything** — see below.
 - The request reached here through `route`, or through a local attempt
   that failed and a user who confirmed the escalation.
+
+### Check the GitHub owner first
+
+Generation runs against a verifiable org, which comes from a GitHub
+`origin` remote. Run:
+```
+%(TASKLESS_CLI)s info --json
+```
+If `ghOwner` is the literal `[unknown]`, **stop here**. Do not enrich the
+request, do not collect examples, and do not submit: the call cannot
+succeed, and everything before it is wasted work for the user.
+
+Say the tier is unavailable and why, then route to a local recipe:
+`create-sg-rule`, `create-vale-rule`, or `create-legacy-rule` by the
+rule's shape, or `create-runtime-rule` if it is only expressible at
+runtime.
+
+`route` already drops this destination when there is no owner, so
+normally you never arrive here without one. This check is for the times
+that does not hold: reached directly, from a cached plan, or from a copy
+of the routing guidance older than this constraint. An omission upstream
+is advisory; this is the point of use.
+
+**`auth login` does not fix it.** No GitHub owner is a property of the
+project, not the session, so do not send the user to log in for it. The
+four causes are: not a git repository, no `origin` remote, an `origin`
+that is not GitHub, and no git installed.
 
 ## Cost, and when this path is right
 
@@ -127,7 +155,10 @@ With `--json`, failures emit `{ ok: false, code, message }`:
 | code                     | meaning                         | fix                                          |
 |--------------------------|---------------------------------|----------------------------------------------|
 | `AUTH_REQUIRED`          | not logged in                   | fetch `%(TASKLESS_CLI)s agent auth`          |
-| `NO_GITHUB_REMOTE`       | no GitHub origin remote         | tell the user; we cannot proceed             |
+| `NO_GITHUB_REMOTE`       | no GitHub origin remote         | retained for compatibility; treat as below   |
+| `NOT_A_GIT_REPOSITORY`   | not a git repository            | route to a local recipe; `auth login` cannot fix it |
+| `NO_ORIGIN_REMOTE`       | git repository, no `origin`     | route to a local recipe; `auth login` cannot fix it |
+| `UNSUPPORTED_REMOTE_HOST`| `origin` is not GitHub          | route to a local recipe; `auth login` cannot fix it |
 | `INVALID_INPUT`          | `--from` JSON failed validation | re-read the input schema, fix, retry         |
 | `NETWORK_ERROR`          | submit/poll failed              | report and suggest retry                     |
 | `RULE_GENERATION_FAILED` | the service failed to generate  | report the message; suggest enriching prompt |
