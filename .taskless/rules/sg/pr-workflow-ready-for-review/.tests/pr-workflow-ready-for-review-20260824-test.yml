@@ -25,3 +25,6 @@ invalid:
     on:
       pull_request:
         types: [opened, reopened, edited, closed]
+  - |
+    on:
+      pull_request:

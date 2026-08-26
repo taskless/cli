@@ -17,9 +17,26 @@ note: |
   rather than written down: the comment it replaces asked a reader not to
   "fix" the invocation back, which is a request, not a boundary.
 
+  Matched on the FETCH VERBS, not on `npx` alone and not on the package
+  name alone. `npx` is one of several ways to reach a published build:
+  `pnpm dlx @taskless/cli@latest` is the invocation CLAUDE.md names by
+  name, `yarn dlx` is the same thing, and `npm i -g` reaches it in two
+  steps whose install line still names the package. Anchoring to `npx`
+  let every one of those through, including the exact string this
+  repository documents as the thing `pnpm cli` replaces.
+
+  Anchoring to the bare package name is too wide in the other direction,
+  and measurably so: it fires on `pnpm --filter @taskless/cli
+  build:nightly` in `release-cli-nightly.yml`, which is the WORKSPACE
+  package addressed as a filter, not a published install. `pnpm exec
+  @taskless/cli` is out for the same reason — it runs the local binary.
+  What distinguishes a published build is being FETCHED, so the verbs are
+  what the rule matches.
+
   `@taskless/cli-nightly` is deliberately not matched. The nightly IS a
   published artifact by design, and the release workflows reference it on
-  purpose.
+  purpose. The pattern ends before a `-` so the nightly's name cannot
+  match.
 
   Only a `run:` value matches, never a comment: `npx @taskless/cli` appears
   in prose in `validate.yml` and `release-cli-nightly.yml`, explaining this
@@ -43,6 +60,6 @@ rule:
           # block_scalar under `|` or `>`. Both spellings are ordinary in
           # these workflows, so both have to match.
           - kind: flow_node
-            regex: 'npx\s+@taskless/cli($|[@\s])'
+            regex: '(npx|dlx|-g)\s+@taskless/cli($|[@\s])'
           - kind: block_scalar
-            regex: 'npx\s+@taskless/cli($|[@\s])'
+            regex: '(npx|dlx|-g)\s+@taskless/cli($|[@\s])'
