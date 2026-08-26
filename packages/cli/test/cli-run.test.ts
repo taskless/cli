@@ -25,7 +25,7 @@ function fakeTelemetry() {
 const anon = { anonymous: true, loggedIn: false };
 
 describe("emitRunEvents", () => {
-  it("emits exactly one cli_run on success, with no cli_error and no cli_version", () => {
+  it("emits exactly one cli_run on success, with no cli_error and no version property", () => {
     const telemetry = fakeTelemetry();
     emitRunEvents(telemetry, {
       command: "info",
@@ -40,12 +40,13 @@ describe("emitRunEvents", () => {
       expect.objectContaining({
         command: "info",
         success: true,
-        durationMs: 5,
+        duration_ms: 5,
         anonymous: true,
-        loggedIn: false,
+        logged_in: false,
       })
     );
-    // Version rides on the standard cliVersion property, not a cli_version field.
+    // Version rides on the standard cli_version property the telemetry client
+    // attaches, so emitRunEvents must not add one of its own.
     const properties = telemetry.capture.mock.calls[0]![1] as Record<
       string,
       unknown
@@ -112,7 +113,7 @@ describe("emitRunEvents", () => {
     expect(events).not.toContain("cli_error");
   });
 
-  it("reflects an authenticated identity as loggedIn", () => {
+  it("reflects an authenticated identity as logged_in", () => {
     const telemetry = fakeTelemetry();
     emitRunEvents(telemetry, {
       command: "info",
@@ -124,7 +125,7 @@ describe("emitRunEvents", () => {
 
     expect(telemetry.capture).toHaveBeenCalledWith(
       "cli_run",
-      expect.objectContaining({ anonymous: false, loggedIn: true })
+      expect.objectContaining({ anonymous: false, logged_in: true })
     );
   });
 });

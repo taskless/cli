@@ -193,8 +193,8 @@ export async function getTelemetry(cwd?: string): Promise<TelemetryClient> {
       distinctId,
       properties: {
         cli: anonymousId,
-        cliVersion: CLI_VERSION,
-        scaffoldVersion,
+        cli_version: CLI_VERSION,
+        scaffold_version: scaffoldVersion,
         gh_owner: ghOwner,
       },
     });
@@ -217,8 +217,8 @@ export async function getTelemetry(cwd?: string): Promise<TelemetryClient> {
             properties: {
               ...properties,
               cli: anonymousId,
-              cliVersion: CLI_VERSION,
-              scaffoldVersion,
+              cli_version: CLI_VERSION,
+              scaffold_version: scaffoldVersion,
               gh_owner: ghOwner,
             },
             ...(!anonymous && orgSubject !== undefined

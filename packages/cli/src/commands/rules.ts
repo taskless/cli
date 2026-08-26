@@ -289,7 +289,7 @@ const createCommand = defineCommand({
     } finally {
       // Concrete state event: a rule was actually generated and written.
       if (createdRuleCount !== undefined) {
-        telemetry.capture("cli_rule_created", { ruleCount: createdRuleCount });
+        telemetry.capture("cli_rule_created", { rule_count: createdRuleCount });
       }
     }
   },
@@ -528,7 +528,7 @@ const improveCommand = defineCommand({
       // Concrete state event: a rule was actually iterated and rewritten.
       if (improvedRuleCount !== undefined) {
         telemetry.capture("cli_rule_improved", {
-          ruleCount: improvedRuleCount,
+          rule_count: improvedRuleCount,
         });
       }
     }

@@ -52,7 +52,7 @@ export interface RunContext {
 /**
  * Emit the per-invocation telemetry: a single `cli_run` denominator event
  * (always), preceded by `cli_error` only when the command threw. The CLI
- * version is NOT added here — it rides on the standard `cliVersion` property
+ * version is NOT added here — it rides on the standard `cli_version` property
  * the telemetry client attaches to every event.
  */
 export function emitRunEvents(
@@ -71,11 +71,13 @@ export function emitRunEvents(
     telemetry.capture("cli_error", { command: context.command, code });
   }
 
+  // PostHog property names are snake_case; the RunContext fields feeding them
+  // stay camelCase because they are TypeScript, not wire format.
   telemetry.capture("cli_run", {
     command: context.command,
     success: context.success,
-    durationMs: context.durationMs,
+    duration_ms: context.durationMs,
     anonymous: context.anonymous,
-    loggedIn: context.loggedIn,
+    logged_in: context.loggedIn,
   });
 }

@@ -296,21 +296,21 @@ describe("capture", () => {
     expect(captureArgument).not.toHaveProperty("groups");
   });
 
-  it("includes cliVersion and scaffoldVersion on every anonymous capture", async () => {
+  it("includes cli_version and scaffold_version on every anonymous capture", async () => {
     const telemetry = await getTelemetry();
     telemetry.capture("cli_run");
 
     expect(mockCapture).toHaveBeenCalledWith(
       expect.objectContaining({
         properties: expect.objectContaining({
-          cliVersion: expect.any(String) as string,
-          scaffoldVersion: expect.any(Number) as number,
+          cli_version: expect.any(String) as string,
+          scaffold_version: expect.any(Number) as number,
         }) as Record<string, unknown>,
       })
     );
   });
 
-  it("includes cliVersion and scaffoldVersion on authenticated capture", async () => {
+  it("includes cli_version and scaffold_version on authenticated capture", async () => {
     const cwd = await mkdtemp(join(tmpdir(), "taskless-auth-props-"));
     try {
       // Seed a manifest with a known scaffold version
@@ -331,8 +331,8 @@ describe("capture", () => {
         expect.objectContaining({
           groups: { organization: "123" },
           properties: expect.objectContaining({
-            cliVersion: expect.any(String) as string,
-            scaffoldVersion: 2,
+            cli_version: expect.any(String) as string,
+            scaffold_version: 2,
           }) as Record<string, unknown>,
         })
       );
@@ -341,7 +341,7 @@ describe("capture", () => {
     }
   });
 
-  it("falls back to scaffoldVersion: 0 when manifest is missing", async () => {
+  it("falls back to scaffold_version: 0 when manifest is missing", async () => {
     const cwd = await mkdtemp(join(tmpdir(), "taskless-no-manifest-"));
     try {
       const telemetry = await getTelemetry(cwd);
@@ -350,7 +350,7 @@ describe("capture", () => {
       expect(mockCapture).toHaveBeenCalledWith(
         expect.objectContaining({
           properties: expect.objectContaining({
-            scaffoldVersion: 0,
+            scaffold_version: 0,
           }) as Record<string, unknown>,
         })
       );
