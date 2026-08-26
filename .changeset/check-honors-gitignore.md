@@ -15,7 +15,7 @@ directories — a check reporting on files nobody maintains.
 Only one engine was wrong, which is why it was hard to attribute. ast-grep's
 walker is the `ignore` crate and `sgWalkArgv` has always passed `--no-ignore
 hidden` without `vcs`, so a bare scan already skipped `worktrees/`; measured
-against the pinned 0.41.0, it skips a hidden-_and_-ignored `.turbo/` too. Vale
+against ast-grep 0.41.0, it skips a hidden-_and_-ignored `.turbo/` too. Vale
 has no notion of a VCS and walked everything. So the two static engines
 disagreed about which files the project contains, and only the prose findings
 duplicated. On a fixture repository with a worktree present, a bare `check`

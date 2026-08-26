@@ -14,11 +14,12 @@ the `@ast-grep/cli` wrapper from what consumers install.
   placeholder text file where the binary should be under `pnpm dlx`'s strict
   isolation — is out of the shipped product entirely. It stays as a
   `devDependency` because `fetch-ast-grep-schema` reads its version.
-- **Platform packages are pinned exactly at `0.41.0`.** They were carets, and the
-  wrapper had been enforcing alignment implicitly by pinning its own
+- **Platform packages are pinned exactly.** They were carets, and the wrapper
+  had been enforcing alignment implicitly by pinning its own
   `optionalDependencies`; without it, two hosts could resolve different ast-grep
-  versions against the same rules and disagree about findings. Held at `0.41.0`
-  rather than taking upstream's `0.45.0`, so this change stays structural.
+  versions against the same rules and disagree about findings. This change makes
+  the pin explicit without moving the version; the upgrade itself is a separate
+  change.
 - **Binary resolution exhausts every candidate before failing.** It now searches
   the platform package, `node_modules/.bin`, then `sg` and `ast-grep` on `PATH`,
   and throws naming what it tried. Previously it returned a bare `"sg"` and let

@@ -456,11 +456,15 @@ async function fixtureCoverage(
  *
  * The last summary line wins, since only the final one describes the whole run.
  *
- * Stripping first is a precondition, not cosmetics: when stdout IS a TTY,
- * ast-grep colorizes the summary and the escape lands *inside* the phrase
- * being anchored on — `test result: \u001B[32mok\u001B[0m.`. Measured at
- * 0.45.2 a piped run is plain (0.41.0 colorized through a pipe too), so a
- * parser that dropped the stripping would pass in CI and fail interactively.
+ * Stripping is DEFENSIVE here, not load-bearing: `runTests` spawns with
+ * `stdio: ["ignore", "pipe", "pipe"]`, so this parser never reads a TTY, in CI
+ * or interactively. Measured at 0.45.2 a piped run is plain; 0.41.0 colorized
+ * through a pipe too, which is the path the stripping was originally added for.
+ * It stays because the escape lands *inside* the phrase being anchored on
+ * (`test result: \u001B[32mok\u001B[0m.`), so were ast-grep to colorize a pipe
+ * again the anchor would break silently. The vendor-contract case that pins
+ * this under `--color always` documents the BINARY's behaviour; it does not
+ * describe a path this function can reach.
  *
  * The anchor closes the poisoning class rather than just the one reported
  * fixture: echoed source is indented two spaces by ast-grep, so a fixture whose

@@ -57,7 +57,7 @@ export const RULES_DIRECTORY = "rules";
  * ast-grep's `ruleDirs` recurses and parses every `.yml` beneath it as a rule,
  * so a plain `tests/` directory inside a rule directory fails the entire scan
  * with `Fail to parse yaml as RuleConfig: missing field 'language'`. Measured
- * against the pinned ast-grep 0.41.0: `tests/` and `__tests__/` both hard-fail,
+ * against ast-grep 0.41.0: `tests/` and `__tests__/` both hard-fail,
  * a dot-directory is skipped by rule discovery, and `sg test` still reads it
  * when `testDir` names it.
  *
