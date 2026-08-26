@@ -77,7 +77,7 @@ If the user wants the local-only flow (no API call), fetch
    ```
    %(TASKLESS_CLI)s rule improve --from .taskless/.tmp-improve-request.json --json
    ```
-   This may take 30, 60 seconds while the API generates the update.
+   This may take 30-60 seconds while the API generates the update.
 
 9. **Clean up.** Delete `.taskless/.tmp-improve-request.json`
    regardless of success or failure.

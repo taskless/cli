@@ -33,6 +33,14 @@ note: |
   What distinguishes a published build is being FETCHED, so the verbs are
   what the rule matches.
 
+  The verb list covers the long flag and yarn's word form, not just the
+  short one. `-g\s+` cannot fire inside `--global`, because what follows
+  `-g` there is `lobal` rather than whitespace, so `npm install --global
+  @taskless/cli` would have slipped through a `-g`-only pattern. `yarn
+  global add @taskless/cli` carries none of `npx`, `dlx` or a flag at all,
+  which is why `global add` is its own alternative. Both are ordinary ways
+  to install a published package, and both are pinned as invalid fixtures.
+
   `@taskless/cli-nightly` is deliberately not matched. The nightly IS a
   published artifact by design, and the release workflows reference it on
   purpose. The pattern ends before a `-` so the nightly's name cannot
@@ -60,6 +68,6 @@ rule:
           # block_scalar under `|` or `>`. Both spellings are ordinary in
           # these workflows, so both have to match.
           - kind: flow_node
-            regex: '(npx|dlx|-g)\s+@taskless/cli($|[@\s])'
+            regex: '((npx|dlx|-g|--global)\s+|global\s+add\s+)@taskless/cli($|[@\s])'
           - kind: block_scalar
-            regex: '(npx|dlx|-g)\s+@taskless/cli($|[@\s])'
+            regex: '((npx|dlx|-g|--global)\s+|global\s+add\s+)@taskless/cli($|[@\s])'

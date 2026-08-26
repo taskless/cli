@@ -205,7 +205,7 @@ the user explicitly asks to run authenticated commands (e.g.
 ### 9. Report back
 
 Show:
-1. The path written and a 10, 15 line excerpt.
+1. The path written and a 10-15 line excerpt.
 2. For CIs needing manual wiring, the exact `include:` / reference
    line for their main config.
 3. `git status` so they can review before committing.

@@ -105,7 +105,8 @@ authoritative allow-list is the server's; the CI backstop
    with a non-empty `results` array means there are only
    warning/info/hint findings (exit code 0); `success: true` with an
    empty `results` array means the codebase is clean. Findings are
-   never reported via the `{ ok: false, code, message }` envelope , the envelope only appears when the scan itself fails (e.g.
+   never reported via the `{ ok: false, code, message }` envelope:
+   the envelope only appears when the scan itself fails (e.g.
    `SCAN_FAILED`) and the normal results payload is absent.
 
 ## Exit codes

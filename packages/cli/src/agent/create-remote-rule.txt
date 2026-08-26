@@ -120,7 +120,7 @@ Two ways to legitimately be here:
    ```
    %(TASKLESS_CLI)s rule create --from .taskless/.tmp-rule-request.json --json
    ```
-   This may take 30, 60 seconds while the service generates the rule.
+   This may take 30-60 seconds while the service generates the rule.
 
 8. **Clean up.** Delete `.taskless/.tmp-rule-request.json` whether the
    call succeeded or failed.
