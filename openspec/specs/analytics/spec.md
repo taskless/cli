@@ -179,8 +179,8 @@ CLI events SHALL use the `cli_` prefix, with the taxonomy organized as a
   - `cli_rule_created`, `cli_rule_improved`, `cli_rule_deleted`
   - `cli_authenticated`, `cli_logged_out`
   - `cli_installed`, `cli_onboarded`
-  - `cli_check_completed` — error/warning counts only (e.g. `errorCount`,
-    `warningCount`, `findings`)
+  - `cli_check_completed` — error/warning counts only (e.g. `error_count`,
+    `warning_count`, `findings`)
   - `cli_error` — a single failure event with `command` and `code` (a stable
     `CLIErrorCode`)
 - `cli_agent` — fired when the `agent` command serves a request, with a `topic`

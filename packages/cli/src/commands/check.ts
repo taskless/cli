@@ -264,7 +264,7 @@ export const checkCommand = defineCommand({
     // Set when a scan actually runs; drives cli_check_completed with counts
     // only (never matched code).
     let scanCounts:
-      | { errorCount: number; warningCount: number; findings: number }
+      | { error_count: number; warning_count: number; findings: number }
       | undefined;
     try {
       const positionalPaths = extractPositionalPaths(rawArgs);
@@ -386,7 +386,14 @@ export const checkCommand = defineCommand({
           if (result.severity === "error") errorCount++;
           else if (result.severity === "warning") warningCount++;
         }
-        scanCounts = { errorCount, warningCount, findings: results.length };
+        // snake_case at the wire boundary: these become PostHog properties
+        // verbatim. The locals stay camelCase because they are ordinary
+        // TypeScript, not a payload.
+        scanCounts = {
+          error_count: errorCount,
+          warning_count: warningCount,
+          findings: results.length,
+        };
 
         // Computed by `runEngines`, not here: the exit code is a fact about a
         // completed dispatch, and an engine failure has to fail the check even
