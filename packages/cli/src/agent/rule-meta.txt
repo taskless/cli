@@ -27,4 +27,4 @@ version, etc.
 
 ## See Also
 
-- `%(TASKLESS_CLI)s agent improve-rule` — the primary consumer of this command
+- `%(TASKLESS_CLI)s agent improve-rule`: the primary consumer of this command

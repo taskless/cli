@@ -2,7 +2,7 @@
 
 ## You are here
 This is `create-legacy-rule`. It helps you write a rule for a linter the
-repository already runs — ESLint, Ruff, RuboCop, Stylelint — in that
+repository already runs (ESLint, Ruff, RuboCop, Stylelint) in that
 tool's own dialect, so that tool enforces it.
 If that is not the kind of check you need, re-run `%(TASKLESS_CLI)s agent route`
 and follow its decision rather than adapting this recipe.
@@ -11,7 +11,7 @@ and follow its decision rather than adapting this recipe.
 Author a rule in a linter the repository ALREADY uses, expressed in that
 tool's own dialect (an ESLint rule, a Ruff rule selection, a RuboCop cop,
 a Stylelint rule, etc.). Taskless does not maintain a catalog of linter
-rules — you source the knowledge from the repo first and the web second,
+rules, you source the knowledge from the repo first and the web second,
 then write the rule where that tool expects it.
 
 ## Preconditions
@@ -46,19 +46,18 @@ then write the rule where that tool expects it.
    consistent with the repo's existing entries from step 2.
 
 5. **Report, and be explicit about who runs it.** Show the file(s) you
-   changed. Make clear that the user's OWN toolchain runs this rule —
-   `%(TASKLESS_CLI)s check` does NOT execute external linters. Tell the user how
+   changed. Make clear that the user's OWN toolchain runs this rule , `%(TASKLESS_CLI)s check` does NOT execute external linters. Tell the user how
    to run their linter to see it fire (e.g. their existing lint script).
 
 ## Important Notes
 
-- Do not invent linter rules from memory — verify against the repo's
+- Do not invent linter rules from memory: verify against the repo's
   usage and the tool's current docs.
 - This path is author-only. Taskless does not aggregate or run external
   linters; it writes the rule in the tool's dialect and hands off.
 
 ## See Also
 
-- `%(TASKLESS_CLI)s agent route` — re-decide the destination if this no longer fits
-- `%(TASKLESS_CLI)s agent create-sg-rule` — author a local ast-grep rule instead
-- `%(TASKLESS_CLI)s agent create-remote-rule` — generate via the service (login)
+- `%(TASKLESS_CLI)s agent route`: re-decide the destination if this no longer fits
+- `%(TASKLESS_CLI)s agent create-sg-rule`: author a local ast-grep rule instead
+- `%(TASKLESS_CLI)s agent create-remote-rule`: generate via the service (login)

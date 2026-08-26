@@ -2,7 +2,7 @@
 
 ## You are here
 This is `create-vale-rule`. It helps you write a Vale rule: a check over
-the words of a document — prose, markup, and the prose parts of code.
+the words of a document, prose, markup, and the prose parts of code.
 If that is not the kind of check you need, re-run `%(TASKLESS_CLI)s agent route`
 and follow its decision rather than adapting this recipe.
 
@@ -52,7 +52,7 @@ which Vale accepts without complaint.
 
 You will not find a project-wide `.vale.ini` to edit. The config Vale
 actually reads is assembled from every rule's own file at check time
-and is gitignored. Editing it is pointless — the next check regenerates
+and is gitignored. Editing it is pointless, the next check regenerates
 it.
 
 ## Steps
@@ -62,9 +62,7 @@ it.
    built by extending one of its twelve checks, and the sentence tells
    you which. Twelve is measured, not counted off the docs: give Vale
    v%(VALE_VERSION)s an `extends` it does not know and it names the whole
-   set back at you —
-
-   ```
+   set back at you , ```
    'extends' key must be one of [capitalization conditional consistency
    existence occurrence repetition substitution readability spelling
    sequence metric script].
@@ -76,7 +74,7 @@ it.
 | If the rule is about…                                                                   | extends          |
 |-----------------------------------------------------------------------------------------|------------------|
 | words or phrases that should not appear                                                 | `existence`      |
-| preferring one term over another — **including the correct spelling of a product name** | `substitution`   |
+| preferring one term over another. **including the correct spelling of a product name** | `substitution`   |
 | the case of a whole heading or sentence                                                 | `capitalization` |
 | how many times something may appear                                                     | `occurrence`     |
 | a word repeated back to back                                                            | `repetition`     |
@@ -91,14 +89,14 @@ it.
    **`capitalization` is about a whole scope, not a word.** It asks
    whether an entire heading or sentence matches a case pattern. It
    cannot express "the word GitHub, wherever it appears, is spelled
-   thus" — that is a `substitution`, because you are swapping a wrong
+   thus". That is a `substitution`, because you are swapping a wrong
    spelling for a right one. Reaching for `capitalization` on a product
    name produces a rule that flags whole sentences: measured, a rule with
    `match: GitHub` reports `We host on Github and it is fine. should be
    GitHub`.
 
-   For the five this recipe has no worked example of — `metric`,
-   `readability`, `spelling`, `sequence`, `script` — read
+   For the five this recipe has no worked example of, `metric`,
+   `readability`, `spelling`, `sequence`, `script`, read
    https://docs.vale.sh/styles before inventing something. Vale has no
    facility for a rule that does not extend one of these twelve, and an
    `extends` outside the set is not a rule that misbehaves: Vale exits 2
@@ -107,7 +105,7 @@ it.
 
    **The other seven have a worked rule at the end of this recipe**,
    nine rules between them, each with the near-miss that fails and why.
-   Read the one closest to your intent before writing anything — the
+   Read the one closest to your intent before writing anything, the
    mistakes documented there are observed, and most of them fail
    silently.
 
@@ -128,7 +126,7 @@ it.
 | `extends` | yes      | one of the twelve above                       |
 | `message` | yes      | shown to the user; see the `%%s` table below  |
 | `level`   | no       | `suggestion` (default), `warning`, or `error` |
-| `scope`   | no       | narrow to part of a document — see below      |
+| `scope`   | no       | narrow to part of a document; see below      |
 | `link`    | no       | a URL the reader can follow for the reasoning |
 | `limit`   | no       | cap findings from this rule per scope         |
 
@@ -141,7 +139,7 @@ it.
    fields below.
 
    **The file extension must be `.yml`.** Measured: rename a working
-   style file to `.yaml` and Vale loads nothing — no error, no warning,
+   style file to `.yaml` and Vale loads nothing, no error, no warning,
    zero findings, and `<id>.<id> = YES` still parses. It is
    indistinguishable from a rule whose pattern never matched.
 
@@ -150,7 +148,7 @@ it.
    rejected by Vale: `scope: fenced` loads, runs, and matches nothing.
    It is the worst of the three failures on this page, because unlike a
    bad `extends` or a foreign field it does not even take the run down to
-   tell you — the rule is simply inert, forever. `verify` rejects a scope
+   tell you. The rule is inert, forever. `verify` rejects a scope
    outside the table below, which is the only layer that ever will.
 
    Every value below was measured against Vale v%(VALE_VERSION)s by
@@ -161,7 +159,7 @@ it.
 | `scope`                | reaches                                                   |
 |------------------------|-----------------------------------------------------------|
 | *(omitted)*            | everything the format exposes as prose                    |
-| `text`                 | prose only — not inline code, not fenced blocks           |
+| `text`                 | prose only, not inline code, not fenced blocks           |
 | `code`                 | inline code spans only                                    |
 | `raw`                  | the unparsed document: prose, inline code, fenced blocks  |
 | `heading`              | every heading                                             |
@@ -178,7 +176,7 @@ it.
 | `table.header`         | header cells                                              |
 | `table.cell`           | body cells                                                |
 | `table.caption`        | a table's caption                                         |
-| `figure.caption`       | a figure's caption — but see below                        |
+| `figure.caption`       | a figure's caption, but see below                        |
 | `frontmatter`          | every YAML front-matter value                             |
 | `frontmatter.<key>`    | one front-matter key's value                              |
 | `text.class.<name>`    | HTML elements carrying that class                         |
@@ -190,7 +188,7 @@ it.
    the token in prose, in an inline span, and in a fenced block: `text`
    found one, `code` found one, `[code, text]` found two, `raw` found all
    three. If you want prose and inline code but not fenced blocks, write
-   the list — `raw` is not "a bit wider", it is everything.
+   the list, `raw` is not "a bit wider", it is everything.
 
    **Vale drops everything inside a `<figure>` element.** Measured: a
    `<figcaption>` nested in `<figure>` is invisible to *every* scope,
@@ -207,9 +205,9 @@ it.
    **A negation over a scope Vale does not know is a silent no-op.**
    Measured: `~banana` and `text & ~banana` both fire on everything,
    because there is no such scope to subtract. A typo inside a `~` does
-   not narrow the rule and does not widen it visibly — it removes the
+   not narrow the rule and does not widen it visibly. It removes the
    exclusion you wrote the rule for. `verify` checks the operands inside
-   `~` and `&` as strictly as a bare one, for exactly this reason — the
+   `~` and `&` as strictly as a bare one, for exactly this reason, the
    one place it is deliberately stricter than Vale itself.
 
    **`scope` is per-rule, and rules do not interact.** Taskless assembles
@@ -225,11 +223,11 @@ it.
    document, and `raw` reads the unparsed one. Measured: a `text`-scoped
    rule is silenced by the directive; the same rule at `raw` fires
    through it. So a rule about a shell command, a flag, or a package name
-   needs `raw` — commands live in fenced blocks, which nothing else
-   reaches — and takes that trade: it can no longer be exempted case by
+   needs `raw`, commands live in fenced blocks, which nothing else
+   reaches, and takes that trade: it can no longer be exempted case by
    case, only removed.
 
-   **Then the fields the extension point adds** — this is where the rule
+   **Then the fields the extension point adds**. This is where the rule
    actually lives, and each check reads only its own:
 
 | extends          | its fields                                                                   |
@@ -249,8 +247,7 @@ it.
 
    The list above is measured, not transcribed: every entry was added to
    a minimal rule of that check and the run watched for `E201`. Three
-   corrections fall out of it, all against the published docs —
-   `capitalization` takes `prefix` (singular) and rejects both `prefixes`
+   corrections fall out of it, all against the published docs , `capitalization` takes `prefix` (singular) and rejects both `prefixes`
    and `suffixes`, it rejects `ignorecase`, and `occurrence` rejects
    `exceptions` and `vocab`.
 
@@ -258,13 +255,13 @@ it.
    and `level` are not.** Measured: `Tokens:` and `ignoreCase:` are read
    exactly as their lowercase spellings, while `EXTENDS:` fails with
    "Missing the required 'extends' key". Their *values* are case-sensitive
-   too — `level: WARNING` and `extends: Existence` are both rejected.
+   too, `level: WARNING` and `extends: Existence` are both rejected.
    Write everything lowercase and none of this can bite you.
 
    **A field from the wrong check is the loudest failure Vale has.**
    `tokens` on an `occurrence` check gives
-   `E201 … has invalid keys: 'tokens'`, exit 2, and — because Vale reads
-   one assembled config per run — **no** Vale rule in the project reports
+   `E201 … has invalid keys: 'tokens'`, exit 2, and, because Vale reads
+   one assembled config per run. **no** Vale rule in the project reports
    anything. `verify` rejects the rule before Vale is invoked, so this
    cannot reach `check`.
 
@@ -277,7 +274,7 @@ it.
 
    **What `%%s` fills with depends on the extension point.** Getting this
    wrong is the one mistake in this recipe that passes every check below
-   — the rule fires, the fixtures are green, and only a human reading the
+. The rule fires, the fixtures are green, and only a human reading the
    message sees that it is nonsense.
 
 | extends          | `%%s` count | fills with, left to right                             |
@@ -291,13 +288,13 @@ it.
    `Github` renders `Use GitHub not GitHub`.
 
    For the other nine, do not guess. Write the message, run step 6, and
-   read it back off the finding — no test you can write catches a wrong
+   read it back off the finding, no test you can write catches a wrong
    `%%s`, so your own eyes on the rendered message are the check.
 
    ```yaml
-   # existence — flag these tokens wherever they appear
+   # existence, flag these tokens wherever they appear
    extends: existence
-   message: "Avoid '%%s' — it hides the work from the reader"
+   message: "Avoid '%%s', it hides the work from the reader"
    level: warning
    ignorecase: true
    tokens:
@@ -306,7 +303,7 @@ it.
    ```
 
    ```yaml
-   # substitution — first %%s is the replacement, second is what was found
+   # substitution, first %%s is the replacement, second is what was found
    extends: substitution
    message: "Use '%%s' instead of '%%s'"
    level: warning
@@ -317,7 +314,7 @@ it.
    ```
 
    ```yaml
-   # capitalization — a whole heading must be in sentence case
+   # capitalization, a whole heading must be in sentence case
    extends: capitalization
    message: "'%%s' should be in sentence case"
    level: warning
@@ -330,19 +327,19 @@ it.
 
    `match` takes `$sentence`, `$title`, `$lower`, or `$upper`. A literal
    string is legal but means "this whole scope must read exactly that",
-   which is almost never what anyone wants — see step 1.
+   which is almost never what anyone wants. See step 1.
 
    **`$sentence` means first word capitalized, everything else lowercase
-   — proper nouns included.** It is not "sentence case allowing proper
+, proper nouns included.** It is not "sentence case allowing proper
    nouns". Measured with `exceptions: [Taskless, API]` on headings:
 
 | Heading                           | Result                                         |
 |-----------------------------------|------------------------------------------------|
 | `Getting started with the API`    | quiet                                          |
-| `Getting started with APIs`       | quiet — an exception covers its plural         |
-| `Taskless and the API`            | quiet — an exception may lead the scope        |
-| `Getting started with Kubernetes` | **fires** — a proper noun you did not list     |
-| `getting started lowercase`       | **fires** — the first word must be capitalized |
+| `Getting started with APIs`       | quiet, an exception covers its plural         |
+| `Taskless and the API`            | quiet, an exception may lead the scope        |
+| `Getting started with Kubernetes` | **fires**: a proper noun you did not list     |
+| `getting started lowercase`       | **fires**: the first word must be capitalized |
 | `Getting Started With Title Case` | **fires**                                      |
 
    So `exceptions` is not decoration: every proper noun, product name and
@@ -354,7 +351,7 @@ it.
    not literals.** They compile as **Go RE2** regular expressions.
 
    *This step is about `tokens` and `swap` only. A `capitalization`,
-   `occurrence` or `metric` rule has neither — skip to step 4.*
+   `occurrence` or `metric` rule has neither, skip to step 4.*
 
    - `(?:…)`, `[…]`, `|`, `+`, `?` all work.
    - **Lookahead and lookbehind do not exist in RE2.** A rule that needs
@@ -372,7 +369,7 @@ it.
      pattern meaning "mayb" followed by an optional "e". Escape it.
    - **Overlapping alternatives resolve first-wins**, one finding per
      match. If `can login` and `login with` both match a sentence, you
-     get whichever is written first, once — not both.
+     get whichever is written first, once, not both.
    - `ignorecase: true` matches any casing **and still skips text that
      already equals the replacement.** Measured with `Github: GitHub`:
      `github` and `Github` are flagged, `GitHub` is not. You do not need
@@ -382,14 +379,14 @@ it.
    - **A token made only of punctuation can never match without
      `nonword: true`.** The boundaries above are `\b`, which needs a word
      character on the inside. An em dash has none, on either side.
-     Measured against `This is a sentence — with an em dash.`:
+     Measured against `This is a sentence, with an em dash.`:
 
      ```yaml
-     # fires on nothing, ever — and reports no error
+     # fires on nothing, ever, and reports no error
      extends: existence
      message: "Use a comma, not an em dash"
      tokens:
-       - '—'
+       - ', '
      ```
 
      ```yaml
@@ -398,12 +395,12 @@ it.
      message: "Use a comma, not an em dash"
      nonword: true
      tokens:
-       - '—'
+       - ', '
      ```
 
      The first rule verifies, tests green if its `fail/` fixture is
      missing the dash, and reports nothing forever. Any token whose
-     pattern contains no `\w` — punctuation, an emoji, a bare symbol —
+     pattern contains no `\w` (punctuation, an emoji, a bare symbol)
      needs `nonword: true`.
 
    - **A bare word finds senses you did not mean.** `landed on` in a rule
@@ -423,7 +420,7 @@ it.
      `Plain Github here` and not on `https://Github.com/x` or
      `` `Github/docs` ``.
    - **Link text *is* prose.** In `[click here](https://example.com)`,
-     `click here` is matched — the URL is not. With no `scope`, a rule
+     `click here` is matched. The URL is not. With no `scope`, a rule
      fires on both link text and ordinary prose; `scope: link` narrows it
      to link text alone. Measured: without a scope the token hit both the
      link and the sentence; with `scope: link`, only the link.
@@ -449,7 +446,7 @@ it.
      this rule sees. Match it to the files the rule is actually about,
      such as `[*.{md,markdown}]` or `[docs/**/*.md]`. A rule can declare
      several matchers if it needs to. Before you widen a glob, check the
-     reach table below — what Vale does to a file it cannot parse is not
+     reach table below, what Vale does to a file it cannot parse is not
      "nothing".
    - `tskl) rule = <id>` is a breadcrumb Taskless reads to attribute the
      matcher back to this rule after assembly interleaves every rule's
@@ -467,7 +464,7 @@ it.
    **Scope a rule *out* with a second matcher, not a cleverer glob.** A
    glob says which files a rule sees; it has no way to say "these but not
    those". The exclusion is a second matcher that assigns `NO`, and
-   because precedence here is positional — a later matcher wins — the
+   because precedence here is positional (a later matcher wins), the
    exclusion goes **after** the inclusion:
 
    ```ini
@@ -500,22 +497,22 @@ it.
    rendered from the pinned Vale version, not written out here, so they
    track the shipped binary.
 
-   - **markup** — the document is prose and the format's own non-prose
+   - **markup**: the document is prose and the format's own non-prose
      constructs are skipped. This is the tier every `scope:` value
      assumes; `scope: heading` has nothing to find outside it:
      %(VALE_MARKUP_FORMATS)s
-   - **comment text only** — the comments are linted and the code body
+   - **comment text only**: the comments are linted and the code body
      is invisible, which is exactly right for "comments must not say
      'obviously'":
      %(VALE_COMMENT_FORMATS)s
-   - **plaintext fallback** — everything else, `.yml` `.toml` `.sh`
+   - **plaintext fallback**: everything else, `.yml` `.toml` `.sh`
      `.sql` and every extension not named above included. There is no
      parser, so the whole file is linted as prose: a rule matched to
      YAML flags key names and values, not just the comments. If that is
      not what the rule means, narrow the glob rather than accepting it.
      These land here despite reading like markup, so a `scope:` value
      has nothing to act on in them: %(VALE_PLAINTEXT_FORMATS)s
-   - **not supported** — Vale parses these only by shelling out to an
+   - **not supported**: Vale parses these only by shelling out to an
      external program, and this build does not support any format that
      needs one:
      %(VALE_CONVERTER_FORMATS)s
@@ -526,8 +523,8 @@ it.
      since an XSLT stylesheet is specific to the document.
 
    **A single unreadable file fails the whole Vale pass.** Vale exits 2
-   with an `E100` runtime error and abandons the run — `--no-exit` does
-   not suppress it — so every other Vale rule over every other file goes
+   with an `E100` runtime error and abandons the run, `--no-exit` does
+   not suppress it, so every other Vale rule over every other file goes
    unreported. `[*.{md,typ}]` is not a slightly wider `[*.md]`; it is a
    matcher that takes `check` down the first time the repo grows a
    `.typ` file. Never put one of those extensions in a glob.
@@ -539,7 +536,7 @@ it.
 
    **`.mdx` is supported** as of Vale v%(VALE_VERSION)s, which parses it
    natively rather than shelling out. `[*.{md,mdx}]` is a legitimate
-   matcher again — the example this recipe used to warn about is no
+   matcher again, the example this recipe used to warn about is no
    longer the broken one. Check the lists above rather than reaching for
    that memory: `.typ` moved the opposite way in the same release, so a
    matcher covering Typst is now the one that takes the run down.
@@ -565,26 +562,26 @@ it.
    document silently passes.
 
    **The `pass/` bucket is not "correct prose".** Correct prose proves
-   nothing — the rule was never going to fire on it. Fill it with the
+   nothing. The rule was never going to fire on it. Fill it with the
    near-misses that would catch an over-broad pattern. What counts as a
    near-miss depends on the rule's shape:
 
-   - **`tokens`/`swap` rules** — the noun form you are not flagging, the
+   - **`tokens`/`swap` rules**: the noun form you are not flagging, the
      word inside a longer word, the term in a URL or a code span, the
      correct spelling itself.
-   - **`scope`d rules** — the same phrase *outside* the scope. A rule
+   - **`scope`d rules**: the same phrase *outside* the scope. A rule
      with `scope: link` needs the phrase in ordinary prose; a rule with
      `scope: heading` needs it in body text. Without that, nothing proves
      the scope is doing anything.
-   - **`capitalization` rules** — a scope that is entirely exceptions, a
+   - **`capitalization` rules**: a scope that is entirely exceptions, a
      scope whose exception word comes first, and the plural of an
      exception.
 
    That is the half of the fixture set that has to work for you.
 
    **When the rule's subject normally appears in code, the `fail/`
-   fixture must carry it three ways** — inline in a code span, inside a
-   fenced block, and in ordinary prose — in that one document. A rule
+   fixture must carry it three ways**, inline in a code span, inside a
+   fenced block, and in ordinary prose, in that one document. A rule
    about a command, a flag, a package name or an env var has a subject
    that lives in fenced blocks in every real README, and the default
    scope cannot see fenced blocks at all. A `fail/` fixture written only
@@ -592,7 +589,7 @@ it.
    of the real violations. Measured on one document holding the token in
    all three places: the default scope found one of three, `raw` found
    three. If the fixture fires on the prose line and not on the other
-   two, the answer is `scope: raw` — see step 2 for what that costs.
+   two, the answer is `scope: raw`. See step 2 for what that costs.
 
    **Fixtures run under a config that isolates this rule, so a green
    `test` is not evidence the rule reaches any real file.** `test`
@@ -690,7 +687,7 @@ one was run against the bundled Vale; the "what goes wrong" lines are
 observed behavior, not warnings in principle. Find the entry closest to
 your intent and start there.
 
-### 1. Ban a word or phrase — `existence`
+### 1. Ban a word or phrase, `existence`
 
 > "Our docs shouldn't hedge."
 
@@ -705,12 +702,11 @@ tokens:
   - sort of
 ```
 
-**Goes wrong:** dropping `ignorecase: true` when you meant any casing —
-`We think` at the start of a sentence then sails through. And a phrase
+**Goes wrong:** dropping `ignorecase: true` when you meant any casing , `We think` at the start of a sentence then sails through. And a phrase
 with punctuation is a *pattern*: `maybe?` means "mayb" plus an optional
 "e", so it matches `mayb`. Escape it: `maybe\?`.
 
-### 2. Prefer one term over another — `substitution`
+### 2. Prefer one term over another, `substitution`
 
 > "Say 'sign in', not 'login', when it's a verb."
 
@@ -725,11 +721,11 @@ swap:
 ```
 
 **Goes wrong:** one `%%s` instead of two. Measured, `"Use sign in not
-%%s"` against `login to` renders **"Use sign in not sign in to"** — the
+%%s"` against `login to` renders **"Use sign in not sign in to"**, the
 replacement, twice. The rule fires, both fixtures pass, and only a human
 reading the message sees it. Two `%%s`, always, in that order.
 
-### 3. Enforce a product's spelling — `substitution`, not `capitalization`
+### 3. Enforce a product's spelling, `substitution`, not `capitalization`
 
 > "It's 'GitHub', never 'Github' or 'github'."
 
@@ -743,13 +739,12 @@ swap:
 ```
 
 **Goes wrong:** reaching for `capitalization` because the complaint is
-about capitals. Measured, `match: GitHub` flags whole sentences —
-`'We host on Github and it is fine. should be GitHub'` — because that
+about capitals. Measured, `match: GitHub` flags whole sentences , `'We host on Github and it is fine. should be GitHub'`, because that
 check tests a *scope*, not a word. Note also that `ignorecase: true` is
 safe here: Vale skips text already equal to the replacement, so the
 correct `GitHub` is not flagged.
 
-### 4. Sentence-case headings — `capitalization`
+### 4. Sentence-case headings, `capitalization`
 
 > "Headings are sentence case; our product names keep their capitals."
 
@@ -770,13 +765,13 @@ everything after the first word, proper nouns included, so every product
 name and acronym in the docs must be listed or correct headings get
 flagged. Collect them from the docs first; expect to add more.
 
-### 5. Restrict a rule to link text — any check, plus `scope`
+### 5. Restrict a rule to link text, any check, plus `scope`
 
 > "'click here' is useless link text."
 
 ```yaml
 extends: existence
-message: "Link text '%%s' says nothing — name the destination"
+message: "Link text '%%s' says nothing, name the destination"
 level: warning
 scope: link
 ignorecase: true
@@ -789,10 +784,10 @@ tokens:
 on `[click here](…)` **and** on "click here to focus the search box" in
 ordinary prose, which is a false positive on a sentence that is fine.
 Whenever a rule is about a *place* in the document, the `pass/` fixture
-must contain the same phrase outside that place — otherwise nothing
+must contain the same phrase outside that place, otherwise nothing
 proves the scope works.
 
-### 6. Cap how often something appears — `occurrence`
+### 6. Cap how often something appears, `occurrence`
 
 > "At most one exclamation mark per paragraph."
 
@@ -807,9 +802,9 @@ max: 1
 
 **Goes wrong:** forgetting `scope`. The count is per scope, so with no
 scope you are capping the whole document rather than the paragraph.
-Note `token` here is singular — this check takes one, not a `tokens` list.
+Note `token` here is singular, this check takes one, not a `tokens` list.
 
-### 7. Catch a doubled word — `repetition`
+### 7. Catch a doubled word, `repetition`
 
 > "'the the' keeps slipping through review."
 
@@ -823,12 +818,12 @@ tokens:
 ```
 
 **Goes wrong:** leaving the pattern unquoted. Measured, an unquoted
-`[^\s]+` in YAML silently matches nothing — zero findings, no error, no
+`[^\s]+` in YAML silently matches nothing, zero findings, no error, no
 diagnostic. Quote any pattern containing a backslash. This is the
 failure mode this recipe warns about most, arriving through YAML rather
 than through Vale.
 
-### 8. One spelling or the other, consistently — `consistency`
+### 8. One spelling or the other, consistently, `consistency`
 
 > "Pick -ize or -ise and stick to it."
 
@@ -850,11 +845,11 @@ Vale reads one config for the whole run. Name this one `izeise` or
 `spelling_variants`. Kebab-case is right everywhere else.
 
 **Goes wrong:** expecting it to pick a winner. It flags the *second*
-form once both appear in a document — it enforces internal consistency,
+form once both appear in a document, it enforces internal consistency,
 not house style. If you want one specific spelling, that is a
 `substitution`.
 
-### 9. Require a definition — `conditional`
+### 9. Require a definition, `conditional`
 
 > "An acronym must be spelled out before it's used."
 
@@ -889,6 +884,6 @@ definition when the acronym is missing".
 
 ## See Also
 
-- `%(TASKLESS_CLI)s agent route` — re-decide the destination
-- `%(TASKLESS_CLI)s agent check` — run every engine over the repo
-- `%(TASKLESS_CLI)s agent create-sg-rule` — author a rule over code structure
+- `%(TASKLESS_CLI)s agent route`: re-decide the destination
+- `%(TASKLESS_CLI)s agent check`: run every engine over the repo
+- `%(TASKLESS_CLI)s agent create-sg-rule`: author a rule over code structure

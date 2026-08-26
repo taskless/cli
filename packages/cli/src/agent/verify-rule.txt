@@ -77,10 +77,10 @@ with its errors indented beneath.
 
 ## Exit codes
 
-- `0` — every rule in scope passed. An empty rules tree also exits 0: a
+- `0`: every rule in scope passed. An empty rules tree also exits 0: a
   project that has not written a rule yet is an ordinary state, and
   failing there would make `verify` unusable in CI on a fresh install.
-- `1` — any rule failed, or the path could not be resolved.
+- `1`: any rule failed, or the path could not be resolved.
 
 ## In a feedback loop
 
@@ -90,6 +90,6 @@ it still fails.
 
 ## See Also
 
-- `%(TASKLESS_CLI)s agent create-sg-rule` — author an ast-grep rule
-- `%(TASKLESS_CLI)s agent create-vale-rule` — author a Vale rule
-- `%(TASKLESS_CLI)s agent improve-rule` — iterate on a rule that already exists
+- `%(TASKLESS_CLI)s agent create-sg-rule`: author an ast-grep rule
+- `%(TASKLESS_CLI)s agent create-vale-rule`: author a Vale rule
+- `%(TASKLESS_CLI)s agent improve-rule`: iterate on a rule that already exists

@@ -48,7 +48,7 @@ whole rule.
    reference at https://ast-grep.github.io/guide/rule-config.html for
    valid fields and operators (`pattern`, `kind`, `regex`,
    `any`/`all`/`has`/`inside`/`not`) and meta-variable syntax. This
-   recipe does not embed the schema — read it from upstream rather than
+   recipe does not embed the schema. Read it from upstream rather than
    writing a rule from memory.
 
 2. **Gather and confirm the pattern.** Make sure you have concrete
@@ -59,17 +59,17 @@ whole rule.
 3. **Check for an existing rule that already covers this.** Scan
    `.taskless/rules/sg/` and read each rule's `message`, `note`, and
    `rule` fields. If one overlaps, show the user and ask whether they
-   would rather improve it — `%(TASKLESS_CLI)s agent improve-rule --anonymous`
+   would rather improve it, `%(TASKLESS_CLI)s agent improve-rule --anonymous`
    iterates a rule locally.
 
 4. **Author the rule in the canonical shape.** Write the rule to
    `.taskless/rules/sg/<id>/<id>.yml`, where `<id>` is kebab-case and
    names both the directory and the file. At minimum:
-   - `id` — kebab-case, matching the filename (e.g. `no-eval`)
-   - `language` — the target language, in ast-grep's spelling (below)
-   - `severity` — `error`, `warning`, `info`, or `hint`
-   - `message` — a concise single-line explanation
-   - `rule` — the ast-grep rule object
+   - `id`: kebab-case, matching the filename (e.g. `no-eval`)
+   - `language`: the target language, in ast-grep's spelling (below)
+   - `severity`: `error`, `warning`, `info`, or `hint`
+   - `message`: a concise single-line explanation
+   - `rule`: the ast-grep rule object
 
    Optional but useful: `note` (multi-line guidance, supports markdown),
    `fix` (auto-fix pattern), `ignores` (file patterns to skip).
@@ -91,7 +91,7 @@ whole rule.
 
    Two specific traps:
    - **Do not copy from `detect --json`.** It reports the
-     *repository's* languages in a different vocabulary — it says
+     *repository's* languages in a different vocabulary. It says
      `C++` where the list above says `Cpp`.
    - **`Tsx` and `TypeScript` are two parsers, not aliases.** A rule
      over `.tsx` files that declares `TypeScript` does not match JSX
@@ -112,7 +112,7 @@ whole rule.
 5. **Check any variadic pattern against the separator trap.** A `$$$`
    next to a comma does not mean "zero or more". The `,` in the pattern
    is itself an AST node, and under ast-grep's default `smart`
-   strictness every node in the pattern must match — so a call with no
+   strictness every node in the pattern must match, so a call with no
    comma cannot match a pattern that has one. Measured against the
    ast-grep this CLI ships (v%(AST_GREP_VERSION)s), given the four calls
    `foo()`, `foo(1)`, `foo(1,2)`, and `foo(1,2,3)`:
@@ -120,14 +120,14 @@ whole rule.
 | pattern            | what it matches                              |
 |--------------------|----------------------------------------------|
 | `foo($$$)`         | all four, `foo()` included                   |
-| `foo($A, $$$)`     | `foo(1,2)` and `foo(1,2,3)` — never `foo(1)` |
+| `foo($A, $$$)`     | `foo(1,2)` and `foo(1,2,3)`, never `foo(1)` |
 | `foo($$$, $A)`     | `foo(1)` alone                               |
 | `foo($A, $$$, $B)` | `foo(1,2)` alone                             |
 
-   A standalone `$$$` needs none of this — it is the comma beside it
+   A standalone `$$$` needs none of this. It is the comma beside it
    that narrows the pattern. The two remedies are not the same:
 
-   - **Trailing `$$$`** — write the pattern as an object with
+   - **Trailing `$$$`**: write the pattern as an object with
      `strictness: ast`, which compares named AST nodes and ignores the
      separator. An object pattern also requires `context` and
      `selector`:
@@ -139,11 +139,11 @@ whole rule.
          strictness: ast
      ```
      This moves the boundary from two arguments to one, **not to
-     zero** — `$A` still has to bind something, so `foo()` is still
+     zero**, `$A` still has to bind something, so `foo()` is still
      unmatched. And `strictness` is valid only inside the pattern
      object: at rule level ast-grep rejects it as an unknown field and
      fails the whole scan.
-   - **Leading `$$$`** — `strictness: ast` does not rescue it. Use
+   - **Leading `$$$`**: `strictness: ast` does not rescue it. Use
      `any` with one branch per arity you mean to cover.
 
    This is upstream's intended behaviour (ast-grep/ast-grep#1365,
@@ -152,7 +152,7 @@ whole rule.
 
 6. **Write the tests.** Write
    `.taskless/rules/sg/<id>/.tests/<id>-YYYYMMDD-test.yml` with the matching
-   `id` field plus `valid` and `invalid` arrays — at least two of each,
+   `id` field plus `valid` and `invalid` arrays, at least two of each,
    drawn from real code where you can. The `id` must match the rule's
    `id` so ast-grep test filtering pairs them. These paths and this
    shape are the same ones the service writes; do not invent a different
@@ -165,7 +165,7 @@ whole rule.
    exactly like a rule that works. The `invalid:` bucket is the only
    thing that demonstrates the rule can fire.
 
-   Where the rule has an arity boundary — anything from step 5 — put a
+   Where the rule has an arity boundary (anything from step 5), put a
    case on each side of it. A pattern that starts at two arguments when
    it was meant to start at one passes a test suite whose fixtures all
    have two.
@@ -179,7 +179,7 @@ whole rule.
    `verify` asks whether the rule is well-formed: the YAML matches the
    ast-grep schema and every Taskless-required field is present. It
    needs no test file, so run it the moment the rule exists. `test` runs
-   the cases, after running `verify` and stopping if that fails — so a
+   the cases, after running `verify` and stopping if that fails, so a
    malformed rule reports the malformation rather than a test complaint.
 
    Both answer in the same shape:
@@ -196,7 +196,7 @@ whole rule.
 | a Taskless-required field is missing | add `id`/`language`/`severity`/`message`/`rule` |
 | a case didn't behave as expected     | fix the rule pattern OR the test case           |
 
-   A `regex` without an accompanying `kind` fails verification — the two
+   A `regex` without an accompanying `kind` fails verification, the two
    always travel together.
 
    Pass a directory above a rule and every rule beneath it is checked,
@@ -207,7 +207,7 @@ whole rule.
    plus a one-line summary of what the rule detects. Suggest
    `%(TASKLESS_CLI)s agent check` to validate against the broader codebase.
 
-9. **On failure, escalate — with confirmation.** If after the feedback
+9. **On failure, escalate, with confirmation.** If after the feedback
    loop the rule still cannot capture the user's cases:
    - Delete the candidate `.taskless/rules/sg/<id>/` directory so the
      repo is not left with a broken rule. One `rm -rf` removes the rule
@@ -221,15 +221,15 @@ whole rule.
 ## Important Notes
 
 - Do NOT make any HTTP requests to taskless.io on this path.
-- Do NOT write to `.taskless/rule-metadata/` — locally authored rules
+- Do NOT write to `.taskless/rule-metadata/`: locally authored rules
   have no metadata sidecar; they iterate via file edits.
 - The verify loop is the quality gate. A clean failure is a legitimate
   reason to escalate, but only with the user's confirmation (step 9).
 
 ## See Also
 
-- `%(TASKLESS_CLI)s agent route` — re-decide the destination
-- `%(TASKLESS_CLI)s agent verify-rule` — the `verify` and `test` commands step 7 calls
-- `%(TASKLESS_CLI)s agent improve-rule` — iterate on a rule that already exists
-- `%(TASKLESS_CLI)s agent create-remote-rule` — generate via the service (login)
-- `%(TASKLESS_CLI)s agent check` — validate the new rule against the codebase
+- `%(TASKLESS_CLI)s agent route`: re-decide the destination
+- `%(TASKLESS_CLI)s agent verify-rule`: the `verify` and `test` commands step 7 calls
+- `%(TASKLESS_CLI)s agent improve-rule`: iterate on a rule that already exists
+- `%(TASKLESS_CLI)s agent create-remote-rule`: generate via the service (login)
+- `%(TASKLESS_CLI)s agent check`: validate the new rule against the codebase

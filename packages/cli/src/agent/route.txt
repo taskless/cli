@@ -2,8 +2,8 @@
 
 ## Goal
 Turn "write me a rule that…" into one command to run. This is the front
-door for every rule-authoring request, and it makes one decision — which
-of five recipes authors this rule — from one reading of the evidence.
+door for every rule-authoring request, and it makes one decision (which
+of five recipes authors this rule) from one reading of the evidence.
 
 That single decision covers both halves that used to be asked
 separately: whether the rule can be built here, and which engine can
@@ -22,7 +22,7 @@ answered together.
    %(TASKLESS_CLI)s detect --json
    ```
    This returns the configured linters, languages, and the repo's own
-   rule styles. It is deterministic and offline — use it as ground truth
+   rule styles. It is deterministic and offline. Use it as ground truth
    instead of guessing the repo's tooling. The scan is monorepo-aware, so
    evidence may carry a sub-package path. The output shape:
    ```json
@@ -51,7 +51,7 @@ answered together.
    destinations you offer match what the CLI will actually allow.
 
    Reading it is not the same as asking about it. Do **not** open by
-   offering service generation — at this point neither you nor the user
+   offering service generation. At this point neither you nor the user
    knows whether this is a two-line pattern or something local authoring
    cannot express, so the question costs a turn and cannot be answered
    well.
@@ -66,15 +66,15 @@ answered together.
    questions end up in `vale`.
 
 4. **Match the evidence to a destination.** The comparison is made here
-   and only here — the destination recipes describe their own scope and
+   and only here. The destination recipes describe their own scope and
    deliberately do not restate this table.
 
 | The rule is decided by…                                                                                                      | Destination                                  | Login      |
 |------------------------------------------------------------------------------------------------------------------------------|----------------------------------------------|------------|
 | a tool the repo already runs, in that tool's dialect                                                                         | `create-legacy-rule`                         | no         |
-| **one file's syntax tree** — a call, an import, a JSX attribute, a type annotation                                           | `create-sg-rule`                             | no         |
-| **a document's words** — docs, README, comments, commit bodies                                                               | `create-vale-rule`                           | no         |
-| **more than one file, or something outside the files** — the repo graph, git metadata, build output, a resolved config chain | `create-runtime-rule` / `create-remote-rule` | see step 5 |
+| **one file's syntax tree**: a call, an import, a JSX attribute, a type annotation                                           | `create-sg-rule`                             | no         |
+| **a document's words**: docs, README, comments, commit bodies                                                               | `create-vale-rule`                           | no         |
+| **more than one file, or something outside the files**: the repo graph, git metadata, build output, a resolved config chain | `create-runtime-rule` / `create-remote-rule` | see step 5 |
 
    Sharpening the three engine rows, because most wrong answers are one
    of these:
@@ -83,13 +83,13 @@ answered together.
      `useEffect` whose dependency array omits a value used in its body"
      is one file's tree. If exactly one file settles it, it is `sg`.
    - **Prose about code is still prose.** "Comments must not say
-     'obviously'" is `vale` — the evidence is the words. "Every exported
-     function has a doc comment" is `sg` — the evidence is whether a node
+     'obviously'" is `vale`. The evidence is the words. "Every exported
+     function has a doc comment" is `sg`. The evidence is whether a node
      exists above a declaration. Ask what you would have to *read* to
      decide, not what the subject matter is.
    - **Vale sees one document at a time.** "This term is spelled
      consistently ACROSS the docs directory" is a graph question, so it
-     is runtime — even though it is entirely about prose.
+     is runtime, even though it is entirely about prose.
    - **Trust tier is not a destination.** `sg` and `vale` are both
      static-tier: inert data, always run, no login, no reconcile, no
      signing. Only runtime executes code. "Static vs runtime" is a
@@ -104,8 +104,8 @@ answered together.
    - **ast-grep (v%(AST_GREP_VERSION)s) parses:** %(AST_GREP_LANGUAGES)s.
 
      Those spellings are ast-grep's own and go into a rule's `language:`
-     field verbatim. Nothing local validates that field — the vendored
-     schema types it as a bare string with no enum — so the first thing
+     field verbatim. Nothing local validates that field, the vendored
+     schema types it as a bare string with no enum, so the first thing
      with an opinion is the binary. It accepts some off-list aliases
      (`C++` and `cpp` both reach the Cpp parser), but a name it does not
      know at all, like `C#` for `CSharp`, aborts config parsing and
@@ -150,19 +150,19 @@ answered together.
    - **Vale (v%(VALE_VERSION)s) reads three tiers, and hard-fails on a fourth.**
      The tier is decided by the file's extension:
 
-     - *markup* — the whole document is prose, and the format's own
+     - *markup*: the whole document is prose, and the format's own
        non-prose constructs are skipped:
        %(VALE_MARKUP_FORMATS)s
-     - *comments only* — the comment text is linted and the code body is
+     - *comments only*: the comment text is linted and the code body is
        invisible:
        %(VALE_COMMENT_FORMATS)s
-     - *plaintext fallback* — everything else, `.yml` `.toml` `.sh`
+     - *plaintext fallback*: everything else, `.yml` `.toml` `.sh`
        `.sql` and every unnamed extension included. There is no parser,
        so the file is linted as one block of prose, and a Vale rule
        scoped to YAML flags the code as readily as the comments. That is
-       rarely what was asked for — say so before writing it. These read
+       rarely what was asked for. Say so before writing it. These read
        like markup and are not: %(VALE_PLAINTEXT_FORMATS)s
-     - *not supported* — Vale parses these only by shelling out to an
+     - *not supported*: Vale parses these only by shelling out to an
        external program, and this build does not support any format that
        needs one:
        %(VALE_CONVERTER_FORMATS)s
@@ -176,10 +176,10 @@ answered together.
        Vale exits 2 with an `E100` runtime error, `--no-exit` does not
        suppress it, and every other Vale rule over every other file goes
        unreported. A matcher written as `[*.{md,typ}]` is not a wider
-       `[*.md]` — it is a broken one.
+       `[*.md]`. It is a broken one.
 
        **`.mdx` is supported** as of Vale v%(VALE_VERSION)s, which
-       parses it natively — it needs no external program and belongs
+       parses it natively. It needs no external program and belongs
        with the other markup formats above. `.typ` moved the other way
        in the same release: Typst now parses through `typst2vast`, so a
        Typst file is excluded rather than read as prose the way it was
@@ -242,7 +242,7 @@ answered together.
    Say which you would choose and why.
 
    Not logged in, no GitHub owner, or not locally expressible are not
-   choices — do not pose them as one.
+   choices. Do not pose them as one.
 
 8. **Name the command.** Finish by telling the user, or running, the
    exact fetch for the destination you chose:
@@ -302,14 +302,14 @@ will work.
   server-side the constraint is different again. A named default is
   wrong in whichever situation it failed to anticipate.
 - **Stay local when you reasonably can.** Reasonable confidence is
-  enough to commit to a local rule — the failure fallback backstops a
+  enough to commit to a local rule, the failure fallback backstops a
   wrong-but-reasonable bet.
 
 ## See Also
 
-- `%(TASKLESS_CLI)s agent create-legacy-rule` — author in a linter the repo already uses
-- `%(TASKLESS_CLI)s agent create-sg-rule` — author a local ast-grep rule (no login)
-- `%(TASKLESS_CLI)s agent create-vale-rule` — author a local Vale rule (no login)
-- `%(TASKLESS_CLI)s agent create-runtime-rule` — the runtime tier, logged out
-- `%(TASKLESS_CLI)s agent create-remote-rule` — generate via the service (login)
-- `%(TASKLESS_CLI)s agent check` — run every engine over the repo
+- `%(TASKLESS_CLI)s agent create-legacy-rule`: author in a linter the repo already uses
+- `%(TASKLESS_CLI)s agent create-sg-rule`: author a local ast-grep rule (no login)
+- `%(TASKLESS_CLI)s agent create-vale-rule`: author a local Vale rule (no login)
+- `%(TASKLESS_CLI)s agent create-runtime-rule`: the runtime tier, logged out
+- `%(TASKLESS_CLI)s agent create-remote-rule`: generate via the service (login)
+- `%(TASKLESS_CLI)s agent check`: run every engine over the repo

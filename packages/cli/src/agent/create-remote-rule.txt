@@ -13,14 +13,14 @@ submit it, and report what came back. The service generates the rule and
 writes the rule files; your job is everything on either side of that
 call.
 
-This recipe is the whole path — the boundary and the procedure. Do not
+This recipe is the whole path, the boundary and the procedure. Do not
 go looking for a second topic to perform the submission.
 
 ## Preconditions
 - `.taskless/` directory exists.
 - The user is logged in. This path requires auth.
 - The project has a GitHub owner. **Check this yourself before collecting
-  anything** — see below.
+  anything**, see below.
 - The request reached here through `route`, or through a local attempt
   that failed and a user who confirmed the escalation.
 
@@ -68,9 +68,9 @@ Two ways to legitimately be here:
   it is expressible and the user was offered the choice and took it.
 - **A local attempt failed and the user confirmed.** If you came from
   `create-sg-rule`'s failure path, that recipe has already deleted the
-  broken candidate and asked. If it has not been asked, ask now — a
+  broken candidate and asked. If it has not been asked, ask now, a
   silent fall-through from a failed local attempt to a paid service call
-  is not acceptable, even when the service would obviously do better.
+  is not acceptable, even when the service would do better.
 
 ## Steps
 
@@ -85,7 +85,7 @@ Two ways to legitimately be here:
 2. **Check for a rule that already covers this.** Scan
    `.taskless/rules/sg/` and read each rule's `message`, `note`, and
    `rule` fields. If one overlaps, show the user and ask whether they
-   would rather iterate on it — `%(TASKLESS_CLI)s agent improve-rule` refines an
+   would rather iterate on it, `%(TASKLESS_CLI)s agent improve-rule` refines an
    existing rule and is usually the better answer than a second rule
    that half-overlaps the first.
 
@@ -93,7 +93,7 @@ Two ways to legitimately be here:
    ask:
    - What exact pattern should be flagged? Get concrete examples.
    - In what language?
-   - Where is the pattern acceptable — are there contexts to exclude?
+   - Where is the pattern acceptable: are there contexts to exclude?
 
    If you arrived from a failed local attempt, reuse the cases you
    already gathered rather than asking again.
@@ -120,7 +120,7 @@ Two ways to legitimately be here:
    ```
    %(TASKLESS_CLI)s rule create --from .taskless/.tmp-rule-request.json --json
    ```
-   This may take 30–60 seconds while the service generates the rule.
+   This may take 30, 60 seconds while the service generates the rule.
 
 8. **Clean up.** Delete `.taskless/.tmp-rule-request.json` whether the
    call succeeded or failed.
@@ -150,7 +150,7 @@ Multi-line code goes in one string with literal newlines.
   the service generate it; a hand-written rule attached to a generation
   request is neither reviewed nor used.
 - The service owns rule-type selection. Today it generates ast-grep
-  rules under `.taskless/rules/sg/` — the same shape `create-sg-rule`
+  rules under `.taskless/rules/sg/`, the same shape `create-sg-rule`
   produces locally.
 
 ## Errors
@@ -171,8 +171,8 @@ With `--json`, failures emit `{ ok: false, code, message }`:
 
 ## See Also
 
-- `%(TASKLESS_CLI)s agent route` — the routing decision that leads here
-- `%(TASKLESS_CLI)s agent auth` — log in before generating
-- `%(TASKLESS_CLI)s agent create-sg-rule` — author a rule locally instead
-- `%(TASKLESS_CLI)s agent improve-rule` — iterate on a rule that already exists
-- `%(TASKLESS_CLI)s agent check` — validate the generated rule
+- `%(TASKLESS_CLI)s agent route`: the routing decision that leads here
+- `%(TASKLESS_CLI)s agent auth`: log in before generating
+- `%(TASKLESS_CLI)s agent create-sg-rule`: author a rule locally instead
+- `%(TASKLESS_CLI)s agent improve-rule`: iterate on a rule that already exists
+- `%(TASKLESS_CLI)s agent check`: validate the generated rule

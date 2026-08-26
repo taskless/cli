@@ -13,7 +13,7 @@ in CI (diff-only scan), or after rule create/improve to validate.
   `.taskless/rules/runtime/`. (If none exist, the CLI exits 0 with a
   friendly message suggesting `%(TASKLESS_CLI)s rule create`.)
 - No auth required. Static rules always run; whether runtime rules run
-  depends on auth state — see "What runs".
+  depends on auth state. See "What runs".
 
 ## What runs
 
@@ -23,15 +23,15 @@ in CI (diff-only scan), or after rule create/improve to validate.
   and **always run**, in every mode, with no network call. The offline
   linter posture.
 - **Runtime rules** (`.taskless/rules/runtime/<name>/`) execute a
-  `check.ts` — arbitrary code — so they run ONLY when that code is
+  `check.ts` (arbitrary code), so they run ONLY when that code is
   verified:
-  - **Logged in** (token or API key) — each rule's `check.ts` is
+  - **Logged in** (token or API key): each rule's `check.ts` is
     reconciled against the Taskless service; rules the server blessed
     (`run`) execute, and the rest are withheld and reported (advisory).
   - **Logged out, `--anonymous`, no GitHub remote, or service
-    unavailable** — runtime rules are **skipped** (reported, never run).
+    unavailable**, runtime rules are **skipped** (reported, never run).
     Static rules still run.
-  - **`--dangerously-run-scripts`** — runs every runtime rule trusting
+  - **`--dangerously-run-scripts`**: runs every runtime rule trusting
     local signatures, with no network call, behind a prominent warning.
     This is the only way to run runtime rules unverified.
 
@@ -43,10 +43,10 @@ authoritative allow-list is the server's; the CI backstop
 (`%(TASKLESS_CLI)s agent ci`) is the enforcement point for runtime rules.
 
 ## Flags
-- `--json` — machine output (`{ success, results, skipped? }`).
-- `--anonymous` — run only static rules; skip runtime rules.
-- `--dangerously-run-scripts` — run runtime `check.ts` unverified.
-- `--timeout <seconds>` — per-runtime-check wall-clock bound (default 10).
+- `--json`: machine output (`{ success, results, skipped? }`).
+- `--anonymous`: run only static rules; skip runtime rules.
+- `--dangerously-run-scripts`: run runtime `check.ts` unverified.
+- `--timeout <seconds>`: per-runtime-check wall-clock bound (default 10).
 
 ## Steps
 
@@ -105,15 +105,14 @@ authoritative allow-list is the server's; the CI backstop
    with a non-empty `results` array means there are only
    warning/info/hint findings (exit code 0); `success: true` with an
    empty `results` array means the codebase is clean. Findings are
-   never reported via the `{ ok: false, code, message }` envelope —
-   the envelope only appears when the scan itself fails (e.g.
+   never reported via the `{ ok: false, code, message }` envelope , the envelope only appears when the scan itself fails (e.g.
    `SCAN_FAILED`) and the normal results payload is absent.
 
 ## Exit codes
 
-- `0` — All checks passed, no rules configured, or all supplied
+- `0`: All checks passed, no rules configured, or all supplied
   paths missing
-- `1` — Errors detected or scan failed
+- `1`: Errors detected or scan failed
 
 ## Errors
 
@@ -125,5 +124,5 @@ When `--json` is set, failures emit `{ ok: false, code, message }`:
 
 ## See Also
 
-- `%(TASKLESS_CLI)s agent route` — add a rule if none exist
-- `%(TASKLESS_CLI)s agent ci` — wire `check` into a CI pipeline
+- `%(TASKLESS_CLI)s agent route`: add a rule if none exist
+- `%(TASKLESS_CLI)s agent ci`: wire `check` into a CI pipeline

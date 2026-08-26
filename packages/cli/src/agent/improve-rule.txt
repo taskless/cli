@@ -16,13 +16,13 @@ If the user wants the local-only flow (no API call), fetch
   service path as generation, so it carries the same constraint. Check
   `ghOwner` from `%(TASKLESS_CLI)s info --json`: if it is the literal
   `[unknown]`, stop and say the tier is unavailable rather than
-  submitting. `auth login` does not fix it — no GitHub owner is a
+  submitting. `auth login` does not fix it, no GitHub owner is a
   property of the project, not the session.
 - The target rule exists at `.taskless/rules/sg/<id>/<id>.yml`.
 - The rule has metadata at `.taskless/rule-metadata/<id>.yml` (the
   `ticketId` is required by the iterate endpoint). If metadata is
   missing, the rule was created in anonymous mode and cannot be
-  iterated via the API path — fetch the anonymous variant instead.
+  iterated via the API path. Fetch the anonymous variant instead.
 
 ## Steps
 
@@ -38,7 +38,7 @@ If the user wants the local-only flow (no API call), fetch
    %(TASKLESS_CLI)s rule meta <id> --json
    ```
    This returns the `ticketId` needed for the iterate request. If the
-   metadata is missing, the rule cannot be iterated via API — fetch
+   metadata is missing, the rule cannot be iterated via API. Fetch
    `%(TASKLESS_CLI)s agent improve-rule --anonymous` instead.
 
 4. **Gather improvement guidance.** Ask the user what should change:
@@ -51,7 +51,7 @@ If the user wants the local-only flow (no API call), fetch
    that is merely too narrow.** Read the rule's pattern for a `$$$`
    sitting next to a comma before you write that guidance. The comma is
    itself an AST node that has to match, so `f($A, $$$)` never sees a
-   one-argument call and `f($$$, $A)` sees only one-argument calls — the
+   one-argument call and `f($$$, $A)` sees only one-argument calls, the
    pattern reads as variadic and is not. `%(TASKLESS_CLI)s agent create-sg-rule`
    carries the arity table and both remedies. Guidance that asks to
    widen the rule when the fix is `strictness: ast` sends the iterate
@@ -59,9 +59,9 @@ If the user wants the local-only flow (no API call), fetch
 
 5. **Collect supporting references.** Ask the user for any code
    examples that should be:
-   - **Not flagged** (currently flagged but shouldn't be) — false
+   - **Not flagged** (currently flagged but shouldn't be): false
      positive references.
-   - **Flagged** (currently passing but should be caught) — false
+   - **Flagged** (currently passing but should be caught): false
      negative references.
 
    Each reference is `{ filename: string, content: string }`. Multiple
@@ -77,7 +77,7 @@ If the user wants the local-only flow (no API call), fetch
    ```
    %(TASKLESS_CLI)s rule improve --from .taskless/.tmp-improve-request.json --json
    ```
-   This may take 30–60 seconds while the API generates the update.
+   This may take 30, 60 seconds while the API generates the update.
 
 9. **Clean up.** Delete `.taskless/.tmp-improve-request.json`
    regardless of success or failure.
@@ -127,6 +127,6 @@ When `--json` is set, failures emit `{ ok: false, code, message }`:
 
 ## See Also
 
-- `%(TASKLESS_CLI)s agent improve-rule --anonymous` — local-only flow
-- `%(TASKLESS_CLI)s agent route` — make a new rule from scratch
-- `%(TASKLESS_CLI)s agent check` — validate the updated rule
+- `%(TASKLESS_CLI)s agent improve-rule --anonymous`: local-only flow
+- `%(TASKLESS_CLI)s agent route`: make a new rule from scratch
+- `%(TASKLESS_CLI)s agent check`: validate the updated rule

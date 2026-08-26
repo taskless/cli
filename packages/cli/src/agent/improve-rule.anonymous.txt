@@ -65,7 +65,7 @@ validate with `verify` and `test` in a feedback loop.
 
 ## Important Notes
 
-- Rules created in anonymous mode have no metadata sidecar — that's
+- Rules created in anonymous mode have no metadata sidecar: that's
   fine. This recipe doesn't need or write metadata.
 - If the rule was originally created via the API path (has metadata),
   you can still use this anonymous recipe to iterate locally. The
@@ -84,6 +84,6 @@ The verify primitive returns structured errors per layer:
 
 ## See Also
 
-- `%(TASKLESS_CLI)s agent improve-rule` — API-backed flow (auth required)
-- `%(TASKLESS_CLI)s agent create-sg-rule` — make a new rule locally
-- `%(TASKLESS_CLI)s agent check` — validate the updated rule
+- `%(TASKLESS_CLI)s agent improve-rule`: API-backed flow (auth required)
+- `%(TASKLESS_CLI)s agent create-sg-rule`: make a new rule locally
+- `%(TASKLESS_CLI)s agent check`: validate the updated rule

@@ -2,10 +2,10 @@
 
 ## Goal
 Manage Taskless authentication. Three branches:
-- **Login** — start the device-code flow and wait for the user to
+- **Login**: start the device-code flow and wait for the user to
   approve in their browser.
-- **Logout** — remove the saved token.
-- **Status** — check whether a token is present and whose identity
+- **Logout**: remove the saved token.
+- **Status**: check whether a token is present and whose identity
   it represents.
 
 ## Preconditions
@@ -29,7 +29,7 @@ Pick the branch matching the user's intent.
    printed.
 4. Report success. Suggest `%(TASKLESS_CLI)s info` to verify identity.
 
-The `--anonymous` flag is rejected on `auth login` — it errors with
+The `--anonymous` flag is rejected on `auth login`, it errors with
 "auth commands cannot be anonymous". Don't pass it.
 
 ### Logout
@@ -52,7 +52,7 @@ The `--anonymous` flag is rejected on `auth login` — it errors with
    - "Not logged in." (with hint to run `auth login`)
    - "Logged in as <user> (<orgs>)."
    - "Logged in, but unable to verify identity." (token expired or
-     revoked — suggest re-login)
+     revoked, suggest re-login)
 3. Report to the user.
 
 ## Errors
@@ -60,7 +60,7 @@ The `--anonymous` flag is rejected on `auth login` — it errors with
 `auth login` and `auth logout` accept `--json`. On error, the
 standardized `{ ok: false, code, message }` envelope is written to
 stdout (and human text on stderr is suppressed). On success in
-`--json` mode, the commands exit 0 silently — no success envelope is
+`--json` mode, the commands exit 0 silently, no success envelope is
 emitted. The status path (`%(TASKLESS_CLI)s auth` with no subcommand) accepts
 `--json` for forward-compat but currently has no error paths to
 report.
@@ -73,5 +73,5 @@ report.
 
 ## See Also
 
-- `%(TASKLESS_CLI)s agent info` — see auth state and skill versions
-- `%(TASKLESS_CLI)s agent route` — first action that requires auth
+- `%(TASKLESS_CLI)s agent info`: see auth state and skill versions
+- `%(TASKLESS_CLI)s agent route`: first action that requires auth

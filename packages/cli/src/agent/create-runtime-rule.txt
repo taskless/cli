@@ -3,7 +3,7 @@
 ## You are here
 This is `create-runtime-rule`. It helps you write a runtime rule: a
 check that runs your own code, because answering it needs more than one
-file — the repository graph, git metadata, build output, a resolved
+file, the repository graph, git metadata, build output, a resolved
 config chain.
 If that is not the kind of check you need, re-run `%(TASKLESS_CLI)s agent route`
 and follow its decision rather than adapting this recipe.
@@ -19,7 +19,7 @@ tiers are not, and what the user has to do before one can run.
 ## Preconditions
 - `.taskless/` directory exists.
 - The user is **not** logged in. If `%(TASKLESS_CLI)s info --json` reports
-  `loggedIn: true`, you are in the wrong recipe — re-run
+  `loggedIn: true`, you are in the wrong recipe, re-run
   `%(TASKLESS_CLI)s agent route`.
 
 ## What a runtime rule is
@@ -35,7 +35,7 @@ kinds of file:
 `verify` fails a runtime rule with no capture rule in `captures/`,
 because `check.ts` would then never be invoked.
 
-The capture rules do the cheap work — if nothing matches, `check.ts` is
+The capture rules do the cheap work, if nothing matches, `check.ts` is
 never invoked. `check.ts` does the part no static engine can: hold two
 files at once, read git, resolve an alias, look outside the repository.
 
@@ -46,7 +46,7 @@ That is also exactly why it is gated.
 **Because it executes code, not because of what it can express.**
 
 `sg` and `vale` rules are inert data. Whatever is in them, the worst a
-malicious rule achieves is a wrong finding — `%(TASKLESS_CLI)s check` runs them
+malicious rule achieves is a wrong finding, `%(TASKLESS_CLI)s check` runs them
 with no login, no network, and nothing to verify, because there is
 nothing to verify.
 
@@ -54,7 +54,7 @@ A runtime rule's `check.ts` is a program that runs on the developer's
 machine with the developer's permissions. A rule file that arrives in a
 pull request is code that arrives in a pull request. So `check`:
 
-1. **Signs** each `check.ts` — a signature over the exact bytes on disk.
+1. **Signs** each `check.ts`, a signature over the exact bytes on disk.
 2. **Reconciles** those signatures with the Taskless service, which
    answers with the set it will vouch for.
 3. **Runs only what came back blessed.** Anything else is reported as
@@ -66,14 +66,13 @@ Without a login there is nobody to ask, so there is no answer, so
 nothing runs.
 
 This is a property of executing code. It says nothing about whether a
-runtime rule is more or less capable, and it is not a quality tier —
-`sg` and `vale` rules are not less trusted, they are unexecuted.
+runtime rule is more or less capable, and it is not a quality tier , `sg` and `vale` rules are not less trusted, they are unexecuted.
 
 ## What happens today, logged out
 
 Nothing breaks. `%(TASKLESS_CLI)s check` still runs every static rule; each
 runtime rule it finds is listed as skipped with the reason
-`not authenticated — runtime rules were not verified and did not run`.
+`not authenticated, runtime rules were not verified and did not run`.
 
 So a runtime rule you write now is inert until the user logs in. Say
 that plainly rather than letting them discover it from a silent check.
@@ -81,8 +80,8 @@ that plainly rather than letting them discover it from a silent check.
 ## Steps
 
 1. **Tell the user what their rule needs, and why it is gated.** Name
-   the evidence — "this has to compare two files", "this reads git
-   history" — and then the consequence: it has to run code, so it needs
+   the evidence, "this has to compare two files", "this reads git
+   history", and then the consequence: it has to run code, so it needs
    an account. Do not present this as a limitation of the rule.
 
 2. **Point them at login.** Obtaining access is `auth`'s job, and this
@@ -93,7 +92,7 @@ that plainly rather than letting them discover it from a silent check.
    ```
 
    Follow that recipe with the user. If they do not want an account,
-   stop here — say the rule cannot run without one, and offer to
+   stop here, say the rule cannot run without one, and offer to
    reconsider whether a narrower version of the request could be
    answered by a static rule instead. That is a new routing decision,
    not a fallback you take on their behalf.
@@ -116,6 +115,6 @@ that plainly rather than letting them discover it from a silent check.
 
 ## See Also
 
-- `%(TASKLESS_CLI)s agent auth` — log in, log out, check status
-- `%(TASKLESS_CLI)s agent route` — re-decide once the login state changes
-- `%(TASKLESS_CLI)s agent check` — see which rules ran and which were skipped
+- `%(TASKLESS_CLI)s agent auth`: log in, log out, check status
+- `%(TASKLESS_CLI)s agent route`: re-decide once the login state changes
+- `%(TASKLESS_CLI)s agent check`: see which rules ran and which were skipped
