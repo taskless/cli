@@ -63,6 +63,18 @@ step, so local dogfooding always matches a true install.)
 > The `dev`/`self` invocations are local paths and must never be published:
 > only `pnpm build` (or `pnpm package`) produces a release artifact.
 
+### Running the local build
+
+The root `package.json` defines a `cli` script pointing at
+`./packages/cli/dist/index.js`. That script runs the CLI built from this working
+tree instead of a published release, which is what `CLAUDE.md` points
+contributors and agents at while they are working in this repo. Nothing rebuilds
+`dist/` for you, so run `pnpm build` first when you want current behavior.
+
+This section names the script rather than spelling out its shell invocation, because
+the `docs-npx-cli` rule holds every command in a README to the published
+`npx @taskless/cli` form for readers who do not have this repo checked out.
+
 ## Releasing taskless/cli
 
 Releases use [Changesets](https://github.com/changesets/changesets) with Turborepo for orchestration.
