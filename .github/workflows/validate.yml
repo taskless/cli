@@ -65,6 +65,51 @@ jobs:
       - name: Test workflow scripts
         run: node --test .github/scripts/*.test.cjs
 
+      # House style, enforced rather than documented. The rules live in
+      # `.taskless/` and are scoped to the documents people and agents actually
+      # read: every README, CLAUDE.md, `.conventions/*.md`, this directory's
+      # workflows, and comments under `packages/cli/src/`.
+      #
+      # A step here, not a standalone `taskless.yml`. The canonical recipe
+      # (`taskless agent ci`) writes a separate workflow so that onboarding
+      # never touches a pipeline it does not own, but the two things this repo
+      # needs are only available inside this job. Branch protection requires
+      # `Validate` and nothing else, so a separate workflow would report and
+      # block nothing, which is the whole of what #104 asked for; and `check`
+      # runs this repo's own build, which the `Build` step above has already
+      # produced. Full scan rather than the recipe's diff scan, for the reason
+      # `Validate specs` gives below: rot accumulates in the files a PR does
+      # not touch, and the scoped corpus is small enough that a diff scan buys
+      # nothing.
+      #
+      # Placed after the test steps rather than immediately after `Build`, so
+      # that the existing signal order (lint, types, build, tests) stays intact
+      # for anyone used to reading these logs. It only needs to be after
+      # `Build`; nothing above it depends on it.
+      #
+      # `pnpm cli` is the workspace build (`packages/cli/dist/index.js`), NOT a
+      # published release, and that is a deliberate divergence from `ci.txt`.
+      # The recipe is written for consumers installing the published CLI; here
+      # the repository IS the CLI, so running `npx @taskless/cli check` would
+      # test the published artifact and exempt the engine at HEAD from its own
+      # rules. Do NOT "fix" this back to `npx`: a commit that breaks rule
+      # evaluation has to fail on the commit that breaks it, not one release
+      # later. `Build` above ran `pnpm build` on this same commit, so `dist/`
+      # here can be neither stale nor missing, and an absent `dist/` would fail
+      # this step loudly rather than pass it empty.
+      #
+      # This blocks. `check` exits non-zero on any error-severity finding and
+      # on an engine that failed or timed out, so an em dash added to a covered
+      # document turns the build red. Warning-severity rules report without
+      # failing, which is what `severity: warning` in a rule means.
+      #
+      # No authentication and no secrets: static rules (Vale and ast-grep) run
+      # unauthenticated. Runtime rules under `.taskless/rules/runtime/` are
+      # skipped without a token; that directory is empty today, and wiring
+      # `TASKLESS_TOKEN` is the separate decision to make when it is not.
+      - name: Check house style
+        run: pnpm cli check
+
       # Repo-wide, not changed-files-only: spec rot accumulates in the specs a
       # PR does not touch, so a scoped check would never surface it.
       - name: Validate specs
