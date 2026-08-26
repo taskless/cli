@@ -563,9 +563,8 @@ withSg("ast-grep vendor contract", () => {
         "^no-eval$",
       ]);
       // eslint-disable-next-line no-control-regex -- the escape IS the subject
-      expect(colorized.stdout).toMatch(
-        /test result: \u001B\[32mok\u001B\[0m\./
-      );
+      const inThePhrase = /test result: \u001B\[32mok\u001B\[0m\./;
+      expect(colorized.stdout).toMatch(inThePhrase);
     });
 
     it("echoes the offending source on failure, and nothing on success", () => {
