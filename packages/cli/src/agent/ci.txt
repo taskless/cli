@@ -3,7 +3,7 @@
 ## Goal
 Wire `%(TASKLESS_CLI)s check` into the user's existing CI so rules run
 automatically on pushes and pull requests. Integrate with what they
-already have — never replace or edit their main pipeline.
+already have, never replace or edit their main pipeline.
 
 This recipe teaches two patterns (full scan and diff scan) that
 translate to any CI system. Common systems are listed as hints; if
@@ -12,11 +12,11 @@ you recognize one not on the list, apply the same patterns.
 ## Preconditions
 - `.taskless/` directory exists and contains at least one rule. (If
   no rules exist, instruct the user to fetch
-  `%(TASKLESS_CLI)s agent route` first — wiring CI with zero rules
+  `%(TASKLESS_CLI)s agent route` first, wiring CI with zero rules
   produces an always-green check that gives false confidence.)
 - A local `%(TASKLESS_CLI)s check` succeeds (or fails with real findings the
   user is OK with seeing in CI's first run).
-- No auth required for CI — `check` is unauthenticated by default.
+- No auth required for CI: `check` is unauthenticated by default.
   (Optionally tokenized as a server-enforced backstop; see step 7.)
 
 ## Steps
@@ -42,9 +42,9 @@ which CI they use. If multiple match, ask which should run Taskless.
 
 ### 2. Agree on the scan pattern
 
-- **Full scan** — `%(TASKLESS_CLI)s check`. Scans everything. Best for runs
+- **Full scan**: `%(TASKLESS_CLI)s check`. Scans everything. Best for runs
   on the main/default branch.
-- **Diff scan** — `%(TASKLESS_CLI)s check $(git diff --name-only ...)`.
+- **Diff scan**: `%(TASKLESS_CLI)s check $(git diff --name-only ...)`.
   Faster for PR builds. Per-CI diff target var:
 
 | CI                  | Target branch variable                        |
@@ -85,7 +85,7 @@ Canonical paths:
 |---------------------|---------------------------------------------------------------------|
 | GitHub Actions      | `.github/workflows/taskless.yml` (standalone, no include needed)    |
 | GitLab CI           | `.taskless/ci/gitlab.yml` (user adds `include`)                     |
-| CircleCI            | `.taskless/ci/circleci-job.yml` (no include — user copies job)      |
+| CircleCI            | `.taskless/ci/circleci-job.yml` (no include, user copies job)      |
 | Jenkins             | `.taskless/ci/taskless.Jenkinsfile` (user `load()`s)                |
 | Azure Pipelines     | `.taskless/ci/azure-taskless.yml` (user references via `template:`) |
 | Bitbucket Pipelines | `.taskless/ci/bitbucket-pipelines.yml` (user merges manually)       |
@@ -93,12 +93,12 @@ Canonical paths:
 
 ### 5. GitHub Actions reference template
 
-The reference template — translate the same shape (checkout with
+The reference template, translate the same shape (checkout with
 full history, set up Node, conditional check) for other CIs.
 
 Substitute `%(PACKAGE_MANAGER_DLX)s` with the CI runner's own complete
-invocation — `npx @taskless/cli`, `pnpm dlx @taskless/cli`,
-`yarn dlx @taskless/cli`, or `bunx @taskless/cli` — picking the launcher
+invocation, `npx @taskless/cli`, `pnpm dlx @taskless/cli`,
+`yarn dlx @taskless/cli`, or `bunx @taskless/cli`, picking the launcher
 from `pnpm-lock.yaml`/`yarn.lock`/`bun.lockb`. It is a whole command on
 its own, exactly as the template uses it; never combine it with
 `%(TASKLESS_CLI)s`. Which launcher the repository you are wiring up should
@@ -168,14 +168,14 @@ config works out of the box with no secrets and scans all local rules.
 
 Static ast-grep rules always run in CI with no secrets. **Runtime
 rules** (`.taskless/rules/runtime/`, which execute a `check.ts`) only
-run when their code is server-verified — so an unauthenticated CI job
+run when their code is server-verified, so an unauthenticated CI job
 runs the static rules and skips the runtime ones.
 
 Exposing a `TASKLESS_TOKEN` secret turns CI into the **backstop** for
 runtime rules: an authenticated `check` reconciles each runtime rule's
 `check.ts` against the Taskless service and runs exactly the
 server-blessed set, withholding any that drift or were never issued.
-This is the enforcement point for runtime rules — local developer runs
+This is the enforcement point for runtime rules, local developer runs
 skip them unless `--dangerously-run-scripts` is passed. To wire it, set
 the token as an env var on the check step (GitHub Actions):
 
@@ -190,7 +190,7 @@ the token as an env var on the check step (GitHub Actions):
 Add this only when the user wants server-enforced rules in CI; the
 unauthenticated default remains fully supported. Also mention auth if
 the user explicitly asks to run authenticated commands (e.g.
-`rule create`/`rule improve`) in CI — uncommon.
+`rule create`/`rule improve`) in CI, uncommon.
 
 ### 8. Package manager caveats
 
@@ -205,11 +205,11 @@ the user explicitly asks to run authenticated commands (e.g.
 ### 9. Report back
 
 Show:
-1. The path written and a 10–15 line excerpt.
+1. The path written and a 10, 15 line excerpt.
 2. For CIs needing manual wiring, the exact `include:` / reference
    line for their main config.
 3. `git status` so they can review before committing.
-4. A note that the first CI run exercises rules — if existing
+4. A note that the first CI run exercises rules, if existing
    matches exist, CI will fail until fixed or suppressed.
 
 ## Errors
@@ -224,5 +224,5 @@ Show:
 
 ## See Also
 
-- `%(TASKLESS_CLI)s agent check` — the command being wired into CI
-- `%(TASKLESS_CLI)s agent route` — required if no rules exist yet
+- `%(TASKLESS_CLI)s agent check`: the command being wired into CI
+- `%(TASKLESS_CLI)s agent route`: required if no rules exist yet

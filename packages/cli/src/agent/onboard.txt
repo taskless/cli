@@ -4,7 +4,7 @@
 Help a user who has just installed Taskless go from zero rules to a
 useful starter set by mining their codebase, agent-memory files, PR
 review history, and issue tracker for high-signal rule candidates.
-This is a conversational discovery flow, not a script — the agent
+This is a conversational discovery flow, not a script, the agent
 collaborates with the user on what to scan and surfaces hypothetical
 rules as a bullet list the user can choose to materialize via the
 `rule create` flow.
@@ -15,7 +15,7 @@ rules as a bullet list the user can choose to materialize via the
   is automatically satisfied.
 - A working repository the agent can read.
 - No auth required to surface candidates. (Materializing a rule via
-  `rule create` may require auth — fetch `%(TASKLESS_CLI)s agent auth` if
+  `rule create` may require auth. Fetch `%(TASKLESS_CLI)s agent auth` if
   needed at that point.)
 - The criterion for where a rule belongs lives in
   `%(TASKLESS_CLI)s agent route` and is not restated here. This recipe
@@ -39,7 +39,7 @@ rules as a bullet list the user can choose to materialize via the
    %(TASKLESS_CLI)s detect --json
    ```
 
-   Read `route` for the destination criterion — which rules are
+   Read `route` for the destination criterion, which rules are
    decided by one file's syntax tree, by a document's words, by a
    tool the repo already runs, or by evidence outside the files.
    Read `detect --json` for what this repository actually has:
@@ -48,34 +48,34 @@ rules as a bullet list the user can choose to materialize via the
    Do this before you synthesize the bullet list, not after.
    Proposing first and routing afterwards is how a bullet list ends
    up carrying candidates that nothing can enforce. You are not
-   choosing a destination command here — that happens per accepted
+   choosing a destination command here. That happens per accepted
    bullet when you offer materialization.
 
 3. **Open the conversation about sources.** Tell the user you can mine
    several places for rule candidates and ask which ones they want to
    include. Default sources you should always offer:
 
-   - **Codebase TODOs / FIXMEs** — search for `TODO`, `FIXME`, `XXX`,
+   - **Codebase TODOs / FIXMEs**: search for `TODO`, `FIXME`, `XXX`,
      and `HACK` comments. Many of these are latent rules ("don't do
      this", "remove when X").
-   - **Agent-memory files** — read `CLAUDE.md`, `AGENTS.md`,
+   - **Agent-memory files**: read `CLAUDE.md`, `AGENTS.md`,
      `.cursorrules`, `.opencode/AGENTS.md`, and similar agent-context
      files for explicit rules and conventions stated in prose.
-   - **Recent PR review comments** — only if the `gh` CLI is
+   - **Recent PR review comments**: only if the `gh` CLI is
      available. Probe with `command -v gh`. Suggest scanning the last
      30 days of merged PRs for repeated reviewer feedback patterns.
-   - **Issue tracker tickets** — only if a relevant MCP is wired in
+   - **Issue tracker tickets**: only if a relevant MCP is wired in
      (Linear, Jira, GitHub issues via `gh issue list`, etc.). Use
      whatever issue-tracker tools you have available.
 
-   Then explicitly ask: "Are there other places I should look — a
+   Then explicitly ask: "Are there other places I should look, a
    team wiki, an internal docs site, a specific design doc, a Slack
    channel export?" The user often knows about sources you don't.
 
 4. **Probe tool availability before promising a scan.** For each
    source the user picks, verify the tool exists before committing
    to it. Don't tell the user "I'll scan PR comments" if `gh` isn't
-   installed — say "PR comments need the GitHub CLI, or equivalent; want me to skip
+   installed, say "PR comments need the GitHub CLI, or equivalent; want me to skip
    this or wait while you install these tools?"
 
 5. **Scan with high-signal filtering.** For each chosen source:
@@ -101,7 +101,7 @@ rules as a bullet list the user can choose to materialize via the
    ```
 
    `<destination>` is the routing call you reached when you learned
-   the routing surface — one of
+   the routing surface, one of
    `legacy`, `sg`, `vale`, or `runtime`. Example:
 
    ```
@@ -111,20 +111,20 @@ rules as a bullet list the user can choose to materialize via the
    - exports-must-be-used [runtime]: Flag exported symbols nothing in the repo imports.
    ```
 
-   The annotation is provisional — it tells the user what kind of rule
+   The annotation is provisional. It tells the user what kind of rule
    this would be, and it is why an unroutable candidate never reaches
    the list. `route` adjudicates for real at materialization time, and
    may land somewhere else once it has the rule's full description.
 
    Order the bullets by your judgment of impact (frequency in the
    source × severity of the issue × ease of enforcement). Don't
-   inflate the list — three high-quality candidates beat ten
+   inflate the list, three high-quality candidates beat ten
    speculative ones.
 
 7. **Offer materialization per bullet.** For each bullet, ask
    whether the user wants to turn it into a real Taskless rule. On
    yes, follow the `%(TASKLESS_CLI)s agent route` recipe you already
-   fetched when you learned the routing surface — the user's accepted
+   fetched when you learned the routing surface, the user's accepted
    bullet becomes the rule description input. Re-fetch it only if it
    has fallen out of context.
 
@@ -132,8 +132,8 @@ rules as a bullet list the user can choose to materialize via the
    they're done (they've materialized everything they want, or
    they've said "that's enough for now"), explicitly ask: "Do you
    want me to mark Taskless as onboarded? You won't be re-asked to
-   onboard until you pass `--force`." On explicit yes — and only
-   on explicit yes — run:
+   onboard until you pass `--force`." On explicit yes, and only
+   on explicit yes, run:
 
    ```
    %(TASKLESS_CLI)s onboard --mark-complete
@@ -141,7 +141,7 @@ rules as a bullet list the user can choose to materialize via the
 
    Do NOT mark onboarding complete on your own initiative. Do NOT
    run `--mark-complete` if the user is ambiguous, says "maybe
-   later", or simply stops responding. The flag is consent-gated.
+   later", or stops responding. The flag is consent-gated.
 
 ## Errors
 
@@ -151,9 +151,9 @@ rules as a bullet list the user can choose to materialize via the
 
 ## See Also
 
-- `%(TASKLESS_CLI)s agent route` — the destination criterion; read it
+- `%(TASKLESS_CLI)s agent route`: the destination criterion; read it
   before proposing candidates, and follow it to materialize an accepted one
-- `%(TASKLESS_CLI)s agent detect` — what this repository already lints
+- `%(TASKLESS_CLI)s agent detect`: what this repository already lints
   and authors, which bounds what a candidate can be
-- `%(TASKLESS_CLI)s agent check` — validate newly created rules against the codebase
-- `%(TASKLESS_CLI)s agent info` — inspect the current `.taskless/taskless.json` state
+- `%(TASKLESS_CLI)s agent check`: validate newly created rules against the codebase
+- `%(TASKLESS_CLI)s agent info`: inspect the current `.taskless/taskless.json` state

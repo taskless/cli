@@ -21,4 +21,4 @@ For the local-only flow on improve, append `--anonymous`.
 
 ## See Also
 
-- `%(TASKLESS_CLI)s agent check` — run all configured rules
+- `%(TASKLESS_CLI)s agent check`: run all configured rules

@@ -57,11 +57,10 @@ When `--json` is set, failures emit `{ ok: false, code, message }`:
 |------------------|----------------------------|--------------------------|
 | `INTERNAL_ERROR` | Internal schema validation | Report; likely a CLI bug |
 
-(Network errors during the auth probe are silently swallowed —
-`info` falls back to reporting `loggedIn: false` rather than
+(Network errors during the auth probe are silently swallowed , `info` falls back to reporting `loggedIn: false` rather than
 failing.)
 
 ## See Also
 
-- `%(TASKLESS_CLI)s agent auth` — log in / log out / status detail
-- `%(TASKLESS_CLI)s agent check` — run rules against the codebase
+- `%(TASKLESS_CLI)s agent auth`: log in / log out / status detail
+- `%(TASKLESS_CLI)s agent check`: run rules against the codebase

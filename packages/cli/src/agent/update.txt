@@ -2,7 +2,7 @@
 
 ## Goal
 Update Taskless skills in the user's coding-agent tools to the
-latest bundled version. Non-interactive — no wizard, no prompts.
+latest bundled version. Non-interactive, no wizard, no prompts.
 Installs to all detected tool locations using the same logic as
 `%(TASKLESS_CLI)s init --no-interactive`, but exposed as its own subcommand
 so the agent can run it directly without explaining flags.
@@ -44,5 +44,5 @@ non-zero with the error message on stderr.
 
 ## See Also
 
-- `%(TASKLESS_CLI)s agent init` — interactive variant (wizard with prompts)
-- `%(TASKLESS_CLI)s agent info` — verify what's installed and check staleness
+- `%(TASKLESS_CLI)s agent init`: interactive variant (wizard with prompts)
+- `%(TASKLESS_CLI)s agent info`: verify what's installed and check staleness

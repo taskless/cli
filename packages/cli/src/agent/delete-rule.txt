@@ -18,7 +18,7 @@ rule is deleted by removing its directory by hand.
 
 1. **Identify the rule.** If the user named one, use it. Otherwise,
    list `.taskless/rules/sg/` and ask which one. Confirm the user's
-   intent — deletion is destructive.
+   intent, deletion is destructive.
 
 2. **Invoke the CLI.** Run:
    ```
@@ -26,7 +26,7 @@ rule is deleted by removing its directory by hand.
    ```
 
    The CLI removes:
-   - `.taskless/rules/sg/<id>/` — the whole directory, which holds the
+   - `.taskless/rules/sg/<id>/`: the whole directory, which holds the
      rule, its `.tests/`, and any per-rule config
    - `.taskless/rule-metadata/<id>.yml` (if present)
 
@@ -49,5 +49,5 @@ emitted from this command.
 
 ## See Also
 
-- `%(TASKLESS_CLI)s agent route` — make a new rule
-- `%(TASKLESS_CLI)s agent check` — run remaining rules to confirm nothing broke
+- `%(TASKLESS_CLI)s agent route`: make a new rule
+- `%(TASKLESS_CLI)s agent check`: run remaining rules to confirm nothing broke

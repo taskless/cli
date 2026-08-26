@@ -3,7 +3,7 @@
 ## Goal
 Install or update the Taskless skill into the user's coding-agent
 tools (Claude Code, OpenCode, Cursor, etc.). The user runs this
-themselves — the agent's role is mostly to point the user at the
+themselves, the agent's role is mostly to point the user at the
 right command when they need to install or upgrade.
 
 ## Preconditions
@@ -35,7 +35,7 @@ The wizard will:
    directory (`.claude/`, `.cursor/`, `.opencode/`, `.agents/`).
 5. Update `.taskless/taskless.json` with the install manifest.
 
-The skill content lives in exactly one place — `.taskless/skills/` —
+The skill content lives in exactly one place, `.taskless/skills/`,
 and each tool directory holds only a short stub that points at it.
 Stale layouts from older installs (full per-tool copies, symlinks)
 are converged into stubs automatically. If the user is on v0.6 or
@@ -50,5 +50,5 @@ what was removed.
 
 ## See Also
 
-- `%(TASKLESS_CLI)s agent info` — verify what's installed and check staleness
-- `%(TASKLESS_CLI)s agent auth` — authenticate after installing
+- `%(TASKLESS_CLI)s agent info`: verify what's installed and check staleness
+- `%(TASKLESS_CLI)s agent auth`: authenticate after installing
