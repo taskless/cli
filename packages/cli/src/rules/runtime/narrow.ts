@@ -7,7 +7,12 @@ import { StringDecoder } from "node:string_decoder";
 
 import { stringify } from "yaml";
 
-import { buildPath, findSgBinary, sgWalkArgv } from "../scan";
+import {
+  buildPath,
+  findSgBinary,
+  sgWalkArgv,
+  stripSgDeprecationBanner,
+} from "../scan";
 import type { Match } from "../../types/runtime-rule";
 import type { LoadedCaptureRule, RuntimeRule } from "./discover";
 
@@ -73,7 +78,7 @@ function runSg(
         // Test the joined text, not the chunk count: the decoder's final flush
         // pushes an empty string on a stream that ended cleanly, so counting
         // chunks would append a bare `: ` to every message.
-        const stderr = stderrChunks.join("").trim();
+        const stderr = stripSgDeprecationBanner(stderrChunks.join("")).trim();
         reject(
           new Error(
             `ast-grep narrow failed (${cause})${stderr === "" ? "" : `: ${stderr}`}`

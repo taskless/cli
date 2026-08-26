@@ -873,7 +873,12 @@ withSg("ast-grep vendor contract", () => {
    * reads as structural, is accepted, and matches nothing forever.
    */
   describe("Markdown sees blocks, not inline constructs", () => {
-    /** A document with a heading, a subheading, a list, a fence and a link. */
+    /**
+     * A document with a heading, a subheading, a list, a fence, a link and a
+     * setext heading. The setext form is here because `route.txt` routes
+     * "docs must not use setext (`===`) headings" to `create-sg-rule`, so the
+     * kind that rule would name has to be pinned like any other.
+     */
     const markdownSource = {
       "docs/a.md": [
         "# Title",
@@ -889,6 +894,9 @@ withSg("ast-grep vendor contract", () => {
         "no language here",
         "```",
         "",
+        "Alternate",
+        "=========",
+        "",
       ].join("\n"),
     };
 
@@ -902,10 +910,23 @@ withSg("ast-grep vendor contract", () => {
         .stdout.split("\n")
         .filter((line) => line !== "").length;
 
+    // EVERY kind the recipes name, not just the ones a rule here happens to
+    // use. `route.txt` and `create-sg-rule.txt` tell an agent that these seven
+    // are the block tree, and an unrecognized `kind:` is not a zero-match: it
+    // is exit 8 that aborts config parsing and takes every other rule's report
+    // down with it (pinned below for `link`). So a bump that renames one of
+    // these turns a recipe into instructions for writing a scan-killing rule,
+    // and this is the only thing that would go red.
     it("matches block-level kinds", () => {
+      expect(matchCount("  kind: document")).toBe(1);
+      expect(matchCount("  kind: section")).toBe(2);
       expect(matchCount("  kind: atx_heading")).toBe(2);
+      expect(matchCount("  kind: setext_heading")).toBe(1);
       expect(matchCount("  kind: fenced_code_block")).toBe(1);
       expect(matchCount("  kind: list_item")).toBe(2);
+      // 4, not 1: a list item wraps its text in a paragraph, and so does the
+      // setext heading.
+      expect(matchCount("  kind: paragraph")).toBe(4);
     });
 
     /** The text each finding matched, trimmed, in file order. */

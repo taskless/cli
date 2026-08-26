@@ -18,7 +18,7 @@ import { execFile } from "node:child_process";
  * **ast-grep already honors `.gitignore` and always has.** Its walker is the
  * `ignore` crate, and `sgWalkArgv` passes `--no-ignore hidden` *only* —
  * deliberately not `vcs`, which is the value that would switch VCS ignore files
- * off. Measured against the pinned 0.41.0 in a repository ignoring
+ * off. Measured against ast-grep 0.41.0 in a repository ignoring
  * `worktrees/`: a bare scan reports nothing under `worktrees/probe/`, and it
  * reports nothing under a hidden-*and*-ignored `packages/cli/.turbo/` either,
  * which is the case that would expose `--no-ignore hidden` if that flag had
