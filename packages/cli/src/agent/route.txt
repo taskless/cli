@@ -36,13 +36,19 @@ answered together.
    }
    ```
 
-2. **Read the login state.** Run:
+2. **Read the login state and the repository context.** Run:
    ```
    %(TASKLESS_CLI)s info --json
    ```
-   and note `loggedIn`. Do this now, not later: it changes which
-   destinations exist, so classifying first means classifying against a
-   set that may be wrong.
+   and note `loggedIn` and `ghOwner`. Do this now, not later: they change
+   which destinations exist, so classifying first means classifying
+   against a set that may be wrong.
+
+   `ghOwner` is the GitHub owner this project belongs to, or the literal
+   `[unknown]` when there is none to find: not a git repository, no
+   `origin` remote, an `origin` that is not GitHub, or no git installed.
+   Read it from this payload rather than running `git` yourself, so the
+   destinations you offer match what the CLI will actually allow.
 
    Reading it is not the same as asking about it. Do **not** open by
    offering service generation — at this point neither you nor the user
@@ -209,16 +215,36 @@ answered together.
      forwards to another.
    - **logged out** → `create-runtime-rule`, which explains the gate.
 
-6. **Offer the service only where it is a genuine choice.** When the
-   rule is expressible locally **and** the user is logged in, present
-   both and let them pick: a local rule you write and verify now, or a
-   generation that costs against their plan. Say which you would choose
-   and why.
+   With `ghOwner` of `[unknown]`, `create-remote-rule` is not reachable
+   at all: see step 6.
 
-   Not logged in, or not locally expressible, are not choices — do not
-   pose them as one.
+6. **Drop remote generation when `ghOwner` is `[unknown]`.** Generation
+   runs against a verifiable org, which comes from a GitHub `origin`.
+   Without one the tier cannot complete, so it is not a destination and
+   must not be presented as one. Route to the local recipe the rule's
+   shape calls for, and if the rule is only expressible at runtime, go
+   to `create-runtime-rule`.
 
-7. **Name the command.** Finish by telling the user, or running, the
+   Say the tier is unavailable and why, in one line. A reader who is not
+   told will read the omission as an oversight and ask for it, which
+   costs a turn and ends where this step already is.
+
+   This is **not fixed by `auth login`**. It is a property of the
+   project, not the session, so do not send them there for it.
+
+   Everything else still works: local authoring, `verify`, `test` and
+   `check` need no remote of any kind.
+
+7. **Offer the service only where it is a genuine choice.** When the
+   rule is expressible locally, the user is logged in, **and** `ghOwner`
+   is not `[unknown]`, present both and let them pick: a local rule you
+   write and verify now, or a generation that costs against their plan.
+   Say which you would choose and why.
+
+   Not logged in, no GitHub owner, or not locally expressible are not
+   choices — do not pose them as one.
+
+8. **Name the command.** Finish by telling the user, or running, the
    exact fetch for the destination you chose:
    ```
    %(TASKLESS_CLI)s agent create-vale-rule
