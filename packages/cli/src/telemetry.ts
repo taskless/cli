@@ -6,6 +6,7 @@ import { PostHog } from "posthog-node";
 import { decodeJwt } from "jose";
 
 import { decodeOrgId, NIL_ORG_ID } from "./auth/jwt";
+import { resolveRepositoryContext, UNKNOWN_GH_OWNER } from "./util/git-remote";
 import { getConfigDirectory, getToken } from "./auth/token";
 import { CLI_VERSION } from "./version";
 
@@ -163,6 +164,24 @@ export async function getTelemetry(cwd?: string): Promise<TelemetryClient> {
 
     const scaffoldVersion = await resolveScaffoldVersion(cwd);
 
+    // Which GitHub owner is using the CLI, including anonymously — that is
+    // the question this property exists to answer, so it is resolved from the
+    // git remote rather than from the token, and is present whether or not
+    // one was found.
+    //
+    // `gh_owner`, not `gh_org`: the first path segment of a GitHub URL is an
+    // organization OR a user account, and telling them apart needs an
+    // authenticated API call an anonymous run cannot make. The name states
+    // what is actually in hand.
+    //
+    // `[unknown]` rather than an omitted property, so runs with no resolvable
+    // owner stay countable instead of vanishing from aggregates. Resolution
+    // never throws, so a host with no git installed lands here like any other
+    // unresolvable case. No `cwd` is treated the same way, matching
+    // `resolveScaffoldVersion` above; every real call site passes one.
+    const repository = cwd ? await resolveRepositoryContext(cwd) : undefined;
+    const ghOwner = repository ? repository.ghOwner : UNKNOWN_GH_OWNER;
+
     posthog = new PostHog(POSTHOG_PROJECT_TOKEN, {
       host: POSTHOG_HOST,
       flushAt: 1,
@@ -176,6 +195,7 @@ export async function getTelemetry(cwd?: string): Promise<TelemetryClient> {
         cli: anonymousId,
         cliVersion: CLI_VERSION,
         scaffoldVersion,
+        gh_owner: ghOwner,
       },
     });
 
@@ -199,6 +219,7 @@ export async function getTelemetry(cwd?: string): Promise<TelemetryClient> {
               cli: anonymousId,
               cliVersion: CLI_VERSION,
               scaffoldVersion,
+              gh_owner: ghOwner,
             },
             ...(!anonymous && orgSubject !== undefined
               ? { groups: { organization: String(orgSubject) } }
