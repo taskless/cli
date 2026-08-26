@@ -6,6 +6,7 @@ import { getToken } from "../auth/token";
 import { fetchWhoami } from "../auth/whoami";
 import { outputSchema as infoOutputSchema } from "../schemas/info";
 import { makeErrorEnvelope } from "../types/errors";
+import { resolveRepositoryContext } from "../util/git-remote";
 
 export const infoCommand = defineCommand({
   meta: {
@@ -32,9 +33,13 @@ export const infoCommand = defineCommand({
   async run({ args }) {
     const cwd = resolve(args.dir ?? process.cwd());
 
-    const [tools, token] = await Promise.all([
+    // The repository context resolves regardless of `--anonymous`: it comes
+    // from the local git remote, not from the API, so suppressing it would
+    // hide capability state that has nothing to do with the auth probe.
+    const [tools, token, repository] = await Promise.all([
       checkStaleness(cwd),
       args.anonymous ? Promise.resolve() : getToken(cwd),
+      resolveRepositoryContext(cwd),
     ]);
 
     let auth: { user: string; email?: string; orgs: string[] } | undefined;
@@ -55,6 +60,12 @@ export const infoCommand = defineCommand({
       tools,
       loggedIn: token !== undefined,
       auth,
+      // Reported so a caller deciding whether remote generation is available
+      // reads the same resolution the CLI enforces, rather than shelling out
+      // to git itself and reaching a different answer. `route` consults this
+      // payload already; these fields ride along on a call it makes anyway.
+      repositoryUrl: repository.repositoryUrl,
+      ghOwner: repository.ghOwner,
     };
 
     if (args.json) {

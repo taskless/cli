@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { promisify } from "node:util";
@@ -10,11 +10,13 @@ const binPath = resolve(import.meta.dirname, "../dist/index.js");
 
 async function runCli(
   args: string[],
-  env?: Record<string, string>
+  env?: Record<string, string>,
+  spawnCwd?: string
 ): Promise<{ stdout: string; stderr: string; exitCode: number }> {
   try {
     const { stdout, stderr } = await execFileAsync("node", [binPath, ...args], {
       env: { ...process.env, ...env },
+      ...(spawnCwd ? { cwd: spawnCwd } : {}),
     });
     return { stdout, stderr, exitCode: 0 };
   } catch (error) {
@@ -280,4 +282,146 @@ describe("local authoring needs no GitHub remote", () => {
       });
     });
   }
+});
+
+/**
+ * `route` reads capability state from `taskless info --json` before it
+ * classifies, so these two fields are what tells it whether remote generation
+ * is a destination at all. They ride on a call it already makes; a second
+ * lookup could disagree with the one the CLI enforces.
+ */
+describe("info reports the repository context", () => {
+  let cwd: string;
+
+  beforeEach(async () => {
+    cwd = await mkdtemp(join(tmpdir(), "taskless-infoctx-"));
+  });
+
+  afterEach(async () => {
+    await rm(cwd, { recursive: true, force: true });
+  });
+
+  async function readInfo(): Promise<{
+    repositoryUrl: string | null;
+    ghOwner: string;
+  }> {
+    const result = await runCli(["info", "--json", "-d", cwd]);
+    expect(result.exitCode).toBe(0);
+    const parsed = JSON.parse(result.stdout) as {
+      repositoryUrl: string | null;
+      ghOwner: string;
+    };
+    return parsed;
+  }
+
+  it("reports the canonical URL and owner for a GitHub origin", async () => {
+    await execFileAsync("git", ["init"], { cwd });
+    await execFileAsync(
+      "git",
+      ["remote", "add", "origin", "git@github.com:acme/widgets.git"],
+      { cwd }
+    );
+    const info = await readInfo();
+    expect(info.repositoryUrl).toBe("https://github.com/acme/widgets");
+    expect(info.ghOwner).toBe("acme");
+  });
+
+  it("reports null and [unknown] when the directory is not a git repository", async () => {
+    const info = await readInfo();
+    expect(info.repositoryUrl).toBeNull();
+    expect(info.ghOwner).toBe("[unknown]");
+  });
+
+  it("reports null and [unknown] when there is no origin remote", async () => {
+    await execFileAsync("git", ["init"], { cwd });
+    const info = await readInfo();
+    expect(info.repositoryUrl).toBeNull();
+    expect(info.ghOwner).toBe("[unknown]");
+  });
+
+  it("reports null and [unknown] for a non-GitHub origin", async () => {
+    await execFileAsync("git", ["init"], { cwd });
+    await execFileAsync(
+      "git",
+      ["remote", "add", "origin", "https://gitlab.com/acme/widgets.git"],
+      { cwd }
+    );
+    const info = await readInfo();
+    expect(info.repositoryUrl).toBeNull();
+    expect(info.ghOwner).toBe("[unknown]");
+  });
+
+  it("reports [unknown] rather than failing when git is not on PATH", async () => {
+    // Not one of the three no-remote populations: the resolution cannot run
+    // at all. `info` must still succeed, because an absent git is a property
+    // of the host, not an error in the command.
+    //
+    // PATH is narrowed to a directory holding only `node`, rather than
+    // emptied: the harness spawns `node` by name, so clobbering PATH
+    // outright fails the test runner instead of the lookup under test.
+    const binDirectory = await mkdtemp(join(tmpdir(), "taskless-nogit-"));
+    await symlink(process.execPath, join(binDirectory, "node"));
+    const result = await runCli(["info", "--json", "-d", cwd], {
+      PATH: binDirectory,
+    });
+    await rm(binDirectory, { recursive: true, force: true });
+    expect(result.exitCode).toBe(0);
+    const info = JSON.parse(result.stdout) as {
+      repositoryUrl: string | null;
+      ghOwner: string;
+    };
+    expect(info.repositoryUrl).toBeNull();
+    expect(info.ghOwner).toBe("[unknown]");
+  });
+
+  it("resolves the context even under --anonymous", async () => {
+    // `--anonymous` suppresses the API/auth probe. The repository context is
+    // local, so it is unaffected: capability state is not auth state.
+    await execFileAsync("git", ["init"], { cwd });
+    await execFileAsync(
+      "git",
+      ["remote", "add", "origin", "https://github.com/acme/widgets.git"],
+      { cwd }
+    );
+    const result = await runCli(["info", "--anonymous", "--json", "-d", cwd]);
+    expect(result.exitCode).toBe(0);
+    const info = JSON.parse(result.stdout) as {
+      loggedIn: boolean;
+      ghOwner: string;
+    };
+    expect(info.loggedIn).toBe(false);
+    expect(info.ghOwner).toBe("acme");
+  });
+});
+
+/**
+ * The repository context deliberately went on `info`, not on `auth`.
+ *
+ * `route` already calls `info --json`, so the fields ride on a call it makes
+ * anyway. `auth` status is plain text with no payload, and giving it one
+ * would have meant inventing an output format for a command `route` never
+ * calls. This pins that decision: a later change that grows a payload here
+ * has to delete this test first, and say why.
+ */
+describe("auth status stays plain text", () => {
+  let cwd: string;
+
+  beforeEach(async () => {
+    cwd = await mkdtemp(join(tmpdir(), "taskless-authtext-"));
+  });
+
+  afterEach(async () => {
+    await rm(cwd, { recursive: true, force: true });
+  });
+
+  it("prints the plain-text status and emits no JSON payload", async () => {
+    const result = await runCli(["auth"], { TASKLESS_TOKEN: "" }, cwd);
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain("Not logged in.");
+    expect(() => {
+      JSON.parse(result.stdout);
+    }).toThrow();
+    expect(result.stdout).not.toContain("repositoryUrl");
+    expect(result.stdout).not.toContain("ghOwner");
+  });
 });

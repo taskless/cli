@@ -24,6 +24,17 @@ export const outputSchema = z.object({
   tools: z.array(toolStatusSchema).describe("Detected tools and skill status"),
   loggedIn: z.boolean().describe("Whether the user is authenticated"),
   auth: authSchema.optional().describe("User identity if logged in"),
+  repositoryUrl: z
+    .string()
+    .nullable()
+    .describe(
+      "Canonical GitHub repository URL, or null when none is resolvable"
+    ),
+  ghOwner: z
+    .string()
+    .describe(
+      "GitHub owner segment, or the literal `[unknown]` when none is resolvable"
+    ),
 });
 
 export const errorSchema = z.object({

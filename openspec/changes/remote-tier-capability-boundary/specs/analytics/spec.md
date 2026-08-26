@@ -4,7 +4,9 @@
 
 Telemetry SHALL include a `gh_owner` property on every identify and on captured events, on authenticated and anonymous runs alike.
 
-When a GitHub owner can be extracted from the project's git remote, `gh_owner` SHALL be that owner segment verbatim. When it cannot, `gh_owner` SHALL be the literal sentinel `[unknown]` rather than being omitted, so runs with an unparseable or absent remote are a countable cohort instead of disappearing from aggregates. The sentinel cannot collide with a real value: GitHub owner names are limited to alphanumeric characters and hyphens, so no owner can be spelled `[unknown]`.
+When a GitHub owner can be extracted from the project's git remote, `gh_owner` SHALL be that owner segment verbatim. When it cannot, for ANY reason, `gh_owner` SHALL be the literal sentinel `[unknown]` rather than being omitted, so runs with an unresolvable owner are a countable cohort instead of disappearing from aggregates. The sentinel cannot collide with a real value: GitHub owner names are limited to alphanumeric characters and hyphens, so no owner can be spelled `[unknown]`.
+
+"Any reason" includes the case where **git is not installed or not on `PATH`**. That is not one of the three no-remote populations, and it is not an error: the resolution simply cannot run. It resolves to `[unknown]` like every other unresolvable case, and SHALL NOT fail the command or surface a message.
 
 The property SHALL be named `gh_owner` rather than `gh_org`, because the first path segment of a GitHub URL may be either an organization or a user account and the CLI does not determine which.
 
@@ -26,6 +28,12 @@ An unresolvable owner SHALL NOT affect the command: it is a telemetry value, not
 - **THEN** telemetry SHALL identify with `gh_owner` set to `[unknown]`
 - **AND** the property SHALL be present rather than omitted
 - **AND** the command SHALL run to completion unaffected
+
+#### Scenario: git is not installed
+
+- **WHEN** a user runs any command on a host where `git` is not installed or not on `PATH`
+- **THEN** telemetry SHALL identify with `gh_owner` set to `[unknown]`
+- **AND** the command SHALL run to completion, with no error surfaced for the failed resolution
 
 #### Scenario: The sentinel is distinguishable from a real owner
 
