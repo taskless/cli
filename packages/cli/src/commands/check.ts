@@ -295,9 +295,15 @@ export const checkCommand = defineCommand({
       // creates the scaffold, and `check` is a read-only command — running it in
       // a project that has none should report that, not write one (and not fail
       // on a read-only filesystem).
-      if (await pathExists(join(cwd, ".taskless"))) {
-        await ensureTasklessDirectory(cwd);
-      }
+      //
+      // The report is carried into the `--json` envelope below: migrating
+      // rewrites files in the caller's working tree, and a consumer reading
+      // `{"success":true}` would otherwise have nothing to attribute that diff
+      // to.
+      const migrated = (await pathExists(join(cwd, ".taskless")))
+        ? await ensureTasklessDirectory(cwd)
+        : undefined;
+      const migratedField = migrated === undefined ? {} : { migrated };
       const dispatch = await planEngineDispatch(cwd);
 
       // Static rules (trusted ast-grep YAML) always run; runtime rules
@@ -335,7 +341,11 @@ export const checkCommand = defineCommand({
         if (args.json) {
           console.log(
             JSON.stringify(
-              checkOutputSchema.parse({ success: true, results: [] })
+              checkOutputSchema.parse({
+                success: true,
+                results: [],
+                ...migratedField,
+              })
             )
           );
         } else {
@@ -397,6 +407,7 @@ export const checkCommand = defineCommand({
           const output = checkOutputSchema.parse({
             success: exitCode === 0,
             results,
+            ...migratedField,
             ...(plan.skipped.length > 0 ? { skipped: plan.skipped } : {}),
             ...(dispatched.failures.length > 0
               ? { failures: dispatched.failures }

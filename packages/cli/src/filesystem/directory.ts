@@ -1,7 +1,7 @@
 import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
 
-import { runMigrations } from "./migrate";
+import { runMigrations, type MigrationReport } from "./migrate";
 
 export interface EnsureOptions {
   /**
@@ -22,14 +22,18 @@ export interface EnsureOptions {
  * Ensure the .taskless/ directory exists and is up-to-date by running
  * any pending migrations. Safe to call repeatedly — returns immediately
  * if already current.
+ *
+ * Returns the {@link MigrationReport} when migrations ran, so the command that
+ * triggered them can say so in its own output, and `undefined` when the
+ * scaffold was already current.
  */
 export async function ensureTasklessDirectory(
   cwd: string,
   options: EnsureOptions = {}
-): Promise<void> {
+): Promise<MigrationReport | undefined> {
   const tasklessDirectory = join(cwd, ".taskless");
   await mkdir(tasklessDirectory, { recursive: true });
-  await runMigrations(tasklessDirectory, {
+  return runMigrations(tasklessDirectory, {
     onNotice: options.onNotice,
     allowVersionMismatches: options.allowVersionMismatches,
   });
