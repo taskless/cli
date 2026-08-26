@@ -101,14 +101,18 @@ export type AstGrepLanguage = (typeof AST_GREP_LANGUAGES)[number];
  * mapped to the language each resolves to.
  *
  * Keys are lowercase because ast-grep's own matching is case-insensitive:
- * `TYPESCRIPT`, `Cs` and `GOLANG` all resolve at 0.41.0. That makes the whole
+ * `TYPESCRIPT`, `Cs` and `GOLANG` all resolve at 0.45.2. That makes the whole
  * accepted vocabulary "the canonical list plus these, compared lowercased",
  * which is what {@link resolveAstGrepLanguage} implements.
  *
- * A RULE'S `language:` FIELD AND `sg run --lang` DO NOT SHARE A VOCABULARY.
- * Measured at 0.41.0: `--lang C++` is rejected outright while a rule declaring
- * `language: C++` parses fine. Every value here was probed through a real
- * config, because that is the only thing a rule file is ever fed to.
+ * Every value here was probed through a real config, because that is the only
+ * thing a rule file is ever fed to. That is deliberate: `sg run --lang` is a
+ * SEPARATE vocabulary and cannot stand in for this one. MEASURED at 0.45.2,
+ * the two agree on `C++` and `cxx` (both accepted) and on `C#` (both
+ * rejected), but `--lang` rejects with clap's own `is not supported!` before
+ * a rule is ever read, so it exercises a different code path and is not
+ * evidence about `language:`. At 0.41.0 they diverged outright: `--lang C++`
+ * was rejected while `language: C++` parsed. Nothing here probes `--lang`.
  *
  * THIS IS THE ONE LIST HERE THE BINARY CANNOT BE ASKED TO ENUMERATE. `sg run
  * -h` prints the canonical list, so `AST_GREP_LANGUAGES` above is checked by
@@ -162,7 +166,7 @@ const CANONICAL_BY_LOWERCASE = new Map<string, AstGrepLanguage>(
 export function resolveAstGrepLanguage(
   spelling: string
 ): AstGrepLanguage | undefined {
-  // NOT trimmed. Measured at 0.41.0, ast-grep rejects `"ts "` — folding the
+  // NOT trimmed. Measured at 0.45.2, ast-grep rejects `"ts "` — folding the
   // whitespace here would call a rule valid that the binary refuses to load.
   const key = spelling.toLowerCase();
   return CANONICAL_BY_LOWERCASE.get(key) ?? AST_GREP_LANGUAGE_ALIASES[key];
@@ -172,7 +176,7 @@ export function resolveAstGrepLanguage(
  * The `.ts` / `.tsx` split — the one pair of ast-grep languages that share a
  * family and read disjoint file extensions.
  *
- * MEASURED at 0.41.0: a `TypeScript` rule over a `.tsx` tree exits zero having
+ * MEASURED at 0.45.2: a `TypeScript` rule over a `.tsx` tree exits zero having
  * matched nothing, and a `Tsx` rule scans `.tsx` only. That is the quiet
  * failure of the two, because "no findings" is exactly what a clean codebase
  * looks like. Pinned by "treats Tsx and TypeScript as different parsers, not
