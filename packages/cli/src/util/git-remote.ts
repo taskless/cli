@@ -50,6 +50,46 @@ function isGitWorkTree(cwd: string): Promise<boolean> {
   });
 }
 
+/**
+ * The value `ghOwner` carries when no GitHub owner can be resolved.
+ *
+ * A sentinel rather than `null` or an omitted field, so runs with no
+ * resolvable owner stay countable in analytics instead of vanishing from
+ * aggregates. It cannot collide with a real owner: GitHub owner names admit
+ * only alphanumerics and hyphens, so none can be spelled `[unknown]`.
+ */
+export const UNKNOWN_GH_OWNER = "[unknown]";
+
+/**
+ * The repository URL and GitHub owner, resolved without throwing.
+ *
+ * This NEVER rejects. Every reason an owner might not resolve is an ordinary
+ * state rather than an error: the three no-remote populations, and the case
+ * where git itself is not installed or not on `PATH`, which is none of them.
+ * A caller reporting capability state or recording telemetry wants a value,
+ * not an exception, and neither should fail because a lookup could not run.
+ *
+ * The single resolution behind both `info` and telemetry, deliberately. The
+ * check that decides whether remote generation is OFFERED and the value that
+ * is REPORTED must agree, and they can only be guaranteed to agree by coming
+ * from the same place.
+ */
+export async function resolveRepositoryContext(
+  cwd: string
+): Promise<{ repositoryUrl: string | null; ghOwner: string }> {
+  try {
+    const repositoryUrl = await resolveRepositoryUrl(cwd);
+    // `resolveRepositoryUrl` returns the canonical
+    // `https://github.com/{owner}/{repo}`, so the owner is positional.
+    const owner = repositoryUrl.split("/")[3];
+    return owner
+      ? { repositoryUrl, ghOwner: owner }
+      : { repositoryUrl, ghOwner: UNKNOWN_GH_OWNER };
+  } catch {
+    return { repositoryUrl: null, ghOwner: UNKNOWN_GH_OWNER };
+  }
+}
+
 function getOriginUrl(cwd: string): Promise<string> {
   return new Promise((resolve, reject) => {
     execFile(
