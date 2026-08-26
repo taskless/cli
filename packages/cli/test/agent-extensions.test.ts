@@ -419,21 +419,37 @@ describe("the GitHub-owner constraint is guarded twice", () => {
     expect(result.stdout).toContain("stop here");
   });
 
-  it("the remote recipe documents every code the populations raise", async () => {
-    const result = await runCli(["agent", "create-remote-rule", "-d", cwd]);
-    for (const code of [
-      "NOT_A_GIT_REPOSITORY",
-      "NO_ORIGIN_REMOTE",
-      "UNSUPPORTED_REMOTE_HOST",
-      // Retained for compatibility, so it must stay documented too.
-      "NO_GITHUB_REMOTE",
-    ]) {
-      expect(result.stdout).toContain(code);
-    }
-  });
-
   it("the remote recipe does not send the user to auth login for it", async () => {
     const result = await runCli(["agent", "create-remote-rule", "-d", cwd]);
     expect(result.stdout).toContain("`auth login` does not fix it");
   });
+
+  // `rule improve` goes through the same service path and raises the same
+  // three codes, so its recipe carries the same contract. The first version of
+  // this change updated only `create-remote-rule`, and nothing caught it: the
+  // test above names one recipe, so it could not.
+  it.each(["create-remote-rule", "improve-rule"])(
+    "%s documents every code the populations raise",
+    async (topic) => {
+      const result = await runCli(["agent", topic, "-d", cwd]);
+      expect(result.exitCode).toBe(0);
+      for (const code of [
+        "NOT_A_GIT_REPOSITORY",
+        "NO_ORIGIN_REMOTE",
+        "UNSUPPORTED_REMOTE_HOST",
+        // Retained for compatibility, so it must stay documented too.
+        "NO_GITHUB_REMOTE",
+      ]) {
+        expect(result.stdout).toContain(code);
+      }
+    }
+  );
+
+  it.each(["create-remote-rule", "improve-rule"])(
+    "%s says auth login does not fix a missing owner",
+    async (topic) => {
+      const result = await runCli(["agent", topic, "-d", cwd]);
+      expect(result.stdout).toMatch(/`auth login` (does not|cannot) fix/);
+    }
+  );
 });

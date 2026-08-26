@@ -1,4 +1,4 @@
-# Topic: improve-rule     (CLI v%(CLI_VERSION)s / topic v3)
+# Topic: improve-rule     (CLI v%(CLI_VERSION)s / topic v4)
 
 ## Goal
 Iterate on an existing Taskless rule. The CLI submits the user's
@@ -12,7 +12,12 @@ If the user wants the local-only flow (no API call), fetch
 
 ## Preconditions
 - User is logged in.
-- Repository has a GitHub origin remote.
+- The project has a GitHub owner. Improvement runs through the same
+  service path as generation, so it carries the same constraint. Check
+  `ghOwner` from `%(TASKLESS_CLI)s info --json`: if it is the literal
+  `[unknown]`, stop and say the tier is unavailable rather than
+  submitting. `auth login` does not fix it — no GitHub owner is a
+  property of the project, not the session.
 - The target rule exists at `.taskless/rules/sg/<id>/<id>.yml`.
 - The rule has metadata at `.taskless/rule-metadata/<id>.yml` (the
   `ticketId` is required by the iterate endpoint). If metadata is
@@ -110,7 +115,10 @@ When `--json` is set, failures emit `{ ok: false, code, message }`:
 | code                     | meaning                             | fix                                           |
 |--------------------------|-------------------------------------|-----------------------------------------------|
 | `AUTH_REQUIRED`          | not logged in                       | fetch `%(TASKLESS_CLI)s agent auth`           |
-| `NO_GITHUB_REMOTE`       | no GitHub origin remote             | tell the user; we cannot proceed              |
+| `NO_GITHUB_REMOTE`       | no GitHub origin remote             | retained for compatibility; treat as below    |
+| `NOT_A_GIT_REPOSITORY`   | not a git repository                | tell the user; `auth login` cannot fix it     |
+| `NO_ORIGIN_REMOTE`       | git repository, no `origin`         | tell the user; `auth login` cannot fix it     |
+| `UNSUPPORTED_REMOTE_HOST`| `origin` is not GitHub              | tell the user; `auth login` cannot fix it     |
 | `INVALID_INPUT`          | `--from` JSON failed validation     | re-read input schema, fix, retry              |
 | `RULE_NOT_FOUND`         | metadata missing for the given rule | use anonymous variant or recreate via create  |
 | `NETWORK_ERROR`          | API submit/poll failed              | report and suggest retry                      |
