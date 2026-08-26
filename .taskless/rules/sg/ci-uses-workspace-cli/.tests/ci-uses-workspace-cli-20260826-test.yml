@@ -1,0 +1,35 @@
+id: ci-uses-workspace-cli
+valid:
+  - |
+    steps:
+      - name: Check house style
+        run: pnpm cli check
+  - |
+    steps:
+      - name: Install
+        run: npx some-other-tool --version
+  - |
+    steps:
+      - name: Nightly smoke test
+        run: npx @taskless/cli-nightly@0.10.2 check
+  - |
+    steps:
+      - name: Multi-line, workspace build
+        run: |
+          pnpm build
+          pnpm cli check
+invalid:
+  - |
+    steps:
+      - name: Check house style
+        run: npx @taskless/cli check
+  - |
+    steps:
+      - name: Check house style
+        run: npx @taskless/cli@latest check
+  - |
+    steps:
+      - name: Multi-line, published release
+        run: |
+          pnpm install
+          npx @taskless/cli check

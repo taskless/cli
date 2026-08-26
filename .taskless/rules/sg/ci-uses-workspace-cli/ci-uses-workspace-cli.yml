@@ -1,0 +1,48 @@
+id: ci-uses-workspace-cli
+language: Yaml
+severity: error
+message: A workflow step must run the workspace CLI (`pnpm cli`), not a published release.
+note: |
+  This repository IS the Taskless CLI, so a workflow that runs `npx
+  @taskless/cli` checks the repository's rules with a PUBLISHED build rather
+  than the one at HEAD. A commit that breaks rule evaluation would then pass
+  its own CI and only fail a release later, in someone else's project.
+
+  `validate.yml` runs `pnpm build` before its check step, so the workspace
+  build is already present and cannot be stale or missing.
+
+  `ci.txt`, the onboarding recipe, tells consumers to use `npx
+  @taskless/cli`. That is correct for a project that merely depends on the
+  CLI, and wrong here. This rule is the difference between the two, enforced
+  rather than written down: the comment it replaces asked a reader not to
+  "fix" the invocation back, which is a request, not a boundary.
+
+  `@taskless/cli-nightly` is deliberately not matched. The nightly IS a
+  published artifact by design, and the release workflows reference it on
+  purpose.
+
+  Only a `run:` value matches, never a comment: `npx @taskless/cli` appears
+  in prose in `validate.yml` and `release-cli-nightly.yml`, explaining this
+  very decision, and a rule that flagged its own rationale would be worse
+  than no rule.
+files:
+  - ".github/workflows/*.yml"
+  - ".github/workflows/*.yaml"
+rule:
+  all:
+    - kind: block_mapping_pair
+    - has:
+        field: key
+        kind: flow_node
+        regex: '^run$'
+    - has:
+        field: value
+        stopBy: end
+        any:
+          # A `run:` value is a flow_node when written inline and a
+          # block_scalar under `|` or `>`. Both spellings are ordinary in
+          # these workflows, so both have to match.
+          - kind: flow_node
+            regex: 'npx\s+@taskless/cli($|[@\s])'
+          - kind: block_scalar
+            regex: 'npx\s+@taskless/cli($|[@\s])'
