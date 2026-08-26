@@ -1,7 +1,11 @@
+import { execFile } from "node:child_process";
 import { mkdtemp, readFile, rm, writeFile, mkdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { promisify } from "node:util";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+const execFileAsync = promisify(execFile);
 
 // Mock posthog-node before importing telemetry
 const mockCapture = vi.fn();
@@ -369,5 +373,98 @@ describe("shutdown", () => {
     const telemetry = await getTelemetry();
     await telemetry.shutdown();
     expect(mockShutdown).toHaveBeenCalledOnce();
+  });
+});
+
+/** The `gh_owner` on the most recent call recorded by a posthog mock. */
+function lastGhOwner(mock: { mock: { calls: unknown[][] } }): unknown {
+  const call = mock.mock.calls.at(-1)?.[0] as {
+    properties?: Record<string, unknown>;
+  };
+  return call.properties?.gh_owner;
+}
+
+/**
+ * Which GitHub owner is using the CLI, including anonymously. The property is
+ * resolved from the git remote rather than the token, so it is present on
+ * unauthenticated runs — which is the population it exists to measure.
+ */
+describe("gh_owner", () => {
+  it("carries the owner on an anonymous run in a GitHub repository", async () => {
+    const cwd = await mkdtemp(join(tmpdir(), "taskless-ghowner-"));
+    try {
+      // No token written: this is the anonymous case.
+      await execFileAsync("git", ["init"], { cwd });
+      await execFileAsync(
+        "git",
+        ["remote", "add", "origin", "git@github.com:acme/widgets.git"],
+        { cwd }
+      );
+
+      const telemetry = await getTelemetry(cwd);
+      telemetry.capture("cli_run");
+
+      expect(lastGhOwner(mockIdentify)).toBe("acme");
+      expect(lastGhOwner(mockCapture)).toBe("acme");
+    } finally {
+      await rm(cwd, { recursive: true, force: true });
+    }
+  });
+
+  it("carries the owner on an authenticated run", async () => {
+    const cwd = await mkdtemp(join(tmpdir(), "taskless-ghowner-auth-"));
+    try {
+      await writeTokenFile(cwd, makeJwt({ sub: "user-1", orgId: 7 }));
+      await execFileAsync("git", ["init"], { cwd });
+      await execFileAsync(
+        "git",
+        ["remote", "add", "origin", "https://github.com/globex/tools.git"],
+        { cwd }
+      );
+
+      await getTelemetry(cwd);
+
+      expect(lastGhOwner(mockIdentify)).toBe("globex");
+    } finally {
+      await rm(cwd, { recursive: true, force: true });
+    }
+  });
+
+  it("is [unknown], not omitted, when no owner resolves", async () => {
+    // A temp directory is not a git repository. The property must still be
+    // present: an omitted field makes these runs vanish from aggregates,
+    // which is the opposite of what it is for.
+    const cwd = await mkdtemp(join(tmpdir(), "taskless-ghowner-none-"));
+    try {
+      const telemetry = await getTelemetry(cwd);
+      telemetry.capture("cli_run");
+
+      const identifyCall = mockIdentify.mock.calls.at(-1)?.[0] as {
+        properties: Record<string, unknown>;
+      };
+      expect(identifyCall.properties).toHaveProperty("gh_owner");
+      expect(lastGhOwner(mockIdentify)).toBe("[unknown]");
+      expect(lastGhOwner(mockCapture)).toBe("[unknown]");
+    } finally {
+      await rm(cwd, { recursive: true, force: true });
+    }
+  });
+
+  it("is [unknown] for a non-GitHub origin", async () => {
+    const cwd = await mkdtemp(join(tmpdir(), "taskless-ghowner-gitlab-"));
+    try {
+      await execFileAsync("git", ["init"], { cwd });
+      await execFileAsync(
+        "git",
+        ["remote", "add", "origin", "https://gitlab.com/acme/widgets.git"],
+        { cwd }
+      );
+
+      await getTelemetry(cwd);
+
+      expect(lastGhOwner(mockIdentify)).toBe("[unknown]");
+    } finally {
+      await rm(cwd, { recursive: true, force: true });
+    }
   });
 });
