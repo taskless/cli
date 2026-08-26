@@ -5,6 +5,8 @@ import { join, resolve } from "node:path";
 import { promisify } from "node:util";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
+import { resolveOrgSubject } from "../src/auth/org";
+
 const execFileAsync = promisify(execFile);
 const binPath = resolve(import.meta.dirname, "../dist/index.js");
 
@@ -15,10 +17,20 @@ interface ErrorEnvelope {
 }
 
 async function runCli(
-  args: string[]
+  args: string[],
+  env?: NodeJS.ProcessEnv
 ): Promise<{ stdout: string; stderr: string; exitCode: number }> {
+  // Never inherit an ambient TASKLESS_TOKEN: it decides whether the very first
+  // step of `resolveIdentity` fails, so a developer who is logged in would
+  // otherwise see different codes than CI.
+  const { TASKLESS_TOKEN: _ignored, ...baseEnvironment } = process.env;
+  const options = { env: { ...baseEnvironment, ...env } };
   try {
-    const { stdout, stderr } = await execFileAsync("node", [binPath, ...args]);
+    const { stdout, stderr } = await execFileAsync(
+      "node",
+      [binPath, ...args],
+      options
+    );
     return { stdout, stderr, exitCode: 0 };
   } catch (error) {
     const execError = error as {
@@ -219,5 +231,193 @@ describe("standardized error envelope (--json)", () => {
       expect(typeof env.code).toBe("string");
       expect(typeof env.message).toBe("string");
     });
+  });
+});
+
+/**
+ * The four origins a `resolveIdentity` failure can have, and the code each
+ * one must produce. These codes are a public interface: an agent reads
+ * `code`, never `message`. The point of asserting them here is that
+ * rewording any of these strings fails a test instead of silently telling a
+ * machine consumer to log in when the real problem is the git remote.
+ *
+ * Origin 4, a `resolveOrgSubject` failure, is absent on purpose and is
+ * covered by its own test below: it cannot throw.
+ */
+describe("resolveIdentity failure codes (--json)", () => {
+  let cwd: string;
+
+  beforeEach(async () => {
+    cwd = await mkdtemp(join(tmpdir(), "taskless-identity-"));
+    await mkdir(join(cwd, ".taskless"), { recursive: true });
+    await writeFile(
+      join(cwd, ".taskless", "taskless.json"),
+      JSON.stringify({
+        version: "2026-03-03",
+        orgId: 123,
+        repositoryUrl: "https://github.com/test/test",
+      })
+    );
+  });
+
+  afterEach(async () => {
+    await rm(cwd, { recursive: true, force: true });
+  });
+
+  /** A `--from` payload valid enough to reach the identity step. */
+  async function writeCreateInput(): Promise<string> {
+    const file = join(cwd, "create.json");
+    await writeFile(file, JSON.stringify({ prompt: "no eval" }));
+    return file;
+  }
+
+  async function writeImproveInput(): Promise<string> {
+    const file = join(cwd, "improve.json");
+    await writeFile(
+      file,
+      JSON.stringify({ ruleId: "some-rule", guidance: "be stricter" })
+    );
+    return file;
+  }
+
+  /** Turn `cwd` into a git repo whose `origin` is `url`. */
+  async function initRepoWithOrigin(url: string): Promise<void> {
+    await execFileAsync("git", ["init"], { cwd });
+    await execFileAsync("git", ["remote", "add", "origin", url], { cwd });
+  }
+
+  const withToken = { TASKLESS_TOKEN: "test-token-not-a-real-credential" };
+
+  describe("origin 1: no token", () => {
+    it("emits AUTH_REQUIRED from rule create", async () => {
+      const from = await writeCreateInput();
+      const result = await runCli([
+        "rule",
+        "create",
+        "--from",
+        from,
+        "--json",
+        "-d",
+        cwd,
+      ]);
+      expect(result.exitCode).not.toBe(0);
+      expect(parseEnvelope(result.stdout).code).toBe("AUTH_REQUIRED");
+    });
+
+    it("emits AUTH_REQUIRED from rule improve", async () => {
+      const from = await writeImproveInput();
+      const result = await runCli([
+        "rule",
+        "improve",
+        "--from",
+        from,
+        "--json",
+        "-d",
+        cwd,
+      ]);
+      expect(result.exitCode).not.toBe(0);
+      expect(parseEnvelope(result.stdout).code).toBe("AUTH_REQUIRED");
+    });
+  });
+
+  describe("origin 2: not a git repository / no origin remote", () => {
+    it("emits NO_GITHUB_REMOTE from rule create", async () => {
+      const from = await writeCreateInput();
+      const result = await runCli(
+        ["rule", "create", "--from", from, "--json", "-d", cwd],
+        withToken
+      );
+      expect(result.exitCode).not.toBe(0);
+      expect(parseEnvelope(result.stdout).code).toBe("NO_GITHUB_REMOTE");
+    });
+
+    it("emits NO_GITHUB_REMOTE from rule improve", async () => {
+      const from = await writeImproveInput();
+      const result = await runCli(
+        ["rule", "improve", "--from", from, "--json", "-d", cwd],
+        withToken
+      );
+      expect(result.exitCode).not.toBe(0);
+      expect(parseEnvelope(result.stdout).code).toBe("NO_GITHUB_REMOTE");
+    });
+  });
+
+  describe("origin 3: origin remote is not GitHub", () => {
+    it("emits NO_GITHUB_REMOTE from rule create", async () => {
+      await initRepoWithOrigin("https://gitlab.com/acme/widgets.git");
+      const from = await writeCreateInput();
+      const result = await runCli(
+        ["rule", "create", "--from", from, "--json", "-d", cwd],
+        withToken
+      );
+      expect(result.exitCode).not.toBe(0);
+      expect(parseEnvelope(result.stdout).code).toBe("NO_GITHUB_REMOTE");
+    });
+
+    it("emits NO_GITHUB_REMOTE from rule improve", async () => {
+      await initRepoWithOrigin("git@gitea.example.com:acme/widgets.git");
+      const from = await writeImproveInput();
+      const result = await runCli(
+        ["rule", "improve", "--from", from, "--json", "-d", cwd],
+        withToken
+      );
+      expect(result.exitCode).not.toBe(0);
+      expect(parseEnvelope(result.stdout).code).toBe("NO_GITHUB_REMOTE");
+    });
+  });
+
+  it("does not read the code out of the message text", async () => {
+    // The old implementation picked the code with `/git remote|origin/i` over
+    // the message. Pin the property that replaced it: an AUTH_REQUIRED
+    // failure keeps its code even though its message names neither term, and
+    // a NO_GITHUB_REMOTE failure keeps its code independently of its wording.
+    const from = await writeCreateInput();
+    const args = ["rule", "create", "--from", from, "--json", "-d", cwd];
+
+    const noTokenRun = await runCli(args);
+    const noToken = parseEnvelope(noTokenRun.stdout);
+    expect(noToken.code).toBe("AUTH_REQUIRED");
+    expect(noToken.message).not.toMatch(/git remote|origin/i);
+
+    const noRemoteRun = await runCli(args, withToken);
+    const noRemote = parseEnvelope(noRemoteRun.stdout);
+    expect(noRemote.code).toBe("NO_GITHUB_REMOTE");
+  });
+});
+
+/**
+ * Origin 4 of #181: a `resolveOrgSubject` failure. There is no such failure
+ * to give a code to. `fetchWhoami` returns `undefined` on any network or HTTP
+ * error, and `decodeOrgId` falls back to the nil-UUID `NIL_ORG_ID`, so the
+ * step resolves a subject rather than throwing. This test holds that shape in
+ * place: if `resolveOrgSubject` ever grows a throw, it needs a code of its
+ * own and this test says so by failing.
+ */
+describe("resolveOrgSubject", () => {
+  let cwd: string;
+
+  beforeEach(async () => {
+    cwd = await mkdtemp(join(tmpdir(), "taskless-org-"));
+  });
+
+  afterEach(async () => {
+    await rm(cwd, { recursive: true, force: true });
+  });
+
+  it("resolves a subject instead of throwing when whoami is unreachable", async () => {
+    // An unroutable base url makes the whoami request fail outright.
+    const previous = process.env.TASKLESS_API_URL;
+    process.env.TASKLESS_API_URL = "http://127.0.0.1:1/cli";
+    try {
+      await expect(
+        resolveOrgSubject(cwd, "not-a-real-token")
+      ).resolves.toBeDefined();
+    } finally {
+      if (previous === undefined) {
+        delete process.env.TASKLESS_API_URL;
+      } else {
+        process.env.TASKLESS_API_URL = previous;
+      }
+    }
   });
 });
