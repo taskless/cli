@@ -20,21 +20,38 @@ files:
   - ".github/workflows/*.yml"
   - ".github/workflows/*.yaml"
 rule:
-  kind: block_mapping_pair
-  has:
-    field: key
-    kind: flow_node
-    regex: '^types$'
-  not:
-    has:
-      field: value
-      stopBy: end
-      kind: flow_node
-      regex: 'ready_for_review'
-  inside:
-    stopBy: end
-    kind: block_mapping_pair
-    has:
-      field: key
-      kind: flow_node
-      regex: '^pull_request$'
+  any:
+    # An explicit `types:` that omits `ready_for_review`.
+    - kind: block_mapping_pair
+      has:
+        field: key
+        kind: flow_node
+        regex: '^types$'
+      not:
+        has:
+          field: value
+          stopBy: end
+          kind: flow_node
+          regex: 'ready_for_review'
+      inside:
+        stopBy: end
+        kind: block_mapping_pair
+        has:
+          field: key
+          kind: flow_node
+          regex: '^pull_request$'
+    # NO `types:` at all. GitHub then applies its default set — `opened`,
+    # `synchronize`, `reopened` — which omits `ready_for_review` exactly as
+    # an incomplete explicit list does. Anchoring only on a `types:` node
+    # cannot see this: there is no node to anchor to.
+    - kind: block_mapping_pair
+      has:
+        field: key
+        kind: flow_node
+        regex: '^pull_request$'
+      not:
+        has:
+          field: value
+          stopBy: end
+          kind: flow_node
+          regex: '^types$'

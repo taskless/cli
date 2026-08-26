@@ -18,6 +18,14 @@ valid:
         run: |
           pnpm build
           pnpm cli check
+  - |
+    steps:
+      - name: pnpm exec runs the LOCAL binary, not a published build
+        run: pnpm exec @taskless/cli check
+  - |
+    steps:
+      - name: --filter addresses the workspace package, not a published one
+        run: pnpm --filter @taskless/cli build:nightly
 invalid:
   - |
     steps:
@@ -33,3 +41,17 @@ invalid:
         run: |
           pnpm install
           npx @taskless/cli check
+  - |
+    steps:
+      - name: The invocation CLAUDE.md names by name
+        run: pnpm dlx @taskless/cli@latest check
+  - |
+    steps:
+      - name: Another runner, same published build
+        run: yarn dlx @taskless/cli check
+  - |
+    steps:
+      - name: Global install names the package too
+        run: |
+          npm i -g @taskless/cli
+          taskless check
