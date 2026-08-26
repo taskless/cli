@@ -59,6 +59,32 @@ export const AST_GREP_BINARY: PlatformBinarySpec = {
 };
 
 /**
+ * ast-grep's `sg` alias prints a deprecation banner to stderr on every run,
+ * from 0.45.0. Strip it before stderr becomes a user-facing message.
+ *
+ * `binaryNames` lists `ast-grep` first, so the normal path never sees this.
+ * The link-based resolver tiers reverse that list, so on a host where only
+ * `sg` got linked every ast-grep invocation carries three extra lines that
+ * both `runAstGrepScan` and `verify` would otherwise surface verbatim, as if
+ * an engine had reported them. Measured at 0.45.2, the banner is exactly:
+ *
+ * ```
+ * ========================================================================
+ * WARNING: `sg` is deprecated. Use `ast-grep` instead.
+ * ========================================================================
+ * ```
+ *
+ * Matched by content rather than by which name resolved, because the alias can
+ * also be what a user has on their PATH.
+ */
+export function stripSgDeprecationBanner(stderr: string): string {
+  return stderr.replaceAll(
+    /^={10,}\n *WARNING: `sg` is deprecated\. Use `ast-grep` instead\.\n={10,}\n?/gm,
+    ""
+  );
+}
+
+/**
  * Whether `path` is really ast-grep, established by running it.
  *
  * Existence is not enough. The `@ast-grep/cli` wrapper's postinstall leaves a
@@ -303,7 +329,7 @@ export async function runAstGrepScan(
       // ast-grep exits 1 when error-severity matches found — that's expected
       // Only treat spawn/binary failures (exit > 1) as errors
       if (code !== null && code > 1) {
-        const stderr = stderrChunks.join("");
+        const stderr = stripSgDeprecationBanner(stderrChunks.join(""));
         reject(
           new Error(
             `ast-grep scan failed with exit code ${String(code)}${stderr ? `: ${stderr.trim()}` : ""}`

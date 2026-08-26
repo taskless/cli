@@ -96,6 +96,18 @@ whole rule.
    - **`Tsx` and `TypeScript` are two parsers, not aliases.** A rule
      over `.tsx` files that declares `TypeScript` does not match JSX
      syntax; it does not read those files at all.
+   - **`Markdown` sees blocks only.** tree-sitter-markdown splits
+     block and inline grammars and ast-grep exposes only the block
+     tree, so `atx_heading`, `setext_heading`, `fenced_code_block`,
+     `list_item`, `paragraph`, `section` and `document` are real kinds
+     and everything inside a line is one opaque `inline` node. There is
+     no `link`, `emphasis` or `strong_emphasis` kind; naming one is a
+     config error that exits 8 and takes the whole scan with it, and
+     writing it as a pattern (`[$T]($U)`) matches nothing forever with
+     no error at all. A rule about the words inside a line belongs to
+     Vale, not here. ast-grep also has no count and no absence
+     assertion, so "every doc has an h1" is not expressible as an `sg`
+     rule at any severity.
 
 5. **Check any variadic pattern against the separator trap.** A `$$$`
    next to a comma does not mean "zero or more". The `,` in the pattern

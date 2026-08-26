@@ -39,7 +39,7 @@
  * Pinned against the binary by `test/ast-grep-vendor-contract.test.ts`
  * ("engine capabilities" → "reports the pinned version").
  */
-export const AST_GREP_VERSION = "0.41.0";
+export const AST_GREP_VERSION = "0.45.2";
 
 /**
  * Every language ast-grep can parse, verbatim from
@@ -48,7 +48,7 @@ export const AST_GREP_VERSION = "0.41.0";
  *
  * SPELLINGS ARE ast-grep's, NOT ours and not `detect`'s. `Cpp`, `CSharp`,
  * `JavaScript`, `Tsx` — a rule's `language:` field is handed to ast-grep
- * unchanged, so the binary has the final opinion. MEASURED at 0.41.0: it
+ * unchanged, so the binary has the final opinion. MEASURED at 0.45.2: it
  * accepts more than this list — case variants and a fixed set of extension
  * aliases, both enumerated in {@link AST_GREP_LANGUAGE_ALIASES} — so an
  * off-list spelling is not on its own an error. The two real failures are a
@@ -68,6 +68,7 @@ export const AST_GREP_LANGUAGES = [
   "Cpp",
   "CSharp",
   "Css",
+  "Dart",
   "Elixir",
   "Go",
   "Haskell",
@@ -78,6 +79,7 @@ export const AST_GREP_LANGUAGES = [
   "Json",
   "Kotlin",
   "Lua",
+  "Markdown",
   "Nix",
   "Php",
   "Python",
