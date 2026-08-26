@@ -66,16 +66,23 @@ Alternative considered: a structured payload on `taskless auth`. Rejected — `a
 
 ## Migration Plan
 
-No data migration and no scaffold version change. Each slice is independently safe in production and the stack merges forward:
+No data migration and no scaffold version change.
 
-1. **Error boundary** — new codes, the three-population distinction, reframed messages, tests. Safe alone: adds codes, changes only prose on paths that already fail.
-2. **`info` fields** — `repositoryUrl` and `ghOwner` on the existing payload. Safe alone: additive to a schema-validated object.
-3. **`gh_owner`** — telemetry property. Safe alone: absent when unresolvable.
-4. **Recipe guards** — `route` and the remote recipe. Depends on slice 2 for the payload it reads.
+The work was built as four independently safe units, in this order, and each was verified green on its own before the next began:
 
-Rollback is per-slice; nothing here is stateful.
+1. **Error boundary** — new codes, the three-population distinction, reframed messages, tests. Adds codes, changes only prose on paths that already fail.
+2. **`info` fields** — `repositoryUrl` and `ghOwner` on the existing payload. Additive to a schema-validated object.
+3. **`gh_owner`** — telemetry property. `[unknown]` when unresolvable, never absent.
+4. **Recipe guards** — `route` and the remote recipe. Reads the payload from unit 2.
+
+**Landing as a single PR** rather than the stack originally proposed. The units are commit-sized rather than PR-sized: three of the four are under 150 lines, most of the volume is tests, and units 2 and 4 are only meaningful together — a reviewer reading the `route` guard needs the `info` field it consults in front of them. The commit boundaries preserve the reviewable units.
+
+Nothing here is stateful, so rollback is a revert.
 
 ## Open Questions
 
-- Should `route` distinguish "no GitHub owner" from "not logged in" when explaining why remote generation is absent? Both foreclose the tier, but only one is fixable by `auth login`.
-- Do any third-party consumers branch on the exact `NO_GITHUB_REMOTE` message text rather than the code? Retaining the code covers the contract; the prose changes regardless.
+Both resolved during implementation.
+
+**Should `route` distinguish "no GitHub owner" from "not logged in"?** Yes, and it does. They foreclose the tier for different reasons and only one is fixable by `auth login`, so conflating them sends the user to log in for a problem logging in cannot solve — a wasted turn that ends where it started. `route` and `create-remote-rule` each say the constraint is a property of the project rather than the session, and each says outright that `auth login` does not fix it.
+
+**Do third-party consumers branch on the `NO_GITHUB_REMOTE` message text?** Unknowable from inside this repository, and made moot rather than answered. The code is retained and still emitted nowhere, but remains a valid member of the contract, so anything branching on the code is unaffected. Anything branching on the prose was already relying on something this repository never promised: the message was reworded here, and would have been reworded eventually regardless. Accepted rather than mitigated further.
