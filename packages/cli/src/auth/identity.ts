@@ -23,9 +23,11 @@ export interface Identity {
  * - repositoryUrl: inferred from `git remote get-url origin`
  *
  * Throws a `CLIError` carrying a stable `CLIErrorCode` if auth is missing
- * (`AUTH_REQUIRED`) or the repository URL cannot be resolved
- * (`NO_GITHUB_REMOTE`). Read the code off the error with
- * `identityFailureCode`; never re-derive it from the message.
+ * (`AUTH_REQUIRED`) or the repository URL cannot be resolved, in which case
+ * the code names which population the project is in:
+ * `NOT_A_GIT_REPOSITORY`, `NO_ORIGIN_REMOTE`, or `UNSUPPORTED_REMOTE_HOST`.
+ * Read the code off the error with `identityFailureCode`; never re-derive it
+ * from the message.
  */
 export async function resolveIdentity(cwd: string): Promise<Identity> {
   const token = await getToken(cwd);

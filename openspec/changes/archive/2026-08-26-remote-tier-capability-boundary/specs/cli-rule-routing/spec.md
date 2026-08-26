@@ -18,4 +18,4 @@
 #### Scenario: The availability test has one source
 
 - **WHEN** `route` determines whether remote generation is available
-- **THEN** it SHALL rely on the repository URL reported by `auth` rather than re-deriving the remote independently
+- **THEN** it SHALL rely on the `ghOwner` reported by `info` rather than re-deriving the remote independently

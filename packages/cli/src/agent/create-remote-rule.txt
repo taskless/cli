@@ -1,4 +1,4 @@
-# Topic: create-remote-rule     (CLI v%(CLI_VERSION)s / topic v1)
+# Topic: create-remote-rule     (CLI v%(CLI_VERSION)s / topic v2)
 
 ## You are here
 This is `create-remote-rule`. It helps you have the Taskless service
@@ -48,8 +48,13 @@ is advisory; this is the point of use.
 
 **`auth login` does not fix it.** No GitHub owner is a property of the
 project, not the session, so do not send the user to log in for it. The
-four causes are: not a git repository, no `origin` remote, an `origin`
-that is not GitHub, and no git installed.
+causes are: not a git repository, no `origin` remote, an `origin` that is
+not GitHub, and git not being installed at all. The first three each have
+their own error code; a missing `git` binary cannot be told apart from
+the first, because the probe that would distinguish them is itself a
+`git` call, so it reports `NOT_A_GIT_REPOSITORY`. If the user says the
+directory *is* a repository, check whether `git` is on their `PATH`
+before believing the code.
 
 ## Cost, and when this path is right
 

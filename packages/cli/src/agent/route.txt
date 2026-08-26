@@ -1,4 +1,4 @@
-# Topic: route     (CLI v%(CLI_VERSION)s / topic v2)
+# Topic: route     (CLI v%(CLI_VERSION)s / topic v3)
 
 ## Goal
 Turn "write me a rule that…" into one command to run. This is the front
