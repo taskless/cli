@@ -1,8 +1,16 @@
 import { execFile } from "node:child_process";
 
+import { CLIError } from "./cli-error";
+
 /**
  * Resolve the repository URL from `git remote get-url origin`,
  * canonicalized to `https://github.com/{owner}/{repo}`.
+ *
+ * Both failure modes (no readable `origin`, and an `origin` that is not on
+ * github.com) throw a `CLIError` carrying `NO_GITHUB_REMOTE`. The code travels
+ * with the failure so a caller reads a field instead of matching on the
+ * message: rewording either string must never change what a `--json` consumer
+ * is told.
  */
 export async function resolveRepositoryUrl(cwd: string): Promise<string> {
   const rawUrl = await getOriginUrl(cwd);
@@ -18,8 +26,9 @@ function getOriginUrl(cwd: string): Promise<string> {
       (error, stdout) => {
         if (error) {
           reject(
-            new Error(
-              "Could not determine repository URL from git remote. Ensure your repository has an 'origin' remote pointing to GitHub."
+            new CLIError(
+              "Could not determine repository URL from git remote. Ensure your repository has an 'origin' remote pointing to GitHub.",
+              "NO_GITHUB_REMOTE"
             )
           );
           return;
@@ -48,8 +57,9 @@ export function canonicalizeGitHubUrl(rawUrl: string): string {
     return `https://github.com/${httpsMatch.groups.path}`;
   }
 
-  throw new Error(
-    `Unsupported git remote URL: "${rawUrl}". Only GitHub repositories (github.com) are supported.`
+  throw new CLIError(
+    `Unsupported git remote URL: "${rawUrl}". Only GitHub repositories (github.com) are supported.`,
+    "NO_GITHUB_REMOTE"
   );
 }
 

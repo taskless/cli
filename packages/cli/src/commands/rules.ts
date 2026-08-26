@@ -4,7 +4,7 @@ import { defineCommand } from "citty";
 
 import { ZodError } from "zod";
 
-import { resolveIdentity } from "../auth/identity";
+import { identityFailureCode, resolveIdentity } from "../auth/identity";
 import { submitRule, pollRuleStatus, iterateRule } from "../api/rules";
 import {
   writeRuleFile,
@@ -164,13 +164,10 @@ const createCommand = defineCommand({
       try {
         identity = await resolveIdentity(cwd);
       } catch (error) {
-        // resolveIdentity throws on missing auth or missing git remote;
-        // surface the original message but pick a best-guess code.
+        // resolveIdentity throws a CLIError carrying its own code. Read the
+        // field; never re-derive the code from the message.
         const message = error instanceof Error ? error.message : String(error);
-        const code: CLIErrorCode = /git remote|origin/i.test(message)
-          ? "NO_GITHUB_REMOTE"
-          : "AUTH_REQUIRED";
-        fail(message, code);
+        fail(message, identityFailureCode(error));
       }
 
       // 3. Submit rule to API
@@ -405,11 +402,9 @@ const improveCommand = defineCommand({
       try {
         identity = await resolveIdentity(cwd);
       } catch (error) {
+        // Same contract as `rule create`: the code travels on the error.
         const message = error instanceof Error ? error.message : String(error);
-        const code: CLIErrorCode = /git remote|origin/i.test(message)
-          ? "NO_GITHUB_REMOTE"
-          : "AUTH_REQUIRED";
-        fail(message, code);
+        fail(message, identityFailureCode(error));
       }
 
       // 3. Submit iterate request to API
