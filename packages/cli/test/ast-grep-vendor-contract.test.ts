@@ -14,13 +14,17 @@ import {
   resolveAstGrepLanguage,
 } from "../src/rules/capabilities";
 import { ruleDirectory, ruleTestsDirectory } from "../src/rules/engines";
-import { buildPath, findSgBinary } from "../src/rules/scan";
+import {
+  buildPath,
+  findSgBinary,
+  stripSgDeprecationBanner,
+} from "../src/rules/scan";
 
 /**
  * ast-grep's observable behaviour, pinned.
  *
  * Everything here is a property of a **vendored third-party binary**, exact-
- * pinned at `0.41.0` in `packages/cli/package.json`. Our own tests assert that
+ * pinned at `0.45.2` in `packages/cli/package.json`. Our own tests assert that
  * our code behaves correctly *given* these; this file asserts the givens, so an
  * ast-grep bump that changes one fails here — naming the assumption and the
  * code that rests on it — instead of surfacing downstream.
@@ -281,6 +285,19 @@ const arityRule = (body: string) =>
     "",
   ].join("\n");
 
+/** A Markdown rule whose `rule:` body is given verbatim, already indented. */
+const markdownRule = (body: string) =>
+  [
+    "id: md",
+    "language: Markdown",
+    "severity: error",
+    "message: md",
+    "note: n",
+    "rule:",
+    body,
+    "",
+  ].join("\n");
+
 /** Exit status of scanning one finding declared at `severity`. */
 const statusAt = (severity: string) =>
   scan(
@@ -469,7 +486,8 @@ withSg("ast-grep vendor contract", () => {
     });
 
     it("exits above 1 when the config or a rule cannot be read", () => {
-      // Measured at 0.41.0: 6 for a missing config, 8 for an unparseable rule.
+      // Re-measured at 0.45.2, unchanged: 6 for a missing config, 8 for an
+      // unparseable rule.
       // Only `> 1` is depended on; the exact numbers are recorded so a change
       // in them is visible without being treated as a break.
       const missing = scan(
@@ -517,14 +535,37 @@ withSg("ast-grep vendor contract", () => {
       );
     });
 
-    it("colorizes the summary even when stdout is not a TTY", () => {
-      // Depended on by: parseTestSummary stripping VT control characters
-      // before matching, in verify.ts. The escape sits between
-      // `test result: ` and `ok`, i.e. INSIDE the phrase being matched, so a
-      // parser that skipped stripping would fail to anchor on a passing run.
+    it("no longer colorizes the summary when stdout is not a TTY", () => {
+      // CHANGED AT 0.45.2. At 0.41.0 the summary arrived colorized even
+      // through a pipe, and this test pinned that. `--color` now honours its
+      // `auto` default, so a piped run is plain text.
       // eslint-disable-next-line no-control-regex -- the escape IS the subject
       const greenOk = /\u001B\[32mok\u001B\[0m/;
-      expect(test(passingProject(), "no-eval").stdout).toMatch(greenOk);
+      expect(test(passingProject(), "no-eval").stdout).not.toMatch(greenOk);
+    });
+
+    it("still puts the escape INSIDE the phrase under --color always", () => {
+      // Depended on by: parseTestSummary stripping VT control characters
+      // before matching, in verify.ts. Colour is gone from the piped default
+      // above, but it returns whenever stdout IS a TTY, and the escape lands
+      // between `test result: ` and `ok`, i.e. inside the phrase being
+      // anchored on. A parser that dropped the stripping would therefore keep
+      // working under CI and fail interactively, which is the worst place to
+      // find out. `--color always` is the testable stand-in for a TTY.
+      const colorized = run(passingProject(), [
+        "test",
+        "-c",
+        "sgconfig.yml",
+        "--skip-snapshot-tests",
+        "--color",
+        "always",
+        "--filter",
+        "^no-eval$",
+      ]);
+      // eslint-disable-next-line no-control-regex -- the escape IS the subject
+      expect(colorized.stdout).toMatch(
+        /test result: \u001B\[32mok\u001B\[0m\./
+      );
     });
 
     it("echoes the offending source on failure, and nothing on success", () => {
@@ -733,9 +774,10 @@ withSg("ast-grep vendor contract", () => {
    * matches a narrower set, the rule finds nothing, and `check` reports a
    * clean codebase.
    *
-   * Upstream considers this working as intended (ast-grep/ast-grep#1365) and
-   * 0.45.2 behaves identically, so a version bump is not a fix. What a bump
-   * could do is change it — which is what these cases are here to catch.
+   * Upstream considers this working as intended (ast-grep/ast-grep#1365), and
+   * all four arity cases were re-measured unchanged across the 0.41.0 to
+   * 0.45.2 bump, so a version bump is not a fix. What a bump could do is
+   * change it — which is what these cases are here to catch.
    */
   describe("$$$ next to a comma", () => {
     it("matches a zero-argument call when $$$ stands alone", () => {
@@ -820,6 +862,118 @@ withSg("ast-grep vendor contract", () => {
    * ast-grep's discovery. If it ever breaks, the recorded fallback is to
    * materialize a rules-only tree for ast-grep (design D2).
    */
+  /**
+   * WHAT `Markdown` ACTUALLY BUYS, ADDED AT 0.45.2.
+   *
+   * tree-sitter-markdown splits its grammar in two, block and inline, and
+   * ast-grep exposes only the block tree. `route.txt` and `create-sg-rule.txt`
+   * both make that claim in prose; these are the measurements behind it, so
+   * the recipes cannot drift from the binary silently.
+   *
+   * The failure this prevents is the #152 shape in a new place: a rule that
+   * reads as structural, is accepted, and matches nothing forever.
+   */
+  describe("Markdown sees blocks, not inline constructs", () => {
+    /** A document with a heading, a subheading, a list, a fence and a link. */
+    const markdownSource = {
+      "docs/a.md": [
+        "# Title",
+        "",
+        "Some prose with a [link](https://example.com) and **bold** text.",
+        "",
+        "## Section",
+        "",
+        "- one",
+        "- two",
+        "",
+        "```",
+        "no language here",
+        "```",
+        "",
+      ].join("\n"),
+    };
+
+    const scanMarkdown = (body: string) =>
+      scan(
+        project({ rules: { md: markdownRule(body) }, sources: markdownSource })
+      );
+
+    const matchCount = (body: string): number =>
+      scanMarkdown(body)
+        .stdout.split("\n")
+        .filter((line) => line !== "").length;
+
+    it("matches block-level kinds", () => {
+      expect(matchCount("  kind: atx_heading")).toBe(2);
+      expect(matchCount("  kind: fenced_code_block")).toBe(1);
+      expect(matchCount("  kind: list_item")).toBe(2);
+    });
+
+    /** The text each finding matched, trimmed, in file order. */
+    const matchTexts = (body: string): string[] =>
+      scanMarkdown(body)
+        .stdout.split("\n")
+        .filter((line) => line !== "")
+        .map((line) => (JSON.parse(line) as { text: string }).text.trim());
+
+    it("discriminates heading level, so `# $T` is not `## $T`", () => {
+      expect(matchTexts("  pattern: '# $T'")).toEqual(["# Title"]);
+      expect(matchTexts("  pattern: '## $T'")).toEqual(["## Section"]);
+    });
+
+    it("collapses a line's contents into one opaque `inline` node", () => {
+      // The paragraph HAS a link and bold text. `inline` is as deep as the
+      // tree goes, which is why "link text must not say click here" is a Vale
+      // rule and not this.
+      const inlines = scanMarkdown("  kind: inline")
+        .stdout.split("\n")
+        .filter((line) => line !== "")
+        .map((line) => (JSON.parse(line) as { text: string }).text);
+      expect(inlines).toContain(
+        "Some prose with a [link](https://example.com) and **bold** text."
+      );
+    });
+
+    it("rejects `kind: link` as a config error rather than matching nothing", () => {
+      // LOUD, and worth knowing it is loud: exit 8 with `Kind `link` is
+      // invalid`, which aborts config parsing and takes every other rule's
+      // report down with it, the same shape as the `C#` case, not the quiet one.
+      const outcome = scanMarkdown("  kind: link");
+      expect(outcome.status).toBe(8);
+      expect(outcome.stderr).toContain("Kind `link` is invalid");
+    });
+
+    it("accepts an inline-shaped PATTERN and matches nothing, silently", () => {
+      // The quiet half of the same gap, and the reason the recipes say this
+      // out loud: no error, no finding, exit 0.
+      const outcome = scanMarkdown("  pattern: '[$T]($U)'");
+      expect(outcome.status).toBe(0);
+      expect(outcome.stdout.trim()).toBe("");
+    });
+  });
+
+  describe("the `sg` alias prints a deprecation banner on stderr", () => {
+    // DEPRECATED AT 0.45.0. `AST_GREP_BINARY.binaryNames` puts `ast-grep`
+    // first, but the resolver reverses that list at its link-based tiers, so
+    // on a host where only `sg` got linked every run carries this banner.
+    // Both `runAstGrepScan` and `verify` decode ast-grep's stderr into
+    // user-facing text, which is what `stripSgDeprecationBanner` exists for.
+    const alias =
+      binary === undefined ? undefined : join(dirname(binary), "sg");
+
+    it("emits it, and stripSgDeprecationBanner removes exactly it", () => {
+      const outcome = spawnSync(alias as string, ["--version"], {
+        encoding: "utf8",
+        env: { ...process.env, PATH: buildPath() },
+      });
+      // Skip rather than fail where the alias was not linked: the banner is a
+      // property of the alias, and its absence is not an ast-grep change.
+      if (outcome.error !== undefined) return;
+      expect(outcome.stderr).toContain("`sg` is deprecated");
+      expect(stripSgDeprecationBanner(outcome.stderr).trim()).toBe("");
+    });
+  });
+
   describe("the .tests/ directory is invisible to rule discovery", () => {
     const RULE = rule("no-eval");
     const TEST_FILE = testFile("no-eval", ["eval(x)"], ["const a = 1"]);
@@ -918,7 +1072,7 @@ function reportedLanguages(): string[] {
 withSg("ast-grep engine capabilities", () => {
   it("reports the pinned version", () => {
     // AST_GREP_VERSION is what route.txt renders next to the language list, so
-    // an agent reading "ast-grep (v0.41.0) parses: …" is being told which
+    // an agent reading "ast-grep (v0.45.2) parses: …" is being told which
     // binary the claim came from. A bump that updates package.json and forgets
     // the constant makes that attribution a lie.
     const result = spawnSync(binary as string, ["--version"], {
@@ -950,7 +1104,7 @@ withSg("ast-grep engine capabilities", () => {
   it("spells languages the way a rule's `language:` field must", () => {
     // ast-grep's vocabulary is not `detect --json`'s: `detect` reports the
     // repository's languages as `C++`. These assertions are about the
-    // canonical list, NOT about what the binary rejects — measured at 0.41.0,
+    // canonical list, NOT about what the binary rejects — measured at 0.45.2,
     // `C++` and `cpp` are accepted aliases for Cpp. The recipe tells authors
     // to copy from this list because an unrecognized name (`C#`) aborts the
     // whole scan and a wrong-parser name reports nothing; see `the language

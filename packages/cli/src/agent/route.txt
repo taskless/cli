@@ -109,6 +109,38 @@ answered together.
      A rule about `.github/workflows/*.yml` is an `sg` rule; sending it
      to runtime spends a login on a check that builds here.
 
+     **`Markdown` is on that list, and it is narrower than the name
+     suggests.** tree-sitter-markdown splits its grammar in two, block
+     and inline, and ast-grep exposes only the block tree. Measured at
+     v%(AST_GREP_VERSION)s against a document holding a heading, a
+     subheading, a list, a fenced block and a link:
+
+     - *Block structure works.* `document`, `section`, `atx_heading`,
+       `setext_heading`, `fenced_code_block`, `list_item` and
+       `paragraph` all match, and headings discriminate by level:
+       `# $T` matches only the h1, `## $T` only the h2.
+     - *Everything inside a line does not.* A paragraph's contents are
+       one opaque `inline` node. There is no `link` node, no `emphasis`,
+       no `strong_emphasis`. `kind: link` does not quietly find nothing:
+       it is a config error (`Kind 'link' is invalid`) that exits 8 and
+       takes every other rule's report down with it, the same shape as
+       `C#` above. The quiet version is the pattern form, where
+       `[$T]($U)` parses, runs, and matches nothing forever.
+     - So "no bare URLs", "link text must not read 'click here'", "no
+       bold inside a heading" feel structural and are not `sg` rules.
+       The evidence is words inside a line, which is Vale's.
+
+     **Neither static engine counts, and neither sees absence.**
+     ast-grep fires once per match, `not` scopes to a node rather than
+     to a document, and there is no count assertion. "Every doc has an
+     h1" and "at most one h1" are runtime however structural they look.
+
+     **`.md` is the first extension both static engines claim, so do
+     not route it by extension.** `sg` answers "does this block-level
+     shape occur in this file"; Vale answers "do these words appear in
+     this file's prose". Fences, heading levels and list shape are `sg`.
+     The wording inside a heading, a list item or a link is Vale.
+
    - **Vale (v%(VALE_VERSION)s) reads three tiers, and hard-fails on a fourth.**
      The tier is decided by the file's extension:
 
@@ -162,6 +194,10 @@ answered together.
 | Don't write "simply" or "just" in docs                   | a document's words                        | `create-vale-rule` |
 | Comments must not say "obviously"                        | a document's words (comments are prose)   | `create-vale-rule` |
 | Headings use sentence case                               | a document's markup                       | `create-vale-rule` |
+| Every code fence declares a language                     | one `.md` file's block tree               | `create-sg-rule`   |
+| Docs must not use setext (`===`) headings                | one `.md` file's block tree               | `create-sg-rule`   |
+| Link text must not read "click here"                     | words inside a line (no inline tree)      | `create-vale-rule` |
+| Every doc has exactly one h1                             | a count over a document                   | runtime            |
 | Exported symbols must be used somewhere in the repo      | every file, correlated                    | runtime            |
 | Product name spelled the same across all docs            | many documents, compared                  | runtime            |
 | Files changed in the last release need a changelog entry | git metadata, not file contents           | runtime            |

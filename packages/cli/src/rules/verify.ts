@@ -27,7 +27,7 @@ import {
   ruleFilePath,
   ruleTestsDirectory,
 } from "./engines";
-import { findSgBinary, buildPath } from "./scan";
+import { findSgBinary, buildPath, stripSgDeprecationBanner } from "./scan";
 import astGrepJsonSchema from "../generated/ast-grep-rule-schema.json";
 import { RULE_EXAMPLES } from "./verify-examples";
 import { isValidRuleId } from "./validate-id";
@@ -456,9 +456,11 @@ async function fixtureCoverage(
  *
  * The last summary line wins, since only the final one describes the whole run.
  *
- * Stripping first is a precondition, not cosmetics: ast-grep colorizes even
- * when stdout is not a TTY, and the escape lands *inside* the phrase being
- * anchored on — `test result: \u001B[32mok\u001B[0m.`.
+ * Stripping first is a precondition, not cosmetics: when stdout IS a TTY,
+ * ast-grep colorizes the summary and the escape lands *inside* the phrase
+ * being anchored on — `test result: \u001B[32mok\u001B[0m.`. Measured at
+ * 0.45.2 a piped run is plain (0.41.0 colorized through a pipe too), so a
+ * parser that dropped the stripping would pass in CI and fail interactively.
  *
  * The anchor closes the poisoning class rather than just the one reported
  * fixture: echoed source is indented two spaces by ast-grep, so a fixture whose
@@ -550,7 +552,8 @@ async function runTests(
       // Both streams, because ast-grep prints the passing summary to stdout and
       // the failing one to stderr. Joined with a newline so the summary stays
       // at the start of a line for the anchored match.
-      const output = `${stdoutChunks.join("")}\n${stderrChunks.join("")}`;
+      const stderrText = stripSgDeprecationBanner(stderrChunks.join(""));
+      const output = `${stdoutChunks.join("")}\n${stderrText}`;
 
       const summary = parseTestSummary(output);
       const passed = summary?.passed ?? 0;
@@ -563,7 +566,7 @@ async function runTests(
         if (failed > 0) {
           errors.push(`${String(failed)} test case(s) failed`);
         }
-        const stderr = stderrChunks.join("").trim();
+        const stderr = stderrText.trim();
         if (stderr && failed === 0) {
           errors.push(stderr);
         }
