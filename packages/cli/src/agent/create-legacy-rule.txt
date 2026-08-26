@@ -46,7 +46,8 @@ then write the rule where that tool expects it.
    consistent with the repo's existing entries from step 2.
 
 5. **Report, and be explicit about who runs it.** Show the file(s) you
-   changed. Make clear that the user's OWN toolchain runs this rule , `%(TASKLESS_CLI)s check` does NOT execute external linters. Tell the user how
+   changed. Make clear that the user's OWN toolchain runs this rule:
+   `%(TASKLESS_CLI)s check` does NOT execute external linters. Tell the user how
    to run their linter to see it fire (e.g. their existing lint script).
 
 ## Important Notes

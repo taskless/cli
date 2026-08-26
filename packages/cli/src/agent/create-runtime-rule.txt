@@ -66,7 +66,8 @@ Without a login there is nobody to ask, so there is no answer, so
 nothing runs.
 
 This is a property of executing code. It says nothing about whether a
-runtime rule is more or less capable, and it is not a quality tier , `sg` and `vale` rules are not less trusted, they are unexecuted.
+runtime rule is more or less capable, and it is not a quality tier:
+`sg` and `vale` rules are not less trusted, they are unexecuted.
 
 ## What happens today, logged out
 

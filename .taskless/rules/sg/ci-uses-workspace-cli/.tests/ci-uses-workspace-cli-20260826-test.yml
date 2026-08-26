@@ -55,3 +55,15 @@ invalid:
         run: |
           npm i -g @taskless/cli
           taskless check
+  - |
+    steps:
+      - name: Long global flag
+        run: npm install --global @taskless/cli
+  - |
+    steps:
+      - name: pnpm long global flag
+        run: pnpm add --global @taskless/cli
+  - |
+    steps:
+      - name: yarn word form
+        run: yarn global add @taskless/cli

@@ -62,7 +62,9 @@ it.
    built by extending one of its twelve checks, and the sentence tells
    you which. Twelve is measured, not counted off the docs: give Vale
    v%(VALE_VERSION)s an `extends` it does not know and it names the whole
-   set back at you , ```
+   set back at you:
+
+   ```
    'extends' key must be one of [capitalization conditional consistency
    existence occurrence repetition substitution readability spelling
    sequence metric script].
@@ -247,7 +249,8 @@ it.
 
    The list above is measured, not transcribed: every entry was added to
    a minimal rule of that check and the run watched for `E201`. Three
-   corrections fall out of it, all against the published docs , `capitalization` takes `prefix` (singular) and rejects both `prefixes`
+   corrections fall out of it, all against the published docs:
+   `capitalization` takes `prefix` (singular) and rejects both `prefixes`
    and `suffixes`, it rejects `ignorecase`, and `occurrence` rejects
    `exceptions` and `vocab`.
 
@@ -702,7 +705,8 @@ tokens:
   - sort of
 ```
 
-**Goes wrong:** dropping `ignorecase: true` when you meant any casing , `We think` at the start of a sentence then sails through. And a phrase
+**Goes wrong:** dropping `ignorecase: true` when you meant any casing.
+`We think` at the start of a sentence then sails through. And a phrase
 with punctuation is a *pattern*: `maybe?` means "mayb" plus an optional
 "e", so it matches `mayb`. Escape it: `maybe\?`.
 
@@ -739,7 +743,8 @@ swap:
 ```
 
 **Goes wrong:** reaching for `capitalization` because the complaint is
-about capitals. Measured, `match: GitHub` flags whole sentences , `'We host on Github and it is fine. should be GitHub'`, because that
+about capitals. Measured, `match: GitHub` flags whole sentences:
+`'We host on Github and it is fine. should be GitHub'`, because that
 check tests a *scope*, not a word. Note also that `ignorecase: true` is
 safe here: Vale skips text already equal to the replacement, so the
 correct `GitHub` is not flagged.
