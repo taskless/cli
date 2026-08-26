@@ -211,6 +211,7 @@ jobs:
       # Note: claude-code-action adds its own 👀 reaction to the triggering
       # comment, so there's no explicit reaction step here.
       - name: Run Claude Code Review
+        id: review
         uses: anthropics/claude-code-action@d40ddef4c030e508327d6e35a9c45f3368482c50 # v1
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
@@ -247,3 +248,150 @@ jobs:
           # output — the workflow may use privileged tools, the model may not.
           claude_args: |
             --allowedTools "mcp__github_inline_comment__create_inline_comment,Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*),Read"
+
+      # A review that posts NOTHING must not report success.
+      #
+      # MEASURED on PR #182 (run 32933651692): the action exited `success` with
+      # `is_error: false` having done no work at all — `num_turns: 0`,
+      # `permission_denials_count: 4`, `total_cost_usd: 1.076`. The tracking
+      # comment kept its placeholder ("I'll analyze this and get back to you"),
+      # `No buffered inline comments` was logged, and the PR received zero
+      # inline comments. The job went green. That is the worst failure this
+      # workflow can have: a silent no-op is indistinguishable from a clean
+      # review, so a PR reads as reviewed when nothing read it.
+      #
+      # `is_error` is NOT a sufficient gate — it was false in that very run.
+      # The load-bearing signals are in the execution file: `num_turns` counts
+      # the model's completed turns, and a review that never took a turn cannot
+      # have posted anything. `permission_denials_count` is reported separately
+      # because a denial is how a review dies quietly: the tool it needs is not
+      # on the allowlist, it cannot say so anywhere a human will look, and it
+      # stops.
+      #
+      # This step reads only the run's own counters — never the model's output.
+      # `show_full_output: true` would answer the same question, but this is a
+      # PUBLIC repo and that dumps text the model produced while ingesting an
+      # untrusted diff into a world-readable log. Counters are not attacker-
+      # controlled; model prose is.
+      #
+      # `if: always()` so this still runs when the action itself fails, and the
+      # summary records what happened either way.
+      - name: Verify the review actually ran
+        if: always()
+        env:
+          EXECUTION_FILE: ${{ steps.review.outputs.execution_file }}
+        run: |
+          if [ -z "$EXECUTION_FILE" ] || [ ! -f "$EXECUTION_FILE" ]; then
+            echo "::error::No execution file from the review action; cannot confirm a review ran."
+            exit 1
+          fi
+
+          python3 - "$EXECUTION_FILE" <<'PYEOF'
+          import json, os, sys
+
+          path = sys.argv[1]
+          with open(path) as fh:
+              text = fh.read()
+
+          # The action has written both a JSON array of messages and JSONL,
+          # depending on version. Accept either rather than pinning a shape.
+          result = None
+          try:
+              parsed = json.loads(text)
+              messages = parsed if isinstance(parsed, list) else [parsed]
+          except json.JSONDecodeError:
+              messages = []
+              for line in text.splitlines():
+                  line = line.strip()
+                  if not line:
+                      continue
+                  try:
+                      messages.append(json.loads(line))
+                  except json.JSONDecodeError:
+                      continue
+
+          for message in messages:
+              if isinstance(message, dict) and message.get("type") == "result":
+                  result = message
+
+          if result is None:
+              print("::error::Execution file holds no result record; cannot confirm a review ran.")
+              sys.exit(1)
+
+          turns = result.get("num_turns")
+          denials = result.get("permission_denials_count") or 0
+          is_error = result.get("is_error")
+          cost = result.get("total_cost_usd")
+
+          summary = (
+              f"num_turns={turns} permission_denials={denials} "
+              f"is_error={is_error} cost_usd={cost}"
+          )
+          print(summary)
+
+          summary_path = os.environ.get("GITHUB_STEP_SUMMARY")
+          if summary_path:
+              with open(summary_path, "a") as fh:
+                  fh.write(f"### Review execution\n\n`{summary}`\n")
+
+          failed = False
+
+          if is_error:
+              print("::error::The review action reported an error.")
+              failed = True
+
+          # The core guard. A review that took no turns posted nothing.
+          if not turns:
+              print(
+                  "::error::The review took 0 turns and therefore posted no "
+                  "review. Treating this as a failure so it is not mistaken "
+                  "for a clean pass."
+              )
+              failed = True
+
+          if denials:
+              # Name the denied TOOLS when the record carries them. Tool names
+              # are structured data the runner produced, not model prose, so
+              # printing them is safe on a public repo where dumping the full
+              # output would not be. This is what makes the next occurrence
+              # self-diagnosing instead of needing a local re-run.
+              denied_tools = []
+              records = result.get("permission_denials")
+              if not isinstance(records, list):
+                  records = [
+                      m for m in messages
+                      if isinstance(m, dict)
+                      and "denial" in str(m.get("type", "")).lower()
+                  ]
+              for record in records or []:
+                  if not isinstance(record, dict):
+                      continue
+                  # Never print the tool INPUT: it can quote the untrusted diff.
+                  name = (
+                      record.get("tool_name")
+                      or record.get("tool")
+                      or record.get("name")
+                  )
+                  if name and name not in denied_tools:
+                      denied_tools.append(str(name))
+
+              detail = (
+                  f" Denied tool(s): {', '.join(denied_tools)}."
+                  if denied_tools
+                  else " The record does not name them; add the tool to"
+                       " --allowedTools once identified."
+              )
+              # Loud even when the review otherwise succeeded: a partial review
+              # missing a tool is still a review that could not see everything.
+              print(
+                  f"::error::The review hit {denials} permission denial(s)."
+                  f"{detail} A tool it needed is not on the allowlist, so its"
+                  " findings may be incomplete."
+              )
+              if denied_tools and summary_path:
+                  with open(summary_path, "a") as fh:
+                      fh.write(f"\nDenied tools: `{', '.join(denied_tools)}`\n")
+              failed = True
+
+          sys.exit(1 if failed else 0)
+          PYEOF
