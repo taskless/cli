@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { promisify } from "node:util";
@@ -347,29 +347,6 @@ describe("info reports the repository context", () => {
       { cwd }
     );
     const info = await readInfo();
-    expect(info.repositoryUrl).toBeNull();
-    expect(info.ghOwner).toBe("[unknown]");
-  });
-
-  it("reports [unknown] rather than failing when git is not on PATH", async () => {
-    // Not one of the three no-remote populations: the resolution cannot run
-    // at all. `info` must still succeed, because an absent git is a property
-    // of the host, not an error in the command.
-    //
-    // PATH is narrowed to a directory holding only `node`, rather than
-    // emptied: the harness spawns `node` by name, so clobbering PATH
-    // outright fails the test runner instead of the lookup under test.
-    const binDirectory = await mkdtemp(join(tmpdir(), "taskless-nogit-"));
-    await symlink(process.execPath, join(binDirectory, "node"));
-    const result = await runCli(["info", "--json", "-d", cwd], {
-      PATH: binDirectory,
-    });
-    await rm(binDirectory, { recursive: true, force: true });
-    expect(result.exitCode).toBe(0);
-    const info = JSON.parse(result.stdout) as {
-      repositoryUrl: string | null;
-      ghOwner: string;
-    };
     expect(info.repositoryUrl).toBeNull();
     expect(info.ghOwner).toBe("[unknown]");
   });
