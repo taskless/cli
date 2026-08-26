@@ -376,12 +376,12 @@ describe("shutdown", () => {
   });
 });
 
-/** The `gh_owner` on the most recent call recorded by a posthog mock. */
+/** The `ghOwner` on the most recent call recorded by a posthog mock. */
 function lastGhOwner(mock: { mock: { calls: unknown[][] } }): unknown {
   const call = mock.mock.calls.at(-1)?.[0] as {
     properties?: Record<string, unknown>;
   };
-  return call.properties?.gh_owner;
+  return call.properties?.ghOwner;
 }
 
 /**
@@ -389,7 +389,7 @@ function lastGhOwner(mock: { mock: { calls: unknown[][] } }): unknown {
  * resolved from the git remote rather than the token, so it is present on
  * unauthenticated runs — which is the population it exists to measure.
  */
-describe("gh_owner", () => {
+describe("ghOwner", () => {
   it("carries the owner on an anonymous run in a GitHub repository", async () => {
     const cwd = await mkdtemp(join(tmpdir(), "taskless-ghowner-"));
     try {
@@ -442,7 +442,7 @@ describe("gh_owner", () => {
       const identifyCall = mockIdentify.mock.calls.at(-1)?.[0] as {
         properties: Record<string, unknown>;
       };
-      expect(identifyCall.properties).toHaveProperty("gh_owner");
+      expect(identifyCall.properties).toHaveProperty("ghOwner");
       expect(lastGhOwner(mockIdentify)).toBe("[unknown]");
       expect(lastGhOwner(mockCapture)).toBe("[unknown]");
     } finally {

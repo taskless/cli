@@ -169,10 +169,15 @@ export async function getTelemetry(cwd?: string): Promise<TelemetryClient> {
     // git remote rather than from the token, and is present whether or not
     // one was found.
     //
-    // `gh_owner`, not `gh_org`: the first path segment of a GitHub URL is an
+    // `ghOwner`, not `ghOrg`: the first path segment of a GitHub URL is an
     // organization OR a user account, and telling them apart needs an
     // authenticated API call an anonymous run cannot make. The name states
     // what is actually in hand.
+    //
+    // camelCase because it is a PROPERTY. Event names are snake_case here
+    // (`cli_run`, `cli_check_completed`) and properties are camelCase
+    // (`cliVersion`, `durationMs`, `errorCount`). This shipped as `gh_owner`
+    // by mistake and is corrected before it reaches a stable release.
     //
     // `[unknown]` rather than an omitted property, so runs with no resolvable
     // owner stay countable instead of vanishing from aggregates. Resolution
@@ -195,7 +200,7 @@ export async function getTelemetry(cwd?: string): Promise<TelemetryClient> {
         cli: anonymousId,
         cliVersion: CLI_VERSION,
         scaffoldVersion,
-        gh_owner: ghOwner,
+        ghOwner,
       },
     });
 
@@ -219,7 +224,7 @@ export async function getTelemetry(cwd?: string): Promise<TelemetryClient> {
               cli: anonymousId,
               cliVersion: CLI_VERSION,
               scaffoldVersion,
-              gh_owner: ghOwner,
+              ghOwner,
             },
             ...(!anonymous && orgSubject !== undefined
               ? { groups: { organization: String(orgSubject) } }
