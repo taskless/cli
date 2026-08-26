@@ -9,6 +9,20 @@ import {
   canonicalOwnerUrl,
   listRemoteOwnerUrls,
 } from "../src/util/git-remote";
+import { CLIError } from "../src/util/cli-error";
+
+// Asserts the CODE, not the message. The code is the contract a `--json`
+// consumer reads; the wording is free to change, and did when the refusal was
+// reframed as a capability boundary on remote generation.
+function expectUnsupportedHost(rawUrl: string): void {
+  try {
+    canonicalizeGitHubUrl(rawUrl);
+    expect.unreachable(`canonicalizeGitHubUrl accepted ${rawUrl}`);
+  } catch (error) {
+    expect(error).toBeInstanceOf(CLIError);
+    expect((error as CLIError).code).toBe("UNSUPPORTED_REMOTE_HOST");
+  }
+}
 
 const execFileAsync = promisify(execFile);
 
@@ -37,22 +51,16 @@ describe("canonicalizeGitHubUrl", () => {
     );
   });
 
-  it("throws for non-GitHub SSH URLs", () => {
-    expect(() =>
-      canonicalizeGitHubUrl("git@gitlab.com:owner/repo.git")
-    ).toThrow("Unsupported git remote URL");
+  it("rejects non-GitHub SSH URLs as an unsupported host", () => {
+    expectUnsupportedHost("git@gitlab.com:owner/repo.git");
   });
 
-  it("throws for non-GitHub HTTPS URLs", () => {
-    expect(() =>
-      canonicalizeGitHubUrl("https://gitlab.com/owner/repo.git")
-    ).toThrow("Unsupported git remote URL");
+  it("rejects non-GitHub HTTPS URLs as an unsupported host", () => {
+    expectUnsupportedHost("https://gitlab.com/owner/repo.git");
   });
 
-  it("throws for arbitrary strings", () => {
-    expect(() => canonicalizeGitHubUrl("not-a-url")).toThrow(
-      "Unsupported git remote URL"
-    );
+  it("rejects arbitrary strings as an unsupported host", () => {
+    expectUnsupportedHost("not-a-url");
   });
 });
 

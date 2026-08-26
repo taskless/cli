@@ -8,7 +8,21 @@
  */
 export type CLIErrorCode =
   | "AUTH_REQUIRED"
+  // Remote rule generation needs a verifiable org, which comes from a GitHub
+  // `origin`. The three codes below name WHICH of the three populations a
+  // project is in, because the remedies differ: `git init`, add a remote, or
+  // "this host is not supported". They are a capability boundary on the
+  // remote tier, never an auth failure and never a broken repository —
+  // local authoring, `verify`, `test` and `check` are unaffected by all
+  // three.
+  //
+  // `NO_GITHUB_REMOTE` predates them and is RETAINED: recipes and consumers
+  // branch on it by name, and renaming a code is a breaking change to the
+  // agent contract while adding one is not.
   | "NO_GITHUB_REMOTE"
+  | "NOT_A_GIT_REPOSITORY"
+  | "NO_ORIGIN_REMOTE"
+  | "UNSUPPORTED_REMOTE_HOST"
   | "RULE_GENERATION_FAILED"
   | "RULE_UNSUPPORTED"
   | "RULE_NOT_FOUND"

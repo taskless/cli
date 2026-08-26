@@ -9,10 +9,13 @@ const execFileAsync = promisify(execFile);
 const binPath = resolve(import.meta.dirname, "../dist/index.js");
 
 async function runCli(
-  args: string[]
+  args: string[],
+  env?: Record<string, string>
 ): Promise<{ stdout: string; stderr: string; exitCode: number }> {
   try {
-    const { stdout, stderr } = await execFileAsync("node", [binPath, ...args]);
+    const { stdout, stderr } = await execFileAsync("node", [binPath, ...args], {
+      env: { ...process.env, ...env },
+    });
     return { stdout, stderr, exitCode: 0 };
   } catch (error) {
     const execError = error as {
@@ -115,7 +118,9 @@ describe("--anonymous flag (per-command behavior matrix)", () => {
         cwd,
       ]);
       expect(result.exitCode).not.toBe(0);
-      expect(result.stderr).toContain("taskless agent improve-rule --anonymous");
+      expect(result.stderr).toContain(
+        "taskless agent improve-rule --anonymous"
+      );
     });
   });
 
@@ -170,4 +175,109 @@ describe("--anonymous flag (per-command behavior matrix)", () => {
       expect(result.exitCode).toBe(0);
     });
   });
+});
+
+/**
+ * The half of #179 that is a guarantee rather than a change.
+ *
+ * Remote generation needs a GitHub `origin`; local authoring does not, and
+ * never did. `rule create --anonymous` returns before identity is resolved,
+ * and `verify` and `test` never resolve it at all. That is easy to regress by
+ * hoisting an identity call, and the regression would be invisible to anyone
+ * developing inside a GitHub checkout, so it is pinned here across all three
+ * no-remote populations.
+ */
+describe("local authoring needs no GitHub remote", () => {
+  let cwd: string;
+
+  beforeEach(async () => {
+    cwd = await mkdtemp(join(tmpdir(), "taskless-noremote-"));
+    await mkdir(join(cwd, ".taskless"), { recursive: true });
+    await writeFile(
+      join(cwd, ".taskless", "taskless.json"),
+      JSON.stringify({
+        version: "2026-03-03",
+        orgId: 123,
+        repositoryUrl: "https://github.com/test/test",
+      })
+    );
+  });
+
+  afterEach(async () => {
+    await rm(cwd, { recursive: true, force: true });
+  });
+
+  const populations: { name: string; setUp: () => Promise<void> }[] = [
+    {
+      name: "not a git repository",
+      setUp: async () => {
+        // The temp directory is already not a repository.
+      },
+    },
+    {
+      name: "a git repository with no origin",
+      setUp: async () => {
+        await execFileAsync("git", ["init"], { cwd });
+      },
+    },
+    {
+      name: "an origin that is not GitHub",
+      setUp: async () => {
+        await execFileAsync("git", ["init"], { cwd });
+        await execFileAsync(
+          "git",
+          ["remote", "add", "origin", "https://gitlab.com/acme/widgets.git"],
+          { cwd }
+        );
+      },
+    },
+  ];
+
+  // A token is deliberately present. Without one the commands would decline
+  // for an unrelated reason and the test would pass without proving anything.
+  const withToken = { TASKLESS_TOKEN: "test-token-not-a-real-credential" };
+
+  for (const population of populations) {
+    describe(population.name, () => {
+      beforeEach(async () => {
+        await population.setUp();
+      });
+
+      it("rule create --anonymous does not hit a GitHub precondition", async () => {
+        const from = join(cwd, "create.json");
+        await writeFile(from, JSON.stringify({ prompt: "no eval" }));
+        const result = await runCli(
+          [
+            "rule",
+            "create",
+            "--from",
+            from,
+            "--anonymous",
+            "--json",
+            "-d",
+            cwd,
+          ],
+          withToken
+        );
+        expect(result.stdout + result.stderr).not.toMatch(
+          /NOT_A_GIT_REPOSITORY|NO_ORIGIN_REMOTE|UNSUPPORTED_REMOTE_HOST|NO_GITHUB_REMOTE/
+        );
+      });
+
+      it("verify runs to completion", async () => {
+        const result = await runCli(["verify", "-d", cwd], withToken);
+        expect(result.stdout + result.stderr).not.toMatch(
+          /NOT_A_GIT_REPOSITORY|NO_ORIGIN_REMOTE|UNSUPPORTED_REMOTE_HOST|NO_GITHUB_REMOTE/
+        );
+      });
+
+      it("check runs to completion", async () => {
+        const result = await runCli(["check", "-d", cwd], withToken);
+        expect(result.exitCode).toBe(0);
+        expect(result.stdout + result.stderr).not.toMatch(
+          /NOT_A_GIT_REPOSITORY|NO_ORIGIN_REMOTE|UNSUPPORTED_REMOTE_HOST|NO_GITHUB_REMOTE/
+        );
+      });
+    });
+  }
 });

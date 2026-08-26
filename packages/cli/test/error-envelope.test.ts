@@ -320,30 +320,59 @@ describe("resolveIdentity failure codes (--json)", () => {
     });
   });
 
-  describe("origin 2: not a git repository / no origin remote", () => {
-    it("emits NO_GITHUB_REMOTE from rule create", async () => {
+  describe("origin 2a: not a git repository", () => {
+    it("emits NOT_A_GIT_REPOSITORY from rule create", async () => {
       const from = await writeCreateInput();
       const result = await runCli(
         ["rule", "create", "--from", from, "--json", "-d", cwd],
         withToken
       );
       expect(result.exitCode).not.toBe(0);
-      expect(parseEnvelope(result.stdout).code).toBe("NO_GITHUB_REMOTE");
+      expect(parseEnvelope(result.stdout).code).toBe("NOT_A_GIT_REPOSITORY");
     });
 
-    it("emits NO_GITHUB_REMOTE from rule improve", async () => {
+    it("emits NOT_A_GIT_REPOSITORY from rule improve", async () => {
       const from = await writeImproveInput();
       const result = await runCli(
         ["rule", "improve", "--from", from, "--json", "-d", cwd],
         withToken
       );
       expect(result.exitCode).not.toBe(0);
-      expect(parseEnvelope(result.stdout).code).toBe("NO_GITHUB_REMOTE");
+      expect(parseEnvelope(result.stdout).code).toBe("NOT_A_GIT_REPOSITORY");
+    });
+  });
+
+  describe("origin 2b: a git repository with no origin remote", () => {
+    // Split from 2a deliberately. Both fail the same `git remote get-url
+    // origin` call, which is why they were once one code, but the remedies
+    // differ: `git init` versus adding a remote.
+    beforeEach(async () => {
+      await execFileAsync("git", ["init"], { cwd });
+    });
+
+    it("emits NO_ORIGIN_REMOTE from rule create", async () => {
+      const from = await writeCreateInput();
+      const result = await runCli(
+        ["rule", "create", "--from", from, "--json", "-d", cwd],
+        withToken
+      );
+      expect(result.exitCode).not.toBe(0);
+      expect(parseEnvelope(result.stdout).code).toBe("NO_ORIGIN_REMOTE");
+    });
+
+    it("emits NO_ORIGIN_REMOTE from rule improve", async () => {
+      const from = await writeImproveInput();
+      const result = await runCli(
+        ["rule", "improve", "--from", from, "--json", "-d", cwd],
+        withToken
+      );
+      expect(result.exitCode).not.toBe(0);
+      expect(parseEnvelope(result.stdout).code).toBe("NO_ORIGIN_REMOTE");
     });
   });
 
   describe("origin 3: origin remote is not GitHub", () => {
-    it("emits NO_GITHUB_REMOTE from rule create", async () => {
+    it("emits UNSUPPORTED_REMOTE_HOST from rule create", async () => {
       await initRepoWithOrigin("https://gitlab.com/acme/widgets.git");
       const from = await writeCreateInput();
       const result = await runCli(
@@ -351,10 +380,10 @@ describe("resolveIdentity failure codes (--json)", () => {
         withToken
       );
       expect(result.exitCode).not.toBe(0);
-      expect(parseEnvelope(result.stdout).code).toBe("NO_GITHUB_REMOTE");
+      expect(parseEnvelope(result.stdout).code).toBe("UNSUPPORTED_REMOTE_HOST");
     });
 
-    it("emits NO_GITHUB_REMOTE from rule improve", async () => {
+    it("emits UNSUPPORTED_REMOTE_HOST from rule improve", async () => {
       await initRepoWithOrigin("git@gitea.example.com:acme/widgets.git");
       const from = await writeImproveInput();
       const result = await runCli(
@@ -362,7 +391,7 @@ describe("resolveIdentity failure codes (--json)", () => {
         withToken
       );
       expect(result.exitCode).not.toBe(0);
-      expect(parseEnvelope(result.stdout).code).toBe("NO_GITHUB_REMOTE");
+      expect(parseEnvelope(result.stdout).code).toBe("UNSUPPORTED_REMOTE_HOST");
     });
   });
 
@@ -370,7 +399,7 @@ describe("resolveIdentity failure codes (--json)", () => {
     // The old implementation picked the code with `/git remote|origin/i` over
     // the message. Pin the property that replaced it: an AUTH_REQUIRED
     // failure keeps its code even though its message names neither term, and
-    // a NO_GITHUB_REMOTE failure keeps its code independently of its wording.
+    // a no-remote failure keeps its code independently of its wording.
     const from = await writeCreateInput();
     const args = ["rule", "create", "--from", from, "--json", "-d", cwd];
 
@@ -381,7 +410,44 @@ describe("resolveIdentity failure codes (--json)", () => {
 
     const noRemoteRun = await runCli(args, withToken);
     const noRemote = parseEnvelope(noRemoteRun.stdout);
-    expect(noRemote.code).toBe("NO_GITHUB_REMOTE");
+    expect(noRemote.code).toBe("NOT_A_GIT_REPOSITORY");
+  });
+
+  it("never reports a missing remote as an auth failure", async () => {
+    // These three are a capability boundary on remote generation, not a
+    // credential problem. An agent that saw AUTH_REQUIRED here would send the
+    // user through `auth login`, which cannot fix any of them.
+    const from = await writeCreateInput();
+    const args = ["rule", "create", "--from", from, "--json", "-d", cwd];
+
+    const notARepoRun = await runCli(args, withToken);
+    const notARepo = parseEnvelope(notARepoRun.stdout);
+
+    await execFileAsync("git", ["init"], { cwd });
+    const noOriginRun = await runCli(args, withToken);
+    const noOrigin = parseEnvelope(noOriginRun.stdout);
+
+    await execFileAsync(
+      "git",
+      ["remote", "add", "origin", "https://gitlab.com/acme/widgets.git"],
+      { cwd }
+    );
+    const notGitHubRun = await runCli(args, withToken);
+    const notGitHub = parseEnvelope(notGitHubRun.stdout);
+
+    for (const envelope of [notARepo, noOrigin, notGitHub]) {
+      expect(envelope.code).not.toBe("AUTH_REQUIRED");
+      // Each names the local path that still works, so the refusal is a
+      // boundary the reader can route around rather than a dead end.
+      expect(envelope.message).toMatch(/local rule authoring/i);
+    }
+
+    // The three are genuinely distinct, which is the point: the remedies are
+    // `git init`, adding a remote, and "this host is not supported", and one
+    // collapsed code cannot tell them apart.
+    expect(new Set([notARepo.code, noOrigin.code, notGitHub.code]).size).toBe(
+      3
+    );
   });
 });
 

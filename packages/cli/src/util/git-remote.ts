@@ -6,15 +6,48 @@ import { CLIError } from "./cli-error";
  * Resolve the repository URL from `git remote get-url origin`,
  * canonicalized to `https://github.com/{owner}/{repo}`.
  *
- * Both failure modes (no readable `origin`, and an `origin` that is not on
- * github.com) throw a `CLIError` carrying `NO_GITHUB_REMOTE`. The code travels
- * with the failure so a caller reads a field instead of matching on the
- * message: rewording either string must never change what a `--json` consumer
+ * Failure names WHICH of three populations the project is in, because the
+ * remedies differ and an agent has to pick one: `NOT_A_GIT_REPOSITORY`,
+ * `NO_ORIGIN_REMOTE`, or `UNSUPPORTED_REMOTE_HOST`. The code travels with
+ * the failure so a caller reads a field instead of matching on the message:
+ * rewording any of these strings must never change what a `--json` consumer
  * is told.
+ *
+ * All three are a capability boundary on REMOTE rule generation, not a
+ * verdict on the repository. Local authoring, `verify`, `test` and `check`
+ * work in every one of them, which is why each message names the local path
+ * rather than only reporting the refusal.
  */
 export async function resolveRepositoryUrl(cwd: string): Promise<string> {
   const rawUrl = await getOriginUrl(cwd);
   return canonicalizeGitHubUrl(rawUrl);
+}
+
+/**
+ * Whether `cwd` sits inside a git working tree.
+ *
+ * Runs ONLY on the failure path. `git remote get-url origin` fails
+ * identically for "not a repository" and "repository with no origin", so the
+ * two are indistinguishable without asking a second question — and they are
+ * the two whose remedies differ most (`git init` versus adding a remote).
+ * Keeping the probe behind the failure means the ordinary case still spawns
+ * one process, not two.
+ *
+ * Asks git rather than looking for a `.git` directory: a worktree, a
+ * submodule and a `GIT_DIR` override are all real working trees without one
+ * at `cwd`.
+ */
+function isGitWorkTree(cwd: string): Promise<boolean> {
+  return new Promise((resolve) => {
+    execFile(
+      "git",
+      ["rev-parse", "--is-inside-work-tree"],
+      { cwd },
+      (error, stdout) => {
+        resolve(!error && stdout.trim() === "true");
+      }
+    );
+  });
 }
 
 function getOriginUrl(cwd: string): Promise<string> {
@@ -25,12 +58,19 @@ function getOriginUrl(cwd: string): Promise<string> {
       { cwd },
       (error, stdout) => {
         if (error) {
-          reject(
-            new CLIError(
-              "Could not determine repository URL from git remote. Ensure your repository has an 'origin' remote pointing to GitHub.",
-              "NO_GITHUB_REMOTE"
-            )
-          );
+          void isGitWorkTree(cwd).then((inRepository) => {
+            reject(
+              inRepository
+                ? new CLIError(
+                    "Remote rule generation needs a GitHub `origin` remote, and this repository has none. Local rule authoring, `verify`, `test` and `check` work without one.",
+                    "NO_ORIGIN_REMOTE"
+                  )
+                : new CLIError(
+                    "Remote rule generation needs a GitHub repository, and this directory is not a git repository. Local rule authoring, `verify`, `test` and `check` work without one.",
+                    "NOT_A_GIT_REPOSITORY"
+                  )
+            );
+          });
           return;
         }
         resolve(stdout.trim());
@@ -58,8 +98,8 @@ export function canonicalizeGitHubUrl(rawUrl: string): string {
   }
 
   throw new CLIError(
-    `Unsupported git remote URL: "${rawUrl}". Only GitHub repositories (github.com) are supported.`,
-    "NO_GITHUB_REMOTE"
+    `Remote rule generation supports GitHub only, and this repository's \`origin\` is "${rawUrl}". Local rule authoring, \`verify\`, \`test\` and \`check\` work with any remote or none.`,
+    "UNSUPPORTED_REMOTE_HOST"
   );
 }
 
