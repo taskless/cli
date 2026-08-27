@@ -285,6 +285,34 @@ const arityRule = (body: string) =>
     "",
   ].join("\n");
 
+/** Findings from one semantics rule over one source file, text and message. */
+const semanticsFindings = (body: string, source: string) =>
+  scan(
+    project({
+      rules: { semantics: semanticsRule(body) },
+      sources: { "src/a.ts": source },
+    })
+  )
+    .stdout.split("\n")
+    .filter((line) => line !== "")
+    .map((line) => JSON.parse(line) as { text: string; message: string });
+
+/**
+ * A rule whose `message` is a bare metavariable, so a leaked binding is
+ * visible in the rendered output rather than only in the match.
+ */
+const semanticsRule = (body: string) =>
+  [
+    "id: semantics",
+    "language: TypeScript",
+    "severity: error",
+    "message: $A",
+    "note: n",
+    "rule:",
+    body,
+    "",
+  ].join("\n");
+
 /** A Markdown rule whose `rule:` body is given verbatim, already indented. */
 const markdownRule = (body: string) =>
   [
@@ -969,6 +997,67 @@ withSg("ast-grep vendor contract", () => {
       const outcome = scanMarkdown("  pattern: '[$T]($U)'");
       expect(outcome.status).toBe(0);
       expect(outcome.stdout.trim()).toBe("");
+    });
+  });
+
+  /**
+   * Two matching-semantics fixes from the 0.41.0 to 0.45.2 upgrade, pinned
+   * because they are the class no local check catches: a valid, unchanged rule
+   * matching a DIFFERENT set of nodes, with no error and no warning.
+   *
+   * Both cases come from the upstream pull requests rather than from guessing
+   * at the constructs. That distinction mattered: hand-written rules over the
+   * same features showed no difference at all, because neither bug fires
+   * unless a metavariable is bound in the specific position the fix changed.
+   */
+  describe("metavariable bindings do not leak", () => {
+    it("counts every sibling when nthChild's ofRule binds a metavariable", () => {
+      // ast-grep/ast-grep#2677. `ofRule` reused one environment across all
+      // siblings, so the first match committed `$S` and every later sibling
+      // failed the consistency check and went uncounted. The rule then matched
+      // NOTHING at 0.41.0 while looking correct.
+      //
+      // Measured across the upgrade: 0.41.0 found 0, 0.45.2 finds `b();`.
+      // Swapping `pattern: $S` for a non-binding `kind:` was the workaround,
+      // which is what identified binding as the cause.
+      const matches = semanticsFindings(
+        [
+          "  kind: expression_statement",
+          "  nthChild:",
+          "    position: 2",
+          "    ofRule: { pattern: $S }",
+        ].join("\n"),
+        "function f() { a(); b(); c(); }\n"
+      );
+      expect(matches.map((m) => m.text)).toEqual(["b();"]);
+    });
+
+    it("leaves a metavariable unbound when a negated not rejected it", () => {
+      // ast-grep/ast-grep#2676. A `not` must contribute no bindings, since a
+      // successful negation means the inner rule did NOT match. It passed the
+      // live environment to its inner matcher, so a failed candidate left its
+      // bindings behind, and relational rules reuse one environment across
+      // candidates.
+      //
+      // The subtle part, and the reason this is asserted on the MESSAGE: the
+      // finding itself is identical across the upgrade. Same file, same range,
+      // same rule. Only the binding differs, so a differential comparing
+      // locations would report no change. At 0.41.0 `$A` rendered as `foo`,
+      // leaked from `return foo;`; here it must be empty.
+      const matches = semanticsFindings(
+        [
+          "  kind: expression_statement",
+          "  pattern: target;",
+          "  follows:",
+          "    not:",
+          "      pattern: return $A",
+          "    stopBy: end",
+        ].join("\n"),
+        "function f() { bar(); return foo; target; }\n"
+      );
+      expect(matches).toHaveLength(1);
+      expect(matches[0]?.text).toBe("target;");
+      expect(matches[0]?.message.trim()).toBe("");
     });
   });
 
