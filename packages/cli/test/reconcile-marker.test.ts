@@ -108,6 +108,38 @@ describe("recording a rules reconciliation", () => {
     expect(await readRules()).toBeUndefined();
   });
 
+  it("treats a nightly and its release as the same version", async () => {
+    // Deliberately NOT semver ordering, and this test exists to stop someone
+    // "correcting" it into semver. Our nightlies are valid semver
+    // (`0.11.0-20260827050231x45e9997`), and the spec ranks a prerelease BELOW
+    // its release, so semver would say a project reconciled on the nightly is
+    // behind the identical release and send it to re-walk a ledger entry it
+    // already walked. They are built from the same commit and carry the same
+    // entries, so only the numeric core is compared.
+    const version = await installedVersion();
+    const nightly = `${version}-20260827050231x45e9997`;
+
+    const first = await runCli([
+      "update",
+      `--reconciledTo=${nightly}`,
+      "-d",
+      cwd,
+    ]);
+    expect(first.exitCode).toBe(0);
+
+    // Equal, not backwards: recording the plain release after the nightly is
+    // allowed rather than rejected as moving the marker back.
+    const second = await runCli([
+      "update",
+      `--reconciledTo=${version}`,
+      "-d",
+      cwd,
+    ]);
+    expect(second.exitCode).toBe(0);
+    const rules = await readRules();
+    expect(rules?.reconciledTo).toBe(version);
+  });
+
   it("refuses to move the marker backwards", async () => {
     const version = await installedVersion();
     await runCli(["update", `--reconciledTo=${version}`, "-d", cwd]);
