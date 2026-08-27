@@ -453,3 +453,41 @@ describe("the GitHub-owner constraint is guarded twice", () => {
     }
   );
 });
+
+/**
+ * The two shapes that verify clean and report nothing forever. Both cost real
+ * time to diagnose while building the matching-semantics differential, and
+ * neither was written down anywhere.
+ */
+describe("create-sg-rule warns about silently inert relational rules", () => {
+  let cwd: string;
+
+  beforeEach(async () => {
+    cwd = await mkdtemp(join(tmpdir(), "taskless-sg-inert-"));
+  });
+
+  afterEach(async () => {
+    await rm(cwd, { recursive: true, force: true });
+  });
+
+  it("says a sibling relation needs stopBy to cross punctuation", async () => {
+    const result = await runCli(["agent", "create-sg-rule", "-d", cwd]);
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain("stopBy: end` to cross punctuation");
+    // The reason, not just the fix: the separator is a node too.
+    expect(result.stdout).toContain("the separators are nodes too");
+  });
+
+  it("says a not over the binding subtree excludes everything", async () => {
+    const result = await runCli(["agent", "create-sg-rule", "-d", cwd]);
+    expect(result.stdout).toContain("excludes everything");
+    expect(result.stdout).toContain("its own descendant");
+  });
+
+  it("frames both as reporting nothing rather than erroring", async () => {
+    // The dangerous property: zero findings is what a clean codebase looks
+    // like, so neither failure announces itself.
+    const result = await runCli(["agent", "create-sg-rule", "-d", cwd]);
+    expect(result.stdout).toContain("reads exactly like a clean codebase");
+  });
+});

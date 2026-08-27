@@ -1,4 +1,4 @@
-# Topic: create-sg-rule     (CLI v%(CLI_VERSION)s / topic v3)
+# Topic: create-sg-rule     (CLI v%(CLI_VERSION)s / topic v4)
 
 ## You are here
 This is `create-sg-rule`. It helps you write an ast-grep rule: a check
@@ -217,6 +217,53 @@ whole rule.
      login.
    - Only after the user confirms, fetch `%(TASKLESS_CLI)s agent
      create-remote-rule` and follow it. Do not call the service silently.
+
+## Two ways a relational rule matches nothing
+
+Both of these parse, verify, run, and exit 0. Neither reports anything
+ever, which reads exactly like a clean codebase.
+
+**`follows` and `precedes` need `stopBy: end` to cross punctuation.**
+A sibling relation walks the immediate siblings, and in most grammars
+the separators are nodes too. Between two array elements sits a `,`, so
+the previous element is not the previous SIBLING. Measured on
+TypeScript, `[10, 10, 30]` with
+
+```
+rule:
+  kind: number
+  follows: { kind: number }
+```
+
+matches nothing, and the same rule with `stopBy: end` inside `follows`
+matches. If a sibling relation reports zero on input you believe should
+match, add `stopBy: end` before doubting the rest of the rule.
+
+**A `not` containing a bare metavariable excludes everything.** Writing
+"the name is not used in the initializer" as
+
+```
+rule:
+  kind: variable_declarator
+  has: { field: name, pattern: $A }
+  not:
+    has: { pattern: $A, stopBy: end }
+```
+
+matches nothing at all, because `$A` is bound to the name node and that
+node is its own descendant: the `not` finds it inside every declarator
+and rejects all of them. Scope the negation to the part you meant, in
+this case the value:
+
+```
+  not:
+    has:
+      field: value
+      has: { pattern: $A, stopBy: end }
+```
+
+The general shape: when a `not` searches the same subtree that bound the
+metavariable, it always finds it.
 
 ## Important Notes
 
