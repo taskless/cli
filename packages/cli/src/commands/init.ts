@@ -23,6 +23,7 @@ import {
   processLauncherContext,
 } from "../util/package-manager";
 import {
+  pathExists,
   recordReconciliation,
   reconciliationStart,
   stampNewProjectRules,
@@ -220,13 +221,21 @@ export const updateCommand = defineCommand({
 async function runNonInteractive(
   cwd: string
 ): Promise<{ commandsInstalled: boolean }> {
+  // Sampled BEFORE the directory is created, and that order is the whole
+  // point. `ensureTasklessDirectory` mkdir -p's, so afterwards a pre-existing
+  // project is indistinguishable from a fresh one.
+  //
+  // This path is also `init --no-interactive`, whose documented job is
+  // refreshing an EXISTING project. Stamping there would mark a project that
+  // never walked the ledger as fully reconciled and skip every entry, which is
+  // the silent skip this feature exists to prevent.
+  const wasNewProject = !(await pathExists(join(cwd, TASKLESS_DIRECTORY)));
   await ensureTasklessDirectory(cwd);
-  // Stamp the rules marker on a project this CLI is setting up. That is what
-  // lets an ABSENT marker mean "predates the ledger" rather than "new": a
-  // project created here has no entries to walk, and one that never recorded
-  // anything has all of them. Without this the two are indistinguishable and
-  // the walk has to guess.
-  await stampNewProjectRules(cwd);
+  if (wasNewProject) {
+    // A project this CLI just created has no entries to walk: everything the
+    // ledger describes is already true of the scaffold it wrote.
+    await stampNewProjectRules(cwd);
+  }
 
   const allSkills = getEmbeddedSkills();
   const mandatoryNames = new Set(getMandatorySkillNames());

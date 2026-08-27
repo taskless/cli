@@ -161,7 +161,7 @@ export function reconciliationStart(
 }
 
 /** Whether a path exists, without distinguishing why it does not. */
-async function pathExists(path: string): Promise<boolean> {
+export async function pathExists(path: string): Promise<boolean> {
   try {
     await access(path);
     return true;
@@ -178,9 +178,16 @@ async function pathExists(path: string): Promise<boolean> {
  * is what gives an ABSENT marker its meaning, which is "this project predates
  * the ledger and has had none of it applied".
  *
- * Never overwrites. Re-running setup on an existing project must not reset a
- * marker that a real walk earned, which would send the next walk back through
- * entries already applied.
+ * ONLY call this when the project was genuinely new, which the caller has to
+ * establish BEFORE creating the directory. This function cannot tell: by the
+ * time it runs, `ensureTasklessDirectory` has already `mkdir -p`'d, so a
+ * pre-existing project and a fresh one look identical. Stamping one that
+ * merely never recorded a marker would mark it fully reconciled and skip every
+ * entry, which is the exact silent-skip this whole feature exists to prevent,
+ * reachable by re-running setup on an ordinary older project.
+ *
+ * Never overwrites either. Re-running setup on a project that HAS a marker
+ * must not reset one a real walk earned.
  */
 export async function stampNewProjectRules(cwd: string): Promise<void> {
   const tasklessDirectory = join(cwd, TASKLESS_DIRECTORY);
