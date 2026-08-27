@@ -26,10 +26,27 @@ async function hashFile(path: string): Promise<string | undefined> {
   }
 }
 
+/**
+ * One entry to be resolved into a snapshot value: a file to hash, or a
+ * symlink to read.
+ */
+interface PendingEntry {
+  absolute: string;
+  kind: "file" | "symlink";
+}
+
+/**
+ * Collect the entries under `absolute` WITHOUT resolving them.
+ *
+ * Directory traversal is cheap and inherently sequential; hashing is neither.
+ * Separating the two lets the hashing run with bounded concurrency below,
+ * which is what keeps this usable on a tree much larger than this repository's
+ * own. A snapshot runs twice per migration, so the cost is paid twice.
+ */
 async function walk(
   projectRoot: string,
   absolute: string,
-  into: Map<string, string>
+  into: PendingEntry[]
 ): Promise<void> {
   let entries;
   try {
@@ -53,17 +70,11 @@ async function walk(
     // following the link, which would risk a cycle and would double-count a
     // target that is itself under a watched path.
     if (entry.isSymbolicLink()) {
-      const target = await symlinkTarget(child);
-      if (target !== undefined) {
-        into.set(toProjectPath(projectRoot, child), target);
-      }
+      into.push({ absolute: child, kind: "symlink" });
       continue;
     }
     if (!entry.isFile()) continue;
-    const hash = await hashFile(child);
-    if (hash !== undefined) {
-      into.set(toProjectPath(projectRoot, child), hash);
-    }
+    into.push({ absolute: child, kind: "file" });
   }
 }
 
@@ -91,20 +102,56 @@ function toProjectPath(projectRoot: string, absolute: string): string {
  * name a directory or a single file. Paths that do not exist contribute
  * nothing, which is what makes a file created by a migration read as `added`.
  */
+/**
+ * How many entries are resolved at once.
+ *
+ * Bounded rather than a bare `Promise.all` over the whole tree: a large
+ * repository would open every file at once and hit the process descriptor
+ * limit with `EMFILE`, which would surface as an unreadable file and be
+ * swallowed into "not part of the snapshot". That is the quiet
+ * under-reporting this module exists to avoid, so the failure mode has to be
+ * designed out rather than caught.
+ */
+const HASH_CONCURRENCY = 32;
+
+/** Resolve pending entries in bounded-concurrency batches. */
+async function resolveEntries(
+  projectRoot: string,
+  pending: PendingEntry[],
+  into: Map<string, string>
+): Promise<void> {
+  for (let start = 0; start < pending.length; start += HASH_CONCURRENCY) {
+    const batch = pending.slice(start, start + HASH_CONCURRENCY);
+    const resolved = await Promise.all(
+      batch.map(async (entry) => ({
+        path: toProjectPath(projectRoot, entry.absolute),
+        value:
+          entry.kind === "symlink"
+            ? await symlinkTarget(entry.absolute)
+            : await hashFile(entry.absolute),
+      }))
+    );
+    for (const { path, value } of resolved) {
+      if (value !== undefined) into.set(path, value);
+    }
+  }
+}
+
 export async function snapshotPaths(
   projectRoot: string,
   paths: string[]
 ): Promise<Map<string, string>> {
   const snapshot = new Map<string, string>();
+  const pending: PendingEntry[] = [];
   for (const path of paths) {
     const absolute = join(projectRoot, path);
-    await walk(projectRoot, absolute, snapshot);
-    // A directory yields its files above; a plain file yields only itself.
-    const hash = await hashFile(absolute);
-    if (hash !== undefined) {
-      snapshot.set(toProjectPath(projectRoot, absolute), hash);
-    }
+    await walk(projectRoot, absolute, pending);
+    // A directory yields its entries above; a watched path that is itself a
+    // plain file yields only itself, which is how the root `.gitignore` is
+    // covered.
+    pending.push({ absolute, kind: "file" });
   }
+  await resolveEntries(projectRoot, pending, snapshot);
   return snapshot;
 }
 

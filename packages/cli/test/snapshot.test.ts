@@ -114,6 +114,30 @@ describe("snapshotPaths and diffSnapshots", () => {
     ]);
   });
 
+  it("handles a tree larger than one hash batch", async () => {
+    // Hashing runs in bounded batches (32 at a time) rather than one
+    // `Promise.all` over the whole tree, because a large repository would
+    // otherwise open every file at once and hit `EMFILE`. An unreadable file
+    // is swallowed as "not part of the snapshot", so that failure would show
+    // up as a silently incomplete report rather than an error. 80 files
+    // crosses the boundary in both directions.
+    const before = await snap();
+    const names = Array.from(
+      { length: 80 },
+      (_, index) => `f${String(index).padStart(3, "0")}.txt`
+    );
+    for (const name of names) {
+      await writeFile(join(root, ".taskless", name), name);
+    }
+
+    const changes = diffSnapshots(before, await snap());
+    expect(changes.added).toHaveLength(80);
+    // Every one accounted for, and still sorted across batch boundaries.
+    expect(changes.added).toEqual(
+      names.map((name) => `.taskless/${name}`).toSorted()
+    );
+  });
+
   it("contributes nothing for a path that does not exist", async () => {
     const snapshot = await snapshotPaths(root, ["does-not-exist"]);
     expect(snapshot.size).toBe(0);
