@@ -297,6 +297,18 @@ const semanticsFindings = (body: string, source: string) =>
     .filter((line) => line !== "")
     .map((line) => JSON.parse(line) as { text: string; message: string });
 
+/** The statement `nthChild` selects at `position`, over three siblings. */
+const nthChildAt = (position: number) =>
+  semanticsFindings(
+    [
+      "  kind: expression_statement",
+      "  nthChild:",
+      `    position: ${String(position)}`,
+      "    ofRule: { pattern: $S }",
+    ].join("\n"),
+    "function f() { a(); b(); c(); }\n"
+  ).map((match) => match.text);
+
 /**
  * A rule whose `message` is a bare metavariable, so a leaked binding is
  * visible in the rendered output rather than only in the match.
@@ -1011,6 +1023,23 @@ withSg("ast-grep vendor contract", () => {
    * unless a metavariable is bound in the specific position the fix changed.
    */
   describe("metavariable bindings do not leak", () => {
+    it("counts nthChild positions from 1, not from 0", () => {
+      // Pinned because the vendored schema says otherwise. `NthChildSimple`
+      // describes the plain-number form as "A number indicating the precise
+      // element index" with `minimum: 0`, which reads as 0-indexed and would
+      // make the test below off by one, selecting `c();` while claiming
+      // `b();`.
+      //
+      // Measured against the binary: position 0 matches nothing at all, and
+      // 1, 2, 3 select the first, second and third. The behaviour is CSS-like
+      // and the schema's own description is misleading, so the ordering the
+      // next test depends on is asserted here rather than assumed.
+      expect(nthChildAt(0)).toEqual([]);
+      expect(nthChildAt(1)).toEqual(["a();"]);
+      expect(nthChildAt(2)).toEqual(["b();"]);
+      expect(nthChildAt(3)).toEqual(["c();"]);
+    });
+
     it("counts every sibling when nthChild's ofRule binds a metavariable", () => {
       // ast-grep/ast-grep#2677. `ofRule` reused one environment across all
       // siblings, so the first match committed `$S` and every later sibling
