@@ -112,16 +112,61 @@ This affects the flag only, not a rule's `language:` field, so no rule
 file needs changing. It is recorded because the divergence used to be
 documented as a thing to work around.
 
-**Matching semantics moved, and this is the part you cannot check
-locally.** Metavariable bindings no longer leak across `nthChild`
-siblings, nor out of a negated `not`, and root metavariables now match
-comments. A valid, unchanged rule can match a DIFFERENT SET OF NODES
-with no error and no warning.
+**Matching semantics moved, and a valid, unchanged rule can now match a
+DIFFERENT SET OF NODES with no error and no warning.** Two shapes are
+affected. Both were measured against the two binaries, so this section
+says what to do rather than what to watch for.
 
-There is no differential tooling yet. If a rule uses `nthChild`, a
-negated `not`, or a bare root metavariable, re-run its fixtures and read
-the findings rather than the exit code: the rule can still pass its
-tests while reporting differently on real code.
+**A rule was silently dead and now fires.** If a rule uses `nthChild`
+with an `ofRule` whose body binds a metavariable:
+
+```
+nthChild:
+  position: 2
+  ofRule: { pattern: $S }
+```
+
+then at 0.41.0 it matched **nothing**, because `ofRule` reused one
+environment across siblings: the first match committed `$S` and every
+later sibling failed the consistency check and went uncounted. It now
+counts correctly and reports.
+
+So the rule is not broken, it was inert, and the findings it produces on
+this version have never been seen. Run `%(TASKLESS_CLI)s check` and read
+them as new: they are real matches the rule was always meant to make,
+and they may be numerous on a codebase that has never been checked
+against it. Fixtures are no help here, since a rule that matched nothing
+passed the `pass/` side of its own tests.
+
+A rule whose `ofRule` used a non-binding matcher, `kind:` or `regex:`
+with no metavariable, is unaffected: only binding was broken.
+
+**A metavariable is now empty where it used to carry a value.** If a
+rule binds a metavariable inside a negated `not` and then references it
+in `message`, `fix`, or a constraint:
+
+```
+follows:
+  not:
+    pattern: return $A
+  stopBy: end
+message: "found after $A"
+```
+
+then at 0.41.0 `$A` rendered with a value leaked from the candidate the
+negation REJECTED. A `not` contributes no bindings by definition, since
+a successful negation means the inner rule did not match, so that value
+was never meaningful. It is now unbound and renders empty.
+
+This one will not change your finding counts. The match is identical:
+same file, same range, same rule. Only the rendered output differs, so
+grep your rules for a metavariable that appears both inside a `not` and
+in a `message` or `fix`. A `fix` in that shape has been writing the
+leaked text into people's files.
+
+**Root metavariables and comments** also changed upstream
+(ast-grep/ast-grep#2868), but no shape we tried reproduced a difference,
+including the TSX case that PR names. Nothing to do unless you see one.
 
 ## Errors
 

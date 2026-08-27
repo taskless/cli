@@ -176,6 +176,31 @@ describe("taskless update with no flags", () => {
     expect(result.stdout).toContain("The directory is");
   });
 
+  it("tells an author what to DO about each semantics change", async () => {
+    // The section used to say "re-run your fixtures and read the findings",
+    // which tells someone to look without saying what for. Both shapes were
+    // measured across the two binaries, so it can name the action instead.
+    const result = await runCli(["update"]);
+
+    // Shape 1: the rule was inert and now reports. Fixtures cannot catch it,
+    // because a rule matching nothing passes its own `pass/` side.
+    expect(result.stdout).toContain("silently dead and now fires");
+    expect(result.stdout).toContain("read\nthem as new");
+
+    // Shape 2: identical findings, different rendered output. Counting will
+    // not surface it, so the instruction is to grep the rules.
+    expect(result.stdout).toContain("will not change your finding counts");
+    expect(result.stdout).toContain(
+      "writing the\nleaked text into people's files"
+    );
+
+    // And the one we could not reproduce is named as such rather than
+    // dressed up as guidance.
+    expect(result.stdout).toContain(
+      "no shape we tried reproduced a difference"
+    );
+  });
+
   it("carries the 0.11.0 ledger entry", async () => {
     const result = await runCli(["update"]);
     expect(result.stdout).toContain("Migrating to 0.11.x");
