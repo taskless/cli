@@ -319,15 +319,55 @@ jobs:
               sys.exit(1)
 
           turns = result.get("num_turns")
-          denials = result.get("permission_denials_count") or 0
           is_error = result.get("is_error")
           cost = result.get("total_cost_usd")
+
+          # Denials are counted from EVERY source, not from one field.
+          #
+          # MEASURED on PR #196 (run 33039882331): the streamed job log carried
+          # `permission_denials_count: 6` while the saved execution file's
+          # result record did not, so a guard reading only that field reported
+          # zero and skipped the tool naming below. Every other field matched
+          # exactly, including the cost to sixteen digits, so this is one
+          # field the file omits rather than a different record. Reporting
+          # "0 denials" was worse than reporting nothing: it was used as
+          # evidence that permissions were not the problem.
+          denial_records = [
+              message
+              for message in messages
+              if isinstance(message, dict)
+              and "denial" in str(message.get("type", "")).lower()
+          ]
+          if isinstance(result.get("permission_denials"), list):
+              denial_records = result["permission_denials"] + denial_records
+          denials = max(
+              int(result.get("permission_denials_count") or 0),
+              len(denial_records),
+          )
 
           summary = (
               f"num_turns={turns} permission_denials={denials} "
               f"is_error={is_error} cost_usd={cost}"
           )
           print(summary)
+
+          # A structural census of the execution file, so a zero-turn run says
+          # something about ITSELF rather than only that it failed. Types and
+          # counts only: no message content, no tool inputs, nothing the model
+          # produced while reading an untrusted diff. Two zero-turn runs have
+          # now billed real inference (#182 at $1.08, #196 at $2.20) with no
+          # explanation available afterwards, and the log is the only place to
+          # put one.
+          census = {}
+          for message in messages:
+              if isinstance(message, dict):
+                  key = str(message.get("type", "?"))
+                  census[key] = census.get(key, 0) + 1
+          if census:
+              print(
+                  "message types: "
+                  + ", ".join(f"{k}={v}" for k, v in sorted(census.items()))
+              )
 
           summary_path = os.environ.get("GITHUB_STEP_SUMMARY")
           if summary_path:
@@ -350,20 +390,15 @@ jobs:
               failed = True
 
           if denials:
-              # Name the denied TOOLS when the record carries them. Tool names
-              # are structured data the runner produced, not model prose, so
-              # printing them is safe on a public repo where dumping the full
-              # output would not be. This is what makes the next occurrence
-              # self-diagnosing instead of needing a local re-run.
+              # Name the denied TOOLS when anything in the file carries them.
+              # Tool names are structured data the runner produced, not model
+              # prose, so printing them is safe on a public repo where dumping
+              # the full output would not be. This is what makes the next
+              # occurrence self-diagnosing instead of needing a local re-run,
+              # and it is why the count above must not come from a single
+              # field that the file may omit.
               denied_tools = []
-              records = result.get("permission_denials")
-              if not isinstance(records, list):
-                  records = [
-                      m for m in messages
-                      if isinstance(m, dict)
-                      and "denial" in str(m.get("type", "")).lower()
-                  ]
-              for record in records or []:
+              for record in denial_records:
                   if not isinstance(record, dict):
                       continue
                   # Never print the tool INPUT: it can quote the untrusted diff.
