@@ -41,7 +41,18 @@ async function runOverPath(options: {
   // Both commands need a current layout before a path means anything, so this
   // migrates as a precondition. The report is what lets the run say it did:
   // carried into the `--json` envelope below, and printed for a person.
-  const migrated = await ensureTasklessDirectory(cwd);
+  const migrated = await ensureTasklessDirectory(cwd, {
+    // Suppressed under `--json` for the same reason every other notice
+    // in this command is: the information is on the envelope's
+    // `migrated` field, and a machine consumer reading stderr gets
+    // prose it cannot parse. This one grew from a single line to a
+    // file-by-file summary, so leaving it ungated would hand a CI
+    // script that logs or fails on stderr a much noisier surprise than
+    // the one-liner it tolerated before.
+    onNotice: (message: string) => {
+      if (!json) console.error(message);
+    },
+  });
 
   let rules;
   try {

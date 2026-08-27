@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { readdir, readFile } from "node:fs/promises";
+import { readdir, readFile, readlink } from "node:fs/promises";
 import { join, relative, sep } from "node:path";
 
 /**
@@ -44,11 +44,40 @@ async function walk(
       await walk(projectRoot, child, into);
       continue;
     }
+    // A symlink is recorded by its TARGET PATH rather than by following it.
+    // `Dirent` predicates describe the entry itself, so a symlink is neither
+    // a file nor a directory here and would otherwise be invisible in both
+    // snapshots: a migration that created, removed or retargeted one would
+    // report nothing for it, which is the quiet under-reporting this whole
+    // module exists to avoid. Hashing the link text catches all three without
+    // following the link, which would risk a cycle and would double-count a
+    // target that is itself under a watched path.
+    if (entry.isSymbolicLink()) {
+      const target = await symlinkTarget(child);
+      if (target !== undefined) {
+        into.set(toProjectPath(projectRoot, child), target);
+      }
+      continue;
+    }
     if (!entry.isFile()) continue;
     const hash = await hashFile(child);
     if (hash !== undefined) {
       into.set(toProjectPath(projectRoot, child), hash);
     }
+  }
+}
+
+/**
+ * A marker standing in for a symlink's content: the path it points at.
+ *
+ * Prefixed so it cannot collide with a real sha256 hash, which is what the
+ * map otherwise holds. A symlink whose target changed reads as `modified`.
+ */
+async function symlinkTarget(path: string): Promise<string | undefined> {
+  try {
+    return `symlink:${await readlink(path)}`;
+  } catch {
+    return undefined;
   }
 }
 

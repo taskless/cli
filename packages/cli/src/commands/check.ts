@@ -301,7 +301,18 @@ export const checkCommand = defineCommand({
       // `{"success":true}` would otherwise have nothing to attribute that diff
       // to.
       const migrated = (await pathExists(join(cwd, ".taskless")))
-        ? await ensureTasklessDirectory(cwd)
+        ? await ensureTasklessDirectory(cwd, {
+            // Suppressed under `--json` for the same reason every other notice
+            // in this command is: the information is on the envelope's
+            // `migrated` field, and a machine consumer reading stderr gets
+            // prose it cannot parse. This one grew from a single line to a
+            // file-by-file summary, so leaving it ungated would hand a CI
+            // script that logs or fails on stderr a much noisier surprise than
+            // the one-liner it tolerated before.
+            onNotice: (message: string) => {
+              if (!args.json) console.error(message);
+            },
+          })
         : undefined;
       const migratedField = migrated === undefined ? {} : { migrated };
       const dispatch = await planEngineDispatch(cwd);
