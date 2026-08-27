@@ -71,27 +71,26 @@ function compareVersions(a: string, b: string): number {
  * the marker with nothing reported, which is the opposite of the validation
  * this function exists to do.
  */
-const VERSION_SHAPE = /^\d+(?:\.\d+)*(?:-[\w.]+)?$/;
+/**
+ * What a project with no recorded marker counts as.
+ *
+ * Not "current": a project that predates the ledger has had none of its
+ * entries applied, and reading absence as up-to-date would silently excuse it
+ * from all of them.
+ */
+export const BASELINE_VERSION = "0.0.0";
 
 export async function recordReconciliation(
-  cwd: string,
-  reconciledTo: string
+  cwd: string
 ): Promise<ReconcileResult> {
-  if (!VERSION_SHAPE.test(reconciledTo)) {
-    throw new CLIError(
-      `"${reconciledTo}" is not a version. Pass the CLI version the ledger walk completed up to, such as the \`version\` reported by \`info --json\`.`,
-      "INVALID_INPUT"
-    );
-  }
-
-  const installed = getCliVersion();
-
-  if (compareVersions(reconciledTo, installed) > 0) {
-    throw new CLIError(
-      `Cannot record reconciliation to ${reconciledTo}: this CLI is ${installed}, so it carries no ledger entries for that version. Upgrade first, then reconcile.`,
-      "INVALID_INPUT"
-    );
-  }
+  // Stamped from the running CLI, never supplied by the caller.
+  //
+  // An agent has nothing to contribute here: the only sensible endpoint of a
+  // walk is the installed version, and letting a value in only made it
+  // possible to claim a walk that did not finish, which this design forbids
+  // anyway. Removing the parameter removes the two guards that existed to
+  // police it, along with every way of getting it wrong.
+  const reconciledTo = getCliVersion();
 
   const tasklessDirectory = join(cwd, TASKLESS_DIRECTORY);
 
@@ -113,9 +112,12 @@ export async function recordReconciliation(
   const { manifest, raw } = await readManifest(tasklessDirectory);
   const previous = manifest.rules?.reconciledTo;
 
+  // Still guarded, because the stamp comes from whichever CLI is running: an
+  // older one on the same project would otherwise rewind the marker and send
+  // the next walk back through entries already applied.
   if (previous !== undefined && compareVersions(reconciledTo, previous) < 0) {
     throw new CLIError(
-      `Cannot record reconciliation to ${reconciledTo}: the project is already reconciled to ${previous}. Ledger entries are cumulative and a walk only moves forward; recording an earlier version would claim work was undone.`,
+      `This CLI is ${reconciledTo} and the project is already reconciled to ${previous}. Ledger entries are cumulative and a walk only moves forward, so recording an older CLI would claim work was undone. Upgrade before reconciling.`,
       "INVALID_INPUT"
     );
   }
@@ -147,9 +149,15 @@ export function reconciliationStart(
   recorded: string | undefined
 ): { from: string; to: string } | undefined {
   const installed = getCliVersion();
-  if (recorded === undefined) return undefined;
-  if (compareVersions(recorded, installed) >= 0) return undefined;
-  return { from: recorded, to: installed };
+  // A missing marker means the project PREDATES the marker, so every entry
+  // still applies and the walk starts from the beginning. `init` stamps the
+  // field on a genuinely new project, which is what makes the two
+  // distinguishable: absent is old, present is accounted for. Treating absent
+  // as "nothing to do" would have quietly excused every project that existed
+  // before this feature from the entries written for it.
+  const from = recorded ?? BASELINE_VERSION;
+  if (compareVersions(from, installed) >= 0) return undefined;
+  return { from, to: installed };
 }
 
 /** Whether a path exists, without distinguishing why it does not. */
@@ -159,5 +167,41 @@ async function pathExists(path: string): Promise<boolean> {
     return true;
   } catch {
     return false;
+  }
+}
+
+/**
+ * Stamp the rules marker on a project being set up by this CLI.
+ *
+ * A new project has no ledger entries to walk: everything the entries describe
+ * is already true of a scaffold this CLI just wrote. Recording that up front
+ * is what gives an ABSENT marker its meaning, which is "this project predates
+ * the ledger and has had none of it applied".
+ *
+ * Never overwrites. Re-running setup on an existing project must not reset a
+ * marker that a real walk earned, which would send the next walk back through
+ * entries already applied.
+ */
+export async function stampNewProjectRules(cwd: string): Promise<void> {
+  const tasklessDirectory = join(cwd, TASKLESS_DIRECTORY);
+  try {
+    const { manifest, raw } = await readManifest(tasklessDirectory);
+    if (manifest.rules?.reconciledTo !== undefined) return;
+    await writeManifest(
+      tasklessDirectory,
+      {
+        ...manifest,
+        rules: {
+          ...manifest.rules,
+          reconciledTo: getCliVersion(),
+          engines: { sg: AST_GREP_VERSION, vale: VALE_VERSION },
+        },
+      },
+      raw
+    );
+  } catch {
+    // Setting up a project must not fail because a marker could not be
+    // written. The cost of missing it is one extra ledger walk, which is the
+    // safe direction to be wrong in.
   }
 }

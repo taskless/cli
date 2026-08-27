@@ -1,4 +1,4 @@
-# Topic: update     (CLI v%(CLI_VERSION)s / topic v2)
+# Topic: update     (CLI v%(CLI_VERSION)s / topic v3)
 
 ## You are here
 This is `update`. It tells you what an upgrade changed for the rules
@@ -34,11 +34,16 @@ that you finished.
    `rules.engines.vale` for the engine versions the rules were built
    against.
 
-   **No `rules.reconciledTo` at all** means this project has never
-   recorded a reconciliation. That is NOT the same as being behind. A
-   project created at the installed version has no history to walk, so
-   do nothing except step 4. Only walk sections if you can see an
-   earlier version to walk FROM.
+   **No `rules.reconciledTo` at all** means this project PREDATES the
+   ledger, so treat it as `0.0.0` and walk every section. It does not
+   mean the project is new: a project this CLI set up has the field
+   stamped at creation, so an absent marker is the one case where none
+   of the entries below have ever been applied.
+
+   `info --json` also reports `walk`, which is this decision already
+   made: `{ "from": ..., "to": ... }` when there is something to walk,
+   and `null` when there is not. Prefer it to re-deriving the boundary
+   yourself.
 
 2. **Walk forward, in order.** Start at the section after
    `reconciledTo` and continue to the installed version. Sections are
@@ -51,21 +56,24 @@ that you finished.
 
 4. **Record that you finished.** Run:
    ```
-   %(TASKLESS_CLI)s update --reconciledTo=<installed version>
+   %(TASKLESS_CLI)s update --rules
    ```
-   Only after the walk is complete. A partial or abandoned walk must not
-   be recorded: the next agent will start from what you wrote and skip
-   everything you did not do, and it will look like there was nothing to
-   do. The CLI rejects a version it has no entries for, and refuses to
-   move the marker backwards, but it cannot tell whether you actually
-   read the sections.
+   Only after the walk is complete. There is no version to pass: the CLI
+   stamps its own, because the only sensible endpoint of a walk is the
+   version you are running.
+
+   A partial or abandoned walk must not be recorded. The next agent
+   starts from what you wrote and skips everything you did not do, and
+   it will look like there was nothing to do. Nothing can check this for
+   you: the CLI refuses to move the marker backwards, but it cannot tell
+   whether you read the sections.
 
    This also records the engine versions the rules are now valid
    against, which is what lets a later upgrade say what moved.
 
 ## The ledger
 
-### Migrating to 0.11.0
+### Migrating to 0.11.x
 
 The vendored ast-grep moves from 0.41.0 to 0.45.2, and Vale is at
 3.18.0. Four things follow for existing rules.
@@ -117,11 +125,11 @@ tests while reporting differently on real code.
 
 ## Errors
 
-With `--json`, `--reconciledTo` failures emit `{ ok: false, code, message }`:
+With `--json`, `--rules` failures emit `{ ok: false, code, message }`:
 
-| code            | meaning                                          | fix                                      |
-|-----------------|--------------------------------------------------|------------------------------------------|
-| `INVALID_INPUT` | version is ahead of this CLI, or moves backwards | reconcile to the installed version       |
+| code            | meaning                                        | fix                                        |
+|-----------------|------------------------------------------------|--------------------------------------------|
+| `INVALID_INPUT` | no `.taskless/`, or an older CLI would rewind the marker | set the project up, or upgrade first |
 
 ## See Also
 
