@@ -25,6 +25,7 @@ import {
 import {
   recordReconciliation,
   reconciliationStart,
+  stampNewProjectRules,
 } from "../rules/reconcile-marker";
 import { readManifest } from "../filesystem/migrate";
 import { TASKLESS_DIRECTORY } from "../rules/vale/formats";
@@ -103,8 +104,8 @@ export const initCommand = defineCommand({
  * rewriting after an engine or CLI upgrade.
  *
  * With no flags it serves the ledger recipe, so `taskless update` and
- * `taskless agent update` are the same thing. With `--reconciledTo` it records
- * that a walk completed.
+ * `taskless agent update` are the same thing. With `--rules` it stamps the
+ * walk as complete.
  */
 export const updateCommand = defineCommand({
   meta: {
@@ -118,15 +119,16 @@ export const updateCommand = defineCommand({
       alias: "d",
       description: "Working directory",
     },
-    reconciledTo: {
-      type: "string",
+    rules: {
+      type: "boolean",
       description:
-        "Record that the ledger walk completed up to this CLI version",
+        "Stamp the rules as reconciled to this CLI, after completing the ledger walk",
+      default: false,
     },
     json: {
       type: "boolean",
       description:
-        "Output as JSON: the recipe plus where the walk starts, or the recorded result with --reconciledTo",
+        "Output as JSON: the recipe plus where the walk starts, or the stamped result with --rules",
       default: false,
     },
     anonymous: {
@@ -138,10 +140,10 @@ export const updateCommand = defineCommand({
   async run({ args }) {
     const cwd = resolve(args.dir ?? process.cwd());
 
-    // No `--reconciledTo`: this is the teaching path. Serve the SAME recipe
+    // No `--rules`: this is the teaching path. Serve the SAME recipe
     // `agent update` serves, from the same renderer, so the two spellings
     // cannot drift into two different sets of instructions.
-    if (args.reconciledTo === undefined) {
+    if (!args.rules) {
       const telemetry = await getTelemetry(cwd);
       const recipe = getRecipe("update", {
         anonymous: args.anonymous,
@@ -190,14 +192,14 @@ export const updateCommand = defineCommand({
 
     const telemetry = await getTelemetry(cwd);
     try {
-      const result = await recordReconciliation(cwd, args.reconciledTo);
+      const result = await recordReconciliation(cwd);
       if (args.json) {
         console.log(JSON.stringify({ ok: true, ...result }));
       } else {
         console.log(
           result.previous === undefined
-            ? `Recorded: rules reconciled to ${result.reconciledTo} (ast-grep ${result.engines.sg}, Vale ${result.engines.vale}).`
-            : `Recorded: rules reconciled to ${result.reconciledTo}, was ${result.previous} (ast-grep ${result.engines.sg}, Vale ${result.engines.vale}).`
+            ? `Rules reconciled to ${result.reconciledTo} (ast-grep ${result.engines.sg}, Vale ${result.engines.vale}).`
+            : `Rules reconciled to ${result.reconciledTo}, was ${result.previous} (ast-grep ${result.engines.sg}, Vale ${result.engines.vale}).`
         );
       }
       telemetry.capture("cli_rules_reconciled");
@@ -219,6 +221,12 @@ async function runNonInteractive(
   cwd: string
 ): Promise<{ commandsInstalled: boolean }> {
   await ensureTasklessDirectory(cwd);
+  // Stamp the rules marker on a project this CLI is setting up. That is what
+  // lets an ABSENT marker mean "predates the ledger" rather than "new": a
+  // project created here has no entries to walk, and one that never recorded
+  // anything has all of them. Without this the two are indistinguishable and
+  // the walk has to guess.
+  await stampNewProjectRules(cwd);
 
   const allSkills = getEmbeddedSkills();
   const mandatoryNames = new Set(getMandatorySkillNames());

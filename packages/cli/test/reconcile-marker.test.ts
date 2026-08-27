@@ -62,12 +62,7 @@ describe("recording a rules reconciliation", () => {
 
   it("records the version and the engines the rules are valid against", async () => {
     const version = await installedVersion();
-    const result = await runCli([
-      "update",
-      `--reconciledTo=${version}`,
-      "-d",
-      cwd,
-    ]);
+    const result = await runCli(["update", "--rules", "-d", cwd]);
     expect(result.exitCode).toBe(0);
 
     const rules = await readRules();
@@ -79,104 +74,13 @@ describe("recording a rules reconciliation", () => {
 
   it("reports the marker through info", async () => {
     const version = await installedVersion();
-    await runCli(["update", `--reconciledTo=${version}`, "-d", cwd]);
+    await runCli(["update", "--rules", "-d", cwd]);
 
     const info = await runCli(["info", "--json", "-d", cwd]);
     const parsed = JSON.parse(info.stdout) as {
       rules: { reconciledTo: string | null };
     };
     expect(parsed.rules.reconciledTo).toBe(version);
-  });
-
-  it("refuses a version this CLI has no entries for", async () => {
-    // The quiet failure this prevents: recording a version whose ledger
-    // sections do not exist here, so a later walk starts past work nobody did.
-    const result = await runCli([
-      "update",
-      "--reconciledTo=99.0.0",
-      "--json",
-      "-d",
-      cwd,
-    ]);
-    expect(result.exitCode).not.toBe(0);
-    const envelope = JSON.parse(result.stdout) as {
-      ok: boolean;
-      code: string;
-    };
-    expect(envelope.ok).toBe(false);
-    expect(envelope.code).toBe("INVALID_INPUT");
-    expect(await readRules()).toBeUndefined();
-  });
-
-  it("treats a nightly and its release as the same version", async () => {
-    // Deliberately NOT semver ordering, and this test exists to stop someone
-    // "correcting" it into semver. Our nightlies are valid semver
-    // (`0.11.0-20260827050231x45e9997`), and the spec ranks a prerelease BELOW
-    // its release, so semver would say a project reconciled on the nightly is
-    // behind the identical release and send it to re-walk a ledger entry it
-    // already walked. They are built from the same commit and carry the same
-    // entries, so only the numeric core is compared.
-    const version = await installedVersion();
-    const nightly = `${version}-20260827050231x45e9997`;
-
-    const first = await runCli([
-      "update",
-      `--reconciledTo=${nightly}`,
-      "-d",
-      cwd,
-    ]);
-    expect(first.exitCode).toBe(0);
-
-    // Equal, not backwards: recording the plain release after the nightly is
-    // allowed rather than rejected as moving the marker back.
-    const second = await runCli([
-      "update",
-      `--reconciledTo=${version}`,
-      "-d",
-      cwd,
-    ]);
-    expect(second.exitCode).toBe(0);
-    const rules = await readRules();
-    expect(rules?.reconciledTo).toBe(version);
-  });
-
-  it("refuses to move the marker backwards", async () => {
-    const version = await installedVersion();
-    await runCli(["update", `--reconciledTo=${version}`, "-d", cwd]);
-
-    const result = await runCli([
-      "update",
-      "--reconciledTo=0.0.1",
-      "--json",
-      "-d",
-      cwd,
-    ]);
-    expect(result.exitCode).not.toBe(0);
-    expect((JSON.parse(result.stdout) as { code: string }).code).toBe(
-      "INVALID_INPUT"
-    );
-    // Unchanged, not clobbered with the rejected value.
-    const rules = await readRules();
-    expect(rules?.reconciledTo).toBe(version);
-  });
-
-  it("refuses a value that is not a version", async () => {
-    // `versionCore` coerces an unparseable segment to 0, so garbage compares
-    // LOWER than any real version and would sail past both guards to be
-    // written verbatim. A pasted SHA or a truncated interpolation would
-    // corrupt the marker with nothing reported, which is the opposite of the
-    // validation this command claims to do.
-    for (const bad of ["abc", "", "0.11.0; rm -rf /", "deadbeef"]) {
-      const result = await runCli([
-        "update",
-        `--reconciledTo=${bad}`,
-        "--json",
-        "-d",
-        cwd,
-      ]);
-      expect(result.exitCode, `accepted ${JSON.stringify(bad)}`).not.toBe(0);
-    }
-    expect(await readRules()).toBeUndefined();
   });
 
   it("refuses when there is no .taskless/ to reconcile", async () => {
@@ -187,13 +91,7 @@ describe("recording a rules reconciliation", () => {
     // claiming work that could not have happened.
     const empty = await mkdtemp(join(tmpdir(), "taskless-noscaffold-"));
     try {
-      const result = await runCli([
-        "update",
-        `--reconciledTo=${await installedVersion()}`,
-        "--json",
-        "-d",
-        empty,
-      ]);
+      const result = await runCli(["update", "--rules", "--json", "-d", empty]);
       expect(result.exitCode).not.toBe(0);
       const envelope = JSON.parse(result.stdout) as {
         code: string;
@@ -207,16 +105,30 @@ describe("recording a rules reconciliation", () => {
     }
   });
 
+  it("reports a walk from the baseline when no marker is recorded", async () => {
+    // The behaviour that reaches existing projects: absent means "predates
+    // the ledger", so every entry still applies.
+    const result = await runCli(["update", "--json", "-d", cwd]);
+    const payload = JSON.parse(result.stdout) as {
+      reconciledTo: string | null;
+      walk: { from: string; to: string } | null;
+    };
+    expect(payload.reconciledTo).toBeNull();
+    expect(payload.walk?.from).toBe("0.0.0");
+  });
+
+  it("has nothing to walk once the rules are stamped", async () => {
+    await runCli(["update", "--rules", "-d", cwd]);
+    const result = await runCli(["update", "--json", "-d", cwd]);
+    const payload = JSON.parse(result.stdout) as { walk: unknown };
+    expect(payload.walk).toBeNull();
+  });
+
   it("leaves install untouched, since the two namespaces drift apart", async () => {
     const before = JSON.parse(
       await readFile(join(cwd, ".taskless", "taskless.json"), "utf8")
     ) as { install?: unknown };
-    await runCli([
-      "update",
-      `--reconciledTo=${await installedVersion()}`,
-      "-d",
-      cwd,
-    ]);
+    await runCli(["update", "--rules", "-d", cwd]);
     const after = JSON.parse(
       await readFile(join(cwd, ".taskless", "taskless.json"), "utf8")
     ) as { install?: unknown };
@@ -243,9 +155,9 @@ describe("taskless update with no flags", () => {
     expect(payload.topic).toBe("update");
     expect(payload.installed).toBeTruthy();
     expect(payload.recipe).toContain("# Topic: update");
-    // No marker recorded here, so there is nothing to walk. That is not the
-    // same as being behind, and it must not read as a version to walk from.
-    expect(payload.walk).toBeNull();
+    // No marker recorded, so the walk starts at the baseline: absent means
+    // the project predates the ledger and every entry still applies.
+    expect(payload.walk).toEqual({ from: "0.0.0", to: payload.installed });
   });
 
   it("serves the same ledger recipe as `agent update`", async () => {
@@ -266,7 +178,7 @@ describe("taskless update with no flags", () => {
 
   it("carries the 0.11.0 ledger entry", async () => {
     const result = await runCli(["update"]);
-    expect(result.stdout).toContain("Migrating to 0.11.0");
+    expect(result.stdout).toContain("Migrating to 0.11.x");
     // The four things an author cannot discover from the diff.
     expect(result.stdout).toContain("rewriter now requires `fix`");
     expect(result.stdout).toContain("Markdown is now a language");
