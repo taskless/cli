@@ -105,6 +105,45 @@ describe("recording a rules reconciliation", () => {
     }
   });
 
+  it("does not stamp a pre-existing project that never reconciled", async () => {
+    // The silent skip this whole feature exists to prevent, reachable through
+    // setup rather than through the walk. `init --no-interactive` is the
+    // documented refresh path for an EXISTING project, and it runs after
+    // `ensureTasklessDirectory` has already created the directory, so
+    // "was this new" has to be sampled before that or it always reads new.
+    //
+    // Stamping here would mark a project that has walked nothing as fully
+    // reconciled and skip every ledger entry.
+    const before = await runCli(["update", "--json", "-d", cwd]);
+    expect(
+      (JSON.parse(before.stdout) as { walk: unknown }).walk
+    ).not.toBeNull();
+
+    await runCli(["init", "--no-interactive", "-d", cwd]);
+
+    const after = await runCli(["update", "--json", "-d", cwd]);
+    const walk = (
+      JSON.parse(after.stdout) as {
+        walk: { from: string } | null;
+      }
+    ).walk;
+    expect(walk).not.toBeNull();
+    expect(walk?.from).toBe("0.0.0");
+  });
+
+  it("reports the walk boundary on info as well, so callers agree", async () => {
+    // The recipe tells an agent to read `rules.walk` from `info --json`. It
+    // has to actually be there, or the guidance sends it looking for a field
+    // that does not exist and back to deriving the boundary by hand.
+    const result = await runCli(["info", "--json", "-d", cwd]);
+    const rules = (
+      JSON.parse(result.stdout) as {
+        rules: { walk: { from: string } | null };
+      }
+    ).rules;
+    expect(rules.walk?.from).toBe("0.0.0");
+  });
+
   it("reports a walk from the baseline when no marker is recorded", async () => {
     // The behaviour that reaches existing projects: absent means "predates
     // the ledger", so every entry still applies.

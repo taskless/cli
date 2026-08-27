@@ -47,6 +47,12 @@ export const outputSchema = z.object({
         sg: z.string().nullable(),
         vale: z.string().nullable(),
       }),
+      walk: z
+        .object({ from: z.string(), to: z.string() })
+        .nullable()
+        .describe(
+          "Where a ledger walk should start and end, or null when there is nothing to walk. Computed here so a caller does not re-derive the boundary"
+        ),
     })
     .describe(
       "What the rules are valid against. Distinct from `install`: these advance only on a completed reconciliation, never on an upgrade"

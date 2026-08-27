@@ -8,6 +8,7 @@ import { outputSchema as infoOutputSchema } from "../schemas/info";
 import { makeErrorEnvelope } from "../types/errors";
 import { resolveRepositoryContext } from "../util/git-remote";
 import { readManifest } from "../filesystem/migrate";
+import { reconciliationStart } from "../rules/reconcile-marker";
 import { TASKLESS_DIRECTORY } from "../rules/vale/formats";
 
 export const infoCommand = defineCommand({
@@ -86,6 +87,10 @@ export const infoCommand = defineCommand({
           sg: manifest?.rules?.engines?.sg ?? null,
           vale: manifest?.rules?.engines?.vale ?? null,
         },
+        // The walk boundary, decided once here rather than by each caller.
+        // A missing marker resolves to the baseline, so a project predating
+        // the ledger reports a walk rather than "nothing to do".
+        walk: reconciliationStart(manifest?.rules?.reconciledTo) ?? null,
       },
     };
 

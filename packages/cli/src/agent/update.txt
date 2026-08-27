@@ -40,10 +40,10 @@ that you finished.
    stamped at creation, so an absent marker is the one case where none
    of the entries below have ever been applied.
 
-   `info --json` also reports `walk`, which is this decision already
-   made: `{ "from": ..., "to": ... }` when there is something to walk,
-   and `null` when there is not. Prefer it to re-deriving the boundary
-   yourself.
+   `rules.walk` on that same payload is this decision already made:
+   `{ "from": ..., "to": ... }` when there is something to walk, and
+   `null` when there is not. Prefer it to re-deriving the boundary
+   yourself, so the offer and the enforcement cannot disagree.
 
 2. **Walk forward, in order.** Start at the section after
    `reconciledTo` and continue to the installed version. Sections are
