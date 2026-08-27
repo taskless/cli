@@ -17,6 +17,14 @@ import { runWizard } from "../wizard";
 import { getCliVersion } from "../wizard/intro";
 
 import { getOnboardTrailer } from "./onboard";
+import { getRecipe } from "../prompts/recipes";
+import {
+  detectCliInvocation,
+  processLauncherContext,
+} from "../util/package-manager";
+import { recordReconciliation } from "../rules/reconcile-marker";
+import { CLIError } from "../util/cli-error";
+import { makeErrorEnvelope } from "../types/errors";
 
 function shouldRunInteractively(noInteractiveFlag: boolean): boolean {
   if (noInteractiveFlag) return false;
@@ -79,17 +87,41 @@ export const initCommand = defineCommand({
   },
 });
 
+/**
+ * `update` is about the RULES, not about the installation.
+ *
+ * It used to mean "reinstall the skills non-interactively", which is what
+ * `init --no-interactive` already does through the very same
+ * `runNonInteractive`, and what the wizard does on any ordinary run. A second
+ * name for that bought nothing, and it held a word that describes the job an
+ * agent actually needs: deciding whether the rules in front of it need
+ * rewriting after an engine or CLI upgrade.
+ *
+ * With no flags it serves the ledger recipe, so `taskless update` and
+ * `taskless agent update` are the same thing. With `--reconciledTo` it records
+ * that a walk completed.
+ */
 export const updateCommand = defineCommand({
   meta: {
     name: "update",
     description:
-      "Update Taskless skills in detected tools (non-interactive install)",
+      "Learn what an upgrade changed for existing rules, or record a completed reconciliation",
   },
   args: {
     dir: {
       type: "string",
       alias: "d",
       description: "Working directory",
+    },
+    reconciledTo: {
+      type: "string",
+      description:
+        "Record that the ledger walk completed up to this CLI version",
+    },
+    json: {
+      type: "boolean",
+      description: "Output as JSON",
+      default: false,
     },
     anonymous: {
       type: "boolean",
@@ -99,17 +131,49 @@ export const updateCommand = defineCommand({
   },
   async run({ args }) {
     const cwd = resolve(args.dir ?? process.cwd());
-    const telemetry = await getTelemetry(cwd);
 
-    let success = false;
-    try {
-      await runNonInteractive(cwd);
-      success = true;
-    } finally {
-      // Concrete state event: skills/commands were installed/updated.
-      if (success) {
-        telemetry.capture("cli_installed");
+    // No `--reconciledTo`: this is the teaching path. Serve the SAME recipe
+    // `agent update` serves, from the same renderer, so the two spellings
+    // cannot drift into two different sets of instructions.
+    if (args.reconciledTo === undefined) {
+      const telemetry = await getTelemetry(cwd);
+      const recipe = getRecipe("update", {
+        anonymous: args.anonymous,
+        invocation: detectCliInvocation(processLauncherContext()),
+      });
+      if (recipe === undefined) {
+        console.error("No `update` recipe is bundled with this CLI.");
+        process.exitCode = 1;
+        return;
       }
+      telemetry.capture("cli_agent", { topic: "update" });
+      console.log(recipe.trimEnd());
+      return;
+    }
+
+    const telemetry = await getTelemetry(cwd);
+    try {
+      const result = await recordReconciliation(cwd, args.reconciledTo);
+      if (args.json) {
+        console.log(JSON.stringify({ ok: true, ...result }));
+      } else {
+        console.log(
+          result.previous === undefined
+            ? `Recorded: rules reconciled to ${result.reconciledTo} (ast-grep ${result.engines.sg}, Vale ${result.engines.vale}).`
+            : `Recorded: rules reconciled to ${result.reconciledTo}, was ${result.previous} (ast-grep ${result.engines.sg}, Vale ${result.engines.vale}).`
+        );
+      }
+      telemetry.capture("cli_rules_reconciled");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      const code =
+        error instanceof CLIError && error.code ? error.code : "INTERNAL_ERROR";
+      if (args.json) {
+        console.log(JSON.stringify(makeErrorEnvelope(code, message)));
+      } else {
+        console.error(message);
+      }
+      process.exitCode = 1;
     }
   },
 });

@@ -94,26 +94,11 @@ describe("taskless init --no-interactive", () => {
     expect(stdout).toContain("Claude Code (.claude/)");
   });
 
-  it("`taskless update` runs the same non-interactive install path", async () => {
-    await mkdir(join(cwd, ".claude"), { recursive: true });
-
+  it("falls back to .agents/ when no tools are detected", async () => {
     const { stdout } = await execFileAsync("node", [
       binPath,
-      "update",
-      "-d",
-      cwd,
-    ]);
-
-    expect(stdout).toContain("Claude Code (.claude/)");
-    expect(
-      await exists(join(cwd, ".claude", "skills", "taskless", "SKILL.md"))
-    ).toBe(true);
-  });
-
-  it("`taskless update` falls back to .agents/ when no tools are detected", async () => {
-    const { stdout } = await execFileAsync("node", [
-      binPath,
-      "update",
+      "init",
+      "--no-interactive",
       "-d",
       cwd,
     ]);
@@ -122,6 +107,21 @@ describe("taskless init --no-interactive", () => {
     expect(
       await exists(join(cwd, ".agents", "skills", "taskless", "SKILL.md"))
     ).toBe(true);
+  });
+
+  it("`taskless update` no longer installs anything", async () => {
+    // `update` used to be a second name for this install path. It now means
+    // the rules ledger, and installing is what running the CLI does on its
+    // own. Pinned because the two words are close enough that a future change
+    // could quietly wire installing back into it, and nothing else would
+    // notice: the install would simply start happening again.
+    await mkdir(join(cwd, ".claude"), { recursive: true });
+
+    await execFileAsync("node", [binPath, "update", "-d", cwd]);
+
+    expect(
+      await exists(join(cwd, ".claude", "skills", "taskless", "SKILL.md"))
+    ).toBe(false);
   });
 
   it("writes taskless.json with install state recorded", async () => {

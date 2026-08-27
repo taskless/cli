@@ -59,13 +59,25 @@ linter, the `create-legacy-rule` path needs nothing installed.
 | -------------------------- | -------------------------------------- |
 | Author/create a rule       | `npx @taskless/cli agent route`        |
 | First-time install         | tell user to run `npx @taskless/cli`   |
-| Update existing install    | `npx @taskless/cli update`             |
+| Update an existing install | tell user to run `npx @taskless/cli`   |
+| Fix rules after an upgrade | `npx @taskless/cli update`             |
 | Discover candidate rules   | `npx @taskless/cli agent onboard`      |
 | Improve an existing rule   | `npx @taskless/cli agent improve-rule` |
 | Delete a rule              | `npx @taskless/cli agent delete-rule`  |
 | Check code against rules   | `npx @taskless/cli agent check`        |
 | Log in, log out, or status | `npx @taskless/cli agent auth`         |
 | Wire into CI               | `npx @taskless/cli agent ci`           |
+
+Two of those rows look alike and are not. Running `npx @taskless/cli`
+migrates the `.taskless/` layout and refreshes the installed skills: that is
+the DIRECTORY, and it is automatic. `npx @taskless/cli update` is about the
+RULES already in the project, which no migration can rewrite for you, since a
+rewriter that now needs a `fix` or a rule whose matching semantics shifted
+under a new engine is a question about content rather than layout.
+
+An agent that has run a migration and watched it succeed will otherwise
+reasonably conclude the upgrade is finished. The directory is migrated; the
+rules may still need work, and `update` is how to find out.
 
 If the user's intent is ambiguous between two topics, run
 `npx @taskless/cli agent` (no args) to see the disambiguation table, or ask

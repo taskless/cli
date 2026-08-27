@@ -1,4 +1,4 @@
-import { resolve } from "node:path";
+import { join, resolve } from "node:path";
 import { defineCommand } from "citty";
 
 import { checkStaleness } from "../install/install";
@@ -7,6 +7,8 @@ import { fetchWhoami } from "../auth/whoami";
 import { outputSchema as infoOutputSchema } from "../schemas/info";
 import { makeErrorEnvelope } from "../types/errors";
 import { resolveRepositoryContext } from "../util/git-remote";
+import { readManifest } from "../filesystem/migrate";
+import { TASKLESS_DIRECTORY } from "../rules/vale/formats";
 
 export const infoCommand = defineCommand({
   meta: {
@@ -36,10 +38,17 @@ export const infoCommand = defineCommand({
     // The repository context resolves regardless of `--anonymous`: it comes
     // from the local git remote, not from the API, so suppressing it would
     // hide capability state that has nothing to do with the auth probe.
-    const [tools, token, repository] = await Promise.all([
+    const [tools, token, repository, manifest] = await Promise.all([
       checkStaleness(cwd),
       args.anonymous ? Promise.resolve() : getToken(cwd),
       resolveRepositoryContext(cwd),
+      // Never fails: an absent or unreadable manifest is an ordinary state for
+      // a project that has not been initialised, and `info` still has plenty
+      // to report about one.
+      readManifest(join(cwd, TASKLESS_DIRECTORY)).then(
+        (read) => read.manifest,
+        () => null
+      ),
     ]);
 
     let auth: { user: string; email?: string; orgs: string[] } | undefined;
@@ -66,6 +75,18 @@ export const infoCommand = defineCommand({
       // payload already; these fields ride along on a call it makes anyway.
       repositoryUrl: repository.repositoryUrl,
       ghOwner: repository.ghOwner,
+      // Two namespaces, reported separately because they answer different
+      // questions and drift apart. `install` is how the scaffold got here.
+      // `rules` is what the rules are valid against, and it moves only when a
+      // reconciliation is recorded.
+      install: { cliVersion: manifest?.install?.cliVersion ?? null },
+      rules: {
+        reconciledTo: manifest?.rules?.reconciledTo ?? null,
+        engines: {
+          sg: manifest?.rules?.engines?.sg ?? null,
+          vale: manifest?.rules?.engines?.vale ?? null,
+        },
+      },
     };
 
     if (args.json) {
