@@ -35,6 +35,22 @@ export const outputSchema = z.object({
     .describe(
       "GitHub owner segment, or the literal `[unknown]` when none is resolvable"
     ),
+  install: z
+    .object({
+      cliVersion: z.string().nullable(),
+    })
+    .describe("How the scaffold got here: the CLI that last wrote it"),
+  rules: z
+    .object({
+      reconciledTo: z.string().nullable(),
+      engines: z.object({
+        sg: z.string().nullable(),
+        vale: z.string().nullable(),
+      }),
+    })
+    .describe(
+      "What the rules are valid against. Distinct from `install`: these advance only on a completed reconciliation, never on an upgrade"
+    ),
 });
 
 export const errorSchema = z.object({

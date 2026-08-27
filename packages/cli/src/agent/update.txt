@@ -1,48 +1,130 @@
-# Topic: update     (CLI v%(CLI_VERSION)s / topic v1)
+# Topic: update     (CLI v%(CLI_VERSION)s / topic v2)
+
+## You are here
+This is `update`. It tells you what an upgrade changed for the rules
+ALREADY IN THIS PROJECT, and what to do about them.
+
+It is not about installing. Running `%(TASKLESS_CLI)s` migrates the
+`.taskless/` layout and refreshes the installed skills on its own. That
+handles the DIRECTORY. This recipe handles the RULES, which no migration
+can rewrite for you: a rewriter that now needs a `fix`, a rule whose
+matching semantics shifted under a new engine, a rule that could now be
+expressed better with a newly supported language.
+
+An agent that has run a migration and watched it succeed will otherwise
+reasonably conclude the upgrade is done. It is not. The directory is
+migrated; the rules may still need work.
 
 ## Goal
-Update Taskless skills in the user's coding-agent tools to the
-latest bundled version. Non-interactive, no wizard, no prompts.
-Installs to all detected tool locations using the same logic as
-`%(TASKLESS_CLI)s init --no-interactive`, but exposed as its own subcommand
-so the agent can run it directly without explaining flags.
-
-This is the right command when the user has Taskless already
-installed and just wants to refresh to a new version (e.g. after
-running `%(TASKLESS_CLI)s`).
+Walk the ledger below from the version this project was last reconciled
+to, up to the installed CLI, doing what each section says. Then record
+that you finished.
 
 ## Preconditions
-- None at the user level. Works in any directory.
-- For tool detection: at least one of `.claude/`, `.opencode/`,
-  `.cursor/`, or a related marker file exists. Otherwise installs
-  to `.agents/skills/` as a fallback.
+- `.taskless/` exists. If it does not, there are no rules to reconcile.
+- You can read `.taskless/taskless.json`.
 
 ## Steps
 
-```
-%(TASKLESS_CLI)s update
-```
+1. **Find where to start.** Run:
+   ```
+   %(TASKLESS_CLI)s info --json
+   ```
+   and read `rules.reconciledTo`, plus `rules.engines.sg` and
+   `rules.engines.vale` for the engine versions the rules were built
+   against.
 
-The CLI:
-1. Detects installed tools (Claude Code, OpenCode, Cursor, etc.)
-2. Reads the previous install state from `.taskless/taskless.json`
-3. Computes the diff (skills/commands to add, remove)
-4. Rewrites the canonical `taskless` skill and `tskl` command in
-   `.taskless/`, and refreshes the reference stub in each detected
-   tool directory
-5. Converts any stale full copies or symlinks left by older installs
-   into stubs, and removes obsolete files from prior versions
-6. Updates the install manifest
-7. Prints a summary including what was written and removed
+   **No `rules.reconciledTo` at all** means this project has never
+   recorded a reconciliation. That is NOT the same as being behind. A
+   project created at the installed version has no history to walk, so
+   do nothing except step 4. Only walk sections if you can see an
+   earlier version to walk FROM.
+
+2. **Walk forward, in order.** Start at the section after
+   `reconciledTo` and continue to the installed version. Sections are
+   cumulative, never replaceable: a later one can depend on an earlier
+   one having run, so do not skip ahead to the newest.
+
+3. **Do the work each section names.** Each says what changed and what
+   it means for existing rules. A section that says there is nothing to
+   do means exactly that; it is a claim, not an oversight.
+
+4. **Record that you finished.** Run:
+   ```
+   %(TASKLESS_CLI)s update --reconciledTo=<installed version>
+   ```
+   Only after the walk is complete. A partial or abandoned walk must not
+   be recorded: the next agent will start from what you wrote and skip
+   everything you did not do, and it will look like there was nothing to
+   do. The CLI rejects a version it has no entries for, and refuses to
+   move the marker backwards, but it cannot tell whether you actually
+   read the sections.
+
+   This also records the engine versions the rules are now valid
+   against, which is what lets a later upgrade say what moved.
+
+## The ledger
+
+### Migrating to 0.11.0
+
+The vendored ast-grep moves from 0.41.0 to 0.45.2, and Vale is at
+3.18.0. Four things follow for existing rules.
+
+**A rewriter now requires `fix`.** `SerializableRewriter.required` goes
+from `["rule","id"]` to `["id","fix","rule"]`, so a `rewriters:` entry
+without a `fix:` is now rejected where it was accepted before.
+
+Run `%(TASKLESS_CLI)s verify` and it names the offending rewriter
+directly. It cannot be auto-fixed: `fix` is replacement text, which is
+authorial intent. A rewriter with no `fix` could never have done
+anything, so this surfaces a rule that was already dead rather than
+breaking one that worked.
+
+**Markdown is now a language, with a narrow shape.** `language:
+Markdown` parses. What it sees is the BLOCK tree only: `document`,
+`section`, `atx_heading`, `setext_heading`, `fenced_code_block`,
+`list_item`, `paragraph`. Everything inside a line collapses into one
+opaque `inline` node, so there is no `link`, no `emphasis`, no
+`strong_emphasis`.
+
+Two failure shapes, and they are opposites. `kind: link` is a HARD
+CONFIG ERROR: exit 8, `Kind \`link\` is invalid`, which aborts config
+parsing and takes every other rule's report down with it. A pattern like
+`[$T]($U)` is the quiet one: it parses, runs, exits 0, and matches
+nothing forever.
+
+So "no bare URLs" and "link text must not say click here" are not
+ast-grep rules even now. Use Vale, which reads prose, and note that Vale
+DOES see YAML frontmatter: with `scope: raw` it sees the keys too, and
+`extends: occurrence` with `min: 1` can require a field to be present.
+
+**`sg run --lang` accepts the alias spellings.** At 0.41.0 `--lang C++`
+was rejected while `language: C++` parsed. At 0.45.2 both are accepted.
+This affects the flag only, not a rule's `language:` field, so no rule
+file needs changing. It is recorded because the divergence used to be
+documented as a thing to work around.
+
+**Matching semantics moved, and this is the part you cannot check
+locally.** Metavariable bindings no longer leak across `nthChild`
+siblings, nor out of a negated `not`, and root metavariables now match
+comments. A valid, unchanged rule can match a DIFFERENT SET OF NODES
+with no error and no warning.
+
+There is no differential tooling yet. If a rule uses `nthChild`, a
+negated `not`, or a bare root metavariable, re-run its fixtures and read
+the findings rather than the exit code: the rule can still pass its
+tests while reporting differently on real code.
 
 ## Errors
 
-`update` is non-interactive. On success it exits 0 and prints a
-human-readable summary of skills/commands added, removed, or kept in
-sync (same surface as `init --no-interactive`). On failure it exits
-non-zero with the error message on stderr.
+With `--json`, `--reconciledTo` failures emit `{ ok: false, code, message }`:
+
+| code            | meaning                                          | fix                                      |
+|-----------------|--------------------------------------------------|------------------------------------------|
+| `INVALID_INPUT` | version is ahead of this CLI, or moves backwards | reconcile to the installed version       |
 
 ## See Also
 
-- `%(TASKLESS_CLI)s agent init`: interactive variant (wizard with prompts)
-- `%(TASKLESS_CLI)s agent info`: verify what's installed and check staleness
+- `%(TASKLESS_CLI)s agent check`: run every engine over the repo
+- `%(TASKLESS_CLI)s agent improve-rule`: rewrite a rule the walk flagged
+- `%(TASKLESS_CLI)s agent info`: what is installed, and staleness

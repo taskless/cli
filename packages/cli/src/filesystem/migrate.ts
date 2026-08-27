@@ -27,9 +27,40 @@ export interface TasklessInstallManifest {
   onboarded?: boolean;
 }
 
+/**
+ * What the project's rules were last reconciled against.
+ *
+ * Separate from `install` on purpose, because the two answer different
+ * questions and drift apart. `install` records how the scaffold got here;
+ * `rules` records what the rules are valid against. Conflating them is what
+ * made `install.cliVersion` a bad candidate for this: a skills refresh moves
+ * it without anyone having read a rule.
+ *
+ * Every field here advances ONLY on a completed reconciliation, never on an
+ * upgrade. If a CLI bump silently rewrote `engines.sg` to the newly vendored
+ * version, the field would always report "current" and the divergence it
+ * exists to expose would be invisible.
+ */
+export interface TasklessRulesManifest {
+  /** CLI version whose ledger entries have all been walked and acted on. */
+  reconciledTo?: string;
+  /**
+   * Engine versions the rules were authored and last reconciled against.
+   *
+   * Engine version is what determines whether matching semantics moved under
+   * a rule, so recording it is what lets a later differential ask a concrete
+   * question instead of reconstructing one.
+   */
+  engines?: {
+    sg?: string;
+    vale?: string;
+  };
+}
+
 export interface TasklessManifest {
   version: number;
   install?: TasklessInstallManifest;
+  rules?: TasklessRulesManifest;
 }
 
 const MANIFEST_FILE = "taskless.json";
@@ -127,10 +158,12 @@ export async function readManifest(
 ): Promise<{ manifest: TasklessManifest; raw: Record<string, unknown> }> {
   const { version, raw } = await readRawManifest(directory);
   const install = raw.install as TasklessInstallManifest | undefined;
+  const rules = raw.rules as TasklessRulesManifest | undefined;
   return {
     manifest: {
       version,
       install: isPlainObject(install) ? install : undefined,
+      rules: isPlainObject(rules) ? rules : undefined,
     },
     raw,
   };
@@ -151,6 +184,11 @@ export async function writeManifest(
     delete merged.install;
   } else {
     merged.install = manifest.install;
+  }
+  if (manifest.rules === undefined) {
+    delete merged.rules;
+  } else {
+    merged.rules = manifest.rules;
   }
   await writeRawManifest(directory, merged);
 }
