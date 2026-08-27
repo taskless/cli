@@ -5,10 +5,15 @@ import { runMigrations, type MigrationReport } from "./migrate";
 
 export interface EnsureOptions {
   /**
-   * Called once when a migration run is about to start. Callers that render
-   * their own UI (e.g., the interactive wizard using clack) can use this to
-   * keep the message inside their visual tree. When omitted, the migration
-   * runner falls back to its default `console.error` message.
+   * Called TWICE when migrations run: once as the run starts, and once on
+   * completion with the file-by-file summary. Callers that render their own
+   * UI (e.g., the interactive wizard using clack) can use this to keep both
+   * messages inside their visual tree. When omitted, the migration runner
+   * falls back to writing them with `console.error`.
+   *
+   * Callers that emit `--json` should pass a callback that suppresses output
+   * under that flag: the same information is on the envelope's `migrated`
+   * field, and a machine consumer reading stderr gets prose it cannot parse.
    */
   onNotice?: (message: string) => void;
   /**
