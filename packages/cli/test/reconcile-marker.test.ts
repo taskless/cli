@@ -128,6 +128,53 @@ describe("recording a rules reconciliation", () => {
     expect(rules?.reconciledTo).toBe(version);
   });
 
+  it("refuses a value that is not a version", async () => {
+    // `versionCore` coerces an unparseable segment to 0, so garbage compares
+    // LOWER than any real version and would sail past both guards to be
+    // written verbatim. A pasted SHA or a truncated interpolation would
+    // corrupt the marker with nothing reported, which is the opposite of the
+    // validation this command claims to do.
+    for (const bad of ["abc", "", "0.11.0; rm -rf /", "deadbeef"]) {
+      const result = await runCli([
+        "update",
+        `--reconciledTo=${bad}`,
+        "--json",
+        "-d",
+        cwd,
+      ]);
+      expect(result.exitCode, `accepted ${JSON.stringify(bad)}`).not.toBe(0);
+    }
+    expect(await readRules()).toBeUndefined();
+  });
+
+  it("refuses when there is no .taskless/ to reconcile", async () => {
+    // `readManifest` tolerates a missing file but `writeManifest` does not
+    // create parent directories, so this used to die on a raw ENOENT reported
+    // as INTERNAL_ERROR. Checked rather than created: creating it would record
+    // a reconciliation for a project that has no rules, which is the marker
+    // claiming work that could not have happened.
+    const empty = await mkdtemp(join(tmpdir(), "taskless-noscaffold-"));
+    try {
+      const result = await runCli([
+        "update",
+        `--reconciledTo=${await installedVersion()}`,
+        "--json",
+        "-d",
+        empty,
+      ]);
+      expect(result.exitCode).not.toBe(0);
+      const envelope = JSON.parse(result.stdout) as {
+        code: string;
+        message: string;
+      };
+      expect(envelope.code).toBe("INVALID_INPUT");
+      expect(envelope.code).not.toBe("INTERNAL_ERROR");
+      expect(envelope.message).toContain("no rules to reconcile");
+    } finally {
+      await rm(empty, { recursive: true, force: true });
+    }
+  });
+
   it("leaves install untouched, since the two namespaces drift apart", async () => {
     const before = JSON.parse(
       await readFile(join(cwd, ".taskless", "taskless.json"), "utf8")
@@ -146,6 +193,29 @@ describe("recording a rules reconciliation", () => {
 });
 
 describe("taskless update with no flags", () => {
+  it("honours --json, reporting the recipe and where the walk starts", async () => {
+    // The flag used to be read only on the recording path, so this printed
+    // plain prose and gave no sign it had done nothing. The walk start is
+    // computed by the CLI rather than reasoned out of the recipe's prose:
+    // two places deriving one answer can disagree.
+    const result = await runCli(["update", "--json"]);
+    expect(result.exitCode).toBe(0);
+    const payload = JSON.parse(result.stdout) as {
+      ok: boolean;
+      topic: string;
+      installed: string;
+      walk: unknown;
+      recipe: string;
+    };
+    expect(payload.ok).toBe(true);
+    expect(payload.topic).toBe("update");
+    expect(payload.installed).toBeTruthy();
+    expect(payload.recipe).toContain("# Topic: update");
+    // No marker recorded here, so there is nothing to walk. That is not the
+    // same as being behind, and it must not read as a version to walk from.
+    expect(payload.walk).toBeNull();
+  });
+
   it("serves the same ledger recipe as `agent update`", async () => {
     const direct = await runCli(["update"]);
     const viaAgent = await runCli(["agent", "update"]);

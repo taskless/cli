@@ -1,4 +1,4 @@
-import { resolve } from "node:path";
+import { join, resolve } from "node:path";
 import { defineCommand } from "citty";
 
 import { ensureTasklessDirectory } from "../filesystem/directory";
@@ -22,7 +22,12 @@ import {
   detectCliInvocation,
   processLauncherContext,
 } from "../util/package-manager";
-import { recordReconciliation } from "../rules/reconcile-marker";
+import {
+  recordReconciliation,
+  reconciliationStart,
+} from "../rules/reconcile-marker";
+import { readManifest } from "../filesystem/migrate";
+import { TASKLESS_DIRECTORY } from "../rules/vale/formats";
 import { CLIError } from "../util/cli-error";
 import { makeErrorEnvelope } from "../types/errors";
 
@@ -120,7 +125,8 @@ export const updateCommand = defineCommand({
     },
     json: {
       type: "boolean",
-      description: "Output as JSON",
+      description:
+        "Output as JSON: the recipe plus where the walk starts, or the recorded result with --reconciledTo",
       default: false,
     },
     anonymous: {
@@ -147,6 +153,37 @@ export const updateCommand = defineCommand({
         return;
       }
       telemetry.capture("cli_agent", { topic: "update" });
+
+      // `--json` is honoured here too. It used to be read only on the
+      // recording path, so `taskless update --json` printed plain prose and
+      // gave no sign the flag had done nothing.
+      //
+      // The payload also carries where the walk should START, computed by the
+      // CLI rather than reasoned out of the recipe's prose. Same argument as
+      // `route` reading `ghOwner` from `info` instead of shelling out to git:
+      // two places deriving one answer can disagree, and the one that acts on
+      // it should not be the one guessing.
+      if (args.json) {
+        const { manifest } = await readManifest(
+          join(cwd, TASKLESS_DIRECTORY)
+        ).catch(() => ({ manifest: undefined }));
+        const walk = reconciliationStart(manifest?.rules?.reconciledTo);
+        console.log(
+          JSON.stringify({
+            ok: true,
+            topic: "update",
+            reconciledTo: manifest?.rules?.reconciledTo ?? null,
+            installed: getCliVersion(),
+            // `null` when there is nothing to walk: either the project has
+            // never recorded a reconciliation, which is not the same as being
+            // behind, or it is already current.
+            walk: walk ?? null,
+            recipe,
+          })
+        );
+        return;
+      }
+
       console.log(recipe.trimEnd());
       return;
     }

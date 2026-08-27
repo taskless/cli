@@ -1,6 +1,7 @@
-import { AST_GREP_VERSION, VALE_VERSION } from "./capabilities";
+import { access } from "node:fs/promises";
 import { join } from "node:path";
 
+import { AST_GREP_VERSION, VALE_VERSION } from "./capabilities";
 import { readManifest, writeManifest } from "../filesystem/migrate";
 import { TASKLESS_DIRECTORY } from "./vale/formats";
 import { CLIError } from "../util/cli-error";
@@ -60,10 +61,29 @@ function compareVersions(a: string, b: string): number {
  * CLI does not have entries for, and moving the marker backwards. Both are
  * rejected here rather than written and puzzled over later.
  */
+/**
+ * A dotted numeric version, with an optional prerelease suffix.
+ *
+ * Checked BEFORE either comparison, because `versionCore` coerces an
+ * unparseable segment to `0`: without this, `abc` parses as `[0]`, compares
+ * lower than any real version, sails past both guards, and is written to the
+ * manifest verbatim. A pasted SHA or a truncated interpolation would corrupt
+ * the marker with nothing reported, which is the opposite of the validation
+ * this function exists to do.
+ */
+const VERSION_SHAPE = /^\d+(?:\.\d+)*(?:-[\w.]+)?$/;
+
 export async function recordReconciliation(
   cwd: string,
   reconciledTo: string
 ): Promise<ReconcileResult> {
+  if (!VERSION_SHAPE.test(reconciledTo)) {
+    throw new CLIError(
+      `"${reconciledTo}" is not a version. Pass the CLI version the ledger walk completed up to, such as the \`version\` reported by \`info --json\`.`,
+      "INVALID_INPUT"
+    );
+  }
+
   const installed = getCliVersion();
 
   if (compareVersions(reconciledTo, installed) > 0) {
@@ -74,6 +94,22 @@ export async function recordReconciliation(
   }
 
   const tasklessDirectory = join(cwd, TASKLESS_DIRECTORY);
+
+  // Checked, not created. `readManifest` tolerates a missing file, but
+  // `writeManifest` writes directly and does not make parent directories, so
+  // without this the command dies on a raw ENOENT reported as INTERNAL_ERROR.
+  //
+  // Creating the directory would be worse than failing: it would record a
+  // reconciliation for a project that has no rules to reconcile, which is the
+  // marker claiming work that could not have happened. The recipe already
+  // states this precondition; this is the code holding to it.
+  if (!(await pathExists(tasklessDirectory))) {
+    throw new CLIError(
+      `No \`${TASKLESS_DIRECTORY}/\` in this project, so there are no rules to reconcile. Run the CLI once to set it up before recording a reconciliation.`,
+      "INVALID_INPUT"
+    );
+  }
+
   const { manifest, raw } = await readManifest(tasklessDirectory);
   const previous = manifest.rules?.reconciledTo;
 
@@ -114,4 +150,14 @@ export function reconciliationStart(
   if (recorded === undefined) return undefined;
   if (compareVersions(recorded, installed) >= 0) return undefined;
   return { from: recorded, to: installed };
+}
+
+/** Whether a path exists, without distinguishing why it does not. */
+async function pathExists(path: string): Promise<boolean> {
+  try {
+    await access(path);
+    return true;
+  } catch {
+    return false;
+  }
 }
