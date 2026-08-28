@@ -6,6 +6,7 @@ import {
   buildSkillStub,
   isShimStub,
   stubFrontmatterDrifted,
+  stubPredatesRecovery,
   writeCanonicalCommand,
   writeCanonicalSkill,
   type CommandStubFrontmatter,
@@ -350,6 +351,13 @@ async function unlinkIfSymlink(path: string): Promise<void> {
  * That converges anything stale onto the canonical-plus-stub layout —
  * a missing file, a full copy left by an older install, a symlink, or a
  * stub whose frontmatter has drifted.
+ *
+ * A stub written before stubs carried a recovery instruction is rewritten too.
+ * That is the one case here where the BODY decides, and it has to: the reason
+ * a stub without the instruction is a problem is that its canonical target may
+ * be absent, and an already-installed project is exactly where that happens.
+ * Waiting for a `name`/`description` change to carry the fix would leave those
+ * projects on a dead-end stub indefinitely.
  */
 async function referenceNeedsRewrite(
   path: string,
@@ -365,6 +373,7 @@ async function referenceNeedsRewrite(
   const existing = await readFile(path, "utf8").catch(() => {});
   if (existing === undefined) return true;
   if (!isShimStub(existing)) return true; // a full copy — convert it
+  if (stubPredatesRecovery(existing)) return true; // one-time body migration
   return stubFrontmatterDrifted(existing, meta);
 }
 

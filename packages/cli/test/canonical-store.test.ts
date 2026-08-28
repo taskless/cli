@@ -8,10 +8,15 @@ import {
   buildSkillStub,
   isShimStub,
   stubFrontmatterDrifted,
+  stubPredatesRecovery,
   writeCanonicalCommand,
   writeCanonicalSkill,
 } from "../src/install/canonical";
 import { parseFrontmatter } from "../src/install/frontmatter";
+import {
+  buildInvocation,
+  isProductionInvocation,
+} from "../src/util/invocation";
 
 const SENTINEL = "INLINED-CANONICAL-BODY-MARKER";
 
@@ -79,6 +84,23 @@ describe("buildSkillStub", () => {
     expect(stub).not.toContain(SENTINEL);
   });
 
+  it("tells the reader how to restore a canonical file that is missing", () => {
+    const stub = buildSkillStub({ name: "taskless", description: "d" });
+    const { content } = parseFrontmatter(stub);
+    expect(content).toContain("does not exist");
+    // The invocation is the build's own, so a dev/self build points at its own
+    // binary rather than sending the reader to the published package.
+    expect(content).toContain(`\`${buildInvocation()} init\``);
+  });
+
+  it("embeds nothing that varies per release", () => {
+    const stub = buildSkillStub({ name: "taskless", description: "d" });
+    // The stub lives outside `.taskless`, so its bytes must not move when only
+    // the CLI version does. A prod build's invocation carries no version.
+    expect(isProductionInvocation()).toBe(true);
+    expect(stub).not.toContain(__VERSION__);
+  });
+
   it("carries metadata.type shim and records no version", () => {
     const stub = buildSkillStub({ name: "taskless", description: "d" });
     const metadata = parseFrontmatter(stub).data.metadata as {
@@ -117,6 +139,16 @@ describe("buildCommandStub", () => {
     expect(data.name).toBe("Taskless");
     expect(content).toContain("$ARGUMENTS");
     expect(content).toContain(".taskless/commands/tskl/tskl.md");
+  });
+
+  it("carries the same recovery instruction as a skill stub", () => {
+    const stub = buildCommandStub(
+      { name: "Taskless", description: "Run any Taskless action." },
+      "tskl.md"
+    );
+    const { content } = parseFrontmatter(stub);
+    expect(content).toContain("does not exist");
+    expect(content).toContain(`\`${buildInvocation()} init\``);
   });
 
   it("preserves the canonical argument-hint when present", () => {
@@ -203,5 +235,38 @@ describe("stubFrontmatterDrifted", () => {
       "",
     ].join("\n");
     expect(stubFrontmatterDrifted(legacyStub, meta)).toBe(true);
+  });
+});
+
+describe("stubPredatesRecovery", () => {
+  it("returns false for a stub generated now", () => {
+    expect(
+      stubPredatesRecovery(
+        buildSkillStub({ name: "taskless", description: "d" })
+      )
+    ).toBe(false);
+    expect(
+      stubPredatesRecovery(
+        buildCommandStub({ name: "Taskless", description: "d" }, "tskl.md")
+      )
+    ).toBe(false);
+  });
+
+  it("returns true for a stub written before the recovery instruction", () => {
+    const legacyStub = [
+      "---",
+      "name: taskless",
+      "description: d",
+      "metadata:",
+      "  type: shim",
+      "---",
+      "",
+      "This is a Taskless reference stub. The canonical skill is defined at",
+      "`.taskless/skills/taskless/SKILL.md`.",
+      "",
+      "Read `.taskless/skills/taskless/SKILL.md` and follow its instructions.",
+      "",
+    ].join("\n");
+    expect(stubPredatesRecovery(legacyStub)).toBe(true);
   });
 });

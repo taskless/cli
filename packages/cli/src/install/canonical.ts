@@ -98,6 +98,64 @@ function shimMetadata(): Record<string, string> {
   return { type: "shim" };
 }
 
+/**
+ * The command a reader runs to restore a canonical file that is not on disk.
+ *
+ * Written in the published `npx @taskless/cli` form and rewritten by
+ * {@link applyCliInvocation}, exactly as canonical content is. A stub that
+ * hardcoded the released package would tell someone running a `dev`/`self`
+ * build to fetch a different binary than the one that wrote the stub, and
+ * would tell a nightly user to install over their nightly.
+ *
+ * `init` rather than a bare run: a bare invocation only installs from a TTY.
+ * In a non-interactive context it prints a preamble and hands off to `agent`,
+ * which is precisely the context an agent reading this stub is in. `init`
+ * installs in both, falling back to a non-interactive install when there is
+ * no TTY.
+ *
+ * Nothing here varies per release for a prod build, where
+ * {@link applyCliInvocation} is a no-op, so the stub footprint outside
+ * `.taskless` stays byte-stable (see {@link shimMetadata}).
+ */
+function restoreCommand(): string {
+  return applyCliInvocation("npx @taskless/cli init");
+}
+
+/**
+ * The build-independent tail of the recovery sentence, shared between the
+ * builders and {@link stubPredatesRecovery} so the two cannot drift apart.
+ *
+ * Detection deliberately keys on this fragment rather than on the whole
+ * sentence: the invocation inside it differs between a prod build and a
+ * `dev`/`self` one, and matching on the full text would make each build treat
+ * the other's stub as stale and rewrite it on every install.
+ */
+const RECOVERY_TAIL = "to restore it, then read it.";
+
+/**
+ * The sentence that turns a missing canonical file from a dead end into a
+ * recoverable state. Without it a stub sends the reader to a path that may not
+ * exist (an install whose untracked files never reached this worktree, or a
+ * project that ignores `.taskless/skills/`) and says nothing about what to do
+ * there. See taskless/cli#200.
+ */
+function recoveryInstruction(canonical: string): string {
+  return (
+    `If \`${canonical}\` does not exist, run \`${restoreCommand()}\` from the ` +
+    `project root ${RECOVERY_TAIL}\n`
+  );
+}
+
+/**
+ * Whether an existing stub was written before stubs carried a recovery
+ * instruction. Used by install as a one-time migration, in the same spirit as
+ * the `metadata.version` strip in {@link stubFrontmatterDrifted}: such a stub
+ * is rewritten once, after which its body is stable again.
+ */
+export function stubPredatesRecovery(content: string): boolean {
+  return !parseFrontmatter(content).content.includes(RECOVERY_TAIL);
+}
+
 /** Serialize ordered frontmatter fields into a `---`-delimited block. */
 function frontmatterBlock(fields: Record<string, unknown>): string {
   const yaml = stringify(fields).trimEnd();
@@ -120,7 +178,8 @@ export function buildSkillStub(meta: StubFrontmatter): string {
     "\n" +
     `This is a Taskless reference stub. The canonical skill is defined at ` +
     `\`${canonical}\`.\n\n` +
-    `Read \`${canonical}\` and follow its instructions.\n`
+    `Read \`${canonical}\` and follow its instructions.\n\n` +
+    recoveryInstruction(canonical)
   );
 }
 
@@ -147,7 +206,8 @@ export function buildCommandStub(
     `This is a Taskless reference stub. The canonical command is defined at ` +
     `\`${canonical}\`.\n\n` +
     `Read \`${canonical}\` and follow its instructions, treating the text ` +
-    `above as the command arguments.\n`
+    `above as the command arguments.\n\n` +
+    recoveryInstruction(canonical)
   );
 }
 

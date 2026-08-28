@@ -25,3 +25,5 @@ metadata:
 This is a Taskless reference stub. The canonical skill is defined at `.taskless/skills/taskless/SKILL.md`.
 
 Read `.taskless/skills/taskless/SKILL.md` and follow its instructions.
+
+If `.taskless/skills/taskless/SKILL.md` does not exist, run `npx @taskless/cli init` from the project root to restore it, then read it.
