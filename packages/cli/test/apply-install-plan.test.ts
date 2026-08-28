@@ -222,6 +222,56 @@ describe("applyInstallPlan", () => {
     }
   });
 
+  it("writes a stub whose bytes do not move with the CLI version", async () => {
+    // The stub footprint outside `.taskless` is deliberately version-free, so
+    // two installs of different CLI versions must produce identical bytes.
+    const plan = buildInstallPlan([".claude"], [tasklessSkill()], []);
+    const stubPath = join(cwd, ".claude", "skills", "taskless", "SKILL.md");
+
+    await applyInstallPlan(cwd, plan, { cliVersion: "0.7.0" });
+    const first = await readFile(stubPath, "utf8");
+
+    const other = await mkdtemp(join(tmpdir(), "taskless-apply-"));
+    try {
+      await seedTasklessDirectory(other);
+      await applyInstallPlan(other, plan, { cliVersion: "99.0.0" });
+      const second = await readFile(
+        join(other, ".claude", "skills", "taskless", "SKILL.md"),
+        "utf8"
+      );
+      expect(second).toBe(first);
+    } finally {
+      await rm(other, { recursive: true, force: true });
+    }
+  });
+
+  it("rewrites a stub that predates the recovery instruction", async () => {
+    const skill = tasklessSkill();
+    const claudeSkill = join(cwd, ".claude", "skills", "taskless", "SKILL.md");
+    // A stub from an older CLI: current frontmatter, dead-end body.
+    const legacy = [
+      "---",
+      "name: taskless",
+      `description: ${JSON.stringify(skill.description)}`,
+      "metadata:",
+      "  type: shim",
+      "---",
+      "",
+      "Read `.taskless/skills/taskless/SKILL.md` and follow its instructions.",
+      "",
+    ].join("\n");
+    await mkdir(dirname(claudeSkill), { recursive: true });
+    await writeFile(claudeSkill, legacy, "utf8");
+
+    await applyInstallPlan(cwd, buildInstallPlan([".claude"], [skill], []), {
+      cliVersion: "0.7.0",
+    });
+
+    expect(
+      parseFrontmatter(await readFile(claudeSkill, "utf8")).content
+    ).toContain("does not exist");
+  });
+
   it("converts a full per-tool copy into a shim stub", async () => {
     const skill = tasklessSkill();
     const claudeSkill = join(cwd, ".claude", "skills", "taskless", "SKILL.md");
