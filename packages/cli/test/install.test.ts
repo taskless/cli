@@ -137,6 +137,21 @@ describe("detectSelectedDirectories", () => {
     expect(directories).toEqual([".claude", ".agents"]);
     expect(new Set(directories).size).toBe(directories.length);
   });
+
+  it("keeps .agents last, after a tool declared later in the catalog", async () => {
+    // The discriminating case for dedupe ORDER, which the test above cannot
+    // see: `.claude` sorts first either way. `.cursor` is declared after the
+    // `Codex` row and before the `Agent Skills` row, so it lands between them
+    // only if the LAST row for a directory wins its position. Deduping with a
+    // bare `Map.set` keeps the FIRST occurrence's slot, which would put
+    // `.agents` second and report `[".agents", ".cursor"]`.
+    await mkdir(join(cwd, ".codex"), { recursive: true });
+    await mkdir(join(cwd, ".cursor"), { recursive: true });
+    expect(await detectSelectedDirectories(cwd)).toEqual([
+      ".cursor",
+      ".agents",
+    ]);
+  });
 });
 
 describe("buildInstallPlan and duplicate shim rows", () => {

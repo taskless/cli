@@ -167,16 +167,24 @@ export const SHIM_TARGETS: readonly ShimTarget[] = [
  * twice. Deduping on `dir` (rather than special-casing Codex) keeps the
  * invariant true for any future pair of rows that share a destination.
  *
- * A `Map` keyed by `dir` keeps the first occurrence's position while the last
- * row wins the value, so a shared directory reports under the catalog's final
- * row for it. The catalog is ordered named-harness first, generic-fallback
- * last, so `.agents/` is summarised as "Agent Skills": the selection carries
- * only a directory, never which row was ticked, and the generic label is the
- * one that is accurate either way.
+ * The LAST row for a directory wins both its position and its value. The
+ * catalog is ordered named-harness first, generic-fallback last, so `.agents/`
+ * is summarised as "Agent Skills" and sorts last: the selection carries only a
+ * directory, never which row was ticked, and the generic label is the one that
+ * is accurate either way.
+ *
+ * The `delete` before the `set` is what buys the position half. `Map.set`
+ * alone overwrites the value but keeps the FIRST insertion's position, which
+ * would leave `.agents/` holding the `Codex` row's slot (second) while
+ * displaying the `Agent Skills` label. That reorders writes and summary lines
+ * in every multi-tool install, for a change that is only supposed to add a
+ * label, and it quietly contradicts the generic-fallback-last ordering this
+ * comment relies on.
  */
 export function uniqueShimTargets(): ShimTarget[] {
   const byDirectory = new Map<string, ShimTarget>();
   for (const shim of SHIM_TARGETS) {
+    byDirectory.delete(shim.dir);
     byDirectory.set(shim.dir, shim);
   }
   return [...byDirectory.values()];
