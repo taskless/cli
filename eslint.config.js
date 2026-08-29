@@ -8,7 +8,6 @@ export default tseslint.config(
     ignores: [
       "node_modules/",
       "**/dist/",
-      "**/dist-dev/",
       "**/dist-self/",
       "**/*.config.js",
       "**/*.config.ts",

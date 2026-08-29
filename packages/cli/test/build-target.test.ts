@@ -11,9 +11,6 @@ import {
   resolveOutputDirectory,
 } from "../scripts/build-target";
 
-/** Stand-in for `packages/cli`; only the `dev` target reads it. */
-const PACKAGE_DIR = "/repo/packages/cli";
-
 const NIGHTLY_VERSION = "0.11.0-20260818123456x05b3c88";
 
 const nightlyEnvironment = {
@@ -27,31 +24,49 @@ describe("build target resolution", () => {
     expect(resolveBuildTarget({ TASKLESS_BUILD_TARGET: "nightlies" })).toBe(
       "prod"
     );
-    expect(resolveCliInvocation({}, PACKAGE_DIR)).toBe("npx @taskless/cli");
-    expect(resolveCliNotice({}, PACKAGE_DIR)).toBe("");
+    expect(resolveCliInvocation({})).toBe("npx @taskless/cli");
+    expect(resolveCliNotice({})).toBe("");
   });
 
-  it("keeps the local targets pointed at their own output directories", () => {
+  it("keeps the self target pointed at its own output directory", () => {
     const self = { TASKLESS_BUILD_TARGET: "self" };
-    expect(resolveCliInvocation(self, PACKAGE_DIR)).toBe(
+    expect(resolveCliInvocation(self)).toBe(
       `node packages/cli/${OUT_DIRS.self}/index.js`
     );
-    expect(resolveCliNotice(self, PACKAGE_DIR)).toContain("pnpm build:self");
+    expect(resolveCliNotice(self)).toContain("pnpm build:self");
+  });
 
-    const developmentTarget = { TASKLESS_BUILD_TARGET: "dev" };
-    expect(resolveCliInvocation(developmentTarget, PACKAGE_DIR)).toBe(
-      `node ${PACKAGE_DIR}/${OUT_DIRS.dev}/index.js`
+  // `dev` emitted an absolute path so a local build could be run from another
+  // repository; a published nightly does that job now. It is the one value that
+  // does not get the lenient fall back to prod, because a caller who sets it is
+  // waiting on `dist-dev/`, which nothing writes any more. Falling back would
+  // build prod into `dist/` and report nothing, and the removal would surface
+  // as a missing file at a path no remaining source mentions.
+  it("refuses the removed dev target instead of falling back to prod", () => {
+    const removed = { TASKLESS_BUILD_TARGET: "dev" };
+    expect(() => resolveBuildTarget(removed)).toThrow(/has been removed/);
+    expect(() => resolveOutputDirectory(removed)).toThrow(/has been removed/);
+    expect(() => resolveCliInvocation(removed)).toThrow(/has been removed/);
+    expect(() => resolveCliNotice(removed)).toThrow(/has been removed/);
+  });
+
+  // The error has to be actionable, not just loud: whoever set `dev` wants a
+  // local build, and both remaining answers are named.
+  it("names the replacements for the removed target", () => {
+    expect(() => resolveBuildTarget({ TASKLESS_BUILD_TARGET: "dev" })).toThrow(
+      /@taskless\/cli-nightly[\s\S]*pnpm build:self/
     );
-    expect(resolveCliNotice(developmentTarget, PACKAGE_DIR)).toContain(
-      "pnpm build:dev"
-    );
+  });
+
+  it("has no output directory for the removed target", () => {
+    expect(Object.keys(OUT_DIRS)).toStrictEqual(["prod", "self", "nightly"]);
   });
 });
 
 describe("the version a build reports as its own", () => {
-  // Only nightly diverges. dev/self/prod all run from a checkout whose
+  // Only nightly diverges. self/prod both run from a checkout whose
   // package.json IS the version they are, so reading it is correct there.
-  it.each(["prod", "dev", "self"])(
+  it.each(["prod", "self"])(
     "uses the committed package version for the %s target",
     (target) => {
       expect(
@@ -103,11 +118,10 @@ describe("a build must agree with itself about its version", () => {
   });
 
   // A version pin is meaningless for the other targets: prod names a floating
-  // package deliberately, and dev/self name a filesystem path. Asserting there
+  // package deliberately, and self names a filesystem path. Asserting there
   // would fail every ordinary build.
   it.each([
     ["prod", "npx @taskless/cli"],
-    ["dev", "node /repo/packages/cli/dist-dev/index.js"],
     ["self", "node packages/cli/dist-self/index.js"],
   ])("does not constrain the %s target", (target, invocation) => {
     expect(() =>
@@ -126,7 +140,7 @@ describe("the nightly target", () => {
   // version, `npx @taskless/cli-nightly` would float to whatever nightly is
   // newest — a different build from the one whose instructions are being read.
   it("names the nightly package pinned to the exact published version", () => {
-    expect(resolveCliInvocation(nightlyEnvironment, PACKAGE_DIR)).toBe(
+    expect(resolveCliInvocation(nightlyEnvironment)).toBe(
       `npx @taskless/cli-nightly@${NIGHTLY_VERSION}`
     );
   });
@@ -151,18 +165,18 @@ describe("the nightly target", () => {
     ).toThrow(NIGHTLY_VERSION_ENV);
   });
 
-  // `dist`, unlike dev/self — the tarball is packed with `files: ["dist"]` and
+  // `dist`, unlike self — the tarball is packed with `files: ["dist"]` and
   // `bin: ./dist/index.js`, so a nightly build overwrites a prod build.
   it("emits to dist, the same directory as prod", () => {
     expect(resolveOutputDirectory(nightlyEnvironment)).toBe(OUT_DIRS.prod);
     expect(OUT_DIRS.nightly).toBe("dist");
   });
 
-  // dev/self carry a banner because their invocation is a path that may not
+  // self carries a banner because its invocation is a path that may not
   // exist. A published, version-pinned package always resolves, and the
   // invocation already says which package it is.
   it("emits no build notice", () => {
-    expect(resolveCliNotice(nightlyEnvironment, PACKAGE_DIR)).toBe("");
+    expect(resolveCliNotice(nightlyEnvironment)).toBe("");
   });
 
   // The failure that matters. Falling back to `npx @taskless/cli` here would
@@ -180,7 +194,7 @@ describe("the nightly target", () => {
       },
     ]) {
       expect(
-        () => resolveCliInvocation(environment, PACKAGE_DIR),
+        () => resolveCliInvocation(environment),
         `${JSON.stringify(environment[NIGHTLY_VERSION_ENV])} must fail the build, not fall back`
       ).toThrowError(new RegExp(NIGHTLY_VERSION_ENV));
     }

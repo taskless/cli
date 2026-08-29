@@ -8,5 +8,5 @@
     "noUncheckedIndexedAccess": true
   },
   "include": ["src", "test", "scripts"],
-  "exclude": ["node_modules", "dist", "dist-dev", "dist-self", "test/fixtures"]
+  "exclude": ["node_modules", "dist", "dist-self", "test/fixtures"]
 }

@@ -4,9 +4,8 @@
 # Dependencies
 node_modules/
 
-# Build output (prod, dev, and self targets each emit to their own directory)
+# Build output (the prod and self targets each emit to their own directory)
 **/dist/
-**/dist-dev/
 **/dist-self/
 *.tsbuildinfo
 .turbo/

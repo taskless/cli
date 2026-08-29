@@ -55,7 +55,7 @@ const SUBCOMMANDS = SUBCOMMAND_NAMES.map((name) => escapeRegExp(name)).join(
  * `<taskless-cli>` is what a prod build with no detected launcher renders, and
  * `buildInvocation()` is whatever THIS build bakes in — `npx @taskless/cli` for
  * prod, `npx @taskless/cli-nightly@<version>` for a nightly, and a bare
- * `node <path>/index.js` for `dev`/`self`. That last one is why the list is
+ * `node <path>/index.js` for `self`. That last one is why the list is
  * derived rather than written out: a fixed `taskless|@taskless/cli` anchor
  * matches nothing under `TASKLESS_BUILD_TARGET=self`, so every citation check
  * below would find zero citations and pass without checking anything. The two

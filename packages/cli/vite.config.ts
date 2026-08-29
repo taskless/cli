@@ -23,11 +23,11 @@ const pkg = JSON.parse(
 
 // Target resolution lives in ./scripts/build-target.ts so it can be unit-tested
 // (test/build-target.test.ts) over an explicit environment. Everything below
-// binds those pure functions to this process and this package directory.
+// binds those pure functions to this process.
 const buildTarget = resolveBuildTarget(process.env);
 const outDir = resolveOutputDirectory(process.env);
-const cliInvocation = resolveCliInvocation(process.env, import.meta.dirname);
-const cliNotice = resolveCliNotice(process.env, import.meta.dirname);
+const cliInvocation = resolveCliInvocation(process.env);
+const cliNotice = resolveCliNotice(process.env);
 
 // A nightly emits to `dist` — the same directory as prod, because that is what
 // the tarball carries (see OUT_DIRS). Say so at the call site rather than
@@ -185,9 +185,9 @@ function assertPromptsGraph(): Plugin {
     name: "assert-prompts-graph",
     generateBundle(_options, bundle) {
       const entry = findEntryChunk(bundle, PROMPTS_ENTRY);
-      // Not an error: `build:self`/`build:dev` and any future single-entry
-      // build legitimately emit no prompts entry. Nothing to check, not a
-      // failure to check it.
+      // Not an error: `build:self` and any future single-entry build
+      // legitimately emit no prompts entry. Nothing to check, not a failure to
+      // check it.
       if (entry === undefined) return;
 
       const binFile = findEntryChunk(bundle, BIN_ENTRY)?.fileName;
