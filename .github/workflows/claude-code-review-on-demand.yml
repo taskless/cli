@@ -238,15 +238,28 @@ jobs:
             whole files, which you should open freely — findings worth having
             come from context a diff hunk does not show.
 
-            FILE HISTORY IS NOT AVAILABLE TO YOU, by the same decision. There is
-            no `git log`, no `git blame`, and no substitute for them, so do not
-            go looking for one: base every finding on the diff and on the
-            current contents of the files, and where an answer would need to
-            know when or why a line arrived, say that rather than guessing at
-            it. This is called out because the instruction above sends you into
-            exactly the kind of "why is this like this" investigation that
-            history would normally serve, and being told only what you cannot
-            use is what makes an agent keep trying.
+            Everything you are likely to reach `git` for, you already have.
+            These are the substitutions, and they are exact:
+
+              `git diff origin/main...HEAD`  ->  `gh pr diff`
+              `git log origin/main..HEAD`    ->  `gh pr view --json commits`
+              `git log -1 --format=%H`       ->  `gh pr view --json headRefOid`
+              a list of changed files        ->  `gh pr view --json files`
+
+            Those three `git` commands are not hypothetical: they are what
+            earlier reviews on this repository actually attempted and had
+            refused, every one of them for something the line beside it would
+            have returned.
+
+            FILE HISTORY IS THE ONE REAL GAP. There is no `git blame` and no
+            per-file log, and nothing substitutes for them, so do not go looking:
+            base every finding on the diff and on the current contents of the
+            files, and where an answer would need to know when or why a
+            particular line arrived, say so rather than guessing. This is spelled
+            out because the instruction above sends you into exactly the kind of
+            "why is this like this" investigation history would normally serve,
+            and being told only what you cannot use is what makes an agent keep
+            trying.
 
             Review the diff for correctness, security, performance, test
             adequacy, and clarity. Do NOT run the project's build/lint/test
@@ -268,6 +281,43 @@ jobs:
           # this model ingests untrusted diff content. Privileged work belongs
           # in workflow steps, which are deterministic and never read model
           # output — the workflow may use privileged tools, the model may not.
+          #
+          # GIT WAS RECONSIDERED AND DECLINED, twice. Recording both so the
+          # question does not get re-opened from scratch.
+          #
+          # 1. SCOPING IT, as `Bash(git diff:*)`. Git's execution surface is all
+          #    in flags that precede the subcommand (`-c diff.external=`,
+          #    `-c core.pager=`, `--exec-path=`, `-c alias.x=!sh`), and none of
+          #    those strings START with `git diff`, so a prefix rule does miss
+          #    them. It was still declined: the guarantee would rest on how the
+          #    matcher treats `&&`, `;` and `$(…)` rather than on a capability
+          #    boundary, and a later `Bash(git:*)` written for convenience
+          #    reopens everything with nothing failing to say so.
+          #
+          # 2. WRAPPER SCRIPTS, a `gitlog`/`gitdiff` shim building the command
+          #    itself. That does close git's flag surface. It does NOT close the
+          #    compound-command question above, which belongs to the matcher and
+          #    not to git, so it buys less than it appears to while adding two
+          #    security-relevant scripts to maintain for one workflow.
+          #
+          # What settled it was measuring what the model actually reached for.
+          # Across the denials on #208 and #209 the attempts were
+          # `git diff origin/main...HEAD`, `git log origin/main..HEAD` and
+          # `git log -1 --format=%H` — every one of them available already
+          # through `gh pr diff` and `gh pr view --json`. It was not blocked on
+          # anything; it was reaching for the familiar tool. The prompt now names
+          # each substitution, which is a fix aimed at measured behaviour rather
+          # than at a hypothesis.
+          #
+          # The one genuine gap is per-file history (`git blame`, `git log --
+          # <path>`). If a review is ever actually blocked on that, the shape
+          # that fits this workflow is a STEP that precomputes it into a file
+          # the model reads, exactly as `Fetch prior review threads` already
+          # does for `.prior-review.json`: fixed arguments the model never
+          # influences, so there is no injection surface rather than a smaller
+          # one. Do not reach for `gh api .../commits?path=` instead — that is
+          # `gh api` on the allowlist, and the scoping would live in a prompt
+          # string rather than in the permission boundary.
           claude_args: |
             --allowedTools "mcp__github_inline_comment__create_inline_comment,Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*),Read"
 
