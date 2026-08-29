@@ -140,6 +140,18 @@ export interface ShimTarget {
   label: string;
   /** Whether this directory receives the `tskl` command stub. */
   commands: boolean;
+  /**
+   * Marks the catch-all row: the one offered to anyone whose harness this
+   * catalog does not name. At most one row carries it.
+   *
+   * It is a declared field rather than something derived, because every way
+   * of inferring it is a coincidence. "The last row for the directory" is
+   * declaration order, and "the object `uniqueShimTargets` happened to keep"
+   * is reference identity, so reordering the catalog or making the dedupe
+   * return copies would silently move the hint to a named harness with no
+   * type error anywhere.
+   */
+  generic?: boolean;
 }
 
 /**
@@ -155,7 +167,7 @@ export const SHIM_TARGETS: readonly ShimTarget[] = [
   { dir: ".agents", label: "Codex", commands: false },
   { dir: ".cursor", label: "Cursor", commands: true },
   { dir: ".opencode", label: "OpenCode", commands: false },
-  { dir: ".agents", label: "Agent Skills", commands: false },
+  { dir: ".agents", label: "Agent Skills", commands: false, generic: true },
 ];
 
 /**
@@ -164,8 +176,16 @@ export const SHIM_TARGETS: readonly ShimTarget[] = [
  * Every consumer that turns rows into directories or into install targets
  * goes through here. Without it, a single `.agents/` selection matches both
  * `.agents/` rows and the plan writes, reports, and records that directory
- * twice. Deduping on `dir` (rather than special-casing Codex) keeps the
- * invariant true for any future pair of rows that share a destination.
+ * twice. Deduping on `dir` (rather than special-casing Codex) keeps that
+ * one-entry-per-directory invariant true for any future pair of rows sharing
+ * a destination.
+ *
+ * What it does NOT do is reconcile the rows: the surviving entry is one whole
+ * row, so EVERY field comes from the last row for that directory, not just
+ * `label`. Today both `.agents/` rows agree on `commands`, so nothing is
+ * silently chosen. A future pair that disagreed on it would be resolved by
+ * catalog order rather than by anyone deciding, which is a reason to keep
+ * rows sharing a directory identical apart from `label` and `generic`.
  *
  * The LAST row for a directory wins both its position and its value. The
  * catalog is ordered named-harness first, generic-fallback last, so `.agents/`

@@ -55,6 +55,20 @@ describe("locationChoices", () => {
     expect(labels).toContain("Agent Skills (.agents/)");
   });
 
+  it("puts the generic hint on the catch-all row, not on Codex", async () => {
+    const { locationChoices } = await import("../src/wizard/steps/locations");
+    const byLabel = new Map(
+      locationChoices([]).options.map((o) => [o.label, o.hint])
+    );
+    // Both rows write `.agents/`, so nothing about the DIRECTORY separates
+    // them. The hint has to follow the row's own `generic` flag. Deriving it
+    // from catalog order or from object identity against the deduped catalog
+    // put it on whichever row happened to win, which is Codex the moment the
+    // two rows are reordered.
+    expect(byLabel.get("Agent Skills (.agents/)")).toBe("generic agent skills");
+    expect(byLabel.get("Codex (.agents/)")).toBe("not detected");
+  });
+
   it("pre-checks .agents/ when no tools are detected", async () => {
     const { locationChoices } = await import("../src/wizard/steps/locations");
     expect(locationChoices([]).initialValues).toEqual([".agents"]);
