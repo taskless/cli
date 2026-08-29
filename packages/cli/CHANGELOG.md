@@ -2,6 +2,8 @@
 
 ## 0.10.2
 
+[Compare with v0.10.1](https://github.com/taskless/cli/compare/v0.10.1...v0.10.2)
+
 ### Patch Changes
 
 - 1cd0f89: Treat the Taskless organization UUID as the one canonical identity, and become
@@ -34,6 +36,8 @@
 
 ## 0.10.1
 
+[Compare with v0.10.0](https://github.com/taskless/cli/compare/v0.10.0...v0.10.1)
+
 ### Patch Changes
 
 - 53b2d30: Add a help recipe for the `detect` command.
@@ -46,6 +50,8 @@
   the `route`/`existing` authoring flow that consumes it.
 
 ## 0.10.0
+
+[Compare with v0.9.0](https://github.com/taskless/cli/compare/v0.9.0...v0.10.0)
 
 ### Minor Changes
 

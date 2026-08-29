@@ -59,6 +59,10 @@ jobs:
 
       # `version: pnpm bump` runs `changeset version` AND `sync-skill-versions`,
       # so the bumped version is propagated into skills/recipes in the same PR.
+      # It also runs `changelog-compare-links`, which adds the
+      # `vPREV...vNEXT` compare link under the new CHANGELOG heading. That link
+      # is dead until `release-cli.yml` creates the tag after publishing, which
+      # is expected: the notes and the link they describe belong in the same PR.
       # No `publish:` input — this job can never publish.
       - uses: changesets/action@a45c4d594aa4e2c509dc14a9f2b3b67ba3780d0d # v1
         with:
