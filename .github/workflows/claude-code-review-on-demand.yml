@@ -238,6 +238,16 @@ jobs:
             whole files, which you should open freely — findings worth having
             come from context a diff hunk does not show.
 
+            FILE HISTORY IS NOT AVAILABLE TO YOU, by the same decision. There is
+            no `git log`, no `git blame`, and no substitute for them, so do not
+            go looking for one: base every finding on the diff and on the
+            current contents of the files, and where an answer would need to
+            know when or why a line arrived, say that rather than guessing at
+            it. This is called out because the instruction above sends you into
+            exactly the kind of "why is this like this" investigation that
+            history would normally serve, and being told only what you cannot
+            use is what makes an agent keep trying.
+
             Review the diff for correctness, security, performance, test
             adequacy, and clarity. Do NOT run the project's build/lint/test
             locally, and do not fetch or report CI check status — CI runs those
@@ -339,10 +349,18 @@ jobs:
           # the second grep never matches — measured against PR #208, where the
           # raw form finds 0 and this form finds 1. That version of this check
           # would have failed every review, including the good ones.
+          #
+          # The run id is anchored on its right, because a bare substring match
+          # also accepts any id this one is a numeric PREFIX of: searching for
+          # `runs/123456` matches `runs/1234567`. Today's ids are 11 digits and
+          # a collision needs a 12-digit one, so this is not reachable yet —
+          # but the entire job of this check is to identify THIS run's comment
+          # rather than an older review's, and "exact except for numeric-prefix
+          # collisions" is not that.
           posted=false
           if gh api "repos/${GITHUB_REPOSITORY}/issues/${PR}/comments" \
                --paginate --jq '.[].body | @json' 2>/dev/null \
-             | grep -F "runs/${GITHUB_RUN_ID}" \
+             | grep -E "runs/${GITHUB_RUN_ID}([^0-9]|$)" \
              | grep -qF "Review mode:"; then
             posted=true
           fi

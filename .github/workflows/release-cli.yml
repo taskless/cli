@@ -210,9 +210,28 @@ jobs:
             exit 1
           fi
           tag="v${VERSION}"
-          if gh api "repos/${GITHUB_REPOSITORY}/git/ref/tags/${tag}" >/dev/null 2>&1; then
-            echo "${tag} already exists — nothing to do."
-            exit 0
+
+          # An existing tag is only "nothing to do" if it points where this run
+          # would have put it. A tag at the WRONG commit is the exact state this
+          # job exists to prevent: the whole value of tagging is that
+          # `v0.10.2...v0.11.0` can be trusted without hunting for the
+          # version-bump commit, and a tag pointing elsewhere makes that
+          # silently false while every check stays green. So compare, and fail
+          # loudly on a mismatch rather than reporting success.
+          #
+          # Deliberately does NOT move the tag. Re-pointing a published tag
+          # changes history under anyone who already fetched it; a human should
+          # decide what happened first. Failing here costs nothing that matters,
+          # since the publish is a separate job that has already succeeded.
+          existing=$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/tags/${tag}" \
+            --jq '.object.sha' 2>/dev/null || true)
+          if [ -n "$existing" ]; then
+            if [ "$existing" = "$SHA" ]; then
+              echo "${tag} already points at ${SHA} — nothing to do."
+              exit 0
+            fi
+            echo "::error::${tag} already exists but points at ${existing}, not ${SHA}. Refusing to move a published tag; resolve this by hand."
+            exit 1
           fi
           gh api --method POST "repos/${GITHUB_REPOSITORY}/git/refs" \
             -f "ref=refs/tags/${tag}" \
