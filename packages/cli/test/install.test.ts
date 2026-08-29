@@ -127,6 +127,57 @@ describe("detectSelectedDirectories", () => {
     await mkdir(join(cwd, ".codex"), { recursive: true });
     expect(await detectSelectedDirectories(cwd)).toEqual([".agents"]);
   });
+
+  it("returns .agents once even though two catalog rows offer it", async () => {
+    // Codex and Agent Skills are separate rows in the picker pointing at the
+    // same directory. A duplicate here would flow into the install plan.
+    await mkdir(join(cwd, ".codex"), { recursive: true });
+    await mkdir(join(cwd, ".claude"), { recursive: true });
+    const directories = await detectSelectedDirectories(cwd);
+    expect(directories).toEqual([".claude", ".agents"]);
+    expect(new Set(directories).size).toBe(directories.length);
+  });
+});
+
+describe("buildInstallPlan and duplicate shim rows", () => {
+  it("plans .agents exactly once when it is selected", () => {
+    const plan = buildInstallPlan(
+      [".agents"],
+      getEmbeddedSkills(),
+      getEmbeddedCommands()
+    );
+    const agentsTargets = plan.targets.filter((t) => t.dir === ".agents");
+    expect(agentsTargets).toHaveLength(1);
+    // The generic row supplies the shared directory's label: the selection
+    // carries a directory, never which of the two rows the user ticked.
+    expect(agentsTargets[0]!.label).toBe("Agent Skills");
+    expect(agentsTargets[0]!.commands).toEqual([]);
+  });
+
+  it("plans .agents once when a caller passes it more than once", () => {
+    const plan = buildInstallPlan(
+      [".agents", ".agents", ".claude"],
+      getEmbeddedSkills(),
+      getEmbeddedCommands()
+    );
+    expect(plan.targets.filter((t) => t.dir === ".agents")).toHaveLength(1);
+    expect(plan.targets.filter((t) => t.dir === ".claude")).toHaveLength(1);
+  });
+
+  it("writes .agents skill stubs once for a both-rows selection", async () => {
+    // What a user who ticks both `Codex` and `Agent Skills` gets: the
+    // multiselect collapses them onto one `.agents` value, and the plan must
+    // not turn that back into two targets writing the same files twice.
+    const plan = buildInstallPlan([".agents"], getEmbeddedSkills(), []);
+    const result = await applyInstallPlan(cwd, plan, { cliVersion: "0.7.0" });
+
+    const agentsWrites = result.writtenSkills.filter(
+      (entry) => entry.target === ".agents"
+    );
+    expect(new Set(agentsWrites.map((entry) => entry.skill)).size).toBe(
+      agentsWrites.length
+    );
+  });
 });
 
 describe("checkStaleness", () => {

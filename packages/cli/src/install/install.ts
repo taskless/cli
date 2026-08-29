@@ -126,7 +126,12 @@ export const TOOLS: ToolDescriptor[] = [
 /**
  * A selectable stub destination. The wizard offers this fixed catalog as the
  * "which tools do you want to enable Taskless for?" multiselect; every entry
- * is a peer — no directory is special-cased or routed onto another.
+ * is a peer, no directory is special-cased or routed onto another.
+ *
+ * The catalog is a list of *rows the user reads*, not a list of directories:
+ * more than one row may name the same `dir`. Anything downstream of the
+ * picker works in directories and must therefore collapse the rows first,
+ * which is what {@link uniqueShimTargets} is for.
  */
 export interface ShimTarget {
   /** Directory the stub is written into, relative to the project root. */
@@ -137,12 +142,45 @@ export interface ShimTarget {
   commands: boolean;
 }
 
+/**
+ * Codex and Agent Skills deliberately share `.agents/`. Both rows stay.
+ * People scan this list for the name of the tool they use, and a Codex user
+ * who sees only "Agent Skills" concludes Taskless does not support their
+ * harness, which is how we lost one. "Agent Skills" still serves anyone on a
+ * harness this catalog does not enumerate. Do not merge the two rows into one
+ * label: the duplicate directory is the point, not an oversight.
+ */
 export const SHIM_TARGETS: readonly ShimTarget[] = [
   { dir: ".claude", label: "Claude Code", commands: true },
+  { dir: ".agents", label: "Codex", commands: false },
   { dir: ".cursor", label: "Cursor", commands: true },
   { dir: ".opencode", label: "OpenCode", commands: false },
   { dir: ".agents", label: "Agent Skills", commands: false },
 ];
+
+/**
+ * The catalog collapsed to one entry per directory, in catalog order.
+ *
+ * Every consumer that turns rows into directories or into install targets
+ * goes through here. Without it, a single `.agents/` selection matches both
+ * `.agents/` rows and the plan writes, reports, and records that directory
+ * twice. Deduping on `dir` (rather than special-casing Codex) keeps the
+ * invariant true for any future pair of rows that share a destination.
+ *
+ * A `Map` keyed by `dir` keeps the first occurrence's position while the last
+ * row wins the value, so a shared directory reports under the catalog's final
+ * row for it. The catalog is ordered named-harness first, generic-fallback
+ * last, so `.agents/` is summarised as "Agent Skills": the selection carries
+ * only a directory, never which row was ticked, and the generic label is the
+ * one that is accurate either way.
+ */
+export function uniqueShimTargets(): ShimTarget[] {
+  const byDirectory = new Map<string, ShimTarget>();
+  for (const shim of SHIM_TARGETS) {
+    byDirectory.set(shim.dir, shim);
+  }
+  return [...byDirectory.values()];
+}
 
 /** Directory selected by default when no tools are detected. */
 export const DEFAULT_SHIM_DIR = ".agents";
@@ -186,7 +224,9 @@ export async function detectSelectedDirectories(
   const tools = await detectTools(cwd);
   if (tools.length === 0) return [DEFAULT_SHIM_DIR];
   const directories = new Set(tools.map((t) => t.installDir));
-  return SHIM_TARGETS.map((s) => s.dir).filter((d) => directories.has(d));
+  return uniqueShimTargets()
+    .map((s) => s.dir)
+    .filter((d) => directories.has(d));
 }
 
 // --- Embedded Skills ---
@@ -270,7 +310,10 @@ export function buildInstallPlan(
     });
   }
 
-  for (const shim of SHIM_TARGETS) {
+  // Iterate the deduplicated catalog: two rows share `.agents/`, and matching
+  // both would plan that directory twice, so it would be written twice and
+  // reported twice in the install summary.
+  for (const shim of uniqueShimTargets()) {
     if (!selectedDirectories.includes(shim.dir)) continue;
     targets.push({
       dir: shim.dir,

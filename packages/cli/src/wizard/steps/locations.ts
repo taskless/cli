@@ -5,6 +5,7 @@ import {
   DEFAULT_SHIM_DIR,
   SHIM_TARGETS,
   detectTools,
+  uniqueShimTargets,
   type ToolDescriptor,
 } from "../../install/install";
 import { readInstallState } from "../../install/state";
@@ -22,8 +23,10 @@ export interface LocationChoice {
  * the detected tools and the install manifest's recorded targets. Pure — no
  * prompt, no TTY, no filesystem access — so the mapping is unit-testable.
  *
- * Every shim target is always offered (a peer list); the canonical
- * `.taskless/` store is never an entry. The pre-checked set is the union of
+ * Every shim target row is always offered (a peer list); the canonical
+ * `.taskless/` store is never an entry. Rows may share a directory (Codex and
+ * Agent Skills both write `.agents/`), so options are one per row while the
+ * pre-checked set is one per directory. The pre-checked set is the union of
  * manifest-recorded shim directories and detected tools' directories, so a
  * location Taskless already installed into shows checked and can be
  * unchecked. `.agents/` is pre-checked as the default only when nothing is
@@ -48,12 +51,26 @@ export function locationChoices(
     manifestDirectories.filter((d) => d !== CANONICAL_DIR)
   );
 
-  const preChecked = SHIM_TARGETS.map((s) => s.dir).filter(
-    (directory) =>
-      installedDirectories.has(directory) || detectedDirectories.has(directory)
-  );
+  // Pre-checked entries are directories, not rows, so they come from the
+  // deduplicated catalog. Codex and Agent Skills both offer `.agents/`, and a
+  // pre-check list naming it twice would hand the multiselect a duplicate
+  // initial value and carry the duplicate into the install plan.
+  const preChecked = uniqueShimTargets()
+    .map((s) => s.dir)
+    .filter(
+      (directory) =>
+        installedDirectories.has(directory) ||
+        detectedDirectories.has(directory)
+    );
   const initialValues = preChecked.length > 0 ? preChecked : [DEFAULT_SHIM_DIR];
 
+  // Options, by contrast, are one per row: the whole point of a second
+  // `.agents/` row is that a Codex user sees the word "Codex". Rows sharing a
+  // directory share a value, so ticking either one selects that directory
+  // once, and the picker renders both as checked.
+  const fallbackRow = uniqueShimTargets().find(
+    (shim) => shim.dir === DEFAULT_SHIM_DIR
+  );
   const options = SHIM_TARGETS.map((shim) => ({
     value: shim.dir,
     label: `${shim.label} (${shim.dir}/)`,
@@ -61,7 +78,7 @@ export function locationChoices(
       ? "installed"
       : detectedDirectories.has(shim.dir)
         ? "detected"
-        : shim.dir === DEFAULT_SHIM_DIR
+        : shim === fallbackRow
           ? "generic agent skills"
           : "not detected",
   }));
