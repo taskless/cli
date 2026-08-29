@@ -70,7 +70,11 @@ without building the repository yourself.
 
 **A nightly is also how you use this CLI from another repository.** To exercise
 unreleased behavior somewhere other than this checkout, merge it to `main` and
-install the nightly that follows.
+install the nightly that follows. No build target emits an artifact runnable
+outside this checkout: `pnpm build:self` bakes in a repo-root-relative path and
+only works from here. That is deliberate, and it is the reason a nightly is the
+answer rather than a workaround. Unmerged work is exercised in this repository
+or not at all.
 
 ```bash
 npx @taskless/cli-nightly@latest --version

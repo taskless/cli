@@ -1,10 +1,11 @@
 /**
  * The published CLI invocation baked into skill, command, and recipe source.
- * Build targets other than prod rewrite it: to a local path so a locally built
- * CLI can be dogfooded in this repo (`build:self`) or validated from another
- * repo (`build:dev`), and to `npx @taskless/cli-nightly@<version>` for a
- * nightly, whose shipped instructions must name the package the reader actually
- * installed rather than the released one. See `scripts/build-target.ts`,
+ * Build targets other than prod rewrite it: to a repo-root-relative path so a
+ * locally built CLI can be dogfooded in this repo (`build:self`), and to
+ * `npx @taskless/cli-nightly@<version>` for a nightly, whose shipped
+ * instructions must name the package the reader actually installed rather than
+ * the released one. There is no target that emits a path usable from outside
+ * this checkout; a nightly covers that. See `scripts/build-target.ts`,
  * `vite.config.ts`, and the root `package.json` scripts.
  */
 export const PROD_INVOCATION = "npx @taskless/cli";
@@ -13,7 +14,7 @@ export const PROD_INVOCATION = "npx @taskless/cli";
  * Whether this build's invocation is the released one.
  *
  * `false` means the build knows exactly what it is — a `nightly` pinned to its
- * published version, or a `dev`/`self` path — and its instructions must say so
+ * published version, or a `self` path — and its instructions must say so
  * rather than naming `@taskless/cli`. `true` means the build is the released
  * package and has no idea how it was launched, which is a different situation
  * from knowing it was launched as `npx @taskless/cli`.

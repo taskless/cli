@@ -2,7 +2,7 @@
   "$schema": "https://turbo.build/schema.json",
   "tasks": {
     "build": {
-      "outputs": ["dist/**", "dist-dev/**", "dist-self/**"],
+      "outputs": ["dist/**", "dist-self/**"],
       "env": ["TASKLESS_BUILD_TARGET"]
     },
     "test": {

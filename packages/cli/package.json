@@ -9,7 +9,6 @@
   },
   "scripts": {
     "build": "vite build && tsc -p tsconfig.prompts.json",
-    "build:dev": "TASKLESS_BUILD_TARGET=dev vite build",
     "build:nightly": "TASKLESS_BUILD_TARGET=nightly vite build && tsc -p tsconfig.prompts.json",
     "build:self": "TASKLESS_BUILD_TARGET=self vite build",
     "generate:api": "openapi-typescript https://app.taskless.io/cli/api/__schema -o src/generated/api.d.ts",

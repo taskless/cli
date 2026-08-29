@@ -7,5 +7,5 @@
     "noImplicitReturns": true,
     "noUncheckedIndexedAccess": true
   },
-  "exclude": ["node_modules", "dist", "dist-dev", "dist-self", "packages"]
+  "exclude": ["node_modules", "dist", "dist-self", "packages"]
 }

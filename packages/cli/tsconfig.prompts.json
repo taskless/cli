@@ -17,11 +17,11 @@
 //
 // `declarationDir` is `dist` rather than following `TASKLESS_BUILD_TARGET` the
 // way `vite.config.ts`'s `resolveOutDir()` does, because the `./prompts` export
-// resolves to `./dist/prompts.js` unconditionally. The `dev` and `self` targets
-// exist to run the CLI binary from a local path, and nothing resolves a prompts
-// entry out of `dist-dev`/`dist-self`. Wiring this step into those builds means
-// overriding `--declarationDir` to match, or the declarations land beside the
-// wrong JavaScript.
+// resolves to `./dist/prompts.js` unconditionally. The `self` target exists to
+// run the CLI binary from a local path, and nothing resolves a prompts entry out
+// of `dist-self`. Wiring this step into that build means overriding
+// `--declarationDir` to match, or the declarations land beside the wrong
+// JavaScript.
 {
   "extends": "./tsconfig.json",
   "compilerOptions": {

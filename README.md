@@ -41,18 +41,16 @@ npx @taskless/cli@latest info
 ## Local development
 
 The CLI bakes its own invocation string into the skill, command, and recipe
-content it installs. Three build targets pick that string, all driven by the
+content it installs. Build targets pick that string, all driven by the
 `TASKLESS_BUILD_TARGET` env var via Vite `define` (same source files, no edits):
 
-Each target also emits to its own directory so the three never overwrite one
-another. Prod → `dist/`, dev → `dist-dev/`, self → `dist-self/` (all
-gitignored):
+Each target also emits to its own directory so they never overwrite one another.
+Prod → `dist/`, self → `dist-self/` (both gitignored):
 
-| Command           | Output dir   | Baked invocation                            | Use for                                                                              |
-| ----------------- | ------------ | ------------------------------------------- | ------------------------------------------------------------------------------------ |
-| `pnpm build`      | `dist/`      | `npx @taskless/cli`                         | Production / published builds (default).                                             |
-| `pnpm build:dev`  | `dist-dev/`  | `node <abs>/packages/cli/dist-dev/index.js` | Validating this build from **another** repo (absolute path resolves anywhere).       |
-| `pnpm build:self` | `dist-self/` | `node packages/cli/dist-self/index.js`      | Dogfooding **in this repo** (path is repo-root-relative; run the CLI from the root). |
+| Command           | Output dir   | Baked invocation                       | Use for                                                                              |
+| ----------------- | ------------ | -------------------------------------- | ------------------------------------------------------------------------------------ |
+| `pnpm build`      | `dist/`      | `npx @taskless/cli`                    | Production / published builds (default).                                             |
+| `pnpm build:self` | `dist-self/` | `node packages/cli/dist-self/index.js` | Dogfooding **in this repo** (path is repo-root-relative; run the CLI from the root). |
 
 `pnpm build:self` builds the CLI with the relative invocation and then runs
 `taskless init --no-interactive` to install into this repo, so `.claude` gets
@@ -60,8 +58,10 @@ real reference stubs that delegate to the canonical `.taskless/` content, exactl
 like any other install. (This replaces the former raw-symlink `link-skills`
 step, so local dogfooding always matches a true install.)
 
-> The `dev`/`self` invocations are local paths and must never be published:
-> only `pnpm build` (or `pnpm package`) produces a release artifact.
+> The `self` invocation is a local path and must never be published: only
+> `pnpm build` (or `pnpm package`) produces a release artifact. It is also
+> relative to this repo root, so no build target here yields a CLI you can run
+> from another repository. That case is served by a published nightly.
 
 ### Running the local build
 
