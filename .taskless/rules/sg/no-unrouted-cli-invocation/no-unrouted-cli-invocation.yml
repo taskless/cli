@@ -24,6 +24,23 @@ note: |
   Recipes in `src/agent/*.txt` are out of reach here by being .txt, which is
   correct: they carry a `<taskless-cli>` marker the reading agent fills in (see
   `src/prompts/recipes.ts`) and name no package at all.
+
+  TWO KNOWN LIMITATIONS, since this rule is the only enforcement for some of
+  the sites it covers. Both are syntactic, and neither is reachable by
+  anything in the tree today.
+
+  A SPLIT LITERAL puts the package name in its own fragment: `"npx " +
+  "@taskless/cli"`. That is why the regex below matches the package name
+  alone rather than requiring a launcher in front of it, which costs nothing
+  because every string in `packages/cli/src/` naming the package is an
+  invocation. A split placed mid-name (`"@taskless/" + "cli"`) still evades
+  it, and no single-fragment rule can see that.
+
+  An ALIASED IMPORT (`import { applyCliInvocation as apply }`) is not
+  recognised as routed, because the exemption matches the callee text. That
+  direction is a FALSE POSITIVE: it reports a call that is already safe. Left
+  as-is deliberately, since the failure is loud and the alternative would
+  have the rule resolve imports.
 files:
   - "packages/cli/src/**"
 ignores:
@@ -31,7 +48,7 @@ ignores:
   - "packages/cli/src/util/package-manager.ts"
 rule:
   kind: string_fragment
-  regex: "(npx|pnpm dlx|yarn dlx|bunx) @taskless/cli"
+  regex: "@taskless/cli"
   not:
     inside:
       stopBy: end

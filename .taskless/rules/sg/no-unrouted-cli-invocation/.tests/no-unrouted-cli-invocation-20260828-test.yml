@@ -16,6 +16,8 @@ invalid:
       "For humans: run `npx @taskless/cli` (no args) to install or update Taskless,"
     );
   - |
+    const hint = "npx " + "@taskless/cli" + " init";
+  - |
     const README_CONTENT = `## Usage
 
     pnpm dlx @taskless/cli@latest check
