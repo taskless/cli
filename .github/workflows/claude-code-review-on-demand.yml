@@ -431,9 +431,21 @@ jobs:
           # but the entire job of this check is to identify THIS run's comment
           # rather than an older review's, and "exact except for numeric-prefix
           # collisions" is not that.
+          # Only BOT comments count. Without the filter, any comment on the
+          # PR carrying both substrings satisfies the guard — a quote of the
+          # job URL, a paste of this workflow file, an acknowledgement that
+          # cites the review it is answering. That is the precise case this
+          # step exists to catch (the action posted nothing) being masked by
+          # someone talking about it, so the check has to be scoped to who
+          # wrote the comment and not only to what it says.
+          #
+          # Filtering on `.user.type` rather than on a login: an app rename
+          # would otherwise fail every review closed, and the threat here is a
+          # human comment, which this excludes. A DIFFERENT bot would still
+          # need to reproduce this run's id and the marker to matter.
           posted=false
           if gh api "repos/${GITHUB_REPOSITORY}/issues/${PR}/comments" \
-               --paginate --jq '.[].body | @json' 2>/dev/null \
+               --paginate --jq '.[] | select(.user.type == "Bot") | .body | @json' 2>/dev/null \
              | grep -E "runs/${GITHUB_RUN_ID}([^0-9]|$)" \
              | grep -qF "Review mode:"; then
             posted=true
@@ -476,6 +488,21 @@ jobs:
           for message in messages:
               if isinstance(message, dict) and message.get("type") == "result":
                   result = message
+
+          # A file that exists but yields no result record is a DIFFERENT
+          # failure from one that was never written, and it used to be a hard
+          # error. Since `posted` became the verdict, an unparseable file would
+          # otherwise pass through as `turns=None is_error=None cost=None` with
+          # nothing pointing at the corruption, so a metrics-pipeline
+          # regression (a partial write, an action version skew) would vanish
+          # rather than being noticed. Not a failure, because it says nothing
+          # about whether a review was posted.
+          if path and os.path.exists(path) and result is None:
+              print(
+                  "::warning::The execution file exists but holds no result"
+                  " record, so run metrics are unavailable. This does not"
+                  " affect whether a review was posted; see review_posted."
+              )
 
           turns = result.get("num_turns") if result else None
           is_error = result.get("is_error") if result else None
