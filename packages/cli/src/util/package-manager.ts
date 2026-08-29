@@ -143,14 +143,14 @@ const NPX_PREFIX = "npx ";
  * The package specifier this build should be reached by, pinned to a version,
  * or `undefined` when the build's invocation is a filesystem path.
  *
- * A `dev`/`self` build names `node <path>`; no launcher applies to it and
- * there is nothing to pin. A nightly's specifier already carries its exact
+ * A `self` build names `node <path>`; no launcher applies to it and there is
+ * nothing to pin. A nightly's specifier already carries its exact
  * version — deliberately, since a floating `@taskless/cli-nightly` resolves to
  * whatever nightly is newest rather than the one whose instructions are being
  * read. Only the released `@taskless/cli` needs `@latest` appended, because
  * `npx` and `pnpm dlx` otherwise prefer whatever is already in the cache.
  */
-function pinnedSpecifier(): string | undefined {
+export function pinnedSpecifier(): string | undefined {
   const invocation = buildInvocation();
   if (!invocation.startsWith(NPX_PREFIX)) return undefined;
   const specifier = invocation.slice(NPX_PREFIX.length);

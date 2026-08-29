@@ -1,0 +1,22 @@
+id: no-unrouted-cli-invocation
+valid:
+  - |
+    export function recoveryHint(): string {
+      return applyCliInvocation("npx @taskless/cli init");
+    }
+  - |
+    function usageBlock(specifier: string): string {
+      return `# npm / pnpm\npnpm dlx ${specifier} check`;
+    }
+  - |
+    const TASKLESS_CLI_MARKER = "<taskless-cli>";
+invalid:
+  - |
+    console.log(
+      "For humans: run `npx @taskless/cli` (no args) to install or update Taskless,"
+    );
+  - |
+    const README_CONTENT = `## Usage
+
+    pnpm dlx @taskless/cli@latest check
+    `;

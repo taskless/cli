@@ -1,0 +1,38 @@
+id: no-unrouted-cli-invocation
+language: TypeScript
+severity: warning
+message: Route this CLI invocation through applyCliInvocation().
+note: |
+  A string literal under `packages/cli/src/` that names the released package is
+  content this CLI emits: a generated README, a skill stub, a printed hint.
+  Every build target other than prod knows it is not the released package, so
+  emitting `@taskless/cli` unrewritten sends a nightly's reader off to install
+  the release over the nightly they are running.
+
+  `applyCliInvocation()` is the rewrite. It understands the `npx @taskless/cli`
+  and `npx @taskless/cli@latest` spellings and nothing else, so a `pnpm dlx` or
+  `yarn dlx` spelling cannot be routed at all. Build the launcher around
+  `pinnedSpecifier()` instead, which is the build-time half of the answer. That
+  is taskless/cli#203: `.taskless/README.md` listed two launchers, and routing
+  it would only ever have corrected one of them.
+
+  This lives on source rather than on the built bundle because no property of
+  the artifact distinguishes routed content from unrouted content. A prod build
+  legitimately contains every one of these strings, and the rewrite runs at
+  runtime. Authorship is the only moment the distinction is visible.
+
+  Recipes in `src/agent/*.txt` are out of reach here by being .txt, which is
+  correct: they carry a `<taskless-cli>` marker the reading agent fills in (see
+  `src/prompts/recipes.ts`) and name no package at all.
+files:
+  - "packages/cli/src/**"
+ignores:
+  - "packages/cli/src/util/invocation.ts"
+  - "packages/cli/src/util/package-manager.ts"
+rule:
+  kind: string_fragment
+  regex: "(npx|pnpm dlx|yarn dlx|bunx) @taskless/cli"
+  not:
+    inside:
+      stopBy: end
+      pattern: applyCliInvocation($$$ARGS)
