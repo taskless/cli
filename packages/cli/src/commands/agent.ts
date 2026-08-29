@@ -9,6 +9,7 @@ import {
 
 import { getTelemetry } from "../telemetry";
 import { getRecipe } from "../prompts/recipes";
+import { applyCliInvocation } from "../util/invocation";
 import {
   detectCliInvocation,
   processLauncherContext,
@@ -89,8 +90,13 @@ export function createAgentCommand(subCommands: SubCommandsDef) {
         console.log(
           "For agents: this command returns recipes for an AI coding agent to follow."
         );
+        // Routed through the build-target rewrite like every other emitted
+        // invocation: a nightly telling a human to run `npx @taskless/cli`
+        // sends them to install the release over the nightly they are running.
         console.log(
-          "For humans: run `npx @taskless/cli` (no args) to install or update Taskless,"
+          applyCliInvocation(
+            "For humans: run `npx @taskless/cli` (no args) to install or update Taskless,"
+          )
         );
         console.log("then ask your coding agent to do the work.\n");
         console.log("Topics:");

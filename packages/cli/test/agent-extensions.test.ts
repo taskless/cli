@@ -5,6 +5,8 @@ import { join, resolve } from "node:path";
 import { promisify } from "node:util";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
+import { buildInvocation } from "../src/util/invocation";
+
 const execFileAsync = promisify(execFile);
 const binPath = resolve(import.meta.dirname, "../dist/index.js");
 
@@ -44,6 +46,15 @@ describe("taskless agent (no args)", () => {
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toContain("For agents:");
     expect(result.stdout).toContain("For humans:");
+  });
+
+  it("points humans at this build's own invocation", async () => {
+    // The hint goes through `applyCliInvocation`, so a nightly names itself
+    // rather than sending the reader to the released package. A prod build
+    // rewrites to the same string, which is why the sibling ast-grep rule
+    // `no-unrouted-cli-invocation` is what actually guards the routing.
+    const result = await runCli(["agent", "-d", cwd]);
+    expect(result.stdout).toContain(`\`${buildInvocation()}\` (no args)`);
   });
 
   it("prints the topic table including all expected topics", async () => {
