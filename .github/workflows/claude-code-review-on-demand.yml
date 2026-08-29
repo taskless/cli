@@ -226,6 +226,18 @@ jobs:
 
             ${{ steps.prep.outputs.focus }}
 
+            Read the diff with `gh pr diff`. `git` IS NOT AVAILABLE and never
+            will be: it is not on the allowlist, it cannot be safely scoped
+            (`-c diff.external=`, `-c core.pager=` and `--exec-path` all reach
+            arbitrary execution from a read-only-looking subcommand), and every
+            `git` call you make is refused and wasted. Do not report the absence
+            of `git` as a limitation, and do not describe a `git diff` you did
+            not run: two reviews have listed `git diff origin/main...HEAD` in
+            their own checklists while the call was in fact denied. Use
+            `gh pr diff` for the diff, `gh pr view` for metadata, and `Read` for
+            whole files, which you should open freely — findings worth having
+            come from context a diff hunk does not show.
+
             Review the diff for correctness, security, performance, test
             adequacy, and clarity. Do NOT run the project's build/lint/test
             locally, and do not fetch or report CI check status — CI runs those
@@ -276,51 +288,106 @@ jobs:
       #
       # `if: always()` so this still runs when the action itself fails, and the
       # summary records what happened either way.
+      # A review that posts NOTHING must not report success.
+      #
+      # THE SIGNAL IS THE POSTED REVIEW, NOT A METRIC. An earlier version of
+      # this step failed the run when `num_turns` was 0, because the two dead
+      # reviews then on record (#182 at $1.08, #196 at $2.20) both reported it.
+      # That correlation has since broken in the direction that matters: on
+      # #208 and #209 the SDK reported `num_turns: 0` alongside
+      # `subtype: "success"`, ~2 minutes of wall clock and >$2 of billed
+      # inference, having posted full reviews whose findings were real and were
+      # acted on. Both runs went red anyway, which is the failure mode this
+      # step exists to prevent, pointed the wrong way: a check that is red when
+      # everything worked teaches people to ignore it, exactly as a check that
+      # is green when nothing happened does.
+      #
+      # `num_turns` is simply not a liveness signal for the review PLUGIN, and
+      # the execution file is documented as unreliable upstream
+      # (anthropics/claude-code-action#1226: it is not written at all when the
+      # SDK throws). So metrics are now DIAGNOSTIC ONLY, and the pass/fail
+      # question is asked of the outcome: did this run leave a completed review
+      # on the pull request?
+      #
+      # Two things make that answerable precisely. Every comment the action
+      # posts embeds its own job URL, so `runs/<run id>` identifies THIS run's
+      # comment rather than any earlier review. And the prompt REQUIRES the
+      # top-level comment to state the review mode, so `Review mode:` marks a
+      # review that reached its own instructions rather than one that stopped
+      # early. Measured against the record: #182, the dead review, posted 167
+      # characters reading "I'll analyze this and get back to you." and carries
+      # no such marker; #196, #208 and #209 all carry it.
+      #
+      # THAT MARKER IS A CONTRACT WITH THE PROMPT. If the review-mode
+      # instruction is ever reworded or dropped, change it here in the same
+      # commit, or this step starts failing every run.
       - name: Verify the review actually ran
         if: always()
         env:
           EXECUTION_FILE: ${{ steps.review.outputs.execution_file }}
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ steps.prep.outputs.pr }}
         run: |
-          if [ -z "$EXECUTION_FILE" ] || [ ! -f "$EXECUTION_FILE" ]; then
-            echo "::error::No execution file from the review action; cannot confirm a review ran."
-            exit 1
+          set -uo pipefail
+
+          # Did THIS run leave a completed review? Read-only, and done in a
+          # workflow step rather than by the model, like every other privileged
+          # call here.
+          # `@json` is load-bearing: it emits each comment body as ONE line
+          # with newlines escaped. Piping raw bodies instead splits them across
+          # lines, so `runs/<id>` and `Review mode:` land on different lines and
+          # the second grep never matches — measured against PR #208, where the
+          # raw form finds 0 and this form finds 1. That version of this check
+          # would have failed every review, including the good ones.
+          posted=false
+          if gh api "repos/${GITHUB_REPOSITORY}/issues/${PR}/comments" \
+               --paginate --jq '.[].body | @json' 2>/dev/null \
+             | grep -F "runs/${GITHUB_RUN_ID}" \
+             | grep -qF "Review mode:"; then
+            posted=true
+          fi
+          export REVIEW_POSTED="$posted"
+
+          if [ ! -f "${EXECUTION_FILE:-}" ]; then
+            # Downgraded from a hard failure: upstream does not always write
+            # this file, and its absence says nothing about whether a review
+            # was posted, which is now asked directly above.
+            echo "::warning::No execution file from the review action; run metrics are unavailable."
           fi
 
-          python3 - "$EXECUTION_FILE" <<'PYEOF'
+          python3 - "${EXECUTION_FILE:-}" <<'PYEOF'
           import json, os, sys
 
-          path = sys.argv[1]
-          with open(path) as fh:
-              text = fh.read()
+          posted = os.environ.get("REVIEW_POSTED") == "true"
+          path = sys.argv[1] if len(sys.argv) > 1 else ""
 
-          # The action has written both a JSON array of messages and JSONL,
-          # depending on version. Accept either rather than pinning a shape.
+          messages = []
+          if path and os.path.exists(path):
+              with open(path) as fh:
+                  text = fh.read()
+              # The action has written both a JSON array of messages and JSONL,
+              # depending on version. Accept either rather than pinning a shape.
+              try:
+                  parsed = json.loads(text)
+                  messages = parsed if isinstance(parsed, list) else [parsed]
+              except json.JSONDecodeError:
+                  for line in text.splitlines():
+                      line = line.strip()
+                      if not line:
+                          continue
+                      try:
+                          messages.append(json.loads(line))
+                      except json.JSONDecodeError:
+                          continue
+
           result = None
-          try:
-              parsed = json.loads(text)
-              messages = parsed if isinstance(parsed, list) else [parsed]
-          except json.JSONDecodeError:
-              messages = []
-              for line in text.splitlines():
-                  line = line.strip()
-                  if not line:
-                      continue
-                  try:
-                      messages.append(json.loads(line))
-                  except json.JSONDecodeError:
-                      continue
-
           for message in messages:
               if isinstance(message, dict) and message.get("type") == "result":
                   result = message
 
-          if result is None:
-              print("::error::Execution file holds no result record; cannot confirm a review ran.")
-              sys.exit(1)
-
-          turns = result.get("num_turns")
-          is_error = result.get("is_error")
-          cost = result.get("total_cost_usd")
+          turns = result.get("num_turns") if result else None
+          is_error = result.get("is_error") if result else None
+          cost = result.get("total_cost_usd") if result else None
 
           # Denials are counted from EVERY source, not from one field.
           #
@@ -338,26 +405,24 @@ jobs:
               if isinstance(message, dict)
               and "denial" in str(message.get("type", "")).lower()
           ]
-          if isinstance(result.get("permission_denials"), list):
+          if result and isinstance(result.get("permission_denials"), list):
               denial_records = result["permission_denials"] + denial_records
           denials = max(
-              int(result.get("permission_denials_count") or 0),
+              int((result or {}).get("permission_denials_count") or 0),
               len(denial_records),
           )
 
           summary = (
-              f"num_turns={turns} permission_denials={denials} "
-              f"is_error={is_error} cost_usd={cost}"
+              f"review_posted={posted} num_turns={turns} "
+              f"permission_denials={denials} is_error={is_error} "
+              f"cost_usd={cost}"
           )
           print(summary)
 
-          # A structural census of the execution file, so a zero-turn run says
-          # something about ITSELF rather than only that it failed. Types and
-          # counts only: no message content, no tool inputs, nothing the model
-          # produced while reading an untrusted diff. Two zero-turn runs have
-          # now billed real inference (#182 at $1.08, #196 at $2.20) with no
-          # explanation available afterwards, and the log is the only place to
-          # put one.
+          # A structural census of the execution file, so a run says something
+          # about ITSELF rather than only whether it passed. Types and counts
+          # only: no message content, no tool inputs, nothing the model
+          # produced while reading an untrusted diff.
           census = {}
           for message in messages:
               if isinstance(message, dict):
@@ -376,18 +441,29 @@ jobs:
 
           failed = False
 
+          # THE guard. Everything below this is diagnostic.
+          if not posted:
+              print(
+                  "::error::No completed review from this run is on the pull"
+                  " request. Expected a comment citing this run and stating the"
+                  " review mode. Treating this as a failure so it is not"
+                  " mistaken for a clean pass."
+              )
+              failed = True
+
           if is_error:
               print("::error::The review action reported an error.")
               failed = True
 
-          # The core guard. A review that took no turns posted nothing.
+          # Diagnostic, not a verdict: measured at 0 on runs that posted full
+          # reviews (#208, #209). Kept in the log because a zero-turn run that
+          # ALSO posted nothing is worth seeing together.
           if not turns:
               print(
-                  "::error::The review took 0 turns and therefore posted no "
-                  "review. Treating this as a failure so it is not mistaken "
-                  "for a clean pass."
+                  "::warning::The review reported 0 turns. That is normal for"
+                  " this plugin and is not on its own evidence of a dead run;"
+                  " see review_posted above for the real answer."
               )
-              failed = True
 
           if denials:
               # Name the denied TOOLS when anything in the file carries them.
@@ -413,20 +489,26 @@ jobs:
               detail = (
                   f" Denied tool(s): {', '.join(denied_tools)}."
                   if denied_tools
-                  else " The record does not name them; add the tool to"
-                       " --allowedTools once identified."
+                  else " The record does not name them."
               )
-              # Loud even when the review otherwise succeeded: a partial review
-              # missing a tool is still a review that could not see everything.
+              # A WARNING rather than a failure, because a denial on a review
+              # that posted is a completeness caveat, not a non-event, and the
+              # run that posts nothing already fails above. Measured: #208 hit
+              # 19 denials and #209 hit 3, all of them the model reaching for
+              # `git`, which is not on the allowlist and never will be (it
+              # cannot be safely scoped: `-c diff.external=`, `-c core.pager=`
+              # and `--exec-path` all reach arbitrary execution). The prompt now
+              # tells the reviewer to use `gh pr diff` and that `git` is
+              # unavailable, so a NON-ZERO count here should now be rare enough
+              # to be worth reading. If it becomes routine again, fix the prompt
+              # rather than widening --allowedTools.
               print(
-                  f"::error::The review hit {denials} permission denial(s)."
-                  f"{detail} A tool it needed is not on the allowlist, so its"
-                  " findings may be incomplete."
+                  f"::warning::The review hit {denials} permission denial(s)."
+                  f"{detail} Its findings may be incomplete."
               )
               if denied_tools and summary_path:
                   with open(summary_path, "a") as fh:
                       fh.write(f"\nDenied tools: `{', '.join(denied_tools)}`\n")
-              failed = True
 
           sys.exit(1 if failed else 0)
           PYEOF

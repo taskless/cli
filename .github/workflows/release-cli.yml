@@ -71,6 +71,7 @@ jobs:
       contents: read # checkout + read package.json
     outputs:
       publish: ${{ steps.check.outputs.publish }}
+      version: ${{ steps.check.outputs.version }}
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
@@ -82,6 +83,7 @@ jobs:
         run: |
           name=$(node -p "require('./packages/cli/package.json').name")
           version=$(node -p "require('./packages/cli/package.json').version")
+          echo "version=$version" >> "$GITHUB_OUTPUT"
           if npm view "$name@$version" version >/dev/null 2>&1; then
             echo "publish=false" >> "$GITHUB_OUTPUT"
             echo "$name@$version already published — nothing to do."
@@ -159,3 +161,61 @@ jobs:
           else
             npm publish --provenance --access public
           fi
+
+  # Tag the released commit, so a changelog can be read as a range
+  # (`v0.10.2...v0.11.0`) instead of by hunting for the version-bump commit.
+  #
+  # A SEPARATE JOB rather than a step in `publish`, and that separation is the
+  # point. `publish` holds `id-token: write` for OIDC trusted publishing, and
+  # pushing a ref needs `contents: write`; granting both to one job would mean
+  # the job that can publish to npm can also move refs in this repository.
+  # Nothing here needs the npm identity and nothing there needs to write refs,
+  # so they stay apart. This job takes no `id-token` at all.
+  #
+  # No checkout either: the ref is created through the API, so there is no
+  # working tree and no credential written into `.git/config`.
+  #
+  # NIGHTLIES ARE EXCLUDED STRUCTURALLY, not by a condition. They are published
+  # by `release-cli-nightly.yml`, a different workflow, so nothing here runs for
+  # one and no `if:` has to stay correct to keep it that way. A nightly is a
+  # prerelease of a version this workflow will tag when it actually releases.
+  tag:
+    name: Tag the release
+    needs: [check, publish]
+    if: needs.check.outputs.publish == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # create the tag ref, nothing else
+    steps:
+      # Lightweight, and therefore unsigned: a tag created through the API
+      # points at a commit and carries no signature. That is accepted here —
+      # these are pointers, and `main`'s own commits are already rewritten and
+      # unsigned by rebase-and-merge (see CLAUDE.md), so a signed tag over them
+      # would attest to nothing the commit does not already say.
+      #
+      # Idempotent for the same reason the publish step re-checks npm: a re-run
+      # of this workflow on an already-tagged release is a duplicate to absorb,
+      # not a failure. `git/refs` returns 422 when the ref exists, so the
+      # existence check comes first and the create is only attempted when it is
+      # genuinely absent.
+      - name: Create the release tag (skipping one that already exists)
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.check.outputs.version }}
+          SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          if [ -z "${VERSION:-}" ]; then
+            echo "::error::No version from the check job; refusing to tag."
+            exit 1
+          fi
+          tag="v${VERSION}"
+          if gh api "repos/${GITHUB_REPOSITORY}/git/ref/tags/${tag}" >/dev/null 2>&1; then
+            echo "${tag} already exists — nothing to do."
+            exit 0
+          fi
+          gh api --method POST "repos/${GITHUB_REPOSITORY}/git/refs" \
+            -f "ref=refs/tags/${tag}" \
+            -f "sha=${SHA}" >/dev/null
+          echo "Tagged ${tag} at ${SHA}."
+          echo "### Tagged \`${tag}\`" >> "$GITHUB_STEP_SUMMARY"
