@@ -68,9 +68,12 @@ export function locationChoices(
   // `.agents/` row is that a Codex user sees the word "Codex". Rows sharing a
   // directory share a value, so ticking either one selects that directory
   // once, and the picker renders both as checked.
-  const fallbackRow = uniqueShimTargets().find(
-    (shim) => shim.dir === DEFAULT_SHIM_DIR
-  );
+  //
+  // The catch-all row is identified by its own `generic` flag rather than by
+  // object identity against the deduped catalog. That comparison was correct
+  // only while `uniqueShimTargets()` returned the original references AND the
+  // catalog happened to declare "Agent Skills" after "Codex"; either changing
+  // would have moved the hint onto a named harness with nothing to catch it.
   const options = SHIM_TARGETS.map((shim) => ({
     value: shim.dir,
     label: `${shim.label} (${shim.dir}/)`,
@@ -78,7 +81,7 @@ export function locationChoices(
       ? "installed"
       : detectedDirectories.has(shim.dir)
         ? "detected"
-        : shim === fallbackRow
+        : shim.generic === true
           ? "generic agent skills"
           : "not detected",
   }));
