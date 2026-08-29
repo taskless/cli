@@ -111,23 +111,16 @@ Work that has merged to `main` but is not yet released is published as
 exercised without waiting for a release:
 
 ```bash
-npx @taskless/cli-nightly@latest --version   # or: npm i -g @taskless/cli-nightly
+npx @taskless/cli-nightly@latest --version
 ```
 
-- **The executable is `taskless`**, the same as the release. Every documented
-  invocation, skill, and recipe works unchanged against a nightly.
-- **Because the binary name is the same, a nightly and `@taskless/cli` collide
-  when both are installed globally.** That is not a supported configuration: a
-  nightly is a drop-in for the release it anticipates, not a companion to it.
-  Use one or the other globally, or install the nightly into a project.
-- Versions look like `0.11.0-20260818123456x05b3c88`. The release the nightly
-  anticipates, the UTC build time, and the commit it was built from. Every one
-  of them is a prerelease, and the newest always carries the `latest` tag, so
-  installing with no version gives you the most recent nightly.
-- A nightly is published on each push to `main` that has changesets pending, and
-  is the same build as the release it anticipates, differing only in package
-  name and version. When the Version Packages PR merges, the changesets are
-  consumed and the real `@taskless/cli` release publishes instead.
+The executable is `taskless`, the same as the release, so a nightly is a drop-in
+for the release it anticipates rather than a companion to it. Installing both
+globally collides on that binary and is not supported.
+
+See [CONTRIBUTING.md](./CONTRIBUTING.md) for how nightlies are versioned and
+published, and for how to test against one without disturbing a release you
+already have installed.
 
 ### Adding a new topic recipe
 
