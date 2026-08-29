@@ -36,8 +36,23 @@ describe("locationChoices", () => {
   it("offers every shim target and never the canonical .taskless store", async () => {
     const { locationChoices } = await import("../src/wizard/steps/locations");
     const values = locationChoices([]).options.map((o) => o.value);
-    expect(values).toEqual([".claude", ".cursor", ".opencode", ".agents"]);
+    expect(values).toEqual([
+      ".claude",
+      ".agents",
+      ".cursor",
+      ".opencode",
+      ".agents",
+    ]);
     expect(values).not.toContain(".taskless");
+  });
+
+  it("names Codex in the picker, alongside the generic .agents/ entry", async () => {
+    const { locationChoices } = await import("../src/wizard/steps/locations");
+    const labels = locationChoices([]).options.map((o) => o.label);
+    // Both rows are offered on purpose: a Codex user scans for "Codex", and
+    // "Agent Skills" still serves harnesses the catalog does not enumerate.
+    expect(labels).toContain("Codex (.agents/)");
+    expect(labels).toContain("Agent Skills (.agents/)");
   });
 
   it("pre-checks .agents/ when no tools are detected", async () => {
@@ -103,9 +118,25 @@ describe("locationChoices", () => {
     // and the first-run .agents/ default applies.
     expect(initialValues).toEqual([".agents"]);
     expect(options.map((o) => o.value)).not.toContain(".taskless");
-    expect(options.find((o) => o.value === ".agents")?.hint).toBe(
+    // Two rows share `.agents/`, so the hint is looked up by label: the
+    // generic hint belongs to the generic row, not to the Codex one.
+    expect(options.find((o) => o.label.startsWith("Agent Skills"))?.hint).toBe(
       "generic agent skills"
     );
+    expect(options.find((o) => o.label.startsWith("Codex"))?.hint).toBe(
+      "not detected"
+    );
+  });
+
+  it("pre-checks .agents/ exactly once when Codex is detected", async () => {
+    const { locationChoices } = await import("../src/wizard/steps/locations");
+    const { TOOLS } = await import("../src/install/install");
+    const codex = TOOLS.find((t) => t.name === "Codex")!;
+
+    // Codex and Agent Skills both offer `.agents/`; the pre-checked set is
+    // directories, so it must name that directory once.
+    const { initialValues } = locationChoices([codex]);
+    expect(initialValues).toEqual([".agents"]);
   });
 
   it("falls back to .agents/ when neither manifest nor detection has entries", async () => {
