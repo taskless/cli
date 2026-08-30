@@ -23,5 +23,12 @@
     },
     "cliVersion": "0.11.0-self",
     "onboarded": true
+  },
+  "rules": {
+    "reconciledTo": "0.11.0-self",
+    "engines": {
+      "sg": "0.45.2",
+      "vale": "3.18.0"
+    }
   }
 }
