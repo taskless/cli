@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { cp, mkdtemp, readFile, rm } from "node:fs/promises";
+import { cp, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { promisify } from "node:util";
@@ -44,6 +44,23 @@ describe("recording a rules reconciliation", () => {
       join(cwd, ".taskless"),
       { recursive: true }
     );
+    // The fixture is a COPY OF THIS REPOSITORY'S OWN SCAFFOLD, which is what
+    // makes it realistic and also what makes it leak: whatever `rules` block
+    // this repo happens to carry arrives in the fixture, and `rules` is the
+    // exact thing these tests assert about. They therefore silently depended
+    // on this repository never having reconciled its own rules — which stopped
+    // being true the moment it did, turning a legitimate `update --rules` into
+    // five failures that named the repo's marker as the received value.
+    //
+    // Strip it, so the starting state is decided here rather than inherited.
+    // Every test below sets up whatever marker it needs.
+    const manifestPath = join(cwd, ".taskless", "taskless.json");
+    const manifest = JSON.parse(await readFile(manifestPath, "utf8")) as Record<
+      string,
+      unknown
+    >;
+    delete manifest["rules"];
+    await writeFile(manifestPath, JSON.stringify(manifest, undefined, 2));
   });
 
   afterEach(async () => {
