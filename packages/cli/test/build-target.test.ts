@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   assertVersionConsistency,
   NIGHTLY_VERSION_ENV,
+  SELF_BASE_VERSION_ENV,
   OUT_DIRS,
   resolveBuildTarget,
   resolveCliInvocation,
@@ -66,17 +67,58 @@ describe("build target resolution", () => {
 describe("the version a build reports as its own", () => {
   // Only nightly diverges. self/prod both run from a checkout whose
   // package.json IS the version they are, so reading it is correct there.
-  it.each(["prod", "self"])(
-    "uses the committed package version for the %s target",
-    (target) => {
-      expect(
-        resolveCliVersion({ TASKLESS_BUILD_TARGET: target }, "0.10.2")
-      ).toBe("0.10.2");
-    }
-  );
+  it("uses the committed package version for the prod target", () => {
+    expect(resolveCliVersion({ TASKLESS_BUILD_TARGET: "prod" }, "0.10.2")).toBe(
+      "0.10.2"
+    );
+  });
 
   it("uses the committed package version when no target is set", () => {
     expect(resolveCliVersion({}, "0.10.2")).toBe("0.10.2");
+  });
+
+  it("stamps a self build with the release it anticipates, suffixed", () => {
+    // Not the committed version: a self build on a `main` carrying unreleased
+    // work writes `install.cliVersion` into the committed taskless.json, and
+    // naming the last release there is both wrong and indistinguishable from
+    // what a real install of that release would write.
+    expect(
+      resolveCliVersion(
+        { TASKLESS_BUILD_TARGET: "self", [SELF_BASE_VERSION_ENV]: "0.11.0" },
+        "0.10.2"
+      )
+    ).toBe("0.11.0-self");
+  });
+
+  it("falls back to the committed version for a self build with no base", () => {
+    // Deliberately unlike `nightly`, which throws. A self build is local, its
+    // invocation is a path rather than a package specifier, and the `-self`
+    // suffix carries the meaning either way, so an unset env degrades rather
+    // than blocking someone's local build.
+    expect(resolveCliVersion({ TASKLESS_BUILD_TARGET: "self" }, "0.10.2")).toBe(
+      "0.10.2-self"
+    );
+  });
+
+  it("ignores a malformed self base version rather than emitting it", () => {
+    for (const base of ["", "not-a-version", "0.11", "v0.11.0"]) {
+      expect(
+        resolveCliVersion(
+          { TASKLESS_BUILD_TARGET: "self", [SELF_BASE_VERSION_ENV]: base },
+          "0.10.2"
+        )
+      ).toBe("0.10.2-self");
+    }
+  });
+
+  it("keeps a self version equal to its release for the reconciliation walk", () => {
+    // `reconcile-marker` compares the numeric core, so the suffix must not
+    // make a self build look like a different version to a ledger walk.
+    const self = resolveCliVersion(
+      { TASKLESS_BUILD_TARGET: "self", [SELF_BASE_VERSION_ENV]: "0.11.0" },
+      "0.10.2"
+    );
+    expect(self.split("-")[0]).toBe("0.11.0");
   });
 });
 

@@ -24,6 +24,13 @@ const NIGHTLY_PACKAGE = "@taskless/cli-nightly";
 export const NIGHTLY_VERSION_ENV = "TASKLESS_NIGHTLY_VERSION";
 
 /**
+ * The release a `self` build anticipates, supplied by `scripts/next-version.ts`
+ * and suffixed `-self` for the version this build reports. See
+ * {@link resolveCliVersion}.
+ */
+export const SELF_BASE_VERSION_ENV = "TASKLESS_SELF_BASE_VERSION";
+
+/**
  * The build target this repository used to have, removed and not coming back.
  *
  * `dev` emitted an absolute path so a local build could be exercised from
@@ -143,9 +150,47 @@ export function resolveCliVersion(
   environment: BuildEnvironment,
   packageVersion: string
 ): string {
-  return resolveBuildTarget(environment) === "nightly"
-    ? resolveNightlyVersion(environment)
-    : packageVersion;
+  const target = resolveBuildTarget(environment);
+  if (target === "nightly") return resolveNightlyVersion(environment);
+  if (target === "self") return resolveSelfVersion(environment, packageVersion);
+  return packageVersion;
+}
+
+/**
+ * The version a `self` build reports: the release it anticipates, plus `-self`.
+ *
+ * A self build is dogfooded INSIDE this repository and writes
+ * `install.cliVersion` into the committed `.taskless/taskless.json`. Reporting
+ * the committed package version there is wrong twice over: on a `main` carrying
+ * unreleased work it names a release that predates the tree, and it is
+ * indistinguishable from the value a real install of that release would write,
+ * so the file silently loses whatever it held. That happened twice in one
+ * afternoon, each time noticed only because someone read the diff.
+ *
+ * `-self` fixes both. It names what the build anticipates rather than what it
+ * follows, and it is unmistakable in a diff. The ledger already tolerates it:
+ * `reconcile-marker` compares the numeric core, so `0.11.0-self` and `0.11.0`
+ * are the same version to a reconciliation walk, exactly as a nightly and its
+ * release are.
+ *
+ * UNLIKE {@link resolveNightlyVersion}, THIS FALLS BACK, and the asymmetry is
+ * deliberate. A nightly that guesses sends agents to the wrong published
+ * package, so a wrong string is worse than a failed build. A self build is
+ * local, its invocation is a path rather than a package specifier, and nothing
+ * it emits is fetched by anyone. The suffix is what carries the meaning; the
+ * base is a convenience, so an unset env degrades to the committed version
+ * rather than blocking a local build.
+ */
+export function resolveSelfVersion(
+  environment: BuildEnvironment,
+  packageVersion: string
+): string {
+  const base = environment[SELF_BASE_VERSION_ENV];
+  const resolved =
+    base !== undefined && base.length > 0 && SEMVER_PATTERN.test(base)
+      ? base
+      : packageVersion;
+  return `${resolved}-self`;
 }
 
 /**
