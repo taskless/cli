@@ -107,7 +107,7 @@ The proposal states which of these the change is, and why. Decide it while writi
 
 The deciding question between forward and down is only this: **can each unit reach production on its own without breaking anything?** If landing unit 1 alone would leave `check` broken, tests failing, or a migration half-applied, the answer is no and the stack merges down. Do not assume forward because it is tidier. Verify it, since "each unit is safe" is a claim about behavior, not intent.
 
-Note how this interacts with archiving: a change is archived exactly once, on whichever PR is the tip. No PR check asks about that. An unarchived change directory is the normal state of a pull request, so a PR-time gate can only guess at stack position, and it guessed wrong often enough to be ignored. The only check is on `main` (a step in `validate.yml`, push events only), which goes red while `main` carries an unarchived change directory. A stack that merges **down** keeps `main` clean throughout; a stack that merges **forward** leaves `main` red until its final slice archives the change. Nothing is blocked by that red (branch protection reads each PR's own `Validate`), but it is a standing reminder that the stack is unfinished.
+Note how this interacts with archiving: a change is archived exactly once, on whichever PR is the tip. **No check asks about that anywhere any more.** A PR-time gate could only guess at stack position, and guessed wrong often enough to be ignored; a `main`-only gate replaced it and turned `main` red for the entire time a forward-merging stack was draining, which is a red that means "work is in progress" rather than "something is wrong". A signal that is expected to be red is not a signal. Archiving is now a step you perform on the tip, and the thing worth detecting — work that stalled and was abandoned — is not what either gate measured.
 
 ### One changeset, at the bottom of the stack, grown as the stack grows
 
@@ -129,7 +129,7 @@ The placement rules are unchanged, because they are about review quality rather 
 Two rules follow, and they pull in opposite directions:
 
 - **A workflow that must run everywhere carries no `branches:` filter at all.** Lint, typecheck, and tests have no interest in where a PR eventually merges. `validate.yml`, `changeset.yml`, and `stack-breadcrumb.yml` all carry no filter, which is why they kept running on #103. If you add such a workflow, also name `ready_for_review` in `types:`. It is not in the default set (`opened`/`synchronize`/`reopened`), so without it a draft marked ready gets no fresh run until someone happens to push again.
-- **A workflow whose correctness depends on "is this the PR that merges to `main`" must determine that itself**, from the base ref or by resolving stack position, and cannot lean on the `on:` filter to scope it. Better still, ask a question that does not depend on stack position at all: `changeset.yml` diffs against `main` rather than against its base, and the archive check moved off pull requests entirely.
+- **A workflow whose correctness depends on "is this the PR that merges to `main`" must determine that itself**, from the base ref or by resolving stack position, and cannot lean on the `on:` filter to scope it. Better still, ask a question that does not depend on stack position at all: `changeset.yml` diffs against `main` rather than against its base. The archive check tried the other route — moving off pull requests onto `main` — and was removed instead, because on `main` it reported an in-flight stack as a fault.
 
 The shared point: the `on:` filter is not a reliable answer to "where does this PR land." Let the workflow run, and decide inside it.
 
@@ -238,7 +238,7 @@ This happens when the **parent** PR is merged with `--delete-branch`: deleting t
 
 - **Projects-classic deprecation** breaks some GraphQL-backed `gh` commands (e.g. `gh pr reopen`). Workaround: use the REST API for PR state changes (`gh api --method PATCH .../pulls/<n> -f state=open`).
 - **`gh pr update-branch` may not exist** in the installed `gh`; update locally (`git merge origin/main` on the up-to-date remote branch) and push.
-- **No PR-time OpenSpec archive check.** An unarchived change directory on a pull request is expected, not a failure. The only signal is `main`'s own `Validate` run, which goes red while `main` carries one.
+- **No OpenSpec archive check at all.** An unarchived change directory is expected on a pull request AND on `main` while a forward-merging stack drains. Neither is a failure, and nothing reports it. Archive the change on the tip slice; a replacement that measures abandoned work rather than in-progress work is a separate piece of design.
 - **Clean up local branches** once the stack lands: `git fetch --prune`, then delete the branches that merged (`git branch --merged main`).
 
 ## OpenSpec Apply
