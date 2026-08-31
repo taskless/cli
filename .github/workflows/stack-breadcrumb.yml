@@ -1,6 +1,9 @@
 # SPDX-License-Identifier: MIT
 # Adapted from the taskless/taskless stack-breadcrumb workflow and brought into
 # this repository under its MIT license, with permission.
+#
+# Authoritative here; taskless/taskless vendors this workflow and the module it
+# loads. Fixes are made in this repository and re-vendored from it.
 name: Stack Breadcrumb
 
 # Self-contained stacked-PR breadcrumb. All logic lives in a zero-dependency
