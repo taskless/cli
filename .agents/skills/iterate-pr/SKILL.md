@@ -241,17 +241,20 @@ Run `${CLAUDE_SKILL_ROOT}/scripts/fetch_pr_checks.py` to get structured failure 
 #### No PR check asks whether the OpenSpec change is archived
 
 A change is archived exactly once, at the END of the work, so an unarchived
-directory under `openspec/changes/` is the normal state of a pull request. There
-is no PR-time gate for it — the earlier one had to infer stack position to avoid
-firing on in-flight work, and a check that is expected-red on most of a stack
-teaches people to ignore red.
+directory under `openspec/changes/` is the normal state of a pull request.
+There is no gate for it, in either direction.
 
-The archive signal lives on `main` instead: a step in `validate.yml` runs on
-push events only and fails while `main` carries an unarchived change directory.
-If you see it red on `main`, the fix is to archive the change via the OpenSpec
-archive flow — which moves `openspec/changes/<name>/` to
-`openspec/changes/archive/YYYY-MM-DD-<name>/` — or to land the stack that is
-still holding it open.
+There were two, and both measured the wrong thing. A PR-time gate had to infer
+stack position to avoid firing on in-flight work, and a check that is
+expected-red on most of a stack teaches people to ignore red. Moving it to
+`main` fixed the false positives and introduced a worse problem: a
+forward-merging stack leaves its change directory on `main` until the final
+slice, so `main` ran red for the whole time the stack was draining. A signal
+that is expected to be red is not a signal.
+
+What is worth detecting is work that stalled and was abandoned. Neither gate
+measured that; both measured "work is in progress". A replacement is a separate
+piece of design.
 
 Practically, on a PR: archive when the PR is the last in the chain, and leave
 the change directory alone otherwise. Nothing will fail either way.
