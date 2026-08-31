@@ -3,6 +3,7 @@ import { join } from "node:path";
 
 import { parse } from "yaml";
 
+import { MATCH_MODES } from "../../types/runtime-rule";
 import type { CaptureRule, MatchMode } from "../../types/runtime-rule";
 import { RULES_DIRECTORY } from "../layout";
 
@@ -55,6 +56,26 @@ function asRuntimeCaptureRule(value: unknown): CaptureRule | null {
   return candidate as CaptureRule;
 }
 
+/**
+ * Narrow an unknown `match` value to a {@link MatchMode}. An absent value is
+ * `anchor`, the documented default; an unrecognized one is `undefined`, which
+ * the caller treats as a refusal.
+ *
+ * This deliberately does NOT fall back to `anchor`. The two modes scan
+ * different things — `anchor` is a syntactic narrow, `broad` a whole-language
+ * enumerator — so coercing an unimplemented third mode to `anchor` does not
+ * degrade the rule, it reinterprets it: the capture runs, matches a fraction
+ * of what it was written for, and the shortfall is reported as a clean pass.
+ * A mode this build cannot implement is not approximated by one it can.
+ */
+function asMatchMode(value: unknown): MatchMode | undefined {
+  if (value === undefined) return "anchor";
+  const modes: readonly string[] = MATCH_MODES;
+  return typeof value === "string" && modes.includes(value)
+    ? (value as MatchMode)
+    : undefined;
+}
+
 /** Load and parse the capture rules of a single runtime-rule directory. */
 async function loadCaptureRules(
   directory: string
@@ -79,13 +100,18 @@ async function loadCaptureRules(
     }
     const rule = asRuntimeCaptureRule(parsed);
     if (!rule || typeof rule.id !== "string") continue;
+    // Refused, not coerced. `verify` names the file and the offending value
+    // (see `inspect.ts`), so the capture disappearing from the run is
+    // explained rather than left to look like a rule that found nothing.
+    const match = asMatchMode(rule.metadata.taskless.match);
+    if (match === undefined) continue;
     loaded.push({
       file,
       fileName,
       id: rule.id,
       name: rule.metadata.taskless.name,
       language: rule.language,
-      match: rule.metadata.taskless.match ?? "anchor",
+      match,
       rule,
     });
   }

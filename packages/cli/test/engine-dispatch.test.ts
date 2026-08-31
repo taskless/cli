@@ -26,6 +26,7 @@ import {
   writeRuleFile,
   writeRuleTestFile,
 } from "../src/rules/files";
+import { verifyOneRule } from "../src/rules/inspect";
 import {
   discoverRuntimeRules,
   discoverRuntimeRulesIn,
@@ -291,6 +292,80 @@ describe("engine dispatch by directory", () => {
     expect(await deleteRuleFiles(temporaryDirectory, "absent-abc12345")).toBe(
       false
     );
+  });
+
+  it.each([
+    ["broad", 1],
+    ["anchor", 1],
+    // Unimplemented modes. `anchor` is NOT a safe fallback for either: the
+    // capture would run as a narrow, match a fraction of what it was written
+    // for, and report the shortfall as a pass.
+    ["whole-repo", 0],
+    ["ANCHOR", 0],
+    ["", 0],
+  ])("loads a %s capture into %i rule(s)", async (mode, expected) => {
+    const rule = ruleDirectory(temporaryDirectory, "runtime", "logs-abc12345");
+    await mkdir(join(rule, "captures"), { recursive: true });
+    await writeFile(
+      join(rule, "captures", "logs.yml"),
+      RUNTIME_CAPTURE.replace("match: anchor", `match: ${mode}`),
+      "utf8"
+    );
+    await writeFile(join(rule, "check.ts"), RUNTIME_CHECK, "utf8");
+
+    expect(await discoverRuntimeRules(temporaryDirectory)).toHaveLength(
+      expected
+    );
+  });
+
+  it("keeps the good captures of a rule that also has an unknown mode", async () => {
+    // The refusal is per capture, not per rule: one unimplemented mode must
+    // not take the rule's other narrows down with it.
+    const rule = ruleDirectory(temporaryDirectory, "runtime", "logs-abc12345");
+    await mkdir(join(rule, "captures"), { recursive: true });
+    await writeFile(
+      join(rule, "captures", "good.yml"),
+      RUNTIME_CAPTURE,
+      "utf8"
+    );
+    await writeFile(
+      join(rule, "captures", "bad.yml"),
+      RUNTIME_CAPTURE.replace("match: anchor", "match: whole-repo"),
+      "utf8"
+    );
+    await writeFile(join(rule, "check.ts"), RUNTIME_CHECK, "utf8");
+
+    const [discovered] = await discoverRuntimeRules(temporaryDirectory);
+    expect(discovered?.captureRules.map((c) => c.fileName)).toEqual([
+      "good.yml",
+    ]);
+  });
+
+  it("verify names the unimplemented mode, so the skipped capture is explained", async () => {
+    // Discovery refusing the capture is only half the fix. On its own the rule
+    // reports nothing, which reads as a pass; `verify` is where the author is
+    // told why, and it must name the file and the offending value.
+    const rule = ruleDirectory(temporaryDirectory, "runtime", "logs-abc12345");
+    await mkdir(join(rule, "captures"), { recursive: true });
+    await writeFile(
+      join(rule, "captures", "logs.yml"),
+      RUNTIME_CAPTURE.replace("match: anchor", "match: whole-repo"),
+      "utf8"
+    );
+    await writeFile(join(rule, "check.ts"), RUNTIME_CHECK, "utf8");
+
+    const result = await verifyOneRule(temporaryDirectory, {
+      engine: "runtime",
+      ruleId: "logs-abc12345",
+    } as Parameters<typeof verifyOneRule>[1]);
+
+    expect(result.ok).toBe(false);
+    const message = result.errors.join("\n");
+    expect(message).toContain("captures/logs.yml");
+    expect(message).toContain("whole-repo");
+    // The valid modes are listed, so the author does not have to go looking.
+    expect(message).toContain("anchor");
+    expect(message).toContain("broad");
   });
 
   it("does not discover runtime rules left at the pre-migration path", async () => {

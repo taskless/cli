@@ -72,7 +72,15 @@ export type CheckFunction = (
  * whole-language enumerator (`rule: { kind: program }` + `--files-with-matches`,
  * paths only, empty `captures`).
  */
-export type MatchMode = "anchor" | "broad";
+export const MATCH_MODES = ["anchor", "broad"] as const;
+
+/**
+ * The type is DERIVED from {@link MATCH_MODES} rather than declared alongside
+ * it. A type alone cannot be consulted at runtime, and the one thing this
+ * project needs to do with a scan mode is recognize an unfamiliar one in a
+ * file the CLI did not write.
+ */
+export type MatchMode = (typeof MATCH_MODES)[number];
 
 /** The `metadata.taskless` block folded into every capture rule's YAML. */
 export interface RuntimeRuleMetadata {
