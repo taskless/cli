@@ -29,3 +29,18 @@ entry's resolved chunk graph and refuses to emit one that imports a host
 capability or reaches the CLI entry. `tsconfig.prompts.json` becomes
 `tsconfig.public.json`, since it now supplies declarations for both public
 subpath exports.
+
+Refuse a runtime capture rule whose `match` mode this build does not
+implement, instead of silently treating it as `anchor`.
+
+The two modes scan different things: `anchor` is a syntactic narrow, `broad`
+a whole-language enumerator. Defaulting an unrecognized third mode to
+`anchor` did not degrade the capture, it reinterpreted it — the capture ran,
+matched a fraction of what it was written for, and reported the shortfall as
+a clean pass.
+
+Discovery now refuses the capture, per file rather than per rule, so one
+unimplemented mode cannot take a rule's other narrows down with it. `verify`
+names the file, the offending value, and the valid modes, so a capture
+dropping out of the run is explained rather than left looking like a rule
+that found nothing.

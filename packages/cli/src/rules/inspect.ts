@@ -1,10 +1,12 @@
 import { readFile } from "node:fs/promises";
 import { readdir } from "node:fs/promises";
+import { join } from "node:path";
 
 import { parse } from "yaml";
 
 import { ruleCapturesDirectory, ruleConfigPath, ruleFilePath } from "./engines";
 import { type EngineName } from "./layout";
+import { MATCH_MODES } from "../types/runtime-rule";
 import { validateValeRule } from "../schemas/vale-rule";
 import { verifyRule, type VerifyResult } from "./verify";
 import { verifyValeRule } from "./vale/verify";
@@ -175,19 +177,43 @@ export async function verifyOneRule(
   }
   const captures = ruleCapturesDirectory(cwd, engine, ruleId);
   if (captures !== undefined) {
-    let found = 0;
+    let captureFiles: string[] = [];
     try {
       const entries = await readdir(captures);
-      found = entries.filter(
+      captureFiles = entries.filter(
         (entry) => entry.endsWith(".yml") || entry.endsWith(".yaml")
-      ).length;
+      );
     } catch {
-      found = 0;
+      captureFiles = [];
     }
-    if (found === 0) {
+    if (captureFiles.length === 0) {
       errors.push(
         `${ruleId} has no capture rules in captures/, so check.ts would never be invoked.`
       );
+    }
+
+    // Discovery refuses a scan mode this build does not implement rather than
+    // approximating it, which means the capture never runs. On its own that
+    // reads as a rule that found nothing — the failure this whole engine's
+    // design exists to prevent — so the reason is named here, while the author
+    // is looking at one rule rather than at an empty report.
+    for (const fileName of captureFiles.toSorted()) {
+      let parsed: unknown;
+      try {
+        parsed = parse(await readFile(join(captures, fileName), "utf8"));
+      } catch {
+        errors.push(`${ruleId}/captures/${fileName} is not valid YAML.`);
+        continue;
+      }
+      const mode = (
+        parsed as { metadata?: { taskless?: { match?: unknown } } } | null
+      )?.metadata?.taskless?.match;
+      const known: readonly unknown[] = MATCH_MODES;
+      if (mode !== undefined && !known.includes(mode)) {
+        errors.push(
+          `${ruleId}/captures/${fileName} declares match: ${JSON.stringify(mode)}, which this build does not implement (valid: ${MATCH_MODES.join(", ")}). The capture is skipped, so the rule would run against less than it was written for.`
+        );
+      }
     }
   }
   return { engine, ruleId, ok: errors.length === 0, errors };
