@@ -1,5 +1,10 @@
 import chalk from "chalk";
 
+// Sets `chalk.level` from the real terminal on import. This module renders
+// colour, so it establishes that itself rather than inheriting it from
+// whichever caller happened to load `wizard/intro.ts` first.
+import "../util/color";
+
 /**
  * The banner an upgrade owes a session that is already running.
  *
@@ -34,12 +39,11 @@ const WRAP_COLUMNS = 62;
 /**
  * Orange, downsampled by chalk to whatever the terminal actually supports.
  *
- * Colour depth is decided by `wizard/intro.ts`, which sets `chalk.level` at
- * import time because chalk v5 otherwise bakes in the level it detected when
- * the bundle was BUILT (no TTY, so level 0, so no colour ever). Both callers of
- * this module already import that file for `getCliVersion`, so the level is set
- * before this renders. Anything else that reaches for this banner must keep
- * that true, or the box arrives colourless.
+ * Depth comes from `util/color`, imported above for that side effect. It used
+ * to come from `wizard/intro.ts` by accident, because both callers of this
+ * module import that file for `getCliVersion`. That held, and held for a reason
+ * no reader of this file could see: a third caller that did not import the
+ * wizard would have got a colourless box with no error and nothing to grep for.
  */
 const ACCENT = "#ff8c00";
 
@@ -130,7 +134,7 @@ export function getReloadNotice(input: ReloadNoticeInput): string | undefined {
   return [
     "",
     top,
-    row(heading, (value) => chalk.hex(ACCENT).bold(value)),
+    row(heading, (value) => edge.bold(value)),
     row("", (value) => value),
     ...body.map((line) => row(line, (value) => value)),
     bottom,

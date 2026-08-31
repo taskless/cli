@@ -1,5 +1,12 @@
 import { execFile } from "node:child_process";
-import { mkdir, mkdtemp, readFile, rm, stat } from "node:fs/promises";
+import {
+  mkdir,
+  mkdtemp,
+  readFile,
+  rm,
+  stat,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { promisify } from "node:util";
@@ -15,6 +22,17 @@ async function exists(path: string): Promise<boolean> {
   } catch {
     return false;
   }
+}
+
+/** Run a real install in `cwd`, then rewrite the recorded version. */
+async function installAtVersion(cwd: string, version: string): Promise<void> {
+  await execFileAsync("node", [binPath, "init", "--no-interactive", "-d", cwd]);
+  const manifestPath = join(cwd, ".taskless", "taskless.json");
+  const manifest = JSON.parse(await readFile(manifestPath, "utf8")) as {
+    install?: { cliVersion?: string };
+  };
+  if (manifest.install) manifest.install.cliVersion = version;
+  await writeFile(manifestPath, JSON.stringify(manifest, null, 2));
 }
 
 describe("taskless init --no-interactive", () => {
@@ -220,5 +238,70 @@ describe("taskless init --no-interactive", () => {
       await readFile(join(cwd, ".taskless", "taskless.json"), "utf8")
     ) as { install?: { onboarded?: boolean } };
     expect(manifest.install?.onboarded).toBe(true);
+  });
+
+  /**
+   * The banner is wired up, not merely returned.
+   *
+   * `reload-notice.test.ts` covers the decision thoroughly as a pure function.
+   * What it cannot see is whether `init` calls it and prints the result, and
+   * that is where this feature fails silently: a dropped `console.log` or a
+   * swapped field leaves every unit test green while the user is told nothing
+   * and their agent keeps serving the previous skills.
+   */
+  describe("the restart-your-agents banner", () => {
+    it("prints on a second install whose recorded version moved", async () => {
+      // Planting an older version is what makes the next run an upgrade. The
+      // build under test cannot report two versions in one process, so the
+      // move is staged in the manifest rather than by installing twice.
+      await installAtVersion(cwd, "0.0.1-planted");
+
+      const { stdout } = await execFileAsync("node", [
+        binPath,
+        "init",
+        "--no-interactive",
+        "-d",
+        cwd,
+      ]);
+
+      expect(stdout).toContain("RESTART YOUR AGENTS");
+      // The version it moved FROM, which is the half a reader needs to tell an
+      // upgrade from a downgrade.
+      expect(stdout).toContain("0.0.1-planted");
+    });
+
+    it("stays quiet on a first install", async () => {
+      const { stdout } = await execFileAsync("node", [
+        binPath,
+        "init",
+        "--no-interactive",
+        "-d",
+        cwd,
+      ]);
+
+      expect(stdout).not.toContain("RESTART YOUR AGENTS");
+    });
+
+    it("stays quiet when the recorded version did not move", async () => {
+      // The re-run case. A banner here would appear on every ordinary install
+      // and train people to scroll past it.
+      await execFileAsync("node", [
+        binPath,
+        "init",
+        "--no-interactive",
+        "-d",
+        cwd,
+      ]);
+
+      const { stdout } = await execFileAsync("node", [
+        binPath,
+        "init",
+        "--no-interactive",
+        "-d",
+        cwd,
+      ]);
+
+      expect(stdout).not.toContain("RESTART YOUR AGENTS");
+    });
   });
 });
