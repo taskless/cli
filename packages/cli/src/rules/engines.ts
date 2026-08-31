@@ -1,4 +1,4 @@
-import { readdir } from "node:fs/promises";
+import { readdir, stat } from "node:fs/promises";
 import { join } from "node:path";
 
 import { CLIError } from "../util/cli-error";
@@ -231,6 +231,35 @@ export async function listRuleIds(
 ): Promise<string[]> {
   const ids = await subdirectories(engineRulesDirectory(cwd, engine));
   return ids.toSorted((a, b) => a.localeCompare(b));
+}
+
+/**
+ * The engine whose directory holds `id`, or `undefined` if no engine does.
+ *
+ * A rule id is globally unique by construction (`<slug>-<sha1>`), so at most
+ * one engine can hold it and the search order is not a tie-break. The search
+ * exists because a rule id does not carry its engine: `.taskless/rules/` is
+ * three sibling trees, and every operation that takes a bare id has to find
+ * out which one it is in rather than assume.
+ *
+ * Assuming is what {@link deleteRuleFiles} used to do — it hardcoded `sg`, so
+ * a delivered vale or runtime rule could be written and never removed. That is
+ * the shape of bug this exists to prevent, and the reason it lives beside
+ * {@link ENGINE_LAYOUTS} rather than in the one caller that first needed it.
+ */
+export async function findRuleEngine(
+  cwd: string,
+  id: string
+): Promise<EngineName | undefined> {
+  for (const engine of ENGINES) {
+    try {
+      const stats = await stat(ruleDirectory(cwd, engine, id));
+      if (stats.isDirectory()) return engine;
+    } catch {
+      // Not under this engine; try the next.
+    }
+  }
+  return undefined;
 }
 
 /**

@@ -32,7 +32,7 @@ export interface LoadedCaptureRule {
   rule: CaptureRule;
 }
 
-/** A discovered runtime rule directory under `.taskless/runtime/rules/`. */
+/** A discovered runtime rule directory under `.taskless/rules/runtime/`. */
 export interface RuntimeRule {
   /** Rule directory basename (e.g. `no-default-export-abc12345`). */
   name: string;
@@ -93,11 +93,11 @@ async function loadCaptureRules(
 }
 
 /**
- * Enumerate `.taskless/runtime/rules/` under `cwd` and return each rule
+ * Enumerate `.taskless/rules/runtime/` under `cwd` and return each rule
  * directory that holds at least one `kind: runtime` capture rule.
- * `.taskless/runtime/rule-tests/` is never enumerated — it holds verification
+ * `.taskless/rules/runtime/<id>/.tests/` is never enumerated — it holds verification
  * fixtures, not executable rules — and neither is any other engine's
- * directory: a rule under `.taskless/sg/rules/` is static by virtue of where
+ * directory: a rule under `.taskless/rules/sg/` is static by virtue of where
  * it lives, and is never considered here.
  */
 export async function discoverRuntimeRules(

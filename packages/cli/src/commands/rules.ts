@@ -651,7 +651,10 @@ const deleteCommand = defineCommand({
         }
         success = true;
       } else {
-        const message = `Rule "${id}" not found in .taskless/${RULES_DIRECTORY}/sg/${id}/`;
+        // Engine-agnostic: `delete` takes a bare id and the rule could be
+        // filed under any engine, so naming one in the failure would be a
+        // guess — and was wrong for every rule that was not ast-grep.
+        const message = `Rule "${id}" not found under .taskless/${RULES_DIRECTORY}/`;
         if (args.json) {
           writeJsonError("RULE_NOT_FOUND", message);
         } else {

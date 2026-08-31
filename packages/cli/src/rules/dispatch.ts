@@ -8,7 +8,7 @@ import { runAstGrepScan } from "./scan";
 import { runVale } from "./vale/run";
 
 /**
- * Whether `.taskless/vale/rules/` holds anything to run.
+ * Whether `.taskless/rules/vale/` holds anything to run.
  *
  * The spec is explicit that an empty rules directory means Vale is not invoked
  * at all. Worth an explicit check rather than letting Vale run and report

@@ -1,7 +1,7 @@
 /**
  * Runtime rule file format + harness↔check contract — mirrored structurally from
  * `@taskless/types` (workers/generator). A runtime rule is a DIRECTORY under
- * `.taskless/runtime/rules/<name>/`: one or more ast-grep capture `*.yml` plus
+ * `.taskless/rules/runtime/<id>/`: one or more ast-grep capture `*.yml` plus
  * exactly one `check.ts`. The capture rules are the cheap syntactic narrow; the
  * `check.ts` refines only where the narrow matched.
  *
