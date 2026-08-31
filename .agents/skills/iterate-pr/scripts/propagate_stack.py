@@ -87,6 +87,37 @@ def count(range_expr: str) -> int:
     return int(s) if s.isdigit() else -1
 
 
+def fork_upstream(parent: str, child: str, rewritten: dict[str, str]) -> str:
+    """The commit `child` last forked from `parent`, as a rebase upstream.
+
+    A plain `git rebase <parent>` picks its upstream by merge-base, which is
+    WRONG the moment `parent` has been rewritten: the merge-base falls back to
+    an older common ancestor, so commits the parent already superseded get
+    replayed onto their own replacements. That surfaces as a conflict in files
+    the child never touched, and the obvious resolution — "take mine" — silently
+    discards the parent's newer work. The child's own tests still pass, because
+    the change that was lost belongs to the parent.
+
+    Three sources, most reliable first:
+
+    1. `rewritten` — a parent this run rebased itself, so its pre-rebase tip is
+       known exactly. Processing is parent-before-child, so by the time a child
+       is reached its parent's entry is already recorded.
+    2. `git merge-base --fork-point` — reads the parent's reflog to find where
+       the child forked, which survives a rewrite this run did not perform (a
+       parent restacked by hand, or in an earlier run).
+    3. The parent itself — today's behaviour, correct whenever the parent was
+       only appended to.
+    """
+    known = rewritten.get(parent)
+    if known:
+        return known
+    probe = run("merge-base", "--fork-point", parent, child)
+    if probe.returncode == 0 and probe.stdout.strip():
+        return probe.stdout.strip()
+    return parent
+
+
 def ordered_descendants(root: str, edges: dict[str, str]) -> list[str]:
     """Return descendants of root in parent-before-child order.
 
@@ -148,14 +179,22 @@ def main() -> int:
             return 5
 
     start = out("rev-parse", "--abbrev-ref", "HEAD")
+    # Pre-rebase tip of every branch this run rewrites, so each child can be
+    # replayed from where it actually forked rather than from a merge-base that
+    # a rewritten parent has already invalidated.
+    rewritten: dict[str, str] = {}
     for child in plan:
         parent = edges[child]
         if not ref_exists(child) or not ref_exists(parent):
             print(f"  · skip {child} (missing {child if not ref_exists(child) else parent})")
             continue
 
-        base = out("merge-base", parent, child)
-        expected_own = count(f"{base}..{child}") if base else -1
+        upstream = fork_upstream(parent, child, rewritten)
+        # The guard counts from the SAME upstream the rebase replays from.
+        # Counting from a merge-base a rewritten parent has invalidated inflates
+        # the expectation with the parent's own superseded commits, which makes
+        # the guard fire late or not at all.
+        expected_own = count(f"{upstream}..{child}")
 
         checkout = run("checkout", child)
         if checkout.returncode != 0:
@@ -164,17 +203,21 @@ def main() -> int:
                   f"\n{checkout.stderr.strip()}")
             return 6
 
-        rebase = run("rebase", parent)
+        before = out("rev-parse", child)
+        rebase = run("rebase", "--onto", parent, upstream)
         if rebase.returncode != 0:
             conflicts = out("diff", "--name-only", "--diff-filter=U")
             run("rebase", "--abort")
-            print(f"  ✗ CONFLICT: {child} onto {parent}. Needs manual reconcile:")
+            print(f"  ✗ CONFLICT: {child} onto {parent} (from {upstream[:9]}). "
+                  f"Needs manual reconcile:")
             for f in conflicts.splitlines():
                 print(f"        {f}")
             if start:
                 run("checkout", start)
             return 2
 
+        if before:
+            rewritten[child] = before
         actual_own = count(f"{parent}..{child}")
         # A rebase can only drop own commits, never gain them, so ANY increase is
         # a balloon. --max-own is a separate absolute ceiling for the case where
