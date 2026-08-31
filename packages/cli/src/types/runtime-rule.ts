@@ -15,6 +15,22 @@
 export const RUNTIME_CHECK_PROTOCOL_VERSION = 1;
 
 /**
+ * `metadata.taskless.version` values this build implements.
+ *
+ * A LIST, not a single number, for the same reason {@link MATCH_MODES} is one:
+ * the question asked of it is "do I implement what this file declares", which
+ * needs a membership test at runtime over a file the CLI did not write.
+ *
+ * Read by {@link assessCaptureRule}. {@link RUNTIME_CHECK_PROTOCOL_VERSION}
+ * above is NOT yet read anywhere, and cannot be until a delivered check
+ * declares its protocol version — the generation payload has no field for it
+ * today. That lands with the file-set writer; until then the constant records
+ * the contract without enforcing it, which is worth knowing rather than
+ * mistaking for a check.
+ */
+export const SUPPORTED_METADATA_VERSIONS = [1] as const;
+
+/**
  * Finding severity — a subset of ast-grep's enum. `error` blocks (non-zero
  * result); `warning` and `info` are advisory. An omitted value is treated as
  * `warning`.

@@ -21,11 +21,12 @@ green on its own; none depends on a later one to be correct.
 
 ## 3. Loud diagnostics on the runtime path (slice 3)
 
-- [ ] 3.1 Give `loadCaptureRules` a diagnostic channel for its silent drops, following the `RuntimeSigningResult` `{signed, unreadable}` precedent
-- [ ] 3.2 Report each of the five drops: unreadable directory, unparseable YAML, wrong `kind`, missing `language`/`name`, missing `id`
-- [ ] 3.3 Surface them through `verify`, matching the `match`-mode wording already shipped
-- [ ] 3.4 Read `RUNTIME_CHECK_PROTOCOL_VERSION` and `metadata.taskless.version`, refusing what this build does not implement
-- [ ] 3.5 Test that each drop is both refused and explained
+- [x] 3.1 Share one `assessCaptureRule` between discovery and `verify` (replaces the planned diagnostic channel — see design D4)
+- [x] 3.2 Report each of the five drops: unreadable directory, unparseable YAML, wrong `kind`, missing `language`/`name`, missing `id`
+- [x] 3.3 Surface them through `verify`, matching the `match`-mode wording already shipped
+- [x] 3.4 Read `metadata.taskless.version`, refusing what this build does not implement
+- [ ] 3.6 Read `RUNTIME_CHECK_PROTOCOL_VERSION` — deferred to slice 5; nothing on disk declares it until the payload carries it
+- [x] 3.5 Test that each drop is both refused and explained
 
 ## 4. One executable per runtime rule (slice 4)
 

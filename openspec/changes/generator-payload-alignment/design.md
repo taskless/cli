@@ -102,9 +102,22 @@ Discovery **fails closed** on the execution path; `verify` **explains**. Neither
 alone is sufficient — a refused capture that says nothing is just a different
 route to "reports nothing".
 
-Already implemented for the `match` mode (G7) on `fix/refuse-unknown-match-mode`
-and used as the template for the remaining four drops: unreadable directory,
-unparseable YAML, wrong `kind`, missing `language`/`name`/`id`.
+Implemented first for the `match` mode (G7), then generalized. The G7 work was
+folded into this stack rather than landing separately: it rewrote the same
+function, so keeping it apart guaranteed a conflict and split one concern —
+"discovery refuses loudly" — across two unrelated pull requests.
+
+Discovery and `verify` call ONE assessor, `assessCaptureRule`. An earlier plan
+gave `loadCaptureRules` its own diagnostic channel; that would have changed a
+signature every caller depends on to carry information only `verify` reads.
+Sharing the assessor is smaller and buys the property that matters: the two
+answers cannot drift, so `verify` cannot call a rule valid while the run
+silently skips one of its captures.
+
+`RUNTIME_CHECK_PROTOCOL_VERSION` still cannot be read. Nothing on disk declares
+a check's protocol version — the payload has no field for it — so it lands with
+the file-set writer. The constant records the contract without enforcing it,
+which is worth stating rather than leaving to be mistaken for a check.
 
 ### D5. Re-fetch is keyed on rule id **and** signature, not signature alone
 
@@ -132,8 +145,16 @@ risk to say what the field's absence already says.
 occupant of that tier, and G2 settled that a Vale rule cannot be delivered
 without its `.vale.ini` — which requires the file set. So no engine other than
 `sg` is deliverable as a single file, and the middle rung has no future
-occupant either. Keep it defined, expect it to stay unused, and do not emit
-`engine` before the file-set tier.
+occupant either. Do not emit `engine` before the file-set tier.
+
+**Superseded in their favour.** We proposed keeping the rung defined and
+unused; the generator removed it instead, on the grounds that a distinction
+which can never be observed is not a tier and keeping it would be a standing
+invitation to emit `engine: "sg"` to say what the field's absence already says.
+Collapsing to two envelopes also corrected a retirement rule that was wrong in
+both directions: with the rungs byte-identical, retiring the oldest removed
+nothing. A tier retires only once a newer one has a published floor to migrate
+callers onto — true of none of them today.
 
 ## Risks / Trade-offs
 

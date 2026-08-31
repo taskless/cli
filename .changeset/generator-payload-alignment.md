@@ -44,3 +44,17 @@ unimplemented mode cannot take a rule's other narrows down with it. `verify`
 names the file, the offending value, and the valid modes, so a capture
 dropping out of the run is explained rather than left looking like a rule
 that found nothing.
+
+Every reason a runtime capture rule is refused is now explained by `verify`.
+
+Discovery dropped a capture silently for six distinct reasons — not a YAML
+mapping, no `metadata.taskless` block, a `kind` other than `runtime`, a
+non-string `language`, `name` or `id` — and a dropped capture makes a rule
+report nothing, which is indistinguishable from a rule that passed. `verify`
+now names the file and the reason for each.
+
+Discovery and `verify` share one assessor, so "verify says the rule is fine"
+and "the run silently skipped that capture" cannot come apart.
+
+A capture declaring a `metadata.taskless.version` this build does not
+implement is now refused rather than read as if it were version 1.

@@ -6,7 +6,7 @@ import { parse } from "yaml";
 
 import { ruleCapturesDirectory, ruleConfigPath, ruleFilePath } from "./engines";
 import { type EngineName } from "./layout";
-import { MATCH_MODES } from "../types/runtime-rule";
+import { assessCaptureRule } from "./runtime/discover";
 import { validateValeRule } from "../schemas/vale-rule";
 import { verifyRule, type VerifyResult } from "./verify";
 import { verifyValeRule } from "./vale/verify";
@@ -192,11 +192,15 @@ export async function verifyOneRule(
       );
     }
 
-    // Discovery refuses a scan mode this build does not implement rather than
-    // approximating it, which means the capture never runs. On its own that
-    // reads as a rule that found nothing — the failure this whole engine's
-    // design exists to prevent — so the reason is named here, while the author
-    // is looking at one rule rather than at an empty report.
+    // Discovery refuses a capture it cannot run, which means the capture
+    // simply is not there at scan time. On its own that reads as a rule that
+    // found nothing — the failure this engine's design exists to prevent — so
+    // the reason is named here, while the author is looking at one rule rather
+    // than at an empty report.
+    //
+    // `assessCaptureRule` is the SAME function discovery refuses with, so
+    // "verify says it is fine" and "the run silently skipped it" cannot come
+    // apart.
     for (const fileName of captureFiles.toSorted()) {
       let parsed: unknown;
       try {
@@ -205,13 +209,10 @@ export async function verifyOneRule(
         errors.push(`${ruleId}/captures/${fileName} is not valid YAML.`);
         continue;
       }
-      const mode = (
-        parsed as { metadata?: { taskless?: { match?: unknown } } } | null
-      )?.metadata?.taskless?.match;
-      const known: readonly unknown[] = MATCH_MODES;
-      if (mode !== undefined && !known.includes(mode)) {
+      const assessment = assessCaptureRule(parsed);
+      if (!assessment.ok) {
         errors.push(
-          `${ruleId}/captures/${fileName} declares match: ${JSON.stringify(mode)}, which this build does not implement (valid: ${MATCH_MODES.join(", ")}). The capture is skipped, so the rule would run against less than it was written for.`
+          `${ruleId}/captures/${fileName} ${assessment.reason}. The capture is skipped, so the rule would run against less than it was written for.`
         );
       }
     }

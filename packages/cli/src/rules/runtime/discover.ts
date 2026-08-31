@@ -3,7 +3,10 @@ import { join } from "node:path";
 
 import { parse } from "yaml";
 
-import { MATCH_MODES } from "../../types/runtime-rule";
+import {
+  MATCH_MODES,
+  SUPPORTED_METADATA_VERSIONS,
+} from "../../types/runtime-rule";
 import type { CaptureRule, MatchMode } from "../../types/runtime-rule";
 import { RULES_DIRECTORY } from "../layout";
 
@@ -45,28 +48,15 @@ export interface RuntimeRule {
   checkFile: string;
 }
 
-/** Narrow an unknown parsed YAML value to a runtime `CaptureRule`, or return null. */
-function asRuntimeCaptureRule(value: unknown): CaptureRule | null {
-  if (typeof value !== "object" || value === null) return null;
-  const candidate = value as Partial<CaptureRule>;
-  const taskless = candidate.metadata?.taskless;
-  if (!taskless || taskless.kind !== "runtime") return null;
-  if (typeof candidate.language !== "string") return null;
-  if (typeof taskless.name !== "string") return null;
-  return candidate as CaptureRule;
-}
-
 /**
  * Narrow an unknown `match` value to a {@link MatchMode}. An absent value is
- * `anchor`, the documented default; an unrecognized one is `undefined`, which
- * the caller treats as a refusal.
+ * `anchor`, the documented default; an unrecognized one is `undefined`.
  *
  * This deliberately does NOT fall back to `anchor`. The two modes scan
  * different things — `anchor` is a syntactic narrow, `broad` a whole-language
  * enumerator — so coercing an unimplemented third mode to `anchor` does not
- * degrade the rule, it reinterprets it: the capture runs, matches a fraction
- * of what it was written for, and the shortfall is reported as a clean pass.
- * A mode this build cannot implement is not approximated by one it can.
+ * degrade the rule, it reinterprets it: the capture runs, matches a fraction of
+ * what it was written for, and the shortfall is reported as a clean pass.
  */
 function asMatchMode(value: unknown): MatchMode | undefined {
   if (value === undefined) return "anchor";
@@ -74,6 +64,83 @@ function asMatchMode(value: unknown): MatchMode | undefined {
   return typeof value === "string" && modes.includes(value)
     ? (value as MatchMode)
     : undefined;
+}
+
+/**
+ * What a parsed capture `*.yml` is: loadable, or refused with a reason.
+ *
+ * ONE FUNCTION, TWO CALLERS, ON PURPOSE. Discovery uses it to refuse a capture
+ * it cannot run; `verify` uses it to tell the author why. Those answers have to
+ * agree — a capture silently absent from a run while `verify` calls the rule
+ * valid is precisely the confusion this engine's design exists to prevent — and
+ * the cheapest way to guarantee they agree is for there to be one answer.
+ *
+ * The reason is a sentence rather than a code because its only consumer is a
+ * person reading `verify` output. Nothing branches on it.
+ */
+export type CaptureAssessment =
+  | { ok: true; rule: CaptureRule; match: MatchMode }
+  | { ok: false; reason: string };
+
+export function assessCaptureRule(value: unknown): CaptureAssessment {
+  if (typeof value !== "object" || value === null) {
+    return { ok: false, reason: "is not a YAML mapping" };
+  }
+  const candidate = value as Partial<CaptureRule>;
+  const taskless = candidate.metadata?.taskless;
+  if (!taskless) {
+    return {
+      ok: false,
+      reason:
+        "has no metadata.taskless block, so nothing marks it as a runtime capture",
+    };
+  }
+  if (taskless.kind !== "runtime") {
+    return {
+      ok: false,
+      reason: `declares metadata.taskless.kind: ${JSON.stringify(taskless.kind)}, not "runtime"`,
+    };
+  }
+  const versions: readonly unknown[] = SUPPORTED_METADATA_VERSIONS;
+  if (!versions.includes(taskless.version)) {
+    return {
+      ok: false,
+      reason:
+        `declares metadata.taskless.version ${JSON.stringify(taskless.version)}, ` +
+        `which this build does not implement (supported: ${SUPPORTED_METADATA_VERSIONS.join(", ")})`,
+    };
+  }
+  if (typeof candidate.language !== "string") {
+    return {
+      ok: false,
+      reason:
+        "has no string `language`, so ast-grep cannot parse anything with it",
+    };
+  }
+  if (typeof taskless.name !== "string") {
+    return {
+      ok: false,
+      reason:
+        "has no string metadata.taskless.name, which is what a check branches on",
+    };
+  }
+  if (typeof candidate.id !== "string") {
+    return {
+      ok: false,
+      reason:
+        "has no string `id`, so its matches cannot be attributed back to it",
+    };
+  }
+  const match = asMatchMode(taskless.match);
+  if (match === undefined) {
+    return {
+      ok: false,
+      reason:
+        `declares match: ${JSON.stringify(taskless.match)}, which this build does not ` +
+        `implement (valid: ${MATCH_MODES.join(", ")})`,
+    };
+  }
+  return { ok: true, rule: candidate as CaptureRule, match };
 }
 
 /** Load and parse the capture rules of a single runtime-rule directory. */
@@ -98,17 +165,17 @@ async function loadCaptureRules(
     } catch {
       continue; // not valid YAML — skip
     }
-    const rule = asRuntimeCaptureRule(parsed);
-    if (!rule || typeof rule.id !== "string") continue;
-    // Refused, not coerced. `verify` names the file and the offending value
-    // (see `inspect.ts`), so the capture disappearing from the run is
-    // explained rather than left to look like a rule that found nothing.
-    const match = asMatchMode(rule.metadata.taskless.match);
-    if (match === undefined) continue;
+    // Refused, never coerced or guessed at. `verify` names the file and the
+    // reason (see `inspect.ts`, which calls the same assessor), so a capture
+    // disappearing from the run is explained rather than left to look like a
+    // rule that found nothing.
+    const assessment = assessCaptureRule(parsed);
+    if (!assessment.ok) continue;
+    const { rule, match } = assessment;
     loaded.push({
       file,
       fileName,
-      id: rule.id,
+      id: rule.id as string,
       name: rule.metadata.taskless.name,
       language: rule.language,
       match,
