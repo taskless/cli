@@ -75,8 +75,21 @@ that you finished.
 
 ### Migrating to 0.11.x
 
-The vendored ast-grep moves from 0.41.0 to 0.45.2, and Vale is at
-3.18.0. Four things follow for existing rules.
+The vendored ast-grep moves from 0.41.0 to 0.45.2, and Vale from 3.18.0
+to 3.19.0. Five things follow for existing rules.
+
+**Elixir stopped being linted as prose.** Vale 3.19.0 reads `.ex` and
+`.exs` through a real parser, so it now sees comments and `@doc`
+attributes and nothing else. On 3.18.0 those files had no parser and
+were linted whole, so a Vale rule matching `[*.ex]` fired on function
+names, atoms, and string literals as well as on comments.
+
+Those findings are gone, and nothing errors or warns. A rule that
+reported on Elixir code bodies now reports less, which is a drop you
+would otherwise notice only as a suspiciously clean run. If the rule was
+meant for prose, this is the behaviour you always wanted. If it was
+being used to catch something in the code itself, that is a job for an
+`sg` rule, and `%(TASKLESS_CLI)s rule create` will route it there.
 
 **A rewriter now requires `fix`.** `SerializableRewriter.required` goes
 from `["rule","id"]` to `["id","fix","rule"]`, so a `rewriters:` entry

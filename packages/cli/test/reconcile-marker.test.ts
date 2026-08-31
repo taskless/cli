@@ -86,7 +86,7 @@ describe("recording a rules reconciliation", () => {
     expect(rules?.reconciledTo).toBe(version);
     // Engine versions are the input a later differential needs. Recorded here
     // and nowhere else, so an upgrade cannot silently refresh them.
-    expect(rules?.engines).toEqual({ sg: "0.45.2", vale: "3.18.0" });
+    expect(rules?.engines).toEqual({ sg: "0.45.2", vale: "3.19.0" });
   });
 
   it("reports the marker through info", async () => {

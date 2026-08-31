@@ -196,12 +196,12 @@ export const AST_GREP_TSX_SPLIT: Readonly<
 /**
  * The Vale release carried by the `@taskless/vale-<platform>` packages pinned
  * in `packages/cli/package.json`. Their npm versions append a build stamp
- * (`3.17.1-20260810052605`); this is the version Vale itself reports.
+ * (`3.18.0-20260824195610`); this is the version Vale itself reports.
  *
  * Pinned against the binary by `test/vale-vendor-contract.test.ts`
  * ("engine capabilities" → "reports the pinned version").
  */
-export const VALE_VERSION = "3.18.0";
+export const VALE_VERSION = "3.19.0";
 
 /**
  * Which tier Vale routes an extension to.
@@ -263,9 +263,31 @@ const CONVERTER_TIER_PREFIX = "converter:";
  * plain text today, but the moment Vale routes it to a converter the same
  * omission is a crash that takes down every Vale rule in the run.
  *
- * The 3.17.1 → 3.18.0 bump is what that warning looks like in practice. Every
- * row below was re-probed against the 3.18.0 binary, and eight moved, in three
- * different directions — which is why "re-measure" is not boilerplate here:
+ * THE TABLE HELD ACROSS 3.18.0 → 3.19.0, AND THAT IS NOT THE SAME AS THE BUMP
+ * BEING FREE. Every row below was re-probed against the 3.19.0 binary and not
+ * one of them moved. What moved was a format Vale *learned*, which is precisely
+ * the case a table of existing rows cannot report: `.ex` and `.exs` gained
+ * comment and doc-attribute extraction, so they left the unnamed plaintext
+ * fallback for the `comment` tier and are new rows below.
+ *
+ * Read that direction carefully, because it is a narrowing rather than a gain.
+ * On 3.18.0 an Elixir file was linted as one block of prose, so a rule matching
+ * `[*.ex]` fired on identifiers and string literals as readily as on comments.
+ * On 3.19.0 the code body is invisible and only comments and `@doc` attributes
+ * are read. Findings disappear, no error is raised, and nothing but a re-probe
+ * would have told us. A format Vale learns is never a no-op: the benign version
+ * of it is this one, and the dangerous version is a converter (see `.typ`).
+ *
+ * `.mdx` stayed `markup` and changed underneath the tier: a JSX element's
+ * children are now read as the Markdown they are, so a Vale rule covers prose
+ * inside `<Steps>` or `<Aside>` that it previously skipped, and those children
+ * carry the element name as a `text.class.<name>` scope. The tier is the wrong
+ * instrument for that kind of change — it says a parser exists, not what the
+ * parser sees — which is the second reason a bump needs more than this table.
+ *
+ * The 3.17.1 → 3.18.0 bump is what the dangerous case looks like in practice.
+ * Every row was re-probed against the 3.18.0 binary then too, and eight moved,
+ * in three different directions — which is why "re-measure" is not boilerplate:
  *
  * - `.mdx` gained a native parser: `converter:mdx2vast` → `markup`. It is
  *   supported now, and `[*.{md,mdx}]` is a legitimate matcher again.
@@ -315,6 +337,8 @@ export const VALE_FORMAT_TIERS: Readonly<Record<string, ValeFormatTier>> = {
   ".css": "comment",
   ".csx": "comment",
   ".cxx": "comment",
+  ".ex": "comment",
+  ".exs": "comment",
   ".go": "comment",
   ".h": "comment",
   ".h++": "comment",
@@ -353,7 +377,7 @@ export const VALE_FORMAT_TIERS: Readonly<Record<string, ValeFormatTier>> = {
   ".mkdn": "plaintext",
   ".tex": "plaintext",
   // plaintext HERE, though Vale's own docs list it as comment-tier. Measured on
-  // the pinned 3.18.0 binary a bare non-comment line lints, which is the
+  // the pinned 3.19.0 binary a bare non-comment line lints, which is the
   // plaintext signature. `.qml` and `.scss` sat here for the same reason until
   // 3.18.0 made the docs true for them; `.pyi` is the row where transcribing
   // the docs would still ship the wrong tier — the case for probing rather than

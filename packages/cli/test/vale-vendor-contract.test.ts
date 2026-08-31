@@ -407,6 +407,8 @@ withVale("Vale vendor contract", () => {
  */
 function comment(extension: string): string {
   const HASH = new Set([
+    ".ex",
+    ".exs",
     ".jl",
     ".pl",
     ".pm",
