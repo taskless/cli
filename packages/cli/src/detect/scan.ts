@@ -4,7 +4,7 @@ import { resolve } from "node:path";
 
 import { parse as parseToml } from "smol-toml";
 
-import { RULES_DIRECTORY } from "../rules/engines";
+import { RULES_DIRECTORY } from "../rules/layout";
 
 export interface DetectedLinter {
   name: string;

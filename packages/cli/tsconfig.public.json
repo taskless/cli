@@ -1,13 +1,14 @@
-// Declaration emit for the `@taskless/cli/prompts` subpath export only.
+// Declaration emit for the public subpath exports — `@taskless/cli/prompts`
+// and `@taskless/cli/layout` — and nothing else.
 //
 // Vite's lib build emits JavaScript and no types, so `tsc` supplies the `.d.ts`
-// for the one entry that is a public importable API. The include list is
-// deliberately just the prompts entry (plus the ambient build defines it needs)
+// for the entries that are public importable API. The include list is
+// deliberately just those entries (plus the ambient build defines they need)
 // rather than all of `src`: emitting a `dist/index.d.ts` next to `dist/index.js`
 // would give the CLI's main entry a typed public surface it does not have today
 // and has never promised, purely as a side effect of typing the new one.
 //
-// The include list bounds which entry is rooted here, not how many files are
+// The include list bounds which entries are rooted here, not how many files are
 // emitted. Declaration emit follows the import graph, so the modules the entry
 // reaches get one too: `prompts/recipes`, `util/invocation`, and the two leaf
 // Zod schemas. They ship in the tarball under `files: ["dist"]` but no `exports`
@@ -16,8 +17,8 @@
 // exists to prevent — is absent, which `test/prompts.test.ts` asserts.
 //
 // `declarationDir` is `dist` rather than following `TASKLESS_BUILD_TARGET` the
-// way `vite.config.ts`'s `resolveOutDir()` does, because the `./prompts` export
-// resolves to `./dist/prompts.js` unconditionally. The `self` target exists to
+// way `vite.config.ts`'s `resolveOutDir()` does, because these exports resolve
+// to `./dist/<entry>.js` unconditionally. The `self` target exists to
 // run the CLI binary from a local path, and nothing resolves a prompts entry out
 // of `dist-self`. Wiring this step into that build means overriding
 // `--declarationDir` to match, or the declarations land beside the wrong
@@ -31,5 +32,5 @@
     "rootDir": "src",
     "declarationDir": "dist"
   },
-  "include": ["src/globals.d.ts", "src/prompts/index.ts"]
+  "include": ["src/globals.d.ts", "src/prompts/index.ts", "src/layout/index.ts"]
 }

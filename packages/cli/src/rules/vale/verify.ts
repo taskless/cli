@@ -3,7 +3,8 @@ import { readdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, posix, relative, resolve, sep } from "node:path";
 
-import { listRuleIds, RULES_DIRECTORY, ruleTestsDirectory } from "../engines";
+import { listRuleIds, ruleTestsDirectory } from "../engines";
+import { RULES_DIRECTORY } from "../layout";
 import { isMissingDirectory } from "../errno";
 import { runVale, type ValeRunOutcome } from "./run";
 

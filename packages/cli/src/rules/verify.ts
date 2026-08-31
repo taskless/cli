@@ -21,12 +21,8 @@ import {
 } from "./capabilities";
 import { ensureTasklessDirectory } from "../filesystem/directory";
 import { assembleSgConfig } from "./assemble";
-import {
-  RULE_TESTS_DIRECTORY,
-  RULES_DIRECTORY,
-  ruleFilePath,
-  ruleTestsDirectory,
-} from "./engines";
+import { ruleFilePath, ruleTestsDirectory } from "./engines";
+import { RULE_TESTS_DIRECTORY, RULES_DIRECTORY } from "./layout";
 import { findSgBinary, buildPath, stripSgDeprecationBanner } from "./scan";
 import astGrepJsonSchema from "../generated/ast-grep-rule-schema.json";
 import { RULE_EXAMPLES } from "./verify-examples";

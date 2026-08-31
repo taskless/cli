@@ -3,12 +3,8 @@ import { readdir } from "node:fs/promises";
 
 import { parse } from "yaml";
 
-import {
-  ruleCapturesDirectory,
-  ruleConfigPath,
-  ruleFilePath,
-  type EngineName,
-} from "./engines";
+import { ruleCapturesDirectory, ruleConfigPath, ruleFilePath } from "./engines";
+import { type EngineName } from "./layout";
 import { validateValeRule } from "../schemas/vale-rule";
 import { verifyRule, type VerifyResult } from "./verify";
 import { verifyValeRule } from "./vale/verify";

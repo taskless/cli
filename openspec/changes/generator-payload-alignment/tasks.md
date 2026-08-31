@@ -13,10 +13,10 @@ green on its own; none depends on a later one to be correct.
 
 ## 2. Publish the layout table (slice 2) — unblocks the generator
 
-- [ ] 2.1 Split `engines.ts`: pure data (`ENGINES`, `ENGINE_LAYOUTS`, `RULES_DIRECTORY`, `RULE_TESTS_DIRECTORY`) away from the helpers importing `node:fs/promises`
-- [ ] 2.2 Add the `@taskless/cli/layout` export to `package.json` and the build
-- [ ] 2.3 Extend the chunk-graph build plugin to cover the new entry, so a host-capability import fails the build
-- [ ] 2.4 Test that the built entry imports cleanly with no filesystem or command-tree reachability
+- [x] 2.1 Split `engines.ts`: pure data (`ENGINES`, `ENGINE_LAYOUTS`, `RULES_DIRECTORY`, `RULE_TESTS_DIRECTORY`) away from the helpers importing `node:fs/promises`
+- [x] 2.2 Add the `@taskless/cli/layout` export to `package.json` and the build
+- [x] 2.3 Extend the chunk-graph build plugin to cover the new entry, so a host-capability import fails the build
+- [x] 2.4 Test that the built entry imports cleanly with no filesystem or command-tree reachability
 - [ ] 2.5 Publish a nightly and send the generator the version and specifier (answers **N1**)
 
 ## 3. Loud diagnostics on the runtime path (slice 3)

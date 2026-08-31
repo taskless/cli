@@ -8,8 +8,8 @@
     "directory": "packages/cli"
   },
   "scripts": {
-    "build": "vite build && tsc -p tsconfig.prompts.json",
-    "build:nightly": "TASKLESS_BUILD_TARGET=nightly vite build && tsc -p tsconfig.prompts.json",
+    "build": "vite build && tsc -p tsconfig.public.json",
+    "build:nightly": "TASKLESS_BUILD_TARGET=nightly vite build && tsc -p tsconfig.public.json",
     "build:self": "TASKLESS_BUILD_TARGET=self vite build",
     "generate:api": "openapi-typescript https://app.taskless.io/cli/api/__schema -o src/generated/api.d.ts",
     "generate:ast-grep-schema": "tsx scripts/fetch-ast-grep-schema.ts",
@@ -28,6 +28,10 @@
     "./prompts": {
       "types": "./dist/prompts/index.d.ts",
       "import": "./dist/prompts.js"
+    },
+    "./layout": {
+      "types": "./dist/layout/index.d.ts",
+      "import": "./dist/layout.js"
     }
   },
   "files": [
