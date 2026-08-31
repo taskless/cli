@@ -223,8 +223,38 @@ jobs:
           # changes history under anyone who already fetched it; a human should
           # decide what happened first. Failing here costs nothing that matters,
           # since the publish is a separate job that has already succeeded.
-          existing=$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/tags/${tag}" \
-            --jq '.object.sha' 2>/dev/null || true)
+          # DO NOT go back to `git/ref/tags/<tag>` with `|| true`. That
+          # endpoint 404s when the tag is absent, and gh prints the error BODY
+          # to STDOUT, so `2>/dev/null` silences nothing and the substitution
+          # captures a JSON blob where this comparison assumed an empty string.
+          # A non-empty blob is not a SHA, so the guard below fired on an
+          # untagged release and reported `v0.11.0 already exists but points at
+          # {"message":"Not Found",...}`. It failed loudly, which is the design
+          # working; it just had nothing true to say.
+          #
+          # `matching-refs` has no error path to misread: it returns 200 and an
+          # empty array when nothing matches, so absence is data rather than a
+          # failure. It matches by PREFIX (`v0.1.1` would also match `v0.1.10`),
+          # hence the exact-ref filter. No `|| true` anywhere: with pipefail, a
+          # genuine API error now stops the job instead of being read as "no
+          # such tag" and silently creating a second one.
+          #
+          # An ANNOTATED tag's `object.sha` is the tag object, not the commit,
+          # so deref before comparing. This job only ever creates lightweight
+          # tags, but v0.9.0-v0.10.2 were made by hand with `git tag -a`, and a
+          # tag this job did not create is precisely where a false "points
+          # somewhere else" would be hardest to interpret.
+          matched=$(gh api "repos/${GITHUB_REPOSITORY}/git/matching-refs/tags/${tag}" \
+            | jq -r --arg ref "refs/tags/${tag}" \
+                '.[] | select(.ref == $ref) | "\(.object.type) \(.object.sha)"')
+          existing=""
+          if [ -n "$matched" ]; then
+            existing=${matched##* }
+            if [ "${matched%% *}" = "tag" ]; then
+              existing=$(gh api "repos/${GITHUB_REPOSITORY}/git/tags/${existing}" \
+                --jq '.object.sha')
+            fi
+          fi
           if [ -n "$existing" ]; then
             if [ "$existing" = "$SHA" ]; then
               echo "${tag} already points at ${SHA} — nothing to do."
