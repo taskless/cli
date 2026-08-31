@@ -56,6 +56,12 @@ this requirement makes the guarantee enforced rather than trusted.
 "Module file" SHALL cover every extension a check could import, not only `.ts`: the loader
 transpiles TypeScript, but a `.js` sibling resolves just as readily.
 
+The search SHALL be recursive. "One import away" is not "one directory away" — a single
+`import "./lib/helper.ts"` reaches an arbitrarily deep relative path in one hop — so a search
+bounded to the rule root would let any nested directory carry unsigned code past the check while
+`check.ts` still matched its blessed signature. The search SHALL also consider only files, so a
+directory whose name ends in a module extension is not reported as one.
+
 The rule's `.tests/` directory SHALL be excluded from this search. A runtime check reads real
 files under a root, so a fixture that is itself TypeScript is the normal case rather than a
 smuggled helper, and refusing it would break correct rules — a worse failure than the one being
@@ -63,7 +69,7 @@ prevented.
 
 #### Scenario: A helper module beside check.ts is refused
 
-- **WHEN** a runtime rule directory contains `check.ts` and any other module file, at its root or under `captures/`
+- **WHEN** a runtime rule directory contains `check.ts` and any other module file, at any depth
 - **THEN** the CLI SHALL refuse the rule and name the offending file
 - **AND** SHALL NOT execute its `check.ts`
 

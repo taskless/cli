@@ -3,12 +3,14 @@ import { join } from "node:path";
 
 import { parse } from "yaml";
 
+import { isMissingDirectory } from "../errno";
+
 import {
   MATCH_MODES,
   SUPPORTED_METADATA_VERSIONS,
 } from "../../types/runtime-rule";
 import type { CaptureRule, MatchMode } from "../../types/runtime-rule";
-import { RULES_DIRECTORY } from "../layout";
+import { RULES_DIRECTORY, RULE_TESTS_DIRECTORY } from "../layout";
 
 /**
  * Directory (relative to `.taskless/`) that holds runtime rules — the
@@ -82,22 +84,46 @@ const MODULE_EXTENSIONS = [".ts", ".mts", ".cts", ".js", ".mjs", ".cjs"];
 
 export async function strayModules(ruleDirectory: string): Promise<string[]> {
   const stray: string[] = [];
-  for (const relative of ["", CAPTURES_DIRECTORY]) {
-    const directory =
-      relative === "" ? ruleDirectory : join(ruleDirectory, relative);
-    let entries: string[];
+
+  // RECURSIVE, because "one import away" is not "one directory away". A single
+  // `import "./lib/helper.ts"` reaches an arbitrarily deep relative path in one
+  // hop, so scanning only the rule root and `captures/` would let any nested
+  // directory carry unsigned code straight past this check while `check.ts`
+  // still matched its blessed signature.
+  async function walk(directory: string, prefix: string): Promise<void> {
+    let entries;
     try {
-      entries = await readdir(directory);
-    } catch {
-      continue;
+      entries = await readdir(directory, { withFileTypes: true });
+    } catch (error) {
+      // A directory that is genuinely absent contributes nothing. Anything
+      // else is a real IO problem and must not be read as "nothing here",
+      // because that is indistinguishable from a clean rule.
+      if (isMissingDirectory(error)) return;
+      throw error;
     }
-    for (const name of entries) {
-      if (relative === "" && name === CHECK_FILE) continue;
-      if (MODULE_EXTENSIONS.some((extension) => name.endsWith(extension))) {
-        stray.push(relative === "" ? name : `${relative}/${name}`);
+    for (const entry of entries) {
+      const relative = prefix === "" ? entry.name : `${prefix}/${entry.name}`;
+      if (entry.isDirectory()) {
+        // Fixtures are data the check reads, not modules it imports; see the
+        // note above on why searching them would refuse correct rules.
+        if (relative === RULE_TESTS_DIRECTORY) continue;
+        await walk(join(directory, entry.name), relative);
+        continue;
+      }
+      // `isFile()` rather than a name test: a DIRECTORY named `helper.ts`
+      // is not an executable file, and reporting it would refuse a fine rule
+      // with an error naming something that cannot run.
+      if (!entry.isFile()) continue;
+      if (relative === CHECK_FILE) continue;
+      if (
+        MODULE_EXTENSIONS.some((extension) => entry.name.endsWith(extension))
+      ) {
+        stray.push(relative);
       }
     }
   }
+
+  await walk(ruleDirectory, "");
   return stray.toSorted();
 }
 
