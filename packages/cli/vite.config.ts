@@ -167,33 +167,6 @@ function findEntryChunk(
 }
 
 /**
- * Refuse to emit a library entry that drags the CLI runtime along with it.
- *
- * `@taskless/cli/prompts` renders recipe text; `@taskless/cli/layout` is the
- * rule layout table a service builds payloads against. Both are imported by
- * consumers that are not this CLI — a Worker among them — so neither may pull
- * in the command layer or reach a host capability. The graph is allowed to
- * touch embedded text and the pure values it exports, and nothing else.
- *
- * Two rules, both checked over the entry's transitive chunk graph:
- *
- * - **No external imports at all.** Everything but node builtins is bundled
- *   (see `rollupOptions.external`), so a bare specifier surviving here is a
- *   builtin — `node:fs`, `node:child_process` — and the render path has no
- *   business with any of them.
- * - **Never reach the bin entry.** That chunk is the CLI itself.
- *
- * ENFORCED IN THE BUILD, DELIBERATELY, rather than asserted by a test over the
- * artifact. A build that refuses to emit a leaking bundle makes the bad artifact
- * unproducible; a test that inspects one afterwards only notices. It is also
- * the difference between reading rollup's own resolved graph and reconstructing
- * it: the test this replaces regex-scanned built JavaScript for `from "…"`, and
- * a chunk embeds every recipe as a string literal, so the engine-selection
- * recipe's `a different axis from "which engine"` was reported as an import.
- * `imports`/`dynamicImports` below are the real thing and cannot be spoofed by
- * prose.
- */
-/**
  * Walk one library entry's transitive chunk graph, failing the build on a leak.
  *
  * A plain function taking the plugin context, NOT a method on the plugin
@@ -239,6 +212,33 @@ function checkLibraryEntry(
   }
 }
 
+/**
+ * Refuse to emit a library entry that drags the CLI runtime along with it.
+ *
+ * `@taskless/cli/prompts` renders recipe text; `@taskless/cli/layout` is the
+ * rule layout table a service builds payloads against. Both are imported by
+ * consumers that are not this CLI — a Worker among them — so neither may pull
+ * in the command layer or reach a host capability. The graph is allowed to
+ * touch embedded text and the pure values it exports, and nothing else.
+ *
+ * Two rules, both checked over the entry's transitive chunk graph:
+ *
+ * - **No external imports at all.** Everything but node builtins is bundled
+ *   (see `rollupOptions.external`), so a bare specifier surviving here is a
+ *   builtin — `node:fs`, `node:child_process` — and a library entry has no
+ *   business with any of them.
+ * - **Never reach the bin entry.** That chunk is the CLI itself.
+ *
+ * ENFORCED IN THE BUILD, DELIBERATELY, rather than asserted by a test over the
+ * artifact. A build that refuses to emit a leaking bundle makes the bad artifact
+ * unproducible; a test that inspects one afterwards only notices. It is also
+ * the difference between reading rollup's own resolved graph and reconstructing
+ * it: the test this replaces regex-scanned built JavaScript for `from "…"`, and
+ * a chunk embeds every recipe as a string literal, so the engine-selection
+ * recipe's `a different axis from "which engine"` was reported as an import.
+ * `imports`/`dynamicImports` below are the real thing and cannot be spoofed by
+ * prose.
+ */
 function assertLibraryGraphs(): Plugin {
   return {
     name: "assert-library-graphs",
