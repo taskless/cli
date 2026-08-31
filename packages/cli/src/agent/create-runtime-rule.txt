@@ -1,4 +1,4 @@
-# Topic: create-runtime-rule     (CLI v%(CLI_VERSION)s / topic v1)
+# Topic: create-runtime-rule     (CLI v%(CLI_VERSION)s / topic v2)
 
 ## You are here
 This is `create-runtime-rule`. It helps you write a runtime rule: a
