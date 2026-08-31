@@ -2,6 +2,16 @@
 // Adapted from the taskless/taskless stack-breadcrumb implementation
 // (@taskless/stack-breadcrumb) and brought into this repository under its MIT
 // license, with permission.
+//
+// THIS COPY IS THE AUTHORITATIVE ONE, and copies exist downstream: taskless/taskless
+// vendors it rather than maintaining its own. Fixes are made here and re-vendored
+// from here, so a change made downstream is a fork that the next sync discards.
+//
+// Nothing checks that the copies match, deliberately. This repository moves ahead
+// of the vendored copy by design, so a drift test would fail on exactly the changes
+// that are supposed to happen. The stakes suit that: a diverged breadcrumb renders a
+// PR body slightly differently, where a diverged rule layout writes rules to the
+// wrong place — which is why THAT one has a drift test and this one has a sentence.
 "use strict";
 
 /**
