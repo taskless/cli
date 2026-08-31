@@ -1,8 +1,16 @@
 import { execFile } from "node:child_process";
-import { mkdir, mkdtemp, readdir, rm, stat, writeFile } from "node:fs/promises";
+import {
+  chmod,
+  mkdir,
+  mkdtemp,
+  readdir,
+  rm,
+  stat,
+  writeFile,
+} from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join, relative, resolve } from "node:path";
+import { dirname, join, relative, resolve } from "node:path";
 import { promisify } from "node:util";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
@@ -258,6 +266,26 @@ describe("engine dispatch by directory", () => {
       expect(existsSync(directory)).toBe(false);
     }
   );
+
+  it("propagates a real IO error instead of reporting the rule absent", async () => {
+    // `EACCES` on a rule directory is not "no rule here". Reading it as
+    // absence would tell the user to treat a rule that exists, and is merely
+    // unreadable, as gone — the same class of bug this search exists to fix.
+    const directory = ruleDirectory(
+      temporaryDirectory,
+      "vale",
+      "logs-abc12345"
+    );
+    await mkdir(directory, { recursive: true });
+    await chmod(dirname(directory), 0o000);
+    try {
+      await expect(
+        deleteRuleFiles(temporaryDirectory, "logs-abc12345")
+      ).rejects.toMatchObject({ code: "EACCES" });
+    } finally {
+      await chmod(dirname(directory), 0o755);
+    }
+  });
 
   it("reports not-found for an id no engine holds", async () => {
     expect(await deleteRuleFiles(temporaryDirectory, "absent-abc12345")).toBe(

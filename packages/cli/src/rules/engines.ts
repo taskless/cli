@@ -2,6 +2,7 @@ import { readdir, stat } from "node:fs/promises";
 import { join } from "node:path";
 
 import { CLIError } from "../util/cli-error";
+import { isMissingDirectory } from "./errno";
 
 /**
  * Engines this CLI knows. The directory name under `.taskless/rules/` **is**
@@ -255,8 +256,14 @@ export async function findRuleEngine(
     try {
       const stats = await stat(ruleDirectory(cwd, engine, id));
       if (stats.isDirectory()) return engine;
-    } catch {
-      // Not under this engine; try the next.
+    } catch (error) {
+      // Only a genuinely absent directory means "not this engine". Swallowing
+      // every failure would read `EACCES` on a rule directory as absence, and
+      // the caller would then report a rule that is present but unreadable as
+      // not found — telling the user to treat an existing rule as gone. That
+      // is the same class of bug this function exists to fix, moved from
+      // "wrong engine assumed" to "real error misreported as absence".
+      if (!isMissingDirectory(error)) throw error;
     }
   }
   return undefined;
