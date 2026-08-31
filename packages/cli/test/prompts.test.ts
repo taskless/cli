@@ -382,7 +382,7 @@ describe("built prompts entry", () => {
     // The `.` export has no `types` condition. A `dist/index.d.ts` emitted
     // beside `dist/index.js` would hand consumers a typed CLI surface the
     // package never promised, as a side effect of typing the prompts entry —
-    // which is the whole reason `tsconfig.prompts.json` scopes its include list.
+    // which is the whole reason `tsconfig.public.json` scopes its include list.
     await expect(
       readFile(resolve(distributionDirectory, "index.d.ts"), "utf8")
     ).rejects.toThrow(/ENOENT/);

@@ -1,6 +1,7 @@
 import { readdir } from "node:fs/promises";
 import type { CheckResult } from "../types/check";
-import { engineRulesDirectory, type EngineName } from "./engines";
+import { engineRulesDirectory } from "./engines";
+import { type EngineName } from "./layout";
 import { isMissingDirectory } from "./errno";
 import { executeRuntimeRules } from "./runtime/harness";
 import type { RuntimeRule } from "./runtime/discover";

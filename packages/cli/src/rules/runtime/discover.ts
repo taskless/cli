@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { parse } from "yaml";
 
 import type { CaptureRule, MatchMode } from "../../types/runtime-rule";
-import { RULES_DIRECTORY } from "../engines";
+import { RULES_DIRECTORY } from "../layout";
 
 /**
  * Directory (relative to `.taskless/`) that holds runtime rules — the

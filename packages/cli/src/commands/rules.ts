@@ -13,7 +13,7 @@ import {
   readRuleMetaFile,
   deleteRuleFiles,
 } from "../rules/files";
-import { RULES_DIRECTORY } from "../rules/engines";
+import { RULES_DIRECTORY } from "../rules/layout";
 import {
   inputSchema as createInputSchema,
   outputSchema as createOutputSchema,

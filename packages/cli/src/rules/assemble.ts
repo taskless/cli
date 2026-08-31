@@ -5,11 +5,10 @@ import {
   ASSEMBLED_SG_CONFIG,
   ASSEMBLED_VALE_CONFIG,
   listRuleIds,
-  RULE_TESTS_DIRECTORY,
-  RULES_DIRECTORY,
   ruleConfigPath,
   ruleTestsDirectory,
 } from "./engines";
+import { RULE_TESTS_DIRECTORY, RULES_DIRECTORY } from "./layout";
 
 /**
  * Assembling the per-rule configs into the single file each tool accepts.

@@ -13,7 +13,7 @@ import { dirname, join } from "node:path";
 
 import type { Migration } from "../types";
 import { CLIError } from "../../util/cli-error";
-import { isKnownEngine } from "../../rules/engines";
+import { isKnownEngine } from "../../rules/layout";
 
 /**
  * Default `sgconfig.yml` written when a project has none to move. `ruleDirs`

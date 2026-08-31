@@ -106,13 +106,25 @@ function assertSkillVersions(): Plugin {
   };
 }
 
-// The build emits two entries. `index` is the executable CLI; `prompts` is a
-// library module consumers import as `@taskless/cli/prompts`. Only the former
-// is a program, so only the former gets a shebang and the executable bit — a
-// `#!` line on the library entry would be a syntax error to anything importing
-// it as a module.
+// The build emits three entries. `index` is the executable CLI; `prompts` and
+// `layout` are library modules consumers import as `@taskless/cli/<name>`. Only
+// the first is a program, so only it gets a shebang and the executable bit — a
+// `#!` line on a library entry would be a syntax error to anything importing it
+// as a module.
 const BIN_ENTRY = "index";
 const PROMPTS_ENTRY = "prompts";
+const LAYOUT_ENTRY = "layout";
+
+/**
+ * Every entry that is a library surface rather than a program, and therefore
+ * must not drag the CLI runtime along with it.
+ *
+ * Adding an entry here is what subjects it to {@link assertLibraryGraphs}. An
+ * entry absent from this list is checked by nothing, so a new published surface
+ * that forgets to join it leaks silently — which is the failure this guard
+ * exists to prevent, one level up.
+ */
+const LIBRARY_ENTRIES = [PROMPTS_ENTRY, LAYOUT_ENTRY];
 
 function shebang(): Plugin {
   // Typed against Rollup's own bundle union rather than a structural shape, so
@@ -155,12 +167,13 @@ function findEntryChunk(
 }
 
 /**
- * Refuse to emit a prompts entry that drags the CLI runtime along with it.
+ * Refuse to emit a library entry that drags the CLI runtime along with it.
  *
- * `@taskless/cli/prompts` is a library surface: an agent imports it to render
- * recipe text, and it must not pull in the command layer or reach a host
- * capability to do that. The graph is allowed to touch embedded text and the
- * pure helpers it renders with, and nothing else.
+ * `@taskless/cli/prompts` renders recipe text; `@taskless/cli/layout` is the
+ * rule layout table a service builds payloads against. Both are imported by
+ * consumers that are not this CLI — a Worker among them — so neither may pull
+ * in the command layer or reach a host capability. The graph is allowed to
+ * touch embedded text and the pure values it exports, and nothing else.
  *
  * Two rules, both checked over the entry's transitive chunk graph:
  *
@@ -180,42 +193,59 @@ function findEntryChunk(
  * `imports`/`dynamicImports` below are the real thing and cannot be spoofed by
  * prose.
  */
-function assertPromptsGraph(): Plugin {
+/**
+ * Walk one library entry's transitive chunk graph, failing the build on a leak.
+ *
+ * A plain function taking the plugin context, NOT a method on the plugin
+ * object: rollup binds `this` in a hook to its own `PluginContext`, so a helper
+ * hung off the plugin is not reachable as `this.helper` and fails at build time
+ * with "is not a function".
+ */
+function checkLibraryEntry(
+  context: Rollup.PluginContext,
+  bundle: Rollup.OutputBundle,
+  entryName: string,
+  binFile: string | undefined
+): void {
+  const entry = findEntryChunk(bundle, entryName);
+  // Not an error: `build:self` and any future single-entry build legitimately
+  // emit no library entries. Nothing to check, not a failure to check it.
+  if (entry === undefined) return;
+
+  const seen = new Set<string>();
+  const queue = [entry.fileName];
+  while (queue.length > 0) {
+    // A chunk's file name, or — for anything rollup left external — the
+    // bare specifier itself, which is why the bundle lookup below can miss.
+    const imported = queue.pop()!;
+    if (seen.has(imported)) continue;
+    seen.add(imported);
+
+    const chunk = bundle[imported];
+    if (chunk === undefined || chunk.type !== "chunk") {
+      // Resolved to something outside the bundle: an external module.
+      context.error(
+        `${entryName} entry graph imports ${imported}; a library entry ` +
+          `must not reach a host capability`
+      );
+    }
+    if (imported === binFile) {
+      context.error(
+        `${entryName} entry graph reaches the CLI entry (${imported}); ` +
+          `importing @taskless/cli/${entryName} would load the command layer`
+      );
+    }
+    queue.push(...chunk.imports, ...chunk.dynamicImports);
+  }
+}
+
+function assertLibraryGraphs(): Plugin {
   return {
-    name: "assert-prompts-graph",
+    name: "assert-library-graphs",
     generateBundle(_options, bundle) {
-      const entry = findEntryChunk(bundle, PROMPTS_ENTRY);
-      // Not an error: `build:self` and any future single-entry build
-      // legitimately emit no prompts entry. Nothing to check, not a failure to
-      // check it.
-      if (entry === undefined) return;
-
       const binFile = findEntryChunk(bundle, BIN_ENTRY)?.fileName;
-
-      const seen = new Set<string>();
-      const queue = [entry.fileName];
-      while (queue.length > 0) {
-        // A chunk's file name, or — for anything rollup left external — the
-        // bare specifier itself, which is why the bundle lookup below can miss.
-        const imported = queue.pop()!;
-        if (seen.has(imported)) continue;
-        seen.add(imported);
-
-        const chunk = bundle[imported];
-        if (chunk === undefined || chunk.type !== "chunk") {
-          // Resolved to something outside the bundle: an external module.
-          this.error(
-            `prompts entry graph imports ${imported}; the render path must not ` +
-              `reach a host capability`
-          );
-        }
-        if (imported === binFile) {
-          this.error(
-            `prompts entry graph reaches the CLI entry (${imported}); ` +
-              `importing @taskless/cli/prompts would load the command layer`
-          );
-        }
-        queue.push(...chunk.imports, ...chunk.dynamicImports);
+      for (const entryName of LIBRARY_ENTRIES) {
+        checkLibraryEntry(this, bundle, entryName, binFile);
       }
     },
   };
@@ -237,7 +267,7 @@ export default defineConfig({
     tsconfigPaths(),
     assertSkillVersions(),
     shebang(),
-    assertPromptsGraph(),
+    assertLibraryGraphs(),
   ],
   build: {
     outDir,
@@ -245,6 +275,7 @@ export default defineConfig({
       entry: {
         [BIN_ENTRY]: resolve(import.meta.dirname, "src/index.ts"),
         [PROMPTS_ENTRY]: resolve(import.meta.dirname, "src/prompts/index.ts"),
+        [LAYOUT_ENTRY]: resolve(import.meta.dirname, "src/layout/index.ts"),
       },
       formats: ["es"],
       fileName: (_format, entryName) => `${entryName}.js`,

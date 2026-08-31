@@ -1,13 +1,8 @@
 import { stat } from "node:fs/promises";
 import { relative, resolve, sep } from "node:path";
 
-import {
-  ENGINES,
-  isKnownEngine,
-  listRuleIds,
-  rulesRoot,
-  type EngineName,
-} from "./engines";
+import { listRuleIds, rulesRoot } from "./engines";
+import { ENGINES, isKnownEngine, type EngineName } from "./layout";
 
 /** One rule a command was asked to act on. */
 export interface ResolvedRule {
