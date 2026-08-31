@@ -276,26 +276,23 @@ The second check verifies that every `### Requirement:` heading sits under `## R
 - **WHEN** a spec reaches end of file with a code fence still open, as happens when an opening fence is lost and its closer is left dangling
 - **THEN** the visibility step SHALL fail, because everything after that point is unreadable to the check as well as to the parser
 
-### Requirement: Unarchived OpenSpec changes fail on main only
+### Requirement: No check requires an OpenSpec change to be archived
 
-The workflow SHALL fail when `main` carries a directory under `openspec/changes/` other than `archive/`, and SHALL make that check on `push` events to `main` only. No pull request check SHALL require a change to be archived.
+No workflow SHALL fail because a directory other than `archive/` exists under `openspec/changes/`, on a pull request or on `main`. An unarchived change directory is the normal state of work in progress, and nothing reports it.
 
-An unarchived change directory is the normal state of a pull request — a change is archived exactly once, on the last slice of the work — so a pull-request gate has to infer stack position to avoid firing on work still in flight, and a check that is expected-red across most of a stack trains people to ignore red. On `main` the question has an unambiguous answer: once the work has landed, whatever remains under `openspec/changes/` is debris. A stack that merges forward leaves `main` red until its final slice archives the change; that red blocks nothing, because branch protection reads each pull request's own `Validate` run.
+Two gates were tried and both measured the wrong thing. A pull-request gate had to infer stack position to avoid firing on work still in flight, and a check that is expected-red across most of a stack trains people to ignore red. Moving it to `main` removed those false positives and introduced a worse one: a stack that merges forward leaves its change directory on `main` until the final slice, so `main` ran red for as long as the stack took to drain. A signal that is expected to be red is not a signal.
 
-#### Scenario: Unarchived change on main fails the workflow
-
-- **WHEN** a commit is pushed to `main` and a directory other than `archive/` exists under `openspec/changes/`
-- **THEN** the workflow SHALL fail, naming each unarchived directory
+Both versions detected "work is in progress". What is worth detecting is work that stalled and was abandoned, and the directory looks identical in either case, so neither gate could tell them apart. A replacement that measures abandonment rather than activity is a separate piece of design.
 
 #### Scenario: Unarchived change on a pull request does not fail
 
 - **WHEN** a pull request carries an unarchived change directory under `openspec/changes/`
-- **THEN** the workflow SHALL NOT fail for it, because the check is skipped on pull request events
+- **THEN** no check SHALL fail for it
 
-#### Scenario: Archived changes pass
+#### Scenario: Unarchived change on main does not fail
 
-- **WHEN** a commit is pushed to `main` and `openspec/changes/` holds only `archive/`
-- **THEN** the check SHALL succeed
+- **WHEN** a commit is pushed to `main` and a directory other than `archive/` exists under `openspec/changes/`
+- **THEN** no check SHALL fail for it, because a forward-merging stack is expected to leave one there until its final slice
 
 ### Requirement: Workflow uses pnpm matching packageManager field
 
