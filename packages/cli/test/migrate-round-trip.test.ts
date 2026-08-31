@@ -29,7 +29,13 @@ const withVale = findValeBinary().path === undefined ? describe.skip : describe;
  * that matters to a user upgrading: do my rules still fire, and do my tests
  * still run?
  */
-const CAPTURE_YML = `id: no-eval-capture\nlanguage: typescript\nrule:\n  pattern: eval($$$ARGS)\n`;
+// A REAL runtime capture, carrying the `metadata.taskless` block that makes it
+// one. Without it `asRuntimeCaptureRule` returns null, `loadCaptureRules`
+// yields nothing, and `discoverRuntimeRulesIn` skips the directory as "not a
+// runtime rule" — so the fixture modelled a rule that never ran, before or
+// after migration, and the questions this file exists to ask ("do my rules
+// still fire, do my tests still run?") were answered vacuously for it.
+const CAPTURE_YML = `id: no-eval-capture\nlanguage: typescript\nrule:\n  pattern: eval($$$ARGS)\nmetadata:\n  taskless:\n    version: 1\n    kind: runtime\n    name: no-eval\n    check: check.ts\n`;
 const CHECK_TS = `export function check() {\n  return { ok: true };\n}\n`;
 
 let cwd: string;
