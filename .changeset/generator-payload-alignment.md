@@ -89,7 +89,9 @@ runtime rule with no `check.ts` is never blessed and is held, and a Vale rule
 with no `.vale.ini` has no matcher enabling it and never fires. Both leave
 `check` exiting 0.
 
-Delivered paths are refused before anything is written — absolute paths, `..`
-segments, backslashes, unnormalized segments, duplicates. The whole set is
-assessed as a unit, so a refused delivery leaves no directory behind rather
-than a half-written rule that verifies as broken two steps from the cause.
+Delivered paths are refused before anything is written: absolute paths, `..`
+segments, backslashes, unnormalized segments, duplicates (including two paths
+differing only in case, which are one file on a case-insensitive filesystem),
+and one path being an ancestor of another. The whole set is assessed as a
+unit, so a refused delivery leaves no directory behind rather than a
+half-written rule that verifies as broken two steps from the cause.

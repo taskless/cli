@@ -148,16 +148,49 @@ export function assessDelivery(
   }
   const directory = ruleDirectory(cwd, engine, ruleId);
 
-  const seen = new Set<string>();
+  // Case-FOLDED as well as exact. APFS and NTFS are case-insensitive by
+  // default, so `captures/Logs.yml` and `captures/logs.yml` are two distinct
+  // strings that become one file on disk: the second write silently clobbers
+  // the first and the rule is missing a capture nobody was told was dropped.
+  // Capture names are arbitrary, so nothing else would catch it.
+  const folded = new Set<string>();
   for (const file of files) {
     const unsafe = describeUnsafePath(directory, file.path);
     if (unsafe !== undefined) {
       return { ok: false, reason: `delivered a path that ${unsafe}` };
     }
-    if (seen.has(file.path)) {
-      return { ok: false, reason: `delivered ${file.path} twice` };
+    const key = file.path.toLowerCase();
+    if (folded.has(key)) {
+      return {
+        ok: false,
+        reason:
+          key === file.path
+            ? `delivered ${file.path} twice`
+            : `delivered ${file.path} twice, differing only in case, which is one file on a case-insensitive filesystem`,
+      };
     }
-    seen.add(file.path);
+    folded.add(key);
+  }
+
+  // One delivered path being an ANCESTOR of another is the same file needing
+  // to be a file and a directory at once. It passes every check above — no
+  // path is unsafe, none is a duplicate, the set can still be complete — and
+  // then fails mid-write: `mkdir` throws `ENOTDIR` when the parent was already
+  // written as a file, and `writeFile` throws `EISDIR` when a recursive
+  // `mkdir` got there first. Which one depends on array order, and either way
+  // the rule directory is left half-written, which is precisely the state this
+  // module exists to make impossible.
+  for (const file of files) {
+    const segments = file.path.split("/");
+    for (let index = 1; index < segments.length; index += 1) {
+      const ancestor = segments.slice(0, index).join("/");
+      if (folded.has(ancestor.toLowerCase())) {
+        return {
+          ok: false,
+          reason: `delivered ${ancestor} as both a file and a directory (with ${file.path})`,
+        };
+      }
+    }
   }
 
   const incomplete = describeIncompleteSet(engine, ruleId, files);
