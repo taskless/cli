@@ -368,6 +368,70 @@ describe("engine dispatch by directory", () => {
     expect(message).toContain("broad");
   });
 
+  // Every reason discovery refuses a capture. Each was a silent `continue`:
+  // the capture vanished from the run and `check` exited 0, which is
+  // indistinguishable from a rule that found nothing.
+  const REFUSALS: [label: string, yaml: string, expected: RegExp][] = [
+    ["not a mapping", "just a string\n", /not a YAML mapping/],
+    [
+      "no taskless block",
+      RUNTIME_CAPTURE.split("metadata:")[0] ?? "",
+      /no metadata\.taskless block/,
+    ],
+    [
+      "wrong kind",
+      RUNTIME_CAPTURE.replace("kind: runtime", "kind: static"),
+      /kind: "static", not "runtime"/,
+    ],
+    [
+      "unimplemented metadata version",
+      RUNTIME_CAPTURE.replace("version: 1", "version: 99"),
+      /version 99, which this build does not implement/,
+    ],
+    [
+      "no language",
+      RUNTIME_CAPTURE.replace("language: typescript\n", ""),
+      /no string `language`/,
+    ],
+    [
+      "no name",
+      RUNTIME_CAPTURE.replace("    name: logs\n", ""),
+      /no string metadata\.taskless\.name/,
+    ],
+    [
+      "no id",
+      RUNTIME_CAPTURE.replace("id: logs-abc12345\n", ""),
+      /no string `id`/,
+    ],
+  ];
+
+  it.each(REFUSALS)(
+    "refuses a capture that is %s, and verify says why",
+    async (_label, yaml, expected) => {
+      const rule = ruleDirectory(
+        temporaryDirectory,
+        "runtime",
+        "logs-abc12345"
+      );
+      await mkdir(join(rule, "captures"), { recursive: true });
+      await writeFile(join(rule, "captures", "logs.yml"), yaml, "utf8");
+      await writeFile(join(rule, "check.ts"), RUNTIME_CHECK, "utf8");
+
+      // Fails closed: the capture is not loaded, so the rule has none and is
+      // not a runtime rule at all.
+      expect(await discoverRuntimeRules(temporaryDirectory)).toHaveLength(0);
+
+      // ...and says so. Discovery refusing silently would just be a different
+      // route to "reports nothing".
+      const result = await verifyOneRule(temporaryDirectory, {
+        engine: "runtime",
+        ruleId: "logs-abc12345",
+      } as Parameters<typeof verifyOneRule>[1]);
+      expect(result.ok).toBe(false);
+      expect(result.errors.join("\n")).toMatch(expected);
+    }
+  );
+
   it("does not discover runtime rules left at the pre-migration path", async () => {
     // 0004 moves this tree; a leftover here is not a second runtime source.
     const legacy = join(tasklessDirectory, "runtime-rules", "logs-abc12345");
