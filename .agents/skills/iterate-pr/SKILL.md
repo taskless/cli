@@ -98,6 +98,24 @@ uv run ${CLAUDE_SKILL_ROOT}/scripts/stack_status.py [--root <branch>]
 
 Cascade-rebases a branch's descendants onto their parents to carry a fix up the stack — a focused restack that (unlike a whole-stack sync) never rebases onto the latest `main`, so fix-propagation stays decoupled from main-reconciliation. Lineage comes from the open GitHub PRs (head → base). It is topological (parent before child) and **guarded**: a balloon guard resets-without-pushing if a rebase lands on the wrong parent, and it stops on the first conflict for manual reconcile. Always prefer this to an inline rebase loop.
 
+**It replays from where the child forked, not from a merge-base.** This matters
+whenever a parent was rewritten, which is the normal case here: you fixed review
+feedback on the parent, and that is why you are propagating at all. A plain
+`git rebase <parent>` picks its upstream by merge-base, which after a rewrite
+falls back to an older common ancestor — so the parent's own superseded commits
+get replayed on top of their replacements. It surfaces as a conflict in files
+the child never touched, and the obvious resolution ("take mine") silently
+discards the parent's newer work. The child's own tests still pass, because the
+change that was lost belongs to the parent, and under rebase-and-merge that
+stale content then reaches `main` and reverts a fix that already landed.
+
+The upstream is resolved from three sources, most reliable first: the parent's
+pre-rebase tip when this run rebased it, `git merge-base --fork-point` when the
+rewrite happened elsewhere (a parent restacked by hand, or an earlier run), and
+the parent itself when it was only appended to. The balloon guard counts from
+that same upstream, so its expectation cannot be inflated by the parent's
+superseded commits.
+
 ```bash
 uv run ${CLAUDE_SKILL_ROOT}/scripts/propagate_stack.py --root <branch> [--dry-run] [--no-push]
 ```
