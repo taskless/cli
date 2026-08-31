@@ -38,8 +38,11 @@ export async function writeRuleFile(
   // A file set and a single `content` are mutually exclusive, per the contract.
   // Carrying both means the service is unsure what it sent, and picking one
   // would write a rule nobody described.
-  const files = deliveredFiles(rule);
-  if (files !== undefined) {
+  const delivered = deliveredFiles(rule);
+  if (delivered.kind === "malformed") {
+    throw new Error(`Rule "${rule.id}" ${delivered.reason}.`);
+  }
+  if (delivered.kind === "present") {
     if (rule.content !== undefined) {
       throw new Error(
         `Rule "${rule.id}" carries both \`files\` and \`content\`; they are mutually exclusive.`
@@ -48,7 +51,7 @@ export async function writeRuleFile(
     // Assessed as a unit before anything is written. A half-written rule
     // directory verifies as a broken rule two steps from the cause, and the
     // delivery that produced it has already reported success.
-    const assessment = assessDelivery(cwd, engine, rule.id, files);
+    const assessment = assessDelivery(cwd, engine, rule.id, delivered.files);
     if (!assessment.ok) {
       throw new Error(`Rule "${rule.id}" ${assessment.reason}.`);
     }

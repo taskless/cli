@@ -21,21 +21,57 @@ export interface DeliveredFile {
   content: string;
 }
 
-/** Read a delivered rule's file set, or `undefined` for a legacy single-rule payload. */
-export function deliveredFiles(
-  rule: GeneratedRule
-): DeliveredFile[] | undefined {
+/**
+ * What a delivered rule says about a file set: nothing, something malformed,
+ * or a usable one.
+ *
+ * THREE OUTCOMES, NOT TWO. Folding "malformed" into "absent" would send the
+ * payload down the legacy `content` path, where a rule carrying `files` has no
+ * `content` to serialize and the rule file is written from `undefined`.
+ * Folding it into "an empty set" is what this used to do, and it reported
+ * `delivered no files` for a payload that delivered several — sending whoever
+ * is debugging a real shape defect to look in the wrong place.
+ */
+export type DeliveredFileSet =
+  | { kind: "absent" }
+  | { kind: "malformed"; reason: string }
+  | { kind: "present"; files: DeliveredFile[] };
+
+/** Read a delivered rule's file set. */
+export function deliveredFiles(rule: GeneratedRule): DeliveredFileSet {
   const candidate = (rule as { files?: unknown }).files;
-  if (!Array.isArray(candidate)) return undefined;
-  return candidate.every(
-    (file): file is DeliveredFile =>
-      typeof file === "object" &&
-      file !== null &&
-      typeof (file as DeliveredFile).path === "string" &&
-      typeof (file as DeliveredFile).content === "string"
-  )
-    ? candidate
-    : [];
+  if (candidate === undefined) return { kind: "absent" };
+  if (!Array.isArray(candidate)) {
+    return {
+      kind: "malformed",
+      reason: "carries a `files` that is not an array",
+    };
+  }
+  const files: DeliveredFile[] = [];
+  for (const [index, entry] of candidate.entries()) {
+    if (typeof entry !== "object" || entry === null) {
+      return {
+        kind: "malformed",
+        reason: `carries a \`files[${index}]\` that is not an object`,
+      };
+    }
+    const file = entry as Partial<DeliveredFile>;
+    // Named individually so the error points at the field, not the entry.
+    if (typeof file.path !== "string") {
+      return {
+        kind: "malformed",
+        reason: `carries a \`files[${index}]\` with no string \`path\``,
+      };
+    }
+    if (typeof file.content !== "string") {
+      return {
+        kind: "malformed",
+        reason: `carries \`${file.path}\` with no string \`content\``,
+      };
+    }
+    files.push({ path: file.path, content: file.content });
+  }
+  return { kind: "present", files };
 }
 
 /**
