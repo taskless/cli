@@ -165,6 +165,47 @@ describe("delivering a rule as a file set", () => {
     ).rejects.toThrow(/twice/);
   });
 
+  it.each([
+    // Either order fails mid-write, differently: `mkdir` throws ENOTDIR when
+    // the parent was already written as a file, `writeFile` throws EISDIR when
+    // a recursive mkdir got there first.
+    ["file before directory", ["check.ts", "check.ts/nested.ts"]],
+    ["directory before file", ["check.ts/nested.ts", "check.ts"]],
+  ])(
+    "refuses a path that is an ancestor of another (%s)",
+    async (_label, [first, second]) => {
+      await expect(
+        writeRuleFile(
+          cwd,
+          delivered("runtime", "logs-abc12345", [
+            { path: first as string, content: "a\n" },
+            { path: second as string, content: "b\n" },
+            { path: "captures/logs.yml", content: CAPTURE },
+          ])
+        )
+      ).rejects.toThrow(/both a file and a directory/);
+
+      expect(existsSync(ruleDirectory(cwd, "runtime", "logs-abc12345"))).toBe(
+        false
+      );
+    }
+  );
+
+  it("refuses two capture paths differing only in case", async () => {
+    // On APFS and NTFS these are one file: the second write clobbers the
+    // first, and the rule loses a capture nobody was told was dropped.
+    await expect(
+      writeRuleFile(
+        cwd,
+        delivered("runtime", "logs-abc12345", [
+          { path: "check.ts", content: "export default async () => [];\n" },
+          { path: "captures/logs.yml", content: CAPTURE },
+          { path: "captures/Logs.yml", content: CAPTURE },
+        ])
+      )
+    ).rejects.toThrow(/differing only in case/);
+  });
+
   it("refuses a payload carrying both files and content", async () => {
     const rule = {
       id: "logs-abc12345",
