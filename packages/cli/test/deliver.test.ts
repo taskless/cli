@@ -206,6 +206,38 @@ describe("delivering a rule as a file set", () => {
     ).rejects.toThrow(/differing only in case/);
   });
 
+  // A malformed set used to normalize to `[]` and report "delivered no files"
+  // for a payload that delivered several, sending anyone debugging a real
+  // shape defect to look in the wrong place.
+  it.each([
+    ["files is not an array", "nope", /files` that is not an array/],
+    [
+      "an entry is not an object",
+      ["check.ts"],
+      /files\[0\]` that is not an object/,
+    ],
+    [
+      "an entry has no path",
+      [{ content: "x\n" }],
+      /files\[0\]` with no string `path`/,
+    ],
+    [
+      "an entry has no content",
+      [{ path: "check.ts" }],
+      /`check\.ts` with no string `content`/,
+    ],
+  ])("names the defect when %s", async (_label, files, expected) => {
+    const rule = {
+      id: "logs-abc12345",
+      engine: "runtime",
+      files,
+    } as unknown as GeneratedRule;
+    await expect(writeRuleFile(cwd, rule)).rejects.toThrow(expected);
+    expect(existsSync(ruleDirectory(cwd, "runtime", "logs-abc12345"))).toBe(
+      false
+    );
+  });
+
   it("refuses a payload carrying both files and content", async () => {
     const rule = {
       id: "logs-abc12345",
