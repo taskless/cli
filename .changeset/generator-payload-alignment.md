@@ -69,6 +69,8 @@ relative import away — so tampering with it bypasses the gate while `check.ts`
 still matches its blessed digest. Such a rule is refused, and `verify` names
 the file.
 
-Every extension a check could import is covered, not only `.ts`. A rule's
-`.tests/` fixtures are excluded, since a check reads real files under a root
-and a fixture that is itself TypeScript is ordinary.
+Every extension a check could import is covered, not only `.ts`, and the
+search is recursive: "one import away" is not "one directory away", so a
+nested directory would otherwise carry unsigned code straight past the check.
+A rule's `.tests/` fixtures are excluded at any depth, since a check reads
+real files under a root and a fixture that is itself TypeScript is ordinary.

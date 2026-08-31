@@ -440,6 +440,11 @@ describe("engine dispatch by directory", () => {
     ["helper.mjs", "helper.mjs"],
     // Reachable from check.ts by a relative import just the same.
     ["captures/helper.ts", "captures/helper.ts"],
+    // "One import away" is not "one directory away": a single
+    // `import "./lib/helper.ts"` reaches any depth in one hop.
+    ["lib/helper.ts", "lib/helper.ts"],
+    ["captures/nested/helper.js", "captures/nested/helper.js"],
+    ["a/b/c/deep.mjs", "a/b/c/deep.mjs"],
   ])(
     "refuses a runtime rule carrying %s beside check.ts",
     async (path, named) => {
@@ -455,6 +460,12 @@ describe("engine dispatch by directory", () => {
         "utf8"
       );
       await writeFile(join(rule, "check.ts"), RUNTIME_CHECK, "utf8");
+      // Parent computed from the delivered path rather than via `dirname`, to
+      // keep this test off the shared import line.
+      const slash = path.lastIndexOf("/");
+      if (slash > 0) {
+        await mkdir(join(rule, path.slice(0, slash)), { recursive: true });
+      }
       await writeFile(join(rule, path), "export const x = 1;\n", "utf8");
 
       // Only check.ts is signed, so a second module is code reachable from a
@@ -470,6 +481,23 @@ describe("engine dispatch by directory", () => {
     }
   );
 
+  it("does not report a directory whose name ends in a module extension", async () => {
+    // `readdir` returns directories too. A directory named `helper.ts` cannot
+    // execute, so refusing the rule would be a false positive naming something
+    // that is not a file.
+    const rule = ruleDirectory(temporaryDirectory, "runtime", "logs-abc12345");
+    await mkdir(join(rule, "captures"), { recursive: true });
+    await mkdir(join(rule, "helper.ts"), { recursive: true });
+    await writeFile(
+      join(rule, "captures", "logs.yml"),
+      RUNTIME_CAPTURE,
+      "utf8"
+    );
+    await writeFile(join(rule, "check.ts"), RUNTIME_CHECK, "utf8");
+
+    expect(await discoverRuntimeRules(temporaryDirectory)).toHaveLength(1);
+  });
+
   it("allows a TypeScript fixture under .tests/", async () => {
     // A runtime check reads real files under a root, so a fixture that is
     // legitimately TypeScript is the normal case rather than a smuggled
@@ -484,8 +512,9 @@ describe("engine dispatch by directory", () => {
       "utf8"
     );
     await writeFile(join(rule, "check.ts"), RUNTIME_CHECK, "utf8");
+    await mkdir(join(rule, ".tests", "valid", "deep"), { recursive: true });
     await writeFile(
-      join(rule, ".tests", "valid", "sample.ts"),
+      join(rule, ".tests", "valid", "deep", "sample.ts"),
       "console.log('x');\n",
       "utf8"
     );
