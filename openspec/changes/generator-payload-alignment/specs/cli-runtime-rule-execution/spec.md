@@ -46,17 +46,31 @@ executed by `check`.
 
 ### Requirement: A runtime rule has exactly one executable file
 
-The CLI SHALL refuse a runtime rule whose directory contains any `.ts` file other than
+The CLI SHALL refuse a runtime rule whose directory contains any module file other than
 `check.ts`. `check.ts` is the only executable surface of a runtime rule and the only artifact
 carrying a signature, so any other module would be code reachable from a blessed entry point
-without itself being blessed. The generator commits to emitting exactly one; this requirement
-makes the guarantee enforced rather than trusted.
+without itself being blessed — one relative import away, while tampering with it leaves
+`check.ts` still matching its blessed digest. The generator commits to emitting exactly one;
+this requirement makes the guarantee enforced rather than trusted.
+
+"Module file" SHALL cover every extension a check could import, not only `.ts`: the loader
+transpiles TypeScript, but a `.js` sibling resolves just as readily.
+
+The rule's `.tests/` directory SHALL be excluded from this search. A runtime check reads real
+files under a root, so a fixture that is itself TypeScript is the normal case rather than a
+smuggled helper, and refusing it would break correct rules — a worse failure than the one being
+prevented.
 
 #### Scenario: A helper module beside check.ts is refused
 
-- **WHEN** a runtime rule directory contains `check.ts` and any other `.ts` file
-- **THEN** the CLI SHALL refuse the rule and state why
+- **WHEN** a runtime rule directory contains `check.ts` and any other module file, at its root or under `captures/`
+- **THEN** the CLI SHALL refuse the rule and name the offending file
 - **AND** SHALL NOT execute its `check.ts`
+
+#### Scenario: A TypeScript test fixture is not a stray module
+
+- **WHEN** a runtime rule carries a `.ts` file under its `.tests/` directory
+- **THEN** the CLI SHALL still discover and run the rule
 
 ### Requirement: Declared versions are read
 

@@ -2,9 +2,17 @@ import { readFile } from "node:fs/promises";
 
 import { parse } from "yaml";
 
-import { ruleCapturesDirectory, ruleConfigPath, ruleFilePath } from "./engines";
+import {
+  ruleCapturesDirectory,
+  ruleConfigPath,
+  ruleDirectory,
+  ruleFilePath,
+} from "./engines";
 import { type EngineName } from "./layout";
-import { assessCaptureDirectory } from "./runtime/discover";
+import {
+  assessCaptureDirectory,
+  strayModules,
+} from "./runtime/discover";
 import { validateValeRule } from "../schemas/vale-rule";
 import { verifyRule, type VerifyResult } from "./verify";
 import { verifyValeRule } from "./vale/verify";
@@ -173,6 +181,18 @@ export async function verifyOneRule(
   } catch {
     errors.push(`Missing check.ts at ${checkFile}`);
   }
+  // `check.ts` is the only executable surface and the only signed artifact, so
+  // a second module beside it is code reachable from a blessed entry point
+  // without being blessed itself. The generator commits to emitting one; this
+  // is what makes that a property of our side rather than a promise held on
+  // the other side of a wire.
+  const strays = await strayModules(ruleDirectory(cwd, engine, ruleId));
+  if (strays.length > 0) {
+    errors.push(
+      `${ruleId} contains ${strays.join(", ")} beside check.ts. A runtime rule has exactly one executable file, because only check.ts is signed — anything else it imports would run unverified. The rule is skipped.`
+    );
+  }
+
   const captures = ruleCapturesDirectory(cwd, engine, ruleId);
   if (captures !== undefined) {
     const assessed = await assessCaptureDirectory(captures);

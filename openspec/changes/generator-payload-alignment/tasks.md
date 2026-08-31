@@ -30,8 +30,8 @@ green on its own; none depends on a later one to be correct.
 
 ## 4. One executable per runtime rule (slice 4)
 
-- [ ] 4.1 Refuse a runtime rule directory containing any `.ts` other than `check.ts`
-- [ ] 4.2 Test that a helper module beside `check.ts` is refused and the check is not invoked
+- [x] 4.1 Refuse a runtime rule directory containing any `.ts` other than `check.ts`
+- [x] 4.2 Test that a helper module beside `check.ts` is refused and the check is not invoked
 
 ## 5. The file-set writer (slice 5)
 
