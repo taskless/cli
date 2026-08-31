@@ -1,33 +1,13 @@
 import chalk from "chalk";
 
+// Sets `chalk.level` from the real terminal on import. Kept as an explicit
+// import because this module renders colour and must not rely on another
+// module having loaded it first.
+import "../util/color";
+
 declare const __VERSION__: string;
 const CLI_VERSION: string =
   typeof __VERSION__ === "string" ? __VERSION__ : "unknown";
-
-/**
- * Chalk v5's auto-detection runs at import time. When the CLI is bundled via
- * Vite (no TTY at build time), it gets baked in as `level: 0`, which silently
- * strips every color. Re-detect at runtime and overwrite chalk.level so the
- * bundled binary picks up the terminal's actual capabilities.
- */
-function detectColorLevel(): 0 | 1 | 2 | 3 {
-  if (process.env.NO_COLOR) return 0;
-  const force = process.env.FORCE_COLOR;
-  if (force === "0") return 0;
-  if (force === "1") return 1;
-  if (force === "2") return 2;
-  if (force === "3") return 3;
-  const isTTY = process.stdout.isTTY === true || process.stderr.isTTY === true;
-  if (!isTTY) return 0;
-  const term = process.env.TERM ?? "";
-  const colorterm = process.env.COLORTERM ?? "";
-  if (colorterm === "truecolor" || colorterm === "24bit") return 3;
-  if (/-256(color)?$/i.test(term)) return 2;
-  if (term === "" || term === "dumb") return 0;
-  return 1;
-}
-
-chalk.level = detectColorLevel();
 
 /**
  * The Taskless wordmark rendered as 60×5 quad-block ASCII. Produced offline
