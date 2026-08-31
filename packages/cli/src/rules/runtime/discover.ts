@@ -143,33 +143,72 @@ export function assessCaptureRule(value: unknown): CaptureAssessment {
   return { ok: true, rule: candidate as CaptureRule & { id: string }, match };
 }
 
-/** Load and parse the capture rules of a single runtime-rule directory. */
-async function loadCaptureRules(
+/** One capture file in a rule's `captures/`, with the verdict on it. */
+export interface AssessedCapture {
+  /** Absolute path to the capture file. */
+  file: string;
+  /** Basename, as `verify` reports it. */
+  fileName: string;
+  assessment: CaptureAssessment;
+}
+
+/**
+ * Enumerate a rule's `captures/` and assess every file in it.
+ *
+ * ONE ENUMERATION, TWO CALLERS, for the same reason there is one assessor:
+ * discovery and `verify` must not disagree about which files are even
+ * candidates. Sharing only the classifier left this loop duplicated, so a
+ * change to what counts as a capture -- a new extension, an exclusion, the sort
+ * order -- had two call sites to keep in step, and they could drift even though
+ * the classifier could not.
+ *
+ * Unparseable YAML is reported through the same channel rather than as a
+ * separate branch in each caller, so there is one list of reasons a capture is
+ * refused rather than one list plus an exception.
+ */
+export async function assessCaptureDirectory(
   directory: string
-): Promise<LoadedCaptureRule[]> {
+): Promise<AssessedCapture[]> {
   let entries: string[];
   try {
     entries = await readdir(directory);
   } catch {
     return [];
   }
-  const ymlFiles = entries.filter(
-    (f) => f.endsWith(".yml") || f.endsWith(".yaml")
-  );
-  const loaded: LoadedCaptureRule[] = [];
-  for (const fileName of ymlFiles.toSorted()) {
+  const assessed: AssessedCapture[] = [];
+  const candidates = entries
+    .filter((name) => name.endsWith(".yml") || name.endsWith(".yaml"))
+    .toSorted();
+  for (const fileName of candidates) {
     const file = join(directory, fileName);
     let parsed: unknown;
     try {
       parsed = parse(await readFile(file, "utf8"));
     } catch {
-      continue; // not valid YAML — skip
+      assessed.push({
+        file,
+        fileName,
+        assessment: { ok: false, reason: "is not valid YAML" },
+      });
+      continue;
     }
+    assessed.push({ file, fileName, assessment: assessCaptureRule(parsed) });
+  }
+  return assessed;
+}
+
+/** Load the capture rules of one runtime-rule directory, refusing the rest. */
+async function loadCaptureRules(
+  directory: string
+): Promise<LoadedCaptureRule[]> {
+  const loaded: LoadedCaptureRule[] = [];
+  for (const { file, fileName, assessment } of await assessCaptureDirectory(
+    directory
+  )) {
     // Refused, never coerced or guessed at. `verify` names the file and the
-    // reason (see `inspect.ts`, which calls the same assessor), so a capture
+    // reason (see `inspect.ts`, which walks the same assessments), so a capture
     // disappearing from the run is explained rather than left to look like a
     // rule that found nothing.
-    const assessment = assessCaptureRule(parsed);
     if (!assessment.ok) continue;
     const { rule, match } = assessment;
     loaded.push({

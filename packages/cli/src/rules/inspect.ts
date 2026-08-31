@@ -1,12 +1,10 @@
 import { readFile } from "node:fs/promises";
-import { readdir } from "node:fs/promises";
-import { join } from "node:path";
 
 import { parse } from "yaml";
 
 import { ruleCapturesDirectory, ruleConfigPath, ruleFilePath } from "./engines";
 import { type EngineName } from "./layout";
-import { assessCaptureRule } from "./runtime/discover";
+import { assessCaptureDirectory } from "./runtime/discover";
 import { validateValeRule } from "../schemas/vale-rule";
 import { verifyRule, type VerifyResult } from "./verify";
 import { verifyValeRule } from "./vale/verify";
@@ -177,16 +175,8 @@ export async function verifyOneRule(
   }
   const captures = ruleCapturesDirectory(cwd, engine, ruleId);
   if (captures !== undefined) {
-    let captureFiles: string[] = [];
-    try {
-      const entries = await readdir(captures);
-      captureFiles = entries.filter(
-        (entry) => entry.endsWith(".yml") || entry.endsWith(".yaml")
-      );
-    } catch {
-      captureFiles = [];
-    }
-    if (captureFiles.length === 0) {
+    const assessed = await assessCaptureDirectory(captures);
+    if (assessed.length === 0) {
       errors.push(
         `${ruleId} has no capture rules in captures/, so check.ts would never be invoked.`
       );
@@ -198,18 +188,10 @@ export async function verifyOneRule(
     // the reason is named here, while the author is looking at one rule rather
     // than at an empty report.
     //
-    // `assessCaptureRule` is the SAME function discovery refuses with, so
-    // "verify says it is fine" and "the run silently skipped it" cannot come
-    // apart.
-    for (const fileName of captureFiles.toSorted()) {
-      let parsed: unknown;
-      try {
-        parsed = parse(await readFile(join(captures, fileName), "utf8"));
-      } catch {
-        errors.push(`${ruleId}/captures/${fileName} is not valid YAML.`);
-        continue;
-      }
-      const assessment = assessCaptureRule(parsed);
+    // The SAME enumeration and the SAME assessor discovery uses, so "verify
+    // says it is fine" and "the run silently skipped it" cannot come apart —
+    // neither about which files are candidates, nor about what each one is.
+    for (const { fileName, assessment } of assessed) {
       if (!assessment.ok) {
         errors.push(
           `${ruleId}/captures/${fileName} ${assessment.reason}. The capture is skipped, so the rule would run against less than it was written for.`
