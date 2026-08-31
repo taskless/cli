@@ -432,6 +432,67 @@ describe("engine dispatch by directory", () => {
     }
   );
 
+  it.each([
+    ["helper.ts", "helper.ts"],
+    // The loader transpiles TypeScript, but `import "./helper.js"` resolves to
+    // a .js file sitting there just as happily.
+    ["helper.js", "helper.js"],
+    ["helper.mjs", "helper.mjs"],
+    // Reachable from check.ts by a relative import just the same.
+    ["captures/helper.ts", "captures/helper.ts"],
+  ])(
+    "refuses a runtime rule carrying %s beside check.ts",
+    async (path, named) => {
+      const rule = ruleDirectory(
+        temporaryDirectory,
+        "runtime",
+        "logs-abc12345"
+      );
+      await mkdir(join(rule, "captures"), { recursive: true });
+      await writeFile(
+        join(rule, "captures", "logs.yml"),
+        RUNTIME_CAPTURE,
+        "utf8"
+      );
+      await writeFile(join(rule, "check.ts"), RUNTIME_CHECK, "utf8");
+      await writeFile(join(rule, path), "export const x = 1;\n", "utf8");
+
+      // Only check.ts is signed, so a second module is code reachable from a
+      // blessed entry point without being blessed itself.
+      expect(await discoverRuntimeRules(temporaryDirectory)).toHaveLength(0);
+
+      const result = await verifyOneRule(temporaryDirectory, {
+        engine: "runtime",
+        ruleId: "logs-abc12345",
+      } as Parameters<typeof verifyOneRule>[1]);
+      expect(result.ok).toBe(false);
+      expect(result.errors.join("\n")).toContain(named);
+    }
+  );
+
+  it("allows a TypeScript fixture under .tests/", async () => {
+    // A runtime check reads real files under a root, so a fixture that is
+    // legitimately TypeScript is the normal case rather than a smuggled
+    // helper. Refusing it would break correct rules — a worse failure than the
+    // one the stray-module check prevents.
+    const rule = ruleDirectory(temporaryDirectory, "runtime", "logs-abc12345");
+    await mkdir(join(rule, "captures"), { recursive: true });
+    await mkdir(join(rule, ".tests", "valid"), { recursive: true });
+    await writeFile(
+      join(rule, "captures", "logs.yml"),
+      RUNTIME_CAPTURE,
+      "utf8"
+    );
+    await writeFile(join(rule, "check.ts"), RUNTIME_CHECK, "utf8");
+    await writeFile(
+      join(rule, ".tests", "valid", "sample.ts"),
+      "console.log('x');\n",
+      "utf8"
+    );
+
+    expect(await discoverRuntimeRules(temporaryDirectory)).toHaveLength(1);
+  });
+
   it("does not discover runtime rules left at the pre-migration path", async () => {
     // 0004 moves this tree; a leftover here is not a second runtime source.
     const legacy = join(tasklessDirectory, "runtime-rules", "logs-abc12345");

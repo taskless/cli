@@ -58,3 +58,17 @@ and "the run silently skipped that capture" cannot come apart.
 
 A capture declaring a `metadata.taskless.version` this build does not
 implement is now refused rather than read as if it were version 1.
+
+A runtime rule now has exactly one executable file, enforced rather than
+assumed.
+
+Only `check.ts` is signed; the capture `*.yml` are inert data the reconcile
+gate neither signs nor reports. A second module beside `check.ts` would be
+code reachable from a blessed entry point without being blessed itself — one
+relative import away — so tampering with it bypasses the gate while `check.ts`
+still matches its blessed digest. Such a rule is refused, and `verify` names
+the file.
+
+Every extension a check could import is covered, not only `.ts`. A rule's
+`.tests/` fixtures are excluded, since a check reads real files under a root
+and a fixture that is itself TypeScript is ordinary.

@@ -18,6 +18,12 @@ import { RULES_DIRECTORY } from "../layout";
  */
 export const RUNTIME_RULES_DIR = join(RULES_DIRECTORY, "runtime");
 
+/** The one executable file of a runtime rule, per `ENGINE_LAYOUTS.runtime`. */
+const CHECK_FILE = "check.ts";
+
+/** Where a runtime rule's ast-grep capture rules live, per `ENGINE_LAYOUTS.runtime`. */
+const CAPTURES_DIRECTORY = "captures";
+
 /** A parsed capture `*.yml` of a runtime rule, with the fields the harness needs. */
 export interface LoadedCaptureRule {
   /** Absolute path to the capture `*.yml`. */
@@ -46,6 +52,53 @@ export interface RuntimeRule {
   captureRules: LoadedCaptureRule[];
   /** Absolute path to the rule's `check.ts`. */
   checkFile: string;
+}
+
+/**
+ * Module files in a runtime rule that are not its `check.ts`.
+ *
+ * `check.ts` is the only executable surface of a runtime rule and the only
+ * artifact carrying a signature; the capture `*.yml` are inert data the
+ * reconcile gate neither signs nor reports. A second module beside `check.ts`
+ * would therefore be code reachable from a blessed entry point — one `import
+ * "./helper.ts"` away — while itself unsigned and unverified, so tampering with
+ * it bypasses the gate entirely and `check.ts` still matches its blessed digest.
+ *
+ * The generator commits to emitting exactly one. THIS MAKES THE GUARANTEE
+ * CHECKED RATHER THAN TRUSTED, which is the whole reason it is here: a promise
+ * held on the other side of a wire is not a property of this side.
+ *
+ * Every extension a check could import is covered, not just `.ts` — the loader
+ * transpiles TypeScript, but `import "./helper.js"` resolves to a `.js` file
+ * sitting there just as happily.
+ *
+ * `.tests/` IS DELIBERATELY NOT SEARCHED. A runtime check reads real files
+ * under a root, so its fixtures are a tree of ordinary source, and a fixture
+ * that is legitimately TypeScript is the normal case rather than a smuggled
+ * helper. Searching it would refuse correct rules, which is a worse failure
+ * than the one being prevented.
+ */
+const MODULE_EXTENSIONS = [".ts", ".mts", ".cts", ".js", ".mjs", ".cjs"];
+
+export async function strayModules(ruleDirectory: string): Promise<string[]> {
+  const stray: string[] = [];
+  for (const relative of ["", CAPTURES_DIRECTORY]) {
+    const directory =
+      relative === "" ? ruleDirectory : join(ruleDirectory, relative);
+    let entries: string[];
+    try {
+      entries = await readdir(directory);
+    } catch {
+      continue;
+    }
+    for (const name of entries) {
+      if (relative === "" && name === CHECK_FILE) continue;
+      if (MODULE_EXTENSIONS.some((extension) => name.endsWith(extension))) {
+        stray.push(relative === "" ? name : `${relative}/${name}`);
+      }
+    }
+  }
+  return stray.toSorted();
 }
 
 /**
@@ -263,8 +316,17 @@ export async function discoverRuntimeRulesIn(
     // Capture rules live in `captures/`, not at the rule root. The name avoids
     // "matcher", which denotes a Vale `[<glob>]` config section elsewhere in
     // this same tree.
-    const captureRules = await loadCaptureRules(join(directory, "captures"));
+    const captureRules = await loadCaptureRules(
+      join(directory, CAPTURES_DIRECTORY)
+    );
     if (captureRules.length === 0) continue; // not a runtime rule
+
+    // Fails closed, and refuses the WHOLE rule rather than the stray file:
+    // the danger is what `check.ts` can reach, so removing the extra module
+    // from the listing would change nothing about what executes. `verify`
+    // names the files (see `inspect.ts`, which calls the same helper).
+    const stray = await strayModules(directory);
+    if (stray.length > 0) continue;
 
     // The check file is always `check.ts` inside the rule directory (per spec).
     // We deliberately do NOT resolve `metadata.taskless.check` as a path — an
@@ -274,7 +336,7 @@ export async function discoverRuntimeRulesIn(
       name: entry.name,
       dir: directory,
       captureRules,
-      checkFile: join(directory, "check.ts"),
+      checkFile: join(directory, CHECK_FILE),
     });
   }
   return rules;
