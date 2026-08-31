@@ -74,3 +74,22 @@ search is recursive: "one import away" is not "one directory away", so a
 nested directory would otherwise carry unsigned code straight past the check.
 A rule's `.tests/` fixtures are excluded at any depth, since a check reads
 real files under a root and a fixture that is itself TypeScript is ordinary.
+
+A generated rule can arrive as a file set.
+
+`files: [{ path, content }]`, each path relative to
+`.taskless/rules/<engine>/<id>/`, validated against `ENGINE_LAYOUTS` — so
+"is this a complete rule" is answered from the table the CLI dispatches on
+rather than from per-engine prose. `files` and `content` are mutually
+exclusive, and the legacy single-`content` payload every published CLI
+receives keeps working unchanged.
+
+Completeness is enforced because every missing piece fails silently: a
+runtime rule with no `check.ts` is never blessed and is held, and a Vale rule
+with no `.vale.ini` has no matcher enabling it and never fires. Both leave
+`check` exiting 0.
+
+Delivered paths are refused before anything is written — absolute paths, `..`
+segments, backslashes, unnormalized segments, duplicates. The whole set is
+assessed as a unit, so a refused delivery leaves no directory behind rather
+than a half-written rule that verifies as broken two steps from the cause.
