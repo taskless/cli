@@ -79,7 +79,7 @@ function asMatchMode(value: unknown): MatchMode | undefined {
  * person reading `verify` output. Nothing branches on it.
  */
 export type CaptureAssessment =
-  | { ok: true; rule: CaptureRule; match: MatchMode }
+  | { ok: true; rule: CaptureRule & { id: string }; match: MatchMode }
   | { ok: false; reason: string };
 
 export function assessCaptureRule(value: unknown): CaptureAssessment {
@@ -140,7 +140,7 @@ export function assessCaptureRule(value: unknown): CaptureAssessment {
         `implement (valid: ${MATCH_MODES.join(", ")})`,
     };
   }
-  return { ok: true, rule: candidate as CaptureRule, match };
+  return { ok: true, rule: candidate as CaptureRule & { id: string }, match };
 }
 
 /** Load and parse the capture rules of a single runtime-rule directory. */
@@ -175,7 +175,7 @@ async function loadCaptureRules(
     loaded.push({
       file,
       fileName,
-      id: rule.id as string,
+      id: rule.id,
       name: rule.metadata.taskless.name,
       language: rule.language,
       match,
