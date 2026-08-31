@@ -193,6 +193,26 @@ git rebase -S origin/main            # in the next branch's worktree
 git push origin --force-with-lease=<branch>:$(git rev-parse origin/<branch>) <branch>
 ```
 
+**That plain `git rebase origin/main` is correct, and it is worth knowing why,
+because the PR will look broken first.** GitHub reports the child as
+`CONFLICTING` the moment its parent merges: the parent's commits are on `main`
+under new SHAs while the child still carries the originals, so a three-way merge
+sees two versions of the same work. The rebase does not, because it drops
+commits whose patch-id already appears upstream. Measured on the
+`generator-payload-alignment` stack: a child sitting 5 commits above `main`,
+two of them stale copies of the merged parent, rebased to 3 with no conflict.
+So a `CONFLICTING` badge after a parent merges is the expected state, not a
+signal that something needs repairing by hand.
+
+**A rewritten-but-unmerged parent is the opposite case, and needs the opposite
+tool.** When you amend or rebase a parent that is still open, its commits are
+NOT upstream, so there is no patch-id match to drop them, and a plain rebase
+replays the superseded versions on top of their replacements. That surfaces as
+a conflict in files the child never touched, where "take mine" silently
+discards the parent's fix. There, replay from where the child forked:
+`git rebase --onto <parent> <parent's pre-rebase tip> <child>`, or let
+`propagate_stack.py` do it.
+
 Three things that will bite:
 
 - **Branch protection is `strict_up_to_date: true`,** so the next PR reports `mergeable_state: "behind"` until you rebase it. That is not a conflict; it is the protection asking for the rebase you owe it.
@@ -213,12 +233,21 @@ Nothing is wrong and nothing needs fixing on `main`. Know it so that `%G?` on a 
 
 This happens when the **parent** PR is merged with `--delete-branch`: deleting the parent's head branch (which is the child's base) closes the **child** PR. Two PRs are involved, the merged parent (`<parent>`) and the closed child (`<child>`); `<branch>` is the deleted base, i.e. the parent's head branch.
 
-1. Restore the deleted base branch from **GitHub's own copy of the parent's head**, `refs/pull/<parent>/head`. GitHub keeps that ref after the branch is deleted and after the PR is merged, and it points at the pre-merge tip:
+1. Restore the deleted base branch from **GitHub's own copy of the parent's head**, `refs/pull/<parent>/head`. GitHub keeps that ref after the branch is deleted and after the PR is merged, so it is there when the branch itself is gone:
 
    ```bash
    SHA=$(git ls-remote origin "refs/pull/<parent>/head" | cut -f1)
    gh api --method POST repos/<owner>/<repo>/git/refs -f ref=refs/heads/<branch> -f sha="$SHA"
    ```
+
+   **It is the head GitHub last saw, which is not always what you pushed.**
+   If GitHub rebased the branch before merging it, that ref moves to the
+   rebased copy. Measured on #214: `refs/pull/214/head` was `e040449`, whose
+   parents include a PR that merged _after_ #214 was opened, while the tip
+   actually pushed to the branch was `4851e8d` with the same content under a
+   different SHA. Fine for restoring a branch, which only needs the content.
+   Wrong as a rebase upstream for a child, which needs the specific commits
+   that child contains.
 
    **Do not reach for the merge commit's second parent.** The older form here was:
 
