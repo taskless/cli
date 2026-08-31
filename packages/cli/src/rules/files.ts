@@ -10,6 +10,7 @@ import {
   ruleDirectory,
   ruleFilePath,
   ruleTestsDirectory,
+  findRuleEngine,
 } from "./engines";
 import { isValidRuleId } from "./validate-id";
 
@@ -117,7 +118,14 @@ export async function deleteRuleFiles(
   // A rule is one directory, so deleting it is removing that directory. Its
   // tests live inside, which is the point of the layout: there is no second
   // place to remember, and no way to leave a rule half-deleted.
-  const directory = ruleDirectory(cwd, "sg", id);
+  //
+  // The engine is RESOLVED, never assumed. This hardcoded `sg`, which was
+  // invisible while ast-grep was the only engine a rule could be delivered
+  // for: a vale or runtime rule could be written and then not removed, and
+  // `delete` reported "not found" for a rule plainly on disk.
+  const engine = await findRuleEngine(cwd, id);
+  if (engine === undefined) return false;
+  const directory = ruleDirectory(cwd, engine, id);
   try {
     await rm(directory, { recursive: true });
   } catch (error) {

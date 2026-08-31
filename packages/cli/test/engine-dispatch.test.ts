@@ -1,5 +1,6 @@
 import { execFile } from "node:child_process";
 import { mkdir, mkdtemp, readdir, rm, stat, writeFile } from "node:fs/promises";
+import { existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, relative, resolve } from "node:path";
 import { promisify } from "node:util";
@@ -12,7 +13,11 @@ import {
   resolveIngestEngine,
   ruleDirectory,
 } from "../src/rules/engines";
-import { writeRuleFile, writeRuleTestFile } from "../src/rules/files";
+import {
+  deleteRuleFiles,
+  writeRuleFile,
+  writeRuleTestFile,
+} from "../src/rules/files";
 import {
   discoverRuntimeRules,
   discoverRuntimeRulesIn,
@@ -221,11 +226,43 @@ describe("engine dispatch by directory", () => {
     // decides, so runtime discovery must not pick it up.
     const rule = ruleDirectory(temporaryDirectory, "sg", "logs");
     await mkdir(join(rule, "captures"), { recursive: true });
-    await writeFile(join(rule, "captures", "logs.yml"), RUNTIME_CAPTURE, "utf8");
+    await writeFile(
+      join(rule, "captures", "logs.yml"),
+      RUNTIME_CAPTURE,
+      "utf8"
+    );
     await writeFile(join(rule, "check.ts"), RUNTIME_CHECK, "utf8");
 
     expect(await discoverRuntimeRules(temporaryDirectory)).toEqual([]);
     expect(await listRuleIds(temporaryDirectory, "sg")).toEqual(["logs"]);
+  });
+
+  it.each(["sg", "vale", "runtime"] as const)(
+    "deletes a %s rule by bare id",
+    async (engine) => {
+      // `delete` takes an id with no engine, so it has to find which of the
+      // three sibling trees holds it. This assumed `sg`, which meant a
+      // delivered vale or runtime rule could be written and never removed —
+      // and reported "not found" for a rule plainly on disk.
+      const directory = ruleDirectory(
+        temporaryDirectory,
+        engine,
+        "logs-abc12345"
+      );
+      await mkdir(directory, { recursive: true });
+      await writeFile(join(directory, "marker.txt"), "x", "utf8");
+
+      expect(await deleteRuleFiles(temporaryDirectory, "logs-abc12345")).toBe(
+        true
+      );
+      expect(existsSync(directory)).toBe(false);
+    }
+  );
+
+  it("reports not-found for an id no engine holds", async () => {
+    expect(await deleteRuleFiles(temporaryDirectory, "absent-abc12345")).toBe(
+      false
+    );
   });
 
   it("does not discover runtime rules left at the pre-migration path", async () => {
@@ -296,14 +333,7 @@ describe("check dispatches by directory end to end", () => {
       ]);
       expect(
         await exists(
-          join(
-            legacy,
-            ".taskless",
-            "rules",
-            "sg",
-            "no-eval",
-            "no-eval.yml"
-          )
+          join(legacy, ".taskless", "rules", "sg", "no-eval", "no-eval.yml")
         )
       ).toBe(true);
     } finally {
@@ -379,14 +409,7 @@ describe("service-delivered rule ingest", () => {
       );
       expect(
         await exists(
-          join(
-            migrated,
-            ".taskless",
-            "rules",
-            "sg",
-            "no-eval",
-            "no-eval.yml"
-          )
+          join(migrated, ".taskless", "rules", "sg", "no-eval", "no-eval.yml")
         )
       ).toBe(true);
     } finally {
@@ -460,9 +483,7 @@ describe("reconcile compatibility across the relayout", () => {
     await ensureTasklessDirectory(temporaryDirectory);
 
     const after = await signRuntimeChecks(
-      await discoverRuntimeRulesIn(
-        join(tasklessDirectory, "rules", "runtime")
-      )
+      await discoverRuntimeRulesIn(join(tasklessDirectory, "rules", "runtime"))
     );
     const afterReport = reportRuntimeChecks(temporaryDirectory, after.signed);
 
