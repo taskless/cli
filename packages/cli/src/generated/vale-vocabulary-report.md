@@ -1,10 +1,10 @@
-# Vale 3.18.0 vocabulary: divergence report
+# Vale 3.19.0 vocabulary: divergence report
 
 GENERATED FILE — DO NOT EDIT. Produced by `pnpm generate:vale-schema`
 alongside `vale-vocabulary.ts`.
 
 Every value in the vocabulary is the recorded answer of the vendored Vale
-3.18.0 binary. This file is what the binary said that its own
+3.19.0 binary. This file is what the binary said that its own
 documentation does not, in both directions. A generator that dropped these
 would be quietly deciding which of the two to believe.
 
@@ -28,25 +28,25 @@ the worse failure.
 
 ### `scope: meta`
 
-Vale 3.18.0 documents this operand and it never fired, on any fixture probed (.md).
+Vale 3.19.0 documents this operand and it never fired, on any fixture probed (.md).
 
 **Consequence.** It is omitted from the vocabulary, so `verify` rejects it. A rule written from the documentation would otherwise load, run, and match nothing, with no error reported anywhere.
 
 ### `scope: meta.class.title`
 
-Vale 3.18.0 documents this operand and it never fired, on any fixture probed (.md).
+Vale 3.19.0 documents this operand and it never fired, on any fixture probed (.md).
 
 **Consequence.** It is omitted from the vocabulary, so `verify` rejects it. A rule written from the documentation would otherwise load, run, and match nothing, with no error reported anywhere.
 
 ### `scope: frontmatter`
 
-This operand fired and Vale 3.18.0 documents it nowhere.
+This operand fired and Vale 3.19.0 documents it nowhere.
 
 **Consequence.** It is included in the vocabulary. It is also the standing counterexample to trusting the candidate list: a real operand nobody proposes is simply absent, and the schema then rejects a rule the binary honors.
 
 ### `scope: frontmatter.title`
 
-This operand fired and Vale 3.18.0 documents it nowhere.
+This operand fired and Vale 3.19.0 documents it nowhere.
 
 **Consequence.** It is included in the vocabulary. It is also the standing counterexample to trusting the candidate list: a real operand nobody proposes is simply absent, and the schema then rejects a rule the binary honors.
 

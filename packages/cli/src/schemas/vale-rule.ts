@@ -458,7 +458,7 @@ const CHECK_FIELDS = VALE_CHECK_FIELDS;
  *
  * These are not field-table facts, which is why they sit apart from the union:
  * every key involved is a legal field of its check. It is the *shape* that is
- * fatal. Measured against Vale 3.18.0, each of the shapes below ends the
+ * fatal. Measured against Vale 3.19.0, each of the shapes below ends the
  * process with a Go stack trace. The two `sequence` shapes fail while the rule
  * is compiled:
  *
@@ -511,7 +511,7 @@ function fatalShapeMessages(
 
   if (rule.extends === "metric" && rule.formula !== undefined) {
     // Structural, like the `sequence` arm above, because "was the key
-    // supplied" is the wrong question. Measured against 3.18.0, the panic
+    // supplied" is the wrong question. Measured against 3.19.0, the panic
     // follows the *value*: an absent `condition`, a `condition:` written with
     // no value (YAML parses that to null, which is not `undefined`), and a
     // blank string all reach the same panic. Other types are not this guard's

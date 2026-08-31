@@ -178,12 +178,17 @@ answered together.
        unreported. A matcher written as `[*.{md,typ}]` is not a wider
        `[*.md]`. It is a broken one.
 
-       **`.mdx` is supported** as of Vale v%(VALE_VERSION)s, which
-       parses it natively. It needs no external program and belongs
-       with the other markup formats above. `.typ` moved the other way
-       in the same release: Typst now parses through `typst2vast`, so a
-       Typst file is excluded rather than read as prose the way it was
+       **`.mdx` is supported** as of Vale v3.18.0, which parses it
+       natively. It needs no external program and belongs with the
+       other markup formats above. `.typ` moved the other way in the
+       same release: Typst now parses through `typst2vast`, so a Typst
+       file is excluded rather than read as prose the way it was
        before. Both are measured, not assumed.
+
+       As of v3.19.0 an MDX component's children are read as Markdown
+       too, so prose wrapped in `<Steps>` or `<Aside>` is linted where
+       it previously was not. That widens what a Vale rule covers in
+       `.mdx`; it does not change which extensions are safe to match.
 
    **A language on neither list does not route to runtime by default.**
    Check `create-legacy-rule` first: the repo may already run a linter

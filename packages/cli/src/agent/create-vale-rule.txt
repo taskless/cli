@@ -532,17 +532,33 @@ it.
    matcher that takes `check` down the first time the repo grows a
    `.typ` file. Never put one of those extensions in a glob.
 
-   That example changed with Vale v%(VALE_VERSION)s, which is the point:
-   the dangerous extension is whichever one the list above says needs a
-   program, not the one you remember. `.mdx` was the example until this
+   That example changed with Vale v3.18.0, which is the point: the
+   dangerous extension is whichever one the list above says needs a
+   program, not the one you remember. `.mdx` was the example until that
    release parsed it natively, and `.typ` took its place.
 
-   **`.mdx` is supported** as of Vale v%(VALE_VERSION)s, which parses it
-   natively rather than shelling out. `[*.{md,mdx}]` is a legitimate
-   matcher again, the example this recipe used to warn about is no
-   longer the broken one. Check the lists above rather than reaching for
-   that memory: `.typ` moved the opposite way in the same release, so a
+   **`.mdx` is supported** as of Vale v3.18.0, which parses it natively
+   rather than shelling out. `[*.{md,mdx}]` is a legitimate matcher
+   again, the example this recipe used to warn about is no longer the
+   broken one. Check the lists above rather than reaching for that
+   memory: `.typ` moved the opposite way in the same release, so a
    matcher covering Typst is now the one that takes the run down.
+
+   **In `.mdx`, a component's children are prose as of v3.19.0.** Vale
+   reads a JSX element's children as the Markdown they are, so text
+   inside a wrapping component (`<Steps>`, `<Tabs>`, `<Aside>`) is
+   linted at its own source position. Only tags, attributes, `{...}`
+   expressions, self-closing elements, and an element opened and closed
+   on one standalone line are still treated as code.
+
+   Two consequences for a rule you write against MDX. Coverage grew,
+   so a rule can now fire in prose it never reached before, which is a
+   finding count that moves without the rule changing. And the children
+   carry the element's name as a class scope, exactly as MyST and
+   Quarto directives do, so `scope: text.class.Aside` targets one
+   component's content. That is an open family: `verify` accepts any
+   `text.class.<name>` tail, because the set of component names is the
+   author's, not Vale's.
 
 5. **Write the fixtures.** Two directories inside the rule, both flat.
    Vale lints the whole fixture tree, so a document nested a level
