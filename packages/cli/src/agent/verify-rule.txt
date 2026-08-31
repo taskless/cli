@@ -35,7 +35,7 @@ What each engine is checked for:
 |-----------|--------------------------------------------------------------------------------------------------------------------------------------|------------------------------------------------------------|
 | `sg`      | ast-grep schema, plus `id`/`language`/`severity`/`message`/`rule`, and `regex` accompanied by `kind`                                 | the `valid`/`invalid` cases in `.tests/`                   |
 | `vale`    | style parses, `extends` and `message` present, `level` in vocabulary, and the rule's `.vale.ini` enables `<id>.<id>` under a matcher | the `.tests/pass/` and `.tests/fail/` buckets              |
-| `runtime` | `check.ts` present, at least one capture rule in `captures/`                                                                         | reported as not run: runtime tests need the server harness |
+| `runtime` | `check.ts` present, at least one capture rule in `captures/`                                                                         | reported as not run: the `.tests/pass/` and `.tests/fail/` cases need the server harness |
 
 ## What a path means
 
