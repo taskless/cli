@@ -1,20 +1,3 @@
-// The `.js` extension is deliberate, for the same reason it is on the prompts
-// entry: this module is the published entry for `@taskless/cli/layout`, so
-// `tsc` copies this specifier verbatim into `dist/layout/index.d.ts`. An
-// extensionless specifier there fails to resolve for a consumer on
-// `moduleResolution: node16`/`nodenext`, which is a trap we would be shipping
-// rather than hitting ourselves.
-export {
-  ENGINES,
-  ENGINE_LAYOUTS,
-  RULES_DIRECTORY,
-  RULE_TESTS_DIRECTORY,
-  isKnownEngine,
-  type EngineExecutor,
-  type EngineLayout,
-  type EngineName,
-} from "../rules/layout.js";
-
 /**
  * Public entry for `@taskless/cli/layout`.
  *
@@ -45,3 +28,20 @@ export {
  * scopes it. A file set that satisfies this table is well-formed, not
  * necessarily live.
  */
+
+// The `.js` extension is deliberate, for the same reason it is on the prompts
+// entry: this module is the published entry for `@taskless/cli/layout`, so
+// `tsc` copies this specifier verbatim into `dist/layout/index.d.ts`. An
+// extensionless specifier there fails to resolve for a consumer on
+// `moduleResolution: node16`/`nodenext`, which is a trap we would be shipping
+// rather than hitting ourselves.
+export {
+  ENGINES,
+  ENGINE_LAYOUTS,
+  RULES_DIRECTORY,
+  RULE_TESTS_DIRECTORY,
+  isKnownEngine,
+  type EngineExecutor,
+  type EngineLayout,
+  type EngineName,
+} from "../rules/layout.js";
