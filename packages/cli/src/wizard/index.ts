@@ -9,6 +9,7 @@ import {
   getEmbeddedSkills,
   planToStateTargets,
 } from "../install/install";
+import { getReloadNotice } from "../install/reload-notice";
 import { computeInstallDiff, readInstallState } from "../install/state";
 import { getTelemetry } from "../telemetry";
 
@@ -77,14 +78,21 @@ export async function runWizard(
     await ensureTasklessDirectory(options.cwd, {
       onNotice: (message) => log.info(message),
     });
-    await applyInstallPlan(options.cwd, plan, {
-      cliVersion: getCliVersion(),
-    });
+    const cliVersion = getCliVersion();
+    await applyInstallPlan(options.cwd, plan, { cliVersion });
 
     outro("Taskless is ready to go.");
     const commandsInstalled = plan.targets.some(
       (t) => t.mode === "reference" && t.commands.length > 0
     );
+    // `previousState` was read before the plan was applied, so it still holds
+    // the version this project was on when the session that is watching this
+    // install started.
+    const reloadNotice = getReloadNotice({
+      previousCliVersion: previousState.cliVersion,
+      cliVersion,
+    });
+    if (reloadNotice !== undefined) console.log(reloadNotice);
     console.log(getOnboardTrailer({ commandsInstalled }));
     return finish({ status: "completed" });
   } catch (error) {

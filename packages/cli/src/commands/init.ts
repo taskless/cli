@@ -12,6 +12,8 @@ import {
   getEmbeddedSkills,
 } from "../install/install";
 import { getMandatorySkillNames } from "../install/catalog";
+import { getReloadNotice } from "../install/reload-notice";
+import { readInstallState } from "../install/state";
 import { getTelemetry } from "../telemetry";
 import { runWizard } from "../wizard";
 import { getCliVersion } from "../wizard/intro";
@@ -86,6 +88,9 @@ export const initCommand = defineCommand({
     }
 
     const result = await runNonInteractive(cwd);
+    if (result.reloadNotice !== undefined) {
+      console.log(result.reloadNotice);
+    }
     console.log(
       getOnboardTrailer({ commandsInstalled: result.commandsInstalled })
     );
@@ -220,7 +225,7 @@ export const updateCommand = defineCommand({
 
 async function runNonInteractive(
   cwd: string
-): Promise<{ commandsInstalled: boolean }> {
+): Promise<{ commandsInstalled: boolean; reloadNotice: string | undefined }> {
   // Sampled BEFORE the directory is created, and that order is the whole
   // point. `ensureTasklessDirectory` mkdir -p's, so afterwards a pre-existing
   // project is indistinguishable from a fresh one.
@@ -249,9 +254,13 @@ async function runNonInteractive(
     (t) => t.mode === "reference" && t.commands.length > 0
   );
 
-  const result = await applyInstallPlan(cwd, plan, {
-    cliVersion: getCliVersion(),
-  });
+  // Read BEFORE applying: `applyInstallPlan` records the new version, so
+  // afterwards there is nothing left to compare against.
+  const previousState = await readInstallState(cwd);
+  const previousCliVersion = previousState.cliVersion;
+  const cliVersion = getCliVersion();
+  const result = await applyInstallPlan(cwd, plan, { cliVersion });
+  const reloadNotice = getReloadNotice({ previousCliVersion, cliVersion });
 
   if (detected.length === 0) {
     console.log(`No tools detected. Using fallback: ${DEFAULT_SHIM_DIR}/`);
@@ -326,7 +335,7 @@ async function runNonInteractive(
     }
   }
 
-  return { commandsInstalled };
+  return { commandsInstalled, reloadNotice };
 }
 
 function groupValuesByTarget(
