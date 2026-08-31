@@ -13,6 +13,11 @@ import {
   findRuleEngine,
 } from "./engines";
 import { isValidRuleId } from "./validate-id";
+import {
+  assessDelivery,
+  deliveredFiles,
+  writeDeliveredFileSet,
+} from "./deliver";
 
 /**
  * Write a generated rule's content into its own rule directory —
@@ -29,6 +34,32 @@ export async function writeRuleFile(
   // Resolve the engine before touching the filesystem: an unrecognized engine
   // must write nothing at all.
   const engine = resolveIngestEngine(rule);
+
+  // A file set and a single `content` are mutually exclusive, per the contract.
+  // Carrying both means the service is unsure what it sent, and picking one
+  // would write a rule nobody described.
+  const files = deliveredFiles(rule);
+  if (files !== undefined) {
+    if (rule.content !== undefined) {
+      throw new Error(
+        `Rule "${rule.id}" carries both \`files\` and \`content\`; they are mutually exclusive.`
+      );
+    }
+    // Assessed as a unit before anything is written. A half-written rule
+    // directory verifies as a broken rule two steps from the cause, and the
+    // delivery that produced it has already reported success.
+    const assessment = assessDelivery(cwd, engine, rule.id, files);
+    if (!assessment.ok) {
+      throw new Error(`Rule "${rule.id}" ${assessment.reason}.`);
+    }
+    await ensureTasklessDirectory(cwd);
+    await mkdir(ruleDirectory(cwd, engine, rule.id), { recursive: true });
+    await writeDeliveredFileSet(cwd, engine, rule.id, assessment);
+    // The rule file, so the caller's contract ("where did this rule land")
+    // is unchanged whichever envelope delivered it.
+    return ruleFilePath(cwd, engine, rule.id);
+  }
+
   await ensureTasklessDirectory(cwd);
   await mkdir(ruleDirectory(cwd, engine, rule.id), { recursive: true });
   const filePath = ruleFilePath(cwd, engine, rule.id);

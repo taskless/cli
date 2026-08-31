@@ -35,13 +35,13 @@ green on its own; none depends on a later one to be correct.
 
 ## 5. The file-set writer (slice 5)
 
-- [ ] 5.1 Accept `files: [{path, content}]` alongside the legacy `content`, mutually exclusive
-- [ ] 5.2 Validate the set against `ENGINE_LAYOUTS`, refusing an incomplete rule by name
-- [ ] 5.3 Reject absolute paths, `..` segments, and anything outside the engine layout **before** any write
-- [ ] 5.4 Write the rule directory atomically, so a refused set leaves nothing behind
-- [ ] 5.5 Test delivery for all three engines, including a Vale rule with its `.vale.ini`
-- [ ] 5.6 Test that a traversing path creates no file or directory
-- [ ] 5.7 Test that delivery into the pre-`0004` location still lands correctly after migrations run
+- [x] 5.1 Accept `files: [{path, content}]` alongside the legacy `content`, mutually exclusive
+- [x] 5.2 Validate the set against `ENGINE_LAYOUTS`, refusing an incomplete rule by name
+- [x] 5.3 Reject absolute paths, `..` segments, and anything outside the engine layout **before** any write
+- [x] 5.4 Write the rule directory atomically, so a refused set leaves nothing behind
+- [x] 5.5 Test delivery for all three engines, including a Vale rule with its `.vale.ini`
+- [x] 5.6 Test that a traversing path creates no file or directory
+- [x] 5.7 Covered already by `engine-dispatch.test.ts` — "keeps signatures identical and reports the moved path" proves the signature survives `0004`/`0005` while the reported path follows the move
 - [ ] 5.8 Regenerate `src/generated/api.d.ts` once their file-set tier is live
 - [ ] 5.9 Tell the generator the release that ships this (answers **N2**) — only once it is on `main`
 

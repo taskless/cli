@@ -1,0 +1,193 @@
+import { mkdtemp, readFile, readdir, rm } from "node:fs/promises";
+import { existsSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+
+import { writeRuleFile } from "../src/rules/files";
+import { ruleDirectory } from "../src/rules/engines";
+import type { GeneratedRule } from "../src/api/rules";
+
+let cwd: string;
+
+beforeEach(async () => {
+  cwd = await mkdtemp(join(tmpdir(), "deliver-"));
+});
+afterEach(async () => {
+  await rm(cwd, { recursive: true, force: true });
+});
+
+/** A delivered rule carrying a file set, shaped as the contract describes. */
+function delivered(
+  engine: string,
+  id: string,
+  files: { path: string; content: string }[]
+): GeneratedRule {
+  return { id, engine, files } as unknown as GeneratedRule;
+}
+
+const CAPTURE = [
+  "id: logs-abc12345",
+  "language: typescript",
+  "rule:",
+  "  pattern: console.log($A)",
+  "metadata:",
+  "  taskless:",
+  "    version: 1",
+  "    kind: runtime",
+  "    name: logs",
+  "    check: check.ts",
+  "",
+].join("\n");
+
+describe("delivering a rule as a file set", () => {
+  it("writes a complete runtime rule", async () => {
+    await writeRuleFile(
+      cwd,
+      delivered("runtime", "logs-abc12345", [
+        { path: "check.ts", content: "export default async () => [];\n" },
+        { path: "captures/logs.yml", content: CAPTURE },
+        { path: ".tests/valid/sample.ts", content: "const x = 1;\n" },
+      ])
+    );
+
+    const directory = ruleDirectory(cwd, "runtime", "logs-abc12345");
+    expect(existsSync(join(directory, "check.ts"))).toBe(true);
+    // Nested paths create their parents; a capture is not written flat.
+    await expect(
+      readFile(join(directory, "captures", "logs.yml"), "utf8")
+    ).resolves.toContain("kind: runtime");
+    expect(existsSync(join(directory, ".tests", "valid", "sample.ts"))).toBe(
+      true
+    );
+  });
+
+  it("writes a Vale rule with its own config", async () => {
+    // G2: the generator owns the `.vale.ini`, because it holds the scope
+    // knowledge and the client cannot infer it from the rule YAML.
+    await writeRuleFile(
+      cwd,
+      delivered("vale", "no-click-here-abc12345", [
+        {
+          path: "no-click-here-abc12345.yml",
+          content:
+            "extends: existence\nmessage: no\nlevel: warning\ntokens:\n  - click here\n",
+        },
+        {
+          path: ".vale.ini",
+          content:
+            "[*.md]\nno-click-here-abc12345.no-click-here-abc12345 = YES\n",
+        },
+      ])
+    );
+    const directory = ruleDirectory(cwd, "vale", "no-click-here-abc12345");
+    await expect(
+      readFile(join(directory, ".vale.ini"), "utf8")
+    ).resolves.toContain("[*.md]");
+  });
+
+  // Every path that must never reach the filesystem. The service names
+  // locations on a developer's disk now, which it never did while the response
+  // carried one structured object.
+  it.each([
+    ["absolute", "/etc/passwd"],
+    ["parent traversal", "../../../../etc/passwd"],
+    ["traversal mid-path", "captures/../../escape.yml"],
+    ["backslash", String.raw`captures\logs.yml`],
+    ["empty", ""],
+    ["bare dot segment", "./check.ts"],
+  ])("refuses a %s path and writes nothing", async (_label, path) => {
+    const rule = delivered("runtime", "logs-abc12345", [
+      { path: "check.ts", content: "export default async () => [];\n" },
+      { path: "captures/logs.yml", content: CAPTURE },
+      { path, content: "owned\n" },
+    ]);
+
+    await expect(writeRuleFile(cwd, rule)).rejects.toThrow(/path that/);
+
+    // Refused as a unit: not one file of it exists, including the files that
+    // were themselves fine. A half-written rule verifies as a broken rule two
+    // steps from the cause.
+    expect(existsSync(ruleDirectory(cwd, "runtime", "logs-abc12345"))).toBe(
+      false
+    );
+  });
+
+  it("refuses a runtime rule with no check.ts", async () => {
+    await expect(
+      writeRuleFile(
+        cwd,
+        delivered("runtime", "logs-abc12345", [
+          { path: "captures/logs.yml", content: CAPTURE },
+        ])
+      )
+    ).rejects.toThrow(/no check\.ts/);
+  });
+
+  it("refuses a runtime rule with no captures", async () => {
+    await expect(
+      writeRuleFile(
+        cwd,
+        delivered("runtime", "logs-abc12345", [
+          { path: "check.ts", content: "export default async () => [];\n" },
+        ])
+      )
+    ).rejects.toThrow(/no capture rules under captures\//);
+  });
+
+  it("refuses a Vale rule with no .vale.ini", async () => {
+    // Without it no matcher enables the rule: it would be written, verified,
+    // and never fire.
+    await expect(
+      writeRuleFile(
+        cwd,
+        delivered("vale", "no-click-here-abc12345", [
+          {
+            path: "no-click-here-abc12345.yml",
+            content: "extends: existence\n",
+          },
+        ])
+      )
+    ).rejects.toThrow(/no \.vale\.ini/);
+  });
+
+  it("refuses the same path twice", async () => {
+    await expect(
+      writeRuleFile(
+        cwd,
+        delivered("runtime", "logs-abc12345", [
+          { path: "check.ts", content: "a\n" },
+          { path: "captures/logs.yml", content: CAPTURE },
+          { path: "check.ts", content: "b\n" },
+        ])
+      )
+    ).rejects.toThrow(/twice/);
+  });
+
+  it("refuses a payload carrying both files and content", async () => {
+    const rule = {
+      id: "logs-abc12345",
+      engine: "runtime",
+      content: { id: "logs-abc12345", language: "typescript", rule: {} },
+      files: [{ path: "check.ts", content: "x\n" }],
+    } as unknown as GeneratedRule;
+    await expect(writeRuleFile(cwd, rule)).rejects.toThrow(
+      /mutually exclusive/
+    );
+  });
+
+  it("still writes a legacy single-content payload", async () => {
+    // The envelope every published CLI receives, and will keep receiving.
+    const rule = {
+      id: "no-eval-abc12345",
+      content: { id: "no-eval-abc12345", language: "typescript", rule: {} },
+    } as unknown as GeneratedRule;
+    const written = await writeRuleFile(cwd, rule);
+    expect(written).toBe(
+      join(ruleDirectory(cwd, "sg", "no-eval-abc12345"), "no-eval-abc12345.yml")
+    );
+    const entries = await readdir(ruleDirectory(cwd, "sg", "no-eval-abc12345"));
+    expect(entries).toEqual(["no-eval-abc12345.yml"]);
+  });
+});
