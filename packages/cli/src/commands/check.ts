@@ -310,16 +310,20 @@ async function repairWithheldRules(
       notices.push(`${target.file} could not be written (${message}).`);
       continue;
     }
-    // Says what was written, not what the directory now contains. The
-    // delivered set is written over whatever is there; it does not remove a
-    // file the set does not mention, so a stray capture left beside the rule
-    // survives the repair. Claiming the rule "was restored" would overstate
-    // that, and only `check.ts` is signed, so nothing here can vouch for the
-    // rest of the directory. Tracked as #233.
+    // Now says what the DIRECTORY contains, not just what was written. The
+    // delivered set is authoritative (see `writeDeliveredFileSet`), so a file
+    // the set does not name — a stray capture beside the rule, which reconcile
+    // never reported because only `check.ts` is signed — is gone rather than
+    // left in place still changing what the rule matches. The one exception is
+    // `.tests/`, which is named here rather than glossed: fixtures are data no
+    // engine reads, they are kept, and a reader should not have to infer that
+    // from silence.
     notices.push(
-      `${target.file} was rewritten with the bytes the service blessed. It ` +
-        `does not run in this pass; the next \`check\` reports the repaired ` +
-        `signature and is blessed through the ordinary path.`
+      `${target.file} was restored: its rule directory now holds exactly the ` +
+        `files the service delivered, apart from test fixtures under ` +
+        `\`.tests/\`, which are left alone. It does not run in this pass; the ` +
+        `next \`check\` reports the repaired signature and is blessed through ` +
+        `the ordinary path.`
     );
   }
 

@@ -1,4 +1,12 @@
-import { mkdtemp, readFile, readdir, rm } from "node:fs/promises";
+import {
+  mkdir,
+  mkdtemp,
+  readFile,
+  readdir,
+  rm,
+  symlink,
+  writeFile,
+} from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -295,5 +303,163 @@ describe("delivering a rule as a file set", () => {
     );
     const entries = await readdir(ruleDirectory(cwd, "sg", "no-eval-abc12345"));
     expect(entries).toEqual(["no-eval-abc12345.yml"]);
+  });
+});
+
+/**
+ * The set is the directory, not an overlay on it.
+ *
+ * `files` is "every file the rule directory must contain", so a file the set
+ * does not name is not part of the rule. It used to survive the write, which
+ * mattered most in `check`'s repair: only `check.ts` is signed, so a stray
+ * capture is never reported by reconcile, was never replaced, and went on
+ * changing what the rule matched while the rule read as repaired.
+ */
+describe("a delivered set defines what the rule directory contains", () => {
+  /** A complete runtime rule, as a delivery would send it. */
+  const COMPLETE = [
+    { path: "check.ts", content: "export default async () => [];\n" },
+    { path: "captures/logs.yml", content: CAPTURE },
+  ];
+
+  async function writeComplete(): Promise<string> {
+    await writeRuleFile(cwd, delivered("runtime", "logs-abc12345", COMPLETE));
+    return ruleDirectory(cwd, "runtime", "logs-abc12345");
+  }
+
+  it("removes a stray capture the set does not name", async () => {
+    const directory = await writeComplete();
+    // The exact defect: a second capture beside the blessed one. Nothing
+    // signs it, reconcile never mentions it, and ast-grep runs it anyway.
+    await writeFile(
+      join(directory, "captures", "stray.yml"),
+      CAPTURE.replace("logs-abc12345", "stray-abc12345"),
+      "utf8"
+    );
+
+    await writeComplete();
+
+    expect(existsSync(join(directory, "captures", "stray.yml"))).toBe(false);
+    // And the rule is whole. A purge that leaves the rule inert is the bug,
+    // not the trade-off.
+    expect(existsSync(join(directory, "check.ts"))).toBe(true);
+    expect(existsSync(join(directory, "captures", "logs.yml"))).toBe(true);
+  });
+
+  it("removes a stray module beside check.ts, and prunes emptied directories", async () => {
+    const directory = await writeComplete();
+    await mkdir(join(directory, "lib"), { recursive: true });
+    await writeFile(
+      join(directory, "lib", "helper.ts"),
+      "export {};\n",
+      "utf8"
+    );
+    await writeFile(join(directory, "notes.md"), "scratch\n", "utf8");
+
+    await writeComplete();
+
+    expect(existsSync(join(directory, "notes.md"))).toBe(false);
+    expect(existsSync(join(directory, "lib", "helper.ts"))).toBe(false);
+    // The directory goes too. An empty `lib/` left behind is a directory the
+    // set never described, and the next reader has to wonder what was in it.
+    expect(existsSync(join(directory, "lib"))).toBe(false);
+    // `captures/` still holds a delivered file, so it survives: `rmdir`
+    // refuses a non-empty directory rather than the purge tracking that.
+    expect(existsSync(join(directory, "captures", "logs.yml"))).toBe(true);
+  });
+
+  it("keeps .tests/ fixtures the set does not mention", async () => {
+    // The stated exception. Nothing under `.tests/` reaches an engine (the dot
+    // is what makes ast-grep skip it), and this CLI writes timestamped
+    // fixtures there itself that no delivered set will ever name. Purging them
+    // would delete a rule's local test history on its first file-set delivery.
+    const directory = await writeComplete();
+    await mkdir(join(directory, ".tests", "valid"), { recursive: true });
+    await writeFile(
+      join(directory, ".tests", "logs-abc12345-1970-test.yml"),
+      "id: logs-abc12345\n",
+      "utf8"
+    );
+    await writeFile(
+      join(directory, ".tests", "valid", "sample.ts"),
+      "const x = 1;\n",
+      "utf8"
+    );
+
+    await writeComplete();
+
+    expect(
+      existsSync(join(directory, ".tests", "logs-abc12345-1970-test.yml"))
+    ).toBe(true);
+    expect(existsSync(join(directory, ".tests", "valid", "sample.ts"))).toBe(
+      true
+    );
+  });
+
+  it("purges a nested .tests/, which is not the rule's test directory", async () => {
+    // `RULE_TESTS_DIRECTORY` is defined relative to the rule directory. A
+    // `captures/.tests/` is a file an engine reads, not a fixture directory,
+    // and exempting it by name alone would leave a hiding place.
+    const directory = await writeComplete();
+    await mkdir(join(directory, "captures", ".tests"), { recursive: true });
+    await writeFile(
+      join(directory, "captures", ".tests", "sneaky.yml"),
+      CAPTURE,
+      "utf8"
+    );
+
+    await writeComplete();
+
+    expect(existsSync(join(directory, "captures", ".tests"))).toBe(false);
+  });
+
+  it("removes a symlink without following it", async () => {
+    const directory = await writeComplete();
+    const outside = join(cwd, "outside.txt");
+    await writeFile(outside, "untouched\n", "utf8");
+    await symlink(outside, join(directory, "link.txt"));
+
+    await writeComplete();
+
+    expect(existsSync(join(directory, "link.txt"))).toBe(false);
+    // Only the link was unlinked. Deletion is bounded to the rule directory,
+    // and a link is not a licence to reach outside it.
+    await expect(readFile(outside, "utf8")).resolves.toBe("untouched\n");
+  });
+
+  it("leaves the directory untouched when the set is refused", async () => {
+    const directory = await writeComplete();
+    await writeFile(join(directory, "stray.md"), "kept\n", "utf8");
+
+    // Assess and purge are a unit, the same way assess and write already were.
+    // A refused set must not be the reason a directory is half emptied.
+    await expect(
+      writeRuleFile(
+        cwd,
+        delivered("runtime", "logs-abc12345", [
+          ...COMPLETE,
+          { path: "../escape.yml", content: "owned\n" },
+        ])
+      )
+    ).rejects.toThrow(/path that/);
+
+    expect(existsSync(join(directory, "stray.md"))).toBe(true);
+    expect(existsSync(join(directory, "check.ts"))).toBe(true);
+  });
+
+  it("does not purge on the single-content envelope", async () => {
+    // There is no set to be authoritative about, so the legacy path keeps
+    // overwriting one file and touching nothing else.
+    const rule = {
+      id: "no-eval-abc12345",
+      content: { id: "no-eval-abc12345", language: "typescript", rule: {} },
+    } as unknown as GeneratedRule;
+    await writeRuleFile(cwd, rule);
+    const directory = ruleDirectory(cwd, "sg", "no-eval-abc12345");
+    await writeFile(join(directory, "hand-written.yml"), "kept\n", "utf8");
+
+    await writeRuleFile(cwd, rule);
+
+    expect(existsSync(join(directory, "hand-written.yml"))).toBe(true);
   });
 });

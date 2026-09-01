@@ -62,6 +62,11 @@ export async function writeRuleFile(
     }
     await ensureTasklessDirectory(cwd);
     await mkdir(ruleDirectory(cwd, engine, rule.id), { recursive: true });
+    // The set is the directory, not an overlay on it: anything already there
+    // that the set does not name is removed, `.tests/` excepted. The same for
+    // every caller of this function — see {@link writeDeliveredFileSet} for why
+    // repair is not special-cased. The single-content path below has no set to
+    // be authoritative about and keeps overwriting one file.
     await writeDeliveredFileSet(cwd, engine, rule.id, assessment);
     // The rule file, so the caller's contract ("where did this rule land")
     // is unchanged whichever envelope delivered it.
