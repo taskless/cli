@@ -1,0 +1,1751 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Taskless CLI API",
+    "version": "0.0.1-private.20260901234218",
+    "description": "Internal API consumed by the Taskless CLI."
+  },
+  "components": {
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT",
+        "description": "JWT issued via device authorization flow (POST /cli/auth/token). Claims: sub (Taskless user UUID), iss (\"cli\"), exp, orgId (GitHub org numeric ID). The orgId claim identifies the billing organization for this token."
+      }
+    }
+  },
+  "security": [
+    {
+      "bearerAuth": []
+    }
+  ],
+  "paths": {
+    "/cli/api/whoami": {
+      "get": {
+        "summary": "Returns authenticated user identity and organizations",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$schema": "https://json-schema.org/draft/2020-12/schema",
+                  "type": "object",
+                  "properties": {
+                    "user": {
+                      "type": "string",
+                      "description": "Display name"
+                    },
+                    "email": {
+                      "description": "Email address",
+                      "type": "string"
+                    },
+                    "orgs": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "orgId": {
+                            "type": "number",
+                            "description": "GitHub org ID"
+                          },
+                          "id": {
+                            "type": "string",
+                            "description": "Taskless organization UUID"
+                          },
+                          "name": {
+                            "type": "string",
+                            "description": "Organization name"
+                          },
+                          "source": {
+                            "type": "string",
+                            "const": "github",
+                            "description": "Identity provider"
+                          },
+                          "url": {
+                            "type": "string",
+                            "description": "Canonical owner URL the client matches its repository against"
+                          }
+                        },
+                        "required": ["orgId", "id", "name", "source", "url"],
+                        "additionalProperties": false
+                      }
+                    }
+                  },
+                  "required": ["user", "orgs"],
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/cli/api/request": {
+      "post": {
+        "summary": "Create a rule generation request",
+        "requestBody": {
+          "description": "OK",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "type": "object",
+                "properties": {
+                  "repositoryUrl": {
+                    "type": "string",
+                    "description": "Full repository URL"
+                  },
+                  "prompt": {
+                    "type": "string",
+                    "description": "Description of the rule to generate"
+                  },
+                  "successCases": {
+                    "description": "Examples of correct code that should pass the rule (optional)",
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "failureCases": {
+                    "description": "Examples of incorrect code that should fail the rule (optional)",
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "required": ["repositoryUrl", "prompt"],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$schema": "https://json-schema.org/draft/2020-12/schema",
+                  "type": "object",
+                  "properties": {
+                    "requestId": {
+                      "type": "string",
+                      "description": "UUID of the generation request (the ticket the rules are generated under)"
+                    },
+                    "ruleId": {
+                      "type": "string",
+                      "deprecated": true,
+                      "description": "Deprecated: use requestId. Same value — this identifies the generation request, not a rule"
+                    },
+                    "status": {
+                      "type": "string",
+                      "const": "accepted",
+                      "description": "Initial status"
+                    }
+                  },
+                  "required": ["requestId", "ruleId", "status"],
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/cli/api/request/{requestId}": {
+      "get": {
+        "summary": "Get generation request status and output (poll until terminal state)",
+        "parameters": [
+          {
+            "name": "requestId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "UUID of the generation request. One request produces N rules, each with its own `id`."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$schema": "https://json-schema.org/draft/2020-12/schema",
+                  "type": "object",
+                  "properties": {
+                    "requestId": {
+                      "type": "string",
+                      "description": "UUID of the generation request the rules were generated under"
+                    },
+                    "ruleId": {
+                      "type": "string",
+                      "deprecated": true,
+                      "description": "Deprecated: use requestId. Same value"
+                    },
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "accepted",
+                        "classifying",
+                        "building",
+                        "generated",
+                        "failed",
+                        "pr",
+                        "merged",
+                        "closed",
+                        "unsupported"
+                      ]
+                    },
+                    "rules": {
+                      "description": "Generated rules (present when status is generated). Clients below the `file-set` floor receive `content`; clients at or above it receive `files`.",
+                      "anyOf": [
+                        {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "id": {
+                                "type": "string",
+                                "description": "Rule identifier (matches content.id)"
+                              },
+                              "content": {
+                                "type": "object",
+                                "properties": {
+                                  "id": {
+                                    "type": "string",
+                                    "description": "Unique rule identifier, e.g. no-unused-variable"
+                                  },
+                                  "language": {
+                                    "type": "string",
+                                    "description": "Language to parse, e.g. typescript"
+                                  },
+                                  "rule": {
+                                    "type": "object",
+                                    "propertyNames": {
+                                      "type": "string"
+                                    },
+                                    "additionalProperties": {},
+                                    "description": "Rule object to find matching AST nodes"
+                                  },
+                                  "severity": {
+                                    "description": "Severity level",
+                                    "type": "string",
+                                    "enum": [
+                                      "hint",
+                                      "info",
+                                      "warning",
+                                      "error",
+                                      "off"
+                                    ]
+                                  },
+                                  "message": {
+                                    "description": "Message explaining why the rule fired",
+                                    "type": "string"
+                                  },
+                                  "note": {
+                                    "description": "Additional notes to elaborate the message",
+                                    "type": "string"
+                                  },
+                                  "fix": {
+                                    "description": "Auto-fix pattern or object",
+                                    "anyOf": [
+                                      {
+                                        "type": "string"
+                                      },
+                                      {
+                                        "type": "object",
+                                        "propertyNames": {
+                                          "type": "string"
+                                        },
+                                        "additionalProperties": {}
+                                      }
+                                    ]
+                                  },
+                                  "constraints": {
+                                    "description": "Meta variable constraints",
+                                    "type": "object",
+                                    "propertyNames": {
+                                      "type": "string"
+                                    },
+                                    "additionalProperties": {}
+                                  },
+                                  "utils": {
+                                    "description": "Reusable utility rules",
+                                    "type": "object",
+                                    "propertyNames": {
+                                      "type": "string"
+                                    },
+                                    "additionalProperties": {}
+                                  },
+                                  "transform": {
+                                    "description": "Meta variable transformations",
+                                    "type": "object",
+                                    "propertyNames": {
+                                      "type": "string"
+                                    },
+                                    "additionalProperties": {}
+                                  },
+                                  "metadata": {
+                                    "description": "Extra rule metadata",
+                                    "type": "object",
+                                    "propertyNames": {
+                                      "type": "string"
+                                    },
+                                    "additionalProperties": {}
+                                  },
+                                  "files": {
+                                    "description": "Glob patterns the rule applies to",
+                                    "type": "array",
+                                    "items": {
+                                      "type": "string"
+                                    }
+                                  },
+                                  "ignores": {
+                                    "description": "Glob patterns to exclude",
+                                    "type": "array",
+                                    "items": {
+                                      "type": "string"
+                                    }
+                                  },
+                                  "url": {
+                                    "description": "Documentation link",
+                                    "type": "string"
+                                  }
+                                },
+                                "required": ["id", "language", "rule"],
+                                "additionalProperties": false,
+                                "description": "The ast-grep rule definition"
+                              },
+                              "tests": {
+                                "description": "Test cases for the rule",
+                                "type": "object",
+                                "properties": {
+                                  "valid": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "string"
+                                    },
+                                    "description": "Code that should NOT trigger the rule"
+                                  },
+                                  "invalid": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "string"
+                                    },
+                                    "description": "Code that SHOULD trigger the rule"
+                                  }
+                                },
+                                "required": ["valid", "invalid"],
+                                "additionalProperties": false
+                              }
+                            },
+                            "required": ["id", "content"],
+                            "additionalProperties": false
+                          }
+                        },
+                        {
+                          "type": "array",
+                          "items": {
+                            "oneOf": [
+                              {
+                                "type": "object",
+                                "properties": {
+                                  "id": {
+                                    "type": "string",
+                                    "description": "The rule directory name under .taskless/rules/<engine>/"
+                                  },
+                                  "files": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "object",
+                                      "properties": {
+                                        "path": {
+                                          "type": "string",
+                                          "description": "Path relative to .taskless/rules/<engine>/<id>/"
+                                        },
+                                        "content": {
+                                          "type": "string",
+                                          "description": "The file’s exact bytes"
+                                        }
+                                      },
+                                      "required": ["path", "content"],
+                                      "additionalProperties": false
+                                    },
+                                    "description": "Every file the rule directory must contain"
+                                  },
+                                  "engine": {
+                                    "type": "string",
+                                    "const": "sg",
+                                    "description": "ast-grep — inert declarative rules"
+                                  },
+                                  "signature": {
+                                    "description": "Blessed canonical signature, when one was registered",
+                                    "type": "string"
+                                  }
+                                },
+                                "required": ["id", "files", "engine"],
+                                "additionalProperties": false
+                              },
+                              {
+                                "type": "object",
+                                "properties": {
+                                  "id": {
+                                    "type": "string",
+                                    "description": "The rule directory name under .taskless/rules/<engine>/"
+                                  },
+                                  "files": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "object",
+                                      "properties": {
+                                        "path": {
+                                          "type": "string",
+                                          "description": "Path relative to .taskless/rules/<engine>/<id>/"
+                                        },
+                                        "content": {
+                                          "type": "string",
+                                          "description": "The file’s exact bytes"
+                                        }
+                                      },
+                                      "required": ["path", "content"],
+                                      "additionalProperties": false
+                                    },
+                                    "description": "Every file the rule directory must contain"
+                                  },
+                                  "engine": {
+                                    "type": "string",
+                                    "const": "vale",
+                                    "description": "Vale — inert prose/markup rules"
+                                  },
+                                  "signature": {
+                                    "description": "Blessed canonical signature, when one was registered",
+                                    "type": "string"
+                                  }
+                                },
+                                "required": ["id", "files", "engine"],
+                                "additionalProperties": false
+                              },
+                              {
+                                "type": "object",
+                                "properties": {
+                                  "id": {
+                                    "type": "string",
+                                    "description": "The rule directory name under .taskless/rules/<engine>/"
+                                  },
+                                  "files": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "object",
+                                      "properties": {
+                                        "path": {
+                                          "type": "string",
+                                          "description": "Path relative to .taskless/rules/<engine>/<id>/"
+                                        },
+                                        "content": {
+                                          "type": "string",
+                                          "description": "The file’s exact bytes"
+                                        }
+                                      },
+                                      "required": ["path", "content"],
+                                      "additionalProperties": false
+                                    },
+                                    "description": "Every file the rule directory must contain"
+                                  },
+                                  "engine": {
+                                    "type": "string",
+                                    "const": "runtime",
+                                    "description": "Executable — check.ts runs against a file tree"
+                                  },
+                                  "signature": {
+                                    "type": "string",
+                                    "description": "REQUIRED. Execution is gated on this signature, so a runtime rule without one could never run."
+                                  }
+                                },
+                                "required": [
+                                  "id",
+                                  "files",
+                                  "engine",
+                                  "signature"
+                                ],
+                                "additionalProperties": false
+                              }
+                            ],
+                            "description": "A rule directory as files, relative to .taskless/rules/"
+                          }
+                        }
+                      ]
+                    },
+                    "meta": {
+                      "description": "Sidecar metadata keyed by rule filename (present when rules are present)",
+                      "type": "object",
+                      "propertyNames": {
+                        "type": "string"
+                      },
+                      "additionalProperties": {
+                        "type": "object",
+                        "properties": {
+                          "requestId": {
+                            "type": "string",
+                            "description": "UUID of the generation request that produced this rule"
+                          },
+                          "ticketId": {
+                            "type": "string",
+                            "deprecated": true,
+                            "description": "Deprecated: use requestId. Same value"
+                          },
+                          "installationId": {
+                            "description": "GitHub App installation ID (absent for public repos)",
+                            "type": "string"
+                          },
+                          "generatedAt": {
+                            "type": "string",
+                            "description": "ISO 8601 generation timestamp"
+                          },
+                          "schemaVersion": {
+                            "type": "string",
+                            "description": "Sidecar schema version"
+                          }
+                        },
+                        "required": [
+                          "requestId",
+                          "ticketId",
+                          "generatedAt",
+                          "schemaVersion"
+                        ],
+                        "additionalProperties": false
+                      }
+                    },
+                    "error": {
+                      "description": "Why the request ended the way it did. Present when status is `failed` (a generation error) or `unsupported` (the request was understood and refused — for example an engine this client version cannot receive). A client SHOULD surface this text rather than substituting its own, since it names what the user must do.",
+                      "type": "string"
+                    },
+                    "errorCode": {
+                      "description": "Machine-readable companion to `error`, so a client can branch on a specific outcome instead of matching prose. `ENGINE_NOT_DELIVERABLE` means the rule needed an engine this client version cannot receive and the fix is a CLI upgrade.",
+                      "type": "string"
+                    }
+                  },
+                  "required": ["requestId", "ruleId", "status"],
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/cli/api/request/{requestId}/iterate": {
+      "post": {
+        "summary": "Iterate on an existing generation request with guidance and optional references",
+        "parameters": [
+          {
+            "name": "requestId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "UUID of the generation request. One request produces N rules, each with its own `id`."
+          }
+        ],
+        "requestBody": {
+          "description": "OK",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "type": "object",
+                "properties": {
+                  "guidance": {
+                    "type": "string",
+                    "description": "Feedback for iterating on the existing rule"
+                  },
+                  "references": {
+                    "description": "Reference files to include as context (optional)",
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "filename": {
+                          "type": "string",
+                          "description": "File path relative to .taskless/"
+                        },
+                        "content": {
+                          "type": "string",
+                          "description": "File content"
+                        }
+                      },
+                      "required": ["filename", "content"],
+                      "additionalProperties": false
+                    }
+                  }
+                },
+                "required": ["guidance"],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$schema": "https://json-schema.org/draft/2020-12/schema",
+                  "type": "object",
+                  "properties": {
+                    "requestId": {
+                      "type": "string",
+                      "description": "UUID of the generation request, for polling status"
+                    },
+                    "ruleId": {
+                      "type": "string",
+                      "deprecated": true,
+                      "description": "Deprecated: use requestId. Same value"
+                    },
+                    "status": {
+                      "type": "string",
+                      "const": "accepted",
+                      "description": "Iteration has been enqueued"
+                    }
+                  },
+                  "required": ["requestId", "ruleId", "status"],
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/cli/api/request/{requestId}/restore": {
+      "post": {
+        "summary": "Restore the complete on-disk file set for rules the caller’s organization owns",
+        "parameters": [
+          {
+            "name": "requestId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "UUID of the generation request. One request produces N rules, each with its own `id`."
+          }
+        ],
+        "requestBody": {
+          "description": "OK",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "type": "object",
+                "properties": {
+                  "repositoryUrl": {
+                    "type": "string",
+                    "description": "Full repository URL the rule was generated for"
+                  }
+                },
+                "required": ["repositoryUrl"],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$schema": "https://json-schema.org/draft/2020-12/schema",
+                  "type": "object",
+                  "properties": {
+                    "requestId": {
+                      "type": "string",
+                      "description": "UUID of the generation request the rules were generated under"
+                    },
+                    "ruleId": {
+                      "type": "string",
+                      "deprecated": true,
+                      "description": "Deprecated: use requestId. Same value"
+                    },
+                    "rules": {
+                      "type": "array",
+                      "items": {
+                        "oneOf": [
+                          {
+                            "type": "object",
+                            "properties": {
+                              "id": {
+                                "type": "string",
+                                "description": "The rule directory name under .taskless/rules/<engine>/"
+                              },
+                              "files": {
+                                "type": "array",
+                                "items": {
+                                  "type": "object",
+                                  "properties": {
+                                    "path": {
+                                      "type": "string",
+                                      "description": "Path relative to .taskless/rules/<engine>/<id>/"
+                                    },
+                                    "content": {
+                                      "type": "string",
+                                      "description": "The file’s exact bytes"
+                                    }
+                                  },
+                                  "required": ["path", "content"],
+                                  "additionalProperties": false
+                                },
+                                "description": "Every file the rule directory must contain"
+                              },
+                              "engine": {
+                                "type": "string",
+                                "const": "sg",
+                                "description": "ast-grep — inert declarative rules"
+                              },
+                              "signature": {
+                                "description": "Blessed canonical signature, when one was registered",
+                                "type": "string"
+                              }
+                            },
+                            "required": ["id", "files", "engine"],
+                            "additionalProperties": false
+                          },
+                          {
+                            "type": "object",
+                            "properties": {
+                              "id": {
+                                "type": "string",
+                                "description": "The rule directory name under .taskless/rules/<engine>/"
+                              },
+                              "files": {
+                                "type": "array",
+                                "items": {
+                                  "type": "object",
+                                  "properties": {
+                                    "path": {
+                                      "type": "string",
+                                      "description": "Path relative to .taskless/rules/<engine>/<id>/"
+                                    },
+                                    "content": {
+                                      "type": "string",
+                                      "description": "The file’s exact bytes"
+                                    }
+                                  },
+                                  "required": ["path", "content"],
+                                  "additionalProperties": false
+                                },
+                                "description": "Every file the rule directory must contain"
+                              },
+                              "engine": {
+                                "type": "string",
+                                "const": "vale",
+                                "description": "Vale — inert prose/markup rules"
+                              },
+                              "signature": {
+                                "description": "Blessed canonical signature, when one was registered",
+                                "type": "string"
+                              }
+                            },
+                            "required": ["id", "files", "engine"],
+                            "additionalProperties": false
+                          },
+                          {
+                            "type": "object",
+                            "properties": {
+                              "id": {
+                                "type": "string",
+                                "description": "The rule directory name under .taskless/rules/<engine>/"
+                              },
+                              "files": {
+                                "type": "array",
+                                "items": {
+                                  "type": "object",
+                                  "properties": {
+                                    "path": {
+                                      "type": "string",
+                                      "description": "Path relative to .taskless/rules/<engine>/<id>/"
+                                    },
+                                    "content": {
+                                      "type": "string",
+                                      "description": "The file’s exact bytes"
+                                    }
+                                  },
+                                  "required": ["path", "content"],
+                                  "additionalProperties": false
+                                },
+                                "description": "Every file the rule directory must contain"
+                              },
+                              "engine": {
+                                "type": "string",
+                                "const": "runtime",
+                                "description": "Executable — check.ts runs against a file tree"
+                              },
+                              "signature": {
+                                "type": "string",
+                                "description": "REQUIRED. Execution is gated on this signature, so a runtime rule without one could never run."
+                              }
+                            },
+                            "required": ["id", "files", "engine", "signature"],
+                            "additionalProperties": false
+                          }
+                        ],
+                        "description": "A rule directory as files, relative to .taskless/rules/"
+                      },
+                      "description": "The complete file set for each rule the ticket produced"
+                    }
+                  },
+                  "required": ["requestId", "ruleId", "rules"],
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/cli/api/rule": {
+      "post": {
+        "summary": "Create a rule generation request",
+        "requestBody": {
+          "description": "OK",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "type": "object",
+                "properties": {
+                  "repositoryUrl": {
+                    "type": "string",
+                    "description": "Full repository URL"
+                  },
+                  "prompt": {
+                    "type": "string",
+                    "description": "Description of the rule to generate"
+                  },
+                  "successCases": {
+                    "description": "Examples of correct code that should pass the rule (optional)",
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "failureCases": {
+                    "description": "Examples of incorrect code that should fail the rule (optional)",
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "required": ["repositoryUrl", "prompt"],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$schema": "https://json-schema.org/draft/2020-12/schema",
+                  "type": "object",
+                  "properties": {
+                    "requestId": {
+                      "type": "string",
+                      "description": "UUID of the generation request (the ticket the rules are generated under)"
+                    },
+                    "ruleId": {
+                      "type": "string",
+                      "deprecated": true,
+                      "description": "Deprecated: use requestId. Same value — this identifies the generation request, not a rule"
+                    },
+                    "status": {
+                      "type": "string",
+                      "const": "accepted",
+                      "description": "Initial status"
+                    }
+                  },
+                  "required": ["requestId", "ruleId", "status"],
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        },
+        "deprecated": true,
+        "description": "Deprecated: use the /cli/api/request equivalent. The identifier is a generation request, not a rule. This path continues to be served."
+      }
+    },
+    "/cli/api/rule/{ruleId}": {
+      "get": {
+        "summary": "Get generation request status and output (poll until terminal state)",
+        "parameters": [
+          {
+            "name": "ruleId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "UUID of the generation request. One request produces N rules, each with its own `id`."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$schema": "https://json-schema.org/draft/2020-12/schema",
+                  "type": "object",
+                  "properties": {
+                    "requestId": {
+                      "type": "string",
+                      "description": "UUID of the generation request the rules were generated under"
+                    },
+                    "ruleId": {
+                      "type": "string",
+                      "deprecated": true,
+                      "description": "Deprecated: use requestId. Same value"
+                    },
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "accepted",
+                        "classifying",
+                        "building",
+                        "generated",
+                        "failed",
+                        "pr",
+                        "merged",
+                        "closed",
+                        "unsupported"
+                      ]
+                    },
+                    "rules": {
+                      "description": "Generated rules (present when status is generated). Clients below the `file-set` floor receive `content`; clients at or above it receive `files`.",
+                      "anyOf": [
+                        {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "id": {
+                                "type": "string",
+                                "description": "Rule identifier (matches content.id)"
+                              },
+                              "content": {
+                                "type": "object",
+                                "properties": {
+                                  "id": {
+                                    "type": "string",
+                                    "description": "Unique rule identifier, e.g. no-unused-variable"
+                                  },
+                                  "language": {
+                                    "type": "string",
+                                    "description": "Language to parse, e.g. typescript"
+                                  },
+                                  "rule": {
+                                    "type": "object",
+                                    "propertyNames": {
+                                      "type": "string"
+                                    },
+                                    "additionalProperties": {},
+                                    "description": "Rule object to find matching AST nodes"
+                                  },
+                                  "severity": {
+                                    "description": "Severity level",
+                                    "type": "string",
+                                    "enum": [
+                                      "hint",
+                                      "info",
+                                      "warning",
+                                      "error",
+                                      "off"
+                                    ]
+                                  },
+                                  "message": {
+                                    "description": "Message explaining why the rule fired",
+                                    "type": "string"
+                                  },
+                                  "note": {
+                                    "description": "Additional notes to elaborate the message",
+                                    "type": "string"
+                                  },
+                                  "fix": {
+                                    "description": "Auto-fix pattern or object",
+                                    "anyOf": [
+                                      {
+                                        "type": "string"
+                                      },
+                                      {
+                                        "type": "object",
+                                        "propertyNames": {
+                                          "type": "string"
+                                        },
+                                        "additionalProperties": {}
+                                      }
+                                    ]
+                                  },
+                                  "constraints": {
+                                    "description": "Meta variable constraints",
+                                    "type": "object",
+                                    "propertyNames": {
+                                      "type": "string"
+                                    },
+                                    "additionalProperties": {}
+                                  },
+                                  "utils": {
+                                    "description": "Reusable utility rules",
+                                    "type": "object",
+                                    "propertyNames": {
+                                      "type": "string"
+                                    },
+                                    "additionalProperties": {}
+                                  },
+                                  "transform": {
+                                    "description": "Meta variable transformations",
+                                    "type": "object",
+                                    "propertyNames": {
+                                      "type": "string"
+                                    },
+                                    "additionalProperties": {}
+                                  },
+                                  "metadata": {
+                                    "description": "Extra rule metadata",
+                                    "type": "object",
+                                    "propertyNames": {
+                                      "type": "string"
+                                    },
+                                    "additionalProperties": {}
+                                  },
+                                  "files": {
+                                    "description": "Glob patterns the rule applies to",
+                                    "type": "array",
+                                    "items": {
+                                      "type": "string"
+                                    }
+                                  },
+                                  "ignores": {
+                                    "description": "Glob patterns to exclude",
+                                    "type": "array",
+                                    "items": {
+                                      "type": "string"
+                                    }
+                                  },
+                                  "url": {
+                                    "description": "Documentation link",
+                                    "type": "string"
+                                  }
+                                },
+                                "required": ["id", "language", "rule"],
+                                "additionalProperties": false,
+                                "description": "The ast-grep rule definition"
+                              },
+                              "tests": {
+                                "description": "Test cases for the rule",
+                                "type": "object",
+                                "properties": {
+                                  "valid": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "string"
+                                    },
+                                    "description": "Code that should NOT trigger the rule"
+                                  },
+                                  "invalid": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "string"
+                                    },
+                                    "description": "Code that SHOULD trigger the rule"
+                                  }
+                                },
+                                "required": ["valid", "invalid"],
+                                "additionalProperties": false
+                              }
+                            },
+                            "required": ["id", "content"],
+                            "additionalProperties": false
+                          }
+                        },
+                        {
+                          "type": "array",
+                          "items": {
+                            "oneOf": [
+                              {
+                                "type": "object",
+                                "properties": {
+                                  "id": {
+                                    "type": "string",
+                                    "description": "The rule directory name under .taskless/rules/<engine>/"
+                                  },
+                                  "files": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "object",
+                                      "properties": {
+                                        "path": {
+                                          "type": "string",
+                                          "description": "Path relative to .taskless/rules/<engine>/<id>/"
+                                        },
+                                        "content": {
+                                          "type": "string",
+                                          "description": "The file’s exact bytes"
+                                        }
+                                      },
+                                      "required": ["path", "content"],
+                                      "additionalProperties": false
+                                    },
+                                    "description": "Every file the rule directory must contain"
+                                  },
+                                  "engine": {
+                                    "type": "string",
+                                    "const": "sg",
+                                    "description": "ast-grep — inert declarative rules"
+                                  },
+                                  "signature": {
+                                    "description": "Blessed canonical signature, when one was registered",
+                                    "type": "string"
+                                  }
+                                },
+                                "required": ["id", "files", "engine"],
+                                "additionalProperties": false
+                              },
+                              {
+                                "type": "object",
+                                "properties": {
+                                  "id": {
+                                    "type": "string",
+                                    "description": "The rule directory name under .taskless/rules/<engine>/"
+                                  },
+                                  "files": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "object",
+                                      "properties": {
+                                        "path": {
+                                          "type": "string",
+                                          "description": "Path relative to .taskless/rules/<engine>/<id>/"
+                                        },
+                                        "content": {
+                                          "type": "string",
+                                          "description": "The file’s exact bytes"
+                                        }
+                                      },
+                                      "required": ["path", "content"],
+                                      "additionalProperties": false
+                                    },
+                                    "description": "Every file the rule directory must contain"
+                                  },
+                                  "engine": {
+                                    "type": "string",
+                                    "const": "vale",
+                                    "description": "Vale — inert prose/markup rules"
+                                  },
+                                  "signature": {
+                                    "description": "Blessed canonical signature, when one was registered",
+                                    "type": "string"
+                                  }
+                                },
+                                "required": ["id", "files", "engine"],
+                                "additionalProperties": false
+                              },
+                              {
+                                "type": "object",
+                                "properties": {
+                                  "id": {
+                                    "type": "string",
+                                    "description": "The rule directory name under .taskless/rules/<engine>/"
+                                  },
+                                  "files": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "object",
+                                      "properties": {
+                                        "path": {
+                                          "type": "string",
+                                          "description": "Path relative to .taskless/rules/<engine>/<id>/"
+                                        },
+                                        "content": {
+                                          "type": "string",
+                                          "description": "The file’s exact bytes"
+                                        }
+                                      },
+                                      "required": ["path", "content"],
+                                      "additionalProperties": false
+                                    },
+                                    "description": "Every file the rule directory must contain"
+                                  },
+                                  "engine": {
+                                    "type": "string",
+                                    "const": "runtime",
+                                    "description": "Executable — check.ts runs against a file tree"
+                                  },
+                                  "signature": {
+                                    "type": "string",
+                                    "description": "REQUIRED. Execution is gated on this signature, so a runtime rule without one could never run."
+                                  }
+                                },
+                                "required": [
+                                  "id",
+                                  "files",
+                                  "engine",
+                                  "signature"
+                                ],
+                                "additionalProperties": false
+                              }
+                            ],
+                            "description": "A rule directory as files, relative to .taskless/rules/"
+                          }
+                        }
+                      ]
+                    },
+                    "meta": {
+                      "description": "Sidecar metadata keyed by rule filename (present when rules are present)",
+                      "type": "object",
+                      "propertyNames": {
+                        "type": "string"
+                      },
+                      "additionalProperties": {
+                        "type": "object",
+                        "properties": {
+                          "requestId": {
+                            "type": "string",
+                            "description": "UUID of the generation request that produced this rule"
+                          },
+                          "ticketId": {
+                            "type": "string",
+                            "deprecated": true,
+                            "description": "Deprecated: use requestId. Same value"
+                          },
+                          "installationId": {
+                            "description": "GitHub App installation ID (absent for public repos)",
+                            "type": "string"
+                          },
+                          "generatedAt": {
+                            "type": "string",
+                            "description": "ISO 8601 generation timestamp"
+                          },
+                          "schemaVersion": {
+                            "type": "string",
+                            "description": "Sidecar schema version"
+                          }
+                        },
+                        "required": [
+                          "requestId",
+                          "ticketId",
+                          "generatedAt",
+                          "schemaVersion"
+                        ],
+                        "additionalProperties": false
+                      }
+                    },
+                    "error": {
+                      "description": "Why the request ended the way it did. Present when status is `failed` (a generation error) or `unsupported` (the request was understood and refused — for example an engine this client version cannot receive). A client SHOULD surface this text rather than substituting its own, since it names what the user must do.",
+                      "type": "string"
+                    },
+                    "errorCode": {
+                      "description": "Machine-readable companion to `error`, so a client can branch on a specific outcome instead of matching prose. `ENGINE_NOT_DELIVERABLE` means the rule needed an engine this client version cannot receive and the fix is a CLI upgrade.",
+                      "type": "string"
+                    }
+                  },
+                  "required": ["requestId", "ruleId", "status"],
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        },
+        "deprecated": true,
+        "description": "Deprecated: use the /cli/api/request equivalent. The identifier is a generation request, not a rule. This path continues to be served."
+      }
+    },
+    "/cli/api/rule/{ruleId}/iterate": {
+      "post": {
+        "summary": "Iterate on an existing generation request with guidance and optional references",
+        "parameters": [
+          {
+            "name": "ruleId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "UUID of the generation request. One request produces N rules, each with its own `id`."
+          }
+        ],
+        "requestBody": {
+          "description": "OK",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "type": "object",
+                "properties": {
+                  "guidance": {
+                    "type": "string",
+                    "description": "Feedback for iterating on the existing rule"
+                  },
+                  "references": {
+                    "description": "Reference files to include as context (optional)",
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "filename": {
+                          "type": "string",
+                          "description": "File path relative to .taskless/"
+                        },
+                        "content": {
+                          "type": "string",
+                          "description": "File content"
+                        }
+                      },
+                      "required": ["filename", "content"],
+                      "additionalProperties": false
+                    }
+                  }
+                },
+                "required": ["guidance"],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$schema": "https://json-schema.org/draft/2020-12/schema",
+                  "type": "object",
+                  "properties": {
+                    "requestId": {
+                      "type": "string",
+                      "description": "UUID of the generation request, for polling status"
+                    },
+                    "ruleId": {
+                      "type": "string",
+                      "deprecated": true,
+                      "description": "Deprecated: use requestId. Same value"
+                    },
+                    "status": {
+                      "type": "string",
+                      "const": "accepted",
+                      "description": "Iteration has been enqueued"
+                    }
+                  },
+                  "required": ["requestId", "ruleId", "status"],
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        },
+        "deprecated": true,
+        "description": "Deprecated: use the /cli/api/request equivalent. The identifier is a generation request, not a rule. This path continues to be served."
+      }
+    },
+    "/cli/api/rule/{ruleId}/restore": {
+      "post": {
+        "summary": "Restore the complete on-disk file set for rules the caller’s organization owns",
+        "parameters": [
+          {
+            "name": "ruleId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "UUID of the generation request. One request produces N rules, each with its own `id`."
+          }
+        ],
+        "requestBody": {
+          "description": "OK",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "type": "object",
+                "properties": {
+                  "repositoryUrl": {
+                    "type": "string",
+                    "description": "Full repository URL the rule was generated for"
+                  }
+                },
+                "required": ["repositoryUrl"],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$schema": "https://json-schema.org/draft/2020-12/schema",
+                  "type": "object",
+                  "properties": {
+                    "requestId": {
+                      "type": "string",
+                      "description": "UUID of the generation request the rules were generated under"
+                    },
+                    "ruleId": {
+                      "type": "string",
+                      "deprecated": true,
+                      "description": "Deprecated: use requestId. Same value"
+                    },
+                    "rules": {
+                      "type": "array",
+                      "items": {
+                        "oneOf": [
+                          {
+                            "type": "object",
+                            "properties": {
+                              "id": {
+                                "type": "string",
+                                "description": "The rule directory name under .taskless/rules/<engine>/"
+                              },
+                              "files": {
+                                "type": "array",
+                                "items": {
+                                  "type": "object",
+                                  "properties": {
+                                    "path": {
+                                      "type": "string",
+                                      "description": "Path relative to .taskless/rules/<engine>/<id>/"
+                                    },
+                                    "content": {
+                                      "type": "string",
+                                      "description": "The file’s exact bytes"
+                                    }
+                                  },
+                                  "required": ["path", "content"],
+                                  "additionalProperties": false
+                                },
+                                "description": "Every file the rule directory must contain"
+                              },
+                              "engine": {
+                                "type": "string",
+                                "const": "sg",
+                                "description": "ast-grep — inert declarative rules"
+                              },
+                              "signature": {
+                                "description": "Blessed canonical signature, when one was registered",
+                                "type": "string"
+                              }
+                            },
+                            "required": ["id", "files", "engine"],
+                            "additionalProperties": false
+                          },
+                          {
+                            "type": "object",
+                            "properties": {
+                              "id": {
+                                "type": "string",
+                                "description": "The rule directory name under .taskless/rules/<engine>/"
+                              },
+                              "files": {
+                                "type": "array",
+                                "items": {
+                                  "type": "object",
+                                  "properties": {
+                                    "path": {
+                                      "type": "string",
+                                      "description": "Path relative to .taskless/rules/<engine>/<id>/"
+                                    },
+                                    "content": {
+                                      "type": "string",
+                                      "description": "The file’s exact bytes"
+                                    }
+                                  },
+                                  "required": ["path", "content"],
+                                  "additionalProperties": false
+                                },
+                                "description": "Every file the rule directory must contain"
+                              },
+                              "engine": {
+                                "type": "string",
+                                "const": "vale",
+                                "description": "Vale — inert prose/markup rules"
+                              },
+                              "signature": {
+                                "description": "Blessed canonical signature, when one was registered",
+                                "type": "string"
+                              }
+                            },
+                            "required": ["id", "files", "engine"],
+                            "additionalProperties": false
+                          },
+                          {
+                            "type": "object",
+                            "properties": {
+                              "id": {
+                                "type": "string",
+                                "description": "The rule directory name under .taskless/rules/<engine>/"
+                              },
+                              "files": {
+                                "type": "array",
+                                "items": {
+                                  "type": "object",
+                                  "properties": {
+                                    "path": {
+                                      "type": "string",
+                                      "description": "Path relative to .taskless/rules/<engine>/<id>/"
+                                    },
+                                    "content": {
+                                      "type": "string",
+                                      "description": "The file’s exact bytes"
+                                    }
+                                  },
+                                  "required": ["path", "content"],
+                                  "additionalProperties": false
+                                },
+                                "description": "Every file the rule directory must contain"
+                              },
+                              "engine": {
+                                "type": "string",
+                                "const": "runtime",
+                                "description": "Executable — check.ts runs against a file tree"
+                              },
+                              "signature": {
+                                "type": "string",
+                                "description": "REQUIRED. Execution is gated on this signature, so a runtime rule without one could never run."
+                              }
+                            },
+                            "required": ["id", "files", "engine", "signature"],
+                            "additionalProperties": false
+                          }
+                        ],
+                        "description": "A rule directory as files, relative to .taskless/rules/"
+                      },
+                      "description": "The complete file set for each rule the ticket produced"
+                    }
+                  },
+                  "required": ["requestId", "ruleId", "rules"],
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        },
+        "deprecated": true,
+        "description": "Deprecated: use the /cli/api/request equivalent. The identifier is a generation request, not a rule. This path continues to be served."
+      }
+    },
+    "/cli/api/reconcile": {
+      "post": {
+        "summary": "Reconcile reported rule files against the blessed corpus; returns what may run",
+        "requestBody": {
+          "description": "OK",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "type": "object",
+                "properties": {
+                  "orgId": {
+                    "description": "Taskless org UUID (preferred) or numeric GitHub org id; falls back to the deprecated token claim",
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "number"
+                      }
+                    ]
+                  },
+                  "repositoryUrl": {
+                    "type": "string",
+                    "description": "Full repository URL"
+                  },
+                  "files": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "file": {
+                          "type": "string",
+                          "description": "Delivered rule filename under .taskless/rules/ on the client"
+                        },
+                        "signature": {
+                          "type": "string",
+                          "description": "Canonical signature the client computed for its local file (`1;h=sha-256;d=<hex>`)"
+                        }
+                      },
+                      "required": ["file", "signature"],
+                      "additionalProperties": false
+                    },
+                    "description": "The rule files the client holds and their local signatures"
+                  }
+                },
+                "required": ["repositoryUrl", "files"],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$schema": "https://json-schema.org/draft/2020-12/schema",
+                  "type": "object",
+                  "properties": {
+                    "run": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "ruleId": {
+                            "type": "string",
+                            "description": "The model-assigned rule identifier"
+                          },
+                          "file": {
+                            "type": "string",
+                            "description": "Delivered rule filename under .taskless/rules/"
+                          },
+                          "signature": {
+                            "type": "string",
+                            "description": "Blessed canonical signature (`1;h=sha-256;d=<hex>`)"
+                          }
+                        },
+                        "required": ["ruleId", "file", "signature"],
+                        "additionalProperties": false
+                      },
+                      "description": "Files the client may execute — exactly these, nothing else"
+                    },
+                    "unsafe": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "ruleId": {
+                            "type": "string",
+                            "description": "The model-assigned rule identifier, for calling restore without parsing it out of the path"
+                          },
+                          "file": {
+                            "type": "string",
+                            "description": "Delivered rule filename"
+                          },
+                          "expected": {
+                            "type": "string",
+                            "description": "The blessed (authoritative) signature"
+                          },
+                          "got": {
+                            "type": "string",
+                            "description": "The signature the client reported"
+                          }
+                        },
+                        "required": ["ruleId", "file", "expected", "got"],
+                        "additionalProperties": false
+                      },
+                      "description": "Reported files whose content differs from the blessed rule"
+                    },
+                    "unknown": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "file": {
+                            "type": "string",
+                            "description": "Delivered rule filename the corpus never issued"
+                          }
+                        },
+                        "required": ["file"],
+                        "additionalProperties": false
+                      },
+                      "description": "Reported files the corpus never issued"
+                    },
+                    "missing": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "ruleId": {
+                            "type": "string",
+                            "description": "The model-assigned rule identifier"
+                          },
+                          "file": {
+                            "type": "string",
+                            "description": "Delivered rule filename the client did not report"
+                          }
+                        },
+                        "required": ["ruleId", "file"],
+                        "additionalProperties": false
+                      },
+                      "description": "Blessed rules the client did not report"
+                    }
+                  },
+                  "required": ["run", "unsafe", "unknown", "missing"],
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/cli/api/rule-hash-vectors": {
+      "get": {
+        "summary": "Public: canonical rule-hash conformance vectors for cross-repo validation",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$schema": "https://json-schema.org/draft/2020-12/schema",
+                  "type": "object",
+                  "properties": {
+                    "vectors": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "name": {
+                            "type": "string",
+                            "description": "Human-readable case name, e.g. \"crlf-equals-lf\""
+                          },
+                          "input": {
+                            "type": "string",
+                            "description": "Raw rule text to hash"
+                          },
+                          "signature": {
+                            "type": "string",
+                            "description": "Canonical signature envelope: <algoVersion>;h=<algo>;d=<hex>"
+                          }
+                        },
+                        "required": ["name", "input", "signature"],
+                        "additionalProperties": false
+                      },
+                      "description": "Canonical conformance vectors every implementation must reproduce"
+                    }
+                  },
+                  "required": ["vectors"],
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

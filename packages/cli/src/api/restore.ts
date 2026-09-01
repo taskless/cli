@@ -21,7 +21,7 @@ import { CLI_VERSION, CLI_VERSION_HEADER } from "../version";
  */
 
 type RestoreResponse =
-  paths["/cli/api/rule/{ruleId}/restore"]["post"]["responses"]["200"]["content"]["application/json"];
+  paths["/cli/api/request/{requestId}/restore"]["post"]["responses"]["200"]["content"]["application/json"];
 
 /** A rule as the service restored it, discriminated on `engine`. */
 export type RestoredRule = NonNullable<RestoreResponse["rules"]>[number];
@@ -46,6 +46,15 @@ export type RestoreOutcome =
  * A `POST` carrying `repositoryUrl`, which is what scopes the response to the
  * organization and installation that owns the rule rather than to whoever holds
  * a rule id. The verb follows that requirement rather than the other way round.
+ *
+ * **`request.ruleId` is a rule id and stays one, even though the schema now
+ * spells the path segment `{requestId}`.** The service renamed the resource
+ * because the id in `POST /cli/api/request` and its status poll was never a
+ * rule id, it was the generation ticket. This caller is the exception: the only
+ * value it ever passes comes from a reconcile `unsafe`/`missing` entry, whose
+ * `ruleId` the reconcile schema documents as "the model-assigned rule
+ * identifier, for calling restore without parsing it out of the path". Renaming
+ * this field to match the URL would make the name lie about the value.
  */
 export async function restoreRule(
   token: string,
@@ -53,7 +62,7 @@ export async function restoreRule(
 ): Promise<RestoreOutcome> {
   // Schema paths include the /cli/ prefix, so the base URL is the origin.
   const baseUrl = getApiBaseUrl().replace(/\/cli\/?$/, "");
-  const url = `${baseUrl}/cli/api/rule/${encodeURIComponent(request.ruleId)}/restore`;
+  const url = `${baseUrl}/cli/api/request/${encodeURIComponent(request.ruleId)}/restore`;
 
   let response: Response;
   try {
