@@ -18,8 +18,14 @@
  * is the fallback for a terminal `unsupported` that arrives without one.
  */
 export function unsupportedMessage(reason?: string): string {
-  if (reason !== undefined && reason.trim() !== "") {
-    return `This rule generation can't be served as requested.\n\n${reason}`;
+  // Trimmed once and used, rather than tested and then re-read raw. The blank
+  // check was on `reason.trim()` while the interpolation spliced in `reason`,
+  // so a reason arriving with a trailing newline — the ordinary shape of a
+  // templated server string — passed the check and carried its padding into
+  // the printed message and the `--json` envelope.
+  const trimmed = reason?.trim();
+  if (trimmed !== undefined && trimmed !== "") {
+    return `This rule generation can't be served as requested.\n\n${trimmed}`;
   }
   return [
     "This rule generation isn't available on your current Taskless plan.",
