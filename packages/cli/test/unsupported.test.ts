@@ -31,6 +31,17 @@ describe("explaining a terminal unsupported", () => {
     expect(message).not.toMatch(/administrator/i);
   });
 
+  it("strips padding the service sent with its reason", () => {
+    // The gap that let this through: nothing exercised a reason that was
+    // non-empty but padded, which is the ordinary shape of a templated server
+    // string. The old code tested `reason.trim()` and then interpolated
+    // `reason`, so the newline survived into the message and the envelope.
+    const message = unsupportedMessage(`\n  ${CLI_FLOOR}\n\n`);
+    expect(message).toContain(CLI_FLOOR);
+    expect(message.endsWith(CLI_FLOOR)).toBe(true);
+    expect(message).not.toMatch(/\n{3}/);
+  });
+
   it.each([
     ["no reason at all", undefined],
     ["an empty reason", ""],
