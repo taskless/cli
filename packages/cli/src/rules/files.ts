@@ -68,15 +68,24 @@ export async function writeRuleFile(
     return ruleFilePath(cwd, engine, rule.id);
   }
 
-  // `files` is absent past the branch above, so this must be the single-content
-  // envelope. Checked BEFORE anything is created, and checked on `content`
-  // itself rather than on "not a file set": a payload carrying neither is not a
-  // file set either, so the negative would admit it. It used to, and `yaml`
-  // renders `undefined` as the STRING "undefined" instead of throwing, so the
-  // rule file was written and what it contained was that word.
-  if (!isSingleContentRule(rule) || rule.content === undefined) {
+  // `files` is absent past the branch above, so this is the single-content
+  // envelope, and what remains is whether its `content` can actually be
+  // written. Checked BEFORE anything is created.
+  //
+  // The test is "a usable object", not "not undefined". `yaml` does not throw
+  // on a value it cannot make a document of, it renders one: `undefined`
+  // becomes the string "undefined" and `null` becomes the string "null", so
+  // either way the rule file is created and its entire contents are that word
+  // — a malformed rule discovered two steps from the cause.
+  //
+  // Note this deliberately asks a different question from the mutual-exclusion
+  // check above, which treats ANY present `content` (including `null`) as the
+  // service having sent both envelopes. That one is about what the payload
+  // claims; this one is about what can be written. Reusing a single predicate
+  // for both would make one of them wrong.
+  if (!isUsableContent(rule)) {
     throw new Error(
-      `Rule "${rule.id}" carries neither \`files\` nor \`content\`.`
+      `Rule "${rule.id}" carries no usable \`content\`, and no \`files\`.`
     );
   }
   await ensureTasklessDirectory(cwd);
@@ -84,6 +93,20 @@ export async function writeRuleFile(
   const filePath = ruleFilePath(cwd, engine, rule.id);
   await writeFile(filePath, stringify(rule.content, { lineWidth: 0 }), "utf8");
   return filePath;
+}
+
+/**
+ * Whether a rule's `content` is something a rule file can be written from.
+ *
+ * A rule body is a YAML mapping. `undefined`, `null` and any primitive are all
+ * values `yaml` will happily render as a scalar document, which is how a rule
+ * file containing nothing but `null` reaches a developer's disk.
+ */
+function isUsableContent(
+  rule: GeneratedRule
+): rule is GeneratedRule & { content: Record<string, unknown> } {
+  const content = (rule as { content?: unknown }).content;
+  return typeof content === "object" && content !== null;
 }
 
 /**
