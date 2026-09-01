@@ -9,6 +9,8 @@ import {
   isShimStub,
   stubFrontmatterDrifted,
   stubPredatesRecovery,
+  stubRecoveryInvocation,
+  stubRecoveryInvocationStale,
   writeCanonicalCommand,
   writeCanonicalSkill,
 } from "../src/install/canonical";
@@ -268,5 +270,68 @@ describe("stubPredatesRecovery", () => {
       "",
     ].join("\n");
     expect(stubPredatesRecovery(legacyStub)).toBe(true);
+  });
+});
+
+/** A copy of `stub` whose recovery line names `invocation` instead. */
+function withRecoveryInvocation(stub: string, invocation: string): string {
+  const current = stubRecoveryInvocation(stub);
+  if (current === undefined) throw new Error("stub carries no recovery line");
+  return stub.replace(`run \`${current}\``, `run \`${invocation}\``);
+}
+
+describe("stubRecoveryInvocation / stubRecoveryInvocationStale", () => {
+  const meta = { name: "taskless", description: "Use for any Taskless task." };
+  // This project runs under a released define, so a stub written here carries
+  // the released invocation. The nightly side of the same behaviour lives in
+  // test/nightly/stub-recovery-invocation.test.ts.
+  const productionRestore = `${buildInvocation()} init`;
+
+  it("reads the invocation back out of a stub it wrote", () => {
+    expect(stubRecoveryInvocation(buildSkillStub(meta))).toBe(
+      productionRestore
+    );
+    expect(stubRecoveryInvocation(buildCommandStub(meta, "tskl.md"))).toBe(
+      productionRestore
+    );
+  });
+
+  it("returns undefined for a stub that predates the recovery instruction", () => {
+    expect(
+      stubRecoveryInvocation("---\nname: t\n---\n\nbody\n")
+    ).toBeUndefined();
+  });
+
+  it("leaves a stub written by this same build alone", () => {
+    expect(stubRecoveryInvocationStale(buildSkillStub(meta))).toBe(false);
+    expect(stubRecoveryInvocationStale(buildCommandStub(meta, "tskl.md"))).toBe(
+      false
+    );
+  });
+
+  it("reclaims a stub frozen with a pinned nightly invocation", () => {
+    // taskless/cli#227: try a nightly once, go back to the released CLI, and
+    // every later install reported "up to date" while the recovery line kept
+    // naming a nightly version that may no longer be published.
+    const frozen = withRecoveryInvocation(
+      buildSkillStub(meta),
+      "npx @taskless/cli-nightly@0.11.0-nightly.20260101 init"
+    );
+    expect(stubRecoveryInvocationStale(frozen)).toBe(true);
+  });
+
+  it("reclaims a stub frozen with a self build's filesystem path", () => {
+    const frozen = withRecoveryInvocation(
+      buildSkillStub(meta),
+      "node packages/cli/dist-self/index.js init"
+    );
+    expect(stubRecoveryInvocationStale(frozen)).toBe(true);
+  });
+
+  it("says nothing about a stub that has no recovery line at all", () => {
+    // That case belongs to stubPredatesRecovery, which rewrites it anyway.
+    expect(stubRecoveryInvocationStale("---\nname: t\n---\n\nbody\n")).toBe(
+      false
+    );
   });
 });

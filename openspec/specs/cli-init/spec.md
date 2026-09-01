@@ -717,6 +717,19 @@ Stub content SHALL carry nothing that varies per release, so that adding this in
 
 A stub already on disk whose body predates this instruction SHALL be rewritten once by the next install, rather than waiting for its frontmatter to change. Detection of such a stub SHALL NOT depend on the build that wrote it, so that builds with different invocations do not rewrite one another's stubs.
 
+An install SHALL also reclaim a stub whose recovery command names a build other than the one installing, EXCEPT when the command named is the released, version-free one. The released form resolves for every reader, so leaving it in place is what keeps a released build and a nightly from rewriting one another's stub on every install; anything else names a build that may not be reachable at the moment the reader needs it, and is replaced.
+
+#### Scenario: A pinned nightly recovery command is reclaimed by a later install
+
+- **WHEN** an install finds a stub whose recovery command names a version-pinned nightly other than the build installing
+- **THEN** the install SHALL rewrite that stub with its own recovery command
+
+#### Scenario: A released recovery command survives a nightly install
+
+- **WHEN** a nightly build installs over a stub whose recovery command is the released, version-free one
+- **THEN** the install SHALL leave that stub untouched
+- **AND** a subsequent install by either build SHALL leave it untouched
+
 #### Scenario: Stub names the command that restores a missing canonical file
 
 - **WHEN** the CLI writes a skill stub or a command stub

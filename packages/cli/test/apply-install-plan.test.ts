@@ -18,7 +18,7 @@ import {
   getEmbeddedCommands,
   getEmbeddedSkills,
 } from "../src/install/install";
-import { isShimStub } from "../src/install/canonical";
+import { isShimStub, stubRecoveryInvocation } from "../src/install/canonical";
 import { parseFrontmatter } from "../src/install/frontmatter";
 import { readInstallState, writeInstallState } from "../src/install/state";
 
@@ -270,6 +270,36 @@ describe("applyInstallPlan", () => {
     expect(
       parseFrontmatter(await readFile(claudeSkill, "utf8")).content
     ).toContain("does not exist");
+  });
+
+  it("reclaims a stub whose recovery line names a pinned nightly", async () => {
+    // taskless/cli#227. Reproduced by hand as: nightly `init`, then a released
+    // `init` in the same directory — the canonical files and
+    // `install.cliVersion` reverted to the release while the stub kept
+    // `npx @taskless/cli-nightly@<pinned> init` in the one line a reader
+    // reaches for when the canonical file is already missing.
+    const skill = tasklessSkill();
+    const claudeSkill = join(cwd, ".claude", "skills", "taskless", "SKILL.md");
+    const plan = buildInstallPlan([".claude"], [skill], []);
+
+    await applyInstallPlan(cwd, plan, { cliVersion: "0.7.0" });
+    const written = await readFile(claudeSkill, "utf8");
+    const current = stubRecoveryInvocation(written);
+    if (current === undefined) throw new Error("stub carries no recovery line");
+    const nightly = "npx @taskless/cli-nightly@0.11.0-nightly.20260101 init";
+    await writeFile(
+      claudeSkill,
+      written.replace(`run \`${current}\``, `run \`${nightly}\``),
+      "utf8"
+    );
+
+    const result = await applyInstallPlan(cwd, plan, { cliVersion: "0.7.0" });
+
+    expect(result.writtenSkills).toContainEqual({
+      target: ".claude",
+      skill: "taskless",
+    });
+    expect(await readFile(claudeSkill, "utf8")).toBe(written);
   });
 
   it("converts a full per-tool copy into a shim stub", async () => {
