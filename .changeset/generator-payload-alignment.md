@@ -95,3 +95,18 @@ differing only in case, which are one file on a case-insensitive filesystem),
 and one path being an ancestor of another. The whole set is assessed as a
 unit, so a refused delivery leaves no directory behind rather than a
 half-written rule that verifies as broken two steps from the cause.
+
+The generated API types now carry the delivery union, and the client narrows
+on it.
+
+`rules` is published as `SingleContent | Sg | Vale | Runtime` rather than one
+shape with optional fields, so a runtime file set states `signature` as
+required. Reading `content` or `tests` off a rule no longer type-checks
+without asking which variant arrived, which is the property doing its job:
+the client cannot treat an unsigned runtime rule as deliverable.
+
+It also closes a case that reached the filesystem. A payload carrying neither
+`files` nor `content` fell through to the single-content branch and handed
+`yaml.stringify` an `undefined`, which returns the string `"undefined"`
+rather than throwing. The rule file was created and its contents were that
+word. It is now refused before the directory exists.

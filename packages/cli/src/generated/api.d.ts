@@ -39,8 +39,6 @@ export interface paths {
                 id: string;
                 /** @description Organization name */
                 name: string;
-                /** @description GitHub App installation ID */
-                installationId: number;
                 /**
                  * @description Identity provider
                  * @constant
@@ -158,66 +156,123 @@ export interface paths {
                 | "merged"
                 | "closed"
                 | "unsupported";
-              /** @description Generated rules (present when status is generated) */
-              rules?: {
-                /** @description Rule identifier (matches content.id) */
-                id: string;
-                /** @description The ast-grep rule definition */
-                content: {
-                  /** @description Unique rule identifier, e.g. no-unused-variable */
-                  id: string;
-                  /** @description Language to parse, e.g. typescript */
-                  language: string;
-                  /** @description Rule object to find matching AST nodes */
-                  rule: {
-                    [key: string]: unknown;
-                  };
-                  /**
-                   * @description Severity level
-                   * @enum {string}
-                   */
-                  severity?: "hint" | "info" | "warning" | "error" | "off";
-                  /** @description Message explaining why the rule fired */
-                  message?: string;
-                  /** @description Additional notes to elaborate the message */
-                  note?: string;
-                  /** @description Auto-fix pattern or object */
-                  fix?:
-                    | string
-                    | {
+              /** @description Generated rules (present when status is generated). Clients below the `file-set` floor receive `content`; clients at or above it receive `files`. */
+              rules?:
+                | {
+                    /** @description Rule identifier (matches content.id) */
+                    id: string;
+                    /** @description The ast-grep rule definition */
+                    content: {
+                      /** @description Unique rule identifier, e.g. no-unused-variable */
+                      id: string;
+                      /** @description Language to parse, e.g. typescript */
+                      language: string;
+                      /** @description Rule object to find matching AST nodes */
+                      rule: {
                         [key: string]: unknown;
                       };
-                  /** @description Meta variable constraints */
-                  constraints?: {
-                    [key: string]: unknown;
-                  };
-                  /** @description Reusable utility rules */
-                  utils?: {
-                    [key: string]: unknown;
-                  };
-                  /** @description Meta variable transformations */
-                  transform?: {
-                    [key: string]: unknown;
-                  };
-                  /** @description Extra rule metadata */
-                  metadata?: {
-                    [key: string]: unknown;
-                  };
-                  /** @description Glob patterns the rule applies to */
-                  files?: string[];
-                  /** @description Glob patterns to exclude */
-                  ignores?: string[];
-                  /** @description Documentation link */
-                  url?: string;
-                };
-                /** @description Test cases for the rule */
-                tests?: {
-                  /** @description Code that should NOT trigger the rule */
-                  valid: string[];
-                  /** @description Code that SHOULD trigger the rule */
-                  invalid: string[];
-                };
-              }[];
+                      /**
+                       * @description Severity level
+                       * @enum {string}
+                       */
+                      severity?: "hint" | "info" | "warning" | "error" | "off";
+                      /** @description Message explaining why the rule fired */
+                      message?: string;
+                      /** @description Additional notes to elaborate the message */
+                      note?: string;
+                      /** @description Auto-fix pattern or object */
+                      fix?:
+                        | string
+                        | {
+                            [key: string]: unknown;
+                          };
+                      /** @description Meta variable constraints */
+                      constraints?: {
+                        [key: string]: unknown;
+                      };
+                      /** @description Reusable utility rules */
+                      utils?: {
+                        [key: string]: unknown;
+                      };
+                      /** @description Meta variable transformations */
+                      transform?: {
+                        [key: string]: unknown;
+                      };
+                      /** @description Extra rule metadata */
+                      metadata?: {
+                        [key: string]: unknown;
+                      };
+                      /** @description Glob patterns the rule applies to */
+                      files?: string[];
+                      /** @description Glob patterns to exclude */
+                      ignores?: string[];
+                      /** @description Documentation link */
+                      url?: string;
+                    };
+                    /** @description Test cases for the rule */
+                    tests?: {
+                      /** @description Code that should NOT trigger the rule */
+                      valid: string[];
+                      /** @description Code that SHOULD trigger the rule */
+                      invalid: string[];
+                    };
+                  }[]
+                | (
+                    | {
+                        /** @description The rule directory name under .taskless/rules/<engine>/ */
+                        id: string;
+                        /** @description Every file the rule directory must contain */
+                        files: {
+                          /** @description Path relative to .taskless/rules/<engine>/<id>/ */
+                          path: string;
+                          /** @description The file’s exact bytes */
+                          content: string;
+                        }[];
+                        /**
+                         * @description ast-grep — inert declarative rules
+                         * @constant
+                         */
+                        engine: "sg";
+                        /** @description Blessed canonical signature, when one was registered */
+                        signature?: string;
+                      }
+                    | {
+                        /** @description The rule directory name under .taskless/rules/<engine>/ */
+                        id: string;
+                        /** @description Every file the rule directory must contain */
+                        files: {
+                          /** @description Path relative to .taskless/rules/<engine>/<id>/ */
+                          path: string;
+                          /** @description The file’s exact bytes */
+                          content: string;
+                        }[];
+                        /**
+                         * @description Vale — inert prose/markup rules
+                         * @constant
+                         */
+                        engine: "vale";
+                        /** @description Blessed canonical signature, when one was registered */
+                        signature?: string;
+                      }
+                    | {
+                        /** @description The rule directory name under .taskless/rules/<engine>/ */
+                        id: string;
+                        /** @description Every file the rule directory must contain */
+                        files: {
+                          /** @description Path relative to .taskless/rules/<engine>/<id>/ */
+                          path: string;
+                          /** @description The file’s exact bytes */
+                          content: string;
+                        }[];
+                        /**
+                         * @description Executable — check.ts runs against a file tree
+                         * @constant
+                         */
+                        engine: "runtime";
+                        /** @description REQUIRED. Execution is gated on this signature, so a runtime rule without one could never run. */
+                        signature: string;
+                      }
+                  )[];
               /** @description Sidecar metadata keyed by rule filename (present when rules are present) */
               meta?: {
                 [key: string]: {
@@ -296,6 +351,112 @@ export interface paths {
                * @constant
                */
               status: "accepted";
+            };
+          };
+        };
+      };
+    };
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/cli/api/rule/{ruleId}/restore": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Restore the complete on-disk file set for a rule the caller’s organization owns */
+    post: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          ruleId: string;
+        };
+        cookie?: never;
+      };
+      /** @description OK */
+      requestBody?: {
+        content: {
+          "application/json": {
+            /** @description Full repository URL the rule was generated for */
+            repositoryUrl: string;
+          };
+        };
+      };
+      responses: {
+        /** @description OK */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              /** @description The ticket id the rules were generated under */
+              ruleId: string;
+              /** @description The complete file set for each rule the ticket produced */
+              rules: (
+                | {
+                    /** @description The rule directory name under .taskless/rules/<engine>/ */
+                    id: string;
+                    /** @description Every file the rule directory must contain */
+                    files: {
+                      /** @description Path relative to .taskless/rules/<engine>/<id>/ */
+                      path: string;
+                      /** @description The file’s exact bytes */
+                      content: string;
+                    }[];
+                    /**
+                     * @description ast-grep — inert declarative rules
+                     * @constant
+                     */
+                    engine: "sg";
+                    /** @description Blessed canonical signature, when one was registered */
+                    signature?: string;
+                  }
+                | {
+                    /** @description The rule directory name under .taskless/rules/<engine>/ */
+                    id: string;
+                    /** @description Every file the rule directory must contain */
+                    files: {
+                      /** @description Path relative to .taskless/rules/<engine>/<id>/ */
+                      path: string;
+                      /** @description The file’s exact bytes */
+                      content: string;
+                    }[];
+                    /**
+                     * @description Vale — inert prose/markup rules
+                     * @constant
+                     */
+                    engine: "vale";
+                    /** @description Blessed canonical signature, when one was registered */
+                    signature?: string;
+                  }
+                | {
+                    /** @description The rule directory name under .taskless/rules/<engine>/ */
+                    id: string;
+                    /** @description Every file the rule directory must contain */
+                    files: {
+                      /** @description Path relative to .taskless/rules/<engine>/<id>/ */
+                      path: string;
+                      /** @description The file’s exact bytes */
+                      content: string;
+                    }[];
+                    /**
+                     * @description Executable — check.ts runs against a file tree
+                     * @constant
+                     */
+                    engine: "runtime";
+                    /** @description REQUIRED. Execution is gated on this signature, so a runtime rule without one could never run. */
+                    signature: string;
+                  }
+              )[];
             };
           };
         };
