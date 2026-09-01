@@ -7,6 +7,7 @@ import {
   isShimStub,
   stubFrontmatterDrifted,
   stubPredatesRecovery,
+  stubRecoveryInvocationStale,
   writeCanonicalCommand,
   writeCanonicalSkill,
   type CommandStubFrontmatter,
@@ -445,6 +446,11 @@ async function referenceNeedsRewrite(
   if (existing === undefined) return true;
   if (!isShimStub(existing)) return true; // a full copy — convert it
   if (stubPredatesRecovery(existing)) return true; // one-time body migration
+  // The recovery invocation is baked into the body too, and is frozen at
+  // whichever build wrote the stub — so without this a project that installed a
+  // nightly once keeps a pinned nightly in its recovery line forever, however
+  // many released installs follow. See taskless/cli#227.
+  if (stubRecoveryInvocationStale(existing)) return true;
   return stubFrontmatterDrifted(existing, meta);
 }
 

@@ -3,7 +3,11 @@ import { join } from "node:path";
 
 import { stringify } from "yaml";
 
-import { applyCliInvocation, withCliBuildNotice } from "../util/invocation";
+import {
+  applyCliInvocation,
+  PROD_INVOCATION,
+  withCliBuildNotice,
+} from "../util/invocation";
 import { parseFrontmatter } from "./frontmatter";
 
 /**
@@ -99,13 +103,28 @@ function shimMetadata(): Record<string, string> {
 }
 
 /**
+ * The recovery invocation a released build writes, and the one form of it that
+ * every build accepts from every other.
+ *
+ * It names no version and no machine-local path, so it resolves for anyone,
+ * forever. That is what makes it the resting state of
+ * {@link stubRecoveryInvocationStale}: a build whose own invocation differs
+ * still leaves it alone, which is what keeps prod and a nightly from rewriting
+ * each other's stub on every install.
+ */
+const PROD_RESTORE_COMMAND = `${PROD_INVOCATION} init`;
+
+/**
  * The command a reader runs to restore a canonical file that is not on disk.
  *
  * Written in the published `npx @taskless/cli` form and rewritten by
  * {@link applyCliInvocation}, exactly as canonical content is. A stub that
- * hardcoded the released package would tell someone running a `dev`/`self`
- * build to fetch a different binary than the one that wrote the stub, and
- * would tell a nightly user to install over their nightly.
+ * hardcoded the released package would tell someone running a `self` build to
+ * fetch a different binary than the one that wrote the stub, and would tell a
+ * nightly user to install over their nightly.
+ *
+ * Because this is baked into the stub body, it is frozen at whichever build
+ * wrote the file. {@link stubRecoveryInvocationStale} is what unfreezes it.
  *
  * `init` rather than a bare run: a bare invocation only installs from a TTY.
  * In a non-interactive context it prints a preamble and hands off to `agent`,
@@ -118,19 +137,27 @@ function shimMetadata(): Record<string, string> {
  * `.taskless` stays byte-stable (see {@link shimMetadata}).
  */
 function restoreCommand(): string {
-  return applyCliInvocation("npx @taskless/cli init");
+  return applyCliInvocation(PROD_RESTORE_COMMAND);
 }
 
 /**
  * The build-independent tail of the recovery sentence, shared between the
  * builders and {@link stubPredatesRecovery} so the two cannot drift apart.
  *
- * Detection deliberately keys on this fragment rather than on the whole
- * sentence: the invocation inside it differs between a prod build and a
- * `dev`/`self` one, and matching on the full text would make each build treat
- * the other's stub as stale and rewrite it on every install.
+ * Detection of a *pre-recovery* stub keys on this fragment rather than on the
+ * whole sentence: the invocation inside it differs between a prod build and a
+ * `nightly`/`self` one, and treating the full text as the staleness test would
+ * make each build treat the other's stub as stale and rewrite it on every
+ * install. The invocation is compared separately and asymmetrically, by
+ * {@link stubRecoveryInvocationStale}.
  */
 const RECOVERY_TAIL = "to restore it, then read it.";
+
+/** The literal that opens the recovery sentence's backtick-quoted command. */
+const RECOVERY_RUN = "run `";
+
+/** The literal between that command's closing backtick and the tail. */
+const RECOVERY_AFTER_COMMAND = "` from the project root ";
 
 /**
  * The sentence that turns a missing canonical file from a dead end into a
@@ -141,8 +168,8 @@ const RECOVERY_TAIL = "to restore it, then read it.";
  */
 function recoveryInstruction(canonical: string): string {
   return (
-    `If \`${canonical}\` does not exist, run \`${restoreCommand()}\` from the ` +
-    `project root ${RECOVERY_TAIL}\n`
+    `If \`${canonical}\` does not exist, ${RECOVERY_RUN}${restoreCommand()}` +
+    `${RECOVERY_AFTER_COMMAND}${RECOVERY_TAIL}\n`
   );
 }
 
@@ -154,6 +181,60 @@ function recoveryInstruction(canonical: string): string {
  */
 export function stubPredatesRecovery(content: string): boolean {
   return !parseFrontmatter(content).content.includes(RECOVERY_TAIL);
+}
+
+/**
+ * The invocation recorded inside an existing stub's recovery sentence, or
+ * `undefined` when the stub has no recovery sentence at all (see
+ * {@link stubPredatesRecovery}, which is what handles that case).
+ *
+ * The stub already carries the writing build's invocation in plain text, so
+ * this reads it back rather than adding a frontmatter field to record it a
+ * second time. Keeping it out of the frontmatter is what lets the fix land
+ * with the prod stub's bytes completely unchanged — no field to add, and so no
+ * migration rewrite for the installs that are already correct.
+ */
+export function stubRecoveryInvocation(content: string): string | undefined {
+  const body = parseFrontmatter(content).content;
+  const end = body.indexOf(`${RECOVERY_AFTER_COMMAND}${RECOVERY_TAIL}`);
+  if (end === -1) return undefined;
+  const start = body.lastIndexOf(RECOVERY_RUN, end);
+  if (start === -1) return undefined;
+  return body.slice(start + RECOVERY_RUN.length, end);
+}
+
+/**
+ * Whether an existing stub's recovery invocation must be reclaimed by this
+ * build. See taskless/cli#227.
+ *
+ * The recovery sentence is the one line a reader reaches for when the canonical
+ * file is already gone, and until now the invocation inside it was frozen at
+ * whichever build wrote the stub first. Install a nightly once and go back to
+ * the released CLI and every later install reported "up to date" while the stub
+ * kept pointing at `npx @taskless/cli-nightly@<pinned>` — a version that may no
+ * longer be published, in the one situation where it has to work.
+ *
+ * The test is deliberately ASYMMETRIC, which is what keeps it from
+ * reintroducing the cross-build rewrite loop `RECOVERY_TAIL` exists to prevent:
+ *
+ * - An invocation equal to this build's own is current. Nothing to do.
+ * - {@link PROD_RESTORE_COMMAND} is accepted by EVERY build, released or not.
+ *   It carries no version and no path, so it resolves for any reader; a nightly
+ *   has no reason to overwrite it.
+ * - Anything else names a build this one is not — another nightly's pin, a
+ *   `self` path from someone else's checkout — and is rewritten.
+ *
+ * So the released form is a fixed point that every build converges on and none
+ * moves away from: a prod install reclaims a nightly-written stub exactly once,
+ * and a nightly install afterwards leaves the result alone. Two *different*
+ * nightlies do rewrite each other, and should — the alternative is leaving a
+ * pin from a build that is not present, which is the defect itself.
+ */
+export function stubRecoveryInvocationStale(content: string): boolean {
+  const recorded = stubRecoveryInvocation(content);
+  if (recorded === undefined) return false;
+  if (recorded === restoreCommand()) return false;
+  return recorded !== PROD_RESTORE_COMMAND;
 }
 
 /** Serialize ordered frontmatter fields into a `---`-delimited block. */

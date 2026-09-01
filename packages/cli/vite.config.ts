@@ -251,6 +251,25 @@ function assertLibraryGraphs(): Plugin {
   };
 }
 
+/**
+ * The environment the `nightly` vitest project builds its defines from.
+ *
+ * Resolved through the same functions the real build uses rather than
+ * hardcoded, so a test asserting on a nightly's invocation is asserting on what
+ * `build:nightly` would actually emit rather than on a string that merely looks
+ * like one.
+ */
+const NIGHTLY_TEST_ENVIRONMENT = {
+  TASKLESS_BUILD_TARGET: "nightly",
+  TASKLESS_NIGHTLY_VERSION: "0.0.0-nightly.test",
+};
+const NIGHTLY_TEST_VERSION = resolveCliVersion(
+  NIGHTLY_TEST_ENVIRONMENT,
+  pkg.version
+);
+const NIGHTLY_TEST_INVOCATION = resolveCliInvocation(NIGHTLY_TEST_ENVIRONMENT);
+const NIGHTLY_TEST_NOTICE = resolveCliNotice(NIGHTLY_TEST_ENVIRONMENT);
+
 const cliVersion = resolveCliVersion(process.env, pkg.version);
 
 // Fails the build rather than emitting an artifact whose version and
@@ -301,5 +320,32 @@ export default defineConfig({
   test: {
     testTimeout: 20_000,
     hookTimeout: 20_000,
+    // Two projects, because `__TASKLESS_CLI__` is a compile-time define rather
+    // than a value a test can stub: whatever this config resolves is what every
+    // test in the run sees. The suite therefore only ever exercised a prod
+    // build — test/canonical-store.test.ts asserts `isProductionInvocation()`
+    // outright — which is how taskless/cli#227 went uncaught: a stub frozen
+    // with a nightly's pinned invocation is unreachable from a prod define.
+    // `test/nightly/` runs the same source against a nightly define so that
+    // path has coverage at all.
+    projects: [
+      {
+        extends: true,
+        test: {
+          name: "cli",
+          include: ["test/**/*.test.ts"],
+          exclude: ["test/nightly/**"],
+        },
+      },
+      {
+        extends: true,
+        define: {
+          __VERSION__: JSON.stringify(NIGHTLY_TEST_VERSION),
+          __TASKLESS_CLI__: JSON.stringify(NIGHTLY_TEST_INVOCATION),
+          __TASKLESS_CLI_NOTICE__: JSON.stringify(NIGHTLY_TEST_NOTICE),
+        },
+        test: { name: "nightly", include: ["test/nightly/**/*.test.ts"] },
+      },
+    ],
   },
 });
