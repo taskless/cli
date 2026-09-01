@@ -1,4 +1,4 @@
-import { mkdir, readdir, rm, rmdir, writeFile } from "node:fs/promises";
+import { lstat, mkdir, readdir, rm, rmdir, writeFile } from "node:fs/promises";
 import { dirname, isAbsolute, join, resolve, sep } from "node:path";
 
 import type { GeneratedRule } from "../api/rules";
@@ -331,6 +331,88 @@ async function readRuleDirectory(
   return { files, directories };
 }
 
+/** An `fs` failure named by its errno code, falling back to its message. */
+function describeErrno(error: unknown): string {
+  const { code } = (error ?? {}) as NodeJS.ErrnoException;
+  if (typeof code === "string") return code;
+  return error instanceof Error ? error.message : String(error);
+}
+
+/**
+ * Refuse to treat a symlink as the rule directory.
+ *
+ * `mkdir` with `recursive` accepts a link to an existing directory, `writeFile`
+ * writes through it, and `readdir` reads through it — so a link standing where
+ * `.taskless/rules/<engine>/<id>/` belongs would make BOTH halves of this
+ * module operate somewhere else entirely: delivered bytes written outside the
+ * boundary, and a purge deleting whatever is in the linked-to directory for
+ * the crime of not being in the set. {@link describeUnsafePath} cannot catch
+ * it, because it resolves delivered paths against this directory as a STRING
+ * and every one of them is legitimately inside it.
+ *
+ * Refused rather than unlinked. Everything INSIDE the rule directory is
+ * governed by the set, so a link there is just a stray to remove
+ * ({@link clearSymlinkedPath}); the directory itself is not something the set
+ * describes, and silently deleting it would orphan whatever a developer had
+ * pointed it at.
+ */
+async function assertRuleDirectoryIsNotALink(directory: string): Promise<void> {
+  let entry;
+  try {
+    entry = await lstat(directory);
+  } catch (error) {
+    // Not there yet is the ordinary case: the write loop creates it.
+    if (isMissingDirectory(error)) return;
+    throw error;
+  }
+  if (entry.isSymbolicLink()) {
+    throw new Error(
+      `refuses to deliver into ${directory}, which is a symlink: writing ` +
+        `through it would put the rule outside its own directory, and the ` +
+        `purge would then govern whatever it points at`
+    );
+  }
+}
+
+/**
+ * Unlink a symlink standing anywhere on the path a delivered file must occupy.
+ *
+ * The purge side already declines to follow links, unlinking them instead. The
+ * write side had no equivalent: `mkdir(dirname(target), { recursive: true })`
+ * is satisfied by a link to an existing directory and `writeFile` follows a
+ * link to a file, so a planted `captures` -> elsewhere, or a `check.ts` ->
+ * elsewhere, made the delivery write the blessed bytes outside the rule
+ * directory. The rule directory was then missing that file, which is precisely
+ * the inert-rule outcome this module exists to prevent, and the write reported
+ * success.
+ *
+ * Unlinking matches what the purge would do to the same entry: a symlink
+ * inside a rule directory is not part of any delivered set, so it is removed
+ * rather than written through, and only the link goes — never its target.
+ * Stops at the first component that does not exist, since nothing below an
+ * absent component can be a link.
+ */
+async function clearSymlinkedPath(
+  directory: string,
+  relative: string
+): Promise<void> {
+  let current = directory;
+  for (const segment of relative.split("/")) {
+    current = join(current, segment);
+    let entry;
+    try {
+      entry = await lstat(current);
+    } catch (error) {
+      if (isMissingDirectory(error)) return;
+      throw error;
+    }
+    if (entry.isSymbolicLink()) {
+      await rm(current, { force: true });
+      return;
+    }
+  }
+}
+
 /**
  * Remove everything in the rule directory the delivered set did not name.
  *
@@ -363,12 +445,27 @@ async function purgeUndeliveredFiles(
   const contents = await readRuleDirectory(directory);
   const removed: string[] = [];
 
+  // A removal that fails does NOT abandon the rest of the pass. `rm` with
+  // `force` swallows only `ENOENT`; a real failure on one entry (`EACCES`,
+  // `EBUSY`, a concurrent holder, a full disk) used to throw straight out of
+  // here, leaving every later stray in place because an earlier one was
+  // stubborn. Which strays survived then depended on `readdir` order, so the
+  // same directory purged differently on two machines. Each failure is
+  // collected instead and every remaining candidate is still considered, so
+  // the pass removes as much as it can and the outcome does not depend on
+  // where in the walk the bad entry happened to sit.
+  const failures: string[] = [];
+
   for (const path of contents.files) {
     if (delivered.has(path.toLowerCase())) continue;
     if (describeUnsafePath(directory, path) !== undefined) continue;
     const target = join(directory, path);
-    await rm(target, { force: true });
-    removed.push(target);
+    try {
+      await rm(target, { force: true });
+      removed.push(target);
+    } catch (error) {
+      failures.push(`${path} (${describeErrno(error)})`);
+    }
   }
 
   // Deepest first, so a directory emptied by pruning its children is prunable
@@ -386,11 +483,26 @@ async function purgeUndeliveredFiles(
     } catch (error) {
       const { code } = error as NodeJS.ErrnoException;
       // Still holding something, or already gone. Every other code is a real
-      // IO problem and is not swallowed.
+      // IO problem and is reported with the file failures below.
       if (code !== "ENOTEMPTY" && code !== "EEXIST" && code !== "ENOENT") {
-        throw error;
+        failures.push(`${path}/ (${describeErrno(error)})`);
       }
     }
+  }
+
+  // Reported, never swallowed. A stray this could not remove is still a file
+  // an engine reads, which is the whole harm the purge exists to prevent, and
+  // an unreadable stray is indistinguishable from a clean directory unless
+  // someone is told. The message says the delivered files ARE on disk, because
+  // by here they are: writes come first, so the rule itself is complete and
+  // only the cleanup is partial.
+  if (failures.length > 0) {
+    throw new Error(
+      `wrote every delivered file, then could not remove ` +
+        `${failures.length === 1 ? "an undelivered entry" : `${failures.length} undelivered entries`}: ` +
+        `${failures.join(", ")}. The rule is complete on disk; the listed ` +
+        `entries are stale and an engine still reads them.`
+    );
   }
 
   return removed;
@@ -430,7 +542,7 @@ export interface DeliveryWrite {
  * behind exactly the stray `check` later has to remove, with "what is in this
  * rule directory" having two answers depending on which command wrote it last.
  *
- * Two properties hold this together:
+ * Three properties hold this together:
  *
  * - **Nothing is removed unless the whole set was accepted.** A refused set
  *   never reaches here, so it leaves the directory exactly as it was. Assess
@@ -440,7 +552,17 @@ export interface DeliveryWrite {
  *   before anything is unlinked, so an IO failure part-way leaves a directory
  *   that is a superset of the blessed rule — the merge behavior being narrowed,
  *   which is survivable — rather than a rule missing pieces, which verifies as
- *   incomplete or silently never fires.
+ *   incomplete or silently never fires. That ordering is what makes a failed
+ *   purge recoverable rather than dangerous: an entry that cannot be removed
+ *   is reported by name and the rest of the pass still runs, so the worst case
+ *   is a named leftover beside a complete rule, never a silent one.
+ * - **Neither half acts through a symlink.** The purge unlinks a link instead
+ *   of descending it, and the write unlinks one standing where a delivered
+ *   file belongs instead of writing through it
+ *   ({@link clearSymlinkedPath}) — a rule directory that IS a link is refused
+ *   outright ({@link assertRuleDirectoryIsNotALink}). Without the write-side
+ *   half, a planted `captures` -> elsewhere sent the blessed bytes outside the
+ *   boundary and left the rule directory without them.
  *
  * A complete set cannot leave the rule inert: {@link assessDelivery} has
  * already required the rule file, the engine config where there is one, and at
@@ -454,9 +576,11 @@ export async function writeDeliveredFileSet(
   assessment: Extract<DeliveryAssessment, { ok: true }>
 ): Promise<DeliveryWrite> {
   const directory = ruleDirectory(cwd, engine, ruleId);
+  await assertRuleDirectoryIsNotALink(directory);
   const written: string[] = [];
   for (const file of assessment.files) {
     const target = join(directory, file.path);
+    await clearSymlinkedPath(directory, file.path);
     await mkdir(dirname(target), { recursive: true });
     await writeFile(target, file.content, "utf8");
     written.push(target);
