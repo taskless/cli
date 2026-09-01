@@ -19,6 +19,7 @@ import {
   deleteRuleFiles,
 } from "../rules/files";
 import { RULES_DIRECTORY } from "../rules/layout";
+import { unsupportedMessage } from "../rules/unsupported";
 import {
   inputSchema as createInputSchema,
   outputSchema as createOutputSchema,
@@ -42,20 +43,6 @@ function getTimestamp(): string {
 }
 
 const POLL_INTERVAL_MS = 15_000;
-
-/**
- * `unsupported` is a terminal status: the request asked for a rule generation
- * the account can't access — e.g. runtime rules that aren't enabled on the
- * current plan. It is not a transient failure to retry; the plan or entitlement
- * has to change first.
- */
-function unsupportedMessage(): string {
-  return [
-    "This rule generation isn't available on your current Taskless plan.",
-    "",
-    "It may need a capability that isn't enabled for your organization yet (for example, runtime rules). Ask your Taskless administrator or upgrade your plan to enable it.",
-  ].join("\n");
-}
 
 const createCommand = defineCommand({
   meta: {
@@ -223,7 +210,7 @@ const createCommand = defineCommand({
             break;
           }
           case "unsupported": {
-            fail(unsupportedMessage(), "RULE_UNSUPPORTED");
+            fail(unsupportedMessage(status.error), "RULE_UNSUPPORTED");
             break;
           }
           case "failed": {
@@ -480,7 +467,7 @@ const improveCommand = defineCommand({
             break;
           }
           case "unsupported": {
-            fail(unsupportedMessage(), "RULE_UNSUPPORTED");
+            fail(unsupportedMessage(status.error), "RULE_UNSUPPORTED");
             break;
           }
           case "failed": {
