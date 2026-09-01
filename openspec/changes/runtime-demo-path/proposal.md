@@ -37,8 +37,8 @@ existing `writeRuleFile`, against demo endpoints that mirror the mainline
 shapes:
 
 ```
-POST /cli/api/demo/rule            -> { ruleId, status }
-GET  /cli/api/demo/rule/{ruleId}   -> { ruleId, status, rules[] }
+POST /cli/api/demo/request                 -> { requestId, status }
+GET  /cli/api/demo/request/{requestId}     -> { requestId, status, rules[] }
 ```
 
 Mirroring is the point. A bespoke demo payload would exercise a path no user is
@@ -82,8 +82,8 @@ hole in it. Executing the demo rule uses the documented
 - Depends on the service half (raised as **N9** in the cross-team document).
   The endpoints are theirs to build; the shapes above are what we asked for and
   what this change assumes.
-- Sequenced behind the `request`/`requestId` rename (**N10**), which the
-  generator team is doing as its own change. The demo takes whichever noun
-  wins, after the mainline takes it.
+- Sequenced behind the `request`/`requestId` rename (**N10**), which has now
+  shipped and is verified live. The demo takes that noun. Adopting it in the
+  ordinary client is a separate change and is not this one's dependency.
 - No change to the runtime gate, to reconcile, or to `check`'s execution
   policy.

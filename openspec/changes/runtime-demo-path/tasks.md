@@ -10,12 +10,12 @@ The generator team is renaming the request resource first, as its own change:
 `openspec/specs/cli/spec.md` already specified it, and their live `meta` block
 already carries `ticketId` per delivered rule, so the route was the outlier.
 
-- [ ] 0.0 Wait for the rename to land and the new schema to publish, then regenerate `src/generated/api.d.ts` against it
+- [x] 0.0 Wait for the rename to land and the new schema to publish. **Done**: verified from `GET /cli/api/__schema` that `/cli/api/request/*` is canonical and the `rule/*` family is `deprecated: true` while still serving. Adopting it in our client is its own change, tracked separately
+- [x] 0.0a The demo therefore takes the settled noun: `POST /cli/api/demo/request` and `GET /cli/api/demo/request/{requestId}`
 
-**The demo does not start before that.** Naming these endpoints today would make
-the demo the place a new convention debuts, which is the one thing design D2
-rules out. Whichever noun wins, both demo endpoints take it, and they take it
-after the mainline does.
+The demo did not start before that, which was the point. Naming these endpoints
+earlier would have made the demo the place a new convention debuted, which is
+what design D2 rules out. The mainline took the noun first; the demo follows it.
 
 ## 0b. Blocked on the service half
 
