@@ -145,7 +145,11 @@ describe("standardized error envelope (--json)", () => {
   });
 
   describe("rule meta", () => {
-    it("emits RULE_NOT_FOUND when metadata sidecar is missing", async () => {
+    // The sidecar is never written, by any code path, so this is what the
+    // command does for every id — not an "unknown rule" case. The distinct
+    // code is the point: RULE_NOT_FOUND reads as "try another id", and there
+    // is no id that produces a sidecar.
+    it("emits RULE_META_UNAVAILABLE, since no sidecar is ever written", async () => {
       const result = await runCli([
         "rule",
         "meta",
@@ -156,8 +160,29 @@ describe("standardized error envelope (--json)", () => {
       ]);
       expect(result.exitCode).not.toBe(0);
       const env = parseEnvelope(result.stdout);
-      expect(env.code).toBe("RULE_NOT_FOUND");
+      expect(env.code).toBe("RULE_META_UNAVAILABLE");
       expect(env.message).toContain("nonexistent-rule");
+      expect(env.message).toContain("never writes one");
+    });
+
+    it("reports the same code for a rule that exists on disk", async () => {
+      const ruleDirectory = join(cwd, ".taskless", "rules", "sg", "on-disk");
+      await mkdir(ruleDirectory, { recursive: true });
+      await writeFile(
+        join(ruleDirectory, "on-disk.yml"),
+        "id: on-disk\nlanguage: TypeScript\nseverity: error\nmessage: ''\nrule: { pattern: 'eval($X)' }\n"
+      );
+      const result = await runCli([
+        "rule",
+        "meta",
+        "on-disk",
+        "--json",
+        "-d",
+        cwd,
+      ]);
+      expect(result.exitCode).not.toBe(0);
+      const env = parseEnvelope(result.stdout);
+      expect(env.code).toBe("RULE_META_UNAVAILABLE");
     });
   });
 

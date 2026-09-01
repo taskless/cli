@@ -1,4 +1,4 @@
-# Topic: delete-rule     (CLI v%(CLI_VERSION)s / topic v2)
+# Topic: delete-rule     (CLI v%(CLI_VERSION)s / topic v3)
 
 ## Goal
 Remove an ast-grep rule and its associated test files from
@@ -28,11 +28,11 @@ rule is deleted by removing its directory by hand.
    The CLI removes:
    - `.taskless/rules/sg/<id>/`: the whole directory, which holds the
      rule, its `.tests/`, and any per-rule config
-   - `.taskless/rule-metadata/<id>.yml` (if present)
+   - `.taskless/rule-metadata/<id>.yml`, a sidecar the CLI never
+     writes. The removal is there for a directory a person created by
+     hand; expect it to be absent.
 
-3. **Report results.** Show the user what was deleted. If the rule
-   had metadata (was API-generated), note that the rule cannot be
-   re-iterated via the API path after deletion.
+3. **Report results.** Show the user what was deleted.
 
 ## Errors
 

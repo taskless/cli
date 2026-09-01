@@ -61,7 +61,7 @@ export const TOPICS = [
  *   destination before the service is involved, `create-remote-rule` states
  *   the boundary from the client's side, `detect` documents a CLI subprocess a
  *   Worker cannot spawn, `create-legacy-rule` targets a local toolchain, and
- *   `rule-meta` reads an `improve-rule` sidecar file.
+ *   `rule-meta` describes a local sidecar file the CLI never writes.
  */
 export const INTERNAL_TOPICS = [
   "auth",

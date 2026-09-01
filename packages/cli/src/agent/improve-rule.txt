@@ -1,4 +1,4 @@
-# Topic: improve-rule     (CLI v%(CLI_VERSION)s / topic v4)
+# Topic: improve-rule     (CLI v%(CLI_VERSION)s / topic v5)
 
 ## Goal
 Iterate on an existing Taskless rule. The CLI submits the user's
@@ -19,10 +19,11 @@ If the user wants the local-only flow (no API call), fetch
   submitting. `auth login` does not fix it, no GitHub owner is a
   property of the project, not the session.
 - The target rule exists at `.taskless/rules/sg/<id>/<id>.yml`.
-- The rule has metadata at `.taskless/rule-metadata/<id>.yml` (the
-  `ticketId` is required by the iterate endpoint). If metadata is
-  missing, the rule was created in anonymous mode and cannot be
-  iterated via the API path. Fetch the anonymous variant instead.
+- You have the rule's **ticket id**: the value `%(TASKLESS_CLI)s rule
+  create --json` printed as `ruleId` when the rule was generated. The
+  iterate endpoint is addressed by that id. Nothing on disk holds it,
+  so it comes from the create output or from the user. Without it,
+  fetch the anonymous variant instead.
 
 ## Steps
 
@@ -33,13 +34,17 @@ If the user wants the local-only flow (no API call), fetch
    Otherwise, list rules in `.taskless/rules/sg/` and ask which one.
    Read the existing rule file so you can summarize what it does.
 
-3. **Fetch the rule's metadata.** Run:
-   ```
-   %(TASKLESS_CLI)s rule meta <id> --json
-   ```
-   This returns the `ticketId` needed for the iterate request. If the
-   metadata is missing, the rule cannot be iterated via API. Fetch
-   `%(TASKLESS_CLI)s agent improve-rule --anonymous` instead.
+3. **Get the ticket id.** This is the id the iterate endpoint is
+   addressed by, and it is the `ruleId` field from that rule's
+   `%(TASKLESS_CLI)s rule create --json` output. Take it from the
+   session that created the rule, or ask the user for it.
+
+   **Do not run `%(TASKLESS_CLI)s rule meta <id>` to get it.** That
+   command reads `.taskless/rule-metadata/<id>.yml`, a sidecar this CLI
+   never writes, so it exits 1 with `RULE_META_UNAVAILABLE` for every
+   rule. If no one has the ticket id, fetch
+   `%(TASKLESS_CLI)s agent improve-rule --anonymous` and iterate
+   locally.
 
 4. **Gather improvement guidance.** Ask the user what should change:
    - Are there false positives we need to exclude?
@@ -105,8 +110,9 @@ The `--from` JSON file conforms to:
 %(INPUT_SCHEMA)s
 ```
 
-`ruleId` is the original rule's ticket ID (returned by
-`%(TASKLESS_CLI)s rule meta <id> --json`), not the YAML file name.
+`ruleId` is the original rule's ticket ID, printed as `ruleId` by
+`%(TASKLESS_CLI)s rule create --json`. It is not the YAML file name,
+and it is not readable from anything under `.taskless/`.
 
 ## Errors
 
@@ -120,7 +126,7 @@ When `--json` is set, failures emit `{ ok: false, code, message }`:
 | `NO_ORIGIN_REMOTE`       | git repository, no `origin`         | tell the user; `auth login` cannot fix it     |
 | `UNSUPPORTED_REMOTE_HOST`| `origin` is not GitHub              | tell the user; `auth login` cannot fix it     |
 | `INVALID_INPUT`          | `--from` JSON failed validation     | re-read input schema, fix, retry              |
-| `RULE_NOT_FOUND`         | metadata missing for the given rule | use anonymous variant or recreate via create  |
+| `RULE_NOT_FOUND`         | the service has no such ticket id   | re-check the id from `rule create --json`     |
 | `NETWORK_ERROR`          | API submit/poll failed              | report and suggest retry                      |
 | `RULE_GENERATION_FAILED` | API returned a generation failure   | report; suggest enriching guidance/references |
 | `RULE_UNSUPPORTED`       | plan lacks this generation type     | tell the user to enable it; do not retry      |

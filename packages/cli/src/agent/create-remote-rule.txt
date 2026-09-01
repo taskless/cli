@@ -1,4 +1,4 @@
-# Topic: create-remote-rule     (CLI v%(CLI_VERSION)s / topic v2)
+# Topic: create-remote-rule     (CLI v%(CLI_VERSION)s / topic v3)
 
 ## You are here
 This is `create-remote-rule`. It helps you have the Taskless service
@@ -126,12 +126,16 @@ Two ways to legitimately be here:
    call succeeded or failed.
 
 9. **Report.** The service writes the rule to
-   `.taskless/rules/sg/<id>/<id>.yml`, its tests to
-   `.taskless/rules/sg/<id>/.tests/<id>-YYYYMMDD-test.yml`, and
-   metadata to `.taskless/rule-metadata/<id>.yml`. These are the same
-   paths and the same shape a locally authored rule uses, so `check`,
-   `improve-rule`, `verify`, and `test` treat them identically. Show the
-   user the paths and suggest `%(TASKLESS_CLI)s agent check`.
+   `.taskless/rules/sg/<id>/<id>.yml` and its tests to
+   `.taskless/rules/sg/<id>/.tests/<id>-YYYYMMDD-test.yml`. These are
+   the same paths and the same shape a locally authored rule uses, so
+   `check`, `improve-rule`, `verify`, and `test` treat them
+   identically. Nothing is written under `.taskless/rule-metadata/`.
+   Show the user the paths and suggest `%(TASKLESS_CLI)s agent check`.
+
+   **Record the `ruleId` from the `--json` output.** It is the ticket
+   id the iterate endpoint is addressed by, `improve-rule` asks for it,
+   and no file on disk carries it.
 
 ## Input schema
 
