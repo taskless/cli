@@ -16,6 +16,11 @@ import { resolveOrgSubject } from "../auth/org";
 import { resolveRepositoryUrl } from "../util/git-remote";
 import { getCliPrefix } from "../util/package-manager";
 import { reconcile } from "../api/reconcile";
+import type { ReconcileResponse } from "../api/reconcile";
+import { restoreRule } from "../api/restore";
+import { repairTargets, verifyRestoredCheck } from "../rules/runtime/repair";
+import { writeRuleFile } from "../rules/files";
+import type { GeneratedRule } from "../api/rules";
 import {
   discoverRuntimeRules,
   type RuntimeRule,
@@ -194,6 +199,16 @@ async function planRuntime(
       `runtime rules could not be materialized (${message})`
     );
   }
+  // Repair the working tree from the server's verdicts. This changes what the
+  // NEXT run sees and nothing about this one: an `unsafe` rule stays withheld
+  // below whether or not its bytes were just restored. Fetching code and
+  // executing it in the same pass that discovered the drift would move the
+  // gate, and the gate is the point.
+  const repair = await repairWithheldRules(cwd, token, {
+    repositoryUrl,
+    result: outcome.result,
+  });
+
   return {
     execute,
     skipped: [
@@ -203,8 +218,94 @@ async function planRuntime(
         reason: "not blessed by the server (unsafe / unknown / drift)",
       })),
     ],
-    notices: [],
+    notices: repair.notices,
   };
+}
+
+/**
+ * Act on the verdicts `check` used to parse and discard.
+ *
+ * `unsafe` and `missing` are repairable and are fetched; `unknown` is not, and
+ * gets an explanation instead. Every outcome here is a NOTICE rather than a
+ * failure: a rule that could not be repaired is a rule that stays withheld,
+ * which is already the safe state. A repair failing must never be the reason a
+ * `check` fails.
+ */
+async function repairWithheldRules(
+  cwd: string,
+  token: string,
+  input: { repositoryUrl: string; result: ReconcileResponse }
+): Promise<{ notices: string[] }> {
+  const notices: string[] = [];
+
+  // A file this disk holds that the service never issued. There is nothing to
+  // fetch, and saying so is the whole job: it reads as an unexplained skip
+  // otherwise, and the causes are ordinary (hand-written, or belonging to
+  // another organization or installation).
+  for (const entry of input.result.unknown) {
+    notices.push(
+      `${entry.file} was not issued by the rule service, so it cannot be ` +
+        `restored and will not run. It was written by hand, or belongs to a ` +
+        `different organization or installation.`
+    );
+  }
+
+  const { targets, unidentifiable } = repairTargets(input.result);
+  for (const entry of unidentifiable) {
+    notices.push(
+      `${entry.file} drifted from the blessed rule, and its rule id could not ` +
+        `be read from its path, so it was not restored.`
+    );
+  }
+
+  for (const target of targets) {
+    const outcome = await restoreRule(token, {
+      ruleId: target.ruleId,
+      repositoryUrl: input.repositoryUrl,
+    });
+    if (outcome.status !== "ok") {
+      notices.push(
+        `${target.file} could not be restored (${
+          outcome.status === "unauthorized"
+            ? "authentication was rejected"
+            : outcome.reason
+        }).`
+      );
+      continue;
+    }
+
+    const rule = outcome.rules.find(
+      (candidate) => candidate.id === target.ruleId
+    );
+    if (rule === undefined) {
+      notices.push(
+        `${target.file} could not be restored: the service returned no rule ` +
+          `called ${target.ruleId}.`
+      );
+      continue;
+    }
+
+    const verdict = await verifyRestoredCheck(target, rule);
+    if (!verdict.ok) {
+      notices.push(`${target.file} was not restored: ${verdict.reason}.`);
+      continue;
+    }
+
+    try {
+      await writeRuleFile(cwd, rule as unknown as GeneratedRule);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      notices.push(`${target.file} could not be written (${message}).`);
+      continue;
+    }
+    notices.push(
+      `${target.file} was restored to the bytes the service blessed. It does ` +
+        `not run in this pass; the next \`check\` reports the repaired ` +
+        `signature and is blessed through the ordinary path.`
+    );
+  }
+
+  return { notices };
 }
 
 /** Parse `--timeout <seconds>` into milliseconds; invalid/absent → undefined (default). */
