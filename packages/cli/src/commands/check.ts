@@ -9,7 +9,7 @@ import { formatText } from "../util/format";
 import { listRuleIds, planEngineDispatch } from "../rules/engines";
 import { getTelemetry } from "../telemetry";
 import { outputSchema as checkOutputSchema } from "../schemas/check";
-import { makeErrorEnvelope } from "../types/errors";
+import { makeErrorEnvelope, writeJsonError } from "../types/errors";
 import { CLIError } from "../util/cli-error";
 import { getToken } from "../auth/token";
 import { resolveOrgSubject } from "../auth/org";
@@ -423,14 +423,10 @@ export const checkCommand = defineCommand({
         // for a different response from a scan that blew up.
         if (error instanceof CLIError) {
           if (args.json) {
-            console.log(
-              JSON.stringify(
-                makeErrorEnvelope(
-                  error.code ?? "SCAFFOLD_MIGRATION_REQUIRED",
-                  error.message
-                )
-              )
-            );
+            // `requireCurrentSchema` always sets a code, so the fallback is
+            // dead either way — which is exactly why the two call sites had
+            // drifted to different dead values. One helper, one answer.
+            writeJsonError(error.code ?? "INTERNAL_ERROR", error.message);
           } else {
             console.error(`Error: ${error.message}`);
           }

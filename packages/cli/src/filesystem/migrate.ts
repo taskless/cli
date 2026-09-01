@@ -359,6 +359,25 @@ export async function pendingMigration(
  * thing that fixes it.
  */
 export async function requireCurrentSchema(cwd: string): Promise<void> {
+  // BOTH directions. `check` used to reach `runMigrations` through
+  // `ensureTasklessDirectory`, which is where the newer-than-this-CLI refusal
+  // lived; it does not any more, so this is the only precondition left and it
+  // has to carry that case too. Without it a version-99 scaffold read as
+  // "nothing pending" and `check` reported "No rules configured" for a project
+  // whose layout it simply could not parse — the same silent answer this
+  // change exists to stop giving, reintroduced by the change itself.
+  const tasklessDirectory = join(cwd, ".taskless");
+  if (await pathExists(tasklessDirectory)) {
+    const { version } = await readRawManifest(tasklessDirectory);
+    if (version > LATEST_SCHEMA_VERSION && !hasVersionMismatchOverride()) {
+      throw new CLIError(
+        `This project's .taskless/ scaffold is version ${String(version)}, but this CLI only understands version ${String(LATEST_SCHEMA_VERSION)}. ` +
+          `Upgrade the CLI to continue, or re-run with ${ALLOW_VERSION_MISMATCHES_FLAG} to proceed without migrating.`,
+        "SCAFFOLD_VERSION_MISMATCH"
+      );
+    }
+  }
+
   const pending = await pendingMigration(cwd);
   if (pending === undefined) return;
   throw new CLIError(

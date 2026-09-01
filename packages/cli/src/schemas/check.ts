@@ -49,9 +49,6 @@ export const outputSchema = z.object({
     .array(z.string())
     .optional()
     .describe("Advisory messages: engines that could not run"),
-  // `check` migrates `.taskless/` before it can dispatch, and that rewrites
-  // files in the working tree. Absent unless it happened, so a consumer reads
-  // presence rather than guessing from an empty list.
 });
 
 /** Error schema for `taskless check --json` on failure */
