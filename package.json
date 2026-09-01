@@ -18,6 +18,7 @@
     "changeset": "changeset",
     "cli": "./packages/cli/dist/index.js",
     "dotagents": "dotagents",
+    "generate:api": "pnpm --filter @taskless/cli generate:api",
     "husky": "husky",
     "lint": "eslint",
     "lint-staged": "lint-staged",

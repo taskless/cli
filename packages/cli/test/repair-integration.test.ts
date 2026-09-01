@@ -53,7 +53,7 @@ function startMock(handlers: {
         response.end(JSON.stringify(body));
         return;
       }
-      const restore = /^\/cli\/api\/rule\/([^/]+)\/restore$/.exec(url);
+      const restore = /^\/cli\/api\/request\/([^/]+)\/restore$/.exec(url);
       if (restore) {
         const ruleId = decodeURIComponent(restore[1] ?? "");
         restoreCalls.push(ruleId);

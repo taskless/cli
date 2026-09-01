@@ -60,7 +60,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/cli/api/rule": {
+  "/cli/api/request": {
     parameters: {
       query?: never;
       header?: never;
@@ -69,7 +69,7 @@ export interface paths {
     };
     get?: never;
     put?: never;
-    /** Generate a new rule */
+    /** Create a rule generation request */
     post: {
       parameters: {
         query?: never;
@@ -100,7 +100,12 @@ export interface paths {
           };
           content: {
             "application/json": {
-              /** @description UUID of the generated rule job */
+              /** @description UUID of the generation request (the ticket the rules are generated under) */
+              requestId: string;
+              /**
+               * @deprecated
+               * @description Deprecated: use requestId. Same value — this identifies the generation request, not a rule
+               */
               ruleId: string;
               /**
                * @description Initial status
@@ -118,20 +123,21 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/cli/api/rule/{ruleId}": {
+  "/cli/api/request/{requestId}": {
     parameters: {
       query?: never;
       header?: never;
       path?: never;
       cookie?: never;
     };
-    /** Get rule generation status and output (poll until terminal state) */
+    /** Get generation request status and output (poll until terminal state) */
     get: {
       parameters: {
         query?: never;
         header?: never;
         path: {
-          ruleId: string;
+          /** @description UUID of the generation request. One request produces N rules, each with its own `id`. */
+          requestId: string;
         };
         cookie?: never;
       };
@@ -144,6 +150,12 @@ export interface paths {
           };
           content: {
             "application/json": {
+              /** @description UUID of the generation request the rules were generated under */
+              requestId: string;
+              /**
+               * @deprecated
+               * @description Deprecated: use requestId. Same value
+               */
               ruleId: string;
               /** @enum {string} */
               status:
@@ -276,7 +288,12 @@ export interface paths {
               /** @description Sidecar metadata keyed by rule filename (present when rules are present) */
               meta?: {
                 [key: string]: {
-                  /** @description Ticket ID that produced this rule */
+                  /** @description UUID of the generation request that produced this rule */
+                  requestId: string;
+                  /**
+                   * @deprecated
+                   * @description Deprecated: use requestId. Same value
+                   */
                   ticketId: string;
                   /** @description GitHub App installation ID (absent for public repos) */
                   installationId?: string;
@@ -286,8 +303,457 @@ export interface paths {
                   schemaVersion: string;
                 };
               };
-              /** @description Error message (present when status is failed) */
+              /** @description Why the request ended the way it did. Present when status is `failed` (a generation error) or `unsupported` (the request was understood and refused — for example an engine this client version cannot receive). A client SHOULD surface this text rather than substituting its own, since it names what the user must do. */
               error?: string;
+              /** @description Machine-readable companion to `error`, so a client can branch on a specific outcome instead of matching prose. `ENGINE_NOT_DELIVERABLE` means the rule needed an engine this client version cannot receive and the fix is a CLI upgrade. */
+              errorCode?: string;
+            };
+          };
+        };
+      };
+    };
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/cli/api/request/{requestId}/iterate": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Iterate on an existing generation request with guidance and optional references */
+    post: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          /** @description UUID of the generation request. One request produces N rules, each with its own `id`. */
+          requestId: string;
+        };
+        cookie?: never;
+      };
+      /** @description OK */
+      requestBody?: {
+        content: {
+          "application/json": {
+            /** @description Feedback for iterating on the existing rule */
+            guidance: string;
+            /** @description Reference files to include as context (optional) */
+            references?: {
+              /** @description File path relative to .taskless/ */
+              filename: string;
+              /** @description File content */
+              content: string;
+            }[];
+          };
+        };
+      };
+      responses: {
+        /** @description OK */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              /** @description UUID of the generation request, for polling status */
+              requestId: string;
+              /**
+               * @deprecated
+               * @description Deprecated: use requestId. Same value
+               */
+              ruleId: string;
+              /**
+               * @description Iteration has been enqueued
+               * @constant
+               */
+              status: "accepted";
+            };
+          };
+        };
+      };
+    };
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/cli/api/request/{requestId}/restore": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Restore the complete on-disk file set for rules the caller’s organization owns */
+    post: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          /** @description UUID of the generation request. One request produces N rules, each with its own `id`. */
+          requestId: string;
+        };
+        cookie?: never;
+      };
+      /** @description OK */
+      requestBody?: {
+        content: {
+          "application/json": {
+            /** @description Full repository URL the rule was generated for */
+            repositoryUrl: string;
+          };
+        };
+      };
+      responses: {
+        /** @description OK */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              /** @description UUID of the generation request the rules were generated under */
+              requestId: string;
+              /**
+               * @deprecated
+               * @description Deprecated: use requestId. Same value
+               */
+              ruleId: string;
+              /** @description The complete file set for each rule the ticket produced */
+              rules: (
+                | {
+                    /** @description The rule directory name under .taskless/rules/<engine>/ */
+                    id: string;
+                    /** @description Every file the rule directory must contain */
+                    files: {
+                      /** @description Path relative to .taskless/rules/<engine>/<id>/ */
+                      path: string;
+                      /** @description The file’s exact bytes */
+                      content: string;
+                    }[];
+                    /**
+                     * @description ast-grep — inert declarative rules
+                     * @constant
+                     */
+                    engine: "sg";
+                    /** @description Blessed canonical signature, when one was registered */
+                    signature?: string;
+                  }
+                | {
+                    /** @description The rule directory name under .taskless/rules/<engine>/ */
+                    id: string;
+                    /** @description Every file the rule directory must contain */
+                    files: {
+                      /** @description Path relative to .taskless/rules/<engine>/<id>/ */
+                      path: string;
+                      /** @description The file’s exact bytes */
+                      content: string;
+                    }[];
+                    /**
+                     * @description Vale — inert prose/markup rules
+                     * @constant
+                     */
+                    engine: "vale";
+                    /** @description Blessed canonical signature, when one was registered */
+                    signature?: string;
+                  }
+                | {
+                    /** @description The rule directory name under .taskless/rules/<engine>/ */
+                    id: string;
+                    /** @description Every file the rule directory must contain */
+                    files: {
+                      /** @description Path relative to .taskless/rules/<engine>/<id>/ */
+                      path: string;
+                      /** @description The file’s exact bytes */
+                      content: string;
+                    }[];
+                    /**
+                     * @description Executable — check.ts runs against a file tree
+                     * @constant
+                     */
+                    engine: "runtime";
+                    /** @description REQUIRED. Execution is gated on this signature, so a runtime rule without one could never run. */
+                    signature: string;
+                  }
+              )[];
+            };
+          };
+        };
+      };
+    };
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/cli/api/rule": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Create a rule generation request
+     * @deprecated
+     * @description Deprecated: use the /cli/api/request equivalent. The identifier is a generation request, not a rule. This path continues to be served.
+     */
+    post: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path?: never;
+        cookie?: never;
+      };
+      /** @description OK */
+      requestBody?: {
+        content: {
+          "application/json": {
+            /** @description Full repository URL */
+            repositoryUrl: string;
+            /** @description Description of the rule to generate */
+            prompt: string;
+            /** @description Examples of correct code that should pass the rule (optional) */
+            successCases?: string[];
+            /** @description Examples of incorrect code that should fail the rule (optional) */
+            failureCases?: string[];
+          };
+        };
+      };
+      responses: {
+        /** @description OK */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              /** @description UUID of the generation request (the ticket the rules are generated under) */
+              requestId: string;
+              /**
+               * @deprecated
+               * @description Deprecated: use requestId. Same value — this identifies the generation request, not a rule
+               */
+              ruleId: string;
+              /**
+               * @description Initial status
+               * @constant
+               */
+              status: "accepted";
+            };
+          };
+        };
+      };
+    };
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/cli/api/rule/{ruleId}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Get generation request status and output (poll until terminal state)
+     * @deprecated
+     * @description Deprecated: use the /cli/api/request equivalent. The identifier is a generation request, not a rule. This path continues to be served.
+     */
+    get: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          /** @description UUID of the generation request. One request produces N rules, each with its own `id`. */
+          ruleId: string;
+        };
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description OK */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              /** @description UUID of the generation request the rules were generated under */
+              requestId: string;
+              /**
+               * @deprecated
+               * @description Deprecated: use requestId. Same value
+               */
+              ruleId: string;
+              /** @enum {string} */
+              status:
+                | "accepted"
+                | "classifying"
+                | "building"
+                | "generated"
+                | "failed"
+                | "pr"
+                | "merged"
+                | "closed"
+                | "unsupported";
+              /** @description Generated rules (present when status is generated). Clients below the `file-set` floor receive `content`; clients at or above it receive `files`. */
+              rules?:
+                | {
+                    /** @description Rule identifier (matches content.id) */
+                    id: string;
+                    /** @description The ast-grep rule definition */
+                    content: {
+                      /** @description Unique rule identifier, e.g. no-unused-variable */
+                      id: string;
+                      /** @description Language to parse, e.g. typescript */
+                      language: string;
+                      /** @description Rule object to find matching AST nodes */
+                      rule: {
+                        [key: string]: unknown;
+                      };
+                      /**
+                       * @description Severity level
+                       * @enum {string}
+                       */
+                      severity?: "hint" | "info" | "warning" | "error" | "off";
+                      /** @description Message explaining why the rule fired */
+                      message?: string;
+                      /** @description Additional notes to elaborate the message */
+                      note?: string;
+                      /** @description Auto-fix pattern or object */
+                      fix?:
+                        | string
+                        | {
+                            [key: string]: unknown;
+                          };
+                      /** @description Meta variable constraints */
+                      constraints?: {
+                        [key: string]: unknown;
+                      };
+                      /** @description Reusable utility rules */
+                      utils?: {
+                        [key: string]: unknown;
+                      };
+                      /** @description Meta variable transformations */
+                      transform?: {
+                        [key: string]: unknown;
+                      };
+                      /** @description Extra rule metadata */
+                      metadata?: {
+                        [key: string]: unknown;
+                      };
+                      /** @description Glob patterns the rule applies to */
+                      files?: string[];
+                      /** @description Glob patterns to exclude */
+                      ignores?: string[];
+                      /** @description Documentation link */
+                      url?: string;
+                    };
+                    /** @description Test cases for the rule */
+                    tests?: {
+                      /** @description Code that should NOT trigger the rule */
+                      valid: string[];
+                      /** @description Code that SHOULD trigger the rule */
+                      invalid: string[];
+                    };
+                  }[]
+                | (
+                    | {
+                        /** @description The rule directory name under .taskless/rules/<engine>/ */
+                        id: string;
+                        /** @description Every file the rule directory must contain */
+                        files: {
+                          /** @description Path relative to .taskless/rules/<engine>/<id>/ */
+                          path: string;
+                          /** @description The file’s exact bytes */
+                          content: string;
+                        }[];
+                        /**
+                         * @description ast-grep — inert declarative rules
+                         * @constant
+                         */
+                        engine: "sg";
+                        /** @description Blessed canonical signature, when one was registered */
+                        signature?: string;
+                      }
+                    | {
+                        /** @description The rule directory name under .taskless/rules/<engine>/ */
+                        id: string;
+                        /** @description Every file the rule directory must contain */
+                        files: {
+                          /** @description Path relative to .taskless/rules/<engine>/<id>/ */
+                          path: string;
+                          /** @description The file’s exact bytes */
+                          content: string;
+                        }[];
+                        /**
+                         * @description Vale — inert prose/markup rules
+                         * @constant
+                         */
+                        engine: "vale";
+                        /** @description Blessed canonical signature, when one was registered */
+                        signature?: string;
+                      }
+                    | {
+                        /** @description The rule directory name under .taskless/rules/<engine>/ */
+                        id: string;
+                        /** @description Every file the rule directory must contain */
+                        files: {
+                          /** @description Path relative to .taskless/rules/<engine>/<id>/ */
+                          path: string;
+                          /** @description The file’s exact bytes */
+                          content: string;
+                        }[];
+                        /**
+                         * @description Executable — check.ts runs against a file tree
+                         * @constant
+                         */
+                        engine: "runtime";
+                        /** @description REQUIRED. Execution is gated on this signature, so a runtime rule without one could never run. */
+                        signature: string;
+                      }
+                  )[];
+              /** @description Sidecar metadata keyed by rule filename (present when rules are present) */
+              meta?: {
+                [key: string]: {
+                  /** @description UUID of the generation request that produced this rule */
+                  requestId: string;
+                  /**
+                   * @deprecated
+                   * @description Deprecated: use requestId. Same value
+                   */
+                  ticketId: string;
+                  /** @description GitHub App installation ID (absent for public repos) */
+                  installationId?: string;
+                  /** @description ISO 8601 generation timestamp */
+                  generatedAt: string;
+                  /** @description Sidecar schema version */
+                  schemaVersion: string;
+                };
+              };
+              /** @description Why the request ended the way it did. Present when status is `failed` (a generation error) or `unsupported` (the request was understood and refused — for example an engine this client version cannot receive). A client SHOULD surface this text rather than substituting its own, since it names what the user must do. */
+              error?: string;
+              /** @description Machine-readable companion to `error`, so a client can branch on a specific outcome instead of matching prose. `ENGINE_NOT_DELIVERABLE` means the rule needed an engine this client version cannot receive and the fix is a CLI upgrade. */
+              errorCode?: string;
             };
           };
         };
@@ -310,12 +776,17 @@ export interface paths {
     };
     get?: never;
     put?: never;
-    /** Iterate on an existing rule with guidance and optional references */
+    /**
+     * Iterate on an existing generation request with guidance and optional references
+     * @deprecated
+     * @description Deprecated: use the /cli/api/request equivalent. The identifier is a generation request, not a rule. This path continues to be served.
+     */
     post: {
       parameters: {
         query?: never;
         header?: never;
         path: {
+          /** @description UUID of the generation request. One request produces N rules, each with its own `id`. */
           ruleId: string;
         };
         cookie?: never;
@@ -344,8 +815,13 @@ export interface paths {
           };
           content: {
             "application/json": {
-              /** @description The ruleId for polling status */
+              /** @description UUID of the generation request, for polling status */
               requestId: string;
+              /**
+               * @deprecated
+               * @description Deprecated: use requestId. Same value
+               */
+              ruleId: string;
               /**
                * @description Iteration has been enqueued
                * @constant
@@ -371,12 +847,17 @@ export interface paths {
     };
     get?: never;
     put?: never;
-    /** Restore the complete on-disk file set for a rule the caller’s organization owns */
+    /**
+     * Restore the complete on-disk file set for rules the caller’s organization owns
+     * @deprecated
+     * @description Deprecated: use the /cli/api/request equivalent. The identifier is a generation request, not a rule. This path continues to be served.
+     */
     post: {
       parameters: {
         query?: never;
         header?: never;
         path: {
+          /** @description UUID of the generation request. One request produces N rules, each with its own `id`. */
           ruleId: string;
         };
         cookie?: never;
@@ -398,7 +879,12 @@ export interface paths {
           };
           content: {
             "application/json": {
-              /** @description The ticket id the rules were generated under */
+              /** @description UUID of the generation request the rules were generated under */
+              requestId: string;
+              /**
+               * @deprecated
+               * @description Deprecated: use requestId. Same value
+               */
               ruleId: string;
               /** @description The complete file set for each rule the ticket produced */
               rules: (
@@ -522,6 +1008,8 @@ export interface paths {
               }[];
               /** @description Reported files whose content differs from the blessed rule */
               unsafe: {
+                /** @description The model-assigned rule identifier, for calling restore without parsing it out of the path */
+                ruleId: string;
                 /** @description Delivered rule filename */
                 file: string;
                 /** @description The blessed (authoritative) signature */

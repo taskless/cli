@@ -5,7 +5,7 @@ import { getCliPrefix } from "../util/package-manager";
 // --- Types extracted from the generated schema ---
 
 type RuleStatusData =
-  paths["/cli/api/rule/{ruleId}"]["get"]["responses"]["200"]["content"]["application/json"];
+  paths["/cli/api/request/{requestId}"]["get"]["responses"]["200"]["content"]["application/json"];
 
 /** A single generated rule from the API */
 export type GeneratedRule = NonNullable<RuleStatusData["rules"]>[number];
@@ -91,7 +91,7 @@ export async function submitRule(
   }
 ) {
   const client = createApiClient(token);
-  const { data, error, response } = await client.POST("/cli/api/rule", {
+  const { data, error, response } = await client.POST("/cli/api/request", {
     body: request,
   });
 
@@ -130,11 +130,14 @@ export async function submitRule(
 }
 
 /** Poll for rule generation status */
-export async function pollRuleStatus(token: string, ruleId: string) {
+export async function pollRuleStatus(token: string, requestId: string) {
   const client = createApiClient(token);
-  const { data, error, response } = await client.GET("/cli/api/rule/{ruleId}", {
-    params: { path: { ruleId } },
-  });
+  const { data, error, response } = await client.GET(
+    "/cli/api/request/{requestId}",
+    {
+      params: { path: { requestId } },
+    }
+  );
 
   if (!data) {
     const errorData = parseErrorBody(error);
@@ -153,7 +156,7 @@ export async function pollRuleStatus(token: string, ruleId: string) {
 /** Submit an improve/iterate request for an existing rule */
 export async function iterateRule(
   token: string,
-  ruleId: string,
+  requestId: string,
   request: {
     /** Org subject: Taskless UUID (preferred) or numeric GitHub org id. */
     orgId: string | number;
@@ -163,9 +166,9 @@ export async function iterateRule(
 ) {
   const client = createApiClient(token);
   const { data, error, response } = await client.POST(
-    "/cli/api/rule/{ruleId}/iterate",
+    "/cli/api/request/{requestId}/iterate",
     {
-      params: { path: { ruleId } },
+      params: { path: { requestId } },
       body: request,
     }
   );

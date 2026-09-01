@@ -183,7 +183,7 @@ export async function findRuleEngine(
 /**
  * Resolve the engine a service-delivered rule is filed under.
  *
- * The delivery API carries no engine discriminator — `/cli/api/rule/{ruleId}`
+ * The delivery API carries no engine discriminator — `/cli/api/request/{requestId}`
  * documents `rules[].content` as an ast-grep rule definition — so a payload
  * that identifies no engine **is** ast-grep. That default is permanent, not a
  * migration window: published CLIs keep receiving engine-less payloads, and it
