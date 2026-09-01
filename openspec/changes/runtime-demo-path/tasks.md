@@ -19,7 +19,7 @@ what design D2 rules out. The mainline took the noun first; the demo follows it.
 
 ## 0b. Blocked on the service half
 
-- [ ] 0.1 Confirm the endpoint shapes with the generator team (**N9**): `POST /cli/api/demo/rule` returning `{ ruleId, status }`, `GET /cli/api/demo/rule/{ruleId}` returning `{ ruleId, status, rules[] }` with the published file-set variant
+- [x] 0.1 Confirm the endpoint shapes with the generator team (**N9**): `POST /cli/api/demo/request` returning `{ requestId, status }`, `GET /cli/api/demo/request/{requestId}` returning `{ requestId, status, rules[] }` with the published file-set variant. Agreed both sides
 - [ ] 0.2 Confirm the demo is servable unauthenticated, and get their answer on whether reconcile can bless the sample signature for an anonymous caller (design D3). A "no" is a complete answer and changes nothing below
 - [ ] 0.3 Agree what the demo rule is for — the scenario the generated rule addresses — so the demo shows something a person recognises rather than an arbitrary rule
 

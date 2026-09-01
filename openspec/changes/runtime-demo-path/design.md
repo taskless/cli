@@ -40,8 +40,8 @@ and the whole of the last change was about it not doing anything else.
 
 ### D1 — The demo uses the well-known ticket and retrieval formats
 
-`POST /cli/api/demo/rule` returning `{ ruleId, status }`, then
-`GET /cli/api/demo/rule/{ruleId}` returning `{ ruleId, status, rules[] }`. The
+`POST /cli/api/demo/request` returning `{ requestId, status }`, then
+`GET /cli/api/demo/request/{requestId}` returning `{ requestId, status, rules[] }`. The
 same two-stage flow as `rule create`, the same status enum, the same file-set
 variant.
 
