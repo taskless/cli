@@ -250,6 +250,20 @@ describe("delivering a rule as a file set", () => {
     );
   });
 
+  it("refuses a payload carrying neither files nor content", async () => {
+    // Before the published union forced the variants apart, this fell through
+    // to the single-content branch and handed `stringify` an `undefined`,
+    // which returns the STRING "undefined" rather than throwing. The rule file
+    // was written, and what it contained was the word undefined.
+    const rule = { id: "no-eval-abc12345" } as unknown as GeneratedRule;
+    await expect(writeRuleFile(cwd, rule)).rejects.toThrow(
+      /neither `files` nor `content`/
+    );
+    expect(existsSync(ruleDirectory(cwd, "sg", "no-eval-abc12345"))).toBe(
+      false
+    );
+  });
+
   it("still writes a legacy single-content payload", async () => {
     // The envelope every published CLI receives, and will keep receiving.
     const rule = {

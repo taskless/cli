@@ -5,7 +5,12 @@ import { defineCommand } from "citty";
 import { ZodError } from "zod";
 
 import { identityFailureCode, resolveIdentity } from "../auth/identity";
-import { submitRule, pollRuleStatus, iterateRule } from "../api/rules";
+import {
+  submitRule,
+  pollRuleStatus,
+  iterateRule,
+  isSingleContentRule,
+} from "../api/rules";
 import {
   writeRuleFile,
   writeRuleTestFile,
@@ -238,7 +243,10 @@ const createCommand = defineCommand({
               const ruleFile = await writeRuleFile(cwd, rule);
               writtenFiles.push(ruleFile);
 
-              if (rule.tests) {
+              // A file set carries its fixtures as ordinary files under
+              // `.tests/`, already written by `writeRuleFile`. Only the
+              // single-content envelope has a separate `tests` to write.
+              if (isSingleContentRule(rule) && rule.tests) {
                 const testFile = await writeRuleTestFile(cwd, rule, timestamp);
                 writtenFiles.push(testFile);
               }
@@ -475,7 +483,10 @@ const improveCommand = defineCommand({
               const ruleFile = await writeRuleFile(cwd, rule);
               writtenFiles.push(ruleFile);
 
-              if (rule.tests) {
+              // A file set carries its fixtures as ordinary files under
+              // `.tests/`, already written by `writeRuleFile`. Only the
+              // single-content envelope has a separate `tests` to write.
+              if (isSingleContentRule(rule) && rule.tests) {
                 const testFile = await writeRuleTestFile(cwd, rule, timestamp);
                 writtenFiles.push(testFile);
               }

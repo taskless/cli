@@ -4,6 +4,7 @@ import { basename, join, resolve } from "node:path";
 import { parse, stringify } from "yaml";
 
 import { ensureTasklessDirectory } from "../filesystem/directory";
+import { isSingleContentRule } from "../api/rules";
 import type { GeneratedRule, RuleMetadata } from "../api/rules";
 import {
   resolveIngestEngine,
@@ -43,7 +44,11 @@ export async function writeRuleFile(
     throw new Error(`Rule "${rule.id}" ${delivered.reason}.`);
   }
   if (delivered.kind === "present") {
-    if (rule.content !== undefined) {
+    // The published union makes this unrepresentable, and the check stays.
+    // The type states what the service PROMISES; this defends against it
+    // breaking that promise, which is the only reason the client validates a
+    // payload at all.
+    if ((rule as { content?: unknown }).content !== undefined) {
       throw new Error(
         `Rule "${rule.id}" carries both \`files\` and \`content\`; they are mutually exclusive.`
       );
@@ -63,6 +68,17 @@ export async function writeRuleFile(
     return ruleFilePath(cwd, engine, rule.id);
   }
 
+  // `files` is absent past the branch above, so this must be the single-content
+  // envelope. Checked BEFORE anything is created, and checked on `content`
+  // itself rather than on "not a file set": a payload carrying neither is not a
+  // file set either, so the negative would admit it. It used to, and `yaml`
+  // renders `undefined` as the STRING "undefined" instead of throwing, so the
+  // rule file was written and what it contained was that word.
+  if (!isSingleContentRule(rule) || rule.content === undefined) {
+    throw new Error(
+      `Rule "${rule.id}" carries neither \`files\` nor \`content\`.`
+    );
+  }
   await ensureTasklessDirectory(cwd);
   await mkdir(ruleDirectory(cwd, engine, rule.id), { recursive: true });
   const filePath = ruleFilePath(cwd, engine, rule.id);
@@ -87,10 +103,13 @@ export async function writeRuleTestFile(
   const directory = ruleTestsDirectory(cwd, engine, rule.id);
   await mkdir(directory, { recursive: true });
   const filePath = join(directory, `${rule.id}-${timestamp}-test.yml`);
+  // Only the single-content envelope carries `tests`; a file set delivers its
+  // fixtures as ordinary files under `.tests/`.
+  const tests = isSingleContentRule(rule) ? rule.tests : undefined;
   const content = {
     id: rule.id,
-    valid: rule.tests?.valid ?? [],
-    invalid: rule.tests?.invalid ?? [],
+    valid: tests?.valid ?? [],
+    invalid: tests?.invalid ?? [],
   };
   await writeFile(filePath, stringify(content, { lineWidth: 0 }), "utf8");
   return filePath;
