@@ -31,7 +31,7 @@ hand-maintained literal and lookup is by filename, so a topic that is not in
 the list is fetchable by name and invisible otherwise. No new mechanism. This
 is something we run deliberately, not something routing sends an agent to.
 
-**A command that walks the path.** Ticket, poll, retrieve, write, verify —
+**A command that walks the path.** Request, poll, retrieve, write, verify —
 through the existing `submitRule` / `pollRuleStatus` client code and the
 existing `writeRuleFile`, against demo endpoints that mirror the mainline
 shapes:
@@ -63,8 +63,8 @@ hole in it. Executing the demo rule uses the documented
 ### New Capabilities
 
 - `cli-runtime-demo`: A deliberately-invoked path that generates, delivers,
-  writes and verifies one runtime rule against a service-controlled repository,
-  so the client-service seam can be shown working rather than described.
+  writes and verifies one runtime rule from a fixed, service-held input, so the
+  client-service seam can be shown working rather than described.
 
 ### Modified Capabilities
 
@@ -82,5 +82,8 @@ hole in it. Executing the demo rule uses the documented
 - Depends on the service half (raised as **N9** in the cross-team document).
   The endpoints are theirs to build; the shapes above are what we asked for and
   what this change assumes.
+- Sequenced behind the `request`/`requestId` rename (**N10**), which the
+  generator team is doing as its own change. The demo takes whichever noun
+  wins, after the mainline takes it.
 - No change to the runtime gate, to reconcile, or to `check`'s execution
   policy.

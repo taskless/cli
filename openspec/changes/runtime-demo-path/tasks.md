@@ -3,13 +3,27 @@
 One PR. The command and the recipe that names it are the same seam this change
 exists to remove, so they land together.
 
-## 0. Blocked on the service half
+## 0. Blocked on the rename, then on the service half
+
+The generator team is renaming the request resource first, as its own change:
+`request`/`requestId` rather than `rule`/`ruleId`. Their own
+`openspec/specs/cli/spec.md` already specified it, and their live `meta` block
+already carries `ticketId` per delivered rule, so the route was the outlier.
+
+- [ ] 0.0 Wait for the rename to land and the new schema to publish, then regenerate `src/generated/api.d.ts` against it
+
+**The demo does not start before that.** Naming these endpoints today would make
+the demo the place a new convention debuts, which is the one thing design D2
+rules out. Whichever noun wins, both demo endpoints take it, and they take it
+after the mainline does.
+
+## 0b. Blocked on the service half
 
 - [ ] 0.1 Confirm the endpoint shapes with the generator team (**N9**): `POST /cli/api/demo/rule` returning `{ ruleId, status }`, `GET /cli/api/demo/rule/{ruleId}` returning `{ ruleId, status, rules[] }` with the published file-set variant
 - [ ] 0.2 Confirm the demo is servable unauthenticated, and get their answer on whether reconcile can bless the sample signature for an anonymous caller (design D3). A "no" is a complete answer and changes nothing below
 - [ ] 0.3 Agree what the demo rule is for — the scenario the generated rule addresses — so the demo shows something a person recognises rather than an arbitrary rule
 
-**Nothing below starts until 0.1 lands.** Building against a guessed shape is
+**Nothing below starts until 0.0 and 0.1 land.** Building against a guessed shape is
 what produced the seam this change is closing.
 
 ## 1. The client path
