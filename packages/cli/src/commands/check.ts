@@ -1,4 +1,4 @@
-import { resolve, join, isAbsolute, relative } from "node:path";
+import { resolve, isAbsolute, relative } from "node:path";
 import { stat } from "node:fs/promises";
 import { defineCommand } from "citty";
 
@@ -6,15 +6,16 @@ import { hasValeRules, runEngines } from "../rules/dispatch";
 import { assembleEngineConfigs } from "../rules/assemble";
 import { splitRawArguments } from "../util/argv";
 import { formatText } from "../util/format";
-import { ensureTasklessDirectory } from "../filesystem/directory";
 import { listRuleIds, planEngineDispatch } from "../rules/engines";
 import { getTelemetry } from "../telemetry";
 import { outputSchema as checkOutputSchema } from "../schemas/check";
 import { makeErrorEnvelope } from "../types/errors";
+import { CLIError } from "../util/cli-error";
 import { getToken } from "../auth/token";
 import { resolveOrgSubject } from "../auth/org";
 import { resolveRepositoryUrl } from "../util/git-remote";
 import { getCliPrefix } from "../util/package-manager";
+import { requireCurrentSchema } from "../filesystem/migrate";
 import { reconcile } from "../api/reconcile";
 import type { ReconcileResponse } from "../api/reconcile";
 import { restoreRule } from "../api/restore";
@@ -404,35 +405,40 @@ export const checkCommand = defineCommand({
         return;
       }
 
-      // Rules dispatch by the engine directory that contains them. This is also
-      // the migration trigger: no config is generated on the check path any
-      // more, so without this call an upgraded CLI would keep reading a stale
-      // layout.
+      // REFUSES rather than migrates. This used to call
+      // `ensureTasklessDirectory`, so a command whose entire job is to report
+      // rewrote the repository as a side effect: `0005` moves and deletes
+      // tracked files, and the change landed in whatever commit came next. In
+      // CI it ran on every checkout.
       //
-      // Only an existing `.taskless/` is migrated. `ensureTasklessDirectory`
-      // creates the scaffold, and `check` is a read-only command — running it in
-      // a project that has none should report that, not write one (and not fail
-      // on a read-only filesystem).
-      //
-      // The report is carried into the `--json` envelope below: migrating
-      // rewrites files in the caller's working tree, and a consumer reading
-      // `{"success":true}` would otherwise have nothing to attribute that diff
-      // to.
-      const migrated = (await pathExists(join(cwd, ".taskless")))
-        ? await ensureTasklessDirectory(cwd, {
-            // Suppressed under `--json` for the same reason every other notice
-            // in this command is: the information is on the envelope's
-            // `migrated` field, and a machine consumer reading stderr gets
-            // prose it cannot parse. This one grew from a single line to a
-            // file-by-file summary, so leaving it ungated would hand a CI
-            // script that logs or fails on stderr a much noisier surprise than
-            // the one-liner it tolerated before.
-            onNotice: (message: string) => {
-              if (!args.json) console.error(message);
-            },
-          })
-        : undefined;
-      const migratedField = migrated === undefined ? {} : { migrated };
+      // It also made a migration unverifiable. Comparing findings before and
+      // after is impossible when asking the question performs the change, so
+      // a migration that silently dropped a rule could not be caught by the
+      // one check that would catch it.
+      try {
+        await requireCurrentSchema(cwd);
+      } catch (error) {
+        // Handled here rather than left to the outer handler, which prints
+        // prose: `--json` callers branch on the code, and this refusal asks
+        // for a different response from a scan that blew up.
+        if (error instanceof CLIError) {
+          if (args.json) {
+            console.log(
+              JSON.stringify(
+                makeErrorEnvelope(
+                  error.code ?? "SCAFFOLD_MIGRATION_REQUIRED",
+                  error.message
+                )
+              )
+            );
+          } else {
+            console.error(`Error: ${error.message}`);
+          }
+          process.exitCode = 1;
+          return;
+        }
+        throw error;
+      }
       const dispatch = await planEngineDispatch(cwd);
 
       // Static rules (trusted ast-grep YAML) always run; runtime rules
@@ -473,7 +479,6 @@ export const checkCommand = defineCommand({
               checkOutputSchema.parse({
                 success: true,
                 results: [],
-                ...migratedField,
               })
             )
           );
@@ -537,7 +542,6 @@ export const checkCommand = defineCommand({
           const output = checkOutputSchema.parse({
             success: exitCode === 0,
             results,
-            ...migratedField,
             ...(plan.skipped.length > 0 ? { skipped: plan.skipped } : {}),
             ...(dispatched.failures.length > 0
               ? { failures: dispatched.failures }
@@ -559,10 +563,17 @@ export const checkCommand = defineCommand({
         }
       } catch (error) {
         const message = `Error: ${error instanceof Error ? error.message : String(error)}`;
+        // A `CLIError` already carries the code an agent branches on, and
+        // flattening every failure to `SCAN_FAILED` threw it away. The scaffold
+        // refusal is the case that made this visible: "migrate your project" and
+        // "the scan blew up" want different responses and were arriving as the
+        // same one.
+        const code =
+          error instanceof CLIError
+            ? (error.code ?? "SCAN_FAILED")
+            : "SCAN_FAILED";
         if (args.json) {
-          console.log(
-            JSON.stringify(makeErrorEnvelope("SCAN_FAILED", message))
-          );
+          console.log(JSON.stringify(makeErrorEnvelope(code, message)));
         } else {
           console.error(message);
         }

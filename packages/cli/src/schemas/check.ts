@@ -1,7 +1,5 @@
 import { z } from "zod";
 
-import { migratedSchema } from "./migration";
-
 /** Schema for a single check result */
 const checkResultSchema = z.object({
   source: z.string().describe("Scanner that produced this result"),
@@ -54,9 +52,6 @@ export const outputSchema = z.object({
   // `check` migrates `.taskless/` before it can dispatch, and that rewrites
   // files in the working tree. Absent unless it happened, so a consumer reads
   // presence rather than guessing from an empty list.
-  migrated: migratedSchema
-    .optional()
-    .describe("Present only when this run migrated the .taskless/ layout"),
 });
 
 /** Error schema for `taskless check --json` on failure */

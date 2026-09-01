@@ -7,6 +7,7 @@ import { promisify } from "node:util";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { findValeBinary } from "../src/rules/vale/binary";
+import { migrateFixture } from "./support/current-project";
 
 const execFileAsync = promisify(execFile);
 const binPath = resolve(import.meta.dirname, "../dist/index.js");
@@ -59,6 +60,11 @@ async function sha256(path: string): Promise<string> {
 }
 
 async function runCli(args: string[]) {
+  // The migration is EXPLICIT now. `check` and `verify` used to perform it on
+  // the way to reporting, which is what this file leaned on; they refuse
+  // instead, so the upgrade happens here, where the subject of these tests
+  // begins: a project that HAS been migrated still reports.
+  await migrateFixture(args);
   try {
     const { stdout, stderr } = await execFileAsync("node", [binPath, ...args]);
     return { stdout, stderr, exitCode: 0 };

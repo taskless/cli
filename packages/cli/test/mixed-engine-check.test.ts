@@ -7,6 +7,7 @@ import { promisify } from "node:util";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { findValeBinary } from "../src/rules/vale/binary";
+import { migrateFixture } from "./support/current-project";
 
 const execFileAsync = promisify(execFile);
 const binPath = resolve(import.meta.dirname, "../dist/index.js");
@@ -32,6 +33,8 @@ const fixturesDirectory = resolve(
 async function runCli(
   args: string[]
 ): Promise<{ stdout: string; stderr: string; exitCode: number }> {
+  await migrateFixture(args);
+
   try {
     const { stdout, stderr } = await execFileAsync("node", [binPath, ...args]);
     return { stdout, stderr, exitCode: 0 };

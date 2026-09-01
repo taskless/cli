@@ -12,6 +12,7 @@ import {
   listGitIgnoredEntries,
 } from "../src/rules/git-ignored";
 import { findValeBinary } from "../src/rules/vale/binary";
+import { migrateFixture } from "./support/current-project";
 
 const execFileAsync = promisify(execFile);
 const binPath = resolve(import.meta.dirname, "../dist/index.js");
@@ -46,6 +47,8 @@ const fixturesDirectory = resolve(
 async function runCli(
   arguments_: string[]
 ): Promise<{ stdout: string; exitCode: number }> {
+  await migrateFixture(arguments_);
+
   try {
     const { stdout } = await execFileAsync("node", [binPath, ...arguments_]);
     return { stdout, exitCode: 0 };

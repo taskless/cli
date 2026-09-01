@@ -4,6 +4,7 @@ import { resolve, join } from "node:path";
 import { tmpdir } from "node:os";
 import { promisify } from "node:util";
 import { describe, expect, it, beforeEach, afterEach } from "vitest";
+import { migrateFixture } from "./support/current-project";
 
 const execFileAsync = promisify(execFile);
 const binPath = resolve(import.meta.dirname, "../dist/index.js");
@@ -16,6 +17,8 @@ const fixturesDirectory = resolve(
 async function runCli(
   args: string[]
 ): Promise<{ stdout: string; stderr: string; exitCode: number }> {
+  await migrateFixture(args);
+
   try {
     const { stdout, stderr } = await execFileAsync("node", [binPath, ...args]);
     return { stdout, stderr, exitCode: 0 };

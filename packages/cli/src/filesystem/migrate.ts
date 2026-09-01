@@ -2,6 +2,8 @@ import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
 import { CLIError } from "../util/cli-error";
+import { buildInvocation } from "../util/invocation";
+import { pathExists } from "../rules/reconcile-marker";
 import type { Migrations } from "./types";
 import { diffSnapshots, snapshotPaths, type TreeChanges } from "./snapshot";
 import init from "./migrations/0001-init";
@@ -305,6 +307,68 @@ export interface RunMigrationsOptions {
  */
 export const LATEST_SCHEMA_VERSION: number =
   sortedMigrations(migrations).at(-1)?.[0] ?? 0;
+
+/**
+ * What a migration WOULD do, without doing it.
+ *
+ * Read-only on purpose. A command that reports on a project must be able to
+ * find out that the project is behind without changing it, and until this
+ * existed the only way to learn the version was to run the migration that
+ * changes it. That made a migration unverifiable by construction: comparing
+ * findings before and after is impossible when asking the question performs
+ * the change, so a migration that silently dropped a rule could not be caught
+ * by the one check that would catch it.
+ *
+ * `undefined` means nothing is pending, which includes a project newer than
+ * this CLI understands. That case is a different failure with its own message,
+ * and it is {@link runMigrations}' to report.
+ */
+export async function pendingMigration(
+  cwd: string
+): Promise<{ from: number; to: number } | undefined> {
+  const tasklessDirectory = join(cwd, ".taskless");
+  // Keyed on the DIRECTORY, not the manifest. A `.taskless/` with no manifest
+  // reads as version 0, which is behind — and it is exactly the case that must
+  // not be waved through, because its tree is the pre-`0004` layout that a
+  // current CLI finds no rules in. Waving it through would report "no rules
+  // configured" for a project full of them, which is the silent answer this
+  // whole change exists to stop giving.
+  //
+  // A project with no `.taskless/` at all has nothing to migrate and is not
+  // this function's business.
+  if (!(await pathExists(tasklessDirectory))) return undefined;
+  const { version } = await readRawManifest(tasklessDirectory);
+  if (version >= LATEST_SCHEMA_VERSION) return undefined;
+  return { from: version, to: LATEST_SCHEMA_VERSION };
+}
+
+/**
+ * Refuse to read a project whose scaffold is behind this CLI, and say what to
+ * run.
+ *
+ * `check` and `verify` used to migrate as a precondition, which made two
+ * read-only commands rewrite the repository: `0005` moves and deletes tracked
+ * files, and it did so with no output on the human path unless someone was
+ * reading stderr closely. The change landed in whatever commit came next, and
+ * in CI it ran on every checkout.
+ *
+ * A wall the user hits once after an upgrade is the worse-sounding option and
+ * the better one. It is visible, it happens when they are looking, and it is
+ * the same trade this CLI already makes for an unsupported request and the
+ * service makes for a client below the version floor: refuse, and name the
+ * thing that fixes it.
+ */
+export async function requireCurrentSchema(cwd: string): Promise<void> {
+  const pending = await pendingMigration(cwd);
+  if (pending === undefined) return;
+  throw new CLIError(
+    `This project's .taskless/ is at schema version ${String(pending.from)}, and this ` +
+      `CLI expects ${String(pending.to)}. Migrating moves and deletes files, so it is ` +
+      `not done as a side effect of a command that only reads.\n\n` +
+      `Run \`${buildInvocation()} init\` to migrate, then run this again.`,
+    "SCAFFOLD_MIGRATION_REQUIRED"
+  );
+}
 
 /**
  * Run any pending migrations against the .taskless/ directory.

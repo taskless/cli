@@ -37,6 +37,7 @@ import {
 } from "../src/rules/runtime/run-set";
 import type { GeneratedRule } from "../src/api/rules";
 import { CLIError } from "../src/util/cli-error";
+import { migrateFixture } from "./support/current-project";
 
 const execFileAsync = promisify(execFile);
 const binPath = resolve(import.meta.dirname, "../dist/index.js");
@@ -71,6 +72,8 @@ const RUNTIME_CHECK = "export default async function () {\n  return [];\n}\n";
 async function runCli(
   args: string[]
 ): Promise<{ stdout: string; stderr: string; exitCode: number }> {
+  await migrateFixture(args);
+
   try {
     const { stdout, stderr } = await execFileAsync("node", [binPath, ...args]);
     return { stdout, stderr, exitCode: 0 };

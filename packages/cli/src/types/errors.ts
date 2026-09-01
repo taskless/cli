@@ -36,6 +36,13 @@ export type CLIErrorCode =
   | "ENGINE_UNAVAILABLE"
   | "RECONCILE_FAILED"
   | "SCAFFOLD_VERSION_MISMATCH"
+  // The mirror of the code above, and a different remedy. That one is a
+  // scaffold NEWER than this CLI understands, which asks the caller to upgrade
+  // the CLI. This one is a scaffold BEHIND it, which asks them to migrate the
+  // project — and it exists as its own code because `check` and `verify` no
+  // longer migrate as a side effect of reading, so an agent needs to tell
+  // "run the migration" apart from "your CLI is too old".
+  | "SCAFFOLD_MIGRATION_REQUIRED"
   | "SCAFFOLD_CONFLICT"
   | "INTERNAL_ERROR";
 

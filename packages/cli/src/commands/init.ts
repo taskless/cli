@@ -31,6 +31,7 @@ import {
   stampNewProjectRules,
 } from "../rules/reconcile-marker";
 import { readManifest } from "../filesystem/migrate";
+import type { MigrationReport } from "../filesystem/migrate";
 import { TASKLESS_DIRECTORY } from "../rules/vale/formats";
 import { CLIError } from "../util/cli-error";
 import { makeErrorEnvelope } from "../types/errors";
@@ -54,6 +55,12 @@ export const initCommand = defineCommand({
       type: "string",
       alias: "d",
       description: "Working directory",
+    },
+    json: {
+      type: "boolean",
+      description:
+        "Emit the install result as JSON, including what a migration moved",
+      default: false,
     },
     "no-interactive": {
       type: "boolean",
@@ -88,12 +95,27 @@ export const initCommand = defineCommand({
     }
 
     const result = await runNonInteractive(cwd);
-    if (result.reloadNotice !== undefined) {
-      console.log(result.reloadNotice);
+    if (args.json) {
+      console.log(
+        JSON.stringify({
+          success: true,
+          commandsInstalled: result.commandsInstalled,
+          // Absent when nothing ran, so a caller distinguishes "the tree was
+          // rewritten" from "nothing happened" by presence, never by reading
+          // empty arrays out of it.
+          ...(result.migrated === undefined
+            ? {}
+            : { migrated: result.migrated }),
+        })
+      );
+    } else {
+      if (result.reloadNotice !== undefined) {
+        console.log(result.reloadNotice);
+      }
+      console.log(
+        getOnboardTrailer({ commandsInstalled: result.commandsInstalled })
+      );
     }
-    console.log(
-      getOnboardTrailer({ commandsInstalled: result.commandsInstalled })
-    );
     // Concrete state event: skills/commands were installed (non-interactive).
     telemetry.capture("cli_installed");
   },
@@ -223,9 +245,11 @@ export const updateCommand = defineCommand({
   },
 });
 
-async function runNonInteractive(
-  cwd: string
-): Promise<{ commandsInstalled: boolean; reloadNotice: string | undefined }> {
+async function runNonInteractive(cwd: string): Promise<{
+  commandsInstalled: boolean;
+  reloadNotice: string | undefined;
+  migrated: MigrationReport | undefined;
+}> {
   // Sampled BEFORE the directory is created, and that order is the whole
   // point. `ensureTasklessDirectory` mkdir -p's, so afterwards a pre-existing
   // project is indistinguishable from a fresh one.
@@ -235,7 +259,11 @@ async function runNonInteractive(
   // never walked the ledger as fully reconciled and skip every entry, which is
   // the silent skip this feature exists to prevent.
   const wasNewProject = !(await pathExists(join(cwd, TASKLESS_DIRECTORY)));
-  await ensureTasklessDirectory(cwd);
+  // `init` is now the ONLY command that migrates, so it is the only one that
+  // can report what a migration moved. `check`, `verify` and `test` used to
+  // carry this on their own envelopes and refuse rather than migrate now, so
+  // the field followed the behaviour rather than being dropped.
+  const migrated = await ensureTasklessDirectory(cwd);
   if (wasNewProject) {
     // A project this CLI just created has no entries to walk: everything the
     // ledger describes is already true of the scaffold it wrote.
@@ -335,7 +363,7 @@ async function runNonInteractive(
     }
   }
 
-  return { commandsInstalled, reloadNotice };
+  return { commandsInstalled, reloadNotice, migrated };
 }
 
 function groupValuesByTarget(
