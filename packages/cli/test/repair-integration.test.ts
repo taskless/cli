@@ -8,6 +8,7 @@ import { promisify } from "node:util";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { canonicalHash } from "../src/rules/rule-hash";
+import { migrateFixture } from "./support/current-project";
 
 const execFileAsync = promisify(execFile);
 const binPath = resolve(import.meta.dirname, "../dist/index.js");
@@ -80,6 +81,12 @@ async function runCli(
   args: string[],
   env: Record<string, string>
 ): Promise<{ stdout: string; exitCode: number }> {
+  // The fixture writes a current-layout tree but no manifest, and `check`
+  // refuses a project it cannot confirm is current — a tree without a
+  // manifest reads as version 0, and it cannot tell this one from a
+  // pre-`0004` project by looking. So the scaffold is completed here, which
+  // is what a real project has.
+  await migrateFixture(args);
   try {
     const { stdout } = await execFileAsync("node", [binPath, ...args], {
       env: { ...process.env, ...env },
