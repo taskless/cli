@@ -1,4 +1,6 @@
 import {
+  chmod,
+  lstat,
   mkdir,
   mkdtemp,
   readFile,
@@ -9,7 +11,7 @@ import {
 } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
@@ -447,6 +449,73 @@ describe("a delivered set defines what the rule directory contains", () => {
     expect(existsSync(join(directory, "check.ts"))).toBe(true);
   });
 
+  it("refuses to deliver into a symlinked rule directory", async () => {
+    // `mkdir` with `recursive` accepts a link to an existing directory and
+    // `writeFile` writes through it, so a link standing where the rule
+    // directory belongs would put the blessed bytes outside the boundary and
+    // hand the purge whatever the link points at. `describeUnsafePath` cannot
+    // see it: it resolves delivered paths against this directory as a string,
+    // and every one of them is legitimately inside it.
+    const directory = ruleDirectory(cwd, "runtime", "logs-abc12345");
+    const outside = join(cwd, "outside");
+    await mkdir(outside, { recursive: true });
+    await writeFile(join(outside, "keep.txt"), "untouched\n", "utf8");
+    await mkdir(dirname(directory), { recursive: true });
+    await symlink(outside, directory);
+
+    await expect(
+      writeRuleFile(cwd, delivered("runtime", "logs-abc12345", COMPLETE))
+    ).rejects.toThrow(/symlink/);
+
+    // Nothing written through the link, and the link itself is left for a
+    // person to resolve rather than silently deleted: the set describes what
+    // is IN the rule directory, not what the directory is.
+    expect(existsSync(join(outside, "check.ts"))).toBe(false);
+    await expect(readFile(join(outside, "keep.txt"), "utf8")).resolves.toBe(
+      "untouched\n"
+    );
+  });
+
+  it("replaces a symlinked directory component instead of writing through it", async () => {
+    const directory = await writeComplete();
+    const outside = join(cwd, "outside");
+    await mkdir(outside, { recursive: true });
+    await writeFile(join(outside, "logs.yml"), "untouched\n", "utf8");
+    await rm(join(directory, "captures"), { recursive: true, force: true });
+    await symlink(outside, join(directory, "captures"));
+
+    await writeComplete();
+
+    // The link is unlinked, exactly as the purge would treat it, and only the
+    // link: the directory it pointed at keeps its file.
+    await expect(readFile(join(outside, "logs.yml"), "utf8")).resolves.toBe(
+      "untouched\n"
+    );
+    const captures = await lstat(join(directory, "captures"));
+    expect(captures.isSymbolicLink()).toBe(false);
+    // And the capture landed inside the rule directory. Writing it through
+    // the link would have left the rule with no capture: it verifies as
+    // incomplete and never fires.
+    await expect(
+      readFile(join(directory, "captures", "logs.yml"), "utf8")
+    ).resolves.toBe(CAPTURE);
+  });
+
+  it("replaces a symlinked rule file instead of writing through it", async () => {
+    const directory = await writeComplete();
+    const outside = join(cwd, "outside.ts");
+    await writeFile(outside, "untouched\n", "utf8");
+    await rm(join(directory, "check.ts"), { force: true });
+    await symlink(outside, join(directory, "check.ts"));
+
+    await writeComplete();
+
+    await expect(readFile(outside, "utf8")).resolves.toBe("untouched\n");
+    await expect(readFile(join(directory, "check.ts"), "utf8")).resolves.toBe(
+      "export default async () => [];\n"
+    );
+  });
+
   it("does not purge on the single-content envelope", async () => {
     // There is no set to be authoritative about, so the legacy path keeps
     // overwriting one file and touching nothing else.
@@ -461,5 +530,48 @@ describe("a delivered set defines what the rule directory contains", () => {
     await writeRuleFile(cwd, rule);
 
     expect(existsSync(join(directory, "hand-written.yml"))).toBe(true);
+  });
+});
+
+/**
+ * A removal that fails is reported, and does not abandon the rest of the pass.
+ *
+ * Skipped as root, which ignores the permission bits the failure is staged
+ * with. The same convention as `vale-verify.test.ts`.
+ */
+const asUser = process.getuid?.() === 0 ? describe.skip : describe;
+
+asUser("a purge that cannot finish", () => {
+  const COMPLETE = [
+    { path: "check.ts", content: "export default async () => [];\n" },
+    { path: "captures/logs.yml", content: CAPTURE },
+  ];
+
+  it("removes what it can, and names what it could not", async () => {
+    await writeRuleFile(cwd, delivered("runtime", "logs-abc12345", COMPLETE));
+    const directory = ruleDirectory(cwd, "runtime", "logs-abc12345");
+    // A stray whose parent denies unlinking, plus an ordinary one. `rm` with
+    // `force` swallows only `ENOENT`, so the first is a genuine failure.
+    await mkdir(join(directory, "blocked"), { recursive: true });
+    await writeFile(join(directory, "blocked", "a.txt"), "stuck\n", "utf8");
+    await writeFile(join(directory, "notes.md"), "scratch\n", "utf8");
+    await chmod(join(directory, "blocked"), 0o500);
+
+    try {
+      await expect(
+        writeRuleFile(cwd, delivered("runtime", "logs-abc12345", COMPLETE))
+      ).rejects.toThrow(/could not remove.*blocked\/a\.txt/s);
+
+      // The rest of the pass still ran. Abandoning it at the first failure
+      // left later strays in place for no reason other than `readdir` order,
+      // so the same directory purged differently on two machines.
+      expect(existsSync(join(directory, "notes.md"))).toBe(false);
+      // And the rule itself is complete: writes come first, so a failed purge
+      // is a named leftover beside a working rule, never a missing piece.
+      expect(existsSync(join(directory, "check.ts"))).toBe(true);
+      expect(existsSync(join(directory, "captures", "logs.yml"))).toBe(true);
+    } finally {
+      await chmod(join(directory, "blocked"), 0o700);
+    }
   });
 });
