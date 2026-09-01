@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { promisify } from "node:util";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { LATEST_SCHEMA_VERSION } from "../src/filesystem/migrate";
 
 const execFileAsync = promisify(execFile);
 const binPath = resolve(import.meta.dirname, "../dist/index.js");
@@ -33,12 +34,22 @@ function parseEnvelope(stdout: string): Record<string, unknown> {
   return JSON.parse(line) as Record<string, unknown>;
 }
 
-/** Assert the field describes the 3 to 5 migration of the seeded project. */
+/** The versions a project seeded at 3 must be carried through. */
+const SEEDED_FROM = 3;
+const EXPECTED_APPLIED = Array.from(
+  { length: LATEST_SCHEMA_VERSION - SEEDED_FROM },
+  (_, index) => SEEDED_FROM + index + 1
+);
+
+/** Assert the field describes the seeded project's migration to the latest. */
 function expectSeededMigration(migrated: unknown): void {
   const field = migrated as MigratedField;
-  expect(field.from).toBe(3);
-  expect(field.to).toBe(5);
-  expect(field.applied).toEqual([4, 5]);
+  expect(field.from).toBe(SEEDED_FROM);
+  expect(field.to).toBe(LATEST_SCHEMA_VERSION);
+  // Every intervening version, derived. Listed literally this said `[4, 5]`,
+  // so adding a migration made the assertion wrong rather than making it cover
+  // the new one.
+  expect(field.applied).toEqual(EXPECTED_APPLIED);
   // The rule's new home, its old home, and the manifest that records the
   // version: the three facts that turn an unexplained diff into an explained
   // one.
@@ -121,8 +132,9 @@ describe("the migrated field on the --json envelope", () => {
 
     const { stderr } = await runCli(["check", "-d", temporaryDirectory]);
 
-    expect(stderr).toContain("Migrating .taskless/ from schema version 3 to 5");
-    expect(stderr).toContain("Migrated .taskless/ from schema version 3 to 5:");
+    const span = `from schema version ${String(SEEDED_FROM)} to ${String(LATEST_SCHEMA_VERSION)}`;
+    expect(stderr).toContain(`Migrating .taskless/ ${span}`);
+    expect(stderr).toContain(`Migrated .taskless/ ${span}:`);
     expect(stderr).toContain("+ .taskless/rules/sg/no-eval/no-eval.yml");
     expect(stderr).toContain("- .taskless/sgconfig.yml");
   });

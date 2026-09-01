@@ -1,5 +1,5 @@
 {
-  "version": 5,
+  "version": 6,
   "install": {
     "targets": {
       ".taskless": {
@@ -21,7 +21,7 @@
         "mode": "reference"
       }
     },
-    "cliVersion": "0.11.0-self",
+    "cliVersion": "0.11.0",
     "onboarded": true
   },
   "rules": {

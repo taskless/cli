@@ -4,7 +4,11 @@ import { tmpdir } from "node:os";
 import { describe, expect, it, beforeEach, afterEach } from "vitest";
 
 import { ensureTasklessDirectory } from "../src/filesystem/directory";
-import { readManifest, writeManifest } from "../src/filesystem/migrate";
+import {
+  readManifest,
+  writeManifest,
+  LATEST_SCHEMA_VERSION,
+} from "../src/filesystem/migrate";
 
 describe("install-state migrations", () => {
   let temporaryDirectory: string;
@@ -19,7 +23,7 @@ describe("install-state migrations", () => {
     await rm(temporaryDirectory, { recursive: true, force: true });
   });
 
-  it("fresh project reaches { version: 5, install: {} }", async () => {
+  it("fresh project reaches the latest version with an empty install block", async () => {
     await ensureTasklessDirectory(temporaryDirectory);
 
     const manifest = JSON.parse(
@@ -29,7 +33,7 @@ describe("install-state migrations", () => {
       )
     ) as { version: number; install: Record<string, unknown> };
 
-    expect(manifest.version).toBe(5);
+    expect(manifest.version).toBe(LATEST_SCHEMA_VERSION);
     expect(manifest.install).toEqual({});
   });
 
@@ -48,7 +52,7 @@ describe("install-state migrations", () => {
       await readFile(join(tasklessDirectory, "taskless.json"), "utf8")
     ) as { version: number; install: Record<string, unknown> };
 
-    expect(manifest.version).toBe(5);
+    expect(manifest.version).toBe(LATEST_SCHEMA_VERSION);
     expect(manifest.install).toEqual({});
   });
 
@@ -76,7 +80,7 @@ describe("install-state migrations", () => {
     ) as { version: number; install: Record<string, unknown> };
 
     // Migration 3 strips the unused timestamp; everything else survives.
-    expect(manifest.version).toBe(5);
+    expect(manifest.version).toBe(LATEST_SCHEMA_VERSION);
     expect(manifest.install).toEqual({
       cliVersion: "0.5.4",
       targets: { ".claude": { skills: ["taskless-check"] } },
@@ -102,7 +106,7 @@ describe("install-state migrations", () => {
       await readFile(join(tasklessDirectory, "taskless.json"), "utf8")
     ) as Record<string, unknown>;
 
-    expect(manifest.version).toBe(5);
+    expect(manifest.version).toBe(LATEST_SCHEMA_VERSION);
     expect(manifest.install).toEqual({});
     expect(manifest.experimental).toEqual({
       flag: true,
@@ -124,7 +128,7 @@ describe("install-state migrations", () => {
       await readFile(join(tasklessDirectory, "taskless.json"), "utf8")
     ) as { version: number; install: Record<string, unknown> };
 
-    expect(manifest.version).toBe(5);
+    expect(manifest.version).toBe(LATEST_SCHEMA_VERSION);
     expect(manifest.install).toEqual({});
   });
 
@@ -159,20 +163,6 @@ describe("install-state migrations", () => {
   });
 });
 
-/** The latest schema version, derived from a fresh bootstrap. */
-async function latestSchemaVersion(): Promise<number> {
-  const fresh = await mkdtemp(join(tmpdir(), "taskless-migrate-latest-"));
-  try {
-    await ensureTasklessDirectory(fresh);
-    const manifest = JSON.parse(
-      await readFile(join(fresh, ".taskless", "taskless.json"), "utf8")
-    ) as { version: number };
-    return manifest.version;
-  } finally {
-    await rm(fresh, { recursive: true, force: true });
-  }
-}
-
 describe("migration version matrix", () => {
   let temporaryDirectory: string;
 
@@ -189,9 +179,15 @@ describe("migration version matrix", () => {
   // Seed .taskless/ at every prior schema version and confirm each
   // forward-migrates cleanly to the latest. Catches a future migration that
   // forgets to handle an older starting point.
-  for (const startVersion of [0, 1, 2, 3, 4]) {
+  // Every prior version, derived. The list used to be written out, so each new
+  // migration silently stopped testing the version it had just made "prior".
+  const priorVersions = Array.from(
+    { length: LATEST_SCHEMA_VERSION },
+    (_, index) => index
+  );
+  for (const startVersion of priorVersions) {
     it(`forward-migrates a v${String(startVersion)} project to the latest schema`, async () => {
-      const latest = await latestSchemaVersion();
+      const latest = LATEST_SCHEMA_VERSION;
       const tasklessDirectory = join(temporaryDirectory, ".taskless");
       await mkdir(tasklessDirectory, { recursive: true });
       await writeFile(

@@ -11,6 +11,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { promisify } from "node:util";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { LATEST_SCHEMA_VERSION } from "../src/filesystem/migrate";
 
 const execFileAsync = promisify(execFile);
 const binPath = resolve(import.meta.dirname, "../dist/index.js");
@@ -157,7 +158,7 @@ describe("taskless init --no-interactive", () => {
       await readFile(join(cwd, ".taskless", "taskless.json"), "utf8")
     ) as { version: number; install: Record<string, unknown> };
 
-    expect(manifest.version).toBe(5);
+    expect(manifest.version).toBe(LATEST_SCHEMA_VERSION);
     expect(manifest.install).toBeDefined();
   });
 

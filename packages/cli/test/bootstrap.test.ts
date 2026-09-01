@@ -12,6 +12,11 @@ import { tmpdir } from "node:os";
 import { describe, expect, it, beforeEach, afterEach } from "vitest";
 
 import { ensureTasklessDirectory } from "../src/filesystem/directory";
+import {
+  ENGINES,
+  RULES_DIRECTORY,
+  RULE_TESTS_DIRECTORY,
+} from "../src/rules/layout";
 
 const v0Fixture = resolve(import.meta.dirname, "fixtures/v0-production");
 
@@ -209,10 +214,23 @@ describe("v0 → v1 migration", () => {
       join(temporaryDirectory, ".taskless", "README.md"),
       "utf8"
     );
-    // New README mentions rule-tests
-    expect(readme).toContain("rule-tests");
-    // New README mentions .env.local.json
+
+    // Describes the layout this migration LEAVES BEHIND, derived from the same
+    // table the migration moves files with. Asserted per engine, because the
+    // defect being fixed was a README that described a tree two migrations old
+    // while the run that wrote it was deleting that tree.
+    for (const engine of ENGINES) {
+      expect(readme, `${engine} is described`).toContain(
+        `${RULES_DIRECTORY}/${engine}/<id>/`
+      );
+    }
+    expect(readme).toContain(`${RULE_TESTS_DIRECTORY}/`);
     expect(readme).toContain(".env.local.json");
+
+    // And NOT the directory this migration removes. `rule-tests/` was named
+    // here as an expectation, so the stale description had a passing test
+    // holding it in place — which is why nobody found it by running the suite.
+    expect(readme).not.toContain("rule-tests");
   });
 
   it("creates .gitignore that was missing in v0", async () => {

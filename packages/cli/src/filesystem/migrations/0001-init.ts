@@ -1,6 +1,13 @@
 import { readFile, writeFile, mkdir } from "node:fs/promises";
 import { join } from "node:path";
 
+import {
+  ENGINES,
+  ENGINE_LAYOUTS,
+  RULES_DIRECTORY,
+  RULE_TESTS_DIRECTORY,
+} from "../../rules/layout";
+
 import { addToGitignore } from "../gitignore";
 import type { Migration } from "../types";
 import { buildInvocation } from "../../util/invocation";
@@ -73,13 +80,44 @@ ${usageBlock(specifier)}
 - \`skills/\` - Canonical Taskless skill content; tool directories hold thin stubs that delegate here (managed by Taskless)
 - \`commands/\` - Canonical Taskless command content (managed by Taskless)
 
-Rules are partitioned by the engine that runs them. Each engine directory holds
-that tool's own native config, its \`rules/\`, and its \`rule-tests/\`:
-
-- \`sg/\` - ast-grep: \`sgconfig.yml\`, generated rules (managed by Taskless), and their pass/fail test cases
-- \`vale/\` - Vale prose rules: \`.vale.ini\`, \`rules/\`, and their pass/fail fixtures. Run by \`check\` alongside ast-grep
-- \`runtime/\` - Rules that execute a \`check.ts\`, each in its own \`rules/<name>/\` directory
+${layoutBlock()}
 `;
+}
+
+/**
+ * The rule-layout section, DERIVED from the layout table rather than described
+ * beside it.
+ *
+ * This block used to be prose, and it described the pre-\`0004\` tree
+ * (\`sg/rules/\`, \`sg/rule-tests/\`) for two migrations after that tree stopped
+ * existing. The migration overwrites this file on every run, so a correctly
+ * migrated project was handed a stale description of its own directory, and
+ * `rule-tests/` was named as a directory \`0005\` deletes.
+ *
+ * Writing it from {@link ENGINES}, {@link RULES_DIRECTORY} and
+ * {@link RULE_TESTS_DIRECTORY} is the same move that fixed the seven stale
+ * layout comments: the words cannot disagree with the table, because they are
+ * the table. A future migration that relocates rules updates this text by
+ * changing the constants it already has to change.
+ */
+function layoutBlock(): string {
+  const engines = ENGINES.map((engine) => {
+    const layout = ENGINE_LAYOUTS[engine];
+    const pieces = [`\`${layout.ruleFile("<id>")}\``];
+    if (layout.ruleConfigFile !== undefined) {
+      pieces.push(`\`${layout.ruleConfigFile}\``);
+    }
+    if (layout.capturesDirectory !== undefined) {
+      pieces.push(`\`${layout.capturesDirectory}/\``);
+    }
+    return `- \`${RULES_DIRECTORY}/${engine}/<id>/\` - run by ${layout.executor}; holds ${pieces.join(", ")}`;
+  }).join("\n");
+
+  return `Every rule is one directory, \`${RULES_DIRECTORY}/<engine>/<id>/\`, holding
+everything that defines it. Its test cases sit inside it as
+\`${RULE_TESTS_DIRECTORY}/\`:
+
+${engines}`;
 }
 
 const migration: Migration = async (directory) => {

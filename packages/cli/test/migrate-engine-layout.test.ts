@@ -13,7 +13,10 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { ensureTasklessDirectory } from "../src/filesystem/directory";
-import { runMigrations } from "../src/filesystem/migrate";
+import {
+  runMigrations,
+  LATEST_SCHEMA_VERSION,
+} from "../src/filesystem/migrate";
 import { CLIError } from "../src/util/cli-error";
 
 /** Bytes of a runtime capture rule; its hash must survive the move. */
@@ -285,7 +288,7 @@ describe("migrations 0004 + 0005 — one directory per rule", () => {
     const manifest = JSON.parse(
       await readFile(join(tasklessDirectory, "taskless.json"), "utf8")
     ) as { version: number };
-    expect(manifest.version).toBe(5);
+    expect(manifest.version).toBe(LATEST_SCHEMA_VERSION);
 
     for (const relative of [
       ["rules", "sg"],
