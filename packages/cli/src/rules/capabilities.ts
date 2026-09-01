@@ -195,8 +195,16 @@ export const AST_GREP_TSX_SPLIT: Readonly<
 
 /**
  * The Vale release carried by the `@taskless/vale-<platform>` packages pinned
- * in `packages/cli/package.json`. Their npm versions append a build stamp
- * (`3.18.0-20260824195610`); this is the version Vale itself reports.
+ * in `packages/cli/package.json`. Their npm versions append a build stamp,
+ * `<valeVersion>-<yyyymmddhhmmss>`, minted per publish by
+ * `.github/workflows/release-vale.yml`; this is the version Vale itself
+ * reports.
+ *
+ * The SHAPE rather than an example, deliberately. A literal stamp here has to
+ * be hand-carried on every bump, and it has gone one release out of date twice
+ * now, which is worse than no example: it reads as the current pin and is not
+ * one. The real value lives in `packages/cli/package.json`, where a reader can
+ * see all six at once and cannot be told a stale one.
  *
  * Pinned against the binary by `test/vale-vendor-contract.test.ts`
  * ("engine capabilities" → "reports the pinned version").
