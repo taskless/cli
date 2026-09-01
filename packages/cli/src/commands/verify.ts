@@ -66,8 +66,17 @@ async function runOverPath(options: {
     throw error;
   }
   // Still creates a scaffold that is absent. That writes a fresh directory
-  // rather than rewriting an existing one, so it is not the case above.
-  await ensureTasklessDirectory(cwd);
+  // rather than rewriting an existing one, so it is not the refusal above.
+  //
+  // The notice stays suppressed under `--json`. Scaffolding a brand-new
+  // project runs every migration from 0, and its file-by-file summary went to
+  // stderr unconditionally once this call lost its handler — handing a machine
+  // consumer prose it cannot parse, on the one path that still writes.
+  await ensureTasklessDirectory(cwd, {
+    onNotice: (message: string) => {
+      if (!json) console.error(message);
+    },
+  });
 
   let rules;
   try {

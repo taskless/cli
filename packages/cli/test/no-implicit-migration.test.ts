@@ -178,6 +178,36 @@ describe("a reporting command never migrates", () => {
     expect(exitCode).not.toBe(1);
   });
 
+  it.each([
+    ["verify", true],
+    ["test", true],
+  ])("%s --json keeps the scaffold migration off stderr", async (command) => {
+    // The one path that still writes: scaffolding a brand-new project runs
+    // every migration from 0, and its file-by-file summary is prose a
+    // machine consumer cannot parse. It went to stderr unconditionally once
+    // this call lost its notice handler.
+    const bare = await mkdtemp(join(tmpdir(), "tskl-bare-json-"));
+    try {
+      const { stderr } = await runCli([command, "--json", "-d", bare]);
+      expect(stderr).not.toContain("Migrating .taskless/");
+      expect(stderr).not.toContain("Migrated .taskless/");
+    } finally {
+      await rm(bare, { recursive: true, force: true });
+    }
+  });
+
+  it("still explains the scaffold migration to a person", async () => {
+    // Suppressed for machines, not removed. Without `--json` the summary is
+    // the only thing telling someone their working tree just changed.
+    const bare = await mkdtemp(join(tmpdir(), "tskl-bare-human-"));
+    try {
+      const { stderr } = await runCli(["verify", "-d", bare]);
+      expect(stderr).toContain("Migrating .taskless/");
+    } finally {
+      await rm(bare, { recursive: true, force: true });
+    }
+  });
+
   it("says nothing about schemas in a project with no .taskless at all", async () => {
     // Nothing to migrate, so nothing to refuse. `check` reports the absence of
     // rules, which is its existing behaviour and not this error.
