@@ -106,9 +106,10 @@ export type RepairVerdict =
 
 /** The `check.ts` entry of a restored file set, if it carries exactly one. */
 function restoredCheck(rule: RestoredRule): string | undefined {
-  const files = (rule as { files?: { path: string; content: string }[] }).files;
-  if (!Array.isArray(files)) return undefined;
-  const matches = files.filter((file) => file.path === "check.ts");
+  // `rule.files` directly: every variant of the union declares it, so a cast
+  // here would re-declare a shape the generated types already know and absorb
+  // a future schema change instead of failing the build.
+  const matches = rule.files.filter((file) => file.path === "check.ts");
   return matches.length === 1 ? matches[0]?.content : undefined;
 }
 
@@ -143,7 +144,10 @@ export async function verifyRestoredCheck(
     };
   }
 
-  const claimed = (rule as { signature?: string }).signature;
+  // Read through the union rather than cast: `signature` is optional on the
+  // `sg`/`vale` variants and required on `runtime`, which is the distinction
+  // this function exists to enforce, so it must come from the types.
+  const claimed = rule.signature;
   if (typeof claimed !== "string" || claimed === "") {
     // The published schema requires this on a runtime rule, so reaching here
     // means the service broke its own contract. Refuse rather than write bytes

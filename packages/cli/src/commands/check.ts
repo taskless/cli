@@ -20,7 +20,6 @@ import type { ReconcileResponse } from "../api/reconcile";
 import { restoreRule } from "../api/restore";
 import { repairTargets, verifyRestoredCheck } from "../rules/runtime/repair";
 import { writeRuleFile } from "../rules/files";
-import type { GeneratedRule } from "../api/rules";
 import {
   discoverRuntimeRules,
   type RuntimeRule,
@@ -258,11 +257,23 @@ async function repairWithheldRules(
     );
   }
 
-  for (const target of targets) {
-    const outcome = await restoreRule(token, {
-      ruleId: target.ruleId,
-      repositoryUrl: input.repositoryUrl,
-    });
+  // Fetched concurrently: each target is a different rule id under the same
+  // token and repository, so they do not order against each other, and a repo
+  // with several drifted rules would otherwise pay one round trip per rule on
+  // every `check` until they reconverge. The WRITES stay sequential below,
+  // because two rules can share a directory prefix and a half-applied set is
+  // the state this whole path exists to avoid.
+  const fetched = await Promise.all(
+    targets.map(async (target) => ({
+      target,
+      outcome: await restoreRule(token, {
+        ruleId: target.ruleId,
+        repositoryUrl: input.repositoryUrl,
+      }),
+    }))
+  );
+
+  for (const { target, outcome } of fetched) {
     if (outcome.status !== "ok") {
       notices.push(
         `${target.file} could not be restored (${
@@ -292,15 +303,21 @@ async function repairWithheldRules(
     }
 
     try {
-      await writeRuleFile(cwd, rule as unknown as GeneratedRule);
+      await writeRuleFile(cwd, rule);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       notices.push(`${target.file} could not be written (${message}).`);
       continue;
     }
+    // Says what was written, not what the directory now contains. The
+    // delivered set is written over whatever is there; it does not remove a
+    // file the set does not mention, so a stray capture left beside the rule
+    // survives the repair. Claiming the rule "was restored" would overstate
+    // that, and only `check.ts` is signed, so nothing here can vouch for the
+    // rest of the directory. Tracked as #233.
     notices.push(
-      `${target.file} was restored to the bytes the service blessed. It does ` +
-        `not run in this pass; the next \`check\` reports the repaired ` +
+      `${target.file} was rewritten with the bytes the service blessed. It ` +
+        `does not run in this pass; the next \`check\` reports the repaired ` +
         `signature and is blessed through the ordinary path.`
     );
   }
@@ -500,6 +517,7 @@ export const checkCommand = defineCommand({
         const results = dispatched.results;
 
         for (const notice of dispatched.notices) warn(`Notice: ${notice}`);
+        const runNotices = [...plan.notices, ...dispatched.notices];
         for (const failure of dispatched.failures) warn(`Error: ${failure}`);
 
         let errorCount = 0;
@@ -524,9 +542,12 @@ export const checkCommand = defineCommand({
             ...(dispatched.failures.length > 0
               ? { failures: dispatched.failures }
               : {}),
-            ...(dispatched.notices.length > 0
-              ? { notices: dispatched.notices }
-              : {}),
+            // BOTH sources. `plan.notices` carries the repair diagnostics —
+            // what was restored, what could not be, and why — and they used to
+            // reach only `warn()`, which is a no-op under `--json`. So the one
+            // channel a CI run reads dropped the entire output of the feature
+            // whose whole purpose is explaining a rule that did not run.
+            ...(runNotices.length > 0 ? { notices: runNotices } : {}),
           });
           console.log(JSON.stringify(output));
         } else {
