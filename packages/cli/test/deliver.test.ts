@@ -250,6 +250,25 @@ describe("delivering a rule as a file set", () => {
     );
   });
 
+  it.each([
+    ["content is null", { id: "no-eval-abc12345", content: null }],
+    ["content is a string", { id: "no-eval-abc12345", content: "rule: {}" }],
+    ["content is a number", { id: "no-eval-abc12345", content: 0 }],
+  ])("refuses a payload where %s", async (_label, rule) => {
+    // `yaml` renders every one of these as a scalar document rather than
+    // throwing, so without this the rule file is created and its entire
+    // contents are `null`, `rule: {}` or `0`. The mutual-exclusion check above
+    // treats a present-but-null `content` as "the service sent both", which is
+    // the right answer to a different question; this asks whether the value can
+    // be written at all.
+    await expect(
+      writeRuleFile(cwd, rule as unknown as GeneratedRule)
+    ).rejects.toThrow(/no usable `content`/);
+    expect(existsSync(ruleDirectory(cwd, "sg", "no-eval-abc12345"))).toBe(
+      false
+    );
+  });
+
   it("refuses a payload carrying neither files nor content", async () => {
     // Before the published union forced the variants apart, this fell through
     // to the single-content branch and handed `stringify` an `undefined`,
@@ -257,7 +276,7 @@ describe("delivering a rule as a file set", () => {
     // was written, and what it contained was the word undefined.
     const rule = { id: "no-eval-abc12345" } as unknown as GeneratedRule;
     await expect(writeRuleFile(cwd, rule)).rejects.toThrow(
-      /neither `files` nor `content`/
+      /no usable `content`/
     );
     expect(existsSync(ruleDirectory(cwd, "sg", "no-eval-abc12345"))).toBe(
       false

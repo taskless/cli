@@ -246,6 +246,23 @@ const createCommand = defineCommand({
               // A file set carries its fixtures as ordinary files under
               // `.tests/`, already written by `writeRuleFile`. Only the
               // single-content envelope has a separate `tests` to write.
+              //
+              // A file set arriving WITH a stray `tests` is unrepresentable in
+              // the published schema, and if the service ever sent one it would
+              // be dropped here in silence. Named rather than ignored, because
+              // everything else on this path fails loudly when the contract is
+              // broken, and a fixture that vanishes is exactly the kind of loss
+              // that shows up later as a rule which tests nothing.
+              if (
+                !isSingleContentRule(rule) &&
+                (rule as { tests?: unknown }).tests !== undefined
+              ) {
+                throw new CLIError(
+                  `Rule "${rule.id}" was delivered as a file set and also carries \`tests\`; ` +
+                    `a file set's fixtures belong in its own \`.tests/\` files.`,
+                  "RULE_GENERATION_FAILED"
+                );
+              }
               if (isSingleContentRule(rule) && rule.tests) {
                 const testFile = await writeRuleTestFile(cwd, rule, timestamp);
                 writtenFiles.push(testFile);
@@ -486,6 +503,23 @@ const improveCommand = defineCommand({
               // A file set carries its fixtures as ordinary files under
               // `.tests/`, already written by `writeRuleFile`. Only the
               // single-content envelope has a separate `tests` to write.
+              //
+              // A file set arriving WITH a stray `tests` is unrepresentable in
+              // the published schema, and if the service ever sent one it would
+              // be dropped here in silence. Named rather than ignored, because
+              // everything else on this path fails loudly when the contract is
+              // broken, and a fixture that vanishes is exactly the kind of loss
+              // that shows up later as a rule which tests nothing.
+              if (
+                !isSingleContentRule(rule) &&
+                (rule as { tests?: unknown }).tests !== undefined
+              ) {
+                throw new CLIError(
+                  `Rule "${rule.id}" was delivered as a file set and also carries \`tests\`; ` +
+                    `a file set's fixtures belong in its own \`.tests/\` files.`,
+                  "RULE_GENERATION_FAILED"
+                );
+              }
               if (isSingleContentRule(rule) && rule.tests) {
                 const testFile = await writeRuleTestFile(cwd, rule, timestamp);
                 writtenFiles.push(testFile);
