@@ -110,3 +110,27 @@ It also closes a case that reached the filesystem. A payload carrying neither
 `yaml.stringify` an `undefined`, which returns the string `"undefined"`
 rather than throwing. The rule file was created and its contents were that
 word. It is now refused before the directory exists.
+
+A rule the service blessed is now repaired, instead of only reported.
+
+`check` used to parse reconcile's `unsafe`, `unknown` and `missing` verdicts
+and read none of them. `unsafe` (bytes that drifted from what the server
+blessed) and `missing` (a rule the server expected and this disk never had)
+are now re-fetched from `POST /cli/api/rule/{ruleId}/restore`. `unknown` is
+not, because a file the service never issued has nothing to fetch; it gets an
+explanation instead, since "on your disk, never issued" is ordinary and read
+as an unexplained skip.
+
+Restored bytes are verified against the signature reconcile ALREADY sent,
+not against the one the restore response carries. Checking a response against
+itself proves only that the service is internally consistent, which it would
+also be if it returned a newer generation of the rule. Restore repairs a rule;
+it does not upgrade one, and that is now a property with a test rather than a
+promise.
+
+Nothing repaired runs in the pass that repaired it. Restore rewrites the
+working tree and promotes nothing into the current run, so an `unsafe` rule
+stays withheld; the next `check` reports the repaired signature and is blessed
+through the ordinary path. A repair that cannot happen is a notice, never a
+failed `check`, because a rule that was not repaired stays withheld and that
+is already the safe state.
