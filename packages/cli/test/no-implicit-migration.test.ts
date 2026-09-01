@@ -125,6 +125,50 @@ describe("a reporting command never migrates", () => {
     }
   );
 
+  it.each(["check", "verify", "test"] as const)(
+    "%s still refuses a scaffold NEWER than the CLI",
+    async (command) => {
+      // The opposite direction, and a regression this change introduced once.
+      // `check` used to reach that refusal through `ensureTasklessDirectory`,
+      // and dropping the call dropped the check with it: a version-99 scaffold
+      // read as "nothing pending" and `check` reported "No rules configured"
+      // for a layout it could not parse.
+      await writeFile(
+        join(taskless, "taskless.json"),
+        JSON.stringify({ version: 99, install: {} }),
+        "utf8"
+      );
+
+      const { stdout, stderr } = await runCli([
+        command,
+        "--json",
+        "-d",
+        directory,
+      ]);
+      const output = `${stdout}${stderr}`;
+      expect(output).toContain("SCAFFOLD_VERSION_MISMATCH");
+      expect(output).toMatch(/Upgrade the CLI/);
+    }
+  );
+
+  it("proceeds past a newer scaffold when explicitly told to", async () => {
+    // The documented escape hatch has to survive the refusal above, or the
+    // flag is a promise the CLI stopped keeping.
+    await writeFile(
+      join(taskless, "taskless.json"),
+      JSON.stringify({ version: 99, install: {} }),
+      "utf8"
+    );
+
+    const { stderr } = await runCli([
+      "check",
+      "-d",
+      directory,
+      "--allow-version-mismatches",
+    ]);
+    expect(stderr).not.toContain("SCAFFOLD_VERSION_MISMATCH");
+  });
+
   it("still runs against a project that is already current", async () => {
     // The refusal is about being BEHIND, not about having a scaffold.
     await runCli(["init", "--no-interactive", "-d", directory]);

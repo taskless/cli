@@ -16,7 +16,7 @@ import {
   RuleNotFoundError,
 } from "../rules/resolve-path";
 import { outputSchema as verifyTestOutputSchema } from "../schemas/verify-test";
-import { makeErrorEnvelope } from "../types/errors";
+import { makeErrorEnvelope, writeJsonError } from "../types/errors";
 import { CLIError } from "../util/cli-error";
 
 /**
@@ -56,11 +56,7 @@ async function runOverPath(options: {
   } catch (error) {
     if (error instanceof CLIError) {
       if (json) {
-        console.log(
-          JSON.stringify(
-            makeErrorEnvelope(error.code ?? "INTERNAL_ERROR", error.message)
-          )
-        );
+        writeJsonError(error.code ?? "INTERNAL_ERROR", error.message);
       } else {
         console.error(`Error: ${error.message}`);
       }
