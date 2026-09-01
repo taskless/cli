@@ -1,4 +1,5 @@
 import { execFile } from "node:child_process";
+import { existsSync } from "node:fs";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { createServer, type Server } from "node:http";
 import { tmpdir } from "node:os";
@@ -199,6 +200,66 @@ describe("repairing a drifted runtime rule, end to end", () => {
 
       // And the bytes actually landed.
       await expect(readFile(checkFile, "utf8")).resolves.toBe(BLESSED);
+    } finally {
+      await mock.close();
+    }
+  });
+
+  it("leaves the rule directory holding exactly the blessed set, minus fixtures", async () => {
+    // #233. Repair runs BECAUSE the directory's trustworthiness is in
+    // question, and only `check.ts` is signed — so a stray capture beside the
+    // rule is never reported by reconcile, was never replaced by the repair,
+    // and went on changing what the rule matched while the rule read as
+    // repaired. The delivered set is now the directory.
+    const rule = join(directory, ".taskless", "rules", "runtime", "demo");
+    await writeFile(
+      join(rule, "captures", "stray.yml"),
+      CAPTURE.replace("logs-abc12345", "stray-abc12345"),
+      "utf8"
+    );
+    // A fixture no delivered set will ever name: this CLI writes timestamped
+    // ones itself. Kept, and the notice says so rather than leaving a reader
+    // to infer it.
+    await mkdir(join(rule, ".tests"), { recursive: true });
+    await writeFile(join(rule, ".tests", "demo-1970-test.yml"), "id: demo\n");
+
+    const blessed = await canonicalHash(BLESSED);
+    const mock = await startMock({
+      reconcile: driftedReconcile(blessed),
+      restore: () => ({
+        statusCode: 200,
+        body: {
+          ruleId: "demo",
+          rules: [
+            {
+              id: "demo",
+              engine: "runtime",
+              files: [
+                { path: "check.ts", content: BLESSED },
+                { path: "captures/logs.yml", content: CAPTURE },
+              ],
+              signature: blessed,
+            },
+          ],
+        },
+      }),
+    });
+    try {
+      const { stdout } = await runCli(["check", "-d", directory, "--json"], {
+        TASKLESS_TOKEN: "fake.token",
+        TASKLESS_API_URL: mock.apiUrl,
+      });
+
+      expect(existsSync(join(rule, "captures", "stray.yml"))).toBe(false);
+      expect(existsSync(join(rule, ".tests", "demo-1970-test.yml"))).toBe(true);
+      // The rule is whole afterwards. A repair that leaves it inert would be
+      // the bug, not a trade-off.
+      await expect(readFile(checkFile, "utf8")).resolves.toBe(BLESSED);
+      expect(existsSync(join(rule, "captures", "logs.yml"))).toBe(true);
+
+      const notices = (envelope(stdout).notices ?? []).join("\n");
+      expect(notices).toMatch(/was restored/);
+      expect(notices).toContain(".tests/");
     } finally {
       await mock.close();
     }
