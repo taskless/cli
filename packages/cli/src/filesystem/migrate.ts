@@ -266,6 +266,32 @@ export interface RunMigrationsOptions {
 }
 
 /**
+ * A MIGRATION OWNS EVERYTHING UNDER `.taskless/`, INCLUDING THE PROSE.
+ *
+ * If a migration moves, renames or deletes anything in that directory, the
+ * files describing the directory are wrong from that moment, and the migration
+ * is the only commit that knows it. Every other mechanism — a reviewer, a
+ * linter, someone noticing — runs later than the moment the fact changed.
+ *
+ * That is not hypothetical here. `0004` and `0005` relocated every rule and
+ * deleted `rule-tests/`, and the installed `README.md` and skill description
+ * went on naming the old tree for two releases. `0001` rewrites the README on
+ * every run, which sounds like it covers this and does not: migrations only run
+ * ABOVE the recorded version, so a project that is already current never
+ * rewrites anything. Reaching those projects took `0006`.
+ *
+ * So when you write a migration that changes this directory's shape:
+ *
+ * 1. Update whatever describes it. `0001`'s README body derives its layout
+ *    section from the rule layout table, so a table change carries; anything
+ *    written as prose does not.
+ * 2. Refresh this repository's own `.taskless/` and commit it, since we install
+ *    Taskless on ourselves. `installed-documentation.test.ts` fails if you forget.
+ * 3. Ask whether already-current projects need the change. If they do, the only
+ *    thing that reaches them is a new version, because nothing below the
+ *    recorded one runs again.
+ */
+/**
  * The schema version a current CLI migrates a project to.
  *
  * Derived from the migration map rather than declared beside it, so adding a
