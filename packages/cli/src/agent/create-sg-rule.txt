@@ -1,4 +1,4 @@
-# Topic: create-sg-rule     (CLI v%(CLI_VERSION)s / topic v4)
+# Topic: create-sg-rule     (CLI v%(CLI_VERSION)s / topic v5)
 
 ## You are here
 This is `create-sg-rule`. It helps you write an ast-grep rule: a check
@@ -268,8 +268,9 @@ metavariable, it always finds it.
 ## Important Notes
 
 - Do NOT make any HTTP requests to taskless.io on this path.
-- Do NOT write to `.taskless/rule-metadata/`: locally authored rules
-  have no metadata sidecar; they iterate via file edits.
+- Do NOT write to `.taskless/rule-metadata/`: no rule has a metadata
+  sidecar, service-generated ones included, because the CLI never
+  writes that directory. Locally authored rules iterate via file edits.
 - The verify loop is the quality gate. A clean failure is a legitimate
   reason to escalate, but only with the user's confirmation (step 9).
 

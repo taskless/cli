@@ -256,6 +256,11 @@ const createCommand = defineCommand({
               }
             }
 
+            // Dead in practice, and kept deliberately. The service does not
+            // populate `meta` on a status response, so no sidecar has ever
+            // been written from here; the branch is what would start writing
+            // one the day it does. `rule meta` says as much when asked, rather
+            // than the code pretending the file is merely absent.
             if (status.meta) {
               const metaFiles = await writeRuleMetaFiles(cwd, status.meta);
               writtenFiles.push(...metaFiles);
@@ -513,6 +518,11 @@ const improveCommand = defineCommand({
               }
             }
 
+            // Dead in practice, and kept deliberately. The service does not
+            // populate `meta` on a status response, so no sidecar has ever
+            // been written from here; the branch is what would start writing
+            // one the day it does. `rule meta` says as much when asked, rather
+            // than the code pretending the file is merely absent.
             if (status.meta) {
               const metaFiles = await writeRuleMetaFiles(cwd, status.meta);
               writtenFiles.push(...metaFiles);
@@ -570,7 +580,8 @@ const improveCommand = defineCommand({
 const metaCommand = defineCommand({
   meta: {
     name: "meta",
-    description: "Show sidecar metadata for a rule",
+    description:
+      "Show sidecar metadata for a rule (no sidecar is written by this version)",
   },
   args: {
     dir: {
@@ -610,11 +621,21 @@ const metaCommand = defineCommand({
       throw new CLIError(message, code, { reported: true });
     }
 
+    // The sidecar is still READ, so a file that exists is reported. What
+    // changed is what its absence means. It is not "this rule has no
+    // metadata": no rule does. The sidecar is written from the `meta` block of
+    // a rule status response, the service does not populate that block, and so
+    // this CLI has never written one. Reporting RULE_NOT_FOUND sent agents
+    // looking for a rule that was on disk the whole time.
     const meta = await readRuleMetaFile(cwd, args.id);
     if (!meta) {
       fail(
-        `No metadata found for rule "${args.id}". Expected .taskless/rule-metadata/${args.id}.yml`,
-        "RULE_NOT_FOUND"
+        `No metadata sidecar exists for rule "${args.id}", and this version of the CLI never writes one: ` +
+          `the rule service does not return the metadata block that ` +
+          `.taskless/rule-metadata/ is written from. This is not specific to "${args.id}". ` +
+          `To iterate on a rule, pass the ticket id returned as "ruleId" by \`taskless rule create --json\` ` +
+          `to \`taskless rule improve --from <file>\`, or use the local-only improve flow.`,
+        "RULE_META_UNAVAILABLE"
       );
     }
 

@@ -26,6 +26,13 @@ export type CLIErrorCode =
   | "RULE_GENERATION_FAILED"
   | "RULE_UNSUPPORTED"
   | "RULE_NOT_FOUND"
+  // `rule meta` reads a sidecar under `.taskless/rule-metadata/`, written from
+  // the `meta` block of a rule status response. The service does not populate
+  // that block, so this CLI never writes a sidecar and the command has no data
+  // to return. Distinct from RULE_NOT_FOUND, which says "look for a different
+  // id": there is no id that produces a sidecar, and an agent that reads this
+  // as "not found" retries or reports a missing rule that is plainly on disk.
+  | "RULE_META_UNAVAILABLE"
   | "INVALID_INPUT"
   | "NETWORK_ERROR"
   | "SCAN_FAILED"

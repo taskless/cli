@@ -147,7 +147,8 @@ describe("--anonymous flag (per-command behavior matrix)", () => {
 
   describe("rule meta --anonymous", () => {
     it("accepts the flag as no-op", async () => {
-      // Rule doesn't exist → RULE_NOT_FOUND regardless of --anonymous
+      // No sidecar is ever written → RULE_META_UNAVAILABLE, and --anonymous
+      // changes nothing about that.
       await mkdir(join(cwd, ".taskless"), { recursive: true });
       await writeFile(
         join(cwd, ".taskless", "taskless.json"),
@@ -164,7 +165,7 @@ describe("--anonymous flag (per-command behavior matrix)", () => {
       ]);
       expect(result.exitCode).not.toBe(0);
       const parsed = JSON.parse(result.stdout) as { code: string };
-      expect(parsed.code).toBe("RULE_NOT_FOUND");
+      expect(parsed.code).toBe("RULE_META_UNAVAILABLE");
     });
   });
 
