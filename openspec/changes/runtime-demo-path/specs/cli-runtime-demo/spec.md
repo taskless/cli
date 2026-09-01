@@ -2,10 +2,9 @@
 
 ### Requirement: A deliberately-invoked demo path
 
-The CLI SHALL provide a path that generates one runtime rule against a
-service-controlled repository, writes it, and verifies it, so the boundary
-between this client and the rule service can be shown working rather than
-described.
+The CLI SHALL provide a path that generates one runtime rule from a fixed
+input the service holds, writes it, and verifies it, so the boundary between
+this client and the rule service can be shown working rather than described.
 
 It SHALL be invoked deliberately. Routing SHALL NOT reach it, and no recipe
 that decides how to author a rule SHALL name it as a destination.

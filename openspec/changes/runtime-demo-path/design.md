@@ -55,7 +55,7 @@ Concretely: `submitRule`, `pollRuleStatus` and `writeRuleFile` are reused, not
 reimplemented. If the demo needs a new writer, that is evidence the shapes have
 diverged, and the demo has done its job by failing.
 
-### D2 — The demo tracks the mainline's naming, whatever it is
+### D2 — The demo tracks the mainline's naming, and follows rather than leads
 
 The paths above mirror today's `/cli/api/rule` naming, including its
 inconsistency (**N10**: `ruleId` names a ticket, by the service's own field
@@ -65,6 +65,24 @@ change.
 The demo must never be where a second convention lives. Its value is being
 indistinguishable from the path users take; a demo that is tidier than
 production is a demo that stops proving anything.
+
+**This is now a sequencing constraint rather than a principle.** The generator
+team is renaming the request resource to `request`/`requestId` as its own
+change, ahead of this one. So the demo endpoints are named after the rename
+lands, not before — building them first would make the demo the debut of the
+new convention, which is precisely what this decision forbids.
+
+### D2a — The fixed input is data the service holds, not a repository
+
+An earlier draft of this proposal said "a public repository the service
+controls". That was wrong, and the generator team corrected it: CLI-bound
+generation never clones. The clone is deferred to the git-bound push, which
+happens only for a pull request, and `repositoryUrl` on a CLI request is
+authorization scoping and a ticket field rather than model input.
+
+So the fixture is a prompt and its examples, held as data alongside the
+rule-hash vectors. Naming a repository would have been decoration, and
+decoration is what a later reader tries to make load-bearing.
 
 ### D3 — It stops at `verify`, and that is stated rather than worked around
 
@@ -114,6 +132,12 @@ A demo that invents a rule when generation fails would be worse than a demo
 that fails, because it would look like success.
 
 ## Risks / Trade-offs
+
+**A rename lands first, and this waits for it.** The request resource becomes
+`request`/`requestId`, which is a change to paths and to a field name this
+client reads. Regenerating the types catches most of it at compile time; two
+call sites build their URL as a template string and would not fail to compile,
+so they are changed deliberately rather than found later.
 
 **The service half does not exist yet.** The endpoints are the service team's
 to build, raised as N9. This change assumes the shapes in D1; if they land
