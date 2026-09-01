@@ -3,6 +3,7 @@ import { resolve } from "node:path";
 import { defineCommand } from "citty";
 
 import { ensureTasklessDirectory } from "../filesystem/directory";
+import { requireCurrentSchema } from "../filesystem/migrate";
 import {
   testOneRule,
   verifyOneRule,
@@ -16,6 +17,7 @@ import {
 } from "../rules/resolve-path";
 import { outputSchema as verifyTestOutputSchema } from "../schemas/verify-test";
 import { makeErrorEnvelope } from "../types/errors";
+import { CLIError } from "../util/cli-error";
 
 /**
  * The shared body of `verify` and `test`.
@@ -38,21 +40,38 @@ async function runOverPath(options: {
 }): Promise<void> {
   const { cwd, target, json, label, run } = options;
 
-  // Both commands need a current layout before a path means anything, so this
-  // migrates as a precondition. The report is what lets the run say it did:
-  // carried into the `--json` envelope below, and printed for a person.
-  const migrated = await ensureTasklessDirectory(cwd, {
-    // Suppressed under `--json` for the same reason every other notice
-    // in this command is: the information is on the envelope's
-    // `migrated` field, and a machine consumer reading stderr gets
-    // prose it cannot parse. This one grew from a single line to a
-    // file-by-file summary, so leaving it ungated would hand a CI
-    // script that logs or fails on stderr a much noisier surprise than
-    // the one-liner it tolerated before.
-    onNotice: (message: string) => {
-      if (!json) console.error(message);
-    },
-  });
+  // REFUSES rather than migrates, for both `verify` and `test`.
+  //
+  // A current layout is still a precondition — a path means nothing against
+  // the wrong tree — but establishing it by migrating made two reporting
+  // commands rewrite the repository. `0005` moves and deletes tracked files,
+  // and it happened with nothing on the human path to say so, landing in
+  // whatever commit came next.
+  //
+  // A wall the user meets once after an upgrade is the visible version of the
+  // same cost, and it is the trade this CLI already makes elsewhere: refuse,
+  // and name the thing that fixes it.
+  try {
+    await requireCurrentSchema(cwd);
+  } catch (error) {
+    if (error instanceof CLIError) {
+      if (json) {
+        console.log(
+          JSON.stringify(
+            makeErrorEnvelope(error.code ?? "INTERNAL_ERROR", error.message)
+          )
+        );
+      } else {
+        console.error(`Error: ${error.message}`);
+      }
+      process.exitCode = 1;
+      return;
+    }
+    throw error;
+  }
+  // Still creates a scaffold that is absent. That writes a fresh directory
+  // rather than rewriting an existing one, so it is not the case above.
+  await ensureTasklessDirectory(cwd);
 
   let rules;
   try {
@@ -86,7 +105,6 @@ async function runOverPath(options: {
           verifyTestOutputSchema.parse({
             ok: true,
             rules: [],
-            ...(migrated === undefined ? {} : { migrated }),
           })
         )
       );
@@ -109,7 +127,6 @@ async function runOverPath(options: {
         verifyTestOutputSchema.parse({
           ok: failed.length === 0,
           rules: results,
-          ...(migrated === undefined ? {} : { migrated }),
         })
       )
     );

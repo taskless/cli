@@ -1,5 +1,12 @@
 import { execFile } from "node:child_process";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import {
+  mkdir,
+  mkdtemp,
+  readFile,
+  rm,
+  stat,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { promisify } from "node:util";
@@ -59,7 +66,7 @@ function expectSeededMigration(migrated: unknown): void {
   expect(field.files.modified).toContain(".taskless/taskless.json");
 }
 
-describe("the migrated field on the --json envelope", () => {
+describe("who migrates, and who refuses", () => {
   let temporaryDirectory: string;
   let tasklessDirectory: string;
 
@@ -93,44 +100,82 @@ describe("the migrated field on the --json envelope", () => {
     );
   }
 
-  for (const command of ["check", "verify", "test"] as const) {
-    it(`${command} --json reports the migration it performed`, async () => {
+  it("init --json reports the migration it performed", async () => {
+    // `init` is the only command that migrates now, so it is the only one that
+    // can report one. The field moved with the behaviour rather than being
+    // dropped: a CI script still needs to know the working tree was rewritten
+    // and what moved.
+    await seedVersion3();
+
+    const { stdout } = await runCli([
+      "init",
+      "--no-interactive",
+      "--json",
+      "-d",
+      temporaryDirectory,
+    ]);
+
+    const envelope = parseEnvelope(stdout);
+    expect(envelope.migrated).toBeDefined();
+    expectSeededMigration(envelope.migrated);
+  });
+
+  it("init --json omits the field when nothing migrated", async () => {
+    // Absence is the signal, so a consumer never reads empty arrays to decide.
+    await seedVersion3();
+    await runCli(["init", "--no-interactive", "-d", temporaryDirectory]);
+
+    const { stdout } = await runCli([
+      "init",
+      "--no-interactive",
+      "--json",
+      "-d",
+      temporaryDirectory,
+    ]);
+
+    expect(parseEnvelope(stdout)).not.toHaveProperty("migrated");
+  });
+
+  it.each(["check", "verify", "test"] as const)(
+    "%s refuses a project behind the CLI rather than migrating it",
+    async (command) => {
+      // The behaviour this file used to assert, inverted. These commands
+      // report; migrating as a side effect meant a read rewrote the
+      // repository, and it made a migration unverifiable, since asking the
+      // question performed the change.
       await seedVersion3();
 
-      const { stdout } = await runCli([
+      const { stdout, stderr } = await runCli([
         command,
         "--json",
         "-d",
         temporaryDirectory,
       ]);
 
-      const envelope = parseEnvelope(stdout);
-      expect(envelope.migrated).toBeDefined();
-      expectSeededMigration(envelope.migrated);
-    });
+      const output = `${stdout}${stderr}`;
+      expect(output).toContain("SCAFFOLD_MIGRATION_REQUIRED");
+      expect(output).toMatch(/init/);
 
-    it(`${command} --json omits the field when nothing migrated`, async () => {
-      await seedVersion3();
-      // First run migrates; the second finds the scaffold current. Absence is
-      // the signal, so a consumer never has to read empty arrays to decide.
-      await runCli([command, "--json", "-d", temporaryDirectory]);
-
-      const { stdout } = await runCli([
-        command,
-        "--json",
-        "-d",
-        temporaryDirectory,
-      ]);
-
-      const envelope = parseEnvelope(stdout);
-      expect(envelope).not.toHaveProperty("migrated");
-    });
-  }
+      // And it left the project alone: still version 3, rule still flat.
+      const manifest = JSON.parse(
+        await readFile(join(tasklessDirectory, "taskless.json"), "utf8")
+      ) as { version: number };
+      expect(manifest.version).toBe(SEEDED_FROM);
+      await expect(
+        stat(join(tasklessDirectory, "rules", "no-eval.yml"))
+      ).resolves.toBeDefined();
+    }
+  );
 
   it("names the versions and the files on human stderr", async () => {
     await seedVersion3();
 
-    const { stderr } = await runCli(["check", "-d", temporaryDirectory]);
+    const { stderr } = await runCli([
+      "init",
+      "--no-interactive",
+      "-d",
+      temporaryDirectory,
+    ]);
 
     const span = `from schema version ${String(SEEDED_FROM)} to ${String(LATEST_SCHEMA_VERSION)}`;
     expect(stderr).toContain(`Migrating .taskless/ ${span}`);
@@ -141,9 +186,14 @@ describe("the migrated field on the --json envelope", () => {
 
   it("says nothing on stderr when the scaffold is already current", async () => {
     await seedVersion3();
-    await runCli(["check", "-d", temporaryDirectory]);
+    await runCli(["init", "--no-interactive", "-d", temporaryDirectory]);
 
-    const { stderr } = await runCli(["check", "-d", temporaryDirectory]);
+    const { stderr } = await runCli([
+      "init",
+      "--no-interactive",
+      "-d",
+      temporaryDirectory,
+    ]);
 
     expect(stderr).not.toContain("Migrat");
   });
