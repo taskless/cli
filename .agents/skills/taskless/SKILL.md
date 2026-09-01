@@ -3,7 +3,7 @@ name: taskless
 description: |
   Use for any Taskless task. Trigger when the user mentions Taskless by name,
   or when their request involves the .taskless/ directory or files in it
-  (rules, rule-tests, rule-metadata).
+  (rules, rule-metadata).
 
   Specifically:
   - "create/add/write a taskless rule for X"

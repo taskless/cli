@@ -9,6 +9,7 @@ import installMigration from "./migrations/0002-install";
 import dropInstalledAt from "./migrations/0003-drop-installed-at";
 import valeEngine from "./migrations/0004-vale-engine";
 import ruleDirectories from "./migrations/0005-rule-directories";
+import refreshReadme from "./migrations/0006-refresh-readme";
 
 export interface TasklessInstallTarget {
   skills?: string[];
@@ -71,6 +72,7 @@ const migrations: Migrations = {
   "3": dropInstalledAt,
   "4": valeEngine,
   "5": ruleDirectories,
+  "6": refreshReadme,
 };
 
 /** Global flag that downgrades a too-new scaffold from an error to a skip. */
@@ -262,6 +264,18 @@ export interface RunMigrationsOptions {
    */
   allowVersionMismatches?: boolean;
 }
+
+/**
+ * The schema version a current CLI migrates a project to.
+ *
+ * Derived from the migration map rather than declared beside it, so adding a
+ * migration cannot leave a constant behind. Exported because tests kept
+ * hardcoding the number, which made every schema bump a hunt for literals and
+ * turned "reaches the latest version" into "reaches 5" — an assertion that
+ * silently stops meaning what it was written to mean.
+ */
+export const LATEST_SCHEMA_VERSION: number =
+  sortedMigrations(migrations).at(-1)?.[0] ?? 0;
 
 /**
  * Run any pending migrations against the .taskless/ directory.

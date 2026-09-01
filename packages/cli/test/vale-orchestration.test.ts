@@ -15,6 +15,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { hasValeRules, runEngines } from "../src/rules/dispatch";
 import { assembleSgConfig, assembleValeConfig } from "../src/rules/assemble";
 import { findValeBinary } from "../src/rules/vale/binary";
+import { LATEST_SCHEMA_VERSION } from "../src/filesystem/migrate";
 
 const withVale = findValeBinary().path === undefined ? describe.skip : describe;
 
@@ -94,7 +95,7 @@ function makeMixedProject(options?: {
   // the in-process `runEngines` tests never noticed.
   writeFileSync(
     join(cwd, ".taskless", "taskless.json"),
-    JSON.stringify({ version: 5, install: {} })
+    JSON.stringify({ version: LATEST_SCHEMA_VERSION, install: {} })
   );
 
   writeFileSync(join(cwd, "app.js"), "eval('1 + 1');\n");

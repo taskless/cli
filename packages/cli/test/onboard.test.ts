@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { promisify } from "node:util";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { LATEST_SCHEMA_VERSION } from "../src/filesystem/migrate";
 
 const execFileAsync = promisify(execFile);
 const binPath = resolve(import.meta.dirname, "../dist/index.js");
@@ -57,7 +58,7 @@ describe("taskless onboard", () => {
     expect(stdout).toContain("## Goal");
 
     const manifest = await readJsonManifest(cwd);
-    expect(manifest.version).toBe(5);
+    expect(manifest.version).toBe(LATEST_SCHEMA_VERSION);
     // init/onboard alone should not record onboarded
     const install = manifest.install as { onboarded?: boolean } | undefined;
     expect(install?.onboarded).toBeUndefined();

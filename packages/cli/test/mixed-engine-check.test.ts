@@ -205,9 +205,14 @@ describe("check over a project with both engines", () => {
       // The exclusion is ours, not the user's. Naming a path is a request, and
       // silently declining to check a file someone asked for would be worse
       // than checking one they did not.
+      // Deliberately NOT `README.md`. That file is generated and a migration
+      // rewrites it, so using it here made this test depend on whether a
+      // migration happened to run during the check — which it started doing
+      // the moment a new migration was added. The subject is the exclusion,
+      // not the file.
       await writeFile(
-        join(project, ".taskless", "README.md"),
-        "This readme simply describes things.\n"
+        join(project, ".taskless", "notes.md"),
+        "These notes simply describe things.\n"
       );
 
       const { stdout } = await runCli([
@@ -215,13 +220,13 @@ describe("check over a project with both engines", () => {
         "-d",
         project,
         "--json",
-        ".taskless/README.md",
+        ".taskless/notes.md",
       ]);
       const output = JSON.parse(stdout.trim()) as CheckOutput;
 
       expect(
         output.results.some(
-          (f) => f.source === "vale" && f.file === ".taskless/README.md"
+          (f) => f.source === "vale" && f.file === ".taskless/notes.md"
         )
       ).toBe(true);
     });
