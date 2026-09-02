@@ -37,6 +37,7 @@ A runtime rule's fixtures execute delivered code, so they SHALL run only under t
 - **THEN** each directory under `.tests/fail/` SHALL be passed to the check as its `root` and SHALL produce at least one finding
 - **AND** each directory under `.tests/pass/` SHALL be passed as its `root` and SHALL produce none
 - **AND** a rule populating only one bucket SHALL be reported as unverified rather than passing
+- **AND** a rule holding no fixture cases at all SHALL be reported as unverified rather than passing
 
 #### Scenario: A runtime rule the policy refuses is reported as not run
 

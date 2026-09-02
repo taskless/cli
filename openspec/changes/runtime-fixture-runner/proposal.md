@@ -74,8 +74,11 @@ two engines.
 
 ## Impact
 
-- `packages/cli/src/rules/runtime/` — a fixture runner beside the existing
-  harness, reusing `invoke.ts` rather than a second execution path.
+- `packages/cli/src/rules/runtime/` — a fixture runner that CALLS the existing
+  executor rather than sitting beside it. `executeRuntimeRule` already takes a
+  root, and `check` already passes the repository root through `dispatch.ts`;
+  a case directory is a different root handed to the same function. What is new
+  is the loop over cases and the pass/fail assertion, not the execution.
 - `packages/cli/src/rules/inspect.ts` — `testOneRule`'s runtime branch stops
   returning `ok: true` for a run that did not happen.
 - `packages/cli/src/commands/verify.ts` — the renderer distinguishes a skipped

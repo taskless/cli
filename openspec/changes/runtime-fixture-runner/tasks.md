@@ -48,6 +48,6 @@ permanently unverified.
 
 ## 7. Close out
 
-- [ ] 7.1 Decide the no-fixtures case: unverified in the third state now, or a failure matching the other engines. Recorded as an open risk rather than settled quietly
+- [x] 7.1 Decide the no-fixtures case. **Settled: it fails, matching the other engines.** Every rule needs a fixture. Depth is not policed, so a trivial case that exercises little and passes is acceptable, but it can only live in `pass/` — a `fail/` case that produces nothing is the silent regression this runner exists to catch
 - [ ] 7.2 Tell the generator team, who have recorded this as a limit on what the demonstration can assert
 - [ ] 7.3 Archive the change
