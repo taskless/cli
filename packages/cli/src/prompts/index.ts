@@ -38,16 +38,32 @@ import {
  * remove.
  *
  * `engine-selection` used to be exported alongside them. It no longer exists:
- * the criterion it carried now lives in `route`, stated once. `route` is not
- * exported yet because it still contains local mechanics (`taskless detect`,
- * on-device authoring) a Worker cannot run; until it is, a consumer gets each
- * destination's own scope from these three and adjudicates genuinely ambiguous
- * calls itself.
+ * the criterion it carried now lives in `route`, stated once.
+ *
+ * `route` was withheld on the grounds that it still contains local mechanics
+ * (`taskless detect`, on-device authoring) a Worker cannot run, and that a
+ * consumer could adjudicate ambiguous calls from the three destinations. Both
+ * halves were wrong in the same way.
+ *
+ * The mechanics are true and do not defeat it: a service consumer ignores
+ * them, which is a smaller adaptation than restating the criteria. And
+ * adjudicating from the destinations is what the platform generator actually
+ * tried. It hand-wrote the same judgement, arrived at `static | runtime` with
+ * nowhere to put `vale`, and generated every prose rule as an ast-grep rule
+ * while its own delivery layer could already serve a Vale one. `route` warns
+ * about exactly that conflation: whether a rule is static or runtime is one
+ * axis, and which engine authors it is another.
+ *
+ * That is the dead end named two paragraphs up, mirrored. Exporting a chooser
+ * without its destinations strands a consumer that can route but not author;
+ * exporting destinations without the chooser strands one that can author but
+ * not route, and it will write its own chooser rather than stop.
  */
 export const TOPICS = [
   "create-sg-rule",
   "create-vale-rule",
   "create-runtime-rule",
+  "route",
 ] as const;
 
 /**
@@ -57,8 +73,7 @@ export const TOPICS = [
  * - Command recipes (`auth` … `update`) walk an agent through running a CLI
  *   subcommand on a developer's machine. There is no caller for them outside
  *   the CLI that hosts those commands.
- * - Authoring recipes are unreachable server-side: `route` picks an authoring
- *   destination before the service is involved, `create-remote-rule` states
+ * - Authoring recipes are unreachable server-side: `create-remote-rule` states
  *   the boundary from the client's side, `detect` documents a CLI subprocess a
  *   Worker cannot spawn, `create-legacy-rule` targets a local toolchain, and
  *   `rule-meta` describes a local sidecar file the CLI never writes.
@@ -75,7 +90,6 @@ export const INTERNAL_TOPICS = [
   "info",
   "init",
   "onboard",
-  "route",
   "rule",
   "rule-meta",
   "update",
