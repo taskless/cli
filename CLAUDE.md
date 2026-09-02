@@ -270,6 +270,37 @@ This happens when the **parent** PR is merged with `--delete-branch`: deleting t
 - **No OpenSpec archive check at all.** An unarchived change directory is expected on a pull request AND on `main` while a forward-merging stack drains. Neither is a failure, and nothing reports it. Archive the change on the tip slice; a replacement that measures abandoned work rather than in-progress work is a separate piece of design.
 - **Clean up local branches** once the stack lands: `git fetch --prune`, then delete the branches that merged (`git branch --merged main`).
 
+## A spec delta REPLACES a requirement, it does not patch it
+
+**A `## MODIFIED Requirements` block must restate the requirement in full, including every scenario you are not changing.** `openspec archive` rewrites the standing requirement to exactly what the delta contains. Anything you leave out is deleted from the spec, silently, with nothing reporting it.
+
+Measured on `signature-coverage-statement`, whose proposal described itself as strictly additive and whose delta added one scenario while carrying one of the three that already existed:
+
+```
+BEFORE                                    AFTER ARCHIVE
+Envelope is emitted for algoVersion 1  ->  Envelope is emitted for algoVersion 1
+Version is read before parameters      ->  (gone)
+Signatures compare as whole strings    ->  (gone)
+                                           A v1 signature covers the engine rule file
+```
+
+Two normative scenarios, about parameter-parsing order and whole-string comparison, would have left the spec as a side effect of documenting something unrelated.
+
+**Do not rely on a preserve-on-sync guardrail.** `openspec-sync-specs` advises retaining content a delta does not mention, and that advice does not reach `openspec archive`, which is what actually runs. A delta that omits a scenario, and a comment saying the omission is deliberate, produce the same result: the scenario is gone.
+
+**Check it the way it was found**, since nothing else will. `openspec validate --strict` passes on a delta that drops scenarios:
+
+```bash
+# commit everything first: the revert below is a hard reset
+pnpm openspec archive <change-name> -y
+grep -n "^#### Scenario" openspec/specs/<capability>/spec.md
+git reset --hard HEAD && git clean -fd openspec/
+```
+
+Every scenario present before must still be present, plus whatever you added. Two cautions from doing it: commit first, and restore uncommitted edits by copying files **over** the change directory rather than copying the directory onto itself, which nests a stray copy inside it.
+
+**The paranoia is warranted because the failure is invisible.** Nothing fails, no check reports it, and the requirement still reads coherently afterwards. It just no longer says the thing it used to say.
+
 ## OpenSpec Apply
 
 When implementing changes via `/opsx:apply`, **pause after each task group** for user review before continuing. Commit between groups and wait for confirmation.
