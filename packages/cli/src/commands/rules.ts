@@ -434,9 +434,13 @@ const improveCommand = defineCommand({
         });
         requestId = response.requestId;
       } catch (error) {
+        // `iterateRule` marks the failures the caller can act on by throwing a
+        // CLIError carrying the code (a 404 on the supplied ticket id is
+        // RULE_NOT_FOUND, not something to retry). Everything else really is
+        // an unclassified transport/API failure.
         fail(
           error instanceof Error ? error.message : String(error),
-          "NETWORK_ERROR"
+          error instanceof CLIError && error.code ? error.code : "NETWORK_ERROR"
         );
       }
 

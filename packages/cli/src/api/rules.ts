@@ -1,5 +1,6 @@
 import type { paths } from "../generated/api";
 import { createApiClient } from "./client";
+import { CLIError } from "../util/cli-error";
 import { getCliPrefix } from "../util/package-manager";
 
 // --- Types extracted from the generated schema ---
@@ -183,7 +184,15 @@ export async function iterateRule(
       throw new Error("Access denied to this request.");
     }
     if (response.status === 404 && errorData.error === "request_not_found") {
-      throw new Error("Rule not found. It may have expired.");
+      // The caller supplied this ticket id (from `rule create --json`, or from
+      // the user), so "no such id" is a state they can act on: re-check the id.
+      // The code travels on the error so `improveCommand` reports
+      // RULE_NOT_FOUND rather than folding it into NETWORK_ERROR, which would
+      // tell an agent to retry an id that will never resolve.
+      throw new CLIError(
+        "Rule not found. It may have expired.",
+        "RULE_NOT_FOUND"
+      );
     }
     if (
       response.status === 404 &&
