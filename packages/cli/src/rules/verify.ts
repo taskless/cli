@@ -27,13 +27,7 @@ import { findSgBinary, buildPath, stripSgDeprecationBanner } from "./scan";
 import astGrepJsonSchema from "../generated/ast-grep-rule-schema.json";
 import { RULE_EXAMPLES } from "./verify-examples";
 import { isValidRuleId } from "./validate-id";
-
-// --- Helpers ---
-
-/** Escape special regex characters so a string can be used as a literal pattern */
-function escapeRegExp(s: string): string {
-  return s.replaceAll(/[.*+?^${}()|[\]\\]/g, String.raw`\$&`);
-}
+import { escapeRegExp } from "../util/regex";
 
 // --- Types ---
 
