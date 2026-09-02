@@ -25,6 +25,17 @@ teams hold the same binding as a private assumption.
 - **WHEN** the CLI computes a signature for a rule file's bytes using algoVersion 1
 - **THEN** the signature SHALL be the string `1;h=sha-256;d=<hex>` for that file's normalized bytes
 
+#### Scenario: Version is read before parameters
+
+- **WHEN** the CLI parses a signature string
+- **THEN** it SHALL read the algoVersion as the substring before the first `;`
+- **AND** SHALL NOT rely on the `key=value` parameter syntax to determine the version
+
+#### Scenario: Signatures compare as whole strings
+
+- **WHEN** the CLI compares two signatures for equality
+- **THEN** it SHALL compare the full envelope strings, not the bare digests
+
 #### Scenario: A v1 signature covers the engine's rule file
 
 - **WHEN** a runtime rule carries a signature at algoVersion 1
