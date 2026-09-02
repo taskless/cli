@@ -25,6 +25,8 @@ import { fileURLToPath } from "node:url";
  *   pinned version and wrong here: it would make every refresh produce a diff
  *   even when the contract is byte-identical, and a diff that is always
  *   non-empty is one nobody reads. An unchanged API must produce no change.
+ *   That rules out a timestamp we would add, and equally one the service
+ *   already put in the document — see `stripBuildStamp` below.
  * - **Fail loudly, never fall back.** `fetch-rule-hash-vectors.ts` degrades to
  *   its committed cache because it runs in `prebuild` and must not break an
  *   offline build. This script is never on the build path; it is only ever run
@@ -82,6 +84,28 @@ if (!schema.openapi || typeof schema.paths !== "object") {
   throw new Error(
     `Response from ${sourceUrl} is not an OpenAPI document (no "openapi"/"paths")`
   );
+}
+
+// The service builds its own `info.version` from its deploy time —
+// `0.0.1-private.20260901234218` — so two fetches minutes apart differ in that
+// one field and in nothing else. Measured: a refresh 19 minutes after the
+// vendored copy was taken produced a diff of exactly one line, the version.
+// Keeping it verbatim would give this file the always-non-empty diff the
+// docstring above exists to avoid, so drop the build stamp and keep the
+// version it qualifies. A real version bump still shows up; if the service
+// ever changes the shape of the suffix, nothing is stripped and the churn
+// comes back visibly rather than the wrong thing being discarded silently.
+const BUILD_STAMP = /\.\d{14}$/;
+
+const info = schema.info;
+if (info && typeof info === "object" && !Array.isArray(info)) {
+  const version = (info as Record<string, unknown>).version;
+  if (typeof version === "string" && BUILD_STAMP.test(version)) {
+    (info as Record<string, unknown>).version = version.replace(
+      BUILD_STAMP,
+      ""
+    );
+  }
 }
 
 writeFileSync(OUTPUT_PATH, JSON.stringify(schema, null, 2) + "\n", "utf8");

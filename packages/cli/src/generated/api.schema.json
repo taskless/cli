@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Taskless CLI API",
-    "version": "0.0.1-private.20260901234218",
+    "version": "0.0.1-private",
     "description": "Internal API consumed by the Taskless CLI."
   },
   "components": {
