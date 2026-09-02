@@ -35,7 +35,19 @@ What each engine is checked for:
 |-----------|--------------------------------------------------------------------------------------------------------------------------------------|------------------------------------------------------------|
 | `sg`      | ast-grep schema, plus `id`/`language`/`severity`/`message`/`rule`, and `regex` accompanied by `kind`                                 | the `valid`/`invalid` cases in `.tests/`                   |
 | `vale`    | style parses, `extends` and `message` present, `level` in vocabulary, and the rule's `.vale.ini` enables `<id>.<id>` under a matcher | the `.tests/pass/` and `.tests/fail/` buckets              |
-| `runtime` | `check.ts` present, at least one capture rule in `captures/`                                                                         | reported as not run: the `.tests/pass/` and `.tests/fail/` cases need the server harness |
+| `runtime` | `check.ts` present, at least one capture rule in `captures/`                                                                         | each directory under `.tests/pass/` and `.tests/fail/`, as the check's `root` |
+
+A runtime rule's fixtures execute its `check.ts`, so they run only under
+the policy `check` already applies: an authenticated reconcile that
+returns the rule's signature, or `--dangerously-run-scripts`. When
+neither holds, that rule prints `○` rather than a tick, names the reason
+and the flag, and is reported as `"ran": false` with a `refused` string
+saying why. It is counted under "did not run" rather than among the
+rules tested, and on its own it does not fail the command.
+
+Read `ran` before `ok`. A runtime rule that did not run is not a rule
+that passed, and treating the two alike is the defect this reporting
+exists to prevent.
 
 ## What a path means
 
@@ -70,10 +82,12 @@ Both commands answer in the same shape, one entry per rule:
 - `ok` at the top is true only when every rule passed.
 - `errors` is one string per problem, written to be read by a person.
 - `test` adds `ran`, which is false when `verify` failed and the tests
-  never executed.
+  never executed, and false for a runtime rule the execution policy
+  refused. The second case also carries `refused` with the reason, and
+  is the one where `ok` alone would mislead you.
 
-Without `--json` the same information prints as a `✓`/`✗` line per rule
-with its errors indented beneath.
+Without `--json` the same information prints as a `✓`/`✗`/`○` line per
+rule with its errors indented beneath. `○` is a rule that did not run.
 
 ## Exit codes
 
