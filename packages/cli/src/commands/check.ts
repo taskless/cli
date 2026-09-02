@@ -251,7 +251,20 @@ async function repairWithheldRules(
     );
   }
 
-  const targets = repairTargets(input.result);
+  const { targets, unidentified } = repairTargets(input.result);
+
+  // A repairable entry that named no rule. The service's own schema requires
+  // one, so reaching here means it broke that contract — and the entry is
+  // skipped rather than guessed at, because a rule left unrepaired stays
+  // withheld, which is safe, while a request built from a missing id asks for
+  // a rule nobody named and fails in a way nobody reads.
+  for (const entry of unidentified) {
+    notices.push(
+      `${entry.file} needs to be restored, but the rule service did not say ` +
+        `which rule it belongs to, so it could not be requested and will not ` +
+        `run.`
+    );
+  }
 
   // Fetched concurrently: each target is a different rule id under the same
   // token and repository, so they do not order against each other, and a repo
