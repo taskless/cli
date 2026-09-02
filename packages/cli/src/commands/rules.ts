@@ -172,7 +172,13 @@ const createCommand = defineCommand({
           successCases: request.successCases,
           failureCases: request.failureCases,
         });
-        ruleId = response.ruleId;
+        // The canonical field. `ruleId` is still on the response, carrying the
+        // same value, and is marked deprecated: it never named a rule. The
+        // local keeps its name because it feeds this command's own `--json`
+        // `ruleId` field, which is OUR published contract and a separate
+        // decision from the service's — renaming that one moves the ground
+        // under every recipe and agent that reads it.
+        ruleId = response.requestId;
       } catch (error) {
         fail(
           error instanceof Error ? error.message : String(error),
