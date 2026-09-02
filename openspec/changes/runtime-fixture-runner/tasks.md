@@ -21,10 +21,10 @@ permanently unverified.
 
 ## 3. Gate it exactly as `check` does
 
-- [ ] 3.1 Run fixtures only when an authenticated reconcile returns the rule's signature in `run`, or when `--dangerously-run-scripts` is passed (D1)
-- [ ] 3.2 Add `--dangerously-run-scripts` to `test`, printing the same warning `check` prints
-- [ ] 3.3 Test that no rule id is special-cased, and that a gated-out fixture run executes nothing
-- [ ] 3.4 Test that the flag is the only mechanism besides a blessed signature. A fixture path is not a softer gate because its input is test data
+- [x] 3.1 Run fixtures only when an authenticated reconcile returns the rule's signature in `run`, or when `--dangerously-run-scripts` is passed (D1)
+- [x] 3.2 Add `--dangerously-run-scripts` to `test`, printing the same warning `check` prints
+- [x] 3.3 Test that no rule id is special-cased, and that a gated-out fixture run executes nothing
+- [x] 3.4 Test that the flag is the only mechanism besides a blessed signature. A fixture path is not a softer gate because its input is test data
 
 ## 4. Report a run that did not happen
 
