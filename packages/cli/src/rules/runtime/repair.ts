@@ -1,10 +1,6 @@
 import { canonicalHash } from "../rule-hash";
-import { RULES_DIRECTORY } from "../layout";
 import type { RestoredRule } from "../../api/restore";
 import type { MissingEntry, UnsafeEntry } from "../../api/reconcile";
-
-/** The tree every reported `check.ts` lives under. */
-const TASKLESS_DIRECTORY = ".taskless";
 
 /**
  * Deciding what a reconcile verdict can repair, and proving a repair is one.
@@ -12,11 +8,11 @@ const TASKLESS_DIRECTORY = ".taskless";
  * Reconcile returns three verdicts and only two of them are repairable, which
  * the entry shapes already say if you read them as a set:
  *
- * - `unsafe`  `{ file, expected, got }` — we hold bytes that drifted from what
- *   the server blessed. Repairable: the server has the real ones.
+ * - `unsafe`  `{ ruleId, file, expected, got }` — we hold bytes that drifted
+ *   from what the server blessed. Repairable: the server has the real ones,
+ *   and the entry names which rule to ask for.
  * - `missing` `{ ruleId, file }` — the server expected a rule we never
- *   reported. Repairable, and the only entry that already carries the id
- *   restore is keyed on.
+ *   reported. Repairable, and it names its rule the same way.
  * - `unknown` `{ file }` — we reported a file the service never issued. NOT
  *   repairable, and correctly so: there is nothing on the server to fetch,
  *   which is exactly why the entry carries no rule id. What it needs is an
@@ -41,62 +37,32 @@ export interface RepairTarget {
 }
 
 /**
- * The rule id inside a reported `check.ts` path.
+ * Repair targets for the buckets that have something to fetch.
  *
- * `.taskless/rules/runtime/<id>/check.ts`, matched from the RIGHT so a repo
- * nested under a similarly-named directory cannot shift the segment.
- *
- * This exists only because a reconcile `unsafe` entry does not carry `ruleId`
- * (asked for as N6). It is the weak link in the repair path: the layout has
- * moved twice already, and a move breaks this silently, since a wrong id
- * produces a 404 and a rule that stays unrepaired rather than an error anyone
- * sees. Delete it the moment the entry carries the id.
+ * Both repairable verdicts carry `ruleId`, so the id restore is keyed on is
+ * read straight off the entry. Nothing is derived from the reported path: the
+ * rules layout has moved twice, and a parse of it would break silently on the
+ * next move, requesting a rule id the service never issued and leaving a
+ * drifted rule unrepaired and unexecuted with nothing to read.
  */
-export function ruleIdFromCheckPath(file: string): string | undefined {
-  const segments = file.split("/");
-  const checkIndex = segments.lastIndexOf("check.ts");
-  if (checkIndex < 1) return undefined;
-  const id = segments[checkIndex - 1];
-  // The three segments above the id must be `.taskless/<RULES_DIRECTORY>/
-  // runtime`, or this is some other `check.ts` and guessing at it would request
-  // a rule the service never issued. `rules/runtime/` alone is not enough:
-  // plenty of repositories have one, and the id parsed out of it would be a
-  // 404 that reads as "the service lost your rule".
-  if (
-    segments[checkIndex - 2] !== "runtime" ||
-    segments[checkIndex - 3] !== RULES_DIRECTORY ||
-    segments[checkIndex - 4] !== TASKLESS_DIRECTORY
-  ) {
-    return undefined;
-  }
-  return id === undefined || id === "" ? undefined : id;
-}
-
-/** Repair targets for the buckets that have something to fetch. */
 export function repairTargets(buckets: {
   unsafe: UnsafeEntry[];
   missing: MissingEntry[];
-}): { targets: RepairTarget[]; unidentifiable: UnsafeEntry[] } {
-  const targets: RepairTarget[] = [];
-  const unidentifiable: UnsafeEntry[] = [];
-
-  for (const entry of buckets.unsafe) {
-    const ruleId = ruleIdFromCheckPath(entry.file);
-    if (ruleId === undefined) {
-      unidentifiable.push(entry);
-      continue;
-    }
-    targets.push({ ruleId, file: entry.file, expected: entry.expected });
-  }
-  for (const entry of buckets.missing) {
-    // Already carries the id, so no path parsing and nothing to fail at.
-    targets.push({
+}): RepairTarget[] {
+  return [
+    ...buckets.unsafe.map((entry) => ({
       ruleId: entry.ruleId,
       file: entry.file,
+      expected: entry.expected,
+    })),
+    ...buckets.missing.map((entry) => ({
+      ruleId: entry.ruleId,
+      file: entry.file,
+      // A missing rule is one we do not hold, so there is no prior signature
+      // to hold the restored bytes to.
       expected: undefined,
-    });
-  }
-  return { targets, unidentifiable };
+    })),
+  ];
 }
 
 /** Why a restored rule was refused, in words a `check` reader can act on. */

@@ -35,6 +35,7 @@ export interface RunEntry {
 
 /** A held rule whose content differs from what the server blessed. */
 export interface UnsafeEntry {
+  ruleId: string;
   file: string;
   expected: string;
   got: string;
