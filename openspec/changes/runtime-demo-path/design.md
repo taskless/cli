@@ -209,48 +209,37 @@ reason over its own text for `unsupported`, so this needs nothing new.
 A demo that invents a rule when generation fails would be worse than a demo
 that fails, because it would look like success.
 
-### D6 — The findings ship as `Finding[]`, grouped by the example that produced them
+### D6 — There are no findings. Withdrawn, and the reason is worth keeping.
 
-**This shape is under revision and is not yet agreed with the service.** Task
-0.4 — telling the service what findings shape we want — is open, so what follows
-is the ask rather than the contract. The retrieval shape the two sides have
-settled is D1's, and it does not include this.
+**Withdrawn.** The demonstration serves the rule alone; the retrieval response
+is the delivery response and carries nothing beside it.
 
-The service offered either its harness's `Finding[]` or something narrower, and
-left the shape to us since we render it.
+Three rounds went into this. The service offered its harness's `Finding[]`, we
+worked out a wrapper attributing each finding to the fixture example that
+produced it, and the service then withdrew the whole idea with the argument that
+settles it: **the verification gate already refuses a rule whose asymmetry does
+not hold.** A rule only reaches delivery having flagged the failing example and
+ignored the passing one. So findings alongside the rule are a constant implied
+by delivery — a field whose content a reader could infer from having received a
+rule at all.
 
-`Finding[]` as-is, because it is not the service's internal type: `Finding` is
-declared in `types/runtime-rule.ts` as part of the runtime-rule contract, and is
-what a check returns on this side. Choosing a narrower demo-only object would be
-introducing a payload only the demo consumes, which is the thing D1 exists to
-forbid. The same reasoning that reuses `submitRule`, `pollRuleStatus` and
-`writeRuleFile` applies to the type a check's results already have.
+Our wrapper was the right fix to the wrong problem. It was aimed at the case
+where a flat list renders identically for a rule that catches the bad examples
+and one that fires on everything; that concern is real, and it is already
+answered upstream of us rather than needing to be answered in the payload.
 
-What the demo does add is a wrapper, and the wrapper is the part carrying the
-demonstration:
-
-```
-examples: [ { name, expectation: "fails" | "passes", findings: Finding[] } ]
-```
-
-A flat list of findings cannot distinguish a rule that catches the failing
-examples from one that fires on everything it is shown, and those two render
-identically as "3 findings". The second is the recurring defect in this area
-wearing a success costume — an empty or indiscriminate scan reporting as a pass.
-Attributing each finding to an example, and stating what that example was
-expected to do, makes the asymmetry the thing a reader sees: findings on the
-examples that should fail, none on the examples that should pass.
-
-That also makes the demo checkable rather than merely viewable. The CLI can
-assert the asymmetry instead of printing whatever arrives, so a demo that
-silently stops finding anything fails rather than looking clean.
+**What survives is the concern, relocated.** The demonstration's value is a rule
+a reader can run, not a result they can read. That makes the local run the whole
+demonstration — and `taskless test` currently reports a runtime rule as passing
+when its fixtures never ran, which turns the demonstration back into a claim.
+Fixing that is what D6 was reaching for, in the place it actually lives.
 
 ### D7 — Each thing the demo cannot do is the behaviour we want, not a shortfall
 
-D3 and D6 describe the demo negatively: it cannot reach the gate, and it must
-fail rather than render an indiscriminate rule. Read together they invite the
-wrong conclusion, that the demo is a reduced version of something better. It is
-not. Every limit is a correct behaviour arriving through the ordinary path.
+D3 and D6 describe the demo negatively: it cannot reach the gate, and it serves
+no result beside the rule. Read together they invite the wrong conclusion, that
+the demo is a reduced version of something better. It is not. Every limit is a
+correct behaviour arriving through the ordinary path.
 
 **The rule is real and inspectable.** A developer gets `check.ts` and its
 captures on disk and can read what a runtime rule actually is. That is the
