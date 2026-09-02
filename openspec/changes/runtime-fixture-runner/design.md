@@ -156,6 +156,36 @@ The two halves land in the right order: `test` failing an authored rule is ours
 alone and ships now, delivery completeness follows once the service has
 committed to shipping fixtures.
 
+### D8 — A case that never reaches the check is its own outcome, not zero findings
+
+`executeRuntimeRule` runs the narrow first and gates on it:
+
+```ts
+if (matches.length === 0) return []; // gate: no matches, no check
+```
+
+So a fixture case whose narrow matches nothing returns an empty array having
+never invoked `check.ts`, which is indistinguishable downstream from a check
+that ran and found nothing. Under the scenarios as first drafted, a `fail/` case
+in that state fails, and the message blames the check for a fixture that never
+reached it.
+
+That is this change's own failure mode, reintroduced inside the fix. The runner
+therefore has to know whether the check was **invoked**, not only what it
+returned, and report three outcomes per case rather than two.
+
+It matters in both buckets, and the `pass/` side is the quieter half. A `pass/`
+case with no narrow matches looks like a clean pass and proves nothing about the
+check: it demonstrates that the narrow did not match, which is a fact about the
+fixture. A case that never invokes the check cannot show the check stays quiet,
+so counting it as evidence is the same empty-scan-reports-success shape one
+level down.
+
+So a case producing no narrow matches is reported as a **fixture defect** in
+either bucket, naming the case and saying the check never ran. It is actionable
+in a way "expected a finding, got none" is not, and it points at the file the
+author has to change.
+
 ## Risks / Trade-offs
 
 **A rule with no fixtures fails, and that is the decision.** The other two

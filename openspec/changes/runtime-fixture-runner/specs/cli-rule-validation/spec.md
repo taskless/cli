@@ -47,6 +47,13 @@ A runtime rule's fixtures execute delivered code, so they SHALL run only under t
 - **AND** the rule SHALL NOT be counted among the rules tested
 - **AND** the refusal alone SHALL NOT fail the command
 
+#### Scenario: A case that never reaches the check is reported as a fixture defect
+
+- **WHEN** a fixture case produces no narrow matches, so the check is never invoked
+- **THEN** the CLI SHALL report that case as a fixture defect naming the case
+- **AND** SHALL say the check did not run
+- **AND** SHALL do so whether the case is in `pass/` or `fail/`, since a case that never invokes the check is evidence about the fixture rather than about the rule
+
 #### Scenario: A check that throws is distinguished from one that finds nothing
 
 - **WHEN** a runtime rule's check raises while running a fixture case
