@@ -51,9 +51,32 @@ demo uses would demonstrate something no user is on. Mirroring also means the
 demo covers polling and the terminal `failed` and `unsupported` states for
 free, because it is the same client code reaching them.
 
-Concretely: `submitRule`, `pollRuleStatus` and `writeRuleFile` are reused, not
-reimplemented. If the demo needs a new writer, that is evidence the shapes have
-diverged, and the demo has done its job by failing.
+Concretely, and the three are not equal — saying "reuse" without splitting them
+would make the failure test below fire for a reason it was not built to catch.
+
+**`writeRuleFile` is reused byte for byte, and it is what the test is about.**
+It carries the path checks, the completeness rules, the layout validation and
+the refusal to write a runtime rule with no captures. **If the demo needs a
+different writer, the payload shapes have diverged**, and the demo has done its
+job by failing. That is the signal worth having, and it is the whole reason for
+mirroring the delivery variant.
+
+**`submitRule` and `pollRuleStatus` need work first, and that is a task rather
+than a divergence signal.** Both are hardcoded to the rule-family endpoints and
+both take a required `token`, which `createApiClient` turns unconditionally into
+an `Authorization: Bearer` header. The demo is unauthenticated by requirement
+(D3), so neither is usable as it stands: the endpoint has to be a parameter, and
+the token has to be optional.
+
+The path half of that resolves itself when the client adopts the renamed family,
+which is out of scope here. The token half does not, and is the durable part.
+Neither is evidence of anything having gone wrong — they are two small changes
+to functions written when every caller was authenticated, and they are planned
+in task 1.2a rather than discovered during implementation.
+
+The distinction matters because D1's failure test is a **claim about payload
+shapes**. A requester that needs a second argument says nothing about whether
+the demo and the mainline agree on what a rule looks like.
 
 ### D2 — The demo tracks the mainline's naming, and follows rather than leads
 
