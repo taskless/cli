@@ -58,8 +58,12 @@ async function typeScriptSources(directory: string): Promise<string[]> {
     .map((entry) => join(entry.parentPath, entry.name))
     .filter(
       // `generated/` is the schema's own transcript: it necessarily names every
-      // path, deprecated ones included, and is not a call site.
-      (file) => !relative(directory, file).startsWith(`generated${sep}`)
+      // path, deprecated ones included, and is not a call site. Matched at any
+      // depth, because that reasoning is about what a generated directory IS
+      // and does not depend on where it sits. `startsWith` reached only a
+      // top-level `src/generated`, which is a no-op today and would have
+      // reported a nested one as a wall of false offenders.
+      (file) => !relative(directory, file).split(sep).includes("generated")
     );
 }
 
