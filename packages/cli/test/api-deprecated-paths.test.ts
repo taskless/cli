@@ -4,6 +4,8 @@ import { fileURLToPath } from "node:url";
 
 import { describe, it, expect } from "vitest";
 
+import { escapeRegExp } from "../src/util/regex";
+
 /**
  * No source file may call a path the API marks deprecated.
  *
@@ -87,8 +89,7 @@ describe("deprecated API paths", () => {
         // The negative lookahead keeps `/cli/api/rule` from matching
         // `/cli/api/rule-hash-vectors`, a live path that merely shares a stem.
         const pattern = new RegExp(
-          prefix.replaceAll(/[$()*+.?[\\\]^{|}]/g, String.raw`\$&`) +
-            String.raw`(?![\w-])`
+          escapeRegExp(prefix) + String.raw`(?![\w-])`
         );
         if (pattern.test(source)) {
           offenders.push(`${relative(SOURCE_ROOT, file)} references ${prefix}`);

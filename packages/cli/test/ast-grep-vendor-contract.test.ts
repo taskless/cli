@@ -19,6 +19,7 @@ import {
   findSgBinary,
   stripSgDeprecationBanner,
 } from "../src/rules/scan";
+import { escapeRegExp } from "../src/util/regex";
 
 /**
  * ast-grep's observable behaviour, pinned.
@@ -638,12 +639,7 @@ withSg("ast-grep vendor contract", () => {
       const { stdout } = test(cwd, "no-eval");
 
       expect(stdout).toContain(`  ${poison}`);
-      expect(stdout).not.toMatch(
-        new RegExp(
-          `^${poison.replaceAll(/[.*+?^${}()|[\]\\]/g, String.raw`\$&`)}`,
-          "m"
-        )
-      );
+      expect(stdout).not.toMatch(new RegExp(`^${escapeRegExp(poison)}`, "m"));
     });
 
     it("needs --skip-snapshot-tests for an invalid case with no baseline", () => {
