@@ -59,6 +59,74 @@ const ECHO_CHECK = `export default async function (root, matches) {
 }
 `;
 
+/**
+ * An unknown key under `metadata.taskless` does not drop the capture.
+ *
+ * The generator asked before depending on it, which is the right order, and
+ * the honest answer was that it works by ACCIDENT rather than by design:
+ * `assessCaptureRule` checks the fields it needs and never rejects the ones it
+ * does not know, and ast-grep treats `metadata` as opaque. Neither is a
+ * decision anybody wrote down, so neither is a promise until something holds
+ * it.
+ *
+ * This holds it. The generator carries a demonstration disclaimer as
+ * `metadata.taskless.note`, written INTO the rule rather than only into the
+ * HTTP response, because a note in an envelope is gone the moment the rule
+ * reaches disk — which is exactly when a reader with no memory of asking for a
+ * demo needs to know what it is.
+ *
+ * The assertion is that the capture still MATCHES, not merely that discovery
+ * accepted it. A capture that is dropped produces no findings, and no findings
+ * is what a passing run looks like.
+ */
+describe("an unknown metadata.taskless key", () => {
+  let cwd: string;
+
+  beforeEach(async () => {
+    cwd = await mkdtemp(join(tmpdir(), "tskl-unknown-meta-"));
+  });
+
+  afterEach(async () => {
+    await rm(cwd, { recursive: true, force: true });
+  });
+
+  const withNote = [
+    "id: env-read-abc12345",
+    "language: typescript",
+    "rule:",
+    "  pattern: process.env.$NAME",
+    "metadata:",
+    "  taskless:",
+    "    version: 1",
+    "    kind: runtime",
+    "    name: env-read",
+    "    check: check.ts",
+    "    match: anchor",
+    '    note: "Example rule. May not apply to this repository."',
+    "",
+  ].join("\n");
+
+  it("is discovered, and its capture still matches", async () => {
+    await writeRuntimeRule(
+      cwd,
+      "env-read",
+      { "env.yml": withNote },
+      ECHO_CHECK
+    );
+    await writeFile(
+      join(cwd, "src.ts"),
+      "const home = process.env.HOME;\n",
+      "utf8"
+    );
+
+    const rules = await discoverRuntimeRules(cwd);
+    expect(rules).toHaveLength(1);
+
+    const findings = await executeRuntimeRule(cwd, rules[0]!);
+    expect(findings.length).toBeGreaterThan(0);
+  });
+});
+
 describe("runtime harness", () => {
   let root: string;
 
