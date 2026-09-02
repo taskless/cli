@@ -112,13 +112,13 @@ inert data, always available, and SHALL NOT be reported to or gated by reconcili
 SHALL reconcile by sending `POST /cli/api/reconcile` with an `Authorization: Bearer <cli-token>`
 header and a JSON body `{ repositoryUrl, files }`, where `repositoryUrl` is the full repository
 URL and `files` is an array of `{ file, signature }` covering the `check.ts` of **every**
-runtime rule the CLI holds under `.taskless/runtime-rules/`. `file` SHALL be the `check.ts`'s
+runtime rule the CLI holds under `.taskless/rules/runtime/`. `file` SHALL be the `check.ts`'s
 delivered path as it exists on disk and `signature` SHALL be the full envelope computed for its
 bytes. The CLI SHALL send the whole signature envelope, not a bare digest.
 
 #### Scenario: Every runtime rule's check.ts is reported
 
-- **WHEN** the CLI reconciles with runtime rules present under `.taskless/runtime-rules/`
+- **WHEN** the CLI reconciles with runtime rules present under `.taskless/rules/runtime/`
 - **THEN** the request body SHALL include one `{ file, signature }` entry for the `check.ts` of each runtime rule
 
 #### Scenario: Inert files are not reported

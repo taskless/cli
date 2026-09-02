@@ -9,7 +9,7 @@ green on its own; none depends on a later one to be correct.
 - [x] 1.2 Make the `delete` not-found message engine-agnostic
 - [x] 1.3 Correct the seven stale `.taskless/<engine>/rules/` comments, leaving the two historical ones in the migrations
 - [x] 1.4 Test deleting a rule filed under each engine, and an id no engine holds
-- [x] 1.5 Correct the same stale layout in `cli-runtime-rule-execution`'s spec text (delta written; lands with this change)
+- [x] 1.5 Correct the same stale layout in `cli-runtime-rule-execution`'s spec text. **Partially done by the delta**: it corrected only the requirement the delta itself touched, and left the `Blessed runtime rules execute from the materialized run directory` requirement in the same file still naming `.taskless/runtime-rules/`. The remaining sites, here and in `cli-check` and `cli-rule-reconciliation`, were corrected in the archive PR that promoted this change
 
 ## 2. Publish the layout table (slice 2) — unblocks the generator
 
