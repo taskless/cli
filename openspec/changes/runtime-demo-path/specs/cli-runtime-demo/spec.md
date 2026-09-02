@@ -21,6 +21,27 @@ that decides how to author a rule SHALL name it as a destination.
 - **WHEN** an agent fetches any authoring or routing recipe
 - **THEN** the demo topic SHALL NOT appear as a destination in that recipe
 
+### Requirement: The demo is invoked as a subcommand of an existing command
+
+The demo SHALL be dispatched as `rule demo`, a subcommand of the existing
+`rule` command. It SHALL NOT be registered as a new top-level subcommand, and
+SHALL add no entry to the CLI's top-level command name list.
+
+**Rationale.** The `agent` index renders a command listing built from the
+top-level command tree, separately from its curated recipe listing. A new
+top-level verb would be advertised there regardless of the recipe being
+unlisted, so the demo would be hidden in one half of the same output and
+announced in the other. Nesting under `rule` obtains the property by not
+registering the command, which is the same reasoning that keeps the recipe out
+of the curated list rather than teaching a renderer to skip it.
+
+#### Scenario: The demo adds nothing to the top-level command listing
+
+- **WHEN** the `agent` index is rendered
+- **THEN** the command listing SHALL NOT contain a demo entry
+- **AND** the listing SHALL be identical to the one rendered before the demo
+  existed
+
 ### Requirement: The demo uses the well-known request and retrieval formats
 
 The demo SHALL obtain its rule through the same two-stage flow as an ordinary

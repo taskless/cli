@@ -5,7 +5,7 @@ exists to remove, so they land together.
 
 ## 0. Blocked on the rename, then on the service half
 
-The generator team is renaming the request resource first, as its own change:
+The generator team renamed the request resource first, as its own change:
 `request`/`requestId` rather than `rule`/`ruleId`. Their own
 `openspec/specs/cli/spec.md` already specified it, and their live `meta` block
 already carries `ticketId` per delivered rule, so the route was the outlier.
@@ -20,7 +20,7 @@ what design D2 rules out. The mainline took the noun first; the demo follows it.
 ## 0b. Blocked on the service half
 
 - [x] 0.1 Confirm the endpoint shapes with the generator team (**N9**): `POST /cli/api/demo/request` returning `{ requestId, status }`, `GET /cli/api/demo/request/{requestId}` returning `{ requestId, status, rules[] }` with the published file-set variant. Agreed both sides
-- [ ] 0.2 Confirm the demo is servable unauthenticated, and get their answer on whether reconcile can bless the sample signature for an anonymous caller (design D3). A "no" is a complete answer and changes nothing below
+- [ ] 0.2 Confirm the service can serve the demo endpoints unauthenticated, and get their answer on whether reconcile can bless the sample signature for an anonymous caller. This asks whether the service can do it; design D3 already settles what the demo does either way — it stops at `verify` — so a "no" on the reconcile half is a complete answer and changes nothing below. A "no" on serving unauthenticated at all is the one answer that reopens the design
 - [ ] 0.3 Agree what the demo rule is for — the scenario the generated rule addresses — so the demo shows something a person recognises rather than an arbitrary rule
 
 **Nothing below starts until 0.0 and 0.1 land.** Building against a guessed shape is
@@ -36,10 +36,12 @@ what produced the seam this change is closing.
 
 ## 2. The hidden topic
 
+- [ ] 2.0 Register the command as `rule demo` under the existing `rule` command in `src/commands/rules.ts`. Not a top-level verb: `SUBCOMMAND_NAMES` and `subCommands` are unchanged, so the `agent` index's command listing gains nothing (design D4a)
 - [ ] 2.1 Add `src/agent/__undocumented-sample-runtime.txt`, absent from `RECIPE_TOPICS`
 - [ ] 2.2 The recipe names the command, says the rule may be imperfect, and says how to delete it
 - [ ] 2.3 The recipe states where the demo stops and why, so a reader meets the signature gate as a design rather than as a failure
 - [ ] 2.4 Test that the topic is fetchable by name and absent from the index
+- [ ] 2.5 Test that the `agent` index's command listing is unchanged by the demo, so the second listing is covered and not just `RECIPE_TOPICS`
 
 ## 3. Prove it does not weaken the gate
 
