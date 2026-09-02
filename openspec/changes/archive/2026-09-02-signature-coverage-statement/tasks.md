@@ -17,4 +17,4 @@ One PR. A single requirement gains two sentences.
 
 ## 3. Close out
 
-- [ ] 3.1 Archive the change
+- [x] 3.1 Archive the change. Archiving is what promotes the delta into the standing spec, so until this ran the coverage statement lived only in the change directory and `openspec/specs/cli-rule-reconciliation/spec.md` did not carry it
