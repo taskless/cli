@@ -31,7 +31,7 @@ hand-maintained literal and lookup is by filename, so a topic that is not in
 the list is fetchable by name and invisible otherwise. No new mechanism. This
 is something we run deliberately, not something routing sends an agent to.
 
-**A command that walks the path.** Request, poll, retrieve, write, verify —
+**A command that walks the path, as `rule demo`.** Request, poll, retrieve, write, verify —
 through the existing `submitRule` / `pollRuleStatus` client code and the
 existing `writeRuleFile`, against demo endpoints that mirror the mainline
 shapes:
@@ -71,13 +71,18 @@ hole in it. Executing the demo rule uses the documented
 - `cli-agent`: The topic index is a curated list rather than every embedded
   recipe. A topic may exist and be fetchable by name while staying out of the
   index, which is already how the code behaves and is not yet stated as a
-  requirement.
+  requirement. The index's command listing is separately sourced from the
+  top-level command tree, so staying out of the curated recipe list says
+  nothing about that half.
 
 ## Impact
 
 - `packages/cli/src/agent/__undocumented-sample-runtime.txt` — new recipe.
-- `packages/cli/src/commands/` — the demo command, reusing `submitRule`,
-  `pollRuleStatus` and `writeRuleFile` rather than duplicating them.
+- `packages/cli/src/commands/rules.ts` — the demo as a `rule demo` subcommand,
+  reusing `submitRule`, `pollRuleStatus` and `writeRuleFile` rather than
+  duplicating them. Nested rather than top-level so it adds nothing to
+  `SUBCOMMAND_NAMES` and therefore nothing to the `agent` index's command
+  listing (design D4a).
 - `packages/cli/src/api/` — the demo endpoints, alongside the existing client.
 - Depends on the service half (raised as **N9** in the cross-team document).
   The endpoints are theirs to build; the shapes above are what we asked for and

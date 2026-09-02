@@ -57,20 +57,24 @@ diverged, and the demo has done its job by failing.
 
 ### D2 — The demo tracks the mainline's naming, and follows rather than leads
 
-The paths above mirror today's `/cli/api/rule` naming, including its
-inconsistency (**N10**: `ruleId` names a ticket, by the service's own field
-description). If the mainline is renamed, these are renamed with it in the same
-change.
-
-The demo must never be where a second convention lives. Its value is being
+The paths above mirror the mainline's naming, whatever it currently is. The
+demo must never be where a second convention lives. Its value is being
 indistinguishable from the path users take; a demo that is tidier than
-production is a demo that stops proving anything.
+production is a demo that stops proving anything. If the mainline is renamed
+again, these are renamed with it.
 
-**This is now a sequencing constraint rather than a principle.** The generator
-team is renaming the request resource to `request`/`requestId` as its own
-change, ahead of this one. So the demo endpoints are named after the rename
-lands, not before — building them first would make the demo the debut of the
-new convention, which is precisely what this decision forbids.
+**That principle already cost this change a wait, which is the evidence it is
+real.** The generator team renamed the request resource from `rule`/`ruleId` to
+`request`/`requestId` as its own change (**N10**, the inconsistency being that
+`ruleId` named a ticket, by the service's own field description). That rename
+has landed and is verified live, so the demo takes the settled noun above.
+Naming the demo endpoints before it landed would have made the demo the debut
+of the new convention, which is precisely what this decision forbids.
+
+Adopting the new noun in the _ordinary_ client is a separate change and is not
+this one's dependency. `/cli/api/rule/*` still serves, marked `deprecated`, so
+the mainline client is not broken by having not moved yet — but the demo, being
+new, has no reason to be born on the deprecated spelling.
 
 ### D2a — The fixed input is data the service holds, not a repository
 
@@ -122,6 +126,32 @@ The cost is that the index is curated by hand and can drift from the files on
 disk. That is already true, and `cli-agent` gains a requirement saying it is
 intended rather than an oversight.
 
+### D4a — The demo command nests under `rule`, so the second listing never sees it
+
+`taskless agent` prints **two** lists, and omission from `RECIPE_TOPICS` only
+governs one of them. The first, headed `Topics:`, is built by iterating
+`Object.entries(subCommands)` — the top-level command tree from `src/index.ts`,
+gated by `SUBCOMMAND_NAMES` in `commands/names.ts` — and it filters exactly one
+name, `agent` itself. Nothing in it consults `RECIPE_TOPICS`. The second,
+headed `Authoring recipes:`, is `RECIPE_TOPICS`, and that is the list D4 is
+about.
+
+So a demo registered as a new top-level verb would be hidden as a recipe and
+advertised as a command in the same output, which is the opposite of the
+property this change wants. **The demo command is therefore `rule demo`, a
+subcommand of the existing `rule` command**, alongside `create`, `improve`,
+`meta` and `delete`. It writes a rule, so it reads correctly there, and it adds
+no entry to `SUBCOMMAND_NAMES` or `subCommands` — meaning the `Topics:` listing
+is untouched and no filtering code has to be written to keep it that way.
+
+This is the same reasoning as D4 rather than an exception to it: the property is
+obtained by not registering the thing, not by teaching a renderer to skip it.
+The consequence is that `taskless rule --help` does list `demo`, from citty's
+own usage output. That is intended. The requirement is that **routing** never
+sends an agent to the demo, not that the demo is a secret — a person reading
+`rule --help` has already chosen to look, and D3's risks say the same about the
+recipe.
+
 ### D5 — Failure is reported, never fabricated
 
 If generation cannot be served, the service answers with a terminal status and
@@ -133,11 +163,13 @@ that fails, because it would look like success.
 
 ## Risks / Trade-offs
 
-**A rename lands first, and this waits for it.** The request resource becomes
-`request`/`requestId`, which is a change to paths and to a field name this
-client reads. Regenerating the types catches most of it at compile time; two
-call sites build their URL as a template string and would not fail to compile,
-so they are changed deliberately rather than found later.
+**The demo is born on `request`/`requestId` while the ordinary client is still
+on `rule`/`ruleId`.** That skew is deliberate (D2) and bounded: the `rule/*`
+family still serves, marked `deprecated`, so nothing is broken by the mainline
+not having moved yet. When it does adopt the rename, regenerating the types
+catches most of it at compile time; two call sites build their URL as a
+template string and would not fail to compile, so they are changed deliberately
+rather than found later.
 
 **The service half does not exist yet.** The endpoints are the service team's
 to build, raised as N9. This change assumes the shapes in D1; if they land
