@@ -497,23 +497,43 @@ async function purgeUndeliveredFiles(
   // by here they are: writes come first, so the rule itself is complete and
   // only the cleanup is partial.
   if (failures.length > 0) {
-    throw new Error(
-      `wrote every delivered file, then could not remove ` +
-        `${failures.length === 1 ? "an undelivered entry" : `${failures.length} undelivered entries`}: ` +
-        `${failures.join(", ")}. The rule is complete on disk; the listed ` +
-        `entries are stale and an engine still reads them.`
-    );
+    throw new PurgeIncompleteError(failures);
   }
 
   return removed;
 }
 
 /** What writing a delivered file set did to the rule directory. */
-export interface DeliveryWrite {
-  /** Absolute paths written, sorted. */
-  written: string[];
-  /** Absolute paths removed for not being in the set, sorted. */
-  removed: string[];
+/**
+ * The delivered files are on disk and a stale entry beside them is not.
+ *
+ * Its own type because the caller has to tell this apart from a failed write,
+ * and the two ask the reader for opposite things: a failed write means the rule
+ * is not there, while this means the rule IS there and something stale is too.
+ * A caller that could only read the message would have to parse prose to know
+ * which, and would get it wrong the first time the wording changed.
+ *
+ * Never swallowed. A stray this could not remove is still a file an engine
+ * reads, and an unreadable stray is indistinguishable from a clean directory
+ * unless somebody is told.
+ */
+export class PurgeIncompleteError extends Error {
+  /** Each entry that survived, with the errno that stopped it. */
+  readonly failures: readonly string[];
+
+  constructor(failures: readonly string[]) {
+    const count =
+      failures.length === 1
+        ? "an undelivered entry"
+        : `${String(failures.length)} undelivered entries`;
+    super(
+      `wrote every delivered file, then could not remove ${count}: ` +
+        `${failures.join(", ")}. The rule is complete on disk; the listed ` +
+        `entries are stale and an engine still reads them.`
+    );
+    this.name = "PurgeIncompleteError";
+    this.failures = failures;
+  }
 }
 
 /**
@@ -574,17 +594,16 @@ export async function writeDeliveredFileSet(
   engine: EngineName,
   ruleId: string,
   assessment: Extract<DeliveryAssessment, { ok: true }>
-): Promise<DeliveryWrite> {
+): Promise<void> {
   const directory = ruleDirectory(cwd, engine, ruleId);
   await assertRuleDirectoryIsNotALink(directory);
-  const written: string[] = [];
   for (const file of assessment.files) {
     const target = join(directory, file.path);
     await clearSymlinkedPath(directory, file.path);
     await mkdir(dirname(target), { recursive: true });
     await writeFile(target, file.content, "utf8");
-    written.push(target);
   }
-  const removed = await purgeUndeliveredFiles(directory, assessment.files);
-  return { written: written.toSorted(), removed: removed.toSorted() };
+  // Writes first, deliberately: an IO failure part-way leaves a superset,
+  // never a rule missing pieces.
+  await purgeUndeliveredFiles(directory, assessment.files);
 }
