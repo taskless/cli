@@ -15,7 +15,15 @@ const ruleResultSchema = z.object({
   ran: z
     .boolean()
     .optional()
-    .describe("`test` only: whether the rule's tests actually ran"),
+    .describe(
+      "`test` only: whether the rule's tests actually ran. Branch on this, not on `ok` alone: `ok: true` with `ran: false` is not a rule that passed"
+    ),
+  refused: z
+    .string()
+    .optional()
+    .describe(
+      "`test` only: the execution policy declined to run the rule's fixtures, and why. Neither a pass nor a failure, excluded from the rules tested, and never on its own a reason for a non-zero exit"
+    ),
   notice: z
     .string()
     .optional()

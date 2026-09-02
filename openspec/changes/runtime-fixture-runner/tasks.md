@@ -28,11 +28,11 @@ permanently unverified.
 
 ## 4. Report a run that did not happen
 
-- [ ] 4.1 Stop returning `ok: true` from `testOneRule`'s runtime branch for a run that did not occur
-- [ ] 4.2 Render a skipped rule with its own marker and the reason, never a tick (D2)
-- [ ] 4.3 Stop counting a skipped rule in "N rule(s) tested"
-- [ ] 4.4 Make `ran` load-bearing in the `--json` envelope rather than advisory, and confirm the exit code does not fail on a gated-out run alone
-- [ ] 4.5 Say what to do about it: a rule that did not run because nothing blessed it should name `--dangerously-run-scripts` in the message (D6)
+- [x] 4.1 Stop returning `ok: true` from `testOneRule`'s runtime branch for a run that did not occur
+- [x] 4.2 Render a skipped rule with its own marker and the reason, never a tick (D2)
+- [x] 4.3 Stop counting a skipped rule in "N rule(s) tested"
+- [x] 4.4 Make `ran` load-bearing in the `--json` envelope rather than advisory, and confirm the exit code does not fail on a gated-out run alone
+- [x] 4.5 Say what to do about it: a rule that did not run because nothing blessed it should name `--dangerously-run-scripts` in the message (D6)
 
 ## 5. Prove it bites
 
