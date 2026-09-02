@@ -145,16 +145,25 @@ This is the styleguide's own rule about build output applied to a payload: an
 invariant enforced where the artifact is produced cannot be violated, while one
 enforced afterwards can only be detected.
 
-**It is a contract change, so it is sequenced rather than taken.** Today a
-runtime delivery carrying no `.tests/` is valid, and `ENGINE_LAYOUTS` is what
-the published spec names as the completeness authority. Requiring fixtures means
-deliveries that are correct under the agreed contract start being refused with
-nothing written, which is a hard break if the service is not already sending
-them. So it needs their agreement first, and this change does not enforce it.
+**This is not a negotiation.** A runtime rule ships with a `.tests/` directory;
+a delivery without one is a defect on the service side, not a payload shape we
+are asking them to adopt. They already hold the material — their verification
+gate executes the generated check against failing and passing examples on its
+way to accepting the rule — and they have already established that fixtures are
+files in the collection rather than a field beside it.
 
-The two halves land in the right order: `test` failing an authored rule is ours
-alone and ships now, delivery completeness follows once the service has
-committed to shipping fixtures.
+**What is sequenced is enforcement, not the expectation.** Being right about
+whose bug it is does not stop `describeIncompleteSet` from turning that bug into
+a refused write for every user, with nothing written and no action available to
+them. So the order is: confirm deliveries carry `.tests/`, and if they do not,
+file it as the defect it is rather than proposing it as a change. Enforce once
+the fix has shipped.
+
+That leaves the two halves landing in the right order for a reason that has
+nothing to do with agreement. `test` failing an authored rule is ours alone and
+ships now. Delivery completeness follows once we know we are enforcing a rule
+the service already satisfies, rather than discovering it does not through an
+outage.
 
 ### D8 — A case that never reaches the check is its own outcome, not zero findings
 
