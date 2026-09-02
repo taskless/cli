@@ -38,19 +38,38 @@ shapes:
 
 ```
 POST /cli/api/demo/request                 -> { requestId, status }
-GET  /cli/api/demo/request/{requestId}     -> { requestId, status, rules[] }
+GET  /cli/api/demo/request/{requestId}     -> { requestId, status, rules[], examples[] }
 ```
+
+**The endpoints take no authentication at all.** We asked that an
+unauthenticated call send no `Authorization` header rather than one carrying an
+empty token. The service went further: with nothing scoped to a caller there is
+nothing for authentication to decide, so the demo endpoints are public, like
+`rule-hash-vectors`. There is no header to send and none for the service to
+decide how to ignore. Making `submitRule` and `pollRuleStatus` tolerate an
+absent token remains ours (task 1.2a); the server half is now a property rather
+than a convention.
+
+**The retrieval also serves what the rule found.** The service's verification
+gate already executes the generated `check.ts` against the fixture's failing and
+passing examples on its way to deciding whether to accept the rule, and was
+discarding the result. `examples[]` carries it: for each fixture example, its
+name, whether it is expected to fail or pass, and the `Finding[]` the check
+produced against it.
 
 Mirroring is the point. A bespoke demo payload would exercise a path no user is
 on, which is the one thing a demo must not do. Reusing the well-known formats
 means the demo also covers polling and the terminal `failed` / `unsupported`
 states rather than a happy path built for the occasion.
 
-**The demo stops where the gate does, and says so.** A runtime rule executes
-only when an authenticated reconcile returns its signature in `run`. The demo
-is unauthenticated, so it reaches a complete, well-formed, verified rule on
-disk and no further. `check` already explains that state: "not authenticated —
-runtime rules were not verified and did not run."
+**The demo cannot reach the gate, and that is structural rather than a
+choice.** A runtime rule executes only when an authenticated reconcile returns
+its signature in `run`, and a signature exists because the rule was recorded
+into an organization's corpus — recording is what blessing is. The demo rule is
+one fixed rule, generated under a Taskless-owned installation and never recorded
+for the caller, so no caller's `run` set can contain it. Authenticating would
+not change that. The demo reaches a complete, well-formed, verified rule on disk
+and stops, and `check` explains that state in the words it already uses.
 
 **No client-side bypass.** Not for a known demo id, not behind a flag of its
 own. The signature gate is what stands between a downloaded payload and
