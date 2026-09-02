@@ -36,11 +36,11 @@ permanently unverified.
 
 ## 5. Prove it bites
 
-- [ ] 5.1 Reproduce the current defect first, as a failing test: a runtime rule whose fixtures never ran must not report `ok: true` and must not print a tick
-- [ ] 5.2 Test a rule whose `fail/` case produces no findings, which is the silent regression this exists to catch
-- [ ] 5.3 Test a rule whose `pass/` case produces findings, which is the indiscriminate rule
-- [ ] 5.4 Test each coverage class, asserting only `both` can pass
-- [ ] 5.5 Test that an unreadable bucket is an error and not an empty bucket (D5)
+- [x] 5.1 Reproduce the current defect first, as a failing test: a runtime rule whose fixtures never ran must not report `ok: true` and must not print a tick
+- [x] 5.2 Test a rule whose `fail/` case produces no findings, which is the silent regression this exists to catch
+- [x] 5.3 Test a rule whose `pass/` case produces findings, which is the indiscriminate rule
+- [x] 5.4 Test each coverage class, asserting only `both` can pass
+- [x] 5.5 Test that an unreadable bucket is an error and not an empty bucket (D5)
 - [ ] 5.6 Revert the runner and watch the suite fail before believing it
 
 ## 6. Say so where an author reads it
