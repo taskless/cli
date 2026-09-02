@@ -127,6 +127,35 @@ both cases.
 Worth stating in the recipe rather than discovered: an author who runs `test`
 and sees "did not run" should be told the flag in that message.
 
+### D7 — Nothing to test means the delivery was incomplete, and that belongs in delivery
+
+`test` failing a fixtureless rule is the right answer for a rule someone wrote.
+It is the wrong place to catch a rule the service sent, because by then the rule
+is on disk and the failure reads as the holder's fault for a file they never
+authored.
+
+Delivery already answers "is this a complete rule": `describeIncompleteSet`
+requires the rule file, the per-engine config where one exists, and at least one
+capture, and the whole set is assessed before anything is written so a refused
+delivery leaves no directory behind. A rule with nothing to test is incomplete
+by the same standard as a rule with no captures. Both are rules that cannot
+demonstrate anything, and both are cheaper refused than written.
+
+This is the styleguide's own rule about build output applied to a payload: an
+invariant enforced where the artifact is produced cannot be violated, while one
+enforced afterwards can only be detected.
+
+**It is a contract change, so it is sequenced rather than taken.** Today a
+runtime delivery carrying no `.tests/` is valid, and `ENGINE_LAYOUTS` is what
+the published spec names as the completeness authority. Requiring fixtures means
+deliveries that are correct under the agreed contract start being refused with
+nothing written, which is a hard break if the service is not already sending
+them. So it needs their agreement first, and this change does not enforce it.
+
+The two halves land in the right order: `test` failing an authored rule is ours
+alone and ships now, delivery completeness follows once the service has
+committed to shipping fixtures.
+
 ## Risks / Trade-offs
 
 **A rule with no fixtures fails, and that is the decision.** The other two

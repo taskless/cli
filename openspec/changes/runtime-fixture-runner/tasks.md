@@ -50,4 +50,6 @@ permanently unverified.
 
 - [x] 7.1 Decide the no-fixtures case. **Settled: it fails, matching the other engines.** Every rule needs a fixture. Depth is not policed, so a trivial case that exercises little and passes is acceptable, but it can only live in `pass/` — a `fail/` case that produces nothing is the silent regression this runner exists to catch
 - [ ] 7.2 Tell the generator team, who have recorded this as a limit on what the demonstration can assert
-- [ ] 7.3 Archive the change
+- [ ] 7.3 Ask whether runtime deliveries carry `.tests/` today, and whether they will commit to it. A rule with nothing to test is an incomplete delivery (D7), but requiring it in `describeIncompleteSet` refuses payloads that are valid under the current contract, so it is theirs to agree before it is ours to enforce
+- [ ] 7.4 Once agreed, add fixtures to delivery completeness as its own change. Not here: this one must not turn a service omission into a refused write without warning
+- [ ] 7.5 Archive the change
