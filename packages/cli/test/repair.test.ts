@@ -3,7 +3,6 @@ import { describe, expect, it } from "vitest";
 import { canonicalHash } from "../src/rules/rule-hash";
 import {
   repairTargets,
-  ruleIdFromCheckPath,
   verifyRestoredCheck,
   type RepairTarget,
 } from "../src/rules/runtime/repair";
@@ -30,9 +29,10 @@ describe("which reconcile verdicts can be repaired", () => {
     // `unknown` is not in the input type at all, and that is the point: there
     // is nothing on the server to fetch for a file it never issued, which is
     // why its entry carries no rule id to fetch it by.
-    const { targets } = repairTargets({
+    const targets = repairTargets({
       unsafe: [
         {
+          ruleId: "logs-abc12345",
           file: ".taskless/rules/runtime/logs-abc12345/check.ts",
           expected: "1;h=sha-256;d=aaa",
           got: "1;h=sha-256;d=bbb",
@@ -54,49 +54,46 @@ describe("which reconcile verdicts can be repaired", () => {
     expect(targets[1]?.expected).toBeUndefined();
   });
 
-  it("takes a missing entry's id rather than parsing its path", () => {
-    // The path here would parse to `x`; the entry says `evals-def67890`, and
-    // the entry wins. Parsing is the fallback for `unsafe` only.
-    const { targets } = repairTargets({
-      unsafe: [],
-      missing: [
+  it.each([["unsafe" as const], ["missing" as const]])(
+    "takes a %s entry's id rather than parsing its path",
+    (bucket) => {
+      // The path parses to `x`; the entry says `evals-def67890`. The entry wins,
+      // and nothing reads the path at all. A path-parsing implementation asks
+      // restore for `x`, gets a 404, and leaves the rule unrepaired in silence,
+      // which is the failure this assertion exists to catch.
+      const entry = {
+        ruleId: "evals-def67890",
+        file: ".taskless/rules/runtime/x/check.ts",
+      };
+      const targets = repairTargets({
+        unsafe:
+          bucket === "unsafe"
+            ? [{ ...entry, expected: "1;h=sha-256;d=aaa", got: "b" }]
+            : [],
+        missing: bucket === "missing" ? [entry] : [],
+      });
+      expect(targets).toHaveLength(1);
+      expect(targets[0]?.ruleId).toBe("evals-def67890");
+    }
+  );
+
+  it("identifies an unsafe entry whose file sits outside the rules tree", () => {
+    // Nothing about the reported path decides anything now, so a rule held
+    // somewhere the layout does not describe is still repairable. Under path
+    // parsing this entry was unidentifiable and dropped.
+    const targets = repairTargets({
+      unsafe: [
         {
-          ruleId: "evals-def67890",
-          file: ".taskless/rules/runtime/x/check.ts",
+          ruleId: "logs-abc12345",
+          file: "src/check.ts",
+          expected: "1;h=sha-256;d=a",
+          got: "b",
         },
       ],
-    });
-    expect(targets[0]?.ruleId).toBe("evals-def67890");
-  });
-
-  it("reports an unsafe entry whose path yields no rule id", () => {
-    // Rather than requesting a guessed id. The service never issued a rule
-    // called `src`, and asking for one turns a repairable state into a 404.
-    const { targets, unidentifiable } = repairTargets({
-      unsafe: [{ file: "src/check.ts", expected: "1;h=sha-256;d=a", got: "b" }],
       missing: [],
     });
-    expect(targets).toHaveLength(0);
-    expect(unidentifiable).toHaveLength(1);
-  });
-});
-
-describe("reading a rule id out of a check path", () => {
-  it.each([
-    [".taskless/rules/runtime/logs-abc12345/check.ts", "logs-abc12345"],
-    // A repo nested under a directory of the same name: matched from the right.
-    ["vendor/.taskless/rules/runtime/logs-abc12345/check.ts", "logs-abc12345"],
-  ])("reads %s as %s", (file, expected) => {
-    expect(ruleIdFromCheckPath(file)).toBe(expected);
-  });
-
-  it.each([
-    ["a check outside the rules tree", "src/check.ts"],
-    ["the wrong engine directory", ".taskless/rules/sg/logs-abc/check.ts"],
-    ["a differently rooted tree", "other/rules/runtime/logs-abc/check.ts"],
-    ["no check.ts at all", ".taskless/rules/runtime/logs-abc/rule.yml"],
-  ])("refuses %s", (_label, file) => {
-    expect(ruleIdFromCheckPath(file)).toBeUndefined();
+    expect(targets).toHaveLength(1);
+    expect(targets[0]?.ruleId).toBe("logs-abc12345");
   });
 });
 

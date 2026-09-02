@@ -127,13 +127,22 @@ const DRIFTED = "export default async () => [];\n";
 const BLESSED = "export default async function () {\n  return [];\n}\n";
 const REPORTED = ".taskless/rules/runtime/demo/check.ts";
 
-/** Reconcile reporting the reported check as drifted from `expected`. */
-const driftedReconcile = (expected: string) => () => ({
-  run: [],
-  unsafe: [{ file: REPORTED, expected, got: "1;h=sha-256;d=stale" }],
-  unknown: [],
-  missing: [],
-});
+/**
+ * Reconcile reporting the reported check as drifted from `expected`.
+ *
+ * `ruleId` is what restore is keyed on. It defaults to the rule directory's
+ * name only so the ordinary fixtures read naturally; nothing derives it from
+ * `REPORTED`, and the disagreeing-id test below passes one that does not match
+ * the path at all.
+ */
+const driftedReconcile =
+  (expected: string, ruleId = "demo") =>
+  () => ({
+    run: [],
+    unsafe: [{ ruleId, file: REPORTED, expected, got: "1;h=sha-256;d=stale" }],
+    unknown: [],
+    missing: [],
+  });
 
 describe("repairing a drifted runtime rule, end to end", () => {
   let directory: string;
@@ -320,6 +329,54 @@ describe("repairing a drifted runtime rule, end to end", () => {
       // A repair that cannot happen is a notice, never a failed run: the rule
       // stays withheld, which is already the safe state.
       await expect(readFile(checkFile, "utf8")).resolves.toBe(DRIFTED);
+    } finally {
+      await mock.close();
+    }
+  });
+
+  it("asks for the id the unsafe entry carries, not the one in its path", async () => {
+    // #240. The entry names `logs-abc12345` while its path's rule directory is
+    // `demo`, and the entry wins. This is the assertion a path-parsing
+    // implementation fails: it would ask for `demo`, and after a layout move it
+    // would ask for something the service never issued, take a 404, and leave
+    // the rule unrepaired and unexecuted with nothing said on any channel.
+    const blessed = await canonicalHash(BLESSED);
+    const mock = await startMock({
+      reconcile: driftedReconcile(blessed, "logs-abc12345"),
+      restore: (ruleId) => ({
+        statusCode: 200,
+        body: {
+          ruleId,
+          rules: [
+            {
+              id: ruleId,
+              engine: "runtime",
+              files: [
+                { path: "check.ts", content: BLESSED },
+                { path: "captures/logs.yml", content: CAPTURE },
+              ],
+              signature: blessed,
+            },
+          ],
+        },
+      }),
+    });
+    try {
+      await runCli(["check", "-d", directory, "--json"], {
+        TASKLESS_TOKEN: "fake.token",
+        TASKLESS_API_URL: mock.apiUrl,
+      });
+      expect(mock.restoreCalls).toEqual(["logs-abc12345"]);
+      // And the repair completed, so the entry's id was what reached restore
+      // rather than the request merely landing somewhere harmless. The bytes
+      // land under the id's own directory, since the delivered set decides
+      // where a rule lives and the reported path never did.
+      await expect(
+        readFile(
+          join(directory, ".taskless/rules/runtime/logs-abc12345/check.ts"),
+          "utf8"
+        )
+      ).resolves.toBe(BLESSED);
     } finally {
       await mock.close();
     }

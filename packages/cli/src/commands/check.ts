@@ -251,13 +251,7 @@ async function repairWithheldRules(
     );
   }
 
-  const { targets, unidentifiable } = repairTargets(input.result);
-  for (const entry of unidentifiable) {
-    notices.push(
-      `${entry.file} drifted from the blessed rule, and its rule id could not ` +
-        `be read from its path, so it was not restored.`
-    );
-  }
+  const targets = repairTargets(input.result);
 
   // Fetched concurrently: each target is a different rule id under the same
   // token and repository, so they do not order against each other, and a repo
