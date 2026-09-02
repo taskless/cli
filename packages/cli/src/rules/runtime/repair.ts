@@ -36,6 +36,41 @@ export interface RepairTarget {
   expected: string | undefined;
 }
 
+/** A repairable entry that did not name the rule to ask for. */
+export interface UnidentifiedEntry {
+  file: string;
+}
+
+/** What the repairable buckets resolved to: what to fetch, and what cannot be. */
+export interface RepairPlan {
+  targets: RepairTarget[];
+  /**
+   * Entries the published schema says must carry a `ruleId` and did not. There
+   * is no request to make for these, only something to say.
+   */
+  unidentified: UnidentifiedEntry[];
+}
+
+/**
+ * The rule id an entry names, or `undefined` if it did not name one.
+ *
+ * The deployed schema requires `ruleId` on both repairable verdicts and the
+ * type here says `string`, but `reconcile` decodes the response with a cast
+ * rather than a schema, so that type is the service's PROMISE and not a fact
+ * about the bytes that arrived. This defends against it breaking that promise,
+ * which is the only reason a client validates a payload at all.
+ *
+ * Without it a rollback, a canary, or a schema regression puts `undefined` into
+ * a `string` and `restoreRule` asks for `/cli/api/request/undefined/restore` —
+ * a request that cannot succeed, made on behalf of a rule nobody can name.
+ * Whitespace is rejected for the same reason: it URL-encodes into an equally
+ * meaningless request rather than failing where it can be read.
+ */
+function namedRuleId(entry: { ruleId: string }): string | undefined {
+  const id: unknown = entry.ruleId;
+  return typeof id === "string" && id.trim() !== "" ? id : undefined;
+}
+
 /**
  * Repair targets for the buckets that have something to fetch.
  *
@@ -44,25 +79,40 @@ export interface RepairTarget {
  * rules layout has moved twice, and a parse of it would break silently on the
  * next move, requesting a rule id the service never issued and leaving a
  * drifted rule unrepaired and unexecuted with nothing to read.
+ *
+ * An entry that names no rule is separated out rather than guessed at. The
+ * answer to a missing id is to report it — a rule that is not repaired stays
+ * withheld, which is already the safe state, and a notice is the difference
+ * between that and a clean-looking pass.
  */
 export function repairTargets(buckets: {
   unsafe: UnsafeEntry[];
   missing: MissingEntry[];
-}): RepairTarget[] {
-  return [
-    ...buckets.unsafe.map((entry) => ({
-      ruleId: entry.ruleId,
-      file: entry.file,
-      expected: entry.expected,
-    })),
-    ...buckets.missing.map((entry) => ({
-      ruleId: entry.ruleId,
-      file: entry.file,
-      // A missing rule is one we do not hold, so there is no prior signature
-      // to hold the restored bytes to.
-      expected: undefined,
-    })),
-  ];
+}): RepairPlan {
+  const targets: RepairTarget[] = [];
+  const unidentified: UnidentifiedEntry[] = [];
+
+  for (const entry of buckets.unsafe) {
+    const ruleId = namedRuleId(entry);
+    if (ruleId === undefined) {
+      unidentified.push({ file: entry.file });
+      continue;
+    }
+    targets.push({ ruleId, file: entry.file, expected: entry.expected });
+  }
+
+  for (const entry of buckets.missing) {
+    const ruleId = namedRuleId(entry);
+    if (ruleId === undefined) {
+      unidentified.push({ file: entry.file });
+      continue;
+    }
+    // A missing rule is one we do not hold, so there is no prior signature to
+    // hold the restored bytes to.
+    targets.push({ ruleId, file: entry.file, expected: undefined });
+  }
+
+  return { targets, unidentified };
 }
 
 /** Why a restored rule was refused, in words a `check` reader can act on. */

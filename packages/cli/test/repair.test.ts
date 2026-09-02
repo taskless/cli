@@ -29,7 +29,7 @@ describe("which reconcile verdicts can be repaired", () => {
     // `unknown` is not in the input type at all, and that is the point: there
     // is nothing on the server to fetch for a file it never issued, which is
     // why its entry carries no rule id to fetch it by.
-    const targets = repairTargets({
+    const { targets } = repairTargets({
       unsafe: [
         {
           ruleId: "logs-abc12345",
@@ -65,7 +65,7 @@ describe("which reconcile verdicts can be repaired", () => {
         ruleId: "evals-def67890",
         file: ".taskless/rules/runtime/x/check.ts",
       };
-      const targets = repairTargets({
+      const { targets } = repairTargets({
         unsafe:
           bucket === "unsafe"
             ? [{ ...entry, expected: "1;h=sha-256;d=aaa", got: "b" }]
@@ -81,7 +81,7 @@ describe("which reconcile verdicts can be repaired", () => {
     // Nothing about the reported path decides anything now, so a rule held
     // somewhere the layout does not describe is still repairable. Under path
     // parsing this entry was unidentifiable and dropped.
-    const targets = repairTargets({
+    const { targets } = repairTargets({
       unsafe: [
         {
           ruleId: "logs-abc12345",
@@ -94,6 +94,73 @@ describe("which reconcile verdicts can be repaired", () => {
     });
     expect(targets).toHaveLength(1);
     expect(targets[0]?.ruleId).toBe("logs-abc12345");
+  });
+
+  // The published schema requires `ruleId` on both repairable verdicts, and
+  // `reconcile` decodes with a cast rather than a schema, so the `string` type
+  // is what the service PROMISES rather than what arrived. A rollback or a
+  // canary that breaks that promise must not become a request: without the
+  // guard `restoreRule` is handed `undefined` and asks the service for
+  // `/cli/api/request/undefined/restore`, which cannot succeed and says
+  // nothing when it fails.
+  describe.each([["unsafe" as const], ["missing" as const]])(
+    "a %s entry that names no rule",
+    (bucket) => {
+      const plan = (ruleId?: unknown) => {
+        const entry = { ruleId, file: `.taskless/rules/runtime/x/check.ts` };
+        return repairTargets({
+          unsafe:
+            bucket === "unsafe"
+              ? [{ ...entry, expected: "1;h=sha-256;d=a", got: "b" }]
+              : [],
+          missing: bucket === "missing" ? [entry] : [],
+        } as unknown as Parameters<typeof repairTargets>[0]);
+      };
+
+      it.each([
+        ["absent", undefined],
+        ["empty", ""],
+        ["whitespace", "   "],
+      ])("is not requested when its id is %s", (_label, ruleId) => {
+        const { targets, unidentified } = plan(ruleId);
+        // Nothing to ask for: no target means no request built from a rule id
+        // nobody supplied.
+        expect(targets).toEqual([]);
+        // And it is said out loud, so the skip is not a silent pass.
+        expect(unidentified).toEqual([
+          { file: ".taskless/rules/runtime/x/check.ts" },
+        ]);
+      });
+
+      it("is not rescued by parsing its path", () => {
+        // The path contains `x`, which the deleted fallback would have taken.
+        // The id is reported as absent, not invented.
+        const { targets } = plan();
+        expect(targets).toEqual([]);
+      });
+    }
+  );
+
+  it("keeps identified entries when another names no rule", () => {
+    // One bad entry withholds itself, not the rules beside it.
+    const { targets, unidentified } = repairTargets({
+      unsafe: [
+        {
+          ruleId: "logs-abc12345",
+          file: ".taskless/rules/runtime/logs-abc12345/check.ts",
+          expected: "1;h=sha-256;d=a",
+          got: "b",
+        },
+        { file: "src/orphan.ts", expected: "1;h=sha-256;d=c", got: "d" },
+      ],
+      missing: [{ ruleId: "evals-def67890", file: "src/present.ts" }],
+    } as unknown as Parameters<typeof repairTargets>[0]);
+
+    expect(targets.map((target) => target.ruleId)).toEqual([
+      "logs-abc12345",
+      "evals-def67890",
+    ]);
+    expect(unidentified).toEqual([{ file: "src/orphan.ts" }]);
   });
 });
 

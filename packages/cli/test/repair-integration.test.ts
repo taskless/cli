@@ -405,4 +405,48 @@ describe("repairing a drifted runtime rule, end to end", () => {
       await mock.close();
     }
   });
+
+  it("asks for nothing when an unsafe entry carries no rule id, and says why", async () => {
+    // The deployed schema requires `ruleId` on `unsafe`, and `reconcile`
+    // decodes with a cast rather than a schema — so a rollback, a canary, or a
+    // regression can put an entry like this on the wire despite the `string`
+    // type. Without a guard `restoreRule` interpolates `undefined` and the CLI
+    // requests `/cli/api/request/undefined/restore`: a call that cannot
+    // succeed, made for a rule nobody named.
+    const mock = await startMock({
+      reconcile: () => ({
+        run: [],
+        unsafe: [
+          {
+            file: REPORTED,
+            expected: "1;h=sha-256;d=a",
+            got: "1;h=sha-256;d=b",
+          },
+        ],
+        unknown: [],
+        missing: [],
+      }),
+      restore: () => ({ statusCode: 500, body: {} }),
+    });
+    try {
+      const { stdout } = await runCli(["check", "-d", directory, "--json"], {
+        TASKLESS_TOKEN: "fake.token",
+        TASKLESS_API_URL: mock.apiUrl,
+      });
+      const notices = (envelope(stdout).notices ?? []).join("\n");
+
+      // The whole point: no request at all, and in particular not the literal
+      // `undefined` the unguarded path would have sent.
+      expect(mock.restoreCalls).toEqual([]);
+      // Not a silent skip. `--json` is what CI reads, so the notice has to be
+      // here and it has to name the file.
+      expect(notices).toContain(REPORTED);
+      expect(notices).toMatch(/did not say which rule it belongs to/);
+      // Withheld, not repaired: the drifted bytes are untouched, which is
+      // already the safe state for a rule that could not be verified.
+      await expect(readFile(checkFile, "utf8")).resolves.toBe(DRIFTED);
+    } finally {
+      await mock.close();
+    }
+  });
 });
