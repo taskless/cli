@@ -1,6 +1,6 @@
-import { writeFileSync, existsSync } from "node:fs";
-import { resolve, dirname } from "node:path";
-import { fileURLToPath } from "node:url";
+import { existsSync } from "node:fs";
+
+import { apiBaseUrl, packageFile, writeJsonArtifact } from "./artifacts";
 
 /**
  * Vendor the Taskless CLI API's OpenAPI document next to the types generated
@@ -26,7 +26,10 @@ import { fileURLToPath } from "node:url";
  *   even when the contract is byte-identical, and a diff that is always
  *   non-empty is one nobody reads. An unchanged API must produce no change.
  *   That rules out a timestamp we would add, and equally one the service
- *   already put in the document — see `stripBuildStamp` below.
+ *   already put in the document — see the build-stamp strip below. The
+ *   output is prettier-formatted for the same reason: `JSON.stringify` alone
+ *   would leave a few hundred lines of formatting churn behind on a refresh
+ *   that changed nothing. See `writeJsonArtifact`.
  * - **Fail loudly, never fall back.** `fetch-rule-hash-vectors.ts` degrades to
  *   its committed cache because it runs in `prebuild` and must not break an
  *   offline build. This script is never on the build path; it is only ever run
@@ -34,21 +37,11 @@ import { fileURLToPath } from "node:url";
  *   "no API changes" when what actually happened was "no API reached".
  */
 
-const __dirname = dirname(fileURLToPath(import.meta.url));
-const OUTPUT_PATH = resolve(
-  __dirname,
-  "..",
-  "src",
-  "generated",
-  "api.schema.json"
-);
+const OUTPUT_PATH = packageFile("src", "generated", "api.schema.json");
 
-// Resolve the API origin the same way the runtime client does: honor
-// TASKLESS_API_URL, else the production default. `__schema` is unauthenticated.
-const baseUrl = (
-  process.env.TASKLESS_API_URL ?? "https://app.taskless.io/cli"
-).replace(/\/cli\/?$/, "");
-const sourceUrl = `${baseUrl}/cli/api/__schema`;
+// `__schema` is unauthenticated. `apiBaseUrl` documents the one tier of the
+// runtime client's origin resolution these scripts skip.
+const sourceUrl = `${apiBaseUrl()}/cli/api/__schema`;
 
 console.log(`Fetching the Taskless CLI API schema...`);
 console.log(`  URL: ${sourceUrl}`);
@@ -108,7 +101,7 @@ if (info && typeof info === "object" && !Array.isArray(info)) {
   }
 }
 
-writeFileSync(OUTPUT_PATH, JSON.stringify(schema, null, 2) + "\n", "utf8");
+await writeJsonArtifact(OUTPUT_PATH, schema);
 
 const paths = Object.keys(schema.paths as Record<string, unknown>);
 console.log(`  Wrote ${String(paths.length)} paths to: ${OUTPUT_PATH}`);

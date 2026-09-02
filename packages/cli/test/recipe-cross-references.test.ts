@@ -12,6 +12,7 @@ import {
   valePlaintextList,
 } from "../src/rules/capabilities";
 import { buildInvocation } from "../src/util/invocation";
+import { escapeRegExp } from "../src/util/regex";
 
 /**
  * Recipes cite each other by topic name, in prose. Nothing resolves those
@@ -32,10 +33,6 @@ import { buildInvocation } from "../src/util/invocation";
  * below reads it directly.
  */
 const recipeDirectory = resolve(import.meta.dirname, "../src/agent");
-
-function escapeRegExp(literal: string): string {
-  return literal.replaceAll(/[$()*+.?[\\\]^{|}]/g, String.raw`\$&`);
-}
 
 /**
  * The CLI's subcommands, as a recipe would name one — read from the registry

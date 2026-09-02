@@ -1,5 +1,5 @@
 import { readFile, readdir } from "node:fs/promises";
-import { join, dirname, relative } from "node:path";
+import { join, dirname, relative, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { describe, it, expect } from "vitest";
@@ -47,19 +47,18 @@ function resourcePrefix(path: string): string {
 }
 
 async function typeScriptSources(directory: string): Promise<string[]> {
-  const found: string[] = [];
-  for (const entry of await readdir(directory, { withFileTypes: true })) {
-    const full = join(directory, entry.name);
-    // `generated/` is the schema's own transcript: it necessarily names every
-    // path, deprecated ones included, and is not a call site.
-    if (entry.isDirectory()) {
-      if (entry.name === "generated") continue;
-      found.push(...(await typeScriptSources(full)));
-    } else if (entry.name.endsWith(".ts")) {
-      found.push(full);
-    }
-  }
-  return found;
+  const entries = await readdir(directory, {
+    recursive: true,
+    withFileTypes: true,
+  });
+  return entries
+    .filter((entry) => entry.isFile() && entry.name.endsWith(".ts"))
+    .map((entry) => join(entry.parentPath, entry.name))
+    .filter(
+      // `generated/` is the schema's own transcript: it necessarily names every
+      // path, deprecated ones included, and is not a call site.
+      (file) => !relative(directory, file).startsWith(`generated${sep}`)
+    );
 }
 
 describe("deprecated API paths", () => {
