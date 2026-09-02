@@ -57,10 +57,10 @@ green on its own; none depends on a later one to be correct.
 
 - [x] 6.5 Nothing repaired runs in the pass that repaired it. Restore rewrites the working tree and promotes nothing into the current run: an `unsafe` rule stays withheld, a `missing` rule was never a local candidate, and an `unknown` rule never runs. Fetching code and executing it in the same pass that discovered the drift would move the gate
 - [x] 6.6 A repair that fails is a notice, never a failed `check`. A rule that could not be repaired stays withheld, which is already the safe state
-- [ ] 6.7 Ask the generator for `ruleId` on a reconcile `unsafe` entry (**N6**). Until then the id is parsed out of `.taskless/rules/runtime/<id>/check.ts`, which works and makes repair depend on a layout that has already moved twice — silently, since a wrong id is a 404 and an unrepaired rule rather than an error
+- [x] 6.7 Ask the generator for `ruleId` on a reconcile `unsafe` entry (**N6**). **Done**: `unsafe`, `unknown` and `missing` entries all carry `ruleId`, and `ruleIdFromCheckPath` is deleted. An entry arriving without a usable id is skipped with a notice rather than becoming a request for `undefined`. Until then the id is parsed out of `.taskless/rules/runtime/<id>/check.ts`, which works and makes repair depend on a layout that has already moved twice — silently, since a wrong id is a 404 and an unrepaired rule rather than an error
 
 ## 7. Close out
 
-- [ ] 7.1 Reply to **N4**: leave the `engine` tier defined and unused — G2 means no engine but `sg` is deliverable as a single file, so the middle rung has no future occupant either
-- [ ] 7.2 Grow the changeset as each slice lands; it stays on the bottom branch
-- [ ] 7.3 Archive the change on the final slice
+- [x] 7.1 Reply to **N4**: **Done**, confirmed both sides — leave the `engine` tier defined and unused — G2 means no engine but `sg` is deliverable as a single file, so the middle rung has no future occupant either
+- [x] 7.2 Grow the changeset as each slice lands; it stays on the bottom branch
+- [x] 7.3 Archive the change on the final slice
