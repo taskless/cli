@@ -7,9 +7,9 @@ permanently unverified.
 
 ## 1. Read the fixtures
 
-- [ ] 1.1 Enumerate `.tests/pass/` and `.tests/fail/` one level deep, requiring each entry to be a directory (D3). A loose file names its own path in the error rather than being skipped
-- [ ] 1.2 Read the two buckets independently and rethrow anything that is not a missing directory, so an unreadable bucket cannot present as an empty one (D5)
-- [ ] 1.3 Classify coverage as `both` / `pass-only` / `fail-only` / `none`, and let only `both` reach a pass (D4)
+- [x] 1.1 Enumerate `.tests/pass/` and `.tests/fail/` one level deep, requiring each entry to be a directory (D3). A loose file names its own path in the error rather than being skipped
+- [x] 1.2 Read the two buckets independently and rethrow anything that is not a missing directory, so an unreadable bucket cannot present as an empty one (D5)
+- [x] 1.3 Classify coverage as `both` / `pass-only` / `fail-only` / `none`, and let only `both` reach a pass (D4)
 
 ## 2. Run them
 
