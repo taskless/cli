@@ -1,9 +1,16 @@
 ## Context
 
-Three engines, three fixture stories, and one of them is missing. `sg` runs
-`ast-grep test` over `.tests/`; `vale` runs its rule over `pass/` and `fail/`
-buckets and checks both directions; `runtime` returns `ran: false, ok: true` and
-prints a tick.
+**Runtime rules do execute today.** `check` runs them against the repository
+through `dispatch.ts:205` into `executeRuntimeRule`, gated by the signature
+planning that happens before dispatch. The executor, the process spawn, the
+timeout and the result shape all exist and are exercised on every authenticated
+`check`. Nothing here is about making runtime rules runnable.
+
+What is missing is running them against **fixtures**. Three engines, three
+fixture stories, and one of them is absent. `sg` runs `ast-grep test` over
+`.tests/`; `vale` runs its rule over `pass/` and `fail/` buckets and checks both
+directions; `runtime` returns `ran: false, ok: true` and prints a tick. Two
+commands, one engine, one of them wired up.
 
 The Vale runner is the model, and it is worth reading before writing this one:
 `rules/vale/verify.ts` already carries the lessons this tier will otherwise
@@ -62,13 +69,24 @@ working as designed. Same word, two situations, opposite correct handling. That
 distinction is the one this codebase got wrong once already with `unsafe` versus
 `missing`.
 
-### D3 — A fixture case is a directory, because the harness takes a root
+### D3 — A fixture case is a directory, because the harness already takes a root
 
-Vale's buckets hold documents. Runtime's hold **directories**, one per case, and
-the case directory is the `root` passed to the check. `types/runtime-rule.ts`
-defines a check as a function over `(root, matches)` that reads files under
-`root`, and `create-runtime-rule.txt` already documents `.tests/pass/case-1/`
-with that meaning.
+This is less a choice than an observation. `executeRuntimeRule(root, rule,
+options)` in `runtime/harness.ts` already takes a root, and `check` reaches it
+through `dispatch.ts:205` with the repository root. A fixture case directory is
+simply a different root handed to the same function.
+
+So the runner is a caller of the existing executor rather than a sibling of it:
+a loop over case directories plus the pass/fail assertion. Process spawn,
+timeout, narrowing, capture discovery and the result shape are all shared with
+`check` and already proven there. Any other case layout would need new plumbing
+instead of reusing what exists, which is the argument for directories rather
+than a preference for them.
+
+Vale's buckets hold documents; runtime's hold **directories**, one per case.
+`types/runtime-rule.ts` defines a check as a function over `(root, matches)`
+reading files under `root`, and `create-runtime-rule.txt` already documents
+`.tests/pass/case-1/` with that meaning.
 
 This is not a stylistic difference. A runtime rule exists because its evidence
 spans more than one file, so a layout allowing one file per case could not
@@ -111,13 +129,24 @@ and sees "did not run" should be told the flag in that message.
 
 ## Risks / Trade-offs
 
-**A rule with no fixtures.** The other two engines fail it, on the grounds that
-nothing shows it fires or stays quiet. Runtime rules have not been carrying
-fixtures, because nothing ran them, so applying the same rule immediately would
-fail rules that were correct under the old behaviour. The proposal is to report
-it as unverified in the same third state as a gated-out run, and to revisit once
-delivered rules carry fixtures as a matter of course. Recorded here rather than
-decided quietly.
+**A rule with no fixtures fails, and that is the decision.** The other two
+engines fail it, on the grounds that nothing shows the rule fires or stays
+quiet, and making runtime the exception would leave the tier that executes
+arbitrary code as the one whose rules need not prove anything.
+
+Depth is not policed. A trivial case that exercises little and passes is
+acceptable; the requirement is that a rule has fixtures, not that they are
+thorough. But that latitude only reaches one bucket. A `fail/` case producing no
+findings is the silent regression this runner exists to catch, so a case that
+tests nothing can only be a `pass/` case, and the `fail/` case is the one that
+has to do real work. That is also the one worth having, since it is what proves
+the rule fires at all.
+
+The cost is real and worth naming: runtime rules have not been carrying
+fixtures, because nothing ran them, so this fails rules that were correct under
+the old behaviour. That is the same trade this CLI already made when `check`,
+`verify` and `test` stopped migrating silently — a wall met once, in exchange
+for a report that means something.
 
 **The runner is a second execution path.** It reuses `invoke.ts` rather than
 reimplementing invocation, so a divergence between how a fixture runs and how
