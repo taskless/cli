@@ -67,39 +67,25 @@ drift without anything detecting it.
 - **THEN** nothing SHALL be written for that rule
 - **AND** the failure SHALL name what was wrong with the payload
 
-### Requirement: The demo shows what the rule found, per example
+### Requirement: The demo serves the rule and nothing beside it
 
-The retrieval response SHALL carry, for each example in the service's fixture,
-that example's name, whether it is expected to fail or pass, and the findings
-the generated check produced against it. Findings SHALL use the published
-`Finding` shape rather than a demo-only object.
+The retrieval response SHALL be the ordinary delivery response. The CLI SHALL
+NOT require, read, or render any field that exists only for the demo.
 
-The CLI SHALL render findings grouped by example, and SHALL report the demo as
-failed when the expected asymmetry does not hold: findings against an example
-expected to pass, or no findings against an example expected to fail.
+**Rationale.** The service's verification gate already refuses a rule whose
+fixture asymmetry does not hold, so a rule that reaches delivery has necessarily
+flagged the failing example and ignored the passing one. Results served
+alongside it would be a constant implied by delivery rather than a finding, and
+a demo-only field is the bespoke shape the well-known-format requirement exists
+to forbid. What the demonstration offers is a rule a reader can run, not a
+result they can read.
 
-**Rationale.** A flat list of findings renders identically for a rule that
-catches the failing examples and a rule that fires on everything it is shown.
-The second is the failure this area keeps producing — an indiscriminate or empty
-scan reporting as a pass — so the demonstration is the asymmetry, not the count.
-Asserting it makes the demo a check rather than a picture.
+#### Scenario: The demo consumes an ordinary delivery
 
-#### Scenario: Findings are attributed to the example that produced them
-
-- **WHEN** the demo renders its result
-- **THEN** each finding SHALL be shown under the example it came from
-- **AND** each example SHALL state whether it was expected to fail or pass
-
-#### Scenario: A rule that fires on a passing example fails the demo
-
-- **WHEN** the response carries a finding against an example expected to pass
-- **THEN** the demo SHALL report failure rather than rendering the findings as
-  a successful demonstration
-
-#### Scenario: A rule that finds nothing fails the demo
-
-- **WHEN** the response carries no findings against an example expected to fail
-- **THEN** the demo SHALL report failure
+- **WHEN** the demo retrieves its rule
+- **THEN** the response SHALL be handled by the same code that handles a
+  generated rule's delivery
+- **AND** no demo-only field SHALL be required for the demo to succeed
 
 ### Requirement: The demo reports a terminal failure rather than inventing a rule
 

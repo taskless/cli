@@ -21,8 +21,8 @@ what design D2 rules out. The mainline took the noun first; the demo follows it.
 
 - [x] 0.1 Confirm the endpoint shapes with the generator team (**N9**): `POST /cli/api/demo/request` returning `{ requestId, status }`, `GET /cli/api/demo/request/{requestId}` returning `{ requestId, status, rules[] }` with the published file-set variant. Agreed both sides
 - [x] 0.2 Confirm the service can serve the demo endpoints unauthenticated, and get their answer on whether reconcile can bless the sample signature for an anonymous caller. **Answered, both halves.** The endpoints take no authentication at all — public, like `rule-hash-vectors` — because nothing in the demo is scoped to a caller: no ticket, no corpus entry, no bill, and one Taskless-owned installation behind every request. And no blessing, for the reason D3 now records: blessing is recording, and a shared fixed rule is never recorded for the caller, so authenticating would not reach execution either
-- [ ] 0.3 Agree what the demo rule is for — the scenario the generated rule addresses — so the demo shows something a person recognises rather than an arbitrary rule. The fixture now has a second job: its examples are what the served findings are attributed to, so it needs examples that are expected to fail AND examples that are expected to pass
-- [ ] 0.4 Tell the service the findings shape we want (D6): `Finding[]` verbatim, grouped per fixture example with that example's name and whether it is expected to fail or pass. `Finding` is our published runtime-rule type, so this is the well-known format rather than a demo-only one
+- [ ] 0.3 Agree what the demo rule is for — the scenario the generated rule addresses — so the demo shows something a person recognises rather than an arbitrary rule
+- [x] 0.4 Tell the service the findings shape we want. **Void, not done**: the service withdrew the findings entirely (D6). The verification gate already refuses a rule whose asymmetry does not hold, so findings alongside the rule are a constant implied by delivery. There is no shape to agree
 - [ ] 0.5 Ask the service which status `iterate` returns for a request outside the caller's organization: 404 `request_not_found` or 403 `access_denied`. It decides what `rule improve` against the demo rule reports — `iterateRule` maps the 404 to a `CLIError` carrying `RULE_NOT_FOUND` and the 403 to a plain `Error`, which `improveCommand` reports as `NETWORK_ERROR`, telling an agent to retry an id that will never resolve. The demo request exists under a Taskless-owned installation and is not the caller's, which is 403-shaped. D7 and the spec state the behaviour rather than a code until this is answered
 
 **Nothing below starts until 0.0 and 0.1 land.** Building against a guessed shape is
@@ -37,8 +37,7 @@ what produced the seam this change is closing.
 - [ ] 1.3 Write through `writeRuleFile`. If the demo needs its own writer, stop: the shapes have diverged and that is the finding
 - [ ] 1.4 Report a terminal status by surfacing the service's reason, which `unsupportedMessage` already prefers over our own text
 - [ ] 1.5 Regenerate `src/generated/api.d.ts` once the endpoints are published
-- [ ] 1.6 Render the served findings grouped by example, showing each example's name, whether it was expected to fail or pass, and what the check returned against it
-- [ ] 1.7 Assert the asymmetry rather than printing whatever arrives: findings on the examples expected to fail, none on the examples expected to pass. A demo whose rule has stopped finding anything, or that fires on everything, SHALL fail rather than render cleanly (D6)
+- [ ] 1.6 Point the reader at running the rule, since that is the whole demonstration once nothing is served beside it. `taskless test` reporting a runtime rule as passing when its fixtures never ran turns the demonstration into a claim, so this task is blocked on that being fixed
 
 ## 2. The hidden topic
 
@@ -61,8 +60,7 @@ what produced the seam this change is closing.
 - [ ] 4.1 Test that a delivered demo rule missing `check.ts` or its captures is refused and nothing is written
 - [ ] 4.2 Test that a terminal `unsupported` surfaces the service's reason and writes nothing
 - [ ] 4.3 Test the whole path against a mock serving both endpoints, asserting the rule lands and `verify` reports it valid
-- [ ] 4.4 Test that a payload whose passing examples carry findings is reported as a failed demonstration, not rendered as success — the indiscriminate-rule case D6 names
-- [ ] 4.5 Test that a payload whose failing examples carry no findings is likewise reported as failed, since an empty scan is the shape a silent regression takes
+- [ ] 4.4 Test that the retrieval response is consumed as an ordinary delivery, with no demo-only field read from it and none required to be present
 
 ## 5. Prove it can be undone
 
