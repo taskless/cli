@@ -258,7 +258,7 @@ authentication.
 
 `taskless check` SHALL reconcile before running runtime rules whenever a bearer token and a
 `repositoryUrl` are resolvable and `--anonymous` is not set. It SHALL compute the signature
-envelope for the `check.ts` of every runtime rule under `.taskless/runtime-rules/`, call
+envelope for the `check.ts` of every runtime rule under `.taskless/rules/runtime/`, call
 `POST /cli/api/reconcile` with `{ repositoryUrl, files }`, and then execute **only** the
 runtime rules whose `check.ts` is returned in the `run` set, matched back to local files by
 signature (per the `cli-rule-reconciliation` capability). Capture `*.yml` and static rules
@@ -298,11 +298,11 @@ non-zero code solely because reconciliation failed, and the warning SHALL be sup
 
 ### Requirement: Check dispatches static and runtime rules to distinct executors
 
-`taskless check` SHALL dispatch rules to distinct executors by their engine directory: **ast-grep** rules under `.taskless/sg/` via the ast-grep scanner, **Vale** rules under `.taskless/vale/` via the Vale runner (per the `cli-vale-rule-engine` capability), and **runtime** rules under `.taskless/runtime/rules/` via the runtime harness (per the `cli-runtime-rule-execution` capability). Findings from all executors SHALL be aggregated into the same result set and SHALL count toward the exit code identically.
+`taskless check` SHALL dispatch rules to distinct executors by their engine directory: **ast-grep** rules under `.taskless/rules/sg/` via the ast-grep scanner, **Vale** rules under `.taskless/rules/vale/` via the Vale runner (per the `cli-vale-rule-engine` capability), and **runtime** rules under `.taskless/rules/runtime/` via the runtime harness (per the `cli-runtime-rule-execution` capability). Findings from all executors SHALL be aggregated into the same result set and SHALL count toward the exit code identically.
 
 #### Scenario: Mixed corpus runs all executors
 
-- **WHEN** `.taskless/sg/` contains ast-grep rules, `.taskless/vale/` contains Vale rules, and `.taskless/runtime/rules/` contains runtime rules
+- **WHEN** `.taskless/rules/sg/` contains ast-grep rules, `.taskless/rules/vale/` contains Vale rules, and `.taskless/rules/runtime/` contains runtime rules
 - **THEN** the CLI SHALL run ast-grep rules through `sg scan`, Vale rules through the Vale runner, and runtime rules through the runtime harness
 - **AND** SHALL merge their findings into one result set
 
