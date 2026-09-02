@@ -15,6 +15,7 @@ import {
   resolveRulePath,
   RuleNotFoundError,
 } from "../rules/resolve-path";
+import { createRuntimeGate } from "../rules/runtime/plan";
 import { outputSchema as verifyTestOutputSchema } from "../schemas/verify-test";
 import { makeErrorEnvelope, writeJsonError } from "../types/errors";
 import { CLIError } from "../util/cli-error";
@@ -124,7 +125,19 @@ async function runOverPath(options: {
     results.push(await run(cwd, rule));
   }
 
-  const failed = results.filter((result) => !result.ok);
+  // Three outcomes, not two. A run the execution policy refused is neither a
+  // pass nor a failure: the rule is not defective, and no action available to
+  // its holder would make a failure green, so failing it would turn `test` red
+  // for every project holding a runtime rule. It is excluded from the failures
+  // that set the exit code and from the count of rules tested, and gets its
+  // own marker below.
+  const refused = results.filter(
+    (result) => "refused" in result && result.refused !== undefined
+  );
+  const isRefused = (result: RuleVerification | RuleTestResult): boolean =>
+    "refused" in result && result.refused !== undefined;
+  const failed = results.filter((result) => !result.ok && !isRefused(result));
+  const tested = results.length - refused.length;
 
   if (json) {
     console.log(
@@ -137,7 +150,10 @@ async function runOverPath(options: {
     );
   } else {
     for (const result of results) {
-      const mark = result.ok ? "✓" : "✗";
+      // `○` is neither tick nor cross on purpose: the rule was not tested, and
+      // a reader scanning the column has to be able to see that at a glance.
+      // The reason prints below it, from `errors`, and names what would run it.
+      const mark = isRefused(result) ? "○" : result.ok ? "✓" : "✗";
       console.log(`${mark} ${result.engine}/${result.ruleId}`);
       for (const error of result.errors) {
         console.log(`    ${error}`);
@@ -149,10 +165,17 @@ async function runOverPath(options: {
         console.log(`    notice: ${result.notice}`);
       }
     }
+    // A rule that did not run is not among the rules tested. Counting it there
+    // is the summary half of the same defect as the tick: "1 rule(s) tested"
+    // about a rule nothing ran.
+    const notRun =
+      refused.length === 0
+        ? ""
+        : ` ${String(refused.length)} rule(s) did not run.`;
     console.log(
       failed.length === 0
-        ? `\n${String(results.length)} rule(s) ${label === "verify" ? "verified" : "tested"}.`
-        : `\n${String(failed.length)} of ${String(results.length)} rule(s) failed.`
+        ? `\n${String(tested)} rule(s) ${label === "verify" ? "verified" : "tested"}.${notRun}`
+        : `\n${String(failed.length)} of ${String(tested)} rule(s) failed.${notRun}`
     );
   }
 
@@ -203,15 +226,36 @@ export const testCommand = defineCommand({
     name: "test",
     description: "Run a rule's tests, after verifying the rule itself",
   },
-  args: ruleTargetArguments,
+  args: {
+    ...ruleTargetArguments,
+    // The same flag `check` carries, with the same description, because it is
+    // the same gate. A runtime rule's fixtures execute its `check.ts`, and
+    // that the input is test data is a statement about the input rather than
+    // about what the program may do.
+    "dangerously-run-scripts": {
+      type: "boolean",
+      description:
+        "Run runtime-rule check.ts without server verification (executes untrusted code)",
+      default: false,
+    },
+  },
   async run({ args }) {
     const cwd = resolve(args.dir ?? process.cwd());
+    // One gate for the whole run, so a tree of runtime rules is planned once.
+    // The notices are `check`'s, on stderr, and suppressed under `--json` for
+    // `check`'s reason: a machine consumer cannot read prose.
+    const runtimeGate = createRuntimeGate(cwd, {
+      dangerouslyRunScripts: Boolean(args["dangerously-run-scripts"]),
+      onNotice: (message: string) => {
+        if (!args.json) console.error(message);
+      },
+    });
     await runOverPath({
       cwd,
       target: args.path ?? ".taskless/rules",
       json: args.json,
       label: "test",
-      run: testOneRule,
+      run: async (ruleCwd, rule) => testOneRule(ruleCwd, rule, { runtimeGate }),
     });
   },
 });

@@ -9,10 +9,13 @@ import {
   ruleFilePath,
 } from "./engines";
 import { type EngineName } from "./layout";
+import { assessCaptureDirectory, strayModules } from "./runtime/discover";
+import { readRuntimeFixtures } from "./runtime/fixtures";
+import { createRuntimeGate, type RuntimeGate } from "./runtime/plan";
 import {
-  assessCaptureDirectory,
-  strayModules,
-} from "./runtime/discover";
+  describeFixtureReport,
+  runRuntimeFixtures,
+} from "./runtime/run-fixtures";
 import { validateValeRule } from "../schemas/vale-rule";
 import { verifyRule, type VerifyResult } from "./verify";
 import { verifyValeRule } from "./vale/verify";
@@ -40,8 +43,26 @@ export interface RuleTestResult {
   ruleId: string;
   ok: boolean;
   errors: string[];
-  /** Absent when `verify` failed and the tests never ran. */
+  /**
+   * Whether the rule's tests actually ran.
+   *
+   * Load-bearing rather than advisory. `test` used to report a runtime rule as
+   * `ok: true, ran: false` and print a tick, so the one field that knew the
+   * rule had not been tested was the one nothing read.
+   */
   ran: boolean;
+  /**
+   * Set when the execution policy refused the run, carrying the reason.
+   *
+   * The third outcome, and the one `ok` cannot express. A rule that cannot run
+   * because nothing blessed it is not a pass, and it is not a failure either:
+   * failing it would turn `test` red for every project holding a runtime rule,
+   * with no action available to its holder that makes it green. So it is
+   * neither, and the renderer, the summary count and the exit code all read
+   * this field rather than inferring the state from `ok` and `ran` together
+   * (which cannot distinguish it from a rule whose `verify` failed).
+   */
+  refused?: string;
   /**
    * Something the engine said about its own configuration, as opposed to about
    * the rule. Vale reports a misplaced `.vale.ini` assignment this way: it
@@ -51,6 +72,19 @@ export interface RuleTestResult {
    * is the case it exists for.
    */
   notice?: string;
+}
+
+/** What `test` needs beyond a rule, all of it about the runtime engine. */
+export interface TestOptions {
+  /**
+   * The execution gate, shared across every rule in one command run.
+   *
+   * Passed in rather than built here so a `test` over a whole tree plans once:
+   * the plan consults auth and reconcile, and per-rule planning would send one
+   * request per runtime rule for an answer that does not vary. Omitted, a
+   * gate with no escape flag is built, which is the safe default.
+   */
+  runtimeGate?: RuntimeGate;
 }
 
 async function readYaml(path: string): Promise<unknown> {
@@ -233,7 +267,8 @@ export async function verifyOneRule(
  */
 export async function testOneRule(
   cwd: string,
-  rule: ResolvedRule
+  rule: ResolvedRule,
+  options: TestOptions = {}
 ): Promise<RuleTestResult> {
   const { engine, ruleId } = rule;
 
@@ -309,14 +344,57 @@ export async function testOneRule(
     };
   }
 
-  // Runtime rules execute code, so their tests run through the harness under
-  // the same server verification `check` requires. Out of scope here: `test`
-  // reports that rather than quietly claiming a pass.
+  // Runtime rules execute code, so their fixtures run through the harness
+  // under the same server verification `check` requires: the gate below is
+  // `check`'s, imported rather than re-stated.
+  const gate =
+    options.runtimeGate ??
+    createRuntimeGate(cwd, { dangerouslyRunScripts: false });
+  const admission = await gate.admit(ruleId);
+
+  if (!admission.admitted) {
+    // Neither a pass nor a failure (D2), and the message has to say what would
+    // change it. A locally authored rule has no signature and never will,
+    // because blessing is recording and nothing recorded this one, so the flag
+    // is the author's only route and naming it here is the difference between
+    // a dead end and an instruction.
+    const reason =
+      `fixtures did not run: ${admission.reason}. Pass ` +
+      `--dangerously-run-scripts to run them without server verification ` +
+      `(it executes the rule's check.ts).`;
+    return {
+      engine,
+      ruleId,
+      ok: false,
+      errors: [reason],
+      ran: false,
+      refused: reason,
+    };
+  }
+
+  let fixtures;
+  try {
+    fixtures = await readRuntimeFixtures(cwd, ruleId);
+  } catch (error) {
+    // A bucket that could not be read, or an entry that is not a directory.
+    // Both are failures of the fixtures rather than refusals of the run, so
+    // they fail: the alternative is a bucket reading as empty, which makes a
+    // two-sided rule look one-sided and a one-sided rule look complete.
+    return {
+      engine,
+      ruleId,
+      ok: false,
+      errors: [error instanceof Error ? error.message : String(error)],
+      ran: false,
+    };
+  }
+
+  const report = await runRuntimeFixtures(admission.rule, fixtures);
   return {
     engine,
     ruleId,
-    ok: true,
-    errors: [],
-    ran: false,
+    ok: report.passed,
+    errors: describeFixtureReport(ruleId, report),
+    ran: true,
   };
 }
