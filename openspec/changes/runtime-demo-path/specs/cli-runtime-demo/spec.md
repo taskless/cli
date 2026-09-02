@@ -67,6 +67,40 @@ drift without anything detecting it.
 - **THEN** nothing SHALL be written for that rule
 - **AND** the failure SHALL name what was wrong with the payload
 
+### Requirement: The demo shows what the rule found, per example
+
+The retrieval response SHALL carry, for each example in the service's fixture,
+that example's name, whether it is expected to fail or pass, and the findings
+the generated check produced against it. Findings SHALL use the published
+`Finding` shape rather than a demo-only object.
+
+The CLI SHALL render findings grouped by example, and SHALL report the demo as
+failed when the expected asymmetry does not hold: findings against an example
+expected to pass, or no findings against an example expected to fail.
+
+**Rationale.** A flat list of findings renders identically for a rule that
+catches the failing examples and a rule that fires on everything it is shown.
+The second is the failure this area keeps producing — an indiscriminate or empty
+scan reporting as a pass — so the demonstration is the asymmetry, not the count.
+Asserting it makes the demo a check rather than a picture.
+
+#### Scenario: Findings are attributed to the example that produced them
+
+- **WHEN** the demo renders its result
+- **THEN** each finding SHALL be shown under the example it came from
+- **AND** each example SHALL state whether it was expected to fail or pass
+
+#### Scenario: A rule that fires on a passing example fails the demo
+
+- **WHEN** the response carries a finding against an example expected to pass
+- **THEN** the demo SHALL report failure rather than rendering the findings as
+  a successful demonstration
+
+#### Scenario: A rule that finds nothing fails the demo
+
+- **WHEN** the response carries no findings against an example expected to fail
+- **THEN** the demo SHALL report failure
+
 ### Requirement: The demo reports a terminal failure rather than inventing a rule
 
 The CLI SHALL report a terminal status the service returns for a demo request,
@@ -104,6 +138,26 @@ is visible to anyone who reads the recipe.
 - **WHEN** a user runs `check` with `--dangerously-run-scripts`
 - **THEN** the demo rule SHALL execute under that flag's existing warning, and
   under no other mechanism
+
+### Requirement: The demo rule cannot be used as a base for improvement
+
+The CLI SHALL NOT offer the demo rule as an input to rule improvement. An
+attempt to improve it SHALL terminate with the service's not-found result and
+SHALL write nothing.
+
+**Rationale.** Improvement resolves a request the caller's organization holds,
+and the demo is recorded in no organization, so not-found is the accurate
+answer rather than a missing feature. It is also the answer we want on its
+merits: a rule pre-generated against a shared fixture is a poor base to iterate
+on, and nothing generated in advance can match a rule authored against this
+developer's own repository and context. Offering it as a starting point would
+lend a worse starting point the demo's credibility.
+
+#### Scenario: Improving the demo rule is refused
+
+- **WHEN** rule improvement is invoked against the demo rule
+- **THEN** the CLI SHALL report the service's not-found result
+- **AND** SHALL write no rule
 
 ### Requirement: What the demo writes can be removed
 

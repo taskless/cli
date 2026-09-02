@@ -130,9 +130,25 @@ network and arbitrary code running on a developer's machine. A hole in it that
 exists "only for the demo" is a hole, and the id it keys on is attacker-visible
 in the recipe. No demo is worth that.
 
-The consequence is that this change demonstrates everything up to the gate. If
-showing a blessed rule execute matters, logging in is the next beat, and it is
-a better demo for being the payoff rather than the prerequisite.
+The consequence is that this change demonstrates everything up to the gate.
+
+**An earlier draft of this section said logging in was "the next beat". That is
+wrong, and the correction matters more than the wording.** Blessing is
+recording: a signature exists for a rule because that rule was written into an
+organization's corpus. The demo rule is one fixed rule, served to every caller
+from a Taskless-owned installation, and it is never recorded for the caller. So
+there is no signature for it in any caller's `run` set, and authenticating adds
+nothing — the gate is not a step the demo stops just short of, it is unreachable
+by construction from a shared fixture.
+
+That also disposes of the idea that the demo half-serves the blessed-execution
+handshake and should be extended to serve it fully. It cannot. Exercising "we
+bless, you run" needs a rule recorded for the organization that runs it, which
+is what an ordinary authored rule already is. If that seam wants automated
+coverage, the honest shape is an integration test against an organization we
+own — not a demo — and it should be argued on those terms rather than folded in
+here. Until someone does, the seam is covered by unit tests on each side and by
+nothing that spans them, and this change records that rather than obscuring it.
 
 ### D4 — Hidden by omission, not by a new mechanism
 
@@ -183,6 +199,75 @@ reason over its own text for `unsupported`, so this needs nothing new.
 
 A demo that invents a rule when generation fails would be worse than a demo
 that fails, because it would look like success.
+
+### D6 — The findings ship as `Finding[]`, grouped by the example that produced them
+
+The service offered either its harness's `Finding[]` or something narrower, and
+left the shape to us since we render it.
+
+`Finding[]` as-is, because it is not the service's internal type: `Finding` is
+declared in `types/runtime-rule.ts` as part of the runtime-rule contract, and is
+what a check returns on this side. Choosing a narrower demo-only object would be
+introducing a payload only the demo consumes, which is the thing D1 exists to
+forbid. The same reasoning that reuses `submitRule`, `pollRuleStatus` and
+`writeRuleFile` applies to the type a check's results already have.
+
+What the demo does add is a wrapper, and the wrapper is the part carrying the
+demonstration:
+
+```
+examples: [ { name, expectation: "fails" | "passes", findings: Finding[] } ]
+```
+
+A flat list of findings cannot distinguish a rule that catches the failing
+examples from one that fires on everything it is shown, and those two render
+identically as "3 findings". The second is the recurring defect in this area
+wearing a success costume — an empty or indiscriminate scan reporting as a pass.
+Attributing each finding to an example, and stating what that example was
+expected to do, makes the asymmetry the thing a reader sees: findings on the
+examples that should fail, none on the examples that should pass.
+
+That also makes the demo checkable rather than merely viewable. The CLI can
+assert the asymmetry instead of printing whatever arrives, so a demo that
+silently stops finding anything fails rather than looking clean.
+
+### D7 — Each thing the demo cannot do is the behaviour we want, not a shortfall
+
+D3 and D6 describe the demo negatively: it cannot reach the gate, and it must
+fail rather than render an indiscriminate rule. Read together they invite the
+wrong conclusion, that the demo is a reduced version of something better. It is
+not. Every limit is a correct behaviour arriving through the ordinary path.
+
+**The rule is real and inspectable.** A developer gets `check.ts` and its
+captures on disk and can read what a runtime rule actually is. That is the
+demonstration. Note what is _not_ on disk: a signature. `run-set.ts` computes
+one from the check's bytes at reconcile time; delivery never writes a signature
+artifact. So there is nothing to inspect there and nothing to tamper with, and
+the demo's value is the rule's content rather than a token.
+
+**It is inert, and inert is the correct state.** An ordinary `check` skips it
+because no signature for it is in any organization's `run` set. A developer who
+runs `check` and sees the rule skipped is watching the gate work, on the
+ordinary code path, with the reason `check` already prints. Nothing about the
+demo is special-cased to produce that.
+
+**It is removable, through the delete flow we already own.** No demo-specific
+teardown, no residue `verify` or `check` reports afterwards.
+
+**`improve` does not work on it, and should not.** Improvement resolves a
+request the caller's organization holds, and the demo is recorded in no
+organization, so it terminates as `RULE_NOT_FOUND` — the correct code, since the
+service genuinely has no such record. The deeper reason is worth stating: a
+pre-generated rule built against a shared fixture is a bad base to iterate on.
+Nothing generated in advance can match a rule authored against this developer's
+own repository and context, so offering the demo rule as a starting point would
+be offering a worse starting point wearing the demo's credibility.
+
+**This is correct-by-accident until it is pinned.** Each of these follows from
+existing behaviour rather than from code written for the demo, which is exactly
+the situation the `metadata.taskless` test was written for: behaviour we depend
+on, produced by code that never knew about us. Tasks 3.4 and 5.2 pin the two
+that would be silent if they broke.
 
 ## Risks / Trade-offs
 
