@@ -16,6 +16,7 @@ import { dirname, join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { writeRuleFile } from "../src/rules/files";
+import { PurgeIncompleteError } from "../src/rules/deliver";
 import { ruleDirectory } from "../src/rules/engines";
 import type { GeneratedRule } from "../src/api/rules";
 
@@ -570,6 +571,33 @@ asUser("a purge that cannot finish", () => {
       // is a named leftover beside a working rule, never a missing piece.
       expect(existsSync(join(directory, "check.ts"))).toBe(true);
       expect(existsSync(join(directory, "captures", "logs.yml"))).toBe(true);
+    } finally {
+      await chmod(join(directory, "blocked"), 0o700);
+    }
+  });
+
+  it("is a distinct error type, so a caller need not read the message", async () => {
+    // The reason this is typed. A failed WRITE and a failed CLEANUP ask the
+    // reader for opposite things — "the rule is not there" versus "the rule
+    // IS there and something stale is too" — and a caller that could only
+    // match on prose gets it wrong the first time the wording changes.
+    await writeRuleFile(cwd, delivered("runtime", "logs-abc12345", COMPLETE));
+    const directory = ruleDirectory(cwd, "runtime", "logs-abc12345");
+    await mkdir(join(directory, "blocked"), { recursive: true });
+    await writeFile(join(directory, "blocked", "a.txt"), "stuck\n", "utf8");
+    await chmod(join(directory, "blocked"), 0o500);
+
+    try {
+      const error = await writeRuleFile(
+        cwd,
+        delivered("runtime", "logs-abc12345", COMPLETE)
+      ).catch((error_: unknown) => error_);
+
+      expect(error).toBeInstanceOf(PurgeIncompleteError);
+      expect((error as PurgeIncompleteError).failures).toHaveLength(1);
+      expect((error as PurgeIncompleteError).failures[0]).toContain(
+        "blocked/a.txt"
+      );
     } finally {
       await chmod(join(directory, "blocked"), 0o700);
     }

@@ -21,6 +21,7 @@ import type { ReconcileResponse } from "../api/reconcile";
 import { restoreRule } from "../api/restore";
 import { repairTargets, verifyRestoredCheck } from "../rules/runtime/repair";
 import { writeRuleFile } from "../rules/files";
+import { PurgeIncompleteError } from "../rules/deliver";
 import {
   discoverRuntimeRules,
   type RuntimeRule,
@@ -306,6 +307,22 @@ async function repairWithheldRules(
     try {
       await writeRuleFile(cwd, rule);
     } catch (error) {
+      // A failed WRITE and a failed CLEANUP ask the reader for opposite
+      // things, and saying "could not be written" for both is worse than
+      // saying nothing: the blessed bytes are on disk in the second case, so
+      // a reader acting on it re-runs a repair that already succeeded, or
+      // decides the rule is unrepaired and edits it by hand.
+      if (error instanceof PurgeIncompleteError) {
+        notices.push(
+          `${target.file} was rewritten with the bytes the service blessed, ` +
+            `but ${String(error.failures.length)} stale ` +
+            `${error.failures.length === 1 ? "entry" : "entries"} could not ` +
+            `be removed and an engine still reads ` +
+            `${error.failures.length === 1 ? "it" : "them"}: ` +
+            `${error.failures.join(", ")}.`
+        );
+        continue;
+      }
       const message = error instanceof Error ? error.message : String(error);
       notices.push(`${target.file} could not be written (${message}).`);
       continue;
