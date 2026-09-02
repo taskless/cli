@@ -30,6 +30,8 @@ what produced the seam this change is closing.
 
 - [ ] 1.1 Add the demo endpoints to `src/api/`, reusing the existing client rather than a second fetch layer
 - [ ] 1.2 Drive them through `submitRule`/`pollRuleStatus`, so polling and the terminal `failed`/`unsupported` states are the same code an ordinary generation uses
+- [ ] 1.2a Make that reuse possible first: `submitRule` and `pollRuleStatus` are hardcoded to the rule-family endpoints and take a required `token` that `createApiClient` turns into an `Authorization` header unconditionally. Parameterize the endpoint and make the token optional. **Not a divergence signal** — see D1; these were written when every caller was authenticated, and the demo is the first that is not
+- [ ] 1.2b Confirm an unauthenticated call sends no `Authorization` header at all, rather than one with an empty token. A header the service must then decide how to ignore is a worse contract than its absence
 - [ ] 1.3 Write through `writeRuleFile`. If the demo needs its own writer, stop: the shapes have diverged and that is the finding
 - [ ] 1.4 Report a terminal status by surfacing the service's reason, which `unsupportedMessage` already prefers over our own text
 - [ ] 1.5 Regenerate `src/generated/api.d.ts` once the endpoints are published
