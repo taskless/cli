@@ -62,17 +62,24 @@ job by failing. That is the signal worth having, and it is the whole reason for
 mirroring the delivery variant.
 
 **`submitRule` and `pollRuleStatus` need work first, and that is a task rather
-than a divergence signal.** Both are hardcoded to the rule-family endpoints and
-both take a required `token`, which `createApiClient` turns unconditionally into
-an `Authorization: Bearer` header. The demo is unauthenticated by requirement
-(D3), so neither is usable as it stands: the endpoint has to be a parameter, and
-the token has to be optional.
+than a divergence signal.** Both hardcode their endpoint as a literal, and both
+take a required `token`, which `createApiClient` turns unconditionally into an
+`Authorization: Bearer` header. The demo is unauthenticated by requirement (D3),
+so neither is usable as it stands: the endpoint has to be a parameter, and the
+token has to be optional.
 
-The path half of that resolves itself when the client adopts the renamed family,
-which is out of scope here. The token half does not, and is the durable part.
-Neither is evidence of anything having gone wrong — they are two small changes
-to functions written when every caller was authenticated, and they are planned
-in task 1.2a rather than discovered during implementation.
+**An earlier draft said the path half "resolves itself when the client adopts
+the renamed family". It did not, and the correction is worth keeping.** The
+client has since adopted it — those two functions now call `/cli/api/request`
+and `/cli/api/request/{requestId}` — and they are no less hardcoded for it. The
+demo's endpoint is `/cli/api/demo/request` either way, so what stood between the
+demo and reuse was never which noun the literal spelled; it was that the literal
+is not a parameter. Both halves are ours, and both are planned in task 1.2a
+rather than discovered during implementation.
+
+Neither is evidence of anything having gone wrong. They are two small changes to
+functions written when every caller was authenticated and every caller wanted
+the same route.
 
 The distinction matters because D1's failure test is a **claim about payload
 shapes**. A requester that needs a second argument says nothing about whether
@@ -94,10 +101,12 @@ has landed and is verified live, so the demo takes the settled noun above.
 Naming the demo endpoints before it landed would have made the demo the debut
 of the new convention, which is precisely what this decision forbids.
 
-Adopting the new noun in the _ordinary_ client is a separate change and is not
-this one's dependency. `/cli/api/rule/*` still serves, marked `deprecated`, so
-the mainline client is not broken by having not moved yet — but the demo, being
-new, has no reason to be born on the deprecated spelling.
+Adopting the new noun in the _ordinary_ client was a separate change and was
+never this one's dependency. `/cli/api/rule/*` still serves, marked
+`deprecated`, so the mainline client was not broken by having not moved yet, and
+the demo, being new, had no reason to be born on the deprecated spelling. That
+separate change has since landed as well, so the two agree; the Risks section
+records what the move taught.
 
 ### D2a — The fixed input is data the service holds, not a repository
 
@@ -202,6 +211,11 @@ that fails, because it would look like success.
 
 ### D6 — The findings ship as `Finding[]`, grouped by the example that produced them
 
+**This shape is under revision and is not yet agreed with the service.** Task
+0.4 — telling the service what findings shape we want — is open, so what follows
+is the ask rather than the contract. The retrieval shape the two sides have
+settled is D1's, and it does not include this.
+
 The service offered either its harness's `Finding[]` or something narrower, and
 left the shape to us since we render it.
 
@@ -255,10 +269,27 @@ demo is special-cased to produce that.
 teardown, no residue `verify` or `check` reports afterwards.
 
 **`improve` does not work on it, and should not.** Improvement resolves a
-request the caller's organization holds, and the demo is recorded in no
-organization, so it terminates as `RULE_NOT_FOUND` — the correct code, since the
-service genuinely has no such record. The deeper reason is worth stating: a
-pre-generated rule built against a shared fixture is a bad base to iterate on.
+request the caller's organization holds. The demo request is held by a
+Taskless-owned installation and by no caller's organization, so improvement is
+refused and nothing is written. That behaviour is the part this design rests on.
+
+**Which status the service returns for it is not settled, and this design no
+longer asserts one.** An earlier draft said `RULE_NOT_FOUND`. That is a claim
+about the service rather than about us, and the client's own handling makes it
+consequential: `iterateRule` turns a 404 `request_not_found` into a `CLIError`
+carrying `RULE_NOT_FOUND`, and turns a 403 `access_denied` into a plain `Error`,
+which `improveCommand` reports as `NETWORK_ERROR`. A request that genuinely
+exists and merely is not yours is 403-shaped rather than 404-shaped. If that is
+what the service sends, `improve` on the demo rule reports `NETWORK_ERROR` and
+tells an agent to retry an id that will never resolve — the exact
+miscategorisation `iterateRule`'s own comment was written to prevent. Asserting
+`NETWORK_ERROR` instead would trade one unconfirmed claim for another, so task
+0.5 asks the service which status a ticket outside the caller's organization
+returns, and the requirement states the behaviour until that answer exists.
+
+The deeper reason for refusing is worth stating separately, because it holds
+whatever the status turns out to be: a pre-generated rule built against a shared
+fixture is a bad base to iterate on.
 Nothing generated in advance can match a rule authored against this developer's
 own repository and context, so offering the demo rule as a starting point would
 be offering a worse starting point wearing the demo's credibility.
@@ -271,13 +302,31 @@ that would be silent if they broke.
 
 ## Risks / Trade-offs
 
-**The demo is born on `request`/`requestId` while the ordinary client is still
-on `rule`/`ruleId`.** That skew is deliberate (D2) and bounded: the `rule/*`
-family still serves, marked `deprecated`, so nothing is broken by the mainline
-not having moved yet. When it does adopt the rename, regenerating the types
-catches most of it at compile time; two call sites build their URL as a
-template string and would not fail to compile, so they are changed deliberately
-rather than found later.
+**The demo was born on `request`/`requestId` ahead of the ordinary client, and
+that skew has since closed.** It was deliberate (D2) and bounded while it
+lasted: the `rule/*` family still serves, marked `deprecated`, so nothing was
+broken by the mainline not having moved yet. The mainline has now moved.
+`submitRule` posts to `/cli/api/request`, `pollRuleStatus` gets
+`/cli/api/request/{requestId}`, `iterateRule` and `restoreRule` follow, and no
+hand-written call site targets the `rule/*` family.
+
+**How that move landed is the part worth keeping, because this section's
+expectation was wrong.** It assumed regenerating the types would catch the
+typed call sites at compile time, leaving only the two that build their URL as a
+template string to change by hand. It caught none of them. A deprecated path is
+still IN the OpenAPI document, so `openapi-typescript` emits it as an ordinary
+entry and `client.GET("/cli/api/rule/{ruleId}")` type-checks exactly as well as
+the canonical spelling; all four typed call sites were reverted and `tsc
+--noEmit` passed clean. What closes that gap is a test rather than the type
+system: `generate:api` vendors the OpenAPI document next to the types it
+generates, and `test/api-deprecated-paths.test.ts` reads that document to fail
+if any source file still calls a path it marks deprecated. Deprecation is data
+in the schema, not a type error, so catching it takes something that reads the
+schema.
+
+That is the standing lesson for D2. When the mainline is renamed again and the
+demo follows it, the rename is not self-enforcing, and the vendored document is
+what makes it so.
 
 **The service half does not exist yet.** The endpoints are the service team's
 to build, raised as N9. This change assumes the shapes in D1; if they land

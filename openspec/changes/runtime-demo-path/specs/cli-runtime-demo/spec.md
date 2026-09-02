@@ -142,21 +142,32 @@ is visible to anyone who reads the recipe.
 ### Requirement: The demo rule cannot be used as a base for improvement
 
 The CLI SHALL NOT offer the demo rule as an input to rule improvement. An
-attempt to improve it SHALL terminate with the service's not-found result and
-SHALL write nothing.
+attempt to improve it SHALL terminate with the result the service returns for a
+request the caller's organization does not hold, and SHALL write nothing. The
+reported failure SHALL be terminal rather than one that invites a retry of the
+same identifier.
 
 **Rationale.** Improvement resolves a request the caller's organization holds,
-and the demo is recorded in no organization, so not-found is the accurate
-answer rather than a missing feature. It is also the answer we want on its
-merits: a rule pre-generated against a shared fixture is a poor base to iterate
-on, and nothing generated in advance can match a rule authored against this
-developer's own repository and context. Offering it as a starting point would
-lend a worse starting point the demo's credibility.
+and the demo is held by a Taskless-owned installation instead, so refusal is the
+accurate answer rather than a missing feature. Which status the service sends
+for such a request is not yet confirmed (task 0.5), and the two candidates map to
+different CLI codes — a 404 to `RULE_NOT_FOUND`, a 403 to `NETWORK_ERROR` — so
+this requirement names the behaviour and leaves the code to that answer. The
+retry distinction is the part that matters: a transport-shaped failure tells an
+agent to retry an identifier that will never resolve.
+
+Refusal is also the answer we want on its merits: a rule pre-generated against a
+shared fixture is a poor base to iterate on, and nothing generated in advance can
+match a rule authored against this developer's own repository and context.
+Offering it as a starting point would lend a worse starting point the demo's
+credibility.
 
 #### Scenario: Improving the demo rule is refused
 
 - **WHEN** rule improvement is invoked against the demo rule
-- **THEN** the CLI SHALL report the service's not-found result
+- **THEN** the CLI SHALL report the terminal result the service returns
+- **AND** SHALL NOT present it as a failure worth retrying with the same
+  identifier
 - **AND** SHALL write no rule
 
 ### Requirement: What the demo writes can be removed

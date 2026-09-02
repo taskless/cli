@@ -38,8 +38,13 @@ shapes:
 
 ```
 POST /cli/api/demo/request                 -> { requestId, status }
-GET  /cli/api/demo/request/{requestId}     -> { requestId, status, rules[], examples[] }
+GET  /cli/api/demo/request/{requestId}     -> { requestId, status, rules[] }
 ```
+
+That is the shape both sides have agreed (task 0.1). What the retrieval carries
+about what the rule found is a separate question and is still open: the findings
+payload is an ask rather than a contract, sketched in design D6 and tracked by
+task 0.4, which has not been answered.
 
 **The endpoints take no authentication at all.** We asked that an
 unauthenticated call send no `Authorization` header rather than one carrying an
@@ -53,9 +58,10 @@ than a convention.
 **The retrieval also serves what the rule found.** The service's verification
 gate already executes the generated `check.ts` against the fixture's failing and
 passing examples on its way to deciding whether to accept the rule, and was
-discarding the result. `examples[]` carries it: for each fixture example, its
-name, whether it is expected to fail or pass, and the `Finding[]` the check
-produced against it.
+discarding the result. What we asked for is a per-example carrier: for each
+fixture example, its name, whether it is expected to fail or pass, and the
+`Finding[]` the check produced against it. That shape is under revision and is
+not part of the agreed contract above; task 0.4 tracks settling it.
 
 Mirroring is the point. A bespoke demo payload would exercise a path no user is
 on, which is the one thing a demo must not do. Reusing the well-known formats
@@ -106,8 +112,10 @@ hole in it. Executing the demo rule uses the documented
 - Depends on the service half (raised as **N9** in the cross-team document).
   The endpoints are theirs to build; the shapes above are what we asked for and
   what this change assumes.
-- Sequenced behind the `request`/`requestId` rename (**N10**), which has now
+- Sequenced behind the `request`/`requestId` rename (**N10**), which has
   shipped and is verified live. The demo takes that noun. Adopting it in the
-  ordinary client is a separate change and is not this one's dependency.
+  ordinary client was a separate change, was never this one's dependency, and
+  has since landed as well: no hand-written call site targets the `rule/*`
+  family any more.
 - No change to the runtime gate, to reconcile, or to `check`'s execution
   policy.
