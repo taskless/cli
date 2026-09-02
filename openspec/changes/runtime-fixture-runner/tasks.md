@@ -13,11 +13,11 @@ permanently unverified.
 
 ## 2. Run them
 
-- [ ] 2.1 Execute the rule's `check.ts` once per case, with the case directory as the harness `root` (D3), through the existing `invoke.ts` rather than a second invocation path
-- [ ] 2.2 Require every `fail/` case to produce at least one finding, and every `pass/` case to produce none. Name the cases that broke either direction, the way the Vale runner names `missingFailures` and `unexpectedFindings`
-- [ ] 2.3 Treat a check that throws as a distinct outcome from a check that returned no findings. Both are zero findings downstream, and only one of them is the rule's fault
-- [ ] 2.4 Distinguish a case that never reached the check from one where the check found nothing (D8). `executeRuntimeRule` gates on the narrow and returns `[]` without invoking `check.ts`, so the runner needs the invocation signal rather than only the findings
-- [ ] 2.5 Report a case producing no narrow matches as a fixture defect in BOTH buckets, naming the case and saying the check never ran. A `pass/` case that never invokes the check proves nothing about the check staying quiet
+- [x] 2.1 Execute the rule's `check.ts` once per case, with the case directory as the harness `root` (D3), through the existing `invoke.ts` rather than a second invocation path
+- [x] 2.2 Require every `fail/` case to produce at least one finding, and every `pass/` case to produce none. Name the cases that broke either direction, the way the Vale runner names `missingFailures` and `unexpectedFindings`
+- [x] 2.3 Treat a check that throws as a distinct outcome from a check that returned no findings. Both are zero findings downstream, and only one of them is the rule's fault
+- [x] 2.4 Distinguish a case that never reached the check from one where the check found nothing (D8). `executeRuntimeRule` gates on the narrow and returns `[]` without invoking `check.ts`, so the runner needs the invocation signal rather than only the findings
+- [x] 2.5 Report a case producing no narrow matches as a fixture defect in BOTH buckets, naming the case and saying the check never ran. A `pass/` case that never invokes the check proves nothing about the check staying quiet
 
 ## 3. Gate it exactly as `check` does
 

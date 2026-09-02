@@ -58,6 +58,85 @@ function harnessErrorResult(
 }
 
 /**
+ * One run of a rule against one root, with the facts a caller cannot recover
+ * from the findings alone.
+ *
+ * `findings` is exactly what {@link executeRuntimeRule} returns, so the scan
+ * path is unchanged. The other two fields carry what an empty array hides:
+ *
+ * - `invoked` says whether `check.ts` ran at all. The narrow gates it, so a
+ *   root with no matches produces `[]` having never reached the check, which is
+ *   indistinguishable downstream from a check that ran and found nothing. A
+ *   scan does not care — both mean "nothing to report about this tree" — but a
+ *   fixture case does, in BOTH buckets: a `fail/` case in that state is a
+ *   fixture that never reached the check rather than a rule that stopped
+ *   firing, and a `pass/` case in that state proves the narrow did not match
+ *   rather than that the check stays quiet.
+ * - `failure` says the harness itself broke — the narrow threw, or the check
+ *   threw, timed out, or returned unusable output. Downstream that is also
+ *   zero findings from the check's point of view, and only one of the two is
+ *   the rule's fault.
+ */
+export interface RuntimeExecution {
+  /** The findings, mapped exactly as the scan path receives them. */
+  findings: CheckResult[];
+  /** Whether `check.ts` was actually invoked. */
+  invoked: boolean;
+  /** Set when the narrow or the check failed, rather than found nothing. */
+  failure?: string;
+}
+
+/**
+ * Execute one runtime rule and report what happened, not only what it found.
+ *
+ * This is the single execution path. {@link executeRuntimeRule} is a thin
+ * projection of it, so the narrow runs once, `check.ts` is invoked once, and
+ * "did it run" has one source of truth rather than a scan and a fixture runner
+ * each deciding for themselves. A harness failure is isolated to a single
+ * error-severity finding and never throws.
+ */
+export async function executeRuntimeRuleDetailed(
+  root: string,
+  rule: RuntimeRule,
+  options: RuntimeRunOptions = {}
+): Promise<RuntimeExecution> {
+  let matches;
+  try {
+    matches = await runNarrow(root, rule, options.paths ?? []);
+  } catch (error) {
+    const message = `narrow failed: ${error instanceof Error ? error.message : String(error)}`;
+    return {
+      findings: [harnessErrorResult(root, rule, message)],
+      invoked: false,
+      failure: message,
+    };
+  }
+
+  // gate: no matches, no check. The gate is the reason `invoked` exists.
+  if (matches.length === 0) return { findings: [], invoked: false };
+
+  const result = await invokeCheck(
+    rule.checkFile,
+    root,
+    matches,
+    options.timeoutMs ?? DEFAULT_CHECK_TIMEOUT_MS
+  );
+  if (result.status === "error") {
+    return {
+      findings: [harnessErrorResult(root, rule, result.message)],
+      invoked: true,
+      failure: result.message,
+    };
+  }
+  return {
+    findings: result.findings.map((finding) =>
+      findingToCheckResult(rule, finding)
+    ),
+    invoked: true,
+  };
+}
+
+/**
  * Execute one runtime rule: run the ast-grep narrow, gate on matches (zero
  * matches ⇒ `check.ts` is never invoked), invoke `check.ts`, and map its
  * findings onto `CheckResult`. A harness failure is isolated to a single
@@ -68,31 +147,8 @@ export async function executeRuntimeRule(
   rule: RuntimeRule,
   options: RuntimeRunOptions = {}
 ): Promise<CheckResult[]> {
-  let matches;
-  try {
-    matches = await runNarrow(root, rule, options.paths ?? []);
-  } catch (error) {
-    return [
-      harnessErrorResult(
-        root,
-        rule,
-        `narrow failed: ${error instanceof Error ? error.message : String(error)}`
-      ),
-    ];
-  }
-
-  if (matches.length === 0) return []; // gate: no matches, no check
-
-  const result = await invokeCheck(
-    rule.checkFile,
-    root,
-    matches,
-    options.timeoutMs ?? DEFAULT_CHECK_TIMEOUT_MS
-  );
-  if (result.status === "error") {
-    return [harnessErrorResult(root, rule, result.message)];
-  }
-  return result.findings.map((finding) => findingToCheckResult(rule, finding));
+  const execution = await executeRuntimeRuleDetailed(root, rule, options);
+  return execution.findings;
 }
 
 /**
