@@ -41,7 +41,7 @@ permanently unverified.
 - [x] 5.3 Test a rule whose `pass/` case produces findings, which is the indiscriminate rule
 - [x] 5.4 Test each coverage class, asserting only `both` can pass
 - [x] 5.5 Test that an unreadable bucket is an error and not an empty bucket (D5)
-- [ ] 5.6 Revert the runner and watch the suite fail before believing it
+- [x] 5.6 Revert the runner and watch the suite fail before believing it. **Measured:** reverting the runner and the reporting fix (`git revert --no-commit` of both commits, confirmed applied by grep before running: no `run-fixtures.ts`, no `executeRuntimeRuleDetailed`, renderer back to `result.ok ? "✓" : "✗"`, runtime branch back to `ok: true`) and rebuilding gives **15 failed / 1190 passed of 1205**, one test file failing. Restored: **1205 passed**
 
 ## 6. Say so where an author reads it
 
