@@ -10,6 +10,7 @@ import { dirname, join } from "node:path";
 
 import type { Migration } from "../types";
 import { CLIError } from "../../util/cli-error";
+import { escapeRegExp } from "../../util/regex";
 import {
   ENGINES,
   RULE_TESTS_DIRECTORY,
@@ -264,7 +265,7 @@ async function pruneEmpty(
  * the Vale rule stopped firing while ast-grep kept working.
  */
 function retargetCheckName(lines: string[], ruleId: string): string[] {
-  const escaped = ruleId.replaceAll(/[$()*+.?[\\\]^{|}]/g, String.raw`\$&`);
+  const escaped = escapeRegExp(ruleId);
   const assignment = new RegExp(
     String.raw`^(\s*)rules\.` + escaped + String.raw`(\s*=)`
   );
