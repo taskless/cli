@@ -45,8 +45,8 @@ permanently unverified.
 
 ## 6. Say so where an author reads it
 
-- [ ] 6.1 `create-runtime-rule` states that testing a locally authored rule needs the flag, and why (D6)
-- [ ] 6.2 `verify-rule` stops reporting runtime tests as "not run" without saying what was not run
+- [x] 6.1 `create-runtime-rule` states that testing a locally authored rule needs the flag, and why (D6)
+- [x] 6.2 `verify-rule` stops reporting runtime tests as "not run" without saying what was not run
 
 ## 7. Close out
 
