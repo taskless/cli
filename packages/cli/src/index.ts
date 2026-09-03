@@ -3,6 +3,7 @@ import { defineCommand, runCommand, showUsage } from "citty";
 import { createAgentCommand } from "./commands/agent";
 import { authCommand } from "./commands/auth";
 import { checkCommand } from "./commands/check";
+import { demoCommand } from "./commands/demo";
 import { detectCommand } from "./commands/detect";
 import { initCommand, updateCommand } from "./commands/init";
 import { testCommand, verifyCommand } from "./commands/verify";
@@ -31,6 +32,7 @@ const subCommands = {
   info: infoCommand,
   detect: detectCommand,
   check: checkCommand,
+  demo: demoCommand,
   auth: authCommand,
   onboard: onboardCommand,
   rule: ruleCommand,
