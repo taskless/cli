@@ -19,7 +19,10 @@ import {
 
 const pkg = JSON.parse(
   readFileSync(resolve(import.meta.dirname, "package.json"), "utf8")
-) as { version: string };
+) as {
+  version: string;
+  exports: Record<string, { import?: string }>;
+};
 
 // Target resolution lives in ./scripts/build-target.ts so it can be unit-tested
 // (test/build-target.test.ts) over an explicit environment. Everything below
@@ -106,25 +109,116 @@ function assertSkillVersions(): Plugin {
   };
 }
 
-// The build emits three entries. `index` is the executable CLI; `prompts` and
-// `layout` are library modules consumers import as `@taskless/cli/<name>`. Only
-// the first is a program, so only it gets a shebang and the executable bit — a
-// `#!` line on a library entry would be a syntax error to anything importing it
-// as a module.
+// `index` is the executable CLI; everything else is a library module consumers
+// import as `@taskless/cli/<name>`. Only the first is a program, so only it
+// gets a shebang and the executable bit — a `#!` line on a library entry would
+// be a syntax error to anything importing it as a module.
 const BIN_ENTRY = "index";
 const PROMPTS_ENTRY = "prompts";
 const LAYOUT_ENTRY = "layout";
+const NODE_RUNTIMES_ENTRY = "node/runtimes";
+
+/** Every entry this build emits, and the module each one is rooted at. */
+const ENTRY_SOURCES: Record<string, string> = {
+  [BIN_ENTRY]: resolve(import.meta.dirname, "src/index.ts"),
+  [PROMPTS_ENTRY]: resolve(import.meta.dirname, "src/prompts/index.ts"),
+  [LAYOUT_ENTRY]: resolve(import.meta.dirname, "src/layout/index.ts"),
+  [NODE_RUNTIMES_ENTRY]: resolve(
+    import.meta.dirname,
+    "src/node/runtimes/index.ts"
+  ),
+};
 
 /**
- * Every entry that is a library surface rather than a program, and therefore
- * must not drag the CLI runtime along with it.
+ * Library entries whose graphs must reach no host capability at all.
  *
- * Adding an entry here is what subjects it to {@link assertLibraryGraphs}. An
- * entry absent from this list is checked by nothing, so a new published surface
- * that forgets to join it leaks silently — which is the failure this guard
- * exists to prevent, one level up.
+ * Membership here is what subjects an entry to the external-import half of
+ * {@link assertLibraryGraphs}. An entry absent from this list used to be
+ * checked by nothing, so a new published surface that forgot to join it leaked
+ * silently — which is the failure this guard exists to prevent, one level up.
+ * {@link assertExportsClassified} closes that: absence is now only meaningful
+ * when the entry appears in {@link HOST_BOUND_ENTRIES} instead.
  */
 const LIBRARY_ENTRIES = [PROMPTS_ENTRY, LAYOUT_ENTRY];
+
+/**
+ * Library entries that require Node, declared rather than merely unlisted.
+ *
+ * `@taskless/cli/node/runtimes` resolves the engine binaries the CLI executes:
+ * it spawns candidates to verify their identity, reads the filesystem, and
+ * consults `PATH`. It can never satisfy the external-import rule and must not
+ * be made to — the point of the entry is the host access. What it must still
+ * not do is reach the CLI entry, so a consumer importing it gets a resolver and
+ * not the command layer, and that half of {@link assertLibraryGraphs} applies
+ * here too.
+ *
+ * The `node/` segment in the published specifier carries the same statement to
+ * a reader, who meets it before a build error does.
+ */
+const HOST_BOUND_ENTRIES = [NODE_RUNTIMES_ENTRY];
+
+/**
+ * Refuse to build when a published export is classified as neither.
+ *
+ * Both lists above are opt-in, and opting in is a thing a person can forget.
+ * Before this check, forgetting was indistinguishable from a deliberate
+ * exemption: a new `exports` key that joined no list simply went unchecked, and
+ * nothing anywhere could tell the two apart. Requiring every published export
+ * to name its classification makes the exemption a claim someone wrote down and
+ * a reviewer can disagree with.
+ *
+ * The mapping runs from `package.json` rather than the other way, because
+ * `exports` is what a consumer can actually import. An entry built but not
+ * exported reaches nobody; an export with no entry behind it is the case this
+ * check is for.
+ */
+function assertExportsClassified(): Plugin {
+  return {
+    name: "assert-exports-classified",
+    buildStart() {
+      const classified = new Set([
+        BIN_ENTRY,
+        ...LIBRARY_ENTRIES,
+        ...HOST_BOUND_ENTRIES,
+      ]);
+      const problems: string[] = [];
+
+      for (const [subpath, conditions] of Object.entries(pkg.exports)) {
+        const target = conditions.import;
+        const entryName = target?.match(/^\.\/dist\/(.+)\.js$/)?.[1];
+        if (entryName === undefined) {
+          problems.push(
+            `  "${subpath}" resolves to ${target ?? "(no import condition)"}, ` +
+              `which does not name a built entry (expected "./dist/<entry>.js")`
+          );
+          continue;
+        }
+        if (!(entryName in ENTRY_SOURCES)) {
+          problems.push(
+            `  "${subpath}" points at dist/${entryName}.js, which this build ` +
+              `does not emit — add it to ENTRY_SOURCES in vite.config.ts`
+          );
+          continue;
+        }
+        if (!classified.has(entryName)) {
+          problems.push(
+            `  "${subpath}" (entry "${entryName}") is in neither ` +
+              `LIBRARY_ENTRIES nor HOST_BOUND_ENTRIES`
+          );
+        }
+      }
+
+      if (problems.length > 0) {
+        throw new Error(
+          `Published exports must declare what they are.\n${problems.join("\n")}\n` +
+            `Add the entry to LIBRARY_ENTRIES if its graph reaches no host ` +
+            `capability, or to HOST_BOUND_ENTRIES if it deliberately does. ` +
+            `Leaving it out is not an exemption; it is an unchecked surface.`
+        );
+      }
+    },
+  };
+}
 
 function shebang(): Plugin {
   // Typed against Rollup's own bundle union rather than a structural shape, so
@@ -169,6 +263,21 @@ function findEntryChunk(
 /**
  * Walk one library entry's transitive chunk graph, failing the build on a leak.
  *
+ * `hostBound` selects which of the two rules apply. A host-free entry gets
+ * both; a host-bound one keeps only the CLI rule, since its externals are the
+ * reason it exists. It is a parameter rather than two functions because the
+ * traversal is the same walk either way, and the entry's classification is
+ * already recorded at its list.
+ *
+ * The CLI rule asks about the bin entry's **module**, not the bin **chunk**.
+ * Chunking is rollup's to decide, and it moves under exactly the condition this
+ * rule is watching for: measured here, an entry importing `src/index.ts` made
+ * rollup hoist the whole CLI into a shared chunk and leave `dist/index.js` a
+ * 50-byte re-export facade, which the library entry then did not import. A
+ * comparison against the bin chunk's file name reported nothing at all, while
+ * the emitted library entry carried the entire command layer. A module id is
+ * the thing that cannot be re-arranged out from under the check.
+ *
  * A plain function taking the plugin context, NOT a method on the plugin
  * object: rollup binds `this` in a hook to its own `PluginContext`, so a helper
  * hung off the plugin is not reachable as `this.helper` and fails at build time
@@ -178,13 +287,14 @@ function checkLibraryEntry(
   context: Rollup.PluginContext,
   bundle: Rollup.OutputBundle,
   entryName: string,
-  binFile: string | undefined
+  hostBound: boolean
 ): void {
   const entry = findEntryChunk(bundle, entryName);
   // Not an error: `build:self` and any future single-entry build legitimately
   // emit no library entries. Nothing to check, not a failure to check it.
   if (entry === undefined) return;
 
+  const binModule = ENTRY_SOURCES[BIN_ENTRY];
   const seen = new Set<string>();
   const queue = [entry.fileName];
   while (queue.length > 0) {
@@ -196,16 +306,20 @@ function checkLibraryEntry(
 
     const chunk = bundle[imported];
     if (chunk === undefined || chunk.type !== "chunk") {
-      // Resolved to something outside the bundle: an external module.
+      // Resolved to something outside the bundle: an external module. For a
+      // host-bound entry that is the point, and there is no chunk to walk into,
+      // so the traversal stops here rather than failing here.
+      if (hostBound) continue;
       context.error(
         `${entryName} entry graph imports ${imported}; a library entry ` +
           `must not reach a host capability`
       );
     }
-    if (imported === binFile) {
+    if (binModule !== undefined && chunk.moduleIds.includes(binModule)) {
       context.error(
-        `${entryName} entry graph reaches the CLI entry (${imported}); ` +
-          `importing @taskless/cli/${entryName} would load the command layer`
+        `${entryName} entry graph reaches the CLI entry module ` +
+          `(${binModule}, bundled into ${imported}); importing ` +
+          `@taskless/cli/${entryName} would load the command layer`
       );
     }
     queue.push(...chunk.imports, ...chunk.dynamicImports);
@@ -218,16 +332,23 @@ function checkLibraryEntry(
  * `@taskless/cli/prompts` renders recipe text; `@taskless/cli/layout` is the
  * rule layout table a service builds payloads against. Both are imported by
  * consumers that are not this CLI — a Worker among them — so neither may pull
- * in the command layer or reach a host capability. The graph is allowed to
- * touch embedded text and the pure values it exports, and nothing else.
+ * in the command layer or reach a host capability. Their graphs are allowed to
+ * touch embedded text and the pure values they export, and nothing else.
  *
  * Two rules, both checked over the entry's transitive chunk graph:
  *
  * - **No external imports at all.** Everything but node builtins is bundled
  *   (see `rollupOptions.external`), so a bare specifier surviving here is a
- *   builtin — `node:fs`, `node:child_process` — and a library entry has no
- *   business with any of them.
+ *   builtin — `node:fs`, `node:child_process` — and a host-free library entry
+ *   has no business with any of them.
  * - **Never reach the bin entry.** That chunk is the CLI itself.
+ *
+ * The second rule applies to every published library entry, including the
+ * host-bound ones in {@link HOST_BOUND_ENTRIES}. Needing `node:child_process`
+ * is not a reason to also ship the command tree, and a resolver that dragged in
+ * the CLI would give a consumer telemetry and a command layer it did not ask
+ * for. The first rule is the one host-bound entries are excused from, by name,
+ * in a list {@link assertExportsClassified} requires them to appear in.
  *
  * ENFORCED IN THE BUILD, DELIBERATELY, rather than asserted by a test over the
  * artifact. A build that refuses to emit a leaking bundle makes the bad artifact
@@ -243,9 +364,11 @@ function assertLibraryGraphs(): Plugin {
   return {
     name: "assert-library-graphs",
     generateBundle(_options, bundle) {
-      const binFile = findEntryChunk(bundle, BIN_ENTRY)?.fileName;
       for (const entryName of LIBRARY_ENTRIES) {
-        checkLibraryEntry(this, bundle, entryName, binFile);
+        checkLibraryEntry(this, bundle, entryName, false);
+      }
+      for (const entryName of HOST_BOUND_ENTRIES) {
+        checkLibraryEntry(this, bundle, entryName, true);
       }
     },
   };
@@ -285,17 +408,14 @@ export default defineConfig({
   plugins: [
     tsconfigPaths(),
     assertSkillVersions(),
+    assertExportsClassified(),
     shebang(),
     assertLibraryGraphs(),
   ],
   build: {
     outDir,
     lib: {
-      entry: {
-        [BIN_ENTRY]: resolve(import.meta.dirname, "src/index.ts"),
-        [PROMPTS_ENTRY]: resolve(import.meta.dirname, "src/prompts/index.ts"),
-        [LAYOUT_ENTRY]: resolve(import.meta.dirname, "src/layout/index.ts"),
-      },
+      entry: ENTRY_SOURCES,
       formats: ["es"],
       fileName: (_format, entryName) => `${entryName}.js`,
     },

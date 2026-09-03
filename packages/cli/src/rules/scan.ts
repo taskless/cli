@@ -6,13 +6,13 @@ import { fileURLToPath } from "node:url";
 
 import type { AstGrepMatch } from "../types/check";
 import { toCheckResult, type CheckResult } from "../types/check";
+import { AST_GREP_BINARY } from "./ast-grep-binary";
 import { ASSEMBLED_SG_CONFIG } from "./engines";
 import { isWholeProjectWalk } from "./walk-scope";
 import {
   isPlatformBinary,
   pathCommandName,
   resolvePlatformBinary,
-  type PlatformBinarySpec,
 } from "./platform-binary";
 
 export interface ScanResult {
@@ -35,28 +35,6 @@ export function buildPath(): string {
   const separator = process.platform === "win32" ? ";" : ":";
   return `${binDirectory}${separator}${process.env.PATH ?? ""}`;
 }
-
-/**
- * ast-grep's per-platform packaging, as the shared resolver understands it.
- *
- * `toolchainSuffix: true` is what produces `@ast-grep/cli-linux-x64-gnu` and
- * `-win32-x64-msvc`. The Vale packages set it false; see
- * {@link PlatformBinarySpec} for why that distinction is load-bearing.
- *
- * Both `ast-grep` and `sg` are listed because the wrapper declares them as bin
- * entries for the same target, so either may be what got linked. `ast-grep`
- * leads because it is the name the platform package ships the binary under; the
- * resolver reverses the list at the link-based tiers, so `sg` is still tried
- * first there and named in the PATH advice, as it was before the shared
- * resolver existed.
- */
-export const AST_GREP_BINARY: PlatformBinarySpec = {
-  label: "ast-grep",
-  packagePrefix: "@ast-grep/cli",
-  toolchainSuffix: true,
-  binaryNames: ["ast-grep", "sg"],
-  identity: /ast-grep/i,
-};
 
 /**
  * ast-grep's `sg` alias prints a deprecation banner to stderr on every run,

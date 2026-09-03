@@ -377,7 +377,7 @@ const failingProject = () =>
 
 withSg("ast-grep vendor contract", () => {
   it("reports its own name in --version", () => {
-    // Depended on by: AST_GREP_BINARY.identity (/ast-grep/i) in scan.ts. The
+    // Depended on by: AST_GREP_BINARY.identity (/ast-grep/i) in rules/ast-grep-binary.ts. The
     // resolver runs each candidate because `@ast-grep/cli`'s postinstall can
     // leave a placeholder text file at the binary path. If ast-grep stops
     // saying "ast-grep" here, findSgBinary rejects the real binary and throws
