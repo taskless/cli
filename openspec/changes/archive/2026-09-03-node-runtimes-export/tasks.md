@@ -61,5 +61,5 @@ reviewable land together; apart, the first ships an unchecked published surface.
 
 ## 6. Close out
 
-- [ ] 6.1 Archive the change. Archiving is what promotes the delta into the
+- [x] 6.1 Archive the change. Archiving is what promotes the delta into the
       standing spec.
