@@ -27,3 +27,10 @@ spawn each engine and assert `--version` matches the constant; neither is
 sufficient alone, since those read the binary the pin installed and never look at
 the pin. The constants are not published: a consumer wanting the pinned engine
 reads `source`.
+
+A third check closes the last link: each engine is spawned from **inside its
+pinned platform package** and its `--version` compared to the constant. The
+existing vendor-contract tests spawn whatever resolution returned, which is the
+pinned package only when that tier wins, so they closed this by luck of ordering
+rather than by asserting it. `source` is what lets the tier be required instead
+of assumed.
