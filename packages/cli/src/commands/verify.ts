@@ -15,7 +15,6 @@ import {
   resolveRulePath,
   RuleNotFoundError,
 } from "../rules/resolve-path";
-import { createRuntimeGate } from "../rules/runtime/plan";
 import { outputSchema as verifyTestOutputSchema } from "../schemas/verify-test";
 import { makeErrorEnvelope, writeJsonError } from "../types/errors";
 import { CLIError } from "../util/cli-error";
@@ -131,11 +130,9 @@ async function runOverPath(options: {
   // for every project holding a runtime rule. It is excluded from the failures
   // that set the exit code and from the count of rules tested, and gets its
   // own marker below.
-  const refused = results.filter(
-    (result) => "refused" in result && result.refused !== undefined
-  );
   const isRefused = (result: RuleVerification | RuleTestResult): boolean =>
     "refused" in result && result.refused !== undefined;
+  const refused = results.filter((result) => isRefused(result));
   const failed = results.filter((result) => !result.ok && !isRefused(result));
   const tested = results.length - refused.length;
 
@@ -228,34 +225,41 @@ export const testCommand = defineCommand({
   },
   args: {
     ...ruleTargetArguments,
-    // The same flag `check` carries, with the same description, because it is
-    // the same gate. A runtime rule's fixtures execute its `check.ts`, and
-    // that the input is test data is a statement about the input rather than
-    // about what the program may do.
+    // The same flag `check` carries, spelled the same way. Here it is the ONLY
+    // thing that runs a runtime rule's fixtures: `test` does not reconcile, so
+    // there is no blessed-signature path that runs them without it. That makes
+    // this stricter than `check`, not looser — `check` will execute a blessed
+    // rule with no flag at all, because it runs rules as a side effect of
+    // scanning, whereas nothing runs under `test` unless it is asked for twice.
     "dangerously-run-scripts": {
       type: "boolean",
       description:
-        "Run runtime-rule check.ts without server verification (executes untrusted code)",
+        "Run runtime-rule check.ts fixtures, which executes untrusted code",
       default: false,
     },
   },
   async run({ args }) {
     const cwd = resolve(args.dir ?? process.cwd());
-    // One gate for the whole run, so a tree of runtime rules is planned once.
-    // The notices are `check`'s, on stderr, and suppressed under `--json` for
+    const dangerouslyRunScripts = Boolean(args["dangerously-run-scripts"]);
+    // Warned once for the whole run, not once per rule: a tree of runtime rules
+    // is one decision by the user, and repeating the sentence per rule teaches
+    // people to scroll past it. On stderr, and suppressed under `--json` for
     // `check`'s reason: a machine consumer cannot read prose.
-    const runtimeGate = createRuntimeGate(cwd, {
-      dangerouslyRunScripts: Boolean(args["dangerously-run-scripts"]),
-      onNotice: (message: string) => {
-        if (!args.json) console.error(message);
-      },
-    });
+    let warned = false;
     await runOverPath({
       cwd,
       target: args.path ?? ".taskless/rules",
       json: args.json,
       label: "test",
-      run: async (ruleCwd, rule) => testOneRule(ruleCwd, rule, { runtimeGate }),
+      run: async (ruleCwd, rule) =>
+        testOneRule(ruleCwd, rule, {
+          dangerouslyRunScripts,
+          onRuntimeWarning: (message: string) => {
+            if (warned || args.json) return;
+            warned = true;
+            console.error(message);
+          },
+        }),
     });
   },
 });

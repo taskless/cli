@@ -1,3 +1,4 @@
+import { describeCoverageShortfall } from "../fixtures";
 import type { RuntimeRule } from "./discover";
 import { executeRuntimeRuleDetailed } from "./harness";
 import type { RuntimeRunOptions } from "./harness";
@@ -134,13 +135,10 @@ export function describeFixtureReport(
 ): string[] {
   const errors: string[] = [];
 
-  if (report.coverage !== "both") {
-    errors.push(
-      report.coverage === "none"
-        ? `${ruleId} has no fixtures, so nothing shows it fires or stays quiet.`
-        : `${ruleId} has only ${report.coverage.replace("-only", "")}/ fixtures — half a claim.`
-    );
-  }
+  // `/` because these buckets are directories, which is how the author will go
+  // looking for them. `sg`'s are YAML keys and read `valid:`.
+  const shortfall = describeCoverageShortfall(ruleId, report.coverage, "/");
+  if (shortfall !== undefined) errors.push(shortfall);
   for (const name of report.missingFailures) {
     errors.push(`fail fixture did not fire: ${name}`);
   }

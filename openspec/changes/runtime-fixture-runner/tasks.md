@@ -19,12 +19,14 @@ permanently unverified.
 - [x] 2.4 Distinguish a case that never reached the check from one where the check found nothing (D8). `executeRuntimeRule` gates on the narrow and returns `[]` without invoking `check.ts`, so the runner needs the invocation signal rather than only the findings
 - [x] 2.5 Report a case producing no narrow matches as a fixture defect in BOTH buckets, naming the case and saying the check never ran. A `pass/` case that never invokes the check proves nothing about the check staying quiet
 
-## 3. Gate it exactly as `check` does
+## 3. Gate it on the flag, and only the flag
 
-- [x] 3.1 Run fixtures only when an authenticated reconcile returns the rule's signature in `run`, or when `--dangerously-run-scripts` is passed (D1)
-- [x] 3.2 Add `--dangerously-run-scripts` to `test`, printing the same warning `check` prints
+- [x] 3.1 Run fixtures only when `--dangerously-run-scripts` is passed. `test` does NOT reconcile: it runs fixtures because the user asked it to, so the verb is the consent (D1). `check`'s gate is untouched
+- [x] 3.2 Add `--dangerously-run-scripts` to `test`, printing the same warning `check` prints, from one shared spelling so the two cannot drift
 - [x] 3.3 Test that no rule id is special-cased, and that a gated-out fixture run executes nothing
-- [x] 3.4 Test that the flag is the only mechanism besides a blessed signature. A fixture path is not a softer gate because its input is test data
+- [x] 3.4 Test that the flag is the only mechanism at all. A fixture path is not a softer gate because its input is test data — and with no reconcile it is a stricter one, since a blessed rule that `check` runs unflagged still needs the flag here
+- [x] 3.5 Test that the refusal never sends the author to `auth login`. Authenticating cannot bless a rule that never left the working tree, so naming it would be a fix that is not one (D6)
+- [x] 3.6 Confirm nothing was orphaned by dropping reconcile from `test`. `createRuntimeGate`/`RuntimeGate` were `test`-only and are deleted; `planRuntime` and `repairWithheldRules` stay, `check`-only, in `rules/runtime/plan.ts`
 
 ## 4. Report a run that did not happen
 
@@ -48,10 +50,17 @@ permanently unverified.
 - [x] 6.1 `create-runtime-rule` states that testing a locally authored rule needs the flag, and why (D6)
 - [x] 6.2 `verify-rule` stops reporting runtime tests as "not run" without saying what was not run
 
-## 7. Close out
+## 7. Share the bucket reader rather than copying it a third time
 
-- [x] 7.1 Decide the no-fixtures case. **Settled: it fails, matching the other engines.** Every rule needs a fixture. Depth is not policed, so a trivial case that exercises little and passes is acceptable, but it can only live in `pass/` — a `fail/` case that produces nothing is the silent regression this runner exists to catch
-- [ ] 7.2 Tell the generator team, who have recorded this as a limit on what the demonstration can assert
-- [ ] 7.3 Confirm runtime deliveries carry `.tests/`. Not a request: a runtime rule ships with fixtures, and a delivery without them is a defect on their side (D7). If any do not, file it as a bug rather than proposing it as a contract change
-- [ ] 7.4 Once 7.3 confirms deliveries carry them, add fixtures to delivery completeness as its own change. Sequenced only so a service defect does not reach users as a refused write with nothing they can do about it
-- [ ] 7.5 Archive the change
+- [x] 7.1 Extract the missing-versus-unreadable `readdir` discrimination and the four-way coverage classification to `rules/fixtures.ts`, and point `sg`, `vale` and `runtime` at it (D9)
+- [x] 7.2 Extract the "half a claim" coverage message, which existed in three places. Keep the bucket suffix a parameter: `valid:` is a YAML key and `pass/` is a directory, so the difference is meaning rather than drift
+- [x] 7.3 Keep each engine's rejection local. Vale refuses a nested DIRECTORY because its buckets hold documents; runtime refuses a non-directory because its buckets hold case directories
+- [x] 7.4 Change no engine's observable behaviour. **Measured:** 75 files / 1205 tests before, 75 files / 1206 after, the one addition being 3.5's new test. `pnpm cli check` reports the same 4 pre-existing warnings either side
+
+## 8. Close out
+
+- [x] 8.1 Decide the no-fixtures case. **Settled: it fails, matching the other engines.** Every rule needs a fixture. Depth is not policed, so a trivial case that exercises little and passes is acceptable, but it can only live in `pass/` — a `fail/` case that produces nothing is the silent regression this runner exists to catch
+- [ ] 8.2 Tell the generator team, who have recorded this as a limit on what the demonstration can assert
+- [ ] 8.3 Confirm runtime deliveries carry `.tests/`. Not a request: a runtime rule ships with fixtures, and a delivery without them is a defect on their side (D7). If any do not, file it as a bug rather than proposing it as a contract change
+- [ ] 8.4 Once 8.3 confirms deliveries carry them, add fixtures to delivery completeness as its own change. Sequenced only so a service defect does not reach users as a refused write with nothing they can do about it
+- [ ] 8.5 Archive the change

@@ -9,6 +9,18 @@ import { DEFAULT_CHECK_TIMEOUT_MS, invokeCheck } from "./invoke";
 /** Scanner-agnostic `source` label for runtime-rule findings. */
 export const RUNTIME_SOURCE = "taskless-runtime";
 
+/**
+ * What `--dangerously-run-scripts` says when it is what let the code run.
+ *
+ * Stated beside the executor rather than in either command, because `check` and
+ * `test` reach the flag by different routes — `check` through the reconcile
+ * plan, `test` with no plan at all — and the sentence a user reads should not
+ * depend on which route ran. Two spellings would drift, and the drift would be
+ * invisible: both are warnings nobody diffs.
+ */
+export const RUN_SCRIPTS_WARNING =
+  "Warning: --dangerously-run-scripts is executing runtime rule code without server verification.";
+
 /** Options controlling a runtime-rule run. */
 export interface RuntimeRunOptions {
   /** Restrict the narrow to these paths (diff scope); empty scans the repo. */

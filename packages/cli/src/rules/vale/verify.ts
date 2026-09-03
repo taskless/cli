@@ -1,11 +1,14 @@
-import { type Dirent, mkdtempSync, rmSync, writeFileSync } from "node:fs";
-import { readdir } from "node:fs/promises";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, posix, relative, resolve, sep } from "node:path";
 
 import { listRuleIds, ruleTestsDirectory } from "../engines";
 import { RULES_DIRECTORY } from "../layout";
-import { isMissingDirectory } from "../errno";
+import {
+  bucketEntries,
+  classifyCoverage,
+  type FixtureCoverage,
+} from "../fixtures";
 import { runVale, type ValeRunOutcome } from "./run";
 
 /** Where a rule's fixtures live, relative to the project root. */
@@ -57,33 +60,21 @@ export function buildIsolatingConfig(cwd: string, ruleId: string): string {
 }
 
 /**
- * Directory entries, with a directory that is not there reading as an empty one.
- *
- * The single place that decides which `readdir` failures are absence and which
- * are problems, so no caller can accidentally answer that question differently.
- */
-async function directoryEntries(directory: string): Promise<Dirent[]> {
-  try {
-    return await readdir(directory, { withFileTypes: true });
-  } catch (error) {
-    if (isMissingDirectory(error)) return [];
-    throw error;
-  }
-}
-
-/**
  * Fixture documents directly under `<rule-tests>/<rule>/<bucket>/`.
  *
- * A missing directory is an empty bucket; anything else rethrows. The buckets
- * are read independently, so a swallowed `EACCES` on `pass/` would silently
- * yield `[]` while `fail/` still had fixtures — the rule would not look
- * one-sided, and could report `passed: true` having never checked the pass side
- * at all. A permissions problem must not read as "no pass fixtures were
- * written".
+ * A missing directory is an empty bucket and anything else rethrows, which is
+ * {@link bucketEntries}'s decision rather than one taken again here: the
+ * buckets are read independently, so a swallowed `EACCES` on `pass/` would
+ * silently yield `[]` while `fail/` still had fixtures — the rule would not
+ * look one-sided, and could report `passed: true` having never checked the pass
+ * side at all.
  *
- * A bucket is one directory deep, and a nested directory is rejected rather
- * than ignored. The two halves of verification disagree about recursion: this
- * read is flat, but Vale is invoked over the whole `rule-tests/<rule>` tree and
+ * What is Vale's own is the rejection below, and it is the opposite of the
+ * runtime engine's: Vale's buckets hold DOCUMENTS, so a nested directory is the
+ * error, where runtime's hold one directory per case and a loose file is. A
+ * bucket is one directory deep, and a nested directory is rejected rather than
+ * ignored. The two halves of verification disagree about recursion: this read
+ * is flat, but Vale is invoked over the whole `rule-tests/<rule>` tree and
  * lints recursively. Silently skipping a nested entry therefore fails in the
  * dangerous direction — a nested `pass/` fixture that wrongly fires produces a
  * finding this function never collected, so `unexpectedFindings` discards it,
@@ -101,7 +92,7 @@ async function fixtureFiles(
   bucket: "pass" | "fail"
 ): Promise<string[]> {
   const directory = join(valeRuleTestsDirectory(cwd, ruleId), bucket);
-  const entries = await directoryEntries(directory);
+  const entries = await bucketEntries(directory);
 
   const nested = entries.find((entry) => entry.isDirectory());
   if (nested !== undefined) {
@@ -132,16 +123,13 @@ function toRelativePosix(cwd: string, absolute: string): string {
  * different things about them: `"none"` is an unwritten rule, while
  * `"fail-only"`/`"pass-only"` is a half-written one, which is the more
  * misleading state of the two.
+ *
+ * A name for {@link FixtureCoverage} over Vale's bucket names rather than a
+ * fourth hand-written union: the classification is `classifyCoverage`'s, so a
+ * caller reading `ValeFixtureCoverage` and one reading `SgFixtureCoverage` are
+ * reading the same four states under two vocabularies.
  */
-export type ValeFixtureCoverage = "both" | "pass-only" | "fail-only" | "none";
-
-/** Classify a rule's buckets by how many documents each held. */
-function coverageOf(passCount: number, failCount: number): ValeFixtureCoverage {
-  if (passCount > 0 && failCount > 0) return "both";
-  if (passCount > 0) return "pass-only";
-  if (failCount > 0) return "fail-only";
-  return "none";
-}
+export type ValeFixtureCoverage = FixtureCoverage<"pass" | "fail">;
 
 export interface ValeRuleVerification {
   ruleId: string;
@@ -195,7 +183,7 @@ export async function discoverValeRuleTests(cwd: string): Promise<string[]> {
   const ruleIds = await listRuleIds(cwd, "vale");
   const withTests: string[] = [];
   for (const ruleId of ruleIds) {
-    const entries = await directoryEntries(valeRuleTestsDirectory(cwd, ruleId));
+    const entries = await bucketEntries(valeRuleTestsDirectory(cwd, ruleId));
     if (entries.length > 0) withTests.push(ruleId);
   }
   return withTests;
@@ -239,7 +227,10 @@ export async function verifyValeRule(
 
   // Short-circuited before Vale runs: the rule has to be edited either way, so
   // there is nothing a subprocess could add that `fixtures` does not say.
-  const fixtures = coverageOf(passFixtures.length, failFixtures.length);
+  const fixtures = classifyCoverage(
+    { name: "pass", count: passFixtures.length },
+    { name: "fail", count: failFixtures.length }
+  );
   if (fixtures !== "both") {
     return {
       ruleId,

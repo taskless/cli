@@ -97,20 +97,26 @@ that plainly rather than letting them discover it from a silent check.
 ## Testing a rule you wrote yourself needs the flag
 
 `%(TASKLESS_CLI)s test` runs a runtime rule's fixtures by executing its
-`check.ts` against each case directory, so it runs them under the same
-gate `check` uses. For a rule you just authored, that gate never opens
-on its own:
+`check.ts` against each case directory. The flag is the whole gate, for
+every rule, always:
 
 ```
 %(TASKLESS_CLI)s test .taskless/rules/runtime/<name> --dangerously-run-scripts
 ```
 
-**A locally authored rule has no signature and never will.** Blessing is
-recording: a signature is blessed because a reconcile reported it and
-the service recorded it, and nothing recorded a rule that has not left
-the working tree. Logging in does not change this, which is the part
-worth saying out loud, because "not authenticated" is the reason the
-message gives and it reads like the fix.
+**`test` does not talk to the rule service at all**, and there is no
+blessed-signature path that runs fixtures without the flag. That makes
+it stricter than `check`, which will execute a blessed rule with no flag
+because it runs rules as a side effect of scanning a repository. `test`
+runs them because you asked it to, so the verb is the consent and the
+flag is the confirmation; nothing is asked of a server in between.
+
+**A locally authored rule has no signature and never will**, so this was
+never going to be avoidable for a rule you wrote. Blessing is recording:
+a signature is blessed because a reconcile reported it and the service
+recorded it, and nothing recorded a rule that has not left the working
+tree. Do not send anyone to `auth login` over this. It changes nothing
+here, and the message does not mention it.
 
 The friction is the correct friction. `sg` and `vale` authors do not
 face it because their rules are unexecuted. A delivered rule and one you
@@ -159,9 +165,10 @@ capture did not match, which is a fact about the fixture.
 - `--dangerously-run-scripts` makes `check` and `test` execute runtime
   rules without server verification. It exists for local iteration on a
   rule you wrote yourself and just read, which includes running its
-  fixtures. It is not a way to ship a rule to a team, and suggesting it
-  to work around a login turns a deliberate gate into an unreviewed
-  code-execution path on someone else's machine.
+  fixtures. On `test` it is the only mechanism there is. It is not a way
+  to ship a rule to a team, and suggesting it to work around a login
+  turns a deliberate gate into an unreviewed code-execution path on
+  someone else's machine.
 - Do not author a `check.ts` and leave it in the repository unmentioned.
   A skipped runtime rule reports nothing, which reads exactly like a
   passing one.

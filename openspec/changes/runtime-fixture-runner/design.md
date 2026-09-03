@@ -26,24 +26,63 @@ Coverage is a four-way classification rather than a boolean, because
 **Goals.** Run a runtime rule's fixtures. Report honestly when they did not run.
 Make `.tests/` mean something for the one tier that ships them and reads none.
 
-**Non-Goals.** Changing the execution gate. Adding a runtime-specific bypass.
-Making `check` run fixtures — `check` scans a repository, `test` runs fixtures,
-and that separation is why the gate can be shared without the commands merging.
+**Non-Goals.** Loosening the execution gate anywhere. Adding a runtime-specific
+bypass. Touching `check`'s behaviour at all — its gate, its reconcile and its
+use of `planRuntime` are exactly what they were. Making `check` run fixtures:
+`check` scans a repository, `test` runs fixtures, and that separation is why
+the two can hold the same flag without holding the same policy (D1).
 
 ## Decisions
 
-### D1 — The gate is `check`'s gate, unchanged
-
-A fixture run executes `check.ts`. That is the same code, from the same
-delivery, with the same signature, as the code `check` runs against a
-repository. So it runs under the same policy: blessed by an authenticated
-reconcile, or `--dangerously-run-scripts`.
+### D1 — `test` takes the flag half of `check`'s gate, and no reconcile at all
 
 Nothing about a fixture makes the code safer. The bytes do not know what
 directory they are pointed at, and "it is only running against test data" is a
-statement about the input, not about what the program may do. A separate,
-softer gate for fixtures would be the client-side bypass the runtime spec
-already forbids, arrived at by a different route.
+statement about the input, not about what the program may do. So a fixture run
+is gated, and `--dangerously-run-scripts` is that gate — the same flag `check`
+carries, spelled the same way, printing the same warning.
+
+**What `test` does not do is reconcile.** The first draft of this change shared
+`check`'s whole gate, which meant `test` called `getToken`, and on a project
+holding any runtime rule went on to `resolveOrgSubject` and `reconcile` over
+the network. `test` had been fully offline before this change, and that is the
+half that was wrong.
+
+The two commands execute rules for different reasons, and the gate belongs to
+the reason rather than to the code:
+
+- `check` executes rules as a **side effect** of scanning a repository. Nobody
+  asked for code to run; they asked for a report. The gate is what stands
+  between the request and the execution, so that code never runs silently.
+- `test` runs fixtures **because the user asked it to**. The verb is the
+  consent. Asking a server for permission to run your own fixtures is
+  overreach, and it is not the kind of overreach that buys safety.
+
+Ask who a reconcile in `test` would ever admit, and the answer is: someone
+testing an already-blessed delivered rule — a rule the service verified against
+failing and passing examples on its way to accepting it. That is the one
+audience for whom running the fixtures locally proves least. Meanwhile a
+locally authored rule has no signature and never will, because blessing is
+recording and nothing recorded it (D6), so for the audience that actually runs
+`test` on a runtime rule the reconcile is pure cost paid for an answer that is
+always "no".
+
+**This is strictly more conservative, not a softening.** Nothing executes under
+`test` that would not have executed before, and one thing that would have —
+a blessed delivered rule, running with no flag — now requires the flag. There
+is no security argument against it, because there is no case where the new
+behaviour runs code the old behaviour refused.
+
+It also disposes of the `--anonymous` question rather than answering it. The
+review asked whether `test` should carry `check`'s `--anonymous` flag to
+suppress the network call. With no network there is nothing to suppress, and a
+flag whose only job is to turn off a call that should not have been there is a
+worse answer than not making the call.
+
+The one property that had to survive is that the fixture path is not a _softer_
+gate than the scan path, since that would be the client-side bypass the runtime
+spec forbids reached by a different route. It survives by being a _stricter_
+one.
 
 ### D2 — A run that did not happen is a third state, not a pass and not a failure
 
@@ -111,12 +150,21 @@ one-sided rule look complete. The same applies here and is worth stating rather
 than inheriting by imitation: a fixture bucket that could not be read is an
 error, never an empty bucket.
 
-### D6 — Authoring a runtime rule locally now requires the flag
+### D6 — Testing a runtime rule requires the flag, authored or delivered
 
-A locally authored rule has no signature and never will, because blessing is
-recording and nothing recorded it. So its author must pass
+Under D1 the flag is the whole gate for `test`, so this is now true of every
+runtime rule rather than only of unblessed ones. The authored case is still the
+one worth stating, because it is the one where a reader will look for a way
+out and find none: a locally authored rule has no signature and never will,
+because blessing is recording and nothing recorded it. Its author must pass
 `--dangerously-run-scripts` to test their own rule, which `sg` and `vale`
 authors do not have to do.
+
+**The message must not send them to `auth login`.** The first draft inherited
+`check`'s "not authenticated" reason, which reads like the fix and is not one:
+authenticating would not have blessed a rule that never left the working tree.
+With reconcile gone the message names the flag and nothing else, and a test
+asserts the absence.
 
 That is friction and it is the correct friction. The alternative is a rule that
 executes unblessed code because it happens to live in the working tree, which is
@@ -194,6 +242,47 @@ So a case producing no narrow matches is reported as a **fixture defect** in
 either bucket, naming the case and saying the check never ran. It is actionable
 in a way "expected a finding, got none" is not, and it points at the file the
 author has to change.
+
+### D9 — The third fixture reader is the one that had to be shared
+
+The Vale runner is the model this change copied (see Context), and copying it
+verbatim is what made the copying a problem. `rules/vale/verify.ts` carried a
+`directoryEntries` whose doc comment called itself "the single place that
+decides which `readdir` failures are absence and which are problems, so no
+caller can accidentally answer that question differently" — a claim a third
+near-identical copy falsified the day it was written.
+
+The drift was already measurable rather than hypothetical: the "half a claim"
+coverage message existed in three places.
+
+So `rules/fixtures.ts` now holds the two decisions that are genuinely the same
+across `sg`, `vale` and `runtime` — the missing-versus-unreadable
+discrimination, and the four-way coverage classification with its message — and
+all three engines call it.
+
+**What stayed local is what is genuinely different, and it is the rejection.**
+Vale's buckets hold documents, so a nested DIRECTORY is its error; runtime's
+hold one directory per case, so a loose FILE is. Those are opposite rules for
+the same-shaped read, and folding them together would have needed a flag that
+made the shared function harder to read than the two callers it replaced.
+
+One thing looked like drift and was not. The coverage message spells the bucket
+`valid:` for `sg` and `pass/` for the other two. That is not two punctuations
+for one idea: ast-grep's buckets are keys in a test YAML document and the other
+two are directories, so each names the bucket in the shape its author will go
+looking for. It is a parameter of the shared message rather than something
+normalised away.
+
+The classification is parameterised on the bucket names for the same reason
+(`FixtureCoverage<"valid" | "invalid">` against `FixtureCoverage<"pass" |
+"fail">`), so the three engines share one set of four states under their own
+vocabularies rather than sharing a vocabulary they do not have.
+
+`sg`'s own test-file enumeration was left alone deliberately. It catches every
+`readdir` failure as "no test files", which is the leniency this module exists
+to prevent — but fixing it changes what `sg` reports on an unreadable `.tests/`,
+and that is a behaviour change wearing a refactor's clothes. It belongs in its
+own change, with its own test.
 
 ## Risks / Trade-offs
 
