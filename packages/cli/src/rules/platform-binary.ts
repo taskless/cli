@@ -144,7 +144,6 @@ export function isPlatformBinary(
   return spec.identity.test(`${result.stdout ?? ""}${result.stderr ?? ""}`);
 }
 
-/** One place to look, paired with the label `tried` reports it under. */
 /**
  * A place to look: the tier it belongs to, the label a user sees in
  * "Looked in: …", and the path if one exists.
