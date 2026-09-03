@@ -20,6 +20,7 @@ One PR, alongside the export it describes.
 - [x] 3.2 Keep the evidence rather than dropping the steps. The routing criteria are stated in terms of linters, languages, rule styles, `loggedIn` and `ghOwner`, so a consumer that reads "nothing here" loses the inputs and not just the commands
 - [x] 3.3 Render the steps as whole blocks through the variable table rather than stripping them afterwards, so the default can be proved unchanged. **Measured byte-identical**: 18161 bytes before and after, `diff` clean
 - [x] 3.4 Point `TASKLESS_CLI` and the new blocks at one invocation resolver, so the command inside a step and the command elsewhere in the recipe cannot disagree
+- [x] 3.5 Absorb each step's connective into the substitution. Replacing only the command left `This returns` with nothing to refer to and `and note` as a sentence fragment — a malformed rendering, which is the defect this option removes rather than relocates. Asserted by a test rather than read once
 
 ## 4. Close out
 
