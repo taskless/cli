@@ -1,3 +1,4 @@
+import { spawnSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
@@ -5,6 +6,7 @@ import { describe, expect, it } from "vitest";
 
 import { AST_GREP_VERSION, VALE_VERSION } from "../src/rules/capabilities";
 import { AST_GREP_BINARY } from "../src/rules/ast-grep-binary";
+import { VALE_BINARY } from "../src/rules/vale/binary";
 import { resolvePlatformBinary } from "../src/rules/platform-binary";
 
 /**
@@ -124,4 +126,48 @@ describe("a resolution says which tier answered", () => {
     expect(tried.some((t) => t.startsWith("@ast-grep/cli-"))).toBe(true);
     expect(tried).not.toContain("platform-package");
   });
+});
+
+/**
+ * The third link: a pinned package contains the version its NAME claims.
+ *
+ * The pin says `@ast-grep/cli-…: 0.45.2`, and nothing forced the file inside it
+ * to be that. A mispublished or substituted package satisfies the pin, installs
+ * cleanly, and answers `--version` with something else.
+ *
+ * `ast-grep-vendor-contract.test.ts` already spawns an ast-grep and compares it
+ * to the constant, but it spawns whatever `findSgBinary` RESOLVED — the pinned
+ * package when that tier wins, and a `PATH` binary when it does not. It closes
+ * this link by luck of resolution order rather than by asserting it, and it
+ * would compare the wrong binary on a host missing the optional dependency.
+ *
+ * Here the tier is required rather than assumed, which is what `source` is for.
+ */
+describe("a pinned package contains the version its name claims", () => {
+  it.each([
+    ["ast-grep", AST_GREP_BINARY, () => `ast-grep ${AST_GREP_VERSION}`],
+    ["vale", VALE_BINARY, () => `vale version ${VALE_VERSION}`],
+  ])(
+    "%s reports the pinned version from inside the package",
+    (label, spec, expected) => {
+      const { path, source } = resolvePlatformBinary(spec);
+      if (path === undefined) {
+        // The optional dependency for this platform is not installed. Nothing to
+        // assert about a package that is not here.
+        return;
+      }
+
+      // A resolution from another tier means the pinned package is absent while
+      // some other copy is present, which is the state that makes the existing
+      // vendor-contract test compare the wrong binary. Fail rather than skip: a
+      // silent pass here would be this file's own failure mode.
+      expect(
+        source,
+        `${label} resolved from ${String(source)}, so this asserts nothing about the pinned package`
+      ).toBe("platform-package");
+
+      const result = spawnSync(path, ["--version"], { encoding: "utf8" });
+      expect(result.stdout.trim()).toBe(expected());
+    }
+  );
 });
