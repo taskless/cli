@@ -139,6 +139,8 @@ describe("the CLI invocation variable", () => {
       "AST_GREP_LANGUAGES",
       "AST_GREP_VERSION",
       "CLI_VERSION",
+      "DETECT_EVIDENCE",
+      "LOGIN_EVIDENCE",
       "PACKAGE_MANAGER_DLX",
       "TASKLESS_CLI",
       "VALE_COMMENT_FORMATS",
@@ -265,6 +267,50 @@ describe("raw and rendered instructions", () => {
     );
     expect(getRawRecipe("no-such-topic")).toBeUndefined();
     expect(getRenderedRecipe("no-such-topic")).toBeUndefined();
+  });
+});
+
+describe("host mechanics suppression", () => {
+  it("renders the CLI steps by default, exactly as the recipe always has", () => {
+    const rendered = getPrompt("route");
+    expect(rendered).toContain("detect --json");
+    expect(rendered).toContain("info --json");
+    // The fenced command block, not merely the words somewhere in the text.
+    expect(rendered).toMatch(/Run:\n {3}```\n {3}.*detect --json\n {3}```/);
+  });
+
+  it("replaces them with what the caller must supply", () => {
+    const rendered = getPrompt("route", { mechanics: false });
+    expect(rendered).not.toContain("detect --json");
+    expect(rendered).not.toContain("info --json");
+    expect(rendered).toContain("supplied by the caller");
+  });
+
+  it("leaves no malformed command behind when the caller has no CLI", () => {
+    // The defect this option exists for. `invocation` substitutes a binary
+    // NAME inside a command, so a consumer with no CLI that sets it to a
+    // phrase renders `Run: <phrase> detect --json` — an instruction to execute
+    // something that does not parse, which is worse than either honest answer.
+    const withInvocation = getPrompt("route", {
+      invocation: "no CLI is available",
+    });
+    expect(withInvocation).toContain("no CLI is available detect --json");
+
+    const withMechanicsOff = getPrompt("route", {
+      mechanics: false,
+      invocation: "no CLI is available",
+    });
+    expect(withMechanicsOff).not.toContain("no CLI is available detect");
+    expect(withMechanicsOff).not.toMatch(/Run:\n {3}```/);
+  });
+
+  it("keeps the evidence itself, since the criteria are stated in terms of it", () => {
+    // Dropping the steps entirely would lose the inputs, not just the
+    // commands: the prose below each step describes what the evidence holds.
+    const rendered = getPrompt("route", { mechanics: false });
+    expect(rendered).toContain("linters");
+    expect(rendered).toContain("loggedIn");
+    expect(rendered).toContain("ghOwner");
   });
 });
 

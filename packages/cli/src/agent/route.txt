@@ -17,10 +17,7 @@ answered together.
 
 ## Steps
 
-1. **Read the repository.** Run:
-   ```
-   %(TASKLESS_CLI)s detect --json
-   ```
+1. **Read the repository.** %(DETECT_EVIDENCE)s
    This returns the configured linters, languages, and the repo's own
    rule styles. It is deterministic and offline. Use it as ground truth
    instead of guessing the repo's tooling. The scan is monorepo-aware, so
@@ -36,10 +33,7 @@ answered together.
    }
    ```
 
-2. **Read the login state and the repository context.** Run:
-   ```
-   %(TASKLESS_CLI)s info --json
-   ```
+2. **Read the login state and the repository context.** %(LOGIN_EVIDENCE)s
    and note `loggedIn` and `ghOwner`. Do this now, not later: they change
    which destinations exist, so classifying first means classifying
    against a set that may be wrong.

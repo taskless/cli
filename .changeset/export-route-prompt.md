@@ -16,3 +16,9 @@ an ast-grep rule while its own delivery layer could already serve a Vale one.
 Exporting a chooser without its destinations strands a consumer that can route
 but not author. Exporting destinations without the chooser strands one that can
 author but not route, and it writes its own chooser rather than stopping.
+
+`getPrompt` gains `mechanics: false`, which replaces the two steps that gather
+evidence by running the CLI with a statement of what the caller supplies
+instead. `invocation` could not serve this: it substitutes a binary name inside
+a command, so a consumer with no CLI rendered an instruction to run something
+that does not parse. The default rendering is unchanged, byte for byte.
