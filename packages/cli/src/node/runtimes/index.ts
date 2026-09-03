@@ -69,10 +69,21 @@
  *
  * It is a path that exists and that answered `--version` with output matching
  * the spec's `identity`, so it is the binary and not a placeholder a failed
- * install left behind. It is not a promise about which version answered: the
- * first candidate tried is the pinned platform package, but a host that only
- * has the engine on `PATH` resolves that instead. Read `--version` yourself if
- * the version is what you are relying on.
+ * install left behind.
+ *
+ * **It is not a promise about which version answered.** The first candidate
+ * tried is the pinned platform package, but a host that only has the engine on
+ * `PATH` resolves that instead, and that binary can be any version. Use
+ * {@link isPlatformBinary} to require the resolution came from inside the
+ * installed package; a consumer that does is entitled to the pinned version
+ * without running anything.
+ *
+ * {@link AST_GREP_VERSION} and {@link VALE_VERSION} are what the pinned
+ * platform packages contain. They are not read from the resolved binary, and
+ * they do not need to be: this package's own tests spawn each engine and assert
+ * its `--version` matches the constant, and assert the constant matches the
+ * `optionalDependencies` pin that installs it. Both links are checked here so a
+ * consumer does not have to check either.
  */
 
 // The `.js` extensions are deliberate, for the same reason they are on the
@@ -91,3 +102,4 @@ export {
 } from "../../rules/platform-binary.js";
 export { AST_GREP_BINARY } from "../../rules/ast-grep-binary.js";
 export { VALE_BINARY } from "../../rules/vale/binary.js";
+export { AST_GREP_VERSION, VALE_VERSION } from "../../rules/capabilities.js";
