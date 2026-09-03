@@ -79,13 +79,18 @@ describe("the published engine versions agree with their pins", () => {
     ).toBe(true);
   });
 
-  it("both constants are reachable from the published entry", async () => {
-    // The export is the reason this file exists. A consumer reads these two
-    // names; a refactor that stops exporting them breaks that consumer without
-    // breaking anything internal.
-    const entry = await import("../src/node/runtimes/index");
-    expect(entry.AST_GREP_VERSION).toBe(AST_GREP_VERSION);
-    expect(entry.VALE_VERSION).toBe(VALE_VERSION);
+  it("does not publish the constants from the runtimes entry", async () => {
+    // Withdrawn deliberately. `source` answers "is this the pinned engine"
+    // directly and at resolution time; a version constant answers it later and
+    // worse, by inviting a comparison against a number instead of a check of
+    // where the binary came from. Asserted so a well-meaning re-export does not
+    // quietly reintroduce the surface we agreed not to carry.
+    const entry = (await import("../src/node/runtimes/index")) as Record<
+      string,
+      unknown
+    >;
+    expect(entry.AST_GREP_VERSION).toBeUndefined();
+    expect(entry.VALE_VERSION).toBeUndefined();
   });
 });
 
