@@ -21,3 +21,14 @@ The resolver's contract is unchanged, and the doc is now explicit that a
 resolution can come from `PATH` and be any version. `isPlatformBinary` is how a
 consumer requires the pinned package, and a consumer that does is entitled to the
 published version without running anything.
+
+`PlatformBinaryResolution` also gains `source`, naming which tier answered:
+`platform-package`, `node_modules/.bin`, or `PATH`. Only the first is the pinned
+install, so only it entitles a caller to the published version without running
+the binary.
+
+`isPlatformBinary` never answered that question and the entry's documentation
+said it did. It checks a file exists and identifies as the right tool, which
+every tier satisfies by the time a path is returned — identity is not
+provenance. A consumer following that advice would have believed it had gated on
+the pinned engine while a `PATH` binary of any version passed the same check.

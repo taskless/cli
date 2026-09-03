@@ -69,6 +69,7 @@ describe("runVale when the binary is missing", () => {
     const binary = await import("../src/rules/vale/binary");
     vi.spyOn(binary, "findValeBinary").mockReturnValue({
       path: undefined,
+      source: undefined,
       tried: ["@taskless/vale-darwin-arm64", "node_modules/.bin", "PATH"],
     });
 
@@ -280,6 +281,7 @@ describe("ValeRunOutcome.blocking", () => {
     const binary = await import("../src/rules/vale/binary");
     vi.spyOn(binary, "findValeBinary").mockReturnValue({
       path: undefined,
+      source: undefined,
       tried: ["@taskless/vale-darwin-arm64", "node_modules/.bin", "PATH"],
     });
 

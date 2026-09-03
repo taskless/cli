@@ -145,11 +145,50 @@ export function isPlatformBinary(
 }
 
 /** One place to look, paired with the label `tried` reports it under. */
-type Candidate = [label: string, path: string | undefined];
+/**
+ * A place to look: the tier it belongs to, the label a user sees in
+ * "Looked in: …", and the path if one exists.
+ *
+ * The two strings differ on purpose. `source` is the fact a caller branches on
+ * and must stay a closed set; the label names the actual package so a failure
+ * message is actionable, and naming the tier there instead would trade
+ * `@ast-grep/cli-darwin-arm64` for `platform-package`.
+ */
+type Candidate = [
+  source: PlatformBinarySource,
+  label: string,
+  path: string | undefined,
+];
+
+/**
+ * Which tier produced a resolution.
+ *
+ * `platform-package` is the version this CLI pins and installs. The other two
+ * are whatever the host happens to carry, and can be any version.
+ */
+export type PlatformBinarySource =
+  | "platform-package"
+  | "node_modules/.bin"
+  | "PATH";
 
 export interface PlatformBinaryResolution {
   /** Absolute path to the verified binary, or `undefined` when none resolved. */
   path: string | undefined;
+  /**
+   * Which tier the path came from, or `undefined` when nothing resolved.
+   *
+   * **Identity is not provenance.** Resolution proves the file exists and
+   * answered `--version` as the right tool; it proves nothing about the
+   * version. Only `platform-package` is the pinned install, so only that tier
+   * entitles a caller to {@link AST_GREP_VERSION}-style constants without
+   * running the binary.
+   *
+   * Reported rather than left to be re-derived. A caller that needs the pinned
+   * engine would otherwise compare the returned path against a package root it
+   * reconstructs itself, which is this resolver's own search order copied into
+   * a consumer, and copies drift.
+   */
+  source: PlatformBinarySource | undefined;
   /** Locations searched, in order, for an actionable failure message. */
   tried: string[];
 }
@@ -186,6 +225,7 @@ export function resolvePlatformBinary(
   const links = linkNames(spec);
   const candidates: Candidate[] = [
     [
+      "platform-package",
       platformPackageName(spec),
       platformPackageBinary(
         spec,
@@ -195,24 +235,25 @@ export function resolvePlatformBinary(
     ...links.map(
       (name): Candidate => [
         "node_modules/.bin",
+        "node_modules/.bin",
         resolve(localBin, executableName(name)),
       ]
     ),
     ...links.map(
-      (name): Candidate => ["PATH", findOnPath(executableName(name))]
+      (name): Candidate => ["PATH", "PATH", findOnPath(executableName(name))]
     ),
   ];
 
   // `tried` names *locations*, not candidates: a tier searched under two
   // spellings is still one place the user can look, and repeating its label
   // makes "Looked in: …" read as if we searched it twice.
-  const tried = [...new Set(candidates.map(([label]) => label))];
+  const tried = [...new Set(candidates.map(([, label]) => label))];
 
-  for (const [, path] of candidates) {
+  for (const [source, , path] of candidates) {
     if (path !== undefined && isPlatformBinary(spec, path)) {
-      return { path, tried };
+      return { path, source, tried };
     }
   }
 
-  return { path: undefined, tried };
+  return { path: undefined, source: undefined, tried };
 }
