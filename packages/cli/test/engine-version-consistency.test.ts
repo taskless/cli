@@ -46,26 +46,48 @@ import { resolvePlatformBinary } from "../src/rules/platform-binary";
 
 const manifest = JSON.parse(
   readFileSync(join(import.meta.dirname, "..", "package.json"), "utf8")
-) as { optionalDependencies: Record<string, string> };
+) as {
+  optionalDependencies: Record<string, string>;
+  devDependencies?: Record<string, string>;
+};
 
-/** Every pin for a platform family, deduplicated. */
+/** Every dependency field a pin can live in, merged. */
+const allPins: Record<string, string> = {
+  ...manifest.devDependencies,
+  ...manifest.optionalDependencies,
+};
+
+/**
+ * Every pin for a family, deduplicated.
+ *
+ * The prefix has no trailing hyphen on purpose, so the BARE package name is
+ * included alongside the platform-suffixed ones. `capabilities.ts` says the
+ * ast-grep release is pinned "both for `@ast-grep/cli` and for every
+ * `@ast-grep/cli-<platform>` optional dependency", and a filter on
+ * `@ast-grep/cli-` silently drops the first half of that claim: a bump that
+ * moved the devDependency without the platform pins, or the reverse, would pass
+ * while the docstring said they agree.
+ */
 function pinnedVersions(prefix: string): string[] {
-  const versions = Object.entries(manifest.optionalDependencies)
-    .filter(([name]) => name.startsWith(prefix))
+  const versions = Object.entries(allPins)
+    .filter(([name]) => name === prefix || name.startsWith(`${prefix}-`))
     .map(([, version]) => version);
   return [...new Set(versions)];
 }
 
 describe("the published engine versions agree with their pins", () => {
   it("ast-grep's constant is the version its platform packages pin", () => {
-    const pinned = pinnedVersions("@ast-grep/cli-");
-    expect(pinned.length, "platform packages disagree on a version").toBe(1);
+    const pinned = pinnedVersions("@ast-grep/cli");
+    expect(
+      pinned.length,
+      "the bare package and its platform packages disagree on a version"
+    ).toBe(1);
     // Upstream's own packages, so the pin is the version verbatim.
     expect(pinned[0]).toBe(AST_GREP_VERSION);
   });
 
   it("vale's constant is the version its platform packages pin, before our build stamp", () => {
-    const pinned = pinnedVersions("@taskless/vale-");
+    const pinned = pinnedVersions("@taskless/vale");
     expect(pinned.length, "platform packages disagree on a version").toBe(1);
 
     // Ours to repackage, so the pin carries a build stamp the upstream version
