@@ -286,16 +286,26 @@ Signatures compare as whole strings    ->  (gone)
 
 Two normative scenarios, about parameter-parsing order and whole-string comparison, would have left the spec as a side effect of documenting something unrelated.
 
+**A MODIFIED block is matched to the standing requirement BY ITS TITLE. Rename the requirement and the delta applies nothing at all.** Measured the same way: the standing text survived untouched, the delta was discarded, and `openspec validate --strict` passed on both sides. This is the quieter half of the same trap. Dropping a scenario at least changes something; a rename looks like a substantial edit and is a no-op. If a requirement's title should change, that is a REMOVED plus an ADDED, not a MODIFIED.
+
 **Do not rely on a preserve-on-sync guardrail.** `openspec-sync-specs` advises retaining content a delta does not mention, and that advice does not reach `openspec archive`, which is what actually runs. A delta that omits a scenario, and a comment saying the omission is deliberate, produce the same result: the scenario is gone.
 
 **Check it the way it was found**, since nothing else will. `openspec validate --strict` passes on a delta that drops scenarios:
 
 ```bash
-# commit everything first: the revert below is a hard reset
+# Commit first and KEEP THE SHA. The reset below is hard, and `git clean`
+# removes the change directory along with the archived copy.
+git add -A && git commit -S -m "wip: pre-archive check" && SAFE=$(git rev-parse HEAD)
 pnpm openspec archive <change-name> -y
-grep -n "^#### Scenario" openspec/specs/<capability>/spec.md
-git reset --hard HEAD && git clean -fd openspec/
+grep -n "^#### Scenario" openspec/specs/<capability>/spec.md   # every prior one still there?
+git reset --hard "$SAFE" && git clean -fd openspec/
 ```
+
+**Reset to that SHA, never to `HEAD~1`.** Resetting past the commit deletes the
+change you were testing, and `git clean` then removes what the reset left
+untracked. Recovering means `git checkout <wip-sha> -- openspec/changes/<name>`
+from the reflog, and copying a backup directory _onto_ the change directory
+nests a stray copy inside it rather than replacing its files.
 
 Every scenario present before must still be present, plus whatever you added. Two cautions from doing it: commit first, and restore uncommitted edits by copying files **over** the change directory rather than copying the directory onto itself, which nests a stray copy inside it.
 
