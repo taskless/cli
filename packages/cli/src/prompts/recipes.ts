@@ -126,6 +126,24 @@ export interface RecipeOptions {
    */
   invocation?: string;
   /**
+   * Render the steps that gather evidence by running this CLI.
+   *
+   * `false` replaces them with a statement of what the caller must supply
+   * instead. It exists because `invocation` cannot do this job: that option
+   * substitutes the BINARY NAME inside a command, so a consumer with no CLI
+   * setting it to a phrase renders `Run: <no CLI available> detect --json` — a
+   * malformed instruction rather than a clean absence, and worse than either
+   * honest answer.
+   *
+   * The evidence itself is not optional. A consumer that cannot run the
+   * commands still needs the linters, languages, rule styles, login state and
+   * owner, because the routing criteria are stated in terms of them. So this
+   * names what to supply rather than dropping the steps.
+   *
+   * @default true
+   */
+  mechanics?: boolean;
+  /**
    * Include the `# Topic: <name> (CLI v<version> / topic vN)` first line.
    * Suppressing it drops the CLI version from the text, which matters to
    * an LLM consumer whose prompt-cache key would otherwise churn on every
@@ -147,6 +165,30 @@ export interface RecipeOptions {
  * - Agent-fill markers (e.g. `PACKAGE_MANAGER_DLX`) — rendered as
  *   `<lower-kebab-name>` so the consuming agent knows to substitute.
  */
+/**
+ * What a step says when the caller supplies the evidence itself.
+ *
+ * Deliberately not an empty string: the step's following prose describes what
+ * the evidence contains and the criteria below are stated in terms of it, so a
+ * consumer that reads "nothing here" and moves on has lost the inputs rather
+ * than the commands.
+ */
+const SUPPLIED_EVIDENCE =
+  "This evidence is supplied by the caller rather than gathered here.";
+
+/** The `Run:` line and its fenced command, as the recipe has always shown it. */
+function runBlock(invocation: string, command: string): string {
+  return `Run:\n   \`\`\`\n   ${invocation} ${command}\n   \`\`\``;
+}
+
+/** The invocation a render should use, resolved the same way `TASKLESS_CLI` is. */
+function resolveInvocation(options: RecipeOptions): string {
+  return (
+    options.invocation ??
+    (isProductionInvocation() ? TASKLESS_CLI_MARKER : buildInvocation())
+  );
+}
+
 export function buildVariables(
   content: string,
   topic: string,
@@ -169,12 +211,22 @@ export function buildVariables(
     VALE_CONVERTER_FORMATS: valeConverterList(),
     PACKAGE_MANAGER_DLX:
       options.packageManagerDlx ?? PACKAGE_MANAGER_DLX_MARKER,
+    // The two steps that gather evidence by running this CLI. Rendered as
+    // whole blocks rather than stripped afterwards, because the default must
+    // stay byte-identical to what `taskless agent route` has always printed
+    // and a post-strip cannot promise that.
+    DETECT_EVIDENCE:
+      options.mechanics === false
+        ? SUPPLIED_EVIDENCE
+        : runBlock(resolveInvocation(options), "detect --json"),
+    LOGIN_EVIDENCE:
+      options.mechanics === false
+        ? SUPPLIED_EVIDENCE
+        : runBlock(resolveInvocation(options), "info --json"),
     // Three steps, in descending order of how much the resolver actually
     // knows: the caller was told how the CLI was launched; the build is a
     // nightly/dev/self that knows what it is; nobody knows, so ask the agent.
-    TASKLESS_CLI:
-      options.invocation ??
-      (isProductionInvocation() ? TASKLESS_CLI_MARKER : buildInvocation()),
+    TASKLESS_CLI: resolveInvocation(options),
   };
   if (content.includes("%(INPUT_SCHEMA)s")) {
     const schema = TOPIC_INPUT_SCHEMAS[topic];
