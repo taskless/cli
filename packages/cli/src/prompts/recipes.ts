@@ -173,12 +173,27 @@ export interface RecipeOptions {
  * consumer that reads "nothing here" and moves on has lost the inputs rather
  * than the commands.
  */
-const SUPPLIED_EVIDENCE =
-  "This evidence is supplied by the caller rather than gathered here.";
+const SUPPLIED_DETECT = "The caller supplies this evidence, which names";
+const SUPPLIED_LOGIN = "The caller supplies";
 
-/** The `Run:` line and its fenced command, as the recipe has always shown it. */
-function runBlock(invocation: string, command: string): string {
-  return `Run:\n   \`\`\`\n   ${invocation} ${command}\n   \`\`\``;
+/**
+ * The `Run:` block, ending in the connective the step's own prose continues
+ * from.
+ *
+ * The connective is part of the substitution rather than of the template
+ * because the prose depends on it grammatically: step 1 continues "…the
+ * configured linters", which needs "This returns" before it, and step 2
+ * continues "`loggedIn` and `ghOwner`", which needs a verb. Replacing only the
+ * command left "This returns" dangling and "and note" as a fragment — a
+ * malformed rendering, which is the defect this option exists to remove rather
+ * than relocate.
+ */
+function runBlock(
+  invocation: string,
+  command: string,
+  connective: string
+): string {
+  return `Run:\n   \`\`\`\n   ${invocation} ${command}\n   \`\`\`\n   ${connective}`;
 }
 
 /** The invocation a render should use, resolved the same way `TASKLESS_CLI` is. */
@@ -217,12 +232,12 @@ export function buildVariables(
     // and a post-strip cannot promise that.
     DETECT_EVIDENCE:
       options.mechanics === false
-        ? SUPPLIED_EVIDENCE
-        : runBlock(resolveInvocation(options), "detect --json"),
+        ? SUPPLIED_DETECT
+        : runBlock(resolveInvocation(options), "detect --json", "This returns"),
     LOGIN_EVIDENCE:
       options.mechanics === false
-        ? SUPPLIED_EVIDENCE
-        : runBlock(resolveInvocation(options), "info --json"),
+        ? SUPPLIED_LOGIN
+        : runBlock(resolveInvocation(options), "info --json", "and note"),
     // Three steps, in descending order of how much the resolver actually
     // knows: the caller was told how the CLI was launched; the build is a
     // nightly/dev/self that knows what it is; nobody knows, so ask the agent.

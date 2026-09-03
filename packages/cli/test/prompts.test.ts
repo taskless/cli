@@ -283,7 +283,7 @@ describe("host mechanics suppression", () => {
     const rendered = getPrompt("route", { mechanics: false });
     expect(rendered).not.toContain("detect --json");
     expect(rendered).not.toContain("info --json");
-    expect(rendered).toContain("supplied by the caller");
+    expect(rendered).toContain("The caller supplies");
   });
 
   it("leaves no malformed command behind when the caller has no CLI", () => {
@@ -302,6 +302,19 @@ describe("host mechanics suppression", () => {
     });
     expect(withMechanicsOff).not.toContain("no CLI is available detect");
     expect(withMechanicsOff).not.toMatch(/Run:\n {3}```/);
+  });
+
+  it("leaves no dangling connective where the command was", () => {
+    // Replacing only the command left "This returns" with nothing to refer to
+    // and "and note" as a fragment. The connective is part of the substitution
+    // for that reason, so each step reads as a sentence in both modes.
+    const rendered = getPrompt("route", { mechanics: false });
+    expect(rendered).not.toMatch(/^\s*This returns/m);
+    expect(rendered).not.toMatch(/^\s*and note/m);
+    expect(rendered).toContain(
+      "The caller supplies this evidence, which names"
+    );
+    expect(rendered).toContain("The caller supplies `loggedIn` and `ghOwner`.");
   });
 
   it("keeps the evidence itself, since the criteria are stated in terms of it", () => {
