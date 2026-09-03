@@ -317,6 +317,26 @@ describe("host mechanics suppression", () => {
     expect(rendered).toContain("The caller supplies `loggedIn` and `ghOwner`.");
   });
 
+  it("keeps each step's prose attached to the block its placeholder supplies", () => {
+    // The seam this option introduced. A step's rendering now comes from two
+    // independent sources that agree only by construction: the placeholder
+    // supplies the trailing newlines, and `route.txt` supplies the tail prose
+    // on the SAME template line. Reflowing that line in an editor would
+    // separate them and change the rendered bytes.
+    //
+    // Nothing else would catch it. The agent-command parity test renders both
+    // sides from the same source at test time, so a reflow moves them
+    // together, and the fenced-block regex above pins the block without
+    // pinning where the prose resumes.
+    const rendered = getPrompt("route");
+    expect(rendered).toContain(
+      "```\n   This returns the configured linters, languages, and the repo's own\n   rule styles."
+    );
+    expect(rendered).toContain(
+      "```\n   and note `loggedIn` and `ghOwner`. Do this now, not later: they change\n   which destinations exist,"
+    );
+  });
+
   it("keeps the evidence itself, since the criteria are stated in terms of it", () => {
     // Dropping the steps entirely would lose the inputs, not just the
     // commands: the prose below each step describes what the evidence holds.
