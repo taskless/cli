@@ -213,6 +213,23 @@ describe("a runtime rule whose fixtures did not run", () => {
     expect(stdout).toContain("--dangerously-run-scripts");
   });
 
+  it("offers the flag as the only route, and never sends the author to auth", async () => {
+    // `test` does not reconcile, so authenticating changes nothing here and
+    // saying otherwise would send an author to a login that cannot help: a
+    // locally authored rule has no signature and never will. The flag is the
+    // whole gate, so it has to be the whole message.
+    await writeRule();
+    await writeCase("fail", "uses-eval");
+    await writeCase("pass", "no-eval");
+
+    const { stdout } = await testRule();
+
+    expect(stdout).toContain("--dangerously-run-scripts");
+    expect(stdout).not.toContain("auth login");
+    expect(stdout).not.toContain("not authenticated");
+    expect(stdout).not.toContain("server verification");
+  });
+
   it("reports ran: false in --json, and does not report ok: true", async () => {
     await writeRule();
     await writeCase("fail", "uses-eval");

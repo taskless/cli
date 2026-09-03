@@ -8,7 +8,8 @@ import { restoreRule } from "../../api/restore";
 import { writeRuleFile } from "../files";
 import { PurgeIncompleteError } from "../deliver";
 import { repairTargets, verifyRestoredCheck } from "./repair";
-import { discoverRuntimeRules, type RuntimeRule } from "./discover";
+import { RUN_SCRIPTS_WARNING } from "./harness";
+import { type RuntimeRule } from "./discover";
 import {
   materializeRuntimeRules,
   reportRuntimeChecks,
@@ -17,15 +18,26 @@ import {
 } from "./run-set";
 
 /**
- * Deciding WHICH runtime rules may execute, separately from executing them.
+ * Deciding WHICH runtime rules may execute during a `check`, separately from
+ * executing them.
  *
- * This lived inside `commands/check.ts` and moved here unchanged so `test` can
- * run a rule's fixtures under the same policy rather than beside it. That is
- * the whole reason for the move: a fixture run executes the same `check.ts`,
- * from the same delivery, under the same signature as a scan, and "it is only
- * running against test data" is a statement about the input rather than about
- * what the program may do. A second implementation of this gate, however
- * faithful on the day it was written, is a bypass waiting to be discovered.
+ * `check` is the only caller and the only command that needs this. It executes
+ * rules as a SIDE EFFECT of scanning a repository — nobody asked for code to
+ * run — so a reconcile stands between the scan and the execution, and every
+ * unverified path skips rather than fails.
+ *
+ * `test` deliberately does not come through here. It runs a rule's fixtures
+ * because the user typed `test`, so the verb is the consent and
+ * `--dangerously-run-scripts` is its whole gate; see the runtime branch of
+ * `rules/inspect.ts`. That is stricter than sharing this module, not looser:
+ * nothing runs under `test` that would not have run before, and a blessed rule
+ * that used to run there without the flag now needs it.
+ *
+ * It lived inside `commands/check.ts` and moved here for a reason that has
+ * since evaporated (sharing the gate with `test`). It stays because a second
+ * reason holds on its own: this is policy, `commands/check.ts` is argument
+ * parsing and rendering, and `repairWithheldRules` below is a long piece of
+ * recovery logic that a command file has no business carrying.
  */
 
 /** A runtime rule that will not run, with why (advisory). */
@@ -71,9 +83,7 @@ export async function planRuntime(
     return {
       execute: discovered,
       skipped: [],
-      notices: [
-        "Warning: --dangerously-run-scripts is executing runtime rule code without server verification.",
-      ],
+      notices: [RUN_SCRIPTS_WARNING],
     };
   }
 
@@ -298,75 +308,4 @@ async function repairWithheldRules(
   }
 
   return { notices };
-}
-
-/**
- * The plan, resolved once and shared by every rule a command reports on.
- *
- * `test` inspects rules one at a time, and planning per rule would send one
- * reconcile per runtime rule for an answer that is the same every time. The
- * plan is therefore memoized on first use and the notices are emitted once,
- * with the whole set of discovered runtime rules reported to reconcile exactly
- * as `check` reports it. A subset would be a different question asked of the
- * service.
- *
- * Lazy rather than eager because most projects hold no runtime rules at all,
- * and a `test` run over a tree of `sg` rules must not reach the network.
- */
-export interface RuntimeGate {
-  /**
-   * The rule as it may be executed, or the reason it may not be.
-   *
-   * The rule returned is the one the plan blessed, which on the gated path is
-   * the materialized copy: the bytes run against a fixture are the bytes the
-   * server blessed, not whatever the working tree happens to hold.
-   */
-  admit(
-    ruleId: string
-  ): Promise<
-    { admitted: true; rule: RuntimeRule } | { admitted: false; reason: string }
-  >;
-}
-
-/** Build a gate over the runtime rules `cwd` holds. */
-export function createRuntimeGate(
-  cwd: string,
-  options: {
-    dangerouslyRunScripts: boolean;
-    /** Called once, with the notices `check` prints for the same plan. */
-    onNotice?: (message: string) => void;
-  }
-): RuntimeGate {
-  let planned: Promise<RuntimePlan> | undefined;
-
-  const plan = async (): Promise<RuntimePlan> => {
-    planned ??= (async () => {
-      const discovered = await discoverRuntimeRules(cwd);
-      const resolved = await planRuntime(cwd, discovered, {
-        anonymous: false,
-        dangerouslyRunScripts: options.dangerouslyRunScripts,
-      });
-      for (const notice of resolved.notices) options.onNotice?.(notice);
-      return resolved;
-    })();
-    return planned;
-  };
-
-  return {
-    async admit(ruleId) {
-      const resolved = await plan();
-      const rule = resolved.execute.find(
-        (candidate) => candidate.name === ruleId
-      );
-      if (rule !== undefined) return { admitted: true, rule };
-
-      const skipped = resolved.skipped.find((entry) => entry.rule === ruleId);
-      return {
-        admitted: false,
-        reason:
-          skipped?.reason ??
-          "it was not discovered as a runnable runtime rule (no capture rules under captures/)",
-      };
-    },
-  };
 }

@@ -8,10 +8,15 @@ import {
   ruleDirectory,
   ruleFilePath,
 } from "./engines";
+import { describeCoverageShortfall } from "./fixtures";
 import { type EngineName } from "./layout";
-import { assessCaptureDirectory, strayModules } from "./runtime/discover";
+import {
+  assessCaptureDirectory,
+  discoverRuntimeRules,
+  strayModules,
+} from "./runtime/discover";
 import { readRuntimeFixtures } from "./runtime/fixtures";
-import { createRuntimeGate, type RuntimeGate } from "./runtime/plan";
+import { RUN_SCRIPTS_WARNING } from "./runtime/harness";
 import {
   describeFixtureReport,
   runRuntimeFixtures,
@@ -77,14 +82,29 @@ export interface RuleTestResult {
 /** What `test` needs beyond a rule, all of it about the runtime engine. */
 export interface TestOptions {
   /**
-   * The execution gate, shared across every rule in one command run.
+   * Run a runtime rule's fixtures, which executes its `check.ts`.
    *
-   * Passed in rather than built here so a `test` over a whole tree plans once:
-   * the plan consults auth and reconcile, and per-rule planning would send one
-   * request per runtime rule for an answer that does not vary. Omitted, a
-   * gate with no escape flag is built, which is the safe default.
+   * The WHOLE gate for `test`, and deliberately not `check`'s gate. `check`
+   * reconciles because it executes rules as a side effect of scanning a
+   * repository: the user asked for a scan, code ran, and the gate is what stops
+   * that happening silently. `test` runs fixtures because the user asked it to
+   * — the verb is the consent — so asking a server for permission to run your
+   * own fixtures is overreach, and the flag alone decides.
+   *
+   * That is STRICTLY MORE CONSERVATIVE than gating on reconcile as well:
+   * nothing executes here that would not have executed before, and a blessed
+   * rule that previously ran without the flag now requires it. Absent, which
+   * is the safe default, every runtime rule is refused.
    */
-  runtimeGate?: RuntimeGate;
+  dangerouslyRunScripts?: boolean;
+  /**
+   * Called immediately before fixtures actually execute, never otherwise.
+   *
+   * Lazy so `test --dangerously-run-scripts` over a tree of `sg` rules does not
+   * warn about code it never ran. Deduplication belongs to the caller, which
+   * knows how many rules one command run covers.
+   */
+  onRuntimeWarning?: (message: string) => void;
 }
 
 async function readYaml(path: string): Promise<unknown> {
@@ -285,13 +305,17 @@ export async function testOneRule(
     // populated only one bucket has proved only half of what a rule claims.
     // `ast-grep test` will not say so — an empty `invalid:` bucket is
     // `1 passed; 0 failed`, exit zero — so the message has to come from here.
-    if (result.tests.fixtures !== "both") {
-      errors.push(
-        result.tests.fixtures === "none"
-          ? `${ruleId} has no fixtures, so nothing shows it fires or stays quiet.`
-          : `${ruleId} has only ${result.tests.fixtures.replace("-only", "")}: fixtures — half a claim.`
-      );
-    }
+    //
+    // `:` rather than `/` because ast-grep's buckets are the `valid:`/`invalid:`
+    // KEYS of a test YAML document, not directories. The other two engines read
+    // `pass/`. Naming a bucket in the shape the author will search for is the
+    // point of the message, so the difference is deliberate, not drift.
+    const shortfall = describeCoverageShortfall(
+      ruleId,
+      result.tests.fixtures,
+      ":"
+    );
+    if (shortfall !== undefined) errors.push(shortfall);
     return {
       engine,
       ruleId,
@@ -321,13 +345,10 @@ export async function testOneRule(
       };
     }
     const errors: string[] = [];
-    if (result.fixtures !== "both") {
-      errors.push(
-        result.fixtures === "none"
-          ? `${ruleId} has no fixtures, so nothing shows it fires or stays quiet.`
-          : `${ruleId} has only ${result.fixtures.replace("-only", "")}/ fixtures — half a claim.`
-      );
-    }
+    // `/` because Vale's buckets are directories; see the `sg` branch above for
+    // why that suffix is a parameter rather than one spelling for all three.
+    const shortfall = describeCoverageShortfall(ruleId, result.fixtures, "/");
+    if (shortfall !== undefined) errors.push(shortfall);
     for (const file of result.missingFailures) {
       errors.push(`fail fixture did not fire: ${file}`);
     }
@@ -344,24 +365,56 @@ export async function testOneRule(
     };
   }
 
-  // Runtime rules execute code, so their fixtures run through the harness
-  // under the same server verification `check` requires: the gate below is
-  // `check`'s, imported rather than re-stated.
-  const gate =
-    options.runtimeGate ??
-    createRuntimeGate(cwd, { dangerouslyRunScripts: false });
-  const admission = await gate.admit(ruleId);
-
-  if (!admission.admitted) {
+  // Runtime rules execute code, so `test` runs their fixtures only behind
+  // `--dangerously-run-scripts`. It does NOT reconcile, and that is the whole
+  // difference from `check`.
+  //
+  // `check` asks the server because it executes rules as a SIDE EFFECT of
+  // scanning a repository — nobody asked for code to run, so a gate has to
+  // stand between the scan and the execution. `test` runs fixtures because the
+  // user typed `test`, and the verb is the consent; asking a server for
+  // permission to run your own fixtures is overreach.
+  //
+  // The only party a reconcile here would ever admit is someone testing an
+  // already-blessed delivered rule, whose fixtures the service verified before
+  // it delivered anything. A locally authored rule has no signature and never
+  // will, because blessing is recording and nothing recorded it — so for the
+  // audience that actually runs `test` on a runtime rule, a reconcile is pure
+  // cost paid for an answer that is always "no".
+  //
+  // Dropping it is strictly more conservative: nothing runs that would not have
+  // run before, and the blessed case that used to run without the flag now
+  // needs it. It also removes the `--anonymous` question rather than answering
+  // it, since with no network there is nothing to suppress.
+  if (options.dangerouslyRunScripts !== true) {
     // Neither a pass nor a failure (D2), and the message has to say what would
-    // change it. A locally authored rule has no signature and never will,
-    // because blessing is recording and nothing recorded this one, so the flag
-    // is the author's only route and naming it here is the difference between
-    // a dead end and an instruction.
+    // change it. The flag is the only route for anyone, so naming it here is
+    // the difference between a dead end and an instruction.
     const reason =
-      `fixtures did not run: ${admission.reason}. Pass ` +
-      `--dangerously-run-scripts to run them without server verification ` +
-      `(it executes the rule's check.ts).`;
+      `fixtures did not run: running them executes the rule's check.ts. ` +
+      `Pass --dangerously-run-scripts to run them.`;
+    return {
+      engine,
+      ruleId,
+      ok: false,
+      errors: [reason],
+      ran: false,
+      refused: reason,
+    };
+  }
+
+  // Discovery, not a plan: the bytes are the working tree's, which is the point
+  // of testing a rule you are authoring. `discoverRuntimeRules` is the same
+  // enumeration `check` plans over, so a rule it refuses — no loadable capture,
+  // or an unsigned module beside `check.ts` — is refused here identically
+  // rather than by a second opinion. `verify` has already run and named the
+  // real defect; this reports that nothing was run, not a verdict on the rule.
+  const discovered = await discoverRuntimeRules(cwd);
+  const runtimeRule = discovered.find((candidate) => candidate.name === ruleId);
+  if (runtimeRule === undefined) {
+    const reason =
+      `fixtures did not run: it was not discovered as a runnable runtime ` +
+      `rule (no capture rules under captures/).`;
     return {
       engine,
       ruleId,
@@ -389,7 +442,11 @@ export async function testOneRule(
     };
   }
 
-  const report = await runRuntimeFixtures(admission.rule, fixtures);
+  // Warned at the last possible moment: everything above can still decline to
+  // run anything, and a warning about code that never executed is noise.
+  options.onRuntimeWarning?.(RUN_SCRIPTS_WARNING);
+
+  const report = await runRuntimeFixtures(runtimeRule, fixtures);
   return {
     engine,
     ruleId,

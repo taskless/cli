@@ -12,6 +12,7 @@ import {
   findRegexWithoutKind,
 } from "../schemas/ast-grep-rule";
 import { pathPrefixed, schemaLayer } from "../schemas/layer";
+import { classifyCoverage, type FixtureCoverage } from "./fixtures";
 import {
   AST_GREP_TSX_SPLIT,
   AST_GREP_VERSION,
@@ -65,7 +66,7 @@ export interface RequirementsResult extends LayerResult {
  * YAML rather than Vale's `pass/`/`fail/` directories, so the names follow
  * ast-grep's vocabulary.
  */
-export type SgFixtureCoverage = "both" | "valid-only" | "invalid-only" | "none";
+export type SgFixtureCoverage = FixtureCoverage<"valid" | "invalid">;
 
 export interface TestLayerResult extends LayerResult {
   passed: number;
@@ -364,17 +365,6 @@ async function discoverRuleTestFiles(
     .map((entry) => join(directory, entry));
 }
 
-/** Classify a rule's buckets by how many sources each held. */
-function coverageOf(
-  validCount: number,
-  invalidCount: number
-): SgFixtureCoverage {
-  if (validCount > 0 && invalidCount > 0) return "both";
-  if (validCount > 0) return "valid-only";
-  if (invalidCount > 0) return "invalid-only";
-  return "none";
-}
-
 /**
  * Count what the author actually put in each bucket, across every test file
  * the rule owns.
@@ -422,7 +412,10 @@ async function fixtureCoverage(
     if (Array.isArray(buckets.invalid)) invalidCount += buckets.invalid.length;
   }
 
-  return coverageOf(validCount, invalidCount);
+  return classifyCoverage(
+    { name: "valid", count: validCount },
+    { name: "invalid", count: invalidCount }
+  );
 }
 
 // --- Layer 3: Test execution ---
