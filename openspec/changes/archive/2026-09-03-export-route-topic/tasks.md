@@ -24,4 +24,4 @@ One PR, alongside the export it describes.
 
 ## 4. Close out
 
-- [ ] 4.1 Archive the change
+- [x] 4.1 Archive the change
