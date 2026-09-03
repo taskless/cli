@@ -1,5 +1,5 @@
-// Declaration emit for the public subpath exports — `@taskless/cli/prompts`
-// and `@taskless/cli/layout` — and nothing else.
+// Declaration emit for the public subpath exports — `@taskless/cli/prompts`,
+// `@taskless/cli/layout`, and `@taskless/cli/node/runtimes` — and nothing else.
 //
 // Vite's lib build emits JavaScript and no types, so `tsc` supplies the `.d.ts`
 // for the entries that are public importable API. The include list is
@@ -32,5 +32,10 @@
     "rootDir": "src",
     "declarationDir": "dist"
   },
-  "include": ["src/globals.d.ts", "src/prompts/index.ts", "src/layout/index.ts"]
+  "include": [
+    "src/globals.d.ts",
+    "src/prompts/index.ts",
+    "src/layout/index.ts",
+    "src/node/runtimes/index.ts"
+  ]
 }

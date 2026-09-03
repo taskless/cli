@@ -10,7 +10,7 @@ import { join } from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
-import { AST_GREP_BINARY } from "../src/rules/scan";
+import { AST_GREP_BINARY } from "../src/rules/ast-grep-binary";
 import {
   pathCommandName,
   platformPackageName,
