@@ -4,6 +4,8 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { AST_GREP_VERSION, VALE_VERSION } from "../src/rules/capabilities";
+import { AST_GREP_BINARY } from "../src/rules/ast-grep-binary";
+import { resolvePlatformBinary } from "../src/rules/platform-binary";
 
 /**
  * The published engine versions agree with the pins that install them.
@@ -84,5 +86,37 @@ describe("the published engine versions agree with their pins", () => {
     const entry = await import("../src/node/runtimes/index");
     expect(entry.AST_GREP_VERSION).toBe(AST_GREP_VERSION);
     expect(entry.VALE_VERSION).toBe(VALE_VERSION);
+  });
+});
+
+describe("a resolution says which tier answered", () => {
+  it("reports platform-package when the pinned install provided the binary", () => {
+    // The fact the trust chain hangs on. `isPlatformBinary` cannot answer it:
+    // it verifies the file exists and identifies as the right tool, which
+    // every tier satisfies by the time a path is returned. Identity is not
+    // provenance, and a consumer told to gate on it would believe it had
+    // checked something it had not.
+    const resolution = resolvePlatformBinary(AST_GREP_BINARY);
+    expect(resolution.path).toBeDefined();
+    expect(resolution.source).toBe("platform-package");
+  });
+
+  it("reports no source when nothing resolved", () => {
+    const missing = resolvePlatformBinary({
+      ...AST_GREP_BINARY,
+      packagePrefix: "@taskless/does-not-exist",
+      binaryNames: ["taskless-no-such-binary"],
+    });
+    expect(missing.path).toBeUndefined();
+    expect(missing.source).toBeUndefined();
+  });
+
+  it("still names the actual package in `tried`, not the tier", () => {
+    // The tier and the label are separate on purpose: a failure message saying
+    // "platform-package" is less actionable than one naming the package a user
+    // can install.
+    const { tried } = resolvePlatformBinary(AST_GREP_BINARY);
+    expect(tried.some((t) => t.startsWith("@ast-grep/cli-"))).toBe(true);
+    expect(tried).not.toContain("platform-package");
   });
 });

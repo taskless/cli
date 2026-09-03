@@ -73,10 +73,23 @@
  *
  * **It is not a promise about which version answered.** The first candidate
  * tried is the pinned platform package, but a host that only has the engine on
- * `PATH` resolves that instead, and that binary can be any version. Use
- * {@link isPlatformBinary} to require the resolution came from inside the
- * installed package; a consumer that does is entitled to the pinned version
- * without running anything.
+ * `PATH` resolves that instead, and that binary can be any version.
+ *
+ * `resolution.source` says which tier answered. Only `"platform-package"` is
+ * the pinned install, so only that value entitles a caller to the constants
+ * below without running the binary:
+ *
+ * ```ts
+ * const { path, source } = resolvePlatformBinary(AST_GREP_BINARY);
+ * if (path === undefined) throw new Error("no engine");
+ * if (source !== "platform-package") throw new Error("not the pinned engine");
+ * // AST_GREP_VERSION is now a fact about `path`.
+ * ```
+ *
+ * {@link isPlatformBinary} does NOT answer this. It checks that a file exists
+ * and answers `--version` as the right tool, which every tier satisfies by the
+ * time a path is returned. Identity is not provenance, and an earlier draft of
+ * this note said otherwise.
  *
  * {@link AST_GREP_VERSION} and {@link VALE_VERSION} are what the pinned
  * platform packages contain. They are not read from the resolved binary, and
@@ -98,6 +111,7 @@ export {
   platformPackageName,
   resolvePlatformBinary,
   type PlatformBinaryResolution,
+  type PlatformBinarySource,
   type PlatformBinarySpec,
 } from "../../rules/platform-binary.js";
 export { AST_GREP_BINARY } from "../../rules/ast-grep-binary.js";

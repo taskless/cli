@@ -392,6 +392,7 @@ describe("verifyValeRules without a binary", () => {
     const binary = await import("../src/rules/vale/binary");
     vi.spyOn(binary, "findValeBinary").mockReturnValue({
       path: undefined,
+      source: undefined,
       tried: ["@taskless/vale-darwin-arm64", "PATH"],
     });
 
