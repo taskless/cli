@@ -1,0 +1,37 @@
+{
+  "requestId": "00000000-0000-0000-0000-000000000000",
+  "status": "generated",
+  "rules": [
+    {
+      "id": "env-keys-declared",
+      "engine": "runtime",
+      "signature": "1;h=sha-256;d=0000000000000000000000000000000000000000000000000000000000000000",
+      "files": [
+        {
+          "path": "check.ts",
+          "content": "/**\n * Every `process.env` read must have a matching key in the repository-root\n * `.env`.\n *\n * This is the demonstration rule, and its subject was chosen for one property:\n * the evidence spans two files. The read is in a source file, the declaration\n * is in `.env`, and no single-file pattern can compare them. A rule whose\n * evidence fits in one file is an `sg` rule, so a single-file subject would\n * demonstrate this tier by exercising none of what makes it a tier.\n *\n * It imports nothing from `@taskless/*`. The harness contract is structural —\n * a default-exported async function taking `(root, matches)` and returning\n * findings — so a delivered check never depends on a package being installed.\n */\n\nimport { readFileSync } from \"node:fs\";\nimport { join } from \"node:path\";\n\n/** One normalized ast-grep match, as the harness hands it over. */\ninterface Match {\n  /** The capture rule's stable name, which is what a check branches on. */\n  rule: string;\n  /** Path relative to `root`. */\n  file: string;\n  line: number;\n  column: number;\n  /** Captured metavariables by name. */\n  captures: Record<string, string>;\n}\n\n/** One result the check returns. */\ninterface Finding {\n  file: string;\n  line?: number;\n  column?: number;\n  message: string;\n  severity?: \"error\" | \"warning\" | \"info\";\n}\n\n/**\n * Keys declared in the repository-root `.env`, or none when it is absent.\n *\n * A missing `.env` yields an empty set rather than an error: a project with no\n * `.env` at all has declared nothing, which is exactly what the empty set\n * means, and every read in it is then correctly reported.\n */\nfunction declaredKeys(root: string): Set<string> {\n  let raw: string;\n  try {\n    raw = readFileSync(join(root, \".env\"), \"utf8\");\n  } catch {\n    return new Set();\n  }\n\n  const keys = new Set<string>();\n  for (const line of raw.split(\"\\n\")) {\n    const text = line.trim();\n    if (text === \"\" || text.startsWith(\"#\") || text.startsWith(\"//\")) continue;\n    const equals = text.indexOf(\"=\");\n    // `<= 0` rather than `=== -1`: a line beginning with `=` has no name.\n    if (equals <= 0) continue;\n    keys.add(text.slice(0, equals).trim());\n  }\n  return keys;\n}\n\nexport default async function check(\n  root: string,\n  matches: Match[]\n): Promise<Finding[]> {\n  const declared = declaredKeys(root);\n  const findings: Finding[] = [];\n\n  for (const match of matches) {\n    // Branch on the capture rule's NAME, never on its id: the id is a\n    // baked-in hash and is opaque to a check.\n    if (match.rule !== \"env-read\") continue;\n\n    const name = match.captures.VAR;\n    if (name === undefined || declared.has(name)) continue;\n\n    findings.push({\n      file: match.file,\n      line: match.line,\n      column: match.column,\n      message: `process.env.${name} is read here, but ${name} is not declared in .env`,\n      severity: \"error\",\n    });\n  }\n\n  return findings;\n}\n"
+        },
+        {
+          "path": "captures/env-read.yml",
+          "content": "# The syntactic narrow. It finds every `process.env.X` read; it cannot know\n# whether X is declared, because that answer lives in a different file. Deciding\n# is `check.ts`'s job, which is what makes this a runtime rule rather than an\n# `sg` one.\nid: env-read\nlanguage: TypeScript\nrule:\n  pattern: process.env.$VAR\nmetadata:\n  taskless:\n    version: 1\n    kind: runtime\n    name: env-read\n    check: check.ts\n    match: anchor\n"
+        },
+        {
+          "path": ".tests/pass/declared/src/config.ts",
+          "content": "// API_URL is read here and declared in .env, so this case is clean.\nexport const apiUrl = process.env.API_URL;\n"
+        },
+        {
+          "path": ".tests/pass/declared/.env",
+          "content": "API_URL=https://api.example.com\n"
+        },
+        {
+          "path": ".tests/fail/undeclared/src/config.ts",
+          "content": "// API_URL is declared; API_KEY is not, so the rule fires on the second.\nexport const apiUrl = process.env.API_URL;\nexport const apiKey = process.env.API_KEY;\n"
+        },
+        {
+          "path": ".tests/fail/undeclared/.env",
+          "content": "API_URL=https://api.example.com\n"
+        }
+      ]
+    }
+  ]
+}

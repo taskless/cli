@@ -19,7 +19,8 @@
     "generate:vale-schema": "tsx scripts/generate-vale-schema.ts",
     "prebuild": "tsx scripts/fetch-rule-hash-vectors.ts",
     "test": "vitest run",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "demo:reference": "tsx scripts/write-demo-reference.ts"
   },
   "type": "module",
   "module": "./dist/index.js",

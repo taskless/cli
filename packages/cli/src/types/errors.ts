@@ -33,6 +33,12 @@ export type CLIErrorCode =
   // id": there is no id that produces a sidecar, and an agent that reads this
   // as "not found" retries or reports a missing rule that is plainly on disk.
   | "RULE_META_UNAVAILABLE"
+  // A write would replace a rule directory that is already there. Distinct
+  // from RULE_NOT_FOUND in the obvious direction, and distinct from
+  // INVALID_INPUT because nothing about the request was wrong: the id is
+  // right, the project is right, and the answer is still no. An agent reading
+  // this should delete or rename, never retry.
+  | "RULE_EXISTS"
   | "INVALID_INPUT"
   | "NETWORK_ERROR"
   | "SCAN_FAILED"

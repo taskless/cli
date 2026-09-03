@@ -1,0 +1,15 @@
+# The syntactic narrow. It finds every `process.env.X` read; it cannot know
+# whether X is declared, because that answer lives in a different file. Deciding
+# is `check.ts`'s job, which is what makes this a runtime rule rather than an
+# `sg` one.
+id: env-read
+language: TypeScript
+rule:
+  pattern: process.env.$VAR
+metadata:
+  taskless:
+    version: 1
+    kind: runtime
+    name: env-read
+    check: check.ts
+    match: anchor
