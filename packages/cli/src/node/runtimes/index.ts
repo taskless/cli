@@ -76,14 +76,14 @@
  * `PATH` resolves that instead, and that binary can be any version.
  *
  * `resolution.source` says which tier answered. Only `"platform-package"` is
- * the pinned install, so only that value entitles a caller to the constants
- * below without running the binary:
+ * the pinned install, so only that value tells a caller the binary is the one
+ * this CLI ships:
  *
  * ```ts
  * const { path, source } = resolvePlatformBinary(AST_GREP_BINARY);
  * if (path === undefined) throw new Error("no engine");
  * if (source !== "platform-package") throw new Error("not the pinned engine");
- * // AST_GREP_VERSION is now a fact about `path`.
+ * // The binary at `path` is now known to be the pinned build.
  * ```
  *
  * {@link isPlatformBinary} does NOT answer this. It checks that a file exists
