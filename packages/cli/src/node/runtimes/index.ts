@@ -91,12 +91,11 @@
  * time a path is returned. Identity is not provenance, and an earlier draft of
  * this note said otherwise.
  *
- * {@link AST_GREP_VERSION} and {@link VALE_VERSION} are what the pinned
- * platform packages contain. They are not read from the resolved binary, and
- * they do not need to be: this package's own tests spawn each engine and assert
- * its `--version` matches the constant, and assert the constant matches the
- * `optionalDependencies` pin that installs it. Both links are checked here so a
- * consumer does not have to check either.
+ * **The pinned versions are deliberately not published here.** A consumer
+ * wanting to know it has the pinned engine should read `source`, which answers
+ * that directly and at resolution time. A version constant would answer it
+ * later and less well, by inviting a comparison against a number rather than a
+ * check of where the binary came from.
  */
 
 // The `.js` extensions are deliberate, for the same reason they are on the
@@ -116,4 +115,3 @@ export {
 } from "../../rules/platform-binary.js";
 export { AST_GREP_BINARY } from "../../rules/ast-grep-binary.js";
 export { VALE_BINARY } from "../../rules/vale/binary.js";
-export { AST_GREP_VERSION, VALE_VERSION } from "../../rules/capabilities.js";
