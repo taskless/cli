@@ -1,5 +1,5 @@
 import { builtinModules } from "node:module";
-import { chmodSync, readFileSync, readdirSync } from "node:fs";
+import { chmodSync, existsSync, readFileSync, readdirSync } from "node:fs";
 import { resolve, join } from "node:path";
 import { parse } from "yaml";
 import type { Plugin, Rollup } from "vite";
@@ -21,7 +21,9 @@ const pkg = JSON.parse(
   readFileSync(resolve(import.meta.dirname, "package.json"), "utf8")
 ) as {
   version: string;
-  exports: Record<string, { import?: string }>;
+  /** A conditions object for a built entry, or a bare path for a data asset. */
+  exports: Record<string, { import?: string } | string>;
+  files: string[];
 };
 
 // Target resolution lives in ./scripts/build-target.ts so it can be unit-tested
@@ -158,6 +160,27 @@ const LIBRARY_ENTRIES = [PROMPTS_ENTRY, LAYOUT_ENTRY];
 const HOST_BOUND_ENTRIES = [NODE_RUNTIMES_ENTRY];
 
 /**
+ * Published exports that are DATA, not code.
+ *
+ * A third category the two lists above cannot express. `assertLibraryGraphs`
+ * asks what an entry's import graph reaches, and a JSON file has no import
+ * graph — so classifying it as a library entry would assert nothing, and
+ * classifying it as host-bound would claim a host access it does not have.
+ *
+ * Declared here rather than special-cased inside the check, for the reason
+ * {@link assertExportsClassified} exists at all: an exemption should be
+ * something a person wrote down and a reviewer can disagree with, not an
+ * absence.
+ *
+ * These get their own two checks instead, and they are the ones that can
+ * actually be wrong for an asset: that the file exists, and that `files` ships
+ * it. An `exports` entry npm does not publish resolves for nobody.
+ */
+const ASSET_EXPORTS: Record<string, string> = {
+  "./demo-reference.json": "./assets/demo-reference.json",
+};
+
+/**
  * Refuse to build when a published export is classified as neither.
  *
  * Both lists above are opt-in, and opting in is a thing a person can forget.
@@ -184,6 +207,45 @@ function assertExportsClassified(): Plugin {
       const problems: string[] = [];
 
       for (const [subpath, conditions] of Object.entries(pkg.exports)) {
+        const declaredAsset = ASSET_EXPORTS[subpath];
+        if (declaredAsset !== undefined) {
+          if (conditions !== declaredAsset) {
+            problems.push(
+              `  "${subpath}" is declared in ASSET_EXPORTS as ` +
+                `${declaredAsset} but package.json points it at ` +
+                `${JSON.stringify(conditions)}`
+            );
+            continue;
+          }
+          const assetPath = resolve(import.meta.dirname, declaredAsset);
+          if (!existsSync(assetPath)) {
+            problems.push(
+              `  "${subpath}" points at ${declaredAsset}, which does not exist`
+            );
+          }
+          // `files` is what npm actually publishes. An export naming a path
+          // outside it resolves locally and fails for every consumer, which is
+          // the failure mode a repository-only fixture has.
+          const shipped = pkg.files.some(
+            (entry) =>
+              declaredAsset === `./${entry}` ||
+              declaredAsset.startsWith(`./${entry}/`)
+          );
+          if (!shipped) {
+            problems.push(
+              `  "${subpath}" points at ${declaredAsset}, which no "files" ` +
+                `entry ships — it would resolve here and nowhere else`
+            );
+          }
+          continue;
+        }
+        if (typeof conditions === "string") {
+          problems.push(
+            `  "${subpath}" is a bare path (${conditions}) but is not declared ` +
+              `in ASSET_EXPORTS`
+          );
+          continue;
+        }
         const target = conditions.import;
         const entryName = target?.match(/^\.\/dist\/(.+)\.js$/)?.[1];
         if (entryName === undefined) {
@@ -213,6 +275,7 @@ function assertExportsClassified(): Plugin {
           `Published exports must declare what they are.\n${problems.join("\n")}\n` +
             `Add the entry to LIBRARY_ENTRIES if its graph reaches no host ` +
             `capability, or to HOST_BOUND_ENTRIES if it deliberately does. ` +
+            `Add a data file to ASSET_EXPORTS. ` +
             `Leaving it out is not an exemption; it is an unchecked surface.`
         );
       }

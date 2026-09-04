@@ -1,0 +1,5 @@
+id: no-eval-call
+valid:
+  - const parsed = JSON.parse(payload);
+invalid:
+  - const result = eval(payload);

@@ -1,0 +1,12 @@
+id: no-eval-call
+language: TypeScript
+severity: error
+message: "`eval` executes arbitrary code at runtime; use a parser or a lookup table instead."
+note: |-
+  This is an example rule, shipped with the Taskless CLI to demonstrate the
+  `sg` tier. It was not written for this repository.
+
+  The evidence is one expression in one file, which is what makes this an `sg`
+  rule rather than a runtime one: no other file has to be read to decide it.
+rule:
+  pattern: eval($ARG)

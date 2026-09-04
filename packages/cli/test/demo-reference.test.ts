@@ -4,16 +4,16 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { parseSignature } from "../src/rules/rule-hash";
-import { buildDemoReference } from "../src/rules/demo/reference";
-import { DEMO_RUNTIME_PATHS } from "../src/rules/demo/manifest";
 import {
-  DEMO_RUNTIME_FILES,
-  DEMO_RUNTIME_RULE_ID,
-} from "../src/rules/demo/rule";
+  buildDemoReference,
+  type DemoReference,
+} from "../src/rules/demo/reference";
+import { DEMO_MANIFESTS } from "../src/rules/demo/manifest";
+import { DEMO_RULES } from "../src/rules/demo/rule";
 
 /**
- * The reference payload we hand the generator team, and the rule we ship,
- * describe the same thing.
+ * The reference payload other teams consume, and the rules we ship, describe
+ * the same thing.
  *
  * Two lists exist because `?raw` only resolves under a vite transform, so the
  * generator script reads the assets off disk while the bundle embeds them.
@@ -24,65 +24,72 @@ const referencePath = join(
   import.meta.dirname,
   "..",
   "assets",
-  "demo-runtime-reference.json"
+  "demo-reference.json"
 );
 
-async function readReference(): Promise<ReturnType<typeof buildDemoReference>> {
-  return JSON.parse(await readFile(referencePath, "utf8")) as ReturnType<
-    typeof buildDemoReference
-  >;
+async function readReference(): Promise<DemoReference> {
+  return JSON.parse(await readFile(referencePath, "utf8")) as DemoReference;
 }
 
-/**
- * The one rule the reference carries.
- *
- * A helper rather than a destructure: the payload's `rules` is an array
- * because the retrieval shape allows several, and asserting there is exactly
- * one here is a claim worth making rather than an index worth trusting.
- */
-function onlyRule(
-  reference: ReturnType<typeof buildDemoReference>
-): ReturnType<typeof buildDemoReference>["rules"][number] {
-  expect(reference.rules).toHaveLength(1);
-  const [rule] = reference.rules;
-  if (rule === undefined) throw new Error("reference carries no rule");
+function ruleFor(reference: DemoReference, engine: string) {
+  const rule = reference.rules.find((entry) => entry.engine === engine);
+  if (rule === undefined) throw new Error(`reference has no ${engine} rule`);
   return rule;
 }
 
 describe("the demo reference payload", () => {
   it("is current — regenerate with `pnpm --filter @taskless/cli demo:reference`", async () => {
-    const expected = buildDemoReference(
-      DEMO_RUNTIME_RULE_ID,
-      DEMO_RUNTIME_FILES
-    );
-    expect(await readReference()).toEqual(expected);
+    expect(await readReference()).toEqual(buildDemoReference(DEMO_RULES));
   });
 
-  it("embeds exactly the files the manifest lists", () => {
-    expect(DEMO_RUNTIME_FILES.map((file) => file.path)).toEqual([
-      ...DEMO_RUNTIME_PATHS,
-    ]);
+  it("embeds exactly the files each manifest lists", () => {
+    for (const manifest of DEMO_MANIFESTS) {
+      const rule = DEMO_RULES.find((entry) => entry.engine === manifest.engine);
+      expect(rule?.files.map((file) => file.path)).toEqual([...manifest.paths]);
+    }
   });
 
-  it("carries a signature that parses and is not a real digest", async () => {
-    const rule = onlyRule(await readReference());
+  it("carries one rule per engine", async () => {
+    const reference = await readReference();
+    const engines = reference.rules.map((rule) => rule.engine);
+    expect(engines.toSorted()).toEqual(["runtime", "sg", "vale"]);
+  });
+
+  it("signs only the runtime rule, because only it is gated", async () => {
+    const reference = await readReference();
 
     // Well-formed on purpose. A malformed signature would be refused by the
     // parser, which exercises the wrong half of the gate — the half worth
     // demonstrating is the COMPARISON, which a parseable-but-wrong value
     // reaches.
-    const parsed = parseSignature(rule.signature);
+    const parsed = parseSignature(
+      ruleFor(reference, "runtime").signature ?? ""
+    );
     expect(parsed.algoVersion).toBe(1);
     expect(parsed.algo).toBe("sha-256");
-
     // All zeros, so it can never be mistaken for a blessed signature or lifted
     // out of the file into something that would run.
     expect(parsed.digest).toBe("0".repeat(64));
-  });
 
-  it("declares the runtime engine, which is what makes the signature required", async () => {
-    const rule = onlyRule(await readReference());
-    expect(rule.engine).toBe("runtime");
-    expect(rule.id).toBe(DEMO_RUNTIME_RULE_ID);
+    // `sg` and `vale` are inert data. A signature on them would imply a gate
+    // that does not exist.
+    expect(ruleFor(reference, "sg").signature).toBeUndefined();
+    expect(ruleFor(reference, "vale").signature).toBeUndefined();
+  });
+});
+
+describe("the reference payload is reachable by another team", () => {
+  it("is a published export, not just a repository file", async () => {
+    const manifest = JSON.parse(
+      await readFile(join(import.meta.dirname, "..", "package.json"), "utf8")
+    ) as { files: string[]; exports: Record<string, unknown> };
+
+    // Both halves are needed and neither implies the other: `exports` without
+    // `files` names a path npm does not ship, and `files` without `exports` is
+    // unreachable under this package's strict export map.
+    expect(manifest.files).toContain("assets/demo-reference.json");
+    expect(manifest.exports["./demo-reference.json"]).toBe(
+      "./assets/demo-reference.json"
+    );
   });
 });

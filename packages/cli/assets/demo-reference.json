@@ -3,9 +3,44 @@
   "status": "generated",
   "rules": [
     {
+      "id": "no-eval-call",
+      "engine": "sg",
+      "files": [
+        {
+          "path": "no-eval-call.yml",
+          "content": "id: no-eval-call\nlanguage: TypeScript\nseverity: error\nmessage: \"`eval` executes arbitrary code at runtime; use a parser or a lookup table instead.\"\nnote: |-\n  This is an example rule, shipped with the Taskless CLI to demonstrate the\n  `sg` tier. It was not written for this repository.\n\n  The evidence is one expression in one file, which is what makes this an `sg`\n  rule rather than a runtime one: no other file has to be read to decide it.\nrule:\n  pattern: eval($ARG)\n"
+        },
+        {
+          "path": ".tests/no-eval-call-test.yml",
+          "content": "id: no-eval-call\nvalid:\n  - const parsed = JSON.parse(payload);\ninvalid:\n  - const result = eval(payload);\n"
+        }
+      ]
+    },
+    {
+      "id": "prefer-use-over-utilize",
+      "engine": "vale",
+      "files": [
+        {
+          "path": "prefer-use-over-utilize.yml",
+          "content": "extends: substitution\nmessage: \"Prefer '%s' over '%s'.\"\nlevel: warning\nignorecase: true\nswap:\n  utilize: use\n  utilizes: uses\n  utilizing: using\n"
+        },
+        {
+          "path": ".vale.ini",
+          "content": "# Scoped to markdown, which is where prose rules belong. A demonstration rule\n# should never widen its own scope into a project's source.\n[**/*.md]\nBasedOnStyles =\nprefer-use-over-utilize.prefer-use-over-utilize = YES\n"
+        },
+        {
+          "path": ".tests/pass/README.md",
+          "content": "# Setup\n\nUse the installer to write the config file.\n"
+        },
+        {
+          "path": ".tests/fail/README.md",
+          "content": "# Setup\n\nUtilize the installer to write the config file.\n"
+        }
+      ]
+    },
+    {
       "id": "env-keys-declared",
       "engine": "runtime",
-      "signature": "1;h=sha-256;d=0000000000000000000000000000000000000000000000000000000000000000",
       "files": [
         {
           "path": "check.ts",
@@ -31,7 +66,8 @@
           "path": ".tests/fail/undeclared/.env",
           "content": "API_URL=https://api.example.com\n"
         }
-      ]
+      ],
+      "signature": "1;h=sha-256;d=0000000000000000000000000000000000000000000000000000000000000000"
     }
   ]
 }
