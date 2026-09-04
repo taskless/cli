@@ -16,10 +16,11 @@
 #
 # **It is not the only place `check.ts` runs in CI.** `test/demo-command.test.ts`
 # executes it too, under `Validate`. What this job adds is a different
-# assertion: it copies every `assets/demo-*/` tree into one bare project AS-IS
-# and runs the engines over them, with no command and no bundle in the way. So a
-# break in a shipped asset tree is attributed to that tree, rather than to the
-# command that writes it or the imports that embed it.
+# assertion: it copies the bytes `taskless demo` would write — the manifest's
+# own written-path list, read straight off `assets/demo-*/` — into one bare
+# project, and runs the engines over them with no command and no bundle in the
+# way. So a break in a shipped asset tree is attributed to that tree, rather
+# than to the command that writes it or the imports that embed it.
 name: Demo rules
 
 on:
@@ -58,10 +59,6 @@ jobs:
       - name: Build
         run: pnpm build
 
-      # A bare project, not this repository. The rule flags undeclared
-      # `process.env` reads, and running it over a checkout of the CLI would
-      # report the CLI's own reads — a scan of the wrong tree that happens to
-      # produce output.
       # A bare project, not this repository. The runtime rule flags undeclared
       # `process.env` reads and the sg rule flags `eval`, so running these over
       # a checkout of the CLI would report the CLI's own code -- a scan of the
@@ -80,11 +77,17 @@ jobs:
           # loop below then tried to stage a rule named "WARN".
           pnpm --filter @taskless/cli demo:manifests /tmp/manifests.txt
           cat /tmp/manifests.txt
-          while read -r engine ruleId assetDir; do
+          # The trailing field is the manifest's own written-path list, so this
+          # stages exactly what `taskless demo` writes. A `cp -R` of the asset
+          # directory would also land `prompt.md`, which the command never
+          # writes, and this job would be judging a tree no user ever has.
+          while read -r engine ruleId assetDir paths; do
             [ -z "$engine" ] && continue
             RULE="$PROJECT/.taskless/rules/$engine/$ruleId"
-            mkdir -p "$RULE"
-            cp -R "packages/cli/assets/$assetDir/." "$RULE/"
+            for path in $paths; do
+              mkdir -p "$RULE/$(dirname "$path")"
+              cp "packages/cli/assets/$assetDir/$path" "$RULE/$path"
+            done
             echo "staged $engine/$ruleId"
           done < /tmp/manifests.txt
 

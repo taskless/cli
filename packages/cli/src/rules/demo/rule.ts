@@ -49,9 +49,6 @@ import type { EngineName } from "../layout";
 import type { DeliveredFile } from "../deliver";
 import { DEMO_MANIFESTS, writtenPaths } from "./manifest";
 
-export { DEMO_MANIFESTS, demoManifestFor, writtenPaths } from "./manifest";
-export type { DemoManifest } from "./manifest";
-
 /** One shipped demonstration rule, with the bytes of every file it contains. */
 export interface DemoRule {
   engine: EngineName;
