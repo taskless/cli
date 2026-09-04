@@ -82,9 +82,9 @@ export const RULE_CONSTRAINTS: readonly RuleConstraint[] = [
     engine: "sg",
     enforcedBy: "verify",
     summary:
-      "`files:` globs must name extensions the declared `language` parses.",
+      "`files:` globs must not name `.tsx` under TypeScript, or `.ts` under Tsx.",
     rationale:
-      "A glob naming an extension the language cannot parse matches nothing, so the rule reports a clean codebase rather than an error.",
+      "A glob naming an extension the language cannot parse matches nothing, so the rule reports a clean codebase rather than an error. Only the TypeScript/Tsx pair is checked, and deliberately so: they are separate parsers rather than aliases, which is the one language/extension mismatch decidable from the rule file alone. No other extension is compared against `language`, so this is narrower than it first reads.",
   },
   {
     id: "sg-required-fields",
