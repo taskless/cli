@@ -42,6 +42,28 @@ async function resolveDescription(
   return meta?.description ?? "";
 }
 
+/**
+ * Commands this index deliberately does not advertise.
+ *
+ * A declared list rather than a condition, because the two entries are absent
+ * for unrelated reasons and a bare `name === "agent"` recorded neither.
+ *
+ * - `agent` is the index itself, so listing it would be circular.
+ * - `demo` writes a fixed example rule for someone learning what a rule is. It
+ *   is run deliberately, in a demonstration, and it is not surface we are
+ *   exposing yet. Its description ("Write an example rule into this project")
+ *   is close enough to a real authoring request that an agent asked to "add a
+ *   rule that checks X" could route to it and write the example instead. That
+ *   is the whole reason the demonstration was originally nested under `rule`:
+ *   the property came from not being registered at all. Making it a top-level
+ *   verb gave it discoverability it does not want yet, and this is the cost of
+ *   that choice, paid here.
+ *
+ * Absence from this list is what puts a command in the index, so adding one is
+ * a decision someone made rather than a step they forgot.
+ */
+const UNLISTED_COMMANDS = new Set(["agent", "demo"]);
+
 export function createAgentCommand(subCommands: SubCommandsDef) {
   return defineCommand({
     meta: {
@@ -103,7 +125,7 @@ export function createAgentCommand(subCommands: SubCommandsDef) {
 
         const entries: Array<[string, string]> = [];
         for (const [name, cmd] of Object.entries(subCommands)) {
-          if (name === "agent") continue;
+          if (UNLISTED_COMMANDS.has(name)) continue;
           const description = await resolveDescription(cmd);
           entries.push([name, description]);
         }

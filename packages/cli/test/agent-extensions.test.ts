@@ -65,6 +65,29 @@ describe("taskless agent (no args)", () => {
     }
   });
 
+  it("does not advertise an unlisted command", async () => {
+    const result = await runCli(["agent", "-d", cwd]);
+
+    // `demo` writes a fixed example rule for someone learning what a rule is.
+    // It is run deliberately, in a demonstration, and is not surface we expose
+    // yet. The risk is specific rather than tidiness: its description is close
+    // enough to a real authoring request that an agent asked to "add a rule
+    // that checks X" could route to it and write the example instead.
+    //
+    // Asserted against the WHOLE index rather than the Topics block, because
+    // the index has two independently-sourced listings and appearing in either
+    // would advertise it.
+    expect(result.stdout).not.toContain("demo");
+  });
+
+  it("still dispatches a command it does not advertise", async () => {
+    // Unlisted is not unavailable. Without this, deleting the command outright
+    // would satisfy the assertion above.
+    const result = await runCli(["demo", "--help"]);
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain("runtime");
+  });
+
   it("mentions the --anonymous flag", async () => {
     const result = await runCli(["agent", "-d", cwd]);
     expect(result.stdout).toContain("--anonymous");
