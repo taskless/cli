@@ -37,7 +37,7 @@ permissions:
 
 jobs:
   demo-rules:
-    name: Demo ruless
+    name: Demo rules
     runs-on: ubuntu-latest
 
     steps:
