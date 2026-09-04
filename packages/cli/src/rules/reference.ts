@@ -1,5 +1,5 @@
-import type { DeliveredFile } from "../deliver";
-import type { EngineName } from "../layout";
+import type { DeliveredFile } from "./deliver";
+import type { EngineName } from "./layout";
 import { RULE_CONSTRAINTS, type RuleConstraint } from "./constraints";
 
 /**
@@ -21,10 +21,10 @@ import { RULE_CONSTRAINTS, type RuleConstraint } from "./constraints";
  * and both tiers are inert, so a signature on them would imply a gate that does
  * not exist.
  */
-export const DEMO_REFERENCE_SIGNATURE = `1;h=sha-256;d=${"0".repeat(64)}`;
+export const REFERENCE_SIGNATURE = `1;h=sha-256;d=${"0".repeat(64)}`;
 
 /** Bumped when a consumer would have to change code to keep reading this. */
-export const DEMO_REFERENCE_VERSION = 1;
+export const REFERENCE_VERSION = 1;
 
 /**
  * The check this corpus exists to make possible, stated in the artifact itself.
@@ -44,7 +44,7 @@ export const DEMO_REFERENCE_VERSION = 1;
  * disagreement about our validator. Any consumer would have hit it on their
  * first run.
  */
-export const DEMO_REFERENCE_PROTOCOL = [
+export const REFERENCE_PROTOCOL = [
   "Generate a rule from `prompt`, using your own pipeline.",
   "Run `taskless verify` over what you generated. It enforces constraints beyond the engine's own schema, listed in `constraints` below, so a rule the engine executes correctly can still be refused. A rule that fails here is not deliverable however well it behaves, and every later step would be measuring the wrong thing. Check `enforcedBy` before concluding anything: some constraints are only decided once the fixtures run.",
   "Run your generated rule against your own cases. It should pass; if it does not, the disagreement is inside your pipeline and nothing below will be informative.",
@@ -53,7 +53,7 @@ export const DEMO_REFERENCE_PROTOCOL = [
 ];
 
 /** One rule as this corpus carries it. */
-export interface DemoReferenceRule {
+export interface ReferenceRule {
   engine: EngineName;
   id: string;
   /** The generation request, as a caller would phrase it. */
@@ -66,7 +66,7 @@ export interface DemoReferenceRule {
   signature?: string;
 }
 
-export interface DemoReference {
+export interface Reference {
   version: number;
   protocol: string[];
   /**
@@ -78,11 +78,11 @@ export interface DemoReference {
    * enforces it, which decides the order an eval has to run in.
    */
   constraints: RuleConstraint[];
-  rules: DemoReferenceRule[];
+  rules: ReferenceRule[];
 }
 
-/** The input shape `buildDemoReference` reads, satisfied by both callers. */
-export interface DemoReferenceInput {
+/** The input shape `buildReference` reads, satisfied by both callers. */
+export interface ReferenceInput {
   engine: EngineName;
   ruleId: string;
   prompt: string;
@@ -106,12 +106,10 @@ const plain = (files: readonly DeliveredFile[]) =>
  * Built from the rules rather than restating them, so the corpus and what the
  * CLI writes cannot describe different things.
  */
-export function buildDemoReference(
-  rules: readonly DemoReferenceInput[]
-): DemoReference {
+export function buildReference(rules: readonly ReferenceInput[]): Reference {
   return {
-    version: DEMO_REFERENCE_VERSION,
-    protocol: DEMO_REFERENCE_PROTOCOL,
+    version: REFERENCE_VERSION,
+    protocol: REFERENCE_PROTOCOL,
     constraints: [...RULE_CONSTRAINTS],
     rules: rules.map((rule) => ({
       engine: rule.engine,
@@ -119,9 +117,7 @@ export function buildDemoReference(
       prompt: rule.prompt,
       rule: plain(rule.ruleFiles),
       tests: plain(rule.testFiles),
-      ...(rule.engine === "runtime"
-        ? { signature: DEMO_REFERENCE_SIGNATURE }
-        : {}),
+      ...(rule.engine === "runtime" ? { signature: REFERENCE_SIGNATURE } : {}),
     })),
   };
 }

@@ -20,8 +20,8 @@
     "prebuild": "tsx scripts/fetch-rule-hash-vectors.ts",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
-    "demo:reference": "tsx scripts/write-demo-reference.ts",
-    "demo:manifests": "tsx scripts/print-demo-manifests.ts"
+    "demo:manifests": "tsx scripts/print-demo-manifests.ts",
+    "reference": "tsx scripts/write-reference.ts"
   },
   "type": "module",
   "module": "./dist/index.js",

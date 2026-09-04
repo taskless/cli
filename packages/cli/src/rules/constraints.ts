@@ -1,4 +1,4 @@
-import type { EngineName } from "../layout";
+import type { EngineName } from "./layout";
 
 /**
  * What `verify` enforces beyond the engine's own schema.
@@ -19,7 +19,7 @@ import type { EngineName } from "../layout";
  * "`verify` never reads `language`", which stopped being true when
  * `validateLanguage` landed. Nothing failed, because prose has no test.
  *
- * `test/rule-constraints.test.ts` builds a rule that violates each entry and
+ * `test/constraints.test.ts` builds a rule that violates each entry and
  * asserts `verify` rejects it, keyed on `id`. An entry describing a check that
  * no longer fires fails the suite; a check with no entry is invisible to that
  * test and is the gap this list is trying to close, so add one when you add a

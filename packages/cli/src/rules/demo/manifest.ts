@@ -8,7 +8,7 @@
  *
  * The paths therefore live here, stated once. `rule.ts` embeds exactly these
  * lists, the generator reads exactly these lists off disk, and
- * `test/demo-reference.test.ts` asserts the two agree — so the rules the CLI
+ * `test/reference.test.ts` asserts the two agree — so the rules the CLI
  * writes and the payload handed to other teams cannot come to describe
  * different things.
  *

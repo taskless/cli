@@ -4,11 +4,8 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { parseSignature } from "../src/rules/rule-hash";
-import {
-  buildDemoReference,
-  type DemoReference,
-} from "../src/rules/demo/reference";
-import { RULE_CONSTRAINTS } from "../src/rules/demo/constraints";
+import { buildReference, type Reference } from "../src/rules/reference";
+import { RULE_CONSTRAINTS } from "../src/rules/constraints";
 import { DEMO_MANIFESTS, writtenPaths } from "../src/rules/demo/manifest";
 import { DEMO_RULES } from "../src/rules/demo/rule";
 
@@ -28,19 +25,19 @@ const referencePath = join(
   "reference.json"
 );
 
-async function readReference(): Promise<DemoReference> {
-  return JSON.parse(await readFile(referencePath, "utf8")) as DemoReference;
+async function readReference(): Promise<Reference> {
+  return JSON.parse(await readFile(referencePath, "utf8")) as Reference;
 }
 
-function ruleFor(reference: DemoReference, engine: string) {
+function ruleFor(reference: Reference, engine: string) {
   const rule = reference.rules.find((entry) => entry.engine === engine);
   if (rule === undefined) throw new Error(`reference has no ${engine} rule`);
   return rule;
 }
 
 describe("the demo reference payload", () => {
-  it("is current — regenerate with `pnpm --filter @taskless/cli demo:reference`", async () => {
-    expect(await readReference()).toEqual(buildDemoReference(DEMO_RULES));
+  it("is current — regenerate with `pnpm --filter @taskless/cli reference`", async () => {
+    expect(await readReference()).toEqual(buildReference(DEMO_RULES));
   });
 
   it("embeds exactly the files each manifest lists", () => {
