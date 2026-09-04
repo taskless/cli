@@ -1,10 +1,9 @@
 /**
  * Regenerate `assets/demo-reference.json` from the shipped rules.
  *
- * The reference payload is every demonstration rule expressed in the retrieval
- * response shape, so another team can use it as an eval target: the assertion
- * becomes "can the generator produce something equivalent to this" against
- * examples that live with the code that executes them.
+ * The corpus is every demonstration rule with the prompt it answers, the rule
+ * itself, and the held-out cases — separately, so another team can run their
+ * rule against our cases and ours against theirs.
  *
  * Reads the asset files directly rather than importing `rule.ts`, whose `?raw`
  * specifiers only resolve under a vite transform. Both read `DEMO_MANIFESTS`,
@@ -21,19 +20,28 @@ import { DEMO_MANIFESTS } from "../src/rules/demo/manifest";
 
 const packageRoot = join(import.meta.dirname, "..");
 
+async function readAll(assetDirectory: string, paths: readonly string[]) {
+  return Promise.all(
+    paths.map(async (path) => ({
+      path,
+      content: await readFile(
+        join(packageRoot, "assets", assetDirectory, path),
+        "utf8"
+      ),
+    }))
+  );
+}
+
 const rules = await Promise.all(
   DEMO_MANIFESTS.map(async (manifest) => ({
     engine: manifest.engine,
     ruleId: manifest.ruleId,
-    files: await Promise.all(
-      manifest.paths.map(async (path) => ({
-        path,
-        content: await readFile(
-          join(packageRoot, "assets", manifest.assetDirectory, path),
-          "utf8"
-        ),
-      }))
+    prompt: await readFile(
+      join(packageRoot, "assets", manifest.assetDirectory, manifest.promptPath),
+      "utf8"
     ),
+    ruleFiles: await readAll(manifest.assetDirectory, manifest.rulePaths),
+    testFiles: await readAll(manifest.assetDirectory, manifest.testPaths),
   }))
 );
 

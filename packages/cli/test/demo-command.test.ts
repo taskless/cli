@@ -92,6 +92,11 @@ describe.each(DEMO_RULES.map((rule) => [rule.engine, rule.ruleId] as const))(
       const rule = demoRuleFor(engine);
       expect(rule).toBeDefined();
 
+      expect(
+        rule?.files.some((file) => file.path.endsWith("prompt.md")),
+        "the generation prompt must never be written into a project"
+      ).toBe(false);
+
       for (const file of rule?.files ?? []) {
         const onDisk = await readFile(
           join(project, ".taskless/rules", engine, ruleId, file.path),

@@ -45,7 +45,12 @@ describe("the demo reference payload", () => {
   it("embeds exactly the files each manifest lists", () => {
     for (const manifest of DEMO_MANIFESTS) {
       const rule = DEMO_RULES.find((entry) => entry.engine === manifest.engine);
-      expect(rule?.files.map((file) => file.path)).toEqual([...manifest.paths]);
+      expect(rule?.ruleFiles.map((file) => file.path)).toEqual([
+        ...manifest.rulePaths,
+      ]);
+      expect(rule?.testFiles.map((file) => file.path)).toEqual([
+        ...manifest.testPaths,
+      ]);
     }
   });
 

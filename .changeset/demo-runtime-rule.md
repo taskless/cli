@@ -28,10 +28,20 @@ never issued one, so it is skipped with the reason `check` already gives.
 Running it uses the documented `--dangerously-run-scripts`. The `sg` and `vale`
 samples are inert data and run under `check` like any other rule.
 
-The same three rules are published as `@taskless/cli/demo-reference.json`, in
-the shape a generation retrieval returns, so another team can use them as a
-conformance target rather than transcribing them. Only the runtime rule carries
-a signature there, and it is deliberately `1;h=sha-256;d=<64 zeros>`:
-well-formed, so it reaches signature comparison rather than failing at the
-parser, and unmistakably synthetic, so it can never be mistaken for a blessed
-one.
+The same three rules are published as `@taskless/cli/demo-reference.json`, as a
+conformance corpus rather than a pile of examples. Each entry carries the
+generation prompt it answers, the rule itself, and the held-out cases — kept
+apart, because the useful comparison is the cross: run a generated rule against
+our cases, and our rule against the generated cases. From one flat file set
+neither of those can be set up.
+
+The corpus states its own protocol, including a `taskless verify` step that
+exists because running the protocol found it: a semantically correct ast-grep
+rule was refused for using `regex` without a sibling `kind`, a house constraint
+no prompt states. Without that step a consumer reads our validator's opinion as
+a disagreement about the subject.
+
+Only the runtime rule carries a signature, deliberately
+`1;h=sha-256;d=<64 zeros>`: well-formed, so it reaches signature comparison
+rather than failing at the parser, and unmistakably synthetic, so it can never
+be mistaken for a blessed one.

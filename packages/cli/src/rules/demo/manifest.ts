@@ -35,15 +35,37 @@ export interface DemoManifest {
    */
   ruleId: string;
   /**
-   * Every file the rule directory contains, relative to it.
+   * The generation request this rule is the answer to, as a caller would phrase
+   * it. Lives beside the rule but is NEVER written into a project.
+   *
+   * Published so another team can generate from the same input and compare.
+   * Without it a reference payload shows what we produced and not what we were
+   * asked, which is the half an eval actually needs.
+   */
+  promptPath: string;
+  /**
+   * The rule itself: what a generator has to produce.
+   *
+   * Split from {@link testPaths} because the four-way conformance check needs
+   * them apart — "run their rule against our cases" and "run our rule against
+   * their cases" are both impossible from one flat list, since nothing in it
+   * says which files are the claim and which are the oracle.
+   */
+  rulePaths: readonly string[];
+  /**
+   * The held-out cases both sides' rules must satisfy.
+   *
+   * Held out on purpose: the prompt carries its own illustrative examples for a
+   * model to read, and these are different instances of the same subject. A
+   * rule graded on the examples it was generated from is graded on nothing.
    *
    * Listed rather than globbed. Several are dot-paths — under `.tests/`, or
-   * named `.env` or `.vale.ini` — and glob helpers skip those by default, so a
-   * glob would embed the rule file and silently omit every fixture. That
-   * produces a rule that writes, verifies, and has nothing to prove, which is
-   * the exact failure these runners exist to catch.
+   * named `.env` — and glob helpers skip those by default, so a glob would
+   * embed the rule file and silently omit every case. That produces a rule that
+   * writes, verifies, and has nothing to prove, which is the exact failure
+   * these runners exist to catch.
    */
-  paths: readonly string[];
+  testPaths: readonly string[];
   /** The asset directory the files are read from, relative to `assets/`. */
   assetDirectory: string;
 }
@@ -53,26 +75,27 @@ export const DEMO_MANIFESTS: readonly DemoManifest[] = [
     engine: "sg",
     ruleId: "no-eval-call",
     assetDirectory: "demo-sg",
-    paths: ["no-eval-call.yml", ".tests/no-eval-call-test.yml"],
+    promptPath: "prompt.md",
+    rulePaths: ["no-eval-call.yml"],
+    testPaths: [".tests/no-eval-call-test.yml"],
   },
   {
     engine: "vale",
     ruleId: "prefer-use-over-utilize",
     assetDirectory: "demo-vale",
-    paths: [
-      "prefer-use-over-utilize.yml",
-      ".vale.ini",
-      ".tests/pass/README.md",
-      ".tests/fail/README.md",
-    ],
+    promptPath: "prompt.md",
+    // `.vale.ini` is the rule's own engine config, so it is part of what a
+    // generator must produce rather than part of the oracle.
+    rulePaths: ["prefer-use-over-utilize.yml", ".vale.ini"],
+    testPaths: [".tests/pass/README.md", ".tests/fail/README.md"],
   },
   {
     engine: "runtime",
     ruleId: "env-keys-declared",
     assetDirectory: "demo-runtime",
-    paths: [
-      "check.ts",
-      "captures/env-read.yml",
+    promptPath: "prompt.md",
+    rulePaths: ["check.ts", "captures/env-read.yml"],
+    testPaths: [
       ".tests/pass/declared/src/config.ts",
       ".tests/pass/declared/.env",
       ".tests/fail/undeclared/src/config.ts",
@@ -80,6 +103,11 @@ export const DEMO_MANIFESTS: readonly DemoManifest[] = [
     ],
   },
 ];
+
+/** Every file written into a project: the rule and its cases, never the prompt. */
+export function writtenPaths(manifest: DemoManifest): readonly string[] {
+  return [...manifest.rulePaths, ...manifest.testPaths];
+}
 
 /** The manifest for one engine, or `undefined` if that engine ships no demo. */
 export function demoManifestFor(engine: string): DemoManifest | undefined {
