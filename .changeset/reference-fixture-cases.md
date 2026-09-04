@@ -14,4 +14,8 @@ A new top-level `layout` block publishes the rule tree — `.taskless/rules/{eng
 
 An error no published constraint describes is left unattributed rather than given the nearest plausible id, because a wrong attribution sends a reader to a rationale that does not explain their failure.
 
+New export `@taskless/cli/schemas` publishes the shapes that output is produced from: the `verify`/`test` envelope, the per-engine rule-verify schemas, and the constraint and error-envelope types. A consumer parsing our JSON hand-writes an interface for it today, which is a copy nothing checks — the CLI can add a field or change what one means and the copy stays confidently wrong. Data only: nothing there reaches the filesystem, a process, the network or the command tree, and the build refuses to emit it if that changes.
+
+The CLI remains the execution surface. No `verify()` or `test()` function is exported: both spawn a vendored platform binary, so anywhere a function call could run them `npx @taskless/cli verify --json` runs too.
+
 `@taskless/cli/layout` gains `TASKLESS_DIRECTORY` and each engine's `fixtureLayout`.

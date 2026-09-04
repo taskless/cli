@@ -36,6 +36,7 @@
     "src/globals.d.ts",
     "src/prompts/index.ts",
     "src/layout/index.ts",
+    "src/schemas/index.ts",
     "src/node/runtimes/index.ts"
   ]
 }

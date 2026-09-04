@@ -38,15 +38,15 @@
 
 ## 3. Published output schemas (PR 3)
 
-- [ ] 3.1 Add `src/schemas/index.ts` as the entry, re-exporting the `verify`/
+- [x] 3.1 Add `src/schemas/index.ts` as the entry, re-exporting the `verify`/
       `test` envelope, the sg and vale verify-output schemas, and the constraint
       type. Direct re-exports, no barrel of internals.
-- [ ] 3.2 Wire it into `ENTRY_SOURCES` and `LIBRARY_ENTRIES` in `vite.config.ts`,
+- [x] 3.2 Wire it into `ENTRY_SOURCES` and `LIBRARY_ENTRIES` in `vite.config.ts`,
       and into `exports` and `files` in `package.json`. The build's export
       classification fails on an entry in neither list, so this is checked.
-- [ ] 3.3 Confirm the graph reaches no host capability — the build asserts it, so
+- [x] 3.3 Confirm the graph reaches no host capability — the build asserts it, so
       this is running the build, not writing a test that re-derives it.
-- [ ] 3.4 Extend the changeset.
+- [x] 3.4 Extend the changeset.
 
 ## 4. Close out
 

@@ -37,6 +37,10 @@
       "types": "./dist/layout/index.d.ts",
       "import": "./dist/layout.js"
     },
+    "./schemas": {
+      "types": "./dist/schemas/index.d.ts",
+      "import": "./dist/schemas.js"
+    },
     "./node/runtimes": {
       "types": "./dist/node/runtimes/index.d.ts",
       "import": "./dist/node/runtimes.js"
