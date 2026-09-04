@@ -51,9 +51,14 @@
  * bites, and it would bite silently: the rendering would go on validating a
  * weaker shape while claiming to describe this one.
  *
- * `z.toJSONSchema()` therefore stays unexported. It is the right artifact for a
- * consumer that cannot run TypeScript, and the wrong one to offer as an
- * equivalent.
+ * `z.toJSONSchema()` therefore stays unexported, and the criterion is the
+ * TRANSPORT rather than the consumer's language. JSON Schema is what you reach
+ * for when the schema itself has to travel — when the far side can receive JSON
+ * and nothing else, so a description of the shape is the most that fits. That
+ * is not this boundary. A consumer here takes a dependency on our schema files,
+ * which means it can assert the payload rather than assert against a
+ * description of the payload, and rendering ours down to what a JSON transport
+ * could carry would give that up in exchange for nothing.
  */
 
 // The `.js` extension is deliberate, for the reason it is on the prompts and
