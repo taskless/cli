@@ -233,7 +233,11 @@ const createCommand = defineCommand({
             const rules = status.rules ?? [];
 
             for (const rule of rules) {
-              const ruleFile = await writeRuleFile(cwd, rule);
+              // To stderr, so a delivery worth remarking on is visible without
+              // corrupting `--json` on stdout. The rule is written either way.
+              const ruleFile = await writeRuleFile(cwd, rule, (message) => {
+                console.error(`Warning: ${message}`);
+              });
               writtenFiles.push(ruleFile);
 
               // A file set carries its fixtures as ordinary files under
@@ -499,7 +503,11 @@ const improveCommand = defineCommand({
             const rules = status.rules ?? [];
 
             for (const rule of rules) {
-              const ruleFile = await writeRuleFile(cwd, rule);
+              // To stderr, so a delivery worth remarking on is visible without
+              // corrupting `--json` on stdout. The rule is written either way.
+              const ruleFile = await writeRuleFile(cwd, rule, (message) => {
+                console.error(`Warning: ${message}`);
+              });
               writtenFiles.push(ruleFile);
 
               // A file set carries its fixtures as ordinary files under

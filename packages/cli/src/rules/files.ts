@@ -17,6 +17,7 @@ import { isValidRuleId } from "./validate-id";
 import {
   assessDelivery,
   deliveredFiles,
+  describeMissingFixtures,
   writeDeliveredFileSet,
 } from "./deliver";
 
@@ -24,10 +25,16 @@ import {
  * Write a generated rule's content into its own rule directory —
  * `.taskless/rules/sg/{kebab-id}/{kebab-id}.yml` for the engine-less payloads
  * the API delivers today (see {@link resolveIngestEngine}).
+ *
+ * `onWarning` receives anything worth saying about a delivery that was still
+ * written. Optional, and a caller that omits it loses the message rather than
+ * the write — see {@link describeMissingFixtures} for why a missing fixture is
+ * reported this way instead of refused.
  */
 export async function writeRuleFile(
   cwd: string,
-  rule: GeneratedRule
+  rule: GeneratedRule,
+  onWarning?: (message: string) => void
 ): Promise<string> {
   if (!isValidRuleId(rule.id)) {
     throw new Error(`Invalid rule ID "${rule.id}"`);
@@ -68,6 +75,12 @@ export async function writeRuleFile(
     // repair is not special-cased. The single-content path below has no set to
     // be authoritative about and keeps overwriting one file.
     await writeDeliveredFileSet(cwd, engine, rule.id, assessment);
+    // AFTER the write, deliberately. This is an observation about a rule that
+    // is now on disk, and warning first would read as a reason it was refused.
+    const missingFixtures = describeMissingFixtures(assessment.files);
+    if (missingFixtures !== undefined) {
+      onWarning?.(`Rule "${rule.id}" ${missingFixtures}.`);
+    }
     // The rule file, so the caller's contract ("where did this rule land")
     // is unchanged whichever envelope delivered it.
     return ruleFilePath(cwd, engine, rule.id);

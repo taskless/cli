@@ -268,7 +268,9 @@ async function repairWithheldRules(
     }
 
     try {
-      await writeRuleFile(cwd, rule);
+      // A restored rule missing its fixtures is still the blessed bytes and is
+      // still worth writing; the notice rides along with the repair's own.
+      await writeRuleFile(cwd, rule, (message) => notices.push(message));
     } catch (error) {
       // A failed WRITE and a failed CLEANUP ask the reader for opposite
       // things, and saying "could not be written" for both is worse than
