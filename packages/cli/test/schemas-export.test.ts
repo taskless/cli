@@ -104,6 +104,19 @@ describe("the published schemas entry", () => {
     expect(parsed.rules[0]?.violations).toEqual([]);
   });
 
+  it("strips what it does not declare, which a JSON Schema of the same shape would not", async () => {
+    // The reason this entry publishes zod rather than a rendering of it. A
+    // JSON Schema validator hands back the object it was given, unknown keys
+    // and all; `parse()` returns only the declared fields, so a consumer
+    // cannot come to depend on a field we never promised.
+    const built = await importBuiltSchemas();
+    const schema = built.verifyTestOutputSchema as ParsedSchema;
+    expect(schema.parse({ ok: true, rules: [], surprise: 1 })).toEqual({
+      ok: true,
+      rules: [],
+    });
+  });
+
   it("fails loudly on output it does not describe", async () => {
     // The property that makes publishing the schema worth anything over a
     // hand-written interface: a shape it does not cover is refused rather than

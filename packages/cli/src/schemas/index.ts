@@ -28,6 +28,32 @@
  * entry whose graph reaches a host capability. `writeJsonError` is deliberately
  * absent for that reason: it writes to stdout, and a consumer asking what shape
  * an error takes should not thereby acquire something that emits one.
+ *
+ * ## Zod is bundled, and that is the point
+ *
+ * This entry ships its own copy of zod rather than resolving the consumer's.
+ * That follows from the build's standing rule for library entries — everything
+ * but node builtins is bundled — but it is also the behaviour we want, so do
+ * not "fix" it by making zod external.
+ *
+ * **A consumer's zod is not ours.** Marking it external would make validation
+ * depend on whichever version resolved on the other side, so the same payload
+ * could parse there and not here, and the schema would stop being a statement
+ * about what this CLI emits. Bundling makes `parse()` answer with our zod's
+ * semantics wherever it runs.
+ *
+ * **And `parse()` is stronger than a JSON Schema of the same shape.** It
+ * strips: `parse({ ok: true, rules: [], surprise: 1 })` returns
+ * `{ ok: true, rules: [] }`, where a JSON Schema validator hands back the
+ * object it was given, unknown keys included. Every schema here is plain today
+ * — objects, enums, arrays, optionals — so a JSON Schema rendering would lose
+ * little beyond that. It is the moment we add a refinement that the difference
+ * bites, and it would bite silently: the rendering would go on validating a
+ * weaker shape while claiming to describe this one.
+ *
+ * `z.toJSONSchema()` therefore stays unexported. It is the right artifact for a
+ * consumer that cannot run TypeScript, and the wrong one to offer as an
+ * equivalent.
  */
 
 // The `.js` extension is deliberate, for the reason it is on the prompts and
