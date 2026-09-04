@@ -119,12 +119,14 @@ const BIN_ENTRY = "index";
 const PROMPTS_ENTRY = "prompts";
 const LAYOUT_ENTRY = "layout";
 const NODE_RUNTIMES_ENTRY = "node/runtimes";
+const SCHEMAS_ENTRY = "schemas";
 
 /** Every entry this build emits, and the module each one is rooted at. */
 const ENTRY_SOURCES: Record<string, string> = {
   [BIN_ENTRY]: resolve(import.meta.dirname, "src/index.ts"),
   [PROMPTS_ENTRY]: resolve(import.meta.dirname, "src/prompts/index.ts"),
   [LAYOUT_ENTRY]: resolve(import.meta.dirname, "src/layout/index.ts"),
+  [SCHEMAS_ENTRY]: resolve(import.meta.dirname, "src/schemas/index.ts"),
   [NODE_RUNTIMES_ENTRY]: resolve(
     import.meta.dirname,
     "src/node/runtimes/index.ts"
@@ -141,7 +143,7 @@ const ENTRY_SOURCES: Record<string, string> = {
  * {@link assertExportsClassified} closes that: absence is now only meaningful
  * when the entry appears in {@link HOST_BOUND_ENTRIES} instead.
  */
-const LIBRARY_ENTRIES = [PROMPTS_ENTRY, LAYOUT_ENTRY];
+const LIBRARY_ENTRIES = [PROMPTS_ENTRY, LAYOUT_ENTRY, SCHEMAS_ENTRY];
 
 /**
  * Library entries that require Node, declared rather than merely unlisted.
