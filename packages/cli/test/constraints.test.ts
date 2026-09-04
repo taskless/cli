@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { stringify } from "yaml";
 
-import { RULE_CONSTRAINTS } from "../src/rules/demo/constraints";
+import { RULE_CONSTRAINTS } from "../src/rules/constraints";
 import { testOneRule, verifyOneRule } from "../src/rules/inspect";
 
 /**

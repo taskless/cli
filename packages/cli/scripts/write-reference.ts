@@ -7,15 +7,15 @@
  *
  * Reads the asset files directly rather than importing `rule.ts`, whose `?raw`
  * specifiers only resolve under a vite transform. Both read `DEMO_MANIFESTS`,
- * and `test/demo-reference.test.ts` asserts they agree.
+ * and `test/reference.test.ts` asserts they agree.
  *
- * Run: pnpm --filter @taskless/cli demo:reference
+ * Run: pnpm --filter @taskless/cli reference
  */
 
 import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
-import { buildDemoReference } from "../src/rules/demo/reference";
+import { buildReference } from "../src/rules/reference";
 import { DEMO_MANIFESTS } from "../src/rules/demo/manifest";
 
 const packageRoot = join(import.meta.dirname, "..");
@@ -48,7 +48,7 @@ const rules = await Promise.all(
 const target = join(packageRoot, "assets", "reference.json");
 await writeFile(
   target,
-  `${JSON.stringify(buildDemoReference(rules), undefined, 2)}\n`,
+  `${JSON.stringify(buildReference(rules), undefined, 2)}\n`,
   "utf8"
 );
 console.log(`Wrote ${target}`);
