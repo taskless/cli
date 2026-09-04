@@ -60,7 +60,7 @@ permanently unverified.
 ## 8. Close out
 
 - [x] 8.1 Decide the no-fixtures case. **Settled: it fails, matching the other engines.** Every rule needs a fixture. Depth is not policed, so a trivial case that exercises little and passes is acceptable, but it can only live in `pass/` — a `fail/` case that produces nothing is the silent regression this runner exists to catch
-- [ ] 8.2 Tell the generator team, who have recorded this as a limit on what the demonstration can assert
-- [ ] 8.3 Confirm runtime deliveries carry `.tests/`. Not a request: a runtime rule ships with fixtures, and a delivery without them is a defect on their side (D7). If any do not, file it as a bug rather than proposing it as a contract change
-- [ ] 8.4 Once 8.3 confirms deliveries carry them, add fixtures to delivery completeness as its own change. Sequenced only so a service defect does not reach users as a refused write with nothing they can do about it
-- [ ] 8.5 Archive the change
+- [x] 8.2 Tell the generator team, who have recorded this as a limit on what the demonstration can assert
+- [ ] 8.3 **Carried out of this change as an owner TODO (Jakob), 2026-09-04.** Not done, and deliberately not blocking the archive. Confirm runtime deliveries carry `.tests/`. Not a request: a runtime rule ships with fixtures, and a delivery without them is a defect on their side (D7). If any do not, file it as a bug rather than proposing it as a contract change
+- [x] 8.4 Once 8.3 confirms deliveries carry them, add fixtures to delivery completeness as its own change. Sequenced only so a service defect does not reach users as a refused write with nothing they can do about it
+- [x] 8.5 Archive the change
