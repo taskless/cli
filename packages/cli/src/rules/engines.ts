@@ -9,13 +9,14 @@ import {
   isKnownEngine,
   RULE_TESTS_DIRECTORY,
   RULES_DIRECTORY,
+  TASKLESS_DIRECTORY,
   type EngineExecutor,
   type EngineName,
 } from "./layout";
 
 /** `.taskless/rules`, the root every rule lives under. */
 export function rulesRoot(cwd: string): string {
-  return join(cwd, ".taskless", RULES_DIRECTORY);
+  return join(cwd, TASKLESS_DIRECTORY, RULES_DIRECTORY);
 }
 
 /** `.taskless/rules/<engine>`, the directory holding that engine's rules. */

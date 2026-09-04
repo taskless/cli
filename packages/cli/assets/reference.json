@@ -1,5 +1,5 @@
 {
-  "version": 1,
+  "version": 2,
   "protocol": [
     "Generate a rule from `prompt`, using your own pipeline.",
     "Run `taskless verify` over what you generated. It enforces constraints beyond the engine's own schema, listed in `constraints` below, so a rule the engine executes correctly can still be refused. A rule that fails here is not deliverable however well it behaves, and every later step would be measuring the wrong thing. Check `enforcedBy` before concluding anything: some constraints are only decided once the fixtures run.",
@@ -7,6 +7,31 @@
     "Run your generated rule against `tests` here. A failure means your rule and ours disagree about the subject, and `tests` is the arbiter.",
     "Run the rule in `rule` here against your cases. A failure means your cases and ours disagree, which is worth as much as the previous step and is the one nobody runs."
   ],
+  "layout": {
+    "rulesRoot": ".taskless/rules",
+    "ruleDirectory": ".taskless/rules/{engine}/{id}",
+    "testsDirectory": ".tests",
+    "engines": {
+      "sg": {
+        "ruleFile": "{id}.yml",
+        "ruleConfigFile": null,
+        "capturesDirectory": null,
+        "fixtureLayout": "ast-grep-test"
+      },
+      "vale": {
+        "ruleFile": "{id}.yml",
+        "ruleConfigFile": ".vale.ini",
+        "capturesDirectory": null,
+        "fixtureLayout": "case-documents"
+      },
+      "runtime": {
+        "ruleFile": "check.ts",
+        "ruleConfigFile": null,
+        "capturesDirectory": "captures",
+        "fixtureLayout": "case-directories"
+      }
+    }
+  },
   "constraints": [
     {
       "id": "sg-id-matches-directory",
@@ -62,6 +87,8 @@
     {
       "engine": "sg",
       "id": "no-eval-call",
+      "directory": ".taskless/rules/sg/no-eval-call",
+      "ruleFile": "no-eval-call.yml",
       "prompt": "Create a rule that flags any call to `eval()` in TypeScript.\n\nExecuting a string at runtime is an injection risk, and it defeats every static\nanalysis the project runs: nothing downstream can see what the code will do.\nPrefer a parser, a lookup table, or an explicit dispatch.\n\nDeciding this needs only the expression itself. No other file has to be read,\nand no state has to be resolved.\n\nCode that should NOT be flagged:\n\n```ts\nconst parsed = JSON.parse(payload);\n```\n\nCode that SHOULD be flagged:\n\n```ts\nconst result = eval(payload);\n```\n",
       "rule": [
         {
@@ -69,16 +96,21 @@
           "content": "id: no-eval-call\nlanguage: TypeScript\nseverity: error\nmessage: \"`eval` executes arbitrary code at runtime; use a parser or a lookup table instead.\"\nnote: |-\n  This is an example rule, shipped with the Taskless CLI to demonstrate the\n  `sg` tier. It was not written for this repository.\n\n  The evidence is one expression in one file, which is what makes this an `sg`\n  rule rather than a runtime one: no other file has to be read to decide it.\nrule:\n  pattern: eval($ARG)\n"
         }
       ],
-      "tests": [
-        {
-          "path": ".tests/no-eval-call-test.yml",
-          "content": "id: no-eval-call\nvalid:\n  - const parsed = JSON.parse(payload);\ninvalid:\n  - const result = eval(payload);\n"
-        }
-      ]
+      "tests": {
+        "grouping": "ast-grep-test",
+        "files": [
+          {
+            "path": ".tests/no-eval-call-test.yml",
+            "content": "id: no-eval-call\nvalid:\n  - const parsed = JSON.parse(payload);\ninvalid:\n  - const result = eval(payload);\n"
+          }
+        ]
+      }
     },
     {
       "engine": "vale",
       "id": "prefer-use-over-utilize",
+      "directory": ".taskless/rules/vale/prefer-use-over-utilize",
+      "ruleFile": "prefer-use-over-utilize.yml",
       "prompt": "Create a rule that flags the word \"utilize\" in markdown documentation and\nsuggests \"use\" instead.\n\n\"Utilize\" is longer than \"use\" and means the same thing in nearly every\nsentence a reader will meet. It should match case-insensitively and cover the\ninflected forms.\n\nThis is a prose rule. It applies to markdown, and it must not look at source\ncode.\n\nProse that should NOT be flagged:\n\n```md\nUse the installer to write the config file.\n```\n\nProse that SHOULD be flagged:\n\n```md\nUtilize the installer to write the config file.\n```\n",
       "rule": [
         {
@@ -90,20 +122,39 @@
           "content": "# Scoped to markdown, which is where prose rules belong. A demonstration rule\n# should never widen its own scope into a project's source.\n[**/*.md]\nBasedOnStyles =\nprefer-use-over-utilize.prefer-use-over-utilize = YES\n"
         }
       ],
-      "tests": [
-        {
-          "path": ".tests/pass/README.md",
-          "content": "# Setup\n\nUse the installer to write the config file.\n"
-        },
-        {
-          "path": ".tests/fail/README.md",
-          "content": "# Setup\n\nUtilize the installer to write the config file.\n"
-        }
-      ]
+      "tests": {
+        "grouping": "case-documents",
+        "files": [
+          {
+            "path": ".tests/pass/README.md",
+            "content": "# Setup\n\nUse the installer to write the config file.\n"
+          },
+          {
+            "path": ".tests/fail/README.md",
+            "content": "# Setup\n\nUtilize the installer to write the config file.\n"
+          }
+        ],
+        "cases": [
+          {
+            "bucket": "pass",
+            "name": "README.md",
+            "path": ".tests/pass/README.md",
+            "files": [".tests/pass/README.md"]
+          },
+          {
+            "bucket": "fail",
+            "name": "README.md",
+            "path": ".tests/fail/README.md",
+            "files": [".tests/fail/README.md"]
+          }
+        ]
+      }
     },
     {
       "engine": "runtime",
       "id": "env-keys-declared",
+      "directory": ".taskless/rules/runtime/env-keys-declared",
+      "ruleFile": "check.ts",
       "prompt": "Create a rule that requires every environment variable read through\n`process.env` in a JavaScript or TypeScript file to have a matching key\ndeclared in the `.env` file at the repository root.\n\nReading a variable that is never declared is the failure worth catching: it is\n`undefined` at runtime rather than an error, so the program continues with a\nmissing value and fails somewhere else entirely.\n\nDeciding this needs both files at once — the read and the declaration — so it\ncannot be answered by matching a pattern within a single file.\n\nA repository that should NOT be flagged:\n\n```ts\n// src/config.ts\nexport const apiUrl = process.env.API_URL;\n```\n\n```\n# .env\nAPI_URL=https://api.example.com\n```\n\nA repository that SHOULD be flagged, on the second line only:\n\n```ts\n// src/config.ts\nexport const apiUrl = process.env.API_URL;\nexport const apiKey = process.env.API_KEY;\n```\n\n```\n# .env\nAPI_URL=https://api.example.com\n```\n",
       "rule": [
         {
@@ -115,24 +166,47 @@
           "content": "# The syntactic narrow. It finds every `process.env.X` read; it cannot know\n# whether X is declared, because that answer lives in a different file. Deciding\n# is `check.ts`'s job, which is what makes this a runtime rule rather than an\n# `sg` one.\nid: env-read\nlanguage: TypeScript\nrule:\n  pattern: process.env.$VAR\nmetadata:\n  taskless:\n    version: 1\n    kind: runtime\n    name: env-read\n    check: check.ts\n    match: anchor\n"
         }
       ],
-      "tests": [
-        {
-          "path": ".tests/pass/declared/src/config.ts",
-          "content": "// API_URL is read here and declared in .env, so this case is clean.\nexport const apiUrl = process.env.API_URL;\n"
-        },
-        {
-          "path": ".tests/pass/declared/.env",
-          "content": "API_URL=https://api.example.com\n"
-        },
-        {
-          "path": ".tests/fail/undeclared/src/config.ts",
-          "content": "// API_URL is declared; API_KEY is not, so the rule fires on the second.\nexport const apiUrl = process.env.API_URL;\nexport const apiKey = process.env.API_KEY;\n"
-        },
-        {
-          "path": ".tests/fail/undeclared/.env",
-          "content": "API_URL=https://api.example.com\n"
-        }
-      ],
+      "tests": {
+        "grouping": "case-directories",
+        "files": [
+          {
+            "path": ".tests/pass/declared/src/config.ts",
+            "content": "// API_URL is read here and declared in .env, so this case is clean.\nexport const apiUrl = process.env.API_URL;\n"
+          },
+          {
+            "path": ".tests/pass/declared/.env",
+            "content": "API_URL=https://api.example.com\n"
+          },
+          {
+            "path": ".tests/fail/undeclared/src/config.ts",
+            "content": "// API_URL is declared; API_KEY is not, so the rule fires on the second.\nexport const apiUrl = process.env.API_URL;\nexport const apiKey = process.env.API_KEY;\n"
+          },
+          {
+            "path": ".tests/fail/undeclared/.env",
+            "content": "API_URL=https://api.example.com\n"
+          }
+        ],
+        "cases": [
+          {
+            "bucket": "pass",
+            "name": "declared",
+            "path": ".tests/pass/declared",
+            "files": [
+              ".tests/pass/declared/src/config.ts",
+              ".tests/pass/declared/.env"
+            ]
+          },
+          {
+            "bucket": "fail",
+            "name": "undeclared",
+            "path": ".tests/fail/undeclared",
+            "files": [
+              ".tests/fail/undeclared/src/config.ts",
+              ".tests/fail/undeclared/.env"
+            ]
+          }
+        ]
+      },
       "signature": "1;h=sha-256;d=0000000000000000000000000000000000000000000000000000000000000000"
     }
   ]

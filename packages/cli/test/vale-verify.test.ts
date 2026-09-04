@@ -11,6 +11,7 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { findValeBinary } from "../src/rules/vale/binary";
+import { ENGINE_LAYOUTS } from "../src/rules/layout";
 import {
   buildIsolatingConfig,
   discoverValeRuleTests,
@@ -218,6 +219,12 @@ describe("fixture buckets are flat", () => {
     await expect(verifyValeRule(cwd, "no-simply")).rejects.toThrow(
       /fixture buckets are flat/i
     );
+
+    // This rejection IS the declared layout, and the conformance corpus
+    // publishes that declaration as fact. Asserted here so a reader changing
+    // either meets the other, rather than leaving the corpus telling consumers
+    // a case is one document while the reader collects trees.
+    expect(ENGINE_LAYOUTS.vale.fixtureLayout).toBe("case-documents");
   });
 });
 

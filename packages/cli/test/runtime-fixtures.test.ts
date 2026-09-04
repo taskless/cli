@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { readRuntimeFixtures } from "../src/rules/runtime/fixtures";
+import { ENGINE_LAYOUTS } from "../src/rules/layout";
 
 /**
  * Reading a runtime rule's fixture cases.
@@ -98,6 +99,12 @@ describe("reading runtime fixture cases", () => {
     // Skipping it would leave an author with a fixture that never ran and that
     // nothing mentioned, which is the failure this tier keeps producing.
     await expect(readRuntimeFixtures(cwd, RULE)).rejects.toThrow(/loose\.ts/);
+
+    // This rejection IS the declared layout, and the conformance corpus
+    // publishes that declaration as fact. The two are asserted together so a
+    // reader changing either meets the other, rather than leaving the corpus
+    // telling consumers a case is a directory while the reader accepts files.
+    expect(ENGINE_LAYOUTS.runtime.fixtureLayout).toBe("case-directories");
   });
 
   it("does not read an unreadable bucket as an empty one", async () => {
