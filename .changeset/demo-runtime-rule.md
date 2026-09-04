@@ -35,11 +35,16 @@ apart, because the useful comparison is the cross: run a generated rule against
 our cases, and our rule against the generated cases. From one flat file set
 neither of those can be set up.
 
-The corpus states its own protocol, including a `taskless verify` step that
-exists because running the protocol found it: a semantically correct ast-grep
-rule was refused for using `regex` without a sibling `kind`, a house constraint
-no prompt states. Without that step a consumer reads our validator's opinion as
-a disagreement about the subject.
+The corpus states its own protocol and carries the constraints `verify` and
+`test` enforce beyond the engine's own schema, each saying which command
+enforces it. A generator that never reads our recipes cannot know them, and
+without the list a refusal is indistinguishable from a disagreement about the
+subject.
+
+`verify` now also refuses an `sg` rule whose `id:` does not match its directory.
+Previously it passed: `test` could not find the rule at all, and `check` ran it
+but reported findings under a name no directory has, so nobody could locate what
+produced them.
 
 Only the runtime rule carries a signature, deliberately
 `1;h=sha-256;d=<64 zeros>`: well-formed, so it reaches signature comparison

@@ -1,5 +1,6 @@
 import type { DeliveredFile } from "../deliver";
 import type { EngineName } from "../layout";
+import { RULE_CONSTRAINTS, type RuleConstraint } from "./constraints";
 
 /**
  * A deliberately invalid signature, well-formed and unmistakably synthetic.
@@ -45,7 +46,7 @@ export const DEMO_REFERENCE_VERSION = 1;
  */
 export const DEMO_REFERENCE_PROTOCOL = [
   "Generate a rule from `prompt`, using your own pipeline.",
-  "Run `taskless verify` over what you generated. It enforces constraints beyond the engine's own schema — an `sg` `regex` needs a sibling `kind`, for one — so a rule the engine executes correctly can still be refused. A rule that fails here is not deliverable however well it behaves, and every later step would be measuring the wrong thing.",
+  "Run `taskless verify` over what you generated. It enforces constraints beyond the engine's own schema, listed in `constraints` below, so a rule the engine executes correctly can still be refused. A rule that fails here is not deliverable however well it behaves, and every later step would be measuring the wrong thing. Check `enforcedBy` before concluding anything: some constraints are only decided once the fixtures run.",
   "Run your generated rule against your own cases. It should pass; if it does not, the disagreement is inside your pipeline and nothing below will be informative.",
   "Run your generated rule against `tests` here. A failure means your rule and ours disagree about the subject, and `tests` is the arbiter.",
   "Run the rule in `rule` here against your cases. A failure means your cases and ours disagree, which is worth as much as the previous step and is the one nobody runs.",
@@ -68,6 +69,15 @@ export interface DemoReferenceRule {
 export interface DemoReference {
   version: number;
   protocol: string[];
+  /**
+   * What `verify` and `test` enforce beyond the engine's own schema.
+   *
+   * Published because a generator that never reads our recipes cannot know
+   * them, and because without the list a refusal here is indistinguishable
+   * from a disagreement about the subject. Each entry says which command
+   * enforces it, which decides the order an eval has to run in.
+   */
+  constraints: RuleConstraint[];
   rules: DemoReferenceRule[];
 }
 
@@ -102,6 +112,7 @@ export function buildDemoReference(
   return {
     version: DEMO_REFERENCE_VERSION,
     protocol: DEMO_REFERENCE_PROTOCOL,
+    constraints: [...RULE_CONSTRAINTS],
     rules: rules.map((rule) => ({
       engine: rule.engine,
       id: rule.ruleId,
