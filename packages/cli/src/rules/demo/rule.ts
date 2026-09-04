@@ -27,14 +27,17 @@
  * this module is where each entry acquires its bytes.
  */
 
+import sgPrompt from "../../../assets/demo-sg/prompt.md?raw";
 import sgRule from "../../../assets/demo-sg/no-eval-call.yml?raw";
 import sgTest from "../../../assets/demo-sg/.tests/no-eval-call-test.yml?raw";
 
+import valePrompt from "../../../assets/demo-vale/prompt.md?raw";
 import valeRule from "../../../assets/demo-vale/prefer-use-over-utilize.yml?raw";
 import valeConfig from "../../../assets/demo-vale/.vale.ini?raw";
 import valePass from "../../../assets/demo-vale/.tests/pass/README.md?raw";
 import valeFail from "../../../assets/demo-vale/.tests/fail/README.md?raw";
 
+import runtimePrompt from "../../../assets/demo-runtime/prompt.md?raw";
 import captureEnvironmentRead from "../../../assets/demo-runtime/captures/env-read.yml?raw";
 import checkSource from "../../../assets/demo-runtime/check.ts?raw";
 import failEnvironment from "../../../assets/demo-runtime/.tests/fail/undeclared/.env?raw";
@@ -44,16 +47,24 @@ import passSource from "../../../assets/demo-runtime/.tests/pass/declared/src/co
 
 import type { EngineName } from "../layout";
 import type { DeliveredFile } from "../deliver";
-import { DEMO_MANIFESTS } from "./manifest";
+import { DEMO_MANIFESTS, writtenPaths } from "./manifest";
 
-export { DEMO_MANIFESTS, demoManifestFor } from "./manifest";
+export { DEMO_MANIFESTS, demoManifestFor, writtenPaths } from "./manifest";
 export type { DemoManifest } from "./manifest";
 
 /** One shipped demonstration rule, with the bytes of every file it contains. */
 export interface DemoRule {
   engine: EngineName;
   ruleId: string;
+  /** The generation request, published for conformance and never written. */
+  prompt: string;
+  /** The rule itself: what a generator has to produce. */
+  ruleFiles: readonly DeliveredFile[];
+  /** The held-out cases both sides' rules must satisfy. */
+  testFiles: readonly DeliveredFile[];
   /**
+   * Everything written into a project, rule and cases together.
+   *
    * Deliberately the same `DeliveredFile[]` a served rule produces, so a demo
    * is written by `assessDelivery` + `writeDeliveredFileSet` rather than by a
    * second writer. If one ever needs its own writer, the shapes have diverged
@@ -63,6 +74,12 @@ export interface DemoRule {
 }
 
 /** Contents by asset path, keyed exactly as `manifest.ts` lists them. */
+const PROMPTS: Record<string, string> = {
+  "demo-sg": sgPrompt,
+  "demo-vale": valePrompt,
+  "demo-runtime": runtimePrompt,
+};
+
 const CONTENTS: Record<string, Record<string, string>> = {
   "demo-sg": {
     "no-eval-call.yml": sgRule,
@@ -91,20 +108,34 @@ const CONTENTS: Record<string, Record<string, string>> = {
  * to a manifest without a matching embed throws HERE, at module load, rather
  * than producing a rule that writes one file fewer than it should.
  */
+function embed(assetDirectory: string, ruleId: string) {
+  return (path: string): DeliveredFile => {
+    const content = CONTENTS[assetDirectory]?.[path];
+    if (content === undefined) {
+      throw new Error(
+        `demo rule ${ruleId} lists ${path} in its manifest but nothing embeds it`
+      );
+    }
+    return { path, content };
+  };
+}
+
 export const DEMO_RULES: readonly DemoRule[] = DEMO_MANIFESTS.map(
-  (manifest) => ({
-    engine: manifest.engine,
-    ruleId: manifest.ruleId,
-    files: manifest.paths.map((path) => {
-      const content = CONTENTS[manifest.assetDirectory]?.[path];
-      if (content === undefined) {
-        throw new Error(
-          `demo rule ${manifest.ruleId} lists ${path} in its manifest but nothing embeds it`
-        );
-      }
-      return { path, content };
-    }),
-  })
+  (manifest) => {
+    const bytes = embed(manifest.assetDirectory, manifest.ruleId);
+    const prompt = PROMPTS[manifest.assetDirectory];
+    if (prompt === undefined) {
+      throw new Error(`demo rule ${manifest.ruleId} embeds no prompt`);
+    }
+    return {
+      engine: manifest.engine,
+      ruleId: manifest.ruleId,
+      prompt,
+      ruleFiles: manifest.rulePaths.map((path) => bytes(path)),
+      testFiles: manifest.testPaths.map((path) => bytes(path)),
+      files: writtenPaths(manifest).map((path) => bytes(path)),
+    };
+  }
 );
 
 /** The shipped demonstration rule for one engine, if there is one. */
