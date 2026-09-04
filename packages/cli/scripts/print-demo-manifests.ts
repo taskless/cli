@@ -1,8 +1,15 @@
 /**
- * Write each shipped demo rule as `<engine> <ruleId> <assetDirectory>`.
+ * Write each shipped demo rule as
+ * `<engine> <ruleId> <assetDirectory> <path>...`.
  *
  * Exists so CI can stage every sample without restating the list in YAML,
  * where a fourth sample would be added to the manifest and silently not staged.
+ *
+ * The trailing paths are {@link writtenPaths}, not the asset directory's
+ * contents, so a staging loop copies exactly what `taskless demo` writes. A
+ * whole-directory copy would additionally land `prompt.md`, which the command
+ * never writes, and the job would then be attributing results to a tree no
+ * user ever has.
  *
  * Takes an output PATH rather than printing to stdout. Capturing stdout meant
  * capturing whatever the runner wrapped around it: `pnpm --filter ... > file`
@@ -15,7 +22,7 @@
 
 import { writeFile } from "node:fs/promises";
 
-import { DEMO_MANIFESTS } from "../src/rules/demo/manifest";
+import { DEMO_MANIFESTS, writtenPaths } from "../src/rules/demo/manifest";
 
 const target = process.argv[2];
 if (target === undefined) {
@@ -24,7 +31,7 @@ if (target === undefined) {
 
 const lines = DEMO_MANIFESTS.map(
   (manifest) =>
-    `${manifest.engine} ${manifest.ruleId} ${manifest.assetDirectory}`
+    `${manifest.engine} ${manifest.ruleId} ${manifest.assetDirectory} ${writtenPaths(manifest).join(" ")}`
 );
 await writeFile(target, `${lines.join("\n")}\n`, "utf8");
 console.log(`Wrote ${String(lines.length)} manifest lines to ${target}`);

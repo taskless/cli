@@ -108,8 +108,3 @@ export const DEMO_MANIFESTS: readonly DemoManifest[] = [
 export function writtenPaths(manifest: DemoManifest): readonly string[] {
   return [...manifest.rulePaths, ...manifest.testPaths];
 }
-
-/** The manifest for one engine, or `undefined` if that engine ships no demo. */
-export function demoManifestFor(engine: string): DemoManifest | undefined {
-  return DEMO_MANIFESTS.find((manifest) => manifest.engine === engine);
-}

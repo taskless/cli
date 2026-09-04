@@ -8,7 +8,7 @@ import {
   buildDemoReference,
   type DemoReference,
 } from "../src/rules/demo/reference";
-import { DEMO_MANIFESTS } from "../src/rules/demo/manifest";
+import { DEMO_MANIFESTS, writtenPaths } from "../src/rules/demo/manifest";
 import { DEMO_RULES } from "../src/rules/demo/rule";
 
 /**
@@ -51,6 +51,36 @@ describe("the demo reference payload", () => {
       expect(rule?.testFiles.map((file) => file.path)).toEqual([
         ...manifest.testPaths,
       ]);
+    }
+  });
+
+  it("names every dot-path explicitly, because a glob would drop them", () => {
+    // The regression this replaces was specific: a switch to glob-based path
+    // discovery embeds the rule file and silently omits every dot-path case,
+    // producing a rule that writes, verifies, and has nothing to prove. The
+    // test that caught it asserted particular paths, so this one does too --
+    // iterating whatever the manifest happens to hold would pass trivially
+    // over a shrunken list, which is exactly the failure being guarded.
+    const required: Record<string, readonly string[]> = {
+      sg: [".tests/no-eval-call-test.yml"],
+      vale: [".vale.ini", ".tests/pass/README.md", ".tests/fail/README.md"],
+      runtime: [".tests/pass/declared/.env", ".tests/fail/undeclared/.env"],
+    };
+
+    // A fourth sample has to be added here as well as to the manifest. That is
+    // the point: whoever adds it states which of its files are dot-paths,
+    // rather than inheriting a guard that silently covers nothing.
+    expect(
+      DEMO_MANIFESTS.map((manifest) => manifest.engine).toSorted()
+    ).toEqual(Object.keys(required).toSorted());
+
+    for (const manifest of DEMO_MANIFESTS) {
+      const written = writtenPaths(manifest);
+      for (const path of required[manifest.engine] ?? []) {
+        expect(written, `${manifest.engine} no longer lists ${path}`).toContain(
+          path
+        );
+      }
     }
   });
 
