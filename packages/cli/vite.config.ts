@@ -177,7 +177,7 @@ const HOST_BOUND_ENTRIES = [NODE_RUNTIMES_ENTRY];
  * it. An `exports` entry npm does not publish resolves for nobody.
  */
 const ASSET_EXPORTS: Record<string, string> = {
-  "./demo-reference.json": "./assets/demo-reference.json",
+  "./reference.json": "./assets/reference.json",
 };
 
 /**
