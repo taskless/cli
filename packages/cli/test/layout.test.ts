@@ -40,6 +40,11 @@ const PUBLIC_EXPORTS = [
   "ENGINE_LAYOUTS",
   "RULES_DIRECTORY",
   "RULE_TESTS_DIRECTORY",
+  // Widened deliberately. The conformance corpus publishes
+  // `.taskless/rules/<engine>/<id>/` as a path a consumer acts on, so the
+  // directory the tree hangs off is part of the layout a consumer needs rather
+  // than an internal of the module that happens to hold it.
+  "TASKLESS_DIRECTORY",
   "isKnownEngine",
 ] as const;
 
