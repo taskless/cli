@@ -12,6 +12,24 @@ const ruleResultSchema = z.object({
   ruleId: z.string(),
   ok: z.boolean(),
   errors: z.array(z.string()).describe("Human-readable failure messages"),
+  violations: z
+    .array(
+      z.object({
+        constraintId: z
+          .string()
+          .describe(
+            "Stable id of a constraint published in `@taskless/cli/reference.json`"
+          ),
+        message: z
+          .string()
+          .describe(
+            "The failure message reporting it, repeated verbatim from `errors`"
+          ),
+      })
+    )
+    .describe(
+      "The subset of `errors` a published constraint accounts for. `errors` stays complete, so this is additive: read it to map a rejection to the rationale the corpus publishes, instead of matching on message text, which changes without notice. Empty when nothing failed and when what failed is not something a published constraint describes"
+    ),
   ran: z
     .boolean()
     .optional()

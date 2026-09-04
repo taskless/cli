@@ -1,40 +1,40 @@
 ## 1. Corpus shape (PR 1)
 
-- [ ] 1.1 Add `ReferenceTests` to `src/rules/reference.ts`: a `grouping`
+- [x] 1.1 Add `ReferenceTests` to `src/rules/reference.ts`: a `grouping`
       discriminant, `files`, and an optional `cases` list.
-- [ ] 1.2 Move `TASKLESS_DIRECTORY` into `src/rules/layout.ts` and have
+- [x] 1.2 Move `TASKLESS_DIRECTORY` into `src/rules/layout.ts` and have
       `rulesRoot` read it, so the corpus has one value to generate from. Leave
       the other literals alone.
-- [ ] 1.3 Publish the top-level `layout` block from `ENGINE_LAYOUTS`, and give
+- [x] 1.3 Publish the top-level `layout` block from `ENGINE_LAYOUTS`, and give
       each entry its resolved `directory` and `ruleFile`.
-- [ ] 1.4 Group `runtime` fixtures into case directories and `vale` fixtures into
+- [x] 1.4 Group `runtime` fixtures into case directories and `vale` fixtures into
       case documents, from the manifest's `testPaths`. `sg` publishes
       `grouping: "ast-grep-test"` and no cases.
-- [ ] 1.5 Bump `REFERENCE_VERSION` to 2 and say in the docstring what changed.
-- [ ] 1.6 Regenerate `assets/reference.json` (`pnpm --filter @taskless/cli reference`).
-- [ ] 1.7 Extend `test/reference.test.ts`: every case path resolves into
+- [x] 1.5 Bump `REFERENCE_VERSION` to 2 and say in the docstring what changed.
+- [x] 1.6 Regenerate `assets/reference.json` (`pnpm --filter @taskless/cli reference`).
+- [x] 1.7 Extend `test/reference.test.ts`: every case path resolves into
       `tests.files`; every fixture file belongs to exactly one case where cases
       are published; `runtime`'s two-file case is carried as one case; `sg`
       publishes no cases; the version is 2.
-- [ ] 1.8 Assert the published `layout` agrees with `ENGINE_LAYOUTS` and that
+- [x] 1.8 Assert the published `layout` agrees with `ENGINE_LAYOUTS` and that
       each entry's `directory` is what `ruleDirectory` returns for it, so the
       block cannot drift from the table the CLI dispatches on.
-- [ ] 1.9 Changeset (minor — a published contract changed shape).
+- [x] 1.9 Changeset (minor — a published contract changed shape).
 
 ## 2. Constraint ids on rejections (PR 2)
 
-- [ ] 2.1 Introduce the internal `{ message, constraintId? }` error shape and
+- [x] 2.1 Introduce the internal `{ message, constraintId? }` error shape and
       thread it through the sg verify layers.
-- [ ] 2.2 Attribute each of the seven `RULE_CONSTRAINTS` entries at the site
+- [x] 2.2 Attribute each of the seven `RULE_CONSTRAINTS` entries at the site
       that raises it. Leave everything else unattributed.
-- [ ] 2.3 Add `violations` to `src/schemas/verify-test.ts` and project it at the
+- [x] 2.3 Add `violations` to `src/schemas/verify-test.ts` and project it at the
       JSON boundary, leaving `errors` unchanged.
-- [ ] 2.4 Extend `test/constraints.test.ts` — it already builds a rule that
+- [x] 2.4 Extend `test/constraints.test.ts` — it already builds a rule that
       violates each entry keyed on `id`, so assert the reported `constraintId`
       there rather than in a new file.
-- [ ] 2.5 Assert an unattributable failure carries no violation, and that a
+- [x] 2.5 Assert an unattributable failure carries no violation, and that a
       passing rule reports none.
-- [ ] 2.6 Extend the changeset from PR 1 rather than adding a second.
+- [x] 2.6 Extend the changeset from PR 1 rather than adding a second.
 
 ## 3. Published output schemas (PR 3)
 

@@ -171,6 +171,27 @@ explicit and lets a consumer ignore `errors` entirely.
 complete list; `violations` is the attributable subset. A consumer reading only
 `errors` sees exactly what it sees today, which is what makes this additive.
 
-Internally the producers return `{ message, constraintId? }` and the JSON
-boundary projects both fields out of it. Carrying two parallel arrays through
-the layers is how they would drift.
+**Internally, `errors` stays `string[]` and `violations` rides beside it.** The
+first draft had every producer return `{ message, constraintId? }` and the JSON
+boundary project both fields out of it, on the grounds that two parallel arrays
+drift. Measured against the code, that trade inverts: `LayerResult.errors` is
+consumed by 57 assertions across six test files, by `schemaLayer` shared with
+the Vale path that has no constraints at all, and by the human renderer — so
+the change would have been a large mechanical diff whose only purpose was to be
+projected straight back into `errors: string[]` at the boundary, because the
+published envelope keeps that shape either way.
+
+The drift the first draft feared is real but local, and it is closed at the
+site rather than by the type: every attributable failure is recorded through
+one `violate()` call that writes both arrays, so a site cannot add a message to
+one and forget the other. What the type could have prevented — threading two
+lists separately through the layers — is not what this does.
+
+`sg-fixture-id-matches-rule` needed one extra piece of state to attribute
+honestly. It surfaces as the same "has no fixtures" shortfall a rule with no
+cases at all produces, and those two want different advice: one author has
+written nothing, the other has a file sitting right there that is silently not
+counted. `fixtureCoverage` already skips a test file whose own `id:` names
+another rule, so it now reports that it did, and only that case is attributed.
+Without it the constraint could only have been attributed by guessing, which
+this design rejects everywhere else.
