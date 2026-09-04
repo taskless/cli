@@ -1,5 +1,5 @@
 /**
- * Regenerate `assets/demo-reference.json` from the shipped rules.
+ * Regenerate `assets/reference.json` from the shipped rules.
  *
  * The corpus is every demonstration rule with the prompt it answers, the rule
  * itself, and the held-out cases — separately, so another team can run their
@@ -45,7 +45,7 @@ const rules = await Promise.all(
   }))
 );
 
-const target = join(packageRoot, "assets", "demo-reference.json");
+const target = join(packageRoot, "assets", "reference.json");
 await writeFile(
   target,
   `${JSON.stringify(buildDemoReference(rules), undefined, 2)}\n`,

@@ -28,7 +28,7 @@ never issued one, so it is skipped with the reason `check` already gives.
 Running it uses the documented `--dangerously-run-scripts`. The `sg` and `vale`
 samples are inert data and run under `check` like any other rule.
 
-The same three rules are published as `@taskless/cli/demo-reference.json`, as a
+The same three rules are published as `@taskless/cli/reference.json`, as a
 conformance corpus rather than a pile of examples. Each entry carries the
 generation prompt it answers, the rule itself, and the held-out cases — kept
 apart, because the useful comparison is the cross: run a generated rule against

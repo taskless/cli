@@ -25,7 +25,7 @@ const referencePath = join(
   import.meta.dirname,
   "..",
   "assets",
-  "demo-reference.json"
+  "reference.json"
 );
 
 async function readReference(): Promise<DemoReference> {
@@ -177,9 +177,9 @@ describe("the reference payload is reachable by another team", () => {
     // Both halves are needed and neither implies the other: `exports` without
     // `files` names a path npm does not ship, and `files` without `exports` is
     // unreachable under this package's strict export map.
-    expect(manifest.files).toContain("assets/demo-reference.json");
-    expect(manifest.exports["./demo-reference.json"]).toBe(
-      "./assets/demo-reference.json"
+    expect(manifest.files).toContain("assets/reference.json");
+    expect(manifest.exports["./reference.json"]).toBe(
+      "./assets/reference.json"
     );
   });
 });

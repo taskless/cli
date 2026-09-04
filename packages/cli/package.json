@@ -41,11 +41,11 @@
       "types": "./dist/node/runtimes/index.d.ts",
       "import": "./dist/node/runtimes.js"
     },
-    "./demo-reference.json": "./assets/demo-reference.json"
+    "./reference.json": "./assets/reference.json"
   },
   "files": [
     "dist",
-    "assets/demo-reference.json"
+    "assets/reference.json"
   ],
   "engines": {
     "node": ">=22.22.0"
