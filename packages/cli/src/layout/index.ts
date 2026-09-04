@@ -40,8 +40,10 @@ export {
   ENGINE_LAYOUTS,
   RULES_DIRECTORY,
   RULE_TESTS_DIRECTORY,
+  TASKLESS_DIRECTORY,
   isKnownEngine,
   type EngineExecutor,
   type EngineLayout,
   type EngineName,
+  type FixtureLayout,
 } from "../rules/layout.js";
