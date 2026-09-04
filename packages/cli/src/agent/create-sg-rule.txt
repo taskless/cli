@@ -74,10 +74,15 @@ whole rule.
    Optional but useful: `note` (multi-line guidance, supports markdown),
    `fix` (auto-fix pattern), `ignores` (file patterns to skip).
 
-   **`language` is ast-grep's vocabulary, and nothing here validates
-   it.** The vendored rule schema types the field as a bare string with
-   no enum and `verify` never reads it, so the first thing that has an
-   opinion is the binary. ast-grep (v%(AST_GREP_VERSION)s) parses:
+   **`language` is ast-grep's vocabulary.** The vendored rule schema
+   types the field as a bare string with no enum, so the schema layer
+   accepts anything. `verify` checks it separately: an off-list spelling
+   is an error naming the accepted list, and a spelling ast-grep resolves
+   but does not itself use (`typescript` for `TypeScript`) is a notice.
+   Get it right anyway rather than leaning on that check. An unrecognized
+   name aborts config parsing, which takes every other sg rule in the
+   project down with it and reports nothing.
+   ast-grep (v%(AST_GREP_VERSION)s) parses:
 
      %(AST_GREP_LANGUAGES)s
 

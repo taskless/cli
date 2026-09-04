@@ -320,6 +320,39 @@ async function validateRequirements(
     }
   }
 
+  // The rule's own `id:` must be the directory it lives in.
+  //
+  // The directory name IS the rule id: it is what `check` and `test` address,
+  // what `--filter` is built from, and what a person types to delete a rule.
+  // ast-grep registers a rule under the id in its BODY, so a mismatch splits
+  // those two apart and both halves fail differently:
+  //
+  //   `test` cannot run it at all — `sg test --filter ^<directory>$` selects
+  //   nothing and reports `Rule not found`, which reads like a missing rule
+  //   rather than a misnamed one.
+  //
+  //   `check` DOES run it, and that is the worse half. The scan works and the
+  //   finding is real, but it is reported under the body's id — a name that
+  //   exists in no directory. Anyone who tries to find, disable or delete the
+  //   rule that produced it is looking for something that is not there.
+  //
+  // Checked here, in layer 2, because it needs no subprocess and because the
+  // failure it prevents is silent in exactly the direction `verify` is meant to
+  // be trusted for. A generated rule whose delivery appends a batch suffix to
+  // the filename and not to the body lands in precisely this state.
+  const declaredId = ruleData.id;
+  if (typeof declaredId === "string" && declaredId !== ruleId) {
+    errors.push(
+      `id: "${declaredId}" does not match the rule's directory "${ruleId}". ` +
+        `The directory name is the rule id — it is what \`check\` and \`test\` ` +
+        `address and what you would type to delete it — while ast-grep ` +
+        `registers the rule under the id in this file. With the two apart, ` +
+        `\`test\` cannot find the rule at all and \`check\` reports findings ` +
+        `under "${declaredId}", a name no directory has. Rename one to match ` +
+        `the other.`
+    );
+  }
+
   const testFiles = await discoverRuleTestFiles(cwd, ruleId);
   const hasTestFile = testFiles.length > 0;
   if (!hasTestFile) {

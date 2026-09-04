@@ -8,6 +8,7 @@ import {
   buildDemoReference,
   type DemoReference,
 } from "../src/rules/demo/reference";
+import { RULE_CONSTRAINTS } from "../src/rules/demo/constraints";
 import { DEMO_MANIFESTS, writtenPaths } from "../src/rules/demo/manifest";
 import { DEMO_RULES } from "../src/rules/demo/rule";
 
@@ -110,6 +111,60 @@ describe("the demo reference payload", () => {
     // that does not exist.
     expect(ruleFor(reference, "sg").signature).toBeUndefined();
     expect(ruleFor(reference, "vale").signature).toBeUndefined();
+  });
+
+  it("keeps the rule and the cases apart, which is what the cross needs", async () => {
+    const reference = await readReference();
+    for (const rule of reference.rules) {
+      expect(
+        rule.rule.length,
+        `${rule.id} carries no rule files`
+      ).toBeGreaterThan(0);
+      expect(rule.tests.length, `${rule.id} carries no cases`).toBeGreaterThan(
+        0
+      );
+
+      // If a case leaked into `rule`, "run their rule against our cases" would
+      // hand over our answers along with the question, and the cross would
+      // measure nothing.
+      const rulePaths = new Set(rule.rule.map((file) => file.path));
+      for (const test of rule.tests) {
+        expect(rulePaths.has(test.path), `${test.path} is in both halves`).toBe(
+          false
+        );
+        expect(test.path.startsWith(".tests/")).toBe(true);
+      }
+      for (const file of rule.rule) {
+        expect(file.path.startsWith(".tests/")).toBe(false);
+      }
+    }
+  });
+
+  it("carries the prompt each rule answers", async () => {
+    const reference = await readReference();
+    for (const rule of reference.rules) {
+      expect(rule.prompt.length, `${rule.id} has no prompt`).toBeGreaterThan(
+        80
+      );
+    }
+  });
+
+  it("publishes the constraints a generator could not otherwise know", async () => {
+    const reference = await readReference();
+    expect(reference.constraints.map((c) => c.id).toSorted()).toEqual(
+      RULE_CONSTRAINTS.map((c) => c.id).toSorted()
+    );
+    // `enforcedBy` decides the order a consumer's eval has to run in, so it
+    // travels with each entry rather than being implied by the protocol text.
+    for (const constraint of reference.constraints) {
+      expect(["verify", "test"]).toContain(constraint.enforcedBy);
+    }
+  });
+
+  it("states its own protocol, including the verify step", async () => {
+    const reference = await readReference();
+    expect(reference.protocol.length).toBeGreaterThanOrEqual(5);
+    expect(reference.protocol.join("\n")).toContain("taskless verify");
   });
 });
 
