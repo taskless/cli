@@ -20,7 +20,8 @@
     "prebuild": "tsx scripts/fetch-rule-hash-vectors.ts",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
-    "demo:reference": "tsx scripts/write-demo-reference.ts"
+    "demo:reference": "tsx scripts/write-demo-reference.ts",
+    "demo:manifests": "tsx scripts/print-demo-manifests.ts"
   },
   "type": "module",
   "module": "./dist/index.js",
@@ -39,10 +40,12 @@
     "./node/runtimes": {
       "types": "./dist/node/runtimes/index.d.ts",
       "import": "./dist/node/runtimes.js"
-    }
+    },
+    "./demo-reference.json": "./assets/demo-reference.json"
   },
   "files": [
-    "dist"
+    "dist",
+    "assets/demo-reference.json"
   ],
   "engines": {
     "node": ">=22.22.0"

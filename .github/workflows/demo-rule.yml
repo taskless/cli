@@ -1,4 +1,4 @@
-# Runs the shipped demonstration rule's own fixtures.
+# Runs every shipped demonstration rule's own fixtures.
 #
 # ## Why this is its own workflow
 #
@@ -14,13 +14,13 @@
 # this check to the protection rule. That is the same reason the house-style
 # scan lives inside `validate.yml` rather than beside it.
 #
-# **It is not the only place `check.ts` runs in CI.** `test/demo-runtime.test.ts`
+# **It is not the only place `check.ts` runs in CI.** `test/demo-command.test.ts`
 # executes it too, under `Validate`. What this job adds is a different
-# assertion: it copies `assets/demo-runtime/` into a bare project AS-IS and runs
-# the engines over it, with no command and no bundle in the way. So a break in
-# the shipped asset tree is attributed to the asset tree, rather than to the
+# assertion: it copies every `assets/demo-*/` tree into one bare project AS-IS
+# and runs the engines over them, with no command and no bundle in the way. So a
+# break in a shipped asset tree is attributed to that tree, rather than to the
 # command that writes it or the imports that embed it.
-name: Demo rule
+name: Demo rules
 
 on:
   push:
@@ -36,8 +36,8 @@ permissions:
   contents: read
 
 jobs:
-  demo-rule:
-    name: Demo rule
+  demo-rules:
+    name: Demo ruless
     runs-on: ubuntu-latest
 
     steps:
@@ -62,16 +62,31 @@ jobs:
       # `process.env` reads, and running it over a checkout of the CLI would
       # report the CLI's own reads — a scan of the wrong tree that happens to
       # produce output.
-      - name: Stage the shipped rule in a bare project
+      # A bare project, not this repository. The runtime rule flags undeclared
+      # `process.env` reads and the sg rule flags `eval`, so running these over
+      # a checkout of the CLI would report the CLI's own code -- a scan of the
+      # wrong tree that happens to produce output.
+      - name: Stage every shipped rule in one bare project
         run: |
           set -euo pipefail
           PROJECT="$(mktemp -d)"
           echo "PROJECT=$PROJECT" >> "$GITHUB_ENV"
           git -C "$PROJECT" init -q
           node packages/cli/dist/index.js init -d "$PROJECT"
-          RULE="$PROJECT/.taskless/rules/runtime/env-keys-declared"
-          mkdir -p "$RULE"
-          cp -R packages/cli/assets/demo-runtime/. "$RULE/"
+          # Engine, id and asset directory come from the manifest, so adding a
+          # fourth sample needs no edit here.
+          # The script writes the file itself. Redirecting its stdout here
+          # captured pnpm's platform warnings alongside the manifest, and the
+          # loop below then tried to stage a rule named "WARN".
+          pnpm --filter @taskless/cli demo:manifests /tmp/manifests.txt
+          cat /tmp/manifests.txt
+          while read -r engine ruleId assetDir; do
+            [ -z "$engine" ] && continue
+            RULE="$PROJECT/.taskless/rules/$engine/$ruleId"
+            mkdir -p "$RULE"
+            cp -R "packages/cli/assets/$assetDir/." "$RULE/"
+            echo "staged $engine/$ruleId"
+          done < /tmp/manifests.txt
 
       - name: Verify
         run: node packages/cli/dist/index.js verify -d "$PROJECT"
@@ -79,14 +94,21 @@ jobs:
       # `--dangerously-run-scripts` is the whole point of this job: without it
       # the fixtures do not run, and `test` says so rather than reporting a
       # pass. A green run here means they executed.
-      - name: Run the rule's fixtures
+      - name: Run every rule's fixtures
         run: |
           set -euo pipefail
           node packages/cli/dist/index.js test --json --dangerously-run-scripts -d "$PROJECT" | tee /tmp/report.json
           node -e '
             const report = JSON.parse(require("fs").readFileSync("/tmp/report.json", "utf8"));
-            const rule = report.rules.find((r) => r.ruleId === "env-keys-declared");
-            if (!rule) throw new Error("no report for env-keys-declared");
-            if (rule.ran !== true) throw new Error("fixtures did not run: " + JSON.stringify(rule));
-            if (rule.ok !== true) throw new Error("fixtures failed: " + JSON.stringify(rule.errors));
+            const expected = require("fs").readFileSync("/tmp/manifests.txt", "utf8")
+              .split("\n").filter(Boolean).map((line) => line.split(" ")[1]);
+            for (const id of expected) {
+              const rule = report.rules.find((r) => r.ruleId === id);
+              if (!rule) throw new Error("no report for " + id);
+              // `ran` as well as `ok`: a rule reporting a pass for fixtures
+              // that never executed is the defect these runners exist to catch.
+              if (rule.ran !== true) throw new Error(id + " fixtures did not run: " + JSON.stringify(rule));
+              if (rule.ok !== true) throw new Error(id + " fixtures failed: " + JSON.stringify(rule.errors));
+            }
+            console.log("all " + expected.length + " demo rules ran and passed");
           '
