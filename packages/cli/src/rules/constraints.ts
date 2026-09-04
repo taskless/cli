@@ -50,7 +50,25 @@ export interface RuleConstraint {
   rationale: string;
 }
 
-export const RULE_CONSTRAINTS: readonly RuleConstraint[] = [
+/**
+ * One constraint a rule broke, paired with the message that reports it.
+ *
+ * Emitted alongside `errors` rather than replacing it. A consumer mapping a
+ * rejection back to the rationale we already wrote had only our wording to
+ * match on, and wording is not a contract: rephrasing an error message is not
+ * a breaking change, so a text match rots without anything reporting it.
+ *
+ * The message is repeated rather than joined to `errors` by index. An index
+ * join is a contract nobody can see, and it breaks the first time either side
+ * filters or reorders. Repeating the string lets a consumer ignore `errors`
+ * entirely.
+ */
+export interface RuleViolation {
+  constraintId: RuleConstraintId;
+  message: string;
+}
+
+export const RULE_CONSTRAINTS = [
   {
     id: "sg-id-matches-directory",
     engine: "sg",
@@ -110,7 +128,33 @@ export const RULE_CONSTRAINTS: readonly RuleConstraint[] = [
     rationale:
       "Fixtures are attributed by the id inside the file, not by its name. A fixture carrying another rule's id is silently not counted, so a rule that ships one reads as a rule that shipped none. `verify` passes, because the FILE is there; `test` is where it bites.",
   },
-];
+] as const satisfies readonly RuleConstraint[];
+
+/**
+ * The id of a constraint this CLI publishes.
+ *
+ * Derived from the list rather than declared beside it, so a violation can only
+ * name a constraint that is actually published. Attributing a rejection to an
+ * id no consumer can look up would be worse than attributing nothing.
+ */
+export type RuleConstraintId = (typeof RULE_CONSTRAINTS)[number]["id"];
+
+/**
+ * Record an attributable failure in both places at once.
+ *
+ * `errors` stays the complete list and `violations` the attributable subset, so
+ * a consumer reading only `errors` sees exactly what it saw before this
+ * existed. Written through one call because two arrays maintained separately is
+ * how the message in one comes to differ from the message in the other.
+ */
+export function violate(
+  target: { errors: string[]; violations: RuleViolation[] },
+  constraintId: RuleConstraintId,
+  message: string
+): void {
+  target.errors.push(message);
+  target.violations.push({ constraintId, message });
+}
 
 /** Constraints for one engine. */
 export function constraintsFor(engine: EngineName): readonly RuleConstraint[] {

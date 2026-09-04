@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { stringify } from "yaml";
 
-import { RULE_CONSTRAINTS } from "../src/rules/constraints";
+import { RULE_CONSTRAINTS, type RuleViolation } from "../src/rules/constraints";
 import { testOneRule, verifyOneRule } from "../src/rules/inspect";
 
 /**
@@ -68,7 +68,7 @@ async function verifyWritten(options: {
   rule?: Record<string, unknown>;
   fixture?: string | undefined;
   layer?: "verify" | "test";
-}): Promise<{ ok: boolean; errors: string[] }> {
+}): Promise<{ ok: boolean; errors: string[]; violations: RuleViolation[] }> {
   const ruleId = options.directoryName ?? "probe-rule";
   const directory = join(project, ".taskless/rules/sg", ruleId);
   await mkdir(join(directory, ".tests"), { recursive: true });
@@ -99,10 +99,18 @@ async function verifyWritten(options: {
   const resolved = { engine: "sg" as const, ruleId };
   if (options.layer === "test") {
     const result = await testOneRule(project, resolved);
-    return { ok: result.ok, errors: result.errors };
+    return {
+      ok: result.ok,
+      errors: result.errors,
+      violations: result.violations,
+    };
   }
   const verification = await verifyOneRule(project, resolved);
-  return { ok: verification.ok, errors: verification.errors };
+  return {
+    ok: verification.ok,
+    errors: verification.errors,
+    violations: verification.violations,
+  };
 }
 
 /**
@@ -113,7 +121,11 @@ async function verifyWritten(options: {
  * quietly.
  */
 interface Scenario {
-  run: () => Promise<{ ok: boolean; errors: string[] }>;
+  run: () => Promise<{
+    ok: boolean;
+    errors: string[];
+    violations: RuleViolation[];
+  }>;
   names: RegExp;
 }
 
@@ -212,8 +224,74 @@ describe("every documented constraint is a check that still fires", () => {
         result.errors.join("\n"),
         `${id} was refused, but not by the check it documents`
       ).toMatch(scenario!.names);
+
+      // And the refusal SAYS which constraint it is, so a consumer maps it to
+      // the rationale we publish instead of matching on our wording. The two
+      // assertions are not redundant: the one above proves the right check
+      // fired, this one proves the result reports it.
+      const attributed = result.violations.filter(
+        (violation) => violation.constraintId === id
+      );
+      expect(
+        attributed.length,
+        `${id} fired but the result attributes it to ${JSON.stringify(
+          result.violations.map((violation) => violation.constraintId)
+        )}`
+      ).toBeGreaterThan(0);
+
+      // The message is repeated verbatim rather than joined to `errors` by
+      // index, which is what lets a consumer ignore `errors` entirely.
+      for (const violation of attributed) {
+        expect(result.errors).toContain(violation.message);
+      }
     }
   );
+
+  it("leaves a failure no constraint describes unattributed", async () => {
+    // Malformed YAML is a real refusal that no published constraint explains.
+    // Giving it the nearest plausible id would send a reader to a rationale
+    // that does not describe their failure, which is worse than none.
+    const ruleId = "probe-rule";
+    const directory = join(project, ".taskless/rules/sg", ruleId);
+    await mkdir(join(directory, ".tests"), { recursive: true });
+    await writeFile(join(directory, `${ruleId}.yml`), "id: [unclosed\n");
+    await writeFile(
+      join(directory, ".tests", `${ruleId}-test.yml`),
+      VALID_FIXTURE
+    );
+
+    const result = await verifyOneRule(project, { engine: "sg", ruleId });
+    expect(result.ok).toBe(false);
+    expect(result.errors.join("\n")).toMatch(/Invalid YAML/);
+    expect(result.violations).toEqual([]);
+  });
+
+  it("distinguishes an unwritten fixture from one excluded by its id", async () => {
+    // Both reach `test` as "no fixtures", and they want different advice: one
+    // author has written nothing, the other has a file sitting right there
+    // that is silently not counted. Only the second is this constraint.
+    const excluded = await verifyWritten({
+      layer: "test",
+      fixture:
+        "id: some-other-rule\nvalid:\n  - const a = 1;\ninvalid:\n  - eval(x);\n",
+    });
+    expect(
+      excluded.violations.map((violation) => violation.constraintId)
+    ).toContain("sg-fixture-id-matches-rule");
+
+    // An empty-but-correctly-attributed fixture file fails the same way and is
+    // NOT an id mismatch. Attributing it would send the author looking for a
+    // wrong id in a file whose id is right.
+    const empty = await verifyWritten({
+      layer: "test",
+      fixture: "id: probe-rule\n",
+    });
+    expect(empty.ok).toBe(false);
+    expect(empty.errors.join("\n")).toMatch(/has no fixtures/);
+    expect(
+      empty.violations.map((violation) => violation.constraintId)
+    ).not.toContain("sg-fixture-id-matches-rule");
+  });
 
   it("says which command enforces each, since that decides eval order", () => {
     for (const constraint of RULE_CONSTRAINTS) {
@@ -226,6 +304,9 @@ describe("every documented constraint is a check that still fires", () => {
     // everything, which would make each case prove nothing.
     const result = await verifyWritten({ fixture: VALID_FIXTURE });
     expect(result.ok, result.errors.join("; ")).toBe(true);
+    // A rule that passed broke no constraint. Reporting one here would make
+    // `violations` unreadable as "what generation must learn".
+    expect(result.violations).toEqual([]);
   });
 });
 

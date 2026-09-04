@@ -23,6 +23,7 @@ import {
 } from "./runtime/run-fixtures";
 import { validateValeRule } from "../schemas/vale-rule";
 import { verifyRule, type VerifyResult } from "./verify";
+import { violate, type RuleViolation } from "./constraints";
 import { verifyValeRule } from "./vale/verify";
 import type { ResolvedRule } from "./resolve-path";
 
@@ -32,6 +33,21 @@ export interface RuleVerification {
   ruleId: string;
   ok: boolean;
   errors: string[];
+  /**
+   * The subset of `errors` a published constraint accounts for.
+   *
+   * `errors` stays complete, so a consumer reading only it sees what it saw
+   * before this field existed. This is what lets a consumer map a rejection to
+   * the rationale we publish in `reference.json` without matching on our
+   * wording, which rots the first time a message is rephrased.
+   *
+   * Empty when nothing failed, and also when what failed is not something a
+   * published constraint describes. An unattributable error is left
+   * unattributed rather than given the nearest plausible id: a wrong
+   * attribution sends a reader to a rationale that does not explain their
+   * failure, which is worse than sending them to none.
+   */
+  violations: RuleViolation[];
   /**
    * Something true about the rule that does not make it invalid. An sg rule
    * spelled `language: typescript` reaches the right parser and fails nothing,
@@ -48,6 +64,21 @@ export interface RuleTestResult {
   ruleId: string;
   ok: boolean;
   errors: string[];
+  /**
+   * The subset of `errors` a published constraint accounts for.
+   *
+   * `errors` stays complete, so a consumer reading only it sees what it saw
+   * before this field existed. This is what lets a consumer map a rejection to
+   * the rationale we publish in `reference.json` without matching on our
+   * wording, which rots the first time a message is rephrased.
+   *
+   * Empty when nothing failed, and also when what failed is not something a
+   * published constraint describes. An unattributable error is left
+   * unattributed rather than given the nearest plausible id: a wrong
+   * attribution sends a reader to a rationale that does not explain their
+   * failure, which is worse than sending them to none.
+   */
+  violations: RuleViolation[];
   /**
    * Whether the rule's tests actually ran.
    *
@@ -131,12 +162,17 @@ async function verifySgRule(
   // The ast-grep verifier already layers schema and required fields; only its
   // test layer is `test`'s business, so it is not part of the verdict here.
   const errors = [...result.schema.errors, ...result.requirements.errors];
+  const violations = [
+    ...(result.schema.violations ?? []),
+    ...(result.requirements.violations ?? []),
+  ];
   return {
     verification: {
       engine: "sg",
       ruleId,
       ok: errors.length === 0,
       errors,
+      violations,
       ...(result.schema.notice === undefined
         ? {}
         : { notice: result.schema.notice }),
@@ -225,7 +261,10 @@ export async function verifyOneRule(
       }
     }
 
-    return { engine, ruleId, ok: errors.length === 0, errors };
+    // No constraint is published for this engine, so nothing here is
+    // attributable. Empty, never absent: a consumer must be able to tell "no
+    // constraint was broken" from "this CLI does not report violations".
+    return { engine, ruleId, ok: errors.length === 0, errors, violations: [] };
   }
 
   // runtime
@@ -273,7 +312,7 @@ export async function verifyOneRule(
       }
     }
   }
-  return { engine, ruleId, ok: errors.length === 0, errors };
+  return { engine, ruleId, ok: errors.length === 0, errors, violations: [] };
 }
 
 /**
@@ -301,6 +340,7 @@ export async function testOneRule(
       return { ...verification, ran: false };
     }
     const errors = [...result.tests.errors];
+    const violations: RuleViolation[] = [];
     // Mirrors the Vale branch below, and for the same reason: a rule that
     // populated only one bucket has proved only half of what a rule claims.
     // `ast-grep test` will not say so — an empty `invalid:` bucket is
@@ -315,12 +355,27 @@ export async function testOneRule(
       result.tests.fixtures,
       ":"
     );
-    if (shortfall !== undefined) errors.push(shortfall);
+    if (shortfall !== undefined) {
+      // Attributed only when a fixture file was actually excluded by its own
+      // `id:`. The same shortfall is produced by a rule that simply has no
+      // cases, and calling that `sg-fixture-id-matches-rule` would send an
+      // author looking for a mismatched id in a file they never wrote.
+      if (result.tests.fixturesExcludedById === true) {
+        violate(
+          { errors, violations },
+          "sg-fixture-id-matches-rule",
+          shortfall
+        );
+      } else {
+        errors.push(shortfall);
+      }
+    }
     return {
       engine,
       ruleId,
       ok: result.tests.valid,
       errors,
+      violations,
       ran: true,
       ...(verification.notice === undefined
         ? {}
@@ -341,6 +396,7 @@ export async function testOneRule(
         ruleId,
         ok: false,
         errors: [result.outcome.message],
+        violations: [],
         ran: false,
       };
     }
@@ -360,6 +416,7 @@ export async function testOneRule(
       ruleId,
       ok: result.passed,
       errors,
+      violations: [],
       ran: true,
       ...(result.notice === undefined ? {} : { notice: result.notice }),
     };
@@ -398,6 +455,7 @@ export async function testOneRule(
       ruleId,
       ok: false,
       errors: [reason],
+      violations: [],
       ran: false,
       refused: reason,
     };
@@ -420,6 +478,7 @@ export async function testOneRule(
       ruleId,
       ok: false,
       errors: [reason],
+      violations: [],
       ran: false,
       refused: reason,
     };
@@ -438,6 +497,7 @@ export async function testOneRule(
       ruleId,
       ok: false,
       errors: [error instanceof Error ? error.message : String(error)],
+      violations: [],
       ran: false,
     };
   }
@@ -452,6 +512,7 @@ export async function testOneRule(
     ruleId,
     ok: report.passed,
     errors: describeFixtureReport(ruleId, report),
+    violations: [],
     ran: true,
   };
 }

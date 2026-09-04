@@ -31,7 +31,13 @@ async function runCli(args: string[]) {
 
 interface Report {
   ok: boolean;
-  rules: { engine: string; ruleId: string; ok: boolean; errors: string[] }[];
+  rules: {
+    engine: string;
+    ruleId: string;
+    ok: boolean;
+    errors: string[];
+    violations: { constraintId: string; message: string }[];
+  }[];
 }
 
 beforeEach(async () => {
@@ -67,6 +73,21 @@ async function valeRule(
     await writeFile(join(directory, ".tests", "pass", "ok.md"), "You do it.\n");
   }
   return directory;
+}
+
+/** One sg rule, written whole, with its `id:` under the caller's control. */
+async function sgRule(directoryName: string, declaredId: string) {
+  const directory = join(cwd, ".taskless", "rules", "sg", directoryName);
+  await mkdir(join(directory, ".tests"), { recursive: true });
+  await writeFile(
+    join(directory, `${directoryName}.yml`),
+    `id: ${declaredId}\nlanguage: TypeScript\nseverity: error\n` +
+      `message: no eval\nrule:\n  pattern: eval($ARG)\n`
+  );
+  await writeFile(
+    join(directory, ".tests", `${directoryName}-test.yml`),
+    `id: ${directoryName}\nvalid:\n  - const a = 1;\ninvalid:\n  - eval(x);\n`
+  );
 }
 
 const SCOPED = `[*.md]\ntskl) rule = no-simply\nBasedOnStyles =\nno-simply.no-simply = YES\n`;
@@ -408,5 +429,40 @@ withVale("a rule Vale would choke on never reaches Vale", () => {
     ).rules[0];
     expect(rule?.ran).toBe(false);
     expect(rule?.errors.join(" ")).toContain("nonsense");
+  });
+});
+
+describe("a rejection names the constraint it violated", () => {
+  it("carries the constraint id through --json, beside the message", async () => {
+    // End to end through the built CLI, because the envelope is the contract
+    // another team consumes. A unit test over `verifyOneRule` would prove the
+    // field is produced and not that it is published.
+    await sgRule("probe-rule", "mismatched");
+    const result = await runCli(["verify", "-d", cwd, "--json"]);
+
+    expect(result.exitCode).not.toBe(0);
+    const rule = (JSON.parse(result.stdout) as Report).rules[0];
+    expect(rule?.violations.map((one) => one.constraintId)).toContain(
+      "sg-id-matches-directory"
+    );
+
+    // Repeated verbatim rather than joined to `errors` by index, so a consumer
+    // can read `violations` alone. `errors` is unchanged and still complete,
+    // which is what makes this additive.
+    for (const violation of rule?.violations ?? []) {
+      expect(rule?.errors).toContain(violation.message);
+    }
+  });
+
+  it("reports an empty list on a rule that passed", async () => {
+    await sgRule("probe-rule", "probe-rule");
+    const result = await runCli(["verify", "-d", cwd, "--json"]);
+
+    expect(result.exitCode).toBe(0);
+    // Empty, never absent. A consumer must be able to tell "no constraint was
+    // broken" from "this CLI does not report violations".
+    expect((JSON.parse(result.stdout) as Report).rules[0]?.violations).toEqual(
+      []
+    );
   });
 });

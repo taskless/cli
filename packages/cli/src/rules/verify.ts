@@ -27,6 +27,7 @@ import { RULE_TESTS_DIRECTORY, RULES_DIRECTORY } from "./layout";
 import { findSgBinary, buildPath, stripSgDeprecationBanner } from "./scan";
 import astGrepJsonSchema from "../generated/ast-grep-rule-schema.json";
 import { RULE_EXAMPLES } from "./verify-examples";
+import { violate, type RuleViolation } from "./constraints";
 import { isValidRuleId } from "./validate-id";
 import { escapeRegExp } from "../util/regex";
 
@@ -35,6 +36,16 @@ import { escapeRegExp } from "../util/regex";
 export interface LayerResult {
   valid: boolean;
   errors: string[];
+  /**
+   * The subset of `errors` a published constraint accounts for.
+   *
+   * Optional because most layer results have nothing attributable to say — a
+   * missing rule file and malformed YAML are failures no constraint describes,
+   * and giving them a plausible-looking id would send a reader to a rationale
+   * that does not explain their failure. Absent means "nothing here maps to a
+   * constraint", never "not checked".
+   */
+  violations?: RuleViolation[];
 }
 
 /**
@@ -84,6 +95,18 @@ export interface TestLayerResult extends LayerResult {
    * nothing an author expected it to.
    */
   fixtures: SgFixtureCoverage;
+  /**
+   * Whether a test file the rule owns by NAME was skipped because its own
+   * `id:` names another rule.
+   *
+   * What separates "no fixtures were written" from "fixtures were written and
+   * silently not counted", which is the whole of
+   * `sg-fixture-id-matches-rule`. The two produce the same coverage and want
+   * different advice, and only this can tell them apart — so the attribution
+   * `test` reports is decided here rather than guessed from a shortfall
+   * message that both states produce.
+   */
+  fixturesExcludedById?: boolean;
 }
 
 export interface VerifyResult {
@@ -210,9 +233,11 @@ function globPattern(entry: unknown): string | undefined {
  */
 function validateLanguage(ruleData: Record<string, unknown>): {
   errors: string[];
+  violations: RuleViolation[];
   notices: string[];
 } {
   const errors: string[] = [];
+  const violations: RuleViolation[] = [];
   const notices: string[] = [];
 
   const declared = ruleData.language;
@@ -220,19 +245,21 @@ function validateLanguage(ruleData: Record<string, unknown>): {
   // required-fields pass and by zod respectively — and saying it twice in
   // different words would only make the real message harder to find.
   if (typeof declared !== "string" || declared === "") {
-    return { errors, notices };
+    return { errors, violations, notices };
   }
 
   const canonical = resolveAstGrepLanguage(declared);
   if (canonical === undefined) {
     const suggestion = suggestLanguage(declared);
-    errors.push(
+    violate(
+      { errors, violations },
+      "sg-language-accepted",
       `language: "${declared}" is not a language ast-grep ${AST_GREP_VERSION} accepts. ` +
         `It aborts config parsing, so every other sg rule in the project goes unreported too. ` +
         (suggestion === undefined ? "" : `Did you mean "${suggestion}"? `) +
         `Accepted spellings: ${astGrepLanguageList()}.`
     );
-    return { errors, notices };
+    return { errors, violations, notices };
   }
 
   if (declared !== canonical) {
@@ -259,14 +286,16 @@ function validateLanguage(ruleData: Record<string, unknown>): {
       if (named.has(own)) {
         notices.push(`files: some globs name .${sibling}. ${message}`);
       } else {
-        errors.push(
+        violate(
+          { errors, violations },
+          "sg-files-globs-parse",
           `files: every glob names .${sibling}, but language is ${canonical}. ${message}`
         );
       }
     }
   }
 
-  return { errors, notices };
+  return { errors, violations, notices };
 }
 
 // --- Layer 2: Taskless requirements ---
@@ -277,6 +306,8 @@ async function validateRequirements(
   ruleData: Record<string, unknown>
 ): Promise<RequirementsResult> {
   const errors: string[] = [];
+  const violations: RuleViolation[] = [];
+  const collected = { errors, violations };
 
   // Check required fields
   for (const field of TASKLESS_REQUIRED_FIELDS) {
@@ -286,7 +317,11 @@ async function validateRequirements(
       ruleData[field] === null ||
       ruleData[field] === ""
     ) {
-      errors.push(`Missing required field: ${field}`);
+      violate(
+        collected,
+        "sg-required-fields",
+        `Missing required field: ${field}`
+      );
     }
   }
 
@@ -299,21 +334,23 @@ async function validateRequirements(
       !Array.isArray(container)
     ) {
       if (key === "rule") {
-        errors.push(
-          ...findRegexWithoutKind(container as Record<string, unknown>)
-        );
+        for (const message of findRegexWithoutKind(
+          container as Record<string, unknown>
+        )) {
+          violate(collected, "sg-regex-needs-kind", message);
+        }
       } else {
         // constraints/utils are Record<string, RuleObject>
         for (const [name, value] of Object.entries(
           container as Record<string, unknown>
         )) {
           if (value && typeof value === "object" && !Array.isArray(value)) {
-            errors.push(
-              ...findRegexWithoutKind(
-                value as Record<string, unknown>,
-                `${key}.${name}`
-              )
-            );
+            for (const message of findRegexWithoutKind(
+              value as Record<string, unknown>,
+              `${key}.${name}`
+            )) {
+              violate(collected, "sg-regex-needs-kind", message);
+            }
           }
         }
       }
@@ -342,7 +379,9 @@ async function validateRequirements(
   // the filename and not to the body lands in precisely this state.
   const declaredId = ruleData.id;
   if (typeof declaredId === "string" && declaredId !== ruleId) {
-    errors.push(
+    violate(
+      collected,
+      "sg-id-matches-directory",
       `id: "${declaredId}" does not match the rule's directory "${ruleId}". ` +
         `The directory name is the rule id — it is what \`check\` and \`test\` ` +
         `address and what you would type to delete it — while ast-grep ` +
@@ -356,13 +395,15 @@ async function validateRequirements(
   const testFiles = await discoverRuleTestFiles(cwd, ruleId);
   const hasTestFile = testFiles.length > 0;
   if (!hasTestFile) {
-    errors.push(
+    violate(
+      collected,
+      "sg-test-file-required",
       `No test file found for rule "${ruleId}" in ` +
         `.taskless/${RULES_DIRECTORY}/sg/${ruleId}/${RULE_TESTS_DIRECTORY}/`
     );
   }
 
-  return { valid: errors.length === 0, errors, hasTestFile };
+  return { valid: errors.length === 0, errors, violations, hasTestFile };
 }
 
 /**
@@ -422,9 +463,10 @@ async function discoverRuleTestFiles(
 async function fixtureCoverage(
   cwd: string,
   ruleId: string
-): Promise<SgFixtureCoverage> {
+): Promise<{ coverage: SgFixtureCoverage; excludedById: boolean }> {
   let validCount = 0;
   let invalidCount = 0;
+  let excludedById = false;
   for (const file of await discoverRuleTestFiles(cwd, ruleId)) {
     let parsed: unknown;
     try {
@@ -440,15 +482,27 @@ async function fixtureCoverage(
       continue;
     }
     const buckets = parsed as Record<string, unknown>;
-    if (buckets.id !== ruleId) continue;
+    // The exclusion, recorded rather than merely applied. A rule whose only
+    // fixture file carries another rule's id reads downstream as a rule that
+    // shipped no fixtures, and those two states want different advice: one
+    // author has written nothing, the other has written a file that is sitting
+    // right there and silently not counted. Only the second is
+    // `sg-fixture-id-matches-rule`, so only the second may be attributed to it.
+    if (buckets.id !== ruleId) {
+      excludedById = true;
+      continue;
+    }
     if (Array.isArray(buckets.valid)) validCount += buckets.valid.length;
     if (Array.isArray(buckets.invalid)) invalidCount += buckets.invalid.length;
   }
 
-  return classifyCoverage(
-    { name: "valid", count: validCount },
-    { name: "invalid", count: invalidCount }
-  );
+  return {
+    coverage: classifyCoverage(
+      { name: "valid", count: validCount },
+      { name: "invalid", count: invalidCount }
+    ),
+    excludedById,
+  };
 }
 
 // --- Layer 3: Test execution ---
@@ -629,7 +683,12 @@ async function runTestLayer(
       fixtureCoverage(cwd, ruleId),
       runTests(cwd, ruleId),
     ]);
-    return { ...result, valid: result.valid && fixtures === "both", fixtures };
+    return {
+      ...result,
+      valid: result.valid && fixtures.coverage === "both",
+      fixtures: fixtures.coverage,
+      fixturesExcludedById: fixtures.excludedById,
+    };
   }
   return {
     valid: false,
@@ -749,6 +808,7 @@ export async function verifyRule(
   const schemaResult: SchemaLayerResult = {
     valid: parsed.valid && language.errors.length === 0,
     errors: [...parsed.errors, ...language.errors],
+    violations: language.violations,
     ...(language.notices.length === 0
       ? {}
       : { notice: language.notices.join(" ") }),
