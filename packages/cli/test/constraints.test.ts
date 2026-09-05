@@ -293,6 +293,39 @@ describe("every documented constraint is a check that still fires", () => {
     ).not.toContain("sg-fixture-id-matches-rule");
   });
 
+  it("does not blame an id mismatch for a shortfall fixing the id would not fix", async () => {
+    // `fixturesExcludedById` is rule-wide, but coverage is the sum over every
+    // discovered file, so the two can disagree. Here one file carries the right
+    // id and one carries the wrong one, and NEITHER has an `invalid:` bucket:
+    // combined coverage is `valid-only`, not `none`. Correcting the id would
+    // leave that shortfall exactly where it is, so attributing it to
+    // `sg-fixture-id-matches-rule` would send the author to an unrelated
+    // mismatch while the missing half of the claim goes unmentioned. This test
+    // catches a gate that reads only the flag.
+    const ruleId = "probe-rule";
+    const directory = join(project, ".taskless/rules/sg", ruleId);
+    await mkdir(join(directory, ".tests"), { recursive: true });
+    await writeFile(join(directory, `${ruleId}.yml`), stringify(VALID_RULE));
+    // Both filenames match the `<ruleId>-*-test.yml` discovery pattern, so both
+    // are found; only the second is excluded, and only by its `id:`.
+    await writeFile(
+      join(directory, ".tests", `${ruleId}-a-test.yml`),
+      "id: probe-rule\nvalid:\n  - const a = 1;\n"
+    );
+    await writeFile(
+      join(directory, ".tests", `${ruleId}-b-test.yml`),
+      "id: some-other-rule\nvalid:\n  - const b = 2;\n"
+    );
+
+    const result = await testOneRule(project, { engine: "sg", ruleId });
+    expect(result.ok, result.errors.join("; ")).toBe(false);
+    expect(result.errors.join("\n")).toMatch(/only valid: fixtures/);
+    expect(result.errors.join("\n")).toMatch(/half a claim/);
+    expect(
+      result.violations.map((violation) => violation.constraintId)
+    ).not.toContain("sg-fixture-id-matches-rule");
+  });
+
   it("says which command enforces each, since that decides eval order", () => {
     for (const constraint of RULE_CONSTRAINTS) {
       expect(["verify", "test"]).toContain(constraint.enforcedBy);
