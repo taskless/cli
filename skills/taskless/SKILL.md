@@ -20,7 +20,7 @@ description: |
   `npx @taskless/cli agent route`; it does NOT suppress the skill.
 metadata:
   author: taskless
-  version: 0.11.0
+  version: 0.11.1
   commandName: tskl
 compatibility: Designed for Agents implementing the Agent Skills specification.
 ---
