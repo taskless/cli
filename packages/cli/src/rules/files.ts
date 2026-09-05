@@ -1,4 +1,4 @@
-import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { basename, join, resolve } from "node:path";
 
 import { parse, stringify } from "yaml";
@@ -13,6 +13,7 @@ import {
   ruleTestsDirectory,
   findRuleEngine,
 } from "./engines";
+import type { EngineName } from "./layout";
 import { isValidRuleId } from "./validate-id";
 import {
   assessDelivery,
@@ -20,6 +21,38 @@ import {
   describeMissingFixtures,
   writeDeliveredFileSet,
 } from "./deliver";
+
+/**
+ * Whether the rule's `.tests/` holds any file at all, at any depth.
+ *
+ * Asked of the DISK rather than of the delivery, and the difference is not
+ * academic. `.tests/` is preserved through a delivered set's purge, and
+ * `writeRuleTestFile` accumulates local fixtures that no later file set names,
+ * so "this payload carried no fixtures" and "this rule has no fixtures" come
+ * apart in the ordinary course of using the CLI — a redelivery of a rule that
+ * has been tested locally hits it every time.
+ *
+ * A missing directory is no fixtures; anything else rethrows. Reading an
+ * `EACCES` as absence would warn that nothing exercises a rule whose fixtures
+ * we merely failed to look at, which is the false claim this exists to prevent,
+ * arrived at from the other side.
+ */
+async function hasFixturesOnDisk(
+  cwd: string,
+  engine: EngineName,
+  ruleId: string
+): Promise<boolean> {
+  try {
+    const entries = await readdir(ruleTestsDirectory(cwd, engine, ruleId), {
+      recursive: true,
+      withFileTypes: true,
+    });
+    return entries.some((entry) => !entry.isDirectory());
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return false;
+    throw error;
+  }
+}
 
 /**
  * Write a generated rule's content into its own rule directory —
@@ -77,8 +110,19 @@ export async function writeRuleFile(
     await writeDeliveredFileSet(cwd, engine, rule.id, assessment);
     // AFTER the write, deliberately. This is an observation about a rule that
     // is now on disk, and warning first would read as a reason it was refused.
+    //
+    // Both halves are required, and the disk is the one that makes the message
+    // true. `describeMissingFixtures` reports on the PAYLOAD, while the message
+    // claims nothing exercises the RULE — and those diverge whenever `.tests/`
+    // already holds fixtures the new set did not repeat, which the purge
+    // deliberately preserves. Warning on the payload alone tells the holder of
+    // a locally-tested rule that it has nothing proving it, while the fixtures
+    // that prove it sit in the directory just written.
     const missingFixtures = describeMissingFixtures(assessment.files);
-    if (missingFixtures !== undefined) {
+    if (
+      missingFixtures !== undefined &&
+      !(await hasFixturesOnDisk(cwd, engine, rule.id))
+    ) {
       onWarning?.(`Rule "${rule.id}" ${missingFixtures}.`);
     }
     // The rule file, so the caller's contract ("where did this rule land")

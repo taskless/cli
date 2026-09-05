@@ -651,6 +651,41 @@ describe("a delivery that carries no fixtures", () => {
     expect(warnings[0]).toContain("nothing exercises it");
   });
 
+  it("stays silent when the purge preserved fixtures the set never mentioned", async () => {
+    // The case the delivered-set check alone gets wrong, and it is the ordinary
+    // one rather than an edge: `.tests/` survives a set that does not name it,
+    // and `writeRuleTestFile` accumulates local fixtures no later set will
+    // name by construction. Warning here tells the holder of a rule they have
+    // tested that nothing proves it, while the proof sits in the directory
+    // just written.
+    const testsDirectory = join(
+      ruleDirectory(cwd, "sg", "no-eval-abc12345"),
+      ".tests"
+    );
+    await mkdir(testsDirectory, { recursive: true });
+    await writeFile(
+      join(testsDirectory, "no-eval-abc12345-20260101-test.yml"),
+      "id: no-eval-abc12345\nvalid:\n  - const a = 1;\n",
+      "utf8"
+    );
+
+    const warnings: string[] = [];
+    await writeRuleFile(
+      cwd,
+      delivered("sg", "no-eval-abc12345", [
+        { path: "no-eval-abc12345.yml", content: SG_RULE },
+      ]),
+      (message) => warnings.push(message)
+    );
+
+    expect(warnings).toEqual([]);
+    // And the fixture is still there — the silence is because the purge kept
+    // it, not because the warning was dropped along with it.
+    expect(
+      existsSync(join(testsDirectory, "no-eval-abc12345-20260101-test.yml"))
+    ).toBe(true);
+  });
+
   it("stays silent when fixtures are present", async () => {
     const warnings: string[] = [];
     await writeRuleFile(

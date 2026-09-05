@@ -193,6 +193,16 @@ export function describeIncompleteSet(
  * policed: what makes a fixture meaningful differs per engine, every engine's
  * own runner already judges it, and a second opinion here would be a worse one
  * computed from less.
+ *
+ * **This answers a question about the DELIVERY, and the caller must not report
+ * it as a question about the rule.** `.tests/` is in {@link PRESERVED_SUBTREES},
+ * so fixtures already on disk survive a delivery that never mentions them —
+ * which is the normal case rather than an edge one, since `writeRuleTestFile`
+ * accumulates fixtures locally that no later file set names by construction.
+ * A rule can therefore be delivered with no fixtures and still be exercised by
+ * every one of them. {@link writeRuleFile} pairs this with what is actually on
+ * disk before saying anything, and the message here is written to be true only
+ * under that pairing.
  */
 export function describeMissingFixtures(
   files: readonly DeliveredFile[]
