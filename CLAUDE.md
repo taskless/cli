@@ -129,7 +129,7 @@ npm view @taskless/cli dist-tags                              # what "released" 
 git merge-base --is-ancestor <commit-that-introduced-it> v<latest-tag>
 ```
 
-If the thing you are changing is not an ancestor of the last release tag, **no consumer can observe the change** — it and its replacement ship together — and the bump is `patch` however sweeping the diff looks.
+If the thing you are changing is not an ancestor of the last release tag, **no consumer can observe the change** (it and its replacement ship together), and the bump is `patch` however sweeping the diff looks.
 
 This is not hypothetical. `@taskless/cli/reference.json` had its `tests` field changed from an array to an object and its `version` bumped 1 → 2, and the changeset was marked `minor` on the grounds that a published contract had changed shape. It was not published: the corpus landed 2026-09-03 and `v0.11.0` was tagged 2026-08-30. Both versions release together, no consumer ever sees v1, and the one word took the nightly to 0.12 for a compatibility break that cannot happen.
 
