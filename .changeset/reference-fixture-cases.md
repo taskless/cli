@@ -1,8 +1,8 @@
 ---
-"@taskless/cli": minor
+"@taskless/cli": patch
 ---
 
-`@taskless/cli/reference.json` now states how its fixtures group into cases, and names the tree its paths are relative to. `version` is `2`.
+`@taskless/cli/reference.json` now states how its fixtures group into cases, and names the tree its paths are relative to. `version` is `2`. Corpus v1 has not appeared in a released version, so the two ship together and no consumer ever sees the change; the `version` field is the compatibility signal for this artifact, not the package version.
 
 `tests` was a flat `{ path, content }[]`, so recovering which files belong to which case meant knowing that a `runtime` case is a directory, a `vale` case is a document, and an `sg` rule's cases are `valid:`/`invalid:` keys inside one ast-grep test file. That is a fact about this repository, and every consumer transcribed it. It cost the Cloud eval team a rule that failed the fixtures shipped beside it: their request format carried one anonymous blob per case, so the two-file `runtime` case could not be expressed and the rule was graded against half of itself.
 

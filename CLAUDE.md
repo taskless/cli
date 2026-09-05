@@ -120,6 +120,21 @@ The placement rules are unchanged, because they are about review quality rather 
 - **The changeset belongs on the bottom PR**, the one that targets `main`. It is the first branch every other one inherits from, and the one that carries the release note to `main` if the stack lands forward.
 - **Never add a second changeset per PR.** One change ships once and gets one release note; a later PR extends the existing file.
 
+### Choosing the bump: a release note describes what a consumer crosses
+
+**A bump describes what a consumer experiences across a release boundary, not how large the diff is.** Before writing `minor` or `major`, verify the affected surface exists in a RELEASED version:
+
+```bash
+npm view @taskless/cli dist-tags                              # what "released" means today
+git merge-base --is-ancestor <commit-that-introduced-it> v<latest-tag>
+```
+
+If the thing you are changing is not an ancestor of the last release tag, **no consumer can observe the change** — it and its replacement ship together — and the bump is `patch` however sweeping the diff looks.
+
+This is not hypothetical. `@taskless/cli/reference.json` had its `tests` field changed from an array to an object and its `version` bumped 1 → 2, and the changeset was marked `minor` on the grounds that a published contract had changed shape. It was not published: the corpus landed 2026-09-03 and `v0.11.0` was tagged 2026-08-30. Both versions release together, no consumer ever sees v1, and the one word took the nightly to 0.12 for a compatibility break that cannot happen.
+
+**An artifact carrying its own version field owns its own compatibility signal.** The corpus's `version` is what a consumer asserts on load and refuses to interpret past; the package version is not that signal and should not be spent on it. Say which one is doing the work in the changeset body, so the next person does not re-derive it.
+
 ### `branches:` filters do not tell you where a workflow runs
 
 **`branches: [main]` does not reliably mean either "only the PR whose base is `main`" or "every PR in the stack."** The filter matches the PR's base ref, but GitHub also resolves a stacked PR's _eventual_ target and sometimes matches on that instead, so a filtered workflow runs on mid-stack PRs. Observed on #73, #80, and #81, all with `openspec/partition-engine-*` bases.
