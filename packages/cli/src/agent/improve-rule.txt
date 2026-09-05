@@ -93,8 +93,8 @@ If the user wants the local-only flow (no API call), fetch
     to validate.
 
     **Read `notices` if it is present.** It is an optional array of
-    advisory messages about a delivery that was written anyway — a rule
-    arriving with no `.tests/` fixtures above all. Surface any notice
+    advisory messages about a delivery that was written anyway. A rule
+    arriving with no `.tests/` fixtures is the one to expect. Surface any notice
     rather than reporting an unqualified success. Under `--json` these
     do not go to stderr, so the envelope is the only place they appear.
 
