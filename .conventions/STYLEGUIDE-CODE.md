@@ -285,6 +285,9 @@ The same reasoning forbids adding a YAML parser to assert on generated config, o
 pnpm typecheck  # Runs typecheck across all packages
 
 # Run linting (required for all code changes)
+# This also runs `pnpm cli check`, the house-style rules, which reads the BUILT
+# CLI. `pnpm lint` therefore builds first: without that it would lint a stale
+# bundle and report a confident pass over bytes that are not your working tree.
 pnpm lint
 
 # For package-specific checks:
