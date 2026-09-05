@@ -2,7 +2,7 @@
 
 ## Purpose
 
-TBD - created by archiving change nightly-cli-builds. Update Purpose after archive.
+How unreleased work on the default branch becomes an installable `@taskless/cli-nightly` package, and the properties that keep a nightly honest about the commit and the anticipated release it came from.
 
 ## Requirements
 

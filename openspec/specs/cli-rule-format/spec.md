@@ -2,8 +2,10 @@
 
 ## Purpose
 
-TBD - created by archiving change partition-rules-by-engine. Update Purpose after archive.
+The on-disk shape of a rule: one directory per rule, partitioned by engine, with each engine's native config as the source of truth.
+
 ## Requirements
+
 ### Requirement: A rule's engine is determined by its containing directory
 
 The system SHALL dispatch each rule to the engine named by its top-level `.taskless/<engine>/` directory, and SHALL NOT parse a rule file to determine its engine.
@@ -77,11 +79,11 @@ When `taskless.json`'s `version` exceeds the highest migration the installed CLI
 
 The system SHALL store every rule as a directory at `.taskless/rules/<engine>/<id>/`, holding the rule, any config that engine requires, and its tests under `.tests/`.
 
-| Engine    | Rule directory contents                                      |
-|-----------|--------------------------------------------------------------|
-| `sg`      | `<id>.yml`, `.tests/<id>-YYYYMMDD-test.yml`                  |
-| `vale`    | `<id>.yml`, `.vale.ini`, `.tests/pass/*`, `.tests/fail/*`    |
-| `runtime` | `check.ts`, `captures/*.yml`, `.tests/…`                     |
+| Engine    | Rule directory contents                                   |
+| --------- | --------------------------------------------------------- |
+| `sg`      | `<id>.yml`, `.tests/<id>-YYYYMMDD-test.yml`               |
+| `vale`    | `<id>.yml`, `.vale.ini`, `.tests/pass/*`, `.tests/fail/*` |
+| `runtime` | `check.ts`, `captures/*.yml`, `.tests/…`                  |
 
 One directory per rule is what lets a rule be addressed, reviewed, moved, or deleted as a single thing, and it is what makes `verify <path>` and `test <path>` possible without an id lookup.
 
@@ -171,4 +173,3 @@ Each engine SHALL have one canonical on-disk location per rule — the rule dire
 - **WHEN** `verify` or `test` is given `.taskless/rules/<engine>/<id>/`
 - **THEN** it operates on exactly that rule
 - **AND** the engine is determined from the path without reading the rule
-

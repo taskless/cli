@@ -2,7 +2,7 @@
 
 ## Purpose
 
-TBD - created by archiving change node-runtimes-export. Update Purpose after archive.
+How engine binaries are resolved and published, and how every export declares whether it needs a host runtime to work.
 
 ## Requirements
 

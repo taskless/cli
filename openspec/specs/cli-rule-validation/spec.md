@@ -2,7 +2,7 @@
 
 ## Purpose
 
-TBD - created by archiving change self-contained-rules. Update Purpose after archive.
+How `verify` and `test` judge a rule: addressed by path rather than by id, run against the engine's own fixtures, and naming the constraint that a rejection violated.
 
 ## Requirements
 

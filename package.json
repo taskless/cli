@@ -42,7 +42,7 @@
   "devDependencies": {
     "@changesets/cli": "^2.29.8",
     "@eslint/js": "^9.39.2",
-    "@fission-ai/openspec": "^1.1.1",
+    "@fission-ai/openspec": "^1.12.0",
     "@sentry/dotagents": "^1.19.0",
     "@types/node": "^25.3.0",
     "eslint": "^9.39.2",

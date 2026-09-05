@@ -2,7 +2,7 @@
 
 ## Purpose
 
-TBD — Defines the `taskless-update-engine` skill that invokes the CLI to request scaffold upgrades and reports results to the user.
+The `taskless-update-engine` skill: how it asks the CLI for a scaffold upgrade and reports the outcome back to the user.
 
 ## Requirements
 

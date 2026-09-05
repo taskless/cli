@@ -2,7 +2,7 @@
 
 ## Purpose
 
-TBD — Defines the structure and build requirements for the `@taskless/cli` package.
+The shape of the `@taskless/cli` package itself: what it builds, what it publishes, and which entry points consumers are allowed to depend on.
 
 ## Requirements
 

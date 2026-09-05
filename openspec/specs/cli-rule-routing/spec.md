@@ -2,7 +2,7 @@
 
 ## Purpose
 
-TBD - created by archiving change local-rule-routing. Update Purpose after archive.
+How the CLI decides where a new rule belongs, which engine authors it, and when it asks the user rather than guessing.
 
 ## Requirements
 

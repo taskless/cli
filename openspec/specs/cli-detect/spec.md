@@ -2,7 +2,7 @@
 
 ## Purpose
 
-TBD - created by archiving change local-rule-routing. Update Purpose after archive.
+The `taskless detect` subcommand: an offline, deterministic read of a repository's signals, emitted as a stable JSON shape that other commands and agents branch on.
 
 ## Requirements
 
