@@ -356,11 +356,28 @@ export async function testOneRule(
       ":"
     );
     if (shortfall !== undefined) {
-      // Attributed only when a fixture file was actually excluded by its own
-      // `id:`. The same shortfall is produced by a rule that simply has no
-      // cases, and calling that `sg-fixture-id-matches-rule` would send an
-      // author looking for a mismatched id in a file they never wrote.
-      if (result.tests.fixturesExcludedById === true) {
+      // Both halves are required, because each rules out a different way of
+      // being wrong about the same shortfall.
+      //
+      // `fixturesExcludedById` says a file the rule owns by NAME was skipped
+      // for carrying another rule's `id:`. Without it, a rule that simply has
+      // no cases would be told to look for a mismatched id in a file it never
+      // wrote.
+      //
+      // `fixtures === "none"` says the shortfall is the one this constraint
+      // describes: exclusion making a rule read as having shipped NOTHING. The
+      // flag alone cannot say that, because it is rule-wide while coverage is
+      // the sum over every discovered file. A rule shipping `<id>-a-test.yml`
+      // with the right id but only a `valid:` bucket, beside an excluded
+      // `<id>-b-test.yml` that is also `valid:`-only, lands on `valid-only`
+      // with the flag set — and fixing the id would not fix that shortfall,
+      // since neither file has an `invalid:` case. Attributing it would send
+      // the author to an unrelated id mismatch and leave the missing half of
+      // the claim unmentioned.
+      if (
+        result.tests.fixturesExcludedById === true &&
+        result.tests.fixtures === "none"
+      ) {
         violate(
           { errors, violations },
           "sg-fixture-id-matches-rule",

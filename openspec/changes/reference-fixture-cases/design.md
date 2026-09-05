@@ -192,6 +192,9 @@ honestly. It surfaces as the same "has no fixtures" shortfall a rule with no
 cases at all produces, and those two want different advice: one author has
 written nothing, the other has a file sitting right there that is silently not
 counted. `fixtureCoverage` already skips a test file whose own `id:` names
-another rule, so it now reports that it did, and only that case is attributed.
-Without it the constraint could only have been attributed by guessing, which
-this design rejects everywhere else.
+another rule, so it now reports that it did. That report is rule-wide, so it is
+required alongside a coverage of `none` rather than on its own: an excluded file
+sitting beside a counted one leaves a `valid-only` shortfall that fixing the id
+would not repair, and naming the constraint there would send the author to an
+unrelated mismatch. Without both, the constraint could only have been attributed
+by guessing, which this design rejects everywhere else.

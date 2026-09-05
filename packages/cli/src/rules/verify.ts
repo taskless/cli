@@ -105,6 +105,12 @@ export interface TestLayerResult extends LayerResult {
    * different advice, and only this can tell them apart — so the attribution
    * `test` reports is decided here rather than guessed from a shortfall
    * message that both states produce.
+   *
+   * Necessary for that attribution but not sufficient for it. This is
+   * rule-wide, while `fixtures` is the sum over every discovered file, so an
+   * excluded file can sit beside a counted one and leave coverage at
+   * `valid-only` — a shortfall fixing the id would not repair. `test` requires
+   * `fixtures === "none"` alongside this before naming the constraint.
    */
   fixturesExcludedById?: boolean;
 }
