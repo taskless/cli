@@ -5,6 +5,9 @@ import { tmpdir } from "node:os";
 import { promisify } from "node:util";
 import { describe, expect, it, beforeEach, afterEach } from "vitest";
 
+import { outputSchema as createOutputSchema } from "../src/schemas/rules-create";
+import { outputSchema as improveOutputSchema } from "../src/schemas/rules-improve";
+
 const execFileAsync = promisify(execFile);
 const binPath = resolve(import.meta.dirname, "../dist/index.js");
 
@@ -103,5 +106,36 @@ describe("rules create --from", () => {
       const execError = error as { stderr: string };
       expect(execError.stderr).toContain("Invalid input");
     }
+  });
+});
+
+describe("the create and improve --json envelopes carry delivery notices", () => {
+  const CREATE = { success: true, ruleId: "req-1", rules: ["a"], files: ["f"] };
+  const IMPROVE = {
+    success: true,
+    requestId: "req-1",
+    rules: ["a"],
+    files: ["f"],
+  };
+
+  // The claim that makes this additive rather than a breaking change: every
+  // payload that parsed before still parses, so a consumer reading the four
+  // original fields is unaffected.
+  it("still accepts a payload with no notices at all", () => {
+    expect(createOutputSchema.parse(CREATE).notices).toBeUndefined();
+    expect(improveOutputSchema.parse(IMPROVE).notices).toBeUndefined();
+  });
+
+  // And the field survives the parse, which is the whole point: a fixture-less
+  // delivery is invisible to a `--json` caller unless the envelope carries it,
+  // and that caller is the one most likely to act on it unattended.
+  it("carries notices through to the parsed output", () => {
+    const notice = 'Rule "a" was delivered with no .tests/ fixtures';
+    expect(
+      createOutputSchema.parse({ ...CREATE, notices: [notice] }).notices
+    ).toEqual([notice]);
+    expect(
+      improveOutputSchema.parse({ ...IMPROVE, notices: [notice] }).notices
+    ).toEqual([notice]);
   });
 });

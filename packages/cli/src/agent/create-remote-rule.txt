@@ -137,6 +137,15 @@ Two ways to legitimately be here:
    id the iterate endpoint is addressed by, `improve-rule` asks for it,
    and no file on disk carries it.
 
+   **Read `notices` if it is present.** It is an optional array of
+   advisory messages about a delivery that was written anyway. A rule
+   arriving with no `.tests/` fixtures is the one to expect. That rule works, but
+   nothing exercises it: `test` reports a pass over zero cases, which
+   reads exactly like a rule proven to work. Surface any notice to the
+   user rather than reporting an unqualified success. Under `--json`
+   these do not go to stderr, so the envelope is the only place they
+   appear.
+
 ## Input schema
 
 The `--from` JSON file conforms to:

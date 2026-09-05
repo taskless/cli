@@ -230,10 +230,20 @@ const createCommand = defineCommand({
             // 6. Write files
             const timestamp = getTimestamp();
             const writtenFiles: string[] = [];
+            const notices: string[] = [];
             const rules = status.rules ?? [];
 
             for (const rule of rules) {
-              const ruleFile = await writeRuleFile(cwd, rule);
+              // Collected AND printed, and neither alone is enough. Under
+              // `--json` the prose is suppressed and the message rides in the
+              // envelope instead, because a machine consumer cannot read
+              // stderr — and an unattended caller is the one most likely to
+              // act on a fixture-less delivery. `check` already settles this
+              // trade the same way. The rule is written either way.
+              const ruleFile = await writeRuleFile(cwd, rule, (message) => {
+                notices.push(message);
+                if (!args.json) console.error(`Warning: ${message}`);
+              });
               writtenFiles.push(ruleFile);
 
               // A file set carries its fixtures as ordinary files under
@@ -279,6 +289,7 @@ const createCommand = defineCommand({
                 ruleId,
                 rules: rules.map((r) => r.id),
                 files: writtenFiles,
+                ...(notices.length > 0 ? { notices } : {}),
               });
               console.log(JSON.stringify(output));
             } else {
@@ -496,10 +507,20 @@ const improveCommand = defineCommand({
             // 6. Write files (overwrites existing rule files)
             const timestamp = getTimestamp();
             const writtenFiles: string[] = [];
+            const notices: string[] = [];
             const rules = status.rules ?? [];
 
             for (const rule of rules) {
-              const ruleFile = await writeRuleFile(cwd, rule);
+              // Collected AND printed, and neither alone is enough. Under
+              // `--json` the prose is suppressed and the message rides in the
+              // envelope instead, because a machine consumer cannot read
+              // stderr — and an unattended caller is the one most likely to
+              // act on a fixture-less delivery. `check` already settles this
+              // trade the same way. The rule is written either way.
+              const ruleFile = await writeRuleFile(cwd, rule, (message) => {
+                notices.push(message);
+                if (!args.json) console.error(`Warning: ${message}`);
+              });
               writtenFiles.push(ruleFile);
 
               // A file set carries its fixtures as ordinary files under
@@ -545,6 +566,7 @@ const improveCommand = defineCommand({
                 requestId,
                 rules: rules.map((r) => r.id),
                 files: writtenFiles,
+                ...(notices.length > 0 ? { notices } : {}),
               });
               console.log(JSON.stringify(output));
             } else {

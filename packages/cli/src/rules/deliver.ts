@@ -165,6 +165,58 @@ export function describeIncompleteSet(
   return undefined;
 }
 
+/**
+ * Why a delivered file set carries no fixtures, or `undefined` when it does.
+ *
+ * **A WARNING, NOT A REFUSAL, AND THE ASYMMETRY IS THE POINT.** Everything
+ * {@link describeIncompleteSet} names is a rule that cannot work: no rule file,
+ * no config to scope it, no capture to invoke it. A rule with no fixtures works
+ * fine. What it cannot do is demonstrate that it does — `taskless test` reports
+ * a pass having executed nothing, which is indistinguishable from a rule that
+ * was proven. That is worth saying out loud and not worth refusing a delivery
+ * over, because refusing would leave the holder of a fixture-less rule with no
+ * action available to them: they did not author it and cannot add fixtures the
+ * service will bless.
+ *
+ * So this reports and writes. If the service ever delivers without fixtures we
+ * hear about it from a warning rather than from a blocked user, and the
+ * decision to harden it into a refusal can be made on evidence.
+ *
+ * **The contract cannot express this, which is why it is checked here.** The
+ * service requires fixtures at construction — a payload without them does not
+ * compile on their side — but `files` is a flat `{path, content}[]` in the
+ * OpenAPI document, with nothing that says one of them must be a fixture. The
+ * requirement is real and simply not visible across the seam, so the only way
+ * to know a delivery kept it is to look at what arrived.
+ *
+ * Asks only whether ANY file lands under `.tests/`. Depth is deliberately not
+ * policed: what makes a fixture meaningful differs per engine, every engine's
+ * own runner already judges it, and a second opinion here would be a worse one
+ * computed from less.
+ *
+ * **This answers a question about the DELIVERY, and the caller must not report
+ * it as a question about the rule.** `.tests/` is in {@link PRESERVED_SUBTREES},
+ * so fixtures already on disk survive a delivery that never mentions them —
+ * which is the normal case rather than an edge one, since `writeRuleTestFile`
+ * accumulates fixtures locally that no later file set names by construction.
+ * A rule can therefore be delivered with no fixtures and still be exercised by
+ * every one of them. {@link writeRuleFile} pairs this with what is actually on
+ * disk before saying anything, and the message here is written to be true only
+ * under that pairing.
+ */
+export function describeMissingFixtures(
+  files: readonly DeliveredFile[]
+): string | undefined {
+  const prefix = `${RULE_TESTS_DIRECTORY}/`;
+  const hasFixture = files.some((file) => file.path.startsWith(prefix));
+  if (hasFixture) return undefined;
+  return (
+    `was delivered with no ${prefix} fixtures, so nothing exercises it: ` +
+    "`taskless test` reports a pass over zero cases, which is " +
+    "indistinguishable from a rule proven to work"
+  );
+}
+
 /** A delivered file set that may be written, or the reason it may not. */
 export type DeliveryAssessment =
   | { ok: true; files: readonly DeliveredFile[] }

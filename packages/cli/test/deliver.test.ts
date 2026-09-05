@@ -16,7 +16,10 @@ import { dirname, join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { writeRuleFile } from "../src/rules/files";
-import { PurgeIncompleteError } from "../src/rules/deliver";
+import {
+  PurgeIncompleteError,
+  describeMissingFixtures,
+} from "../src/rules/deliver";
 import { ruleDirectory } from "../src/rules/engines";
 import type { GeneratedRule } from "../src/api/rules";
 
@@ -601,5 +604,137 @@ asUser("a purge that cannot finish", () => {
     } finally {
       await chmod(join(directory, "blocked"), 0o700);
     }
+  });
+});
+
+describe("a delivery that carries no fixtures", () => {
+  const SG_RULE = "id: no-eval-abc12345\n";
+
+  it("warns, and still writes the rule", async () => {
+    const warnings: string[] = [];
+    await writeRuleFile(
+      cwd,
+      delivered("sg", "no-eval-abc12345", [
+        { path: "no-eval-abc12345.yml", content: SG_RULE },
+      ]),
+      (message) => warnings.push(message)
+    );
+
+    // Both halves matter. Warning without writing would be a refusal wearing a
+    // warning's clothes, and writing without warning is the silence this
+    // exists to break.
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]).toContain("no-eval-abc12345");
+    expect(warnings[0]).toContain(".tests/");
+    expect(
+      existsSync(
+        join(
+          ruleDirectory(cwd, "sg", "no-eval-abc12345"),
+          "no-eval-abc12345.yml"
+        )
+      )
+    ).toBe(true);
+  });
+
+  it("says why it matters rather than only what is absent", async () => {
+    const warnings: string[] = [];
+    await writeRuleFile(
+      cwd,
+      delivered("sg", "no-eval-abc12345", [
+        { path: "no-eval-abc12345.yml", content: SG_RULE },
+      ]),
+      (message) => warnings.push(message)
+    );
+
+    // The consequence is the reason this is worth printing: a fixture-less
+    // rule passes `test` over zero cases and reads as proven.
+    expect(warnings[0]).toContain("nothing exercises it");
+  });
+
+  it("stays silent when the purge preserved fixtures the set never mentioned", async () => {
+    // The case the delivered-set check alone gets wrong, and it is the ordinary
+    // one rather than an edge: `.tests/` survives a set that does not name it,
+    // and `writeRuleTestFile` accumulates local fixtures no later set will
+    // name by construction. Warning here tells the holder of a rule they have
+    // tested that nothing proves it, while the proof sits in the directory
+    // just written.
+    const testsDirectory = join(
+      ruleDirectory(cwd, "sg", "no-eval-abc12345"),
+      ".tests"
+    );
+    await mkdir(testsDirectory, { recursive: true });
+    await writeFile(
+      join(testsDirectory, "no-eval-abc12345-20260101-test.yml"),
+      "id: no-eval-abc12345\nvalid:\n  - const a = 1;\n",
+      "utf8"
+    );
+
+    const warnings: string[] = [];
+    await writeRuleFile(
+      cwd,
+      delivered("sg", "no-eval-abc12345", [
+        { path: "no-eval-abc12345.yml", content: SG_RULE },
+      ]),
+      (message) => warnings.push(message)
+    );
+
+    expect(warnings).toEqual([]);
+    // And the fixture is still there — the silence is because the purge kept
+    // it, not because the warning was dropped along with it.
+    expect(
+      existsSync(join(testsDirectory, "no-eval-abc12345-20260101-test.yml"))
+    ).toBe(true);
+  });
+
+  it("stays silent when fixtures are present", async () => {
+    const warnings: string[] = [];
+    await writeRuleFile(
+      cwd,
+      delivered("sg", "no-eval-abc12345", [
+        { path: "no-eval-abc12345.yml", content: SG_RULE },
+        { path: ".tests/valid/sample.ts", content: "const x = 1;\n" },
+      ]),
+      (message) => warnings.push(message)
+    );
+
+    expect(warnings).toEqual([]);
+  });
+
+  it("loses the message, not the write, when no handler is passed", async () => {
+    // `onWarning` is optional, and a caller that omits it must still get the
+    // rule on disk rather than an unhandled throw.
+    await expect(
+      writeRuleFile(
+        cwd,
+        delivered("sg", "no-eval-abc12345", [
+          { path: "no-eval-abc12345.yml", content: SG_RULE },
+        ])
+      )
+    ).resolves.toBeTypeOf("string");
+  });
+});
+
+describe("what counts as a fixture", () => {
+  it("accepts a fixture at any depth under .tests/", () => {
+    // Depth is deliberately not policed here; each engine's runner judges what
+    // a meaningful fixture is.
+    expect(
+      describeMissingFixtures([
+        { path: "check.ts", content: "" },
+        { path: ".tests/fail/deeply/nested/case/input.ts", content: "" },
+      ])
+    ).toBeUndefined();
+  });
+
+  it("does not accept a nested .tests/ that an engine would read", () => {
+    // Only the top-level `.tests/` is the fixture directory. `captures/.tests/`
+    // is a file an engine reads, which is the same distinction
+    // `PRESERVED_SUBTREES` draws when it decides what a purge may remove.
+    expect(
+      describeMissingFixtures([
+        { path: "check.ts", content: "" },
+        { path: "captures/.tests/logs.yml", content: "" },
+      ])
+    ).toBeDefined();
   });
 });
