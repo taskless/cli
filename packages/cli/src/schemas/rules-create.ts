@@ -23,6 +23,12 @@ export const outputSchema = z.object({
   ruleId: z.string().describe("UUID of the generated rule job"),
   rules: z.array(z.string()).describe("Rule IDs that were generated"),
   files: z.array(z.string()).describe("File paths that were written"),
+  notices: z
+    .array(z.string())
+    .optional()
+    .describe(
+      "Advisory messages about a delivery that was still written — a rule delivered with no `.tests/` fixtures above all. Present only when there is something to say. A machine consumer cannot read stderr prose, so these are carried here rather than only printed"
+    ),
 });
 
 /** Error schema for `taskless rule create --json` on failure */

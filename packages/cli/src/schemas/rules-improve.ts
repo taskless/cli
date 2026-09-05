@@ -29,6 +29,12 @@ export const outputSchema = z.object({
   requestId: z.string().describe("The request ID for polling status"),
   rules: z.array(z.string()).describe("Rule IDs that were updated"),
   files: z.array(z.string()).describe("File paths that were written"),
+  notices: z
+    .array(z.string())
+    .optional()
+    .describe(
+      "Advisory messages about a delivery that was still written — a rule delivered with no `.tests/` fixtures above all. Present only when there is something to say. A machine consumer cannot read stderr prose, so these are carried here rather than only printed"
+    ),
 });
 
 /** Error schema for `taskless rule improve --json` on failure */

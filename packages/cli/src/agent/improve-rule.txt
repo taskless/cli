@@ -92,6 +92,12 @@ If the user wants the local-only flow (no API call), fetch
     summary of what changed. Suggest fetching `%(TASKLESS_CLI)s agent check`
     to validate.
 
+    **Read `notices` if it is present.** It is an optional array of
+    advisory messages about a delivery that was written anyway — a rule
+    arriving with no `.tests/` fixtures above all. Surface any notice
+    rather than reporting an unqualified success. Under `--json` these
+    do not go to stderr, so the envelope is the only place they appear.
+
     **Confirm both fixture buckets are still non-empty.** `test` fails
     an ast-grep rule whose `valid:` or `invalid:` array is empty, and
     narrowing a pattern to kill a false positive is exactly how
