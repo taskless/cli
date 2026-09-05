@@ -325,6 +325,17 @@ function groupCases(
           `document. Vale lints the rule's whole directory, so a nested ` +
           `fixture is linted and never attributed to a case.`
       );
+    // The opposite rejection, and it is the one `bucketCases` already makes
+    // when the runner reads these buckets off disk. Publishing a bare file as
+    // a one-file "case" would emit a corpus indistinguishable in shape from a
+    // valid `case-documents` one, that `taskless test` throws on.
+    if (grouping === "case-directories" && rest.length === 1)
+      throw new Error(
+        `${ruleId}: ${file.path} is a bare file, but a ${engine} case is a ` +
+          `directory. The check is handed the case directory as its root and ` +
+          `reads the files it needs beneath it, so a bare file in ${bucket}/ ` +
+          `has no root to be and would never run.`
+      );
 
     const path = `${RULE_TESTS_DIRECTORY}/${bucket}/${name}`;
     const existing = cases.get(path);
