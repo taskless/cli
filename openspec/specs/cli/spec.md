@@ -2,7 +2,7 @@
 
 ## Purpose
 
-The shape of the `@taskless/cli` package itself: what it builds, what it publishes, and which entry points consumers are allowed to depend on.
+The shape of the `@taskless/cli` package itself: what it builds, what it publishes, and which entry points consumers are allowed to depend on. It also covers the behaviour every subcommand inherits rather than defines, including how the CLI resolves identity, what `--anonymous` changes, and the stable error codes it reports under `--json`.
 
 ## Requirements
 
