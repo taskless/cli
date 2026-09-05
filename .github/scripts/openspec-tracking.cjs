@@ -55,13 +55,17 @@
  *     "staleDays": 7,
  *     "unarchived": [{ "name": "some-change", "ageDays": 3 }],
  *     "pulls": [{ "number": 265, "files": ["openspec/changes/some-change/tasks.md"] }],
- *     "issues": [{ "number": 12, "state": "open", "change": "some-change" }]
+ *     "issues": [{ "number": 12, "state": "open", "body": "<!-- openspec-tracking:some-change -->", "idleDays": 9 }]
  *   }
  *
  * `claims` may be supplied directly instead of `pulls` when the caller has
- * already reduced them. Always exits zero on a well-formed input. A malformed
- * input is a defect in the caller and exits non-zero, which is the one case
- * where silence would hide that the check never ran.
+ * already reduced them, and an issue may carry `change` directly instead of a
+ * `body` to parse. `idleDays` is how long the issue has gone without activity,
+ * and throttles sweep escalations to at most one per window.
+ *
+ * Always exits zero on a well-formed input. A malformed input is a defect in
+ * the caller and exits non-zero, which is the one case where silence would hide
+ * that the check never ran.
  */
 
 const { readdirSync, existsSync, readFileSync } = require("node:fs");
@@ -178,6 +182,30 @@ function closeComment(action, sha) {
   return `Claimed again on \`${sha ?? "an unrecorded commit"}\` by pull request(s) ${claimants}. Closing, because the change is no longer unclaimed. The next push after that work lands re-evaluates.`;
 }
 
+/**
+ * Read the tracking issues into the shape the planner matches on.
+ *
+ * The marker is parsed HERE and nowhere else. Both workflows used to
+ * re-implement this regex as a `jq capture(...)`, which put three copies of one
+ * format string in three files with nothing keeping them in sync, and `capture`
+ * drops a non-matching element from the array rather than erroring, so an issue
+ * whose body stopped matching would read as "no issue exists" and produce a
+ * duplicate instead of a failure.
+ *
+ * An issue with no marker is not ours and is ignored. That is the same outcome
+ * `jq` produced, but it is now a decision made in one place with a test on it.
+ */
+function normalizeIssues(issues) {
+  return issues
+    .map((issue) => ({
+      number: issue.number,
+      state: String(issue.state ?? "open").toLowerCase(),
+      change: issue.change ?? changeFromBody(issue.body),
+      idleDays: issue.idleDays,
+    }))
+    .filter((issue) => issue.change !== undefined);
+}
+
 function findIssue(issues, change) {
   return issues.find((issue) => issue.change === change);
 }
@@ -200,7 +228,7 @@ function planActions(input) {
   const unarchived = input.unarchived ?? [];
   const claims =
     input.claims ?? claimsFromPullRequests(input.pulls ?? []);
-  const issues = input.issues ?? [];
+  const issues = normalizeIssues(input.issues ?? []);
   const actions = [];
   const seen = new Set();
 
@@ -224,15 +252,23 @@ function planActions(input) {
           title: issueTitle(name),
           body: issueBody(name, sha),
         });
-      } else {
-        actions.push({
-          type: "escalate",
-          change: name,
-          issue: issue.number,
-          ageDays,
-          comment: escalateComment(name, ageDays, staleDays),
-        });
+        continue;
       }
+      // Escalate at most once per window. `ageDays` only grows, so without this
+      // every daily run past the window appends another near-identical comment
+      // forever, and a notification a day is not a durable signal. Any activity
+      // on the issue also defers the next one: a thread someone is already
+      // working in does not need the bot restating the age.
+      if ((issue.idleDays ?? Number.POSITIVE_INFINITY) < staleDays) {
+        continue;
+      }
+      actions.push({
+        type: "escalate",
+        change: name,
+        issue: issue.number,
+        ageDays,
+        comment: escalateComment(name, ageDays, staleDays),
+      });
       continue;
     }
 
@@ -299,6 +335,7 @@ module.exports = {
   changeFromBody,
   listUnarchivedChanges,
   claimsFromPullRequests,
+  normalizeIssues,
   issueTitle,
   issueBody,
   planActions,

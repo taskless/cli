@@ -82,12 +82,15 @@ jobs:
           # Issues carrying the tracking marker. Listed by label rather than by
           # a body search: the search index lags a freshly opened issue, and a
           # missed issue means a duplicate rather than an update.
+          #
+          # Bodies are handed over raw and the marker is parsed in
+          # openspec-tracking.cjs, so one regex exists rather than three that
+          # have to agree. A `jq capture` here silently dropped a non-matching
+          # element from the array, which reads as "no issue exists" and opens a
+          # duplicate instead of failing.
           issues=$(gh issue list --repo "$REPO" --state all --label "$LABEL" --limit 100 \
             --json number,state,body \
-            | jq -c '[.[]
-                | . as $i
-                | (($i.body // "") | capture("<!-- openspec-tracking:(?<c>[^\\s>]+) -->") | .c) as $change
-                | {number: $i.number, state: ($i.state | ascii_downcase), change: $change}]')
+            | jq -c '[.[] | {number, state: (.state | ascii_downcase), body: (.body // "")}]')
 
           unarchived='[]'
           if [ -d openspec/changes ]; then
