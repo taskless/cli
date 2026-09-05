@@ -4,10 +4,14 @@ import { join, sep } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { parseSignature } from "../src/rules/rule-hash";
-import { buildReference, type Reference } from "../src/rules/reference";
+import {
+  buildReference,
+  type Reference,
+  type ReferenceInput,
+} from "../src/rules/reference";
 import { RULE_CONSTRAINTS } from "../src/rules/constraints";
 import { DEMO_MANIFESTS, writtenPaths } from "../src/rules/demo/manifest";
-import { ENGINE_LAYOUTS, ENGINES } from "../src/rules/layout";
+import { ENGINE_LAYOUTS, ENGINES, type EngineName } from "../src/rules/layout";
 import { ruleDirectory } from "../src/rules/engines";
 import { DEMO_RULES } from "../src/rules/demo/rule";
 
@@ -285,5 +289,58 @@ describe("the reference payload is reachable by another team", () => {
     expect(manifest.exports["./reference.json"]).toBe(
       "./assets/reference.json"
     );
+  });
+});
+
+/**
+ * One rule's worth of input, with only the fixture paths varying.
+ *
+ * Hand-built rather than mutated out of `DEMO_MANIFESTS`, so a test that
+ * asserts a refusal cannot also alter what the real corpus publishes.
+ */
+function refusalInput(engine: EngineName, testPaths: string[]): ReferenceInput {
+  return {
+    engine,
+    ruleId: "example-rule",
+    prompt: "A prompt, unused by the grouping.",
+    ruleFiles: [
+      { path: ENGINE_LAYOUTS[engine].ruleFile("example-rule"), content: "" },
+    ],
+    testFiles: testPaths.map((path) => ({ path, content: "" })),
+  };
+}
+
+describe("the corpus refuses fixtures it cannot group", () => {
+  it("rejects a bare file where a runtime case must be a directory", () => {
+    // The generator held a weaker copy of the invariant `bucketCases` enforces
+    // when it reads these buckets off disk. Without this, the corpus publishes
+    // a one-file "directory" case that `taskless test` throws on.
+    expect(() =>
+      buildReference([refusalInput("runtime", [".tests/fail/oops.ts"])])
+    ).toThrow(/has no root to be/);
+  });
+
+  it("rejects a nested fixture where a vale case is one document", () => {
+    // Vale lints the rule's whole directory, so a nested fixture is linted and
+    // never attributed to a case — it would be graded, invisibly.
+    expect(() =>
+      buildReference([refusalInput("vale", [".tests/pass/deep/README.md"])])
+    ).toThrow(/is nested/);
+  });
+
+  it("rejects a fixture that is under neither bucket", () => {
+    // Nothing decides which side of the claim it asserts, so grouping it at
+    // all would be a guess published as fact.
+    expect(() =>
+      buildReference([refusalInput("vale", [".tests/README.md"])])
+    ).toThrow(/is not under/);
+  });
+
+  it("rejects a fixture path that is the bucket directory itself", () => {
+    // A bucket is where cases live, not a case. Accepting it would emit a case
+    // with an empty name whose path collides with the bucket.
+    expect(() =>
+      buildReference([refusalInput("vale", [".tests/pass"])])
+    ).toThrow(/is the bucket directory itself/);
   });
 });
