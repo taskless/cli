@@ -1,0 +1,150 @@
+name: OpenSpec Label
+
+# Reports whether a pull request's stack still carries an unresolved OpenSpec
+# change. It labels, it warns, and it never fails.
+#
+# NOTHING HERE BLOCKS, AND THAT IS THE DESIGN. Three earlier versions of this
+# check reported through a check status and all three were deleted in 8d1f3a1:
+# `pr-check-openspec.yml` reddened a pull request whenever `gh pr list` failed,
+# a step in `validate.yml` ran `main` red for as long as a forward-merging stack
+# took to drain, and both trained people to route around red. A signal expected
+# to be red is not a signal. A label costs a shrug when it is wrong, which is
+# what lets the predicate stay simple enough to be dependable.
+#
+# THE LABEL PREDICATE ASKS NOTHING ABOUT STACK POSITION. It reads the head tree:
+# does any directory other than `archive/` exist under `openspec/changes/`? A
+# stack has not resolved its OpenSpec change until one of its branches archives
+# it, and that is a property of the stack rather than of a branch's place in it,
+# so every pull request in the stack gets the same answer with no API call that
+# can fail. This is the shape `changeset.yml` uses, and it is the only shape in
+# this repository that has never misfired.
+#
+# THIS IS NOT A STEP IN `Validate`, DELIBERATELY. `release-cli-nightly.yml`
+# triggers on `workflow_run: workflows: [Validate]`, matched by that workflow's
+# `name:` string. Any signal outside that workflow is invisible to the nightly,
+# so an unarchived change cannot gate a nightly publish. The separation is what
+# enforces it, not a rule anyone has to remember.
+
+on:
+  # No `branches:` filter. The label is a fact about the stack, so it belongs on
+  # every pull request in one, and a filter is not a dependable way to scope a
+  # workflow anyway: GitHub sometimes resolves a stacked pull request's eventual
+  # target and matches on that, and sometimes stops without warning.
+  #
+  # `ready_for_review` is not in the default set and must be named, or a draft
+  # marked ready keeps whatever label it had until something happens to push.
+  pull_request:
+    types: [opened, reopened, synchronize, ready_for_review]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  label:
+    name: OpenSpec Label
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          # The head commit, not the merge ref: the question is what this branch
+          # carries. A child branch contains its ancestors' commits, so the head
+          # tree already answers for the whole stack below it.
+          ref: ${{ github.event.pull_request.head.sha }}
+
+      - name: Report unresolved OpenSpec changes
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR: ${{ github.event.pull_request.number }}
+          HEAD_REF: ${{ github.head_ref }}
+          HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+          LABEL: Open OpenSpec
+        run: |
+          set -euo pipefail
+
+          changes=""
+          if [ -d openspec/changes ]; then
+            changes=$(find openspec/changes -mindepth 1 -maxdepth 1 -type d \
+              -not -name archive -printf '%f\n' | sort)
+          fi
+
+          if [ -z "$changes" ]; then
+            echo "No unarchived OpenSpec changes on this branch."
+            {
+              echo "### OpenSpec: resolved"
+              echo ""
+              echo "This branch carries no unarchived change under \`openspec/changes/\`."
+            } >> "$GITHUB_STEP_SUMMARY"
+
+            if [ "$HEAD_REPO" = "$REPO" ]; then
+              gh pr edit "$PR" --repo "$REPO" --remove-label "$LABEL" || \
+                echo "::notice::Could not remove the '$LABEL' label; it may not have been applied."
+            fi
+            exit 0
+          fi
+
+          echo "Unarchived OpenSpec changes on this branch:"
+          echo "$changes" | sed 's/^/  - /'
+
+          # A fork's `pull_request` token is read-only. `pull_request_target` is
+          # the usual answer and it is rejected here: it runs a writable token
+          # against the base repository, which is too much privilege to buy a
+          # cosmetic label. The fork path reports through the summary alone.
+          labelled=1
+          if [ "$HEAD_REPO" = "$REPO" ]; then
+            gh pr edit "$PR" --repo "$REPO" --add-label "$LABEL" || labelled=0
+          else
+            labelled=0
+          fi
+
+          {
+            echo "### OpenSpec: unresolved"
+            echo ""
+            echo "This branch carries an unarchived change under \`openspec/changes/\`:"
+            echo ""
+            echo "$changes" | sed 's/^/- `/;s/$/`/'
+            echo ""
+            if [ "$labelled" -eq 1 ]; then
+              echo "Labelled \`$LABEL\`. The label clears when a branch in this stack archives the change."
+            else
+              echo "The \`$LABEL\` label could not be applied. A pull request from a fork gets a read-only token, and this workflow does not use \`pull_request_target\` to work around that."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          # The tip is the last branch that can archive before the change
+          # reaches `main`, so it is the only position where a warning is
+          # actionable. Reading it needs the API, which introduces a failure
+          # that is not about this pull request: the deleted workflow exited 1
+          # here and reddened pull requests for `gh` timeouts. This one skips
+          # the warning and says it could not tell.
+          if ! children=$(gh pr list --repo "$REPO" --state open --base "$HEAD_REF" --json number --jq 'length'); then
+            echo "::notice::Could not determine stack position; skipping the tip warning."
+            {
+              echo ""
+              echo "_Stack position could not be determined, so no tip warning was evaluated._"
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          if [ "${children:-0}" -gt 0 ]; then
+            echo "$children open pull request(s) are stacked on top; the change is not due for archiving."
+            {
+              echo ""
+              echo "_${children} pull request(s) are stacked above this one, so the change is not due for archiving yet._"
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          echo "::warning::This is the tip of its stack and leaves an OpenSpec change unarchived. Run 'pnpm openspec archive <change>' before merging, or the standing specs reach main describing requirements the code has already met."
+          {
+            echo ""
+            echo "**No pull request is stacked above this one.** It is the tip, so it is the"
+            echo "last branch that can archive the change before it reaches \`main\`."
+            echo ""
+            echo "\`\`\`bash"
+            echo "$changes" | sed 's/^/pnpm openspec archive /'
+            echo "\`\`\`"
+            echo ""
+            echo "_This is a warning. It does not block the merge._"
+          } >> "$GITHUB_STEP_SUMMARY"

@@ -1,0 +1,143 @@
+name: OpenSpec Sweep
+
+# A scheduled backstop for the case where the push-time check was never
+# evaluated: an administrative merge, a workflow disabled during an outage, a
+# botched down-merge.
+#
+# IT IS NOT A SECOND CLASSIFIER. `openspec-rot.yml`, deleted in 8d1f3a1, split
+# changes into DONE (all tasks checked) and STALE (unfinished and idle) so it
+# could guess whether unfinished work was abandoned or merely slow. That guess
+# is what made it noisy. There is no parked state on `main`: a change is
+# finished or it has not landed. So this reads age and nothing else, parses no
+# `tasks.md`, and treats a half-done change exactly like a finished one.
+#
+# AGE COMES FROM GIT, NEVER FROM FILE MTIME. `actions/checkout` stamps every
+# file's modification time to checkout time, so an mtime-based sweep reports
+# every change as fresh regardless of how long it has sat there. The deleted
+# workflow got this right and the note is worth keeping.
+#
+# AGE IS ACTIVITY, WHICH IS WHY THE CLAIM TEST IS NOT NEEDED HERE. A stack still
+# draining touches its own change directory on every slice, so its clock keeps
+# resetting and it never crosses the window. Only stalled work does.
+#
+# IT DOES NOT FAIL EITHER. The predecessor failed the scheduled run, which is
+# the same channel mistake in a quieter place: a recurring red attached to
+# nothing actionable. This escalates the tracking issue that
+# `openspec-tracking.yml` owns, so there is one channel and one place to look.
+
+on:
+  schedule:
+    # Daily near the start of the Pacific business day. Cron is fixed-UTC and
+    # does not follow DST, so 15:17 UTC lands at 8:17am PDT and 7:17am PST.
+    # The :17 is off the top of the hour, which GitHub delays under contention.
+    - cron: "17 15 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+env:
+  STALE_DAYS: "7"
+
+jobs:
+  sweep:
+    name: OpenSpec Sweep
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0 # full history, so `git log` can date each change directory
+
+      - name: Plan escalations
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          SHA: ${{ github.sha }}
+          LABEL: Open OpenSpec
+        run: |
+          set -euo pipefail
+
+          unarchived='[]'
+          if [ -d openspec/changes ]; then
+            now=$(date +%s)
+            entries=""
+            while IFS= read -r name; do
+              [ -z "$name" ] && continue
+              # The last commit that touched this change directory. A directory
+              # with no commits at all is treated as brand new rather than
+              # infinitely old, so a checkout quirk cannot manufacture a report.
+              last=$(git log -1 --format=%ct -- "openspec/changes/$name" || true)
+              if [ -z "$last" ]; then
+                age=0
+              else
+                age=$(( (now - last) / 86400 ))
+              fi
+              entries="${entries}${name} ${age}"$'\n'
+            done < <(find openspec/changes -mindepth 1 -maxdepth 1 -type d \
+              -not -name archive -printf '%f\n' | sort)
+
+            unarchived=$(printf '%s' "$entries" \
+              | jq -R -s -c 'split("\n") | map(select(length > 0) | split(" ") | {name: .[0], ageDays: (.[1] | tonumber)})')
+          fi
+
+          issues=$(gh issue list --repo "$REPO" --state all --label "$LABEL" --limit 100 \
+            --json number,state,body \
+            | jq -c '[.[]
+                | . as $i
+                | (($i.body // "") | capture("<!-- openspec-tracking:(?<c>[^\\s>]+) -->") | .c) as $change
+                | {number: $i.number, state: ($i.state | ascii_downcase), change: $change}]')
+
+          jq -n -c \
+            --arg sha "$SHA" \
+            --argjson staleDays "$STALE_DAYS" \
+            --argjson unarchived "$unarchived" \
+            --argjson issues "$issues" \
+            '{mode: "sweep", sha: $sha, staleDays: $staleDays, unarchived: $unarchived, issues: $issues}' \
+            > /tmp/openspec-sweep-input.json
+
+          node .github/scripts/openspec-tracking.cjs \
+            < /tmp/openspec-sweep-input.json \
+            > /tmp/openspec-sweep-plan.json
+
+          cat /tmp/openspec-sweep-plan.json
+
+      - name: Apply the plan
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          LABEL: Open OpenSpec
+        run: |
+          set -euo pipefail
+
+          count=$(jq '.actions | length' /tmp/openspec-sweep-plan.json)
+          echo "Applying $count action(s)."
+
+          for index in $(seq 0 $((count - 1))); do
+            action=$(jq -c ".actions[$index]" /tmp/openspec-sweep-plan.json)
+            type=$(jq -r '.type' <<<"$action")
+            change=$(jq -r '.change' <<<"$action")
+            number=$(jq -r '.issue // ""' <<<"$action")
+
+            case "$type" in
+              open)
+                gh issue create --repo "$REPO" --label "$LABEL" \
+                  --title "$(jq -r '.title' <<<"$action")" \
+                  --body "$(jq -r '.body' <<<"$action")" \
+                  || echo "::notice::Could not open a tracking issue for $change."
+                ;;
+              escalate)
+                gh issue comment "$number" --repo "$REPO" \
+                  --body "$(jq -r '.comment' <<<"$action")" \
+                  || echo "::notice::Could not comment on issue $number for $change."
+                ;;
+              close)
+                gh issue close "$number" --repo "$REPO" \
+                  --comment "$(jq -r '.comment' <<<"$action")" \
+                  || echo "::notice::Could not close issue $number for $change."
+                ;;
+              *)
+                echo "::notice::Unhandled action '$type' for $change."
+                ;;
+            esac
+          done

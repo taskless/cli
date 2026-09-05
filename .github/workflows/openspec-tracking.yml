@@ -1,0 +1,157 @@
+name: OpenSpec Tracking
+
+# Opens a tracking issue when `main` carries an unarchived OpenSpec change that
+# nothing is still working on, and closes it when the change is archived.
+#
+# WHAT THE ISSUE IS ABOUT. Not a chore left undone. An unarchived change whose
+# work has landed means `openspec/specs/` is currently wrong: some of the
+# requirements written there are already met by shipped code, and the standing
+# spec still describes the world before it. The issue body says that, because
+# "you forgot to run archive" reads as tidying and this is not tidying.
+#
+# WHY AN ISSUE AND NOT A CHECK. The predecessor was a step in `validate.yml`
+# that failed while `main` carried an unarchived change. A forward-merging stack
+# leaves one there until its final slice, so `main` ran red for as long as the
+# stack took to drain, and a red that means "work is in progress" is not a
+# signal. It was deleted in 8d1f3a1. An issue is durable, assignable, and
+# colours nothing.
+#
+# THE CLAIM TEST IS WHAT KEEPS A DRAINING STACK QUIET. A change is reported only
+# when no open pull request's diff touches its directory. Measured on the stack
+# that landed 2026-09-04: pull requests 265, 266 and 267 touched 6, 2 and 6
+# files under `openspec/changes/`, because every slice ticks its own boxes in
+# `tasks.md`, which lives in the change directory. So the stack claims its
+# change for the whole drain, and the first push after the last claimant merges
+# is what reports. That is a file-path question about open pull requests, not a
+# reconstruction of stack lineage, which is the reasoning that made the deleted
+# pull-request gate unreliable.
+#
+# THIS IS NOT A STEP IN `Validate`. `release-cli-nightly.yml` triggers on
+# `workflow_run: workflows: [Validate]`, so a signal outside that workflow
+# cannot gate a nightly publish. Keeping this in its own file is what enforces
+# that.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+  pull-requests: read
+
+jobs:
+  track:
+    name: OpenSpec Tracking
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Plan tracking issues
+        id: plan
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          SHA: ${{ github.sha }}
+          LABEL: Open OpenSpec
+        run: |
+          set -euo pipefail
+
+          # Open pull requests and the files each one touches. Only paths under
+          # `openspec/changes/` matter, and the planner does that filtering, so
+          # this hands over the raw list.
+          #
+          # Reporting a change as unclaimed because the API was unreachable
+          # would open an issue about a stack that is alive, so an unreadable
+          # list stops the run instead. The next push re-evaluates.
+          if ! numbers=$(gh pr list --repo "$REPO" --state open --limit 100 --json number --jq '.[].number'); then
+            echo "::notice::Could not list open pull requests. Skipping this run rather than reporting live work as abandoned."
+            echo "skipped=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          pulls='[]'
+          for number in $numbers; do
+            files=$(gh api "repos/$REPO/pulls/$number/files" --paginate --jq '.[].filename' \
+              | jq -R -s -c 'split("\n") | map(select(length > 0))')
+            pulls=$(jq -c --argjson n "$number" --argjson f "$files" \
+              '. + [{number: $n, files: $f}]' <<<"$pulls")
+          done
+
+          # Issues carrying the tracking marker. Listed by label rather than by
+          # a body search: the search index lags a freshly opened issue, and a
+          # missed issue means a duplicate rather than an update.
+          issues=$(gh issue list --repo "$REPO" --state all --label "$LABEL" --limit 100 \
+            --json number,state,body \
+            | jq -c '[.[]
+                | . as $i
+                | (($i.body // "") | capture("<!-- openspec-tracking:(?<c>[^\\s>]+) -->") | .c) as $change
+                | {number: $i.number, state: ($i.state | ascii_downcase), change: $change}]')
+
+          unarchived='[]'
+          if [ -d openspec/changes ]; then
+            unarchived=$(find openspec/changes -mindepth 1 -maxdepth 1 -type d \
+              -not -name archive -printf '%f\n' | sort \
+              | jq -R -s -c 'split("\n") | map(select(length > 0) | {name: .})')
+          fi
+
+          jq -n -c \
+            --arg sha "$SHA" \
+            --argjson unarchived "$unarchived" \
+            --argjson pulls "$pulls" \
+            --argjson issues "$issues" \
+            '{mode: "push", sha: $sha, unarchived: $unarchived, pulls: $pulls, issues: $issues}' \
+            > /tmp/openspec-tracking-input.json
+
+          node .github/scripts/openspec-tracking.cjs \
+            < /tmp/openspec-tracking-input.json \
+            > /tmp/openspec-tracking-plan.json
+
+          cat /tmp/openspec-tracking-plan.json
+          echo "skipped=false" >> "$GITHUB_OUTPUT"
+
+      - name: Apply the plan
+        if: steps.plan.outputs.skipped == 'false'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          LABEL: Open OpenSpec
+        run: |
+          set -euo pipefail
+
+          # The planner renders every title, body and comment, so this loop
+          # moves text rather than composing it. Each call reports and continues
+          # on failure: one unwritable issue is not a reason to skip the rest,
+          # and nothing here is allowed to fail the run.
+          count=$(jq '.actions | length' /tmp/openspec-tracking-plan.json)
+          echo "Applying $count action(s)."
+
+          for index in $(seq 0 $((count - 1))); do
+            action=$(jq -c ".actions[$index]" /tmp/openspec-tracking-plan.json)
+            type=$(jq -r '.type' <<<"$action")
+            change=$(jq -r '.change' <<<"$action")
+            number=$(jq -r '.issue // ""' <<<"$action")
+
+            case "$type" in
+              open)
+                gh issue create --repo "$REPO" --label "$LABEL" \
+                  --title "$(jq -r '.title' <<<"$action")" \
+                  --body "$(jq -r '.body' <<<"$action")" \
+                  || echo "::notice::Could not open a tracking issue for $change."
+                ;;
+              reopen)
+                gh issue reopen "$number" --repo "$REPO" \
+                  --comment "$(jq -r '.comment' <<<"$action")" \
+                  || echo "::notice::Could not reopen issue $number for $change."
+                ;;
+              close)
+                gh issue close "$number" --repo "$REPO" \
+                  --comment "$(jq -r '.comment' <<<"$action")" \
+                  || echo "::notice::Could not close issue $number for $change."
+                ;;
+              *)
+                echo "::notice::Unhandled action '$type' for $change."
+                ;;
+            esac
+          done
