@@ -2,8 +2,10 @@
 
 ## Purpose
 
-TBD - created by archiving change add-vale-rule-engine. Update Purpose after archive.
+How Vale runs as a static-tier engine: its per-rule fixtures, its subprocess timeout, the run config it is given, and how its findings become engine-agnostic results.
+
 ## Requirements
+
 ### Requirement: Vale runs in the static tier without reconciliation or signing
 
 The system SHALL treat Vale as a static-tier engine — always run, with no server reconciliation or signature verification. Vale's `script` checks execute in a sandbox that exposes only pure-computation modules (`text`/`math`/`fmt`) with no host access, so a Vale rule is inert data equivalent in trust to a static ast-grep rule.
@@ -180,4 +182,3 @@ Scope SHALL NOT be expressed inside the style file. Measured: Vale rejects unkno
 - **WHEN** a rule directory is removed
 - **THEN** no other rule's scope changes
 - **AND** no shared file needs editing
-

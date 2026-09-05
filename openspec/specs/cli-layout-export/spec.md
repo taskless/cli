@@ -2,7 +2,7 @@
 
 ## Purpose
 
-TBD - created by archiving change generator-payload-alignment. Update Purpose after archive.
+The rule layout published as data rather than as knowledge a consumer copies. Where a rule lives, and what shape it has, can be read instead of transcribed.
 
 ## Requirements
 

@@ -2,7 +2,7 @@
 
 ## Purpose
 
-TBD - created by archiving change add-vale-binary-packages. Update Purpose after archive.
+The per-platform packages carrying the Vale binary: how they are built, how fetched binaries are verified against committed checksums, and why publishing one changes nothing for a consumer.
 
 ## Requirements
 

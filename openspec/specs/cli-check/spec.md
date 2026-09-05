@@ -2,7 +2,7 @@
 
 ## Purpose
 
-TBD — Defines the `taskless check` subcommand that validates project setup and runs ast-grep scanning to detect rule violations.
+The `taskless check` subcommand: how it validates a project's setup and runs the configured engines across the repository to report rule violations.
 
 ## Requirements
 

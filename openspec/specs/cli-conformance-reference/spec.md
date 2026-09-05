@@ -2,7 +2,7 @@
 
 ## Purpose
 
-TBD - created by archiving change reference-fixture-cases. Update Purpose after archive.
+The conformance corpus published as `@taskless/cli/reference.json`, so an external grader can materialize a rule and judge it against the same fixtures the CLI runs, without transcribing our layout.
 
 ## Requirements
 

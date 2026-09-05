@@ -2,7 +2,7 @@
 
 ## Purpose
 
-TBD — Defines the `taskless init` subcommand that installs Taskless skills into a repository by detecting AI tools and writing skill files.
+The `taskless init` subcommand: how it detects the AI tools present in a repository and installs the Taskless skills and commands for them.
 
 ## Requirements
 

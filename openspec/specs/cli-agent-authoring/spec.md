@@ -2,7 +2,7 @@
 
 ## Purpose
 
-TBD - created by archiving change agent-command-and-vale-authoring. Update Purpose after archive.
+The recipes an agent follows to author a rule by hand, one for every engine a rule can be routed to. They write files rather than calling a writer, so a reader can see what lands on disk and why.
 
 ## Requirements
 
