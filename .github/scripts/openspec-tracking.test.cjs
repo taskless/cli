@@ -24,6 +24,7 @@ const {
   changeFromBody,
   listUnarchivedChanges,
   claimsFromPullRequests,
+  normalizeIssues,
   issueBody,
   planActions,
   main,
@@ -267,6 +268,73 @@ test("the sweep does not parse task completion", () => {
     { type: "open", change: "finished" },
     { type: "open", change: "half-done" },
   ]);
+});
+
+test("issues are matched from their body, so one regex exists rather than three", () => {
+  const plan = planActions({
+    mode: "push",
+    unarchived: [{ name: "orphan" }],
+    claims: {},
+    issues: [
+      { number: 12, state: "CLOSED", body: `prose\n${marker("orphan")}\n` },
+      { number: 13, state: "open", body: "an unrelated issue carrying the label" },
+    ],
+  });
+  assert.deepEqual(shapes(plan), [
+    { type: "reopen", change: "orphan", issue: 12 },
+  ]);
+});
+
+test("an issue with no marker is never adopted and never closed", () => {
+  const plan = planActions({
+    mode: "push",
+    unarchived: [],
+    claims: {},
+    issues: [{ number: 13, state: "open", body: "someone else's issue" }],
+  });
+  assert.deepEqual(shapes(plan), []);
+});
+
+test("normalizeIssues lowercases state and parses the marker", () => {
+  assert.deepEqual(
+    normalizeIssues([
+      { number: 1, state: "OPEN", body: marker("a"), idleDays: 3 },
+      { number: 2, state: "open", body: "no marker" },
+      { number: 3, state: "closed", change: "c" },
+    ]),
+    [
+      { number: 1, state: "open", change: "a", idleDays: 3 },
+      { number: 3, state: "closed", change: "c", idleDays: undefined },
+    ]
+  );
+});
+
+test("the sweep escalates at most once per window", () => {
+  const stalled = { name: "stalled", ageDays: 30 };
+  const input = { mode: "sweep", staleDays: 7, unarchived: [stalled], claims: {} };
+
+  // Escalated yesterday: `ageDays` keeps growing, but the issue was just
+  // commented on, so a second comment today would be the daily-nag failure.
+  assert.deepEqual(
+    shapes(
+      planActions({
+        ...input,
+        issues: [{ number: 12, state: "open", change: "stalled", idleDays: 1 }],
+      })
+    ),
+    []
+  );
+
+  // Quiet for a full window: escalate again.
+  assert.deepEqual(
+    shapes(
+      planActions({
+        ...input,
+        issues: [{ number: 12, state: "open", change: "stalled", idleDays: 7 }],
+      })
+    ),
+    [{ type: "escalate", change: "stalled", issue: 12, ageDays: 30 }]
+  );
 });
 
 test("an unknown mode is a caller defect, not a silent pass", () => {

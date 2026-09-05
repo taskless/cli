@@ -118,6 +118,21 @@ jobs:
           # that is not about this pull request: the deleted workflow exited 1
           # here and reddened pull requests for `gh` timeouts. This one skips
           # the warning and says it could not tell.
+          #
+          # Gated on same-repo for the same reason the label write above is. A
+          # fork's head branch lives in the fork, so no pull request in this
+          # repository can name it as a base: the count would be 0 whatever the
+          # real stack position, and every fork pull request would be told it is
+          # the tip. Reporting "could not tell" is honest; guessing is not.
+          if [ "$HEAD_REPO" != "$REPO" ]; then
+            echo "::notice::Stack position is not readable for a fork pull request; skipping the tip warning."
+            {
+              echo ""
+              echo "_This pull request comes from a fork, so its stack position cannot be read from this repository. No tip warning was evaluated._"
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
           if ! children=$(gh pr list --repo "$REPO" --state open --base "$HEAD_REF" --json number --jq 'length'); then
             echo "::notice::Could not determine stack position; skipping the tip warning."
             {

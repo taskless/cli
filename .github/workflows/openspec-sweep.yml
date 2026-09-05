@@ -61,7 +61,12 @@ jobs:
           unarchived='[]'
           if [ -d openspec/changes ]; then
             now=$(date +%s)
-            entries=""
+            # Names and ages go into JSON as jq ARGUMENTS, never joined into a
+            # line and split back apart. A directory name containing a space
+            # desynced the split, `tonumber` threw on the wrong field, and under
+            # `set -euo pipefail` that failed the whole run: the "signal expected
+            # to be red" failure this workflow exists to avoid. Nothing enforces
+            # kebab-case directory names, so the encoding must not assume it.
             while IFS= read -r name; do
               [ -z "$name" ] && continue
               # The last commit that touched this change directory. A directory
@@ -73,20 +78,28 @@ jobs:
               else
                 age=$(( (now - last) / 86400 ))
               fi
-              entries="${entries}${name} ${age}"$'\n'
+              unarchived=$(jq -c --arg name "$name" --argjson age "$age" \
+                '. + [{name: $name, ageDays: $age}]' <<<"$unarchived")
             done < <(find openspec/changes -mindepth 1 -maxdepth 1 -type d \
               -not -name archive -printf '%f\n' | sort)
-
-            unarchived=$(printf '%s' "$entries" \
-              | jq -R -s -c 'split("\n") | map(select(length > 0) | split(" ") | {name: .[0], ageDays: (.[1] | tonumber)})')
           fi
 
+          # Bodies are handed over raw. The marker is parsed in one place, in
+          # openspec-tracking.cjs, rather than re-implemented as a `jq capture`
+          # here and in openspec-tracking.yml: `capture` drops a non-matching
+          # element from the array instead of erroring, so a body that stopped
+          # matching would read as "no issue exists" and open a duplicate.
+          #
+          # `idleDays` throttles escalation to at most one comment per window.
           issues=$(gh issue list --repo "$REPO" --state all --label "$LABEL" --limit 100 \
-            --json number,state,body \
-            | jq -c '[.[]
-                | . as $i
-                | (($i.body // "") | capture("<!-- openspec-tracking:(?<c>[^\\s>]+) -->") | .c) as $change
-                | {number: $i.number, state: ($i.state | ascii_downcase), change: $change}]')
+            --json number,state,body,updatedAt \
+            | jq -c --argjson now "$(date +%s)" \
+                '[.[] | {
+                   number,
+                   state: (.state | ascii_downcase),
+                   body: (.body // ""),
+                   idleDays: (($now - (.updatedAt | fromdateiso8601)) / 86400 | floor)
+                 }]')
 
           jq -n -c \
             --arg sha "$SHA" \
