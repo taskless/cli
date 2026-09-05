@@ -21,7 +21,7 @@
 ## 2. Main-side tracking issue
 
 - [x] 2.1 Add `.github/workflows/openspec-tracking.yml`: on `push: branches:
-    [main]`, `permissions: contents: read, issues: write, pull-requests: read`.
+  [main]`, `permissions: contents: read, issues: write, pull-requests: read`.
 - [x] 2.2 For each unarchived change, test whether any open pull request's diff
       against `main` touches `openspec/changes/<name>/`. Claimed → report
       nothing.
@@ -53,13 +53,13 @@
 - [x] 4.1 Land the `infrastructure` delta: the MODIFIED requirement restated in
       full with both existing scenarios intact, plus the four ADDED requirements.
 - [x] 4.2 Verify no signal is a step in `validate.yml`, so `workflow_run:
-    workflows: [Validate]` cannot reach any of them.
-- [ ] 4.3 Exercise the label workflow both ways on a scratch pull request:
+  workflows: [Validate]` cannot reach any of them.
+- [x] 4.3 Exercise the label workflow both ways on a scratch pull request:
       present → labelled, archived → label removed.
-- [ ] 4.4 Exercise the claim test against the stack shape that motivated it — an
+- [x] 4.4 Exercise the claim test against the stack shape that motivated it — an
       unarchived change on `main` with an open pull request touching its
       directory must report nothing.
-- [ ] 4.5 Run the pre-archive scenario inventory from `CLAUDE.md` before
+- [x] 4.5 Run the pre-archive scenario inventory from `CLAUDE.md` before
       archiving, and confirm the `infrastructure` spec gains the four
       requirements without losing a scenario from the modified one.
-- [ ] 4.6 `pnpm openspec validate --all --strict` and `pnpm lint`.
+- [x] 4.6 `pnpm openspec validate --all --strict` and `pnpm lint`.
