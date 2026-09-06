@@ -46,6 +46,17 @@
  *
  * Usage:
  *   node .github/scripts/openspec-tracking.cjs < input.json
+ *   node .github/scripts/openspec-tracking.cjs --list [changesDirectory]
+ *
+ * The second form is the one three workflows call to list unarchived change
+ * directories: it prints `listUnarchivedChanges()` as a sorted JSON array of
+ * names on stdout, and nothing else. That routes the listing through
+ * `readdirSync`, which behaves the same on every platform `node` runs on,
+ * rather than through a shell `find`, where `-printf` is a GNU extension that
+ * a checkout under BSD find (macOS) does not recognise. A missing changes
+ * directory prints `[]` and exits zero; an unreadable one throws and exits
+ * non-zero, and the calling workflow turns that into a `::warning::`
+ * annotation rather than either an empty list or a failed run.
  *
  * Reads one JSON object on stdin and prints the plan as JSON on stdout:
  *
@@ -328,6 +339,25 @@ function main(raw) {
   return planActions(input);
 }
 
+const DEFAULT_CHANGES_DIRECTORY = "openspec/changes";
+
+/**
+ * `--list` mode. Prints `listUnarchivedChanges(changesDirectory)` as a JSON
+ * array on stdout, and nothing else, so a caller can pipe stdout straight
+ * into `jq` without stripping any other output.
+ *
+ * A missing directory is not a fault (see `listUnarchivedChanges`) and prints
+ * `[]`. An unreadable one throws out of `readdirSync`, which this
+ * deliberately does not catch: letting it propagate is what turns it into a
+ * non-zero exit for `require.main` to report, which is the signal the calling
+ * workflow needs to tell "nothing to report" apart from "could not tell".
+ */
+function runList(changesDirectory) {
+  process.stdout.write(
+    `${JSON.stringify(listUnarchivedChanges(changesDirectory))}\n`
+  );
+}
+
 module.exports = {
   ARCHIVE_DIRECTORY,
   DEFAULT_STALE_DAYS,
@@ -340,11 +370,17 @@ module.exports = {
   issueBody,
   planActions,
   main,
+  runList,
 };
 
 if (require.main === module) {
   try {
-    process.stdout.write(`${JSON.stringify(main(), null, 2)}\n`);
+    const args = process.argv.slice(2);
+    if (args[0] === "--list") {
+      runList(args[1] ?? DEFAULT_CHANGES_DIRECTORY);
+    } else {
+      process.stdout.write(`${JSON.stringify(main(), null, 2)}\n`);
+    }
   } catch (error) {
     console.error(`openspec-tracking failed: ${error.message}`);
     process.exitCode = 1;
