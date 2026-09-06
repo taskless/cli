@@ -285,6 +285,14 @@ export async function deleteRuleFiles(
   // invisible while ast-grep was the only engine a rule could be delivered
   // for: a vale or runtime rule could be written and then not removed, and
   // `delete` reported "not found" for a rule plainly on disk.
+  // The scan and the `rm` below are not atomic, and that is accepted rather
+  // than overlooked. A second engine's directory for this id could appear
+  // between them, and the delete would then proceed on a resolution that has
+  // just gone stale. Closing it would need a lock over `.taskless/rules/`,
+  // which is a large mechanism for a local single-user filesystem operation
+  // that no CLI command runs concurrently with itself. The window is narrow
+  // and the cost of the fix is not.
+  //
   // Destructured rather than indexed so `engine` narrows to a single engine
   // for the rest of the function: `engines[0]` is `EngineName | undefined`
   // under `noUncheckedIndexedAccess`, and asserting it away here would be
