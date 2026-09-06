@@ -63,10 +63,41 @@ jobs:
         run: |
           set -euo pipefail
 
+          # `-exec basename {} \;` lists directory names identically on GNU
+          # and BSD find. `-printf '%f\n'` does not: it is a GNU extension, so
+          # a checkout built or tested on macOS ran BSD find, which does not
+          # recognise `-printf`, and the failed find status once fed straight
+          # into this assignment under `set -e`, aborting the whole run.
+          #
+          # `find` itself can still fail (an unreadable `openspec/changes`),
+          # and that must read as "could not tell" rather than as "resolved":
+          # reporting an unreadable directory as zero unarchived changes would
+          # tell a stack its OpenSpec change is done when nobody checked. So
+          # the exit status is captured outside the assignment position `set
+          # -e` watches, and an unreadable directory gets its own summary and
+          # an explicit annotation instead of either silence or an abort. This
+          # workflow's whole point is to never fail a check for a reason
+          # unrelated to the pull request.
           changes=""
+          listing_failed=0
           if [ -d openspec/changes ]; then
-            changes=$(find openspec/changes -mindepth 1 -maxdepth 1 -type d \
-              -not -name archive -printf '%f\n' | sort)
+            if ! changes=$(find openspec/changes -mindepth 1 -maxdepth 1 -type d \
+                -not -name archive -exec basename {} \; 2>&1); then
+              echo "::warning::Could not list openspec/changes/ (find reported: $changes). Leaving the '$LABEL' label untouched rather than guessing."
+              listing_failed=1
+              changes=""
+            else
+              changes=$(printf '%s\n' "$changes" | sort)
+            fi
+          fi
+
+          if [ "$listing_failed" -eq 1 ]; then
+            {
+              echo "### OpenSpec: unknown"
+              echo ""
+              echo "Could not list \`openspec/changes/\` on this branch, so whether an unarchived change remains is unknown. The \`$LABEL\` label was left as-is."
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 0
           fi
 
           if [ -z "$changes" ]; then
