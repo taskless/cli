@@ -61,27 +61,41 @@ jobs:
           unarchived='[]'
           if [ -d openspec/changes ]; then
             now=$(date +%s)
-            # Names and ages go into JSON as jq ARGUMENTS, never joined into a
-            # line and split back apart. A directory name containing a space
-            # desynced the split, `tonumber` threw on the wrong field, and under
-            # `set -euo pipefail` that failed the whole run: the "signal expected
-            # to be red" failure this workflow exists to avoid. Nothing enforces
-            # kebab-case directory names, so the encoding must not assume it.
-            while IFS= read -r name; do
-              [ -z "$name" ] && continue
-              # The last commit that touched this change directory. A directory
-              # with no commits at all is treated as brand new rather than
-              # infinitely old, so a checkout quirk cannot manufacture a report.
-              last=$(git log -1 --format=%ct -- "openspec/changes/$name" || true)
-              if [ -z "$last" ]; then
-                age=0
-              else
-                age=$(( (now - last) / 86400 ))
-              fi
-              unarchived=$(jq -c --arg name "$name" --argjson age "$age" \
-                '. + [{name: $name, ageDays: $age}]' <<<"$unarchived")
-            done < <(find openspec/changes -mindepth 1 -maxdepth 1 -type d \
-              -not -name archive -printf '%f\n' | sort)
+            # `-exec basename {} \;` lists directory names identically on GNU
+            # and BSD find. `-printf '%f\n'` is a GNU extension that a checkout
+            # tested under BSD find does not recognise, and the failed find
+            # exit status used to feed a process substitution: `done < <(...)`
+            # hands the loop the substitution's own status, not find's, so the
+            # loop ran zero iterations and this step reported "0 unarchived
+            # changes" and exited 0. That is the silent case this workflow
+            # must not repeat, so the listing is captured into a variable
+            # first, where its exit status is the ordinary status of that
+            # assignment, checked explicitly rather than lost behind a pipe.
+            if ! names=$(find openspec/changes -mindepth 1 -maxdepth 1 -type d \
+                -not -name archive -exec basename {} \; 2>&1); then
+              echo "::warning::Could not list openspec/changes/ (find reported: $names). Reporting zero unarchived changes would be wrong; skipping the sweep for this run instead."
+            else
+              # Names and ages go into JSON as jq ARGUMENTS, never joined into a
+              # line and split back apart. A directory name containing a space
+              # desynced the split, `tonumber` threw on the wrong field, and under
+              # `set -euo pipefail` that failed the whole run: the "signal expected
+              # to be red" failure this workflow exists to avoid. Nothing enforces
+              # kebab-case directory names, so the encoding must not assume it.
+              while IFS= read -r name; do
+                [ -z "$name" ] && continue
+                # The last commit that touched this change directory. A directory
+                # with no commits at all is treated as brand new rather than
+                # infinitely old, so a checkout quirk cannot manufacture a report.
+                last=$(git log -1 --format=%ct -- "openspec/changes/$name" || true)
+                if [ -z "$last" ]; then
+                  age=0
+                else
+                  age=$(( (now - last) / 86400 ))
+                fi
+                unarchived=$(jq -c --arg name "$name" --argjson age "$age" \
+                  '. + [{name: $name, ageDays: $age}]' <<<"$unarchived")
+              done <<<"$(printf '%s\n' "$names" | sort)"
+            fi
           fi
 
           # Bodies are handed over raw. The marker is parsed in one place, in

@@ -92,10 +92,26 @@ jobs:
             --json number,state,body \
             | jq -c '[.[] | {number, state: (.state | ascii_downcase), body: (.body // "")}]')
 
+          # `-exec basename {} \;` lists directory names identically on GNU
+          # and BSD find; `-printf '%f\n'` is a GNU extension that a checkout
+          # tested under BSD find does not recognise, and the failed status
+          # used to reach this pipe under `pipefail`, aborting the whole run.
+          #
+          # A `find` failure here (an unreadable `openspec/changes`) must not
+          # read as "nothing unarchived": that would close or skip a tracking
+          # issue for a change that is still there, nobody just could not see
+          # it. So this is the same skip this step already takes when
+          # `gh pr list` fails above: warn, skip this run, let the next push
+          # re-evaluate, and never fail the check.
           unarchived='[]'
           if [ -d openspec/changes ]; then
-            unarchived=$(find openspec/changes -mindepth 1 -maxdepth 1 -type d \
-              -not -name archive -printf '%f\n' | sort \
+            if ! names=$(find openspec/changes -mindepth 1 -maxdepth 1 -type d \
+                -not -name archive -exec basename {} \; 2>&1); then
+              echo "::warning::Could not list openspec/changes/ (find reported: $names). Skipping this run rather than reporting a change as archived when nobody could tell."
+              echo "skipped=true" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            unarchived=$(printf '%s\n' "$names" | sort \
               | jq -R -s -c 'split("\n") | map(select(length > 0) | {name: .})')
           fi
 
