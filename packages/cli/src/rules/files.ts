@@ -11,7 +11,7 @@ import {
   ruleDirectory,
   ruleFilePath,
   ruleTestsDirectory,
-  findRuleEngine,
+  findRuleEngines,
 } from "./engines";
 import type { EngineName } from "./layout";
 import { isValidRuleId } from "./validate-id";
@@ -245,13 +245,37 @@ export async function readRuleMetaFile(
   }
 }
 
-/** Delete a rule file and any matching test files. Returns whether the rule file existed. */
+/**
+ * What {@link deleteRuleFiles} did, and why.
+ *
+ * Three outcomes rather than a boolean, because "deleted" and "not found" are
+ * not the only answers an id-addressed command can honestly give. An id does
+ * not carry its engine and nothing makes one unique across engines, so an id
+ * can name two rules; a boolean forced that case to be reported as one of the
+ * two it is not, and `true` is the worse of the two to pick.
+ */
+export type DeleteRuleOutcome =
+  | { outcome: "deleted"; engine: EngineName }
+  | { outcome: "not-found" }
+  | { outcome: "ambiguous"; engines: EngineName[]; paths: string[] };
+
+/**
+ * Delete a rule directory, and the metadata sidecar that goes with it.
+ *
+ * REFUSES WHEN THE ID IS AMBIGUOUS rather than picking one. Two engines can
+ * hold the same id, and this used to take the first hit in {@link ENGINES}
+ * order, delete it, and return `true`: the caller asked to delete a rule, a
+ * different rule than they may have meant was deleted, and the return value
+ * said it went fine (#264). The path-addressed commands, `verify` and `test`,
+ * removed this error case by not having an id to be ambiguous; `delete` still
+ * takes an id, so it has to report the ambiguity instead of guessing at it.
+ */
 export async function deleteRuleFiles(
   cwd: string,
   id: string
-): Promise<boolean> {
+): Promise<DeleteRuleOutcome> {
   if (!isValidRuleId(id)) {
-    return false;
+    return { outcome: "not-found" };
   }
   // A rule is one directory, so deleting it is removing that directory. Its
   // tests live inside, which is the point of the layout: there is no second
@@ -261,13 +285,26 @@ export async function deleteRuleFiles(
   // invisible while ast-grep was the only engine a rule could be delivered
   // for: a vale or runtime rule could be written and then not removed, and
   // `delete` reported "not found" for a rule plainly on disk.
-  const engine = await findRuleEngine(cwd, id);
-  if (engine === undefined) return false;
+  // Destructured rather than indexed so `engine` narrows to a single engine
+  // for the rest of the function: `engines[0]` is `EngineName | undefined`
+  // under `noUncheckedIndexedAccess`, and asserting it away here would be
+  // asserting exactly the thing this function exists to stop assuming.
+  const [engine, ...rest] = await findRuleEngines(cwd, id);
+  if (engine === undefined) return { outcome: "not-found" };
+  if (rest.length > 0) {
+    const engines = [engine, ...rest];
+    return {
+      outcome: "ambiguous",
+      engines,
+      paths: engines.map((candidate) => ruleDirectory(cwd, candidate, id)),
+    };
+  }
   const directory = ruleDirectory(cwd, engine, id);
   try {
     await rm(directory, { recursive: true });
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") return false;
+    if ((error as NodeJS.ErrnoException).code === "ENOENT")
+      return { outcome: "not-found" };
     throw error;
   }
 
@@ -290,5 +327,5 @@ export async function deleteRuleFiles(
     }
   }
 
-  return true;
+  return { outcome: "deleted", engine };
 }

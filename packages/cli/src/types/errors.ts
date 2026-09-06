@@ -39,6 +39,15 @@ export type CLIErrorCode =
   // right, the project is right, and the answer is still no. An agent reading
   // this should delete or rename, never retry.
   | "RULE_EXISTS"
+  // Two engines hold the rule id `delete` was given, so there is no single
+  // rule to remove. Distinct from RULE_NOT_FOUND, which asks for a different
+  // id: this id is right and matches more than one rule. Distinct from
+  // INVALID_INPUT, which says the id is malformed: this one is well-formed and
+  // the project is the thing that is ambiguous. An agent reading this should
+  // pick one of the named paths, never retry the same id. `delete` is the only
+  // id-addressed command left; `verify` and `test` take a path and cannot
+  // produce this.
+  | "RULE_ID_AMBIGUOUS"
   | "INVALID_INPUT"
   | "NETWORK_ERROR"
   | "SCAN_FAILED"

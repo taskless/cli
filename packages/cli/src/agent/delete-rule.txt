@@ -39,9 +39,16 @@ rule is deleted by removing its directory by hand.
 When `--json` is set, failures emit `{ ok: false, code, message }` on
 stdout; on success the command exits 0 silently (no envelope).
 
-| code             | meaning             | fix                              |
-|------------------|---------------------|----------------------------------|
-| `RULE_NOT_FOUND` | No `rules/sg/<id>/` | Confirm the ID; list rules first |
+| code                | meaning                                | fix                                          |
+|---------------------|----------------------------------------|----------------------------------------------|
+| `RULE_NOT_FOUND`    | No engine holds that id                | Confirm the ID; list rules first             |
+| `RULE_ID_AMBIGUOUS` | Two engines hold it, so nothing was deleted | Remove the one you mean by path; the message names both |
+
+`RULE_ID_AMBIGUOUS` is not a retry. The id is well-formed and correct, and it
+matches more than one rule, so sending it again produces the same answer.
+Nothing is deleted when it is reported: the command refuses rather than picking
+one, because picking one removed a rule the caller may not have meant and
+reported success.
 
 The rule ID is required as a positional argument; citty rejects a
 missing ID before the command body runs, so `INVALID_INPUT` is not
