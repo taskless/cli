@@ -1,5 +1,6 @@
 import { execFile } from "node:child_process";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { promisify } from "node:util";
@@ -219,6 +220,38 @@ describe("standardized error envelope (--json)", () => {
       ]);
       expect(result.exitCode).toBe(0);
       expect(result.stdout.trim()).toBe("");
+    });
+
+    it("emits RULE_ID_AMBIGUOUS, and deletes nothing, when two engines hold the id", async () => {
+      // Through the command, not through `deleteRuleFiles`. The unit test
+      // covers the outcome the function returns; this covers whether the
+      // command wires that outcome to the right code, message and exit status,
+      // which a correct return value does not guarantee.
+      const directories = ["sg", "vale"].map((engine) =>
+        join(cwd, ".taskless", "rules", engine, "shared-id")
+      );
+      for (const directory of directories) {
+        await mkdir(directory, { recursive: true });
+        await writeFile(join(directory, "marker.txt"), "x");
+      }
+
+      const result = await runCli([
+        "rule",
+        "delete",
+        "shared-id",
+        "--json",
+        "-d",
+        cwd,
+      ]);
+
+      expect(result.exitCode).not.toBe(0);
+      const env = parseEnvelope(result.stdout);
+      expect(env.code).toBe("RULE_ID_AMBIGUOUS");
+      expect(env.message).toContain("shared-id");
+      for (const directory of directories) {
+        expect(env.message).toContain(directory);
+        expect(existsSync(directory)).toBe(true);
+      }
     });
   });
 

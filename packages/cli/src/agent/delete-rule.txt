@@ -1,24 +1,29 @@
-# Topic: delete-rule     (CLI v%(CLI_VERSION)s / topic v3)
+# Topic: delete-rule     (CLI v%(CLI_VERSION)s / topic v4)
 
 ## Goal
-Remove an ast-grep rule and its associated test files from
-`.taskless/`. Does not contact the Taskless API; purely a local
-filesystem operation.
+Remove a rule and its associated test files from `.taskless/`. Does not
+contact the Taskless API; purely a local filesystem operation.
 
-`rule delete` resolves ast-grep rules only. It takes a bare id, not a
-path, and looks for it under `.taskless/rules/sg/`. A Vale or runtime
-rule is deleted by removing its directory by hand.
+`rule delete` takes a bare id, not a path, and resolves which engine
+holds it: it searches `.taskless/rules/sg/`, `vale/` and `runtime/`.
+Deleting the directory by hand instead skips the metadata sidecar the
+CLI also removes, and skips the ambiguity check below.
+
+An id is not unique across engines. Nothing enforces uniqueness, so two
+engines can hold the same id, and the CLI refuses that case rather than
+picking one.
 
 ## Preconditions
 - `.taskless/` directory exists.
-- The target rule directory exists at `.taskless/rules/sg/<id>/`.
+- The target rule directory exists under `.taskless/rules/<engine>/<id>/`
+  for exactly one engine.
 - No auth required.
 
 ## Steps
 
 1. **Identify the rule.** If the user named one, use it. Otherwise,
-   list `.taskless/rules/sg/` and ask which one. Confirm the user's
-   intent, deletion is destructive.
+   list the engine directories under `.taskless/rules/` and ask which
+   rule. Confirm the user's intent, deletion is destructive.
 
 2. **Invoke the CLI.** Run:
    ```
@@ -26,8 +31,8 @@ rule is deleted by removing its directory by hand.
    ```
 
    The CLI removes:
-   - `.taskless/rules/sg/<id>/`: the whole directory, which holds the
-     rule, its `.tests/`, and any per-rule config
+   - `.taskless/rules/<engine>/<id>/`: the whole directory, which holds
+     the rule, its `.tests/`, and any per-rule config
    - `.taskless/rule-metadata/<id>.yml`, a sidecar the CLI never
      writes. The removal is there for a directory a person created by
      hand; expect it to be absent.
