@@ -386,6 +386,72 @@ test("the sweep escalates at most once per window", () => {
   );
 });
 
+test("the sweep reopens a closed issue rather than commenting into it", () => {
+  // The defect this pins: `findIssue` runs over a `--state all` listing, so a
+  // closed issue satisfies `issue !== undefined` and used to fall straight
+  // through to `escalate`. Every other sweep case here passes an OPEN issue,
+  // which is why nothing caught it. Someone who closes a tracking issue
+  // without archiving the change then gets a daily comment appended to a
+  // closed thread, green and seen by nobody.
+  const plan = planActions({
+    mode: "sweep",
+    sha: "abc123",
+    staleDays: 7,
+    unarchived: [{ name: "stalled", ageDays: 30 }],
+    claims: {},
+    issues: [{ number: 9, state: "closed", body: marker("stalled"), idleDays: 30 }],
+  });
+  assert.deepEqual(shapes(plan), [
+    { type: "reopen", change: "stalled", issue: 9, ageDays: 30 },
+  ]);
+  // The comment states what the sweep measured. Push mode reopens on the claim
+  // test, which the sweep never consults, so it must not reuse that wording.
+  assert.match(plan.actions[0].comment, /no git\nactivity for 30 days/);
+  assert.doesNotMatch(plan.actions[0].comment, /pull request/);
+});
+
+test("the sweep reopens at most once per window", () => {
+  // The throttle governs a reopen too. A reopen is louder than a comment, so
+  // reopening on every daily run is the same nag, amplified.
+  const input = {
+    mode: "sweep",
+    staleDays: 7,
+    unarchived: [{ name: "stalled", ageDays: 30 }],
+    claims: {},
+  };
+  assert.deepEqual(
+    shapes(
+      planActions({
+        ...input,
+        issues: [{ number: 9, state: "closed", change: "stalled", idleDays: 1 }],
+      })
+    ),
+    []
+  );
+  assert.deepEqual(
+    shapes(
+      planActions({
+        ...input,
+        issues: [{ number: 9, state: "closed", change: "stalled", idleDays: 7 }],
+      })
+    ),
+    [{ type: "reopen", change: "stalled", issue: 9, ageDays: 30 }]
+  );
+});
+
+test("the sweep leaves a closed issue alone inside the window", () => {
+  // Age gates before state does: a change closed and under the window is not
+  // the sweep's business, whatever the issue's state.
+  const plan = planActions({
+    mode: "sweep",
+    staleDays: 7,
+    unarchived: [{ name: "fresh", ageDays: 2 }],
+    claims: {},
+    issues: [{ number: 9, state: "closed", change: "fresh", idleDays: 30 }],
+  });
+  assert.deepEqual(shapes(plan), []);
+});
+
 test("an empty listing closes every tracked issue, so a caller must never guess it", () => {
   // Pinning the hazard, not the feature. Absence from `unarchived` is read as
   // "archived", so `[]` claims every change is archived. A workflow that could

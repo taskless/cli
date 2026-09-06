@@ -82,13 +82,32 @@ jobs:
           # an explicit annotation instead of either silence or an abort. This
           # workflow's whole point is to never fail a check for a reason
           # unrelated to the pull request.
+          #
+          # STDERR GOES TO A FILE, NEVER INTO THE CAPTURED VALUE. This read
+          # `2>&1`, which folds anything node writes to stderr into the JSON.
+          # Node writes to stderr while exiting zero all the time: an
+          # ExperimentalWarning, a deprecation notice from a newer runner
+          # image, a NODE_OPTIONS preload message. The guard does not fire on
+          # any of them, and `jq` then fails on the polluted value in
+          # assignment position, where `set -e` does abort the step. Measured
+          # with a single `(node:1) Warning: something at startup` line: `jq:
+          # parse error: Invalid numeric literal`, exit 5, a red check on a
+          # pull request for a reason that has nothing to do with the pull
+          # request. The stderr text is still available for the warning, it is
+          # just read from the file on the failure branch.
           changes=""
           listing_failed=0
-          if ! raw=$(node .github/scripts/openspec-tracking.cjs --list 2>&1); then
-            echo "::warning::Could not list openspec/changes/ ($raw). Leaving the '$LABEL' label untouched rather than guessing."
+          list_stderr=/tmp/openspec-label-list.err
+          if ! raw=$(node .github/scripts/openspec-tracking.cjs --list 2>"$list_stderr"); then
+            echo "::warning::Could not list openspec/changes/ ($(tr '\n' ' ' <"$list_stderr")). Leaving the '$LABEL' label untouched rather than guessing."
             listing_failed=1
-          else
-            changes=$(jq -r '.[]' <<<"$raw")
+          elif ! changes=$(jq -r '.[]' <<<"$raw"); then
+            # A listing that parses as nothing is "could not tell", the same as
+            # a failed listing, and takes the same path. Falling through with
+            # an empty `changes` would report "resolved" and remove the label
+            # from a branch whose change is still there.
+            echo "::warning::Could not parse the change listing. Leaving the '$LABEL' label untouched rather than guessing."
+            listing_failed=1
           fi
 
           if [ "$listing_failed" -eq 1 ]; then
