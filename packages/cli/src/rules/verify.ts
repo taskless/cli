@@ -13,6 +13,7 @@ import {
 } from "../schemas/ast-grep-rule";
 import { pathPrefixed, schemaLayer } from "../schemas/layer";
 import { classifyCoverage, type FixtureCoverage } from "./fixtures";
+import { isMissingDirectory } from "./errno";
 import {
   AST_GREP_TSX_SPLIT,
   AST_GREP_VERSION,
@@ -434,9 +435,14 @@ async function discoverRuleTestFiles(
   let entries: string[];
   try {
     entries = await readdir(directory);
-  } catch {
-    // No tests directory — the rule owns no test files.
-    return [];
+  } catch (error) {
+    // An absent tests directory means the rule owns no test files. Anything
+    // else is a real IO problem and must not be read as absence: an `EACCES` on
+    // `.tests/` was reported as `sg-test-file-required`, telling the author to
+    // write fixtures that are already there and merely unreadable. Still a
+    // failure either way, but a misdirected one.
+    if (isMissingDirectory(error)) return [];
+    throw error;
   }
   return entries
     .filter(

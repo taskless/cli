@@ -1,4 +1,4 @@
-import { mkdtemp, rm, mkdir, writeFile } from "node:fs/promises";
+import { mkdtemp, rm, mkdir, writeFile, chmod } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -256,4 +256,63 @@ describe("runtime harness", () => {
     expect(results[0]!.severity).toBe("error");
     expect(results[0]!.message).toContain("timed out");
   }, 15_000);
+});
+
+describe("an unreadable captures directory", () => {
+  let cwd: string;
+
+  beforeEach(async () => {
+    cwd = await mkdtemp(join(tmpdir(), "tskl-unreadable-captures-"));
+  });
+
+  afterEach(async () => {
+    await rm(cwd, { recursive: true, force: true });
+  });
+
+  it("is not read as a rule that has no captures", async () => {
+    // The discrimination that matters, and the mirror of
+    // runtime-fixtures.test.ts's "does not read an unreadable bucket as an
+    // empty one". Swallowing the permission error returned [], which sent the
+    // caller down the "not a runtime rule" branch: the rule was never signed,
+    // never reconciled, and appeared in neither `execute` nor `skipped`, so
+    // `check` exited 0 having said nothing about it.
+    await writeRuntimeRule(
+      cwd,
+      "env-read",
+      {
+        "env.yml": capture({
+          id: "env-read-abc12345",
+          name: "env-read",
+          pattern: "process.env.$NAME",
+        }),
+      },
+      ECHO_CHECK
+    );
+    const captures = join(
+      cwd,
+      ".taskless",
+      "rules",
+      "runtime",
+      "env-read",
+      "captures"
+    );
+    await chmod(captures, 0o000);
+
+    try {
+      await expect(discoverRuntimeRules(cwd)).rejects.toThrow();
+    } finally {
+      // Restore before cleanup, or `rm` cannot remove it either.
+      await chmod(captures, 0o755);
+    }
+  });
+
+  it("still treats a genuinely absent captures directory as no captures", async () => {
+    // The other half. An absent directory is not a fault and must keep
+    // reporting nothing, or every non-runtime rule directory becomes an error.
+    const directory = join(cwd, ".taskless", "rules", "runtime", "no-captures");
+    await mkdir(directory, { recursive: true });
+    await writeFile(join(directory, "check.ts"), ECHO_CHECK, "utf8");
+
+    await expect(discoverRuntimeRules(cwd)).resolves.toEqual([]);
+  });
 });
