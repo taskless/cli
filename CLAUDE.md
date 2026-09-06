@@ -122,6 +122,10 @@ The placement rules are unchanged, because they are about review quality rather 
 
 ### Choosing the bump: a release note describes what a consumer crosses
 
+**While the package is `0.y.z`, adding surface is still `patch`.** Ask this first, because it settles most of the question before any of the reasoning below applies. Semver puts major version zero outside the stability guarantee: _"Major version zero (0.y.z) is for initial development. Anything MAY change at any time. The public API SHOULD NOT be considered stable."_ There is no promised API for an addition to extend, so a new command, a new export path, or a new error code does not earn a `minor` here the way it would after 1.0.
+
+This is not hypothetical either. On 2026-09-06 the pending `0.11.1` held 18 changesets, every one `patch`, among them a new `taskless demo` command and four new export paths: `0.11.0` published `.` and `./prompts`, while `main` published `.`, `./prompts`, `./layout`, `./schemas`, `./node/runtimes` and `./reference.json`. That is added functionality, which is textbook `minor` after 1.0, and it was argued as one. It is not, before 1.0, and all 18 were already correct. Reserve anything above `patch` for a change a consumer must react to, and say in the changeset body what they must do.
+
 **A bump describes what a consumer experiences across a release boundary, not how large the diff is.** Before writing `minor` or `major`, verify the affected surface exists in a RELEASED version:
 
 ```bash
