@@ -102,27 +102,50 @@ function sortedMigrations(
 }
 
 /**
+ * The refusal a manifest that exists but cannot be read produces.
+ *
+ * Named separately because the remedy is the interesting part. It must NOT
+ * say "run `init`": `init` re-runs every migration and then rewrites the
+ * manifest from what it managed to parse, which for an unreadable file is
+ * nothing. Measured on a manifest whose first line reads `"version": 6` and
+ * whose second is a leftover `<<<<<<< HEAD`: the file came back as
+ * `{"version": 6}` with `install.onboarded` and the whole `rules` block gone.
+ */
+function unreadableManifest(path: string, reason: string): CLIError {
+  return new CLIError(
+    `${path} could not be read: ${reason}.\n\n` +
+      `This is not a schema version mismatch, so migrating will not help: ` +
+      `\`${buildInvocation()} init\` refuses here too, rather than rewriting the file ` +
+      `with only the part it can parse. A leftover merge conflict, a truncated write ` +
+      `or a partial editor save are the usual causes.\n\n` +
+      `Repair the JSON by hand, or delete the file to rebuild the scaffold from scratch.`,
+    "SCAFFOLD_MANIFEST_UNREADABLE"
+  );
+}
+
+/**
  * Read the manifest file, returning the full parsed record plus the normalized
  * version. Unknown top-level fields are preserved so callers can round-trip
  * them on write.
+ *
+ * ABSENT AND UNREADABLE ARE DIFFERENT STATES, and collapsing them was the bug
+ * in taskless/cli#278. An absent manifest is an ordinary fresh project and
+ * reads as version 0. A manifest that is present and unparseable read as
+ * version 0 too, which `requireCurrentSchema` then reported as fact: a file
+ * declaring `"version": 6` produced "This project's .taskless/ is at schema
+ * version 0". The number was invented, and acting on it destroyed the file.
+ *
+ * So the second case throws. Every caller that could rewrite the manifest
+ * reaches it first, which is what makes the refusal a guard rather than a
+ * better message.
  */
 async function readRawManifest(
   directory: string
 ): Promise<{ version: number; raw: Record<string, unknown> }> {
+  const path = join(directory, MANIFEST_FILE);
+  let content: string;
   try {
-    const content = await readFile(join(directory, MANIFEST_FILE), "utf8");
-    const parsed: unknown = JSON.parse(content);
-    // Treat any non-object (e.g. `null`, arrays, primitives) as a corrupt
-    // manifest so migrations re-run from version 0. Reading `.version`
-    // off `null` would otherwise throw TypeError and bypass the fallback.
-    if (!isPlainObject(parsed)) {
-      return { version: 0, raw: {} };
-    }
-    const version = Number(parsed.version);
-    return {
-      version: Number.isFinite(version) ? version : 0,
-      raw: parsed,
-    };
+    content = await readFile(path, "utf8");
   } catch (error) {
     if (
       error &&
@@ -132,12 +155,35 @@ async function readRawManifest(
     ) {
       return { version: 0, raw: {} };
     }
-    // Treat corrupt/unparseable manifest as version 0 so migrations re-run
-    if (error instanceof SyntaxError) {
-      return { version: 0, raw: {} };
-    }
     throw error;
   }
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(content);
+  } catch (error) {
+    throw unreadableManifest(
+      path,
+      error instanceof Error ? error.message : String(error)
+    );
+  }
+
+  // Any non-object (`null`, an array, a primitive) is valid JSON that is not a
+  // manifest. Reading `.version` off `null` would throw a bare TypeError, and
+  // treating it as version 0 has the same consequence as an unparseable file:
+  // the next write replaces whatever is there.
+  if (!isPlainObject(parsed)) {
+    throw unreadableManifest(path, "its top-level value is not a JSON object");
+  }
+
+  // A missing or non-numeric `version` on an otherwise readable object is NOT
+  // this failure. The rest of the object survives a migration untouched, since
+  // every write merges over `raw`, so migrating from 0 loses nothing.
+  const version = Number(parsed.version);
+  return {
+    version: Number.isFinite(version) ? version : 0,
+    raw: parsed,
+  };
 }
 
 async function writeRawManifest(
@@ -453,17 +499,30 @@ export async function runMigrations(
       // earlier successful migrations wrote (instead of writing back `raw`,
       // which is the pre-run snapshot and could clobber their output).
       if (v > version + 1) {
-        const { raw: latestRaw } = await readRawManifest(tasklessDirectory);
-        await writeRawManifest(tasklessDirectory, {
-          ...latestRaw,
-          version: v - 1,
-        });
+        try {
+          const { raw: latestRaw } = await readRawManifest(tasklessDirectory);
+          await writeRawManifest(tasklessDirectory, {
+            ...latestRaw,
+            version: v - 1,
+          });
+        } catch {
+          // A manifest that became unreadable mid-run is left exactly as it
+          // is: stamping a version over content this CLI cannot parse would
+          // discard it, which is the data loss the read guard exists to stop.
+          // The migration failure rethrown below is the report that matters.
+        }
       }
       throw error;
     }
   }
 
-  // Re-read the raw manifest so we preserve anything migrations wrote
+  // Re-read the raw manifest so we preserve anything migrations wrote.
+  //
+  // This is also the write that used to destroy an unreadable manifest: the
+  // re-read returned `{}` for a file it could not parse, and the stamp below
+  // spread that over the top, so `{"version": 6, <<<<<<< HEAD ...}` came back
+  // as `{"version": 6}`. The read throws now, so the stamp never happens over
+  // content this CLI failed to understand.
   const { raw: latestRaw } = await readRawManifest(tasklessDirectory);
   await writeRawManifest(tasklessDirectory, {
     ...latestRaw,

@@ -114,22 +114,48 @@ describe("install-state migrations", () => {
     });
   });
 
-  it("treats non-object JSON (e.g. null) as a corrupt manifest and re-migrates from 0", async () => {
+  it("refuses non-object JSON (e.g. null) rather than re-migrating from 0", async () => {
     const tasklessDirectory = join(temporaryDirectory, ".taskless");
     await mkdir(tasklessDirectory, { recursive: true });
 
-    // Valid JSON, but not an object — reading `.version` off this would
-    // throw TypeError if unguarded.
+    // Valid JSON, but not a manifest. Reading `.version` off this would throw
+    // a bare TypeError if unguarded, and treating it as version 0 has the same
+    // consequence as an unparseable file: the next write replaces it.
     await writeFile(join(tasklessDirectory, "taskless.json"), "null", "utf8");
+
+    await expect(ensureTasklessDirectory(temporaryDirectory)).rejects.toThrow(
+      /not a JSON object/
+    );
+
+    const after = await readFile(
+      join(tasklessDirectory, "taskless.json"),
+      "utf8"
+    );
+    expect(after).toBe("null");
+  });
+
+  it("migrates a manifest with no version field, preserving what it holds", async () => {
+    const tasklessDirectory = join(temporaryDirectory, ".taskless");
+    await mkdir(tasklessDirectory, { recursive: true });
+
+    // A readable object with no `version` is NOT the unreadable case. Every
+    // write merges over the parsed object, so migrating it from 0 loses
+    // nothing, and refusing here would wall off a manifest this CLI
+    // understands perfectly well.
+    await writeFile(
+      join(tasklessDirectory, "taskless.json"),
+      JSON.stringify({ experimental: { keep: "me" } }),
+      "utf8"
+    );
 
     await ensureTasklessDirectory(temporaryDirectory);
 
     const manifest = JSON.parse(
       await readFile(join(tasklessDirectory, "taskless.json"), "utf8")
-    ) as { version: number; install: Record<string, unknown> };
+    ) as { version: number; experimental: Record<string, unknown> };
 
     expect(manifest.version).toBe(LATEST_SCHEMA_VERSION);
-    expect(manifest.install).toEqual({});
+    expect(manifest.experimental).toEqual({ keep: "me" });
   });
 
   it("readManifest / writeManifest preserves unknown fields on explicit round-trip", async () => {
