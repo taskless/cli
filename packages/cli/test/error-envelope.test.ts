@@ -7,6 +7,7 @@ import { promisify } from "node:util";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { resolveOrgSubject } from "../src/auth/org";
+import { cliRejectionToResult } from "./support/spawn-cli";
 
 const execFileAsync = promisify(execFile);
 const binPath = resolve(import.meta.dirname, "../dist/index.js");
@@ -34,16 +35,9 @@ async function runCli(
     );
     return { stdout, stderr, exitCode: 0 };
   } catch (error) {
-    const execError = error as {
-      stdout: string;
-      stderr: string;
-      code: number;
-    };
-    return {
-      stdout: execError.stdout ?? "",
-      stderr: execError.stderr ?? "",
-      exitCode: execError.code,
-    };
+    // Throws when the CLI never ran, rather than reporting a spawn failure as
+    // a non-zero exit with empty stdout. See ./support/spawn-cli.ts.
+    return cliRejectionToResult(error, [binPath, ...args]);
   }
 }
 
