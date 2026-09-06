@@ -319,6 +319,15 @@ function planActions(input) {
   // An open issue for a change that is no longer under `openspec/changes/` has
   // been archived. This is the success path and the only way an issue closes
   // without a human.
+  //
+  // PRECONDITION: `unarchived` is a listing that actually succeeded. Absence
+  // from it is read as "archived", so an EMPTY array means "every change is
+  // archived", never "the listing could not be read". A caller that cannot
+  // enumerate the directory must skip the run rather than pass `[]`: doing the
+  // latter closes every open tracking issue with "Archived. <change> reached
+  // openspec/changes/archive/", which is false. Each workflow gates its apply
+  // step on the listing having succeeded, and openspec-sweep.yml did not, which
+  // is what this note exists to stop happening again.
   for (const issue of issues) {
     if (issue.state === "open" && !seen.has(issue.change)) {
       const action = {

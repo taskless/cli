@@ -386,6 +386,29 @@ test("the sweep escalates at most once per window", () => {
   );
 });
 
+test("an empty listing closes every tracked issue, so a caller must never guess it", () => {
+  // Pinning the hazard, not the feature. Absence from `unarchived` is read as
+  // "archived", so `[]` claims every change is archived. A workflow that could
+  // not read the directory and passed `[]` anyway would close every open
+  // tracking issue with a false comment. openspec-sweep.yml did exactly that
+  // until its apply step was gated on the listing having succeeded.
+  const plan = planActions({
+    mode: "sweep",
+    sha: "abc123",
+    staleDays: 7,
+    unarchived: [],
+    issues: [
+      { number: 11, state: "open", body: marker("real-change") },
+      { number: 12, state: "open", body: marker("other-change") },
+    ],
+  });
+  assert.deepEqual(shapes(plan), [
+    { type: "close", reason: "archived", change: "real-change", issue: 11 },
+    { type: "close", reason: "archived", change: "other-change", issue: 12 },
+  ]);
+  assert.match(plan.actions[0].comment, /reached `openspec\/changes\/archive\/`/);
+});
+
 test("an unknown mode is a caller defect, not a silent pass", () => {
   assert.throws(() => planActions({ mode: "daily" }), /unknown mode/);
 });

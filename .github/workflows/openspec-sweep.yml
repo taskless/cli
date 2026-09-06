@@ -50,6 +50,7 @@ jobs:
           fetch-depth: 0 # full history, so `git log` can date each change directory
 
       - name: Plan escalations
+        id: plan
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
@@ -74,7 +75,17 @@ jobs:
           # script's own exit status is captured by a plain assignment, not a
           # process substitution, so its failure cannot go unseen the same way.
           if ! changes_json=$(node .github/scripts/openspec-tracking.cjs --list 2>&1); then
-            echo "::warning::Could not list openspec/changes/ ($changes_json). Reporting zero unarchived changes would be wrong; skipping the sweep for this run instead."
+            # SKIP THE RUN, do not fall through. An empty `unarchived` is not
+            # "we could not tell", it is "every change is archived": the
+            # planner's close-as-archived pass closes every open tracking issue
+            # whose change is absent from the listing. Falling through here
+            # closed all of them with "Archived. <change> reached
+            # openspec/changes/archive/", which is false, on nothing worse than
+            # a transient read error. This mirrors openspec-tracking.yml, which
+            # gates its apply step the same way.
+            echo "::warning::Could not list openspec/changes/ ($changes_json). Reporting zero unarchived changes would close every open tracking issue as archived, so this run is skipped instead."
+            echo "skipped=true" >> "$GITHUB_OUTPUT"
+            exit 0
           else
             # Names and ages go into JSON as jq ARGUMENTS, never joined into a
             # line and split back apart. A directory name containing a space
@@ -128,8 +139,10 @@ jobs:
             > /tmp/openspec-sweep-plan.json
 
           cat /tmp/openspec-sweep-plan.json
+          echo "skipped=false" >> "$GITHUB_OUTPUT"
 
       - name: Apply the plan
+        if: steps.plan.outputs.skipped == 'false'
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
