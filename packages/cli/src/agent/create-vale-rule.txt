@@ -1,4 +1,4 @@
-# Topic: create-vale-rule     (CLI v%(CLI_VERSION)s / topic v3)
+# Topic: create-vale-rule     (CLI v%(CLI_VERSION)s / topic v4)
 
 ## You are here
 This is `create-vale-rule`. It helps you write a Vale rule: a check over
