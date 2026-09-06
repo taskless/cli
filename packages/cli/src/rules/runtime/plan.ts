@@ -66,6 +66,41 @@ function skipAllRuntime(rules: RuntimeRule[], reason: string): RuntimePlan {
 }
 
 /**
+ * The rules that were blessed but are not going to run, so a drop between the
+ * two is reported rather than silent.
+ *
+ * `execute` is whatever re-discovery under `.taskless/.run/` returns, which is
+ * a DIFFERENT question from what was blessed. A rule can be blessed and then
+ * vanish: a `captures/` symlink that resolves in the working tree can dangle
+ * once copied, a file can fail to materialize, and re-discovery then classifies
+ * the rule as "not a runtime rule" and drops it.
+ *
+ * Without this accounting such a rule is in neither list. Not in `execute`
+ * because it was dropped, and not in `withheld` because the server did bless
+ * it, so `check` exits 0 having said nothing and the user believes their
+ * runtime rule ran.
+ *
+ * Deliberately keyed on the difference rather than on any particular cause.
+ * Reading an unreadable `captures/` as absence was one route in and is fixed at
+ * its source, but a dangling symlink reports `ENOENT`, which is genuinely
+ * "absent" and correctly stays absent there. Only comparing the two sets
+ * catches that, and whatever the next route turns out to be.
+ */
+export function accountForDroppedRules(
+  blessed: readonly RuntimeRule[],
+  execute: readonly RuntimeRule[]
+): SkippedRuntimeRule[] {
+  const executed = new Set(execute.map((rule) => rule.name));
+  return blessed
+    .filter((rule) => !executed.has(rule.name))
+    .map((rule) => ({
+      rule: rule.name,
+      reason:
+        "blessed by the server but missing after materialization, so it was not run",
+    }));
+}
+
+/**
  * Decide which runtime rules run. A runtime rule's `check.ts` is arbitrary code
  * execution, so it runs only when its signature is server-validated (an
  * authenticated reconcile that returns it in `run`) or `--dangerously-run-scripts`
@@ -166,6 +201,20 @@ export async function planRuntime(
     result: outcome.result,
   });
 
+  // A rule can be blessed and then vanish before it is executed. `execute` is
+  // whatever re-discovery under `.taskless/.run/` returns, and that is a
+  // different question from what was blessed: a `captures/` symlink that
+  // resolves in the working tree can dangle once copied, a file can fail to
+  // materialize, and re-discovery then classifies the rule as "not a runtime
+  // rule" and drops it.
+  //
+  // Without this, such a rule is in neither list. It is not in `execute`
+  // because it was dropped, and not in `withheld` because the server did bless
+  // it, so `check` exits 0 having said nothing and the user believes it ran.
+  // Accounting for the difference is what makes the drop reportable at all,
+  // independently of which specific route caused it.
+  const droppedSkips = accountForDroppedRules(blessed, execute);
+
   return {
     execute,
     skipped: [
@@ -174,6 +223,7 @@ export async function planRuntime(
         rule: rule.name,
         reason: "not blessed by the server (unsafe / unknown / drift)",
       })),
+      ...droppedSkips,
     ],
     notices: repair.notices,
   };

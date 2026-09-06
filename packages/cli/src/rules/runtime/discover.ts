@@ -251,8 +251,21 @@ export async function assessCaptureDirectory(
   let entries: string[];
   try {
     entries = await readdir(directory);
-  } catch {
-    return [];
+  } catch (error) {
+    // Only a genuinely absent directory means "no captures". Swallowing every
+    // failure read an `EACCES` on `captures/` as absence, and the caller then
+    // dropped the rule with `continue` at the "not a runtime rule" test: it was
+    // never signed, never reconciled, and appeared in neither `execute` nor
+    // `skipped`, so `check` printed nothing about it and exited 0. The user
+    // believed a runtime rule ran.
+    //
+    // `strayModules` above already decides this the other way, for the reason
+    // written there: a real IO problem "must not be read as 'nothing here',
+    // because that is indistinguishable from a clean rule". This is the same
+    // directory tree and the same hazard, so it is now the same decision. The
+    // swallow also pre-empted that guard, since `continue` happened first.
+    if (isMissingDirectory(error)) return [];
+    throw error;
   }
   const assessed: AssessedCapture[] = [];
   const candidates = entries
