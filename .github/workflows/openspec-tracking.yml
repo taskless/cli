@@ -107,13 +107,34 @@ jobs:
           # it. So this is the same skip this step already takes when
           # `gh pr list` fails above: warn, skip this run, let the next push
           # re-evaluate, and never fail the check.
+          #
+          # STDERR GOES TO A FILE, NEVER INTO THE CAPTURED VALUE. This read
+          # `2>&1`, which folds anything node writes to stderr into the JSON.
+          # Node writes to stderr while exiting zero all the time: an
+          # ExperimentalWarning, a deprecation notice from a newer runner
+          # image, a NODE_OPTIONS preload message. The guard does not fire on
+          # any of them, and `jq` then fails on the polluted value in
+          # assignment position, where `set -e` does abort the step. Measured
+          # with a single `(node:1) Warning: something at startup` line: `jq:
+          # parse error: Invalid numeric literal`, exit 5, a red check for a
+          # reason that has nothing to do with the push. The stderr text is
+          # still available for the warning, it is just read from the file on
+          # the failure branch.
           unarchived='[]'
-          if ! names_json=$(node .github/scripts/openspec-tracking.cjs --list 2>&1); then
-            echo "::warning::Could not list openspec/changes/ ($names_json). Skipping this run rather than reporting a change as archived when nobody could tell."
+          list_stderr=/tmp/openspec-tracking-list.err
+          if ! names_json=$(node .github/scripts/openspec-tracking.cjs --list 2>"$list_stderr"); then
+            echo "::warning::Could not list openspec/changes/ ($(tr '\n' ' ' <"$list_stderr")). Skipping this run rather than reporting a change as archived when nobody could tell."
             echo "skipped=true" >> "$GITHUB_OUTPUT"
             exit 0
           fi
-          unarchived=$(jq -c '[.[] | {name: .}]' <<<"$names_json")
+          # A listing that will not parse takes the same skip. Letting `set -e`
+          # abort here instead would fail the check, and reaching the planner
+          # with `[]` would close every open tracking issue as archived.
+          if ! unarchived=$(jq -c '[.[] | {name: .}]' <<<"$names_json"); then
+            echo "::warning::Could not parse the change listing. Skipping this run rather than reporting a change as archived when nobody could tell."
+            echo "skipped=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
 
           jq -n -c \
             --arg sha "$SHA" \

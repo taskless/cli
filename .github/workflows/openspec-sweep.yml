@@ -74,7 +74,21 @@ jobs:
           # flags are portable rather than answering it correctly once. The
           # script's own exit status is captured by a plain assignment, not a
           # process substitution, so its failure cannot go unseen the same way.
-          if ! changes_json=$(node .github/scripts/openspec-tracking.cjs --list 2>&1); then
+          #
+          # STDERR GOES TO A FILE, NEVER INTO THE CAPTURED VALUE. This read
+          # `2>&1` to keep the warning below informative, which folds anything
+          # node writes to stderr into the JSON. Node writes to stderr while
+          # exiting zero all the time: an ExperimentalWarning, a deprecation
+          # notice from a newer runner image, a NODE_OPTIONS preload message.
+          # Measured with a single `(node:1) Warning: something at startup`
+          # line, the guard below does not fire, `jq` then fails on the
+          # polluted value, and `unarchived` stays `[]`. The planner reads `[]`
+          # as "every change is archived" and closes every open tracking issue
+          # with a false "Archived" comment. The stderr text is still available
+          # for the warning, it is just read from the file on the failure branch
+          # instead of being mixed into the data.
+          list_stderr=/tmp/openspec-sweep-list.err
+          if ! changes_json=$(node .github/scripts/openspec-tracking.cjs --list 2>"$list_stderr"); then
             # SKIP THE RUN, do not fall through. An empty `unarchived` is not
             # "we could not tell", it is "every change is archived": the
             # planner's close-as-archived pass closes every open tracking issue
@@ -83,7 +97,7 @@ jobs:
             # openspec/changes/archive/", which is false, on nothing worse than
             # a transient read error. This mirrors openspec-tracking.yml, which
             # gates its apply step the same way.
-            echo "::warning::Could not list openspec/changes/ ($changes_json). Reporting zero unarchived changes would close every open tracking issue as archived, so this run is skipped instead."
+            echo "::warning::Could not list openspec/changes/ ($(tr '\n' ' ' <"$list_stderr")). Reporting zero unarchived changes would close every open tracking issue as archived, so this run is skipped instead."
             echo "skipped=true" >> "$GITHUB_OUTPUT"
             exit 0
           else
@@ -93,6 +107,22 @@ jobs:
             # `set -euo pipefail` that failed the whole run: the "signal expected
             # to be red" failure this workflow exists to avoid. Nothing enforces
             # kebab-case directory names, so the encoding must not assume it.
+            #
+            # `jq` RUNS IN ASSIGNMENT POSITION, NOT AS `done < <(jq ...)`. A
+            # process substitution hands the loop its own exit status, so `jq`
+            # failing on a malformed listing ran the loop zero times and this
+            # step reported "0 unarchived changes" and exited 0, which is the
+            # exact silent case the comment above describes for `find`. The same
+            # trap, one line further down, on a second command. Reading it into
+            # a variable first puts the failure somewhere it can be seen, and
+            # the guard below skips the run rather than failing it, because a
+            # scheduled red is the other failure mode this workflow refuses.
+            if ! names=$(jq -r '.[]' <<<"$changes_json"); then
+              echo "::warning::Could not parse the change listing. Reporting zero unarchived changes would close every open tracking issue as archived, so this run is skipped instead."
+              echo "skipped=true" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+
             while IFS= read -r name; do
               [ -z "$name" ] && continue
               # The last commit that touched this change directory. A directory
@@ -106,7 +136,7 @@ jobs:
               fi
               unarchived=$(jq -c --arg name "$name" --argjson age "$age" \
                 '. + [{name: $name, ageDays: $age}]' <<<"$unarchived")
-            done < <(jq -r '.[]' <<<"$changes_json")
+            done <<<"$names"
           fi
 
           # Bodies are handed over raw. The marker is parsed in one place, in
@@ -165,6 +195,15 @@ jobs:
                   --title "$(jq -r '.title' <<<"$action")" \
                   --body "$(jq -r '.body' <<<"$action")" \
                   || echo "::notice::Could not open a tracking issue for $change."
+                ;;
+              reopen)
+                # The planner emits this when a tracking issue was closed while
+                # its change is still unarchived. Without the case the action
+                # fell to the `*` notice below and nothing happened, so the
+                # sweep kept commenting into a closed thread nobody reads.
+                gh issue reopen "$number" --repo "$REPO" \
+                  --comment "$(jq -r '.comment' <<<"$action")" \
+                  || echo "::notice::Could not reopen issue $number for $change."
                 ;;
               escalate)
                 gh issue comment "$number" --repo "$REPO" \

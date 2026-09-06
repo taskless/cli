@@ -174,6 +174,25 @@ function reopenComment(change, sha) {
   return `Seen again on \`${sha ?? "an unrecorded commit"}\`: \`${change}\` is unarchived on \`main\` with no open pull request working on it.`;
 }
 
+/**
+ * The sweep's reopen text, separate from `reopenComment` because the two modes
+ * reopen for different reasons and the reason is the whole content of the
+ * comment. Push mode reopens on the claim test, which the sweep does not
+ * consult at all, so reusing that wording would state something the sweep never
+ * measured.
+ */
+function sweepReopenComment(change, ageDays, staleDays) {
+  return [
+    `Reopened. \`openspec/changes/${change}/\` is still on \`main\` and has had no git`,
+    `activity for ${ageDays} days, past the ${staleDays}-day window.`,
+    "",
+    "Closing this issue does not archive the change. While the change directory",
+    "is still there, `openspec/specs/` describes requirements the shipped code",
+    "has already met, so the scheduled sweep reopens the issue rather than",
+    "commenting into a closed thread nobody is watching.",
+  ].join("\n");
+}
+
 function escalateComment(change, ageDays, staleDays) {
   return [
     `Still unarchived. \`openspec/changes/${change}/\` has had no git activity for ${ageDays} days,`,
@@ -270,7 +289,30 @@ function planActions(input) {
       // forever, and a notification a day is not a durable signal. Any activity
       // on the issue also defers the next one: a thread someone is already
       // working in does not need the bot restating the age.
+      //
+      // The throttle sits ABOVE the closed-issue branch below so it governs a
+      // reopen too. A reopen is louder than a comment, and reopening on every
+      // daily run is the same nag this throttle exists to prevent.
       if ((issue.idleDays ?? Number.POSITIVE_INFINITY) < staleDays) {
+        continue;
+      }
+      if (issue.state === "closed") {
+        // A closed issue used to fall straight through to `escalate` here,
+        // because `findIssue` runs over a `--state all` listing so
+        // `issue !== undefined` is satisfied by a closed issue just as well as
+        // by an open one. The push branch tests this and the sweep branch did
+        // not, so someone closing a tracking issue without archiving the change
+        // got a daily comment appended to a closed thread forever: green,
+        // running, and seen by nobody. Only a push to `main` recovered it, via
+        // the push-mode reopen that this workflow exists to back up for the
+        // case where the push-time check never ran.
+        actions.push({
+          type: "reopen",
+          change: name,
+          issue: issue.number,
+          ageDays,
+          comment: sweepReopenComment(name, ageDays, staleDays),
+        });
         continue;
       }
       actions.push({
@@ -326,8 +368,14 @@ function planActions(input) {
   // enumerate the directory must skip the run rather than pass `[]`: doing the
   // latter closes every open tracking issue with "Archived. <change> reached
   // openspec/changes/archive/", which is false. Each workflow gates its apply
-  // step on the listing having succeeded, and openspec-sweep.yml did not, which
-  // is what this note exists to stop happening again.
+  // step on the listing having succeeded, and openspec-sweep.yml gated only on
+  // the node exit status: it captured the listing with `2>&1` and read it with
+  // `done < <(jq ...)`, so a node that wrote one line to stderr while exiting
+  // zero corrupted the JSON without tripping the guard, `jq` failed inside a
+  // process substitution whose status the loop discards, and `[]` was passed
+  // here. Measured: a startup `(node:1) Warning:` line yields zero loop
+  // iterations, exit 0, and `close:archived` for every open issue. Both halves
+  // are fixed there now, and this note is why they must stay fixed.
   for (const issue of issues) {
     if (issue.state === "open" && !seen.has(issue.change)) {
       const action = {
