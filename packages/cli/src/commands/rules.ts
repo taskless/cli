@@ -729,12 +729,28 @@ const deleteCommand = defineCommand({
 
     let success = false;
     try {
-      const deleted = await deleteRuleFiles(cwd, id);
-      if (deleted) {
+      const result = await deleteRuleFiles(cwd, id);
+      if (result.outcome === "deleted") {
         if (!args.json) {
           console.log(`Deleted rule "${id}" and associated test files.`);
         }
         success = true;
+      } else if (result.outcome === "ambiguous") {
+        // Nothing was deleted, deliberately. Two engines hold this id, so
+        // there is no single rule the caller can have meant, and picking one
+        // deleted a rule they may not have wanted while reporting success.
+        // Naming both paths is the whole remedy: `verify` and `test` already
+        // take a path, so the caller has somewhere to go.
+        const message =
+          `Rule "${id}" is held by ${result.engines.length} engines, ` +
+          `so there is no single rule to delete: ${result.paths.join(", ")}. ` +
+          `Remove the one you mean by path.`;
+        if (args.json) {
+          writeJsonError("RULE_ID_AMBIGUOUS", message);
+        } else {
+          console.error(`Error: ${message}`);
+        }
+        process.exitCode = 1;
       } else {
         // Engine-agnostic: `delete` takes a bare id and the rule could be
         // filed under any engine, so naming one in the failure would be a

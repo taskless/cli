@@ -11,6 +11,7 @@
     "build": "vite build && tsc -p tsconfig.public.json",
     "build:nightly": "TASKLESS_BUILD_TARGET=nightly vite build && tsc -p tsconfig.public.json",
     "build:self": "TASKLESS_BUILD_TARGET=self vite build",
+    "demo:manifests": "tsx scripts/print-demo-manifests.ts",
     "generate:api": "pnpm generate:api:schema && pnpm generate:api:types",
     "generate:api:schema": "tsx scripts/fetch-api-schema.ts",
     "generate:api:types": "openapi-typescript src/generated/api.schema.json -o src/generated/api.d.ts",
@@ -18,10 +19,9 @@
     "generate:rule-hash-vectors": "tsx scripts/fetch-rule-hash-vectors.ts",
     "generate:vale-schema": "tsx scripts/generate-vale-schema.ts",
     "prebuild": "tsx scripts/fetch-rule-hash-vectors.ts",
+    "reference": "tsx scripts/write-reference.ts",
     "test": "vitest run",
-    "typecheck": "tsc --noEmit",
-    "demo:manifests": "tsx scripts/print-demo-manifests.ts",
-    "reference": "tsx scripts/write-reference.ts"
+    "typecheck": "tsc --noEmit"
   },
   "type": "module",
   "module": "./dist/index.js",

@@ -21,6 +21,7 @@ import {
   resolveIngestEngine,
   ruleDirectory,
 } from "../src/rules/engines";
+import type { EngineName } from "../src/rules/layout";
 import {
   deleteRuleFiles,
   writeRuleFile,
@@ -264,9 +265,9 @@ describe("engine dispatch by directory", () => {
       await mkdir(directory, { recursive: true });
       await writeFile(join(directory, "marker.txt"), "x", "utf8");
 
-      expect(await deleteRuleFiles(temporaryDirectory, "logs-abc12345")).toBe(
-        true
-      );
+      expect(
+        await deleteRuleFiles(temporaryDirectory, "logs-abc12345")
+      ).toEqual({ outcome: "deleted", engine });
       expect(existsSync(directory)).toBe(false);
     }
   );
@@ -292,9 +293,36 @@ describe("engine dispatch by directory", () => {
   });
 
   it("reports not-found for an id no engine holds", async () => {
-    expect(await deleteRuleFiles(temporaryDirectory, "absent-abc12345")).toBe(
-      false
+    expect(
+      await deleteRuleFiles(temporaryDirectory, "absent-abc12345")
+    ).toEqual({ outcome: "not-found" });
+  });
+
+  it("refuses an id two engines hold, and deletes neither", async () => {
+    // The measured bug in #264: this took the first hit in ENGINES order,
+    // removed it, returned true, and never mentioned the other. The caller
+    // asked to delete a rule and a different rule than they may have meant
+    // was deleted, with the return value saying it went fine.
+    const directories = ["sg", "vale"].map((engine) =>
+      ruleDirectory(temporaryDirectory, engine as EngineName, "shared-id")
     );
+    for (const directory of directories) {
+      await mkdir(directory, { recursive: true });
+      await writeFile(join(directory, "marker.txt"), "x", "utf8");
+    }
+
+    const result = await deleteRuleFiles(temporaryDirectory, "shared-id");
+
+    expect(result).toEqual({
+      outcome: "ambiguous",
+      engines: ["sg", "vale"],
+      paths: directories,
+    });
+    // Neither is removed. Refusing while having already deleted one would be
+    // the original bug wearing a better error message.
+    for (const directory of directories) {
+      expect(existsSync(directory)).toBe(true);
+    }
   });
 
   it.each([

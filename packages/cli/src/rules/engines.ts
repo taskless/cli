@@ -147,27 +147,40 @@ export async function listRuleIds(
 }
 
 /**
- * The engine whose directory holds `id`, or `undefined` if no engine does.
+ * Every engine whose directory holds `id`, in {@link ENGINES} order. Empty
+ * when no engine does.
  *
- * A rule id is globally unique by construction (`<slug>-<sha1>`), so at most
- * one engine can hold it and the search order is not a tie-break. The search
- * exists because a rule id does not carry its engine: `.taskless/rules/` is
- * three sibling trees, and every operation that takes a bare id has to find
- * out which one it is in rather than assume.
+ * The search exists because a rule id does not carry its engine:
+ * `.taskless/rules/` is three sibling trees, and every operation that takes a
+ * bare id has to find out which one it is in rather than assume. Assuming is
+ * what {@link deleteRuleFiles} used to do. It hardcoded `sg`, so a delivered
+ * vale or runtime rule could be written and never removed.
  *
- * Assuming is what {@link deleteRuleFiles} used to do — it hardcoded `sg`, so
- * a delivered vale or runtime rule could be written and never removed. That is
- * the shape of bug this exists to prevent, and the reason it lives beside
- * {@link ENGINE_LAYOUTS} rather than in the one caller that first needed it.
+ * THIS RETURNS EVERY MATCH, NOT THE FIRST. It used to return the first, on the
+ * stated grounds that "a rule id is globally unique by construction
+ * (`<slug>-<sha1>`), so at most one engine can hold it". That was never true
+ * of ids this CLI accepts: `isValidRuleId` is `/^[a-z0-9][a-z0-9-]*$/` with no
+ * sha component and no cross-engine check, and the shipped demonstration rules
+ * (`no-eval-call`, `prefer-use-over-utilize`, `env-keys-declared`) carry no
+ * suffix at all. `<slug>-<sha1>` describes SERVER-GENERATED ids and was
+ * written as though it described every id.
+ *
+ * `resolve-path.ts` had it right the whole time, one directory over: "the same
+ * id can exist under two engines, so an id-addressed command has to either
+ * guess or report an ambiguity". Returning the first match made this one guess
+ * silently, and `rules delete` deleted a rule the caller may not have meant
+ * and reported success (#264). Handing back every match moves that decision to
+ * the caller, which is the only place it can be made.
  */
-export async function findRuleEngine(
+export async function findRuleEngines(
   cwd: string,
   id: string
-): Promise<EngineName | undefined> {
+): Promise<EngineName[]> {
+  const found: EngineName[] = [];
   for (const engine of ENGINES) {
     try {
       const stats = await stat(ruleDirectory(cwd, engine, id));
-      if (stats.isDirectory()) return engine;
+      if (stats.isDirectory()) found.push(engine);
     } catch (error) {
       // Only a genuinely absent directory means "not this engine". Swallowing
       // every failure would read `EACCES` on a rule directory as absence, and
@@ -178,7 +191,7 @@ export async function findRuleEngine(
       if (!isMissingDirectory(error)) throw error;
     }
   }
-  return undefined;
+  return found;
 }
 
 /**
