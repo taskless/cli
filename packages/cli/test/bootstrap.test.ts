@@ -119,21 +119,40 @@ describe("ensureTasklessDirectory", () => {
     expect(rulesStat.isDirectory()).toBe(true);
   });
 
-  it("recovers from a corrupt taskless.json manifest", async () => {
+  it("refuses a corrupt taskless.json instead of overwriting it", async () => {
     const tasklessDirectory = join(temporaryDirectory, ".taskless");
     await mkdir(tasklessDirectory, { recursive: true });
 
-    // Write corrupt JSON that would cause "unexpected token *"
+    // This used to be "recovers from a corrupt manifest", and the recovery was
+    // the bug (taskless/cli#278): unparseable JSON read as version 0, every
+    // migration re-ran, and the manifest was rewritten from the empty object
+    // the failed parse left behind. Anything the file held was gone.
     await writeFile(
       join(tasklessDirectory, "taskless.json"),
       "***not-json***",
       "utf8"
     );
 
-    // Should not throw — treats corrupt manifest as version 0
+    await expect(ensureTasklessDirectory(temporaryDirectory)).rejects.toThrow(
+      /could not be read/
+    );
+
+    // Untouched, which is the whole point of refusing.
+    const after = await readFile(
+      join(tasklessDirectory, "taskless.json"),
+      "utf8"
+    );
+    expect(after).toBe("***not-json***");
+  });
+
+  it("still migrates a .taskless/ with no manifest at all", async () => {
+    // Absent is not corrupt. A pre-manifest layout reads as version 0 and
+    // migrates, exactly as it did before the refusal above existed.
+    const tasklessDirectory = join(temporaryDirectory, ".taskless");
+    await mkdir(tasklessDirectory, { recursive: true });
+
     await ensureTasklessDirectory(temporaryDirectory);
 
-    // Manifest should be rewritten with a valid version
     const manifest = JSON.parse(
       await readFile(join(tasklessDirectory, "taskless.json"), "utf8")
     ) as { version: number };

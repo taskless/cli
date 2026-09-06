@@ -65,6 +65,19 @@ export type CLIErrorCode =
   // longer migrate as a side effect of reading, so an agent needs to tell
   // "run the migration" apart from "your CLI is too old".
   | "SCAFFOLD_MIGRATION_REQUIRED"
+  // `.taskless/taskless.json` is present and cannot be parsed, so this CLI
+  // does not know what version the project is at or what the file holds.
+  // Distinct from both scaffold-version codes, which report a version that was
+  // actually read: here there is no version, and reporting one meant inventing
+  // it. Distinct from SCAFFOLD_CONFLICT, which is a migration declining to
+  // merge two real files on disk.
+  //
+  // The remedy is the reason it is its own code. Every other scaffold failure
+  // resolves with `init`, and this one does not: `init` rewrites the manifest
+  // from what it parsed, so on an unreadable file it drops `install` and
+  // `rules`. An agent reading this should repair or delete the file, never
+  // migrate.
+  | "SCAFFOLD_MANIFEST_UNREADABLE"
   | "SCAFFOLD_CONFLICT"
   | "INTERNAL_ERROR";
 

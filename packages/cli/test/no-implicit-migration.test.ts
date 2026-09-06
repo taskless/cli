@@ -241,3 +241,103 @@ describe("a reporting command never migrates", () => {
     ).resolves.toBeDefined();
   });
 });
+
+/**
+ * A manifest that cannot be parsed is a DIFFERENT failure from a manifest that
+ * is behind, and it used to be reported as one (taskless/cli#278).
+ *
+ * `readRawManifest` collapsed unparseable JSON to `{version: 0}`, so a file
+ * whose first line reads `"version": 6` produced "This project's .taskless/ is
+ * at schema version 0, and this CLI expects 6". The number was invented, and
+ * the remedy it named destroyed the file: `init` re-read the manifest (still
+ * unparseable, still `{}`), stamped the version over the top, and wrote back
+ * `{"version": 6}` with `install` and `rules` gone.
+ */
+describe("a manifest that cannot be parsed", () => {
+  let directory: string;
+  let taskless: string;
+
+  /** The reproduction from the issue: a merge conflict left in the file. */
+  const CORRUPT_MANIFEST =
+    '{"version": 6,\n<<<<<<< HEAD\n' +
+    '  "install": {"cliVersion": "0.11.0", "onboarded": true},\n' +
+    '  "rules": {"reconciledTo": "0.11.0"}\n}\n';
+
+  beforeEach(async () => {
+    directory = await mkdtemp(join(tmpdir(), "tskl-corrupt-manifest-"));
+    taskless = join(directory, ".taskless");
+    await mkdir(join(taskless, "rules"), { recursive: true });
+    await writeFile(join(taskless, "taskless.json"), CORRUPT_MANIFEST, "utf8");
+  });
+
+  afterEach(async () => {
+    await rm(directory, { recursive: true, force: true });
+  });
+
+  it.each(["check", "verify", "test"] as const)(
+    "%s --json reports the file, not a version it guessed",
+    async (command) => {
+      const { stdout } = await runCli([command, "--json", "-d", directory]);
+      const envelope = JSON.parse(stdout.trim().split("\n").at(-1) ?? "{}") as {
+        ok?: boolean;
+        code?: string;
+        message?: string;
+      };
+      expect(envelope.ok).toBe(false);
+      expect(envelope.code).toBe("SCAFFOLD_MANIFEST_UNREADABLE");
+      expect(envelope.message).toContain("taskless.json");
+      // The heart of the issue: the message may SAY this is not a version
+      // mismatch, and it must never claim a version. Matched on the two
+      // sentences that carry a number, in both directions, rather than on the
+      // words, which the denial reuses.
+      expect(envelope.message).not.toMatch(/at schema version \d/);
+      expect(envelope.message).not.toMatch(/scaffold is version \d/);
+    }
+  );
+
+  it("check does not tell a person to run the command that would overwrite it", async () => {
+    const { stderr } = await runCli(["check", "-d", directory]);
+    expect(stderr).toContain("could not be read");
+    // `init` may be NAMED, since the message explains that it refuses here too.
+    // What it must never be is the remedy, and the remedy is the last line.
+    expect(stderr.trimEnd().split("\n").at(-1)).toContain("Repair the JSON");
+  });
+
+  it("init refuses rather than rewriting what it could not parse", async () => {
+    const { exitCode } = await runCli([
+      "init",
+      "--no-interactive",
+      "-d",
+      directory,
+    ]);
+    expect(exitCode).toBe(1);
+
+    // Byte-for-byte. Measured before the fix, this file came back as
+    // `{"version": 6}` and both `install` and `rules` were gone.
+    const after = await readFile(join(taskless, "taskless.json"), "utf8");
+    expect(after).toBe(CORRUPT_MANIFEST);
+  });
+
+  it("still migrates a .taskless/ whose manifest is merely ABSENT", async () => {
+    // The half that must not change. Absent is not a fault: it is the
+    // pre-manifest layout, it reads as version 0, and version 0 is honest.
+    const bare = await mkdtemp(join(tmpdir(), "tskl-no-manifest-"));
+    try {
+      await mkdir(join(bare, ".taskless", "rules"), { recursive: true });
+      const { stdout } = await runCli([
+        "init",
+        "--no-interactive",
+        "--json",
+        "-d",
+        bare,
+      ]);
+      const envelope = JSON.parse(stdout.trim().split("\n").at(-1) ?? "{}") as {
+        migrated?: { from: number; to: number };
+      };
+      expect(envelope.migrated?.from).toBe(0);
+      expect(envelope.migrated?.to).toBe(LATEST_SCHEMA_VERSION);
+    } finally {
+      await rm(bare, { recursive: true, force: true });
+    }
+  });
+});
