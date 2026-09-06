@@ -28,7 +28,24 @@ const {
   issueBody,
   planActions,
   main,
+  runList,
 } = require("./openspec-tracking.cjs");
+
+/** Captures what `runList` writes to stdout, without a real process spawn. */
+function captureList(changesDirectory) {
+  const original = process.stdout.write.bind(process.stdout);
+  let written = "";
+  process.stdout.write = (chunk) => {
+    written += chunk;
+    return true;
+  };
+  try {
+    runList(changesDirectory);
+  } finally {
+    process.stdout.write = original;
+  }
+  return JSON.parse(written);
+}
 
 /** The decision-bearing fields of an action, without the rendered prose. */
 function shape(action) {
@@ -74,6 +91,38 @@ test("the scan lists change directories and skips archive", () => {
 
 test("a missing changes directory is not a fault", () => {
   assert.deepEqual(listUnarchivedChanges("/nonexistent/openspec/changes"), []);
+});
+
+test("--list prints the scan as a sorted JSON array, archive excluded", () => {
+  const root = mkdtempSync(join(tmpdir(), "openspec-tracking-list-"));
+  try {
+    const changes = join(root, "changes");
+    mkdirSync(join(changes, "archive", "2026-01-01-old"), { recursive: true });
+    mkdirSync(join(changes, "beta"), { recursive: true });
+    mkdirSync(join(changes, "alpha"), { recursive: true });
+    assert.deepEqual(captureList(changes), ["alpha", "beta"]);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("--list against a missing directory prints [], not a fault", () => {
+  assert.deepEqual(captureList("/nonexistent/openspec/changes"), []);
+});
+
+test("--list round-trips a change name containing a space", () => {
+  const root = mkdtempSync(join(tmpdir(), "openspec-tracking-list-space-"));
+  try {
+    const changes = join(root, "changes");
+    mkdirSync(join(changes, "probe with spaces"), { recursive: true });
+    mkdirSync(join(changes, "probe-normal"), { recursive: true });
+    assert.deepEqual(captureList(changes), [
+      "probe with spaces",
+      "probe-normal",
+    ]);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
 });
 
 test("a pull request touching a change directory claims it", () => {

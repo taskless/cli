@@ -63,14 +63,18 @@ jobs:
         run: |
           set -euo pipefail
 
-          # `-exec basename {} \;` lists directory names identically on GNU
-          # and BSD find. `-printf '%f\n'` does not: it is a GNU extension, so
-          # a checkout built or tested on macOS ran BSD find, which does not
-          # recognise `-printf`, and the failed find status once fed straight
-          # into this assignment under `set -e`, aborting the whole run.
+          # The listing is delegated to openspec-tracking.cjs --list rather
+          # than to a shell `find`. A `find` form can always be made portable
+          # for today's shapes (this file once carried `-printf '%f\n'`, a GNU
+          # extension BSD find rejects, fixed to `-exec basename {} \;`
+          # instead), but that is a property someone has to get right again
+          # every time the listing changes. Routing it through `readdirSync`,
+          # already covered by openspec-tracking.test.cjs, removes the
+          # question of which `find` flags are portable rather than answering
+          # it correctly this once.
           #
-          # `find` itself can still fail (an unreadable `openspec/changes`),
-          # and that must read as "could not tell" rather than as "resolved":
+          # The script can still fail (an unreadable `openspec/changes`), and
+          # that must read as "could not tell" rather than as "resolved":
           # reporting an unreadable directory as zero unarchived changes would
           # tell a stack its OpenSpec change is done when nobody checked. So
           # the exit status is captured outside the assignment position `set
@@ -80,15 +84,11 @@ jobs:
           # unrelated to the pull request.
           changes=""
           listing_failed=0
-          if [ -d openspec/changes ]; then
-            if ! changes=$(find openspec/changes -mindepth 1 -maxdepth 1 -type d \
-                -not -name archive -exec basename {} \; 2>&1); then
-              echo "::warning::Could not list openspec/changes/ (find reported: $changes). Leaving the '$LABEL' label untouched rather than guessing."
-              listing_failed=1
-              changes=""
-            else
-              changes=$(printf '%s\n' "$changes" | sort)
-            fi
+          if ! raw=$(node .github/scripts/openspec-tracking.cjs --list 2>&1); then
+            echo "::warning::Could not list openspec/changes/ ($raw). Leaving the '$LABEL' label untouched rather than guessing."
+            listing_failed=1
+          else
+            changes=$(jq -r '.[]' <<<"$raw")
           fi
 
           if [ "$listing_failed" -eq 1 ]; then
