@@ -21,6 +21,7 @@ const {
   extractFeedbackItem,
   isInfoBot,
   isReviewBot,
+  isReviewInProgress,
   main,
 } = require("./fetch_pr_feedback.cjs");
 
@@ -97,6 +98,46 @@ test("a review bot whose name also ends in [bot] is still a review bot", () => {
       "Coverage dropped 2%"
     ),
     "bot"
+  );
+});
+
+test("isReviewInProgress recognizes the placeholder Claude posts on trigger", () => {
+  const body = [
+    '### Review in progress <img src="x" />',
+    "",
+    "Review mode: incremental — read 0 prior review thread(s) before reviewing.",
+    "",
+    "- [x] Read `.prior-review.json`",
+    "- [ ] Manual pass over core logic",
+  ].join("\n");
+  assert.ok(isReviewInProgress(body));
+});
+
+test("isReviewInProgress tolerates leading whitespace and a bare heading-less form", () => {
+  assert.ok(isReviewInProgress("  Review in progress\n\nworking..."));
+  assert.ok(isReviewInProgress("## review in progress"));
+});
+
+// The whole point of anchoring to the start: a FINISHED review that discusses
+// this very behaviour — quoting the phrase mid-body, the way this fix's own PR
+// description might — must not be read as unfinished forever. Only a body that
+// literally OPENS with the marker is in progress.
+test("isReviewInProgress ignores the phrase when it is not at the start", () => {
+  const finishedReviewDiscussingTheIssue = [
+    "### Review complete",
+    "",
+    "This PR fixes the bug where a caller could not tell an in-progress review",
+    'from a finished one. The placeholder always reads "Review in progress" and',
+    "is edited in place once the review finishes.",
+    "",
+    "No other issues found.",
+  ].join("\n");
+  assert.ok(!isReviewInProgress(finishedReviewDiscussingTheIssue));
+});
+
+test("isReviewInProgress is false for an ordinary finished review", () => {
+  assert.ok(
+    !isReviewInProgress("### Review complete\n\nLooks good, no issues found.")
   );
 });
 
@@ -354,6 +395,102 @@ test("an unacknowledged top-level comment stays in its priority bucket", () => {
   assert.equal(output.summary.resolved, 0);
 });
 
+// This is the exact scenario from the bug report: a caller fetches feedback
+// promptly after triggering a review and must be able to tell "reviewed,
+// nothing found" from "not reviewed yet" without reading prose itself.
+test("an in-progress top-level comment is filed as review_in_progress, not bucketed as feedback", () => {
+  const output = build(
+    fakeClient({
+      comments: [
+        {
+          id: 1,
+          body: '### Review in progress <img src="x" />\n\n- [x] Read the diff\n- [ ] Manual pass',
+          user: { login: "claude[bot]" },
+        },
+      ],
+    }),
+    {}
+  );
+  assert.equal(output.summary.review_in_progress, 1);
+  assert.equal(output.summary.needs_attention, 0);
+  assert.equal(output.summary.high, 0);
+  assert.equal(output.summary.medium, 0);
+  assert.equal(output.summary.low, 0);
+  assert.equal(output.summary.bot_comments, 0);
+  assert.equal(output.summary.resolved, 0);
+  assert.equal(output.feedback.review_in_progress.length, 1);
+  assert.match(output.action_required, /still in progress/);
+});
+
+// The counterpart to the case above: once the same bot has finished and edited
+// its comment to no longer open with the marker, it is ordinary review-bot
+// feedback again and is bucketed by content as usual.
+test("a completed review from the same bot is bucketed normally", () => {
+  const output = build(
+    fakeClient({
+      comments: [
+        {
+          id: 1,
+          body: "### Review complete\n\nThis will break on empty input.",
+          user: { login: "claude[bot]" },
+        },
+      ],
+    }),
+    {}
+  );
+  assert.equal(output.summary.review_in_progress, 0);
+  assert.equal(output.summary.high, 1);
+  assert.equal(output.summary.needs_attention, 1);
+  assert.equal(output.action_required, "Address high-priority feedback before merge");
+});
+
+// A review that merely mentions the phrase mid-body (e.g. discussing this very
+// fix) must not be quarantined forever as "still running".
+test("a completed review that mentions the phrase mid-body is not treated as in progress", () => {
+  const output = build(
+    fakeClient({
+      comments: [
+        {
+          id: 1,
+          body: 'This adds detection for the "Review in progress" placeholder. No other issues found.',
+          user: { login: "claude[bot]" },
+        },
+      ],
+    }),
+    {}
+  );
+  assert.equal(output.summary.review_in_progress, 0);
+  assert.ok(output.feedback.high.length + output.feedback.medium.length > 0);
+});
+
+// review_in_progress must outrank high/medium/low in action_required: a caller
+// deciding whether to stop must not read existing high-priority findings as
+// the whole story while a review that could still surface more is running.
+test("review_in_progress in action_required outranks an already-present high item", () => {
+  const output = build(
+    fakeClient({
+      comments: [
+        {
+          id: 1,
+          body: "### Review in progress\n\n- [ ] still working",
+          user: { login: "claude[bot]" },
+        },
+      ],
+      threads: [
+        thread({
+          comments: {
+            nodes: [{ body: "h: fix this now", author: { login: "reviewer" } }],
+          },
+        }),
+      ],
+    }),
+    {}
+  );
+  assert.equal(output.summary.high, 1);
+  assert.equal(output.summary.review_in_progress, 1);
+  assert.match(output.action_required, /still in progress/);
+});
+
 test("pending reviewers are counted, and action_required tracks the top bucket", () => {
   const withNothing = build(fakeClient(), {});
   assert.equal(withNothing.action_required, null);
@@ -540,7 +677,14 @@ test("a malformed --pr is rejected", () => {
 // identically whichever source the item arrived from.
 test("bucketByAuthor applies the same rule to every source", () => {
   const bucket = (author, body) => {
-    const feedback = { high: [], medium: [], low: [], bot: [], resolved: [] };
+    const feedback = {
+      high: [],
+      medium: [],
+      low: [],
+      bot: [],
+      resolved: [],
+      review_in_progress: [],
+    };
     const item = { author };
     bucketByAuthor(feedback, item, { user: { login: author } }, body, author);
     const [name] = Object.entries(feedback).find(
