@@ -33,6 +33,11 @@ export default tseslint.config(
       // Zero-dependency CommonJS workflow scripts (covered by their own
       // node:test suite); the app's TS/ESM-oriented rules don't apply.
       ".github/scripts/",
+      // Skill scripts, same shape and same reason: zero-dependency CommonJS
+      // with its own node:test suite. Linting the skills we now own outright is
+      // worth doing, but it is a separate change — the rules that would apply
+      // are not these ones.
+      ".agents/skills/*/scripts/",
       // Taskless rule fixtures. A rule's `.tests/` holds inputs written to be
       // flagged, and a rule about source comments needs `.ts` fixtures
       // specifically — Vale picks its comments-only tier by extension. They are

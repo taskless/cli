@@ -14,20 +14,26 @@ self-review handling, and pending-reviewer tracking.
 
 Continuously iterate on the current branch until all CI checks pass and review feedback is addressed.
 
-**Requires**: GitHub CLI (`gh`) authenticated.
+**Requires**: GitHub CLI (`gh`) authenticated, and Node (already required to work in this repo).
+
+The scripts are zero-dependency CommonJS — stdlib only, no package to install and no second toolchain. Each one exports its logic and is covered by a `*.test.cjs` suite beside it, which `Validate` runs with `node --test`. When you change a script, change its test.
 
 **Important**: All scripts must be run from the repository root directory (where `.git` is located), not from the skill directory. Use the full path to the script via `${CLAUDE_SKILL_ROOT}`.
 
 **Shell gotcha**: the agent's Bash tool MAY run under a non-bash shell (e.g. **zsh**). **Always check the current shell before running commands** (`echo "$0"` / `ps -p $$ -o comm=`). It matters because zsh does NOT word-split unquoted variables the way bash does — `for x in $list; do …` iterates once over the whole string, not per token, which can silently send a loop down the wrong path. So any multi-step orchestration (cascade rebases, loops over branches/PRs, array iteration) MUST be wrapped in a `bash <<'EOF' … EOF` heredoc (or `bash -c`) so the semantics are guaranteed regardless of the login shell — never write it as an inline loop. For destructive git fan-out (rebase + force-push loops), add a guard that refuses to push if a rebase balloons — e.g. abort when `git rev-list --count <parent>..HEAD` exceeds the branch's own commit count, which catches a rebase that landed on the wrong parent _before_ it reaches the remote.
 
+**The bundled scripts sidestep all of that, and you should follow their pattern.** They spawn `gh` and `git` with an argv array and no shell, so nothing is word-split, glob-expanded, or re-read for metacharacters, and a branch name containing a space or a `*` is just a string. They also never pipe through `sed`, `awk`, `cut`, or `xargs`: a command runs, its output is parsed in Node, and the next command is invoked from the parsed values. When you need a step they do not cover, prefer that shape — run, parse in Node, run again — over a shell pipeline whose behaviour depends on which shell you got.
+
 ## Bundled Scripts
 
-### `scripts/fetch_pr_checks.py`
+`scripts/shared.cjs` holds what they have in common — running `gh` and `git`, and deriving stack lineage from the open PRs. It is a library, not a command.
+
+### `scripts/fetch_pr_checks.cjs`
 
 Fetches CI check status and extracts failure snippets from logs.
 
 ```bash
-uv run ${CLAUDE_SKILL_ROOT}/scripts/fetch_pr_checks.py [--pr NUMBER]
+node ${CLAUDE_SKILL_ROOT}/scripts/fetch_pr_checks.cjs [--pr NUMBER]
 ```
 
 Returns JSON:
@@ -43,12 +49,12 @@ Returns JSON:
 }
 ```
 
-### `scripts/fetch_pr_feedback.py`
+### `scripts/fetch_pr_feedback.cjs`
 
 Fetches and categorizes PR review feedback using the [LOGAF scale](https://develop.sentry.dev/engineering-practices/code-review/#logaf-scale).
 
 ```bash
-uv run ${CLAUDE_SKILL_ROOT}/scripts/fetch_pr_feedback.py [--pr NUMBER]
+node ${CLAUDE_SKILL_ROOT}/scripts/fetch_pr_feedback.cjs [--pr NUMBER]
 ```
 
 Returns JSON with feedback categorized as:
@@ -68,12 +74,12 @@ Each feedback item may also include:
 - `thread_id` - GraphQL node ID for inline review comments (used for replies)
 - `pending_reviewers` (in `summary`) - count of requested reviewers who have not submitted yet; `pr.requested_reviewers` lists them
 
-### `scripts/resolve_pr_threads.py`
+### `scripts/resolve_pr_threads.cjs`
 
 Resolves PR review threads by their GraphQL node IDs — the bulk equivalent of the `resolveReviewThread` mutation below. Prefer it when closing out several threads at once.
 
 ```bash
-uv run ${CLAUDE_SKILL_ROOT}/scripts/resolve_pr_threads.py THREAD_ID [THREAD_ID ...]
+node ${CLAUDE_SKILL_ROOT}/scripts/resolve_pr_threads.cjs THREAD_ID [THREAD_ID ...]
 ```
 
 Returns JSON:
@@ -86,15 +92,15 @@ Returns JSON:
 }
 ```
 
-### `scripts/stack_status.py`
+### `scripts/stack_status.cjs`
 
 Reports the health of a PR stack — **prefer this over hand-rolled `git rev-list`/`merge-base` shell loops** (which are zsh-fragile). Lineage comes from the open GitHub PRs (each PR's head → base), the shared source of truth — no local config. For every branch with a parent it prints ahead/behind vs origin, own-commit count, and whether it is cleanly stacked or **DIVERGED** (parent tip is not an ancestor → needs a restack). Operates purely on refs, independent of the checked-out branch.
 
 ```bash
-uv run ${CLAUDE_SKILL_ROOT}/scripts/stack_status.py [--root <branch>]
+node ${CLAUDE_SKILL_ROOT}/scripts/stack_status.cjs [--root <branch>]
 ```
 
-### `scripts/propagate_stack.py`
+### `scripts/propagate_stack.cjs`
 
 Cascade-rebases a branch's descendants onto their parents to carry a fix up the stack — a focused restack that (unlike a whole-stack sync) never rebases onto the latest `main`, so fix-propagation stays decoupled from main-reconciliation. Lineage comes from the open GitHub PRs (head → base). It is topological (parent before child) and **guarded**: a balloon guard resets-without-pushing if a rebase lands on the wrong parent, and it stops on the first conflict for manual reconcile. Always prefer this to an inline rebase loop.
 
@@ -117,7 +123,7 @@ that same upstream, so its expectation cannot be inflated by the parent's
 superseded commits.
 
 ```bash
-uv run ${CLAUDE_SKILL_ROOT}/scripts/propagate_stack.py --root <branch> [--dry-run] [--no-push]
+node ${CLAUDE_SKILL_ROOT}/scripts/propagate_stack.cjs --root <branch> [--dry-run] [--no-push]
 ```
 
 **One failure path leaves the repo on another branch.** Normal completion, a
@@ -146,7 +152,7 @@ Stop if no PR exists for the current branch.
 
 ### 2. Gather Review Feedback
 
-Run `${CLAUDE_SKILL_ROOT}/scripts/fetch_pr_feedback.py` to get categorized feedback already posted on the PR.
+Run `${CLAUDE_SKILL_ROOT}/scripts/fetch_pr_feedback.cjs` to get categorized feedback already posted on the PR.
 
 ### 3. Handle Feedback by LOGAF Priority
 
@@ -210,11 +216,11 @@ mutation {
 }
 ```
 
-To close out several threads in one pass, use `scripts/resolve_pr_threads.py THREAD_ID [THREAD_ID ...]` instead of repeating the mutation. Resolve threads for `high`/`medium` items that were fixed or confirmed as false positives, and `low` items that were fixed or explicitly declined by the user — never where the action is unclear or still pending.
+To close out several threads in one pass, use `scripts/resolve_pr_threads.cjs THREAD_ID [THREAD_ID ...]` instead of repeating the mutation. Resolve threads for `high`/`medium` items that were fixed or confirmed as false positives, and `low` items that were fixed or explicitly declined by the user — never where the action is unclear or still pending.
 
 **Top-level comments** (items WITHOUT a `thread_id` — `review_summary` items and top-level PR/issue comments, e.g. a review bot like Claude that posts its findings as one top-level comment):
 
-There is no thread to reply into, so post a **new top-level comment** — and when the item carries a `comment_id`, also **add a 🎉 reaction to the original**. The reaction is the machine-readable record that the item is handled: `fetch_pr_feedback.py` checks whether _we_ reacted and buckets the comment as `resolved`, so a re-run stops reporting it. Without it, every later pass re-surfaces the same comment and you have to reason about whether you already dealt with it.
+There is no thread to reply into, so post a **new top-level comment** — and when the item carries a `comment_id`, also **add a 🎉 reaction to the original**. The reaction is the machine-readable record that the item is handled: `fetch_pr_feedback.cjs` checks whether _we_ reacted and buckets the comment as `resolved`, so a re-run stops reporting it. Without it, every later pass re-surfaces the same comment and you have to reason about whether you already dealt with it.
 
 ```bash
 gh pr comment <pr> --body "..."
@@ -252,7 +258,7 @@ A PR can carry several independent top-level comments, so a bare reply is ambigu
 
 ### 4. Check CI Status
 
-Run `${CLAUDE_SKILL_ROOT}/scripts/fetch_pr_checks.py` to get structured failure data.
+Run `${CLAUDE_SKILL_ROOT}/scripts/fetch_pr_checks.cjs` to get structured failure data.
 
 **Wait if pending:** If review bot checks (sentry, warden, cursor, bugbot, seer, codeql) are still running, wait before proceeding—they post actionable feedback that must be evaluated. Informational bots (codecov) are not worth waiting for.
 
@@ -361,15 +367,15 @@ git push
 
 Poll CI status and review feedback in a loop instead of blocking:
 
-1. Run `uv run ${CLAUDE_SKILL_ROOT}/scripts/fetch_pr_checks.py` to get current CI status
+1. Run `node ${CLAUDE_SKILL_ROOT}/scripts/fetch_pr_checks.cjs` to get current CI status
 2. If all checks passed → proceed to exit conditions
 3. If any checks failed (none pending) → return to step 5
 4. If checks are still pending:
-   a. Run `uv run ${CLAUDE_SKILL_ROOT}/scripts/fetch_pr_feedback.py` for new review feedback
+   a. Run `node ${CLAUDE_SKILL_ROOT}/scripts/fetch_pr_feedback.cjs` for new review feedback
    b. Address any new high/medium feedback immediately (same as step 3)
    c. If changes were needed, commit and push (this restarts CI), then continue polling
    d. Sleep 30 seconds, then repeat from sub-step 1
-5. After all checks pass, do a final feedback check: `sleep 10`, then run `uv run ${CLAUDE_SKILL_ROOT}/scripts/fetch_pr_feedback.py`. Address any new high/medium feedback — if changes are needed, return to step 6.
+5. After all checks pass, do a final feedback check: `sleep 10`, then run `node ${CLAUDE_SKILL_ROOT}/scripts/fetch_pr_feedback.cjs`. Address any new high/medium feedback — if changes are needed, return to step 6.
 
 ### 8. Repeat
 
