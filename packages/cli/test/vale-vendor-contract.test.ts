@@ -391,6 +391,16 @@ withVale("Vale vendor contract", () => {
     // line separating it from the prose it wraps. Both halves matter: the
     // indent is what fails CommonMark's HTML-block test, and the absence of a
     // blank line is what leaves the directive inline INSIDE the paragraph.
+    //
+    // SIX SPACES UNDER A `- ` BULLET IS FOUR PAST THE CONTENT COLUMN, WHICH IS
+    // THE INDENTED-CODE THRESHOLD, AND IT IS STILL A PARAGRAPH. An indented
+    // code block cannot interrupt a paragraph, so with no blank line these are
+    // lazy continuation lines however deep they sit. Measured, same rule and
+    // same indent: no blank line reports 2, and inserting one before each line
+    // reports 0 because the content is then a code block and code is not
+    // prose. `unzoned` asserting 2 below is what holds that distinction in
+    // place — a fixture that had drifted into a code block would report 0, and
+    // the zoned assertion of 1 could not then pass either.
     const zoned = [
       "- **A bullet.** Some lead-in text here.",
       "      <!-- vale rules.no-hedging = NO -->",
