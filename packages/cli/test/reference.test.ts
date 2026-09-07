@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { join, sep } from "node:path";
 
@@ -39,6 +40,59 @@ function ruleFor(reference: Reference, engine: string) {
   const rule = reference.rules.find((entry) => entry.engine === engine);
   if (rule === undefined) throw new Error(`reference has no ${engine} rule`);
   return rule;
+}
+
+/**
+ * Record every (path, kind) pair reachable in `value` into `into`.
+ *
+ * `path` uses `[]` for "inside some array", never an index, and an object's
+ * keys are visited in sorted order rather than insertion order. Both choices
+ * exist so that reordering an array, or reordering an object literal's keys,
+ * changes nothing this records — those are the cosmetic edits the fingerprint
+ * below is required NOT to fail on. What it does record is which keys exist at
+ * each position and what kind of value sits there (object / array / string /
+ * number / boolean / null) -- never the value itself, so renaming a rule's
+ * `id` from "no-eval-call" to something else does not move the fingerprint,
+ * but adding, removing, or retyping a field does.
+ */
+function shapeOf(value: unknown, path: string, into: Set<string>): void {
+  if (Array.isArray(value)) {
+    into.add(`${path}:array`);
+    for (const item of value) shapeOf(item, `${path}[]`, into);
+    return;
+  }
+  if (value !== null && typeof value === "object") {
+    into.add(`${path}:object`);
+    for (const key of Object.keys(
+      value as Record<string, unknown>
+    ).toSorted()) {
+      shapeOf((value as Record<string, unknown>)[key], `${path}.${key}`, into);
+    }
+    return;
+  }
+  into.add(`${path}:${value === null ? "null" : typeof value}`);
+}
+
+/**
+ * A structural fingerprint of the reference payload's SHAPE, derived from the
+ * live object rather than hand-copied -- so it moves when `Reference` /
+ * `ReferenceRule` / `ReferenceTests` / `ReferenceLayout` change shape, and
+ * cannot silently rot the way a hand-maintained field list would.
+ *
+ * This is the check the `v1 -> v2` episode (see `REFERENCE_VERSION`'s own
+ * comment, and CLAUDE.md's account of it) needed and didn't have: `tests`
+ * went from an array to `{ grouping, files, cases? }` and nothing forced
+ * `REFERENCE_VERSION` to move with it. A future change of the same kind now
+ * changes this hash, and the fix is the same one either way -- bump
+ * `REFERENCE_VERSION`, update the expected hash below, and say why in the
+ * commit that touches both.
+ */
+function shapeFingerprint(value: unknown): string {
+  const paths = new Set<string>();
+  shapeOf(value, "$", paths);
+  return createHash("sha256")
+    .update([...paths].toSorted().join("\n"))
+    .digest("hex");
 }
 
 describe("the demo reference payload", () => {
@@ -246,6 +300,28 @@ describe("the demo reference payload", () => {
     // asserts this and stops is behaving correctly, which is what makes the
     // bump a sufficient signal on its own.
     expect(reference.version).toBe(2);
+  });
+
+  it("carries a structural fingerprint that moves with the corpus shape", async () => {
+    const reference = await readReference();
+
+    // Nothing else in this file ties a shape change to `REFERENCE_VERSION`.
+    // Every other test here asserts the shape it expects (a `layout` block, a
+    // `tests.grouping`, a `signature` on `runtime` only, ...), so any one of
+    // them would fail if a field vanished -- but NONE of them fail if a field
+    // is ADDED, and #263 was exactly an addition of shape (`tests` gained a
+    // structure `layout` had no way to describe) that changed what a
+    // consumer had to parse without changing what any existing assertion
+    // here checked.
+    //
+    // If this assertion is the one that broke: you changed what `Reference`
+    // (or `ReferenceRule` / `ReferenceTests` / `ReferenceLayout`) publishes.
+    // Bump `REFERENCE_VERSION`, update its doc comment to say what changed and
+    // why, regenerate `assets/reference.json` (`pnpm --filter @taskless/cli
+    // reference`), and update the hash below to match.
+    expect(shapeFingerprint(reference)).toBe(
+      "0add32751f84d71a2684d7586a4d1b1d2fd4dbf543efeabc3a842b57b27ad787"
+    );
   });
 
   it("carries the prompt each rule answers", async () => {
