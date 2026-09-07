@@ -209,7 +209,7 @@ export const AST_GREP_TSX_SPLIT: Readonly<
  * Pinned against the binary by `test/vale-vendor-contract.test.ts`
  * ("engine capabilities" → "reports the pinned version").
  */
-export const VALE_VERSION = "3.19.0";
+export const VALE_VERSION = "3.20.0";
 
 /**
  * Which tier Vale routes an extension to.
@@ -271,12 +271,22 @@ const CONVERTER_TIER_PREFIX = "converter:";
  * plain text today, but the moment Vale routes it to a converter the same
  * omission is a crash that takes down every Vale rule in the run.
  *
- * THE TABLE HELD ACROSS 3.18.0 → 3.19.0, AND THAT IS NOT THE SAME AS THE BUMP
- * BEING FREE. Every row below was re-probed against the 3.19.0 binary and not
- * one of them moved. What moved was a format Vale *learned*, which is precisely
- * the case a table of existing rows cannot report: `.ex` and `.exs` gained
- * comment and doc-attribute extraction, so they left the unnamed plaintext
- * fallback for the `comment` tier and are new rows below.
+ * NOTHING MOVED ACROSS 3.19.0 → 3.20.0, AND THE SECOND HALF OF THAT CLAIM IS
+ * THE ONE THAT COST SOMETHING. Every row below was re-probed against the
+ * 3.20.0 binary and none of them moved, which this table can report. It cannot
+ * report a format Vale *learned*, so that direction was checked at the source
+ * instead: the v3.19.0...v3.20.0 tree adds no `internal/lint/<format>.go` and
+ * no `internal/lint/code/<lang>.go`, and every existing one of those files
+ * changes by a single import line from the org rename. No format was learned,
+ * so there is no new row to add. Do that check on the next bump too — a green
+ * table is silence about the dangerous direction, not evidence against it.
+ *
+ * THE TABLE ALSO HELD ACROSS 3.18.0 → 3.19.0, AND THAT IS NOT THE SAME AS THE
+ * BUMP BEING FREE. Every row below was re-probed against the 3.19.0 binary and
+ * not one of them moved. What moved was a format Vale *learned*, which is
+ * precisely the case a table of existing rows cannot report: `.ex` and `.exs`
+ * gained comment and doc-attribute extraction, so they left the unnamed
+ * plaintext fallback for the `comment` tier and are new rows below.
  *
  * Read that direction carefully, because it is a narrowing rather than a gain.
  * On 3.18.0 an Elixir file was linted as one block of prose, so a rule matching
@@ -385,7 +395,7 @@ export const VALE_FORMAT_TIERS: Readonly<Record<string, ValeFormatTier>> = {
   ".mkdn": "plaintext",
   ".tex": "plaintext",
   // plaintext HERE, though Vale's own docs list it as comment-tier. Measured on
-  // the pinned 3.19.0 binary a bare non-comment line lints, which is the
+  // the pinned 3.20.0 binary a bare non-comment line lints, which is the
   // plaintext signature. `.qml` and `.scss` sat here for the same reason until
   // 3.18.0 made the docs true for them; `.pyi` is the row where transcribing
   // the docs would still ship the wrong tier — the case for probing rather than

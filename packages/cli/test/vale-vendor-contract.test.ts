@@ -100,6 +100,25 @@ const findingProject = (level = "warning") =>
 const exitStatusAtLevel = (level: string) =>
   runRaw(findingProject(level), ["doc.md"]).status;
 
+/**
+ * Findings in `doc.md` for one rule, enabled as `rules.no-hedging`.
+ *
+ * The id avoids the token the rules below look for, deliberately: at `raw`
+ * scope a directive line is itself linted text, so a rule named `no-simply`
+ * that looks for `simply` reports a finding on the marker silencing it.
+ */
+const hedgingFindings = (rule: string, document: string) => {
+  const cwd = project(
+    `${header}\n[*.md]\nrules.no-hedging = YES\n`,
+    { "no-hedging": rule },
+    { "doc.md": document }
+  );
+  const parsed = JSON.parse(
+    runRaw(cwd, ["doc.md"], ["--no-exit"]).stdout
+  ) as Record<string, unknown[]>;
+  return parsed["doc.md"]?.length ?? 0;
+};
+
 withVale("Vale vendor contract", () => {
   it("reports its own name in --version", () => {
     // Depended on by: PlatformBinarySpec.identity (/vale/i). If Vale stops
@@ -365,6 +384,59 @@ withVale("Vale vendor contract", () => {
     expect(result.status).toBe(0);
     const parsed = JSON.parse(result.stdout) as Record<string, unknown[]>;
     expect(parsed["doc.md"]).toHaveLength(1);
+  });
+
+  describe("comment directives", () => {
+    // A directive pair at a list item's continuation indent, with no blank
+    // line separating it from the prose it wraps. Both halves matter: the
+    // indent is what fails CommonMark's HTML-block test, and the absence of a
+    // blank line is what leaves the directive inline INSIDE the paragraph.
+    const zoned = [
+      "- **A bullet.** Some lead-in text here.",
+      "      <!-- vale rules.no-hedging = NO -->",
+      "      A sentence that simply hedges inside the zone.",
+      "      <!-- vale rules.no-hedging = YES -->",
+      "      A sentence that simply hedges after the zone.",
+      "",
+    ].join("\n");
+    const unzoned = zoned.replaceAll(/^ *<!-- vale.*\n/gm, "");
+
+    const rawRule =
+      "extends: existence\nmessage: \"Avoid 'simply'\"\nlevel: warning\n" +
+      "scope: raw\ntokens:\n  - simply\n";
+
+    it("honors a directive at a continuation indent", () => {
+      // Depended on by: the exception-zone guidance in `create-vale-rule`,
+      // which tells an author where a zone may go and what it costs.
+      //
+      // NEW IN 3.20.0, AND THE OLD BEHAVIOUR WAS SILENT. Through 3.19.0 an
+      // inline pair was read once per block, so the NO and the YES cancelled
+      // out before the paragraph was linted and the zone did nothing at all —
+      // no error, no warning, the words still reported. Measured: 3.19.0
+      // reports both sentences here, 3.20.0 only the one after the YES.
+      //
+      // If this regresses, the recipe is teaching a zone that silently does
+      // not apply, which is worse than teaching that zones are unavailable.
+      expect(hedgingFindings(existence("simply"), unzoned)).toBe(2);
+      expect(hedgingFindings(existence("simply"), zoned)).toBe(1);
+    });
+
+    it("honors a directive for a `scope: raw` rule", () => {
+      // Depended on by: the same guidance, which until 3.20.0 had to say that
+      // choosing `raw` gave up case-by-case exemption entirely.
+      //
+      // `raw` rules run after ResetComments and never saw a directive before
+      // 3.20.0, which records the region each directive covers and suppresses
+      // a located alert inside one. Measured on this document: 3.19.0 reports
+      // both sentences, 3.20.0 one.
+      //
+      // THE RULE IS NAMED `no-hedging` RATHER THAN `no-simply` ON PURPOSE. At
+      // `raw` scope the directive line is itself linted text, so a rule whose
+      // token appears in its own name matches the `<!-- vale rules.no-simply
+      // ... -->` line and reports a finding on the directive that silences it.
+      expect(hedgingFindings(rawRule, unzoned)).toBe(2);
+      expect(hedgingFindings(rawRule, zoned)).toBe(1);
+    });
   });
 });
 

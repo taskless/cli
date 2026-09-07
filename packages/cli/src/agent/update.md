@@ -1,4 +1,4 @@
-# Topic: update     (CLI v%(CLI_VERSION)s / topic v4)
+# Topic: update     (CLI v%(CLI_VERSION)s / topic v5)
 
 ## You are here
 This is `update`. It tells you what an upgrade changed for the rules
@@ -76,7 +76,7 @@ that you finished.
 ### Migrating to 0.11.x
 
 The vendored ast-grep moves from 0.41.0 to 0.45.2, and Vale from 3.18.0
-to 3.19.0. Five things follow for existing rules.
+to 3.20.0. Nine things follow for existing rules.
 
 **Elixir stopped being linted as prose.** Vale 3.19.0 reads `.ex` and
 `.exs` through a real parser, so it now sees comments and `@doc`
@@ -90,6 +90,52 @@ would otherwise notice only as a suspiciously clean run. If the rule was
 meant for prose, this is the behaviour you always wanted. If it was
 being used to catch something in the code itself, that is a job for an
 `sg` rule, and `%(TASKLESS_CLI)s rule create` will route it there.
+
+**MDX components' children are prose now, and new findings appear.**
+As of Vale 3.19.0 a JSX element's children are read as the Markdown
+they are, so a rule over `.mdx` covers prose inside a wrapping
+component such as `<Steps>` or `<Aside>` that it previously skipped.
+Those children also carry the component name as a `text.class.<name>`
+scope, which a rule can target.
+
+This is the opposite direction from Elixir: coverage grew, so a rule
+reports MORE than it did. Read the new findings as real, and narrow the
+rule's `scope` only if the component's prose was deliberately out of
+reach.
+
+**An exception zone that did nothing now takes effect, and findings
+disappear.** Vale 3.20.0 records the region each `<!-- vale <id>.<id> =
+NO -->` and `= YES` pair covers, and suppresses any alert located
+inside it. Through 3.19.0 an *inline* pair (at a list item's
+continuation indent, with no blank line between it and the prose it
+wraps) was read once per block, so the two halves cancelled out and the
+zone did nothing at all.
+
+So a marker already sitting in this project's documents was inert and
+is now live. Nothing errors: findings a document has reported for as
+long as the rule existed stop appearing, which reads as a rule that
+broke. Before treating a drop as a regression, look for the
+markers: `git grep -n '<!-- vale'`. Keep the zone if it was meant; if
+it was a half-finished experiment, delete the pair and the coverage
+comes back.
+
+**A `raw`-scoped rule can be exempted in a document now.** Directives
+reach `raw` rules as of 3.20.0. Before, they were applied to the parsed
+document only and a `raw` rule fired straight through every zone, so a
+rule about a shell command, a flag, or a package name could only be
+removed, never exempted case by case. A rule that was narrowed or
+abandoned for that reason is worth revisiting.
+
+One caveat comes with it: at `raw` scope the directive line is itself
+linted text, so a rule whose token appears in its own id reports a
+finding on the marker that silences it. Rename the rule, or scope it.
+
+**`sequence` accepts `exceptions`.** The field is new in 3.20.0 and
+purely additive: no existing rule changes behaviour, and a sequence
+rule that was over-firing on a known phrase can now carry it. Upstream
+also changed how a negated sequence token is satisfied at a sentence
+boundary. No shape we tried reproduced a difference between 3.19.0 and
+3.20.0, so there is nothing to do unless you see one.
 
 **A rewriter now requires `fix`.** `SerializableRewriter.required` goes
 from `["rule","id"]` to `["id","fix","rule"]`, so a `rewriters:` entry

@@ -91,11 +91,11 @@ describe("the published engine versions agree with their pins", () => {
     expect(pinned.length, "platform packages disagree on a version").toBe(1);
 
     // Ours to repackage, so the pin carries a build stamp the upstream version
-    // does not: `3.19.0` is what Vale reports, `3.19.0-<stamp>` is the npm
+    // does not: `3.20.0` is what Vale reports, `3.20.0-<stamp>` is the npm
     // version that ships it. Asserting the RELATIONSHIP rather than equality,
     // because asserting equality would fail on every republish of an unchanged
-    // Vale and asserting a prefix alone would accept `3.19.0` matching a pin of
-    // `3.19.01`.
+    // Vale and asserting a prefix alone would accept `3.20.0` matching a pin of
+    // `3.20.01`.
     const [pin] = pinned;
     expect(
       pin === VALE_VERSION || pin?.startsWith(`${VALE_VERSION}-`),
