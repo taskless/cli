@@ -26,9 +26,11 @@ const { parseArgs } = require("node:util");
 
 const {
   FatalError,
+  UsageError,
   countRange,
   gitOut,
   lineage,
+  orderedDescendants,
   refExists,
   runGit,
 } = require("./shared.cjs");
@@ -45,24 +47,16 @@ const aheadBehind = (git, a, b) => {
 const isAncestor = (git, ancestor, descendant) =>
   git("merge-base", "--is-ancestor", ancestor, descendant).code === 0;
 
-/** Every branch reachable below `root`, in no particular order. */
-const descendants = (root, edges) => {
-  const children = {};
-  for (const [child, parent] of Object.entries(edges)) {
-    (children[parent] ??= []).push(child);
-  }
-  const seen = new Set();
-  const stack = [root];
-  while (stack.length > 0) {
-    const branch = stack.pop();
-    for (const child of children[branch] ?? []) {
-      if (seen.has(child)) continue;
-      seen.add(child);
-      stack.push(child);
-    }
-  }
-  return seen;
-};
+/**
+ * Every branch reachable below `root`.
+ *
+ * One walk, shared with propagate_stack, rather than a second copy that has to
+ * be kept in sync by hand. Ordering is irrelevant here (the result is only used
+ * as a filter) but the cycle handling is not: the shared walk seeds `seen` with
+ * `root`, so a base cycle terminates and never reports the root as its own
+ * descendant.
+ */
+const descendants = (root, edges) => new Set(orderedDescendants(root, edges));
 
 /** One report row per branch, as data — the printing is separate and dumb. */
 const inspectBranches = (branches, edges, git) => {
@@ -171,7 +165,7 @@ if (require.main === module) {
   } catch (error) {
     if (error instanceof FatalError) {
       console.error(error.message);
-      process.exit(1);
+      process.exit(error instanceof UsageError ? 2 : 1);
     }
     throw error;
   }

@@ -7,6 +7,7 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 
 const {
+  LOG_FETCH_TIMEOUT_MS,
   decorateChecks,
   extractFailureSnippet,
   main,
@@ -198,4 +199,81 @@ test("main assembles pr, summary, and checks for --pr", () => {
     pending: 0,
     skipped: 0,
   });
+});
+
+// The Python original passed `timeout=60` and returned None on TimeoutExpired.
+// This script is what the skill's polling loop calls every iteration, so a
+// `gh run view --log-failed` that hangs freezes the whole automation.
+test("the log fetch is bounded by a timeout", () => {
+  const calls = [];
+  const run = (command, args, options) => {
+    calls.push(options);
+    return { code: 0, stdout: "[]", stderr: "", timedOut: false };
+  };
+  decorateChecks([{ name: "A", bucket: "fail" }], "branch", {
+    run,
+    log: () => {},
+  });
+  // The run-list call is unbounded; only the log fetch carries a deadline, and
+  // it is reached only when a matching failed run exists.
+  const runLogsCall = calls.find((options) => options?.timeoutMs !== undefined);
+  assert.equal(runLogsCall, undefined, "no matching run, so no log fetch");
+
+  const withRun = [];
+  decorateChecks([{ name: "Validate", bucket: "fail" }], "branch", {
+    log: () => {},
+    run: (command, args, options) => {
+      const line = [command, ...args].join(" ");
+      withRun.push({ line, options });
+      if (line.includes("run list")) {
+        return {
+          code: 0,
+          stderr: "",
+          timedOut: false,
+          stdout: JSON.stringify([
+            { databaseId: 1, name: "Validate", conclusion: "failure" },
+          ]),
+        };
+      }
+      return { code: 0, stdout: "log", stderr: "", timedOut: false };
+    },
+  });
+  const logCall = withRun.find((c) => c.line.includes("run view"));
+  assert.equal(logCall.options.timeoutMs, LOG_FETCH_TIMEOUT_MS);
+});
+
+test("a timed-out log fetch yields no snippet rather than the timeout text", () => {
+  const decorated = decorateChecks(
+    [{ name: "Validate", bucket: "fail" }],
+    "b",
+    {
+      log: () => {},
+      run: (command, args) => {
+        const line = [command, ...args].join(" ");
+        if (line.includes("run list")) {
+          return {
+            code: 0,
+            stderr: "",
+            timedOut: false,
+            stdout: JSON.stringify([
+              { databaseId: 1, name: "Validate", conclusion: "failure" },
+            ]),
+          };
+        }
+        return { code: -1, stdout: "", stderr: "ETIMEDOUT", timedOut: true };
+      },
+    }
+  );
+  assert.ok(!("log_snippet" in decorated[0]));
+  assert.ok(!("run_id" in decorated[0]));
+});
+
+// `--pr abc` used to become NaN, reach gh as the literal "NaN", and come back
+// as "No PR found for current branch" — a misleading message for someone who
+// did name a PR.
+test("a malformed --pr is rejected instead of reported as a missing PR", () => {
+  assert.throws(
+    () => main({ argv: ["--pr", "abc"], run: () => {}, log: () => {} }),
+    /--pr expects an integer/
+  );
 });

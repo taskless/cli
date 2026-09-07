@@ -46,11 +46,12 @@ test("descendants collects the whole subtree and ignores unrelated branches", ()
   assert.deepEqual([...descendants("leaf", edges)], []);
 });
 
-test("descendants terminates on a base cycle", () => {
-  assert.deepEqual([...descendants("a", { a: "b", b: "a" })].sort(), [
-    "a",
-    "b",
-  ]);
+// GitHub permits a base cycle (A based on B while B is based on A). The walk
+// must terminate, and must not report the root as its own descendant — which
+// the second copy of this walk used to do, harmlessly but only by accident,
+// because main() re-added the root immediately afterwards.
+test("descendants terminates on a base cycle without including the root", () => {
+  assert.deepEqual([...descendants("a", { a: "b", b: "a" })], ["b"]);
 });
 
 test("aheadBehind reads git's left/right counts, and -1 when it cannot", () => {
