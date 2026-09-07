@@ -1,4 +1,3 @@
-import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { join, sep } from "node:path";
 
@@ -74,25 +73,29 @@ function shapeOf(value: unknown, path: string, into: Set<string>): void {
 }
 
 /**
- * A structural fingerprint of the reference payload's SHAPE, derived from the
- * live object rather than hand-copied -- so it moves when `Reference` /
- * `ReferenceRule` / `ReferenceTests` / `ReferenceLayout` change shape, and
- * cannot silently rot the way a hand-maintained field list would.
+ * Every (path, kind) pair the reference payload reaches, sorted.
+ *
+ * Derived from the live object rather than hand-copied, so it moves when
+ * `Reference` / `ReferenceRule` / `ReferenceTests` / `ReferenceLayout` change
+ * shape and cannot silently rot the way a hand-maintained field list would.
  *
  * This is the check the `v1 -> v2` episode (see `REFERENCE_VERSION`'s own
- * comment, and CLAUDE.md's account of it) needed and didn't have: `tests`
+ * comment, and CLAUDE.md's account of it) needed and did not have: `tests`
  * went from an array to `{ grouping, files, cases? }` and nothing forced
- * `REFERENCE_VERSION` to move with it. A future change of the same kind now
- * changes this hash, and the fix is the same one either way -- bump
- * `REFERENCE_VERSION`, update the expected hash below, and say why in the
- * commit that touches both.
+ * `REFERENCE_VERSION` to move with it. A change of that kind now fails here,
+ * and the fix is to bump `REFERENCE_VERSION`, update the list below, and say
+ * why in the commit that touches both.
+ *
+ * ASSERTED AS A LIST, NOT A HASH, ON PURPOSE. A digest comparison reports
+ * "expected 0add… to be ab12…", which says the shape moved but not what moved,
+ * leaving whoever hit it to rebuild the shape set by hand to find the one added
+ * field. A guard that fires this rarely has to be legible the one time it does,
+ * and 56 lines is a small price for a diff that names the field.
  */
-function shapeFingerprint(value: unknown): string {
+function shapePaths(value: unknown): string[] {
   const paths = new Set<string>();
   shapeOf(value, "$", paths);
-  return createHash("sha256")
-    .update([...paths].toSorted().join("\n"))
-    .digest("hex");
+  return [...paths].toSorted();
 }
 
 describe("the demo reference payload", () => {
@@ -319,9 +322,64 @@ describe("the demo reference payload", () => {
     // Bump `REFERENCE_VERSION`, update its doc comment to say what changed and
     // why, regenerate `assets/reference.json` (`pnpm --filter @taskless/cli
     // reference`), and update the hash below to match.
-    expect(shapeFingerprint(reference)).toBe(
-      "0add32751f84d71a2684d7586a4d1b1d2fd4dbf543efeabc3a842b57b27ad787"
-    );
+    expect(shapePaths(reference)).toEqual([
+      "$.constraints:array",
+      "$.constraints[].enforcedBy:string",
+      "$.constraints[].engine:string",
+      "$.constraints[].id:string",
+      "$.constraints[].rationale:string",
+      "$.constraints[].summary:string",
+      "$.constraints[]:object",
+      "$.layout.engines.runtime.capturesDirectory:string",
+      "$.layout.engines.runtime.fixtureLayout:string",
+      "$.layout.engines.runtime.ruleConfigFile:null",
+      "$.layout.engines.runtime.ruleFile:string",
+      "$.layout.engines.runtime:object",
+      "$.layout.engines.sg.capturesDirectory:null",
+      "$.layout.engines.sg.fixtureLayout:string",
+      "$.layout.engines.sg.ruleConfigFile:null",
+      "$.layout.engines.sg.ruleFile:string",
+      "$.layout.engines.sg:object",
+      "$.layout.engines.vale.capturesDirectory:null",
+      "$.layout.engines.vale.fixtureLayout:string",
+      "$.layout.engines.vale.ruleConfigFile:string",
+      "$.layout.engines.vale.ruleFile:string",
+      "$.layout.engines.vale:object",
+      "$.layout.engines:object",
+      "$.layout.ruleDirectory:string",
+      "$.layout.rulesRoot:string",
+      "$.layout.testsDirectory:string",
+      "$.layout:object",
+      "$.protocol:array",
+      "$.protocol[]:string",
+      "$.rules:array",
+      "$.rules[].directory:string",
+      "$.rules[].engine:string",
+      "$.rules[].id:string",
+      "$.rules[].prompt:string",
+      "$.rules[].rule:array",
+      "$.rules[].ruleFile:string",
+      "$.rules[].rule[].content:string",
+      "$.rules[].rule[].path:string",
+      "$.rules[].rule[]:object",
+      "$.rules[].signature:string",
+      "$.rules[].tests.cases:array",
+      "$.rules[].tests.cases[].bucket:string",
+      "$.rules[].tests.cases[].files:array",
+      "$.rules[].tests.cases[].files[]:string",
+      "$.rules[].tests.cases[].name:string",
+      "$.rules[].tests.cases[].path:string",
+      "$.rules[].tests.cases[]:object",
+      "$.rules[].tests.files:array",
+      "$.rules[].tests.files[].content:string",
+      "$.rules[].tests.files[].path:string",
+      "$.rules[].tests.files[]:object",
+      "$.rules[].tests.grouping:string",
+      "$.rules[].tests:object",
+      "$.rules[]:object",
+      "$.version:number",
+      "$:object",
+    ]);
   });
 
   it("carries the prompt each rule answers", async () => {
