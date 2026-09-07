@@ -12,6 +12,7 @@ import {
 import { getReloadNotice } from "../install/reload-notice";
 import { computeInstallDiff, readInstallState } from "../install/state";
 import { getTelemetry } from "../telemetry";
+import { CLIError } from "../util/cli-error";
 
 import { WizardCancelled } from "./ask";
 import { getCliVersion, renderIntro } from "./intro";
@@ -102,6 +103,18 @@ export async function runWizard(
       );
       cancelledStep = error.step;
       return finish({ status: "cancelled" });
+    }
+    // Any other expected failure aborts between `intro()` and `outro()`, so
+    // the frame clack already opened is still on screen. Close it with the
+    // message rather than letting the top-level handler print outside it: the
+    // first thing the wizard does is read the manifest (`promptLocations` ->
+    // `readInstallState`), which is exactly where an unreadable manifest
+    // throws, and the repair-or-delete refusal is worth showing in full.
+    // Rethrown as `reported` so index.ts sets the exit code without printing
+    // the same text a second time.
+    if (error instanceof CLIError) {
+      cancel(error.message);
+      throw new CLIError(error.message, error.code, { reported: true });
     }
     throw error;
   }
