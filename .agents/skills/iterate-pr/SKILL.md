@@ -64,8 +64,11 @@ Returns JSON with feedback categorized as:
 - `low` - Optional (`l:`, nit, style, suggestion)
 - `bot` - Informational automated comments (Codecov, Dependabot, etc.)
 - `resolved` - Already resolved threads, and top-level comments carrying our own 🎉 acknowledgement
+- `review_in_progress` - A review bot's placeholder comment, posted the instant it was triggered and not yet edited to its finished form. Not feedback yet — see below.
 
 Review bot feedback (from Sentry, Warden, Copilot, Cursor, Bugbot, CodeQL, etc.) appears in `high`/`medium`/`low` with `review_bot: true` — it is NOT placed in the `bot` bucket.
+
+**A review bot's comment existing is not a completion signal, and neither is its `created_at` or a green check run.** The Claude review bot posts a comment the instant it is triggered and edits that same comment in place as it works — a run has been observed to report `success` while the body still read "Review in progress" with unchecked boxes. `fetch_pr_feedback.cjs` detects this by checking whether the body still **opens** with the in-progress marker (a review that happens to discuss this behaviour mid-body is not mistaken for an unfinished one) and reports the count as `summary.review_in_progress` instead of bucketing the placeholder as ordinary feedback. **Before treating `needs_attention: 0` as "reviewed, nothing found," check `summary.review_in_progress` — a nonzero count means the review hasn't finished, not that it found nothing.** When one or more are present, `action_required` says so and outranks every other bucket, since a caller must not stop just because the buckets it can already see look clean.
 
 **Self-review feedback** (from the PR author) appears in `high`/`medium`/`low` with `self_review: true`. Because you can't "Request changes" on your own PR, a self-review lands as `COMMENTED` review summaries and ordinary review threads rather than changes-requested items — these are surfaced (not dropped) and bucketed by content, defaulting to `medium` when there's no `h:/m:/l:` prefix. Treat `self_review` items the same as any other human feedback in step 3.
 
@@ -191,6 +194,10 @@ Which would you like to address? (e.g., "1,3" or "all" or "none")
 - `resolved` threads
 - `bot` comments (informational only — Codecov, Dependabot, etc.)
 
+**Neither address nor skip — wait:**
+
+- `review_in_progress` items. There is nothing to fix yet; the bot hasn't finished writing its findings. Do not treat these as `bot` noise or as a clean review. See the "Wait if pending" note in step 4.
+
 #### Replying to Comments
 
 After processing a feedback item, acknowledge it on the PR so the trail shows what was addressed. How you reply depends on whether the item is an **inline thread** or a **top-level comment**.
@@ -261,6 +268,8 @@ A PR can carry several independent top-level comments, so a bare reply is ambigu
 Run `${CLAUDE_SKILL_ROOT}/scripts/fetch_pr_checks.cjs` to get structured failure data.
 
 **Wait if pending:** If review bot checks (sentry, warden, cursor, bugbot, seer, codeql) are still running, wait before proceeding—they post actionable feedback that must be evaluated. Informational bots (codecov) are not worth waiting for.
+
+This applies even when the check itself has already concluded. A review bot can report its check `success` while its comment is still the placeholder it posted on trigger — check `summary.review_in_progress` from `fetch_pr_feedback.cjs` (step 2), not the body text or the check's conclusion, and wait for it to drop to 0 before treating that bot's feedback as final.
 
 #### No PR check asks whether the OpenSpec change is archived
 
@@ -383,14 +392,16 @@ If step 7 required code changes (from new feedback after CI passed), return to s
 
 ## Exit Conditions
 
-Before exiting, check `summary.pending_reviewers`. If it is > 0, reviewers have been requested but haven't submitted yet — their review may produce new feedback. Ask the user whether to wait:
+Before exiting, check `summary.review_in_progress`. If it is > 0, do not exit — a review bot's placeholder is not a finished review, and `needs_attention: 0` alongside it means "hasn't started," not "clean." Sleep 30 seconds and re-check feedback; repeat until it drops to 0, addressing any new high/medium feedback that lands as it finishes (return to step 3).
+
+Then check `summary.pending_reviewers`. If it is > 0, reviewers have been requested but haven't submitted yet — their review may produce new feedback. Ask the user whether to wait:
 
 - **Yes:** sleep 30 seconds, re-check feedback. If new high/medium feedback appeared, address it (return to step 3). If `pending_reviewers` dropped to 0, proceed to exit. Repeat until reviewers complete.
 - **No:** proceed to the exit conditions below.
 
 If waiting produced code changes, return to step 2 for a fresh cycle.
 
-**Success:** All checks pass, post-CI feedback re-check is clean (no new unaddressed high/medium feedback including review bot findings), user has decided on low-priority items, and pending reviewers resolved or user opted to skip.
+**Success:** All checks pass, post-CI feedback re-check is clean (no new unaddressed high/medium feedback including review bot findings, and no review still in progress), user has decided on low-priority items, and pending reviewers resolved or user opted to skip.
 
 **Ask for help:** Same failure after 2 attempts, feedback needs clarification, infrastructure issues.
 

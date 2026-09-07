@@ -19,6 +19,9 @@
  * - low: Optional suggestions (l:, nit, style)
  * - bot: Informational automated comments (Codecov, Dependabot, etc.)
  * - resolved: Already resolved threads
+ * - review_in_progress: A review bot's placeholder comment, posted the instant
+ *   it was triggered and not yet edited to its finished form — not feedback
+ *   yet, see "Unfinished reviews" below
  *
  * Bot classification:
  * - Review bots (Sentry, Warden, Cursor, Bugbot, etc.) provide actionable code
@@ -33,6 +36,18 @@
  *   **threads**, not as changes-requested items. These are surfaced (not
  *   dropped) and flagged `self_review: true`, bucketed by content — defaulting
  *   to `medium` when no `h:/m:/l:` prefix is present.
+ *
+ * Unfinished reviews:
+ * - The Claude review bot posts its comment immediately when triggered and
+ *   edits it in place as it works, so the comment existing, its `created_at`,
+ *   and the check run concluding `success` are all NOT completion signals — a
+ *   run has been observed to report success while the body still read "Review
+ *   in progress" with unchecked boxes. The only reliable signal is that the
+ *   body no longer OPENS with the in-progress marker. An item whose body still
+ *   opens with it is filed in its own `review_in_progress` bucket rather than
+ *   `high`/`medium`/`low`/`resolved` — it is not feedback yet, and bucketing it
+ *   as an ordinary comment produces `needs_attention: 0` indistinguishable from
+ *   "reviewed, nothing found".
  */
 
 const { parseArgs } = require("node:util");
@@ -112,6 +127,23 @@ const isInfoBot = (username) =>
   INFO_BOT_PATTERNS.some((pattern) => pattern.test(username ?? ""));
 
 /**
+ * The placeholder the Claude review bot posts the instant it is triggered,
+ * before it has read a single file — e.g. `### Review in progress <img .../>`.
+ * It edits the same comment in place as it works, so this marker is the only
+ * way to tell "still running" from "finished with nothing to say".
+ *
+ * Anchored to the START of the (trimmed) body on purpose: a review that
+ * legitimately discusses this behaviour — quoting the phrase mid-body, the way
+ * this very fix does — must not be read as unfinished forever. Only an
+ * in-progress placeholder OPENS with it; a finished review that happens to
+ * mention the phrase does not.
+ */
+const IN_PROGRESS_MARKER = /^#{0,6}\s*review in progress\b/i;
+
+/** Whether a body still opens with the review-bot in-progress placeholder. */
+const isReviewInProgress = (body) => IN_PROGRESS_MARKER.test(body.trimStart());
+
+/**
  * Detect a LOGAF marker at the start of a comment body.
  *
  * - l: / [l] / low: → low priority (optional)
@@ -180,17 +212,23 @@ const categorizeComment = (comment, body) => {
 };
 
 /**
- * File one item by its author: a review bot is flagged and bucketed by content,
- * an info bot is filed as `bot`, everyone else is bucketed by content.
+ * File one item by its author: an unfinished review is filed on its own ahead
+ * of every other rule, a review bot is flagged and bucketed by content, an
+ * info bot is filed as `bot`, everyone else is bucketed by content.
  *
  * The three sources (review summaries, review threads, issue comments) each
  * wrap this with their own precondition — changes-requested, resolved,
  * acknowledged — but the bot classification itself is one rule in one place, so
  * a new pattern list or a change to the split cannot be applied to two of the
- * three by accident.
+ * three by accident. The in-progress check lives here for the same reason: an
+ * unfinished placeholder must never be read as a review bot's finding (`high`),
+ * an info bot's noise (`bot`), or ordinary human feedback, from ANY of the
+ * three sources.
  */
 const bucketByAuthor = (feedback, item, comment, body, author) => {
-  if (isReviewBot(author)) {
+  if (isReviewInProgress(body)) {
+    feedback.review_in_progress.push(item);
+  } else if (isReviewBot(author)) {
     item.review_bot = true;
     feedback[categorizeComment(comment, body)].push(item);
   } else if (isInfoBot(author)) {
@@ -378,7 +416,14 @@ const buildFeedback = (client, { owner, repo, prInfo }) => {
   const prNumber = prInfo.number;
   const prAuthor = prInfo.author?.login ?? "";
 
-  const feedback = { high: [], medium: [], low: [], bot: [], resolved: [] };
+  const feedback = {
+    high: [],
+    medium: [],
+    low: [],
+    bot: [],
+    resolved: [],
+    review_in_progress: [],
+  };
 
   // Review summary bodies. Every non-empty summary is surfaced, regardless of
   // author: a self-review can't be "Request changes", so the PR author's own
@@ -506,13 +551,23 @@ const buildFeedback = (client, { owner, repo, prInfo }) => {
       resolved: feedback.resolved.length,
       review_bot_feedback: countFlagged("review_bot"),
       self_review_feedback: countFlagged("self_review"),
+      review_in_progress: feedback.review_in_progress.length,
       needs_attention: feedback.high.length + feedback.medium.length,
       pending_reviewers: requestedReviewers.length,
     },
     feedback,
   };
 
-  if (feedback.high.length > 0) {
+  // `review_in_progress` outranks everything else: it is the one condition a
+  // caller must not resolve by "stopping", the exact silent-success shape this
+  // field exists to prevent. A caller that sees needs_attention: 0 and quits
+  // would otherwise conclude a review that hasn't started yet is a clean one.
+  // Existing high/medium/low items are still all present in `feedback` and are
+  // not blocked on this — only the "nothing left to do" reading is.
+  if (feedback.review_in_progress.length > 0) {
+    output.action_required =
+      "A review is still in progress - wait for it to finish before treating feedback as final";
+  } else if (feedback.high.length > 0) {
     output.action_required = "Address high-priority feedback before merge";
   } else if (feedback.medium.length > 0) {
     output.action_required = "Address medium-priority feedback";
@@ -576,5 +631,6 @@ module.exports = {
   extractFeedbackItem,
   isInfoBot,
   isReviewBot,
+  isReviewInProgress,
   main,
 };
