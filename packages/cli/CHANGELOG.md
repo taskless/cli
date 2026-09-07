@@ -1,5 +1,509 @@
 # @taskless/cli
 
+## 0.11.1
+
+[Compare with v0.11.0](https://github.com/taskless/cli/compare/v0.11.0...v0.11.1)
+
+### Patch Changes
+
+- 31bd62d: `taskless rule delete` now refuses an id that two engines hold, instead of
+  deleting the first one it finds and reporting success. Nothing is removed in
+  that case, both paths are named, and `--json` reports a new
+  `RULE_ID_AMBIGUOUS` code. Rule ids are not unique across engines: nothing
+  enforces it, and the shipped demonstration rules carry no suffix, so the
+  uniqueness the search relied on was never a property of ids this CLI accepts.
+- 178aa0a: Four agent recipes (`create-vale-rule`, `route`, `update`, `verify-rule`) had their bodies changed since v0.11.0 without their `# Topic:` version being bumped, so a consumer with a cached copy had no signal that the content moved. Their topic versions are now bumped to match, so a stale cache is refetched. `verify-rule` is the one that matters most: a cached v2 describes a reporting contract the CLI no longer emits, missing the `○` mark for a rule that did not run, the `refused` field, and the instruction to read `ran` before `ok`.
+- f0aea9c: Agent recipes are `.md` files rather than `.txt`, which is what they have always
+  been: headings, tables, fenced blocks and emphasis throughout. Vale has no
+  markdown parser for a `.txt`, so every command example and identifier inside a
+  fence was prose to a prose rule, and two recipes had to be exempted from the
+  hedging rule entirely to keep the run quiet. Both are checked now. The
+  `create-vale-rule` recipe gains a section on writing an exception zone, with the
+  measured constraint on where the directives can go.
+- b93dfff: A `.taskless/taskless.json` that cannot be parsed is now reported as an unreadable file rather than as "schema version 0", and `init` refuses it instead of overwriting it.
+
+  A manifest with a leftover merge conflict, a truncated write, or a partial editor save used to read as version 0. `check`, `verify` and `test` reported that guess as fact ("This project's .taskless/ is at schema version 0, and this CLI expects 6", from a file whose first line reads `"version": 6`), and the remedy they named destroyed the file: `init` re-ran every migration, re-read the manifest it still could not parse, and wrote back `{"version": 6}` with `install` (targets, cliVersion, onboarded) and `rules` (reconciledTo, engines) silently dropped.
+
+  Absent and unreadable are now different states. An absent manifest still migrates from 0, unchanged. An unreadable one produces the new `SCAFFOLD_MANIFEST_UNREADABLE` code, names the file and the parse error, and asks you to repair or delete it. `init` fails on it too, leaving the file byte-for-byte as it found it.
+
+  The interactive `init` wizard reads the manifest before it migrates anything, so it hits the same refusal. It now closes its own prompt frame with the repair-or-delete message rather than letting the error print after a frame nothing closed.
+
+  The new error code is added surface, not a rename, so no existing consumer changes behavior.
+
+- c323180: A delivered file set now defines what a rule directory contains, rather than being merged into it. Writing a rule removes any file the set does not name, so `check`'s repair of a drifted rule no longer leaves behind a stray capture that reconcile never reported and the repair never replaced. Test fixtures under `.tests/` are kept: nothing there reaches an engine, and the CLI writes fixtures there itself that no delivered set names. Neither half of that write acts through a symlink: a link standing where a delivered file belongs is unlinked rather than written through, and a rule directory that is itself a link is refused. A file the purge cannot remove is now named in the error instead of silently ending the pass.
+- 212fd7b: A rule delivered without any `.tests/` fixtures is now reported, and still written. A fixture-less rule works; what it cannot do is demonstrate that it does, since `taskless test` reports a pass over zero executed cases and that reads exactly like a rule proven to work. The warning names the rule and says so.
+
+  Reported rather than refused, deliberately. The holder of a fixture-less rule did not author it and cannot add fixtures the service will bless, so a refusal would leave them with no action available. Warning first means a gap in the seam surfaces from a report rather than from a blocked user, and the decision to harden it into a refusal can be made on evidence.
+
+  The report reaches both audiences. Under `--json` the prose is suppressed and the message is carried in an optional `notices` array on `rule create` and `rule improve` output; otherwise it goes to stderr. A machine consumer cannot read stderr prose, and an unattended caller is the one most likely to act on a fixture-less delivery — `check` already settles this trade the same way. `notices` is optional, so every payload that parsed before still parses. The `create-remote-rule` and `improve-rule` recipes tell an agent to read it.
+
+  The warning is raised only when the rule genuinely has no fixtures, not merely when the payload carried none. `.tests/` survives a delivered set that does not mention it, and locally written fixtures accumulate there that no later set names by construction — so a locally tested rule, redelivered, would otherwise be told nothing proved it while the proof sat in the directory just written.
+
+  The service now requires fixtures at construction, so a delivery without them should not occur — but `files` is a flat `{path, content}[]` in the published contract, with nothing that says one of them must be a fixture. The requirement is real and not visible across the seam, which is why this is checked against what actually arrived.
+
+- b8efc93: Add `taskless demo`, which writes an example rule into the project so a tier
+  can be run, read and deleted rather than described. One sample per engine, and
+  each subject is chosen so the sample demonstrates its own tier:
+  - `taskless demo sg` — flags `eval(...)`. The evidence is one expression in one
+    file, which is what makes it `sg` rather than runtime.
+  - `taskless demo vale` — flags `utilize` in markdown and suggests `use`, scoped
+    to `**/*.md` so a demonstration never widens into a project's source.
+  - `taskless demo runtime` — flags any `process.env` read whose key is not
+    declared in the repository-root `.env`. Deciding that needs both files at
+    once, so it cannot be an `sg` rule.
+
+  Run in that order they answer what a single sample cannot: why there are three
+  tiers.
+
+  The rules ship with the CLI rather than being generated, so none can arrive
+  mis-tiered or incomplete. CI runs every one of them over the shipped bytes on
+  each change, and six mutation tests assert their fixtures still fail when they
+  should.
+
+  `check` will not execute the runtime sample. A runtime rule runs only when an
+  authenticated reconcile returns its signature, and a locally written rule was
+  never issued one, so it is skipped with the reason `check` already gives.
+  Running it uses the documented `--dangerously-run-scripts`. The `sg` and `vale`
+  samples are inert data and run under `check` like any other rule.
+
+  The same three rules are published as `@taskless/cli/reference.json`, as a
+  conformance corpus rather than a pile of examples. Each entry carries the
+  generation prompt it answers, the rule itself, and the held-out cases — kept
+  apart, because the useful comparison is the cross: run a generated rule against
+  our cases, and our rule against the generated cases. From one flat file set
+  neither of those can be set up.
+
+  The corpus states its own protocol and carries the constraints `verify` and
+  `test` enforce beyond the engine's own schema, each saying which command
+  enforces it. A generator that never reads our recipes cannot know them, and
+  without the list a refusal is indistinguishable from a disagreement about the
+  subject.
+
+  `verify` now also refuses an `sg` rule whose `id:` does not match its directory.
+  Previously it passed: `test` could not find the rule at all, and `check` ran it
+  but reported findings under a name no directory has, so nobody could locate what
+  produced them.
+
+  Only the runtime rule carries a signature, deliberately
+  `1;h=sha-256;d=<64 zeros>`: well-formed, so it reaches signature comparison
+  rather than failing at the parser, and unmistakably synthetic, so it can never
+  be mistaken for a blessed one.
+
+- 265da21: `route` is now exported from `@taskless/cli/prompts`.
+
+  It was withheld because it contains local mechanics a service consumer cannot
+  run, and because a consumer could adjudicate ambiguous calls from the three
+  authoring recipes. Both halves were wrong in the same way. The mechanics are
+  real and a consumer ignores them, which is a smaller adaptation than restating
+  the criteria; and adjudicating from the destinations is what the platform
+  generator actually tried. It hand-wrote the same judgement, arrived at
+  `static | runtime` with nowhere to put `vale`, and generated every prose rule as
+  an ast-grep rule while its own delivery layer could already serve a Vale one.
+
+  Exporting a chooser without its destinations strands a consumer that can route
+  but not author. Exporting destinations without the chooser strands one that can
+  author but not route, and it writes its own chooser rather than stopping.
+
+  `getPrompt` gains `mechanics: false`, which replaces the two steps that gather
+  evidence by running the CLI with a statement of what the caller supplies
+  instead. `invocation` could not serve this: it substitutes a binary name inside
+  a command, so a consumer with no CLI rendered an instruction to run something
+  that does not parse. The default rendering is unchanged, byte for byte.
+
+- 0a9c8b9: The deprecated-path guard now skips `generated/` at any depth.
+
+  `typeScriptSources` excluded only a top-level `src/generated`, so a nested
+  generated directory would have had every deprecated path in its transcript
+  reported as a call site. The exclusion exists because a generated directory is
+  the schema's own transcript rather than a call site, and that reasoning does not
+  depend on how deep it sits.
+
+- 386ca1d: `taskless rule delete` now resolves which engine holds a rule instead of
+  assuming ast-grep.
+
+  `deleteRuleFiles` hardcoded `.taskless/rules/sg/<id>/`, which was invisible
+  while ast-grep was the only engine a rule could be delivered for. A Vale or
+  runtime rule could be written and then not removed, and `delete` reported
+  "not found" for a rule plainly on disk. The failure message named an
+  `sg/` path that a non-ast-grep rule was never going to be at.
+
+  Also corrects seven comments describing the pre-`0005` layout
+  (`.taskless/<engine>/rules/`) rather than the current
+  `.taskless/rules/<engine>/`. One of them is in `types/runtime-rule.ts`, which
+  defines the harness contract and is where a reader goes to be sure.
+
+  Publishes the rule layout table as `@taskless/cli/layout`.
+
+  `ENGINES`, `ENGINE_LAYOUTS`, `RULES_DIRECTORY`, `RULE_TESTS_DIRECTORY` and
+  `isKnownEngine` are now importable as data, from an entry that reaches no
+  filesystem, network, telemetry or command tree — so a Worker can load it. A
+  service building a rule payload can validate against the table the CLI itself
+  dispatches on rather than transcribing it.
+
+  The build enforces the constraint: `assert-library-graphs` walks each library
+  entry's resolved chunk graph and refuses to emit one that imports a host
+  capability or reaches the CLI entry. `tsconfig.prompts.json` becomes
+  `tsconfig.public.json`, since it now supplies declarations for both public
+  subpath exports.
+
+  Refuse a runtime capture rule whose `match` mode this build does not
+  implement, instead of silently treating it as `anchor`.
+
+  The two modes scan different things: `anchor` is a syntactic narrow, `broad`
+  a whole-language enumerator. Defaulting an unrecognized third mode to
+  `anchor` did not degrade the capture, it reinterpreted it — the capture ran,
+  matched a fraction of what it was written for, and reported the shortfall as
+  a clean pass.
+
+  Discovery now refuses the capture, per file rather than per rule, so one
+  unimplemented mode cannot take a rule's other narrows down with it. `verify`
+  names the file, the offending value, and the valid modes, so a capture
+  dropping out of the run is explained rather than left looking like a rule
+  that found nothing.
+
+  Every reason a runtime capture rule is refused is now explained by `verify`.
+
+  Discovery dropped a capture silently for six distinct reasons — not a YAML
+  mapping, no `metadata.taskless` block, a `kind` other than `runtime`, a
+  non-string `language`, `name` or `id` — and a dropped capture makes a rule
+  report nothing, which is indistinguishable from a rule that passed. `verify`
+  now names the file and the reason for each.
+
+  Discovery and `verify` share one assessor, so "verify says the rule is fine"
+  and "the run silently skipped that capture" cannot come apart.
+
+  A capture declaring a `metadata.taskless.version` this build does not
+  implement is now refused rather than read as if it were version 1.
+
+  A runtime rule now has exactly one executable file, enforced rather than
+  assumed.
+
+  Only `check.ts` is signed; the capture `*.yml` are inert data the reconcile
+  gate neither signs nor reports. A second module beside `check.ts` would be
+  code reachable from a blessed entry point without being blessed itself — one
+  relative import away — so tampering with it bypasses the gate while `check.ts`
+  still matches its blessed digest. Such a rule is refused, and `verify` names
+  the file.
+
+  Every extension a check could import is covered, not only `.ts`, and the
+  search is recursive: "one import away" is not "one directory away", so a
+  nested directory would otherwise carry unsigned code straight past the check.
+  A rule's `.tests/` fixtures are excluded at any depth, since a check reads
+  real files under a root and a fixture that is itself TypeScript is ordinary.
+
+  A generated rule can arrive as a file set.
+
+  `files: [{ path, content }]`, each path relative to
+  `.taskless/rules/<engine>/<id>/`, validated against `ENGINE_LAYOUTS` — so
+  "is this a complete rule" is answered from the table the CLI dispatches on
+  rather than from per-engine prose. `files` and `content` are mutually
+  exclusive, and the legacy single-`content` payload every published CLI
+  receives keeps working unchanged.
+
+  Completeness is enforced because every missing piece fails silently: a
+  runtime rule with no `check.ts` is never blessed and is held, and a Vale rule
+  with no `.vale.ini` has no matcher enabling it and never fires. Both leave
+  `check` exiting 0.
+
+  Delivered paths are refused before anything is written: absolute paths, `..`
+  segments, backslashes, unnormalized segments, duplicates (including two paths
+  differing only in case, which are one file on a case-insensitive filesystem),
+  and one path being an ancestor of another. The whole set is assessed as a
+  unit, so a refused delivery leaves no directory behind rather than a
+  half-written rule that verifies as broken two steps from the cause.
+
+  The generated API types now carry the delivery union, and the client narrows
+  on it.
+
+  `rules` is published as `SingleContent | Sg | Vale | Runtime` rather than one
+  shape with optional fields, so a runtime file set states `signature` as
+  required. Reading `content` or `tests` off a rule no longer type-checks
+  without asking which variant arrived, which is the property doing its job:
+  the client cannot treat an unsigned runtime rule as deliverable.
+
+  It also closes a case that reached the filesystem. A payload carrying neither
+  `files` nor `content` fell through to the single-content branch and handed
+  `yaml.stringify` an `undefined`, which returns the string `"undefined"`
+  rather than throwing. The rule file was created and its contents were that
+  word. It is now refused before the directory exists.
+
+  A rule the service blessed is now repaired, instead of only reported.
+
+  `check` used to parse reconcile's `unsafe`, `unknown` and `missing` verdicts
+  and read none of them. `unsafe` (bytes that drifted from what the server
+  blessed) and `missing` (a rule the server expected and this disk never had)
+  are now re-fetched from `POST /cli/api/rule/{ruleId}/restore`. `unknown` is
+  not, because a file the service never issued has nothing to fetch; it gets an
+  explanation instead, since "on your disk, never issued" is ordinary and read
+  as an unexplained skip.
+
+  Restored bytes are verified against the signature reconcile ALREADY sent,
+  not against the one the restore response carries. Checking a response against
+  itself proves only that the service is internally consistent, which it would
+  also be if it returned a newer generation of the rule. Restore repairs a rule;
+  it does not upgrade one, and that is now a property with a test rather than a
+  promise.
+
+  Nothing repaired runs in the pass that repaired it. Restore rewrites the
+  working tree and promotes nothing into the current run, so an `unsafe` rule
+  stays withheld; the next `check` reports the repaired signature and is blessed
+  through the ordinary path. A repair that cannot happen is a notice, never a
+  failed `check`, because a rule that was not repaired stays withheld and that
+  is already the safe state.
+
+- a1ba72f: Reclaim a reference stub whose recovery instruction names a CLI build you are no longer running.
+
+  Every stub outside `.taskless` ends with the line that makes a missing canonical file recoverable: "If `<path>` does not exist, run `<command>` from the project root to restore it, then read it." That command was frozen at whichever build wrote the stub. Install a nightly once and go back to the released CLI and every install afterwards reported "up to date" while the line kept pointing at `npx @taskless/cli-nightly@<pinned>` — a version that may no longer be published, in exactly the situation where the reader has nothing else to fall back on.
+
+  An install now rewrites a stub whose recovery command names a build other than its own, with one exception: the released, version-free `npx @taskless/cli init` is left alone by every build. It resolves for any reader, so a nightly has no reason to replace it, and the released and nightly builds do not rewrite each other's stubs on repeat installs. Stub bytes written by a released build are unchanged.
+
+- 319afda: Rule repair now takes a drifted rule's id from the reconcile entry that reports it, rather than parsing it out of the reported `check.ts` path. The server sends `ruleId` on every `unsafe` entry, so the parse and its fallback are gone. The parse tied repair to a filesystem layout that has moved twice, and a further move would have broken it silently: a wrong id, a 404 from restore, and a rule left unrepaired and unexecuted with nothing reported.
+
+  A reconcile entry that arrives without a usable `ruleId` is now skipped with a notice instead of becoming a request. The service's schema requires the field, but the CLI decodes the response with a cast rather than a schema, so a rollback or a regression could previously send the CLI to `/cli/api/request/undefined/restore`. This covers `missing` as well as `unsafe`; the rule stays withheld, which is already the safe state, and the notice reaches the `--json` envelope so a CI run can see it.
+
+- 2f8016b: `check`, `verify` and `test` no longer migrate `.taskless/` as a side effect of
+  reading it.
+
+  Migration `0005` moves and deletes tracked files, and these three commands
+  performed it on the way to doing their real work. So a command whose whole job
+  is to report rewrote the repository, with nothing on the human path to say so:
+  the diff landed in whatever commit came next, and in CI it ran on every
+  checkout.
+
+  It also made a migration impossible to verify. Comparing findings before and
+  after cannot be done when asking the question performs the change, so a
+  migration that silently dropped a rule could not be caught by the one check
+  that would catch it.
+
+  These commands now refuse a project whose scaffold is behind, name
+  `taskless init` as the fix, and leave the working tree untouched. The refusal
+  carries `SCAFFOLD_MIGRATION_REQUIRED` on the `--json` envelope, distinct from
+  the existing `SCAFFOLD_VERSION_MISMATCH`, which is the opposite direction and
+  asks the caller to upgrade the CLI instead.
+
+  The cost is a wall the user meets once after an upgrade, where before they met
+  nothing. That is the visible version of the same event.
+
+  `init --json` is new, and carries the `migrated` field that `check`, `verify`
+  and `test` used to report. The field followed the behaviour rather than being
+  dropped: a CI script still needs to know the working tree was rewritten and
+  what moved. It is gone from those three envelopes, where it can no longer
+  occur; it was always optional and conditional, so nothing that read it
+  correctly breaks.
+
+- aa4ee7b: `@taskless/cli/node/runtimes` publishes the engine binary resolver.
+
+  It exports `resolvePlatformBinary` along with the `AST_GREP_BINARY` and
+  `VALE_BINARY` specs, so a service that verifies a generated rule can locate the
+  same ast-grep and the same Vale that `taskless check` executes, instead of
+  pinning the engine version by hand in a second place.
+
+  The second pin is the problem it removes. A generator sandbox pinned
+  `@ast-grep/cli` at 0.41.1 while this package pinned 0.45.2, and a capture that
+  narrows differently across those four minors verifies clean in the sandbox and
+  matches nothing on the machine that runs it — a rule that passes its gate and
+  never fires, with both sides reporting success. Installing this package and
+  asking it where the binary is makes the engine version a consequence of the CLI
+  pin rather than a fact tracked alongside it.
+
+  `node/` is in the specifier because resolution spawns each candidate to make it
+  identify itself, reads the filesystem, and consults `PATH`. `/prompts` and
+  `/layout` remain host-free and a Worker still imports them; the build now
+  requires every published export to declare which of the two it is, so this
+  entry's exemption is written down rather than inferred from a missing list
+  entry.
+
+  Resolution still reports a miss as `{ path: undefined, tried }` rather than
+  throwing. That is what lets `check` lose one engine instead of the whole run,
+  and it is why a verifier should fail closed on `undefined` itself: a sandbox
+  whose optional dependency did not install resolves nothing for the same reason a
+  laptop does, and skipping verification there reports a clean generation for a
+  rule nothing checked.
+
+- b2ae152: `@taskless/cli/reference.json` now states how its fixtures group into cases, and names the tree its paths are relative to. `version` is `2`. Corpus v1 has not appeared in a released version, so the two ship together and no consumer ever sees the change; the `version` field is the compatibility signal for this artifact, not the package version.
+
+  `tests` was a flat `{ path, content }[]`, so recovering which files belong to which case meant knowing that a `runtime` case is a directory, a `vale` case is a document, and an `sg` rule's cases are `valid:`/`invalid:` keys inside one ast-grep test file. That is a fact about this repository, and every consumer transcribed it. It cost the Cloud eval team a rule that failed the fixtures shipped beside it: their request format carried one anonymous blob per case, so the two-file `runtime` case could not be expressed and the rule was graded against half of itself.
+
+  `tests` is now an object carrying a `grouping` discriminant, the same file list, and — for the groupings the CLI itself defines — the cases, each naming the path a runner is handed and the files it holds. `sg` publishes `grouping: "ast-grep-test"` and no cases, because that grouping lives inside ast-grep's own documented schema rather than ours.
+
+  A new top-level `layout` block publishes the rule tree — `.taskless/rules/{engine}/{id}`, which file is the rule for each engine, where its config and captures go — and each entry carries its own resolved `directory` and `ruleFile`. Without it the corpus published paths relative to a root it never named, so a consumer materializing a rule had to assume where the CLI looks. Every value is generated from the table the CLI dispatches on, so it cannot describe a layout the CLI does not implement.
+
+  `taskless verify --json` and `taskless test --json` now report, per rule, which published constraint a rejection violated: `violations` pairs a `constraintId` from `reference.json`'s `constraints[]` with the message reporting it. `errors` is unchanged and still carries every message, so this is additive — a consumer reading only `errors` sees what it saw before. Previously, mapping a rejection back to the rationale the corpus publishes meant matching on our wording, and rephrasing an error message is not a breaking change, so that mapping rotted silently.
+
+  An error no published constraint describes is left unattributed rather than given the nearest plausible id, because a wrong attribution sends a reader to a rationale that does not explain their failure.
+
+  New export `@taskless/cli/schemas` publishes the shapes that output is produced from: the `verify`/`test` envelope, the per-engine rule-verify schemas, and the constraint and error-envelope types. A consumer parsing our JSON hand-writes an interface for it today, which is a copy nothing checks — the CLI can add a field or change what one means and the copy stays confidently wrong. Data only: nothing there reaches the filesystem, a process, the network or the command tree, and the build refuses to emit it if that changes.
+
+  The entry ships its own copy of zod, deliberately. Resolving the consumer's would make validation depend on whichever version resolved on their side, so the same payload could parse there and not here and the schema would stop being a statement about what this CLI emits. `parse()` is also stronger than a JSON Schema of the same shape — it strips keys it does not declare, where a JSON Schema validator hands the object back unchanged.
+
+  The CLI remains the execution surface. No `verify()` or `test()` function is exported: both spawn a vendored platform binary, so anywhere a function call could run them `npx @taskless/cli verify --json` runs too.
+
+  `@taskless/cli/layout` gains `TASKLESS_DIRECTORY` and each engine's `fixtureLayout`.
+
+- 56d00a6: Calls the rule service's renamed `/cli/api/request` paths instead of the
+  deprecated `/cli/api/rule` family.
+
+  The id was never a rule id. `POST` returns a ticket, `GET` returns N rules each
+  carrying their own `id`, and the service's own spec, its `meta.ticketId` field
+  and its SQL all called it a ticket — the route was the outlier. Both identifiers
+  still ride every response and the legacy paths still serve, so nothing changes
+  for anyone; this moves the CLI's calls before the deprecation window closes.
+
+  `generate:api` now vendors the API's OpenAPI document to
+  `src/generated/api.schema.json` alongside the generated types, so a contract
+  change arrives as a readable diff rather than only as regenerated declarations,
+  and a test reads that document to fail if any source file still calls a path the
+  API marks deprecated.
+
+- 702a65c: `resolvePlatformBinary` now reports which tier answered.
+
+  `PlatformBinaryResolution` gains `source` — `platform-package`,
+  `node_modules/.bin`, or `PATH`. Only the first is the pinned install, so only it
+  tells a caller the binary is the one this CLI ships.
+
+  The entry's documentation previously said to gate that on `isPlatformBinary`. It
+  cannot: that checks a file exists and answers `--version` as the right tool,
+  which every tier satisfies by the time a path is returned, so a second call is
+  always true. A consumer following the advice would have believed it had required
+  the pinned engine while a `PATH` binary of any version passed. The one consumer
+  this was written for had already worked that out and hand-rolled a prefix
+  comparison against a package root it derived itself, which is this resolver's
+  search order copied into another repository.
+
+  `tried` still names the actual package rather than the tier, because a failure
+  saying `platform-package` is less actionable than one naming something a user
+  can install.
+
+  Also adds a test that each engine version constant matches the
+  `optionalDependencies` pin that installs it. The existing vendor-contract tests
+  spawn each engine and assert `--version` matches the constant; neither is
+  sufficient alone, since those read the binary the pin installed and never look at
+  the pin. The constants are not published: a consumer wanting the pinned engine
+  reads `source`.
+
+  A third check closes the last link: each engine is spawned from **inside its
+  pinned platform package** and its `--version` compared to the constant. The
+  existing vendor-contract tests spawn whatever resolution returned, which is the
+  pinned package only when that tier wins, so they closed this by luck of ordering
+  rather than by asserting it. `source` is what lets the tier be required instead
+  of assumed.
+
+- 42c0574: `init` now prints a banner when an install moves the CLI version, telling you to
+  reload skills or start a new session.
+
+  An AI tool reads its skill and command listing once, at session start, so a
+  session that is open during an upgrade keeps serving the previous copy for the
+  rest of its life. Nothing errors. Because a Taskless recipe is embedded in the
+  bundle at build time rather than fetched, a stale skill names a stale CLI
+  invocation and serves a stale recipe, so the answer is wrong rather than
+  missing.
+
+  The banner fires on a version move in either direction, which covers an upgrade,
+  a downgrade, and a stable/nightly swap. A first install is not a move and stays
+  quiet, as does re-running an install on the version already recorded.
+
+- 8f4df96: `taskless rule meta` now says why it has no data, instead of reporting the rule as missing.
+
+  The `.taskless/rule-metadata/<id>.yml` sidecar is written from the `meta` block of a rule status response, and the rule service does not populate that block. No sidecar has ever been written, so `rule meta` failed with `RULE_NOT_FOUND` for every id, including rules plainly on disk. It now fails with the new `RULE_META_UNAVAILABLE` code and an explanation, and points at the ticket id that actually drives iteration.
+
+  `rule improve` now reports `RULE_NOT_FOUND` when the service has no such ticket id, instead of folding that 404 into `NETWORK_ERROR`. The two ask for different things: one says re-check the id, the other says retry.
+
+  The `improve-rule` recipe no longer routes through `rule meta`. It takes the ticket id from the `ruleId` field of `rule create --json`, which is the id the iterate endpoint is addressed by, and falls back to the local-only flow when nobody has it. `rule-meta`, `rule`, `delete-rule`, `create-remote-rule`, and `create-sg-rule` were corrected where they described the sidecar as something that exists.
+
+- 37b49e1: Document where a runtime rule's test fixtures go.
+
+  `create-runtime-rule` described a rule directory as `captures/*.yml` plus
+  `check.ts` and said nothing about `.tests/`, so an agent authoring a runtime
+  rule had no statement of the fixture layout at all. `verify-rule` reported
+  runtime tests as "not run" without saying what was not being run.
+
+  Both now state it: cases live in `.tests/pass/` and `.tests/fail/`, and a
+  case is a **directory** whose path is the `root` the harness hands the
+  check, so it may hold as many files as the case needs. That last part is
+  load-bearing rather than incidental — a runtime rule exists because its
+  evidence spans more than one file, so a layout allowing one file per case
+  could not express the rules the tier is for.
+
+- 74a0e63: A runtime rule can no longer disappear from `check` without being reported. An
+  unreadable `captures/` directory was read as "this rule has no captures", so the
+  rule was dropped before it was signed and appeared in neither the executed nor
+  the skipped list: `check` printed nothing about it and exited 0. The same
+  swallow made an unreadable `.tests/` directory report as a missing fixture, and
+  an unreadable `.taskless/rules/runtime/` root removed every runtime rule at once,
+  so a project whose only rules are runtime printed "No rules configured" and
+  exited 0. Separately, a rule blessed by the server and then lost during
+  materialization is now reported as skipped, whatever caused the loss.
+- 63634d1: The installed `.taskless/README.md` and Taskless skill no longer describe a
+  layout two migrations old.
+
+  Both named `rule-tests/`, a directory `0005` deletes, and the README described
+  rules as living under `sg/rules/` and `vale/rules/` rather than the current
+  `rules/<engine>/<id>/`. The skill line is the one that mattered most: it is a
+  trigger description, so it taught an agent to look in a directory the migration
+  had removed.
+
+  `0001` writes the README on every run and says it "overwrites stale content
+  from older versions", which is true and not sufficient. Migrations only run
+  above the recorded version, so a project already at 5 never ran `0001` again
+  and kept its stale copy permanently. Migration `0006` rewrites it, so an
+  existing project gets a correct description rather than only new installs.
+
+  The README's layout section is now derived from the rule layout table instead
+  of described beside it, so the words cannot disagree with the directories they
+  describe. `LATEST_SCHEMA_VERSION` is exported for the same reason: tests
+  hardcoded the current version in ten places, and the version matrix listed
+  prior versions literally, so each new migration silently stopped covering the
+  version it had just made prior.
+
+- af1045e: A terminal `unsupported` now says why, instead of always blaming the plan.
+
+  The message was hardcoded to an entitlement explanation and ignored the
+  `error` the service sends with the status. That was accurate while the only
+  way to reach `unsupported` was an account lacking a capability. The service
+  now also terminates a request as unsupported when the CLI is below the floor
+  a runtime rule needs, and a user on an older CLI was being told to upgrade
+  their plan: they would ask an administrator for a capability they already
+  had, and the one command that would have fixed it was never mentioned.
+
+  The service's reason now wins whenever it sends one. The entitlement text
+  remains the fallback for an `unsupported` that arrives without a reason, and
+  a blank reason counts as none rather than printing a heading with nothing
+  under it.
+
+- ba65178: Vale moves to 3.20.0. The last release vendored 3.18.0, so 3.19.0 is part of
+  this crossing too and no consumer sees it on its own.
+
+  An exception zone that did nothing now takes effect. Vale records the region
+  each `<!-- vale <id>.<id> = NO -->` and `= YES` pair covers and suppresses the
+  alerts inside it, where an inline pair at a continuation indent used to be read
+  once per block and cancel itself out silently. A marker already sitting in a
+  project's documents was inert and is now live, so findings can disappear with
+  nothing reporting the drop. `taskless agent update` says how to tell that from
+  a rule that broke.
+
+  Directives also reach `scope: raw` rules now, which they never did before. A
+  rule about a shell command, a flag, or a package name was exempt-or-remove with
+  nothing in between, and can be exempted case by case again. At `raw` scope the
+  directive line is itself linted text, so a rule whose token appears in its own
+  id reports a finding on the marker that silences it.
+
+  `sequence` accepts `exceptions`, which the derived vocabulary picked up and the
+  schema now allows.
+
+  Carried over from 3.19.0: Elixir (`.ex`, `.exs`) gained comment and `@doc`
+  extraction, so it leaves the plaintext fallback for the comment tier. This
+  narrows what a Vale rule matching Elixir reports — the code body is no longer
+  prose, and findings that came from it disappear silently. MDX gained coverage in
+  the other direction, since a JSX element's children are read as the Markdown
+  they are, so prose inside a wrapping component such as `<Steps>` or `<Aside>` is
+  linted where it previously was skipped, and carries the component name as a
+  `text.class.<name>` scope a rule can target.
+
+  Every row of the format-tier table was re-probed against the 3.20.0 binary and
+  none of them moved. The direction that table cannot report was checked at the
+  source instead: the v3.19.0...v3.20.0 tree adds no format handler, so no format
+  was learned.
+
 ## 0.11.0
 
 [Compare with v0.10.2](https://github.com/taskless/cli/compare/v0.10.2...v0.11.0)
