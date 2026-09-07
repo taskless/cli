@@ -62,8 +62,18 @@ jobs:
       - name: Test
         run: pnpm test
 
-      - name: Test workflow scripts
-        run: node --test .github/scripts/*.test.cjs
+      # `test:scripts` covers .github/scripts/ AND the skill scripts under
+      # .agents/skills/*/scripts/, which are zero-dependency CommonJS with
+      # node:test suites beside them. It lives in package.json so the same
+      # command runs locally.
+      #
+      # Its globs are UNQUOTED on purpose. Node's own glob expansion exits 0
+      # when a pattern matches nothing, so a renamed or moved directory would
+      # report a clean pass having run no tests at all; an unmatched shell glob
+      # reaches node as a literal path and fails loudly with "Could not find".
+      # An absent check reads like a passing one, so take the loud failure.
+      - name: Test workflow and skill scripts
+        run: pnpm test:scripts
 
       # House style, enforced rather than documented. The rules live in
       # `.taskless/` and are scoped to the documents people and agents actually

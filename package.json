@@ -35,6 +35,7 @@
     "release:production": "pnpm -r publish --access public",
     "syncpack": "syncpack",
     "test": "turbo run test",
+    "test:scripts": "node --test .github/scripts/*.test.cjs .agents/skills/*/scripts/*.test.cjs",
     "typecheck": "turbo run typecheck"
   },
   "type": "module",

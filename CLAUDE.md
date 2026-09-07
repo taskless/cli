@@ -230,7 +230,7 @@ replays the superseded versions on top of their replacements. That surfaces as
 a conflict in files the child never touched, where "take mine" silently
 discards the parent's fix. There, replay from where the child forked:
 `git rebase --onto <parent> <parent's pre-rebase tip> <child>`, or let
-`propagate_stack.py` do it.
+`propagate_stack.cjs` do it.
 
 Three things that will bite:
 
