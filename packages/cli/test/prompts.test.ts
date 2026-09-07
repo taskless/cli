@@ -599,9 +599,17 @@ describe("Vale directives never reach a reader", () => {
 
   it("serves no recipe containing a directive", () => {
     // The property that actually matters, asserted over every topic in the
-    // build rather than the two that carry markers today.
-    for (const topic of canonicalRecipeTopics()) {
-      const served = getRawRecipe(topic);
+    // build rather than only the ones carrying a directive today.
+    //
+    // Both variants. `canonicalRecipeTopics()` lists canonical names only, so
+    // iterating it alone would leave a directive in a `.anonymous` recipe
+    // unasserted, and that variant is served by the same path.
+    const variants = canonicalRecipeTopics().flatMap((topic) => [
+      { topic, options: {} },
+      { topic, options: { anonymous: true } },
+    ]);
+    for (const { topic, options } of variants) {
+      const served = getRawRecipe(topic, options);
       // Asserted before the negative match, or an undefined recipe would
       // satisfy "contains no directive" by containing nothing at all.
       expect(served, `${topic} has no recipe`).toBeDefined();
