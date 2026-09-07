@@ -392,7 +392,9 @@ If step 7 required code changes (from new feedback after CI passed), return to s
 
 ## Exit Conditions
 
-Before exiting, check `summary.review_in_progress`. If it is > 0, do not exit — a review bot's placeholder is not a finished review, and `needs_attention: 0` alongside it means "hasn't started," not "clean." Sleep 30 seconds and re-check feedback; repeat until it drops to 0, addressing any new high/medium feedback that lands as it finishes (return to step 3).
+Before exiting, check `summary.review_in_progress`. If it is > 0, do not exit — a review bot's placeholder is not a finished review, and `needs_attention: 0` alongside it means "hasn't started," not "clean." Sleep 30 seconds and re-check feedback, addressing any new high/medium feedback that lands as it finishes (return to step 3).
+
+**This loop has a bound, and reaching it is a report rather than a retry.** Give up after roughly ten minutes of a count that never drops, and tell the user the review appears stuck, naming the PR and the bot. A placeholder can be left behind permanently: the run can be cancelled, or its job can crash, and the comment then sits in its posted state with nobody to edit it. Waiting forever on that is the same failure as exiting early, arrived at from the other side, and it is an infrastructure problem under **Ask for help** rather than something more polling will fix. Re-triggering the review is usually the fix, but that is the user's call, not yours.
 
 Then check `summary.pending_reviewers`. If it is > 0, reviewers have been requested but haven't submitted yet — their review may produce new feedback. Ask the user whether to wait:
 
