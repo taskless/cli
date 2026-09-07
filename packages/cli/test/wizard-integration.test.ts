@@ -271,3 +271,88 @@ describe("runWizard with an unreadable manifest", () => {
     expect(captureSpy).not.toHaveBeenCalledWith("cli_installed");
   });
 });
+
+/**
+ * `init-no-interactive.test.ts` covers this same wiring for `init`, and its
+ * own comment names the risk directly: a dropped `console.log` or a swapped
+ * field leaves every unit test green while the user is told nothing and their
+ * agent keeps serving the previous skills. `runWizard` (src/wizard/index.ts)
+ * grew the identical `getReloadNotice` call, but only the `init` path got a
+ * test for it -- this mirrors that test's shape for the wizard.
+ */
+describe("the wizard's restart-your-agents banner", () => {
+  it("prints on a second run whose recorded version moved", async () => {
+    clackResponses.locations = [".claude"];
+    clackResponses.summary = true;
+
+    const { runWizard } = await import("../src/wizard");
+    await runWizard({ cwd });
+
+    // Plant an older recorded version, the same way
+    // `init-no-interactive.test.ts` stages an upgrade: the build under test
+    // cannot report two versions in one process, so the move has to be staged
+    // in the manifest between two runs.
+    const manifestPath = join(cwd, ".taskless", "taskless.json");
+    const manifest = JSON.parse(await readFile(manifestPath, "utf8")) as {
+      install?: { cliVersion?: string };
+    };
+    if (manifest.install) manifest.install.cliVersion = "0.0.1-planted";
+    await writeFile(manifestPath, JSON.stringify(manifest, null, 2));
+
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+    try {
+      const result = await runWizard({ cwd });
+      expect(result.status).toBe("completed");
+
+      const printed = logSpy.mock.calls.map((call) => String(call[0]));
+      expect(printed.some((line) => line.includes("RESTART YOUR AGENTS"))).toBe(
+        true
+      );
+      // The version it moved FROM, which is the half a reader needs to tell
+      // an upgrade from a downgrade.
+      expect(printed.some((line) => line.includes("0.0.1-planted"))).toBe(true);
+    } finally {
+      logSpy.mockRestore();
+    }
+  });
+
+  it("stays quiet on a first run", async () => {
+    clackResponses.locations = [".claude"];
+    clackResponses.summary = true;
+
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+    try {
+      const { runWizard } = await import("../src/wizard");
+      const result = await runWizard({ cwd });
+      expect(result.status).toBe("completed");
+
+      const printed = logSpy.mock.calls.map((call) => String(call[0]));
+      expect(printed.some((line) => line.includes("RESTART YOUR AGENTS"))).toBe(
+        false
+      );
+    } finally {
+      logSpy.mockRestore();
+    }
+  });
+
+  it("stays quiet when the recorded version did not move", async () => {
+    clackResponses.locations = [".claude"];
+    clackResponses.summary = true;
+
+    const { runWizard } = await import("../src/wizard");
+    await runWizard({ cwd });
+
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+    try {
+      const result = await runWizard({ cwd });
+      expect(result.status).toBe("completed");
+
+      const printed = logSpy.mock.calls.map((call) => String(call[0]));
+      expect(printed.some((line) => line.includes("RESTART YOUR AGENTS"))).toBe(
+        false
+      );
+    } finally {
+      logSpy.mockRestore();
+    }
+  });
+});

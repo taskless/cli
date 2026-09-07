@@ -207,6 +207,20 @@ describe("migration version matrix", () => {
   // forgets to handle an older starting point.
   // Every prior version, derived. The list used to be written out, so each new
   // migration silently stopped testing the version it had just made "prior".
+  //
+  // NOTE on migration 0006 specifically (0006-refresh-readme.ts): every start
+  // version here is seeded with a bare `taskless.json` and no pre-existing
+  // `README.md`, so by the time 0006 runs there is no stale README for its
+  // rewrite to act on, and this test only reads the final `manifest.version`
+  // counter afterward. A regression that made 0006 a no-op (e.g. it stopped
+  // writing the file, or wrote the wrong template) would NOT be caught here --
+  // this loop would still pass, because a missing README and a freshly
+  // written one look identical to a test that never reads README.md. Do not
+  // mistake this matrix for coverage of 0006's actual rewrite; that coverage
+  // lives in `installed-documentation.test.ts` ("migration 0006, on a project
+  // that is already current" / "rewrites a stale README that no other
+  // migration would touch"), which seeds a real stale README and asserts on
+  // its rewritten content.
   const priorVersions = Array.from(
     { length: LATEST_SCHEMA_VERSION },
     (_, index) => index
