@@ -316,3 +316,49 @@ describe("an unreadable captures directory", () => {
     await expect(discoverRuntimeRules(cwd)).resolves.toEqual([]);
   });
 });
+
+describe("an unreadable runtime rules root", () => {
+  let cwd: string;
+
+  beforeEach(async () => {
+    cwd = await mkdtemp(join(tmpdir(), "tskl-unreadable-root-"));
+  });
+
+  afterEach(async () => {
+    await rm(cwd, { recursive: true, force: true });
+  });
+
+  it("is not read as a project with no runtime rules", async () => {
+    // The widest version of the same drop, one directory up. `check` calls
+    // this before any blessed set exists, so returning [] here removed every
+    // runtime rule at once with nothing left to diff against: a project whose
+    // only rules are runtime printed "No rules configured" and exited 0.
+    await writeRuntimeRule(
+      cwd,
+      "env-read",
+      {
+        "env.yml": capture({
+          id: "env-read-abc12345",
+          name: "env-read",
+          pattern: "process.env.$NAME",
+        }),
+      },
+      ECHO_CHECK
+    );
+    const root = join(cwd, ".taskless", "rules", "runtime");
+    await chmod(root, 0o000);
+
+    try {
+      await expect(discoverRuntimeRules(cwd)).rejects.toThrow();
+    } finally {
+      // Restore before cleanup, or `rm` cannot remove it either.
+      await chmod(root, 0o755);
+    }
+  });
+
+  it("still treats a genuinely absent root as no runtime rules", async () => {
+    // A project that has never written a runtime rule has no such directory,
+    // and that must stay an ordinary empty answer rather than a failure.
+    await expect(discoverRuntimeRules(cwd)).resolves.toEqual([]);
+  });
+});

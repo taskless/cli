@@ -95,8 +95,7 @@ export function accountForDroppedRules(
     .filter((rule) => !executed.has(rule.name))
     .map((rule) => ({
       rule: rule.name,
-      reason:
-        "blessed by the server but missing after materialization, so it was not run",
+      reason: "blessed by the server but missing after materialization",
     }));
 }
 

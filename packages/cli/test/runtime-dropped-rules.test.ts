@@ -25,8 +25,7 @@ describe("accounting for blessed rules that never ran", () => {
     expect(skipped).toEqual([
       {
         rule: "logs-write",
-        reason:
-          "blessed by the server but missing after materialization, so it was not run",
+        reason: "blessed by the server but missing after materialization",
       },
     ]);
   });

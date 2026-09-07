@@ -341,8 +341,21 @@ export async function discoverRuntimeRulesIn(
   let directoryEntries;
   try {
     directoryEntries = await readdir(root, { withFileTypes: true });
-  } catch {
-    return []; // no runtime rules directory
+  } catch (error) {
+    // Absent means no runtime rules, which is the ordinary state of a project
+    // that has not written one. Anything else is a real IO problem, and it is
+    // the widest silent drop in this file: `check` calls
+    // `discoverRuntimeRules(cwd)` before any blessed set exists to diff
+    // against, so an `EACCES` on the root returned `[]`, every runtime rule
+    // vanished at once, and a project with no ast-grep or Vale rules printed
+    // "No rules configured" and exited 0. `accountForDroppedRules` cannot
+    // catch that, because it compares two discovered sets and here both are
+    // empty.
+    //
+    // Same decision as `strayModules` and `assessCaptureDirectory` above, on
+    // the same tree, for the same reason.
+    if (isMissingDirectory(error)) return [];
+    throw error;
   }
 
   const rules: RuntimeRule[] = [];
