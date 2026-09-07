@@ -38,6 +38,13 @@ export const outputSchema = z.object({
   install: z
     .object({
       cliVersion: z.string().nullable(),
+      onboarded: z
+        .boolean()
+        .describe(
+          "Whether onboarding has been marked complete. Absent in the " +
+            "manifest reads as false here, matching the gate `onboard` " +
+            "itself applies (`manifest.install?.onboarded === true`)."
+        ),
     })
     .describe("How the scaffold got here: the CLI that last wrote it"),
   rules: z

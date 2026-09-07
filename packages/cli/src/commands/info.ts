@@ -80,7 +80,13 @@ export const infoCommand = defineCommand({
       // questions and drift apart. `install` is how the scaffold got here.
       // `rules` is what the rules are valid against, and it moves only when a
       // reconciliation is recorded.
-      install: { cliVersion: manifest?.install?.cliVersion ?? null },
+      install: {
+        cliVersion: manifest?.install?.cliVersion ?? null,
+        // Mirrors the gate `onboard` itself applies (strict `=== true`), so
+        // an absent field reads as "not onboarded" here too, not as an
+        // unknown state.
+        onboarded: manifest?.install?.onboarded === true,
+      },
       rules: {
         reconciledTo: manifest?.rules?.reconciledTo ?? null,
         engines: {
