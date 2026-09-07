@@ -733,3 +733,54 @@ test("emphasis tolerance does not loosen the anchor", () => {
     assert.equal(isReviewInProgress(body), false, body);
   }
 });
+
+/**
+ * CAPTURED LIVE, not transcribed from the issue. Both bodies below are the real
+ * comment on PR #302, read 29 seconds apart: the bot creates it in the
+ * "working" state and edits it into the "review in progress" state. Issue #292
+ * recorded only the second, so a marker built from the issue text alone missed
+ * the first half-minute after a trigger, which is exactly when a caller polls
+ * too early.
+ */
+const LIVE_CREATED =
+  'Claude Code is working… <img src="https://github.com/user-attachments/assets/5ac382c7.png" width="14px" height="14px" style="vertical-align: middle; margin-left: 4px;" />\n\nI\'ll analyze this and get back to you.\n\n[View job run](https://github.com/taskless/cli/actions/runs/34166525707)';
+
+const LIVE_IN_PROGRESS =
+  '### Review in progress <img src="https://github.com/user-attachments/assets/5ac382c7.png" width="14px" height="14px" />\n\nReview mode: incremental — read 0 prior review thread(s) before reviewing.\n\n- [x] Read `.prior-review.json`\n- [ ] Gather PR diff and changed files';
+
+const LIVE_FINISHED =
+  "**Claude finished @thecodedrift's task in 7m 42s** —— [View job](https://github.com/taskless/cli/actions/runs/34149206216)\n\n---\n### Review complete";
+
+test("both live placeholder states are detected, and the finished one is not", () => {
+  assert.equal(isReviewInProgress(LIVE_CREATED), true, "created state");
+  assert.equal(isReviewInProgress(LIVE_IN_PROGRESS), true, "in-progress state");
+  assert.equal(isReviewInProgress(LIVE_FINISHED), false, "finished state");
+});
+
+test("a finished review quoting either placeholder is not in progress", () => {
+  for (const quoted of ["Review in progress", "Claude Code is working"]) {
+    assert.equal(
+      isReviewInProgress(
+        `${LIVE_FINISHED}\n\nThe bug was that a body reading "${quoted}" was mis-bucketed.`
+      ),
+      false,
+      quoted
+    );
+  }
+});
+
+test("an in-progress placeholder keeps every other bucket empty", () => {
+  const output = build(
+    fakeClient({
+      comments: [{ id: 1, body: LIVE_CREATED, user: { login: "claude[bot]" } }],
+    }),
+    {}
+  );
+  assert.equal(output.summary.review_in_progress, 1);
+  assert.equal(output.summary.needs_attention, 0);
+  assert.equal(
+    output.summary.high + output.summary.medium + output.summary.low,
+    0
+  );
+  assert.match(output.action_required, /still in progress/);
+});

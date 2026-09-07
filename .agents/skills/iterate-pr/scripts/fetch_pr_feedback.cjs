@@ -127,32 +127,52 @@ const isInfoBot = (username) =>
   INFO_BOT_PATTERNS.some((pattern) => pattern.test(username ?? ""));
 
 /**
- * The placeholder the Claude review bot posts the instant it is triggered,
- * before it has read a single file — e.g. `### Review in progress <img .../>`.
- * It edits the same comment in place as it works, so this marker is the only
- * way to tell "still running" from "finished with nothing to say".
+ * The placeholders a review bot posts before it has anything to say.
  *
- * Anchored to the START of the (trimmed) body on purpose: a review that
- * legitimately discusses this behaviour — quoting the phrase mid-body, the way
- * this very fix does — must not be read as unfinished forever. Only an
- * in-progress placeholder OPENS with it; a finished review that happens to
- * mention the phrase does not.
+ * THERE IS MORE THAN ONE, WHICH IS THE WHOLE TRAP. Measured live on PR #302,
+ * the comment is created in one state and edited into another 29 seconds later,
+ * then edited again on completion:
+ *
+ *   22:24:05  Claude Code is working… <img …>        (created)
+ *   22:24:34  ### Review in progress <img …>          (+29s, checkboxes appear)
+ *   on finish **Claude finished …**
+ *
+ * Matching only the second one leaves the first half-minute after a trigger
+ * undetected, which is precisely when a caller polls too early. Issue #292
+ * captured the middle state, so a marker derived from the issue text alone
+ * misses the opening one.
+ *
+ * Anchored to the START of the (trimmed) body: a review that legitimately
+ * discusses this behaviour, quoting a phrase mid-body the way this very fix
+ * does, must not read as unfinished forever.
  *
  * Leading markdown emphasis is tolerated as well as heading hashes. The
- * observed placeholder is `### Review in progress`, but the same bot opens its
- * FINISHED comment with bold (`**Claude finished …**`), so a bold placeholder
- * is a format change away. Missing it would fail silently, straight back to
- * the bug this exists to prevent, and allowing it costs nothing: a body
- * opening with the phrase is not feedback whichever way it is marked up.
+ * observed placeholder is a heading, but the same bot opens its FINISHED
+ * comment with bold, so a bold placeholder is a format change away, and missing
+ * it would fail silently.
+ *
+ * REJECTED ALTERNATIVE, recorded so it is not re-proposed: invert this into an
+ * allowlist, treating any review-bot comment that does not open with a
+ * completion marker as unfinished. It fails safe for THIS bot, but the other
+ * review bots (Sentry, Cursor, Copilot, CodeQL) have no completion marker at
+ * all, so every comment they ever post would read as unfinished and the wait
+ * loop would never exit. A blocklist of measured placeholders is narrower and
+ * cannot stall a caller. The cost is that a NEW placeholder wording is missed,
+ * so when this bot changes its output, add the new opening here.
+ *
+ * `(?![A-Za-z0-9])` rather than `\b`: underscore is a word character, so a
+ * `\b` would not fire before the closing `__` of underscore emphasis.
  */
-// `(?![A-Za-z0-9])` rather than `\b`: underscore is a word character, so a
-// `\b` here would not fire before the closing `__` of underscore emphasis and
-// the marker would be missed.
-const IN_PROGRESS_MARKER =
-  /^#{0,6}\s*[*_]{0,2}\s*review in progress(?![A-Za-z0-9])/i;
+const IN_PROGRESS_MARKERS = [
+  /^#{0,6}\s*[*_]{0,2}\s*review in progress(?![A-Za-z0-9])/i,
+  /^#{0,6}\s*[*_]{0,2}\s*claude code is working(?![A-Za-z0-9])/i,
+];
 
-/** Whether a body still opens with the review-bot in-progress placeholder. */
-const isReviewInProgress = (body) => IN_PROGRESS_MARKER.test(body.trimStart());
+/** Whether a body still opens with one of the in-progress placeholders. */
+const isReviewInProgress = (body) => {
+  const opening = body.trimStart();
+  return IN_PROGRESS_MARKERS.some((marker) => marker.test(opening));
+};
 
 /**
  * Detect a LOGAF marker at the start of a comment body.
