@@ -1,10 +1,16 @@
+import { execFile } from "node:child_process";
 import { mkdtemp, rm, writeFile, mkdir } from "node:fs/promises";
-import { join } from "node:path";
 import { tmpdir } from "node:os";
+import { join, resolve } from "node:path";
+import { promisify } from "node:util";
+
 import { describe, expect, it, beforeEach, afterEach } from "vitest";
 import { stringify } from "yaml";
 
 import { verifyRule, getSchemaPayload } from "../src/rules/verify";
+import { cliRejectionToResult } from "./support/spawn-cli";
+
+const execFileAsync = promisify(execFile);
 
 /**
  * A rule that fires on `eval(...)`, plus one test file holding exactly the
@@ -742,5 +748,183 @@ describe("getSchemaPayload", () => {
     expect(
       examples.some((example) => example.description.includes("Composite"))
     ).toBe(true);
+  });
+});
+
+/**
+ * `packages/cli/src/commands/verify.ts`'s `tested`/`failed`/`refused` split —
+ * taskless/cli#284.
+ *
+ * `tested = results.length - refused.length`, and both the human summary and
+ * the `--json` `ok` field are derived from `failed`, which itself excludes
+ * anything `isRefused`. Every other test in this repo runs a single rule per
+ * invocation, which cannot exercise either arithmetic operation: with one
+ * rule, `results.length - refused.length` and `results.length` agree, and a
+ * refused rule "leaking" into `failed` is invisible unless something else in
+ * the run is a genuine, non-refused failure to compare it against.
+ *
+ * These run `taskless test` (not `verify`) because `refused` is only ever set
+ * by `testOneRule` on a runtime rule denied `--dangerously-run-scripts` — see
+ * `packages/cli/src/rules/inspect.ts`. `verify` never produces a refusal, so
+ * it cannot exercise this split at all.
+ */
+const verifyMixedRunBinPath = resolve(import.meta.dirname, "../dist/index.js");
+
+async function runVerifyMixedRunCli(args: string[]) {
+  try {
+    const { stdout, stderr } = await execFileAsync("node", [
+      verifyMixedRunBinPath,
+      ...args,
+    ]);
+    return { stdout, stderr, exitCode: 0 };
+  } catch (error) {
+    return cliRejectionToResult(error, [verifyMixedRunBinPath, ...args]);
+  }
+}
+
+describe("test: the tested/failed/refused split on a mixed run (#284)", () => {
+  let cwd: string;
+
+  /** An sg rule whose own fixtures either all pass or one deliberately fails. */
+  async function sgRule(
+    id: string,
+    options: { passes: boolean }
+  ): Promise<void> {
+    const directory = join(cwd, ".taskless", "rules", "sg", id);
+    await mkdir(join(directory, ".tests"), { recursive: true });
+    await writeFile(
+      join(directory, `${id}.yml`),
+      stringify({
+        id,
+        language: "TypeScript",
+        severity: "error",
+        message: `no ${id}`,
+        rule: { pattern: "console.log($ARG)" },
+      })
+    );
+    // A "valid" fixture that actually fires the rule is what makes `ast-grep
+    // test` — and therefore `taskless test` — report this rule as failed
+    // rather than refused or passed.
+    const valid = options.passes
+      ? ["const a = 1;"]
+      : ["console.log('this should fail');"];
+    await writeFile(
+      join(directory, ".tests", `${id}-test.yml`),
+      stringify({ id, valid, invalid: ["console.log('correct');"] })
+    );
+  }
+
+  /**
+   * A runtime rule that verifies cleanly but whose fixtures are always
+   * REFUSED, because nothing here ever passes `--dangerously-run-scripts`.
+   * Shape mirrors `runtime-check.test.ts`'s `RUNTIME_CAPTURE`/`RUNTIME_CHECK`.
+   */
+  async function refusedRuntimeRule(id: string): Promise<void> {
+    const directory = join(cwd, ".taskless", "rules", "runtime", id);
+    await mkdir(join(directory, "captures"), { recursive: true });
+    await writeFile(
+      join(directory, "captures", "logs.yml"),
+      stringify({
+        id: "logs-abc12345",
+        language: "typescript",
+        rule: { pattern: "console.log($A)" },
+        metadata: {
+          taskless: {
+            version: 1,
+            kind: "runtime",
+            name: "logs",
+            check: "check.ts",
+            match: "anchor",
+          },
+        },
+      })
+    );
+    await writeFile(
+      join(directory, "check.ts"),
+      "export default async function (root, matches) {\n" +
+        '  return matches.map((m) => ({ file: m.file, line: m.line, message: "runtime " + m.rule, severity: "warning" }));\n' +
+        "}\n"
+    );
+  }
+
+  beforeEach(async () => {
+    cwd = await mkdtemp(join(tmpdir(), "tskl-verify-mixed-"));
+    await runVerifyMixedRunCli(["init", "--no-interactive", "-d", cwd]);
+  });
+
+  afterEach(async () => {
+    await rm(cwd, { recursive: true, force: true });
+  });
+
+  it("keeps tested, failed, and refused as three independent counts", async () => {
+    // One rule of each outcome: a pass, a genuine failure, and a refusal.
+    // `results.length` is 3; `tested` must be 2 (3 minus the 1 refused); and
+    // `failed` must be 1 (the genuine failure only, not the refusal too).
+    // With all three numbers different, no pair of them can be swapped for
+    // another and still match what this test asserts.
+    await sgRule("pass-rule", { passes: true });
+    await sgRule("fail-rule", { passes: false });
+    await refusedRuntimeRule("rt-rule");
+
+    const jsonResult = await runVerifyMixedRunCli([
+      "test",
+      "-d",
+      cwd,
+      "--json",
+    ]);
+    const report = JSON.parse(jsonResult.stdout) as {
+      ok: boolean;
+      rules: {
+        engine: string;
+        ruleId: string;
+        ok: boolean;
+        refused?: string;
+      }[];
+    };
+    // The `ok` field is derived from `failed`, and must stay false because of
+    // the one genuine failure — a mutation that let the refusal leak into
+    // `failed` would not be visible here (it is already false), which is why
+    // the second test below isolates that case with no genuine failure.
+    expect(report.ok).toBe(false);
+    expect(jsonResult.exitCode).not.toBe(0);
+    expect(report.rules.find((rule) => rule.ruleId === "pass-rule")?.ok).toBe(
+      true
+    );
+    expect(report.rules.find((rule) => rule.ruleId === "fail-rule")?.ok).toBe(
+      false
+    );
+    const runtimeRule = report.rules.find((rule) => rule.ruleId === "rt-rule");
+    expect(runtimeRule?.refused).toBeDefined();
+
+    // The human summary is the only place `tested` is rendered at all — it is
+    // not in the `--json` envelope — so this is the only way to pin its value.
+    const humanResult = await runVerifyMixedRunCli(["test", "-d", cwd]);
+    expect(humanResult.exitCode).not.toBe(0);
+    expect(humanResult.stdout).toContain("1 of 2 rule(s) failed.");
+    expect(humanResult.stdout).toContain("1 rule(s) did not run.");
+  });
+
+  it("does not let a refused rule count as a failure", async () => {
+    // No genuine failure at all: one passing rule and one refused rule. If a
+    // refused rule were counted in `failed`, `ok` would read false and the
+    // human summary would read "of 1 rule(s) failed" instead of "tested".
+    await sgRule("pass-rule", { passes: true });
+    await refusedRuntimeRule("rt-rule");
+
+    const jsonResult = await runVerifyMixedRunCli([
+      "test",
+      "-d",
+      cwd,
+      "--json",
+    ]);
+    const report = JSON.parse(jsonResult.stdout) as { ok: boolean };
+    expect(report.ok).toBe(true);
+    expect(jsonResult.exitCode).toBe(0);
+
+    const humanResult = await runVerifyMixedRunCli(["test", "-d", cwd]);
+    expect(humanResult.exitCode).toBe(0);
+    expect(humanResult.stdout).toContain("1 rule(s) tested.");
+    expect(humanResult.stdout).toContain("1 rule(s) did not run.");
+    expect(humanResult.stdout).not.toContain("failed");
   });
 });
