@@ -1,4 +1,11 @@
-import { mkdir, mkdtemp, readFile, rm, stat } from "node:fs/promises";
+import {
+  mkdir,
+  mkdtemp,
+  readFile,
+  rm,
+  stat,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -11,6 +18,10 @@ vi.mock("../src/telemetry", () => ({
 }));
 
 const fakeCancelSymbol = Symbol("cancel");
+
+// Records what closed the clack frame, so a test can tell "the message was
+// shown inside the frame" from "it escaped past a frame nothing closed".
+const cancelSpy = vi.fn();
 
 // Clack mock responses are set per-test via these mutable refs.
 const clackResponses: {
@@ -25,7 +36,9 @@ let summaryConfirmMessage: string | undefined;
 vi.mock("@clack/prompts", () => ({
   intro: () => {},
   outro: () => {},
-  cancel: () => {},
+  cancel: (message?: string) => {
+    cancelSpy(message);
+  },
   log: {
     info: () => {},
     message: () => {},
@@ -59,6 +72,7 @@ beforeEach(async () => {
   cwd = await mkdtemp(join(tmpdir(), "taskless-wizard-e2e-"));
   await mkdir(join(cwd, ".claude"), { recursive: true });
   captureSpy.mockClear();
+  cancelSpy.mockClear();
   clackResponses.locations = undefined;
   clackResponses.auth = undefined;
   clackResponses.summary = undefined;
@@ -221,5 +235,39 @@ describe("runWizard end-to-end", () => {
     expect(result.status).toBe("cancelled");
     expect(result.cancelledStep).toBe("summary");
     expect(await exists(claudeSkill)).toBe(true);
+  });
+});
+
+/**
+ * The wizard reads the manifest before it migrates anything: `promptLocations`
+ * calls `readInstallState`, which is the first thing `runWizard` does inside
+ * its frame. An unreadable manifest therefore throws between `intro()` and
+ * `outro()`, and the refusal built for `check`, `verify` and
+ * `init --no-interactive` has to reach a person here too rather than escaping
+ * past a frame nothing closed.
+ */
+describe("runWizard with an unreadable manifest", () => {
+  const CORRUPT = '{"version": 6,\n<<<<<<< HEAD\n}\n';
+
+  it("refuses inside the frame and leaves the file alone", async () => {
+    clackResponses.locations = [".claude"];
+    clackResponses.summary = true;
+
+    const manifest = join(cwd, ".taskless", "taskless.json");
+    await mkdir(join(cwd, ".taskless"), { recursive: true });
+    await writeFile(manifest, CORRUPT, "utf8");
+
+    const { runWizard } = await import("../src/wizard");
+    await expect(runWizard({ cwd })).rejects.toThrow(/could not be read/);
+
+    // Closed through `cancel`, so the repair-or-delete remedy lands inside the
+    // frame `intro()` opened instead of after it.
+    expect(cancelSpy).toHaveBeenCalledWith(
+      expect.stringContaining("Repair the JSON")
+    );
+
+    // Byte-for-byte: the read throws before the wizard writes anything.
+    expect(await readFile(manifest, "utf8")).toBe(CORRUPT);
+    expect(captureSpy).not.toHaveBeenCalledWith("cli_installed");
   });
 });

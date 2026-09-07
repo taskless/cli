@@ -499,17 +499,31 @@ export async function runMigrations(
       // earlier successful migrations wrote (instead of writing back `raw`,
       // which is the pre-run snapshot and could clobber their output).
       if (v > version + 1) {
+        // Only the READ is guarded, and only for the one failure it can now
+        // produce. A manifest that became unreadable mid-run is left exactly
+        // as it is: stamping a version over content this CLI cannot parse
+        // would discard it, which is the data loss the read guard exists to
+        // stop, and the migration failure rethrown below is the report that
+        // matters. Everything else still propagates. Wrapping the write too
+        // would swallow a permission or disk-full failure on the stamp, which
+        // has nothing to do with readability and was visible before this
+        // guard existed.
+        let latestRaw: Record<string, unknown> | undefined;
         try {
-          const { raw: latestRaw } = await readRawManifest(tasklessDirectory);
+          ({ raw: latestRaw } = await readRawManifest(tasklessDirectory));
+        } catch (readError) {
+          if (
+            !(readError instanceof CLIError) ||
+            readError.code !== "SCAFFOLD_MANIFEST_UNREADABLE"
+          ) {
+            throw readError;
+          }
+        }
+        if (latestRaw !== undefined) {
           await writeRawManifest(tasklessDirectory, {
             ...latestRaw,
             version: v - 1,
           });
-        } catch {
-          // A manifest that became unreadable mid-run is left exactly as it
-          // is: stamping a version over content this CLI cannot parse would
-          // discard it, which is the data loss the read guard exists to stop.
-          // The migration failure rethrown below is the report that matters.
         }
       }
       throw error;

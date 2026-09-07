@@ -8,4 +8,6 @@ A manifest with a leftover merge conflict, a truncated write, or a partial edito
 
 Absent and unreadable are now different states. An absent manifest still migrates from 0, unchanged. An unreadable one produces the new `SCAFFOLD_MANIFEST_UNREADABLE` code, names the file and the parse error, and asks you to repair or delete it. `init` fails on it too, leaving the file byte-for-byte as it found it.
 
+The interactive `init` wizard reads the manifest before it migrates anything, so it hits the same refusal. It now closes its own prompt frame with the repair-or-delete message rather than letting the error print after a frame nothing closed.
+
 The new error code is added surface, not a rename, so no existing consumer changes behavior.
