@@ -1171,7 +1171,7 @@ withSg("ast-grep vendor contract", () => {
  * above: those cases are about how ast-grep *behaves* when we drive it, and
  * these are about a constant we transcribed from it. A bump that adds or drops
  * a language fails here, which is the entire reason the list is a constant
- * instead of prose inside `route.md` — transcribed prose in a `.txt` has
+ * instead of prose inside `route.md` — transcribed prose in a recipe has
  * nothing to go red, and a stale claim about what an engine can read is worse
  * than the silence it replaced, because an agent acts on it.
  *

@@ -16,3 +16,9 @@ example/
 
 # Taskless rule fixtures: deliberately-wrong prose and source.
 .taskless/
+
+# Agent recipes are authored content served verbatim to an agent, not source.
+# Their line breaks and list indentation are deliberate, and reflowing them
+# rewrites text a reader depends on. They only entered prettier scope by
+# becoming `.md`; nothing wanted them formatted.
+packages/cli/src/agent/*.md

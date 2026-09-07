@@ -1,7 +1,6 @@
-# Topic: check (CLI v%(CLI_VERSION)s / topic v2)
+# Topic: check     (CLI v%(CLI_VERSION)s / topic v2)
 
 ## Goal
-
 Run the applicable rules against the codebase and report matches. Two
 rule kinds run: **static** ast-grep rules in `.taskless/rules/sg/`, and
 **runtime** rules in `.taskless/rules/runtime/` (a directory of ast-grep
@@ -9,7 +8,6 @@ capture rules plus a `check.ts`). Used standalone (full project scan),
 in CI (diff-only scan), or after rule create/improve to validate.
 
 ## Preconditions
-
 - `.taskless/` directory exists.
 - At least one rule exists in `.taskless/rules/sg/` or
   `.taskless/rules/runtime/`. (If none exist, the CLI exits 0 with a
@@ -45,7 +43,6 @@ authoritative allow-list is the server's; the CI backstop
 (`%(TASKLESS_CLI)s agent ci`) is the enforcement point for runtime rules.
 
 ## Flags
-
 - `--json`: machine output (`{ success, results, skipped? }`).
 - `--anonymous`: run only static rules; skip runtime rules.
 - `--dangerously-run-scripts`: run runtime `check.ts` unverified.
@@ -58,23 +55,17 @@ authoritative allow-list is the server's; the CI backstop
    pass them as positional arguments.
 
 2. **Invoke the CLI.** Either:
-
    ```
    %(TASKLESS_CLI)s check --json
    ```
-
    or, scoped to specific paths:
-
    ```
    %(TASKLESS_CLI)s check --json src/foo.ts src/bar.ts
    ```
-
    or, against a git diff:
-
    ```
    %(TASKLESS_CLI)s check --json $(git diff --name-only main...HEAD)
    ```
-
    Paths that don't exist on disk are silently filtered, so you can
    pipe raw `git diff` output directly without pre-filtering.
 
@@ -84,7 +75,6 @@ authoritative allow-list is the server's; the CI backstop
    rules did not execute; it never affects the exit code.
 
 3. **Parse the JSON output.** Shape:
-
    ```json
    {
      "success": false,
@@ -98,7 +88,7 @@ authoritative allow-list is the server's; the CI backstop
          "file": "src/foo.ts",
          "range": {
            "start": { "line": 12, "column": 4 },
-           "end": { "line": 12, "column": 14 }
+           "end":   { "line": 12, "column": 14 }
          },
          "matchedText": "eval(input)",
          "fix": null
@@ -130,7 +120,7 @@ authoritative allow-list is the server's; the CI backstop
 When `--json` is set, failures emit `{ ok: false, code, message }`:
 
 | code          | meaning               | fix                              |
-| ------------- | --------------------- | -------------------------------- |
+|---------------|-----------------------|----------------------------------|
 | `SCAN_FAILED` | ast-grep scan errored | Report; check rule YAML validity |
 
 ## See Also

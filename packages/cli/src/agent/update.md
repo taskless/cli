@@ -1,7 +1,6 @@
-# Topic: update (CLI v%(CLI_VERSION)s / topic v4)
+# Topic: update     (CLI v%(CLI_VERSION)s / topic v4)
 
 ## You are here
-
 This is `update`. It tells you what an upgrade changed for the rules
 ALREADY IN THIS PROJECT, and what to do about them.
 
@@ -17,24 +16,20 @@ reasonably conclude the upgrade is done. It is not. The directory is
 migrated; the rules may still need work.
 
 ## Goal
-
 Walk the ledger below from the version this project was last reconciled
 to, up to the installed CLI, doing what each section says. Then record
 that you finished.
 
 ## Preconditions
-
 - `.taskless/` exists. If it does not, there are no rules to reconcile.
 - You can read `.taskless/taskless.json`.
 
 ## Steps
 
 1. **Find where to start.** Run:
-
    ```
    %(TASKLESS_CLI)s info --json
    ```
-
    and read `rules.reconciledTo`, plus `rules.engines.sg` and
    `rules.engines.vale` for the engine versions the rules were built
    against.
@@ -60,11 +55,9 @@ that you finished.
    do means exactly that; it is a claim, not an oversight.
 
 4. **Record that you finished.** Run:
-
    ```
    %(TASKLESS_CLI)s update --rules
    ```
-
    Only after the walk is complete. There is no version to pass: the CLI
    stamps its own, because the only sensible endpoint of a walk is the
    version you are running.
@@ -192,8 +185,8 @@ including the TSX case that PR names. Nothing to do unless you see one.
 
 With `--json`, `--rules` failures emit `{ ok: false, code, message }`:
 
-| code            | meaning                                                  | fix                                  |
-| --------------- | -------------------------------------------------------- | ------------------------------------ |
+| code            | meaning                                        | fix                                        |
+|-----------------|------------------------------------------------|--------------------------------------------|
 | `INVALID_INPUT` | no `.taskless/`, or an older CLI would rewind the marker | set the project up, or upgrade first |
 
 ## See Also

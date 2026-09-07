@@ -236,7 +236,7 @@ describe("taskless agent <topic>", () => {
   });
 
   // A topic is one token. The old resolver joined positionals, so
-  // `rule create` and `create rule` both reached `rule-create.txt` — which
+  // `rule create` and `create rule` both reached `rule-create.md` — which
   // invited an agent to paraphrase a topic name and still get a hit. Extra
   // positionals are now an error rather than something to guess at.
   it("rejects a multi-token topic instead of joining the positionals", async () => {
@@ -282,12 +282,12 @@ describe("taskless agent --anonymous (variant lookup)", () => {
       cwd,
     ]);
     expect(anonymous.exitCode).toBe(0);
-    // Same body — falls back to check.md since no check.anonymous.txt
+    // Same body — falls back to check.md since no check.anonymous.md
     expect(anonymous.stdout).toBe(canonical.stdout);
   });
 
-  // `rule-create.anonymous.txt` used to be the local-only variant of the
-  // service recipe, which duplicated `static.txt` outright. `create-sg-rule`
+  // `rule-create.anonymous.md` used to be the local-only variant of the
+  // service recipe, which duplicated `static.md` outright. `create-sg-rule`
   // now *is* that path, so an `--anonymous` variant of the remote recipe would
   // be "the local version of the remote one" — the contradiction `route`
   // resolves. It falls back to the canonical text instead.

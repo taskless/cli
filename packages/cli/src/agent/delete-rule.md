@@ -1,7 +1,6 @@
-# Topic: delete-rule (CLI v%(CLI_VERSION)s / topic v4)
+# Topic: delete-rule     (CLI v%(CLI_VERSION)s / topic v4)
 
 ## Goal
-
 Remove a rule and its associated test files from `.taskless/`. Does not
 contact the Taskless API; purely a local filesystem operation.
 
@@ -15,7 +14,6 @@ engines can hold the same id, and the CLI refuses that case rather than
 picking one.
 
 ## Preconditions
-
 - `.taskless/` directory exists.
 - The target rule directory exists under `.taskless/rules/<engine>/<id>/`
   for exactly one engine.
@@ -28,7 +26,6 @@ picking one.
    rule. Confirm the user's intent, deletion is destructive.
 
 2. **Invoke the CLI.** Run:
-
    ```
    %(TASKLESS_CLI)s rule delete <id>
    ```
@@ -47,9 +44,9 @@ picking one.
 When `--json` is set, failures emit `{ ok: false, code, message }` on
 stdout; on success the command exits 0 silently (no envelope).
 
-| code                | meaning                                     | fix                                                     |
-| ------------------- | ------------------------------------------- | ------------------------------------------------------- |
-| `RULE_NOT_FOUND`    | No engine holds that id                     | Confirm the ID; list rules first                        |
+| code                | meaning                                | fix                                          |
+|---------------------|----------------------------------------|----------------------------------------------|
+| `RULE_NOT_FOUND`    | No engine holds that id                | Confirm the ID; list rules first             |
 | `RULE_ID_AMBIGUOUS` | Two engines hold it, so nothing was deleted | Remove the one you mean by path; the message names both |
 
 `RULE_ID_AMBIGUOUS` is not a retry. The id is well-formed and correct, and it
