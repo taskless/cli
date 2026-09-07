@@ -441,7 +441,10 @@ test("a completed review from the same bot is bucketed normally", () => {
   assert.equal(output.summary.review_in_progress, 0);
   assert.equal(output.summary.high, 1);
   assert.equal(output.summary.needs_attention, 1);
-  assert.equal(output.action_required, "Address high-priority feedback before merge");
+  assert.equal(
+    output.action_required,
+    "Address high-priority feedback before merge"
+  );
 });
 
 // A review that merely mentions the phrase mid-body (e.g. discussing this very
@@ -702,4 +705,31 @@ test("bucketByAuthor applies the same rule to every source", () => {
   assert.ok(!infoBot.item.review_bot);
 
   assert.equal(bucket("a-human", "Why is this here?").name, "medium");
+});
+
+// The observed placeholder is a heading, but the same bot opens its FINISHED
+// comment with bold, so a bold or underscored placeholder is one format change
+// away. Missing it would fail silently, straight back to the bug this exists to
+// prevent. The trailing boundary is `(?![A-Za-z0-9])` rather than `\\b` because
+// underscore is a word character, so `\\b` would not fire before a closing `__`.
+test("the in-progress marker survives markdown emphasis, not just headings", () => {
+  for (const body of [
+    '### Review in progress <img src="x" />',
+    "**Review in progress**",
+    "__Review in progress__",
+    "*Review in progress*",
+    "Review in progress",
+  ]) {
+    assert.equal(isReviewInProgress(body), true, body);
+  }
+});
+
+test("emphasis tolerance does not loosen the anchor", () => {
+  for (const body of [
+    "A review in progress is not a clean review",
+    '**Claude finished** — a body reading "Review in progress" was mis-bucketed',
+    "Review in progresses nicely",
+  ]) {
+    assert.equal(isReviewInProgress(body), false, body);
+  }
 });

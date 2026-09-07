@@ -137,8 +137,19 @@ const isInfoBot = (username) =>
  * this very fix does — must not be read as unfinished forever. Only an
  * in-progress placeholder OPENS with it; a finished review that happens to
  * mention the phrase does not.
+ *
+ * Leading markdown emphasis is tolerated as well as heading hashes. The
+ * observed placeholder is `### Review in progress`, but the same bot opens its
+ * FINISHED comment with bold (`**Claude finished …**`), so a bold placeholder
+ * is a format change away. Missing it would fail silently, straight back to
+ * the bug this exists to prevent, and allowing it costs nothing: a body
+ * opening with the phrase is not feedback whichever way it is marked up.
  */
-const IN_PROGRESS_MARKER = /^#{0,6}\s*review in progress\b/i;
+// `(?![A-Za-z0-9])` rather than `\b`: underscore is a word character, so a
+// `\b` here would not fire before the closing `__` of underscore emphasis and
+// the marker would be missed.
+const IN_PROGRESS_MARKER =
+  /^#{0,6}\s*[*_]{0,2}\s*review in progress(?![A-Za-z0-9])/i;
 
 /** Whether a body still opens with the review-bot in-progress placeholder. */
 const isReviewInProgress = (body) => IN_PROGRESS_MARKER.test(body.trimStart());
