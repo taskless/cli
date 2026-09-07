@@ -18,8 +18,8 @@ importers:
         specifier: ^1.12.0
         version: 1.12.0(@types/node@25.3.3)
       '@sentry/dotagents':
-        specifier: ^1.19.0
-        version: 1.19.0
+        specifier: ^3.0.1
+        version: 3.0.1
       '@types/node':
         specifier: ^25.3.0
         version: 25.3.3
@@ -833,12 +833,12 @@ packages:
     cpu: [x64]
     os: [win32]
 
-  '@sentry/dotagents-lib@1.19.0':
-    resolution: {integrity: sha512-UkQ9hioBnLhE70qcrsjFbxyQt1sVjiWZTEi/xYvADhGKE3hIYW6SFXfA2H6ota1IkF5LNkZopcbJQy+j7ecNMg==}
+  '@sentry/dotagents-lib@3.0.1':
+    resolution: {integrity: sha512-OpURpsFxI6fjkf2ZgAsjUZ6zgmRmLiz75jzfZ/tQLJ8YjpFERdGR/p2n/HdZaO9l/HuIao43GljwXUzI+xOK5g==}
     engines: {node: '>=20'}
 
-  '@sentry/dotagents@1.19.0':
-    resolution: {integrity: sha512-PkCkFXx2Zk1jgOC7iHMty8Z/CIaFjCEJOxeuXPAtBU8yLWd/qWGajHxO9FvjRA8qYuLzwFNV0V2hK+3vEGdgNw==}
+  '@sentry/dotagents@3.0.1':
+    resolution: {integrity: sha512-7eOF4cQbHyHhIWBTYg9vQrjGt6smpJ/F01OLPKrRaz33pkFOfw09CcSUBC3T9cEpfQBqjmmFCIdvpZ2p0Pzpxw==}
     engines: {node: '>=20'}
     hasBin: true
 
@@ -3127,18 +3127,18 @@ snapshots:
   '@rollup/rollup-win32-x64-msvc@4.59.0':
     optional: true
 
-  '@sentry/dotagents-lib@1.19.0':
+  '@sentry/dotagents-lib@3.0.1':
     dependencies:
       yaml: 2.9.0
 
-  '@sentry/dotagents@1.19.0':
+  '@sentry/dotagents@3.0.1':
     dependencies:
       '@clack/prompts': 1.2.0
-      '@sentry/dotagents-lib': 1.19.0
+      '@sentry/dotagents-lib': 3.0.1
       chalk: 5.6.2
       jsonc-parser: 3.3.1
       smol-toml: 1.6.1
-      zod: 4.3.6
+      zod: 4.5.4
 
   '@sindresorhus/merge-streams@2.3.0': {}
 
