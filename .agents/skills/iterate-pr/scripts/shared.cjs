@@ -23,16 +23,57 @@ const { spawnSync } = require("node:child_process");
  */
 class FatalError extends Error {}
 
-/** Run a command and return `{ code, stdout, stderr }`, never throwing. */
-const runProcess = (command, args) => {
-  const result = spawnSync(command, args, { encoding: "utf8" });
+/**
+ * A bad command-line argument, as opposed to a runtime failure.
+ *
+ * Python's `argparse` exited 2 for these and 1 for a `sys.exit("error: …")`,
+ * and callers (and CI) can tell the two apart by that code. Keeping the
+ * distinction means a typo in a flag never looks like the API being down.
+ */
+class UsageError extends FatalError {}
+
+/**
+ * Parse an integer option, rejecting anything that is not one.
+ *
+ * `Number("abc")` is `NaN`, which is the dangerous answer rather than the
+ * obviously-wrong one: it flows onward, every comparison against it is false,
+ * and a guard written as `actual > limit` silently never fires. Python's
+ * `argparse(type=int)` refused up front and this restores that.
+ */
+const parseIntegerOption = (name, raw) => {
+  if (raw === undefined) return undefined;
+  if (!/^-?\d+$/.test(String(raw).trim())) {
+    throw new UsageError(`error: --${name} expects an integer, got '${raw}'`);
+  }
+  return Number(raw);
+};
+
+/**
+ * Run a command and return `{ code, stdout, stderr, timedOut }`, never throwing.
+ *
+ * `timeoutMs` matters for anything on the polling path: a call that hangs
+ * rather than failing freezes the whole iterate loop with no way out short of
+ * killing the process, which is worse than an error. A timed-out call reports
+ * `timedOut`, so a caller can tell "gave up" from "failed".
+ */
+const runProcess = (command, args, { timeoutMs } = {}) => {
+  const result = spawnSync(command, args, {
+    encoding: "utf8",
+    ...(timeoutMs === undefined ? {} : { timeout: timeoutMs }),
+  });
   if (result.error) {
-    return { code: -1, stdout: "", stderr: String(result.error.message) };
+    return {
+      code: -1,
+      stdout: "",
+      stderr: String(result.error.message),
+      timedOut: result.error.code === "ETIMEDOUT",
+    };
   }
   return {
     code: result.status ?? -1,
     stdout: result.stdout ?? "",
     stderr: result.stderr ?? "",
+    timedOut: false,
   };
 };
 
@@ -65,6 +106,18 @@ const runGh = (args, { run = runProcess, log = console.error } = {}) => {
   } catch {
     return null;
   }
+};
+
+/**
+ * `gh pr view`, for a given PR or for the current branch.
+ *
+ * The number goes BEFORE `--json`, which is why this is worth sharing rather
+ * than writing twice: `gh pr view --json x 299` is not the same command.
+ */
+const prView = (fields, prNumber, options) => {
+  const args = ["pr", "view", "--json", fields];
+  if (prNumber) args.splice(2, 0, String(prNumber));
+  return runGh(args, options);
 };
 
 /**
@@ -152,10 +205,13 @@ const orderedDescendants = (root, edges) => {
 
 module.exports = {
   FatalError,
+  UsageError,
   countRange,
   gitOut,
   lineage,
   orderedDescendants,
+  parseIntegerOption,
+  prView,
   refExists,
   runGh,
   runGit,

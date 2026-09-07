@@ -345,3 +345,53 @@ test("--root is required", () => {
     /--root is required/
   );
 });
+
+// --max-own is the fallback ceiling for the case where the primary balloon
+// check cannot run, on a script that force-pushes. A typo turning it into NaN
+// makes every comparison false and takes that fallback offline silently.
+test("a malformed --max-own is rejected rather than silently disabling the ceiling", () => {
+  assert.throws(
+    () =>
+      main({
+        argv: ["--root", "root", "--max-own", "lots"],
+        git: fakeGit(),
+        gh: ghWith([]),
+        emit: () => {},
+      }),
+    /--max-own expects an integer/
+  );
+});
+
+/**
+ * THE #220 FAILURE STILL REACHES TIER 3, AND THIS PINS IT SO NOBODY READS A
+ * CLEAN RUN AS PROOF IT CANNOT.
+ *
+ * `--fork-point` reads the parent's local reflog. A fresh clone or worktree
+ * that fetched an already-rewritten parent has no record of the old tip, so
+ * tier 2 finds nothing and the upstream falls back to the parent — the same
+ * wrong upstream the original bug picked. The balloon guard cannot flag it,
+ * because the expectation is computed from that same upstream and therefore
+ * agrees with the outcome.
+ *
+ * Inherited from the Python, not introduced here. Closing it needs the parent's
+ * pre-rewrite tip recorded somewhere both agents can see, which the reflog is
+ * not. Asserted so the limitation is visible rather than implied.
+ */
+test("with no reflog knowledge of a rewrite, the guard agrees with a wrong upstream", () => {
+  const git = fakeGit({
+    // No forkPoints: the reflog knows nothing, as in a fresh worktree.
+    counts: { "root..child": 2 },
+  });
+  const { code, lines } = run(["--root", "root", "--no-push"], { git });
+
+  assert.equal(code, 0, "the run reports success");
+  assert.match(lines, /rebased onto root/);
+  assert.ok(
+    git.calls.includes("rebase --onto root root"),
+    "the upstream fell back to the parent itself"
+  );
+  assert.ok(
+    !lines.includes("BALLOON GUARD"),
+    "and the guard cannot see it: expectation and outcome share the upstream"
+  );
+});

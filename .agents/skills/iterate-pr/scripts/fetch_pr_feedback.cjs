@@ -37,7 +37,14 @@
 
 const { parseArgs } = require("node:util");
 
-const { runGh, runProcess } = require("./shared.cjs");
+const {
+  FatalError,
+  UsageError,
+  parseIntegerOption,
+  prView,
+  runGh,
+  runProcess,
+} = require("./shared.cjs");
 
 // Bots that provide actionable code review feedback (security issues, lint
 // violations, bugs). Their comments are categorized by content, not skipped.
@@ -172,6 +179,27 @@ const categorizeComment = (comment, body) => {
   return "medium";
 };
 
+/**
+ * File one item by its author: a review bot is flagged and bucketed by content,
+ * an info bot is filed as `bot`, everyone else is bucketed by content.
+ *
+ * The three sources (review summaries, review threads, issue comments) each
+ * wrap this with their own precondition — changes-requested, resolved,
+ * acknowledged — but the bot classification itself is one rule in one place, so
+ * a new pattern list or a change to the split cannot be applied to two of the
+ * three by accident.
+ */
+const bucketByAuthor = (feedback, item, comment, body, author) => {
+  if (isReviewBot(author)) {
+    item.review_bot = true;
+    feedback[categorizeComment(comment, body)].push(item);
+  } else if (isInfoBot(author)) {
+    feedback.bot.push(item);
+  } else {
+    feedback[categorizeComment(comment, body)].push(item);
+  }
+};
+
 /** Build a standardized feedback item, omitting every flag that is not set. */
 const extractFeedbackItem = ({
   body,
@@ -226,14 +254,11 @@ const createClient = ({ run = runProcess, log = console.error } = {}) => {
     },
 
     prInfo(prNumber) {
-      const args = [
-        "pr",
-        "view",
-        "--json",
+      return prView(
         "number,url,headRefName,author,reviews,reviewDecision",
-      ];
-      if (prNumber) args.splice(2, 0, String(prNumber));
-      return runGh(args, options);
+        prNumber,
+        options
+      );
     },
 
     /**
@@ -271,27 +296,32 @@ const createClient = ({ run = runProcess, log = console.error } = {}) => {
       return Array.isArray(result) ? result : [];
     },
 
-    /** Review threads with resolution status, via GraphQL. */
+    /**
+     * Review threads with resolution status, via GraphQL.
+     *
+     * Routed through `runGh` like every other call here, so a failure is
+     * REPORTED. Swallowing it makes a rate-limited or flaky request
+     * indistinguishable from a PR that genuinely has no inline threads, and
+     * `buildFeedback` would then proceed as though all inline feedback were
+     * absent — the same masquerade `lineage()` refuses to perform.
+     */
     reviewThreads(owner, repo, prNumber) {
-      const result = run("gh", [
-        "api",
-        "graphql",
-        "-f",
-        `query=${REVIEW_THREADS_QUERY}`,
-        "-F",
-        `owner=${owner}`,
-        "-F",
-        `repo=${repo}`,
-        "-F",
-        `pr=${prNumber}`,
-      ]);
-      if (result.code !== 0) return [];
-      try {
-        const data = JSON.parse(result.stdout);
-        return data?.data?.repository?.pullRequest?.reviewThreads?.nodes ?? [];
-      } catch {
-        return [];
-      }
+      const data = runGh(
+        [
+          "api",
+          "graphql",
+          "-f",
+          `query=${REVIEW_THREADS_QUERY}`,
+          "-F",
+          `owner=${owner}`,
+          "-F",
+          `repo=${repo}`,
+          "-F",
+          `pr=${prNumber}`,
+        ],
+        options
+      );
+      return data?.data?.repository?.pullRequest?.reviewThreads?.nodes ?? [];
     },
 
     /** Login of the authenticated gh user, looked up once per run. */
@@ -369,15 +399,15 @@ const buildFeedback = (client, { owner, repo, prInfo }) => {
     item.type =
       state === "CHANGES_REQUESTED" ? "changes_requested" : "review_summary";
 
-    if (isReviewBot(author)) {
-      item.review_bot = true;
-      feedback[categorizeComment(review, body)].push(item);
-    } else if (isInfoBot(author)) {
-      feedback.bot.push(item);
-    } else if (state === "CHANGES_REQUESTED" && !isSelf) {
+    if (
+      state === "CHANGES_REQUESTED" &&
+      !isSelf &&
+      !isReviewBot(author) &&
+      !isInfoBot(author)
+    ) {
       feedback.high.push(item);
     } else {
-      feedback[categorizeComment(review, body)].push(item);
+      bucketByAuthor(feedback, item, review, body, author);
     }
   }
 
@@ -412,13 +442,8 @@ const buildFeedback = (client, { owner, repo, prInfo }) => {
 
     if (isResolved) {
       feedback.resolved.push(item);
-    } else if (isReviewBot(author)) {
-      item.review_bot = true;
-      feedback[categorizeComment(first, body)].push(item);
-    } else if (isInfoBot(author)) {
-      feedback.bot.push(item);
     } else {
-      feedback[categorizeComment(first, body)].push(item);
+      bucketByAuthor(feedback, item, first, body, author);
     }
   }
 
@@ -454,14 +479,7 @@ const buildFeedback = (client, { owner, repo, prInfo }) => {
       continue;
     }
 
-    if (isReviewBot(author)) {
-      item.review_bot = true;
-      feedback[categorizeComment(comment, body)].push(item);
-    } else if (isInfoBot(author)) {
-      feedback.bot.push(item);
-    } else {
-      feedback[categorizeComment(comment, body)].push(item);
-    }
+    bucketByAuthor(feedback, item, comment, body, author);
   }
 
   const requestedReviewers = client.requestedReviewers(owner, repo, prNumber);
@@ -517,13 +535,17 @@ const main = ({
     options: { pr: { type: "string" } },
   });
 
+  // Validate arguments BEFORE any network call: a typo in --pr should not
+  // require a working gh session to report, and argparse rejected up front.
+  const prNumber = parseIntegerOption("pr", values.pr);
+
   const repoInfo = client.repoInfo();
   if (!repoInfo) {
     return { output: { error: "Could not determine repository" }, code: 1 };
   }
   const [owner, repo] = repoInfo;
 
-  const prInfo = client.prInfo(values.pr ? Number(values.pr) : undefined);
+  const prInfo = client.prInfo(prNumber);
   if (!prInfo) {
     return { output: { error: "No PR found for current branch" }, code: 1 };
   }
@@ -532,12 +554,21 @@ const main = ({
 };
 
 if (require.main === module) {
-  const { output, code } = main({});
-  console.log(JSON.stringify(output, null, 2));
-  process.exit(code);
+  try {
+    const { output, code } = main({});
+    console.log(JSON.stringify(output, null, 2));
+    process.exit(code);
+  } catch (error) {
+    if (error instanceof FatalError) {
+      console.error(error.message);
+      process.exit(error instanceof UsageError ? 2 : 1);
+    }
+    throw error;
+  }
 }
 
 module.exports = {
+  bucketByAuthor,
   buildFeedback,
   categorizeComment,
   createClient,

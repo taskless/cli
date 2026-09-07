@@ -15,7 +15,24 @@
 
 const { parseArgs } = require("node:util");
 
-const { runGh, runProcess } = require("./shared.cjs");
+const {
+  FatalError,
+  UsageError,
+  parseIntegerOption,
+  prView,
+  runGh,
+  runProcess,
+} = require("./shared.cjs");
+
+/**
+ * Give up on a log fetch after a minute.
+ *
+ * This script is what the skill's polling loop calls every iteration, so a
+ * `gh run view --log-failed` that hangs on a stalled API freezes the whole
+ * automation. Giving up and reporting the check without a snippet is strictly
+ * better than never returning.
+ */
+const LOG_FETCH_TIMEOUT_MS = 60_000;
 
 /**
  * Patterns that indicate a failure point, matched case-insensitively.
@@ -50,13 +67,6 @@ const FAILURE_PATTERN = new RegExp(
   ].join("|"),
   "i"
 );
-
-/** PR info, by number or for the current branch. */
-const getPrInfo = (prNumber, options) => {
-  const args = ["pr", "view", "--json", "number,url,headRefName,baseRefName"];
-  if (prNumber) args.splice(2, 0, String(prNumber));
-  return runGh(args, options);
-};
 
 /**
  * Parse `gh pr checks` output, which is tab-separated rather than JSON.
@@ -141,9 +151,12 @@ const extractFailureSnippet = (logText, maxLines = 50) => {
   return snippet.join("\n");
 };
 
-/** Failed logs for a workflow run, or null when gh produced nothing. */
+/** Failed logs for a workflow run, or null when gh produced nothing or hung. */
 const getRunLogs = (runId, { run = runProcess } = {}) => {
-  const result = run("gh", ["run", "view", String(runId), "--log-failed"]);
+  const result = run("gh", ["run", "view", String(runId), "--log-failed"], {
+    timeoutMs: LOG_FETCH_TIMEOUT_MS,
+  });
+  if (result.timedOut) return null;
   return result.stdout || result.stderr || null;
 };
 
@@ -200,10 +213,15 @@ const main = ({
     args: argv,
     options: { pr: { type: "string" } },
   });
+  // Validate arguments before any network call, the way argparse did.
+  const prNumber = parseIntegerOption("pr", values.pr);
   const options = { run, log };
-  const prNumber = values.pr ? Number(values.pr) : undefined;
 
-  const prInfo = getPrInfo(prNumber, options);
+  const prInfo = prView(
+    "number,url,headRefName,baseRefName",
+    prNumber,
+    options
+  );
   if (!prInfo) {
     return { output: { error: "No PR found for current branch" }, code: 1 };
   }
@@ -231,12 +249,21 @@ const main = ({
 };
 
 if (require.main === module) {
-  const { output, code } = main({});
-  console.log(JSON.stringify(output, null, 2));
-  process.exit(code);
+  try {
+    const { output, code } = main({});
+    console.log(JSON.stringify(output, null, 2));
+    process.exit(code);
+  } catch (error) {
+    if (error instanceof FatalError) {
+      console.error(error.message);
+      process.exit(error instanceof UsageError ? 2 : 1);
+    }
+    throw error;
+  }
 }
 
 module.exports = {
+  LOG_FETCH_TIMEOUT_MS,
   decorateChecks,
   extractFailureSnippet,
   main,

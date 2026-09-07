@@ -40,10 +40,12 @@ const { parseArgs } = require("node:util");
 
 const {
   FatalError,
+  UsageError,
   countRange,
   gitOut,
   lineage,
   orderedDescendants,
+  parseIntegerOption,
   refExists,
   runGit,
 } = require("./shared.cjs");
@@ -68,6 +70,23 @@ const {
  *    child forked, which survives a rewrite this run did not perform (a parent
  *    restacked by hand, or in an earlier run).
  * 3. The parent itself — correct whenever the parent was only appended to.
+ *
+ * TIER 3 IS ALSO WHERE THE #220 FAILURE CAN STILL REACH YOU, and it is worth
+ * knowing before you trust a clean run. `--fork-point` reads the PARENT'S LOCAL
+ * REFLOG, so it only knows about a rewrite this checkout performed or observed.
+ * In a fresh clone or a new worktree that fetched an already-rewritten parent
+ * from origin — the pattern CLAUDE.md recommends for background agents — the
+ * reflog has no record of the old tip, tier 2 finds nothing, and the upstream
+ * falls back to the parent: the same wrong upstream `git rebase <parent>` picks.
+ *
+ * The balloon guard does not catch that one, because `expectedOwn` is computed
+ * from this same upstream, so the expectation and the outcome agree. Two agents
+ * in separate worktrees is the shape to watch: one rewrites the parent, the
+ * other propagates and silently drops what the rewrite carried.
+ *
+ * This is inherited behaviour, not new — the Python this replaced did the same
+ * — and closing it needs a source of truth the reflog cannot provide (the
+ * parent's pre-rewrite tip, recorded where both agents can see it).
  */
 const forkUpstream = (git, parent, child, rewritten) => {
   const known = rewritten[parent];
@@ -94,10 +113,15 @@ const main = ({
   });
 
   if (!values.root) {
-    throw new FatalError("error: --root is required");
+    throw new UsageError("error: --root is required");
   }
   const root = values.root;
-  const maxOwn = Number(values["max-own"]);
+  // Rejected up front rather than becoming NaN. Every comparison against NaN is
+  // false, so a typo here would silently disable the ceiling at line ~190 — and
+  // that ceiling is the fallback for exactly the case where the primary balloon
+  // check cannot run. The one guard meant to catch an uncomputable expectation
+  // would be the one that went dark, on a script that force-pushes.
+  const maxOwn = parseIntegerOption("max-own", values["max-own"]);
 
   const edges = lineage(gh ? { run: gh } : {});
   if (!Object.values(edges).includes(root) && !(root in edges)) {
@@ -235,7 +259,7 @@ if (require.main === module) {
   } catch (error) {
     if (error instanceof FatalError) {
       console.error(error.message);
-      process.exit(1);
+      process.exit(error instanceof UsageError ? 2 : 1);
     }
     throw error;
   }

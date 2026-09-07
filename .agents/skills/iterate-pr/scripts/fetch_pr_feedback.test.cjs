@@ -13,6 +13,7 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 
 const {
+  bucketByAuthor,
   buildFeedback,
   categorizeComment,
   createClient,
@@ -20,6 +21,7 @@ const {
   extractFeedbackItem,
   isInfoBot,
   isReviewBot,
+  main,
 } = require("./fetch_pr_feedback.cjs");
 
 test("detectLogaf reads every accepted marker spelling", () => {
@@ -501,4 +503,59 @@ test("viewerLogin is looked up once and cached", () => {
   assert.equal(client.viewerLogin(), "me");
   assert.equal(client.viewerLogin(), "me");
   assert.equal(calls, 1);
+});
+
+// A swallowed GraphQL failure makes a rate-limited request indistinguishable
+// from a PR that genuinely has no inline threads, and buildFeedback would then
+// proceed as though all inline feedback were absent. Same masquerade lineage()
+// refuses to perform.
+test("a failed review-threads query is reported, not read as zero threads", () => {
+  const logged = [];
+  const client = createClient({
+    run: () => ({ code: 1, stdout: "", stderr: "API rate limit exceeded" }),
+    log: (message) => logged.push(message),
+  });
+  assert.deepEqual(client.reviewThreads("o", "r", 1), []);
+  assert.equal(logged.length, 1, "the failure is logged");
+  assert.match(logged[0], /rate limit/);
+});
+
+test("unparseable review-threads output is also reported", () => {
+  const logged = [];
+  const client = createClient({
+    run: () => ({ code: 0, stdout: "<html>502</html>", stderr: "" }),
+    log: (message) => logged.push(message),
+  });
+  assert.deepEqual(client.reviewThreads("o", "r", 1), []);
+});
+
+test("a malformed --pr is rejected", () => {
+  assert.throws(
+    () => main({ argv: ["--pr", "abc"], client: fakeClient() }),
+    /--pr expects an integer/
+  );
+});
+
+// The bot split is one rule now, not three copies. These assert it is applied
+// identically whichever source the item arrived from.
+test("bucketByAuthor applies the same rule to every source", () => {
+  const bucket = (author, body) => {
+    const feedback = { high: [], medium: [], low: [], bot: [], resolved: [] };
+    const item = { author };
+    bucketByAuthor(feedback, item, { user: { login: author } }, body, author);
+    const [name] = Object.entries(feedback).find(
+      ([, items]) => items.length > 0
+    );
+    return { name, item };
+  };
+
+  const reviewBot = bucket("claude[bot]", "This will break");
+  assert.equal(reviewBot.name, "high");
+  assert.equal(reviewBot.item.review_bot, true);
+
+  const infoBot = bucket("codecov[bot]", "Coverage dropped");
+  assert.equal(infoBot.name, "bot");
+  assert.ok(!infoBot.item.review_bot);
+
+  assert.equal(bucket("a-human", "Why is this here?").name, "medium");
 });
