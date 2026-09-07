@@ -108,7 +108,7 @@ export const onboardCommand = defineCommand({
       invocation: detectCliInvocation(processLauncherContext()),
     });
     if (recipe === undefined) {
-      // Should not happen — onboard.txt is embedded at build time.
+      // Should not happen — onboard.md is embedded at build time.
       console.error("Internal error: onboard recipe is not available.");
       process.exitCode = 1;
       throw new CLIError("recipe missing", undefined, { reported: true });

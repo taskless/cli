@@ -1,7 +1,9 @@
-# Topic: auth     (CLI v%(CLI_VERSION)s / topic v1)
+# Topic: auth (CLI v%(CLI_VERSION)s / topic v1)
 
 ## Goal
+
 Manage Taskless authentication. Three branches:
+
 - **Login**: start the device-code flow and wait for the user to
   approve in their browser.
 - **Logout**: remove the saved token.
@@ -9,6 +11,7 @@ Manage Taskless authentication. Three branches:
   it represents.
 
 ## Preconditions
+
 - `.taskless/` directory exists.
 - For login: the user has a browser to approve the device code.
 
@@ -66,7 +69,7 @@ emitted. The status path (`%(TASKLESS_CLI)s auth` with no subcommand) accepts
 report.
 
 | code            | meaning                                                                              | fix                                  |
-|-----------------|--------------------------------------------------------------------------------------|--------------------------------------|
+| --------------- | ------------------------------------------------------------------------------------ | ------------------------------------ |
 | `INVALID_INPUT` | `--anonymous` passed to `auth login` (rejected: auth commands cannot be anonymous)   | Don't pass `--anonymous`             |
 | `NETWORK_ERROR` | Device flow / token endpoint unreachable, or the device code expired before approval | Check connectivity; retry            |
 | `AUTH_REQUIRED` | The user denied the authorization request in their browser                           | Re-run `%(TASKLESS_CLI)s auth login` |

@@ -507,8 +507,8 @@ withVale("Vale engine capabilities", () => {
   };
 
   it("reports the pinned version", () => {
-    // VALE_VERSION is rendered beside the reach lists in route.txt and
-    // create-vale-rule.txt, so it is the attribution for every claim below.
+    // VALE_VERSION is rendered beside the reach lists in route.md and
+    // create-vale-rule.md, so it is the attribution for every claim below.
     // 3.18.0 moved rows in both directions: `.mdx` gained a native parser and
     // left the converter tier, while `.typ` gained a `typst2vast` converter and
     // entered it. A bump re-measures the whole table — the fixtures below are
@@ -632,7 +632,7 @@ withVale("Vale engine capabilities", () => {
     // The blast radius is the point. Vale exits 2 and abandons the RUN, not
     // the file — `--no-exit` does not suppress it — so one such file caught
     // by any rule's glob silences every other Vale rule over every other
-    // file. That is why route.txt and create-vale-rule.txt both say never to
+    // file. That is why route.md and create-vale-rule.md both say never to
     // put these extensions in a matcher.
     const cwd = anyExtension({
       [`doc${extension}`]: "We simply do it.\n",

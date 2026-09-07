@@ -1,6 +1,7 @@
-# Topic: rule-meta     (CLI v%(CLI_VERSION)s / topic v3)
+# Topic: rule-meta (CLI v%(CLI_VERSION)s / topic v3)
 
 ## Goal
+
 Report what `%(TASKLESS_CLI)s rule meta` does today, so no recipe and no
 agent builds a step on top of it.
 
@@ -29,10 +30,10 @@ that created the rule, not from disk:
 
 ## Errors
 
-| code                    | meaning                                  | fix                                   |
-|-------------------------|------------------------------------------|---------------------------------------|
-| `RULE_META_UNAVAILABLE` | no sidecar exists, and none is written   | Use the ticket id from `rule create`  |
-| `INVALID_INPUT`         | a sidecar exists and is malformed         | Delete it; nothing here depends on it |
+| code                    | meaning                                | fix                                   |
+| ----------------------- | -------------------------------------- | ------------------------------------- |
+| `RULE_META_UNAVAILABLE` | no sidecar exists, and none is written | Use the ticket id from `rule create`  |
+| `INVALID_INPUT`         | a sidecar exists and is malformed      | Delete it; nothing here depends on it |
 
 ## See Also
 

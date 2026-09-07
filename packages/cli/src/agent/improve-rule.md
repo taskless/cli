@@ -1,6 +1,7 @@
-# Topic: improve-rule     (CLI v%(CLI_VERSION)s / topic v5)
+# Topic: improve-rule (CLI v%(CLI_VERSION)s / topic v5)
 
 ## Goal
+
 Iterate on an existing Taskless rule. The CLI submits the user's
 guidance to the Taskless API iterate endpoint, which returns an
 updated rule that overwrites the original on disk. The agent's job
@@ -11,6 +12,7 @@ If the user wants the local-only flow (no API call), fetch
 `%(TASKLESS_CLI)s agent improve-rule --anonymous` instead.
 
 ## Preconditions
+
 - User is logged in.
 - The project has a GitHub owner. Improvement runs through the same
   service path as generation, so it carries the same constraint. Check
@@ -20,7 +22,7 @@ If the user wants the local-only flow (no API call), fetch
   property of the project, not the session.
 - The target rule exists at `.taskless/rules/sg/<id>/<id>.yml`.
 - You have the rule's **ticket id**: the value `%(TASKLESS_CLI)s rule
-  create --json` printed as `ruleId` when the rule was generated. The
+create --json` printed as `ruleId` when the rule was generated. The
   iterate endpoint is addressed by that id. Nothing on disk holds it,
   so it comes from the create output or from the user. Without it,
   fetch the anonymous variant instead.
@@ -79,9 +81,11 @@ If the user wants the local-only flow (no API call), fetch
    schema below and write it to `.taskless/.tmp-improve-request.json`.
 
 8. **Invoke the CLI.** Run:
+
    ```
    %(TASKLESS_CLI)s rule improve --from .taskless/.tmp-improve-request.json --json
    ```
+
    This may take 30-60 seconds while the API generates the update.
 
 9. **Clean up.** Delete `.taskless/.tmp-improve-request.json`
@@ -102,9 +106,11 @@ If the user wants the local-only flow (no API call), fetch
     an ast-grep rule whose `valid:` or `invalid:` array is empty, and
     narrowing a pattern to kill a false positive is exactly how
     `invalid:` ends up with nothing the rule still matches. Run
+
     ```
     %(TASKLESS_CLI)s test .taskless/rules/sg/<id> --json
     ```
+
     on the returned files rather than trusting them, and add a fixture
     the new pattern does match if that bucket came back empty.
 
@@ -124,18 +130,18 @@ and it is not readable from anything under `.taskless/`.
 
 When `--json` is set, failures emit `{ ok: false, code, message }`:
 
-| code                     | meaning                             | fix                                           |
-|--------------------------|-------------------------------------|-----------------------------------------------|
-| `AUTH_REQUIRED`          | not logged in                       | fetch `%(TASKLESS_CLI)s agent auth`           |
-| `NO_GITHUB_REMOTE`       | no GitHub origin remote             | retained for compatibility; treat as below    |
-| `NOT_A_GIT_REPOSITORY`   | not a git repository                | tell the user; `auth login` cannot fix it     |
-| `NO_ORIGIN_REMOTE`       | git repository, no `origin`         | tell the user; `auth login` cannot fix it     |
-| `UNSUPPORTED_REMOTE_HOST`| `origin` is not GitHub              | tell the user; `auth login` cannot fix it     |
-| `INVALID_INPUT`          | `--from` JSON failed validation     | re-read input schema, fix, retry              |
-| `RULE_NOT_FOUND`         | the service has no such ticket id   | re-check the id from `rule create --json`     |
-| `NETWORK_ERROR`          | API submit/poll failed              | report and suggest retry                      |
-| `RULE_GENERATION_FAILED` | API returned a generation failure   | report; suggest enriching guidance/references |
-| `RULE_UNSUPPORTED`       | plan lacks this generation type     | tell the user to enable it; do not retry      |
+| code                      | meaning                           | fix                                           |
+| ------------------------- | --------------------------------- | --------------------------------------------- |
+| `AUTH_REQUIRED`           | not logged in                     | fetch `%(TASKLESS_CLI)s agent auth`           |
+| `NO_GITHUB_REMOTE`        | no GitHub origin remote           | retained for compatibility; treat as below    |
+| `NOT_A_GIT_REPOSITORY`    | not a git repository              | tell the user; `auth login` cannot fix it     |
+| `NO_ORIGIN_REMOTE`        | git repository, no `origin`       | tell the user; `auth login` cannot fix it     |
+| `UNSUPPORTED_REMOTE_HOST` | `origin` is not GitHub            | tell the user; `auth login` cannot fix it     |
+| `INVALID_INPUT`           | `--from` JSON failed validation   | re-read input schema, fix, retry              |
+| `RULE_NOT_FOUND`          | the service has no such ticket id | re-check the id from `rule create --json`     |
+| `NETWORK_ERROR`           | API submit/poll failed            | report and suggest retry                      |
+| `RULE_GENERATION_FAILED`  | API returned a generation failure | report; suggest enriching guidance/references |
+| `RULE_UNSUPPORTED`        | plan lacks this generation type   | tell the user to enable it; do not retry      |
 
 ## See Also
 

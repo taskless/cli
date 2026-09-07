@@ -1,6 +1,7 @@
-# Topic: onboard     (CLI v%(CLI_VERSION)s / topic v3)
+# Topic: onboard (CLI v%(CLI_VERSION)s / topic v3)
 
 ## Goal
+
 Help a user who has just installed Taskless go from zero rules to a
 useful starter set by mining their codebase, agent-memory files, PR
 review history, and issue tracker for high-signal rule candidates.
@@ -10,6 +11,7 @@ rules as a bullet list the user can choose to materialize via the
 `rule create` flow.
 
 ## Preconditions
+
 - `.taskless/` directory exists (Taskless is installed). The
   `%(TASKLESS_CLI)s onboard` subcommand bootstraps it on first run, so this
   is automatically satisfied.
@@ -54,7 +56,6 @@ rules as a bullet list the user can choose to materialize via the
 3. **Open the conversation about sources.** Tell the user you can mine
    several places for rule candidates and ask which ones they want to
    include. Default sources you should always offer:
-
    - **Codebase TODOs / FIXMEs**: search for `TODO`, `FIXME`, `XXX`,
      and `HACK` comments. Many of these are latent rules ("don't do
      this", "remove when X").
@@ -79,7 +80,6 @@ rules as a bullet list the user can choose to materialize via the
    this or wait while you install these tools?"
 
 5. **Scan with high-signal filtering.** For each chosen source:
-
    - **Filter for repeated patterns.** A reviewer comment that
      appears across multiple PRs is a much stronger rule candidate
      than a one-off nit.
@@ -146,7 +146,7 @@ rules as a bullet list the user can choose to materialize via the
 ## Errors
 
 | code                | meaning                                      | fix                                  |
-|---------------------|----------------------------------------------|--------------------------------------|
+| ------------------- | -------------------------------------------- | ------------------------------------ |
 | `ALREADY_ONBOARDED` | `install.onboarded` is true and no `--force` | suggest `--force` or skip onboarding |
 
 ## See Also

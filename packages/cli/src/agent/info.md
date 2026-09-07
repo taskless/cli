@@ -1,27 +1,33 @@
-# Topic: info     (CLI v%(CLI_VERSION)s / topic v1)
+# Topic: info (CLI v%(CLI_VERSION)s / topic v1)
 
 ## Goal
+
 Report local Taskless state: CLI version, installed skill versions
 per detected tool, and (unless `--anonymous`) the user's auth state.
 Used as a health check, for staleness detection, and to confirm
 which version of the CLI/skills the agent is talking to.
 
 ## Preconditions
+
 - None. Works in any directory; doesn't require `.taskless/`.
 
 ## Steps
 
 1. **Invoke the CLI** with JSON output:
+
    ```
    %(TASKLESS_CLI)s info --json
    ```
+
    For an offline/local-only state report (no auth probe), pass
    `--anonymous`:
+
    ```
    %(TASKLESS_CLI)s info --json --anonymous
    ```
 
 2. **Parse the response.** Shape:
+
    ```json
    {
      "success": true,
@@ -30,8 +36,12 @@ which version of the CLI/skills the agent is talking to.
        {
          "name": "Claude Code",
          "skills": [
-           { "name": "taskless", "installedVersion": "0.7.0",
-             "currentVersion": "0.7.0", "current": true }
+           {
+             "name": "taskless",
+             "installedVersion": "0.7.0",
+             "currentVersion": "0.7.0",
+             "current": true
+           }
          ]
        }
      ],
@@ -54,7 +64,7 @@ which version of the CLI/skills the agent is talking to.
 When `--json` is set, failures emit `{ ok: false, code, message }`:
 
 | code             | meaning                    | fix                      |
-|------------------|----------------------------|--------------------------|
+| ---------------- | -------------------------- | ------------------------ |
 | `INTERNAL_ERROR` | Internal schema validation | Report; likely a CLI bug |
 
 (Network errors during the auth probe are silently swallowed:

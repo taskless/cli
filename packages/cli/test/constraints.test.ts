@@ -13,7 +13,7 @@ import { testOneRule, verifyOneRule } from "../src/rules/inspect";
  *
  * A hand-maintained description of what code does goes stale, and this list is
  * published for another team to build an eval against, so staleness here is
- * exported rather than merely internal. `create-sg-rule.txt` claimed for months
+ * exported rather than merely internal. `create-sg-rule.md` claimed for months
  * that "`verify` never reads `language`" after that stopped being true, and
  * nothing failed, because prose has no test.
  *

@@ -11,7 +11,7 @@ note: |
   `validate.yml` runs `pnpm build` before its check step, so the workspace
   build is already present and cannot be stale or missing.
 
-  `ci.txt`, the onboarding recipe, tells consumers to use `npx
+  `ci.md`, the onboarding recipe, tells consumers to use `npx
   @taskless/cli`. That is correct for a project that merely depends on the
   CLI, and wrong here. This rule is the difference between the two, enforced
   rather than written down: the comment it replaces asked a reader not to
