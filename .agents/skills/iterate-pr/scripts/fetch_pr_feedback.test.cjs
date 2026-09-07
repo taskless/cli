@@ -784,3 +784,58 @@ test("an in-progress placeholder keeps every other bucket empty", () => {
   );
   assert.match(output.action_required, /still in progress/);
 });
+
+// A HUMAN IS NOT A REVIEW BOT, AND THIS IS THE DANGEROUS DIRECTION. A person
+// writing "Review in progress on my end" would otherwise be filed as an
+// unfinished review, vanish from needs_attention, and hang the wait loop
+// forever: a person's comment never gets edited into a finished form the way
+// the bot's placeholder does, so the count never drops to zero.
+test("a human comment opening with the phrase is feedback, not an unfinished review", () => {
+  const output = build(
+    fakeClient({
+      comments: [
+        {
+          id: 1,
+          // The LOGAF marker is deliberately absent: it only counts at the
+          // start, and the start is occupied by the phrase under test. So this
+          // lands in medium by content, which is the correct default.
+          body: "Review in progress on my end, will finish by EOD.",
+          user: { login: "a-human-reviewer" },
+        },
+      ],
+    }),
+    {}
+  );
+  assert.equal(output.summary.review_in_progress, 0);
+  assert.equal(output.summary.medium, 1, "it stays actionable feedback");
+  assert.equal(output.summary.needs_attention, 1);
+});
+
+test("the same body from the review bot IS an unfinished review", () => {
+  const output = build(
+    fakeClient({
+      comments: [
+        {
+          id: 1,
+          body: "Review in progress on my end, will finish by EOD.",
+          user: { login: "claude[bot]" },
+        },
+      ],
+    }),
+    {}
+  );
+  assert.equal(output.summary.review_in_progress, 1);
+  assert.equal(output.summary.needs_attention, 0);
+});
+
+// Two regex edges, both able to reintroduce the bug. Bold-italic is one format
+// drift away from the bold case already anticipated; `progress_notes` is a
+// finished comment that a too-permissive boundary would freeze the loop on.
+test("bold-italic emphasis is matched, and a bare underscore is not emphasis", () => {
+  assert.equal(isReviewInProgress("***Review in progress***"), true);
+  assert.equal(isReviewInProgress("___Claude Code is working___"), true);
+  assert.equal(
+    isReviewInProgress("Review in progress_notes: nothing else found"),
+    false
+  );
+});

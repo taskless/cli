@@ -160,12 +160,20 @@ const isInfoBot = (username) =>
  * cannot stall a caller. The cost is that a NEW placeholder wording is missed,
  * so when this bot changes its output, add the new opening here.
  *
- * `(?![A-Za-z0-9])` rather than `\b`: underscore is a word character, so a
- * `\b` would not fire before the closing `__` of underscore emphasis.
+ * Emphasis is unbounded (`[*_]*`) rather than capped at two, so bold-italic
+ * (`***…***`) matches; a cap of two failed it, since two of the three leading
+ * `*` were consumed and the phrase could not then start.
+ *
+ * The trailing side consumes closing emphasis and THEN refuses a word
+ * character, underscore included. `\b` alone would not fire before a closing
+ * `__`, but a bare `(?![A-Za-z0-9])` went too far the other way and matched
+ * `Review in progress_notes: …`, a finished comment. Consuming `[*_]*` first
+ * and excluding `_` from the lookahead accepts `__…__` and rejects
+ * `progress_notes`.
  */
 const IN_PROGRESS_MARKERS = [
-  /^#{0,6}\s*[*_]{0,2}\s*review in progress(?![A-Za-z0-9])/i,
-  /^#{0,6}\s*[*_]{0,2}\s*claude code is working(?![A-Za-z0-9])/i,
+  /^#{0,6}\s*[*_]*\s*review in progress[*_]*(?![A-Za-z0-9_])/i,
+  /^#{0,6}\s*[*_]*\s*claude code is working[*_]*(?![A-Za-z0-9_])/i,
 ];
 
 /** Whether a body still opens with one of the in-progress placeholders. */
@@ -257,7 +265,13 @@ const categorizeComment = (comment, body) => {
  * three sources.
  */
 const bucketByAuthor = (feedback, item, comment, body, author) => {
-  if (isReviewInProgress(body)) {
+  // The author gate is load-bearing, not belt and braces. A human writing
+  // "Review in progress on my end, back by EOD" would otherwise be filed as an
+  // unfinished review, vanish from `needs_attention`, and hang the wait loop
+  // forever: a person's comment never gets edited into a finished form the way
+  // the bot's placeholder does, so the count never drops. Only a review bot has
+  // the lifecycle this bucket describes.
+  if (isReviewBot(author) && isReviewInProgress(body)) {
     feedback.review_in_progress.push(item);
   } else if (isReviewBot(author)) {
     item.review_bot = true;
