@@ -72,7 +72,8 @@
  * `claims` may be supplied directly instead of `pulls` when the caller has
  * already reduced them, and an issue may carry `change` directly instead of a
  * `body` to parse. `idleDays` is how long the issue has gone without activity,
- * and throttles sweep escalations to at most one per window.
+ * and throttles every sweep report on an existing issue, both an escalation
+ * comment and a reopen, to at most one per window.
  *
  * Always exits zero on a well-formed input. A malformed input is a defect in
  * the caller and exits non-zero, which is the one case where silence would hide

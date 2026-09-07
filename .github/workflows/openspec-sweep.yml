@@ -145,7 +145,8 @@ jobs:
           # element from the array instead of erroring, so a body that stopped
           # matching would read as "no issue exists" and open a duplicate.
           #
-          # `idleDays` throttles escalation to at most one comment per window.
+          # `idleDays` throttles every sweep report on an existing issue, both
+          # an escalation comment and a reopen, to at most one per window.
           issues=$(gh issue list --repo "$REPO" --state all --label "$LABEL" --limit 100 \
             --json number,state,body,updatedAt \
             | jq -c --argjson now "$(date +%s)" \
