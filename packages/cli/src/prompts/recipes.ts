@@ -420,7 +420,9 @@ export function getRenderedRecipe(
     text: renderTemplate(template, topic, options),
     variables: collectVariables(source),
   };
-} /**
+}
+
+/**
  * Remove Vale's in-file directives from a recipe before anyone reads it.
  *
  * A recipe is checked by this repository's own Vale rules, and two of them

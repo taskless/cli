@@ -1,7 +1,6 @@
-# Topic: detect (CLI v%(CLI_VERSION)s / topic v1)
+# Topic: detect     (CLI v%(CLI_VERSION)s / topic v1)
 
 ## Goal
-
 Scan the working directory for the linters it configures, the
 languages it uses, and the styles of any rules the repo already
 authors. Offline and deterministic, no network, no auth, no state
@@ -9,19 +8,16 @@ change. This is the discovery step that feeds rule-authoring: the
 routing flow reads `detect` to decide where a new rule should live.
 
 ## Preconditions
-
 - None. Works in any directory; doesn't require `.taskless/`.
 
 ## Steps
 
 1. **Invoke the CLI** with JSON output:
-
    ```
    %(TASKLESS_CLI)s detect --json
    ```
 
 2. **Parse the response.** Shape:
-
    ```json
    {
      "success": true,
@@ -40,7 +36,6 @@ routing flow reads `detect` to decide where a new rule should live.
      ]
    }
    ```
-
    - `linters`: each has a `name` and `evidence` (config-file paths,
      a pyproject table marker, or a dependency marker from the
      language's package file; not every entry is a path).
@@ -59,7 +54,7 @@ routing flow reads `detect` to decide where a new rule should live.
 When `--json` is set, failures emit `{ ok: false, code, message }`:
 
 | code             | meaning                    | fix                      |
-| ---------------- | -------------------------- | ------------------------ |
+|------------------|----------------------------|--------------------------|
 | `INTERNAL_ERROR` | Internal schema validation | Report; likely a CLI bug |
 
 ## See Also

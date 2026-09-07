@@ -1,14 +1,12 @@
-# Topic: create-sg-rule (CLI v%(CLI_VERSION)s / topic v5)
+# Topic: create-sg-rule     (CLI v%(CLI_VERSION)s / topic v5)
 
 ## You are here
-
 This is `create-sg-rule`. It helps you write an ast-grep rule: a check
 over the structure of a single source file, authored on this machine.
 If that is not the kind of check you need, re-run `%(TASKLESS_CLI)s agent route`
 and follow its decision rather than adapting this recipe.
 
 ## Goal
-
 Produce a verified ast-grep rule and its test file, locally, without
 contacting the Taskless service. You derive the rule yourself, write it
 in the canonical on-disk shape, and validate it with `verify` and
@@ -17,7 +15,6 @@ service writes, so `check`, `improve-rule`, `verify`, and `test` treat
 them identically.
 
 ## Preconditions
-
 - `.taskless/` directory exists.
 - The agent can read/write files and run shell commands.
 - No auth required.
@@ -87,19 +84,19 @@ whole rule.
    project down with it and reports nothing.
    ast-grep (v%(AST_GREP_VERSION)s) parses:
 
-   %(AST_GREP_LANGUAGES)s
+     %(AST_GREP_LANGUAGES)s
 
    Copy a spelling from that list rather than typing one that looks
    right. Off-list spellings fail two different ways and neither is
    caught locally: one ast-grep does not recognize at all takes the
    whole scan down (`did not match any variant of untagged enum
-SgLang`, so every other rule goes unreported too), and one it
+   SgLang`, so every other rule goes unreported too), and one it
    recognizes but that names the wrong parser reports nothing and looks
    like a clean codebase.
 
    Two specific traps:
    - **Do not copy from `detect --json`.** It reports the
-     _repository's_ languages in a different vocabulary. It says
+     *repository's* languages in a different vocabulary. It says
      `C++` where the list above says `Cpp`.
    - **`Tsx` and `TypeScript` are two parsers, not aliases.** A rule
      over `.tsx` files that declares `TypeScript` does not match JSX
@@ -125,38 +122,38 @@ SgLang`, so every other rule goes unreported too), and one it
    ast-grep this CLI ships (v%(AST_GREP_VERSION)s), given the four calls
    `foo()`, `foo(1)`, `foo(1,2)`, and `foo(1,2,3)`:
 
-| pattern            | what it matches                             |
-| ------------------ | ------------------------------------------- |
-| `foo($$$)`         | all four, `foo()` included                  |
+| pattern            | what it matches                              |
+|--------------------|----------------------------------------------|
+| `foo($$$)`         | all four, `foo()` included                   |
 | `foo($A, $$$)`     | `foo(1,2)` and `foo(1,2,3)`, never `foo(1)` |
-| `foo($$$, $A)`     | `foo(1)` alone                              |
-| `foo($A, $$$, $B)` | `foo(1,2)` alone                            |
+| `foo($$$, $A)`     | `foo(1)` alone                               |
+| `foo($A, $$$, $B)` | `foo(1,2)` alone                             |
 
-A standalone `$$$` needs none of this. It is the comma beside it
-that narrows the pattern. The two remedies are not the same:
+   A standalone `$$$` needs none of this. It is the comma beside it
+   that narrows the pattern. The two remedies are not the same:
 
-- **Trailing `$$$`**: write the pattern as an object with
-  `strictness: ast`, which compares named AST nodes and ignores the
-  separator. An object pattern also requires `context` and
-  `selector`:
-  ```yaml
-  rule:
-    pattern:
-      context: foo($A, $$$)
-      selector: call_expression
-      strictness: ast
-  ```
-  This moves the boundary from two arguments to one, **not to
-  zero**, `$A` still has to bind something, so `foo()` is still
-  unmatched. And `strictness` is valid only inside the pattern
-  object: at rule level ast-grep rejects it as an unknown field and
-  fails the whole scan.
-- **Leading `$$$`**: `strictness: ast` does not rescue it. Use
-  `any` with one branch per arity you mean to cover.
+   - **Trailing `$$$`**: write the pattern as an object with
+     `strictness: ast`, which compares named AST nodes and ignores the
+     separator. An object pattern also requires `context` and
+     `selector`:
+     ```yaml
+     rule:
+       pattern:
+         context: foo($A, $$$)
+         selector: call_expression
+         strictness: ast
+     ```
+     This moves the boundary from two arguments to one, **not to
+     zero**, `$A` still has to bind something, so `foo()` is still
+     unmatched. And `strictness` is valid only inside the pattern
+     object: at rule level ast-grep rejects it as an unknown field and
+     fails the whole scan.
+   - **Leading `$$$`**: `strictness: ast` does not rescue it. Use
+     `any` with one branch per arity you mean to cover.
 
-This is upstream's intended behaviour (ast-grep/ast-grep#1365,
-closed as working-as-intended), not a bug waiting on a release:
-0.45.2 behaves identically, so there is no version to wait for.
+   This is upstream's intended behaviour (ast-grep/ast-grep#1365,
+   closed as working-as-intended), not a bug waiting on a release:
+   0.45.2 behaves identically, so there is no version to wait for.
 
 6. **Write the tests.** Write
    `.taskless/rules/sg/<id>/.tests/<id>-YYYYMMDD-test.yml` with the matching
@@ -180,12 +177,10 @@ closed as working-as-intended), not a bug waiting on a release:
 
 7. **Run the verify feedback loop.** Both commands take the rule's
    directory as their argument:
-
    ```
    %(TASKLESS_CLI)s verify .taskless/rules/sg/<id> --json
    %(TASKLESS_CLI)s test   .taskless/rules/sg/<id> --json
    ```
-
    `verify` asks whether the rule is well-formed: the YAML matches the
    ast-grep schema and every Taskless-required field is present. It
    needs no test file, so run it the moment the rule exists. `test` runs
@@ -193,37 +188,25 @@ closed as working-as-intended), not a bug waiting on a release:
    malformed rule reports the malformation rather than a test complaint.
 
    Both answer in the same shape:
-
    ```json
-   {
-     "ok": true,
-     "rules": [
-       {
-         "engine": "sg",
-         "ruleId": "no-eval",
-         "ok": true,
-         "errors": [],
-         "ran": true
-       }
-     ]
-   }
+   {"ok":true,"rules":[{"engine":"sg","ruleId":"no-eval",
+    "ok":true,"errors":[],"ran":true}]}
    ```
-
    - `ok: true` → go to step 8.
    - `ok: false` → read `errors` and fix. Repeat up to 3 times.
 
 | what `errors` says                   | fix                                             |
-| ------------------------------------ | ----------------------------------------------- |
+|--------------------------------------|-------------------------------------------------|
 | the YAML doesn't match the schema    | check field types against the upstream schema   |
 | a Taskless-required field is missing | add `id`/`language`/`severity`/`message`/`rule` |
 | a case didn't behave as expected     | fix the rule pattern OR the test case           |
 
-A `regex` without an accompanying `kind` fails verification, the two
-always travel together.
+   A `regex` without an accompanying `kind` fails verification, the two
+   always travel together.
 
-Pass a directory above a rule and every rule beneath it is checked,
-one entry per rule in the report. `.taskless/rules/sg` covers every
-ast-grep rule; no argument at all covers the project.
+   Pass a directory above a rule and every rule beneath it is checked,
+   one entry per rule in the report. `.taskless/rules/sg` covers every
+   ast-grep rule; no argument at all covers the project.
 
 8. **On success, report.** Show the rule directory and what is in it,
    plus a one-line summary of what the rule detects. Suggest
@@ -238,7 +221,7 @@ ast-grep rule; no argument at all covers the project.
      generating via the Taskless service uses a generation and requires
      login.
    - Only after the user confirms, fetch `%(TASKLESS_CLI)s agent
-create-remote-rule` and follow it. Do not call the service silently.
+     create-remote-rule` and follow it. Do not call the service silently.
 
 ## Two ways a relational rule matches nothing
 

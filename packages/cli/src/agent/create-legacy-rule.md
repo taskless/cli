@@ -1,7 +1,6 @@
-# Topic: create-legacy-rule (CLI v%(CLI_VERSION)s / topic v1)
+# Topic: create-legacy-rule     (CLI v%(CLI_VERSION)s / topic v1)
 
 ## You are here
-
 This is `create-legacy-rule`. It helps you write a rule for a linter the
 repository already runs (ESLint, Ruff, RuboCop, Stylelint) in that
 tool's own dialect, so that tool enforces it.
@@ -9,7 +8,6 @@ If that is not the kind of check you need, re-run `%(TASKLESS_CLI)s agent route`
 and follow its decision rather than adapting this recipe.
 
 ## Goal
-
 Author a rule in a linter the repository ALREADY uses, expressed in that
 tool's own dialect (an ESLint rule, a Ruff rule selection, a RuboCop cop,
 a Stylelint rule, etc.). Taskless does not maintain a catalog of linter
@@ -17,7 +15,6 @@ rules, you source the knowledge from the repo first and the web second,
 then write the rule where that tool expects it.
 
 ## Preconditions
-
 - The repo has a detected linter (confirm via `%(TASKLESS_CLI)s detect --json`).
 - The agent can read/write files and fetch web pages.
 - No auth required.
@@ -36,7 +33,7 @@ then write the rule where that tool expects it.
    - any custom/local rules the repo authored (the `detect` output's
      rule styles point at these);
    - the conventions, severity choices, and naming they use.
-     Match that style.
+   Match that style.
 
 3. **Fall back to the web only if the repo signal is thin.** If the repo
    doesn't show how to express this rule, fetch the linter's CURRENT

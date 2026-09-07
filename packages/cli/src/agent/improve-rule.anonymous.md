@@ -1,13 +1,11 @@
-# Topic: improve-rule (anonymous) (CLI v%(CLI_VERSION)s / topic v2)
+# Topic: improve-rule (anonymous)     (CLI v%(CLI_VERSION)s / topic v2)
 
 ## Goal
-
 Iterate on an existing ast-grep rule **locally** without contacting
 the Taskless API. You (the agent) edit the rule YAML directly, then
 validate with `verify` and `test` in a feedback loop.
 
 ## Preconditions
-
 - `.taskless/` directory exists and contains the target rule.
 - The agent can read/write files and run shell commands.
 - No auth required.
@@ -31,7 +29,7 @@ validate with `verify` and `test` in a feedback loop.
    - Loosen the `rule` (relax constraints, add `any` alternatives)
    - Add `ignores` patterns for files/paths to skip
    - Adjust `message`/`severity`/`note`
-     Summarize the planned change before editing.
+   Summarize the planned change before editing.
 
 4. **Edit the rule file.** Make the change directly in
    `.taskless/rules/sg/<id>/<id>.yml`. Preserve the existing `id`,
@@ -43,11 +41,9 @@ validate with `verify` and `test` in a feedback loop.
    `invalid:` list in `.taskless/rules/sg/<id>/.tests/<id>-*.yml`.
 
 6. **Run the verify feedback loop.** Run:
-
    ```
    %(TASKLESS_CLI)s test .taskless/rules/sg/<id> --json
    ```
-
    - If `success: true`: report success.
    - If `success: false`: read the per-layer errors, fix, re-run.
      Repeat up to 3 times. After 3 failed attempts, report to the
@@ -64,8 +60,8 @@ validate with `verify` and `test` in a feedback loop.
    - The updated rule file path
    - The updated test file path
    - A diff-style summary of what changed
-     Suggest fetching `%(TASKLESS_CLI)s agent check` to validate against the
-     broader codebase.
+   Suggest fetching `%(TASKLESS_CLI)s agent check` to validate against the
+   broader codebase.
 
 ## Important Notes
 
@@ -81,7 +77,7 @@ validate with `verify` and `test` in a feedback loop.
 The verify primitive returns structured errors per layer:
 
 | layer          | what failure means                 | fix                                   |
-| -------------- | ---------------------------------- | ------------------------------------- |
+|----------------|------------------------------------|---------------------------------------|
 | `schema`       | YAML doesn't match ast-grep schema | Fix rule structure                    |
 | `requirements` | Missing Taskless-required field    | Add `id`/`language`/`severity`/etc.   |
 | `tests`        | A test case behaved unexpectedly   | Fix the rule pattern OR the test case |

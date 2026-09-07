@@ -1,14 +1,12 @@
-# Topic: verify-rule (CLI v%(CLI_VERSION)s / topic v3)
+# Topic: verify-rule     (CLI v%(CLI_VERSION)s / topic v3)
 
 ## Goal
-
 Check that a rule is well-formed (`verify`), then run its tests
 (`test`). Both address rules **by path**, so one command works the same
 for every engine. Primary consumer is the create/improve feedback loop,
 but agents can call either directly.
 
 ## Preconditions
-
 - The rule exists at `.taskless/rules/<engine>/<id>/`.
 - Tests are optional for `verify` and are what `test` runs.
 - No auth required.
@@ -33,10 +31,10 @@ and would otherwise bury the reason the rule could never have run.
 
 What each engine is checked for:
 
-| engine    | `verify` checks                                                                                                                      | `test` runs                                                                   |
-| --------- | ------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------- |
-| `sg`      | ast-grep schema, plus `id`/`language`/`severity`/`message`/`rule`, and `regex` accompanied by `kind`                                 | the `valid`/`invalid` cases in `.tests/`                                      |
-| `vale`    | style parses, `extends` and `message` present, `level` in vocabulary, and the rule's `.vale.ini` enables `<id>.<id>` under a matcher | the `.tests/pass/` and `.tests/fail/` buckets                                 |
+| engine    | `verify` checks                                                                                                                      | `test` runs                                                |
+|-----------|--------------------------------------------------------------------------------------------------------------------------------------|------------------------------------------------------------|
+| `sg`      | ast-grep schema, plus `id`/`language`/`severity`/`message`/`rule`, and `regex` accompanied by `kind`                                 | the `valid`/`invalid` cases in `.tests/`                   |
+| `vale`    | style parses, `extends` and `message` present, `level` in vocabulary, and the rule's `.vale.ini` enables `<id>.<id>` under a matcher | the `.tests/pass/` and `.tests/fail/` buckets              |
 | `runtime` | `check.ts` present, at least one capture rule in `captures/`                                                                         | each directory under `.tests/pass/` and `.tests/fail/`, as the check's `root` |
 
 A runtime rule's fixtures execute its `check.ts`, so they run only under
@@ -58,7 +56,7 @@ segment is what decides the engine. Nothing parses a rule file to work
 out who owns it, so the same id under two engines is never ambiguous.
 
 | Path                             | Scope                                               |
-| -------------------------------- | --------------------------------------------------- |
+|----------------------------------|-----------------------------------------------------|
 | `.taskless/rules/vale/no-simply` | that one rule                                       |
 | `.taskless/rules/vale`           | every Vale rule                                     |
 | `.taskless/rules`                | every rule (also the default when you pass no path) |
@@ -74,15 +72,9 @@ Both commands answer in the same shape, one entry per rule:
 {
   "ok": false,
   "rules": [
-    { "engine": "sg", "ruleId": "no-eval", "ok": true, "errors": [] },
-    {
-      "engine": "vale",
-      "ruleId": "no-simply",
-      "ok": false,
-      "errors": [
-        "no-simply/.vale.ini never enables no-simply.no-simply, so the rule is present but off."
-      ]
-    }
+    {"engine":"sg","ruleId":"no-eval","ok":true,"errors":[]},
+    {"engine":"vale","ruleId":"no-simply","ok":false,
+     "errors":["no-simply/.vale.ini never enables no-simply.no-simply, so the rule is present but off."]}
   ]
 }
 ```
