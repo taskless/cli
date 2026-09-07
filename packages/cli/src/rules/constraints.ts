@@ -15,7 +15,7 @@ import type { EngineName } from "./layout";
  * ## Why every entry has a test that triggers it
  *
  * A hand-maintained list of what code does goes stale, and this is not
- * hypothetical: `create-sg-rule.txt` told agents for months that
+ * hypothetical: `create-sg-rule.md` told agents for months that
  * "`verify` never reads `language`", which stopped being true when
  * `validateLanguage` landed. Nothing failed, because prose has no test.
  *

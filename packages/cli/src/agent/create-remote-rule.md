@@ -1,6 +1,7 @@
-# Topic: create-remote-rule     (CLI v%(CLI_VERSION)s / topic v3)
+# Topic: create-remote-rule (CLI v%(CLI_VERSION)s / topic v3)
 
 ## You are here
+
 This is `create-remote-rule`. It helps you have the Taskless service
 write a rule, when the rule is beyond what you can express on-device or
 the user has chosen to spend a generation on it.
@@ -8,6 +9,7 @@ If that is not the kind of check you need, re-run `%(TASKLESS_CLI)s agent route`
 and follow its decision rather than adapting this recipe.
 
 ## Goal
+
 Enrich the user's description into a request the service can act on,
 submit it, and report what came back. The service generates the rule and
 writes the rule files; your job is everything on either side of that
@@ -17,6 +19,7 @@ This recipe is the whole path, the boundary and the procedure. Do not
 go looking for a second topic to perform the submission.
 
 ## Preconditions
+
 - `.taskless/` directory exists.
 - The user is logged in. This path requires auth.
 - The project has a GitHub owner. **Check this yourself before collecting
@@ -28,9 +31,11 @@ go looking for a second topic to perform the submission.
 
 Generation runs against a verifiable org, which comes from a GitHub
 `origin` remote. Run:
+
 ```
 %(TASKLESS_CLI)s info --json
 ```
+
 If `ghOwner` is the literal `[unknown]`, **stop here**. Do not enrich the
 request, do not collect examples, and do not submit: the call cannot
 succeed, and everything before it is wasted work for the user.
@@ -53,7 +58,7 @@ not GitHub, and git not being installed at all. The first three each have
 their own error code; a missing `git` binary cannot be told apart from
 the first, because the probe that would distinguish them is itself a
 `git` call, so it reports `NOT_A_GIT_REPOSITORY`. If the user says the
-directory *is* a repository, check whether `git` is on their `PATH`
+directory _is_ a repository, check whether `git` is on their `PATH`
 before believing the code.
 
 ## Cost, and when this path is right
@@ -75,9 +80,11 @@ Two ways to legitimately be here:
 ## Steps
 
 1. **Confirm auth.** Run:
+
    ```
    %(TASKLESS_CLI)s info --json
    ```
+
    Check `loggedIn`. If false, fetch `%(TASKLESS_CLI)s agent auth` and follow the
    login recipe before continuing. Do not build a request you cannot
    submit.
@@ -117,9 +124,11 @@ Two ways to legitimately be here:
    the input schema below.
 
 7. **Submit.** Run:
+
    ```
    %(TASKLESS_CLI)s rule create --from .taskless/.tmp-rule-request.json --json
    ```
+
    This may take 30-60 seconds while the service generates the rule.
 
 8. **Clean up.** Delete `.taskless/.tmp-rule-request.json` whether the
@@ -170,17 +179,17 @@ Multi-line code goes in one string with literal newlines.
 
 With `--json`, failures emit `{ ok: false, code, message }`:
 
-| code                     | meaning                         | fix                                          |
-|--------------------------|---------------------------------|----------------------------------------------|
-| `AUTH_REQUIRED`          | not logged in                   | fetch `%(TASKLESS_CLI)s agent auth`          |
-| `NO_GITHUB_REMOTE`       | no GitHub origin remote         | retained for compatibility; treat as below   |
-| `NOT_A_GIT_REPOSITORY`   | not a git repository            | route to a local recipe; `auth login` cannot fix it |
-| `NO_ORIGIN_REMOTE`       | git repository, no `origin`     | route to a local recipe; `auth login` cannot fix it |
-| `UNSUPPORTED_REMOTE_HOST`| `origin` is not GitHub          | route to a local recipe; `auth login` cannot fix it |
-| `INVALID_INPUT`          | `--from` JSON failed validation | re-read the input schema, fix, retry         |
-| `NETWORK_ERROR`          | submit/poll failed              | report and suggest retry                     |
-| `RULE_GENERATION_FAILED` | the service failed to generate  | report the message; suggest enriching prompt |
-| `RULE_UNSUPPORTED`       | plan lacks this generation type | tell the user to enable it; do not retry     |
+| code                      | meaning                         | fix                                                 |
+| ------------------------- | ------------------------------- | --------------------------------------------------- |
+| `AUTH_REQUIRED`           | not logged in                   | fetch `%(TASKLESS_CLI)s agent auth`                 |
+| `NO_GITHUB_REMOTE`        | no GitHub origin remote         | retained for compatibility; treat as below          |
+| `NOT_A_GIT_REPOSITORY`    | not a git repository            | route to a local recipe; `auth login` cannot fix it |
+| `NO_ORIGIN_REMOTE`        | git repository, no `origin`     | route to a local recipe; `auth login` cannot fix it |
+| `UNSUPPORTED_REMOTE_HOST` | `origin` is not GitHub          | route to a local recipe; `auth login` cannot fix it |
+| `INVALID_INPUT`           | `--from` JSON failed validation | re-read the input schema, fix, retry                |
+| `NETWORK_ERROR`           | submit/poll failed              | report and suggest retry                            |
+| `RULE_GENERATION_FAILED`  | the service failed to generate  | report the message; suggest enriching prompt        |
+| `RULE_UNSUPPORTED`        | plan lacks this generation type | tell the user to enable it; do not retry            |
 
 ## See Also
 

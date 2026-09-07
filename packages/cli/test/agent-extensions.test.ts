@@ -282,7 +282,7 @@ describe("taskless agent --anonymous (variant lookup)", () => {
       cwd,
     ]);
     expect(anonymous.exitCode).toBe(0);
-    // Same body — falls back to check.txt since no check.anonymous.txt
+    // Same body — falls back to check.md since no check.anonymous.txt
     expect(anonymous.stdout).toBe(canonical.stdout);
   });
 

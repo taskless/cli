@@ -20,6 +20,7 @@ import {
   buildVariables,
   canonicalRecipeTopics,
   getRawRecipe,
+  stripValeDirectives,
   getRecipe,
   getRenderedRecipe,
 } from "../src/prompts/recipes";
@@ -50,12 +51,12 @@ async function importBuiltPrompts(): Promise<{
   };
 }
 
-/** Canonical `<topic>.txt` names on disk, excluding `.anonymous` variants. */
+/** Canonical `<topic>.md` names on disk, excluding `.anonymous` variants. */
 async function canonicalTopicsOnDisk(): Promise<string[]> {
   const entries = await readdir(recipeDirectory);
   return entries
-    .filter((name) => name.endsWith(".txt"))
-    .map((name) => name.slice(0, -".txt".length))
+    .filter((name) => name.endsWith(".md"))
+    .map((name) => name.slice(0, -".md".length))
     .filter((stem) => !stem.endsWith(".anonymous"))
     .toSorted();
 }
@@ -320,7 +321,7 @@ describe("host mechanics suppression", () => {
   it("keeps each step's prose attached to the block its placeholder supplies", () => {
     // The seam this option introduced. A step's rendering now comes from two
     // independent sources that agree only by construction: the placeholder
-    // supplies the trailing newlines, and `route.txt` supplies the tail prose
+    // supplies the trailing newlines, and `route.md` supplies the tail prose
     // on the SAME template line. Reflowing that line in an editor would
     // separate them and change the rendered bytes.
     //
@@ -559,4 +560,54 @@ describe("prompts entry carries no CLI runtime", () => {
   // the first place — there is no artifact left for a test to inspect. This
   // file keeps the source-level constraint, which is about what we wrote rather
   // than about what the build produced.
+});
+
+describe("Vale directives never reach a reader", () => {
+  // A recipe is checked by this repository's own rules, and two of them teach
+  // through a worked example that quotes the words a shipped rule flags. The
+  // exclusion is a marker in the file rather than a whole-file exemption, which
+  // buys back 33 findings of coverage. It is only honest if the marker is
+  // invisible to the agent the recipe is written for.
+
+  it("strips a directive line whole, leaving no blank line behind", () => {
+    const source = [
+      "before",
+      "<!-- vale no-hedging.no-hedging = NO -->",
+      "after",
+    ].join("\n");
+    expect(stripValeDirectives(source)).toBe("before\nafter");
+  });
+
+  it("strips an indented directive, and the blanket form", () => {
+    expect(stripValeDirectives("a\n   <!-- vale off -->\nb")).toBe("a\nb");
+    expect(stripValeDirectives("a\n<!-- vale on -->\nb")).toBe("a\nb");
+  });
+
+  it("leaves a documented directive alone, because that is content", () => {
+    // create-vale-rule.md TEACHES this syntax. A strip that removed any mention
+    // would delete the lesson rather than the marker, so the pattern is
+    // anchored to the start of a line and this stays.
+    const documented =
+      "   `<!-- vale <id>.<id> = NO -->` is applied to the parsed text.";
+    expect(stripValeDirectives(documented)).toBe(documented);
+  });
+
+  it("leaves an ordinary HTML comment alone", () => {
+    const other = "<!-- a note that is not a vale directive -->";
+    expect(stripValeDirectives(other)).toBe(other);
+  });
+
+  it("serves no recipe containing a directive", () => {
+    // The property that actually matters, asserted over every topic in the
+    // build rather than the two that carry markers today.
+    for (const topic of canonicalRecipeTopics()) {
+      const served = getRawRecipe(topic);
+      // Asserted before the negative match, or an undefined recipe would
+      // satisfy "contains no directive" by containing nothing at all.
+      expect(served, `${topic} has no recipe`).toBeDefined();
+      expect(served?.text, `${topic} leaks a Vale directive`).not.toMatch(
+        /^[ \t]*<!--\s*vale\b/m
+      );
+    }
+  });
 });

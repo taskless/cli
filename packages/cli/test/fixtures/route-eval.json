@@ -1,5 +1,5 @@
 {
-  "description": "Honesty eval fixtures for the `route` recipe. Each case is a labeled request with the destination route SHOULD reach. `trap` names the failure direction the case guards against (or null for a clean case). These are a calibration dataset for evaluating the route recipe's decisions; the route decision itself is made by an agent following help/route.txt, so these are not asserted against a code classifier — the coverage test only checks the dataset stays balanced across routes and both failure directions.",
+  "description": "Honesty eval fixtures for the `route` recipe. Each case is a labeled request with the destination route SHOULD reach. `trap` names the failure direction the case guards against (or null for a clean case). These are a calibration dataset for evaluating the route recipe's decisions; the route decision itself is made by an agent following help/route.md, so these are not asserted against a code classifier — the coverage test only checks the dataset stays balanced across routes and both failure directions.",
   "routes": ["existing", "static", "remote"],
   "traps": ["over-claim", "over-escalate", "under-engage"],
   "cases": [

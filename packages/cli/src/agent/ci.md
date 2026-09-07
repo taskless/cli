@@ -1,6 +1,7 @@
-# Topic: ci     (CLI v%(CLI_VERSION)s / topic v1)
+# Topic: ci (CLI v%(CLI_VERSION)s / topic v1)
 
 ## Goal
+
 Wire `%(TASKLESS_CLI)s check` into the user's existing CI so rules run
 automatically on pushes and pull requests. Integrate with what they
 already have, never replace or edit their main pipeline.
@@ -10,6 +11,7 @@ translate to any CI system. Common systems are listed as hints; if
 you recognize one not on the list, apply the same patterns.
 
 ## Preconditions
+
 - `.taskless/` directory exists and contains at least one rule. (If
   no rules exist, instruct the user to fetch
   `%(TASKLESS_CLI)s agent route` first, wiring CI with zero rules
@@ -26,7 +28,7 @@ you recognize one not on the list, apply the same patterns.
 Scan the repo root for CI config files. Hints (not exhaustive):
 
 | File / directory          | CI system           |
-|---------------------------|---------------------|
+| ------------------------- | ------------------- |
 | `.github/workflows/*.yml` | GitHub Actions      |
 | `.gitlab-ci.yml`          | GitLab CI           |
 | `.circleci/config.yml`    | CircleCI            |
@@ -48,7 +50,7 @@ which CI they use. If multiple match, ask which should run Taskless.
   Faster for PR builds. Per-CI diff target var:
 
 | CI                  | Target branch variable                        |
-|---------------------|-----------------------------------------------|
+| ------------------- | --------------------------------------------- |
 | GitHub Actions      | `github.base_ref`                             |
 | GitLab CI           | `CI_MERGE_REQUEST_TARGET_BRANCH_NAME`         |
 | CircleCI            | `CIRCLE_BRANCH` (fetch main and diff against) |
@@ -56,8 +58,8 @@ which CI they use. If multiple match, ask which should run Taskless.
 | Azure Pipelines     | `System.PullRequest.TargetBranch`             |
 | Bitbucket Pipelines | `BITBUCKET_PR_DESTINATION_BRANCH`             |
 
-  `%(TASKLESS_CLI)s check` silently filters paths that don't exist, so raw
-  `git diff --name-only` output can pipe in directly.
+`%(TASKLESS_CLI)s check` silently filters paths that don't exist, so raw
+`git diff --name-only` output can pipe in directly.
 
 **Recommended default:** diff scan on PRs, full scan on pushes to
 main.
@@ -65,6 +67,7 @@ main.
 ### 3. Verify locally first
 
 Run `%(TASKLESS_CLI)s check`:
+
 - Clean pass → proceed.
 - "No rules configured" → stop. Fetch `%(TASKLESS_CLI)s agent route`.
 - Findings → tell the user CI will fail; ask whether to fix,
@@ -73,6 +76,7 @@ Run `%(TASKLESS_CLI)s check`:
 ### 4. Generate the config
 
 Rules:
+
 1. Write a NEW standalone file. Never modify the user's existing
    CI config.
 2. Prefer the CI's native include mechanism. Tell the user the one
@@ -82,10 +86,10 @@ Rules:
 Canonical paths:
 
 | CI                  | File path                                                           |
-|---------------------|---------------------------------------------------------------------|
+| ------------------- | ------------------------------------------------------------------- |
 | GitHub Actions      | `.github/workflows/taskless.yml` (standalone, no include needed)    |
 | GitLab CI           | `.taskless/ci/gitlab.yml` (user adds `include`)                     |
-| CircleCI            | `.taskless/ci/circleci-job.yml` (no include, user copies job)      |
+| CircleCI            | `.taskless/ci/circleci-job.yml` (no include, user copies job)       |
 | Jenkins             | `.taskless/ci/taskless.Jenkinsfile` (user `load()`s)                |
 | Azure Pipelines     | `.taskless/ci/azure-taskless.yml` (user references via `template:`) |
 | Bitbucket Pipelines | `.taskless/ci/bitbucket-pipelines.yml` (user merges manually)       |
@@ -144,12 +148,14 @@ jobs:
 ```
 
 Simplifications:
+
 - Full-scan only → drop the `if`, just run `%(PACKAGE_MANAGER_DLX)s check`.
 - Diff-scan only → remove the `push:` trigger.
 
 ### 6. Translate to other CIs
 
 The six universal steps:
+
 1. Set up Node (v20 default; match the user's existing CI version).
 2. Fetch with full depth (or enough to reach the target branch).
 3. Fetch the target branch.
@@ -180,11 +186,11 @@ skip them unless `--dangerously-run-scripts` is passed. To wire it, set
 the token as an env var on the check step (GitHub Actions):
 
 ```yaml
-      - name: Taskless check
-        env:
-          TASKLESS_TOKEN: ${{ secrets.TASKLESS_TOKEN }}
-        run: |
-          ...
+- name: Taskless check
+  env:
+    TASKLESS_TOKEN: ${{ secrets.TASKLESS_TOKEN }}
+  run: |
+    ...
 ```
 
 Add this only when the user wants server-enforced rules in CI; the
@@ -205,6 +211,7 @@ the user explicitly asks to run authenticated commands (e.g.
 ### 9. Report back
 
 Show:
+
 1. The path written and a 10-15 line excerpt.
 2. For CIs needing manual wiring, the exact `include:` / reference
    line for their main config.

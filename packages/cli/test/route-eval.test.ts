@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
-// The route decision is made by an agent following help/route.txt, so this
+// The route decision is made by an agent following help/route.md, so this
 // dataset is not run against a code classifier. The test guards the dataset
 // itself: it must stay structurally valid and balanced across every route and
 // both failure directions, so it remains a usable calibration set.

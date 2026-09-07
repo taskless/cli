@@ -696,7 +696,7 @@ withSg("ast-grep vendor contract", () => {
   });
 
   /**
-   * How a wrong `language:` fails — the two shapes `route.txt` warns about.
+   * How a wrong `language:` fails — the two shapes `route.md` warns about.
    *
    * Nothing of ours catches either one first: the vendored
    * `src/generated/ast-grep-rule-schema.json` types `$defs.Language` as a bare
@@ -901,7 +901,7 @@ withSg("ast-grep vendor contract", () => {
    * WHAT `Markdown` ACTUALLY BUYS, ADDED AT 0.45.2.
    *
    * tree-sitter-markdown splits its grammar in two, block and inline, and
-   * ast-grep exposes only the block tree. `route.txt` and `create-sg-rule.txt`
+   * ast-grep exposes only the block tree. `route.md` and `create-sg-rule.md`
    * both make that claim in prose; these are the measurements behind it, so
    * the recipes cannot drift from the binary silently.
    *
@@ -911,7 +911,7 @@ withSg("ast-grep vendor contract", () => {
   describe("Markdown sees blocks, not inline constructs", () => {
     /**
      * A document with a heading, a subheading, a list, a fence, a link and a
-     * setext heading. The setext form is here because `route.txt` routes
+     * setext heading. The setext form is here because `route.md` routes
      * "docs must not use setext (`===`) headings" to `create-sg-rule`, so the
      * kind that rule would name has to be pinned like any other.
      */
@@ -947,7 +947,7 @@ withSg("ast-grep vendor contract", () => {
         .filter((line) => line !== "").length;
 
     // EVERY kind the recipes name, not just the ones a rule here happens to
-    // use. `route.txt` and `create-sg-rule.txt` tell an agent that these seven
+    // use. `route.md` and `create-sg-rule.md` tell an agent that these seven
     // are the block tree, and an unrecognized `kind:` is not a zero-match: it
     // is exit 8 that aborts config parsing and takes every other rule's report
     // down with it (pinned below for `link`). So a bump that renames one of
@@ -1171,7 +1171,7 @@ withSg("ast-grep vendor contract", () => {
  * above: those cases are about how ast-grep *behaves* when we drive it, and
  * these are about a constant we transcribed from it. A bump that adds or drops
  * a language fails here, which is the entire reason the list is a constant
- * instead of prose inside `route.txt` — transcribed prose in a `.txt` has
+ * instead of prose inside `route.md` — transcribed prose in a `.txt` has
  * nothing to go red, and a stale claim about what an engine can read is worse
  * than the silence it replaced, because an agent acts on it.
  *
@@ -1205,7 +1205,7 @@ function reportedLanguages(): string[] {
 
 withSg("ast-grep engine capabilities", () => {
   it("reports the pinned version", () => {
-    // AST_GREP_VERSION is what route.txt renders next to the language list, so
+    // AST_GREP_VERSION is what route.md renders next to the language list, so
     // an agent reading "ast-grep (v0.45.2) parses: …" is being told which
     // binary the claim came from. A bump that updates package.json and forgets
     // the constant makes that attribution a lie.

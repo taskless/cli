@@ -202,7 +202,7 @@ describe("taskless onboard", () => {
   });
 });
 
-// #141: `taskless onboard` is the ONLY serving path for onboard.txt — it is
+// #141: `taskless onboard` is the ONLY serving path for onboard.md — it is
 // not a topic `agent` dispatches — so it must detect and pass the invocation
 // itself. The byte-parity test above cannot catch a regression here: both
 // paths spawn a bare `node dist/index.js`, under which detection correctly
@@ -308,7 +308,7 @@ describe("onboard recipe establishes the routing surface first", () => {
     const { stdout } = await runCli(["agent", "onboard", "-d", cwd], cwd);
 
     expect(stdout).toContain("provisional");
-    // `route.txt` states the comparison is made there and only there. If this
+    // `route.md` states the comparison is made there and only there. If this
     // recipe ever grows the destination table, this is what notices.
     expect(stdout).not.toContain("The rule is decided by");
     expect(stdout).not.toContain("create-remote-rule");

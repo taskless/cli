@@ -156,7 +156,7 @@ export function createAgentCommand(subCommands: SubCommandsDef) {
       }
 
       // Topics are addressed by exactly one token. Joining positionals into a
-      // key used to make `rule create` resolve `rule-create.txt`, which invited
+      // key used to make `rule create` resolve `rule-create.md`, which invited
       // an agent to reorder or paraphrase a topic name and still get a hit.
       // A single hyphenated token is a literal string to copy, so extra
       // positionals are an error rather than something to guess at.
@@ -172,7 +172,7 @@ export function createAgentCommand(subCommands: SubCommandsDef) {
 
       const key = positionals[0]!;
 
-      // Anonymous variant lookup: prefer <topic>.anonymous.txt when
+      // Anonymous variant lookup: prefer <topic>.anonymous.md when
       // --anonymous is set, fall back to the canonical recipe. The lookup and
       // the render both live in the shared prompts module, so `agent` and the
       // `@taskless/cli/prompts` export emit the same text.

@@ -19,9 +19,17 @@ import {
 } from "../rules/capabilities";
 
 // Agent recipe files embedded at build time via Vite import.meta.glob.
-// Filename convention: <topic>.txt for the canonical recipe and
-// <topic>.anonymous.txt for the local-only variant (when the flow
+// Filename convention: <topic>.md for the canonical recipe and
+// <topic>.anonymous.md for the local-only variant (when the flow
 // genuinely differs).
+//
+// `.md` rather than `.txt`, because that is what they are: headings, tables,
+// fenced blocks and emphasis throughout. The extension is not cosmetic. Vale
+// has no markdown parser for a `.txt`, so every command example and identifier
+// inside a fence was prose to a prose rule, which is why two recipes had to be
+// excluded from `no-hedging` wholesale rather than at the paragraph that earned
+// it. As `.md` the fences are skipped and `<!-- vale ... -->` regions work, so
+// an exclusion can be the size of the example rather than the size of a file.
 //
 // This module is the single embed and the single render path for the
 // recipes. Both the `agent` command and the `@taskless/cli/prompts`
@@ -29,7 +37,7 @@ import {
 // free of the CLI runtime — no citty, telemetry, filesystem, or
 // network — so a Worker can import the prompts entry without pulling
 // the command tree in behind it.
-const recipeFiles: Record<string, string> = import.meta.glob("../agent/*.txt", {
+const recipeFiles: Record<string, string> = import.meta.glob("../agent/*.md", {
   query: "?raw",
   import: "default",
   eager: true,
@@ -44,11 +52,9 @@ function buildRecipeMaps(): {
 } {
   const recipeMap = new Map<string, string>();
   const anonymousMap = new Map<string, string>();
-  for (const [path, content] of Object.entries(recipeFiles)) {
-    const filename = path
-      .split("/")
-      .pop()
-      ?.replace(/\.txt$/, "");
+  for (const [path, rawContent] of Object.entries(recipeFiles)) {
+    const content = stripValeDirectives(rawContent);
+    const filename = path.split("/").pop()?.replace(/\.md$/, "");
     if (!filename) continue;
     if (filename.endsWith(".anonymous")) {
       const topic = filename.slice(0, -".anonymous".length);
@@ -62,7 +68,7 @@ function buildRecipeMaps(): {
 
 const { recipeMap, anonymousMap } = buildRecipeMaps();
 
-/** The canonical `<topic>.txt` recipe names present in the build. */
+/** The canonical `<topic>.md` recipe names present in the build. */
 export function canonicalRecipeTopics(): string[] {
   return [...recipeMap.keys()];
 }
@@ -212,7 +218,7 @@ export function buildVariables(
   const variables: Record<string, string> = {
     CLI_VERSION: __VERSION__,
     // Engine reach, from the pinned engine versions rather than transcribed
-    // into a recipe. A `.txt` carrying these lists by hand would go stale on
+    // into a recipe. A recipe carrying these lists by hand would go stale on
     // the next binary bump with nothing to catch it, and stale prose about
     // what an engine can read is worse than the silence it replaced — an agent
     // acts on it. `src/rules/capabilities.ts` is the single place a bump edits,
@@ -414,4 +420,23 @@ export function getRenderedRecipe(
     text: renderTemplate(template, topic, options),
     variables: collectVariables(source),
   };
+} /**
+ * Remove Vale's in-file directives from a recipe before anyone reads it.
+ *
+ * A recipe is checked by this repository's own Vale rules, and two of them
+ * teach through a worked example that quotes the words a shipped rule flags.
+ * `<!-- vale no-hedging.no-hedging = NO -->` marks that example so the rest of
+ * the file stays covered, which is only possible because a recipe is markdown.
+ *
+ * The directives are configuration, not content. Stripping happens HERE, where
+ * the embedded files are read into the maps, rather than at any of the three
+ * render entry points: one place to be correct, and `getRawRecipe` is covered
+ * by the same stroke as the rendered paths.
+ *
+ * The whole line goes, including its newline. Leaving a blank line behind
+ * would change the markdown a reader sees, which would make the exclusion
+ * mechanism visible in the output it exists to keep clean.
+ */
+export function stripValeDirectives(content: string): string {
+  return content.replaceAll(/^[ \t]*<!--\s*vale\b.*?-->[ \t]*\r?\n?/gm, "");
 }

@@ -2,7 +2,10 @@
 "@taskless/cli": patch
 ---
 
-The `route` and `onboard` recipes pick different sample rules for two of their
-examples, so illustrating how to route a rule no longer requires writing the
-words a shipped rule flags. The lesson in each case is prose-versus-tree, not
-the specific word, so the examples are unchanged in what they teach.
+Agent recipes are `.md` files rather than `.txt`, which is what they have always
+been: headings, tables, fenced blocks and emphasis throughout. The extension is
+not cosmetic. Vale has no markdown parser for a `.txt`, so every command example
+and identifier inside a fence was prose to a prose rule, and two recipes had to
+be exempted from the hedging rule entirely to keep the run quiet. Both are now
+checked, with the one worked example marked in place. The markers are stripped
+before a recipe is served, so nothing reaches a reader.

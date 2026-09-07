@@ -126,12 +126,12 @@ function codeFragments(source: string): { line: number; text: string }[] {
  */
 const ALLOWED_HARDCODED: { file: string; snippet: string; why: string }[] = [
   {
-    file: "ci.txt",
+    file: "ci.md",
     snippet: "npx @taskless/cli",
     why: "Enumerates what %(PACKAGE_MANAGER_DLX)s expands to. Naming the four complete invocations IS the documentation; substituting the variable here would define the placeholder in terms of itself.",
   },
   {
-    file: "ci.txt",
+    file: "ci.md",
     snippet: "pnpm taskless check",
     why: "That `taskless` is the binary pnpm resolves from the WIRED REPO's node_modules/.bin when @taskless/cli is their dev dependency — a foreign binary, not this CLI's invocation. %(TASKLESS_CLI)s would render `pnpm npx @taskless/cli check`.",
   },
@@ -145,15 +145,15 @@ function isAllowed(file: string, line: string): boolean {
 
 async function recipeFiles(): Promise<string[]> {
   const entries = await readdir(recipeDirectory);
-  return entries.filter((entry) => entry.endsWith(".txt")).toSorted();
+  return entries.filter((entry) => entry.endsWith(".md")).toSorted();
 }
 
-/** Topic names that resolve, i.e. `<topic>.txt` exists in the recipe directory. */
+/** Topic names that resolve, i.e. `<topic>.md` exists in the recipe directory. */
 async function embeddedTopics(): Promise<Set<string>> {
   const files = await recipeFiles();
   return new Set(
     files
-      .map((file) => file.replace(/\.txt$/, ""))
+      .map((file) => file.replace(/\.md$/, ""))
       .map((name) => name.replace(/\.anonymous$/, ""))
   );
 }
@@ -162,7 +162,7 @@ async function embeddedTopics(): Promise<Set<string>> {
 async function renderedRecipes(): Promise<Array<[string, string]>> {
   const files = await recipeFiles();
   return files.map((file) => {
-    const stem = file.replace(/\.txt$/, "");
+    const stem = file.replace(/\.md$/, "");
     const anonymous = stem.endsWith(".anonymous");
     const topic = stem.replace(/\.anonymous$/, "");
     return [file, getRecipe(topic, { anonymous }) ?? ""];
@@ -223,7 +223,7 @@ describe("shipped recipes name only commands that exist", () => {
     const mismatched: string[] = [];
     for (const file of await recipeFiles()) {
       const source = await readFile(join(recipeDirectory, file), "utf8");
-      const topic = file.replace(/(\.anonymous)?\.txt$/, "");
+      const topic = file.replace(/(\.anonymous)?\.md$/, "");
       const firstLine = source.split("\n")[0] ?? "";
       if (!firstLine.startsWith(`# Topic: ${topic}`)) {
         mismatched.push(`${file}: ${firstLine}`);
@@ -326,7 +326,7 @@ describe("recipes defer the CLI invocation to the renderer", () => {
  * `route` is the only recipe that states what each local engine can read, and
  * it states it through `%(…)s` variables resolved from
  * `src/rules/capabilities.ts` rather than by transcribing two lists into the
- * `.txt`. A transcription would go stale on the next engine bump with nothing
+ * `.md`. A transcription would go stale on the next engine bump with nothing
  * to catch it, and a stale claim about engine reach is worse than the silence
  * it replaced — an agent acts on it and escalates a buildable rule to the
  * runtime tier, which needs a login. That is taskless/cli#151.
@@ -357,11 +357,11 @@ describe("recipes state engine reach from the pinned versions", () => {
     expect(leaked).toEqual([]);
   });
 
-  it("names ast-grep's languages in rendered route.txt", async () => {
-    const route = await rendered("route.txt");
+  it("names ast-grep's languages in rendered route.md", async () => {
+    const route = await rendered("route.md");
     // Yaml is the issue's own question — an Actions workflow is YAML, and
     // nothing told the agent ast-grep parses it. TypeScript is the control: a
-    // language nobody doubts, so a route.txt that lost the list entirely fails
+    // language nobody doubts, so a route.md that lost the list entirely fails
     // here too rather than passing on a lucky substring.
     expect(route).toContain("Yaml");
     expect(route).toContain("TypeScript");
@@ -369,7 +369,7 @@ describe("recipes state engine reach from the pinned versions", () => {
   });
 
   it("names Vale's three readable tiers and its unreadable one", async () => {
-    const route = await rendered("route.txt");
+    const route = await rendered("route.md");
     expect(route).toContain(valeMarkupList());
     expect(route).toContain(valeCommentList());
     expect(route).toContain(valeConverterList());
@@ -389,12 +389,12 @@ describe("recipes state engine reach from the pinned versions", () => {
     expect(route).toContain("`[*.{md,typ}]`");
   });
 
-  it("names ast-grep's languages in rendered create-sg-rule.txt", async () => {
-    // create-sg-rule.txt is where a `language:` field is actually written, and
+  it("names ast-grep's languages in rendered create-sg-rule.md", async () => {
+    // create-sg-rule.md is where a `language:` field is actually written, and
     // it is the one field nothing local validates — the vendored schema types
     // it as a bare string and `verify` never reads it. So the spellings have to
     // reach the recipe, or the first thing with an opinion is the binary.
-    const recipe = await rendered("create-sg-rule.txt");
+    const recipe = await rendered("create-sg-rule.md");
     expect(recipe).toContain(astGrepLanguageList());
     // `Tsx` by name: a reader who assumes it is an alias of `TypeScript`
     // writes a rule that reads `.tsx` files not at all, and this pins the
@@ -408,9 +408,9 @@ describe("recipes state engine reach from the pinned versions", () => {
   });
 
   it("repeats the reach where a Vale matcher is written", async () => {
-    // create-vale-rule.txt is where a glob is authored, which is the only
+    // create-vale-rule.md is where a glob is authored, which is the only
     // place the converter-dependent extensions can actually do damage.
-    const recipe = await rendered("create-vale-rule.txt");
+    const recipe = await rendered("create-vale-rule.md");
     expect(recipe).toContain(valeConverterList());
     // The recipe used to offer `[*.{md,mdx}]` as a worked example of widening
     // a matcher. It may still cite it — as the counter-example it now is — so

@@ -1,6 +1,7 @@
-# Topic: create-runtime-rule     (CLI v%(CLI_VERSION)s / topic v2)
+# Topic: create-runtime-rule (CLI v%(CLI_VERSION)s / topic v2)
 
 ## You are here
+
 This is `create-runtime-rule`. It helps you write a runtime rule: a
 check that runs your own code, because answering it needs more than one
 file, the repository graph, git metadata, build output, a resolved
@@ -13,10 +14,12 @@ user is **not logged in**. That is the whole difference, and this recipe
 explains it once.
 
 ## Goal
+
 Explain what a runtime rule is, why this tier is gated when the static
 tiers are not, and what the user has to do before one can run.
 
 ## Preconditions
+
 - `.taskless/` directory exists.
 - The user is **not** logged in. If `%(TASKLESS_CLI)s info --json` reports
   `loggedIn: true`, you are in the wrong recipe, re-run
@@ -28,7 +31,7 @@ A rule directory under `.taskless/rules/runtime/<name>/` holding two
 kinds of file:
 
 | Path             | Role                                                                      |
-|------------------|---------------------------------------------------------------------------|
+| ---------------- | ------------------------------------------------------------------------- |
 | `captures/*.yml` | ast-grep capture rules that narrow which files the check looks at         |
 | `check.ts`       | a module whose default export receives those matches and returns findings |
 | `.tests/`        | fixtures, in `pass/` and `fail/` buckets                                  |

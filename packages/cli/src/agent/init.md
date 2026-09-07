@@ -1,12 +1,14 @@
-# Topic: init     (CLI v%(CLI_VERSION)s / topic v1)
+# Topic: init (CLI v%(CLI_VERSION)s / topic v1)
 
 ## Goal
+
 Install or update the Taskless skill into the user's coding-agent
 tools (Claude Code, OpenCode, Cursor, etc.). The user runs this
 themselves, the agent's role is mostly to point the user at the
 right command when they need to install or upgrade.
 
 ## Preconditions
+
 - None at the user level. The command works in any directory and
   bootstraps `.taskless/` on first run.
 - For interactive mode: a TTY (running from a terminal).
@@ -14,18 +16,22 @@ right command when they need to install or upgrade.
 ## Steps
 
 The user should run:
+
 ```
 %(TASKLESS_CLI)s
 ```
+
 (no subcommand). In a TTY this launches the interactive wizard. In
 non-TTY contexts it prints the topic index instead.
 
 For scripted installs (CI, Dockerfiles):
+
 ```
 %(TASKLESS_CLI)s init --no-interactive
 ```
 
 The wizard will:
+
 1. Detect installed tools (Claude Code, OpenCode, Cursor) and ask
    which tools to enable Taskless for.
 2. Show the auth tradeoff and offer to log in (skippable).

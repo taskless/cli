@@ -21,9 +21,12 @@ note: |
   legitimately contains every one of these strings, and the rewrite runs at
   runtime. Authorship is the only moment the distinction is visible.
 
-  Recipes in `src/agent/*.txt` are out of reach here by being .txt, which is
-  correct: they carry a `<taskless-cli>` marker the reading agent fills in (see
-  `src/prompts/recipes.ts`) and name no package at all.
+  Recipes in `src/agent/*.md` are out of reach here because this rule parses
+  TypeScript and a recipe is markdown, which is correct rather than incidental:
+  they carry a `<taskless-cli>` marker the reading agent fills in (see
+  `src/prompts/recipes.ts`) and name no package at all. The reach does not
+  change with the extension. It was never the `.txt` that excluded them, it is
+  that neither extension is a language this rule parses.
 
   TWO KNOWN LIMITATIONS, since this rule is the only enforcement for some of
   the sites it covers. Both are syntactic, and neither is reachable by
