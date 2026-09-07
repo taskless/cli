@@ -55,8 +55,15 @@ ignores:
   # `@taskless/cli` sends a nightly's user to install the release instead. A
   # `.describe()` on a zod field saying where `constraintId` is published is a
   # fact about the artifact, true on every build target, and routing it would
-  # rewrite an export path that does not change between them.
-  - "packages/cli/src/schemas/**"
+  # rewrite an export path that does not differ between them.
+  #
+  # NAMED FILES, NOT THE DIRECTORY. A blanket `schemas/**` would also exempt a
+  # description that told a reader to RUN something, which is exactly what this
+  # rule is for, and it would do it silently. These two are the only files under
+  # `schemas/` that name the package at all, so listing them costs nothing now
+  # and makes the next one a decision rather than an inheritance.
+  - "packages/cli/src/schemas/verify-test.ts"
+  - "packages/cli/src/schemas/index.ts"
 rule:
   kind: string_fragment
   regex: "@taskless/cli"
