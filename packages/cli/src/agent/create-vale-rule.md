@@ -1,4 +1,4 @@
-# Topic: create-vale-rule     (CLI v%(CLI_VERSION)s / topic v5)
+# Topic: create-vale-rule     (CLI v%(CLI_VERSION)s / topic v6)
 
 ## You are here
 This is `create-vale-rule`. It helps you write a Vale rule: a check over
@@ -220,44 +220,49 @@ it.
    the cause is in that rule's own `scope` and glob, never in a
    neighbour's.
 
-   **A `raw`-scoped rule cannot be turned off in a document.** Vale's
-   `<!-- vale <id>.<id> = NO -->` directive is applied to the *parsed*
-   document, and `raw` reads the unparsed one. Measured: a `text`-scoped
-   rule is silenced by the directive; the same rule at `raw` fires
-   through it. So a rule about a shell command, a flag, or a package name
-   needs `raw`, commands live in fenced blocks, which nothing else
-   reaches, and takes that trade: it can no longer be exempted case by
-   case, only removed.
+   **A directive turns any rule off, `raw` included, as of Vale 3.20.0.**
+   `<!-- vale <id>.<id> = NO -->` opens a zone and `= YES` closes it.
+   Vale records the region each directive covers and suppresses any
+   alert located inside it, which reaches a `raw`-scoped rule too.
+   Through 3.19.0 a directive was applied to the *parsed* document and
+   `raw` reads the unparsed one, so a `raw` rule fired straight through
+   every zone: a rule about a shell command, a flag, or a package name
+   was exempt-or-remove with nothing in between. It is not any more.
 
-   **An exception zone is the size of a top-level block, and no smaller.**
-   A pair of directives turns a rule off for a region and back on:
-   `= NO` opens it and `= YES` closes it. Both lines have to start at
-   column 0, because Vale reads them as HTML blocks and an HTML block
-   begins at the left margin.
+   One thing to know before writing one over a `raw` rule: at `raw`
+   scope the directive line is itself linted text. A rule whose token
+   appears in its own id matches the marker that silences it, and
+   reports a finding on the directive. Name the rule so its own id does
+   not contain the word it looks for.
 
-   That constraint decides where a zone can go, and it is easy to get
-   wrong twice. Measured on Vale 3.19.0, in this file:
+   **A zone is two lines, and no blank line may separate it from the
+   prose it wraps.** Measured on Vale 3.20.0:
 
-   - At a list item's continuation indent the directive is not
-     recognised at all. The words stay reported and nothing says the
-     marker was ignored.
-   - At column 0 in the middle of a list, the directive is recognised
-     and it ends the list. The blocks after it reparse as indented code,
-     which are already outside a prose rule's reach, so coverage moves
-     rather than being restored where you meant to restore it.
+   - Inline at a list item's continuation indent works, and this is the
+     form to reach for. The pair covers the lines between it and
+     nothing else.
+   - At column 0 it works too, and it ends any list it interrupts.
+     Blocks that then reparse as indented code are already outside a
+     prose rule's reach, so a zone placed there can move coverage
+     rather than restore it.
+   - A pair separated from its prose by blank lines, at an indent past
+     the code-block threshold, suppresses nothing: what it wraps is not
+     prose any more. Nothing reports that, either.
 
-   So a zone wraps a whole numbered step, a whole section, or a whole
-   paragraph at the margin. Price it before reaching for one: exempting
-   the two steps of this recipe that quote hedging words would have put
-   176 lines of prose out of reach to keep two words of an example. Those
-   two examples were rewritten to use words the rule does not carry,
-   which cost three words and no coverage at all.
+   Through 3.19.0 the first of those did nothing at all. An inline pair
+   was read once per block, so the `NO` and the `YES` cancelled out
+   before the paragraph was linted and the words stayed reported with
+   no error and no warning. A zone had to wrap a whole step or a whole
+   section at the margin, and exempting the two steps of this recipe
+   that quote hedging words would have put 176 lines of prose out of
+   reach to keep two words of an example. That price is gone.
 
-   **Write a documented example indented, never at the margin.** A
-   directive at column 0 in a recipe takes effect on the recipe, and the
-   CLI strips it before serving so a reader never sees it. That is why
-   every directive quoted in this file sits inside a sentence or an
-   indented block: it is being shown, not run.
+   **A shown directive has to be inline or fenced, never a bare line.**
+   A directive on a line of its own now takes effect on the recipe at
+   any indent, and the CLI strips it before serving so a reader never
+   sees it. Measured: a directive inside backticks and a directive
+   inside a fenced block are both inert, which is why every directive
+   quoted in this file is one or the other.
 
    **Then the fields the extension point adds**. This is where the rule
    actually lives, and each check reads only its own:
@@ -274,7 +279,7 @@ it.
 | `metric`         | `formula`, `condition`                                                       |
 | `readability`    | `metrics` (a list of formula names), `grade`                                 |
 | `spelling`       | `aff`, `dic`, `custom`, `filters`, `ignore`, `threshold`                     |
-| `sequence`       | `tokens` (each a `pattern`/`tag` map); `ignorecase`                          |
+| `sequence`       | `tokens` (each a `pattern`/`tag` map); `ignorecase`, `exceptions`             |
 | `script`         | `script` (Tengo source)                                                      |
 
    The list above is measured, not transcribed: every entry was added to
@@ -437,8 +442,10 @@ it.
      needs `nonword: true`.
 
    - **A bare word finds senses you did not mean.** `landed on` in a rule
-     about jargon also matches "the plane landed on time"; `clearly` in a
-     rule about hedging also matches "clearly labelled" in a spec.
+     <!-- vale no-hedging.no-hedging = NO -->
+     about jargon also matches "the plane landed on time"; `simply` in a
+     rule about hedging also matches "simply connected" in a maths doc.
+     <!-- vale no-hedging.no-hedging = YES -->
      Narrow the token to the **collocation** you actually object to
      (`landed on a decision`, not `landed on`), and check that you got it
      right by writing the `pass/` fixture from the literal sense *first*:
@@ -535,8 +542,10 @@ it.
      assumes; `scope: heading` has nothing to find outside it:
      %(VALE_MARKUP_FORMATS)s
    - **comment text only**: the comments are linted and the code body
+     <!-- vale no-hedging.no-hedging = NO -->
      is invisible, which is exactly right for "comments must not say
-     'TBD'":
+     'obviously'":
+     <!-- vale no-hedging.no-hedging = YES -->
      %(VALE_COMMENT_FORMATS)s
    - **plaintext fallback**: everything else, `.yml` `.toml` `.sh`
      `.sql` and every extension not named above included. There is no
