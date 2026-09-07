@@ -1,4 +1,4 @@
-# Topic: onboard     (CLI v%(CLI_VERSION)s / topic v2)
+# Topic: onboard     (CLI v%(CLI_VERSION)s / topic v3)
 
 ## Goal
 Help a user who has just installed Taskless go from zero rules to a
@@ -107,7 +107,7 @@ rules as a bullet list the user can choose to materialize via the
    ```
    - no-direct-db-access [sg]: Prevent controllers from importing the DB module directly; route through the service layer.
    - require-zod-validation [sg]: Flag API handlers that read request bodies without parsing them through a Zod schema first.
-   - avoid-hedging-in-docs [vale]: Flag "simply" and "just" in documentation; they hide the step the reader is stuck on.
+   - comments-record-not-forecast [vale]: Flag comments that promise future work instead of recording what is true now.
    - exports-must-be-used [runtime]: Flag exported symbols nothing in the repo imports.
    ```
 

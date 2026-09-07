@@ -46,6 +46,14 @@ files:
 ignores:
   - "packages/cli/src/util/invocation.ts"
   - "packages/cli/src/util/package-manager.ts"
+  # Schema descriptions name PUBLISHED ARTIFACTS to a consumer reading the
+  # schema, which is the opposite of the case this rule exists for. The rule
+  # catches content the CLI emits to its own reader, where an unrewritten
+  # `@taskless/cli` sends a nightly's user to install the release instead. A
+  # `.describe()` on a zod field saying where `constraintId` is published is a
+  # fact about the artifact, true on every build target, and routing it would
+  # rewrite an export path that does not change between them.
+  - "packages/cli/src/schemas/**"
 rule:
   kind: string_fragment
   regex: "@taskless/cli"
