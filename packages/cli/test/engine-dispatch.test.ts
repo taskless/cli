@@ -434,6 +434,19 @@ describe("engine dispatch by directory", () => {
       RUNTIME_CAPTURE.replace("id: logs-abc12345\n", ""),
       /no string `id`/,
     ],
+    [
+      // asMatchMode's central claim: an unimplemented `match:` is refused, not
+      // coerced to `anchor`. `anchor` and `broad` scan differently — `anchor`
+      // is a syntactic narrow, `broad` a whole-language enumerator — so
+      // silently falling back would run the capture as a narrow, match a
+      // fraction of what it was written for, and report the shortfall as a
+      // clean pass. The `it.each` above already asserts the capture is
+      // dropped from discovery; this asserts `verify` explains why, which is
+      // what REFUSALS exists to cover for every other reason.
+      "unimplemented match mode",
+      RUNTIME_CAPTURE.replace("match: anchor", "match: whole-repo"),
+      /match: "whole-repo", which this build does not implement/,
+    ],
   ];
 
   it.each(REFUSALS)(
