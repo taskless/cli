@@ -1,5 +1,6 @@
 import {
   chmodSync,
+  mkdirSync,
   mkdtempSync,
   readFileSync,
   rmSync,
@@ -167,7 +168,14 @@ describe("candidate order", () => {
     const originalPath = process.env.PATH;
     process.env.PATH = directory;
     try {
-      expect(resolvePlatformBinary(FAKE).path).toBe(join(directory, "sg"));
+      const resolution = resolvePlatformBinary(FAKE);
+      expect(resolution.path).toBe(join(directory, "sg"));
+      // The tier that answered, not just the path: a resolver that always
+      // reported "platform-package" would still pass every assertion above,
+      // since FAKE's platform-package tier is deliberately unresolvable and
+      // the path itself only proves *a* file was found, not which search tier
+      // found it.
+      expect(resolution.source).toBe("PATH");
     } finally {
       process.env.PATH = originalPath;
     }
@@ -178,13 +186,56 @@ describe("candidate order", () => {
     const originalPath = process.env.PATH;
     process.env.PATH = directory;
     try {
-      expect(resolvePlatformBinary(FAKE).path).toBe(
-        join(directory, "ast-grep")
-      );
+      const resolution = resolvePlatformBinary(FAKE);
+      expect(resolution.path).toBe(join(directory, "ast-grep"));
+      expect(resolution.source).toBe("PATH");
     } finally {
       process.env.PATH = originalPath;
     }
   });
+
+  /**
+   * The tier `resolvePlatformBinary` searches between the pinned platform
+   * package and PATH: a binary linked into the CLI's own `node_modules/.bin`.
+   *
+   * `platform-package` and `undefined` are already pinned in
+   * `engine-version-consistency.test.ts`, and `PATH` above. Every closed-set
+   * value `source` can take needs its own case — a resolver that collapsed
+   * this tier's result to `"PATH"` (they are searched by the same loop, over
+   * the same candidate list) would pass every other test in this file.
+   */
+  onUnix(
+    "reports node_modules/.bin as the source when that tier answers",
+    () => {
+      // Mirrors the computation `resolvePlatformBinary` uses internally
+      // (relative to the compiled module's own directory) — this is the exact
+      // location that tier searches, not a stand-in for it.
+      const localBin = join(
+        import.meta.dirname,
+        "..",
+        "src",
+        "node_modules",
+        ".bin"
+      );
+      mkdirSync(localBin, { recursive: true });
+      workspaces.push(join(import.meta.dirname, "..", "src", "node_modules"));
+      const binaryPath = join(localBin, "sg");
+      writeFileSync(binaryPath, "#!/bin/sh\necho 'fake-tool 1.0.0'\n");
+      chmodSync(binaryPath, 0o755);
+
+      // Keep PATH from also containing a match, so only the .bin tier can
+      // answer.
+      const originalPath = process.env.PATH;
+      process.env.PATH = "";
+      try {
+        const resolution = resolvePlatformBinary(FAKE);
+        expect(resolution.path).toBe(binaryPath);
+        expect(resolution.source).toBe("node_modules/.bin");
+      } finally {
+        process.env.PATH = originalPath;
+      }
+    }
+  );
 
   it("names each searched location once, however many spellings it tried", () => {
     // The platform package is probed under one name, and a tier searched under
