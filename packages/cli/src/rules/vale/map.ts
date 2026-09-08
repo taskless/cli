@@ -167,6 +167,43 @@ function leadingNewlines(text: string): number {
 }
 
 /**
+ * `Span` for a leading-newline `raw` match is measured in the *attributed*
+ * (wrong) line's coordinate space, not the corrected one, so it cannot be
+ * reused verbatim once {@link leadingNewlines} moves the line forward.
+ *
+ * Measured against the real binary: for a match opening with one `\n`
+ * preceded by a 70-character line, Vale reports `Span: [71, 129]` — 71 is
+ * that preceding line's length plus one, and 129 is 71 plus the *whole*
+ * match length (59) minus one. Vale is not tracking per-line columns here at
+ * all; it is counting characters from the start of the line it (wrongly)
+ * attributed the match to, straight through the leading `\n` and into the
+ * flagged text, however many characters that takes. A blank preceding line
+ * (length 0) makes `Span` start at 1, which happens to equal the true
+ * column — that coincidence is what made the original fixture look correct.
+ *
+ * The character immediately after a `\n` is always column 1 of the next
+ * line, independent of how long the previous line was or how many leading
+ * newlines the match opened with (each one just steps down one more line).
+ * So once a match has any leading newlines, the true start column is always
+ * the first column, and the true end column is however long the match is
+ * *after* stripping those newlines — confirmed against the real binary for
+ * both one and two leading newlines. `Span` is only trustworthy as-is when
+ * there is no leading newline to correct for.
+ */
+function rawScopeColumns(
+  span: [number, number],
+  match: string,
+  newlines: number
+): [number, number] {
+  if (newlines === 0) {
+    const [spanStart, spanEnd] = span;
+    return [Math.max(0, spanStart - 1), Math.max(0, spanEnd - 1)];
+  }
+  const strippedLength = match.length - newlines;
+  return [0, Math.max(0, strippedLength - 1)];
+}
+
+/**
  * Map one Vale finding to the scanner-agnostic {@link CheckResult}.
  *
  * `range` collapses to a single line: Vale reports `Line` plus a `Span` of
@@ -174,23 +211,30 @@ function leadingNewlines(text: string): number {
  * start and end share the line number.
  *
  * The line is corrected for a `raw`-scope match's leading newlines (see
- * {@link leadingNewlines}) and then converted down by one. `CheckResult.range`
- * is 0-indexed — ast-grep's native range is passed straight through by
- * `toCheckResult`, the runtime harness converts its 1-based `Finding` down the
- * same way, and `format.ts` adds 1 back for every source when it displays.
- * Vale's `Line` and `Span` are both 1-based, so emitting them verbatim would
- * report every finding one line and one column further into the file than it
- * is. Clamped at 0 because a 0 from Vale (unset, rather than a real position)
- * must not become -1.
+ * {@link leadingNewlines}) and then converted down by one; the columns get
+ * their own correction (see {@link rawScopeColumns}) because `Span` is
+ * measured against the line Vale attributed the match to, which is no longer
+ * the line this range reports once the line correction moves it. Both
+ * corrections are no-ops when the match has no leading newline.
+ * `CheckResult.range` is 0-indexed — ast-grep's native range is passed
+ * straight through by `toCheckResult`, the runtime harness converts its
+ * 1-based `Finding` down the same way, and `format.ts` adds 1 back for every
+ * source when it displays. Vale's `Line` and `Span` are both 1-based, so
+ * emitting them verbatim would report every finding one line and one column
+ * further into the file than it is. Clamped at 0 because a 0 from Vale
+ * (unset, rather than a real position) must not become -1.
  */
 export function toValeCheckResult(
   file: string,
   finding: ValeFinding
 ): CheckResult {
-  const [spanStart, spanEnd] = finding.Span;
-  const line = Math.max(0, finding.Line + leadingNewlines(finding.Match) - 1);
-  const startColumn = Math.max(0, spanStart - 1);
-  const endColumn = Math.max(0, spanEnd - 1);
+  const newlines = leadingNewlines(finding.Match);
+  const line = Math.max(0, finding.Line + newlines - 1);
+  const [startColumn, endColumn] = rawScopeColumns(
+    finding.Span,
+    finding.Match,
+    newlines
+  );
   return {
     source: "vale",
     ruleId: stripRulesPrefix(finding.Check),
