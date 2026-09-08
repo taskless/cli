@@ -17,6 +17,7 @@ const {
   UsageError,
   countRange,
   gitOut,
+  isAncestor,
   lineage,
   orderedDescendants,
   parseIntegerOption,
@@ -257,4 +258,37 @@ test("runProcess reports timedOut false for a command that simply fails", () => 
   const result = runProcess(process.execPath, ["-e", "process.exit(3)"]);
   assert.equal(result.code, 3);
   assert.equal(result.timedOut, false);
+});
+
+// Shared because both propagate_stack (deciding whether a guessed upstream is
+// worth warning about) and stack_status (deciding whether a branch is cleanly
+// stacked) ask the same question, and a second copy is one more thing to keep
+// in sync by hand.
+test("isAncestor follows git's exit code", () => {
+  assert.equal(
+    isAncestor(() => ({ code: 0, stdout: "", stderr: "" }), "a", "b"),
+    true
+  );
+  assert.equal(
+    isAncestor(() => ({ code: 1, stdout: "", stderr: "" }), "a", "b"),
+    false
+  );
+});
+
+test("isAncestor passes the refs in ancestor-then-descendant order", () => {
+  const calls = [];
+  isAncestor(
+    (...args) => {
+      calls.push(args);
+      return { code: 0, stdout: "", stderr: "" };
+    },
+    "parent",
+    "child"
+  );
+  assert.deepEqual(calls[0], [
+    "merge-base",
+    "--is-ancestor",
+    "parent",
+    "child",
+  ]);
 });

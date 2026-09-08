@@ -29,6 +29,7 @@ const {
   UsageError,
   countRange,
   gitOut,
+  isAncestor,
   lineage,
   orderedDescendants,
   refExists,
@@ -43,9 +44,6 @@ const aheadBehind = (git, a, b) => {
   if (!/^\d+$/.test(left ?? "") || !/^\d+$/.test(right ?? "")) return [-1, -1];
   return [Number(left), Number(right)];
 };
-
-const isAncestor = (git, ancestor, descendant) =>
-  git("merge-base", "--is-ancestor", ancestor, descendant).code === 0;
 
 /**
  * Every branch reachable below `root`.

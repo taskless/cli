@@ -170,6 +170,10 @@ const lineage = ({ run = runProcess } = {}) => {
 const refExists = (run, ref) =>
   run("rev-parse", "--verify", "--quiet", ref).code === 0;
 
+/** Whether `ancestor` is reachable from `descendant`. */
+const isAncestor = (run, ancestor, descendant) =>
+  run("merge-base", "--is-ancestor", ancestor, descendant).code === 0;
+
 /** Commit count for a range expression, or -1 when git could not answer. */
 const countRange = (run, rangeExpression) => {
   const out = gitOut(run, "rev-list", "--count", rangeExpression);
@@ -208,6 +212,7 @@ module.exports = {
   UsageError,
   countRange,
   gitOut,
+  isAncestor,
   lineage,
   orderedDescendants,
   parseIntegerOption,
