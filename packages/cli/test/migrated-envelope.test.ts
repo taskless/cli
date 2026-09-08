@@ -36,9 +36,18 @@ async function runCli(
   }
 }
 
+/**
+ * Parse `--json` stdout as the WHOLE envelope, not just its last line.
+ *
+ * `stdout.trim().split("\n").at(-1)` was the earlier shape of this helper,
+ * and it is exactly why #279 (`init --json` printing prose ahead of the
+ * envelope) stayed invisible: a helper that only ever reads the last line
+ * cannot fail on anything printed before it. `JSON.parse` on the trimmed
+ * whole string fails loudly the moment stdout carries a second thing,
+ * whichever end it lands on.
+ */
 function parseEnvelope(stdout: string): Record<string, unknown> {
-  const line = stdout.trim().split("\n").at(-1) ?? "";
-  return JSON.parse(line) as Record<string, unknown>;
+  return JSON.parse(stdout.trim()) as Record<string, unknown>;
 }
 
 /** The versions a project seeded at 3 must be carried through. */
