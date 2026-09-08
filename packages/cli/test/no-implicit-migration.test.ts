@@ -57,6 +57,21 @@ async function runCli(
   }
 }
 
+/**
+ * Parse `--json` stdout as the WHOLE envelope, not just its last line.
+ *
+ * The earlier shape of every call site here was
+ * `JSON.parse(stdout.trim().split("\n").at(-1) ?? "{}")`, and that is exactly
+ * why `init --json` printing prose ahead of its envelope (#279) went
+ * undetected: a helper that only ever reads the last line cannot fail on
+ * anything printed before it. `JSON.parse` on the trimmed whole string fails
+ * loudly the moment stdout carries a second thing, whichever end it lands on
+ * — do not narrow this back to a last-line read.
+ */
+function parseEnvelope<T>(stdout: string): T {
+  return JSON.parse(stdout.trim()) as T;
+}
+
 const FLAT_RULE =
   "id: no-eval\nlanguage: TypeScript\nseverity: error\nmessage: no eval\nrule:\n  pattern: eval($A)\n";
 
@@ -114,10 +129,10 @@ describe("a reporting command never migrates", () => {
     "%s --json carries the code an agent branches on",
     async (command) => {
       const { stdout } = await runCli([command, "--json", "-d", directory]);
-      const envelope = JSON.parse(stdout.trim()) as {
+      const envelope = parseEnvelope<{
         ok?: boolean;
         code?: string;
-      };
+      }>(stdout);
       expect(envelope.ok).toBe(false);
       // Distinct from SCAFFOLD_VERSION_MISMATCH, which is the opposite
       // direction and asks the caller to upgrade the CLI instead.
@@ -231,9 +246,9 @@ describe("a reporting command never migrates", () => {
       directory,
     ]);
 
-    const envelope = JSON.parse(stdout.trim()) as {
+    const envelope = parseEnvelope<{
       migrated?: { from: number; to: number };
-    };
+    }>(stdout);
     expect(envelope.migrated?.from).toBe(3);
     expect(envelope.migrated?.to).toBe(LATEST_SCHEMA_VERSION);
     await expect(
@@ -278,11 +293,11 @@ describe("a manifest that cannot be parsed", () => {
     "%s --json reports the file, not a version it guessed",
     async (command) => {
       const { stdout } = await runCli([command, "--json", "-d", directory]);
-      const envelope = JSON.parse(stdout.trim()) as {
+      const envelope = parseEnvelope<{
         ok?: boolean;
         code?: string;
         message?: string;
-      };
+      }>(stdout);
       expect(envelope.ok).toBe(false);
       expect(envelope.code).toBe("SCAFFOLD_MANIFEST_UNREADABLE");
       expect(envelope.message).toContain("taskless.json");
@@ -331,9 +346,9 @@ describe("a manifest that cannot be parsed", () => {
         "-d",
         bare,
       ]);
-      const envelope = JSON.parse(stdout.trim()) as {
+      const envelope = parseEnvelope<{
         migrated?: { from: number; to: number };
-      };
+      }>(stdout);
       expect(envelope.migrated?.from).toBe(0);
       expect(envelope.migrated?.to).toBe(LATEST_SCHEMA_VERSION);
     } finally {
