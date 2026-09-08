@@ -1,7 +1,7 @@
 import { spawnSync } from "node:child_process";
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { isAbsolute, join } from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
@@ -280,6 +280,53 @@ withVale("Vale vendor contract", () => {
     expect(result.stdout.trim()).toBe("");
     const parsed = JSON.parse(result.stderr) as { Code?: string };
     expect(parsed.Code).toBe("E201");
+  });
+
+  it("reports a config error's Path relative for a target file, absolute for a rule", () => {
+    // Depended on by: `targetFileParseError` in run.ts, which uses exactly this
+    // distinction to tell "one unreadable TARGET file, exclude it and retry"
+    // from "our own rule config is broken, stop". That is the whole mechanism
+    // behind taskless/cli#300, and it rests on Vale's choice of path shape
+    // rather than on anything this repository controls.
+    //
+    // Pinned HERE, in the vendor contract, and not only through run.ts's
+    // behaviour tests, because of what each one says when it breaks. If Vale
+    // starts reporting target files absolutely, run.ts's tests fail with
+    // "expected ok to be failed" and someone has to work backwards to the
+    // cause. This one names it. The upgrade procedure re-probes this file on
+    // every bump, which is the moment the answer can change.
+    //
+    // The failure direction is the safe one either way: an unrecognised target
+    // error stops the run rather than excluding a rule config and continuing,
+    // so a change here degrades #300 back to its old behaviour rather than
+    // silently checking nothing. Loud, not silent, but still wrong.
+
+    // A target file Vale cannot parse: unquoted colon in its front matter.
+    const targetCwd = project(
+      `${header}\n[*.md]\nrules.lvl = YES\n`,
+      { lvl: existence("simply") },
+      {
+        "doc.md":
+          "---\ndescription: has a colon: right here\n---\n\nJust simply do it.\n",
+      }
+    );
+    const targetError = JSON.parse(
+      runRaw(targetCwd, ["doc.md"], ["--no-exit"]).stderr
+    ) as { Path?: string };
+    expect(targetError.Path).toBe("doc.md");
+    expect(isAbsolute(targetError.Path ?? "")).toBe(false);
+
+    // A rule file Vale cannot load, reached through StylesPath rather than
+    // named on the command line.
+    const ruleCwd = project(
+      `${header}\n[*.md]\nrules.bogus = YES\n`,
+      { bogus: existence("simply", "catastrophe") },
+      { "doc.md": "Just simply do it.\n" }
+    );
+    const ruleError = JSON.parse(
+      runRaw(ruleCwd, ["doc.md"], ["--no-exit"]).stderr
+    ) as { Path?: string };
+    expect(isAbsolute(ruleError.Path ?? "")).toBe(true);
   });
 
   describe("matcher semantics", () => {
