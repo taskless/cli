@@ -194,6 +194,10 @@ Found 3 low-priority suggestions:
 Which would you like to address? (e.g., "1,3" or "all" or "none")
 ```
 
+**Surface, never a fix and never a prompt:**
+
+- `review_summary` - a review's own narration, bucketed structurally rather than by content (see step 2's category list). It is not a finding to fix and not a suggestion to triage — reply to it per "Replying to Comments" below like any other surfaced item, but do not present it in the low-priority numbered list and do not count it toward `needs_attention`.
+
 **Skip silently:**
 
 - `resolved` threads
@@ -212,6 +216,7 @@ After processing a feedback item, acknowledge it on the PR so the trail shows wh
 - `high` and `medium` items — whether fixed or determined to be false positives
 - `low` items — whether fixed or declined by the user
 - `self_review` items — the same as any other human feedback
+- `review_summary` items — a brief acknowledgment; there is nothing to fix, but the trail should still show it was read
 
 **Inline review-thread comments** (items with a `thread_id`):
 

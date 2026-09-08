@@ -22,6 +22,10 @@
  * - review_in_progress: A review bot's placeholder comment, posted the instant
  *   it was triggered and not yet edited to its finished form — not feedback
  *   yet, see "Unfinished reviews" below
+ * - review_summary: A review's top-level narration, bucketed structurally
+ *   rather than by content — surfaced and counted
+ *   (`summary.review_summaries`), but never a priority bucket and never
+ *   prompted on, see "Review summaries" below
  *
  * Bot classification:
  * - Review bots (Sentry, Warden, Cursor, Bugbot, etc.) provide actionable code
@@ -37,9 +41,9 @@
  *   dropped) and flagged `self_review: true`. A self-review **thread** (an
  *   inline comment) is bucketed by content like any other, defaulting to
  *   `medium` absent a `h:/m:/l:` prefix. A self-review **summary** is bucketed
- *   structurally, not by content — see "Review summaries" below — defaulting
- *   to `low` absent a marker, so it stays visible without inflating
- *   `needs_attention`.
+ *   structurally, not by content — see "Review summaries" below — landing in
+ *   the `review_summary` bucket absent a marker, so it stays visible without
+ *   ever being read as a priority-bucket finding.
  *
  * Review summaries:
  * - A review's top-level summary narrates its findings, so classifying it by
@@ -48,10 +52,14 @@
  *   survives that. A summary is instead bucketed by what is structurally
  *   known: `CHANGES_REQUESTED` from a reviewer who is not the PR author is
  *   `high`; an explicit `h:/m:/l:` marker still wins over everything; absent
- *   both, the summary is surfaced but filed `low` so it doesn't inflate
- *   `needs_attention`. The findings a review raises arrive separately as
- *   inline review-thread comments, which ARE classified by content — nothing
- *   is lost by not re-classifying the narration around them.
+ *   both, the summary goes to its own `review_summary` bucket (counted as
+ *   `summary.review_summaries`), NOT `low` — `low` means "an optional
+ *   suggestion, ask the user which to address," and a review that found
+ *   nothing proposes no work, so filing it there trades the false `high` this
+ *   fix removes for a false prompt. The findings a review raises arrive
+ *   separately as inline review-thread comments, which ARE classified by
+ *   content — nothing is lost by not re-classifying the narration around
+ *   them.
  *
  * Unfinished reviews:
  * - The Claude review bot posts its comment immediately when triggered and
@@ -255,7 +263,16 @@ const LOW_PATTERNS = [
 // as findings. Measured on the real review summary of #307: "…so it's a
 // 'worth a look,' not a blocker" matched `blocker` with nothing to say the
 // word was negated.
-const NEGATORS = /\b(?:not|no|non|without|isn't|is not)\b/i;
+//
+// Contractions are listed explicitly rather than derived from their expanded
+// form (`won't` alongside `will not`) because `\b` does not split on an
+// apostrophe the way it splits on a space — `won't` has to appear as its own
+// alternative or it is invisible to this pattern. Caught in review on #311:
+// the first cut only had `isn't`/`is not`, so "doesn't block", "won't break",
+// "can't fail", "never a blocker", and a bare "nothing" all still read as
+// unnegated and reached `high`.
+const NEGATORS =
+  /\b(?:not|no|non|none|nothing|never|without|isn't|is not|aren't|are not|wasn't|was not|weren't|were not|won't|will not|wouldn't|would not|can't|cannot|can not|couldn't|could not|shouldn't|should not|doesn't|does not|didn't|did not|hasn't|has not|haven't|have not|hadn't|had not)\b/i;
 
 // How far back from a match to look for a negator. Wide enough to cover "is
 // not a blocker" and "found no security issue", narrow enough that an
@@ -271,11 +288,30 @@ const isNegated = (body, index) => {
 
 /**
  * Whether any pattern matches `body` at a position not preceded by a negator.
+ *
+ * Scans every occurrence of a pattern, not just the first: `pattern.exec`
+ * always returns the left-most match, so a naive single check would read a
+ * negated first mention as covering the whole body and miss a later, genuine
+ * one — e.g. "not a blocker overall, but there's a real blocker in the retry
+ * logic" has two matches of `/blocker/i`, only the first of which is negated.
+ * Caught in review on #311.
  */
 const matchesUnnegated = (patterns, body) =>
   patterns.some((pattern) => {
-    const match = pattern.exec(body);
-    return match !== null && !isNegated(body, match.index);
+    // Clone with a `g` flag so `.exec` advances instead of always returning
+    // the left-most match; the source patterns stay non-global everywhere
+    // else they're used (a global regex carries mutable `lastIndex` state,
+    // which is exactly the kind of shared mutable state worth not spreading).
+    const global = new RegExp(pattern.source, `${pattern.flags}g`);
+    let match;
+    while ((match = global.exec(body)) !== null) {
+      if (!isNegated(body, match.index)) return true;
+      // A zero-length match would otherwise leave `lastIndex` unchanged and
+      // loop forever; none of the patterns here can match empty, but this
+      // keeps the loop safe if one ever does.
+      if (match[0].length === 0) global.lastIndex += 1;
+    }
+    return false;
   });
 
 /**
