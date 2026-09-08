@@ -314,13 +314,23 @@ const categorizeComment = (comment, body) => {
  * are classified individually by `categorizeComment`; nothing is lost by not
  * re-classifying the prose that narrates them.
  *
- * An explicit LOGAF marker still wins, same as everywhere else. Absent one,
- * the summary is surfaced but filed as `low` rather than `medium`, so it
- * doesn't inflate `needs_attention` — the caller-facing number that a
- * structurally-known `CHANGES_REQUESTED` (handled by the caller, not here)
- * already covers for the case that actually needs gating.
+ * An explicit LOGAF marker still wins, same as everywhere else. Absent one the
+ * summary goes to its own `review_summary` bucket, which is surfaced and
+ * counted but is not a priority bucket.
+ *
+ * NOT `low`, which was the obvious choice and is wrong here. `low` means "an
+ * optional suggestion the user should be asked about": the skill presents low
+ * items as a numbered list and asks which to address, and `action_required`
+ * says so. Filing a review that found NOTHING there trades a false `high` for
+ * a false prompt, asking someone to triage a summary that proposes no work.
+ * Its own bucket is surfaced without being actionable, the same shape
+ * `review_in_progress` already uses.
+ *
+ * A `CHANGES_REQUESTED` summary never reaches here; the caller files it `high`
+ * on the review state, which is the structurally-known case that needs gating.
  */
-const categorizeReviewSummary = (_comment, body) => detectLogaf(body) ?? "low";
+const categorizeReviewSummary = (_comment, body) =>
+  detectLogaf(body) ?? "review_summary";
 
 /**
  * File one item by its author: an unfinished review is filed on its own ahead
@@ -552,6 +562,7 @@ const buildFeedback = (client, { owner, repo, prInfo }) => {
     bot: [],
     resolved: [],
     review_in_progress: [],
+    review_summary: [],
   };
 
   // Review summary bodies. Every non-empty summary is surfaced, regardless of
@@ -664,7 +675,13 @@ const buildFeedback = (client, { owner, repo, prInfo }) => {
   }
 
   const requestedReviewers = client.requestedReviewers(owner, repo, prNumber);
-  const priorities = ["high", "medium", "low"];
+  // `review_summary` counts here even though it is not a priority bucket:
+  // these tallies answer "how much of this came from a bot / from the author",
+  // which is independent of urgency. Leaving it out would silently zero
+  // `self_review_feedback` for an author whose only note is a review summary,
+  // which is the common shape of a self-review. `review_in_progress` stays out:
+  // it is not feedback yet.
+  const priorities = ["high", "medium", "low", "review_summary"];
   const countFlagged = (flag) =>
     priorities.reduce(
       (total, bucket) => total + feedback[bucket].filter((i) => i[flag]).length,
@@ -688,6 +705,7 @@ const buildFeedback = (client, { owner, repo, prInfo }) => {
       review_bot_feedback: countFlagged("review_bot"),
       self_review_feedback: countFlagged("self_review"),
       review_in_progress: feedback.review_in_progress.length,
+      review_summaries: feedback.review_summary.length,
       needs_attention: feedback.high.length + feedback.medium.length,
       pending_reviewers: requestedReviewers.length,
     },
