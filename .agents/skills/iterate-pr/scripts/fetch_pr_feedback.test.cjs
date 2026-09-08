@@ -218,11 +218,7 @@ test("NEGATORS recognizes contractions and bare negative words, not just 'not'/'
     "medium",
     "doesn't"
   );
-  assert.equal(
-    categorizeComment(human, "This can't fail."),
-    "medium",
-    "can't"
-  );
+  assert.equal(categorizeComment(human, "This can't fail."), "medium", "can't");
   assert.equal(
     categorizeComment(human, "This cannot break the build."),
     "medium",

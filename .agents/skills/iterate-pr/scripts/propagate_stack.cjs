@@ -43,6 +43,7 @@ const {
   UsageError,
   countRange,
   gitOut,
+  isAncestor,
   lineage,
   orderedDescendants,
   parseIntegerOption,
@@ -120,8 +121,7 @@ const forkUpstream = (git, parent, child, rewritten) => {
  * train the reader to skip the line that matters.
  */
 const guessIsRisky = (git, parent, child, source) =>
-  source === "guessed" &&
-  git("merge-base", "--is-ancestor", parent, child).code !== 0;
+  source === "guessed" && !isAncestor(git, parent, child);
 
 const main = ({
   argv = process.argv.slice(2),
