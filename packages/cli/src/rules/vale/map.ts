@@ -144,26 +144,51 @@ function toFix(finding: ValeFinding): string | undefined {
 }
 
 /**
+ * Vale's `raw`-scope patterns are conventionally anchored with a leading
+ * `\n` (matching against the unparsed document lets a pattern require "start
+ * of line" this way, since `raw` has no notion of line boundaries otherwise).
+ * That leading `\n` is *part of the match*, so `Match` starts with it, and
+ * Vale attributes `Line` to where the match itself starts — the newline that
+ * *ends* the previous line — rather than to the line the flagged text is
+ * actually on.
+ *
+ * Measured against the real binary: a `raw` rule matching
+ * `\n**The base is a promise...` on a line whose true (1-based) number is 13
+ * is reported by Vale as `Line: 12`, one line early, while a `default`-scope
+ * rule matching the same document reports the correct 1-based line with no
+ * such offset. Counting the match's leading newlines and adding them back
+ * corrects this for any number of leading newlines, not just one, and is a
+ * no-op for every scope that does not open a match on `\n`.
+ */
+function leadingNewlines(text: string): number {
+  let count = 0;
+  while (text[count] === "\n") count++;
+  return count;
+}
+
+/**
  * Map one Vale finding to the scanner-agnostic {@link CheckResult}.
  *
  * `range` collapses to a single line: Vale reports `Line` plus a `Span` of
  * columns within it, and has no concept of a finding that crosses lines, so
  * start and end share the line number.
  *
- * Both are converted down by one. `CheckResult.range` is 0-indexed — ast-grep's
- * native range is passed straight through by `toCheckResult`, the runtime
- * harness converts its 1-based `Finding` down the same way, and `format.ts` adds
- * 1 back for every source when it displays. Vale's `Line` and `Span` are both
- * 1-based, so emitting them verbatim would report every finding one line and one
- * column further into the file than it is. Clamped at 0 because a 0 from Vale
- * (unset, rather than a real position) must not become -1.
+ * The line is corrected for a `raw`-scope match's leading newlines (see
+ * {@link leadingNewlines}) and then converted down by one. `CheckResult.range`
+ * is 0-indexed — ast-grep's native range is passed straight through by
+ * `toCheckResult`, the runtime harness converts its 1-based `Finding` down the
+ * same way, and `format.ts` adds 1 back for every source when it displays.
+ * Vale's `Line` and `Span` are both 1-based, so emitting them verbatim would
+ * report every finding one line and one column further into the file than it
+ * is. Clamped at 0 because a 0 from Vale (unset, rather than a real position)
+ * must not become -1.
  */
 export function toValeCheckResult(
   file: string,
   finding: ValeFinding
 ): CheckResult {
   const [spanStart, spanEnd] = finding.Span;
-  const line = Math.max(0, finding.Line - 1);
+  const line = Math.max(0, finding.Line + leadingNewlines(finding.Match) - 1);
   const startColumn = Math.max(0, spanStart - 1);
   const endColumn = Math.max(0, spanEnd - 1);
   return {
