@@ -71,30 +71,57 @@ const {
  *    restacked by hand, or in an earlier run).
  * 3. The parent itself — correct whenever the parent was only appended to.
  *
- * TIER 3 IS ALSO WHERE THE #220 FAILURE CAN STILL REACH YOU, and it is worth
- * knowing before you trust a clean run. `--fork-point` reads the PARENT'S LOCAL
- * REFLOG, so it only knows about a rewrite this checkout performed or observed.
- * In a fresh clone or a new worktree that fetched an already-rewritten parent
- * from origin — the pattern CLAUDE.md recommends for background agents — the
- * reflog has no record of the old tip, tier 2 finds nothing, and the upstream
- * falls back to the parent: the same wrong upstream `git rebase <parent>` picks.
+ * WHAT TIER 3 ACTUALLY COSTS, measured rather than reasoned about, because an
+ * earlier version of this comment had it wrong. `--fork-point` reads the
+ * PARENT'S LOCAL REFLOG, and a WORKTREE SHARES REFS AND REFLOGS WITH ITS CLONE.
+ * So the pattern CLAUDE.md recommends for background agents — several agents in
+ * worktrees of one repository — keeps tier 2 working: one worktree amends the
+ * parent, another reads the pre-amend tip out of the shared reflog and replays
+ * the child from exactly the right place. Verified end to end.
  *
- * The balloon guard does not catch that one, because `expectedOwn` is computed
- * from this same upstream, so the expectation and the outcome agree. Two agents
- * in separate worktrees is the shape to watch: one rewrites the parent, the
- * other propagates and silently drops what the rewrite carried.
+ * Reaching tier 3 with a rewritten parent therefore needs a separate CLONE that
+ * never saw the old tip: a fresh CI checkout, a second machine, someone else's
+ * copy. There, two things can happen, and NEITHER is a silent loss:
  *
- * This is inherited behaviour, not new — the Python this replaced did the same
- * — and closing it needs a source of truth the reflog cannot provide (the
- * parent's pre-rewrite tip, recorded where both agents can see it).
+ *   - the child's stale copies are patch-compatible with the new parent (a pure
+ *     rebase, or an amend that only adds), so `git rebase` drops them and the
+ *     result is correct;
+ *   - they genuinely diverge, and the rebase CONFLICTS. This script aborts it,
+ *     leaves the child untouched, pushes nothing, and exits 2.
+ *
+ * The residual risk is the person, not the tool. That conflict lands in files
+ * the child never touched, so it reads as inexplicable, and resolving it toward
+ * the child's copy is what restores whatever the parent's rewrite fixed. That is
+ * why this reports WHERE the upstream came from, and why a guessed one is
+ * announced in the plan and again in the conflict: the tool cannot know which
+ * resolution is right, but it can say that it was guessing.
+ *
+ * Failing closed instead was considered and rejected: refusing whenever tier 3
+ * fires and the parent is not an ancestor would also refuse the case tier 3
+ * exists for, a parent that was only appended to, where the fallback is correct.
  */
 const forkUpstream = (git, parent, child, rewritten) => {
   const known = rewritten[parent];
-  if (known) return known;
+  if (known) return { upstream: known, source: "recorded" };
   const probe = git("merge-base", "--fork-point", parent, child);
-  if (probe.code === 0 && probe.stdout.trim()) return probe.stdout.trim();
-  return parent;
+  if (probe.code === 0 && probe.stdout.trim()) {
+    return { upstream: probe.stdout.trim(), source: "fork-point" };
+  }
+  return { upstream: parent, source: "guessed" };
 };
+
+/**
+ * Whether a guessed upstream is one to warn about.
+ *
+ * A guess is only interesting when the parent is NOT already an ancestor of the
+ * child. When it is, the child contains the current parent, `parent..child` is
+ * exactly the child's own commits, and replaying from the parent is right by
+ * construction — there is nothing to warn about, and saying so every time would
+ * train the reader to skip the line that matters.
+ */
+const guessIsRisky = (git, parent, child, source) =>
+  source === "guessed" &&
+  git("merge-base", "--is-ancestor", parent, child).code !== 0;
 
 const main = ({
   argv = process.argv.slice(2),
@@ -172,7 +199,17 @@ const main = ({
       continue;
     }
 
-    const upstream = forkUpstream(git, parent, child, rewritten);
+    const { upstream, source } = forkUpstream(git, parent, child, rewritten);
+    const risky = guessIsRisky(git, parent, child, source);
+    if (risky) {
+      // Said BEFORE the rebase, not only after it fails. If this replays
+      // cleanly the reader still wants to know the upstream was inferred.
+      emit(
+        `  ! ${child}: no fork point is known, so the upstream is a GUESS ` +
+          `(${parent}). That is correct if ${parent} was only appended to, and ` +
+          `wrong if it was rewritten somewhere this clone never saw.`
+      );
+    }
     // The guard counts from the SAME upstream the rebase replays from. Counting
     // from a merge-base a rewritten parent has invalidated inflates the
     // expectation with the parent's own superseded commits, which makes the
@@ -195,11 +232,24 @@ const main = ({
       const conflicts = gitOut(git, "diff", "--name-only", "--diff-filter=U");
       git("rebase", "--abort");
       emit(
-        `  ✗ CONFLICT: ${child} onto ${parent} (from ${upstream.slice(0, 9)}). ` +
-          "Needs manual reconcile:"
+        `  ✗ CONFLICT: ${child} onto ${parent} (from ${upstream.slice(0, 9)}, ` +
+          `${source}). Needs manual reconcile:`
       );
       for (const file of conflicts.split("\n").filter(Boolean)) {
         emit(`        ${file}`);
+      }
+      if (risky) {
+        // The dangerous moment is the manual reconcile, not the abort. A
+        // conflict here lands in files the child never touched, which reads as
+        // inexplicable, and "take mine" is what restores whatever the parent's
+        // rewrite fixed.
+        emit(
+          `        ^ the upstream above was a GUESS. A conflict in files ${child} ` +
+            `never touched usually means ${parent} was rewritten elsewhere and ` +
+            `this clone cannot see where ${child} forked. Do NOT resolve toward ` +
+            `${child}'s copy without checking what ${parent} changed: that side ` +
+            `is the superseded one, and taking it puts the old work back.`
+        );
       }
       if (start) git("checkout", start);
       return 2;

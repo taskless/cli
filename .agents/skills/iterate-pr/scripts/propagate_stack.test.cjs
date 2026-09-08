@@ -96,26 +96,38 @@ const run = (
 
 test("forkUpstream prefers the pre-rebase tip of a parent this run rewrote", () => {
   const git = fakeGit({ forkPoints: { "parent->child": "from-reflog" } });
-  assert.equal(
+  assert.deepEqual(
     forkUpstream(git, "parent", "child", { parent: "pre-rebase-tip" }),
-    "pre-rebase-tip"
+    {
+      upstream: "pre-rebase-tip",
+      source: "recorded",
+    }
   );
 });
 
 test("forkUpstream falls back to the reflog fork-point for a rewrite it did not perform", () => {
   const git = fakeGit({ forkPoints: { "parent->child": "from-reflog" } });
-  assert.equal(forkUpstream(git, "parent", "child", {}), "from-reflog");
+  assert.deepEqual(forkUpstream(git, "parent", "child", {}), {
+    upstream: "from-reflog",
+    source: "fork-point",
+  });
 });
 
 test("forkUpstream falls back to the parent when no fork point is known", () => {
-  assert.equal(forkUpstream(fakeGit(), "parent", "child", {}), "parent");
+  assert.deepEqual(forkUpstream(fakeGit(), "parent", "child", {}), {
+    upstream: "parent",
+    source: "guessed",
+  });
 });
 
 test("forkUpstream ignores an empty fork-point answer", () => {
   const git = fakeGit({
     overrides: [["merge-base --fork-point", { code: 0, stdout: "  \n" }]],
   });
-  assert.equal(forkUpstream(git, "parent", "child", {}), "parent");
+  assert.deepEqual(forkUpstream(git, "parent", "child", {}), {
+    upstream: "parent",
+    source: "guessed",
+  });
 });
 
 /**
@@ -394,4 +406,94 @@ test("with no reflog knowledge of a rewrite, the guard agrees with a wrong upstr
     !lines.includes("BALLOON GUARD"),
     "and the guard cannot see it: expectation and outcome share the upstream"
   );
+});
+
+// ---------------------------------------------------------------------------
+// Saying when the upstream was a guess (taskless/cli#301)
+// ---------------------------------------------------------------------------
+
+/**
+ * The tool cannot know whether a guessed upstream is the right one, so it says
+ * that it guessed. Announced BEFORE the rebase, because a clean replay is still
+ * worth knowing about, and repeated at a conflict, because that is the moment
+ * somebody is about to choose a side by hand.
+ */
+test("a guessed upstream is announced in the plan", () => {
+  // No fork point, and the parent is not an ancestor: the ambiguous case.
+  const git = fakeGit({
+    overrides: [["merge-base --is-ancestor", { code: 1 }]],
+  });
+  const { lines } = run(["--root", "root", "--no-push"], { git });
+  assert.match(lines, /no fork point is known, so the upstream is a GUESS/);
+  assert.match(lines, /correct if root was only appended to/);
+});
+
+// A parent already contained by the child makes `parent..child` exactly the
+// child's own commits, so the fallback is right by construction. Warning there
+// would train the reader to skip the line that matters.
+test("a guess is not announced when the parent is already an ancestor", () => {
+  const git = fakeGit({
+    overrides: [["merge-base --is-ancestor", { code: 0 }]],
+  });
+  const { lines } = run(["--root", "root", "--no-push"], { git });
+  assert.doesNotMatch(lines, /GUESS/);
+});
+
+test("a known fork point is never announced as a guess", () => {
+  const git = fakeGit({
+    forkPoints: { "root->child": "forked-at" },
+    overrides: [["merge-base --is-ancestor", { code: 1 }]],
+  });
+  const { lines } = run(["--root", "root", "--no-push"], { git });
+  assert.doesNotMatch(lines, /GUESS/);
+});
+
+/**
+ * THE CONFLICT MESSAGE IS THE WHOLE POINT OF #301. What reproduces is not a
+ * silent loss — the rebase is aborted and the child left untouched — but a
+ * conflict in files the child never touched, with nothing saying the upstream
+ * was inferred. Resolving toward the child's copy is what puts the parent's
+ * superseded work back.
+ */
+test("a conflict on a guessed upstream says which side is the superseded one", () => {
+  const git = fakeGit({
+    overrides: [
+      ["merge-base --is-ancestor", { code: 1 }],
+      ["rebase --onto", { code: 1, stderr: "CONFLICT" }],
+      ["diff --name-only", { code: 0, stdout: "parent.txt" }],
+    ],
+  });
+  const { code, lines } = run(["--root", "root"], { git });
+
+  assert.equal(code, 2);
+  assert.match(lines, /the upstream above was a GUESS/);
+  assert.match(lines, /rewritten elsewhere/);
+  assert.match(lines, /Do NOT resolve toward child's copy/);
+  assert.match(lines, /taking it puts the old work back/);
+});
+
+test("a conflict on a known fork point carries no guess warning", () => {
+  const git = fakeGit({
+    forkPoints: { "root->child": "forked-at" },
+    overrides: [
+      ["rebase --onto", { code: 1, stderr: "CONFLICT" }],
+      ["diff --name-only", { code: 0, stdout: "parent.txt" }],
+    ],
+  });
+  const { code, lines } = run(["--root", "root"], { git });
+  assert.equal(code, 2);
+  assert.match(lines, /CONFLICT/);
+  assert.doesNotMatch(lines, /GUESS/);
+});
+
+test("the conflict line names where the upstream came from", () => {
+  const git = fakeGit({
+    forkPoints: { "root->child": "forked-at" },
+    overrides: [
+      ["rebase --onto", { code: 1, stderr: "CONFLICT" }],
+      ["diff --name-only", { code: 0, stdout: "a.ts" }],
+    ],
+  });
+  const { lines } = run(["--root", "root"], { git });
+  assert.match(lines, /from forked-at, fork-point/);
 });
