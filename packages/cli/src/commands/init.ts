@@ -94,7 +94,7 @@ export const initCommand = defineCommand({
       );
     }
 
-    const result = await runNonInteractive(cwd);
+    const result = await runNonInteractive(cwd, { json: args.json });
     if (args.json) {
       console.log(
         JSON.stringify({
@@ -245,11 +245,22 @@ export const updateCommand = defineCommand({
   },
 });
 
-async function runNonInteractive(cwd: string): Promise<{
+async function runNonInteractive(
+  cwd: string,
+  options: { json?: boolean } = {}
+): Promise<{
   commandsInstalled: boolean;
   reloadNotice: string | undefined;
   migrated: MigrationReport | undefined;
 }> {
+  // Under `--json`, stdout carries only the envelope printed by the caller.
+  // This per-target summary is not on that envelope (it is finer-grained than
+  // `migrated`/`commandsInstalled`), so rather than drop it, it goes to
+  // stderr — visible to a person watching the terminal, invisible to a
+  // machine consumer parsing stdout. Matches `ensureTasklessDirectory`'s own
+  // default (`runMigrations` falls back to `console.error`) and the
+  // `verify`/`test` convention of routing prose off stdout under `--json`.
+  const log = options.json ? console.error : console.log;
   // Sampled BEFORE the directory is created, and that order is the whole
   // point. `ensureTasklessDirectory` mkdir -p's, so afterwards a pre-existing
   // project is indistinguishable from a fresh one.
@@ -291,7 +302,7 @@ async function runNonInteractive(cwd: string): Promise<{
   const reloadNotice = getReloadNotice({ previousCliVersion, cliVersion });
 
   if (detected.length === 0) {
-    console.log(`No tools detected. Using fallback: ${DEFAULT_SHIM_DIR}/`);
+    log(`No tools detected. Using fallback: ${DEFAULT_SHIM_DIR}/`);
   }
 
   const skillsByTarget = groupValuesByTarget(
@@ -332,33 +343,29 @@ async function runNonInteractive(cwd: string): Promise<{
       removedSkills.length === 0 &&
       removedCommands.length === 0
     ) {
-      console.log(`${target.label} (${target.dir}/): up to date`);
+      log(`${target.label} (${target.dir}/): up to date`);
       continue;
     }
 
-    console.log(
+    log(
       `${target.label} (${target.dir}/): wrote ${String(writtenSkills.length)} skill ${noun}(s)`
     );
     for (const name of writtenSkills) {
-      console.log(`  - ${name}`);
+      log(`  - ${name}`);
     }
     if (writtenCommands.length > 0) {
-      console.log(`  + ${String(writtenCommands.length)} command ${noun}(s)`);
+      log(`  + ${String(writtenCommands.length)} command ${noun}(s)`);
     }
     if (removedSkills.length > 0) {
-      console.log(
-        `  removed ${String(removedSkills.length)} obsolete skill(s):`
-      );
+      log(`  removed ${String(removedSkills.length)} obsolete skill(s):`);
       for (const name of removedSkills) {
-        console.log(`    - ${name}`);
+        log(`    - ${name}`);
       }
     }
     if (removedCommands.length > 0) {
-      console.log(
-        `  removed ${String(removedCommands.length)} obsolete command(s):`
-      );
+      log(`  removed ${String(removedCommands.length)} obsolete command(s):`);
       for (const name of removedCommands) {
-        console.log(`    - ${name}`);
+        log(`    - ${name}`);
       }
     }
   }
