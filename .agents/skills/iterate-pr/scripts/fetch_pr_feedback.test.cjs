@@ -318,9 +318,9 @@ test("a self-review summary is surfaced, flagged, and bucketed structurally", ()
       },
     ],
   });
-  assert.equal(output.summary.low, 1);
+  assert.equal(output.summary.review_summaries, 1);
   assert.equal(output.summary.self_review_feedback, 1);
-  assert.equal(output.feedback.low[0].self_review, true);
+  assert.equal(output.feedback.review_summary[0].self_review, true);
 });
 
 test("a self-review marked CHANGES_REQUESTED is not force-promoted to high", () => {
@@ -334,7 +334,7 @@ test("a self-review marked CHANGES_REQUESTED is not force-promoted to high", () 
     ],
   });
   assert.equal(output.summary.high, 0);
-  assert.equal(output.summary.low, 1);
+  assert.equal(output.summary.review_summaries, 1);
 });
 
 // An explicit marker in a review summary still wins, same as everywhere else
@@ -363,13 +363,13 @@ test("a clean review summary saying 'not a blocker' is not high", () => {
       {
         author: { login: "reviewer" },
         state: "COMMENTED",
-        body: 'I found no security issue and this is not a blocker — worth a look, but not a blocker.',
+        body: "I found no security issue and this is not a blocker — worth a look, but not a blocker.",
       },
     ],
   });
   assert.equal(output.summary.high, 0);
   assert.equal(output.summary.needs_attention, 0);
-  assert.equal(output.summary.low, 1);
+  assert.equal(output.summary.review_summaries, 1);
 });
 
 // A review-bot's own summary (e.g. Claude's finished review) is subject to
@@ -387,7 +387,7 @@ test("a review bot's summary is bucketed structurally, not by content", () => {
   });
   assert.equal(output.summary.high, 0);
   assert.equal(output.summary.review_bot_feedback, 1);
-  assert.equal(output.feedback.low[0].review_bot, true);
+  assert.equal(output.feedback.review_summary[0].review_bot, true);
 });
 
 test("empty and near-empty review summaries are skipped", () => {
@@ -960,4 +960,57 @@ test("bold-italic emphasis is matched, and a bare underscore is not emphasis", (
     isReviewInProgress("Review in progress_notes: nothing else found"),
     false
   );
+});
+
+// A REVIEW THAT FOUND NOTHING MUST NOT ASK THE USER TO TRIAGE IT. `low` means
+// "an optional suggestion, ask which to address" — the skill presents low items
+// as a numbered list and `action_required` says so. Filing a clean summary
+// there trades the false `high` this work removed for a false prompt.
+test("a clean review summary is surfaced without becoming an action", () => {
+  const output = build(fakeClient(), {
+    reviews: [
+      {
+        author: { login: "claude[bot]" },
+        state: "COMMENTED",
+        body: "I did not find any correctness bugs. Not a blocker.",
+      },
+    ],
+  });
+  assert.equal(output.summary.review_summaries, 1, "it is still surfaced");
+  assert.equal(output.summary.high, 0);
+  assert.equal(output.summary.low, 0, "not filed as a suggestion");
+  assert.equal(output.summary.needs_attention, 0);
+  assert.equal(output.action_required, null, "nothing to ask the user about");
+});
+
+// The tallies answer "where did this come from", not "how urgent is it", so an
+// author whose only note is a summary must still register as self-review.
+test("a self-review summary still counts as self-review feedback", () => {
+  const output = build(fakeClient(), {
+    reviews: [
+      {
+        author: { login: "me" },
+        state: "COMMENTED",
+        body: "Notes to self on the approach.",
+      },
+    ],
+  });
+  assert.equal(output.summary.self_review_feedback, 1);
+  assert.equal(output.summary.review_summaries, 1);
+});
+
+// An explicit marker is a deliberate signal from a person and still outranks
+// the structural default, in a summary as anywhere else.
+test("an explicit marker in a summary still reaches its priority bucket", () => {
+  const output = build(fakeClient(), {
+    reviews: [
+      {
+        author: { login: "reviewer" },
+        state: "COMMENTED",
+        body: "h: the lease SHA is stale",
+      },
+    ],
+  });
+  assert.equal(output.summary.high, 1);
+  assert.equal(output.summary.review_summaries, 0);
 });
