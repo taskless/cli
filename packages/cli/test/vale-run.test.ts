@@ -271,6 +271,140 @@ withVale("runVale against the real binary", () => {
     if (outcome.status !== "timeout") return;
     expect(outcome.message).toContain("terminated");
   });
+
+  describe("a target file Vale cannot parse (taskless/cli#300)", () => {
+    // An unquoted colon in a YAML value, exactly the shape from the issue:
+    // `description: this has a colon: right here` is not valid YAML, and
+    // Vale's front-matter parser aborts on it before any file in the run is
+    // linted.
+    const badFrontMatter =
+      "---\ndescription: this has a colon: right here\n---\n\nJust simply do it.\n";
+
+    it("keeps every other file's findings instead of zeroing the whole run", async () => {
+      const cwd = makeProject(
+        `${header}\n[*.md]\nno-simply.no-simply = YES\n`,
+        { "no-simply": existenceRule("simply", "Avoid 'simply'") },
+        {
+          "good-1.md": "Just simply do it.\n",
+          "good-2.md": "Just simply do it, again.\n",
+          "bad.md": badFrontMatter,
+        }
+      );
+
+      const outcome = await runVale({
+        cwd,
+        paths: ["good-1.md", "good-2.md", "bad.md"],
+      });
+
+      // Before the fix this was `{ status: "failed", results: undefined }`
+      // and the two good files' findings were gone. The run now completes:
+      // one bad file costs one finding, not the other two.
+      expect(outcome.status).toBe("ok");
+      if (outcome.status !== "ok") return;
+      expect(outcome.blocking).toBe(false);
+
+      const byFile = new Map(outcome.results.map((r) => [r.file, r]));
+      expect(byFile.get("good-1.md")).toMatchObject({
+        ruleId: "no-simply",
+        file: "good-1.md",
+      });
+      expect(byFile.get("good-2.md")).toMatchObject({
+        ruleId: "no-simply",
+        file: "good-2.md",
+      });
+      expect(byFile.get("bad.md")).toMatchObject({
+        source: "vale",
+        ruleId: "vale-parse-error",
+        severity: "error",
+        file: "bad.md",
+      });
+      expect(byFile.get("bad.md")?.message).toContain("E201");
+      expect(outcome.results).toHaveLength(3);
+    });
+
+    it("distinguishes a run that found nothing from a run that could not read anything", async () => {
+      // The exact confusion from the issue: an empty `results` used to mean
+      // both "clean corpus" and "the run never got to look at anything".
+      const clean = makeProject(
+        `${header}\n[*.md]\nno-simply.no-simply = YES\n`,
+        { "no-simply": existenceRule("simply", "Avoid 'simply'") },
+        { "doc.md": "Nothing objectionable here.\n" }
+      );
+      const cleanOutcome = await runVale({ cwd: clean, paths: ["doc.md"] });
+      expect(cleanOutcome).toMatchObject({ status: "ok", results: [] });
+
+      const unreadable = makeProject(
+        `${header}\n[*.md]\nno-simply.no-simply = YES\n`,
+        { "no-simply": existenceRule("simply", "Avoid 'simply'") },
+        { "bad.md": badFrontMatter }
+      );
+      const unreadableOutcome = await runVale({
+        cwd: unreadable,
+        paths: ["bad.md"],
+      });
+      expect(unreadableOutcome.status).toBe("ok");
+      if (unreadableOutcome.status !== "ok") return;
+      // Not `[]`: a run that could read nothing must not look identical to a
+      // clean pass, which is the whole failure this issue is about.
+      expect(unreadableOutcome.results).not.toEqual([]);
+      expect(unreadableOutcome.results).toHaveLength(1);
+      expect(unreadableOutcome.results[0]).toMatchObject({
+        ruleId: "vale-parse-error",
+        file: "bad.md",
+      });
+    });
+
+    it("drops more than one bad file, one finding per file", async () => {
+      const cwd = makeProject(
+        `${header}\n[*.md]\nno-simply.no-simply = YES\n`,
+        { "no-simply": existenceRule("simply", "Avoid 'simply'") },
+        {
+          "good.md": "Just simply do it.\n",
+          "bad-1.md": badFrontMatter,
+          "bad-2.md": badFrontMatter,
+        }
+      );
+
+      const outcome = await runVale({
+        cwd,
+        paths: ["good.md", "bad-1.md", "bad-2.md"],
+      });
+
+      expect(outcome.status).toBe("ok");
+      if (outcome.status !== "ok") return;
+      const parseErrors = outcome.results.filter(
+        (r) => r.ruleId === "vale-parse-error"
+      );
+      expect(parseErrors.map((r) => r.file).toSorted()).toEqual([
+        "bad-1.md",
+        "bad-2.md",
+      ]);
+      expect(outcome.results.find((r) => r.file === "good.md")).toMatchObject({
+        ruleId: "no-simply",
+      });
+    });
+
+    it("still blocks on a genuine rule-config error, without mistaking it for a target file", async () => {
+      // A malformed RULE, not a malformed document. Its path lives under
+      // `.taskless/rules/vale/`, not among the run's targets, so it must not
+      // be excluded and retried as though it were one of the user's files —
+      // that would spin forever trying to "drop" a file that is never in the
+      // target set at all.
+      const cwd = makeProject(
+        `${header}\n[*.md]\nbogus.bogus = YES\n`,
+        {
+          bogus: `extends: existence\nmessage: "test"\nlevel: catastrophe\ntokens:\n  - simply\n`,
+        },
+        { "doc.md": "Just simply do it.\n" }
+      );
+
+      const outcome = await runVale({ cwd, paths: ["doc.md"] });
+      expect(outcome.status).toBe("failed");
+      if (outcome.status !== "failed") return;
+      expect(outcome.blocking).toBe(true);
+      expect(outcome.message).toContain("bogus.yml");
+    });
+  });
 });
 
 describe("ValeRunOutcome.blocking", () => {

@@ -1,5 +1,6 @@
 import { spawn } from "node:child_process";
-import { join } from "node:path";
+import { stat } from "node:fs/promises";
+import { isAbsolute, join, resolve as resolvePath } from "node:path";
 import { StringDecoder } from "node:string_decoder";
 
 import type { CheckResult } from "../../types/check";
@@ -20,7 +21,12 @@ import {
   skippedFilesNotice,
   TASKLESS_DIRECTORY,
 } from "./formats";
-import { asValeConfigError, toValeCheckResults, type ValeOutput } from "./map";
+import {
+  asValeConfigError,
+  toValeCheckResults,
+  type ValeConfigError,
+  type ValeOutput,
+} from "./map";
 
 /**
  * The Vale config a run reads, relative to the project root.
@@ -116,7 +122,23 @@ function describeValeStderr(stderr: string): string {
   }
   const error = asValeConfigError(parsed);
   if (error === undefined) return stderr;
+  return formatValeConfigError(error, { withPath: true });
+}
 
+/**
+ * Render a {@link ValeConfigError} as a sentence, shared by the whole-run
+ * failure message ({@link describeValeStderr}) and the per-file finding
+ * {@link parseErrorResult} builds for one excluded file.
+ *
+ * `withPath` exists because the two callers already say the file a different
+ * way: the whole-run message has nowhere else to put it, so it is appended
+ * here; a per-file finding already carries the file on `CheckResult.file`, and
+ * repeating it inside `message` would be the same fact twice.
+ */
+function formatValeConfigError(
+  error: ValeConfigError,
+  options: { withPath: boolean }
+): string {
   const text = error.Text.split("\n")
     .map((line) => line.trim())
     .filter((line) => line !== "")
@@ -126,9 +148,281 @@ function describeValeStderr(stderr: string): string {
   // code in its text and `E201` does not — and the code is what a user searches
   // for, so losing it while "improving" the message would be a downgrade.
   const code = text.startsWith(error.Code) ? "" : `${error.Code}: `;
-  return `${code}${text}${
-    error.Path === undefined || error.Path === "" ? "" : ` in ${error.Path}`
-  }`;
+  const path =
+    !options.withPath || error.Path === undefined || error.Path === ""
+      ? ""
+      : ` in ${error.Path}`;
+  return `${code}${text}${path}`;
+}
+
+/**
+ * The rule id a per-file parse failure is filed under.
+ *
+ * Not one of Vale's own checks — no style produced this finding, Vale never
+ * finished parsing the file well enough to run one — but `CheckResult.ruleId`
+ * has no slot for "no rule ran here, the file itself could not be read".
+ * Namespaced so it reads as Vale's own report rather than a style violation,
+ * and so a caller filtering by rule id can tell the two apart.
+ */
+const PARSE_ERROR_RULE_ID = "vale-parse-error";
+
+/**
+ * One file Vale could not parse, reported as a finding rather than aborting
+ * the whole run.
+ *
+ * This is the fix for taskless/cli#300. Vale's own config-error payload
+ * already names the file and the reason it failed to parse — that is what
+ * {@link targetFileParseError} keys off of — so this only has to shape that
+ * same information into the scanner-agnostic {@link CheckResult}, the same way
+ * {@link toValeCheckResult} shapes an ordinary finding. `severity: "error"`
+ * is deliberate: a file that could not be checked at all is not a clean pass,
+ * and reporting it as anything softer would let it read as one.
+ */
+function parseErrorResult(file: string, error: ValeConfigError): CheckResult {
+  const line = Math.max(0, (error.Line ?? 1) - 1);
+  return {
+    source: "vale",
+    ruleId: PARSE_ERROR_RULE_ID,
+    severity: "error",
+    message: `Vale could not check this file: ${formatValeConfigError(error, { withPath: false })}`,
+    file,
+    range: {
+      start: { line, column: 0 },
+      end: { line, column: 0 },
+    },
+    matchedText: "",
+  };
+}
+
+/**
+ * Whether a Vale config-error names one of THIS RUN's target files — as
+ * opposed to a rule file of ours, or a style Vale loaded through
+ * `StylesPath`.
+ *
+ * The two are told apart by nothing more than what Vale's own error already
+ * says, so this needs no YAML parser of its own to re-derive the distinction
+ * (see the "Verify Build Output In The Build, Not By Parsing It" reasoning in
+ * `STYLEGUIDE-CODE.md`, which extends to any generator or tool that has
+ * already answered a question a second parser would only re-guess at). Vale
+ * itself already parsed the file — that is why it is complaining — and its
+ * error object already carries exactly which file and why.
+ *
+ * `assembleValeConfig` always writes `StylesPath` as an ABSOLUTE path (see
+ * `stylesPath` in `verify.ts`, and `valeHeader` in `assemble.ts`), so a
+ * problem Vale finds while loading a rule through that path reports an
+ * absolute `Path`. A target file, by contrast, is named on Vale's command
+ * line exactly as this module passed it — always relative to `cwd`, per
+ * `targets` below — so a problem reading a target file reports the relative
+ * path we asked Vale to check. Measured against the real binary: a bad
+ * `level:` in a rule file reports that rule's absolute path on disk; an
+ * unquoted colon in a document's front matter reports the relative path this
+ * module handed to Vale.
+ *
+ * The existence check is defensive, not load-bearing: if it is ever wrong for
+ * a real target file, the failure mode is "this file could not be excluded,
+ * the run reports the ordinary blocking failure" — never a bad exclusion.
+ */
+async function targetFileParseError(
+  error: ValeConfigError,
+  cwd: string
+): Promise<string | undefined> {
+  const path = error.Path;
+  if (path === undefined || path === "" || isAbsolute(path)) {
+    return undefined;
+  }
+  if (
+    path === TASKLESS_DIRECTORY ||
+    path.startsWith(`${TASKLESS_DIRECTORY}/`)
+  ) {
+    return undefined;
+  }
+  try {
+    const stats = await stat(resolvePath(cwd, path));
+    if (!stats.isFile()) return undefined;
+  } catch {
+    return undefined;
+  }
+  return path;
+}
+
+/** One Vale invocation's outcome, before the retry loop in {@link runVale}
+ * decides what to do about it.
+ *
+ * A narrower shape than {@link ValeRunOutcome}: `unavailable` cannot happen
+ * here (the caller already checked for a binary before ever attempting a run),
+ * and a `failed` attempt carries the parsed {@link ValeConfigError} when Vale's
+ * failure had that shape, so the retry loop can ask {@link targetFileParseError}
+ * whether this attempt can be narrowed and tried again — without re-parsing the
+ * message it also carries.
+ */
+type ValeAttempt =
+  | { status: "ok"; results: CheckResult[]; notice?: string }
+  | { status: "timeout"; message: string }
+  | { status: "failed"; message: string; configError?: ValeConfigError };
+
+/**
+ * Spawn Vale once and map what it reports. Extracted from {@link runVale} so
+ * the retry loop there can call it again with a wider exclusion glob after
+ * dropping one file that could not be parsed.
+ */
+async function spawnVale(
+  binary: string,
+  argv: string[],
+  cwd: string,
+  timeoutMs: number,
+  skipped: string | undefined
+): Promise<ValeAttempt> {
+  return new Promise<ValeAttempt>((settlePromise) => {
+    const child = spawn(binary, argv, {
+      cwd,
+      stdio: ["ignore", "pipe", "pipe"],
+      env: { ...process.env, PATH: buildPath() },
+    });
+
+    // One decoder per stream, not `chunk.toString()` per chunk. A multi-byte
+    // UTF-8 sequence split across a chunk boundary would otherwise have each
+    // half independently replaced with U+FFFD, and Vale lints free-form prose
+    // full of curly quotes, em dashes and accented characters. The damage is
+    // not limited to a mangled `Match`: corruption landing inside JSON string
+    // escaping makes `JSON.parse` throw, reporting a clean Vale run as
+    // `failed`. `runAstGrepScan` in `scan.ts` avoids the same trap by reading
+    // stdout through `node:readline`, which decodes for us.
+    const stdoutDecoder = new StringDecoder("utf8");
+    const stderrDecoder = new StringDecoder("utf8");
+    const stdoutChunks: string[] = [];
+    const stderrChunks: string[] = [];
+    let settled = false;
+
+    /** Resolve once. A timeout kill also fires `close`, which must not win. */
+    const settle = (outcome: ValeAttempt): void => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      settlePromise(outcome);
+    };
+
+    const timer = setTimeout(() => {
+      child.kill("SIGKILL");
+      settle({
+        status: "timeout",
+        message: `Vale exceeded ${String(timeoutMs)}ms and was terminated. The Vale engine reported a timeout; other engines were unaffected.`,
+      });
+    }, timeoutMs);
+    // Do not hold the event loop open on account of the timeout alone.
+    timer.unref?.();
+
+    child.stdout.on("data", (chunk: Buffer) => {
+      stdoutChunks.push(stdoutDecoder.write(chunk));
+    });
+    child.stderr.on("data", (chunk: Buffer) => {
+      stderrChunks.push(stderrDecoder.write(chunk));
+    });
+
+    child.on("error", (error) => {
+      // Near-unreachable, and a real failure rather than a skip when it does
+      // happen. `findValeBinary` proved this binary runs by executing
+      // `--version` during resolution, so an `error` here means it vanished,
+      // lost its permissions, or was quarantined between resolution and
+      // execution — not that Vale is uninstalled. Calling that `unavailable`
+      // would file a broken host under the advisory skip and let the check
+      // pass. `runAstGrepScan` rejects outright on the same event.
+      settle({
+        status: "failed",
+        message: `Vale could not be executed at ${binary}: ${error.message}`,
+      });
+    });
+
+    child.on("close", (code) => {
+      // Flush whatever partial multi-byte sequence each decoder is holding, so
+      // a stream that ends mid-character contributes its replacement char once
+      // rather than leaving bytes unaccounted for.
+      stdoutChunks.push(stdoutDecoder.end());
+      stderrChunks.push(stderrDecoder.end());
+
+      // With --no-exit, a non-zero code is Vale failing, not Vale finding.
+      if (code !== null && code !== 0) {
+        const stderr = stderrChunks.join("").trim();
+        let configError: ValeConfigError | undefined;
+        try {
+          configError = asValeConfigError(JSON.parse(stderr));
+        } catch {
+          configError = undefined;
+        }
+        settle({
+          status: "failed",
+          message: `Vale exited ${String(code)}${
+            stderr === "" ? "" : `: ${describeValeStderr(stderr)}`
+          }`,
+          ...(configError === undefined ? {} : { configError }),
+        });
+        return;
+      }
+
+      // Exit was zero, so anything on stderr is a diagnostic about a run that
+      // otherwise succeeded — the `W101` ignored-assignment warning above all.
+      // Attached to every `ok` path so a diagnostic cannot be dropped by which
+      // branch happened to produce the (empty) results.
+      const diagnostic = stderrChunks.join("").trim();
+      // Both advisories share one field, so they are joined rather than one
+      // overwriting the other: a project can perfectly well have a section-less
+      // rule assignment *and* an AsciiDoc file, and dropping either message
+      // would be a silent skip wearing the other's clothes.
+      const advisories = [
+        ...(skipped === undefined ? [] : [skipped]),
+        ...(diagnostic === ""
+          ? []
+          : [`Vale reported while running: ${diagnostic}`]),
+      ];
+      const notice =
+        advisories.length === 0 ? {} : { notice: advisories.join("\n") };
+
+      const stdout = stdoutChunks.join("").trim();
+      if (stdout === "") {
+        // Measured: Vale prints `{}` when it finds nothing, which parses and
+        // maps to [] below. This branch is for a Vale that says nothing at all
+        // — cheap insurance against JSON.parse("") reporting a clean run as a
+        // failure.
+        settle({ status: "ok", results: [], ...notice });
+        return;
+      }
+
+      try {
+        const parsed: unknown = JSON.parse(stdout);
+
+        // Defensive, not a live path. Measured against the real binary (a rule
+        // with an out-of-vocabulary `level`), a config error goes to stderr
+        // with exit 2 and an empty stdout, so the non-zero branch above has
+        // already reported it and this shape never arrives here. The guard
+        // stays because the cost of being wrong is a crash rather than a wrong
+        // answer: mapping a config error walks `Object.entries` over
+        // `Line`/`Path`/`Code` and calls `.map` on a number.
+        const configError = asValeConfigError(parsed);
+        if (configError !== undefined) {
+          settle({
+            status: "failed",
+            message: `Vale rejected the configuration (${configError.Code}): ${configError.Text}${
+              configError.Path === undefined ? "" : ` in ${configError.Path}`
+            }`,
+            configError,
+          });
+          return;
+        }
+
+        settle({
+          status: "ok",
+          results: toValeCheckResults(parsed as ValeOutput),
+          ...notice,
+        });
+      } catch (error) {
+        settle({
+          status: "failed",
+          message: `Vale produced output that is not JSON: ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+        });
+      }
+    });
+  });
 }
 
 export interface ValeRunOptions {
@@ -251,174 +545,88 @@ export async function runVale(
       : []),
     ...converterExclusionGlobs(),
   ];
-  const globArgument = buildValeGlob(exclude);
-  const globFlags = globArgument === undefined ? [] : [globArgument];
 
   const skipped = skippedFilesNotice(
     converterDependent.filter((file) => !isGitIgnoredPath(file, ignoredEntries))
   );
 
-  // `--` separates flags from positional paths, so a path beginning with `-`
-  // is not read as a flag.
-  const argv = [
-    "--config",
-    configPath,
-    "--output=JSON",
-    "--no-exit",
-    ...globFlags,
-    "--",
-    ...targets,
-  ];
+  // One bad target file must cost one finding, not the whole run
+  // (taskless/cli#300). A front-matter YAML error is Vale's own parse
+  // failure, not a rejected rule config, and it aborts the whole invocation
+  // before any result is written — exactly like the converter-dependent
+  // crash above, and for the same reason: nothing about it is scoped to the
+  // one file that triggered it. Unlike that case there is no format to
+  // preemptively exclude; which file is bad is only known once Vale says so.
+  //
+  // So this retries: on a failure Vale's own error object attributes to one
+  // of *our* target files (`targetFileParseError`), that file is added to the
+  // exclusion glob and the whole thing is asked again, with a finding
+  // recorded for the file that was dropped. A failure that cannot be
+  // attributed to a single target file — a bad rule, a timeout, a crash — is
+  // not this bug, and is reported exactly as before: blocking, with nothing
+  // to retry around.
+  //
+  // Bounded by construction rather than by a counter: every successful
+  // iteration excludes one target file that was not already excluded, and
+  // there are finitely many files to exclude. Re-reporting the same path
+  // twice in a row is the only way this could spin, and that path is refused
+  // rather than retried (see the `excludedTargets.has` check below).
+  const excludedTargets = new Set<string>();
+  const excludedFindings: CheckResult[] = [];
 
-  return new Promise<ValeRunOutcome>((resolve) => {
-    const child = spawn(binary, argv, {
-      cwd: options.cwd,
-      stdio: ["ignore", "pipe", "pipe"],
-      env: { ...process.env, PATH: buildPath() },
-    });
+  for (;;) {
+    const globArgument = buildValeGlob([...exclude, ...excludedTargets]);
+    const globFlags = globArgument === undefined ? [] : [globArgument];
 
-    // One decoder per stream, not `chunk.toString()` per chunk. A multi-byte
-    // UTF-8 sequence split across a chunk boundary would otherwise have each
-    // half independently replaced with U+FFFD, and Vale lints free-form prose
-    // full of curly quotes, em dashes and accented characters. The damage is
-    // not limited to a mangled `Match`: corruption landing inside JSON string
-    // escaping makes `JSON.parse` throw, reporting a clean Vale run as
-    // `failed`. `runAstGrepScan` in `scan.ts` avoids the same trap by reading
-    // stdout through `node:readline`, which decodes for us.
-    const stdoutDecoder = new StringDecoder("utf8");
-    const stderrDecoder = new StringDecoder("utf8");
-    const stdoutChunks: string[] = [];
-    const stderrChunks: string[] = [];
-    let settled = false;
+    // `--` separates flags from positional paths, so a path beginning with
+    // `-` is not read as a flag.
+    const argv = [
+      "--config",
+      configPath,
+      "--output=JSON",
+      "--no-exit",
+      ...globFlags,
+      "--",
+      ...targets,
+    ];
 
-    /** Resolve once. A timeout kill also fires `close`, which must not win. */
-    const settle = (outcome: ValeRunOutcome): void => {
-      if (settled) return;
-      settled = true;
-      clearTimeout(timer);
-      resolve(outcome);
-    };
+    const attempt = await spawnVale(
+      binary,
+      argv,
+      options.cwd,
+      timeoutMs,
+      skipped
+    );
 
-    const timer = setTimeout(() => {
-      child.kill("SIGKILL");
-      settle({
-        status: "timeout",
-        blocking: true,
-        message: `Vale exceeded ${String(timeoutMs)}ms and was terminated. The Vale engine reported a timeout; other engines were unaffected.`,
-      });
-    }, timeoutMs);
-    // Do not hold the event loop open on account of the timeout alone.
-    timer.unref?.();
+    if (attempt.status === "ok") {
+      return {
+        status: "ok",
+        blocking: false,
+        results: [...excludedFindings, ...attempt.results],
+        ...(attempt.notice === undefined ? {} : { notice: attempt.notice }),
+      };
+    }
 
-    child.stdout.on("data", (chunk: Buffer) => {
-      stdoutChunks.push(stdoutDecoder.write(chunk));
-    });
-    child.stderr.on("data", (chunk: Buffer) => {
-      stderrChunks.push(stderrDecoder.write(chunk));
-    });
+    if (attempt.status === "timeout") {
+      return { status: "timeout", blocking: true, message: attempt.message };
+    }
 
-    child.on("error", (error) => {
-      // Near-unreachable, and a real failure rather than a skip when it does
-      // happen. `findValeBinary` proved this binary runs by executing
-      // `--version` during resolution, so an `error` here means it vanished,
-      // lost its permissions, or was quarantined between resolution and
-      // execution — not that Vale is uninstalled. Calling that `unavailable`
-      // would file a broken host under the advisory skip and let the check
-      // pass. `runAstGrepScan` rejects outright on the same event.
-      settle({
-        status: "failed",
-        blocking: true,
-        message: `Vale could not be executed at ${binary}: ${error.message}`,
-      });
-    });
+    const { configError } = attempt;
+    const candidate =
+      configError === undefined
+        ? undefined
+        : await targetFileParseError(configError, options.cwd);
 
-    child.on("close", (code) => {
-      // Flush whatever partial multi-byte sequence each decoder is holding, so
-      // a stream that ends mid-character contributes its replacement char once
-      // rather than leaving bytes unaccounted for.
-      stdoutChunks.push(stdoutDecoder.end());
-      stderrChunks.push(stderrDecoder.end());
+    if (candidate === undefined || configError === undefined) {
+      return { status: "failed", blocking: true, message: attempt.message };
+    }
+    if (excludedTargets.has(candidate)) {
+      return { status: "failed", blocking: true, message: attempt.message };
+    }
 
-      // With --no-exit, a non-zero code is Vale failing, not Vale finding.
-      if (code !== null && code !== 0) {
-        const stderr = stderrChunks.join("").trim();
-        settle({
-          status: "failed",
-          blocking: true,
-          message: `Vale exited ${String(code)}${
-            stderr === "" ? "" : `: ${describeValeStderr(stderr)}`
-          }`,
-        });
-        return;
-      }
-
-      // Exit was zero, so anything on stderr is a diagnostic about a run that
-      // otherwise succeeded — the `W101` ignored-assignment warning above all.
-      // Attached to every `ok` path so a diagnostic cannot be dropped by which
-      // branch happened to produce the (empty) results.
-      const diagnostic = stderrChunks.join("").trim();
-      // Both advisories share one field, so they are joined rather than one
-      // overwriting the other: a project can perfectly well have a section-less
-      // rule assignment *and* an AsciiDoc file, and dropping either message
-      // would be a silent skip wearing the other's clothes.
-      const advisories = [
-        ...(skipped === undefined ? [] : [skipped]),
-        ...(diagnostic === ""
-          ? []
-          : [`Vale reported while running: ${diagnostic}`]),
-      ];
-      const notice =
-        advisories.length === 0 ? {} : { notice: advisories.join("\n") };
-
-      const stdout = stdoutChunks.join("").trim();
-      if (stdout === "") {
-        // Measured: Vale prints `{}` when it finds nothing, which parses and
-        // maps to [] below. This branch is for a Vale that says nothing at all
-        // — cheap insurance against JSON.parse("") reporting a clean run as a
-        // failure.
-        settle({ status: "ok", blocking: false, results: [], ...notice });
-        return;
-      }
-
-      try {
-        const parsed: unknown = JSON.parse(stdout);
-
-        // Defensive, not a live path. Measured against the real binary (a rule
-        // with an out-of-vocabulary `level`), a config error goes to stderr
-        // with exit 2 and an empty stdout, so the non-zero branch above has
-        // already reported it and this shape never arrives here. The guard
-        // stays because the cost of being wrong is a crash rather than a wrong
-        // answer: mapping a config error walks `Object.entries` over
-        // `Line`/`Path`/`Code` and calls `.map` on a number.
-        const configError = asValeConfigError(parsed);
-        if (configError !== undefined) {
-          settle({
-            status: "failed",
-            blocking: true,
-            message: `Vale rejected the configuration (${configError.Code}): ${configError.Text}${
-              configError.Path === undefined ? "" : ` in ${configError.Path}`
-            }`,
-          });
-          return;
-        }
-
-        settle({
-          status: "ok",
-          blocking: false,
-          results: toValeCheckResults(parsed as ValeOutput),
-          ...notice,
-        });
-      } catch (error) {
-        settle({
-          status: "failed",
-          blocking: true,
-          message: `Vale produced output that is not JSON: ${
-            error instanceof Error ? error.message : String(error)
-          }`,
-        });
-      }
-    });
-  });
+    excludedTargets.add(candidate);
+    excludedFindings.push(parseErrorResult(candidate, configError));
+  }
 }
 
 /** Absolute path of the committed Vale config for `cwd`. */
