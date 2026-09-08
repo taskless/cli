@@ -198,6 +198,68 @@ test("categorizeComment still flags a real finding elsewhere in the same body", 
   );
 });
 
+// Found in review on #311: the first cut of NEGATORS only covered
+// `not`/`no`/`non`/`without`/`isn't`/`is not`, so every contraction below
+// still read as unnegated and reached `high`.
+test("NEGATORS recognizes contractions and bare negative words, not just 'not'/'no'", () => {
+  const human = { user: { login: "reviewer" } };
+  assert.equal(
+    categorizeComment(human, "Nothing critical here, just a heads up."),
+    "medium",
+    "nothing"
+  );
+  assert.equal(
+    categorizeComment(human, "This won't be a blocker."),
+    "medium",
+    "won't"
+  );
+  assert.equal(
+    categorizeComment(human, "This doesn't block anything."),
+    "medium",
+    "doesn't"
+  );
+  assert.equal(
+    categorizeComment(human, "This can't fail."),
+    "medium",
+    "can't"
+  );
+  assert.equal(
+    categorizeComment(human, "This cannot break the build."),
+    "medium",
+    "cannot"
+  );
+  assert.equal(
+    categorizeComment(human, "There was never a blocker here."),
+    "medium",
+    "never"
+  );
+  assert.equal(
+    categorizeComment(human, "This wasn't critical to begin with."),
+    "medium",
+    "wasn't"
+  );
+  assert.equal(
+    categorizeComment(human, "It didn't break anything in testing."),
+    "medium",
+    "didn't"
+  );
+});
+
+// Found in review on #311: `matchesUnnegated` used a non-global `.exec`,
+// which always returns the left-most match. A negated first mention of a
+// word was read as covering the whole body, silently dropping a real,
+// later occurrence of the same finding — the opposite direction from the
+// bug this file exists to fix.
+test("a later, genuine occurrence of a HIGH word is still caught after an earlier negated one", () => {
+  assert.equal(
+    categorizeComment(
+      { user: { login: "reviewer" } },
+      "It's not a blocker overall, but there's a real blocker in the retry logic that needs fixing."
+    ),
+    "high"
+  );
+});
+
 // Reproduced directly from the issue: `nit[:\s]` required a colon or
 // whitespace right after the word, so `Nit,` — a real inline comment from
 // #304 — missed the pattern and landed in the auto-fixed `medium` bucket.
