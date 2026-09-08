@@ -166,6 +166,11 @@ const UNWALKED_DIRECTORIES = new Set([
   TASKLESS_DIRECTORY,
 ]);
 
+/** `glob`'s `exclude` predicate for {@link UNWALKED_DIRECTORIES}. */
+function isUnwalkedEntry(entry: string | Buffer): boolean {
+  return UNWALKED_DIRECTORIES.has(basename(String(entry)));
+}
+
 /**
  * Converter-dependent files inside the run's target set.
  *
@@ -260,18 +265,48 @@ export interface OversizedFile {
  * discover the cost the hard way — is the same trade `converterExclusionGlobs`
  * makes for a format Vale cannot parse at all.
  *
- * Unlike the converter walk, this cannot be scoped by extension: an oversized
- * file can have any extension, or none, so every file under the target roots
- * has to be listed and stat'd. That is a real cost on the happy path, where
- * nothing is oversized and the walk still runs — measured and reported in the
- * PR that introduced this function.
+ * `sectionGlobs`, when given, is `AssembledValeConfig.sections` from
+ * `assembleValeConfig` — the exact section patterns Vale's own rules are
+ * scoped to. The scan globs those patterns instead of every file in the
+ * tree, exactly as {@link findConverterDependentFiles} globs by its extension
+ * list, and for the same reason precision matters here: a bare `**\/*` walk
+ * finds every file under the target roots regardless of whether any rule
+ * would ever touch it, and reporting one of those as "not checked" is a false
+ * positive, not a caught coverage hole. Measured against this repository:
+ * `pnpm-lock.yaml` and `packages/cli/CHANGELOG.md` are both over the limit,
+ * and neither is named by any `[section]` in any rule's `.vale.ini` — no
+ * rule was ever going to open either one, so the un-scoped walk reported
+ * lost coverage that never existed.
  *
- * A named path is stat'd directly, exactly as `targetFileParseError` does
- * elsewhere in this package: an explicit request is not resolved through the
- * walk that answers a whole-project run. Whether named or discovered by the
- * walk, an oversized file is excluded unconditionally, on every run — the same
- * asymmetry `findConverterDependentFiles` documents, and for the same reason:
- * handing Vale this file does not check it badly, it risks the entire batch's
+ * The patterns are read from `assembleValeConfig`'s own return value, never
+ * by re-parsing the `.vale.ini` it wrote — see the doc on
+ * `sectionPatternsOf` in `assemble.ts` for why that distinction matters.
+ *
+ * `sectionGlobs === undefined` falls back to the previous exhaustive `**\/*`
+ * walk under each target root. That path exists for a caller with no
+ * assembled config to ask — `verifyValeRule`'s isolating config, or a test
+ * that hands `runVale` a hand-written `.vale.ini` directly — and is
+ * unaffected by everything below: same cost, same behavior as before this
+ * parameter existed.
+ *
+ * A named path is stat'd directly when there is no `sectionGlobs` to consult
+ * (the fallback below), exactly as `targetFileParseError` does elsewhere in
+ * this package: an explicit request is not resolved through the walk that
+ * answers a whole-project run. **That changes once `sectionGlobs` is given.**
+ * An explicitly named file is not exempt from scoping either — measured
+ * against the real binary, Vale spends 9ms and reports nothing on a 128KB+
+ * file whose extension no section names, the same as a file it never opened
+ * at all, because no rule is ever assigned to run against it. Checking it
+ * unconditionally would reintroduce the exact false positive this parameter
+ * exists to remove, just reachable via `check some-file.yaml` instead of a
+ * whole-project run. So when sections are known, a named file is a candidate
+ * only if it is also a match for one of them — the same membership test the
+ * walk below already computes.
+ *
+ * Whether named or discovered by the walk, an oversized file is excluded
+ * unconditionally once it qualifies, on every run — the same asymmetry
+ * `findConverterDependentFiles` documents, and for the same reason: handing
+ * Vale this file does not check it badly, it risks the entire batch's
  * timeout.
  *
  * Errors are swallowed the same way as {@link findConverterDependentFiles} and
@@ -283,51 +318,83 @@ export interface OversizedFile {
 export async function findOversizedFiles(
   cwd: string,
   paths: string[],
-  maxBytes: number
+  maxBytes: number,
+  sectionGlobs?: string[]
 ): Promise<OversizedFile[]> {
-  const named: OversizedFile[] = [];
-  const roots: string[] = [];
-  if (paths.length === 0) {
-    roots.push(".");
-  } else {
-    for (const path of paths) {
-      try {
-        const stats = await stat(resolvePath(cwd, path));
-        if (stats.isFile() && stats.size > maxBytes) {
-          named.push({ file: path, size: stats.size });
-        }
-      } catch {
-        // Unreadable or missing: not this function's problem. The run itself
-        // will report it if it matters.
-      }
-      roots.push(path);
-    }
-  }
+  const roots = paths.length === 0 ? ["."] : paths;
+  const found = new Map<string, OversizedFile>();
 
-  const found = new Map(named.map((entry) => [entry.file, entry]));
-  for (const root of roots) {
-    const prefix = root === "." || root === "" ? "" : `${root}/`;
+  const checkCandidate = async (relative: string): Promise<void> => {
+    if (found.has(relative)) return;
     try {
-      for await (const match of glob(`${prefix}**/*`, {
-        cwd,
-        exclude: (entry) => UNWALKED_DIRECTORIES.has(basename(String(entry))),
-      })) {
-        const relative = String(match);
-        if (found.has(relative)) continue;
-        try {
-          const stats = await stat(resolvePath(cwd, relative));
-          if (stats.isFile() && stats.size > maxBytes) {
-            found.set(relative, { file: relative, size: stats.size });
-          }
-        } catch {
-          // Same reasoning as above: gone between listing and stat, or
-          // unreadable. Not a reason to drop the exclusion already computed.
-        }
+      const stats = await stat(resolvePath(cwd, relative));
+      if (stats.isFile() && stats.size > maxBytes) {
+        found.set(relative, { file: relative, size: stats.size });
       }
     } catch {
-      // A target that is not a directory, an unreadable subtree, a platform
-      // where `glob` rejects the pattern: all of them mean "no notice, never
-      // no fix". The exclusion has already been applied by the time this runs.
+      // Gone between listing and stat, or unreadable. Not a reason to drop
+      // the exclusion already computed.
+    }
+  };
+
+  if (sectionGlobs === undefined) {
+    // No assembled config to ask what Vale would actually lint — fall back to
+    // the previous behavior: every named path is a candidate regardless of
+    // scope, and every root is walked exhaustively.
+    for (const path of paths) await checkCandidate(path);
+    for (const root of roots) {
+      const prefix = root === "." || root === "" ? "" : `${root}/`;
+      try {
+        for await (const match of glob(`${prefix}**/*`, {
+          cwd,
+          exclude: isUnwalkedEntry,
+        })) {
+          await checkCandidate(String(match));
+        }
+      } catch {
+        // A target that is not a directory, an unreadable subtree, a
+        // platform where `glob` rejects the pattern: all of them mean "no
+        // notice, never no fix". The exclusion has already been applied by
+        // the time this runs.
+      }
+    }
+    return [...found.values()].toSorted((a, b) => a.file.localeCompare(b.file));
+  }
+
+  // Section patterns are root-relative, exactly as Vale reads them — never
+  // prefixed per target root, the way the extension-based fallback above is.
+  // A whole-project run (`roots === ["."]`) needs no further narrowing: every
+  // match is already in scope. An explicit target (`check src/` or
+  // `check src/doc.md`) narrows the matches down to that subtree afterward
+  // instead, because a section like `CLAUDE.md` or `**/README.md` has no
+  // meaningful "under src/" form to prefix onto — Vale itself evaluates every
+  // section against the whole project and only its own target list decides
+  // what it actually visits, so intersecting after the glob mirrors that
+  // rather than guessing at one. This is also what makes a named file's
+  // in-scope test free: it needs no separate membership check, because a
+  // pattern like `**/README.md` already matches a top-level `README.md`
+  // found this way, whether or not the caller named it explicitly.
+  const wholeProject = paths.length === 0;
+  for (const pattern of sectionGlobs) {
+    try {
+      for await (const match of glob(pattern, {
+        cwd,
+        exclude: isUnwalkedEntry,
+      })) {
+        const relative = String(match);
+        if (
+          !wholeProject &&
+          !roots.some(
+            (root) => relative === root || relative.startsWith(`${root}/`)
+          )
+        ) {
+          continue;
+        }
+        await checkCandidate(relative);
+      }
+    } catch {
+      // Same reasoning as the fallback walk: a malformed pattern or an
+      // unreadable subtree means "no notice, never no fix".
     }
   }
 

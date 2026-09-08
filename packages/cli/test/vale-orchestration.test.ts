@@ -225,12 +225,12 @@ withVale("runEngines over a mixed corpus", () => {
     const cwd = makeMixedProject();
     // Vale reads the assembled run config, so a dispatch that never assembles
     // has no config to point at — which would report as "no Vale findings".
-    const valeConfigPath = await assembleValeConfig(cwd);
+    const assembledVale = await assembleValeConfig(cwd);
     const dispatched = await runEngines({
       cwd,
       paths: ["app.js", "doc.md"],
       astGrepConfigPath: await assembleSgConfig(cwd),
-      valeConfigPath,
+      valeConfigPath: assembledVale?.path,
       runtimeRules: [],
     });
 
@@ -244,11 +244,12 @@ withVale("runEngines over a mixed corpus", () => {
 
   it("does not invoke Vale when it has no rules", async () => {
     const cwd = makeMixedProject({ valeRules: false });
+    const assembledVale = await assembleValeConfig(cwd);
     const dispatched = await runEngines({
       cwd,
       paths: ["app.js", "doc.md"],
       astGrepConfigPath: await assembleSgConfig(cwd),
-      valeConfigPath: await assembleValeConfig(cwd),
+      valeConfigPath: assembledVale?.path,
       runtimeRules: [],
     });
     expect(dispatched.results.every((result) => result.source !== "vale")).toBe(
@@ -270,8 +271,8 @@ describe("runEngines when a Vale rule directory assembles to nothing", () => {
 
     // A rule *directory* is present, so the old gate would have said "run".
     expect(await hasValeRules(cwd)).toBe(true);
-    const valeConfigPath = await assembleValeConfig(cwd);
-    expect(valeConfigPath).toBeUndefined();
+    const assembledVale = await assembleValeConfig(cwd);
+    expect(assembledVale).toBeUndefined();
 
     // Spied rather than inferred from the absence of findings: an unconfigured
     // Vale reports nothing either way, so "no vale results" cannot tell a skip
@@ -283,7 +284,7 @@ describe("runEngines when a Vale rule directory assembles to nothing", () => {
       cwd,
       paths: ["app.js", "doc.md"],
       astGrepConfigPath: await assembleSgConfig(cwd),
-      valeConfigPath,
+      valeConfigPath: assembledVale?.path,
       runtimeRules: [],
     });
 
@@ -309,11 +310,12 @@ describe("runEngines when Vale is unavailable", () => {
     });
 
     const cwd = makeMixedProject();
+    const assembledVale = await assembleValeConfig(cwd);
     const dispatched = await runEngines({
       cwd,
       paths: ["app.js", "doc.md"],
       astGrepConfigPath: await assembleSgConfig(cwd),
-      valeConfigPath: await assembleValeConfig(cwd),
+      valeConfigPath: assembledVale?.path,
       runtimeRules: [],
     });
 
@@ -362,11 +364,12 @@ describe("runEngines when Vale is unavailable", () => {
     });
 
     const cwd = makeMixedProject();
+    const assembledVale = await assembleValeConfig(cwd);
     const dispatched = await runEngines({
       cwd,
       paths: ["doc.md"],
       astGrepConfigPath: await assembleSgConfig(cwd),
-      valeConfigPath: await assembleValeConfig(cwd),
+      valeConfigPath: assembledVale?.path,
       runtimeRules: [],
     });
 
@@ -389,7 +392,7 @@ describe("runEngines when Vale is unavailable", () => {
       const cwd = makeMixedProject();
       // Assembled while the directory is still readable: the failure under
       // test is discovery's, not assembly's.
-      const valeConfigPath = await assembleValeConfig(cwd);
+      const assembledVale = await assembleValeConfig(cwd);
       const rules = join(cwd, ".taskless", "rules", "vale");
       chmodSync(rules, 0o000);
       try {
@@ -397,7 +400,7 @@ describe("runEngines when Vale is unavailable", () => {
           cwd,
           paths: ["app.js", "doc.md"],
           astGrepConfigPath: await assembleSgConfig(cwd),
-          valeConfigPath,
+          valeConfigPath: assembledVale?.path,
           runtimeRules: [],
         });
 

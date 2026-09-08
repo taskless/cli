@@ -13,9 +13,10 @@ import {
   converterExclusionGlobs,
   converterFor,
   findConverterDependentFiles,
+  findOversizedFiles,
   skippedFilesNotice,
 } from "../src/rules/vale/formats";
-import { runVale } from "../src/rules/vale/run";
+import { runVale, VALE_MAX_FILE_BYTES } from "../src/rules/vale/run";
 
 /**
  * The exclusion derived from the format tiers, and the run that uses it.
@@ -236,6 +237,73 @@ describe("finding converter-dependent files", () => {
     expect(await findConverterDependentFiles(cwd, ["docs/GUIDE.ADOC"])).toEqual(
       []
     );
+  });
+});
+
+// No Vale binary needed for these: `findOversizedFiles` on its own never
+// spawns Vale — only `stat` and `glob`. `makeProject` (above) is overkill
+// here, since it scaffolds a whole rule tree just to reach a hand-written
+// `.vale.ini`; these tests only need a plain directory.
+function makeScratchProject(documents: Record<string, string>): string {
+  const cwd = mkdtempSync(join(tmpdir(), "vale-oversized-"));
+  workspaces.push(cwd);
+  for (const [path, body] of Object.entries(documents)) {
+    const full = join(cwd, path);
+    mkdirSync(join(full, ".."), { recursive: true });
+    writeFileSync(full, body);
+  }
+  return cwd;
+}
+
+describe("finding oversized files, scoped to what Vale would actually lint", () => {
+  const oversizedBody = "x".repeat(VALE_MAX_FILE_BYTES + 1);
+
+  it("reports an oversized file matching a section pattern", async () => {
+    const cwd = makeScratchProject({ "README.md": oversizedBody });
+    expect(
+      await findOversizedFiles(cwd, [], VALE_MAX_FILE_BYTES, ["**/README.md"])
+    ).toEqual([{ file: "README.md", size: oversizedBody.length }]);
+  });
+
+  it("does not report an oversized file no section pattern reaches", async () => {
+    // The taskless/cli#321 follow-up: `pnpm-lock.yaml` and
+    // `packages/cli/CHANGELOG.md`, both over the limit in this repository,
+    // are named by no rule's `[section]` — Vale was never going to open
+    // either one, so reporting them is a false positive, not a caught
+    // coverage hole. Reproduced in miniature: a lockfile-shaped file sits
+    // alongside an in-scope README, and only the README is named.
+    const cwd = makeScratchProject({
+      "README.md": oversizedBody,
+      "pnpm-lock.yaml": oversizedBody,
+    });
+
+    // MUTATION CHECK: replace the `sectionGlobs` branch's early loop with
+    // the fallback `**/*` walk (or simply drop the `!wholeProject &&
+    // !roots.some(...)` narrowing and the `wholeProject` check that selects
+    // this branch) and this assertion fails — `pnpm-lock.yaml` starts
+    // appearing alongside `README.md`. Verified locally: reverting restores
+    // the single-entry result below.
+    expect(
+      await findOversizedFiles(cwd, [], VALE_MAX_FILE_BYTES, ["**/README.md"])
+    ).toEqual([{ file: "README.md", size: oversizedBody.length }]);
+  });
+
+  it("still checks a matching file that is not oversized", async () => {
+    const cwd = makeScratchProject({ "README.md": "Just simply do it.\n" });
+    expect(
+      await findOversizedFiles(cwd, [], VALE_MAX_FILE_BYTES, ["**/README.md"])
+    ).toEqual([]);
+  });
+
+  it("falls back to the exhaustive walk when no sections are given", async () => {
+    // The path a caller with no assembled config takes — `verifyValeRule`'s
+    // isolating config, or a test that hands `runVale` a hand-written
+    // `.vale.ini` directly. Unaffected by the scoping above: every file
+    // under the target root is still a candidate, sections or not.
+    const cwd = makeScratchProject({ "pnpm-lock.yaml": oversizedBody });
+    expect(await findOversizedFiles(cwd, [], VALE_MAX_FILE_BYTES)).toEqual([
+      { file: "pnpm-lock.yaml", size: oversizedBody.length },
+    ]);
   });
 });
 

@@ -576,15 +576,22 @@ it.
    large enough document can consume the whole run's time budget on its
    own and cost every other file its findings: the same failure mode as
    the unreadable-file case above, from a different cause. `check`
-   preempts it: a target file over 128KB is skipped, and named in a
-   `notices` entry rather than a finding, since nothing here can confirm
-   whether any matcher would actually have reached it (a large lockfile
-   or a generated file outside every rule's scope is common, and
-   flagging one as a failure would be a false positive). A rule's own
+   preempts it: a target file over 128KB is skipped **only if some
+   matcher's own section would actually reach it**. The scan asks the
+   assembled config's own section patterns, the same ones you write in
+   this file's `.vale.ini`, rather than walking every file in the
+   project. A large lockfile or a generated file no rule's glob names is
+   left alone entirely, not merely reported softly: naming a file no
+   matcher was ever going to check would be a false positive, not a
+   caught coverage hole. A file that IS excluded is named in a `notices`
+   entry rather than a finding: unlike the unreadable-file case above,
+   where Vale's own error proves the file was a real target, this is a
+   preemptive guess from a filesystem walk, and a soft advisory fits an
+   unconfirmed guess better than a hard error does. A rule's own
    fixtures are never this large in practice, so this should not surface
-   while authoring one. It matters when scoping a matcher at a whole
-   project, where a generated changelog or an exported note can cross
-   it.
+   while authoring one. It matters when a matcher's glob is broad, such as
+   `[*.md]` or `[**/README.md]` at the project root, where a generated
+   changelog or an exported note can cross it.
 
    That example changed with Vale v3.18.0, which is the point: the
    dangerous extension is whichever one the list above says needs a

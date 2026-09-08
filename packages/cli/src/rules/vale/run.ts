@@ -97,7 +97,12 @@ export const VALE_TIMEOUT_MS = 60_000;
  * committed markdown file (`packages/cli/CHANGELOG.md`) is 139KB — just over
  * this limit, and itself a generated file (a changelog appended to by tooling,
  * not written by hand in one sitting), which is exactly the shape of file this
- * guard is meant to catch.
+ * guard is meant to catch. (It is not actually reported here: no rule in this
+ * repository's own `.vale.ini` files, under `.taskless/rules/vale/`, is scoped
+ * to it, and `findOversizedFiles` only reports a file some section could
+ * actually reach — see its docblock in `formats.ts`. The size and the shape
+ * are still the right illustration for the threshold; a project whose rules
+ * DO reach a file this size is exactly who this guard protects.)
  *
  * This bounds the worst SINGLE file, not the run's total cost: many mid-sized
  * files under the limit still accumulate. A normal corpus is cheap regardless
@@ -520,6 +525,21 @@ export interface ValeRunOptions {
   /** Config path relative to `cwd`. Defaults to the assembled run config. */
   configPath?: string;
   timeoutMs?: number;
+  /**
+   * The section glob patterns the config at `configPath` actually scopes its
+   * rules to — `AssembledValeConfig.sections` from `assembleValeConfig`, when
+   * the caller has it.
+   *
+   * Used only to scope {@link findOversizedFiles}'s preemptive size guard to
+   * files some rule could actually reach, so a whole-project run does not
+   * flag a file no rule was ever going to open (a lockfile, a generated
+   * changelog). `undefined` when the caller does not have an assembled
+   * config to ask — `verifyValeRule`'s isolating config, or a test that hands
+   * `runVale` a hand-written `.vale.ini` directly — in which case the guard
+   * falls back to scanning every file under `paths`, exactly as it did before
+   * this option existed.
+   */
+  sectionGlobs?: string[];
 }
 
 /**
@@ -621,7 +641,12 @@ export async function runVale(
   const [ignoredEntries, converterDependent, oversized] = await Promise.all([
     wholeProject ? listGitIgnoredEntries(options.cwd) : [],
     findConverterDependentFiles(options.cwd, paths),
-    findOversizedFiles(options.cwd, paths, VALE_MAX_FILE_BYTES),
+    findOversizedFiles(
+      options.cwd,
+      paths,
+      VALE_MAX_FILE_BYTES,
+      options.sectionGlobs
+    ),
   ]);
 
   // A file too large to check safely is excluded the same way, and for the

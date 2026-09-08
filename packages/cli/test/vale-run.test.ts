@@ -530,6 +530,39 @@ withVale("runVale against the real binary", () => {
         })
       );
     });
+
+    it("names only the oversized files a section pattern actually reaches (taskless/cli#321 follow-up)", async () => {
+      // The false-positive this addresses: an un-scoped scan named
+      // `pnpm-lock.yaml` and `packages/cli/CHANGELOG.md` on this very
+      // repository, neither of which any rule's `.vale.ini` section touches.
+      // Reproduced here with a rule scoped only to `*.md` and an oversized
+      // `.yaml` file alongside an oversized, in-scope `.md` file.
+      const cwd = makeProject(
+        `${header}\n[*.md]\nno-simply.no-simply = YES\n`,
+        { "no-simply": existenceRule("simply", "Avoid 'simply'") },
+        {
+          "huge.md": oversizedBody,
+          "huge.yaml": oversizedBody,
+        }
+      );
+
+      const outcome = await runVale({
+        cwd,
+        paths: ["huge.md", "huge.yaml"],
+        sectionGlobs: ["*.md"],
+      });
+
+      // MUTATION CHECK: pass `sectionGlobs: undefined` instead (or drop the
+      // option from this call) and the assertions below fail: `outcome.notice`
+      // then also names `huge.yaml`, and `results` gains `huge.yaml`'s
+      // thousands of `no-simply` matches instead of staying empty. Verified
+      // locally.
+      expect(outcome.status).toBe("ok");
+      if (outcome.status !== "ok") return;
+      expect(outcome.results).toEqual([]);
+      expect(outcome.notice).toContain("huge.md");
+      expect(outcome.notice).not.toContain("huge.yaml");
+    });
   });
 });
 
