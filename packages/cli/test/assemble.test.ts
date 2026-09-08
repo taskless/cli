@@ -58,8 +58,8 @@ async function sgRuleWithoutTests(id: string): Promise<void> {
 describe("Vale config assembly", () => {
   it("writes a header naming the Vale rules tree as StylesPath", async () => {
     await valeRule("no-simply", "[*.md]\nno-simply.no-simply = YES\n");
-    const path = await assembleValeConfig(cwd);
-    const contents = await readFile(join(cwd, path ?? ""), "utf8");
+    const assembled = await assembleValeConfig(cwd);
+    const contents = await readFile(join(cwd, assembled?.path ?? ""), "utf8");
 
     // StylesPath is what makes `<id>/<id>.yml` resolve as check `<id>.<id>`.
     // Under `.` it resolves to nothing at all, so this line is the difference
@@ -75,8 +75,8 @@ describe("Vale config assembly", () => {
     await valeRule("zebra", "[*.md]\nzebra.zebra = YES\n");
     await valeRule("alpha", "[*.md]\nalpha.alpha = YES\n");
 
-    const path = await assembleValeConfig(cwd);
-    const contents = await readFile(join(cwd, path ?? ""), "utf8");
+    const assembled = await assembleValeConfig(cwd);
+    const contents = await readFile(join(cwd, assembled?.path ?? ""), "utf8");
     expect(contents.indexOf("alpha.alpha")).toBeLessThan(
       contents.indexOf("zebra.zebra")
     );
@@ -87,9 +87,9 @@ describe("Vale config assembly", () => {
     await valeRule("two", "[docs/**]\ntwo.two = YES\n");
 
     const first = await assembleValeConfig(cwd);
-    const a = await readFile(join(cwd, first ?? ""), "utf8");
+    const a = await readFile(join(cwd, first?.path ?? ""), "utf8");
     const second = await assembleValeConfig(cwd);
-    const b = await readFile(join(cwd, second ?? ""), "utf8");
+    const b = await readFile(join(cwd, second?.path ?? ""), "utf8");
     expect(a).toBe(b);
   });
 
@@ -101,8 +101,8 @@ describe("Vale config assembly", () => {
       "scoped",
       "[marketing/**]\nscoped.scoped = YES\n\n[marketing/legacy/**]\nscoped.scoped = NO\n"
     );
-    const path = await assembleValeConfig(cwd);
-    const contents = await readFile(join(cwd, path ?? ""), "utf8");
+    const assembled = await assembleValeConfig(cwd);
+    const contents = await readFile(join(cwd, assembled?.path ?? ""), "utf8");
     expect(contents.indexOf("[marketing/**]")).toBeLessThan(
       contents.indexOf("[marketing/legacy/**]")
     );
@@ -110,8 +110,8 @@ describe("Vale config assembly", () => {
 
   it("tags each block with the rule it came from", async () => {
     await valeRule("no-simply", "[*.md]\nno-simply.no-simply = YES\n");
-    const path = await assembleValeConfig(cwd);
-    const contents = await readFile(join(cwd, path ?? ""), "utf8");
+    const assembled = await assembleValeConfig(cwd);
+    const contents = await readFile(join(cwd, assembled?.path ?? ""), "utf8");
     // Provenance is otherwise lost the moment two rules' matchers interleave.
     expect(contents).toContain("tskl) rule = no-simply");
   });
@@ -123,8 +123,8 @@ describe("Vale config assembly", () => {
       "no-simply",
       "StylesPath = .\nMinAlertLevel = error\n\n[*.md]\nno-simply.no-simply = YES\n"
     );
-    const path = await assembleValeConfig(cwd);
-    const contents = await readFile(join(cwd, path ?? ""), "utf8");
+    const assembled = await assembleValeConfig(cwd);
+    const contents = await readFile(join(cwd, assembled?.path ?? ""), "utf8");
     expect(contents).not.toContain("StylesPath = .");
     expect(contents).not.toContain("MinAlertLevel = error");
   });
@@ -133,6 +133,22 @@ describe("Vale config assembly", () => {
   // and report a clean pass, which is indistinguishable from a passing check.
   it("writes nothing when no rule declares a config", async () => {
     expect(await assembleValeConfig(cwd)).toBeUndefined();
+  });
+
+  // `sections` is read by `findOversizedFiles` (vale/formats.ts) to scope its
+  // preemptive size guard to files a rule could actually reach, instead of
+  // walking the whole project. It has to carry every section this config
+  // will actually have Vale evaluate — a re-parse of the written file, which
+  // this is not, would be a second, weaker source of the same fact.
+  it("returns every section pattern it wrote, deduplicated and sorted", async () => {
+    await valeRule("no-simply", "[*.md]\nno-simply.no-simply = YES\n");
+    await valeRule(
+      "no-very",
+      "[*.md]\nno-very.no-very = YES\n\n[**/README.md]\nno-very.no-very = YES\n"
+    );
+
+    const assembled = await assembleValeConfig(cwd);
+    expect(assembled?.sections).toEqual(["**/README.md", "*.md"]);
   });
 });
 

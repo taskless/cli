@@ -91,6 +91,16 @@ export interface DispatchOptions {
    * written. The config is the only honest signal that there is Vale work.
    */
   valeConfigPath: string | undefined;
+  /**
+   * The section glob patterns `assembleValeConfig` wrote into that config, or
+   * `undefined` when it produced nothing (mirrors `valeConfigPath`).
+   *
+   * Threaded through to `runVale` so its preemptive oversized-file guard can
+   * scope its scan to files some rule's matcher could actually reach, rather
+   * than statting the whole project — see `findOversizedFiles` in
+   * `vale/formats.ts`.
+   */
+  valeSections?: string[] | undefined;
   /** Runtime rules that survived planning. Empty means the harness is skipped. */
   runtimeRules: RuntimeRule[];
   runtimeTimeoutMs?: number;
@@ -177,6 +187,7 @@ async function runValeEngine(options: DispatchOptions): Promise<EngineOutcome> {
     paths: options.paths,
     configPath: options.valeConfigPath,
     timeoutMs: options.valeTimeoutMs,
+    sectionGlobs: options.valeSections,
   });
 
   if (outcome.status === "ok") {

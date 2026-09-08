@@ -98,18 +98,58 @@ function valeRuleBlock(ruleId: string, body: string): string {
 }
 
 /**
+ * A section header (`[pattern]`) from an assembled rule's own body.
+ *
+ * Read from the exact string this module is about to write — never from the
+ * file after writing it. Re-reading the written `.vale.ini` to recover its
+ * own sections would be the mistake `STYLEGUIDE-CODE.md`'s "Verify Build
+ * Output In The Build, Not By Parsing It" warns against: this function
+ * already IS the generator, holding the structured pieces before they are
+ * joined into text, so there is nothing to re-derive.
+ */
+function sectionPatternsOf(body: string): string[] {
+  const patterns: string[] = [];
+  for (const line of body.split("\n")) {
+    const match = /^\[(.+)\]$/.exec(line.trim());
+    if (match?.[1] !== undefined) patterns.push(match[1]);
+  }
+  return patterns;
+}
+
+/**
+ * What `assembleValeConfig` produced: where to point `--config`, and the
+ * section patterns it wrote there.
+ *
+ * `sections` exists so a caller that needs to know what Vale would actually
+ * lint — `findOversizedFiles` in `vale/formats.ts`, scoping its preemptive
+ * size guard to files some rule's matcher could reach — can ask this module
+ * directly instead of re-parsing the config it just wrote.
+ */
+export interface AssembledValeConfig {
+  /** Config path relative to the project root, for `--config`. */
+  path: string;
+  /**
+   * Every section glob pattern written into the config, deduplicated and
+   * sorted for a stable read order. Root-relative, exactly as Vale reads
+   * them — the same strings a `[…]` line in a rule's own `.vale.ini` names.
+   */
+  sections: string[];
+}
+
+/**
  * Assemble `.taskless/.vale.ini` from every Vale rule's own config.
  *
- * Returns the config path relative to the project root, or `undefined` when no
+ * Returns the config path and its section patterns, or `undefined` when no
  * Vale rule declares any config — there is nothing to run, and writing an empty
  * config would invite Vale to lint the project against no rules and report a
  * clean pass.
  */
 export async function assembleValeConfig(
   cwd: string
-): Promise<string | undefined> {
+): Promise<AssembledValeConfig | undefined> {
   const ruleIds = await listRuleIds(cwd, "vale");
   const blocks: string[] = [];
+  const sections = new Set<string>();
 
   for (const ruleId of ruleIds) {
     const configPath = ruleConfigPath(cwd, "vale", ruleId);
@@ -125,6 +165,7 @@ export async function assembleValeConfig(
     }
     const body = ruleConfigBody(source);
     if (body === "") continue;
+    for (const pattern of sectionPatternsOf(body)) sections.add(pattern);
     blocks.push(valeRuleBlock(ruleId, body));
   }
 
@@ -134,7 +175,7 @@ export async function assembleValeConfig(
   const target = join(cwd, ASSEMBLED_VALE_CONFIG);
   await mkdir(dirname(target), { recursive: true });
   await writeFile(target, contents, "utf8");
-  return ASSEMBLED_VALE_CONFIG;
+  return { path: ASSEMBLED_VALE_CONFIG, sections: [...sections].toSorted() };
 }
 
 /**
@@ -193,8 +234,8 @@ export async function assembleSgConfig(
 
 /** Both assembled configs, for a run that needs whichever engines are present. */
 export interface AssembledConfigs {
-  /** `--config` for Vale, or `undefined` when no Vale rule is configured. */
-  vale: string | undefined;
+  /** Vale's config and section patterns, or `undefined` when no Vale rule is configured. */
+  vale: AssembledValeConfig | undefined;
   /** `-c` for ast-grep, or `undefined` when there are no ast-grep rules. */
   sg: string | undefined;
 }

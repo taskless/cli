@@ -252,7 +252,8 @@ export const checkCommand = defineCommand({
           cwd,
           paths: existingPaths,
           astGrepConfigPath: assembled.sg,
-          valeConfigPath: assembled.vale,
+          valeConfigPath: assembled.vale?.path,
+          valeSections: assembled.vale?.sections,
           runtimeRules: plan.execute,
           runtimeTimeoutMs: parseTimeoutMs(args.timeout),
         });
