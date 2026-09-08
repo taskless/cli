@@ -431,14 +431,32 @@ withVale("ValeRunOutcome.blocking against the real binary", () => {
     // Vale was present and asked to work. Reporting this as a skip would let a
     // broken rule file read as "no Vale findings" — indistinguishable from a
     // clean run, and how a silently disabled engine ships.
+    //
+    // THE BUDGET AND THE INPUT ARE BOTH LOAD-BEARING, and an earlier version
+    // of this test got it wrong. It gave a 1ms budget to a one-line document,
+    // which asserts the winner of a race: the timer has to fire before a child
+    // that runs in its OWN process and does not care whether our event loop is
+    // free. Measured, that document takes Vale about 46ms, so 1ms normally
+    // wins — but under load the timer's callback is delayed while the child
+    // keeps going, and it was seen losing once across four concurrent
+    // full-suite runs, reporting a clean "ok" where the test demanded a
+    // "timeout".
+    //
+    // The race is removed by making the work outlast the budget by a margin
+    // nothing plausible closes. Vale is QUADRATIC in the size of a single
+    // file — measured on the pinned binary at 80KB 0.3s, 160KB 0.9s, 320KB
+    // 3.5s, 640KB 14s — so roughly 320KB of prose takes about 3.5 SECONDS
+    // against a 100ms budget. That is a 35x margin the right way round, where
+    // the old one was a 46x margin the wrong way. The run is killed at 100ms,
+    // so the test costs about that rather than 3.5s.
     const cwd = makeProject(
       `${header}\n[*.md]\nno-simply.no-simply = YES\n`,
       { "no-simply": existenceRule("simply", "Avoid 'simply'") },
-      { "doc.md": "Just simply do it.\n" }
+      { "doc.md": `${"Just simply do it. ".repeat(17_000)}\n` }
     );
 
     expect(
-      await runVale({ cwd, paths: ["doc.md"], timeoutMs: 1 })
+      await runVale({ cwd, paths: ["doc.md"], timeoutMs: 100 })
     ).toMatchObject({ status: "timeout", blocking: true });
   });
 
