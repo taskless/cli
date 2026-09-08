@@ -76,7 +76,20 @@ export {
 } from "./verify-test.js";
 
 export {
-  /** `taskless rule verify <id> --json`, for an ast-grep rule. */
+  /**
+   * The layered detail behind one ast-grep rule's verification — schema
+   * validation, Taskless requirement checks, and `sg test`, kept separate
+   * rather than flattened into `verifyTestOutputSchema`'s single envelope.
+   *
+   * Not what `taskless verify --json` or `taskless test --json` print. Both
+   * commands compute this internally via `verifyRule()` and then flatten it
+   * before printing anything, so there is no current CLI invocation that
+   * emits this shape verbatim. A command that did — `taskless rule verify
+   * <id> --json` — existed once and was removed when rule addressing moved
+   * from id to path, because an id can name a rule under two engines and a
+   * path cannot (see `resolve-path.ts`). This schema describes the pre-
+   * flattening detail that command used to print, unchanged since.
+   */
   verifyOutputSchema,
   /** The same, for a Vale rule — a different shape, discriminated on `engine`. */
   valeVerifyOutputSchema,
