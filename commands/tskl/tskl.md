@@ -1,6 +1,6 @@
 ---
 name: "Taskless"
-description: Run any Taskless action — create/improve/delete a rule, run check, manage auth, or wire CI. Routes via `npx @taskless/cli agent <topic>` to fetch the canonical recipe and follow it.
+description: Run any Taskless action — create/improve/delete a rule, run check, manage auth, or wire CI. Routes via `agent <topic>` to fetch the canonical recipe and follow it.
 category: Taskless
 argument-hint: <describe what you want to do>
 tags:
