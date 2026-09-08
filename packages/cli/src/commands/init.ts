@@ -257,9 +257,7 @@ async function runNonInteractive(
   // This per-target summary is not on that envelope (it is finer-grained than
   // `migrated`/`commandsInstalled`), so rather than drop it, it goes to
   // stderr — visible to a person watching the terminal, invisible to a
-  // machine consumer parsing stdout. Matches `ensureTasklessDirectory`'s own
-  // default (`runMigrations` falls back to `console.error`) and the
-  // `verify`/`test` convention of routing prose off stdout under `--json`.
+  // machine consumer parsing stdout.
   const log = options.json ? console.error : console.log;
   // Sampled BEFORE the directory is created, and that order is the whole
   // point. `ensureTasklessDirectory` mkdir -p's, so afterwards a pre-existing
@@ -274,7 +272,24 @@ async function runNonInteractive(
   // can report what a migration moved. `check`, `verify` and `test` used to
   // carry this on their own envelopes and refuse rather than migrate now, so
   // the field followed the behaviour rather than being dropped.
-  const migrated = await ensureTasklessDirectory(cwd);
+  //
+  // The migration notice is suppressed entirely under `--json`, rather than
+  // moved to stderr like the per-target summary above: unlike that summary,
+  // this information IS already on the envelope, as `migrated`, so printing
+  // it a second time would just be noise. This is the actual `verify`/`test`
+  // convention (`verify.ts`'s `onNotice: (message) => { if (!json)
+  // console.error(message); }`), and the case `EnsureOptions.onNotice`'s own
+  // doc comment describes: "callers that emit `--json` should pass a
+  // callback that suppresses output under that flag: the same information is
+  // on the envelope's `migrated` field". Omitting `onNotice` here, as before,
+  // left it on the default fallback (unconditional `console.error`), which
+  // never corrupts stdout but doesn't suppress the duplicate under `--json`
+  // either — the gap a reviewer of this PR caught.
+  const migrated = await ensureTasklessDirectory(cwd, {
+    onNotice: (message: string) => {
+      if (!options.json) console.error(message);
+    },
+  });
   if (wasNewProject) {
     // A project this CLI just created has no entries to walk: everything the
     // ledger describes is already true of the scaffold it wrote.

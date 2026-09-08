@@ -129,6 +129,26 @@ describe("who migrates, and who refuses", () => {
     expectSeededMigration(envelope.migrated);
   });
 
+  it("init --json reports the migration on stdout and stays silent about it on stderr", async () => {
+    // The migration notice duplicates the envelope's `migrated` field, so
+    // under `--json` it is suppressed rather than moved to stderr - unlike
+    // the per-target install summary, which stderr DOES carry under `--json`
+    // because that detail has no field of its own. Catches a regression that
+    // routes this notice back through the unconditional `console.error`
+    // fallback `ensureTasklessDirectory` uses when no `onNotice` is passed.
+    await seedVersion3();
+
+    const { stderr } = await runCli([
+      "init",
+      "--no-interactive",
+      "--json",
+      "-d",
+      temporaryDirectory,
+    ]);
+
+    expect(stderr).not.toContain("Migrat");
+  });
+
   it("init --json omits the field when nothing migrated", async () => {
     // Absence is the signal, so a consumer never reads empty arrays to decide.
     await seedVersion3();
