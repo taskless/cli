@@ -7,6 +7,10 @@ import { promisify } from "node:util";
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
+import { verifyRule } from "../src/rules/verify";
+import { findValeBinary } from "../src/rules/vale/binary";
+import { verifyValeRule } from "../src/rules/vale/verify";
+
 const execFileAsync = promisify(execFile);
 
 const distributionDirectory = resolve(import.meta.dirname, "../dist");
@@ -128,4 +132,105 @@ describe("the published schemas entry", () => {
       schema.safeParse({ ok: true, rules: [{ engine: "sg" }] }).success
     ).toBe(false);
   });
+});
+
+/**
+ * `verifyOutputSchema` and `valeVerifyOutputSchema` are the other half of the
+ * bug this file exists to catch (issue #283): no command spawns to produce
+ * their shape any more. `taskless rule verify <id> --json` printed exactly
+ * this — `{ engine: "sg", ...verifyRule() }`, or the equivalent mapped
+ * envelope over `verifyValeRule()` for Vale — until rule addressing moved
+ * from id to path and `rule verify` was removed with it. See the docstrings
+ * on these exports in `src/schemas/index.ts` for the full history.
+ *
+ * That means the "spawn the CLI, parse its stdout" pattern above cannot pin
+ * these two: there is no invocation left that emits this shape. What CAN be
+ * pinned, absent a command to spawn, is that the published schema still
+ * parses the exact envelope the internal functions produce today — built the
+ * same way the removed command built it. A future change to `verifyRule()` or
+ * `verifyValeRule()` that drifts from what's published here fails a real
+ * test, rather than staying invisible the way the id/path mismatch did.
+ */
+describe("verifyOutputSchema and valeVerifyOutputSchema", () => {
+  it("verifyOutputSchema parses verifyRule()'s real return value for an sg rule", async () => {
+    const directory = join(cwd, ".taskless", "rules", "sg", "schema-probe");
+    await mkdir(join(directory, ".tests"), { recursive: true });
+    await writeFile(
+      join(directory, "schema-probe.yml"),
+      "id: schema-probe\nlanguage: TypeScript\nseverity: error\n" +
+        "message: no eval\nrule:\n  pattern: eval($ARG)\n"
+    );
+    await writeFile(
+      join(directory, ".tests", "schema-probe-test.yml"),
+      "id: schema-probe\nvalid:\n  - const a = 1;\ninvalid:\n  - eval(x);\n"
+    );
+
+    // The exact envelope the removed command built: `{ engine: "sg", ...result }`.
+    const result = await verifyRule(cwd, "schema-probe");
+
+    const built = await importBuiltSchemas();
+    const schema = built.verifyOutputSchema as ParsedSchema;
+    const parsed = schema.parse({ engine: "sg", ...result }) as {
+      success: boolean;
+      ruleId: string;
+      tests: { passed: number; failed: number };
+    };
+
+    expect(parsed.success).toBe(true);
+    expect(parsed.ruleId).toBe("schema-probe");
+    expect(parsed.tests).toMatchObject({ passed: 1, failed: 0 });
+  });
+
+  const withVale = findValeBinary().path === undefined ? it.skip : it;
+
+  withVale(
+    "valeVerifyOutputSchema parses the envelope built over verifyValeRule()'s real return value",
+    async () => {
+      const directory = join(
+        cwd,
+        ".taskless",
+        "rules",
+        "vale",
+        "schema-probe-vale"
+      );
+      await mkdir(join(directory, ".tests", "pass"), { recursive: true });
+      await mkdir(join(directory, ".tests", "fail"), { recursive: true });
+      await writeFile(
+        join(directory, "schema-probe-vale.yml"),
+        "extends: existence\nmessage: \"Avoid 'simply'\"\nlevel: warning\ntokens:\n  - simply\n"
+      );
+      await writeFile(
+        join(directory, ".tests", "pass", "clean.md"),
+        "Nothing objectionable.\n"
+      );
+      await writeFile(
+        join(directory, ".tests", "fail", "dirty.md"),
+        "Just simply do it.\n"
+      );
+
+      const result = await verifyValeRule(cwd, "schema-probe-vale");
+      if ("outcome" in result) {
+        throw new Error(
+          `Vale did not run: ${result.outcome.status} — ${result.outcome.message}`
+        );
+      }
+
+      // The exact mapping the removed command applied: `passed` -> `success`,
+      // everything else carried straight through.
+      const built = await importBuiltSchemas();
+      const schema = built.valeVerifyOutputSchema as ParsedSchema;
+      const parsed = schema.parse({
+        engine: "vale",
+        success: result.passed,
+        ruleId: result.ruleId,
+        fixtures: result.fixtures,
+        missingFailures: result.missingFailures,
+        unexpectedFindings: result.unexpectedFindings,
+        ...(result.notice === undefined ? {} : { notice: result.notice }),
+      }) as { success: boolean; ruleId: string };
+
+      expect(parsed.success).toBe(true);
+      expect(parsed.ruleId).toBe("schema-probe-vale");
+    }
+  );
 });

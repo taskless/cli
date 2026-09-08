@@ -7,8 +7,12 @@ import astGrepSchema from "../generated/ast-grep-rule-schema.json";
  * ast-grep JSON Schema via `z.fromJSONSchema()`. This gives us full
  * validation coverage matching the upstream spec.
  *
- * The raw JSON Schema is also embedded for agent consumption via
- * `rule verify --schema`.
+ * The raw JSON Schema is also embedded in `getSchemaPayload()`'s
+ * `astGrepSchema` field, for agent-facing consumption. There is no `--schema`
+ * CLI flag any more — it was removed CLI-wide in favor of embedding schema
+ * content in recipes — so nothing today reaches this via a command a user
+ * types; the comment used to say `rule verify --schema`, which named both a
+ * flag and a command form that no longer exist.
  */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-argument
 export const astGrepRuleSchema = z.fromJSONSchema(astGrepSchema as any);

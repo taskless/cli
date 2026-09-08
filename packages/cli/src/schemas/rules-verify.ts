@@ -29,7 +29,19 @@ export const schemaOutputSchema = z.object({
     .describe("Curated annotated rule examples"),
 });
 
-// --- Verify mode output (rule verify <id> --json) ---
+// --- Verify layer detail ---
+//
+// The shape `verifyRule()` (ast-grep) and `verifyValeRule()` (Vale) return
+// internally: schema/requirements/tests kept as separate layers rather than
+// flattened. `verify`/`test`'s own implementation is the only caller of
+// either function, and it flattens this into the single `errors`/
+// `violations` envelope `verifyTestOutputSchema` describes before printing
+// anything — so this layered shape is not what `taskless verify --json` or
+// `taskless test --json` put on stdout today. It once was: `taskless rule
+// verify <id> --json` printed exactly this (`engine: "sg"` plus `verifyRule`'s
+// result), until rule addressing moved from id to path — an id can name a
+// rule under two engines, a path cannot — and `rule verify` was removed with
+// it. See `resolve-path.ts` for why that move happened.
 
 const layerResultSchema = z.object({
   valid: z.boolean(),
