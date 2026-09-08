@@ -114,7 +114,7 @@ describe("a reporting command never migrates", () => {
     "%s --json carries the code an agent branches on",
     async (command) => {
       const { stdout } = await runCli([command, "--json", "-d", directory]);
-      const envelope = JSON.parse(stdout.trim().split("\n").at(-1) ?? "{}") as {
+      const envelope = JSON.parse(stdout.trim()) as {
         ok?: boolean;
         code?: string;
       };
@@ -231,7 +231,7 @@ describe("a reporting command never migrates", () => {
       directory,
     ]);
 
-    const envelope = JSON.parse(stdout.trim().split("\n").at(-1) ?? "{}") as {
+    const envelope = JSON.parse(stdout.trim()) as {
       migrated?: { from: number; to: number };
     };
     expect(envelope.migrated?.from).toBe(3);
@@ -278,7 +278,7 @@ describe("a manifest that cannot be parsed", () => {
     "%s --json reports the file, not a version it guessed",
     async (command) => {
       const { stdout } = await runCli([command, "--json", "-d", directory]);
-      const envelope = JSON.parse(stdout.trim().split("\n").at(-1) ?? "{}") as {
+      const envelope = JSON.parse(stdout.trim()) as {
         ok?: boolean;
         code?: string;
         message?: string;
@@ -331,7 +331,7 @@ describe("a manifest that cannot be parsed", () => {
         "-d",
         bare,
       ]);
-      const envelope = JSON.parse(stdout.trim().split("\n").at(-1) ?? "{}") as {
+      const envelope = JSON.parse(stdout.trim()) as {
         migrated?: { from: number; to: number };
       };
       expect(envelope.migrated?.from).toBe(0);
