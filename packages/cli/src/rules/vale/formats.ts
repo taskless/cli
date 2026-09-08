@@ -1,5 +1,5 @@
-import { glob } from "node:fs/promises";
-import { basename, extname } from "node:path";
+import { glob, stat } from "node:fs/promises";
+import { basename, extname, resolve as resolvePath } from "node:path";
 
 import {
   VALE_CONVERTER_BY_EXTENSION,
@@ -236,6 +236,105 @@ export async function findConverterDependentFiles(
 }
 
 /**
+ * One file above `maxBytes`, found while walking the run's targets.
+ *
+ * Carries the measured size alongside the path so the caller can report an
+ * exact number rather than just naming the file — see `oversizedFileResult`
+ * in `run.ts`, which is the only reader.
+ */
+export interface OversizedFile {
+  file: string;
+  size: number;
+}
+
+/**
+ * Files inside the run's target set whose size exceeds `maxBytes` —
+ * `VALE_MAX_FILE_BYTES` in `run.ts` (not imported here to avoid a cycle;
+ * `run.ts` already imports this module).
+ *
+ * Same shape as {@link findConverterDependentFiles}, and the same reasoning:
+ * Vale is not merely slow on an oversized file, it is quadratic in that one
+ * file's size (see the docblock on `VALE_MAX_FILE_BYTES`), so one file over the
+ * limit can consume the whole run's timeout budget and take every other file's
+ * findings down with it. Preemptively excluding it — rather than letting Vale
+ * discover the cost the hard way — is the same trade `converterExclusionGlobs`
+ * makes for a format Vale cannot parse at all.
+ *
+ * Unlike the converter walk, this cannot be scoped by extension: an oversized
+ * file can have any extension, or none, so every file under the target roots
+ * has to be listed and stat'd. That is a real cost on the happy path, where
+ * nothing is oversized and the walk still runs — measured and reported in the
+ * PR that introduced this function.
+ *
+ * A named path is stat'd directly, exactly as `targetFileParseError` does
+ * elsewhere in this package: an explicit request is not resolved through the
+ * walk that answers a whole-project run. Whether named or discovered by the
+ * walk, an oversized file is excluded unconditionally, on every run — the same
+ * asymmetry `findConverterDependentFiles` documents, and for the same reason:
+ * handing Vale this file does not check it badly, it risks the entire batch's
+ * timeout.
+ *
+ * Errors are swallowed the same way as {@link findConverterDependentFiles} and
+ * for the same reason: a target that vanished between listing and stat, an
+ * unreadable subtree, a platform where `glob` rejects the pattern — none of
+ * them can be allowed to suppress the exclusion that already ran. The failure
+ * mode here is "no notice, never no fix".
+ */
+export async function findOversizedFiles(
+  cwd: string,
+  paths: string[],
+  maxBytes: number
+): Promise<OversizedFile[]> {
+  const named: OversizedFile[] = [];
+  const roots: string[] = [];
+  if (paths.length === 0) {
+    roots.push(".");
+  } else {
+    for (const path of paths) {
+      try {
+        const stats = await stat(resolvePath(cwd, path));
+        if (stats.isFile() && stats.size > maxBytes) {
+          named.push({ file: path, size: stats.size });
+        }
+      } catch {
+        // Unreadable or missing: not this function's problem. The run itself
+        // will report it if it matters.
+      }
+      roots.push(path);
+    }
+  }
+
+  const found = new Map(named.map((entry) => [entry.file, entry]));
+  for (const root of roots) {
+    const prefix = root === "." || root === "" ? "" : `${root}/`;
+    try {
+      for await (const match of glob(`${prefix}**/*`, {
+        cwd,
+        exclude: (entry) => UNWALKED_DIRECTORIES.has(basename(String(entry))),
+      })) {
+        const relative = String(match);
+        if (found.has(relative)) continue;
+        try {
+          const stats = await stat(resolvePath(cwd, relative));
+          if (stats.isFile() && stats.size > maxBytes) {
+            found.set(relative, { file: relative, size: stats.size });
+          }
+        } catch {
+          // Same reasoning as above: gone between listing and stat, or
+          // unreadable. Not a reason to drop the exclusion already computed.
+        }
+      }
+    } catch {
+      // A target that is not a directory, an unreadable subtree, a platform
+      // where `glob` rejects the pattern: all of them mean "no notice, never
+      // no fix". The exclusion has already been applied by the time this runs.
+    }
+  }
+
+  return [...found.values()].toSorted((a, b) => a.file.localeCompare(b.file));
+}
+
+/**
  * The user-facing sentence for a set of skipped files, or `undefined` when
  * nothing was skipped.
  *
@@ -274,5 +373,69 @@ export function skippedFilesNotice(files: string[]): string | undefined {
     `an external program (${converters.join(", ")}), which this build does ` +
     `not ship and does not check for. Scope the rule to a supported format; ` +
     `every other file was checked normally.`
+  );
+}
+
+/**
+ * The user-facing sentence for a set of files excluded for being over
+ * `maxBytes` (`VALE_MAX_FILE_BYTES` in `run.ts`), or `undefined` when nothing
+ * was excluded.
+ *
+ * A NOTICE, not a finding — deliberately the opposite of what #300
+ * (`vale-parse-error` in `run.ts`) chose for an unparseable file, and for a
+ * reason that only shows up once a finding is actually tried here. #300's
+ * finding is trustworthy because Vale itself proved the file was a real
+ * target: it opened the file, tried to parse it, and told us exactly why it
+ * failed. {@link findOversizedFiles} proves nothing of the kind — it is a bare
+ * filesystem walk that runs before Vale is ever invoked, with no way to know
+ * whether any configured rule's matcher would have reached the file at all.
+ *
+ * That is not a hypothetical gap. Reporting this exclusion as a hard
+ * `severity: "error"` finding, and running a whole-project `check` against
+ * *this* repository, reported `pnpm-lock.yaml` (152,820 bytes) and
+ * `packages/cli/CHANGELOG.md` (139,171 bytes) as failures — and neither file
+ * is named by any `[section]` in any rule's `.vale.ini` under
+ * `.taskless/rules/vale/`. Vale was
+ * never going to open either one, so a finding there is not a caught coverage
+ * hole, it is a false one. Confirming true scope would mean re-implementing
+ * Vale's own glob-matching against the assembled config from outside Vale —
+ * exactly the second parser the "Verify Build Output In The Build, Not By
+ * Parsing It" reasoning in `STYLEGUIDE-CODE.md` warns against: Vale already
+ * knows which files its rules reach, nothing in this module does, and
+ * approximating that knowledge is worse than not claiming it.
+ *
+ * A converter-dependent file ({@link skippedFilesNotice}, just above) is in
+ * the same epistemic position — that walk is equally blind to rule scope —
+ * which is why it already reports a notice rather than a finding. This
+ * exclusion follows that precedent rather than #300's.
+ *
+ * None of this changes whether the file is excluded from the Vale invocation:
+ * it still is, unconditionally, in every case (see `oversizedInScope` in
+ * `run.ts`). That protects against the real risk — a rule DOES turn out to
+ * match the file, and Vale's quadratic cost on it consumes the run's
+ * timeout — at zero cost on the files above, which no rule was ever going to
+ * reach. Only the *reporting* softens to match what we actually know; the
+ * exclusion does not.
+ */
+export function oversizedFilesNotice(
+  files: OversizedFile[],
+  maxBytes: number
+): string | undefined {
+  if (files.length === 0) return undefined;
+
+  const sample = files.slice(0, NOTICE_SAMPLE_LIMIT);
+  const remainder = files.length - sample.length;
+  const names = sample.map((entry) => entry.file);
+  const listed =
+    remainder > 0
+      ? `${names.join(", ")} (and ${String(remainder)} more)`
+      : names.join(", ");
+
+  return (
+    `Vale did not check ${String(files.length)} file(s) over ${String(maxBytes)} ` +
+    `bytes: ${listed}. Vale's cost grows quadratically with a single file's ` +
+    `size, so a file this large risks consuming the whole run's timeout budget ` +
+    `and costing every other file its findings — it was excluded rather than ` +
+    `risk that. Split large files into smaller documents to have them checked.`
   );
 }

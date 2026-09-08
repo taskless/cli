@@ -18,6 +18,8 @@ import {
   buildValeGlob,
   converterExclusionGlobs,
   findConverterDependentFiles,
+  findOversizedFiles,
+  oversizedFilesNotice,
   skippedFilesNotice,
   TASKLESS_DIRECTORY,
 } from "./formats";
@@ -45,6 +47,70 @@ export { ASSEMBLED_VALE_CONFIG } from "../engines";
  * is a ceiling on damage, not a performance target.
  */
 export const VALE_TIMEOUT_MS = 60_000;
+
+/**
+ * The largest single file Vale will be asked to check, in bytes. A file over
+ * this is excluded from the Vale invocation and named in a notice — see
+ * `oversizedFilesNotice` in `formats.ts` for why a notice and not a finding —
+ * the same preemptive treatment `converterExclusionGlobs` gives a format Vale
+ * cannot parse (taskless/cli#321).
+ *
+ * ## Why a size guard at all: Vale is quadratic in one file's size
+ *
+ * Measured against the pinned binary, one `existence` rule, one file, over
+ * three runs each, median taken (an M-series laptop; a CI runner is assumed
+ * ~4x slower, NOT measured):
+ *
+ * | size  | median (laptop) | ~4x slower CI runner | share of the 60s run budget |
+ * | ----- | ---------------- | --------------------- | ---------------------------- |
+ * | 128KB | 0.77s            | ~3.1s                 | 5%                           |
+ * | 192KB | 1.87s            | ~7.5s                 | 12%                          |
+ * | 256KB | 3.30s            | ~13.2s                | 22%                          |
+ * | 384KB | 7.27s            | ~29.1s                | 48%                          |
+ *
+ * This is upstream Vale's behaviour on a single file, not ours, and it is per
+ * FILE, not per corpus: the same ~1MB of prose spread across 400 files takes
+ * 190ms. Volume is fine; size is not, and the risk is concentrated in outliers
+ * rather than spread across a corpus.
+ *
+ * ## The budget being protected is the WHOLE RUN, not one file
+ *
+ * {@link VALE_TIMEOUT_MS} bounds one Vale invocation over every target file
+ * combined, so the question a size guard has to answer is not "is this file
+ * slow" but "how much of the shared budget may one outlier consume". At 384KB
+ * a single file can already claim roughly half the run's timeout on its own —
+ * two of them, or one plus a project's ordinary corpus, is enough to blow the
+ * budget and take every other file's findings down with it (exactly the #300
+ * failure, on a path #300 did not cover). That effect compounds with rule
+ * count too: a real project runs several rules over the same file in one Vale
+ * invocation, and each one pays the quadratic cost again.
+ *
+ * ## Why 128KB (`128 * 1024` bytes)
+ *
+ * At 128KB a pathological file costs at most roughly 5% of the run's budget,
+ * even on the slower, unmeasured CI estimate — small enough that it takes many
+ * such files at once to threaten the timeout, rather than one. The choice also
+ * has to not eat real documents: 128KB of markdown is roughly 20,000 words,
+ * comfortably past any file a person actually sits down and writes by hand —
+ * what this excludes is generated output, pasted data dumps, or exported notes,
+ * not hand-authored prose. Measured against this repository, the largest
+ * committed markdown file (`packages/cli/CHANGELOG.md`) is 139KB — just over
+ * this limit, and itself a generated file (a changelog appended to by tooling,
+ * not written by hand in one sitting), which is exactly the shape of file this
+ * guard is meant to catch.
+ *
+ * This bounds the worst SINGLE file, not the run's total cost: many mid-sized
+ * files under the limit still accumulate. A normal corpus is cheap regardless
+ * (400 files of ~2KB measured at 190ms total), so that accumulation only
+ * matters when a project is unusually large, which {@link VALE_TIMEOUT_MS}
+ * still exists to catch.
+ *
+ * Exported and named so it is discoverable and tunable independently of
+ * {@link VALE_TIMEOUT_MS}: the two bound different things (one file's cost, the
+ * whole run's budget) and moving one should not require reasoning about the
+ * other.
+ */
+export const VALE_MAX_FILE_BYTES = 128 * 1024;
 
 /**
  * What a Vale run produced.
@@ -552,10 +618,20 @@ export async function runVale(
   // `worktrees/` is not a file this run declined to convert, it is a file this
   // run was never going to look at, and naming it would send the reader to
   // investigate a directory the fix above deliberately excluded.
-  const [ignoredEntries, converterDependent] = await Promise.all([
+  const [ignoredEntries, converterDependent, oversized] = await Promise.all([
     wholeProject ? listGitIgnoredEntries(options.cwd) : [],
     findConverterDependentFiles(options.cwd, paths),
+    findOversizedFiles(options.cwd, paths, VALE_MAX_FILE_BYTES),
   ]);
+
+  // A file too large to check safely is excluded the same way, and for the
+  // same reason, as a converter-dependent one just above: unconditionally, on
+  // every run, named path or not. Handing it to Vale does not check it
+  // badly — Vale's quadratic cost on one large file can consume the whole
+  // run's timeout, taking every other file's findings with it (taskless/cli#321).
+  const oversizedInScope = oversized.filter(
+    (entry) => !isGitIgnoredPath(entry.file, ignoredEntries)
+  );
 
   const exclude = [
     ...(wholeProject
@@ -565,11 +641,22 @@ export async function runVale(
         ]
       : []),
     ...converterExclusionGlobs(),
+    ...oversizedInScope.map((entry) => entry.file),
   ];
 
-  const skipped = skippedFilesNotice(
-    converterDependent.filter((file) => !isGitIgnoredPath(file, ignoredEntries))
-  );
+  // Both notices describe files this run declined to check, for different
+  // reasons, and both have to reach the user or the decline is silent. Joined
+  // rather than one overwriting the other — see the equivalent `advisories`
+  // join for Vale's own stderr diagnostic further down, for the same reason.
+  const notices = [
+    skippedFilesNotice(
+      converterDependent.filter(
+        (file) => !isGitIgnoredPath(file, ignoredEntries)
+      )
+    ),
+    oversizedFilesNotice(oversizedInScope, VALE_MAX_FILE_BYTES),
+  ].filter((notice) => notice !== undefined);
+  const skipped = notices.length === 0 ? undefined : notices.join("\n");
 
   // One bad target file must cost one finding, not the whole run
   // (taskless/cli#300). A front-matter YAML error is Vale's own parse

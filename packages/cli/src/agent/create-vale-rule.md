@@ -1,4 +1,4 @@
-# Topic: create-vale-rule     (CLI v%(CLI_VERSION)s / topic v6)
+# Topic: create-vale-rule     (CLI v%(CLI_VERSION)s / topic v7)
 
 ## You are here
 This is `create-vale-rule`. It helps you write a Vale rule: a check over
@@ -570,6 +570,21 @@ it.
    unreported. `[*.{md,typ}]` is not a slightly wider `[*.md]`; it is a
    matcher that takes `check` down the first time the repo grows a
    `.typ` file. Never put one of those extensions in a glob.
+
+   **A single oversized file is excluded before Vale ever opens it, not
+   linted slowly.** Vale's cost is quadratic in one file's size, so a
+   large enough document can consume the whole run's time budget on its
+   own and cost every other file its findings: the same failure mode as
+   the unreadable-file case above, from a different cause. `check`
+   preempts it: a target file over 128KB is skipped, and named in a
+   `notices` entry rather than a finding, since nothing here can confirm
+   whether any matcher would actually have reached it (a large lockfile
+   or a generated file outside every rule's scope is common, and
+   flagging one as a failure would be a false positive). A rule's own
+   fixtures are never this large in practice, so this should not surface
+   while authoring one. It matters when scoping a matcher at a whole
+   project, where a generated changelog or an exported note can cross
+   it.
 
    That example changed with Vale v3.18.0, which is the point: the
    dangerous extension is whichever one the list above says needs a
