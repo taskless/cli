@@ -363,6 +363,48 @@ withVale("verifyValeRule", () => {
     const result = verification(await verifyValeRule(cwd, "no-simply"));
     expect(result.passed).toBe(true);
   });
+
+  it("excludes a fixture with unparseable front matter instead of blocking every other fixture (taskless/cli#300)", async () => {
+    // `verifyValeRule` points `runVale` at `.taskless/rules/vale/<ruleId>/.tests`
+    // directly — an explicit path, not a whole-project walk — so the
+    // `.taskless/**` glob exclusion in `runVale` never applies here and Vale
+    // really does walk into this directory. A malformed fixture therefore
+    // reports a config-error `Path` that starts with `.taskless/rules/vale/…`.
+    // `targetFileParseError` must still recognize that as a target file (no
+    // `.taskless/`-prefix carve-out) or this call path falls back to the
+    // pre-#300 behaviour: one bad fixture returns `{ outcome: { status:
+    // "failed" } }` for the WHOLE rule, and neither `a.md` nor `c.md` below is
+    // ever evaluated.
+    const cwd = makeProject(
+      { "no-simply": existence("simply") },
+      {
+        "no-simply": {
+          fail: {
+            "a.md": "Just simply do it.\n",
+            "bad.md":
+              "---\ndescription: has a colon: right here\n---\n\nJust simply do it.\n",
+          },
+          pass: { "c.md": "Nothing objectionable.\n" },
+        },
+      }
+    );
+
+    const result = verification(await verifyValeRule(cwd, "no-simply"));
+
+    // The good fixtures are still evaluated normally: `a.md` fires, `c.md`
+    // stays clean.
+    expect(result.missingFailures).not.toContain(
+      ".taskless/rules/vale/no-simply/.tests/fail/a.md"
+    );
+    expect(result.unexpectedFindings).toEqual([]);
+    // `bad.md` could not be parsed, so it never fires under its own rule id —
+    // it is reported as a missing failure rather than silently dropped, and
+    // rather than taking `a.md` and `c.md` down with it.
+    expect(result.missingFailures).toContain(
+      ".taskless/rules/vale/no-simply/.tests/fail/bad.md"
+    );
+    expect(result.passed).toBe(false);
+  });
 });
 
 withVale("verifyValeRules", () => {

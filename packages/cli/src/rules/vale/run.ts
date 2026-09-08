@@ -100,6 +100,25 @@ export type ValeRunOutcome =
   | { status: "failed"; blocking: true; message: string };
 
 /**
+ * Parse Vale's stderr as its one-object config-error document, or `undefined`
+ * when it is not that shape.
+ *
+ * Split out from {@link describeValeStderr} so the non-zero-exit branch in
+ * {@link spawnVale} can parse `stderr` exactly once and use the result both to
+ * build the failure message and to populate `ValeAttempt.configError` — the
+ * value {@link targetFileParseError} reads to decide whether this failure can
+ * be narrowed to one target file and retried. Without this split, the same
+ * bytes were parsed twice: once here, once again inside `describeValeStderr`.
+ */
+function parseValeConfigError(stderr: string): ValeConfigError | undefined {
+  try {
+    return asValeConfigError(JSON.parse(stderr));
+  } catch {
+    return undefined;
+  }
+}
+
+/**
  * Vale's stderr, rendered as a sentence instead of a JSON blob.
  *
  * Vale reports its own errors as a one-object JSON document on stderr —
@@ -110,19 +129,17 @@ export type ValeRunOutcome =
  * decoding ast-grep's stderr rather than forwarding bytes — the message is the
  * only thing the user has to act on.
  *
- * Anything that is not that shape is returned untouched. A best-effort decoder
- * that swallows what it cannot read would be worse than none.
+ * Takes the already-parsed error rather than re-parsing `stderr` itself — see
+ * {@link parseValeConfigError}. Anything that did not parse to that shape is
+ * returned untouched. A best-effort decoder that swallows what it cannot read
+ * would be worse than none.
  */
-function describeValeStderr(stderr: string): string {
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(stderr);
-  } catch {
-    return stderr;
-  }
-  const error = asValeConfigError(parsed);
-  if (error === undefined) return stderr;
-  return formatValeConfigError(error, { withPath: true });
+function describeValeStderr(
+  stderr: string,
+  configError: ValeConfigError | undefined
+): string {
+  if (configError === undefined) return stderr;
+  return formatValeConfigError(configError, { withPath: true });
 }
 
 /**
@@ -213,10 +230,27 @@ function parseErrorResult(file: string, error: ValeConfigError): CheckResult {
  * absolute `Path`. A target file, by contrast, is named on Vale's command
  * line exactly as this module passed it — always relative to `cwd`, per
  * `targets` below — so a problem reading a target file reports the relative
- * path we asked Vale to check. Measured against the real binary: a bad
- * `level:` in a rule file reports that rule's absolute path on disk; an
- * unquoted colon in a document's front matter reports the relative path this
- * module handed to Vale.
+ * path we asked Vale to check. Measured against the real binary, and pinned as
+ * a vendor contract in `vale-vendor-contract.test.ts`: a bad `level:` in a rule
+ * file reports that rule's absolute path on disk; an unquoted colon in a
+ * document's front matter reports the relative path this module handed to
+ * Vale.
+ *
+ * `isAbsolute` is therefore the WHOLE discriminator, deliberately with no
+ * additional `.taskless/`-prefix carve-out. An earlier version of this
+ * function also rejected any relative path starting with `.taskless/`, on the
+ * theory that Taskless's own directory could not hold a legitimate target.
+ * That reasoning was wrong: `verifyValeRule` (`verify.ts`) points `runVale`
+ * explicitly at `.taskless/rules/vale/<ruleId>/rule-tests`, and `check` accepts
+ * an explicit path under `.taskless/` and checks it (see
+ * `mixed-engine-check.test.ts`, "still checks an explicitly named path inside
+ * .taskless"). Neither call passes through the `.taskless/**` glob exclusion
+ * below — that exclusion applies ONLY on a whole-project walk. A malformed
+ * fixture under `rule-tests/` therefore reports a relative `Path` starting
+ * with `.taskless/rules/vale/...`, which the old carve-out misread as "not a
+ * target" — reintroducing the exact #300 failure on the one path meant to
+ * catch it: `verifyValeRule` returned one blocking failure for the whole rule
+ * instead of excluding just the bad fixture and reporting the rest.
  *
  * The existence check is defensive, not load-bearing: if it is ever wrong for
  * a real target file, the failure mode is "this file could not be excluded,
@@ -228,12 +262,6 @@ async function targetFileParseError(
 ): Promise<string | undefined> {
   const path = error.Path;
   if (path === undefined || path === "" || isAbsolute(path)) {
-    return undefined;
-  }
-  if (
-    path === TASKLESS_DIRECTORY ||
-    path.startsWith(`${TASKLESS_DIRECTORY}/`)
-  ) {
     return undefined;
   }
   try {
@@ -342,16 +370,11 @@ async function spawnVale(
       // With --no-exit, a non-zero code is Vale failing, not Vale finding.
       if (code !== null && code !== 0) {
         const stderr = stderrChunks.join("").trim();
-        let configError: ValeConfigError | undefined;
-        try {
-          configError = asValeConfigError(JSON.parse(stderr));
-        } catch {
-          configError = undefined;
-        }
+        const configError = parseValeConfigError(stderr);
         settle({
           status: "failed",
           message: `Vale exited ${String(code)}${
-            stderr === "" ? "" : `: ${describeValeStderr(stderr)}`
+            stderr === "" ? "" : `: ${describeValeStderr(stderr, configError)}`
           }`,
           ...(configError === undefined ? {} : { configError }),
         });
@@ -400,9 +423,7 @@ async function spawnVale(
         if (configError !== undefined) {
           settle({
             status: "failed",
-            message: `Vale rejected the configuration (${configError.Code}): ${configError.Text}${
-              configError.Path === undefined ? "" : ` in ${configError.Path}`
-            }`,
+            message: `Vale rejected the configuration: ${formatValeConfigError(configError, { withPath: true })}`,
             configError,
           });
           return;
