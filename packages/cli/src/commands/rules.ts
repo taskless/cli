@@ -749,6 +749,16 @@ const deleteCommand = defineCommand({
     try {
       const result = await deleteRuleFiles(cwd, id);
       if (result.outcome === "deleted") {
+        // Silent on stdout under `--json`, deliberately, not an oversight.
+        // The spec's `{ ok:false, code, message }` envelope is documented as
+        // an ERROR envelope ("... exits with an error" — see
+        // openspec/specs/cli-check/spec.md and cli-auth/spec.md), not a
+        // general success/failure wrapper: `create`/`improve`/`meta` print on
+        // success because they have a payload to hand back (generated rules,
+        // metadata), and `delete` does not. `auth logout` is the same shape
+        // for the same reason. Introduced this way in 07c0d3c; see
+        // test/error-envelope.test.ts's "is silent on stdout when a real rule
+        // is deleted in --json mode".
         if (!args.json) {
           console.log(`Deleted rule "${id}" and associated test files.`);
         }
