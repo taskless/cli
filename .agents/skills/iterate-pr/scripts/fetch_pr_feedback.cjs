@@ -34,8 +34,24 @@
  * - You can't formally "Request changes" on your own PR, so a PR author's own
  *   feedback arrives as `COMMENTED` review summaries and ordinary review
  *   **threads**, not as changes-requested items. These are surfaced (not
- *   dropped) and flagged `self_review: true`, bucketed by content — defaulting
- *   to `medium` when no `h:/m:/l:` prefix is present.
+ *   dropped) and flagged `self_review: true`. A self-review **thread** (an
+ *   inline comment) is bucketed by content like any other, defaulting to
+ *   `medium` absent a `h:/m:/l:` prefix. A self-review **summary** is bucketed
+ *   structurally, not by content — see "Review summaries" below — defaulting
+ *   to `low` absent a marker, so it stays visible without inflating
+ *   `needs_attention`.
+ *
+ * Review summaries:
+ * - A review's top-level summary narrates its findings, so classifying it by
+ *   content is unreliable: the prose is full of finding vocabulary, often
+ *   negated ("not a blocker", "no security issue"), and no pattern list
+ *   survives that. A summary is instead bucketed by what is structurally
+ *   known: `CHANGES_REQUESTED` from a reviewer who is not the PR author is
+ *   `high`; an explicit `h:/m:/l:` marker still wins over everything; absent
+ *   both, the summary is surfaced but filed `low` so it doesn't inflate
+ *   `needs_attention`. The findings a review raises arrive separately as
+ *   inline review-thread comments, which ARE classified by content — nothing
+ *   is lost by not re-classifying the narration around them.
  *
  * Unfinished reviews:
  * - The Claude review bot posts its comment immediately when triggered and
@@ -212,16 +228,21 @@ const HIGH_PATTERNS = [
   /blocker/i,
 ];
 
+// Word-bounded so a leading word is matched regardless of what punctuation (or
+// none at all) follows it. These five used to require a colon or whitespace
+// right after the word (`nit[:\s]`), which matched `nit:` and `nit ` but not
+// the common `Nit,` spelling — measured on a real inline comment from #304
+// that opened `Nit, not a defect:` and was filed medium instead of low.
 const LOW_PATTERNS = [
-  /nit[:\s]/i,
+  /\bnit\b/i,
   /nitpick/i,
-  /suggestion[:\s]/i,
+  /\bsuggestion\b/i,
   /consider\s+/i,
   /could\s+(also\s+)?/i,
   /might\s+(want\s+to|be\s+better)/i,
-  /optional[:\s]/i,
-  /minor[:\s]/i,
-  /style[:\s]/i,
+  /\boptional\b/i,
+  /\bminor\b/i,
+  /\bstyle\b/i,
   /prefer\s+/i,
   /what\s+do\s+you\s+think/i,
   /up\s+to\s+you/i,
@@ -229,11 +250,44 @@ const LOW_PATTERNS = [
   /fwiw/i,
 ];
 
+// A HIGH/LOW pattern match is discarded when one of these words appears
+// shortly before it, so "not a blocker" and "no security issue" stop reading
+// as findings. Measured on the real review summary of #307: "…so it's a
+// 'worth a look,' not a blocker" matched `blocker` with nothing to say the
+// word was negated.
+const NEGATORS = /\b(?:not|no|non|without|isn't|is not)\b/i;
+
+// How far back from a match to look for a negator. Wide enough to cover "is
+// not a blocker" and "found no security issue", narrow enough that an
+// unrelated negation earlier in a long sentence doesn't suppress a real
+// finding.
+const NEGATION_WINDOW = 24;
+
+/** Whether a negator appears in the window immediately before `index`. */
+const isNegated = (body, index) => {
+  const start = Math.max(0, index - NEGATION_WINDOW);
+  return NEGATORS.test(body.slice(start, index));
+};
+
+/**
+ * Whether any pattern matches `body` at a position not preceded by a negator.
+ */
+const matchesUnnegated = (patterns, body) =>
+  patterns.some((pattern) => {
+    const match = pattern.exec(body);
+    return match !== null && !isNegated(body, match.index);
+  });
+
 /**
  * Categorize a comment by content and author, on the LOGAF scale.
  *
  * Info bots are skipped silently; review bots fall through to content
  * categorization so their actionable feedback is not lost.
+ *
+ * This is for INLINE feedback (review threads, issue comments) only — a
+ * single comment that either raises one finding or doesn't. A review
+ * SUMMARY narrates a whole review and is handled separately by
+ * `categorizeReviewSummary`, below, for the reason explained there.
  */
 const categorizeComment = (comment, body) => {
   const author = comment?.author?.login || comment?.user?.login || "";
@@ -243,12 +297,30 @@ const categorizeComment = (comment, body) => {
   const logaf = detectLogaf(body);
   if (logaf) return logaf;
 
-  if (HIGH_PATTERNS.some((pattern) => pattern.test(body))) return "high";
-  if (LOW_PATTERNS.some((pattern) => pattern.test(body))) return "low";
+  if (matchesUnnegated(HIGH_PATTERNS, body)) return "high";
+  if (matchesUnnegated(LOW_PATTERNS, body)) return "low";
 
   // Default to medium for non-bot comments without clear indicators.
   return "medium";
 };
+
+/**
+ * Categorize a review SUMMARY structurally, never by content.
+ *
+ * A summary's job is to narrate a review's findings, so it necessarily
+ * contains finding vocabulary — often negated, as in "not a blocker" or "no
+ * security issue found" — and no content pattern list survives that. The
+ * findings themselves arrive separately as inline review-thread comments and
+ * are classified individually by `categorizeComment`; nothing is lost by not
+ * re-classifying the prose that narrates them.
+ *
+ * An explicit LOGAF marker still wins, same as everywhere else. Absent one,
+ * the summary is surfaced but filed as `low` rather than `medium`, so it
+ * doesn't inflate `needs_attention` — the caller-facing number that a
+ * structurally-known `CHANGES_REQUESTED` (handled by the caller, not here)
+ * already covers for the case that actually needs gating.
+ */
+const categorizeReviewSummary = (_comment, body) => detectLogaf(body) ?? "low";
 
 /**
  * File one item by its author: an unfinished review is filed on its own ahead
@@ -263,8 +335,20 @@ const categorizeComment = (comment, body) => {
  * unfinished placeholder must never be read as a review bot's finding (`high`),
  * an info bot's noise (`bot`), or ordinary human feedback, from ANY of the
  * three sources.
+ *
+ * `categorize` defaults to the inline-comment classifier; the review-summary
+ * call site passes `categorizeReviewSummary` instead, so the bot/info-bot
+ * split and the in-progress check stay one rule in one place while what
+ * happens to the *content* differs by source.
  */
-const bucketByAuthor = (feedback, item, comment, body, author) => {
+const bucketByAuthor = (
+  feedback,
+  item,
+  comment,
+  body,
+  author,
+  categorize = categorizeComment
+) => {
   // The author gate is load-bearing, not belt and braces. A human writing
   // "Review in progress on my end, back by EOD" would otherwise be filed as an
   // unfinished review, vanish from `needs_attention`, and hang the wait loop
@@ -275,11 +359,11 @@ const bucketByAuthor = (feedback, item, comment, body, author) => {
     feedback.review_in_progress.push(item);
   } else if (isReviewBot(author)) {
     item.review_bot = true;
-    feedback[categorizeComment(comment, body)].push(item);
+    feedback[categorize(comment, body)].push(item);
   } else if (isInfoBot(author)) {
     feedback.bot.push(item);
   } else {
-    feedback[categorizeComment(comment, body)].push(item);
+    feedback[categorize(comment, body)].push(item);
   }
 };
 
@@ -474,7 +558,7 @@ const buildFeedback = (client, { owner, repo, prInfo }) => {
   // author: a self-review can't be "Request changes", so the PR author's own
   // feedback arrives as COMMENTED summaries and would otherwise be dropped. A
   // real reviewer's CHANGES_REQUESTED is always high; everything else is
-  // bucketed by content (default medium).
+  // bucketed structurally, not by content — see `categorizeReviewSummary`.
   for (const review of prInfo.reviews ?? []) {
     const author = review.author?.login ?? "";
     const body = review.body ?? "";
@@ -497,7 +581,14 @@ const buildFeedback = (client, { owner, repo, prInfo }) => {
     ) {
       feedback.high.push(item);
     } else {
-      bucketByAuthor(feedback, item, review, body, author);
+      bucketByAuthor(
+        feedback,
+        item,
+        review,
+        body,
+        author,
+        categorizeReviewSummary
+      );
     }
   }
 
@@ -671,6 +762,7 @@ module.exports = {
   bucketByAuthor,
   buildFeedback,
   categorizeComment,
+  categorizeReviewSummary,
   createClient,
   detectLogaf,
   extractFeedbackItem,
