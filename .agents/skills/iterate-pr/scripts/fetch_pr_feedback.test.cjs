@@ -166,6 +166,70 @@ test("categorizeComment falls back to content, then to medium", () => {
   );
 });
 
+// Reproduced directly from the issue: a HIGH pattern fires on "blocker" and
+// "security issue" with no regard for the "not"/"no" right before them.
+test("categorizeComment does not read a negated finding as high", () => {
+  const bot = { user: { login: "claude[bot]" } };
+  assert.equal(
+    categorizeComment(
+      bot,
+      "I found no security issue and this is not a blocker."
+    ),
+    "medium"
+  );
+  assert.equal(
+    categorizeComment(
+      { user: { login: "reviewer" } },
+      "This isn't critical, just a thought."
+    ),
+    "medium"
+  );
+});
+
+// A negator far enough away from the match must not suppress a real finding —
+// the window is short on purpose.
+test("categorizeComment still flags a real finding elsewhere in the same body", () => {
+  assert.equal(
+    categorizeComment(
+      { user: { login: "reviewer" } },
+      "No comments on the docs. This will break at runtime for empty input."
+    ),
+    "high"
+  );
+});
+
+// Reproduced directly from the issue: `nit[:\s]` required a colon or
+// whitespace right after the word, so `Nit,` — a real inline comment from
+// #304 — missed the pattern and landed in the auto-fixed `medium` bucket.
+test("Nit, and nit: reach the same bucket regardless of punctuation", () => {
+  const human = { user: { login: "reviewer" } };
+  assert.equal(categorizeComment(human, "Nit, could be simpler."), "low");
+  assert.equal(categorizeComment(human, "nit: could be simpler."), "low");
+  assert.equal(categorizeComment(human, "(nit) could be simpler."), "low");
+});
+
+// The other bracketed-class tokens had the same `[:\s]` punctuation gap.
+test("the other bracketed-class LOW tokens are also punctuation-insensitive", () => {
+  const human = { user: { login: "reviewer" } };
+  assert.equal(categorizeComment(human, "Suggestion, rename this."), "low");
+  assert.equal(categorizeComment(human, "Optional, but nice to have."), "low");
+  assert.equal(categorizeComment(human, "Minor, just a typo."), "low");
+  assert.equal(categorizeComment(human, "Style, not a big deal."), "low");
+});
+
+// The explicit-marker path (detectLogaf) must keep winning over content in the
+// inline-comment fallback too — this is the one thing the issue says must not
+// regress, even on a body containing negated HIGH vocabulary.
+test("an explicit h: marker still wins over negated and non-negated content", () => {
+  assert.equal(
+    categorizeComment(
+      { user: { login: "reviewer" } },
+      "h: not a blocker, but do this anyway"
+    ),
+    "high"
+  );
+});
+
 test("extractFeedbackItem truncates the summary but keeps the full body", () => {
   const body = `${"x".repeat(250)}\nsecond line`;
   const item = extractFeedbackItem({ body, author: "a" });
@@ -239,7 +303,12 @@ test("a reviewer's CHANGES_REQUESTED summary is always high", () => {
 // You can't "Request changes" on your own PR, so a self-review arrives as
 // COMMENTED summaries and ordinary threads. Dropping them would silently lose
 // the author's own notes to themselves, which is most of what a self-review is.
-test("a self-review summary is surfaced, flagged, and bucketed by content", () => {
+//
+// A review SUMMARY is bucketed structurally, not by content (see
+// categorizeReviewSummary): absent a marker it defaults to `low` so it stays
+// visible without inflating `needs_attention`, which is a deliberate change
+// from the old content-based default of `medium`.
+test("a self-review summary is surfaced, flagged, and bucketed structurally", () => {
   const output = build(fakeClient(), {
     reviews: [
       {
@@ -249,9 +318,9 @@ test("a self-review summary is surfaced, flagged, and bucketed by content", () =
       },
     ],
   });
-  assert.equal(output.summary.medium, 1);
+  assert.equal(output.summary.low, 1);
   assert.equal(output.summary.self_review_feedback, 1);
-  assert.equal(output.feedback.medium[0].self_review, true);
+  assert.equal(output.feedback.low[0].self_review, true);
 });
 
 test("a self-review marked CHANGES_REQUESTED is not force-promoted to high", () => {
@@ -266,6 +335,59 @@ test("a self-review marked CHANGES_REQUESTED is not force-promoted to high", () 
   });
   assert.equal(output.summary.high, 0);
   assert.equal(output.summary.low, 1);
+});
+
+// An explicit marker in a review summary still wins, same as everywhere else
+// — it is not "content" in the sense the fallback patterns are, it's an
+// unambiguous author-supplied signal.
+test("an explicit marker in a review summary still wins over the structural default", () => {
+  const output = build(fakeClient(), {
+    reviews: [
+      {
+        author: { login: "reviewer" },
+        state: "COMMENTED",
+        body: "h: this needs another look before merge",
+      },
+    ],
+  });
+  assert.equal(output.summary.high, 1);
+  assert.equal(output.summary.needs_attention, 1);
+});
+
+// The bug this fix exists for: a clean review's own closing sentence narrates
+// what it did NOT find, and that prose must not read as a finding. Measured on
+// the real review summary of #307.
+test("a clean review summary saying 'not a blocker' is not high", () => {
+  const output = build(fakeClient(), {
+    reviews: [
+      {
+        author: { login: "reviewer" },
+        state: "COMMENTED",
+        body: 'I found no security issue and this is not a blocker — worth a look, but not a blocker.',
+      },
+    ],
+  });
+  assert.equal(output.summary.high, 0);
+  assert.equal(output.summary.needs_attention, 0);
+  assert.equal(output.summary.low, 1);
+});
+
+// A review-bot's own summary (e.g. Claude's finished review) is subject to
+// the same structural bucketing as a human's — the negation-blindness bug was
+// found on exactly this path.
+test("a review bot's summary is bucketed structurally, not by content", () => {
+  const output = build(fakeClient(), {
+    reviews: [
+      {
+        author: { login: "claude[bot]" },
+        state: "COMMENTED",
+        body: "This is a clean pass — nothing here will break, not a blocker.",
+      },
+    ],
+  });
+  assert.equal(output.summary.high, 0);
+  assert.equal(output.summary.review_bot_feedback, 1);
+  assert.equal(output.feedback.low[0].review_bot, true);
 });
 
 test("empty and near-empty review summaries are skipped", () => {
