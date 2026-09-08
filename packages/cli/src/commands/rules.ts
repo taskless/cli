@@ -10,6 +10,7 @@ import {
   pollRuleStatus,
   iterateRule,
   isSingleContentRule,
+  type GeneratedRule,
 } from "../api/rules";
 import {
   writeRuleFile,
@@ -43,6 +44,35 @@ function getTimestamp(): string {
 }
 
 const POLL_INTERVAL_MS = 15_000;
+
+/**
+ * A file set rule carries its fixtures as ordinary files under `.tests/`,
+ * already written by `writeRuleFile`. Only the single-content envelope has a
+ * separate `tests` field to write.
+ *
+ * A file set arriving WITH a stray `tests` is unrepresentable in the
+ * published schema, and if the service ever sent one it would be dropped in
+ * silence. Named rather than ignored, because everything else on this path
+ * fails loudly when the contract is broken, and a fixture that vanishes is
+ * exactly the kind of loss that shows up later as a rule which tests nothing.
+ *
+ * `create` and `improve` both run this guard over the same
+ * `GeneratedRule` shape with the same remedy, so it is shared here rather
+ * than copied: two unmaintained copies is how they drift, and neither had a
+ * test before this one did.
+ */
+function fileSetTestsFieldError(rule: GeneratedRule): string | undefined {
+  if (
+    !isSingleContentRule(rule) &&
+    (rule as { tests?: unknown }).tests !== undefined
+  ) {
+    return (
+      `Rule "${rule.id}" was delivered as a file set and also carries \`tests\`; ` +
+      `a file set's fixtures belong in its own \`.tests/\` files.`
+    );
+  }
+  return undefined;
+}
 
 const createCommand = defineCommand({
   meta: {
@@ -246,25 +276,19 @@ const createCommand = defineCommand({
               });
               writtenFiles.push(ruleFile);
 
-              // A file set carries its fixtures as ordinary files under
-              // `.tests/`, already written by `writeRuleFile`. Only the
-              // single-content envelope has a separate `tests` to write.
-              //
-              // A file set arriving WITH a stray `tests` is unrepresentable in
-              // the published schema, and if the service ever sent one it would
-              // be dropped here in silence. Named rather than ignored, because
-              // everything else on this path fails loudly when the contract is
-              // broken, and a fixture that vanishes is exactly the kind of loss
-              // that shows up later as a rule which tests nothing.
-              if (
-                !isSingleContentRule(rule) &&
-                (rule as { tests?: unknown }).tests !== undefined
-              ) {
-                throw new CLIError(
-                  `Rule "${rule.id}" was delivered as a file set and also carries \`tests\`; ` +
-                    `a file set's fixtures belong in its own \`.tests/\` files.`,
-                  "RULE_GENERATION_FAILED"
-                );
+              // See `fileSetTestsFieldError` for why this is a guard rather
+              // than a silent drop.
+              const strayTestsError = fileSetTestsFieldError(rule);
+              if (strayTestsError !== undefined) {
+                // Route through `fail()`, not a bare throw: this is inside
+                // the command's own `try`, and a throw here that never
+                // touches `fail()` skips the `--json` envelope entirely (see
+                // #280). `writtenFiles` already holds every rule file written
+                // earlier in this loop, but the envelope shape this command
+                // publishes has no field to carry a partial file list on
+                // failure — extending it is a schema change, out of scope
+                // here (see the PR description).
+                fail(strayTestsError, "RULE_GENERATION_FAILED");
               }
               if (isSingleContentRule(rule) && rule.tests) {
                 const testFile = await writeRuleTestFile(cwd, rule, timestamp);
@@ -523,25 +547,19 @@ const improveCommand = defineCommand({
               });
               writtenFiles.push(ruleFile);
 
-              // A file set carries its fixtures as ordinary files under
-              // `.tests/`, already written by `writeRuleFile`. Only the
-              // single-content envelope has a separate `tests` to write.
-              //
-              // A file set arriving WITH a stray `tests` is unrepresentable in
-              // the published schema, and if the service ever sent one it would
-              // be dropped here in silence. Named rather than ignored, because
-              // everything else on this path fails loudly when the contract is
-              // broken, and a fixture that vanishes is exactly the kind of loss
-              // that shows up later as a rule which tests nothing.
-              if (
-                !isSingleContentRule(rule) &&
-                (rule as { tests?: unknown }).tests !== undefined
-              ) {
-                throw new CLIError(
-                  `Rule "${rule.id}" was delivered as a file set and also carries \`tests\`; ` +
-                    `a file set's fixtures belong in its own \`.tests/\` files.`,
-                  "RULE_GENERATION_FAILED"
-                );
+              // See `fileSetTestsFieldError` for why this is a guard rather
+              // than a silent drop.
+              const strayTestsError = fileSetTestsFieldError(rule);
+              if (strayTestsError !== undefined) {
+                // Route through `fail()`, not a bare throw: this is inside
+                // the command's own `try`, and a throw here that never
+                // touches `fail()` skips the `--json` envelope entirely (see
+                // #280). `writtenFiles` already holds every rule file written
+                // earlier in this loop, but the envelope shape this command
+                // publishes has no field to carry a partial file list on
+                // failure — extending it is a schema change, out of scope
+                // here (see the PR description).
+                fail(strayTestsError, "RULE_GENERATION_FAILED");
               }
               if (isSingleContentRule(rule) && rule.tests) {
                 const testFile = await writeRuleTestFile(cwd, rule, timestamp);
