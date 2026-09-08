@@ -1,8 +1,9 @@
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
+import { buildSkillStub } from "../../src/install/canonical";
 import { parseFrontmatter } from "../../src/install/frontmatter";
 import {
   applyInstallPlan,
@@ -98,13 +99,54 @@ describe("installing a nightly writes a stub description that names no CLI packa
     expect(canonical).not.toContain("npx @taskless/cli agent");
   });
 
-  it("a second install pinned to a different nightly leaves the stub unchanged", async () => {
+  it("a second install under the SAME pin is idempotent: nothing gets rewritten", async () => {
     await install();
     const first = await readFile(skillStubPath(), "utf8");
 
     // Re-running install (same build, so same pin) must not rewrite a stub
-    // whose description never carried a version to begin with.
+    // whose description never carried a version to begin with. The genuine
+    // cross-pin case — an EARLIER, differently pinned install's stub — is
+    // covered separately below, since a single compile-time define can't
+    // produce two different pins within one test run.
     await install();
     expect(await readFile(skillStubPath(), "utf8")).toBe(first);
+  });
+
+  it("a stub frozen by an EARLIER, differently pinned nightly converges on the next install", async () => {
+    // Simulates the actual defect in taskless/cli#298: a project installed an
+    // older nightly, pinned to a DIFFERENT version, back when a skill's
+    // `description` still carried a baked-in CLI invocation. That earlier
+    // install's stub is not reachable by calling `install()` twice under this
+    // file's single fixed `__TASKLESS_CLI__` define (a compile-time Vite
+    // define can't vary within one test run), so it is hand-crafted here with
+    // `buildSkillStub` instead — the same builder `writeSkill` itself calls,
+    // fed the OLD-style description a pre-fix source file would have produced.
+    await mkdir(dirname(skillStubPath()), { recursive: true });
+    const frozenByEarlierNightly = buildSkillStub({
+      name: "taskless",
+      description:
+        "Use for any Taskless task. Fetch recipes via " +
+        "`npx @taskless/cli-nightly@0.0.0-nightly.previous agent route`.",
+    });
+    await writeFile(skillStubPath(), frozenByEarlierNightly, "utf8");
+
+    await install();
+
+    const rewritten = await readFile(skillStubPath(), "utf8");
+    const rewrittenDescription = parseFrontmatter(rewritten).data
+      .description as string;
+
+    // The stub actually changed — this build's install converged it rather
+    // than leaving the earlier nightly's frozen copy in place.
+    expect(rewritten).not.toBe(frozenByEarlierNightly);
+    // It converged onto the CURRENT source description (invocation-free), not
+    // merely onto some other pin.
+    const currentDescription = getEmbeddedSkills().find(
+      (s) => s.name === "taskless"
+    )?.description;
+    expect(rewrittenDescription).toBe(currentDescription);
+    // And, the property the whole fix establishes: no pinned or unpinned CLI
+    // package reference survives, from either the old install or this one.
+    expect(rewrittenDescription).not.toMatch(/@taskless\/cli/);
   });
 });
