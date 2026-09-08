@@ -339,6 +339,77 @@ describe("check over a project with both engines", () => {
     });
   });
 
+  withVale("a target file check cannot parse (taskless/cli#300)", () => {
+    // The exact shape from the issue: one file whose front matter has an
+    // unquoted colon used to take every other file's findings down with it.
+    // `check content/blog --json` came back `{"results":[]}`, indistinguishable
+    // from a directory with nothing to say.
+    it("still reports every other file's findings, end to end", async () => {
+      const scaffold = await mkdtemp(join(tmpdir(), "taskless-parse-error-"));
+      try {
+        const init = await runCli(["init", "--no-interactive", "-d", scaffold]);
+        expect(init.exitCode).toBe(0);
+
+        const rule = join(scaffold, ".taskless", "rules", "vale", "no-simply");
+        await mkdir(rule, { recursive: true });
+        await writeFile(
+          join(rule, "no-simply.yml"),
+          "extends: existence\nmessage: \"Avoid 'simply'\"\nlevel: warning\ntokens:\n  - simply\n"
+        );
+        await writeFile(
+          join(rule, ".vale.ini"),
+          "[*.md]\ntskl) rule = no-simply\nBasedOnStyles =\nno-simply.no-simply = YES\n"
+        );
+
+        const blog = join(scaffold, "content", "blog");
+        await mkdir(blog, { recursive: true });
+        await writeFile(
+          join(blog, "good-1.md"),
+          "---\ntitle: Good post one\n---\n\nJust simply do it.\n"
+        );
+        await writeFile(
+          join(blog, "good-2.md"),
+          "---\ntitle: Good post two\n---\n\nJust simply do it, again.\n"
+        );
+        await writeFile(
+          join(blog, "zzz-probe.md"),
+          "---\ndescription: this has a colon: right here so it cannot parse\n---\n\nSome content, simply written.\n"
+        );
+
+        const { stdout, exitCode } = await runCli([
+          "check",
+          "content/blog",
+          "-d",
+          scaffold,
+          "--json",
+        ]);
+        const output = JSON.parse(stdout.trim()) as CheckOutput;
+
+        // Before the fix: `{"success":false,"results":[],"failures":[…]}` —
+        // both good files' findings gone over one bad one.
+        expect(output.success).toBe(false);
+        expect(exitCode).toBe(1);
+
+        const byFile = new Map(output.results.map((f) => [f.file, f]));
+        expect(byFile.get("content/blog/good-1.md")).toMatchObject({
+          source: "vale",
+          ruleId: "no-simply",
+        });
+        expect(byFile.get("content/blog/good-2.md")).toMatchObject({
+          source: "vale",
+          ruleId: "no-simply",
+        });
+        expect(byFile.get("content/blog/zzz-probe.md")).toMatchObject({
+          source: "vale",
+          ruleId: "vale-parse-error",
+          severity: "error",
+        });
+      } finally {
+        await rm(scaffold, { recursive: true, force: true });
+      }
+    });
+  });
+
   describe("whatever the host provides", () => {
     it("reports ast-grep findings regardless of Vale's availability", async () => {
       // Deliberately ungated, and deliberately not mocking the binary away: the
