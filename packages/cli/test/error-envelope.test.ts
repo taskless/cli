@@ -44,10 +44,7 @@ async function runCli(
 function parseEnvelope(stdout: string): ErrorEnvelope {
   // The envelope is the last JSON line in stdout. (Some commands also
   // print progress to stderr, so we ignore that.)
-  const lines = stdout.split("\n").filter((l) => l.trim().startsWith("{"));
-  expect(lines.length).toBeGreaterThan(0);
-  const last = lines.at(-1)!;
-  return JSON.parse(last) as ErrorEnvelope;
+  return JSON.parse(stdout.trim()) as ErrorEnvelope;
 }
 
 describe("standardized error envelope (--json)", () => {
