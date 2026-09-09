@@ -6,6 +6,7 @@ import { PostHog } from "posthog-node";
 import { decodeJwt } from "jose";
 
 import { decodeOrgId, NIL_ORG_ID } from "./auth/jwt";
+import { resolveAdoptionDimensions } from "./util/adoption-dimensions";
 import { resolveRepositoryContext, UNKNOWN_GH_OWNER } from "./util/git-remote";
 import { getConfigDirectory, getToken } from "./auth/token";
 import { CLI_VERSION } from "./version";
@@ -187,6 +188,19 @@ export async function getTelemetry(cwd?: string): Promise<TelemetryClient> {
     const repository = cwd ? await resolveRepositoryContext(cwd) : undefined;
     const ghOwner = repository ? repository.ghOwner : UNKNOWN_GH_OWNER;
 
+    // The adoption dimensions: workspace and repository identity, execution
+    // environment, and language stack. Resolved ONCE here, like cliVersion and
+    // scaffoldVersion above, and attached to identify and to every capture.
+    //
+    // Everything below this point runs only when telemetry is enabled: the
+    // opt-out returns the no-op client before `getTelemetry` reaches here, so
+    // `DO_NOT_TRACK=1` costs no git spawn and no filesystem probe. The opt-out
+    // has to be an opt-out of the WORK, not only of the send.
+    //
+    // No `cwd` is treated as no workspace, matching `resolveScaffoldVersion`
+    // and `ghOwner` above; every real call site passes one.
+    const dimensions = await resolveAdoptionDimensions(cwd ?? process.cwd());
+
     posthog = new PostHog(POSTHOG_PROJECT_TOKEN, {
       host: POSTHOG_HOST,
       flushAt: 1,
@@ -201,6 +215,7 @@ export async function getTelemetry(cwd?: string): Promise<TelemetryClient> {
         cliVersion: CLI_VERSION,
         scaffoldVersion,
         ghOwner,
+        ...dimensions,
       },
     });
 
@@ -225,6 +240,7 @@ export async function getTelemetry(cwd?: string): Promise<TelemetryClient> {
               cliVersion: CLI_VERSION,
               scaffoldVersion,
               ghOwner,
+              ...dimensions,
             },
             ...(!anonymous && orgSubject !== undefined
               ? { groups: { organization: String(orgSubject) } }

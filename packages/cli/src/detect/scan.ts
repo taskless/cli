@@ -232,7 +232,17 @@ const LINTER_SIGNALS: readonly LinterSignal[] = [
  * the tree. JavaScript and TypeScript are resolved separately (they share
  * `package.json`).
  */
-const LANGUAGE_MARKERS: ReadonlyArray<{ language: string; files: string[] }> = [
+/**
+ * Exported so telemetry's root-only `languageStack` probe reads the same
+ * language-to-manifest mapping this scan does. The two differ only in search
+ * scope: this walks the tree, the probe checks the workspace root. Sharing the
+ * mapping keeps them from disagreeing about which manifest means which
+ * language; the scope difference is deliberate and documented there.
+ */
+export const LANGUAGE_MARKERS: ReadonlyArray<{
+  language: string;
+  files: string[];
+}> = [
   {
     language: "Python",
     files: [

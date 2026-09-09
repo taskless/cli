@@ -124,7 +124,12 @@ export const checkCommand = defineCommand({
     // Set when a scan actually runs; drives cli_check_completed with counts
     // only (never matched code).
     let scanCounts:
-      | { errorCount: number; warningCount: number; findings: number }
+      | {
+          errorCount: number;
+          warningCount: number;
+          findings: number;
+          ruleCount: number;
+        }
       | undefined;
     try {
       const positionalPaths = extractPositionalPaths(rawArgs);
@@ -269,7 +274,24 @@ export const checkCommand = defineCommand({
           if (result.severity === "error") errorCount++;
           else if (result.severity === "warning") warningCount++;
         }
-        scanCounts = { errorCount, warningCount, findings: results.length };
+        // `ruleCount` is how many rules the scan LOADED, across all three
+        // engines. Without it a scan with no findings and a scan with no rules
+        // are the same event, which is exactly the pair the metrics need to
+        // tell apart. Runtime rules the plan skipped still count: the question
+        // is how many rules this workspace has configured, not how many
+        // executed on this run.
+        //
+        // `listRuleIds` swallows its own read errors and returns `[]`, so this
+        // cannot turn an unreadable directory into a failed scan. A telemetry
+        // count must never be the thing that fails a command.
+        const valeRuleIds = await listRuleIds(cwd, "vale");
+        scanCounts = {
+          errorCount,
+          warningCount,
+          findings: results.length,
+          ruleCount:
+            astGrepRuleIds.length + valeRuleIds.length + runtimeRules.length,
+        };
 
         // Computed by `runEngines`, not here: the exit code is a fact about a
         // completed dispatch, and an engine failure has to fail the check even

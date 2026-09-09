@@ -257,3 +257,88 @@ export async function listRemoteOwnerUrls(cwd: string): Promise<string[]> {
   }
   return owners;
 }
+
+/**
+ * Reduce a git remote reference to a canonical REPOSITORY path,
+ * `{host}/{owner}/{repo}`, or `null` when it carries no owner/repo pair.
+ *
+ * Host-agnostic, unlike `canonicalizeGitHubUrl` above. That function throws
+ * `UNSUPPORTED_REMOTE_HOST` for a non-GitHub remote, and the refusal is
+ * load-bearing: it is the capability boundary on REMOTE rule generation. This
+ * answers a different question, "which codebase is this", which a GitLab,
+ * Bitbucket or self-hosted repository participates in exactly as much as a
+ * GitHub one. Teaching the GitHub parser to accept other hosts would have
+ * softened a refusal doing real work elsewhere, so the two sit side by side.
+ *
+ * Parsing follows `canonicalOwnerUrl` — scp-like SSH, `ssh://`, `git://`,
+ * `https://`, scheme-relative and bare paths — differing only in taking two
+ * path segments rather than one. Host, owner and repository are lowercased:
+ * GitHub treats all three case-insensitively, so `Foo/Bar` and `foo/bar` are
+ * one repository and must not become two identities.
+ *
+ * Never throws. A remote it cannot parse yields `null`, which the caller turns
+ * into the `[unknown]` sentinel.
+ */
+export function canonicalRepositoryPath(remote: string): string | null {
+  const raw = remote.trim();
+  if (!raw) return null;
+
+  let host = "github.com";
+  let path = raw;
+
+  const sshRemote = /^[^@/]+@([^:/]+):(.+)$/.exec(raw);
+  if (sshRemote) {
+    host = sshRemote[1] ?? host;
+    path = sshRemote[2] ?? path;
+  } else if (/^[a-z][a-z0-9+.-]*:\/\//i.test(raw) || raw.startsWith("//")) {
+    try {
+      const url = new URL(raw.startsWith("//") ? `https:${raw}` : raw);
+      host = url.hostname;
+      path = url.pathname;
+    } catch {
+      // Not parseable as a URL — treat the input as a path, as
+      // `canonicalOwnerUrl` does for the same inputs.
+    }
+  }
+
+  host = host.toLowerCase().replace(/^www\./, "");
+  const segments = path
+    .replace(/^\/+/, "")
+    .split("/")
+    .filter((segment) => segment.length > 0);
+  if (segments.length < 2) return null;
+
+  // The repository is the LAST segment and the owner the FIRST. A self-hosted
+  // GitLab serves repositories under nested subgroups, and anything between
+  // the two is part of the address rather than the identity: keeping it would
+  // make one repository read as several the moment a group were renamed.
+  const owner = segments[0]!.toLowerCase();
+  const repository = segments
+    .at(-1)!
+    .replace(/\.git$/i, "")
+    .toLowerCase();
+  if (!owner || !repository) return null;
+
+  return `${host}/${owner}/${repository}`;
+}
+
+/**
+ * The canonical repository path for `cwd`'s `origin` remote, or `null`.
+ *
+ * Reads `origin` alone rather than walking the `REMOTE_PRECEDENCE` fallback
+ * `listRemoteOwnerUrls` uses. A repository identity has to be the SAME value
+ * for every clone of one codebase, and precedence makes it depend on which
+ * remotes a given clone happens to have configured: a fork with `origin` on
+ * the fork and `upstream` on the source would report whichever the ordering
+ * picked, so two clones of the same fork could disagree.
+ *
+ * Never throws. Not a repository, no `origin`, an unparseable remote, and git
+ * missing from the host all yield `null`.
+ */
+export async function resolveRepositoryPath(
+  cwd: string
+): Promise<string | null> {
+  const remotes = await listRemoteConfig(cwd);
+  const origin = remotes.find((remote) => remote.name === "origin");
+  return origin ? canonicalRepositoryPath(origin.url) : null;
+}
