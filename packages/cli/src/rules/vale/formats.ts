@@ -397,6 +397,19 @@ export interface OversizedFile {
  * custom walker that treats dot-directories differently from
  * `UNWALKED_DIRECTORIES`, which is a larger change than this pass, and
  * `VALE_TIMEOUT_MS` remains the backstop if it is ever hit.
+ *
+ * **Checked and confirmed SAFE: a bare `[section]` pattern does not share
+ * `--glob`'s basename-at-any-depth recursion.** `converterExclusionGlobs`'s
+ * docblock establishes that Vale's `--glob` CLI flag matches a slash-free
+ * pattern against a file's basename at any depth — raising the question of
+ * whether a section header like `[CLAUDE.md]` does the same, which would make
+ * node's non-recursive `glob("CLAUDE.md")` miss a nested, section-matched,
+ * oversized file entirely. Measured against the real binary (pinned in
+ * `vale-vendor-contract.test.ts`, "`[section]` header matching vs. the
+ * `--glob` CLI flag"): it does not. `[CLAUDE.md]` scoped a rule to the
+ * project-root file only; a `sub/CLAUDE.md` fixture at a different depth was
+ * not linted. Section matching and node's `glob()` agree on this shape of
+ * pattern, so this concern resolved to "confirmed fine," not "fixed."
  */
 export async function findOversizedFiles(
   cwd: string,
