@@ -468,3 +468,110 @@ describe("ghOwner", () => {
     }
   });
 });
+
+/** The properties on the most recent call recorded by a posthog mock. */
+function lastProperties(mock: {
+  mock: { calls: unknown[][] };
+}): Record<string, unknown> {
+  const call = mock.mock.calls.at(-1)?.[0] as {
+    properties?: Record<string, unknown>;
+  };
+  return call.properties ?? {};
+}
+
+/** Every adoption dimension, by name, as attached to identify and capture. */
+const DIMENSION_KEYS = [
+  "workspaceId",
+  "repositoryId",
+  "envOS",
+  "ci",
+  "ciProvider",
+  "languageStack",
+] as const;
+
+/**
+ * The dimensions reach `identify` and `capture`.
+ *
+ * `adoption-dimensions.test.ts` covers how each value is RESOLVED. This covers
+ * that the resolved values are actually attached, which is a separate claim
+ * and the one the whole change rests on: the wiring is two `...dimensions`
+ * spreads, and dropping either would leave every resolver test passing while
+ * no event carried a single new property.
+ */
+describe("adoption dimensions are attached to events", () => {
+  it("carries every dimension on identify", async () => {
+    const cwd = await mkdtemp(join(tmpdir(), "taskless-dimensions-"));
+    try {
+      await execFileAsync("git", ["init"], { cwd });
+
+      await getTelemetry(cwd);
+
+      const properties = lastProperties(mockIdentify);
+      for (const key of DIMENSION_KEYS) {
+        expect(properties, key).toHaveProperty(key);
+      }
+    } finally {
+      await rm(cwd, { recursive: true, force: true });
+    }
+  });
+
+  it("carries every dimension on capture", async () => {
+    const cwd = await mkdtemp(join(tmpdir(), "taskless-dimensions-capture-"));
+    try {
+      await execFileAsync("git", ["init"], { cwd });
+
+      const telemetry = await getTelemetry(cwd);
+      telemetry.capture("cli_run", { command: "check" });
+
+      const properties = lastProperties(mockCapture);
+      for (const key of DIMENSION_KEYS) {
+        expect(properties, key).toHaveProperty(key);
+      }
+      // The event's own properties survive the spread rather than being
+      // overwritten by it.
+      expect(properties.command).toBe("check");
+    } finally {
+      await rm(cwd, { recursive: true, force: true });
+    }
+  });
+
+  it("resolves real values, not just present keys", async () => {
+    const cwd = await mkdtemp(join(tmpdir(), "taskless-dimensions-values-"));
+    try {
+      await execFileAsync("git", ["init"], { cwd });
+      await execFileAsync(
+        "git",
+        ["remote", "add", "origin", "git@github.com:acme/widgets.git"],
+        { cwd }
+      );
+      await writeFile(join(cwd, "package.json"), "{}");
+
+      const telemetry = await getTelemetry(cwd);
+      telemetry.capture("cli_run");
+
+      const properties = lastProperties(mockCapture);
+      // Hashes, so asserted by shape rather than by value — the values
+      // themselves are covered in `adoption-dimensions.test.ts`.
+      expect(properties.workspaceId).toMatch(/^[\da-f]{64}$/);
+      expect(properties.repositoryId).toMatch(/^[\da-f]{64}$/);
+      expect(properties.envOS).toBe(process.platform);
+      expect(properties.languageStack).toContain("JavaScript/TypeScript");
+    } finally {
+      await rm(cwd, { recursive: true, force: true });
+    }
+  });
+
+  it("sentinels only the cwd-dependent dimensions when no cwd is given", async () => {
+    // `envOS`, `ci` and `ciProvider` are properties of the process rather than
+    // of a directory, so they stay real. Sentinelling them would discard a
+    // known answer for the sake of looking consistent.
+    await getTelemetry();
+
+    const properties = lastProperties(mockIdentify);
+    expect(properties.workspaceId).toBe("[unknown]");
+    expect(properties.repositoryId).toBe("[unknown]");
+    expect(properties.languageStack).toEqual([]);
+    expect(properties.envOS).toBe(process.platform);
+    expect(properties.ciProvider).toEqual(expect.any(String));
+  });
+});

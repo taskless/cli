@@ -124,12 +124,20 @@ describe("canonicalRepositoryPath", () => {
     );
   });
 
-  it("takes the first and last segments of a nested group path", () => {
-    // A GitLab subgroup is part of the address, not the identity. Keeping the
-    // middle would make one repository read as several after a group rename.
+  it("keeps the whole nested group path", () => {
     expect(
       canonicalRepositoryPath("git@gitlab.com:acme/team/sub/widgets.git")
-    ).toBe("gitlab.com/acme/widgets");
+    ).toBe("gitlab.com/acme/team/sub/widgets");
+  });
+
+  it("does not collapse two repositories that share an owner and a leaf name", () => {
+    // The reason the whole path is kept (taskless/cli#326 review). Dropping
+    // the middle segments merged these two into one identity, silently
+    // undercounting distinct codebases in exactly the nested-group case this
+    // parser exists to serve.
+    expect(
+      canonicalRepositoryPath("git@gitlab.com:acme/team1/api.git")
+    ).not.toBe(canonicalRepositoryPath("git@gitlab.com:acme/team2/api.git"));
   });
 
   it("returns null when there is no owner/repo pair", () => {

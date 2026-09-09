@@ -308,18 +308,22 @@ export function canonicalRepositoryPath(remote: string): string | null {
     .filter((segment) => segment.length > 0);
   if (segments.length < 2) return null;
 
-  // The repository is the LAST segment and the owner the FIRST. A self-hosted
-  // GitLab serves repositories under nested subgroups, and anything between
-  // the two is part of the address rather than the identity: keeping it would
-  // make one repository read as several the moment a group were renamed.
-  const owner = segments[0]!.toLowerCase();
-  const repository = segments
-    .at(-1)!
-    .replace(/\.git$/i, "")
-    .toLowerCase();
-  if (!owner || !repository) return null;
+  // The WHOLE path is kept, not just the first and last segments. A
+  // self-hosted GitLab serves repositories under nested subgroups, and
+  // collapsing them looked attractive because a renamed group would then not
+  // change the identity. It trades the wrong way: dropping the middle makes
+  // `acme/team1/api` and `acme/team2/api` — two unrelated repositories that
+  // happen to share an owner and a leaf name — one identity, silently
+  // undercounting in exactly the nested-group case this parser exists to
+  // serve. A rename is the milder failure and the visible one: it starts a
+  // new id on a date someone can find, where a collision is never visible at
+  // all. It is also the same class of event as a GitHub transfer, which
+  // already changes the identity here and is accepted.
+  const cleaned = segments.map((segment) => segment.toLowerCase());
+  cleaned[cleaned.length - 1] = cleaned.at(-1)!.replace(/\.git$/i, "");
+  if (cleaned.some((segment) => segment.length === 0)) return null;
 
-  return `${host}/${owner}/${repository}`;
+  return `${host}/${cleaned.join("/")}`;
 }
 
 /**

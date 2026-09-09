@@ -163,7 +163,27 @@ export async function getTelemetry(cwd?: string): Promise<TelemetryClient> {
       orgSubject = decodeOrgId(token) ?? NIL_ORG_ID;
     }
 
-    const scaffoldVersion = await resolveScaffoldVersion(cwd);
+    // These three are independent of each other and each spawns a subprocess
+    // or reads the filesystem, so they run concurrently rather than in a
+    // chain. `getTelemetry` runs on essentially every invocation, and this was
+    // three sequential git/fs round trips in front of every command.
+    //
+    // Everything here runs only when telemetry is enabled: the opt-out returns
+    // the no-op client before `getTelemetry` reaches this point, so
+    // `DO_NOT_TRACK=1` costs no git spawn and no filesystem probe. The opt-out
+    // has to be an opt-out of the WORK, not only of the send.
+    const [scaffoldVersion, repository, dimensions] = await Promise.all([
+      resolveScaffoldVersion(cwd),
+      // Which GitHub owner is using the CLI, including anonymously — see the
+      // note below on why this is resolved from the git remote.
+      cwd ? resolveRepositoryContext(cwd) : undefined,
+      // The adoption dimensions: workspace and repository identity, execution
+      // environment, and language stack. Resolved ONCE, like `cliVersion` and
+      // `scaffoldVersion`, and attached to identify and to every capture. It
+      // handles an absent `cwd` itself, sentinelling only the three dimensions
+      // that depend on one.
+      resolveAdoptionDimensions(cwd),
+    ]);
 
     // Which GitHub owner is using the CLI, including anonymously — that is
     // the question this property exists to answer, so it is resolved from the
@@ -185,21 +205,7 @@ export async function getTelemetry(cwd?: string): Promise<TelemetryClient> {
     // never throws, so a host with no git installed lands here like any other
     // unresolvable case. No `cwd` is treated the same way, matching
     // `resolveScaffoldVersion` above; every real call site passes one.
-    const repository = cwd ? await resolveRepositoryContext(cwd) : undefined;
     const ghOwner = repository ? repository.ghOwner : UNKNOWN_GH_OWNER;
-
-    // The adoption dimensions: workspace and repository identity, execution
-    // environment, and language stack. Resolved ONCE here, like cliVersion and
-    // scaffoldVersion above, and attached to identify and to every capture.
-    //
-    // Everything below this point runs only when telemetry is enabled: the
-    // opt-out returns the no-op client before `getTelemetry` reaches here, so
-    // `DO_NOT_TRACK=1` costs no git spawn and no filesystem probe. The opt-out
-    // has to be an opt-out of the WORK, not only of the send.
-    //
-    // No `cwd` is treated as no workspace, matching `resolveScaffoldVersion`
-    // and `ghOwner` above; every real call site passes one.
-    const dimensions = await resolveAdoptionDimensions(cwd ?? process.cwd());
 
     posthog = new PostHog(POSTHOG_PROJECT_TOKEN, {
       host: POSTHOG_HOST,

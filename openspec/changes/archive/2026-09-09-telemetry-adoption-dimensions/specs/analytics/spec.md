@@ -13,7 +13,9 @@ workspace identifier rather than a directory identifier: an invocation from a
 subdirectory SHALL report the same `workspaceId` as one from the root.
 
 `repositoryId` SHALL be the SHA-256 hash, hex-encoded, of a canonical
-`{host}/{owner}/{repo}` string derived from the `origin` remote, lowercased,
+`{host}/{owner}/…/{repo}` string derived from the `origin` remote — the
+WHOLE remote path, so two repositories sharing an owner and a leaf name under
+different nested groups stay distinct — lowercased,
 with any `.git` suffix and trailing slash removed and any userinfo, port, query,
 and fragment discarded. It SHALL NOT be restricted to GitHub remotes: a GitLab,
 Bitbucket, or self-hosted repository SHALL receive a `repositoryId` on the same
@@ -54,7 +56,7 @@ value, never an exception.
 - **WHEN** a command runs in a repository whose `origin` is hosted somewhere
   other than GitHub
 - **THEN** `repositoryId` SHALL be a hash of that repository's canonical
-  `{host}/{owner}/{repo}`
+  `{host}/{owner}/…/{repo}`
 - **AND** `ghOwner` SHALL be `[unknown]`, since the GitHub-owner question has no
   answer for that remote
 
