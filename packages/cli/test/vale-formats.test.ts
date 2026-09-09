@@ -12,6 +12,7 @@ import {
   CONVERTER_DEPENDENT_EXTENSIONS,
   converterExclusionGlobs,
   converterFor,
+  escapeGlobLiteral,
   findConverterDependentFiles,
   findOversizedFiles,
   skippedFilesNotice,
@@ -164,6 +165,55 @@ describe("the exclusion glob", () => {
   });
 });
 
+describe("escaping a literal path for buildValeGlob's alternation (taskless/cli#323 review)", () => {
+  it("escapes every character the alternation would otherwise reinterpret", () => {
+    // Mirrors GLOB_METACHARACTERS in git-ignored.ts exactly: the same nine
+    // characters, escaped here instead of dropped, because dropping an
+    // oversized file from ITS OWN exclusion defeats the guard for exactly the
+    // pathological file it exists to protect.
+    expect(escapeGlobLiteral("big,comma.md")).toBe(String.raw`big\,comma.md`);
+    expect(escapeGlobLiteral("a{b}c.md")).toBe(String.raw`a\{b\}c.md`);
+    expect(escapeGlobLiteral("weird[1].md")).toBe(String.raw`weird\[1\].md`);
+    expect(escapeGlobLiteral("plain.md")).toBe("plain.md");
+  });
+
+  withVale("against the real binary", () => {
+    it("actually excludes a file whose name contains a comma", () => {
+      // Confirmed by hand while investigating this review: unescaped,
+      // `--glob=!{big,comma.md}` splits into two patterns — "big" and
+      // "comma.md" — neither of which matches the real file, so it is
+      // NOT excluded. This is the guard against that regressing.
+      const cwd = makeProject({
+        "a.md": "Just simply do it.\n",
+        "big,comma.md": "Just simply do it.\n",
+      });
+
+      const excluded = buildValeGlob([escapeGlobLiteral("big,comma.md")]);
+      const result = spawnSync(
+        binary as string,
+        [
+          "--config",
+          join(".taskless", ".vale.ini"),
+          "--output=JSON",
+          "--no-exit",
+          excluded as string,
+          "--",
+          ".",
+        ],
+        { cwd, encoding: "utf8" }
+      );
+
+      // MUTATION CHECK: pass `buildValeGlob(["big,comma.md"])` (unescaped)
+      // instead and this fails — Vale's own JSON output then contains
+      // "big,comma.md", because the comma split the alternation and
+      // neither half matched the real file. Verified locally.
+      expect(result.status).toBe(0);
+      expect(result.stdout).toContain("a.md");
+      expect(result.stdout).not.toContain("big,comma.md");
+    });
+  });
+});
+
 describe("the skipped-files notice", () => {
   it("is absent when nothing was skipped", () => {
     expect(skippedFilesNotice([])).toBeUndefined();
@@ -261,7 +311,9 @@ describe("finding oversized files, scoped to what Vale would actually lint", () 
   it("reports an oversized file matching a section pattern", async () => {
     const cwd = makeScratchProject({ "README.md": oversizedBody });
     expect(
-      await findOversizedFiles(cwd, [], VALE_MAX_FILE_BYTES, ["**/README.md"])
+      await findOversizedFiles(cwd, [], VALE_MAX_FILE_BYTES, true, [
+        "**/README.md",
+      ])
     ).toEqual([{ file: "README.md", size: oversizedBody.length }]);
   });
 
@@ -284,15 +336,45 @@ describe("finding oversized files, scoped to what Vale would actually lint", () 
     // appearing alongside `README.md`. Verified locally: reverting restores
     // the single-entry result below.
     expect(
-      await findOversizedFiles(cwd, [], VALE_MAX_FILE_BYTES, ["**/README.md"])
+      await findOversizedFiles(cwd, [], VALE_MAX_FILE_BYTES, true, [
+        "**/README.md",
+      ])
     ).toEqual([{ file: "README.md", size: oversizedBody.length }]);
   });
 
   it("still checks a matching file that is not oversized", async () => {
     const cwd = makeScratchProject({ "README.md": "Just simply do it.\n" });
     expect(
-      await findOversizedFiles(cwd, [], VALE_MAX_FILE_BYTES, ["**/README.md"])
+      await findOversizedFiles(cwd, [], VALE_MAX_FILE_BYTES, true, [
+        "**/README.md",
+      ])
     ).toEqual([]);
+  });
+
+  it("still reports an oversized file when the caller passes paths: ['.'] (taskless/cli#323 review)", async () => {
+    // `check .` — a near-default invocation — reaches `runVale` with
+    // `paths = ["."]`, not `[]`: `filterExistingPaths` (`commands/check.ts`)
+    // normalizes a bare `.` into that literal string rather than dropping
+    // back to an empty array. Every OTHER test in this describe block uses
+    // `paths: []`, which is why a `paths.length === 0` test for "whole
+    // project" silently passed them all while being wrong for this one.
+    //
+    // `wholeProject` is the 4th argument precisely so the caller — `runVale`,
+    // via `isWholeProjectWalk` — decides this, rather than this function
+    // re-deriving a broken answer from `paths` on its own.
+    const cwd = makeScratchProject({ "README.md": oversizedBody });
+
+    // MUTATION CHECK: change the call below to pass `paths.length === 0`
+    // (i.e. `false`, since `paths` here is `["."]`) instead of the literal
+    // `true`, simulating the recomputed-internally bug this test exists to
+    // catch, and the assertion fails — `README.md` is no longer reported,
+    // because every glob match (`"README.md"`) fails `relative === "." ||
+    // relative.startsWith("./")`. Verified locally; reverting restores green.
+    expect(
+      await findOversizedFiles(cwd, ["."], VALE_MAX_FILE_BYTES, true, [
+        "**/README.md",
+      ])
+    ).toEqual([{ file: "README.md", size: oversizedBody.length }]);
   });
 
   it("falls back to the exhaustive walk when no sections are given", async () => {
@@ -301,9 +383,9 @@ describe("finding oversized files, scoped to what Vale would actually lint", () 
     // `.vale.ini` directly. Unaffected by the scoping above: every file
     // under the target root is still a candidate, sections or not.
     const cwd = makeScratchProject({ "pnpm-lock.yaml": oversizedBody });
-    expect(await findOversizedFiles(cwd, [], VALE_MAX_FILE_BYTES)).toEqual([
-      { file: "pnpm-lock.yaml", size: oversizedBody.length },
-    ]);
+    expect(
+      await findOversizedFiles(cwd, [], VALE_MAX_FILE_BYTES, true)
+    ).toEqual([{ file: "pnpm-lock.yaml", size: oversizedBody.length }]);
   });
 });
 

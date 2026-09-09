@@ -117,13 +117,20 @@ const ROOT_ENTRIES = new Set(["./", "."]);
  * a literal path into a matcher.
  *
  * An entry carrying any of them is left out of the exclusion rather than
- * escaped. Vale's glob dialect is not ours to guess at, and the cost of leaving
- * it out is that one pathologically-named ignored path is still linted — which
- * is exactly the behavior that shipped before this module, so it is a gap
- * rather than a regression. {@link isGitIgnoredPath} does not share the
- * restriction, so such a path is still kept out of the skip notice.
+ * escaped **here**. Exported so `escapeGlobLiteral` in `vale/formats.ts` can
+ * share this exact character class rather than guessing its own — that
+ * function makes the opposite call (escape, not drop) for the oversized-file
+ * exclusion, where dropping would mean the pathological file that triggered
+ * the guard is the one file left unprotected. See its docblock for why the
+ * two literal-path exclusions in this codebase disagree on purpose.
+ *
+ * The cost of dropping here is that one pathologically-named ignored path is
+ * still linted — which is exactly the behavior that shipped before this
+ * module, so it is a gap rather than a regression. {@link isGitIgnoredPath}
+ * does not share the restriction, so such a path is still kept out of the
+ * skip notice.
  */
-const GLOB_METACHARACTERS = /[*?[\]{},\\!]/;
+export const GLOB_METACHARACTERS = /[*?[\]{},\\!]/;
 
 /**
  * The ignored entries, rendered as patterns for Vale's `--glob`.

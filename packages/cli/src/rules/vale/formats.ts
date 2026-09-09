@@ -5,6 +5,7 @@ import {
   VALE_CONVERTER_BY_EXTENSION,
   VALE_CONVERTER_DEPENDENT_EXTENSIONS,
 } from "../capabilities";
+import { GLOB_METACHARACTERS } from "../git-ignored";
 
 /**
  * Taskless's own directory, as a project-relative path.
@@ -150,14 +151,73 @@ export function converterExclusionGlobs(): string[] {
  * One expression because Vale accepts one `--glob` and the last one wins:
  * passing two flags silently drops the first, so the exclusions have to be one
  * negated alternation or they are not exclusions at all.
+ *
+ * **Every entry here must already be safe to splice into `!{…}` verbatim.**
+ * This function does not escape or validate — every caller is responsible for
+ * that before the pattern reaches here, because a real glob (`.taskless/**`,
+ * `**\/*.adoc`) and a literal discovered path (an oversized file's own name)
+ * need opposite treatment: a glob's metacharacters are meant, a literal path's
+ * are not. See {@link escapeGlobLiteral} for the literal-path side, and
+ * `gitIgnoredExclusionGlobs` in `git-ignored.ts` for the sibling case that
+ * drops a dangerous entry instead of escaping it.
  */
 export function buildValeGlob(patterns: string[]): string | undefined {
   if (patterns.length === 0) return undefined;
   return `--glob=!{${patterns.join(",")}}`;
 }
 
+/**
+ * Escape a literal path so it means only itself once spliced into
+ * {@link buildValeGlob}'s `!{…}` alternation.
+ *
+ * `gitIgnoredExclusionGlobs` (`git-ignored.ts`) faces the identical problem —
+ * a discovered path with a comma or a glob metacharacter meaning something
+ * other than itself in the alternation — and answers it by dropping the entry
+ * instead of escaping it. This function makes the opposite call, and the
+ * difference is not a style preference: dropping a git-ignored entry only
+ * costs the exclusion of a path Vale would otherwise walk past anyway (noisy
+ * findings inside a vendored tree, nothing more), while dropping an oversized
+ * file from ITS exclusion means the pathologically large file that triggered
+ * the guard is the one file left unprotected — undoing the entire point of
+ * `findOversizedFiles`. A false-positive skip is the wrong failure mode for
+ * the same reason a false-positive notice was in the sibling case: the risk
+ * this guard exists to prevent is concentrated in exactly the files this
+ * would refuse to escape.
+ *
+ * Verified against the real binary, not assumed: `--glob=!{big\,comma.md}`
+ * excludes a file literally named `big,comma.md`, while the unescaped form
+ * (`!{big,comma.md}`) does not — it splits into two patterns, `big` and
+ * `comma.md`, neither of which matches the real file. A backslash is Vale's
+ * own escape character in this position, the same dialect
+ * `GLOB_METACHARACTERS` was already written against.
+ */
+export function escapeGlobLiteral(path: string): string {
+  return path.replaceAll(new RegExp(GLOB_METACHARACTERS, "g"), String.raw`\$&`);
+}
+
 /** How many skipped paths a notice names before it summarizes the rest. */
 const NOTICE_SAMPLE_LIMIT = 5;
+
+/**
+ * Render a bounded, comma-joined list for a notice: every label up to
+ * {@link NOTICE_SAMPLE_LIMIT}, then `(and N more)` for the rest.
+ *
+ * Shared by {@link skippedFilesNotice} and {@link oversizedFilesNotice},
+ * which otherwise had the identical four lines twice — same limit, same
+ * truncation shape, same reason (a notice naming hundreds of files is not
+ * more readable than one naming five and a count). Unlike the two
+ * declined-to-merge cases elsewhere in this module, this is genuinely one
+ * piece of formatting knowledge, so a caller mapping its own items to labels
+ * first (`oversizedFilesNotice` maps `OversizedFile` to `.file`) is the only
+ * difference between the two call sites.
+ */
+function summarizeList(labels: string[]): string {
+  const sample = labels.slice(0, NOTICE_SAMPLE_LIMIT);
+  const remainder = labels.length - sample.length;
+  return remainder > 0
+    ? `${sample.join(", ")} (and ${String(remainder)} more)`
+    : sample.join(", ");
+}
 
 /** Directories never worth walking to build a notice. */
 const UNWALKED_DIRECTORIES = new Set([
@@ -314,14 +374,38 @@ export interface OversizedFile {
  * unreadable subtree, a platform where `glob` rejects the pattern — none of
  * them can be allowed to suppress the exclusion that already ran. The failure
  * mode here is "no notice, never no fix".
+ *
+ * **Known dialect gap, not introduced here: Node's `glob` does not descend
+ * into dot-directories, Vale's own walker does.** Measured against this
+ * repository with a rule forced to match `**\/README.md` everywhere: the real
+ * binary visits 22 files, including `.taskless/rules/vale/*\/.tests/*\/README.md`
+ * and other paths under a leading dot; this module's `glob()` call finds only
+ * the 10 that sit outside every dot-directory. For {@link
+ * findConverterDependentFiles} that gap is one-directional and safe — it
+ * costs the *notice* accuracy, never the exclusion, because that exclusion
+ * rides on a static extension pattern handed to Vale's own `--glob`, which
+ * traverses dot-directories fine. Here it is not fully safe: the discovered
+ * path IS the exclusion, so an oversized file living inside a dot-directory
+ * this scan cannot see is not excluded, and Vale may still spend its
+ * quadratic cost linting it if some section reaches that directory. This
+ * repository has no live exposure — the one dot-directory any section here
+ * names, `.taskless/`, is separately and unconditionally excluded before
+ * Vale ever runs — but a project with section-matched content under another
+ * dot-directory (`.github/`, a dotfile-heavy docs tree) would not be
+ * protected by this scan for a file that lives there. Left as a documented
+ * gap rather than fixed here: closing it means replacing `glob()` with a
+ * custom walker that treats dot-directories differently from
+ * `UNWALKED_DIRECTORIES`, which is a larger change than this pass, and
+ * `VALE_TIMEOUT_MS` remains the backstop if it is ever hit.
  */
 export async function findOversizedFiles(
   cwd: string,
   paths: string[],
   maxBytes: number,
+  wholeProject: boolean,
   sectionGlobs?: string[]
 ): Promise<OversizedFile[]> {
-  const roots = paths.length === 0 ? ["."] : paths;
+  const roots = wholeProject ? ["."] : paths;
   const found = new Map<string, OversizedFile>();
 
   const checkCandidate = async (relative: string): Promise<void> => {
@@ -358,46 +442,66 @@ export async function findOversizedFiles(
         // the time this runs.
       }
     }
-    return [...found.values()].toSorted((a, b) => a.file.localeCompare(b.file));
-  }
-
-  // Section patterns are root-relative, exactly as Vale reads them — never
-  // prefixed per target root, the way the extension-based fallback above is.
-  // A whole-project run (`roots === ["."]`) needs no further narrowing: every
-  // match is already in scope. An explicit target (`check src/` or
-  // `check src/doc.md`) narrows the matches down to that subtree afterward
-  // instead, because a section like `CLAUDE.md` or `**/README.md` has no
-  // meaningful "under src/" form to prefix onto — Vale itself evaluates every
-  // section against the whole project and only its own target list decides
-  // what it actually visits, so intersecting after the glob mirrors that
-  // rather than guessing at one. This is also what makes a named file's
-  // in-scope test free: it needs no separate membership check, because a
-  // pattern like `**/README.md` already matches a top-level `README.md`
-  // found this way, whether or not the caller named it explicitly.
-  const wholeProject = paths.length === 0;
-  for (const pattern of sectionGlobs) {
-    try {
-      for await (const match of glob(pattern, {
-        cwd,
-        exclude: isUnwalkedEntry,
-      })) {
-        const relative = String(match);
-        if (
-          !wholeProject &&
-          !roots.some(
-            (root) => relative === root || relative.startsWith(`${root}/`)
-          )
-        ) {
-          continue;
+  } else {
+    // Section patterns are root-relative, exactly as Vale reads them — never
+    // prefixed per target root, the way the extension-based fallback above
+    // is. A whole-project run needs no further narrowing: every match is
+    // already in scope. An explicit target (`check src/` or `check
+    // src/doc.md`) narrows the matches down to that subtree afterward
+    // instead, because a section like `CLAUDE.md` or `**/README.md` has no
+    // meaningful "under src/" form to prefix onto — Vale itself evaluates
+    // every section against the whole project and only its own target list
+    // decides what it actually visits, so intersecting after the glob
+    // mirrors that rather than guessing at one. This is also what makes a
+    // named file's in-scope test free: it needs no separate membership
+    // check, because a pattern like `**/README.md` already matches a
+    // top-level `README.md` found this way, whether or not the caller named
+    // it explicitly.
+    //
+    // `wholeProject` is a PARAMETER, not `paths.length === 0` computed here —
+    // that test is wrong for `check .`. `filterExistingPaths` (`commands/
+    // check.ts`) normalizes a bare `.` into `paths = ["."]`, length 1, so a
+    // length test reads it as an explicit target, `roots` becomes `["."]`,
+    // and every match (`README.md`) fails `relative === "." ||
+    // relative.startsWith("./")` — every candidate silently dropped, and the
+    // whole guard goes dark on a near-default invocation. `isWholeProjectWalk`
+    // (`walk-scope.ts`) exists precisely for this and is what callers must
+    // resolve `paths` through before reaching here; `runVale` already
+    // computes it for its own `targets`/`.taskless/**` exclusion and passes
+    // the same value in, rather than this function recomputing a second,
+    // broken answer.
+    for (const pattern of sectionGlobs) {
+      try {
+        for await (const match of glob(pattern, {
+          cwd,
+          exclude: isUnwalkedEntry,
+        })) {
+          const relative = String(match);
+          if (
+            !wholeProject &&
+            !roots.some(
+              (root) => relative === root || relative.startsWith(`${root}/`)
+            )
+          ) {
+            continue;
+          }
+          await checkCandidate(relative);
         }
-        await checkCandidate(relative);
+      } catch {
+        // Same reasoning as the fallback walk: a malformed pattern or an
+        // unreadable subtree means "no notice, never no fix".
       }
-    } catch {
-      // Same reasoning as the fallback walk: a malformed pattern or an
-      // unreadable subtree means "no notice, never no fix".
     }
   }
 
+  // One sorted return for both branches — declined to unify further with
+  // `findConverterDependentFiles`'s `[...found].toSorted()` (taskless/cli#323
+  // review): that one sorts a `Set<string>` with the default string
+  // comparator, this one sorts a `Map`'s values by a field via
+  // `localeCompare`. The resemblance is that both produce a stable,
+  // alphabetical order for a notice — not a shared invariant the two could
+  // drift apart on — so a shared helper would exist only to hide two
+  // different container types behind one name.
   return [...found.values()].toSorted((a, b) => a.file.localeCompare(b.file));
 }
 
@@ -427,12 +531,7 @@ export function skippedFilesNotice(files: string[]): string | undefined {
     ),
   ].toSorted();
 
-  const sample = files.slice(0, NOTICE_SAMPLE_LIMIT);
-  const remainder = files.length - sample.length;
-  const listed =
-    remainder > 0
-      ? `${sample.join(", ")} (and ${String(remainder)} more)`
-      : sample.join(", ");
+  const listed = summarizeList(files);
 
   return (
     `Vale did not check ${String(files.length)} file(s): ${listed}. These ` +
@@ -490,13 +589,7 @@ export function oversizedFilesNotice(
 ): string | undefined {
   if (files.length === 0) return undefined;
 
-  const sample = files.slice(0, NOTICE_SAMPLE_LIMIT);
-  const remainder = files.length - sample.length;
-  const names = sample.map((entry) => entry.file);
-  const listed =
-    remainder > 0
-      ? `${names.join(", ")} (and ${String(remainder)} more)`
-      : names.join(", ");
+  const listed = summarizeList(files.map((entry) => entry.file));
 
   return (
     `Vale did not check ${String(files.length)} file(s) over ${String(maxBytes)} ` +

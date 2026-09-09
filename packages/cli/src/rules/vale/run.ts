@@ -17,6 +17,7 @@ import { findValeBinary, valeUnavailableMessage } from "./binary";
 import {
   buildValeGlob,
   converterExclusionGlobs,
+  escapeGlobLiteral,
   findConverterDependentFiles,
   findOversizedFiles,
   oversizedFilesNotice,
@@ -540,6 +541,18 @@ export interface ValeRunOptions {
    * this option existed.
    */
   sectionGlobs?: string[];
+  /**
+   * Overrides {@link VALE_MAX_FILE_BYTES} for this run's oversized-file guard.
+   *
+   * Exists as a seam for tests, not as a project-level setting — there is no
+   * CLI flag or config surface for this, deliberately: a per-project size
+   * limit is a real, separately-discussed feature this option is NOT meant to
+   * ship early. Its one real use today is the timeout test in
+   * `vale-run.test.ts`, which needs a fixture large enough to leave real
+   * headroom over its budget without that fixture being excluded by the
+   * production 128KB limit before Vale ever sees it.
+   */
+  maxFileBytes?: number;
 }
 
 /**
@@ -638,13 +651,19 @@ export async function runVale(
   // `worktrees/` is not a file this run declined to convert, it is a file this
   // run was never going to look at, and naming it would send the reader to
   // investigate a directory the fix above deliberately excluded.
+  const maxFileBytes = options.maxFileBytes ?? VALE_MAX_FILE_BYTES;
   const [ignoredEntries, converterDependent, oversized] = await Promise.all([
     wholeProject ? listGitIgnoredEntries(options.cwd) : [],
     findConverterDependentFiles(options.cwd, paths),
+    // `wholeProject`, computed above via `isWholeProjectWalk`, is passed
+    // through rather than recomputed from `paths.length === 0` inside
+    // `findOversizedFiles` — see that function's docblock for the `check .`
+    // failure a recomputed, length-based test produced.
     findOversizedFiles(
       options.cwd,
       paths,
-      VALE_MAX_FILE_BYTES,
+      maxFileBytes,
+      wholeProject,
       options.sectionGlobs
     ),
   ]);
@@ -666,7 +685,13 @@ export async function runVale(
         ]
       : []),
     ...converterExclusionGlobs(),
-    ...oversizedInScope.map((entry) => entry.file),
+    // Escaped: unlike `.taskless/**` and the converter globs above, a
+    // discovered file's name is a LITERAL path, not a pattern we wrote, and a
+    // comma or brace in it would otherwise split or reinterpret this
+    // alternation (taskless/cli#323 review). See `escapeGlobLiteral`'s
+    // docblock in `formats.ts` for why this exclusion escapes rather than
+    // drops such a name, unlike `gitIgnoredExclusionGlobs`.
+    ...oversizedInScope.map((entry) => escapeGlobLiteral(entry.file)),
   ];
 
   // Both notices describe files this run declined to check, for different
@@ -679,7 +704,7 @@ export async function runVale(
         (file) => !isGitIgnoredPath(file, ignoredEntries)
       )
     ),
-    oversizedFilesNotice(oversizedInScope, VALE_MAX_FILE_BYTES),
+    oversizedFilesNotice(oversizedInScope, maxFileBytes),
   ].filter((notice) => notice !== undefined);
   const skipped = notices.length === 0 ? undefined : notices.join("\n");
 
@@ -704,11 +729,18 @@ export async function runVale(
   // there are finitely many files to exclude. Re-reporting the same path
   // twice in a row is the only way this could spin, and that path is refused
   // rather than retried (see the `excludedTargets.has` check below).
+  // Kept as raw, unescaped paths — `excludedTargets.has(candidate)` below
+  // compares against `targetFileParseError`'s own raw output, so escaping on
+  // the way in would make every second retry look like a new candidate.
+  // Escaped only where it actually reaches a glob, in `buildValeGlob` below.
   const excludedTargets = new Set<string>();
   const excludedFindings: CheckResult[] = [];
 
   for (;;) {
-    const globArgument = buildValeGlob([...exclude, ...excludedTargets]);
+    const globArgument = buildValeGlob([
+      ...exclude,
+      ...[...excludedTargets].map((target) => escapeGlobLiteral(target)),
+    ]);
     const globFlags = globArgument === undefined ? [] : [globArgument];
 
     // `--` separates flags from positional paths, so a path beginning with
