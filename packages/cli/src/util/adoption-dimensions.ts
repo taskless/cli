@@ -204,17 +204,49 @@ export interface AdoptionDimensions {
  * Never rejects: each dimension has a defined value for every failure of
  * resolution, so a capture never has to choose between omitting a property and
  * failing. Telemetry is not a precondition for any command.
+ *
+ * With no `cwd`, only the three dimensions that DEPEND on one fall back to
+ * their sentinels, matching how `resolveScaffoldVersion` and `ghOwner` treat
+ * the same case. `envOS`, `ci` and `ciProvider` are properties of the process
+ * rather than of a directory, so they stay real — sentinelling them would
+ * discard a known answer to look consistent.
+ *
+ * The earlier version defaulted to `process.cwd()` here, which contradicted
+ * the comment at the call site claiming it behaved like its neighbours: it
+ * resolved live git state instead. Unreachable today, since every call site
+ * passes a `cwd`, and a trap for the next one that does not.
  */
 export async function resolveAdoptionDimensions(
-  cwd: string
+  cwd: string | undefined
 ): Promise<AdoptionDimensions> {
-  const workspaceRoot = await resolveWorkspaceRoot(cwd);
-  return {
-    workspaceId: hashIdentity(workspaceRoot),
-    repositoryId: await resolveRepositoryId(cwd),
+  const environment = {
     envOS: process.platform,
     ci: isContinuousIntegration(),
     ciProvider: resolveCiProvider(),
+  };
+
+  if (!cwd) {
+    return {
+      workspaceId: UNKNOWN_DIMENSION,
+      repositoryId: UNKNOWN_DIMENSION,
+      languageStack: [],
+      ...environment,
+    };
+  }
+
+  // Independent lookups, so they run concurrently: each spawns its own git
+  // process and neither reads the other's answer. `languageStack` is the
+  // exception and stays sequential — it probes the workspace root, so it
+  // cannot start until that root is known.
+  const [workspaceRoot, repositoryId] = await Promise.all([
+    resolveWorkspaceRoot(cwd),
+    resolveRepositoryId(cwd),
+  ]);
+
+  return {
+    workspaceId: hashIdentity(workspaceRoot),
+    repositoryId,
     languageStack: resolveLanguageStack(workspaceRoot),
+    ...environment,
   };
 }
