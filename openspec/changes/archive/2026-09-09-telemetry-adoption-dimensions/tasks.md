@@ -46,10 +46,10 @@ no stack.
 - [x] 6.2 Amend the standard-properties requirement to list the six dimensions
 - [x] 6.3 Amend the taxonomy requirement's `cli_check_completed` bullet to include `ruleCount`
 - [x] 6.4 Carry every existing scenario into both MODIFIED deltas — 4 in standard-properties, 5 in the taxonomy requirement — and keep both TITLES byte-identical, including the escaped underscore in `CLI events use cli\_ prefix`. A delta replaces a requirement rather than patching it, and a renamed title applies nothing at all
-- [ ] 6.5 Verify by archiving on a scratch commit and grepping the standing spec for every prior scenario, then resetting to the recorded SHA
+- [x] 6.5 Verify by archiving on a scratch commit and grepping the standing spec for every prior scenario, then resetting to the recorded SHA
 
 ## 7. Close out
 
 - [x] 7.1 Run `pnpm typecheck`, `pnpm lint`, and `pnpm test`
 - [x] 7.2 Add a changeset. Pre-1.0, added telemetry surface is a `patch`: no consumer must react to it
-- [ ] 7.3 Archive the change
+- [x] 7.3 Archive the change
