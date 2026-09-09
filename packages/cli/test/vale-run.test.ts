@@ -563,6 +563,39 @@ withVale("runVale against the real binary", () => {
       expect(outcome.notice).toContain("huge.md");
       expect(outcome.notice).not.toContain("huge.yaml");
     });
+
+    it("still reports the guard on `check .`, not only on a bare `check` (taskless/cli#323 review)", async () => {
+      // `check .` is a near-default invocation, and it does NOT reach here
+      // the way a bare `check` does: `filterExistingPaths`
+      // (`commands/check.ts`) normalizes a bare `.` positional into the
+      // literal `paths = ["."]`, never back to `[]`. Every other test in this
+      // file uses `paths: []` for its whole-project cases, which is exactly
+      // why this was invisible until someone actually ran `check . --json`
+      // against a real project and compared it to a bare `check --json`.
+      const cwd = makeProject(
+        `${header}\n[**/README.md]\nno-simply.no-simply = YES\n`,
+        { "no-simply": existenceRule("simply", "Avoid 'simply'") },
+        { "README.md": oversizedBody }
+      );
+
+      // MUTATION CHECK: this is an end-to-end restatement of the
+      // `findOversizedFiles` unit test above it in `vale-formats.test.ts`
+      // ("still reports an oversized file when the caller passes paths:
+      // ['.']"). Reintroducing `paths.length === 0` inside that function (in
+      // place of the `wholeProject` parameter `runVale` threads through)
+      // fails this test too: `outcome.notice` comes back `undefined` because
+      // every glob match fails the root-membership check. Verified locally.
+      const outcome = await runVale({
+        cwd,
+        paths: ["."],
+        sectionGlobs: ["**/README.md"],
+      });
+
+      expect(outcome.status).toBe("ok");
+      if (outcome.status !== "ok") return;
+      expect(outcome.results).toEqual([]);
+      expect(outcome.notice).toContain("README.md");
+    });
   });
 });
 
@@ -602,28 +635,49 @@ withVale("ValeRunOutcome.blocking against the real binary", () => {
     // "timeout".
     //
     // The race is removed by making the work outlast the budget by a margin
-    // nothing plausible closes. Vale is QUADRATIC in the size of a single
-    // file, so a document well under a second's worth of Vale time is still
-    // many multiples of a 100ms budget.
+    // nothing plausible closes — and the metric that matters is the ABSOLUTE
+    // margin (duration minus budget), not a ratio, because what has to happen
+    // is the child process finishing before a delayed timer callback runs.
+    // A ratio looks worse as the budget shrinks even when the real margin is
+    // enormous, which is exactly what a review round measured wrong here
+    // (taskless/cli#323): a "35x to 4.5x" ratio comparison on a version of
+    // this test that had shrunk its fixture to fit under `VALE_MAX_FILE_BYTES`
+    // (taskless/cli#321) read as a regression, but the ratio was the wrong
+    // number:
     //
-    // The fixture has to stay UNDER `VALE_MAX_FILE_BYTES` (taskless/cli#321):
-    // a document at or above that limit is excluded before Vale ever sees it,
-    // which would report `status: "ok"` with a notice instead of exercising
-    // the timeout this test is actually about. 6,300 repeats of a 19-byte
-    // sentence lands at ~117KB (119,700 bytes), comfortably below the 128KB
-    // limit — measured at ~450ms against the real binary, a ~4.5x margin over
-    // the 100ms budget used here. That margin is smaller than this test used
-    // before #321 shrank how large a fixture it may use, but it is measured,
-    // not assumed, and the run is killed at 100ms either way, so the test
-    // costs about that rather than 450ms.
+    // | version                          | duration | budget | headroom |
+    // | -------------------------------- | -------- | ------ | -------- |
+    // | original, which actually flaked  | 46ms     | 1ms    | 45ms     |
+    // | the 320KB fixture in e1ed936     | 3300ms   | 100ms  | 3200ms   |
+    // | the 128KB-capped version (#323)  | ~530ms   | 100ms  | 430ms    |
+    //
+    // The 128KB-capped version was still ~10x the margin that actually
+    // flaked — not a regression toward the failure mode — but it was a real
+    // ~7x reduction from what e1ed936 shipped, worth restoring rather than
+    // accepting.
+    //
+    // `VALE_MAX_FILE_BYTES` capped how large a fixture this test could use
+    // once it started sharing `runVale`'s production size guard (taskless/
+    // cli#321): a document at or above that limit is excluded before Vale
+    // ever sees it, reporting `status: "ok"` with a notice instead of
+    // exercising the timeout this test is about. `maxFileBytes` (added for
+    // exactly this) raises the guard's limit for THIS CALL ONLY — it is not a
+    // CLI flag or a config surface, just a seam for a test that needs its
+    // fixture back — so the original 320KB fixture and its ~3200ms headroom
+    // are restored without touching the production default.
     const cwd = makeProject(
       `${header}\n[*.md]\nno-simply.no-simply = YES\n`,
       { "no-simply": existenceRule("simply", "Avoid 'simply'") },
-      { "doc.md": "Just simply do it. ".repeat(6_300) }
+      { "doc.md": `${"Just simply do it. ".repeat(17_000)}\n` }
     );
 
     expect(
-      await runVale({ cwd, paths: ["doc.md"], timeoutMs: 100 })
+      await runVale({
+        cwd,
+        paths: ["doc.md"],
+        timeoutMs: 100,
+        maxFileBytes: Number.POSITIVE_INFINITY,
+      })
     ).toMatchObject({ status: "timeout", blocking: true });
   });
 
