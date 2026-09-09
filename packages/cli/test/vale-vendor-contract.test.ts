@@ -955,3 +955,53 @@ withVale("check types", () => {
     expect(enumerated).toContain("metric");
   });
 });
+
+/**
+ * Whether a `[section]` header's OWN matching shares the `--glob` CLI flag's
+ * basename-at-any-depth behavior for a slash-free pattern.
+ *
+ * Raised in review of taskless/cli#323: `findOversizedFiles` (`vale/
+ * formats.ts`) globs `AssembledValeConfig.sections` — the literal `[...]`
+ * header strings a rule's `.vale.ini` declares, e.g. `[CLAUDE.md]` — through
+ * node's `fs.promises.glob`. `converterExclusionGlobs`'s docblock, pinned
+ * elsewhere in this file, establishes that Vale's `--glob` CLI flag matches a
+ * slash-free pattern against a file's basename AT ANY DEPTH. If `[section]`
+ * matching shared that behavior, a bare pattern like `[CLAUDE.md]` would scope
+ * a rule to every `CLAUDE.md` in the tree, while node's `glob("CLAUDE.md")`
+ * matches only the one at the project root — a real dialect mismatch that
+ * would let an oversized, section-matched, deeply nested file escape this
+ * scan silently.
+ *
+ * It does not share that behavior — measured here. `[section]` matching, for
+ * a slash-free pattern, is anchored at the project root, exactly like node's
+ * `glob()` already treats it. `findOversizedFiles`'s use of node's `glob`
+ * against these section strings is therefore not a dialect mismatch for THIS
+ * shape of pattern; it agrees with Vale by coincidence of a fact this test now
+ * pins rather than by design.
+ *
+ * If Vale ever changes this — unifying `[section]` matching with `--glob`'s
+ * basename-recursive semantics — this test fails, and `findOversizedFiles`'s
+ * section-globbing needs the same depth-matching adjustment `converterFor`'s
+ * callers already carry for the CLI flag.
+ */
+withVale("[section] header matching vs. the --glob CLI flag", () => {
+  it("does NOT match a slash-free pattern's basename at every depth, unlike --glob", () => {
+    const cwd = project(
+      `${header}\n[CLAUDE.md]\nrules.no-simply = YES\n`,
+      { "no-simply": existence("simply") },
+      { "CLAUDE.md": "Just simply do it.\n" }
+    );
+    // `project`'s `documents` writer does not create parent directories, so
+    // the nested fixture is added afterward.
+    mkdirSync(join(cwd, "sub"), { recursive: true });
+    writeFileSync(join(cwd, "sub", "CLAUDE.md"), "Just simply do it.\n");
+    const result = runRaw(cwd, ["."], ["--no-exit"]);
+    const stdout = JSON.parse(result.stdout) as Record<string, unknown>;
+    // The root file is in scope...
+    expect(Object.keys(stdout)).toContain("CLAUDE.md");
+    // ...but the nested one, at a different depth, is not — confirming
+    // `[section]` matching does not recurse a bare pattern the way `--glob`
+    // does. If this ever changes, `sub/CLAUDE.md` starts appearing here.
+    expect(Object.keys(stdout)).not.toContain("sub/CLAUDE.md");
+  });
+});
