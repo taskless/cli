@@ -259,17 +259,29 @@ withVale("runVale against the real binary", () => {
 
   it("terminates and reports a timeout rather than hanging", async () => {
     // THE BUDGET AND THE INPUT ARE BOTH LOAD-BEARING. This asserted the winner
-    // of a race until taskless/cli#262 work looked at it: a 1ms budget against
-    // a one-line document, on the stated grounds that "1ms cannot survive
-    // process startup". That is not something the test controls. Vale runs in
-    // its OWN process and does not care whether our event loop is free, so
-    // under load the timer's callback is delayed while the child keeps going,
-    // and the run completes cleanly where the test demanded a timeout.
+    // of a race until taskless/cli#327: a 1ms budget against a one-line
+    // document, on the stated grounds that "1ms cannot survive process
+    // startup". That is not something the test controls. Vale runs in its OWN
+    // process and does not care whether our event loop is free, so under load
+    // the timer's callback is delayed while the child keeps going, and the run
+    // completes cleanly where the test demanded a timeout.
+    //
+    // NO ISSUE EVER FLAGGED THIS TEST. It was found while investigating
+    // taskless/cli#262, which reports a different flake entirely — two
+    // SUBPROCESS-SPAWNING tests in `error-envelope.test.ts` and
+    // `verify-test-commands.test.ts` — and does not name this one. #262 is
+    // where the search started, not what it found, and it remains open.
     //
     // Its sibling in `ValeRunOutcome.blocking` had the identical shape and was
-    // MEASURED failing that way — twice across 13 full-suite runs, reporting
-    // `status: "ok"` — before it was given a real margin. This test survived
-    // only because its window was narrower, not because it was safe.
+    // MEASURED failing that way, reporting `status: "ok"`, before it was given
+    // a real margin. This test survived only because its window was narrower,
+    // not because it was safe.
+    //
+    // TWO SEPARATE MEASUREMENT PASSES COUNTED THAT SIBLING, which is why the
+    // numbers here and in its own comment below differ and neither is wrong.
+    // The first, while #323 was open, saw it lose ONCE ACROSS FOUR concurrent
+    // full-suite runs. The second, counting a set of captured logs recovered
+    // later, saw TWICE ACROSS 13. Same test, same failure, different samples.
     //
     // The metric that matters is the ABSOLUTE margin (duration minus budget),
     // not a ratio: what has to happen is the child finishing before a delayed
