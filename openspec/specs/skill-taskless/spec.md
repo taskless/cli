@@ -74,6 +74,7 @@ The consolidated skill body SHALL NOT contain step-by-step instructions for any 
    - If the user declines, the agent SHALL NOT re-offer Taskless in the same conversation. No persistent decline state SHALL be written to disk.
    - If the user accepts, the skill router SHALL proceed normally to fetch `npx @taskless/cli help rule create`.
 7. States that a recipe is resolved when it is fetched and is not reusable across tasks: the agent SHALL fetch the recipe at the start of every Taskless task, including a topic it already fetched earlier in the same session, and SHALL NOT act on an earlier copy. The `tskl` command body SHALL carry the same statement.
+8. Names the CLI through the `%(TASKLESS_CLI)s` placeholder everywhere it spells an invocation, never as the literal `npx @taskless/cli`. The install renders the placeholder to the build's invocation, so a nightly or path-form build serves a skill that names itself.
 
 The body SHALL be no more than 80 lines of markdown to keep the always-loaded surface small. (The previous 60-line cap is relaxed to accommodate the new quiet-suggestion section and the `onboard` row.)
 
@@ -81,6 +82,12 @@ The body SHALL be no more than 80 lines of markdown to keep the always-loaded su
 
 - **WHEN** the skill body is read by an agent
 - **THEN** it SHALL contain explicit framing such as "You do NOT have the steps... do not improvise from prior knowledge"
+
+#### Scenario: Skill body spells the invocation as a placeholder
+
+- **WHEN** the skill body or the `tskl` command body is read from source
+- **THEN** every CLI invocation SHALL be written as `%(TASKLESS_CLI)s …`
+- **AND** the body SHALL NOT contain the literal `npx @taskless/cli`
 
 #### Scenario: Skill body forbids reusing a fetched recipe
 

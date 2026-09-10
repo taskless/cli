@@ -6,6 +6,7 @@ import { stringify } from "yaml";
 import {
   applyCliInvocation,
   PROD_INVOCATION,
+  renderInvocationPlaceholder,
   withCliBuildNotice,
 } from "../util/invocation";
 import { parseFrontmatter } from "./frontmatter";
@@ -50,9 +51,10 @@ export function canonicalCommandPath(filename: string): string {
 /**
  * Write a skill's full content to the canonical store at
  * `.taskless/skills/<name>/SKILL.md`. The canonical store is the single source
- * of truth; content is emitted as-is for prod builds. For `dev`/`self` builds
- * the CLI invocation is rewritten and a build notice prepended (see
- * {@link applyCliInvocation} / {@link withCliBuildNotice}); prod is unchanged.
+ * of truth. The source spells the CLI as `%(TASKLESS_CLI)s`, rendered here to
+ * this build's invocation; for `dev`/`self`/nightly builds a build notice is
+ * also prepended (see {@link renderInvocationPlaceholder} /
+ * {@link withCliBuildNotice}).
  */
 export async function writeCanonicalSkill(
   cwd: string,
@@ -64,7 +66,7 @@ export async function writeCanonicalSkill(
   const path = join(directory, "SKILL.md");
   const changed = await writeIfChanged(
     path,
-    withCliBuildNotice(applyCliInvocation(content))
+    withCliBuildNotice(renderInvocationPlaceholder(content))
   );
   return { path, changed };
 }
@@ -96,7 +98,8 @@ async function writeIfChanged(path: string, content: string): Promise<boolean> {
  * Write a command's full content to the canonical store at
  * `.taskless/commands/tskl/<filename>`. Emitted as-is for prod builds; for
  * `dev`/`self` builds the CLI invocation is rewritten and a build notice
- * prepended (see {@link applyCliInvocation} / {@link withCliBuildNotice}).
+ * prepended (see {@link renderInvocationPlaceholder} /
+ * {@link withCliBuildNotice}).
  */
 export async function writeCanonicalCommand(
   cwd: string,
@@ -108,7 +111,7 @@ export async function writeCanonicalCommand(
   const path = join(directory, filename);
   const changed = await writeIfChanged(
     path,
-    withCliBuildNotice(applyCliInvocation(content))
+    withCliBuildNotice(renderInvocationPlaceholder(content))
   );
   return { path, changed };
 }
@@ -139,7 +142,8 @@ const PROD_RESTORE_COMMAND = `${PROD_INVOCATION} init`;
  * The command a reader runs to restore a canonical file that is not on disk.
  *
  * Written in the published `npx @taskless/cli` form and rewritten by
- * {@link applyCliInvocation}, exactly as canonical content is. A stub that
+ * {@link applyCliInvocation}. This is a one-line code string, so the literal
+ * rewrite that is too brittle for prose is exact here. A stub that
  * hardcoded the released package would tell someone running a `self` build to
  * fetch a different binary than the one that wrote the stub, and would tell a
  * nightly user to install over their nightly.

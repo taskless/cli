@@ -35,6 +35,7 @@ splitting would separate a change from the test that pins it.
 - [x] 5.1 Add a short section to `skills/taskless/SKILL.md` stating a recipe is resolved at fetch time and each task fetches again, even for a topic already fetched in the session. Stay under the 80-line cap
 - [x] 5.2 Add the same statement to `commands/tskl/tskl.md`
 - [x] 5.3 Test through the installed documentation suite that both bodies contain the statement
+- [x] 5.4 Replace the literal `npx @taskless/cli` in both bodies with `%(TASKLESS_CLI)s`; add `renderInvocationPlaceholder` and use it for canonical writes in place of the prose search; test that the sources carry the token and not the literal, and that an install renders it to the build's invocation
 
 ## 6. Ship
 

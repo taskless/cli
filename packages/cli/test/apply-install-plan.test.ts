@@ -18,6 +18,7 @@ import {
   getEmbeddedCommands,
   getEmbeddedSkills,
 } from "../src/install/install";
+import { renderInvocationPlaceholder } from "../src/util/invocation";
 import { isShimStub, stubRecoveryInvocation } from "../src/install/canonical";
 import { parseFrontmatter } from "../src/install/frontmatter";
 import { readInstallState, writeInstallState } from "../src/install/state";
@@ -66,12 +67,15 @@ describe("applyInstallPlan", () => {
 
     const result = await applyInstallPlan(cwd, plan, { cliVersion: "0.7.0" });
 
-    // Canonical store holds verbatim content.
+    // Canonical store holds the source with `%(TASKLESS_CLI)s` rendered to
+    // this build's invocation, which is the only substitution it makes.
     const canonical = await readFile(
       join(cwd, ".taskless", "skills", "taskless", "SKILL.md"),
       "utf8"
     );
-    expect(canonical).toBe(tasklessSkill().content);
+    expect(canonical).toBe(
+      renderInvocationPlaceholder(tasklessSkill().content)
+    );
 
     // The .claude target holds a delegating stub, not the full content.
     const stub = await readFile(
