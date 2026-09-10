@@ -81,7 +81,7 @@ function wrap(text: string, columns: number): string[] {
  * including a downgrade and including a stable/nightly swap, since both leave
  * the same stale copy in memory.
  */
-function versionMoved(input: ReloadNoticeInput): boolean {
+export function versionMoved(input: ReloadNoticeInput): boolean {
   return (
     input.previousCliVersion !== undefined &&
     input.previousCliVersion !== input.cliVersion

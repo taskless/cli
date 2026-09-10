@@ -25,6 +25,10 @@ Otherwise, follow the same flow as the `taskless` skill:
    explicitly asked for anonymous mode).
 3. Follow the recipe step-by-step. The recipe is canonical for the
    currently-installed CLI version; do not improvise from prior knowledge.
+4. Fetch again next time. A recipe is resolved when it is fetched, from the
+   installed version, the auth state, and the project layout at that moment.
+   A copy fetched earlier in this session is not a substitute, even for the
+   same topic.
 
 ## Topics
 

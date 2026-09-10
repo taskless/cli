@@ -83,6 +83,14 @@ If the user's intent is ambiguous between two topics, run
 `npx @taskless/cli agent` (no args) to see the disambiguation table, or ask
 the user.
 
+## Fetch the recipe for every task
+
+A recipe is resolved when it is fetched: the CLI reads the installed version,
+the auth state, and the project layout at that moment. A recipe you fetched
+earlier in this session is not a substitute for fetching it again, even for
+the same topic. Start each Taskless task with `npx @taskless/cli agent <topic>`
+and follow the copy it returns.
+
 ## --anonymous
 
 Any rule/check command accepts `--anonymous` to skip the Taskless API and

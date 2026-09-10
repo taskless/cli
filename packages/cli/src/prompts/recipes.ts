@@ -328,9 +328,15 @@ const HEADER_PREFIX = "# Topic:";
 
 /**
  * Drop the leading header block from rendered recipe text: the `# Topic: …`
- * line itself plus the single blank line that separates it from the body.
- * Everything after that is returned untouched, so the body of a header-less
- * rendering is byte-identical to the default rendering's body.
+ * line, the fetch-time directive beneath it, and the single blank line that
+ * separates the block from the body. Everything after that is returned
+ * untouched, so the body of a header-less rendering is byte-identical to the
+ * default rendering's body.
+ *
+ * The block is "everything up to the first blank line" rather than a fixed
+ * line count, so the directive travels with the version line: a consumer
+ * that suppresses the header wants a cache-stable prompt to embed in its own,
+ * and an instruction to re-run a CLI is as wrong there as a version string.
  *
  * Deliberately anchored to the first line only. A `# Topic:` string later in
  * a recipe (inside a fenced example, say) is left alone, and a recipe that
@@ -338,13 +344,10 @@ const HEADER_PREFIX = "# Topic:";
  * first real line.
  */
 function stripHeader(content: string): string {
-  const firstBreak = content.indexOf("\n");
-  if (firstBreak === -1) {
-    return content.startsWith(HEADER_PREFIX) ? "" : content;
-  }
   if (!content.startsWith(HEADER_PREFIX)) return content;
-  const body = content.slice(firstBreak + 1);
-  return body.startsWith("\n") ? body.slice(1) : body;
+  const blockEnd = content.indexOf("\n\n");
+  if (blockEnd === -1) return "";
+  return content.slice(blockEnd + 2);
 }
 
 /**

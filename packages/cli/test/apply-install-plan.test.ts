@@ -108,7 +108,7 @@ describe("applyInstallPlan", () => {
     ).toBe(true);
   });
 
-  it("rewrites the canonical store but skips an unchanged reference stub", async () => {
+  it("reports neither an unchanged canonical file nor an unchanged reference stub", async () => {
     const plan = buildInstallPlan(
       [".claude"],
       [tasklessSkill()],
@@ -117,16 +117,28 @@ describe("applyInstallPlan", () => {
     await applyInstallPlan(cwd, plan, { cliVersion: "0.7.0" });
     const second = await applyInstallPlan(cwd, plan, { cliVersion: "0.7.0" });
 
-    // Canonical is always rewritten; the unchanged .claude stub is skipped.
+    // The canonical store used to be rewritten on every run and reported as
+    // such, so a no-op re-install read as an upgrade. Identical bytes are
+    // not a write, in either mode.
+    expect(second.writtenSkills).toHaveLength(0);
+    expect(second.writtenCommands).toHaveLength(0);
+    expect(second.removedSkills).toHaveLength(0);
+  });
+
+  it("reports the canonical file when its bytes changed", async () => {
+    const plan = buildInstallPlan([".claude"], [tasklessSkill()], []);
+    await applyInstallPlan(cwd, plan, { cliVersion: "0.7.0" });
+    await writeFile(
+      join(cwd, ".taskless", "skills", "taskless", "SKILL.md"),
+      "stale\n",
+      "utf8"
+    );
+
+    const second = await applyInstallPlan(cwd, plan, { cliVersion: "0.7.0" });
     expect(second.writtenSkills).toContainEqual({
       target: ".taskless",
       skill: "taskless",
     });
-    expect(second.writtenSkills).not.toContainEqual({
-      target: ".claude",
-      skill: "taskless",
-    });
-    expect(second.removedSkills).toHaveLength(0);
   });
 
   it("does not clobber an existing reference stub on re-run", async () => {

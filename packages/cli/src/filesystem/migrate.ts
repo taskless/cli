@@ -426,11 +426,16 @@ export async function requireCurrentSchema(cwd: string): Promise<void> {
 
   const pending = await pendingMigration(cwd);
   if (pending === undefined) return;
+  // The same test `init` itself applies before choosing wizard or batch. An
+  // agent follows this message verbatim, and a bare `init` under a pipe would
+  // print the topic index and change nothing.
+  const initCommand =
+    process.stdout.isTTY === true ? "init" : "init --no-interactive";
   throw new CLIError(
     `This project's .taskless/ is at schema version ${String(pending.from)}, and this ` +
       `CLI expects ${String(pending.to)}. Migrating moves and deletes files, so it is ` +
       `not done as a side effect of a command that only reads.\n\n` +
-      `Run \`${buildInvocation()} init\` to migrate, then run this again.`,
+      `Run \`${buildInvocation()} ${initCommand}\` to migrate, then run this again.`,
     "SCAFFOLD_MIGRATION_REQUIRED"
   );
 }

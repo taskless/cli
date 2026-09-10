@@ -465,8 +465,12 @@ async function writeSkill(
   skill: EmbeddedSkill
 ): Promise<boolean> {
   if (target.mode === "canonical") {
-    await writeCanonicalSkill(cwd, skill.name, skill.content);
-    return true;
+    const { changed } = await writeCanonicalSkill(
+      cwd,
+      skill.name,
+      skill.content
+    );
+    return changed;
   }
 
   const path = join(skillDirectory(cwd, target.dir, skill.name), "SKILL.md");
@@ -496,8 +500,12 @@ async function writeCommand(
   command: EmbeddedCommand
 ): Promise<boolean> {
   if (target.mode === "canonical") {
-    await writeCanonicalCommand(cwd, command.filename, command.content);
-    return true;
+    const { changed } = await writeCanonicalCommand(
+      cwd,
+      command.filename,
+      command.content
+    );
+    return changed;
   }
 
   const path = commandFile(cwd, target.dir, command.filename);
