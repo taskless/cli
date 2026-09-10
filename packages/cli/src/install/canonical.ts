@@ -1,4 +1,4 @@
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
 import { stringify } from "yaml";
@@ -58,16 +58,38 @@ export async function writeCanonicalSkill(
   cwd: string,
   name: string,
   content: string
-): Promise<string> {
+): Promise<CanonicalWrite> {
   const directory = join(cwd, CANONICAL_DIR, "skills", name);
   await mkdir(directory, { recursive: true });
   const path = join(directory, "SKILL.md");
-  await writeFile(
+  const changed = await writeIfChanged(
     path,
-    withCliBuildNotice(applyCliInvocation(content)),
-    "utf8"
+    withCliBuildNotice(applyCliInvocation(content))
   );
-  return path;
+  return { path, changed };
+}
+
+/** Where a canonical file landed, and whether the write changed its bytes. */
+export interface CanonicalWrite {
+  path: string;
+  changed: boolean;
+}
+
+/**
+ * Write only when the bytes differ. The canonical store used to be rewritten
+ * on every install, which made every run report a write there and left an
+ * agent unable to tell a no-op re-install from an upgrade: the install
+ * summary said "wrote 1 skill canonical file(s)" either way, and the upgrade
+ * trailer would have told it to commit a file git saw no change in.
+ */
+async function writeIfChanged(path: string, content: string): Promise<boolean> {
+  try {
+    if ((await readFile(path, "utf8")) === content) return false;
+  } catch {
+    // Absent or unreadable: write it.
+  }
+  await writeFile(path, content, "utf8");
+  return true;
 }
 
 /**
@@ -80,16 +102,15 @@ export async function writeCanonicalCommand(
   cwd: string,
   filename: string,
   content: string
-): Promise<string> {
+): Promise<CanonicalWrite> {
   const directory = join(cwd, CANONICAL_DIR, "commands", "tskl");
   await mkdir(directory, { recursive: true });
   const path = join(directory, filename);
-  await writeFile(
+  const changed = await writeIfChanged(
     path,
-    withCliBuildNotice(applyCliInvocation(content)),
-    "utf8"
+    withCliBuildNotice(applyCliInvocation(content))
   );
-  return path;
+  return { path, changed };
 }
 
 /**

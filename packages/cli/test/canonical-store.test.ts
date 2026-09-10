@@ -44,11 +44,12 @@ describe("writeCanonicalSkill / writeCanonicalCommand", () => {
   });
 
   it("writes skill content to .taskless/skills verbatim", async () => {
-    const path = await writeCanonicalSkill(
+    const { path, changed } = await writeCanonicalSkill(
       temporaryDirectory,
       "taskless",
       skillSource
     );
+    expect(changed).toBe(true);
     expect(path).toBe(
       join(temporaryDirectory, ".taskless", "skills", "taskless", "SKILL.md")
     );
@@ -57,15 +58,35 @@ describe("writeCanonicalSkill / writeCanonicalCommand", () => {
 
   it("writes command content to .taskless/commands/tskl verbatim", async () => {
     const commandSource = "---\nname: Taskless\n---\n\nbody\n";
-    const path = await writeCanonicalCommand(
+    const { path, changed } = await writeCanonicalCommand(
       temporaryDirectory,
       "tskl.md",
       commandSource
     );
+    expect(changed).toBe(true);
     expect(path).toBe(
       join(temporaryDirectory, ".taskless", "commands", "tskl", "tskl.md")
     );
     expect(await readFile(path, "utf8")).toBe(commandSource);
+  });
+
+  it("reports no change when the bytes on disk already match", async () => {
+    // Every install used to rewrite the store, so every run looked like an
+    // upgrade to whoever read the summary. Identical bytes are not a write.
+    await writeCanonicalSkill(temporaryDirectory, "taskless", skillSource);
+    const second = await writeCanonicalSkill(
+      temporaryDirectory,
+      "taskless",
+      skillSource
+    );
+    expect(second.changed).toBe(false);
+
+    const third = await writeCanonicalSkill(
+      temporaryDirectory,
+      "taskless",
+      `${skillSource}\nmore\n`
+    );
+    expect(third.changed).toBe(true);
   });
 });
 

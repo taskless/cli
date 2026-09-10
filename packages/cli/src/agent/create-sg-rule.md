@@ -1,4 +1,5 @@
 # Topic: create-sg-rule     (CLI v%(CLI_VERSION)s / topic v5)
+Resolved by the CLI when you fetched it. Your next Taskless task, in this session or another, fetches it again with `%(TASKLESS_CLI)s agent <topic>`; do not reuse this copy.
 
 ## You are here
 This is `create-sg-rule`. It helps you write an ast-grep rule: a check

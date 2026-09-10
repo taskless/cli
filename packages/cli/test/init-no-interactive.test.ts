@@ -196,6 +196,89 @@ describe("taskless init --no-interactive", () => {
     expect(stdout).toMatch(/`taskless onboard`/);
   });
 
+  it("prints an upgrade trailer naming the changed directories, before the onboarding trailer", async () => {
+    // An agent that `check` sent here reads success and goes back to `check`.
+    // The trailer is what tells it the stubs it just rewrote belong in its
+    // commit. The onboarding trailer stays the final line: several scenarios
+    // pin it there, and an agent reads all of stdout anyway.
+    await mkdir(join(cwd, ".claude"), { recursive: true });
+    await installAtVersion(cwd, "0.0.1-previous");
+
+    const { stdout } = await execFileAsync("node", [
+      binPath,
+      "init",
+      "--no-interactive",
+      "-d",
+      cwd,
+    ]);
+
+    // Forcing a rewrite: the recorded version moved, so the canonical store
+    // and every stub are written again.
+    expect(stdout).toContain("belong in your next commit");
+    expect(stdout).toContain(".taskless/");
+    expect(stdout).toContain(".claude/");
+    expect(stdout).toContain("moved from 0.0.1-previous to");
+    expect(stdout).toMatch(/Run `.* update`/);
+
+    const lines = stdout.trimEnd().split("\n");
+    expect(lines.at(-1)).toMatch(/^Next:/);
+    expect(
+      lines.indexOf(lines.find((line) => line.includes("next commit"))!)
+    ).toBeLessThan(lines.length - 1);
+  });
+
+  it("omits the update pointer when the version did not move", async () => {
+    // A change without an upgrade is still something to commit, but there is
+    // no ledger to walk: `update` would report nothing.
+    await installAtVersion(cwd, "0.0.1-previous");
+    // Rewrite at the previous version so the next run sees no move but has
+    // to re-write the stubs it finds stale.
+    await execFileAsync("node", [
+      binPath,
+      "init",
+      "--no-interactive",
+      "-d",
+      cwd,
+    ]);
+    await mkdir(join(cwd, ".claude"), { recursive: true });
+
+    const { stdout } = await execFileAsync("node", [
+      binPath,
+      "init",
+      "--no-interactive",
+      "-d",
+      cwd,
+    ]);
+
+    expect(stdout).toContain("belong in your next commit");
+    expect(stdout).toContain(".claude/");
+    expect(stdout).not.toContain("moved from");
+    expect(stdout).not.toMatch(/Run `.* update`/);
+  });
+
+  it("prints no upgrade trailer when a re-install changed nothing", async () => {
+    // A no-op has nothing to commit and nothing to reconcile. A trailer that
+    // said so would teach an agent to skim it.
+    await execFileAsync("node", [
+      binPath,
+      "init",
+      "--no-interactive",
+      "-d",
+      cwd,
+    ]);
+
+    const { stdout } = await execFileAsync("node", [
+      binPath,
+      "init",
+      "--no-interactive",
+      "-d",
+      cwd,
+    ]);
+
+    expect(stdout).not.toContain("next commit");
+    expect(stdout).not.toContain("moved from");
+  });
+
   it("`taskless update` does NOT print the onboarding trailer", async () => {
     // Update is the same install plumbing but the trailer is scoped to init.
     await mkdir(join(cwd, ".claude"), { recursive: true });

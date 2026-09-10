@@ -149,6 +149,75 @@ describe("who migrates, and who refuses", () => {
     expect(stderr).not.toContain("Migrat");
   });
 
+  it("init --json carries the version, the per-target summary, and a changed flag", async () => {
+    // The facts the human trailer states, as fields. `changed` is derivable
+    // from the rest and included anyway: it is the one value an agent gates
+    // its commit step on.
+    await seedVersion3();
+    await mkdir(join(temporaryDirectory, ".claude"), { recursive: true });
+
+    const { stdout } = await runCli([
+      "init",
+      "--no-interactive",
+      "--json",
+      "-d",
+      temporaryDirectory,
+    ]);
+
+    const envelope = parseEnvelope(stdout) as {
+      cliVersion: { previous: string | null; installed: string };
+      targets: Array<{
+        dir: string;
+        mode: string;
+        writtenSkills: string[];
+        writtenCommands: string[];
+        removedSkills: string[];
+        removedCommands: string[];
+      }>;
+      changed: boolean;
+      migrated?: unknown;
+    };
+
+    // A seeded project has no recorded install, and "none" is a value.
+    expect(envelope.cliVersion.previous).toBeNull();
+    expect(envelope.cliVersion.installed).toMatch(/\d+\.\d+\.\d+/);
+
+    const byDirectory = new Map(envelope.targets.map((t) => [t.dir, t]));
+    expect(byDirectory.get(".taskless")?.mode).toBe("canonical");
+    expect(byDirectory.get(".taskless")?.writtenSkills).toContain("taskless");
+    expect(byDirectory.get(".claude")?.mode).toBe("reference");
+    expect(byDirectory.get(".claude")?.writtenCommands).toContain("tskl.md");
+
+    expect(envelope.migrated).toBeDefined();
+    expect(envelope.changed).toBe(true);
+  });
+
+  it("init --json reports changed:false, a recorded version, and empty lists on a no-op re-install", async () => {
+    await seedVersion3();
+    await runCli(["init", "--no-interactive", "-d", temporaryDirectory]);
+
+    const { stdout } = await runCli([
+      "init",
+      "--no-interactive",
+      "--json",
+      "-d",
+      temporaryDirectory,
+    ]);
+
+    const envelope = parseEnvelope(stdout) as {
+      cliVersion: { previous: string | null; installed: string };
+      targets: Array<{ writtenSkills: string[]; removedSkills: string[] }>;
+      changed: boolean;
+    };
+    expect(envelope.cliVersion.previous).toBe(envelope.cliVersion.installed);
+    expect(envelope.changed).toBe(false);
+    expect(envelope).not.toHaveProperty("migrated");
+    for (const target of envelope.targets) {
+      expect(target.writtenSkills).toEqual([]);
+      expect(target.removedSkills).toEqual([]);
+    }
+  });
+
   it("init --json omits the field when nothing migrated", async () => {
     // Absence is the signal, so a consumer never reads empty arrays to decide.
     await seedVersion3();

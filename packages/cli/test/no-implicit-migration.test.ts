@@ -211,6 +211,14 @@ describe("a reporting command never migrates", () => {
     }
   });
 
+  it("points a piped caller at init --no-interactive", async () => {
+    // Every run in this suite has a piped stdout, which is what an agent
+    // has. A bare `init` there prints the topic index and migrates nothing,
+    // so a refusal naming it would send the agent in a loop.
+    const { stderr } = await runCli(["check", "-d", directory]);
+    expect(stderr).toMatch(/Run `.* init --no-interactive` to migrate/);
+  });
+
   it("still explains the scaffold migration to a person", async () => {
     // Suppressed for machines, not removed. Without `--json` the summary is
     // the only thing telling someone their working tree just changed.

@@ -113,6 +113,28 @@ describe("this repository's own installed Taskless docs", () => {
     expect(onDisk).not.toContain("sg/rules/");
   });
 
+  it("tells an agent a recipe is per-task, in the skill and the command", async () => {
+    // A recipe is resolved at fetch time. Without this an agent that fetched
+    // `agent check` once reuses the text for every later task in the session,
+    // including after the upgrade that changed it. Both always-loaded surfaces
+    // carry it, since a tool may install one without the other.
+    const skill = await readFile(
+      resolve(repositoryRoot, "skills", "taskless", "SKILL.md"),
+      "utf8"
+    );
+    const command = await readFile(
+      resolve(repositoryRoot, "commands", "tskl", "tskl.md"),
+      "utf8"
+    );
+    for (const [name, body] of [
+      ["SKILL.md", skill],
+      ["tskl.md", command],
+    ] as const) {
+      expect(body, name).toContain("resolved when it is fetched");
+      expect(body, name).toContain("earlier in this session");
+    }
+  });
+
   it("keeps the skill's trigger text off the old layout too", async () => {
     // The skill description is what an agent reads before it opens anything, so
     // a stale directory name here sends it looking in a place that no longer

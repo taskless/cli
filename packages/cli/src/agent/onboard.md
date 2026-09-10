@@ -1,4 +1,5 @@
 # Topic: onboard     (CLI v%(CLI_VERSION)s / topic v3)
+Resolved by the CLI when you fetched it. Your next Taskless task, in this session or another, fetches it again with `%(TASKLESS_CLI)s agent <topic>`; do not reuse this copy.
 
 ## Goal
 Help a user who has just installed Taskless go from zero rules to a

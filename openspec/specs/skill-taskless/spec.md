@@ -73,6 +73,7 @@ The consolidated skill body SHALL NOT contain step-by-step instructions for any 
    - If the user declines or ignores the offer, the agent SHALL proceed with whatever it would have done without the skill.
    - If the user declines, the agent SHALL NOT re-offer Taskless in the same conversation. No persistent decline state SHALL be written to disk.
    - If the user accepts, the skill router SHALL proceed normally to fetch `npx @taskless/cli help rule create`.
+7. States that a recipe is resolved when it is fetched and is not reusable across tasks: the agent SHALL fetch the recipe at the start of every Taskless task, including a topic it already fetched earlier in the same session, and SHALL NOT act on an earlier copy. The `tskl` command body SHALL carry the same statement.
 
 The body SHALL be no more than 80 lines of markdown to keep the always-loaded surface small. (The previous 60-line cap is relaxed to accommodate the new quiet-suggestion section and the `onboard` row.)
 
@@ -80,6 +81,11 @@ The body SHALL be no more than 80 lines of markdown to keep the always-loaded su
 
 - **WHEN** the skill body is read by an agent
 - **THEN** it SHALL contain explicit framing such as "You do NOT have the steps... do not improvise from prior knowledge"
+
+#### Scenario: Skill body forbids reusing a fetched recipe
+
+- **WHEN** the skill body or the `tskl` command body is read by an agent
+- **THEN** it SHALL state that a recipe is resolved at fetch time and that each Taskless task fetches its recipe again, even for a topic fetched earlier in the session
 
 #### Scenario: Skill body lists available topics including onboard
 

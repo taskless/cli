@@ -12,7 +12,9 @@ import {
   getEmbeddedSkills,
 } from "../install/install";
 import { getMandatorySkillNames } from "../install/catalog";
-import { getReloadNotice } from "../install/reload-notice";
+import type { InstallMode } from "../install/state";
+import { getReloadNotice, versionMoved } from "../install/reload-notice";
+import { getUpgradeTrailer } from "../install/upgrade-trailer";
 import { readInstallState } from "../install/state";
 import { getTelemetry } from "../telemetry";
 import { runWizard } from "../wizard";
@@ -34,6 +36,7 @@ import { readManifest } from "../filesystem/migrate";
 import type { MigrationReport } from "../filesystem/migrate";
 import { TASKLESS_DIRECTORY } from "../rules/vale/formats";
 import { CLIError } from "../util/cli-error";
+import { buildInvocation } from "../util/invocation";
 import { makeErrorEnvelope } from "../types/errors";
 
 function shouldRunInteractively(noInteractiveFlag: boolean): boolean {
@@ -100,6 +103,19 @@ export const initCommand = defineCommand({
         JSON.stringify({
           success: true,
           commandsInstalled: result.commandsInstalled,
+          // `null` rather than absent when nothing was recorded, so a consumer
+          // reads "fresh project" as a value and never has to probe for a key.
+          cliVersion: {
+            previous: result.previousCliVersion ?? null,
+            installed: result.cliVersion,
+          },
+          // The per-target summary the human path prints. It used to go to
+          // stderr under `--json` because nothing on the envelope carried it.
+          targets: result.targets,
+          // Derivable from `migrated` and `targets`, and included anyway: it
+          // is the one value an agent gates its commit step on, and folding
+          // four lists and a presence check is how a consumer gets it wrong.
+          changed: result.changed,
           // Absent when nothing ran, so a caller distinguishes "the tree was
           // rewritten" from "nothing happened" by presence, never by reading
           // empty arrays out of it.
@@ -111,6 +127,20 @@ export const initCommand = defineCommand({
     } else {
       if (result.reloadNotice !== undefined) {
         console.log(result.reloadNotice);
+      }
+      // Before the onboarding trailer, which stays the final line: several
+      // scenarios pin it there, and an agent reads all of stdout anyway.
+      const upgradeTrailer = getUpgradeTrailer({
+        changedDirectories: result.targets
+          .filter((target) => targetChanged(target))
+          .map((target) => target.dir),
+        migrated: result.migrated !== undefined,
+        previousCliVersion: result.previousCliVersion,
+        cliVersion: result.cliVersion,
+        invocation: buildInvocation(),
+      });
+      if (upgradeTrailer !== undefined) {
+        console.log(upgradeTrailer);
       }
       console.log(
         getOnboardTrailer({ commandsInstalled: result.commandsInstalled })
@@ -245,6 +275,25 @@ export const updateCommand = defineCommand({
   },
 });
 
+/** One install target's outcome, in the shape the `--json` envelope carries. */
+interface TargetOutcome {
+  dir: string;
+  mode: InstallMode;
+  writtenSkills: string[];
+  writtenCommands: string[];
+  removedSkills: string[];
+  removedCommands: string[];
+}
+
+function targetChanged(target: TargetOutcome): boolean {
+  return (
+    target.writtenSkills.length > 0 ||
+    target.writtenCommands.length > 0 ||
+    target.removedSkills.length > 0 ||
+    target.removedCommands.length > 0
+  );
+}
+
 async function runNonInteractive(
   cwd: string,
   options: { json?: boolean } = {}
@@ -252,6 +301,11 @@ async function runNonInteractive(
   commandsInstalled: boolean;
   reloadNotice: string | undefined;
   migrated: MigrationReport | undefined;
+  previousCliVersion: string | undefined;
+  cliVersion: string;
+  targets: TargetOutcome[];
+  /** Whether a migration ran or any target wrote or removed anything. */
+  changed: boolean;
 }> {
   // Under `--json`, stdout carries only the envelope printed by the caller.
   // This per-target summary is not on that envelope (it is finer-grained than
@@ -345,19 +399,24 @@ async function runNonInteractive(
     }))
   );
 
+  const targets: TargetOutcome[] = [];
   for (const target of plan.targets) {
     const writtenSkills = skillsByTarget.get(target.dir) ?? [];
     const writtenCommands = commandsByTarget.get(target.dir) ?? [];
     const removedSkills = removedSkillsByTarget.get(target.dir) ?? [];
     const removedCommands = removedCommandsByTarget.get(target.dir) ?? [];
     const noun = target.mode === "canonical" ? "canonical file" : "stub";
+    const outcome: TargetOutcome = {
+      dir: target.dir,
+      mode: target.mode,
+      writtenSkills,
+      writtenCommands,
+      removedSkills,
+      removedCommands,
+    };
+    targets.push(outcome);
 
-    if (
-      writtenSkills.length === 0 &&
-      writtenCommands.length === 0 &&
-      removedSkills.length === 0 &&
-      removedCommands.length === 0
-    ) {
+    if (!targetChanged(outcome)) {
       log(`${target.label} (${target.dir}/): up to date`);
       continue;
     }
@@ -385,7 +444,20 @@ async function runNonInteractive(
     }
   }
 
-  return { commandsInstalled, reloadNotice, migrated };
+  return {
+    commandsInstalled,
+    reloadNotice,
+    migrated,
+    previousCliVersion,
+    cliVersion,
+    targets,
+    // A version move rewrites `install.cliVersion` in the manifest, which is
+    // a tracked file, so it is a change even when every skill byte matched.
+    changed:
+      migrated !== undefined ||
+      targets.some((target) => targetChanged(target)) ||
+      versionMoved({ previousCliVersion, cliVersion }),
+  };
 }
 
 function groupValuesByTarget(

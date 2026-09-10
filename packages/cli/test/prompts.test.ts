@@ -1,6 +1,6 @@
 import { execFile } from "node:child_process";
 import { readFile, readdir } from "node:fs/promises";
-import { resolve } from "node:path";
+import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { promisify } from "node:util";
 
@@ -74,6 +74,28 @@ describe("prompt rendering", () => {
 
   it("renders the CLI version into the header", () => {
     expect(getPrompt("create-sg-rule")).toContain(`CLI v${__VERSION__}`);
+  });
+
+  it("carries the fetch-time directive as line 2 of every recipe on disk", async () => {
+    // Byte-identical across recipes, including the `.anonymous` variants, so
+    // an agent sees one sentence rather than twenty paraphrases of it. Line 3
+    // is blank because `stripHeader` ends the block at the first blank line:
+    // a recipe that ran the directive into its body would keep it in the
+    // header-less rendering.
+    const allEntries = await readdir(recipeDirectory);
+    const entries = allEntries.filter((name) => name.endsWith(".md"));
+    const directives = new Set<string>();
+    for (const name of entries) {
+      const content = await readFile(join(recipeDirectory, name), "utf8");
+      const lines = content.split("\n");
+      expect(lines[0], `${name} line 1`).toMatch(/^# Topic:/);
+      expect(lines[1], `${name} line 2`).toContain("do not reuse this copy");
+      expect(lines[1], `${name} line 2`).toContain("%(TASKLESS_CLI)s agent");
+      expect(lines[2], `${name} line 3`).toBe("");
+      directives.add(lines[1]!);
+    }
+    expect(entries.length).toBeGreaterThan(0);
+    expect([...directives]).toHaveLength(1);
   });
 
   it.each([
@@ -349,14 +371,26 @@ describe("host mechanics suppression", () => {
 });
 
 describe("header suppression", () => {
-  it("drops the header line and the blank line after it, leaving the body intact", () => {
+  it("drops the header block and the blank line after it, leaving the body intact", () => {
     const withHeader = getPrompt("create-sg-rule");
     const withoutHeader = getPrompt("create-sg-rule", { header: false });
 
     expect(withHeader.startsWith("# Topic: create-sg-rule")).toBe(true);
     expect(withoutHeader.startsWith("# Topic:")).toBe(false);
-    // The body is the same string, minus the header line and its blank line.
-    expect(withoutHeader).toBe(withHeader.split("\n").slice(2).join("\n"));
+    // The block is the topic line, the fetch-time directive, and the blank
+    // line that closes it. The body is the same string minus those three.
+    expect(withoutHeader).toBe(withHeader.split("\n").slice(3).join("\n"));
+  });
+
+  it("drops the fetch-time directive with the version", () => {
+    // A header-less rendering is for a consumer embedding the text in its
+    // own prompt. "Re-run the CLI" is as wrong there as a version string.
+    for (const topic of TOPICS) {
+      expect(
+        getPrompt(topic, { header: false }),
+        `${topic} kept the directive`
+      ).not.toContain("do not reuse this copy");
+    }
   });
 
   it("leaves no CLI version string behind", () => {

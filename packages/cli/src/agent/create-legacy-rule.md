@@ -1,4 +1,5 @@
 # Topic: create-legacy-rule     (CLI v%(CLI_VERSION)s / topic v1)
+Resolved by the CLI when you fetched it. Your next Taskless task, in this session or another, fetches it again with `%(TASKLESS_CLI)s agent <topic>`; do not reuse this copy.
 
 ## You are here
 This is `create-legacy-rule`. It helps you write a rule for a linter the
