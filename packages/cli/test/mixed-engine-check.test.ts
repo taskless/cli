@@ -250,7 +250,7 @@ describe("check over a project with both engines", () => {
       // about.
       const scaffold = await mkdtemp(join(tmpdir(), "taskless-scaffold-"));
       try {
-        const init = await runCli(["init", "--no-interactive", "-d", scaffold]);
+        const init = await runCli(["init", "-d", scaffold]);
         expect(init.exitCode).toBe(0);
 
         // Author the rule the way a user would: one directory holding the
@@ -301,7 +301,7 @@ describe("check over a project with both engines", () => {
     it("surfaces Vale's W101 when an assignment sits outside every matcher", async () => {
       const scaffold = await mkdtemp(join(tmpdir(), "taskless-w101-"));
       try {
-        const init = await runCli(["init", "--no-interactive", "-d", scaffold]);
+        const init = await runCli(["init", "-d", scaffold]);
         expect(init.exitCode).toBe(0);
 
         const rule = join(scaffold, ".taskless", "rules", "vale", "no-simply");
@@ -347,7 +347,7 @@ describe("check over a project with both engines", () => {
     it("still reports every other file's findings, end to end", async () => {
       const scaffold = await mkdtemp(join(tmpdir(), "taskless-parse-error-"));
       try {
-        const init = await runCli(["init", "--no-interactive", "-d", scaffold]);
+        const init = await runCli(["init", "-d", scaffold]);
         expect(init.exitCode).toBe(0);
 
         const rule = join(scaffold, ".taskless", "rules", "vale", "no-simply");

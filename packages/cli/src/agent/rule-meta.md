@@ -1,5 +1,4 @@
 # Topic: rule-meta     (CLI v%(CLI_VERSION)s / topic v3)
-Resolved by the CLI when you fetched it. Your next Taskless task, in this session or another, fetches it again with `%(TASKLESS_CLI)s agent <topic>`; do not reuse this copy.
 
 ## Goal
 Report what `%(TASKLESS_CLI)s rule meta` does today, so no recipe and no

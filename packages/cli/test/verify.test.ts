@@ -849,7 +849,7 @@ describe("test: the tested/failed/refused split on a mixed run (#284)", () => {
 
   beforeEach(async () => {
     cwd = await mkdtemp(join(tmpdir(), "tskl-verify-mixed-"));
-    await runVerifyMixedRunCli(["init", "--no-interactive", "-d", cwd]);
+    await runVerifyMixedRunCli(["init", "-d", cwd]);
   });
 
   afterEach(async () => {

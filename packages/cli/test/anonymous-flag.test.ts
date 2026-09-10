@@ -171,13 +171,7 @@ describe("--anonymous flag (per-command behavior matrix)", () => {
 
   describe("init --anonymous", () => {
     it("accepts the flag as no-op", async () => {
-      const result = await runCli([
-        "init",
-        "--no-interactive",
-        "--anonymous",
-        "-d",
-        cwd,
-      ]);
+      const result = await runCli(["init", "--anonymous", "-d", cwd]);
       expect(result.exitCode).toBe(0);
     });
   });

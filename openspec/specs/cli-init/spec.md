@@ -8,7 +8,9 @@ The `taskless init` subcommand: how it detects the AI tools present in a reposit
 
 ### Requirement: Init subcommand installs skills into a repository
 
-The CLI SHALL support a `taskless init` subcommand that installs the consolidated `taskless` skill into the current working directory's detected tool locations. The subcommand SHALL also be available as `taskless update` (alias). By default, `init` SHALL launch the interactive wizard. When invoked with `--no-interactive`, `init` SHALL preserve the prior batch-install behavior: install the consolidated skill to every detected tool location (or `.agents/` fallback when none detected) without prompting and without an auth step.
+The CLI SHALL support a `taskless init` subcommand that installs the consolidated `taskless` skill into the current working directory's detected tool locations, and upgrades an existing install. `init` SHALL always run the batch install: every detected tool location (or `.agents/` fallback when none detected), without prompting and without an auth step, whether or not a TTY is attached. It is the path an agent, a script, and a CI job take, and the path a person takes to upgrade without answering prompts. The interactive wizard is reached by running the CLI with no subcommand in a TTY, never by `init`.
+
+The `--no-interactive` flag is no longer defined. An invocation that still passes it SHALL behave exactly as `init` without it, so an existing script keeps working.
 
 There is exactly one mandatory skill in v0.7.0 (`taskless`) and zero optional skills. The wizard's optional-skill selection step SHALL be removed.
 
@@ -16,9 +18,14 @@ The `--anonymous` flag is accepted on `init` as a no-op (init does not call the 
 
 #### Scenario: Running taskless init installs the consolidated skill
 
-- **WHEN** a user runs `taskless init` in an interactive terminal
-- **THEN** the wizard SHALL prompt for tool locations and auth, then install the single `taskless` skill
-- **AND** SHALL NOT prompt for optional skills (none exist)
+- **WHEN** a user runs `taskless init`, in a terminal or under a pipe
+- **THEN** the CLI SHALL install the single `taskless` skill to every detected tool location without prompting for tools or auth
+- **AND** SHALL NOT launch the wizard
+
+#### Scenario: A legacy --no-interactive flag is harmless
+
+- **WHEN** a script runs `taskless init --no-interactive`
+- **THEN** the CLI SHALL behave exactly as for `taskless init`
 
 #### Scenario: Init removes obsolete v0.6 skill files
 
@@ -349,12 +356,12 @@ The `init` subcommand SHALL use the resolved working directory from the global `
 
 ### Requirement: Bare taskless invocation launches the init wizard
 
-The CLI entry point SHALL delegate to `init` when invoked with no positional subcommand AND a TTY is attached. When stdout is NOT a TTY, bare `taskless` SHALL print a non-interactive preamble explaining the context, followed by the agent topic index (instead of attempting the wizard or printing only top-level help).
+The CLI entry point SHALL launch the interactive install wizard when invoked with no positional subcommand AND a TTY is attached. When stdout is NOT a TTY, bare `taskless` SHALL print a non-interactive preamble explaining the context, followed by the agent topic index (instead of attempting the wizard or printing only top-level help).
 
 #### Scenario: Bare taskless in a TTY launches the wizard
 
 - **WHEN** a user runs `taskless` with no subcommand and stdout is a TTY
-- **THEN** the CLI SHALL behave as if `taskless init` were invoked
+- **THEN** the CLI SHALL launch the interactive wizard
 
 #### Scenario: Bare taskless without a TTY prints preamble + agent topic index
 
@@ -759,15 +766,17 @@ An install SHALL also reclaim a stub whose recovery command names a build other 
 - **THEN** the install SHALL rewrite that stub
 - **AND** a subsequent install SHALL leave the rewritten stub untouched
 
-### Requirement: Non-interactive init reports what an upgrade changed and what follows
+### Requirement: Init reports what an upgrade changed and what follows
 
-`taskless init --no-interactive` SHALL tell its caller what an install changed beyond the files it wrote, because its caller is usually an agent that `check` sent there and that must decide what to do next.
+`taskless init` SHALL tell its caller what an install changed beyond the files it wrote, because its caller is usually an agent that `check` sent there and that must decide what to do next.
 
-On the human path, when the run changed anything (a migration ran, or any target had a skill or command written or removed), the CLI SHALL print an upgrade trailer AFTER the install summary and any reload notice and BEFORE the onboarding trailer, so the onboarding trailer stays the final line. The upgrade trailer SHALL:
+On the human path, when the run changed anything (a migration ran, any target had a skill or command written or removed, or the recorded `install.cliVersion` moved), the CLI SHALL print an upgrade trailer directly AFTER the install summary and BEFORE any reload notice and the onboarding trailer. It prints first among the trailing notices because a reload, and anything the onboarding trailer proposes, come after the upgrade is understood. The upgrade trailer SHALL:
 
 - name each directory that now holds changed files (every target directory with a write or removal, and `.taskless/` when a migration ran or the recorded version moved), and state that those files belong in the next commit;
 - when the recorded `install.cliVersion` moved (a previous version was recorded and differs from the one this run recorded), state the transition and that `taskless update` reports what the upgrade means for existing rules;
 - be omitted entirely when nothing changed. A no-op re-install has nothing to commit and nothing to reconcile.
+
+The onboarding trailer SHALL remain the final line of output.
 
 Under `--json`, the envelope SHALL carry the same facts as fields rather than prose:
 
@@ -779,9 +788,10 @@ The `migrated` field is unchanged: present with the migration report when a migr
 
 #### Scenario: An upgrade prints the trailer with both parts
 
-- **WHEN** `taskless init --no-interactive` runs against a project whose recorded `install.cliVersion` differs from the running CLI, and the run writes at least one stub
+- **WHEN** `taskless init` runs against a project whose recorded `install.cliVersion` differs from the running CLI, and the run writes at least one stub
 - **THEN** stdout SHALL contain an upgrade trailer naming each directory that changed and saying those files belong in the next commit
 - **AND** the trailer SHALL name the previous and installed versions and point at `taskless update`
+- **AND** the trailer SHALL appear before any reload notice
 - **AND** the onboarding trailer SHALL still be the final line
 
 #### Scenario: A change without a version move omits the update pointer
@@ -792,25 +802,11 @@ The `migrated` field is unchanged: present with the migration report when a migr
 
 #### Scenario: A no-op re-install prints no upgrade trailer
 
-- **WHEN** `taskless init --no-interactive` runs against a project that is already at the current scaffold version and whose every target reports up to date
+- **WHEN** `taskless init` runs against a project that is already at the current scaffold version and whose every target reports up to date
 - **THEN** stdout SHALL NOT contain the upgrade trailer
 
 #### Scenario: The JSON envelope carries the version, targets, and changed flag
 
-- **WHEN** `taskless init --no-interactive --json` runs
+- **WHEN** `taskless init --json` runs
 - **THEN** the envelope SHALL contain `cliVersion.previous` (a string or `null`), `cliVersion.installed`, a `targets` array with one entry per install target, and a boolean `changed`
 - **AND** `changed` SHALL be `true` exactly when `migrated` is present, any target's written or removed list is non-empty, or `cliVersion.previous` is non-null and differs from `cliVersion.installed`
-
-### Requirement: The migration refusal names the non-interactive path for a non-TTY caller
-
-When a read-only command refuses a project whose scaffold is behind the CLI, the refusal SHALL tell the caller to run `init --no-interactive` when stdout is not a TTY, and `init` otherwise. An agent that follows the message verbatim SHALL never be sent to the wizard.
-
-#### Scenario: A non-TTY caller is pointed at the non-interactive install
-
-- **WHEN** `check` refuses a behind-the-CLI scaffold and stdout is not a TTY
-- **THEN** the message SHALL contain `init --no-interactive`
-
-#### Scenario: A TTY caller is pointed at the wizard
-
-- **WHEN** `check` refuses a behind-the-CLI scaffold and stdout is a TTY
-- **THEN** the message SHALL contain `init` and SHALL NOT contain `--no-interactive`

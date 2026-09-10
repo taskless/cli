@@ -1,5 +1,4 @@
 # Topic: init     (CLI v%(CLI_VERSION)s / topic v2)
-Resolved by the CLI when you fetched it. Your next Taskless task, in this session or another, fetches it again with `%(TASKLESS_CLI)s agent <topic>`; do not reuse this copy.
 
 ## Goal
 Install or update the Taskless skill in this project, and migrate the
@@ -16,13 +15,14 @@ is the first of three steps, not the whole job.
 - None at the project level. The command works in any directory and
   bootstraps `.taskless/` on first run.
 - No auth. `init` never calls the Taskless API.
-- The wizard needs a TTY. You do not have one, so use the flag below.
+- No TTY needed. `init` is the batch path in every context; the wizard
+  is only reached by running the CLI with no subcommand in a terminal.
 
 ## Steps
 
-1. **Run the non-interactive install.**
+1. **Run the install.**
    ```
-   %(TASKLESS_CLI)s init --no-interactive --json
+   %(TASKLESS_CLI)s init --json
    ```
    The envelope:
    ```json
@@ -48,9 +48,10 @@ is the first of three steps, not the whole job.
    - `targets` lists every install location and what this run wrote or
      removed there, by name. `mode: "canonical"` is the `.taskless/`
      store; `reference` is a tool directory holding stubs.
-   - `changed` is `true` when a migration ran or any target list is
-     non-empty. When it is `false`, stop here: nothing to commit,
-     nothing to reconcile.
+   - `changed` is `true` when a migration ran, any target list is
+     non-empty, or `cliVersion` moved (that rewrites
+     `.taskless/taskless.json`). When it is `false`, stop here: nothing
+     to commit, nothing to reconcile.
    - `migrated` is present only when a migration ran, with the paths it
      added, rewrote, or deleted.
 
@@ -58,12 +59,12 @@ is the first of three steps, not the whole job.
    then a trailer naming the directories that changed and, after a
    version move, pointing at `update`.
 
-2. **Commit what changed.** Every `targets[].dir` with a non-empty list,
-   plus `.taskless/` and any `migrated.files` entries, now holds changes
-   that belong in the working tree's next commit. Stage them with the
-   work you were doing, or as their own commit if the user prefers, and
-   say what Taskless rewrote and why (a CLI upgrade, a layout migration).
-   Do not leave them for whoever commits next.
+2. **Tell the user what needs committing.** Every `targets[].dir` with
+   a non-empty list, plus `.taskless/` and any `migrated.files` entries,
+   now holds changes that belong in version control. Name those paths and
+   say what Taskless rewrote and why (a CLI upgrade, a layout migration),
+   so the user can include them in the commit they choose. Do not stage
+   or commit on your own; the git operations are theirs.
 
 3. **After a version move, reconcile the rules.** When
    `cliVersion.previous` is non-null and differs from `installed`, run

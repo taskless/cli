@@ -185,6 +185,11 @@ export function createAgentCommand(subCommands: SubCommandsDef) {
       const recipe = getRecipe(key, {
         anonymous: args.anonymous,
         invocation: detectCliInvocation(processLauncherContext()),
+        // What this command serves IS a fetch, so the served text says so:
+        // resolved now, fetch again next task, and a session that installed
+        // or upgraded mid-way holds a stale skill. The prompts export leaves
+        // it off; see `RecipeOptions.directive`.
+        directive: true,
       });
 
       if (recipe) {

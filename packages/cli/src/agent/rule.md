@@ -1,5 +1,4 @@
 # Topic: rule     (CLI v%(CLI_VERSION)s / topic v2)
-Resolved by the CLI when you fetched it. Your next Taskless task, in this session or another, fetches it again with `%(TASKLESS_CLI)s agent <topic>`; do not reuse this copy.
 
 ## Goal
 Umbrella for rule operations. Fetch the topic for the action you want.

@@ -106,6 +106,9 @@ export const onboardCommand = defineCommand({
     // for anyone running a published build.
     const recipe = getRecipe("onboard", {
       invocation: detectCliInvocation(processLauncherContext()),
+      // Served text is a fetch, the same as `agent onboard`, which this must
+      // match byte for byte.
+      directive: true,
     });
     if (recipe === undefined) {
       // Should not happen — onboard.md is embedded at build time.

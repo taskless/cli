@@ -158,6 +158,20 @@ export interface RecipeOptions {
    * @default true
    */
   header?: boolean;
+  /**
+   * Add the fetch-time directive as the header block's second line: the
+   * text was resolved by the CLI when it was fetched, the next task fetches
+   * it again, and a session that saw an install or upgrade holds a stale
+   * skill until it reloads. The `agent` command asks for it, because what it
+   * serves IS a fetch. The prompts export does not, because a consumer
+   * embedding a recipe in its own prompt has no CLI to re-run, and the
+   * statement would be false there.
+   *
+   * Lives in the header block so `header: false` drops it with the version.
+   *
+   * @default false
+   */
+  directive?: boolean;
 }
 
 /**
@@ -320,11 +334,40 @@ function renderTemplate(
   options: RecipeOptions = {}
 ): string {
   const rendered = sprintf(template, buildVariables(template, topic, options));
-  return options.header === false ? stripHeader(rendered) : rendered;
+  if (options.header === false) return stripHeader(rendered);
+  return options.directive === true
+    ? addDirective(rendered, resolveInvocation(options))
+    : rendered;
 }
 
 /** Every recipe opens with this marker on its first line. */
 const HEADER_PREFIX = "# Topic:";
+
+/**
+ * The fetch-time directive, identical for every topic except the invocation.
+ * Rendered from the same resolution `%(TASKLESS_CLI)s` uses, so the command
+ * an agent is told to re-run is the one that served it.
+ */
+export function fetchTimeDirective(invocation: string): string {
+  return (
+    `Resolved by the CLI when you fetched it. Your next Taskless task, in this session or another, ` +
+    `fetches it again with \`${invocation} agent <topic>\`; do not reuse this copy. ` +
+    `If Taskless was installed or upgraded during this session, the skill in your context is stale until it is reloaded.`
+  );
+}
+
+/**
+ * Insert the directive as line 2 of the header block. Anchored to the first
+ * line like {@link stripHeader}, and a no-op on text that does not open with
+ * the header, so a malformed recipe is served as-is rather than gaining a
+ * directive above its first real line.
+ */
+function addDirective(content: string, invocation: string): string {
+  if (!content.startsWith(HEADER_PREFIX)) return content;
+  const firstBreak = content.indexOf("\n");
+  if (firstBreak === -1) return `${content}\n${fetchTimeDirective(invocation)}`;
+  return `${content.slice(0, firstBreak)}\n${fetchTimeDirective(invocation)}${content.slice(firstBreak)}`;
+}
 
 /**
  * Drop the leading header block from rendered recipe text: the `# Topic: …`
