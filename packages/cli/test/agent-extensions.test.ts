@@ -145,6 +145,21 @@ describe("taskless agent <routing topic>", () => {
     expect(result.stderr).not.toContain("Unknown command");
   });
 
+  it("serves every recipe under the fetch-time directive, and the update command too", async () => {
+    // What `agent` serves IS a fetch, so line 2 says: resolved now, fetch
+    // again next task, stale skill after an install. The recipe files do
+    // not carry it (see prompts.test.ts); the renderer adds it here.
+    for (const args of [["agent", "check"], ["agent", "init"], ["update"]]) {
+      const result = await runCli([...args, "-d", cwd]);
+      const lines = result.stdout.split("\n");
+      expect(lines[0], args.join(" ")).toMatch(/^# Topic:/);
+      expect(lines[1], args.join(" ")).toContain("do not reuse this copy");
+      expect(lines[1], args.join(" ")).toMatch(/agent <topic>`/);
+      expect(lines[1], args.join(" ")).toContain("stale");
+      expect(lines[2], args.join(" ")).toBe("");
+    }
+  });
+
   // D9: a reader who arrived at the wrong recipe should find that out in the
   // first line, where recovery is a re-decision, rather than after authoring
   // the wrong artifact. Fixed shape across all five so it is recognisable.

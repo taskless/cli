@@ -124,7 +124,7 @@ describe("recording a rules reconciliation", () => {
 
   it("does not stamp a pre-existing project that never reconciled", async () => {
     // The silent skip this whole feature exists to prevent, reachable through
-    // setup rather than through the walk. `init --no-interactive` is the
+    // setup rather than through the walk. `init` is the
     // documented refresh path for an EXISTING project, and it runs after
     // `ensureTasklessDirectory` has already created the directory, so
     // "was this new" has to be sampled before that or it always reads new.
@@ -136,7 +136,7 @@ describe("recording a rules reconciliation", () => {
       (JSON.parse(before.stdout) as { walk: unknown }).walk
     ).not.toBeNull();
 
-    await runCli(["init", "--no-interactive", "-d", cwd]);
+    await runCli(["init", "-d", cwd]);
 
     const after = await runCli(["update", "--json", "-d", cwd]);
     const walk = (

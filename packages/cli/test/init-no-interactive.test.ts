@@ -27,7 +27,7 @@ async function exists(path: string): Promise<boolean> {
 
 /** Run a real install in `cwd`, then rewrite the recorded version. */
 async function installAtVersion(cwd: string, version: string): Promise<void> {
-  await execFileAsync("node", [binPath, "init", "--no-interactive", "-d", cwd]);
+  await execFileAsync("node", [binPath, "init", "-d", cwd]);
   const manifestPath = join(cwd, ".taskless", "taskless.json");
   const manifest = JSON.parse(await readFile(manifestPath, "utf8")) as {
     install?: { cliVersion?: string };
@@ -36,7 +36,7 @@ async function installAtVersion(cwd: string, version: string): Promise<void> {
   await writeFile(manifestPath, JSON.stringify(manifest, null, 2));
 }
 
-describe("taskless init --no-interactive", () => {
+describe("taskless init (the batch install)", () => {
   let cwd: string;
 
   beforeEach(async () => {
@@ -53,7 +53,6 @@ describe("taskless init --no-interactive", () => {
     const { stdout } = await execFileAsync("node", [
       binPath,
       "init",
-      "--no-interactive",
       "-d",
       cwd,
     ]);
@@ -69,7 +68,6 @@ describe("taskless init --no-interactive", () => {
     const { stdout } = await execFileAsync("node", [
       binPath,
       "init",
-      "--no-interactive",
       "-d",
       cwd,
     ]);
@@ -86,7 +84,6 @@ describe("taskless init --no-interactive", () => {
     const { stdout, stderr } = await execFileAsync("node", [
       binPath,
       "init",
-      "--no-interactive",
       "-d",
       cwd,
     ]);
@@ -97,9 +94,10 @@ describe("taskless init --no-interactive", () => {
     expect(combined).not.toContain("Enter code:");
   });
 
-  it("auto-detects non-interactive context when no TTY and no flag", async () => {
-    // Invoking via execFile makes stdout not-a-TTY, which should trigger
-    // the auto-switch notice.
+  it("installs under a pipe with no notice about it", async () => {
+    // Invoking via execFile makes stdout not-a-TTY. `init` used to detect
+    // that and announce it was switching to the batch path; it IS the batch
+    // path now, so there is nothing to switch to and nothing to announce.
     await mkdir(join(cwd, ".claude"), { recursive: true });
 
     const { stdout, stderr } = await execFileAsync("node", [
@@ -109,15 +107,34 @@ describe("taskless init --no-interactive", () => {
       cwd,
     ]);
 
-    expect(stderr).toContain("Detected non-interactive context");
+    expect(stderr).not.toContain("non-interactive");
     expect(stdout).toContain("Claude Code (.claude/)");
+  });
+
+  it("treats a legacy --no-interactive flag as a no-op", async () => {
+    // The flag selected this path and is no longer defined. A script that
+    // still spells it out gets the same install, not an error.
+    await mkdir(join(cwd, ".claude"), { recursive: true });
+
+    const { stdout, stderr } = await execFileAsync("node", [
+      binPath,
+      "init",
+      "--no-interactive",
+      "-d",
+      cwd,
+    ]);
+
+    expect(stderr).not.toContain("Unknown");
+    expect(stdout).toContain("Claude Code (.claude/)");
+    expect(
+      await exists(join(cwd, ".claude", "skills", "taskless", "SKILL.md"))
+    ).toBe(true);
   });
 
   it("falls back to .agents/ when no tools are detected", async () => {
     const { stdout } = await execFileAsync("node", [
       binPath,
       "init",
-      "--no-interactive",
       "-d",
       cwd,
     ]);
@@ -146,13 +163,7 @@ describe("taskless init --no-interactive", () => {
   it("writes taskless.json with install state recorded", async () => {
     await mkdir(join(cwd, ".claude"), { recursive: true });
 
-    await execFileAsync("node", [
-      binPath,
-      "init",
-      "--no-interactive",
-      "-d",
-      cwd,
-    ]);
+    await execFileAsync("node", [binPath, "init", "-d", cwd]);
 
     const manifest = JSON.parse(
       await readFile(join(cwd, ".taskless", "taskless.json"), "utf8")
@@ -170,7 +181,6 @@ describe("taskless init --no-interactive", () => {
     const { stdout } = await execFileAsync("node", [
       binPath,
       "init",
-      "--no-interactive",
       "-d",
       cwd,
     ]);
@@ -186,7 +196,6 @@ describe("taskless init --no-interactive", () => {
     const { stdout } = await execFileAsync("node", [
       binPath,
       "init",
-      "--no-interactive",
       "-d",
       cwd,
     ]);
@@ -207,7 +216,6 @@ describe("taskless init --no-interactive", () => {
     const { stdout } = await execFileAsync("node", [
       binPath,
       "init",
-      "--no-interactive",
       "-d",
       cwd,
     ]);
@@ -220,11 +228,14 @@ describe("taskless init --no-interactive", () => {
     expect(stdout).toContain("moved from 0.0.1-previous to");
     expect(stdout).toMatch(/Run `.* update`/);
 
+    // Order: upgrade trailer, then the reload banner (the version moved, so
+    // it prints), then the onboarding line last.
     const lines = stdout.trimEnd().split("\n");
+    const trailerAt = lines.findIndex((line) => line.includes("next commit"));
+    const reloadAt = lines.findIndex((line) => line.includes("Reload skills"));
+    expect(trailerAt).toBeGreaterThan(-1);
+    expect(reloadAt).toBeGreaterThan(trailerAt);
     expect(lines.at(-1)).toMatch(/^Next:/);
-    expect(
-      lines.indexOf(lines.find((line) => line.includes("next commit"))!)
-    ).toBeLessThan(lines.length - 1);
   });
 
   it("omits the update pointer when the version did not move", async () => {
@@ -233,19 +244,12 @@ describe("taskless init --no-interactive", () => {
     await installAtVersion(cwd, "0.0.1-previous");
     // Rewrite at the previous version so the next run sees no move but has
     // to re-write the stubs it finds stale.
-    await execFileAsync("node", [
-      binPath,
-      "init",
-      "--no-interactive",
-      "-d",
-      cwd,
-    ]);
+    await execFileAsync("node", [binPath, "init", "-d", cwd]);
     await mkdir(join(cwd, ".claude"), { recursive: true });
 
     const { stdout } = await execFileAsync("node", [
       binPath,
       "init",
-      "--no-interactive",
       "-d",
       cwd,
     ]);
@@ -259,18 +263,11 @@ describe("taskless init --no-interactive", () => {
   it("prints no upgrade trailer when a re-install changed nothing", async () => {
     // A no-op has nothing to commit and nothing to reconcile. A trailer that
     // said so would teach an agent to skim it.
-    await execFileAsync("node", [
-      binPath,
-      "init",
-      "--no-interactive",
-      "-d",
-      cwd,
-    ]);
+    await execFileAsync("node", [binPath, "init", "-d", cwd]);
 
     const { stdout } = await execFileAsync("node", [
       binPath,
       "init",
-      "--no-interactive",
       "-d",
       cwd,
     ]);
@@ -311,7 +308,6 @@ describe("taskless init --no-interactive", () => {
     const { stdout } = await execFileAsync("node", [
       binPath,
       "init",
-      "--no-interactive",
       "-d",
       cwd,
     ]);
@@ -343,7 +339,6 @@ describe("taskless init --no-interactive", () => {
       const { stdout } = await execFileAsync("node", [
         binPath,
         "init",
-        "--no-interactive",
         "-d",
         cwd,
       ]);
@@ -358,7 +353,6 @@ describe("taskless init --no-interactive", () => {
       const { stdout } = await execFileAsync("node", [
         binPath,
         "init",
-        "--no-interactive",
         "-d",
         cwd,
       ]);
@@ -369,18 +363,11 @@ describe("taskless init --no-interactive", () => {
     it("stays quiet when the recorded version did not move", async () => {
       // The re-run case. A banner here would appear on every ordinary install
       // and train people to scroll past it.
-      await execFileAsync("node", [
-        binPath,
-        "init",
-        "--no-interactive",
-        "-d",
-        cwd,
-      ]);
+      await execFileAsync("node", [binPath, "init", "-d", cwd]);
 
       const { stdout } = await execFileAsync("node", [
         binPath,
         "init",
-        "--no-interactive",
         "-d",
         cwd,
       ]);

@@ -17,7 +17,6 @@ import { getReloadNotice, versionMoved } from "../install/reload-notice";
 import { getUpgradeTrailer } from "../install/upgrade-trailer";
 import { readInstallState } from "../install/state";
 import { getTelemetry } from "../telemetry";
-import { runWizard } from "../wizard";
 import { getCliVersion } from "../wizard/intro";
 
 import { getOnboardTrailer } from "./onboard";
@@ -39,15 +38,6 @@ import { CLIError } from "../util/cli-error";
 import { buildInvocation } from "../util/invocation";
 import { makeErrorEnvelope } from "../types/errors";
 
-function shouldRunInteractively(noInteractiveFlag: boolean): boolean {
-  if (noInteractiveFlag) return false;
-  if (process.env.CI === "true" || process.env.CI === "1") return false;
-  // Require both stdin and stdout to be TTYs — clack reads from stdin, so a
-  // piped stdin (common in scripts) would hang the wizard even when stdout
-  // is a TTY.
-  return process.stdout.isTTY === true && process.stdin.isTTY === true;
-}
-
 export const initCommand = defineCommand({
   meta: {
     name: "init",
@@ -65,37 +55,22 @@ export const initCommand = defineCommand({
         "Emit the install result as JSON, including what a migration moved",
       default: false,
     },
-    "no-interactive": {
-      type: "boolean",
-      description:
-        "Install every mandatory skill to every detected tool without prompting",
-      default: false,
-    },
     anonymous: {
       type: "boolean",
       description: "Accepted for compatibility; init has no auth dependency",
       default: false,
     },
   },
+  // `init` is the batch install in every context: an agent, a script, a CI
+  // job, and a person upgrading without prompts all run the same thing. The
+  // wizard is reached only by a bare invocation in a TTY (see `index.ts`).
+  //
+  // `--no-interactive` used to select this path and is no longer defined.
+  // citty passes an undefined flag through without complaint, so a script
+  // that still spells it out gets exactly this behaviour.
   async run({ args }) {
     const cwd = resolve(args.dir ?? process.cwd());
     const telemetry = await getTelemetry(cwd);
-
-    const interactive = shouldRunInteractively(args["no-interactive"]);
-
-    if (interactive) {
-      const result = await runWizard({ cwd });
-      if (result.status === "cancelled") {
-        process.exitCode = 1;
-      }
-      return;
-    }
-
-    if (!args["no-interactive"] && process.stdout.isTTY !== true) {
-      console.error(
-        "Detected non-interactive context (no TTY); running non-interactive install."
-      );
-    }
 
     const result = await runNonInteractive(cwd, { json: args.json });
     if (args.json) {
@@ -125,11 +100,9 @@ export const initCommand = defineCommand({
         })
       );
     } else {
-      if (result.reloadNotice !== undefined) {
-        console.log(result.reloadNotice);
-      }
-      // Before the onboarding trailer, which stays the final line: several
-      // scenarios pin it there, and an agent reads all of stdout anyway.
+      // First among the trailing notices, directly after the summary: a
+      // reload, and anything the onboarding line proposes, come after the
+      // upgrade is understood. The onboarding trailer stays the final line.
       const upgradeTrailer = getUpgradeTrailer({
         changedDirectories: result.targets
           .filter((target) => targetChanged(target))
@@ -141,6 +114,9 @@ export const initCommand = defineCommand({
       });
       if (upgradeTrailer !== undefined) {
         console.log(upgradeTrailer);
+      }
+      if (result.reloadNotice !== undefined) {
+        console.log(result.reloadNotice);
       }
       console.log(
         getOnboardTrailer({ commandsInstalled: result.commandsInstalled })
@@ -155,7 +131,7 @@ export const initCommand = defineCommand({
  * `update` is about the RULES, not about the installation.
  *
  * It used to mean "reinstall the skills non-interactively", which is what
- * `init --no-interactive` already does through the very same
+ * `init` already does through the very same
  * `runNonInteractive`, and what the wizard does on any ordinary run. A second
  * name for that bought nothing, and it held a word that describes the job an
  * agent actually needs: deciding whether the rules in front of it need
@@ -206,6 +182,7 @@ export const updateCommand = defineCommand({
       const recipe = getRecipe("update", {
         anonymous: args.anonymous,
         invocation: detectCliInvocation(processLauncherContext()),
+        directive: true,
       });
       if (recipe === undefined) {
         console.error("No `update` recipe is bundled with this CLI.");
@@ -317,7 +294,7 @@ async function runNonInteractive(
   // point. `ensureTasklessDirectory` mkdir -p's, so afterwards a pre-existing
   // project is indistinguishable from a fresh one.
   //
-  // This path is also `init --no-interactive`, whose documented job is
+  // This path is `init` itself, whose documented job is
   // refreshing an EXISTING project. Stamping there would mark a project that
   // never walked the ledger as fully reconciled and skip every entry, which is
   // the silent skip this feature exists to prevent.

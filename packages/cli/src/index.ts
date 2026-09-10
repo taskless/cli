@@ -17,6 +17,7 @@ import {
   shutdownTelemetry,
 } from "./telemetry";
 import { emitRunEvents, resolveCommandName, resolveCwd } from "./telemetry-run";
+import { runWizard } from "./wizard";
 import { DIR_FLAGS, hasHelpFlag, splitRawArguments } from "./util/argv";
 import { showResolvedUsage } from "./util/help";
 import { CLIError } from "./util/cli-error";
@@ -94,15 +95,22 @@ const main = defineCommand({
     // TTY → run the interactive wizard. Non-TTY → print a short preamble
     // explaining the context and then delegate to `agent` so agents and
     // pipes see the topic index.
+    //
+    // The wizard is reached from HERE and nowhere else. `init` is the batch
+    // path in every context, so a bare invocation is the only spelling that
+    // prompts, and it calls the wizard rather than `init`.
     if (process.stdout.isTTY === true && process.stdin.isTTY === true) {
-      await runCommand(initCommand, { rawArgs });
+      const result = await runWizard({ cwd: resolveCwd(rawArgs) });
+      if (result.status === "cancelled") {
+        process.exitCode = 1;
+      }
       return;
     }
 
     console.error(
       "Taskless CLI — non-interactive context detected.\n" +
         "  For interactive install, run from a terminal.\n" +
-        "  For scripted install, run `taskless init --no-interactive`.\n" +
+        "  For scripted install, run `taskless init`.\n" +
         "  For agent recipes, run `taskless agent` (no args) for the topic index.\n"
     );
     // Forward the parent's rawArgs (e.g. `-d <path>`) so the agent command

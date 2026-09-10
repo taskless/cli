@@ -95,7 +95,7 @@ describe("this repository's own installed Taskless docs", () => {
     );
 
     // If this fails, the template changed and this project was not migrated.
-    // Run `pnpm build && pnpm cli init --no-interactive` and commit the result;
+    // Run `pnpm build && pnpm cli init` and commit the result;
     // do not edit `.taskless/README.md` by hand, since the next migration
     // overwrites it.
     expect(onDisk).toBe(buildReadmeContent(pinnedSpecifier()));

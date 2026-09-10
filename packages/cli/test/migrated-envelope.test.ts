@@ -118,7 +118,6 @@ describe("who migrates, and who refuses", () => {
 
     const { stdout } = await runCli([
       "init",
-      "--no-interactive",
       "--json",
       "-d",
       temporaryDirectory,
@@ -140,7 +139,6 @@ describe("who migrates, and who refuses", () => {
 
     const { stderr } = await runCli([
       "init",
-      "--no-interactive",
       "--json",
       "-d",
       temporaryDirectory,
@@ -158,7 +156,6 @@ describe("who migrates, and who refuses", () => {
 
     const { stdout } = await runCli([
       "init",
-      "--no-interactive",
       "--json",
       "-d",
       temporaryDirectory,
@@ -194,11 +191,10 @@ describe("who migrates, and who refuses", () => {
 
   it("init --json reports changed:false, a recorded version, and empty lists on a no-op re-install", async () => {
     await seedVersion3();
-    await runCli(["init", "--no-interactive", "-d", temporaryDirectory]);
+    await runCli(["init", "-d", temporaryDirectory]);
 
     const { stdout } = await runCli([
       "init",
-      "--no-interactive",
       "--json",
       "-d",
       temporaryDirectory,
@@ -221,11 +217,10 @@ describe("who migrates, and who refuses", () => {
   it("init --json omits the field when nothing migrated", async () => {
     // Absence is the signal, so a consumer never reads empty arrays to decide.
     await seedVersion3();
-    await runCli(["init", "--no-interactive", "-d", temporaryDirectory]);
+    await runCli(["init", "-d", temporaryDirectory]);
 
     const { stdout } = await runCli([
       "init",
-      "--no-interactive",
       "--json",
       "-d",
       temporaryDirectory,
@@ -268,12 +263,7 @@ describe("who migrates, and who refuses", () => {
   it("names the versions and the files on human stderr", async () => {
     await seedVersion3();
 
-    const { stderr } = await runCli([
-      "init",
-      "--no-interactive",
-      "-d",
-      temporaryDirectory,
-    ]);
+    const { stderr } = await runCli(["init", "-d", temporaryDirectory]);
 
     const span = `from schema version ${String(SEEDED_FROM)} to ${String(LATEST_SCHEMA_VERSION)}`;
     expect(stderr).toContain(`Migrating .taskless/ ${span}`);
@@ -284,14 +274,9 @@ describe("who migrates, and who refuses", () => {
 
   it("says nothing on stderr when the scaffold is already current", async () => {
     await seedVersion3();
-    await runCli(["init", "--no-interactive", "-d", temporaryDirectory]);
+    await runCli(["init", "-d", temporaryDirectory]);
 
-    const { stderr } = await runCli([
-      "init",
-      "--no-interactive",
-      "-d",
-      temporaryDirectory,
-    ]);
+    const { stderr } = await runCli(["init", "-d", temporaryDirectory]);
 
     expect(stderr).not.toContain("Migrat");
   });

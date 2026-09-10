@@ -76,26 +76,45 @@ describe("prompt rendering", () => {
     expect(getPrompt("create-sg-rule")).toContain(`CLI v${__VERSION__}`);
   });
 
-  it("carries the fetch-time directive as line 2 of every recipe on disk", async () => {
-    // Byte-identical across recipes, including the `.anonymous` variants, so
-    // an agent sees one sentence rather than twenty paraphrases of it. Line 3
-    // is blank because `stripHeader` ends the block at the first blank line:
-    // a recipe that ran the directive into its body would keep it in the
-    // header-less rendering.
+  it("keeps a one-line header in every recipe file on disk", async () => {
+    // The directive is added by the renderer on the `agent` command's
+    // request, never written into a file: a recipe read through the prompts
+    // export must not claim the reader can re-run a CLI.
     const allEntries = await readdir(recipeDirectory);
     const entries = allEntries.filter((name) => name.endsWith(".md"));
-    const directives = new Set<string>();
+    expect(entries.length).toBeGreaterThan(0);
     for (const name of entries) {
       const content = await readFile(join(recipeDirectory, name), "utf8");
       const lines = content.split("\n");
       expect(lines[0], `${name} line 1`).toMatch(/^# Topic:/);
-      expect(lines[1], `${name} line 2`).toContain("do not reuse this copy");
-      expect(lines[1], `${name} line 2`).toContain("%(TASKLESS_CLI)s agent");
-      expect(lines[2], `${name} line 3`).toBe("");
-      directives.add(lines[1]!);
+      expect(lines[1], `${name} line 2`).toBe("");
+      expect(content, name).not.toContain("do not reuse this copy");
     }
-    expect(entries.length).toBeGreaterThan(0);
-    expect([...directives]).toHaveLength(1);
+  });
+
+  it("does not carry the directive through the prompts export", () => {
+    for (const topic of TOPICS) {
+      expect(getPrompt(topic), topic).not.toContain("do not reuse this copy");
+    }
+  });
+
+  it("adds the directive as line 2 of the header block when asked", () => {
+    const plain = getRecipe("check", { invocation: "npx @taskless/cli" })!;
+    const served = getRecipe("check", {
+      directive: true,
+      invocation: "npx @taskless/cli",
+    })!;
+    const plainLines = plain.split("\n");
+    const servedLines = served.split("\n");
+    expect(servedLines[0]).toBe(plainLines[0]);
+    expect(servedLines[1]).toContain("do not reuse this copy");
+    expect(servedLines[1]).toContain("`npx @taskless/cli agent <topic>`");
+    expect(servedLines[1]).toContain("stale");
+    expect(servedLines[2]).toBe("");
+    // The body is untouched: everything after the header block matches.
+    expect(servedLines.slice(3).join("\n")).toBe(
+      plainLines.slice(2).join("\n")
+    );
   });
 
   it.each([
@@ -371,26 +390,30 @@ describe("host mechanics suppression", () => {
 });
 
 describe("header suppression", () => {
-  it("drops the header block and the blank line after it, leaving the body intact", () => {
+  it("drops the header line and the blank line after it, leaving the body intact", () => {
     const withHeader = getPrompt("create-sg-rule");
     const withoutHeader = getPrompt("create-sg-rule", { header: false });
 
     expect(withHeader.startsWith("# Topic: create-sg-rule")).toBe(true);
     expect(withoutHeader.startsWith("# Topic:")).toBe(false);
-    // The block is the topic line, the fetch-time directive, and the blank
-    // line that closes it. The body is the same string minus those three.
-    expect(withoutHeader).toBe(withHeader.split("\n").slice(3).join("\n"));
+    // The body is the same string, minus the header line and its blank line.
+    expect(withoutHeader).toBe(withHeader.split("\n").slice(2).join("\n"));
   });
 
   it("drops the fetch-time directive with the version", () => {
     // A header-less rendering is for a consumer embedding the text in its
-    // own prompt. "Re-run the CLI" is as wrong there as a version string.
-    for (const topic of TOPICS) {
-      expect(
-        getPrompt(topic, { header: false }),
-        `${topic} kept the directive`
-      ).not.toContain("do not reuse this copy");
-    }
+    // own prompt. "Re-run the CLI" is as wrong there as a version string, so
+    // the block is stripped whole, however many lines it holds.
+    const served = getRecipe("check", {
+      directive: true,
+      invocation: "npx @taskless/cli",
+      header: false,
+    })!;
+    expect(served).not.toContain("do not reuse this copy");
+    expect(served).not.toMatch(/CLI v\d/);
+    expect(served).toBe(
+      getRecipe("check", { header: false, invocation: "npx @taskless/cli" })
+    );
   });
 
   it("leaves no CLI version string behind", () => {
@@ -455,8 +478,12 @@ describe("agent command parity", () => {
     async (topic) => {
       const { stdout } = await execFileAsync("node", [binPath, "agent", topic]);
       // The command trims trailing whitespace before printing; console.log then
-      // adds the single newline that stdout carries.
-      expect(stdout.trimEnd()).toBe(getPrompt(topic).trimEnd());
+      // adds the single newline that stdout carries. It also asks for the
+      // fetch-time directive, which the export leaves off by default; a
+      // consumer that wants the served text asks for it the same way.
+      expect(stdout.trimEnd()).toBe(
+        getPrompt(topic, { directive: true }).trimEnd()
+      );
     }
   );
 });

@@ -243,7 +243,7 @@ describe("runWizard end-to-end", () => {
  * calls `readInstallState`, which is the first thing `runWizard` does inside
  * its frame. An unreadable manifest therefore throws between `intro()` and
  * `outro()`, and the refusal built for `check`, `verify` and
- * `init --no-interactive` has to reach a person here too rather than escaping
+ * `init` has to reach a person here too rather than escaping
  * past a frame nothing closed.
  */
 describe("runWizard with an unreadable manifest", () => {

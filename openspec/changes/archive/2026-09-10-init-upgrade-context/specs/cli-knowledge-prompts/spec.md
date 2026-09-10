@@ -1,20 +1,11 @@
 ## MODIFIED Requirements
 
-### Requirement: The version header is suppressible
+### Requirement: The export and the agent command share one source and one renderer
 
-Rendered prompts SHALL begin with a header block: a line naming the topic and the CLI version, then the fetch-time directive line, then one blank line. Because that version participates in an LLM consumer's prompt-cache key, `PromptOptions.header` SHALL allow suppressing the block. It SHALL default to `true`, leaving the `agent` command's output and all existing behavior unchanged. Suppression SHALL remove the whole block, so a header-less rendering neither carries the version nor opens with a directive that only makes sense beside it.
+The prompt export SHALL be sourced from the same embedded `agent/*.md` content that `commands/agent.ts` serves, and SHALL render it through the same render path, with no duplicated embedding and no duplicated interpolation logic. Both surfaces SHALL return identical text for the same topic and equivalent options. The one option the `agent` command sets that the export does not default to is `directive`: the command serves a fetch, so it asks for the fetch-time directive, and the export leaves it off. A consumer that passes `directive: true` SHALL receive exactly what the command prints.
 
-#### Scenario: Header suppressed for a cache-stable system prompt
+#### Scenario: Parity between import and agent command
 
-- **WHEN** a consumer calls a prompt with `header: false`
-- **THEN** the returned text omits the `# Topic: …` line and the directive line and contains no CLI version string, while the body is otherwise identical to the default rendering
-
-#### Scenario: Header present by default
-
-- **WHEN** a prompt is called with no options, or the `agent` command renders a topic
-- **THEN** the header block is present, exactly as it renders today
-
-#### Scenario: Build defines are inlined into the prompts entry
-
-- **WHEN** a rendered prompt is inspected from the built `dist/prompts.js`
-- **THEN** it contains no un-inlined build-define identifier (e.g. a literal `__VERSION__`)
+- **WHEN** the `agent` command renders topic `T` and a consumer calls `getPrompt("T", { directive: true })`
+- **THEN** the two texts are identical, including under a non-prod build target where the CLI invocation is rewritten
+- **AND** `getPrompt("T")` with default options is the same text without the directive line

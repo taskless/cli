@@ -16,10 +16,11 @@ npx @taskless/cli
 
 Run with no arguments in a terminal to launch the installer, which detects the
 agent tools in your project (Claude Code, Cursor, OpenCode) and installs into
-each of them. For scripted installs, skip the prompts:
+each of them. For scripted installs and upgrades, `init` runs the same install
+without prompts, in a terminal or not:
 
 ```bash
-npx @taskless/cli init --no-interactive
+npx @taskless/cli init
 ```
 
 New to Taskless? Run `npx @taskless/cli onboard` after installing. It walks your

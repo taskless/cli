@@ -186,7 +186,7 @@ describe("a reporting command never migrates", () => {
 
   it("still runs against a project that is already current", async () => {
     // The refusal is about being BEHIND, not about having a scaffold.
-    await runCli(["init", "--no-interactive", "-d", directory]);
+    await runCli(["init", "-d", directory]);
 
     const { stderr, exitCode } = await runCli(["check", "-d", directory]);
     expect(stderr).not.toContain("schema version");
@@ -209,14 +209,6 @@ describe("a reporting command never migrates", () => {
     } finally {
       await rm(bare, { recursive: true, force: true });
     }
-  });
-
-  it("points a piped caller at init --no-interactive", async () => {
-    // Every run in this suite has a piped stdout, which is what an agent
-    // has. A bare `init` there prints the topic index and migrates nothing,
-    // so a refusal naming it would send the agent in a loop.
-    const { stderr } = await runCli(["check", "-d", directory]);
-    expect(stderr).toMatch(/Run `.* init --no-interactive` to migrate/);
   });
 
   it("still explains the scaffold migration to a person", async () => {
@@ -246,13 +238,7 @@ describe("a reporting command never migrates", () => {
   it("migrates when asked, and reports what moved", async () => {
     // The other half of the trade: the migration still happens, on a command
     // whose job is to change the project.
-    const { stdout } = await runCli([
-      "init",
-      "--no-interactive",
-      "--json",
-      "-d",
-      directory,
-    ]);
+    const { stdout } = await runCli(["init", "--json", "-d", directory]);
 
     const envelope = parseEnvelope<{
       migrated?: { from: number; to: number };
@@ -327,12 +313,7 @@ describe("a manifest that cannot be parsed", () => {
   });
 
   it("init refuses rather than rewriting what it could not parse", async () => {
-    const { exitCode } = await runCli([
-      "init",
-      "--no-interactive",
-      "-d",
-      directory,
-    ]);
+    const { exitCode } = await runCli(["init", "-d", directory]);
     expect(exitCode).toBe(1);
 
     // Byte-for-byte. Measured before the fix, this file came back as
@@ -347,13 +328,7 @@ describe("a manifest that cannot be parsed", () => {
     const bare = await mkdtemp(join(tmpdir(), "tskl-no-manifest-"));
     try {
       await mkdir(join(bare, ".taskless", "rules"), { recursive: true });
-      const { stdout } = await runCli([
-        "init",
-        "--no-interactive",
-        "--json",
-        "-d",
-        bare,
-      ]);
+      const { stdout } = await runCli(["init", "--json", "-d", bare]);
       const envelope = parseEnvelope<{
         migrated?: { from: number; to: number };
       }>(stdout);

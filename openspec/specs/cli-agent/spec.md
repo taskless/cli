@@ -55,23 +55,13 @@ Recipe files SHALL be located at `packages/cli/src/agent/` as plain `.txt` files
 
 ### Requirement: Recipe files follow a consistent format
 
-Every recipe file at `packages/cli/src/agent/<topic>.md` SHALL follow the canonical recipe template: a header block, followed by `## Goal`, `## Preconditions`, `## Steps`, optional `## Input schema` (for recipes that take `--from`), `## Errors`, and `## See Also` sections in that order.
-
-The header block SHALL be exactly two lines followed by one blank line. The first line SHALL be `# Topic: <name>     (CLI v%(CLI_VERSION)s / topic v<n>)`. The second line SHALL be the fetch-time directive, identical across every recipe: it states that the text was resolved by the CLI at the moment it was fetched and that a later task, in the same session or another, fetches it again with `%(TASKLESS_CLI)s agent <topic>` rather than reusing this copy. The directive is part of the header so that a cache-stable rendering can drop it together with the version line.
-
-Recipe templates SHALL use sprintf-js `%(KEY)s` named-argument placeholders for all substitution. The header SHALL embed `%(CLI_VERSION)s` for the CLI version. Topics that document a `--from` input SHALL embed `%(INPUT_SCHEMA)s` inside the `## Input schema` fenced code block. The topic version integer in the header SHALL be a literal value maintained by the recipe author and bumped when the recipe changes meaningfully.
+Every recipe file at `packages/cli/src/agent/<topic>.txt` SHALL follow the canonical recipe template: a single-line header `# Topic: <name>     (CLI v%(CLI_VERSION)s / topic v<n>)`, followed by `## Goal`, `## Preconditions`, `## Steps`, optional `## Input schema` (for recipes that take `--from`), `## Errors`, and `## See Also` sections in that order. Recipe templates SHALL use sprintf-js `%(KEY)s` named-argument placeholders for all substitution. The header SHALL embed `%(CLI_VERSION)s` for the CLI version. Topics that document a `--from` input SHALL embed `%(INPUT_SCHEMA)s` inside the `## Input schema` fenced code block. The topic version integer in the header SHALL be a literal value maintained by the recipe author and bumped when the recipe changes meaningfully.
 
 #### Scenario: Recipe contains all template sections
 
-- **WHEN** any `<topic>.md` file is read
+- **WHEN** any `<topic>.txt` file is read
 - **THEN** it SHALL begin with a `# Topic:` header containing `%(CLI_VERSION)s` and the topic version integer
 - **AND** SHALL contain `## Goal`, `## Preconditions`, `## Steps`, `## Errors`, and `## See Also` sections in that order
-
-#### Scenario: Every recipe carries the fetch-time directive as its second line
-
-- **WHEN** any `<topic>.md` file is read
-- **THEN** its second line SHALL be the fetch-time directive, byte-identical to the directive in every other recipe
-- **AND** the third line SHALL be blank
 
 #### Scenario: Recipe with --from input includes JSON schema placeholder
 
@@ -309,3 +299,28 @@ An automated check SHALL fail when a bare `` `taskless <subcommand>` `` invocati
 - **THEN** it SHALL operate on rendered recipe text, where the invocation is a stable literal, rather than on source text where it is a placeholder
 - **AND** it SHALL anchor on the invocation the running build actually renders, so the check does not pass vacuously under a `nightly`, `dev`, or `self` build whose rendered invocation names neither `taskless` nor `@taskless/cli`
 - **AND** it SHALL fail when it finds no cross-reference at all, since an empty result is otherwise indistinguishable from every reference resolving
+
+### Requirement: The agent subcommand serves each recipe under a fetch-time header
+
+When `taskless agent <topic>` serves a recipe, the rendered text SHALL carry a fetch-time directive as the second line of its header block, directly beneath the `# Topic:` line and before the blank line that closes the block. The directive SHALL state that the CLI resolved the text at the moment it was fetched, that the next Taskless task fetches it again with `<invocation> agent <topic>` rather than reusing this copy, and that a session in which Taskless was installed or upgraded holds a stale skill until it is reloaded. It SHALL be identical for every topic except for the rendered invocation.
+
+The directive is added by the renderer on the `agent` command's request, not written into the recipe files. A recipe file SHALL keep its single-line `# Topic:` header, and a prompt rendered through `@taskless/cli/prompts` SHALL NOT carry the directive: that export exists for a consumer embedding the text in its own prompt, where an instruction to re-run a CLI may be false. `PromptOptions.header: false` SHALL strip the whole header block, directive included, whenever one is present.
+
+#### Scenario: A served recipe opens with the directive
+
+- **WHEN** `taskless agent check` is run
+- **THEN** line 1 of stdout SHALL be the `# Topic: check …` header
+- **AND** line 2 SHALL be the fetch-time directive, naming the invocation and `agent <topic>`
+- **AND** line 3 SHALL be blank, followed by the recipe body unchanged
+
+#### Scenario: The prompts export does not carry the directive
+
+- **WHEN** a consumer renders any topic through `@taskless/cli/prompts` with default options
+- **THEN** the text SHALL begin with the `# Topic:` line followed directly by a blank line
+- **AND** SHALL NOT contain the directive
+
+#### Scenario: Header suppression removes the directive with the version
+
+- **WHEN** a recipe is rendered with the directive and `header: false`
+- **THEN** the result SHALL contain neither the `# Topic:` line, the CLI version, nor the directive
+- **AND** its body SHALL be byte-identical to the body of the default rendering

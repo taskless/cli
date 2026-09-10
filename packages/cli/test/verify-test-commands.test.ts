@@ -40,7 +40,7 @@ interface Report {
 
 beforeEach(async () => {
   cwd = await mkdtemp(join(tmpdir(), "tskl-verify-cmd-"));
-  await runCli(["init", "--no-interactive", "-d", cwd]);
+  await runCli(["init", "-d", cwd]);
 });
 
 afterEach(async () => {

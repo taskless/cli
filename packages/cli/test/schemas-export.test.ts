@@ -55,7 +55,7 @@ let cwd: string;
 
 beforeEach(async () => {
   cwd = await mkdtemp(join(tmpdir(), "tskl-schemas-"));
-  await execFileAsync("node", [binPath, "init", "--no-interactive", "-d", cwd]);
+  await execFileAsync("node", [binPath, "init", "-d", cwd]);
 });
 
 afterEach(async () => {
