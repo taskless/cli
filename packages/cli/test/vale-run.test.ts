@@ -258,15 +258,50 @@ withVale("runVale against the real binary", () => {
   });
 
   it("terminates and reports a timeout rather than hanging", async () => {
+    // THE BUDGET AND THE INPUT ARE BOTH LOAD-BEARING. This asserted the winner
+    // of a race until taskless/cli#262 work looked at it: a 1ms budget against
+    // a one-line document, on the stated grounds that "1ms cannot survive
+    // process startup". That is not something the test controls. Vale runs in
+    // its OWN process and does not care whether our event loop is free, so
+    // under load the timer's callback is delayed while the child keeps going,
+    // and the run completes cleanly where the test demanded a timeout.
+    //
+    // Its sibling in `ValeRunOutcome.blocking` had the identical shape and was
+    // MEASURED failing that way — twice across 13 full-suite runs, reporting
+    // `status: "ok"` — before it was given a real margin. This test survived
+    // only because its window was narrower, not because it was safe.
+    //
+    // The metric that matters is the ABSOLUTE margin (duration minus budget),
+    // not a ratio: what has to happen is the child finishing before a delayed
+    // timer callback runs. Measured on this fixture, warm:
+    //
+    // | fixture         | bytes  | duration | headroom over 100ms |
+    // | --------------- | ------ | -------- | ------------------- |
+    // | 19 (the old one)| 362    | ~46ms    | 45ms — this flaked  |
+    // | 8,000           | 152KB  | ~1020ms  | ~920ms              |
+    // | 17,000 (sibling)| 323KB  | ~4430ms  | ~4330ms             |
+    //
+    // 8,000 is chosen over the sibling's 17,000 deliberately: it is 20x the
+    // margin that actually flaked while costing a quarter of the suite time,
+    // and this test asserts the message rather than the blocking flag, which
+    // the sibling already covers with the larger fixture.
+    //
+    // `maxFileBytes` raises `VALE_MAX_FILE_BYTES` for THIS CALL ONLY — not a
+    // CLI flag, not a config surface, just a seam. Without it a 152KB document
+    // is excluded before Vale sees it (taskless/cli#321) and reports
+    // `status: "ok"` with a notice, never exercising the timeout at all.
     const cwd = makeProject(
       `${header}\n[*.md]\nno-simply.no-simply = YES\n`,
       { "no-simply": existenceRule("simply", "Avoid 'simply'") },
-      { "doc.md": "Just simply do it.\n" }
+      { "doc.md": `${"Just simply do it. ".repeat(8000)}\n` }
     );
 
-    // 1ms cannot survive process startup, so this exercises the kill path
-    // without needing a pathological corpus to provoke it.
-    const outcome = await runVale({ cwd, paths: ["doc.md"], timeoutMs: 1 });
+    const outcome = await runVale({
+      cwd,
+      paths: ["doc.md"],
+      timeoutMs: 100,
+      maxFileBytes: Number.POSITIVE_INFINITY,
+    });
     expect(outcome.status).toBe("timeout");
     if (outcome.status !== "timeout") return;
     expect(outcome.message).toContain("terminated");
