@@ -505,6 +505,19 @@ export default defineConfig({
   test: {
     testTimeout: 20_000,
     hookTimeout: 20_000,
+    // Most suites spawn the BUILT CLI, which carries the production PostHog
+    // token and opts out only on these env vars. A child inherits the worker's
+    // process.env, so without this every `init`/`check` a test spawns posts a
+    // real `cli_run`, stamped with the package version and indistinguishable
+    // from a user's. Measured on 2026-09-08: `init` outnumbered `check` in
+    // production (8,673 to 8,415), which no shipped code path can do — `check`
+    // never launches `init` — and the daily shape tracked the Validate run
+    // count. Tests that exercise the opt-out itself clear these with
+    // `vi.stubEnv` first, so the default costs them nothing.
+    env: {
+      TASKLESS_TELEMETRY_DISABLED: "1",
+      DO_NOT_TRACK: "1",
+    },
     // Two projects, because `__TASKLESS_CLI__` is a compile-time define rather
     // than a value a test can stub: whatever this config resolves is what every
     // test in the run sees. The suite therefore only ever exercised a prod
