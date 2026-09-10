@@ -36,6 +36,12 @@ on:
 permissions:
   contents: read
 
+# This workflow runs the CLI this repository builds. Its telemetry is the same
+# production client a user's install has, so every invocation here would count
+# as adoption. Opting out is the CLI's own switch, read by the built binary.
+env:
+  TASKLESS_TELEMETRY_DISABLED: "1"
+
 jobs:
   demo-rules:
     name: Demo rules

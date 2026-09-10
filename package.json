@@ -17,7 +17,7 @@
     "bump:version": "changeset version",
     "changeset": "changeset",
     "check:style": "pnpm build && pnpm cli check",
-    "cli": "./packages/cli/dist/index.js",
+    "cli": "TASKLESS_TELEMETRY_DISABLED=1 ./packages/cli/dist/index.js",
     "dotagents": "dotagents --project",
     "generate:api": "pnpm --filter @taskless/cli generate:api",
     "husky": "husky",
