@@ -9,6 +9,13 @@ import { pinnedSpecifier } from "../src/util/package-manager";
 import { ensureTasklessDirectory } from "../src/filesystem/directory";
 import { LATEST_SCHEMA_VERSION } from "../src/filesystem/migrate";
 import {
+  applyInstallPlan,
+  buildInstallPlan,
+  getEmbeddedCommands,
+  getEmbeddedSkills,
+} from "../src/install/install";
+import { buildInvocation } from "../src/util/invocation";
+import {
   ENGINES,
   RULES_DIRECTORY,
   RULE_TESTS_DIRECTORY,
@@ -111,6 +118,50 @@ describe("this repository's own installed Taskless docs", () => {
     );
     expect(onDisk).not.toContain("rule-tests");
     expect(onDisk).not.toContain("sg/rules/");
+  });
+
+  it("spells the CLI as %(TASKLESS_CLI)s in the skill and command sources, never the literal", async () => {
+    // The canonical write used to find `npx @taskless/cli` in the prose and
+    // rewrite it for nightly/dev builds. A literal is whitespace-sensitive: a
+    // wrapped line or a doubled space escaped the rewrite silently, and a
+    // nightly install then told its agent to run the release package. The
+    // token either matches exactly or this test says it is missing.
+    for (const [name, path] of [
+      ["SKILL.md", resolve(repositoryRoot, "skills", "taskless", "SKILL.md")],
+      ["tskl.md", resolve(repositoryRoot, "commands", "tskl", "tskl.md")],
+    ] as const) {
+      const source = await readFile(path, "utf8");
+      const body = source.replace(/^---\n[\s\S]*?\n---\n/, "");
+      expect(body, `${name} names the CLI`).toContain("%(TASKLESS_CLI)s");
+      expect(body, `${name} carries the literal`).not.toContain(
+        "npx @taskless/cli"
+      );
+    }
+  });
+
+  it("renders the placeholder to this build's invocation at install, and nothing else", async () => {
+    const cwd = await mkdtemp(join(tmpdir(), "taskless-placeholder-"));
+    try {
+      await applyInstallPlan(
+        cwd,
+        buildInstallPlan(
+          [".claude"],
+          getEmbeddedSkills(),
+          getEmbeddedCommands()
+        ),
+        { cliVersion: "0.0.0-test" }
+      );
+      for (const relative of [
+        join(".taskless", "skills", "taskless", "SKILL.md"),
+        join(".taskless", "commands", "tskl", "tskl.md"),
+      ]) {
+        const installed = await readFile(join(cwd, relative), "utf8");
+        expect(installed, relative).toContain(`${buildInvocation()} agent`);
+        expect(installed, relative).not.toContain("%(");
+      }
+    } finally {
+      await rm(cwd, { recursive: true, force: true });
+    }
   });
 
   it("tells an agent a recipe is per-task, in the skill and the command", async () => {

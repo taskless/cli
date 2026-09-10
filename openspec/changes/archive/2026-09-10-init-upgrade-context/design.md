@@ -48,6 +48,10 @@ Twenty recipe files carrying an identical line invited twenty paraphrases, and t
 
 Living in the header block means `stripHeader` drops it with the version: the function now strips through the first blank line rather than a fixed line count, with the same first-line `# Topic:` anchor so a header inside a fenced example is left alone. Parity between the export and the command is stated modulo that option, and a consumer that passes `directive: true` gets exactly what the command prints.
 
+### The skill and command name the CLI through a placeholder
+
+The canonical write used to find the literal `npx @taskless/cli` in the skill and command prose and rewrite it to the build's invocation. That search is whitespace-sensitive: a wrapped line or a doubled space left the literal in place, and a nightly install then carried a skill telling its agent to run the release package, with nothing failing. The sources now spell the invocation as `%(TASKLESS_CLI)s`, the recipes' token, and `renderInvocationPlaceholder` substitutes it exactly at install. It is an exact-token replacement rather than a sprintf render, since the sources are prose with no other placeholders and sprintf would turn a literal `%` in a markdown body into a render error. A source test asserts the literal is absent and the token present, and an install test asserts the rendered file carries the build's invocation and no unrendered `%(`. The token is the same width as `npx @taskless/cli`, so the topic tables stay aligned in source and in a release install. `applyCliInvocation` stays for one-line code strings, where an exact literal is not brittle.
+
 ### The skill directive is a section, budgeted against the cap
 
 The body is 72 lines against an 80-line cap. The directive is a heading and five lines. The `tskl` command has no cap and gets the same paragraph.

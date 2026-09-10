@@ -127,3 +127,28 @@ Update SHALL NOT delete or `rm -rf` the canonical `.taskless/` store, nor any di
 - **WHEN** `taskless update` processes its targets
 - **THEN** it SHALL NOT delete `.taskless/skills/` or `.taskless/commands/` as part of cleaning up any target
 - **AND** the canonical content SHALL remain readable throughout the update
+
+### Requirement: Skills are installed as Agent Skills spec SKILL.md files
+
+The CLI SHALL install skill content using a canonical-store-plus-stub model rather than writing a full copy per detected tool. The full skill content SHALL be written exactly once to the canonical `.taskless/skills/<name>/SKILL.md`. Each selected tool directory SHALL receive its own reference stub as defined by the reference-stub requirement. Skill names SHALL be installed verbatim from the embedded source. No additional namespace prefixing SHALL be applied at install time.
+
+The skill and command sources SHALL name the CLI through the `%(TASKLESS_CLI)s` placeholder, the same token the recipes use, and SHALL NOT contain the literal `npx @taskless/cli` in their bodies. The canonical write renders the placeholder to the build's own invocation (`npx @taskless/cli` for a release build, the pinned nightly or path-form invocation otherwise). Rendering is an exact-token substitution, not a search for the literal invocation in prose: a literal is whitespace-sensitive, so a wrapped line or a doubled space silently escaped the rewrite and reached a nightly install naming the release package.
+
+#### Scenario: Canonical skill content matches source
+
+- **WHEN** a skill is installed
+- **THEN** the canonical `.taskless/skills/<name>/SKILL.md` content SHALL be identical to the embedded source from `skills/` with every `%(TASKLESS_CLI)s` rendered to the build's invocation, which for a release build is `npx @taskless/cli`
+- **AND** no frontmatter fields SHALL be modified at install time
+
+#### Scenario: The sources carry the placeholder, not the literal
+
+- **WHEN** the skill and command sources under `skills/` and `commands/` are read
+- **THEN** each body SHALL contain `%(TASKLESS_CLI)s` wherever it names the CLI
+- **AND** SHALL NOT contain the literal `npx @taskless/cli`
+- **AND** the rendered canonical content SHALL contain no unrendered `%(` token
+
+#### Scenario: Selected tool directory receives a stub, not a full copy
+
+- **WHEN** the CLI installs the `taskless` skill and any tool directory is selected
+- **THEN** that directory's skill location SHALL contain a reference stub
+- **AND** SHALL NOT contain a full copy of the canonical skill content

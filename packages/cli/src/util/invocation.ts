@@ -28,6 +28,28 @@ export function buildInvocation(): string {
   return __TASKLESS_CLI__;
 }
 
+/** The token skill and command sources spell the CLI invocation with. */
+export const INVOCATION_PLACEHOLDER = "%(TASKLESS_CLI)s";
+
+/**
+ * Render {@link INVOCATION_PLACEHOLDER} in an installed skill or command body
+ * to this build's invocation.
+ *
+ * The same token the recipes use, so a reader of either source sees one
+ * spelling. It is substituted as an exact token rather than rendered through
+ * sprintf: the sources are prose with no other placeholders, and sprintf
+ * would make a literal `%` in a markdown body a render error.
+ *
+ * This replaces searching the prose for the literal `npx @taskless/cli`
+ * ({@link applyCliInvocation}), which is whitespace-sensitive: a wrapped line
+ * or a doubled space left the literal in place, and a nightly install then
+ * carried a skill telling its agent to run the release package. A token
+ * either matches exactly or a test on the source notices it is missing.
+ */
+export function renderInvocationPlaceholder(content: string): string {
+  return content.replaceAll(INVOCATION_PLACEHOLDER, __TASKLESS_CLI__);
+}
+
 /**
  * Rewrite the canonical `npx @taskless/cli` invocation to the build-target
  * invocation (`__TASKLESS_CLI__`).
