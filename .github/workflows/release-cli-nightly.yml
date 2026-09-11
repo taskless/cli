@@ -294,7 +294,7 @@ jobs:
           echo "Building from ${actual}, which Validate passed on."
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: 24
+          node-version-file: .nvmrc
 
       # No dependency install in this job, by design — gate 1 is the reason the
       # workflow can decide before installing anything, and nightly-pack.cjs is
@@ -514,7 +514,7 @@ jobs:
       # NODE_AUTH_TOKEN in env until v7).
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: 24
+          node-version-file: .nvmrc
           cache: pnpm
           registry-url: https://registry.npmjs.org
       # --ignore-scripts: no dependency lifecycle code runs while an OIDC
@@ -658,7 +658,7 @@ jobs:
           echo "Annotating from ${actual}, which Validate passed on."
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: 24
+          node-version-file: .nvmrc
 
       # A LOST UPDATE IS POSSIBLE HERE, AND IS ACCEPTED (Copilot review, #133).
       # A pull request body is replaced whole: GitHub offers no field-level

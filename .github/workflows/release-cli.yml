@@ -78,7 +78,7 @@ jobs:
           persist-credentials: false # no git writes here; don't leave the token in git config
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: 24
+          node-version-file: .nvmrc
       - id: check
         run: |
           name=$(node -p "require('./packages/cli/package.json').name")
@@ -126,7 +126,7 @@ jobs:
       # so the OIDC exchange below is the only credential this job ever holds.
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: 24
+          node-version-file: .nvmrc
           cache: pnpm
           registry-url: https://registry.npmjs.org
       - run: pnpm install --frozen-lockfile --ignore-scripts
