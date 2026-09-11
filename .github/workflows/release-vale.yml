@@ -150,7 +150,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: 24
+          node-version-file: .nvmrc
 
       # No install step: the script is zero-dependency CommonJS. GITHUB_TOKEN is
       # passed only to raise the GitHub API rate limit; the endpoints are public.
@@ -238,7 +238,7 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: 24
+          node-version-file: .nvmrc
       # --force on dispatch: an explicit human request publishes even when the
       # pinned version is already out. Only the automatic push path is gated.
       - id: gate
@@ -264,7 +264,7 @@ jobs:
           persist-credentials: false # nothing here writes to git
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: 24
+          node-version-file: .nvmrc
 
       # No dependency install at all: the script is zero-dependency CommonJS and
       # unpacks with `tar` and `unzip`, both present on ubuntu-latest. Nothing
@@ -335,6 +335,10 @@ jobs:
       # explains why (`always-auth` in .npmrc until v6.1, a dummy
       # NODE_AUTH_TOKEN in env until v7). The warning in issue #294 came from
       # this step's .npmrc under v4.4.0.
+      #
+      # A literal major rather than `node-version-file: .nvmrc`, because there
+      # is no checkout here for the file to be read from. Keep it equal to
+      # .nvmrc; this is the one place in the workflows the number is repeated.
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 24
