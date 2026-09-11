@@ -330,6 +330,11 @@ jobs:
       # Deliberately no checkout. This job publishes tarballs the previous job
       # already verified and sealed; it has no reason to hold repository source
       # while an OIDC identity exists.
+      #
+      # setup-node >= v7 is the floor here; release-cli.yml's publish job
+      # explains why (`always-auth` in .npmrc until v6.1, a dummy
+      # NODE_AUTH_TOKEN in env until v7). The warning in issue #294 came from
+      # this step's .npmrc under v4.4.0.
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 24

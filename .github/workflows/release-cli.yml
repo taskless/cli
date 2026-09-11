@@ -117,6 +117,13 @@ jobs:
         with:
           persist-credentials: false # publish authenticates via OIDC/npm, not git creds
       - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+      # setup-node >= v7 is the floor for this step, not just the current pin.
+      # `registry-url` writes the .npmrc npm publishes through. Up to v6.0 that
+      # file also carried `always-auth=false`, which npm 11 warns is an unknown
+      # option and the next npm major refuses (issue #294); v6.1 stopped
+      # writing it. Up to v6 the step also exported a dummy NODE_AUTH_TOKEN
+      # (XXXXX-XXXXX-XXXXX-XXXXX) into every later step; v7 exports nothing,
+      # so the OIDC exchange below is the only credential this job ever holds.
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 24
