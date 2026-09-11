@@ -147,7 +147,7 @@ jobs:
       # build/lint/test, and every allowed tool reads the diff through `gh`
       # (the API), not through local history.
       - name: Checkout PR head
-        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: refs/pull/${{ steps.prep.outputs.pr }}/head
           fetch-depth: 1
@@ -212,7 +212,7 @@ jobs:
       # comment, so there's no explicit reaction step here.
       - name: Run Claude Code Review
         id: review
-        uses: anthropics/claude-code-action@d40ddef4c030e508327d6e35a9c45f3368482c50 # v1
+        uses: anthropics/claude-code-action@0a8d3c9443bbff909ab973b6a17a340b913f229f # v1.0.221
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           # Single tracking comment (in-progress → results), updated in place.

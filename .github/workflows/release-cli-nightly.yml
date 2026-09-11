@@ -266,7 +266,7 @@ jobs:
       # `ref:` is MANDATORY under workflow_run. Without it checkout takes
       # `github.sha`, which here is the default branch tip at event time, not
       # the commit Validate tested.
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ github.event.workflow_run.head_sha }}
           persist-credentials: false # nothing here writes to git
@@ -292,7 +292,7 @@ jobs:
             exit 1
           fi
           echo "Building from ${actual}, which Validate passed on."
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 24
 
@@ -424,7 +424,7 @@ jobs:
       # again here rather than trusted from there. This is the job that produces
       # the bytes: `gate` proved that some job checked out the validated commit,
       # not that this one did.
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ github.event.workflow_run.head_sha }}
           persist-credentials: false # publish authenticates via OIDC, not git creds
@@ -508,8 +508,8 @@ jobs:
       - name: Give changesets the `main` ref it diffs against
         run: git branch -f main HEAD
 
-      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 24
           cache: pnpm
@@ -630,7 +630,7 @@ jobs:
       # SCRIPT that is not the one Validate passed on — while announcing a
       # nightly built from a different commit. Cosmetic output does not lower
       # the bar; it is the same fail-open, and it reads as a normal run.
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ github.event.workflow_run.head_sha }}
           persist-credentials: false # gh authenticates with GITHUB_TOKEN below
@@ -653,7 +653,7 @@ jobs:
             exit 1
           fi
           echo "Annotating from ${actual}, which Validate passed on."
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 24
 
