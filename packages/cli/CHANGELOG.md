@@ -1,5 +1,138 @@
 # @taskless/cli
 
+## 0.11.2
+
+[Compare with v0.11.1](https://github.com/taskless/cli/compare/v0.11.1...v0.11.2)
+
+### Patch Changes
+
+- b8b6f32: Fixed reference stubs (`.claude/`, `.agents/`, etc.) freezing a stale,
+  unpinned `npx @taskless/cli` invocation into their own frontmatter
+  `description` forever, even on a nightly install whose canonical
+  `.taskless/skills/taskless/SKILL.md` correctly names the pinned
+  `@taskless/cli-nightly@<version>` package. A stub's `description` is copied
+  verbatim from source and, unlike canonical content, is never rewritten for
+  the current build target — so any CLI invocation baked into it would go
+  stale on the very first release that changed. The invocation is removed from
+  the skill and command `description` fields entirely: the canonical file
+  already carries the correct, per-build invocation, and a stub always defers
+  to it, so there is no longer a second copy that can drift.
+- 2d088fa: `info --json` now includes `install.onboarded`, matching the field the
+  `onboard` recipe already instructs agents to read from that command. Before
+  this, the field was written to `.taskless/taskless.json` and enforced by
+  `onboard`'s own gate, but omitted from the `info --json` payload, so an agent
+  following the recipe read `undefined` and re-ran a full discovery pass on a
+  project that had already onboarded. A manifest that omits the field now
+  reports `onboarded: false`, matching the strict-equality gate `onboard`
+  itself applies, rather than `null` or leaving the key out.
+- 548f268: `init --json` now writes only the parseable envelope to stdout. Previously,
+  the non-interactive install path (also reached from `init --no-interactive
+--json`) unconditionally logged human-readable prose — the "no tools
+  detected" fallback notice and the per-target skill/command summary — to
+  stdout ahead of the JSON envelope, so `taskless init --json | jq .` failed
+  with a JSON parse error. That prose now goes to stderr, where it stays
+  visible to a person watching the terminal without corrupting a machine
+  consumer's view of stdout, matching how `verify`/`test` and the migration
+  notice already behave under `--json`.
+- b68b095: `taskless init` is now the batch install in every context, and `--no-interactive` is dropped: a bare `npx @taskless/cli` in a terminal is the wizard, `init` is the install and upgrade path for agents, scripts, and CI, and `agent init` is the recipe. A script that still passes the flag gets `init` unchanged. `init` ends with an upgrade trailer naming the directories that hold changed files and, after a CLI version move, pointing at `taskless update`; the `--json` envelope gains `cliVersion`, a per-target `targets` summary, and a `changed` flag. A canonical `.taskless/` file whose bytes already match the bundle is no longer rewritten or reported as written. The `agent` subcommand serves every recipe under a fetch-time directive (fetch again next task; a session that installed or upgraded Taskless holds a stale skill), which the `@taskless/cli/prompts` export does not carry and which `header: false` strips with the version. The `agent init` recipe is rewritten for the agent that runs it, and the skill and `tskl` command say a recipe is fetched again for each task. The skill and command sources name the CLI through the `%(TASKLESS_CLI)s` placeholder, rendered at install, so a nightly or dev build no longer depends on finding the literal `npx @taskless/cli` in prose.
+- 54cd0c0: `check` no longer loses every finding in a run because one file's front
+  matter could not be parsed. A Vale front-matter error used to abort the
+  entire Vale invocation before any result was written, so `results` came back
+  `[]` for the whole run regardless of how many other files had findings — and
+  `[]` was indistinguishable from a genuinely clean pass.
+
+  `runVale` now retries around a file Vale's own error attributes to one of the
+  run's targets, excluding it and reporting it as a per-file finding
+  (`ruleId: "vale-parse-error"`, `severity: "error"`) instead of failing the
+  whole run. Every other file's findings are reported normally. A failure Vale
+  does not attribute to a single target file — a malformed rule, a timeout, a
+  crash — is unaffected and still fails the run exactly as before.
+
+- 3cfbe5b: `rule create --json` and `rule improve --json` now emit the standard `{ ok:
+false, code, message }` envelope on stdout when a file-set rule arrives with
+  a stray `tests` field, instead of throwing a bare, unreported `CLIError`.
+  Previously the guard threw from inside the command's own `try` without going
+  through the command's `fail()` helper, so under `--json` nothing was written
+  to stdout at all — prose landed on stderr and the process exited 1,
+  indistinguishable from a crash, and the `RULE_GENERATION_FAILED` code the
+  `create-remote-rule` recipe documents as a branch target was never actually
+  reachable for this guard. Both call sites now route through `fail()`, and the
+  duplicated guard itself was consolidated into one shared check so the two
+  copies cannot drift again silently.
+
+  Not addressed here: rules written to disk earlier in the same delivery loop
+  (before the guard fires) are still not named in the failure envelope. The
+  published envelope shape (`CLIErrorEnvelope`) has no field for a partial file
+  list, and adding one is a schema change out of scope for this fix.
+
+- b6668ea: Corrected the published `@taskless/cli/schemas` docstrings for
+  `verifyOutputSchema` and `valeVerifyOutputSchema`, which named a command form
+  — `taskless rule verify <id> --json` — that was removed when rule addressing
+  moved from id to path. No runtime behavior changes; the schemas themselves
+  are unchanged. A consumer reading these docstrings (e.g. via editor
+  tooltips or generated docs) would previously be pointed at a command that
+  does not exist.
+- 878a53d: `check` no longer risks losing every Vale finding in a run to one oversized
+  file. Vale's cost is quadratic in a single file's size (measured against the
+  pinned binary: 128KB is ~0.8s for one rule, 384KB is already ~7s), and
+  `VALE_TIMEOUT_MS` bounds the whole run, not one file — a large enough
+  document could consume most or all of that budget on its own, and a timeout
+  discards every other file's findings along with it (the same failure #300
+  fixed, on a path #300 did not cover).
+
+  `runVale` now excludes a target file over 128KB (`VALE_MAX_FILE_BYTES` in
+  `src/rules/vale/run.ts`) before invoking Vale at all, the same preemptive
+  treatment already given to a format Vale cannot parse — but only when some
+  Vale rule's own `.vale.ini` section could actually reach that file.
+  `assembleValeConfig` now returns the section patterns it wrote alongside the
+  config path, and the size scan globs by those patterns (`findOversizedFiles`
+  in `src/rules/vale/formats.ts`) instead of walking every file in the project.
+  A first version of this fix scanned the whole tree unconditionally and named
+  `pnpm-lock.yaml` and `packages/cli/CHANGELOG.md` as "not checked" on this very
+  repository, even though no rule's matcher touches either file — Vale was
+  never going to open them, so that was a false positive, not a caught coverage
+  hole. Excluded files are named in a `notices` entry rather than a finding:
+  unlike an unparseable file (where Vale itself proves the file was a real
+  target by erroring on it), this exclusion is a preemptive guess from a
+  filesystem walk, and a soft advisory fits an unconfirmed guess better than a
+  hard error.
+
+  A consumer may now see a `check` that previously counted a large file's
+  prose findings instead report a `notices` entry naming that file as skipped
+  — but only for a file some rule's own scope actually reaches. 128KB is
+  comfortably past hand-written prose (roughly 20,000 words); this should only
+  affect generated output, pasted data, or exported notes checked directly
+  against a matching rule.
+
+- 665802d: Telemetry now records six adoption dimensions on every event: `workspaceId` and
+  `repositoryId` (both hashed), `envOS`, `ci`, `ciProvider`, and `languageStack`.
+  `cli_check_completed` also reports `ruleCount`, so a scan that loaded no rules
+  is distinguishable from one that loaded rules and found nothing.
+
+  Nothing to react to. No command changes behaviour, no output changes shape, and
+  every dimension falls back to a sentinel rather than failing — telemetry is not
+  a precondition for any command. `TASKLESS_TELEMETRY_DISABLED=1` and
+  `DO_NOT_TRACK=1` continue to short-circuit before any of it is resolved, so the
+  opt-out remains an opt-out of the work rather than only of the send.
+
+  `patch` rather than `minor` because the package is pre-1.0, where added surface
+  does not earn a `minor`, and because none of this is API a consumer can call.
+
+- 4626c20: Fixed `check --json` reporting a `raw`-scope Vale finding's `range.start.line`
+  one line earlier than the flagged text (#297). A `raw` pattern is
+  conventionally anchored with a leading `\n` so it can require "start of line"
+  against the unparsed document; that `\n` is part of Vale's reported match, and
+  Vale attributes `Line` to the newline ending the previous line rather than to
+  the line the flagged text is actually on. The mapper now counts a match's
+  leading newlines and adds them back before converting to the 0-indexed
+  `CheckResult.range` every source uses.
+
+  `default`-scope findings were not affected: Vale already reports the correct
+  1-based line for them, and `range.start.line` is 0-indexed by design (every
+  source in `CheckResult.range` is — `format.ts` adds 1 back when it displays,
+  and #297's "off by one" for default-scope rules was this documented
+  convention compared against a 1-based file line, not a bug).
+
 ## 0.11.1
 
 [Compare with v0.11.0](https://github.com/taskless/cli/compare/v0.11.0...v0.11.1)
