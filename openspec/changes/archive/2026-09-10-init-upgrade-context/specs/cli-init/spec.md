@@ -84,12 +84,18 @@ The `--anonymous` flag is accepted on `init` as a no-op (init does not call the 
 
 ### Requirement: Bare taskless invocation launches the init wizard
 
-The CLI entry point SHALL launch the interactive install wizard when invoked with no positional subcommand AND a TTY is attached. When stdout is NOT a TTY, bare `taskless` SHALL print a non-interactive preamble explaining the context, followed by the agent topic index (instead of attempting the wizard or printing only top-level help).
+The CLI entry point SHALL launch the interactive install wizard when invoked with no positional subcommand AND both stdout and stdin are TTYs AND `CI` is not `true` or `1`. The `CI` check outranks the TTYs: some automated environments allocate a pseudo-terminal on both streams, and a wizard launched there waits for input nobody will give. When any of those conditions fails, bare `taskless` SHALL print a non-interactive preamble explaining the context, followed by the agent topic index (instead of attempting the wizard or printing only top-level help).
 
 #### Scenario: Bare taskless in a TTY launches the wizard
 
 - **WHEN** a user runs `taskless` with no subcommand and stdout is a TTY
 - **THEN** the CLI SHALL launch the interactive wizard
+
+#### Scenario: Bare taskless under CI does not launch the wizard
+
+- **WHEN** `taskless` is invoked with no subcommand, both streams report a TTY, and `CI` is `true` or `1`
+- **THEN** the CLI SHALL NOT launch the wizard
+- **AND** SHALL take the non-TTY path below
 
 #### Scenario: Bare taskless without a TTY prints preamble + agent topic index
 
