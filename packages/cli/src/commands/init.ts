@@ -23,6 +23,7 @@ import { getOnboardTrailer } from "./onboard";
 import { getRecipe } from "../prompts/recipes";
 import {
   detectCliInvocation,
+  getCliPrefix,
   processLauncherContext,
 } from "../util/package-manager";
 import {
@@ -35,7 +36,6 @@ import { readManifest } from "../filesystem/migrate";
 import type { MigrationReport } from "../filesystem/migrate";
 import { TASKLESS_DIRECTORY } from "../rules/vale/formats";
 import { CLIError } from "../util/cli-error";
-import { buildInvocation } from "../util/invocation";
 import { makeErrorEnvelope } from "../types/errors";
 
 export const initCommand = defineCommand({
@@ -110,7 +110,10 @@ export const initCommand = defineCommand({
         migrated: result.migrated !== undefined,
         previousCliVersion: result.previousCliVersion,
         cliVersion: result.cliVersion,
-        invocation: buildInvocation(),
+        // A message a person reads, so the launcher they used, not the
+        // build's fixed spelling: the same convention as every other remedy
+        // (`auth login`, `rule delete`).
+        invocation: getCliPrefix(),
       });
       if (upgradeTrailer !== undefined) {
         console.log(upgradeTrailer);

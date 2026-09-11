@@ -19,6 +19,7 @@ import {
 import { emitRunEvents, resolveCommandName, resolveCwd } from "./telemetry-run";
 import { runWizard } from "./wizard";
 import { DIR_FLAGS, hasHelpFlag, splitRawArguments } from "./util/argv";
+import { shouldLaunchWizard } from "./util/interactive";
 import { showResolvedUsage } from "./util/help";
 import { CLIError } from "./util/cli-error";
 
@@ -98,8 +99,16 @@ const main = defineCommand({
     //
     // The wizard is reached from HERE and nowhere else. `init` is the batch
     // path in every context, so a bare invocation is the only spelling that
-    // prompts, and it calls the wizard rather than `init`.
-    if (process.stdout.isTTY === true && process.stdin.isTTY === true) {
+    // prompts, and it calls the wizard rather than `init`. The guard carries
+    // the `CI` check `init` used to apply, since a pseudo-terminal in CI is
+    // still nobody to answer a prompt.
+    if (
+      shouldLaunchWizard({
+        stdoutIsTTY: process.stdout.isTTY,
+        stdinIsTTY: process.stdin.isTTY,
+        ci: process.env.CI,
+      })
+    ) {
       const result = await runWizard({ cwd: resolveCwd(rawArgs) });
       if (result.status === "cancelled") {
         process.exitCode = 1;

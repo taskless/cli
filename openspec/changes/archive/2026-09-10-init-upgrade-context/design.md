@@ -22,11 +22,15 @@
 
 ### `init` is always the batch install, and `--no-interactive` is gone
 
-The flag existed so that a TTY could still get the batch path. With the wizard reachable only from a bare invocation, `init` has one behaviour in every context and the flag has nothing left to select. It is removed from the command definition rather than kept as a documented no-op: citty passes an undefined flag through, so a script that still spells it out gets `init` unchanged, and there is no second flag to explain. The bare TTY invocation in `index.ts` calls `runWizard` directly instead of delegating to `initCommand`.
+The flag existed so that a TTY could still get the batch path. With the wizard reachable only from a bare invocation, `init` has one behaviour in every context and the flag has nothing left to select. It is removed from the command definition rather than kept as a documented no-op: citty passes an undefined flag through, so a script that still spells it out gets `init` unchanged, and there is no second flag to explain. The bare TTY invocation in `index.ts` calls `runWizard` directly instead of delegating to `initCommand`. The `CI` guard `init` used to carry moves with it, as a pure `shouldLaunchWizard` so it can be tested: a spawned CLI is never on a TTY, which is exactly the case the guard exists for (a pseudo-terminal in CI with nobody behind it).
 
 ### The upgrade trailer prints first, directly after the summary
 
 A reload, and anything the onboarding line proposes, come after the upgrade is understood: a reload is required before onboarding can use the new skill, and the commit obligation exists whether or not the user onboards. So the trailer is the first of the trailing notices, before the reload banner. The onboarding trailer stays the final line, which the existing requirement and its six scenarios pin.
+
+### The trailer's `update` pointer names the launcher the person used
+
+`getCliPrefix()`, not `buildInvocation()`: a message a person reads follows the convention every other remedy in the CLI uses (`auth login`, `rule delete`), which detects the real launcher and falls back to `npx`. The migration refusal in `migrate.ts` predates that convention and still uses the build's fixed spelling; it is left alone here as out of scope.
 
 ### Changed directories are named, not files
 
