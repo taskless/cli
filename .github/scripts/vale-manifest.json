@@ -15,7 +15,7 @@
     "phase of .github/workflows/release-vale.yml rewrites valeVersion and every",
     "sha256 from upstream's checksums file, and leaves the templates alone."
   ],
-  "valeVersion": "3.20.0",
+  "valeVersion": "3.21.0",
   "upstream": {
     "repository": "errata-ai/vale",
     "tag": "v{version}",
@@ -30,7 +30,7 @@
       "cpu": "arm64",
       "asset": "vale_{version}_macOS_arm64.tar.gz",
       "archiveMember": "vale",
-      "sha256": "6b32df1a7d7b2ab01c07c1c4dd5fd84d775ac7a8f4101084cb5cc7df76bdc65e"
+      "sha256": "8080df46d74b82f0e725fb2949f31ade3dbd2987fd3fc506f9d9ed92e4a8002d"
     },
     {
       "package": "@taskless/vale-darwin-x64",
@@ -39,7 +39,7 @@
       "cpu": "x64",
       "asset": "vale_{version}_macOS_64-bit.tar.gz",
       "archiveMember": "vale",
-      "sha256": "8d51cbe9ca6274fade890fc943b30dc564071dcb8fd8814abce2d0dca37fbba7"
+      "sha256": "2bb72ae0e9b3802250cca416a13babdcfa7ca101517343344c060b370b4d406a"
     },
     {
       "package": "@taskless/vale-linux-arm64",
@@ -48,7 +48,7 @@
       "cpu": "arm64",
       "asset": "vale_{version}_Linux_arm64.tar.gz",
       "archiveMember": "vale",
-      "sha256": "d49e89479a40dbe6a6fe44a2963abef0ee39d89453f3c7100bdd1c5dd0708961"
+      "sha256": "90ffb06fe58db5be96c7d86f65d38213e5fc66b6e3c4eb3baa65b14a5830513e"
     },
     {
       "package": "@taskless/vale-linux-x64",
@@ -57,7 +57,7 @@
       "cpu": "x64",
       "asset": "vale_{version}_Linux_64-bit.tar.gz",
       "archiveMember": "vale",
-      "sha256": "f59e7030c5d4ace6cf915497d0d076a1699d61e876142765963237e6867c9712"
+      "sha256": "96997d19a4ca6981673b0d4c5ca7f3ede4a9f97964a96edc29fba9e28a328336"
     },
     {
       "package": "@taskless/vale-win32-arm64",
@@ -66,7 +66,7 @@
       "cpu": "arm64",
       "asset": "vale_{version}_Windows_arm64.zip",
       "archiveMember": "vale.exe",
-      "sha256": "397cf247252f205145c991b339031a39d02d947d97ac48e6516bb62118ed411f"
+      "sha256": "c177a57b6d99cd7087bcb3ecbbad665640961dd08c97023758a3ff8a3915cc0e"
     },
     {
       "package": "@taskless/vale-win32-x64",
@@ -75,7 +75,7 @@
       "cpu": "x64",
       "asset": "vale_{version}_Windows_64-bit.zip",
       "archiveMember": "vale.exe",
-      "sha256": "189b3511813a428f08a2be0d7692e50dd6e90dd81b2f8e04dbfbfe42cafd9980"
+      "sha256": "c6f371c22c44eb00d0d0990c7da4ca990666be5e79ca7ebf54747c1a83668c2c"
     }
   ]
 }
