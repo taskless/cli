@@ -153,7 +153,7 @@ describe("a resolution says which tier answered", () => {
 /**
  * The third link: a pinned package contains the version its NAME claims.
  *
- * The pin says `@ast-grep/cli-…: 0.45.2`, and nothing forced the file inside it
+ * The pin says `@ast-grep/cli-…: 0.45.3`, and nothing forced the file inside it
  * to be that. A mispublished or substituted package satisfies the pin, installs
  * cleanly, and answers `--version` with something else.
  *
