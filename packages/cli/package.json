@@ -69,7 +69,7 @@
     "zod": "^4.3.6"
   },
   "devDependencies": {
-    "@ast-grep/cli": "0.45.2",
+    "@ast-grep/cli": "0.45.3",
     "@types/sprintf-js": "^1.1.4",
     "openapi-typescript": "^7.13.0",
     "prettier": "^3.8.1",
@@ -82,13 +82,13 @@
     "taskless": "./dist/index.js"
   },
   "optionalDependencies": {
-    "@ast-grep/cli-darwin-arm64": "0.45.2",
-    "@ast-grep/cli-darwin-x64": "0.45.2",
-    "@ast-grep/cli-linux-arm64-gnu": "0.45.2",
-    "@ast-grep/cli-linux-x64-gnu": "0.45.2",
-    "@ast-grep/cli-win32-arm64-msvc": "0.45.2",
-    "@ast-grep/cli-win32-ia32-msvc": "0.45.2",
-    "@ast-grep/cli-win32-x64-msvc": "0.45.2",
+    "@ast-grep/cli-darwin-arm64": "0.45.3",
+    "@ast-grep/cli-darwin-x64": "0.45.3",
+    "@ast-grep/cli-linux-arm64-gnu": "0.45.3",
+    "@ast-grep/cli-linux-x64-gnu": "0.45.3",
+    "@ast-grep/cli-win32-arm64-msvc": "0.45.3",
+    "@ast-grep/cli-win32-ia32-msvc": "0.45.3",
+    "@ast-grep/cli-win32-x64-msvc": "0.45.3",
     "@taskless/vale-darwin-arm64": "3.20.0-20260907164938",
     "@taskless/vale-darwin-x64": "3.20.0-20260907164938",
     "@taskless/vale-linux-arm64": "3.20.0-20260907164938",
