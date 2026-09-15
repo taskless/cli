@@ -25,7 +25,7 @@ import { escapeRegExp } from "../src/util/regex";
  * ast-grep's observable behaviour, pinned.
  *
  * Everything here is a property of a **vendored third-party binary**, exact-
- * pinned at `0.45.2` in `packages/cli/package.json`. Our own tests assert that
+ * pinned at `0.45.3` in `packages/cli/package.json`. Our own tests assert that
  * our code behaves correctly *given* these; this file asserts the givens, so an
  * ast-grep bump that changes one fails here — naming the assumption and the
  * code that rests on it — instead of surfacing downstream.
@@ -489,13 +489,22 @@ withSg("ast-grep vendor contract", () => {
       // `off` is accepted in a rule but disables it, so it can never appear in
       // output (asserted below). A rule at any other severity fails the parse
       // rather than reaching us, which is what keeps the four-value union safe.
+      //
+      // ORDER CHANGED AT 0.45.3, vocabulary unchanged. `off` moved from last
+      // to first, here and in the vendored schema's `Severity` enum alike:
+      // `--min-severity` (ast-grep/ast-grep#2917) compares severities as an
+      // ordered type, and `off` has to sort lowest for "off means no minimum"
+      // to fall out of that comparison. Nothing of ours reads the order —
+      // `verify` validates against the schema's `const` values, not their
+      // position — so the exact text is pinned to make the next reorder
+      // visible, not because anything depends on it.
       const cwd = project({
         rules: { "no-eval": rule("no-eval", "catastrophe") },
         sources: evalSource,
       });
       const result = scan(cwd);
       expect(result.stderr).toContain(
-        "unknown variant `catastrophe`, expected one of `hint`, `info`, `warning`, `error`, `off`"
+        "unknown variant `catastrophe`, expected one of `off`, `hint`, `info`, `warning`, `error`"
       );
     });
 
