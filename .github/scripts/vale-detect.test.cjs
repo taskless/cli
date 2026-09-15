@@ -249,3 +249,19 @@ test('detect: --notes-out without a path aborts rather than writing to "--write"
     /--notes-out needs a path/
   );
 });
+
+/**
+ * A repository with no published GitHub release at all. The comparison has
+ * nothing to compare against, so failing loudly is the only honest answer —
+ * reporting "not ahead" would read as "we are current" forever.
+ */
+test("detect: a repository with no releases aborts rather than reporting current", async () => {
+  await assert.rejects(
+    main({
+      argv: [],
+      latestRelease: async () => undefined,
+      text: async () => "",
+    }),
+    /has no published releases/
+  );
+});

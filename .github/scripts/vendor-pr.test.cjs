@@ -110,7 +110,9 @@ test("no remote branch yet: pushes and opens a pull request", async () => {
 
   assert.deepEqual(result, { action: "created" });
   assert.ok(ran(h.calls, "git", "checkout", "-B", "vendor/vale"));
-  assert.ok(ran(h.calls, "git", "push", "--force", "origin", "vendor/vale"));
+  // A branch that does not exist has nothing to overwrite and nothing to lease
+  // against, so it takes an ordinary push.
+  assert.ok(ran(h.calls, "git", "push", "origin", "vendor/vale"));
   assert.ok(ran(h.calls, "gh", "pr", "create"));
   assert.ok(
     !ran(h.calls, "git", "fetch"),
@@ -123,6 +125,7 @@ test("an open pull request is retitled and rewritten, not duplicated", async () 
     gitAnswers: {
       "diff --cached": undefined,
       "ls-remote": "abc123\trefs/heads/vendor/vale",
+      "rev-parse": "abc123",
       "log -1": BOT_AUTHOR,
       "diff --quiet FETCH_HEAD": undefined, // content differs
     },
@@ -254,4 +257,37 @@ test("the unchanged check looks only at the paths being proposed", async () => {
   );
   assert.ok(compare.includes("--"), "compared whole trees, not the proposal");
   assert.ok(compare.includes(".github/scripts/vale-manifest.json"));
+});
+
+/**
+ * The ownership guard reads the tip author and the push happens afterwards, so
+ * on its own it is a check with a gap after it: a reviewer pushing a fixup
+ * inside that gap loses the commit silently, which is exactly the outcome the
+ * guard exists to prevent — reached by timing rather than by logic.
+ *
+ * The lease makes the push assert what the guard assumed. The SHA is explicit
+ * rather than implied by a remote-tracking ref, because `actions/checkout`
+ * clones at depth 1 and there may be no tracking ref to lease against.
+ */
+test("the push leases against the exact commit the guards inspected", async () => {
+  const h = harness({
+    gitAnswers: {
+      "diff --cached": undefined,
+      "ls-remote": "abc123\trefs/heads/vendor/vale",
+      "rev-parse": "deadbeef",
+      "log -1": BOT_AUTHOR,
+      "diff --quiet FETCH_HEAD": undefined,
+    },
+    ghAnswers: { "pr list": "" },
+  });
+  await main({ argv: ARGV, ...h });
+
+  const push = h.calls.find(
+    ([name, ...args]) => name === "git" && args[0] === "push"
+  );
+  assert.ok(
+    push.includes("--force-with-lease=vendor/vale:deadbeef"),
+    `expected a lease against the fetched tip, got: ${push.join(" ")}`
+  );
+  assert.ok(!push.includes("--force"), "an unconditional force survived");
 });

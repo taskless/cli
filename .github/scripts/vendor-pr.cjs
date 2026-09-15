@@ -157,8 +157,13 @@ async function main({
       allowFailure: true,
     }) !== undefined;
 
+  // The SHA the guards below are reasoning about, kept so the push can lease
+  // against it. See the push itself for why that matters.
+  let fetchedTip;
+
   if (remoteExists) {
     git(["fetch", "--quiet", "origin", branch]);
+    fetchedTip = git(["rev-parse", "FETCH_HEAD"]);
 
     // The TIP author, not every commit since `main`. Asking "which commits are
     // on the branch and not on main" needs a merge base, and `actions/checkout`
@@ -199,7 +204,31 @@ async function main({
     }
   }
 
-  git(["push", "--force", "origin", branch]);
+  // --force-with-lease, not --force, and the distinction is the whole point of
+  // the guards above.
+  //
+  // Reading the tip author and then force-pushing is a check and an action with
+  // a gap between them. A reviewer who pushes a fixup inside that gap has their
+  // commit destroyed silently — precisely the outcome the ownership guard
+  // exists to prevent, arrived at through timing rather than through logic. A
+  // guard that a race defeats is not a guard.
+  //
+  // The lease closes it by making the push itself assert what the guards
+  // assumed: the branch is still the commit we inspected. If it is not, the
+  // push is REJECTED and the run fails loudly, which is a report rather than a
+  // loss. The SHA is explicit rather than implied by a remote-tracking ref,
+  // which also sidesteps the `stale info` failure a shallow clone produces
+  // (see the shallow-clone note in CLAUDE.md) — `actions/checkout` clones at
+  // depth 1, so there may be no tracking ref to lease against.
+  //
+  // A branch that does not exist yet has nothing to lease and nothing to
+  // overwrite, so it takes an ordinary push. Forcing there would be asserting
+  // a claim about a ref that is not there.
+  git(
+    remoteExists
+      ? ["push", `--force-with-lease=${branch}:${fetchedTip}`, "origin", branch]
+      : ["push", "origin", branch]
+  );
 
   const existing = gh([
     "pr",

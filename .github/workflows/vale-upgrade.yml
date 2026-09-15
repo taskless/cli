@@ -107,9 +107,12 @@ jobs:
           # republish that produced the package did not change anyone's install.
           # `patch` is correct while @taskless/cli is pre-1.0 even for a new Vale
           # minor; see the bump guidance in CLAUDE.md before reaching for
-          # `minor`. The filename is stable per version, so a rolling branch
-          # rewrites it rather than accumulating a file per release.
-          changeset=".changeset/vale-${VALE_VERSION//./-}.md"
+          # `minor`. Named for the BASE version, not the stamped one: a
+          # republish mints a fresh timestamp for the same upstream Vale, so a
+          # stamped filename would churn on every republish while the release
+          # note it contains says the same thing. The base version is also what
+          # the title, the body, and the note itself say.
+          changeset=".changeset/vale-${BASE_VERSION//./-}.md"
           cat > "$changeset" <<CHANGESET
           ---
           "@taskless/cli": patch
