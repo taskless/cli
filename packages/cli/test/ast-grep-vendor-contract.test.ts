@@ -326,6 +326,30 @@ const semanticsRule = (body: string) =>
     "",
   ].join("\n");
 
+/**
+ * Every finding `rule("no-eval")` produces over one source file, in stream
+ * order — including the built-in `unused-suppression` rule's, which is why
+ * `ruleId` and `severity` are read rather than assumed.
+ */
+const findingsFor = (source: string) =>
+  scan(
+    project({
+      rules: { "no-eval": rule("no-eval") },
+      sources: { "src/a.ts": source },
+    })
+  )
+    .stdout.split("\n")
+    .filter((line) => line !== "")
+    .map(
+      (line) =>
+        JSON.parse(line) as {
+          ruleId: string;
+          severity: string;
+          text: string;
+          note: unknown;
+        }
+    );
+
 /** A Markdown rule whose `rule:` body is given verbatim, already indented. */
 const markdownRule = (body: string) =>
   [
@@ -1092,6 +1116,132 @@ withSg("ast-grep vendor contract", () => {
       expect(matches).toHaveLength(1);
       expect(matches[0]?.text).toBe("target;");
       expect(matches[0]?.message.trim()).toBe("");
+    });
+  });
+
+  /**
+   * Inline `ast-grep-ignore` comments in SCANNED code, and where the directive
+   * has to sit to count. CHANGED AT 0.45.3 (ast-grep/ast-grep#2909).
+   *
+   * Nothing of ours writes these or documents them, but `check` scans whatever
+   * source a project has, and ast-grep honours the comment wherever it finds
+   * one — so a user's code carries this behaviour into `taskless check`
+   * whether or not they wrote the comment for us. Through 0.45.2 the check was
+   * a substring search: any comment CONTAINING `ast-grep-ignore` was a live
+   * directive, so prose describing the mechanism above a flagged line
+   * suppressed the finding, and prose with nothing to suppress was reported as
+   * an unused directive. At 0.45.3 the directive must be the comment's first
+   * alphabetic text.
+   *
+   * Both halves of that are the quiet kind: a finding appears that did not
+   * before, or a hint stops appearing, and nothing says why. Measured against
+   * both binaries, so each case below records which side of the bump it is on.
+   */
+  describe("inline ast-grep-ignore comments", () => {
+    it("suppresses the next line, bare or naming the rule", () => {
+      // The mechanism itself, unchanged across the bump and pinned so the
+      // cases that follow are read against a working baseline rather than a
+      // directive that stopped applying altogether.
+      expect(
+        findingsFor(
+          [
+            "// ast-grep-ignore",
+            'const a = eval("1");',
+            "// ast-grep-ignore: no-eval",
+            'const b = eval("2");',
+            "",
+          ].join("\n")
+        )
+      ).toEqual([]);
+    });
+
+    it("no longer suppresses from a comment that mentions the directive as prose", () => {
+      // CHANGED AT 0.45.3. At 0.45.2 this scan reported NOTHING: the
+      // substring match read the prose as a directive and swallowed the
+      // finding. A codebase whose comments discuss suppression now reports
+      // the findings those comments sat on, which a rule author sees as new
+      // errors from an unchanged rule.
+      const findings = findingsFor(
+        [
+          "// see ast-grep-ignore: no-eval for how to suppress this",
+          'const c = eval("3");',
+          "",
+        ].join("\n")
+      );
+      expect(findings.map((finding) => finding.ruleId)).toEqual(["no-eval"]);
+      expect(findings[0]?.text).toBe('eval("3")');
+    });
+
+    it("no longer reports a prose mention as an unused directive", () => {
+      // The other half of the same change, in the other direction: at 0.45.2
+      // this scan produced an `unused-suppression` hint on the comment line.
+      // A project that had been carrying that hint sees it disappear.
+      expect(
+        findingsFor(
+          [
+            "// This comment mentions ast-grep-ignore as prose",
+            "const g = 1;",
+            "",
+          ].join("\n")
+        )
+      ).toEqual([]);
+    });
+
+    it("anchors on the first ALPHABETIC character, not the first character", () => {
+      // The exact boundary upstream chose: everything before the first letter
+      // is skipped, so the comment marker, extra whitespace, a block-comment
+      // opener and even a leading list number are not prose. A directive
+      // behind `// 1.` therefore still suppresses, which is the case an
+      // author would guess wrong about from "must be first". (This comment
+      // is itself scanned by the repo's own `check`, so no line of it may
+      // start with the token — a wrapped one did, and was reported.)
+      expect(
+        findingsFor(
+          [
+            "/* ast-grep-ignore */",
+            'const d = eval("4");',
+            "//   ast-grep-ignore",
+            'const e = eval("5");',
+            "// 1. ast-grep-ignore",
+            'const f = eval("6");',
+            "",
+          ].join("\n")
+        )
+      ).toEqual([]);
+      // And one letter before it is enough to make it prose again.
+      expect(
+        findingsFor(
+          ["// NOTE ast-grep-ignore", 'const h = eval("7");', ""].join("\n")
+        ).map((finding) => finding.text)
+      ).toEqual(['eval("7")']);
+    });
+
+    it("reports a genuinely unused directive on the stream as a hint", () => {
+      // How a user sees any of this at all. `unused-suppression` is a built-in
+      // rule, not one of ours, and it arrives on `--json=stream` like any
+      // finding: `ruleId` is the built-in's name, `severity` is `hint` (inside
+      // AstGrepMatch's union, so it renders), and `note` is `null` rather than
+      // absent — `check.md` documents that shape, and `format.ts` tests
+      // truthiness, so the null is tolerated rather than typed. A finding
+      // that scoped its rule to something else counts as unused too, and the
+      // finding it did not cover is reported beside it.
+      const findings = findingsFor(
+        [
+          "// ast-grep-ignore",
+          "const h = 1;",
+          "// ast-grep-ignore: other-rule",
+          'const i = eval("9");',
+          "",
+        ].join("\n")
+      );
+      expect(
+        findings.map((finding) => [finding.ruleId, finding.severity])
+      ).toEqual([
+        ["no-eval", "error"],
+        ["unused-suppression", "hint"],
+        ["unused-suppression", "hint"],
+      ]);
+      expect(findings[1]?.note).toBeNull();
     });
   });
 
