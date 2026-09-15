@@ -13,8 +13,21 @@
 #            compares the latest upstream Vale release against the version
 #            pinned in .github/scripts/vale-manifest.json. When upstream is
 #            ahead it opens a pull request that updates the pinned version and
-#            all six SHA256 digests, taken from upstream's own checksums file.
-#            It publishes nothing.
+#            all six SHA256 digests, taken from upstream's own checksums file,
+#            and carries upstream's release notes so a reviewer can see what the
+#            digests are for. It publishes nothing.
+#
+#            That pull request lives on ONE ROLLING BRANCH,
+#            `vendor/vale/republish`, rebuilt and retitled as upstream moves
+#            rather than accumulating a branch per release. `vendor-pr.cjs` owns
+#            that lifecycle and its two force-push guards, and every vendor
+#            workflow uses it, so they behave identically.
+#
+#            THIS IS THE PRODUCER HALF ONLY. Publishing a platform package
+#            changes nothing for a consumer (see APPROVAL POLICY below); moving
+#            the CLI's pins onto the published set is `vale-upgrade.yml`, on
+#            `vendor/vale/upgrade`. Do not add that here — it needs no npm
+#            credential and belongs nowhere near one.
 #
 #   publish  Runs on the push to main that merges that pull request — i.e. once
 #            a human has reviewed the digests. Split further into `gate`,
@@ -142,7 +155,7 @@ jobs:
       (github.event_name == 'workflow_dispatch' && inputs.phase == 'detect')
     runs-on: ubuntu-latest
     permissions:
-      contents: write # push the vale/update-<version> branch
+      contents: write # push the vendor/vale/republish branch
       pull-requests: write # open the manifest update PR
     steps:
       # Credentials persist here because this job pushes a branch. It holds no
@@ -154,8 +167,19 @@ jobs:
 
       # No install step: the script is zero-dependency CommonJS. GITHUB_TOKEN is
       # passed only to raise the GitHub API rate limit; the endpoints are public.
+      #
+      # `--notes-out` writes upstream's release notes for the proposed version
+      # to a file, which the next step appends to the pull request body. A
+      # reviewer's job here is to decide whether these bytes should be
+      # publishable, and a bare version number with six digests does not say
+      # whether the release is a security fix or a docs pass. The notes arrive
+      # as a FILE rather than a step output because they are third-party
+      # Markdown: a $GITHUB_OUTPUT line is delimited text that a release body
+      # containing the delimiter can break out of.
       - id: detect
-        run: node .github/scripts/vale-detect.cjs --write
+        run: |
+          node .github/scripts/vale-detect.cjs \
+            --write --notes-out "${RUNNER_TEMP}/vale-release-notes.md"
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -163,37 +187,26 @@ jobs:
       # `${{ }}` interpolation into the script body. The version has already been
       # validated as major.minor.patch by the script, but the pattern is the
       # rule regardless of the value.
-      - name: Open the manifest update PR
+      #
+      # The branch and pull request lifecycle is `vendor-pr.cjs`, shared with
+      # every vendor workflow: one rolling `vendor/vale/republish` branch,
+      # rebuilt from `main`, retitled and rewritten as upstream moves, and
+      # force-pushed only when the proposal actually changed and only when this
+      # workflow wrote what is already there.
+      - name: Propose the bump
         if: steps.detect.outputs.update == 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           VALE_VERSION: ${{ steps.detect.outputs.vale_version }}
           PINNED_VERSION: ${{ steps.detect.outputs.pinned_version }}
         run: |
-          branch="vale/update-${VALE_VERSION}"
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          set -euo pipefail
 
-          if git diff --quiet -- .github/scripts/vale-manifest.json; then
-            echo "Manifest already pins ${VALE_VERSION}; nothing to propose."
-            exit 0
-          fi
-
-          git checkout -b "$branch"
-          git add .github/scripts/vale-manifest.json
-          git commit -m "chore(vale): pin Vale ${VALE_VERSION}"
-          git push --force origin "$branch"
-
-          if [ -n "$(gh pr list --head "$branch" --state open --json number --jq '.[].number')" ]; then
-            echo "A pull request for $branch is already open; it now carries the current digests."
-            exit 0
-          fi
-
-          gh pr create \
-            --base main \
-            --head "$branch" \
-            --title "chore(vale): pin Vale ${VALE_VERSION}" \
-            --body "$(cat <<'BODY'
+          # Composed as a FILE, not as an argument. The preamble is ours and the
+          # notes appended below it are upstream's, and the quoted heredoc plus
+          # `cat` means neither the shell nor gh ever interprets the latter.
+          body="${RUNNER_TEMP}/vale-pr-body.md"
+          cat > "$body" <<'BODY'
           Upstream Vale is ahead of the version this repository packages.
 
           This updates `.github/scripts/vale-manifest.json` to the new upstream
@@ -210,9 +223,31 @@ jobs:
           package `<valeVersion>-<yyyymmddhhmmss>` and publishes the set. That
           publish is inert on its own: `@taskless/cli` pins exact versions, so
           nothing reaches a consumer until that pin is deliberately bumped.
+
+          This pull request rolls: if upstream releases again before it merges,
+          the branch, title, and body are rewritten to the newer version rather
+          than a second pull request being opened. Push a commit to the branch
+          and that stops — the workflow will not force-push over a commit it did
+          not write.
           BODY
-          )" \
-            --label skip-changeset
+
+          # Absent only if the detect step reported ahead and then wrote no
+          # notes, which it cannot — so warn rather than skip silently.
+          notes="${RUNNER_TEMP}/vale-release-notes.md"
+          if [ -f "$notes" ]; then
+            printf '\n---\n\n' >> "$body"
+            cat "$notes" >> "$body"
+          else
+            echo "::warning::no release notes file at ${notes}"
+          fi
+
+          node .github/scripts/vendor-pr.cjs \
+            --branch vendor/vale/republish \
+            --title "chore(vale): pin Vale ${VALE_VERSION}" \
+            --message "chore(vale): pin Vale ${VALE_VERSION}" \
+            --body-file "$body" \
+            --label skip-changeset \
+            -- .github/scripts/vale-manifest.json
 
   # Is there anything to publish? The push trigger fires on ANY edit to
   # vale-manifest.json — a reworded comment, a reformat, a digest correction —

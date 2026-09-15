@@ -49,16 +49,28 @@ function checksumsFor(version) {
  * Run main() with both fetches stubbed and $GITHUB_OUTPUT pointed at a temp
  * file, then return the parsed step outputs plus which URLs were fetched.
  */
-async function runDetect({ upstreamTag, checksums, argv = [] }) {
+async function runDetect({
+  upstreamTag,
+  notes = "",
+  checksums,
+  argv = [],
+  wantNotes = false,
+}) {
   const directory = mkdtempSync(join(tmpdir(), "vale-detect-test-"));
   const outputPath = join(directory, "github-output");
+  const notesPath = join(directory, "release-notes.md");
+  const fullArgv = wantNotes ? [...argv, "--notes-out", notesPath] : argv;
   const previous = process.env.GITHUB_OUTPUT;
   const fetched = [];
   process.env.GITHUB_OUTPUT = outputPath;
   try {
     const comparison = await main({
-      argv,
-      latestTag: async () => upstreamTag,
+      argv: fullArgv,
+      latestRelease: async () => ({
+        tag: upstreamTag,
+        notes,
+        url: `https://github.com/${MANIFEST.upstream.repository}/releases/tag/${upstreamTag}`,
+      }),
       text: async (url) => {
         fetched.push(url);
         return checksums;
@@ -73,7 +85,17 @@ async function runDetect({ upstreamTag, checksums, argv = [] }) {
           return [line.slice(0, at), line.slice(at + 1)];
         })
     );
-    return { comparison, outputs, fetched };
+    // Read before the finally below removes the directory. `undefined` means
+    // the script wrote nothing, which is a distinct answer from an empty file.
+    let notesWritten;
+    if (wantNotes) {
+      try {
+        notesWritten = readFileSync(notesPath, "utf8");
+      } catch {
+        notesWritten = undefined;
+      }
+    }
+    return { comparison, outputs, fetched, notesWritten };
   } finally {
     if (previous === undefined) {
       delete process.env.GITHUB_OUTPUT;
@@ -174,5 +196,56 @@ test("detect: a checksums file missing a platform aborts", async () => {
       checksums: checksumsFor("3.99.0").split("\n").slice(1).join("\n"),
     }),
     /publishes no asset named/
+  );
+});
+
+test("detect: --notes-out carries upstream's release notes for the proposal", async () => {
+  const { notesWritten } = await runDetect({
+    upstreamTag: "v3.99.0",
+    notes: "## Fixed\n\nA thing that was broken.",
+    checksums: checksumsFor("3.99.0"),
+    wantNotes: true,
+  });
+
+  assert.match(notesWritten, /^## Upstream release notes — 3\.99\.0$/m);
+  assert.match(notesWritten, /^> A thing that was broken\.$/m);
+});
+
+/**
+ * The no-op path proposes nothing, so there is nothing to describe. Writing a
+ * section anyway would leave the previous run's notes on disk for a workflow
+ * step that only checks whether the file exists.
+ */
+test("detect: --notes-out writes nothing when upstream is not ahead", async () => {
+  const { notesWritten } = await runDetect({
+    upstreamTag: `v${MANIFEST.valeVersion}`,
+    notes: "Should not be written.",
+    checksums: "",
+    wantNotes: true,
+  });
+
+  assert.equal(notesWritten, undefined);
+});
+
+test("detect: --json refuses to be combined with --notes-out", async () => {
+  await assert.rejects(
+    runDetect({
+      upstreamTag: "v3.99.0",
+      checksums: "",
+      argv: ["--json"],
+      wantNotes: true,
+    }),
+    /--json is read-only/
+  );
+});
+
+test('detect: --notes-out without a path aborts rather than writing to "--write"', async () => {
+  await assert.rejects(
+    runDetect({
+      upstreamTag: "v3.99.0",
+      checksums: checksumsFor("3.99.0"),
+      argv: ["--notes-out", "--write"],
+    }),
+    /--notes-out needs a path/
   );
 });

@@ -38,6 +38,18 @@
  *            pin, and skipping the checksums fetch is not a shortcut but the
  *            point (nothing is being verified here).
  *
+ *   --notes-out <path>
+ *            write upstream's release notes for the proposed version to <path>,
+ *            rendered as a Markdown section. The detect workflow appends that
+ *            file to the pull request body, so a reviewer can see what the bump
+ *            contains without leaving the pull request. Written only when
+ *            upstream is ahead; there is nothing to describe otherwise.
+ *
+ *            A path rather than a step output on purpose: release notes are
+ *            third-party Markdown, and a $GITHUB_OUTPUT line is delimited text
+ *            that a body containing the delimiter can break out of. A file
+ *            passed to `--body-file` never meets an interpreter.
+ *
  * Outputs (appended to $GITHUB_OUTPUT when set):
  *   update            "true" when upstream is ahead
  *   vale_version      the upstream version
@@ -47,6 +59,11 @@
 const { appendFileSync, readFileSync, writeFileSync } = require("node:fs");
 const { join } = require("node:path");
 
+const {
+  fetchLatestRelease,
+  formatReleaseNotes,
+  writeNotesFile,
+} = require("./release-notes.cjs");
 const {
   applyTemplate,
   assertManifest,
@@ -65,31 +82,6 @@ function setOutput(key, value) {
   }
 }
 
-/**
- * GitHub's `releases/latest` deliberately excludes prereleases and drafts, so a
- * Vale release candidate never trips detection. `GITHUB_TOKEN`, when present,
- * is only for the API rate limit; the endpoint is public.
- */
-async function fetchLatestTag(repository) {
-  const headers = {
-    accept: "application/vnd.github+json",
-    "user-agent": "taskless-skills-vale-detect",
-  };
-  if (process.env.GITHUB_TOKEN) {
-    headers.authorization = `Bearer ${process.env.GITHUB_TOKEN}`;
-  }
-  const url = `https://api.github.com/repos/${repository}/releases/latest`;
-  const response = await fetch(url, { headers });
-  if (!response.ok) {
-    throw new Error(`GET ${url} responded ${response.status}`);
-  }
-  const release = await response.json();
-  if (typeof release.tag_name !== "string") {
-    throw new TypeError(`${url} returned no tag_name`);
-  }
-  return release.tag_name;
-}
-
 async function fetchText(url) {
   const response = await fetch(url, { redirect: "follow" });
   if (!response.ok) {
@@ -98,18 +90,38 @@ async function fetchText(url) {
   return response.text();
 }
 
+/** `--notes-out <path>`, or undefined when the flag is absent. */
+function readNotesOut(argv) {
+  const at = argv.indexOf("--notes-out");
+  if (at === -1) {
+    return undefined;
+  }
+  const path = argv[at + 1];
+  if (!path || path.startsWith("--")) {
+    throw new Error("--notes-out needs a path");
+  }
+  return path;
+}
+
 async function main({
   argv = process.argv.slice(2),
-  latestTag = fetchLatestTag,
+  latestRelease = fetchLatestRelease,
   text = fetchText,
 } = {}) {
   const json = argv.includes("--json");
   const write = argv.includes("--write");
+  const notesOut = readNotesOut(argv);
   // --json is a reporting mode and --write is a writing one. Refusing the
   // combination beats silently dropping whichever flag loses, since the caller
   // that passed both is wrong about what it is asking for.
   if (json && write) {
     throw new Error("--json is read-only; it cannot be combined with --write");
+  }
+  // Same reasoning as above: --json reports a comparison and writes nothing.
+  if (json && notesOut) {
+    throw new Error(
+      "--json is read-only; it cannot be combined with --notes-out"
+    );
   }
   // Everything a human wants to read is noise on stdout when a caller is
   // reading structured output from it.
@@ -118,7 +130,16 @@ async function main({
     JSON.parse(readFileSync(MANIFEST_PATH, "utf8"))
   );
 
-  const upstreamTag = await latestTag(manifest.upstream.repository);
+  // GitHub's `releases/latest` deliberately excludes prereleases and drafts, so
+  // a Vale release candidate never trips detection. The same call carries the
+  // release notes, so describing the bump costs no extra request.
+  const release = await latestRelease(manifest.upstream.repository);
+  if (!release) {
+    throw new Error(
+      `${manifest.upstream.repository} has no published releases to compare against`
+    );
+  }
+  const upstreamTag = release.tag;
   log(`pinned: ${manifest.valeVersion}   upstream latest: ${upstreamTag}`);
 
   // Decide whether to go on with the two pure predicates directly, rather than
@@ -175,6 +196,20 @@ async function main({
     console.log(`\nRewrote ${MANIFEST_PATH}.`);
   } else {
     console.log("\nPass --write to update the manifest.");
+  }
+
+  // What the bump actually contains, for whoever reviews the digests. Written
+  // only on the ahead path: the other paths propose nothing to describe.
+  if (notesOut) {
+    writeNotesFile(
+      notesOut,
+      formatReleaseNotes({
+        repository: manifest.upstream.repository,
+        version: plan.upstreamVersion,
+        release,
+      })
+    );
+    console.log(`Wrote the upstream release notes to ${notesOut}.`);
   }
 
   setOutput("update", "true");
