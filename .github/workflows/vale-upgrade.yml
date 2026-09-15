@@ -1,0 +1,161 @@
+# SPDX-License-Identifier: MIT
+# Vale — ship the platform packages we already published.
+#
+# THE STAGE THAT WAS MISSING. Vendoring Vale has two halves, and until now only
+# one of them was automated:
+#
+#   republish   release-vale.yml. Watches upstream Vale, proposes a manifest
+#               with new digests on `vendor/vale/republish`, and on merge
+#               publishes the six @taskless/vale-* packages at
+#               <valeVersion>-<stamp>. Changes nothing for a consumer.
+#
+#   upgrade     this workflow. Moves the six pins in packages/cli/package.json
+#               to the published set on `vendor/vale/upgrade`. THIS is what
+#               reaches a user.
+#
+# release-vale.yml states the dependency in its own header: "a new version
+# reaches a user only when someone reviews a bump to that pin". Somebody always
+# did — `git log` on the pins shows 3.18.0, 3.19.0 and 3.20.0 each moved in its
+# own hand-written commit, and the pins are current as this is written. So this
+# automates a step that was working, which is worth being honest about: what it
+# removes is the dependency on remembering, and what it adds is the changelog
+# next to the diff. The failure it prevents is quiet — a publish lands, nobody
+# notices the pins are behind, and the release simply does not ship.
+#
+# ast-grep has only the upgrade half, because nothing here repackages it; there
+# is no `vendor/ast-grep/republish` and its absence is the point. Beyond that
+# the two upgrades are the same operation, and they share the same scripts:
+# `pin-bump.cjs` rewrites the pins, `release-notes.cjs` renders the changelog,
+# and `vendor-pr.cjs` owns the rolling branch and its force-push guards. What
+# differs is which registry answers "what is published" and which tag carries
+# the release notes.
+#
+# THE CHANGELOG HERE IS UPSTREAM'S, NOT OURS. Our stamp records when a package
+# was built, which tells a reviewer nothing about what changed. The base version
+# inside the stamp is the release upstream actually tagged, and that is what
+# gets fetched.
+#
+# Action refs are pinned to commit SHAs; the trailing comment records the tag.
+
+name: Upgrade Vale
+
+on:
+  # Deliberately DAILY, where the republish detect is weekly. That one waits on
+  # upstream; this one waits on our own publish job, which fires whenever a
+  # manifest pull request merges. A weekly schedule here would mean a Vale
+  # release sat packaged-but-unshipped for up to a week after we published it,
+  # which is the exact failure this workflow exists to end.
+  schedule:
+    - cron: "52 7 * * *"
+
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency: vale-upgrade
+
+jobs:
+  upgrade:
+    name: Upgrade the pinned Vale
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # push the vendor/vale/upgrade branch
+      pull-requests: write # open the upgrade PR
+    steps:
+      # Credentials persist because this job pushes a branch. It holds no npm
+      # identity and no id-token.
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 24
+
+      # No dependency install: the script is zero-dependency CommonJS, and the
+      # lockfile step below needs pnpm rather than node_modules. GITHUB_TOKEN is
+      # only for the rate limit on the release-notes lookup.
+      #
+      # `--notes-out` writes third-party Markdown to a FILE rather than a step
+      # output, because a $GITHUB_OUTPUT line is delimited text that a release
+      # body containing the delimiter can break out of.
+      - id: detect
+        run: |
+          node .github/scripts/vale-upgrade-detect.cjs \
+            --write --notes-out "${RUNNER_TEMP}/vale-release-notes.md"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # Resolution, not editing. `--lockfile-only` skips linking, so nothing is
+      # downloaded and no lifecycle script runs. It fails if the six packages
+      # are not all resolvable at the new version — a second, independent check
+      # on the half-published set the detect step already refuses.
+      - name: Regenerate the lockfile
+        if: steps.detect.outputs.update == 'true'
+        run: pnpm install --lockfile-only --ignore-scripts
+
+      - name: Propose the upgrade
+        if: steps.detect.outputs.update == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VALE_VERSION: ${{ steps.detect.outputs.vale_version }}
+          BASE_VERSION: ${{ steps.detect.outputs.base_version }}
+          PINNED_VERSION: ${{ steps.detect.outputs.pinned_version }}
+        run: |
+          set -euo pipefail
+
+          # A changeset, because this is the bump a consumer experiences — the
+          # republish that produced the package did not change anyone's install.
+          # `patch` is correct while @taskless/cli is pre-1.0 even for a new Vale
+          # minor; see the bump guidance in CLAUDE.md before reaching for
+          # `minor`. The filename is stable per version, so a rolling branch
+          # rewrites it rather than accumulating a file per release.
+          changeset=".changeset/vale-${VALE_VERSION//./-}.md"
+          cat > "$changeset" <<CHANGESET
+          ---
+          "@taskless/cli": patch
+          ---
+
+          Update the bundled Vale to ${BASE_VERSION}.
+          CHANGESET
+
+          # Composed as a FILE, not as an argument. The preamble is ours and the
+          # notes appended below it are upstream's, and the quoted heredoc plus
+          # `cat` means neither the shell nor gh ever interprets the latter.
+          body="${RUNNER_TEMP}/vale-upgrade-body.md"
+          cat > "$body" <<BODY
+          The \`@taskless/vale-*\` packages are published ahead of what
+          \`@taskless/cli\` pins.
+
+          This moves all six pins from \`${PINNED_VERSION}\` to
+          \`${VALE_VERSION}\` — Vale **${BASE_VERSION}** — and regenerates
+          \`pnpm-lock.yaml\`. The pins move **together** on purpose: the platform
+          packages are selected by optional dependency, so a straggler left at
+          the old version is a different Vale on one platform than on the others.
+
+          **This is the half that reaches a user.** Republishing the platform
+          packages changes nobody's install, because the CLI pins each one
+          exactly; merging this is what ships the new Vale.
+
+          This pull request rolls: if another set is published before it merges,
+          the branch, title, and body are rewritten to the newer version rather
+          than a second pull request being opened. Push a commit to the branch
+          and that stops — the workflow will not force-push over a commit it did
+          not write.
+          BODY
+
+          # Absent only if the detect step reported ahead and then wrote no
+          # notes, which it cannot — so warn rather than skip silently.
+          notes="${RUNNER_TEMP}/vale-release-notes.md"
+          if [ -f "$notes" ]; then
+            printf '\n---\n\n' >> "$body"
+            cat "$notes" >> "$body"
+          else
+            echo "::warning::no release notes file at ${notes}"
+          fi
+
+          node .github/scripts/vendor-pr.cjs \
+            --branch vendor/vale/upgrade \
+            --title "chore(vale): upgrade to Vale ${BASE_VERSION}" \
+            --message "chore(vale): upgrade to Vale ${BASE_VERSION}" \
+            --body-file "$body" \
+            -- packages/cli/package.json pnpm-lock.yaml "$changeset"
