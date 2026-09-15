@@ -147,6 +147,31 @@ function formatReleaseNotes({
   return `${heading}\n${quoted}\n${footer}`;
 }
 
+/**
+ * Read `--notes-out <path>` from an argv array, or undefined when absent.
+ *
+ * Lives here rather than in each detect script because all three parse the same
+ * flag for the same reason, and a change to how it is parsed — accepting
+ * `--notes-out=path`, say — should not be a change three files have to make in
+ * agreement. A partial fix would leave one workflow silently writing nothing.
+ *
+ * A following value that looks like another flag is an error rather than a
+ * path. `--notes-out --write` is a caller that forgot the argument, and taking
+ * `--write` as a filename would write release notes to a file named `--write`
+ * and drop the flag that was meant to do the work.
+ */
+function readNotesOut(argv) {
+  const at = argv.indexOf("--notes-out");
+  if (at === -1) {
+    return undefined;
+  }
+  const path = argv[at + 1];
+  if (!path || path.startsWith("--")) {
+    throw new Error("--notes-out needs a path");
+  }
+  return path;
+}
+
 /** Write a rendered section to disk for a workflow to pass to `--body-file`. */
 function writeNotesFile(path, section) {
   writeFileSync(path, section.endsWith("\n") ? section : `${section}\n`);
@@ -157,5 +182,6 @@ module.exports = {
   fetchLatestRelease,
   fetchReleaseByTag,
   formatReleaseNotes,
+  readNotesOut,
   writeNotesFile,
 };

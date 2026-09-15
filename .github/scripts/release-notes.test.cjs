@@ -21,6 +21,7 @@ const {
   NOTES_LIMIT,
   fetchLatestRelease,
   formatReleaseNotes,
+  readNotesOut,
   writeNotesFile,
 } = require("./release-notes.cjs");
 
@@ -172,4 +173,24 @@ test("notes: the written file always ends in a newline", () => {
   } finally {
     rmSync(directory, { recursive: true, force: true });
   }
+});
+
+/**
+ * Parsed here rather than in each detect script. All three parse the same flag
+ * for the same reason, and a partial fix — one script taught a new form, two
+ * not — would leave a workflow silently writing no notes.
+ */
+test("notes: --notes-out yields its path, and its absence yields nothing", () => {
+  assert.equal(
+    readNotesOut(["--write", "--notes-out", "/tmp/n.md"]),
+    "/tmp/n.md"
+  );
+  assert.equal(readNotesOut(["--write"]), undefined);
+});
+
+test("notes: a flag where the path should be is a mistake, not a filename", () => {
+  // `--notes-out --write` would otherwise write to a file named `--write` and
+  // drop the flag meant to do the work.
+  assert.throws(() => readNotesOut(["--notes-out", "--write"]), /needs a path/);
+  assert.throws(() => readNotesOut(["--notes-out"]), /needs a path/);
 });

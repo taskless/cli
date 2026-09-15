@@ -31,18 +31,45 @@ function escapeLiteral(text) {
 }
 
 /**
- * @param source  the package.json text
- * @param prefix  package-name prefix, e.g. `@taskless/vale-` or `@ast-grep/cli`
- * @param from    the exact version every matching pin currently holds
- * @param to      the exact version to write
+ * WHY THE CALLER PASSES A PATTERN RATHER THAN A PREFIX.
+ *
+ * This used to take a bare string prefix and match any key starting with it,
+ * while the `collectPins` it is paired with used a boundary-aware pattern
+ * (`/^@ast-grep\/cli(-|$)/`). Two functions that are supposed to agree on what
+ * counts as a pin disagreed on it, and only the `count !== pins.size` check
+ * downstream kept that from mattering. Relying on a guard to paper over a
+ * disagreement is not the same as not having one: the guard turns the
+ * disagreement into a failed run, which is better than a wrong bump and worse
+ * than the two agreeing in the first place.
+ *
+ * Taking the pattern means the caller hands BOTH functions the same constant,
+ * so they cannot drift apart at all.
+ *
+ * @param source   the package.json text
+ * @param pattern  anchored RegExp matching a package NAME, the same one the
+ *                 caller enumerates pins with
+ * @param from     the exact version every matching pin currently holds
+ * @param to       the exact version to write
  */
-function bumpPins(source, { prefix, from, to }) {
-  const pattern = new RegExp(
-    `("${escapeLiteral(prefix)}[^"]*"\\s*:\\s*")${escapeLiteral(from)}(")`,
+function bumpPins(source, { pattern, from, to }) {
+  // A /g regexp carries `lastIndex` between calls, so `.test()` would alternate
+  // true and false down the file and silently skip every other pin. Refusing it
+  // beats stripping the flag, because a caller passing /g also uses that same
+  // constant for its own enumeration, where the bug would be just as quiet.
+  if (pattern.global) {
+    throw new Error(
+      "the pin pattern must not be /g: a stateful lastIndex would skip pins"
+    );
+  }
+  const matcher = new RegExp(
+    `("([^"]+)"\\s*:\\s*")${escapeLiteral(from)}(")`,
     "g"
   );
   let count = 0;
-  const bumped = source.replaceAll(pattern, (_match, head, tail) => {
+  const bumped = source.replaceAll(matcher, (match, head, name, tail) => {
+    if (!pattern.test(name)) {
+      return match;
+    }
     count += 1;
     return `${head}${to}${tail}`;
   });
