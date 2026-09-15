@@ -62,6 +62,7 @@ const { join } = require("node:path");
 const {
   fetchLatestRelease,
   formatReleaseNotes,
+  readNotesOut,
   writeNotesFile,
 } = require("./release-notes.cjs");
 const {
@@ -88,19 +89,6 @@ async function fetchText(url) {
     throw new Error(`GET ${url} responded ${response.status}`);
   }
   return response.text();
-}
-
-/** `--notes-out <path>`, or undefined when the flag is absent. */
-function readNotesOut(argv) {
-  const at = argv.indexOf("--notes-out");
-  if (at === -1) {
-    return undefined;
-  }
-  const path = argv[at + 1];
-  if (!path || path.startsWith("--")) {
-    throw new Error("--notes-out needs a path");
-  }
-  return path;
 }
 
 async function main({

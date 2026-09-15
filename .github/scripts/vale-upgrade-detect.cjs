@@ -59,6 +59,7 @@ const { bumpPins } = require("./pin-bump.cjs");
 const {
   fetchReleaseByTag,
   formatReleaseNotes,
+  readNotesOut,
   writeNotesFile,
 } = require("./release-notes.cjs");
 const {
@@ -80,6 +81,13 @@ const MANIFEST_PATH = join(__dirname, "vale-manifest.json");
 
 const PIN_PREFIX = "@taskless/vale-";
 
+/**
+ * What counts as a platform pin. Used BOTH to enumerate the pins and to rewrite
+ * them, so the two cannot drift apart — the trailing hyphen is the boundary
+ * here, since there is no bare `@taskless/vale` package.
+ */
+const PIN_PATTERN = /^@taskless\/vale-/;
+
 const REGISTRY = "https://registry.npmjs.org";
 
 function setOutput(key, value) {
@@ -87,19 +95,6 @@ function setOutput(key, value) {
   if (file) {
     appendFileSync(file, `${key}=${value}\n`);
   }
-}
-
-/** `--notes-out <path>`, or undefined when the flag is absent. */
-function readNotesOut(argv) {
-  const at = argv.indexOf("--notes-out");
-  if (at === -1) {
-    return undefined;
-  }
-  const path = argv[at + 1];
-  if (!path || path.startsWith("--")) {
-    throw new Error("--notes-out needs a path");
-  }
-  return path;
 }
 
 /**
@@ -119,7 +114,7 @@ function collectPins(packageJson) {
     "optionalDependencies",
   ]) {
     for (const [name, range] of Object.entries(packageJson[field] ?? {})) {
-      if (name.startsWith(PIN_PREFIX)) {
+      if (PIN_PATTERN.test(name)) {
         pins.set(name, range);
       }
     }
@@ -238,7 +233,7 @@ async function main({
   if (write && ahead) {
     const source = readFileSync(packageJsonPath, "utf8");
     const { source: bumped, count } = bumpPins(source, {
-      prefix: PIN_PREFIX,
+      pattern: PIN_PATTERN,
       from: pinned,
       to: upstream,
     });

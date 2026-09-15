@@ -88,6 +88,7 @@ const { bumpPins } = require("./pin-bump.cjs");
 const {
   fetchReleaseByTag,
   formatReleaseNotes,
+  readNotesOut,
   writeNotesFile,
 } = require("./release-notes.cjs");
 
@@ -235,19 +236,6 @@ async function fetchLatestVersion(packageName) {
   return latest;
 }
 
-/** `--notes-out <path>`, or undefined when the flag is absent. */
-function readNotesOut(argv) {
-  const at = argv.indexOf("--notes-out");
-  if (at === -1) {
-    return undefined;
-  }
-  const path = argv[at + 1];
-  if (!path || path.startsWith("--")) {
-    throw new Error("--notes-out needs a path");
-  }
-  return path;
-}
-
 async function main({
   argv = process.argv.slice(2),
   latestVersion = fetchLatestVersion,
@@ -289,8 +277,10 @@ async function main({
   if (write && ahead) {
     const pins = collectPins(packageJson);
     const source = readFileSync(packageJsonPath, "utf8");
+    // The same constant collectPins enumerates with, so the two cannot
+    // disagree about what counts as a pin.
     const { source: bumped, count } = bumpPins(source, {
-      prefix: "@ast-grep/cli",
+      pattern: PIN_PATTERN,
       from: pinned,
       to: upstream,
     });

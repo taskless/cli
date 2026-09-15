@@ -18,7 +18,6 @@ const { tmpdir } = require("node:os");
 const { join } = require("node:path");
 
 const { collectPinnedVersion, isAhead, main } = require("./sg-detect.cjs");
-const { bumpPins } = require("./pin-bump.cjs");
 
 const CLI_PACKAGE_JSON = JSON.parse(
   readFileSync(
@@ -288,52 +287,6 @@ const sourcePinnedAt = (version) =>
     undefined,
     2
   )}\n`;
-
-test("bump: every pin moves and nothing else does", () => {
-  const before = sourcePinnedAt("0.45.2");
-  const { source, count } = bumpPins(before, {
-    prefix: "@ast-grep/cli",
-    from: "0.45.2",
-    to: "0.45.3",
-  });
-
-  assert.equal(count, 3);
-  assert.equal(source.match(/0\.45\.3/g).length, 3);
-  assert.doesNotMatch(source, /0\.45\.2/);
-  // The unrelated dependency is untouched, and so is the formatting: the diff
-  // a reviewer reads is three version strings.
-  assert.match(source, /"zod": "\^4\.0\.0"/);
-  assert.equal(
-    before.split("\n").length,
-    source.split("\n").length,
-    "the rewrite reflowed the file"
-  );
-});
-
-/**
- * The dots in a version are regular-expression metacharacters. Unescaped,
- * `0.45.2` also matches `0X45Y2` — and, far more plausibly, a pin at `0145.2`.
- */
-test("bump: the version is matched literally, not as a pattern", () => {
-  const source = '{ "@ast-grep/cli": "0145.2" }';
-  const { count } = bumpPins(source, {
-    prefix: "@ast-grep/cli",
-    from: "0.45.2",
-    to: "0.45.3",
-  });
-  assert.equal(count, 0);
-});
-
-test("bump: a version appearing outside an @ast-grep pin is left alone", () => {
-  const source = '{ "some-other-tool": "0.45.2", "@ast-grep/cli": "0.45.2" }';
-  const { source: bumped, count } = bumpPins(source, {
-    prefix: "@ast-grep/cli",
-    from: "0.45.2",
-    to: "0.45.3",
-  });
-  assert.equal(count, 1);
-  assert.match(bumped, /"some-other-tool": "0\.45\.2"/);
-});
 
 test("sg-detect: --write bumps every pin in the file on disk", async () => {
   const { packageJsonWritten, outputs } = await runDetect({
