@@ -127,8 +127,11 @@ jobs:
           # and reach nobody until a pin like this one moves. `patch` is correct
           # while @taskless/cli is pre-1.0 even though the diff adds no surface
           # of our own; see the bump guidance in CLAUDE.md before reaching for
-          # `minor`. The filename is stable per version, so a rolling branch
-          # rewrites it rather than accumulating one file per release.
+          # `minor`. The filename carries the version so that two different
+          # bumps never share a release note. Accumulation is not what stops
+          # here — `vendor-pr.cjs` rebuilds the branch from `main` every run,
+          # so only ever one changeset file exists on it regardless of the
+          # name.
           changeset=".changeset/ast-grep-${SG_VERSION//./-}.md"
           cat > "$changeset" <<CHANGESET
           ---
