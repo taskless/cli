@@ -35,12 +35,45 @@
  *     edit able to break this badge.
  *
  * Usage:
- *   node .github/scripts/sg-detect.cjs [--json]
+ *   node .github/scripts/sg-detect.cjs [--json] [--write] [--notes-out <path>]
  *
- *   --json   print `{ pinned, upstream, ahead }` and nothing else. This script
- *            never writes anything in either mode; unlike Vale there is no
- *            manifest to rewrite, and bumping eight dependency pins is a
- *            lockfile-touching change that belongs to a human.
+ *   --json   print `{ pinned, upstream, ahead }` and nothing else, writing
+ *            nothing. This is what update-badges.cjs calls.
+ *
+ *   --write  rewrite every `@ast-grep/cli*` pin in packages/cli/package.json to
+ *            the upstream version. `ast-grep-upgrade.yml` then regenerates the
+ *            lockfile and opens a pull request.
+ *
+ *            THIS REVERSES AN EARLIER DECISION, deliberately. This script used
+ *            to refuse to write on the grounds that a lockfile-touching bump
+ *            belongs to a human. The part of that which was right — nobody
+ *            should merge a machine's dependency bump unread — is unchanged;
+ *            the pull request is reviewed like any other. The part which was
+ *            wrong is that refusing to WRITE does not make anyone review
+ *            anything. It made the answer "upstream is ahead" reach only a
+ *            README badge, so ast-grep 0.45.3 sat unpinned with nothing
+ *            reporting it. A reviewed pull request is more review than no
+ *            pull request, not less.
+ *
+ *            What keeps it honest is that the write is mechanical and bounded:
+ *            `bumpPins` replaces a version string in pins it can already
+ *            enumerate, and refuses if the number it rewrote is not the number
+ *            it found. It cannot add a dependency, reorder the file, or reflow
+ *            it, so the diff a reviewer reads is N version strings and a
+ *            lockfile.
+ *
+ *   --notes-out <path>
+ *            write upstream's release notes for the newer version to <path>,
+ *            rendered as a Markdown section. `ast-grep-upgrade.yml` appends that
+ *            file to the pull request body, so the bump arrives with what it
+ *            actually contains rather than as eight changed version strings a
+ *            reviewer has to go look up. Written only when upstream is ahead.
+ *
+ *            The version comes from npm and the notes come from GitHub, which
+ *            is the one place those two records can disagree: a tag missing
+ *            from GitHub renders as a link to the releases page rather than
+ *            failing the run, because the comparison this script exists to make
+ *            has already succeeded by then.
  *
  * Outputs (appended to $GITHUB_OUTPUT when set):
  *   update            "true" when upstream is ahead
@@ -48,8 +81,15 @@
  *   pinned_version    the version currently pinned in packages/cli/package.json
  */
 
-const { appendFileSync, readFileSync } = require("node:fs");
+const { appendFileSync, readFileSync, writeFileSync } = require("node:fs");
 const { join } = require("node:path");
+
+const { bumpPins } = require("./pin-bump.cjs");
+const {
+  fetchReleaseByTag,
+  formatReleaseNotes,
+  writeNotesFile,
+} = require("./release-notes.cjs");
 
 const PACKAGE_JSON_PATH = join(
   __dirname,
@@ -66,6 +106,14 @@ const PIN_PATTERN = /^@ast-grep\/cli(-|$)/;
 const VERSION_PATTERN = /^(\d+)\.(\d+)\.(\d+)$/;
 
 const REGISTRY = "https://registry.npmjs.org";
+
+/**
+ * Where the release notes live. ast-grep tags its releases with the bare npm
+ * version (`0.45.3`, no `v`), so the version read from the registry is also the
+ * tag — an assumption this script does not have to be right about, since a tag
+ * it cannot find degrades to a link rather than to an error.
+ */
+const NOTES_REPOSITORY = "ast-grep/ast-grep";
 
 function setOutput(key, value) {
   const file = process.env.GITHUB_OUTPUT;
@@ -113,7 +161,7 @@ function isAhead(pinned, upstream) {
  * different ast-grep on one platform than on the others — and a badge that
  * smoothed it over would hide exactly the drift it was added to expose.
  */
-function collectPinnedVersion(packageJson) {
+function collectPins(packageJson) {
   const pins = new Map();
   for (const field of [
     "dependencies",
@@ -126,6 +174,11 @@ function collectPinnedVersion(packageJson) {
       }
     }
   }
+  return pins;
+}
+
+function collectPinnedVersion(packageJson) {
+  const pins = collectPins(packageJson);
 
   if (pins.size === 0) {
     throw new Error(
@@ -182,12 +235,35 @@ async function fetchLatestVersion(packageName) {
   return latest;
 }
 
+/** `--notes-out <path>`, or undefined when the flag is absent. */
+function readNotesOut(argv) {
+  const at = argv.indexOf("--notes-out");
+  if (at === -1) {
+    return undefined;
+  }
+  const path = argv[at + 1];
+  if (!path || path.startsWith("--")) {
+    throw new Error("--notes-out needs a path");
+  }
+  return path;
+}
+
 async function main({
   argv = process.argv.slice(2),
   latestVersion = fetchLatestVersion,
-  packageJson = JSON.parse(readFileSync(PACKAGE_JSON_PATH, "utf8")),
+  releaseFor = fetchReleaseByTag,
+  packageJsonPath = PACKAGE_JSON_PATH,
+  packageJson = JSON.parse(readFileSync(packageJsonPath, "utf8")),
 } = {}) {
   const json = argv.includes("--json");
+  const write = argv.includes("--write");
+  const notesOut = readNotesOut(argv);
+  // --json is what the badge run calls, and a badge run proposes nothing.
+  if (json && (notesOut || write)) {
+    throw new Error(
+      "--json prints the comparison and nothing else; it cannot be combined with --notes-out or --write"
+    );
+  }
   const log = json ? () => {} : (line) => console.log(line);
 
   const pinned = collectPinnedVersion(packageJson);
@@ -206,6 +282,46 @@ async function main({
     console.log(JSON.stringify(comparison));
   }
 
+  // Only the ahead path has anything to write. The pins are rewritten before
+  // the notes are fetched so that a network failure on the (optional) changelog
+  // cannot leave a half-done bump: by the time anything can throw below, the
+  // file on disk is either fully bumped or untouched.
+  if (write && ahead) {
+    const pins = collectPins(packageJson);
+    const source = readFileSync(packageJsonPath, "utf8");
+    const { source: bumped, count } = bumpPins(source, {
+      prefix: "@ast-grep/cli",
+      from: pinned,
+      to: upstream,
+    });
+    // A straggler left at the old version is a different ast-grep on one
+    // platform than on the others, which is the exact state collectPinnedVersion
+    // refuses to report on. Better to fail here than to open that as a PR.
+    if (count !== pins.size) {
+      throw new Error(
+        `expected to rewrite ${pins.size} @ast-grep/cli* pins, rewrote ${count}`
+      );
+    }
+    writeFileSync(packageJsonPath, bumped);
+    log(`Rewrote ${count} pins in ${packageJsonPath} to ${upstream}.`);
+  }
+
+  // Only the ahead path has a bump to describe. A second request, unlike Vale's
+  // — that one reads its version out of a GitHub release and gets the notes in
+  // the same response, while this one learns the version from npm.
+  if (notesOut && ahead) {
+    const release = await releaseFor(NOTES_REPOSITORY, upstream);
+    writeNotesFile(
+      notesOut,
+      formatReleaseNotes({
+        repository: NOTES_REPOSITORY,
+        version: upstream,
+        release,
+      })
+    );
+    log(`Wrote the upstream release notes to ${notesOut}.`);
+  }
+
   setOutput("update", String(ahead));
   setOutput("sg_version", upstream);
   setOutput("pinned_version", pinned);
@@ -215,7 +331,7 @@ async function main({
 // main() both prints and RETURNS the comparison, so update-badges.cjs can call
 // it in-process and read the answer as data. Nothing should ever parse the
 // human line above to recover a version that this return value already holds.
-module.exports = { collectPinnedVersion, isAhead, main };
+module.exports = { collectPinnedVersion, collectPins, isAhead, main };
 
 if (require.main === module) {
   main().catch((error) => {
