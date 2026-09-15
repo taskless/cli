@@ -188,6 +188,13 @@ jobs:
       # validated as major.minor.patch by the script, but the pattern is the
       # rule regardless of the value.
       #
+      # "accept upstream", not "pin". This proposal changes NOTHING a consumer
+      # installs: it records which upstream release we are willing to package
+      # and republish. The pins a user resolves move in `vale-upgrade.yml`,
+      # whose PR says "upgrade to". Two stages, two verbs, so a title says which
+      # one you are looking at — they otherwise differ only in the word `pin`,
+      # which was on the wrong one.
+      #
       # The branch and pull request lifecycle is `vendor-pr.cjs`, shared with
       # every vendor workflow: one rolling `vendor/vale/republish` branch,
       # rebuilt from `main`, retitled and rewritten as upstream moves, and
@@ -222,7 +229,9 @@ jobs:
           Merging this triggers the publish phase, which stamps every platform
           package `<valeVersion>-<yyyymmddhhmmss>` and publishes the set. That
           publish is inert on its own: `@taskless/cli` pins exact versions, so
-          nothing reaches a consumer until that pin is deliberately bumped.
+          nothing reaches a consumer until that pin is deliberately bumped —
+          which is what `vale-upgrade.yml` proposes, separately, once this has
+          merged and published. Merging THIS changes nobody's install.
 
           This pull request rolls: if upstream releases again before it merges,
           the branch, title, and body are rewritten to the newer version rather
@@ -243,8 +252,8 @@ jobs:
 
           node .github/scripts/vendor-pr.cjs \
             --branch vendor/vale/republish \
-            --title "chore(vale): pin Vale ${VALE_VERSION}" \
-            --message "chore(vale): pin Vale ${VALE_VERSION}" \
+            --title "chore(vale): accept upstream Vale ${VALE_VERSION}" \
+            --message "chore(vale): accept upstream Vale ${VALE_VERSION}" \
             --body-file "$body" \
             --label skip-changeset \
             -- .github/scripts/vale-manifest.json
