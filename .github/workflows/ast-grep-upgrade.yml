@@ -1,0 +1,182 @@
+# SPDX-License-Identifier: MIT
+# ast-grep — notice upstream releases, and open the pin bump with the changelog in it.
+#
+# WHY THIS EXISTS. Vale's upstream releases have been watched by a machine since
+# the platform packages were built. ast-grep had `sg-detect.cjs` but nowhere for
+# its answer to go: the only consumer was the README badge, which renders a
+# version and cannot render a changelog. So "ast-grep 0.45.3 is out" was
+# discoverable only by someone noticing a number on a badge and then going to
+# find the release notes by hand — and 0.45.3 duly sat unpinned with nothing
+# reporting it.
+#
+# WHY IT OPENS A PULL REQUEST, having previously argued for not writing at all.
+# `sg-detect.cjs` used to refuse to write on the grounds that a lockfile-touching
+# bump belongs to a human. Half of that was right and is unchanged: nobody
+# merges this unread, and `Validate` runs on it like any other pull request.
+# The other half was wrong. Refusing to write does not cause anyone to review
+# anything — it only meant nothing was ever proposed. A reviewed pull request is
+# more review than no pull request.
+#
+# HOW THIS DIFFERS FROM release-vale.yml's detect, which it otherwise mirrors:
+#
+#   - There is no trust boundary here, so there is no second phase. Vale's
+#     detect proposes DIGESTS that authorize a later job to download and publish
+#     third-party bytes, which is why reviewing it is load-bearing and why the
+#     publish is split into a separate credential-free fetch. This proposes a
+#     version string. npm verifies its own integrity through the lockfile, and
+#     nothing here publishes anything.
+#
+#   - The lockfile is regenerated rather than hand-edited. `pnpm install
+#     --lockfile-only` resolves the eight platform packages at the new version
+#     and rewrites `pnpm-lock.yaml`. It fails if upstream published the CLI
+#     without one of its platform siblings, which is the failure worth catching
+#     before a reviewer sees it, not after.
+#
+#   - A changeset is written, where Vale's detect labels `skip-changeset`. The
+#     Vale packages are stamped by their own pipeline and reach a consumer only
+#     when a pin is bumped; THIS is that bump, and it changes which ast-grep a
+#     `@taskless/cli` user runs. `patch`, because the package is pre-1.0 — see
+#     the bump guidance in CLAUDE.md before reaching for `minor`.
+#
+# ONE ROLLING BRANCH, `vendor/ast-grep/upgrade`. `vendor-pr.cjs` owns that
+# lifecycle for every vendor workflow — rebuild from `main`, retitle and rewrite
+# as upstream moves, and force-push only when the proposal changed and only when
+# this workflow wrote what is already on the branch.
+#
+# THE `/upgrade` SUFFIX IS NOT DECORATION, even though ast-grep has only the one
+# stage. Git refs are paths, so a branch named `vendor/ast-grep` is a FILE at
+# that path and makes `vendor/ast-grep/<anything>` impossible to create ever
+# after. Vale needed exactly that split — `vendor/vale/republish` for the
+# packages we build and `vendor/vale/upgrade` for the pins a user gets — and
+# reserving the namespace here costs one word. That Vale has a `republish` and
+# ast-grep does not is the real difference between them: nothing in this
+# repository repackages ast-grep, so there is no set of our own to publish
+# before the pins can move.
+#
+# Action refs are pinned to commit SHAs; the trailing comment records the tag.
+
+name: Upgrade ast-grep
+
+on:
+  # Same cadence and the same reasoning as the Vale detect: upstream's release
+  # rhythm, not ours. The dispatch covers "upstream just released, do not wait
+  # until Monday".
+  schedule:
+    - cron: "41 7 * * 1"
+
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency: ast-grep-upgrade
+
+jobs:
+  detect:
+    name: Upgrade the pinned ast-grep
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # push the vendor/ast-grep/upgrade branch
+      pull-requests: write # open the bump PR
+    steps:
+      # Credentials persist because this job pushes a branch. It holds no npm
+      # identity and no id-token.
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 24
+
+      # No dependency install: sg-detect.cjs is zero-dependency CommonJS, and
+      # the lockfile step below needs pnpm rather than node_modules.
+      #
+      # `--notes-out` writes upstream's release notes to a FILE rather than to a
+      # step output, because they are third-party Markdown and a $GITHUB_OUTPUT
+      # line is delimited text that a release body containing the delimiter can
+      # break out of. It reaches the body through `--body-file` and never meets
+      # a shell or a `${{ }}` expression.
+      - id: detect
+        run: |
+          node .github/scripts/sg-detect.cjs \
+            --write --notes-out "${RUNNER_TEMP}/sg-release-notes.md"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # Resolution, not editing. `--lockfile-only` skips linking, so nothing is
+      # downloaded into node_modules and no lifecycle script runs; the job's
+      # only product is a rewritten pnpm-lock.yaml. It fails if the eight
+      # platform packages are not all published at the new version.
+      - name: Regenerate the lockfile
+        if: steps.detect.outputs.update == 'true'
+        run: pnpm install --lockfile-only --ignore-scripts
+
+      # Every value reaching the shell goes through `env:` rather than `${{ }}`
+      # interpolation into the script body. The branch and pull request
+      # lifecycle is `vendor-pr.cjs`, shared with release-vale.yml.
+      - name: Propose the bump
+        if: steps.detect.outputs.update == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SG_VERSION: ${{ steps.detect.outputs.sg_version }}
+          PINNED_VERSION: ${{ steps.detect.outputs.pinned_version }}
+        run: |
+          set -euo pipefail
+
+          # A changeset, because this bump is what reaches a consumer — unlike
+          # the Vale manifest, whose packages are stamped by their own pipeline
+          # and reach nobody until a pin like this one moves. `patch` is correct
+          # while @taskless/cli is pre-1.0 even though the diff adds no surface
+          # of our own; see the bump guidance in CLAUDE.md before reaching for
+          # `minor`. The filename is stable per version, so a rolling branch
+          # rewrites it rather than accumulating one file per release.
+          changeset=".changeset/ast-grep-${SG_VERSION//./-}.md"
+          cat > "$changeset" <<CHANGESET
+          ---
+          "@taskless/cli": patch
+          ---
+
+          Update the bundled ast-grep to ${SG_VERSION} (from ${PINNED_VERSION}).
+          CHANGESET
+
+          # Composed as a FILE, not as an argument. The preamble is ours and the
+          # notes appended below it are upstream's, and the quoted heredoc plus
+          # `cat` means neither the shell nor gh ever interprets the latter.
+          body="${RUNNER_TEMP}/sg-pr-body.md"
+          cat > "$body" <<BODY
+          Upstream ast-grep is ahead of the version this repository pins.
+
+          This moves every \`@ast-grep/cli*\` pin in \`packages/cli/package.json\`
+          from \`${PINNED_VERSION}\` to \`${SG_VERSION}\` and regenerates
+          \`pnpm-lock.yaml\`. The pins move **together** on purpose: the platform
+          packages are selected by optional dependency, so a straggler left at
+          the old version is a different ast-grep on one platform than on the
+          others. \`sg-detect.cjs\` fails the run rather than open a partial bump.
+
+          Nothing else is edited. The rewrite replaces a version string in pins
+          it can already enumerate and refuses if the count does not match, so
+          it cannot add a dependency or reformat the file — the diff below is
+          eight version strings, a resolved lockfile, and a changeset.
+
+          This pull request rolls: if upstream releases again before it merges,
+          the branch, title, and body are rewritten to the newer version rather
+          than a second pull request being opened. Push a commit to the branch
+          and that stops — the workflow will not force-push over a commit it did
+          not write.
+          BODY
+
+          # Absent only if the detect step reported ahead and then wrote no
+          # notes, which it cannot — so warn rather than skip silently.
+          notes="${RUNNER_TEMP}/sg-release-notes.md"
+          if [ -f "$notes" ]; then
+            printf '\n---\n\n' >> "$body"
+            cat "$notes" >> "$body"
+          else
+            echo "::warning::no release notes file at ${notes}"
+          fi
+
+          node .github/scripts/vendor-pr.cjs \
+            --branch vendor/ast-grep/upgrade \
+            --title "chore(ast-grep): pin ast-grep ${SG_VERSION}" \
+            --message "chore(ast-grep): pin ast-grep ${SG_VERSION}" \
+            --body-file "$body" \
+            -- packages/cli/package.json pnpm-lock.yaml "$changeset"
