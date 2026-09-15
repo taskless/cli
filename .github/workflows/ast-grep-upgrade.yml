@@ -110,6 +110,10 @@ jobs:
         if: steps.detect.outputs.update == 'true'
         run: pnpm install --lockfile-only --ignore-scripts
 
+      # "upgrade to", the same verb vale-upgrade.yml uses, because it is the
+      # same operation: moving the pins a user resolves. ast-grep has no
+      # "accept upstream" counterpart, since nothing here repackages it.
+      #
       # Every value reaching the shell goes through `env:` rather than `${{ }}`
       # interpolation into the script body. The branch and pull request
       # lifecycle is `vendor-pr.cjs`, shared with release-vale.yml.
@@ -179,7 +183,7 @@ jobs:
 
           node .github/scripts/vendor-pr.cjs \
             --branch vendor/ast-grep/upgrade \
-            --title "chore(ast-grep): pin ast-grep ${SG_VERSION}" \
-            --message "chore(ast-grep): pin ast-grep ${SG_VERSION}" \
+            --title "chore(ast-grep): upgrade to ast-grep ${SG_VERSION}" \
+            --message "chore(ast-grep): upgrade to ast-grep ${SG_VERSION}" \
             --body-file "$body" \
             -- packages/cli/package.json pnpm-lock.yaml "$changeset"
