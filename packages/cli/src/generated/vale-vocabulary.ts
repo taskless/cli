@@ -6,7 +6,7 @@
  * `scripts/generate-vale-schema.ts`, and its header explains what each value
  * below was measured with and what it is worth.
  *
- * Derived against Vale 3.20.0. Every value here is the recorded answer
+ * Derived against Vale 3.21.0. Every value here is the recorded answer
  * of that binary to a rule the generator wrote and ran; nothing is transcribed
  * from documentation. Where the binary and the documentation disagree, the
  * disagreement is in `vale-vocabulary-report.md` rather than dropped.
@@ -15,7 +15,7 @@
  */
 
 /** The binary this vocabulary was derived from. */
-export const VALE_VOCABULARY_VERSION = "3.20.0";
+export const VALE_VOCABULARY_VERSION = "3.21.0";
 
 /**
  * Vale's check types, self-enumerated: an unknown `extends` makes the binary
@@ -118,7 +118,7 @@ export const VALE_CHECK_FIELDS = {
     "threshold",
     "vocab",
   ],
-  conditional: ["exceptions", "first", "ignorecase", "second", "vocab"],
+  conditional: ["exceptions", "first", "ignorecase", "in", "second", "vocab"],
   existence: [
     "append",
     "exceptions",
@@ -190,10 +190,14 @@ export const VALE_SCOPE_OPERANDS = [
  * `text.class.callout` names an HTML class. Rejecting an unfamiliar tail would
  * be the too-strict failure against a value the binary honors.
  */
-export const VALE_SCOPE_PREFIXES = ["frontmatter.", "text.class."] as const;
+export const VALE_SCOPE_PREFIXES = [
+  "doc(",
+  "frontmatter.",
+  "text.class.",
+] as const;
 
 /**
- * Where Vale 3.20.0 and its documentation disagree.
+ * Where Vale 3.21.0 and its documentation disagree.
  *
  * Carried in the artifact rather than only in the report, so that a consumer
  * can render them and a reviewer cannot miss them in a diff.
@@ -202,26 +206,26 @@ export const VALE_DIVERGENCES = [
   {
     subject: "scope: meta",
     finding:
-      "Vale 3.20.0 documents this operand and it never fired, on any fixture probed (.md).",
+      "Vale 3.21.0 documents this operand and it never fired, on any fixture probed (.md).",
     consequence:
       "It is omitted from the vocabulary, so `verify` rejects it. A rule written from the documentation would otherwise load, run, and match nothing, with no error reported anywhere.",
   },
   {
     subject: "scope: meta.class.title",
     finding:
-      "Vale 3.20.0 documents this operand and it never fired, on any fixture probed (.md).",
+      "Vale 3.21.0 documents this operand and it never fired, on any fixture probed (.md).",
     consequence:
       "It is omitted from the vocabulary, so `verify` rejects it. A rule written from the documentation would otherwise load, run, and match nothing, with no error reported anywhere.",
   },
   {
     subject: "scope: frontmatter",
-    finding: "This operand fired and Vale 3.20.0 documents it nowhere.",
+    finding: "This operand fired and Vale 3.21.0 documents it nowhere.",
     consequence:
       "It is included in the vocabulary. It is also the standing counterexample to trusting the candidate list: a real operand nobody proposes is simply absent, and the schema then rejects a rule the binary honors.",
   },
   {
     subject: "scope: frontmatter.title",
-    finding: "This operand fired and Vale 3.20.0 documents it nowhere.",
+    finding: "This operand fired and Vale 3.21.0 documents it nowhere.",
     consequence:
       "It is included in the vocabulary. It is also the standing counterexample to trusting the candidate list: a real operand nobody proposes is simply absent, and the schema then rejects a rule the binary honors.",
   },
@@ -242,7 +246,7 @@ export const VALE_DIVERGENCES = [
   {
     subject: "field probes: membership inferred from a type complaint",
     finding:
-      "10 probes drew an E201 that was not an invalid-key list: capitalization.action: expected a map, got 'bool'; conditional.action: expected a map, got 'bool'; existence.action: expected a map, got 'bool'; metric.action: expected a map, got 'bool'; occurrence.action: expected a map, got 'bool'; readability.action: expected a map, got 'bool'; repetition.action: expected a map, got 'bool'; script.action: expected a map, got 'bool'; sequence.action: expected a map, got 'bool'; substitution.action: expected a map, got 'bool'.",
+      "11 probes drew an E201 that was not an invalid-key list: capitalization.action: expected a map, got 'bool'; conditional.action: expected a map, got 'bool'; conditional.in: no View defines a scope named '1'; existence.action: expected a map, got 'bool'; metric.action: expected a map, got 'bool'; occurrence.action: expected a map, got 'bool'; readability.action: expected a map, got 'bool'; repetition.action: expected a map, got 'bool'; script.action: expected a map, got 'bool'; sequence.action: expected a map, got 'bool'; substitution.action: expected a map, got 'bool'.",
     consequence:
       "Each is recorded as a member: Vale recognized the key and objected to the probe's arbitrary value instead, which is membership evidence. They are listed so the inference is auditable rather than assumed.",
   },
