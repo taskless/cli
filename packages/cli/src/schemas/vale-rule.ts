@@ -636,6 +636,12 @@ function fatalShapeMessages(
  * is the blast radius this module exists to catch before the assembled
  * config is ever handed over.
  *
+ * Compared case-sensitively, which is the binary's behaviour and not an
+ * oversight: the action map's KEY is decoded case-insensitively (`Name:` is
+ * `name:`), but the VALUE is matched verbatim — measured, `Replace` draws
+ * `E201 unknown action 'Replace'`. `test/vale-corpus.ts` pins both halves
+ * (`action/mixed-case-name-key`, `action/mixed-case-name-value`).
+ *
  * Only the name is checked. `suggest`, `convert` and `edit` also constrain
  * their `params`, and Vale reports those at load too, but each is a shape of
  * its own and none is something the recipe teaches; the name is the part an
