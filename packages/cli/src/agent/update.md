@@ -1,4 +1,4 @@
-# Topic: update     (CLI v%(CLI_VERSION)s / topic v5)
+# Topic: update     (CLI v%(CLI_VERSION)s / topic v6)
 
 ## You are here
 This is `update`. It tells you what an upgrade changed for the rules
@@ -226,6 +226,69 @@ leaked text into people's files.
 **Root metavariables and comments** also changed upstream
 (ast-grep/ast-grep#2868), but no shape we tried reproduced a difference,
 including the TSX case that PR names. Nothing to do unless you see one.
+
+### Migrating to 0.11.2
+
+Vale moves from 3.20.0 to 3.21.0. ast-grep does not move. Six things
+follow for existing Vale rules, every one measured against both
+binaries; the last is behaviour a rule can now use, not a change to one
+it has.
+
+**A duplicated matcher now keeps its LAST assignment.** Where a rule's
+`.vale.ini` repeats a `[glob]` section, or repeats a key inside one,
+3.20.0 kept the first value and 3.21.0 keeps the last (upstream 1e4f6ed,
+"let the project's rule settings win"). Precedence across different
+matchers was already last-wins, so the two directions now agree, and the
+guidance to put a disable AFTER the enable it narrows is right for both
+shapes. A rule that relied on the old order is one whose second
+assignment was being ignored; it now takes effect, and the rule turns on
+or off where it did not before. `git grep -c '^\[' .taskless/rules/vale`
+finds a config with more than one section per rule to read.
+
+**A `metric` rule's `scope` is honored.** Through 3.20.0 a `metric`
+measured the whole document whatever its `scope` said; 3.21.0 measures
+the blocks the scope names, and only an absent scope, or `scope: text`,
+still means the document. A `metric` with `scope: sentence` or
+`scope: paragraph` now reports per block, so its findings move, appear,
+or disappear. If the document-wide reading was what you wanted, delete
+the `scope`.
+
+**Notebooks are read cell by cell.** `.ipynb` had no parser, so a rule
+matching `[*.ipynb]` was linting the notebook's JSON: cell source,
+outputs, and metadata alike. 3.21.0 reads a Markdown cell as Markdown
+and a code cell as its kernel's comments, and reads raw cells and
+outputs not at all. Findings drop, and `Line` now points into the
+notebook file. Nothing warns; a suspiciously clean run over notebooks is
+this.
+
+**An unknown `action` name fails the run at load.** Measured on
+3.20.0, a rule carrying `action: {name: bogus}` loaded, and the run
+died only when that rule fired, as an `E100` with no file and no line.
+3.21.0 refuses it when the rule loads, as an `E201` naming the file, so
+a rule that has been carrying a bad action without ever matching now
+fails every check, not just the ones where it matched. `verify` rejects
+a name outside `replace`, `remove`, `suggest`, `convert`, `edit`, so run
+it: the rule is named directly.
+
+**`BlockIgnores` and `TokenIgnores` apply to HTML.** A rule's
+`.vale.ini` carrying either key under an `[*.html]` matcher was ignored
+through 3.20.0 and takes effect on 3.21.0. Findings inside the ignored
+region disappear.
+
+Upstream also says a `sequence` rule with a negated scope (`~list`,
+`~code`) reported every match twice (vale-cli/vale#1169). No shape we
+tried reproduced a difference between the two binaries, including the
+one that PR's own test uses, so it is recorded the way the ast-grep
+root-metavariable case is: nothing to do unless you see one.
+
+**`scope: doc(<selector>)` selects part of a document by CSS selector**,
+which a rule could not do before: `text & doc(section:has(> h2:contains("Decision")))`
+is the prose of one section, `~doc(...)` is everything outside it, and
+a `metric` scoped to `doc(...)` puts a word budget on that section
+alone. `%(TASKLESS_CLI)s agent create-vale-rule` has the shapes and the
+one trap (a leaf element on its own, `doc(h2)`, is inert; chain it).
+No existing rule changes; this is a reason to revisit one that was
+narrowed by hand.
 
 ## Errors
 

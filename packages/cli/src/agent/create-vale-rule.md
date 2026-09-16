@@ -1,4 +1,4 @@
-# Topic: create-vale-rule     (CLI v%(CLI_VERSION)s / topic v7)
+# Topic: create-vale-rule     (CLI v%(CLI_VERSION)s / topic v8)
 
 ## You are here
 This is `create-vale-rule`. It helps you write a Vale rule: a check over
@@ -82,7 +82,7 @@ it.
 | a word repeated back to back                                                            | `repetition`     |
 | picking one of two acceptable spellings, consistently                                   | `consistency`    |
 | "if X appears, Y must also appear"                                                      | `conditional`    |
-| a document-level length or ratio threshold                                              | `metric`         |
+| a length or ratio threshold, over the document or one `scope` of it                     | `metric`         |
 | a readability grade, against a named formula                                            | `readability`    |
 | a misspelling, against a dictionary                                                     | `spelling`       |
 | phrases that must appear in a fixed order                                               | `sequence`       |
@@ -185,6 +185,33 @@ it.
 | `comment`              | every comment, in a comment-tier format                   |
 | `comment.line`         | `//`-style comments                                       |
 | `comment.block`        | `/* … */`-style comments                                  |
+| `doc(<selector>)`      | elements matched by a CSS selector; see below             |
+
+   **`doc(<selector>)` picks part of a document by CSS selector**, the
+   same way in every markup format, and a heading with everything under
+   it is a `section`, so one section of a document is
+   `doc(section:has(> h2:contains("Decision")))`. Chain it to narrow an
+   ordinary scope to that element: `text & doc(...)` is prose inside it,
+   `sentence & doc(...)` one sentence at a time inside it, `~doc(...)` is
+   everything outside it. On its own, `doc(...)` lints what is INSIDE the
+   element as one block, which is what `occurrence` (a section must say
+   "we will") and `metric` (a section runs over budget) want. Measured: a
+   `metric` with `scope: doc(section:has(> h2:contains("Consequences")))`
+   and `formula: words` counts that section's words, not the document's.
+
+   **A leaf element on its own is inert.** `doc(h2)` alone selects a
+   heading, and a heading has nothing inside it to lint as a block, so the
+   rule matches nothing, with no error anywhere. Write `text & doc(h2)`
+   for the heading's own text. The same holds for `doc(p)` and `doc(li)`.
+   `verify` accepts both spellings, because telling a leaf from a container
+   needs the document; `test` shows which one fires.
+
+   **The selector is Vale's to check, not `verify`'s.** A selector Vale
+   cannot compile (`doc(h2[)`) fails the whole run at load with
+   `E201 invalid selector in 'doc(...)'`, which `test` reports. A selector
+   that compiles and matches nothing is silent, like any scope with no
+   construct to find. `verify` checks that the term is `doc(` … `)` with
+   something between, and no more.
 
    **`raw` subsumes `code` and `text`.** Measured on one document holding
    the token in prose, in an inline span, and in a fenced block: `text`
