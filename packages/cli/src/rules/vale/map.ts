@@ -18,6 +18,13 @@ export interface ValeFinding {
   Span: [number, number];
   Match: string;
   Action?: { Name?: string; Params?: string[] | null };
+  /**
+   * Replacement text Vale computed for the match (3.21.0+). Measured equal
+   * to a `replace` action's `Params` and `[]` otherwise; `toFix` reads
+   * `Action`, the stricter of the two, and the vendor contract pins that they
+   * agree.
+   */
+  Suggestions?: string[];
 }
 
 /** Vale's whole payload: findings keyed by the path they were found in. */
