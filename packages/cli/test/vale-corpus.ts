@@ -115,6 +115,14 @@ const JS_COMMENTS = "// simply line\n/*\n simply block\n*/\nconst x = 1;\n";
 const heading = (level: number): string =>
   `${"#".repeat(level)} Level ${String(level)} simply heading\n`;
 
+/**
+ * Two `h2` sections, with `simply` in exactly one of them, so a `doc(...)`
+ * that selects the Context section fires and one that selects Decision does
+ * not — which is what lets a negation be told from a selection.
+ */
+const DOC_SECTIONS =
+  "Intro.\n\n## Context\n\nWe simply here.\n\n## Decision\n\nWe will decide.\n";
+
 // --- The corpus --------------------------------------------------------------
 
 /**
@@ -353,6 +361,31 @@ const SCOPES: ValeCorpusEntry[] = [
   // every one of these, which is worse than the gap the schema closes.
   { name: "scope/negation", scope: "~code", control: MIXED },
   { name: "scope/chain", scope: "text & ~code", control: MIXED },
+  // `doc(<selector>)`, new in Vale 3.21.0: elements of the document by CSS
+  // selector, where a heading and everything under it is a `section`. Four
+  // shapes, because they behave differently and the schema accepts all four:
+  // a container on its own is linted as one block; `text &` narrows blocks to
+  // those inside the element; `~` is everything outside it; and a selector
+  // may carry the grammar's own `&` inside quotes, which the split must leave
+  // alone. The standalone LEAF case is in INVALID_SCOPES below — it is the
+  // trap.
+  { name: "scope/doc-container", scope: "doc(section)", control: HEADINGS },
+  { name: "scope/doc-chain", scope: "text & doc(h1)", control: HEADINGS },
+  {
+    name: "scope/doc-sentence-in-section",
+    scope: 'sentence & doc(section:has(> h2:contains("Context")))',
+    control: DOC_SECTIONS,
+  },
+  {
+    name: "scope/doc-negation",
+    scope: '~doc(section:has(> h2:contains("Decision")))',
+    control: DOC_SECTIONS,
+  },
+  {
+    name: "scope/doc-ampersand-inside-selector",
+    scope: 'text & doc(section:not([data-x="a & b"]))',
+    control: DOC_SECTIONS,
+  },
 ].map(({ name, scope, control, ext }) => ({
   name,
   construct: `scope: ${scope}`,
@@ -396,6 +429,10 @@ const INVALID_SCOPES: ValeCorpusEntry[] = [
   // exist: the v3.18.0 addition is `frontmatter`, above.
   { name: "scope/meta", scope: "meta", control: FRONTMATTER },
   { name: "scope/meta.class", scope: "meta.class.title", control: FRONTMATTER },
+  // A `doc(` with no closing paren is not a selection: Vale reads the whole
+  // term as a dotted operand it does not have, and the rule is inert. The
+  // schema rejects it for the same reason it rejects `fenced`.
+  { name: "scope/doc-unclosed", scope: "doc(h1", control: HEADINGS },
 ].map(({ name, scope, control }) => ({
   name,
   construct: `scope: ${scope}`,
@@ -404,6 +441,20 @@ const INVALID_SCOPES: ValeCorpusEntry[] = [
   proof: SCOPE_PROOF,
   expected: "ignored" as const,
 }));
+
+/**
+ * `doc(...)` shapes the binary refuses at load, with an `E201` that names the
+ * selector. The schema agrees on the one it can see without parsing CSS.
+ */
+const REJECTED_DOC_SCOPES: ValeCorpusEntry[] = [
+  {
+    name: "scope/doc-empty",
+    construct: "scope: doc()",
+    rule: scoped("doc()"),
+    control: HEADINGS,
+    expected: "rejected",
+  },
+];
 
 /**
  * The one place the schema deliberately disagrees with the binary.
@@ -425,6 +476,62 @@ const DIVERGENCES: ValeCorpusEntry[] = [
       "A negation over an operand Vale does not know is a no-op: the rule " +
       "fires on everything, having silently lost the exclusion it was written " +
       "for. The schema rejects it.",
+  },
+  // The `doc(...)` family, new in Vale 3.21.0, adds three carve-outs in the
+  // OTHER direction — the schema accepts, Vale does not honor — and each is
+  // the same decision: what is between the parens is a CSS selector, and
+  // judging it means parsing CSS against the document's element tree, which
+  // the schema does not do and should not buy a dependency to do. Vale
+  // reports the bad selector itself, at load, as an E201 that `test`
+  // surfaces; the inert ones it does not report, and that is recorded here
+  // so the gap is a row someone can count rather than a silence.
+  {
+    name: "scope/doc-leaf-standalone",
+    construct: "scope: doc(h1)",
+    rule: scoped("doc(h1)"),
+    control: HEADINGS,
+    proof: SCOPE_PROOF,
+    expected: "ignored",
+    divergence:
+      "A standalone `doc(...)` lints what is INSIDE the selected element as " +
+      "one block, and a leaf element (a heading, a paragraph) has nothing " +
+      "inside it, so the rule is inert. `text & doc(h1)` is the working " +
+      "spelling. Telling a leaf from a container needs the document's " +
+      "element tree, so the schema accepts both and the recipe teaches the " +
+      "difference.",
+  },
+  {
+    name: "scope/doc-invalid-selector",
+    construct: "scope: doc(h2[)",
+    rule: scoped("doc(h2[)"),
+    control: HEADINGS,
+    expected: "rejected",
+    divergence:
+      "Vale compiles every selector at load and refuses this one with `E201 " +
+      "invalid selector in 'doc(...)': expected identifier, found EOF`. The " +
+      "schema does not parse CSS, so it passes the term through and `test` " +
+      "reports Vale's own message — the same path a malformed regex in " +
+      "`tokens` takes.",
+  },
+  // `in` on a conditional, also new in 3.21.0, names a View scope the
+  // consequent is looked for in. It is a measured member of the check's field
+  // table, and every use of it fails at load until a View defines that scope.
+  // Views live under `<StylesPath>/config/views/`, a directory the rule
+  // layout has no home for, so through this CLI the field cannot be made to
+  // work. The schema keeps the vocabulary honest and `test` reports the E201.
+  {
+    name: "field/conditional+in",
+    construct: "in on a conditional check, with no View to name",
+    rule:
+      'extends: conditional\nmessage: "x %s"\nlevel: warning\nscope: text\n' +
+      "first: '\\b([A-Z]{3,5})\\b'\nsecond: '(?:\\b[A-Z][a-z]+ )+\\(([A-Z]{3,5})\\)'\nin: body\n",
+    control: "The ABC is here simply.\n",
+    expected: "rejected",
+    divergence:
+      "Vale rejects the rule at load with `E201 no View defines a scope " +
+      "named 'body'`. The schema accepts `in` because the binary measured it " +
+      "as a field of `conditional`; whether a View exists is a property of " +
+      "the run's config, not of the rule, and this CLI's layout defines none.",
   },
 ];
 
@@ -617,6 +724,48 @@ const FIELDS: ValeCorpusEntry[] = [
 ];
 
 /**
+ * `action` names, held to the binary since 3.21.0 checks them at LOAD.
+ *
+ * Through 3.20.0 a bad action surfaced when its rule fired, on one alert.
+ * Now it is an `E201` at load, and one config serves the whole run, so a
+ * typo here silences every other Vale rule. The schema transcribes the
+ * accepted names from upstream `checkAction`; these rows are what keep that
+ * transcription true. `replace` and `remove` are the two the recipe could
+ * teach; the three others also constrain `params`, which the schema leaves
+ * to Vale.
+ */
+const ACTIONS: ValeCorpusEntry[] = [
+  {
+    name: "action/replace",
+    construct: "action: replace",
+    rule: existence("action:\n  name: replace\n  params:\n    - just\n"),
+    control: PROSE,
+    expected: "accepted",
+  },
+  {
+    name: "action/remove",
+    construct: "action: remove",
+    rule: existence("action:\n  name: remove\n"),
+    control: PROSE,
+    expected: "accepted",
+  },
+  {
+    name: "action/unknown-name",
+    construct: "an action name Vale does not have",
+    rule: existence("action:\n  name: bogus\n"),
+    control: PROSE,
+    expected: "rejected",
+  },
+  {
+    name: "action/mixed-case-name-key",
+    construct: "Name: on an action, decoded case-insensitively",
+    rule: existence("action:\n  Name: bogus\n"),
+    control: PROSE,
+    expected: "rejected",
+  },
+];
+
+/**
  * Shapes that panic the binary.
  *
  * Every key in these rules is a legal field of its check — it is the *shape*
@@ -769,8 +918,10 @@ export const VALE_CORPUS: readonly ValeCorpusEntry[] = [
   ...SCOPES,
   ...SCOPE_LISTS,
   ...INVALID_SCOPES,
+  ...REJECTED_DOC_SCOPES,
   ...DIVERGENCES,
   ...FIELDS,
+  ...ACTIONS,
   ...SHAPES,
   ...HEADER,
 ];
