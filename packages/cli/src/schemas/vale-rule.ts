@@ -182,6 +182,25 @@ const SCOPE_OPERANDS = new Set<string>(DERIVED_SCOPE_OPERANDS);
 const SCOPE_PREFIXES: readonly string[] = VALE_SCOPE_PREFIXES;
 
 /**
+ * The one family whose tail is bracketed rather than dotted.
+ *
+ * `doc(<selector>)` (Vale 3.21.0) names document elements by CSS selector.
+ * The generator records it as a prefix like the dotted families, because
+ * that is the shape its measurement takes, but the grammar around it differs
+ * in two ways this module has to know about: the term ends in `)`, and the
+ * selector between may itself contain `&`, `.` and `~`, which are the
+ * selector's own and not this grammar's. Both are Vale's rules, from
+ * `internal/check/scope.go` — `docSelection` and `splitOutside`.
+ *
+ * What is between the parens is NOT checked here. Vale compiles every
+ * selector at load and reports a bad one as `E201 invalid selector in
+ * 'doc(...)'`, so an author hears about it from `test`, the same way a
+ * malformed regex in `tokens` is reported. Parsing CSS here would buy a
+ * dependency to duplicate a check the binary already makes loudly.
+ */
+const DOC_PREFIX = "doc(";
+
+/**
  * Operands, for the message `verify` shows an author.
  *
  * The open families are spelled with a placeholder tail rather than omitted:
@@ -190,14 +209,74 @@ const SCOPE_PREFIXES: readonly string[] = VALE_SCOPE_PREFIXES;
  */
 export const VALE_SCOPE_OPERANDS: readonly string[] = [
   ...SCOPE_OPERANDS,
-  ...SCOPE_PREFIXES.map((prefix) => `${prefix}<name>`),
+  ...SCOPE_PREFIXES.map((prefix) =>
+    prefix === DOC_PREFIX ? `${prefix}<selector>)` : `${prefix}<name>`
+  ),
 ].toSorted();
 
 function isScopeOperand(operand: string): boolean {
   if (SCOPE_OPERANDS.has(operand)) return true;
-  return SCOPE_PREFIXES.some(
-    (prefix) => operand.startsWith(prefix) && operand.length > prefix.length
-  );
+  return SCOPE_PREFIXES.some((prefix) => {
+    if (!operand.startsWith(prefix)) return false;
+    if (prefix === DOC_PREFIX) {
+      // `doc()` is rejected by Vale at load ("expected selector, found EOF")
+      // and `doc(h1` is read as a dotted operand Vale does not have. Neither
+      // is a scope, so neither is accepted.
+      return (
+        operand.endsWith(")") && operand.slice(prefix.length, -1).trim() !== ""
+      );
+    }
+    return operand.length > prefix.length;
+  });
+}
+
+/**
+ * Split a scope on `&`, leaving alone any `&` inside parentheses or quotes.
+ *
+ * A port of Vale's `splitOutside`, because a `doc(...)` selector may contain
+ * the separator — `doc(a:has(> b)) & text` must split into two terms, and
+ * `doc(a[title="x & y"])` into one. A plain `split("&")` cut the second in
+ * half and reported a selector fragment as an unknown operand.
+ */
+function splitOutside(scope: string): string[] {
+  const parts: string[] = [];
+  let quote: string | undefined;
+  let depth = 0;
+  let start = 0;
+  for (let index = 0; index < scope.length; index++) {
+    const char = scope[index];
+    if (quote !== undefined) {
+      if (char === quote) quote = undefined;
+      continue;
+    }
+    switch (char) {
+      case '"':
+      case "'": {
+        quote = char;
+        break;
+      }
+      case "(": {
+        depth++;
+        break;
+      }
+      case ")": {
+        if (depth > 0) depth--;
+        break;
+      }
+      case "&": {
+        if (depth === 0) {
+          parts.push(scope.slice(start, index));
+          start = index + 1;
+        }
+        break;
+      }
+      default: {
+        break;
+      }
+    }
+  }
+  parts.push(scope.slice(start));
+  return parts;
 }
 
 const scopeVocabulary =
@@ -224,7 +303,7 @@ const scopeVocabulary =
  */
 function scopeMessages(scope: string): string[] {
   const messages: string[] = [];
-  for (const part of scope.split("&")) {
+  for (const part of splitOutside(scope)) {
     const negated = part.trim().startsWith("~");
     const operand = part.trim().replace(/^~/, "").trim();
     if (operand === "") {
@@ -539,6 +618,71 @@ function fatalShapeMessages(
 }
 
 /**
+ * The action names Vale 3.21.0 accepts at load.
+ *
+ * Transcribed, not derived, and the provenance is `checkAction` in upstream
+ * `internal/check/definition.go` (commit e0a2250d, "validate actions at
+ * load"). There is no oracle to derive it from: an unknown name draws
+ * `E201 unknown action '<name>'`, which names the bad one and never the
+ * accepted set, the same limit the field tables have. `test/vale-corpus.ts`
+ * holds each name to the binary, so a name that stops loading fails there.
+ *
+ * Worth a check at all because of what changed. Measured on 3.20.0, a rule
+ * with an unknown action LOADED, and the run died only when that rule fired,
+ * as an `E100` with no file and no line. 3.21.0 validates the action when the
+ * rule loads, as an `E201` naming the file: one config for the whole run, so
+ * a typo in one rule's `action` now suppresses every other Vale rule's
+ * findings on every check, not only on the ones where the rule matched. That
+ * is the blast radius this module exists to catch before the assembled
+ * config is ever handed over.
+ *
+ * Only the name is checked. `suggest`, `convert` and `edit` also constrain
+ * their `params`, and Vale reports those at load too, but each is a shape of
+ * its own and none is something the recipe teaches; the name is the part an
+ * author can typo.
+ */
+const ACTION_NAMES: readonly string[] = [
+  "replace",
+  "remove",
+  "suggest",
+  "convert",
+  "edit",
+];
+
+function actionMessages(
+  rule: Record<string, unknown>
+): { path: PropertyKey[]; message: string }[] {
+  const { action } = rule;
+  if (typeof action !== "object" || action === null || Array.isArray(action)) {
+    // Not a map: Vale reports `expected a map` itself, as an E201 the field
+    // tables already let through as a value error rather than a key error.
+    return [];
+  }
+  // The action map is decoded case-insensitively, like a check's own fields.
+  const nameKey = Object.keys(action).find(
+    (key) => key.toLowerCase() === "name"
+  );
+  const name =
+    nameKey === undefined
+      ? undefined
+      : (action as Record<string, unknown>)[nameKey];
+  if (typeof name !== "string" || name === "" || ACTION_NAMES.includes(name)) {
+    return [];
+  }
+  return [
+    {
+      path: ["action", "name"],
+      message:
+        `action name ${JSON.stringify(name)} is not one Vale ` +
+        `${PINNED_VALE_VERSION} has. Since 3.21.0 Vale checks the action when ` +
+        `the rule loads rather than when it fires, and reports this as E201 — ` +
+        `one config for the whole run, so every other Vale rule's findings ` +
+        `are suppressed with it. Accepted: ${ACTION_NAMES.join(", ")}.`,
+    },
+  ];
+}
+
+/**
  * The union's members, spelled out, and the guard that keeps them honest.
  *
  * They are spelled out rather than mapped over {@link CHECK_FIELDS} because
@@ -639,7 +783,10 @@ const valeBodySchema = z
   )
   .check((context) => {
     const rule = context.value as Record<string, unknown>;
-    for (const { path, message } of fatalShapeMessages(rule)) {
+    for (const { path, message } of [
+      ...fatalShapeMessages(rule),
+      ...actionMessages(rule),
+    ]) {
       context.issues.push({ code: "custom", input: rule, path, message });
     }
   });
