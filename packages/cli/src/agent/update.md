@@ -229,10 +229,13 @@ including the TSX case that PR names. Nothing to do unless you see one.
 
 ### Migrating to 0.11.2
 
-Vale moves from 3.20.0 to 3.21.0. ast-grep does not move. Six things
-follow for existing Vale rules, every one measured against both
-binaries; the last is behaviour a rule can now use, not a change to one
-it has.
+Vale moves from 3.20.0 to 3.21.0, and ast-grep from 0.45.2 to 0.45.3.
+Nothing installed migrates for ast-grep: its one user-visible change is
+that an inline `ast-grep-ignore` comment takes effect only as the
+comment's first alphabetic text, which the 0.45.3 changeset describes
+and no rule file carries. Six things follow for existing Vale rules,
+every one measured against both binaries; the last is behaviour a rule
+can now use, not a change to one it has.
 
 **A duplicated matcher now keeps its LAST assignment.** Where a rule's
 `.vale.ini` repeats a `[glob]` section, or repeats a key inside one,
