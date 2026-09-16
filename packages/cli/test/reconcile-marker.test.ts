@@ -86,7 +86,7 @@ describe("recording a rules reconciliation", () => {
     expect(rules?.reconciledTo).toBe(version);
     // Engine versions are the input a later differential needs. Recorded here
     // and nowhere else, so an upgrade cannot silently refresh them.
-    expect(rules?.engines).toEqual({ sg: "0.45.2", vale: "3.20.0" });
+    expect(rules?.engines).toEqual({ sg: "0.45.2", vale: "3.21.0" });
   });
 
   it("reports the marker through info", async () => {
@@ -264,6 +264,17 @@ describe("taskless update with no flags", () => {
     expect(result.stdout).toContain("rewriter now requires `fix`");
     expect(result.stdout).toContain("Markdown is now a language");
     expect(result.stdout).toContain("Matching semantics moved");
+  });
+
+  it("carries the 0.11.2 ledger entry", async () => {
+    const result = await runCli(["update"]);
+    expect(result.stdout).toContain("Migrating to 0.11.2");
+    // The four things an author cannot discover from the diff: each is a
+    // change in what an unchanged rule reports, with no error anywhere.
+    expect(result.stdout).toContain("keeps its LAST assignment");
+    expect(result.stdout).toContain("`metric` rule's `scope` is honored");
+    expect(result.stdout).toContain("Notebooks are read cell by cell");
+    expect(result.stdout).toContain("`action` name fails the run at load");
   });
 
   it("warns that kind: link is loud, not a silent zero-match", async () => {
