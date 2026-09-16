@@ -285,7 +285,7 @@ withVale("runVale against the real binary", () => {
     //
     // The metric that matters is the ABSOLUTE margin (duration minus budget),
     // not a ratio: what has to happen is the child finishing before a delayed
-    // timer callback runs. Measured on this fixture, warm:
+    // timer callback runs. Measured on this fixture, warm, on Vale 3.20.0:
     //
     // | fixture         | bytes  | duration | headroom over 100ms |
     // | --------------- | ------ | -------- | ------------------- |
@@ -293,19 +293,37 @@ withVale("runVale against the real binary", () => {
     // | 8,000           | 152KB  | ~1020ms  | ~920ms              |
     // | 17,000 (sibling)| 323KB  | ~4430ms  | ~4330ms             |
     //
-    // 8,000 is chosen over the sibling's 17,000 deliberately: it is 20x the
-    // margin that actually flaked while costing a quarter of the suite time,
-    // and this test asserts the message rather than the blocking flag, which
-    // the sibling already covers with the larger fixture.
+    // THE FIXTURE IS A PROPERTY OF THE PINNED BINARY, AND A BUMP RE-MEASURES
+    // IT. Vale 3.21.0 shipped two perf commits (rune-position indexing and
+    // walker-context indexing) that made this workload ~20x faster: the
+    // 8,000-repetition fixture ran in ~45ms, UNDER the 100ms budget, and this
+    // test failed outright with `status: "ok"` — the same failure mode as the
+    // original 19-repetition flake, reached from the other side. Re-measured
+    // on 3.21.0, the binary alone, warm, three runs each:
+    //
+    // | fixture   | bytes  | duration  | headroom over 100ms |
+    // | --------- | ------ | --------- | ------------------- |
+    // | 8,000     | 152KB  | ~45ms     | NEGATIVE — failed   |
+    // | 80,000    | 1.5MB  | ~235ms    | ~135ms              |
+    // | 320,000   | 6.1MB  | ~890ms    | ~790ms              |
+    // | 350,000   | 6.7MB  | ~1000ms   | ~900ms              |
+    // | 640,000   | 12MB   | ~1900ms   | ~1800ms             |
+    //
+    // 350,000 restores the ~900ms headroom the 8,000 fixture had on 3.20.0.
+    // The cost scales linearly (~2.8µs per repetition), so the next bump can
+    // pick a number from one timing rather than a search. It is chosen over
+    // the sibling's 1,000,000 for the same reason 8,000 was chosen over
+    // 17,000: this test asserts the message rather than the blocking flag,
+    // which the sibling covers with the larger fixture.
     //
     // `maxFileBytes` raises `VALE_MAX_FILE_BYTES` for THIS CALL ONLY — not a
-    // CLI flag, not a config surface, just a seam. Without it a 152KB document
-    // is excluded before Vale sees it (taskless/cli#321) and reports
+    // CLI flag, not a config surface, just a seam. Without it a document this
+    // size is excluded before Vale sees it (taskless/cli#321) and reports
     // `status: "ok"` with a notice, never exercising the timeout at all.
     const cwd = makeProject(
       `${header}\n[*.md]\nno-simply.no-simply = YES\n`,
       { "no-simply": existenceRule("simply", "Avoid 'simply'") },
-      { "doc.md": `${"Just simply do it. ".repeat(8000)}\n` }
+      { "doc.md": `${"Just simply do it. ".repeat(350_000)}\n` }
     );
 
     const outcome = await runVale({
@@ -712,10 +730,19 @@ withVale("ValeRunOutcome.blocking against the real binary", () => {
     // CLI flag or a config surface, just a seam for a test that needs its
     // fixture back — so the original 320KB fixture and its ~3200ms headroom
     // are restored without touching the production default.
+    //
+    // VALE 3.21.0 RE-MEASURED THE FIXTURE, AGAIN. Its perf work made this
+    // workload ~20x faster, so 17,000 repetitions (323KB) ran in ~67ms on the
+    // binary alone: the headroom was gone and this test was passing on spawn
+    // overhead, the exact state the table above calls out as the one that
+    // flaked. The 1,000,000-repetition fixture (19MB) measures ~2.8s on
+    // 3.21.0 (linear at ~2.8µs per repetition; see the sibling's table),
+    // restoring ~2.7s of headroom. The file is written and killed at 100ms,
+    // so the size costs the write and nothing else.
     const cwd = makeProject(
       `${header}\n[*.md]\nno-simply.no-simply = YES\n`,
       { "no-simply": existenceRule("simply", "Avoid 'simply'") },
-      { "doc.md": `${"Just simply do it. ".repeat(17_000)}\n` }
+      { "doc.md": `${"Just simply do it. ".repeat(1_000_000)}\n` }
     );
 
     expect(

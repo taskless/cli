@@ -209,7 +209,7 @@ export const AST_GREP_TSX_SPLIT: Readonly<
  * Pinned against the binary by `test/vale-vendor-contract.test.ts`
  * ("engine capabilities" → "reports the pinned version").
  */
-export const VALE_VERSION = "3.20.0";
+export const VALE_VERSION = "3.21.0";
 
 /**
  * Which tier Vale routes an extension to.
@@ -270,6 +270,23 @@ const CONVERTER_TIER_PREFIX = "converter:";
  * is a format Vale *learns*: an extension missing from this table is read as
  * plain text today, but the moment Vale routes it to a converter the same
  * omission is a crash that takes down every Vale rule in the run.
+ *
+ * 3.20.0 → 3.21.0 LEARNED ONE FORMAT, AND THE SOURCE CHECK IS WHAT FOUND IT.
+ * Every existing row was re-probed against the 3.21.0 binary and none moved.
+ * The v3.20.0...v3.21.0 tree adds `internal/lint/notebook.go` and routes
+ * `.ipynb` to it from `lintFile`'s markup switch, so Jupyter notebooks left
+ * the unnamed plaintext fallback for `markup` and are a new row below. The
+ * benign direction again, and a narrowing: on 3.20.0 a notebook was linted as
+ * the JSON it is, so a rule matching `[*.ipynb]` fired on cell source, on
+ * outputs, and on metadata alike. On 3.21.0 a Markdown cell is read as
+ * Markdown and a code cell as its kernel's language (comments only); raw
+ * cells and outputs are not read at all, and `Line`/`Span` point into the
+ * notebook file. Findings drop, nothing warns. Measured on the pinned binary,
+ * and pinned in `test/vale-vendor-contract.test.ts`.
+ *
+ * Also in that tree, and not a tier change: `internal/lint/selection.go` (the
+ * `doc(...)` scope, see `src/schemas/vale-rule.ts`), and `html.go` now applies
+ * `BlockIgnores`/`TokenIgnores` to `.html`, where 3.20.0 ignored both keys.
  *
  * NOTHING MOVED ACROSS 3.19.0 → 3.20.0, AND THE SECOND HALF OF THAT CLAIM IS
  * THE ONE THAT COST SOMETHING. Every row below was re-probed against the
@@ -335,6 +352,7 @@ export const VALE_FORMAT_TIERS: Readonly<Record<string, ValeFormatTier>> = {
   // markup — parsed, the format's own constructs skipped
   ".htm": "markup",
   ".html": "markup",
+  ".ipynb": "markup",
   ".markdown": "markup",
   ".md": "markup",
   ".mdx": "markup",
@@ -395,7 +413,7 @@ export const VALE_FORMAT_TIERS: Readonly<Record<string, ValeFormatTier>> = {
   ".mkdn": "plaintext",
   ".tex": "plaintext",
   // plaintext HERE, though Vale's own docs list it as comment-tier. Measured on
-  // the pinned 3.20.0 binary a bare non-comment line lints, which is the
+  // the pinned 3.21.0 binary a bare non-comment line lints, which is the
   // plaintext signature. `.qml` and `.scss` sat here for the same reason until
   // 3.18.0 made the docs true for them; `.pyi` is the row where transcribing
   // the docs would still ship the wrong tier — the case for probing rather than

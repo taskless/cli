@@ -471,6 +471,10 @@ const FIELD_CANDIDATES: readonly string[] = [
   "chars",
   "pattern",
   "tag",
+  // New in Vale 3.21.0: `conditional` looks for its consequent in another
+  // View's scope. Offered to every check, like every other candidate, so the
+  // partition records which checks own it rather than assuming one does.
+  "in",
 ].toSorted();
 
 /**
@@ -1021,6 +1025,22 @@ const SCOPE_CANDIDATES: readonly ScopeCandidate[] = [
     ext: "ts",
     documented: true,
     note: "the same operand in the TypeScript tier.",
+  },
+  {
+    operand: "doc(section)",
+    fixture: "# Do bogus things\n\nFine.\n",
+    ext: "md",
+    documented: true,
+    prefix: "doc(",
+    note:
+      "new in Vale 3.21.0: a CSS selector over the document's elements. The " +
+      "tail is a selector, so this is a family. The schema owns the closing " +
+      "paren; the selector's syntax is Vale's to reject (E201 at load). " +
+      "Probed over `section` (a heading plus what follows it) rather than " +
+      "`h1` because a standalone term lints what is INSIDE the element as " +
+      "one block, and a leaf element has nothing inside it: `doc(h1)` alone " +
+      "is measured silent where `text & doc(h1)` fires. `test/vale-corpus.ts` " +
+      "carries both shapes.",
   },
   {
     operand: "fenced",

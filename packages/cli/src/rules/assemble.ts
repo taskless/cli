@@ -19,11 +19,13 @@ import { RULE_TESTS_DIRECTORY, RULES_DIRECTORY } from "./layout";
  * generated here and gitignored.
  *
  * **Determinism is a correctness constraint, not tidiness.** Vale's matcher
- * precedence is positional — across matchers the last wins, within one matcher
- * the first assignment wins — so a config assembled in directory-iteration
- * order would give a rule a different effective scope depending on the machine
- * it ran on. Rules are therefore emitted in sorted id order, and each rule's own
- * matcher order is preserved verbatim.
+ * precedence is positional — across matchers the last wins, and since Vale
+ * 3.21.0 so does the last assignment within one matcher (through 3.20.0 it was
+ * the first; `vale-vendor-contract.test.ts` pins the current answer) — so a
+ * config assembled in directory-iteration order would give a rule a different
+ * effective scope depending on the machine it ran on. Rules are therefore
+ * emitted in sorted id order, and each rule's own matcher order is preserved
+ * verbatim.
  *
  * A consequence worth naming: a rule cannot override another rule's matchers,
  * because it cannot know its own position in the assembled file. That coupling

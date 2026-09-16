@@ -119,6 +119,50 @@ const hedgingFindings = (rule: string, document: string) => {
   return parsed["doc.md"]?.length ?? 0;
 };
 
+/**
+ * Findings for one rule over one document, as the lines they landed on.
+ *
+ * The rule is enabled under `[*]` so the document's extension decides only
+ * which parser Vale runs, not whether the rule applies. The raw streams and
+ * the exit status ride along, for the cases that assert a load failure.
+ */
+function lines(
+  rule: string,
+  document: string,
+  name = "doc.md"
+): {
+  lines: number[];
+  messages: string[];
+  stderr: string;
+  status: number | null;
+} {
+  const cwd = project(
+    `${header}\n[*]\nrules.r = YES\n`,
+    { r: rule },
+    { [name]: document }
+  );
+  const result = runRaw(cwd, [name], ["--no-exit"]);
+  const parsed = JSON.parse(result.stdout || "{}") as Record<
+    string,
+    Array<{ Line: number; Message: string }>
+  >;
+  const findings = parsed[name] ?? [];
+  return {
+    lines: findings.map((finding) => finding.Line),
+    messages: findings.map((finding) => finding.Message),
+    stderr: result.stderr,
+    status: result.status,
+  };
+}
+
+/** An existence rule over `worth noting`, at some `doc(...)`-bearing scope. */
+const hedge = (scope: string) =>
+  `extends: existence\nmessage: "hedge: %s"\nlevel: warning\nscope: '${scope}'\ntokens:\n  - worth noting\n`;
+
+/** A word budget of 8 over whatever `scope` names. */
+const budget = (scope: string) =>
+  `extends: metric\nmessage: "%s words"\nlevel: error\nscope: '${scope}'\nformula: words\ncondition: "> 8"\n`;
+
 withVale("Vale vendor contract", () => {
   it("reports its own name in --version", () => {
     // Depended on by: PlatformBinarySpec.identity (/vale/i). If Vale stops
@@ -174,6 +218,14 @@ withVale("Vale vendor contract", () => {
     // Depended on by: the ValeFinding interface and toValeCheckResults, which
     // pushes the outer key down as `file`. A rename on any of these arrives as
     // `undefined` in a CheckResult rather than as an error.
+    //
+    // `Suggestions` arrived in 3.21.0, beside `Action` rather than replacing
+    // it. Measured: it carries the same replacement a `replace` action names
+    // in `Params`, and is `[]` for a rule with no action, a `substitution`
+    // included. `toFix` keeps reading `Action`, which is the older and the
+    // stricter of the two: `Suggestions` will fill for other action kinds as
+    // upstream teaches them to compute a result, and "here is a suggestion"
+    // is not the promise `fix` makes.
     const cwd = project(
       `${header}\n[*.md]\nrules.no-simply = YES\n`,
       { "no-simply": existence("simply") },
@@ -198,7 +250,35 @@ withVale("Vale vendor contract", () => {
       "Message",
       "Severity",
       "Span",
+      "Suggestions",
     ]);
+  });
+
+  it("mirrors a replace action's parameter into Suggestions", () => {
+    // Depended on by: nothing yet, and that is the point of pinning it. If
+    // `Suggestions` ever carries a replacement `Action.Params` does not (a
+    // computed `edit`, say), `toFix` is leaving a real fix on the floor and
+    // should be taught to read both. Until then the two agree, and this is
+    // what says so.
+    const cwd = project(
+      `${header}\n[*.md]\nrules.swap = YES\n`,
+      {
+        swap: `extends: existence\nmessage: "Avoid '%s'"\nlevel: warning\naction:\n  name: replace\n  params:\n    - just\ntokens:\n  - simply\n`,
+      },
+      { "doc.md": "Just simply do it.\n" }
+    );
+    const parsed = JSON.parse(
+      runRaw(cwd, ["doc.md"], ["--no-exit"]).stdout
+    ) as Record<
+      string,
+      Array<{
+        Action: { Name: string; Params: string[] };
+        Suggestions: string[];
+      }>
+    >;
+    const finding = parsed["doc.md"]?.[0];
+    expect(finding?.Action).toEqual({ Name: "replace", Params: ["just"] });
+    expect(finding?.Suggestions).toEqual(["just"]);
   });
 
   it("prefixes check names with the StylesPath directory", () => {
@@ -381,21 +461,51 @@ withVale("Vale vendor contract", () => {
       ).toBe(true);
     });
 
-    it("keeps the FIRST assignment when one matcher sets a key twice", () => {
-      // Duplicate `[glob]` sections are merged, and the merge discards the
-      // later value — the opposite of the across-matcher rule above. Tooling
-      // that appends a disable to an existing matcher would therefore write a
-      // line Vale ignores.
+    it("keeps the LAST assignment when one matcher sets a key twice", () => {
+      // Duplicate `[glob]` sections are merged, and since 3.21.0 the merge
+      // keeps the LATER value, so precedence is positional in both
+      // directions: across matchers and within one. Through 3.20.0 it was the
+      // FIRST value, the opposite of the across-matcher rule above, and this
+      // test asserted that.
+      //
+      // What moved it is upstream 1e4f6ed, "let the project's rule settings
+      // win": a rule's level read `Key.String()`, the first of a key's
+      // shadowed values, so a package's setting held against the project's
+      // own. It now reads the last (`ValueWithShadows`), and a duplicated
+      // section in ONE file shadows the same way a package's file does. The
+      // two orders below are both asserted, as in the sibling: a test named
+      // for one direction that exercised only the convenient order is how the
+      // wrong claim survived last time.
+      //
+      // Depended on by: `assemble.ts`, whose docstring states the rule, and
+      // the recipe's guidance that a disable goes AFTER the enable it narrows.
+      // That guidance is now right for both shapes. Tooling that appends a
+      // disable to an existing matcher writes a line Vale honors, where it
+      // used to write one Vale ignored.
       expect(
         ran(
           `${header}\n[*.md]\nrules.no-simply = YES\n\n[*.md]\nrules.no-simply = NO\n`
         )
-      ).toBe(true);
+      ).toBe(false);
       expect(
         ran(
           `${header}\n[*.md]\nrules.no-simply = NO\n\n[*.md]\nrules.no-simply = YES\n`
         )
+      ).toBe(true);
+    });
+
+    it("keeps the LAST assignment when one section sets a key twice", () => {
+      // The same fact without a duplicate section header: two lines for one
+      // key in one `[glob]`. Same mechanism (`ValueWithShadows`), same
+      // answer, asserted separately because an ini reader could treat a
+      // repeated key and a repeated section differently and this file would
+      // otherwise not notice.
+      expect(
+        ran(`${header}\n[*.md]\nrules.no-simply = YES\nrules.no-simply = NO\n`)
       ).toBe(false);
+      expect(
+        ran(`${header}\n[*.md]\nrules.no-simply = NO\nrules.no-simply = YES\n`)
+      ).toBe(true);
     });
   });
 
@@ -495,6 +605,241 @@ withVale("Vale vendor contract", () => {
       expect(hedgingFindings(rawRule, zoned)).toBe(1);
     });
   });
+
+  /**
+   * What 3.21.0 added that a rule under `.taskless/rules/vale/` can reach.
+   *
+   * Each case is a behaviour the recipe or the changeset now promises, so
+   * each says what promise breaks. Not here, deliberately: TextFSM Views and
+   * the `conditional` check's `in` key. Both need a View file under
+   * `<StylesPath>/config/views/`, a directory the rule layout has no home
+   * for, so neither can be made to work through this CLI — `in` is a
+   * measured member of the field table (see `vale-corpus.ts`,
+   * `field/conditional+in`) and every use of it fails at load.
+   */
+  describe("Vale 3.21.0", () => {
+    // Two `h2` sections. `worth noting` appears once in each, on lines 5 and
+    // 9, so a selection of one section is told from the other by the line.
+    const adr = [
+      "# Use a bearer token",
+      "",
+      "## Context",
+      "",
+      "It is worth noting that this hedges.",
+      "",
+      "## Decision",
+      "",
+      "We will issue tokens. It is worth noting that too.",
+      "",
+    ].join("\n");
+    const inContext = 'doc(section:has(> h2:contains("Context")))';
+
+    describe("doc(...) selects elements by CSS selector", () => {
+      // Depended on by: the `doc(` family in `src/schemas/vale-rule.ts` and
+      // the recipe's guidance on scoping a rule to one section of a
+      // document. If any shape here stops firing, `verify` is accepting a
+      // scope that Vale silently ignores, which is the failure that module
+      // exists to catch.
+
+      it("narrows a text scope to blocks inside the selected element", () => {
+        expect(lines(hedge(`text & ${inContext}`), adr).lines).toEqual([5]);
+      });
+
+      it("narrows a sentence scope the same way", () => {
+        expect(lines(hedge(`sentence & ${inContext}`), adr).lines).toEqual([5]);
+      });
+
+      it("negates to everything outside the element", () => {
+        expect(lines(hedge(`~${inContext}`), adr).lines).toEqual([9]);
+      });
+
+      it("lints a selected container as one block on its own", () => {
+        // A standalone term lints what is INSIDE the element as one block. A
+        // section is a container. A match is still placed where it lies in
+        // the file (line 5, not the section's line 3); it is a metric, which
+        // has no match, that reports at the block's first line — see below.
+        expect(lines(hedge(inContext), adr).lines).toEqual([5]);
+      });
+
+      it("is inert on a leaf element on its own, and fires when chained", () => {
+        // THE TRAP. `doc(h2)` alone selects a heading, and a heading has
+        // nothing inside it to aggregate, so the rule matches nothing with
+        // no error anywhere. `text & doc(h2)` reads the heading's own block.
+        // The recipe teaches the chained spelling; if the standalone one
+        // starts firing, that guidance is merely redundant, but if the
+        // chained one stops, it is wrong.
+        const heading = `extends: existence\nmessage: "%s"\nlevel: warning\nscope: 'SCOPE'\ntokens:\n  - Decision\n`;
+        expect(lines(heading.replace("SCOPE", "doc(h2)"), adr).lines).toEqual(
+          []
+        );
+        expect(
+          lines(heading.replace("SCOPE", "text & doc(h2)"), adr).lines
+        ).toEqual([7]);
+      });
+
+      it("rejects a selector it cannot compile at load, with E201", () => {
+        // Depended on by: the schema's decision NOT to parse the selector.
+        // That is safe only while Vale reports a bad one itself, loudly and
+        // at load. If this ever becomes a silent no-op, the schema has to
+        // grow a selector check.
+        const result = lines(hedge("doc(h2[)"), adr);
+        expect(result.status).not.toBe(0);
+        const diagnostic = asValeConfigError(JSON.parse(result.stderr));
+        expect(diagnostic?.Code).toBe("E201");
+        expect(diagnostic?.Text).toContain("invalid selector in 'doc(...)'");
+      });
+
+      it("lets a metric measure the selected block rather than the document", () => {
+        // Depended on by: the changeset's claim that a word budget can be
+        // put on one section. `words` over the whole document is 20; over
+        // the Decision section it is 11, and over Context it is 7, so a
+        // budget of 8 separates the three answers.
+        expect(
+          lines(budget('doc(section:has(> h2:contains("Decision")))'), adr)
+            .lines
+        ).toEqual([7]);
+        expect(lines(budget(inContext), adr).lines).toEqual([]);
+      });
+    });
+
+    it("lets a metric honor an ordinary scope instead of forcing the summary", () => {
+      // Depended on by: any metric rule that declares a scope. Through
+      // 3.20.0 `NewMetric` overwrote the scope with `summary`, so a
+      // `scope: sentence` metric measured the whole document; 3.21.0 keeps
+      // a declared scope (`measuredScope`) and only an absent one, or
+      // `text`, still means the document. The fixture separates the two:
+      // the document is 6 words, every sentence is 2, so a budget of 3 fires
+      // on the old reading and not on the new.
+      const perSentence = `extends: metric\nmessage: "%s words"\nlevel: error\nscope: sentence\nformula: words\ncondition: "> 3"\n`;
+      const whole = perSentence.replace("scope: sentence\n", "");
+      const document = "One two. Three four. Five six.\n";
+      expect(lines(perSentence, document).lines).toEqual([]);
+      expect(lines(whole, document).lines).toEqual([1]);
+    });
+
+    it("reports a sequence match once under a negated scope", () => {
+      // Depended on by: any `sequence` rule with `scope: ~code` or similar,
+      // the spelling the recipe suggests for keeping a grammar rule out of
+      // inline code. Upstream #1169 says 3.20.0 reported each match twice.
+      // MEASURED AGAINST THE 3.20.0 BINARY, IT DID NOT, on this shape or on
+      // upstream's own (`pattern: widget` / `pattern: arrived, skip: 1`
+      // under `~list`): both binaries report one. Upstream's regression test
+      // dispatches blocks by hand below the linter, so whatever de-duplicated
+      // the pair on the way out is above it. Pinned at one anyway, because
+      // that is the number a rule author sees and the number the recipe's
+      // guidance assumes; the ledger says "nothing to do unless you see one".
+      const modal = `extends: sequence\nmessage: "%s is a modal and a verb"\nlevel: warning\nscope: "~code"\ntokens:\n  - tag: MD\n  - tag: VB\n`;
+      expect(lines(modal, "We could keep sessions.\n").lines).toEqual([1]);
+    });
+
+    describe("BlockIgnores and TokenIgnores apply to HTML", () => {
+      // Depended on by: a rule's own `.vale.ini`, which is carried into the
+      // assembled config verbatim, so an `[*.html]` matcher can carry these
+      // keys. Through 3.20.0 both were silently ignored for `.html`.
+      const document =
+        '<p>Just simply do it.</p>\n<div class="skip"><p>Also simply here.</p></div>\n<p>And [[simply]] too.</p>\n';
+      const html = (extra: string) => {
+        const cwd = project(
+          `${header}\n[*.html]\nrules.no-simply = YES\n${extra}`,
+          { "no-simply": existence("simply") },
+          { "doc.html": document }
+        );
+        const parsed = JSON.parse(
+          runRaw(cwd, ["doc.html"], ["--no-exit"]).stdout
+        ) as Record<string, Array<{ Line: number }>>;
+        return (parsed["doc.html"] ?? []).map((finding) => finding.Line);
+      };
+
+      it("reads every occurrence without them", () => {
+        expect(html("")).toEqual([1, 2, 3]);
+      });
+
+      it("drops a block a BlockIgnores pattern matches", () => {
+        expect(
+          html('BlockIgnores = (?s)<div class="skip">.*?</div>\n')
+        ).toEqual([1, 3]);
+      });
+
+      it("drops a token a TokenIgnores pattern matches", () => {
+        expect(html(String.raw`TokenIgnores = \[\[.*?\]\]` + "\n")).toEqual([
+          1, 2,
+        ]);
+      });
+    });
+
+    it("rejects an unknown action name at load, taking the run with it", () => {
+      // Depended on by: `actionMessages` in `src/schemas/vale-rule.ts`,
+      // which exists because of this. Measured on 3.20.0: the rule loaded,
+      // and a document its token matched died with an `E100` carrying no
+      // path, while a document it did not match linted normally. 3.21.0
+      // checks the action when the rule loads, and a load failure is one
+      // E201 for the whole run — the second rule here is valid and reports
+      // nothing, on a document where the first would not even have fired.
+      const cwd = project(
+        `${header}\n[*.md]\nrules.no-simply = YES\nrules.act = YES\n`,
+        {
+          "no-simply": existence("simply"),
+          act: `extends: existence\nmessage: "%s"\nlevel: warning\naction:\n  name: bogus\ntokens:\n  - just\n`,
+        },
+        { "doc.md": "Just simply do it.\n" }
+      );
+      const result = runRaw(cwd, ["doc.md"], ["--no-exit"]);
+      expect(result.status).toBe(2);
+      expect(result.stdout.trim()).toBe("");
+      const diagnostic = asValeConfigError(JSON.parse(result.stderr));
+      expect(diagnostic?.Code).toBe("E201");
+      expect(diagnostic?.Text).toBe("unknown action 'bogus'");
+    });
+
+    describe("a Jupyter notebook is read cell by cell", () => {
+      // Depended on by: the `.ipynb` row of VALE_FORMAT_TIERS, which the
+      // markup probe above pins by tier only. These pin what the tier means
+      // for a notebook, which the changeset states: Markdown cells as
+      // Markdown, code cells as their kernel's comments, nothing else.
+      const simply = existence("simply");
+      const cells = (rows: NotebookCell[], name = "nb.ipynb") =>
+        lines(simply, notebook(rows), name);
+
+      it("lints a code cell's comments and not its code", () => {
+        expect(
+          cells([{ cell_type: "code", source: ["x = 1\n", "# simply\n"] }])
+            .lines
+        ).toHaveLength(1);
+        expect(
+          cells([{ cell_type: "code", source: ["simply = 1\n"] }]).lines
+        ).toHaveLength(0);
+      });
+
+      it("skips raw cells and outputs", () => {
+        expect(
+          cells([{ cell_type: "raw", source: ["simply raw\n"] }]).lines
+        ).toHaveLength(0);
+        expect(
+          cells([
+            {
+              cell_type: "code",
+              source: ["x = 1\n"],
+              outputs: [
+                { output_type: "stream", name: "stdout", text: ["simply\n"] },
+              ],
+            },
+          ]).lines
+        ).toHaveLength(0);
+      });
+
+      it("places a finding on the notebook file's own line", () => {
+        // The fixture puts each cell on its own line: line 3 is the first
+        // cell, line 4 the second. A finding in the second cell's Markdown
+        // is reported at line 4 of the .ipynb, not at line 2 of the cell.
+        expect(
+          cells([
+            { cell_type: "code", source: ["x = 1\n"] },
+            { cell_type: "markdown", source: ["One.\n", "Two simply.\n"] },
+          ]).lines
+        ).toEqual([4]);
+      });
+    });
+  });
 });
 
 /**
@@ -560,6 +905,42 @@ function comment(extension: string): string {
   if (extension === ".hs" || extension === ".lua") return "-- simply\n";
   if (extension === ".clj") return "; simply\n";
   return "// simply\n";
+}
+
+/** A cell of a Jupyter notebook, as the fixture builder below needs it. */
+interface NotebookCell {
+  cell_type: "markdown" | "code" | "raw";
+  source: string[];
+  outputs?: unknown[];
+}
+
+/**
+ * A minimal nbformat 4 notebook with a Python kernel, one cell per line.
+ *
+ * Pretty-printed with each cell on its own line, so a `Line` in a finding can
+ * be read against the fixture. The kernel matters: Vale lints a code cell as
+ * its kernel's language, so `# simply` is a comment only because this says
+ * `python`.
+ */
+function notebook(cells: NotebookCell[]): string {
+  const rendered = cells.map((cell) =>
+    JSON.stringify({
+      ...cell,
+      metadata: {},
+      ...(cell.cell_type === "code" ? { execution_count: null } : {}),
+    })
+  );
+  return [
+    "{",
+    ' "cells": [',
+    rendered.map((line) => `  ${line}`).join(",\n"),
+    " ],",
+    ' "metadata": {"kernelspec": {"name": "python3", "language": "python"}, "language_info": {"name": "python"}},',
+    ' "nbformat": 4,',
+    ' "nbformat_minor": 5',
+    "}",
+    "",
+  ].join("\n");
 }
 
 withVale("Vale engine capabilities", () => {
@@ -632,6 +1013,17 @@ withVale("Vale engine capabilities", () => {
     ".xhtml": {
       prose: "<p>We simply do it.</p>\n",
       skipped: "<!-- simply -->\n",
+    },
+    // Native as of 3.21.0 (`internal/lint/notebook.go`). The skipped construct
+    // is the token in a CODE cell's body: on 3.20.0 a notebook was read as the
+    // JSON it is and this fired, which is what a plaintext fallback looks like.
+    ".ipynb": {
+      prose: notebook([
+        { cell_type: "markdown", source: ["We simply do it.\n"] },
+      ]),
+      skipped: notebook([
+        { cell_type: "code", source: ["simply = 1\n"], outputs: [] },
+      ]),
     },
   };
 
