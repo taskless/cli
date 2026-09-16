@@ -763,6 +763,19 @@ const ACTIONS: ValeCorpusEntry[] = [
     control: PROSE,
     expected: "rejected",
   },
+  // The KEY is decoded case-insensitively (above); the VALUE is not. Measured:
+  // `Replace` and `REPLACE` both draw `E201 unknown action 'Replace'`, with a
+  // params shape that loads clean under `replace`. So the schema's
+  // case-sensitive compare is the binary's, and this row is what says so —
+  // a schema that lowercased the value to be forgiving would accept a rule
+  // Vale refuses to load.
+  {
+    name: "action/mixed-case-name-value",
+    construct: "action name Replace, spelled with a capital",
+    rule: existence("action:\n  name: Replace\n  params:\n    - just\n"),
+    control: PROSE,
+    expected: "rejected",
+  },
 ];
 
 /**
