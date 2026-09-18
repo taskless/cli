@@ -12,6 +12,7 @@ import dropInstalledAt from "./migrations/0003-drop-installed-at";
 import valeEngine from "./migrations/0004-vale-engine";
 import ruleDirectories from "./migrations/0005-rule-directories";
 import refreshReadme from "./migrations/0006-refresh-readme";
+import ignoreScratchFiles from "./migrations/0007-ignore-scratch-files";
 
 export interface TasklessInstallTarget {
   skills?: string[];
@@ -75,6 +76,7 @@ const migrations: Migrations = {
   "4": valeEngine,
   "5": ruleDirectories,
   "6": refreshReadme,
+  "7": ignoreScratchFiles,
 };
 
 /** Global flag that downgrades a too-new scaffold from an error to a skip. */
