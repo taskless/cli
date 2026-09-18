@@ -7,6 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { getRecipe } from "../src/prompts/recipes";
 import { nextAskPath, readNextAsk, writeNextAsk } from "../src/survey/cadence";
 import { SHOWN_INTERVAL_MS, SURVEY_ID } from "../src/survey/constants";
+import { getTelemetry } from "../src/telemetry";
 
 // Spy on telemetry by mocking the module the gate imports, the same way
 // agent-telemetry.test.ts does. `enabled` flips per test so the opt-out branch
@@ -90,6 +91,20 @@ describe("the survey gate", () => {
       $survey_id: SURVEY_ID,
     });
     expect(await readNextAsk(SURVEY_ID)).toBe(NOW + SHOWN_INTERVAL_MS);
+  });
+
+  it("claims the cadence window before the telemetry client is initialised", async () => {
+    // The mocked client reads the cadence file at the moment the gate asks
+    // for it, so the assertion is about ordering, not the final state.
+    let seenAtTelemetryInit: number | undefined;
+    vi.mocked(getTelemetry).mockImplementationOnce(async () => {
+      seenAtTelemetryInit = await readNextAsk(SURVEY_ID);
+      return { capture, shutdown: () => Promise.resolve() };
+    });
+
+    await serve("create-sg-rule");
+    expect(capture).toHaveBeenCalledTimes(1);
+    expect(seenAtTelemetryInit).toBe(NOW + SHOWN_INTERVAL_MS);
   });
 
   it.each([

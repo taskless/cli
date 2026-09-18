@@ -60,6 +60,17 @@ export async function surveyGateIsOpen(
  * here too, at show time, so an invite the agent never surfaces still holds
  * the next one off: silence earns the short gap, an answer the long one.
  *
+ * The cadence is written the moment the gate opens, before the fragment is
+ * rendered and before the telemetry client is initialised. Nothing locks the
+ * file, so two CLI processes that read `next_ask` in the same instant can both
+ * see the gate open and both serve the invite. Writing first makes that window
+ * the width of one read-then-write rather than a recipe render and a telemetry
+ * init. The worst case is one duplicate invite and one duplicate `survey
+ * shown`, and the funnel already over-counts shown by design, so this is an
+ * accepted tradeoff. A lock file was considered and rejected: it would need a
+ * TTL to survive a crashed process, which is more mechanism than one duplicate
+ * invite earns.
+ *
  * Appended after the recipe's last section rather than parsed into it. Agents
  * attend to the start and end of a response, and the end puts the ask after
  * the task rather than in front of it. The `prompts` export never sees this:
@@ -72,18 +83,22 @@ export async function withSurveyInvite(
   const recipe = context.recipe.trimEnd();
   if (!(await surveyGateIsOpen(context))) return recipe;
 
+  // Claim the window first; see the note above on the read-then-write race.
+  const now = (context.now ?? Date.now)();
+  await writeNextAsk(SURVEY_ID, now + SHOWN_INTERVAL_MS);
+
   const invite = getRecipe(INVITE_TOPIC, {
     invocation: context.invocation,
     header: false,
   });
   // The fragment is embedded at build time; its absence is a build defect,
-  // and serving the recipe without it is the right failure.
+  // and serving the recipe without it is the right failure. The cadence has
+  // already been advanced by then, which is fine: a missing fragment is not
+  // a reason to ask again sooner.
   if (invite === undefined) return recipe;
 
   const telemetry = await getTelemetry(context.cwd);
   telemetry.capture("survey shown", { $survey_id: SURVEY_ID });
-  const now = (context.now ?? Date.now)();
-  await writeNextAsk(SURVEY_ID, now + SHOWN_INTERVAL_MS);
 
   return `${recipe}\n\n${invite.trimEnd()}`;
 }
