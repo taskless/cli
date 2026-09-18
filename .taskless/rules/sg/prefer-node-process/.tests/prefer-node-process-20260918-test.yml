@@ -1,0 +1,45 @@
+id: prefer-node-process
+valid:
+  - |
+    import process from "node:process";
+    const ci = process.env.CI === "true";
+  - |
+    import process from "node:process";
+    import { join } from "node:path";
+    process.exitCode = 1;
+    console.log(join(process.cwd(), "dist"));
+  - |
+    import { env } from "node:process";
+    const home = env.HOME;
+  - |
+    const process = spawn("node", ["dist/index.js"]);
+    process.stdout.on("data", () => {});
+  - |
+    function kill(process: ChildProcess) {
+      process.kill();
+    }
+  - |
+    const run = (process?: ChildProcess) => process?.pid;
+  - |
+    const settings = { process: "batch" };
+    const mode = settings.process;
+  - |
+    import { execFile } from "node:child_process";
+    execFile("git", ["status"]);
+  - |
+    const nodeProcess = globalThis.process;
+invalid:
+  - |
+    const ci = process.env.CI === "true";
+  - |
+    import { join } from "node:path";
+    console.log(join(process.cwd(), "dist"));
+  - |
+    process.exitCode = 1;
+  - |
+    export function isTTY(): boolean {
+      return process.stdout.isTTY === true;
+    }
+  - |
+    import type { Process } from "./types";
+    const { env } = process;

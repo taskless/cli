@@ -1,0 +1,69 @@
+id: prefer-node-process
+language: TypeScript
+severity: error
+message: Import process from "node:process" instead of reaching for the global.
+note: |
+  An explicit `import process from "node:process";` makes the Node
+  dependency visible in the module graph: a build-time check that reads
+  rollup's resolved imports can see an import, but not a reach for a
+  global. It is also the convention every other Node built-in here
+  already follows (`node:path`, `node:fs`, `node:child_process`).
+
+  Reference behaviour: ESLint `n/prefer-global/process: ["error", "never"]`.
+
+  There is no auto-fix. An import needs placement (Node built-ins first,
+  grouped, per .conventions/STYLEGUIDE-CODE.md), so the finding names the
+  file and you add the line by hand.
+
+  What the rule matches: a bare `process` identifier in a file that has
+  no `import … from "node:process"` and declares no binding named
+  `process` anywhere (a `const`/`let`/`var`, a parameter, or a `catch`
+  clause). A file that shadows the name at any depth is treated as clean
+  for the whole file, which errs toward silence rather than a false
+  finding. `globalThis.process` is a property access, not an identifier
+  reference, and is out of scope.
+files:
+  - "packages/cli/src/**/*.ts"
+ignores:
+  - ".github/scripts/**"
+rule:
+  kind: identifier
+  regex: '^process$'
+  not:
+    inside:
+      stopBy: end
+      kind: import_statement
+  inside:
+    stopBy: end
+    kind: program
+    not:
+      any:
+        - has:
+            kind: import_statement
+            has:
+              stopBy: end
+              kind: string_fragment
+              regex: '^node:process$'
+        - has:
+            stopBy: end
+            any:
+              - kind: variable_declarator
+                has:
+                  field: name
+                  kind: identifier
+                  regex: '^process$'
+              - kind: required_parameter
+                has:
+                  field: pattern
+                  kind: identifier
+                  regex: '^process$'
+              - kind: optional_parameter
+                has:
+                  field: pattern
+                  kind: identifier
+                  regex: '^process$'
+              - kind: catch_clause
+                has:
+                  field: parameter
+                  kind: identifier
+                  regex: '^process$'
