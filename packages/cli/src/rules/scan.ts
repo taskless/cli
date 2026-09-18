@@ -1,5 +1,6 @@
 import { spawn } from "node:child_process";
 import { dirname, resolve } from "node:path";
+import process from "node:process";
 import { createInterface } from "node:readline";
 import { StringDecoder } from "node:string_decoder";
 import { fileURLToPath } from "node:url";

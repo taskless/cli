@@ -1,4 +1,5 @@
 import { resolve } from "node:path";
+import process from "node:process";
 
 import type { TelemetryClient } from "./telemetry";
 import { splitRawArguments } from "./util/argv";

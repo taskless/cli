@@ -3,6 +3,7 @@ import { existsSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import process from "node:process";
 
 import { addToGitignore } from "../filesystem/gitignore";
 import { getCliPrefix } from "../util/package-manager";

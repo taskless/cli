@@ -1,6 +1,7 @@
 import { spawn } from "node:child_process";
 import { stat } from "node:fs/promises";
 import { isAbsolute, join, resolve as resolvePath } from "node:path";
+import process from "node:process";
 import { StringDecoder } from "node:string_decoder";
 
 import type { CheckResult } from "../../types/check";

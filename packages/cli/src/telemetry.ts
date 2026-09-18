@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
+import process from "node:process";
 
 import { PostHog } from "posthog-node";
 import { decodeJwt } from "jose";

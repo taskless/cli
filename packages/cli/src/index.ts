@@ -1,3 +1,5 @@
+import process from "node:process";
+
 import { defineCommand, runCommand, showUsage } from "citty";
 
 import { createAgentCommand } from "./commands/agent";
