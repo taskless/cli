@@ -1,5 +1,6 @@
 import { resolve } from "node:path";
 import { readFile } from "node:fs/promises";
+import process from "node:process";
 import { defineCommand } from "citty";
 
 import { ZodError } from "zod";

@@ -1,6 +1,7 @@
 import { spawn } from "node:child_process";
 import { copyFile, mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
+import process from "node:process";
 import { createInterface } from "node:readline";
 import { join } from "node:path";
 import { StringDecoder } from "node:string_decoder";

@@ -1,3 +1,5 @@
+import process from "node:process";
+
 import { deviceFlowProvider } from "./device-flow";
 import { getToken, saveToken } from "./token";
 import { resolveRepositoryUrl } from "../util/git-remote";

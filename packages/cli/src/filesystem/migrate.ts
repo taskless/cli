@@ -1,5 +1,6 @@
 import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
+import process from "node:process";
 
 import { CLIError } from "../util/cli-error";
 import { buildInvocation } from "../util/invocation";

@@ -2,6 +2,7 @@ import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
 import { existsSync } from "node:fs";
 import { resolve } from "node:path";
+import process from "node:process";
 
 import { LANGUAGE_MARKERS } from "../detect/scan";
 import { resolveRepositoryPath } from "./git-remote";

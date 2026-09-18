@@ -1,5 +1,6 @@
 import { resolve, isAbsolute, relative } from "node:path";
 import { stat } from "node:fs/promises";
+import process from "node:process";
 import { defineCommand } from "citty";
 
 import { hasValeRules, runEngines } from "../rules/dispatch";

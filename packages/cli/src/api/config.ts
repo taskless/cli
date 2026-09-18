@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import process from "node:process";
 
 import { getConfigDirectory } from "../auth/token";
 

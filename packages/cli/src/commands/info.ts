@@ -1,4 +1,5 @@
 import { join, resolve } from "node:path";
+import process from "node:process";
 import { defineCommand } from "citty";
 
 import { checkStaleness } from "../install/install";
