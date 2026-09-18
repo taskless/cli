@@ -5,18 +5,28 @@ import { splitRawArguments } from "./util/argv";
 import { CLIError } from "./util/cli-error";
 
 /**
+ * Top-level commands whose second positional is a verb worth keeping in the
+ * cli_run `command` property: `rule create` and `rule improve` are different
+ * actions, and so are `feedback send` and `feedback dismiss` (send can fail
+ * with INVALID_INPUT, dismiss cannot).
+ */
+const VERB_COMMANDS = new Set(["rule", "feedback"]);
+
+/**
  * Derive the cli_run `command` property from the raw argv. Flags (and the
  * value after `-d`/`--dir`) are skipped; the first positional is the command,
- * and `rule` keeps its subcommand (e.g. `rule create`) since that distinction
- * is meaningful. `agent`'s topic is recorded separately on cli_agent, so the
- * command for an agent invocation is just `agent`.
+ * and `rule` and `feedback` keep their subcommand (e.g. `rule create`,
+ * `feedback send`) since that distinction is meaningful. `agent`'s topic is
+ * recorded separately on cli_agent, so the command for an agent invocation is
+ * just `agent`.
  */
 export function resolveCommandName(rawArguments: string[]): string {
   const { positionals } = splitRawArguments(rawArguments);
 
   if (positionals.length === 0) return "(default)";
   const top = positionals[0]!;
-  if (top === "rule" && positionals[1]) return `rule ${positionals[1]}`;
+  if (VERB_COMMANDS.has(top) && positionals[1])
+    return `${top} ${positionals[1]}`;
   return top;
 }
 
