@@ -77,6 +77,12 @@ export const TOPICS = [
  *   the boundary from the client's side, `detect` documents a CLI subprocess a
  *   Worker cannot spawn, `create-legacy-rule` targets a local toolchain, and
  *   `rule-meta` describes a local sidecar file the CLI never writes.
+ * - `feedback` and `feedback-invite` belong to the survey the CLI appends to
+ *   a served recipe. The invite is a fragment the `agent` command renders
+ *   header-less and attaches after a recipe's last section; it lives here as
+ *   a recipe so Vale and the cross-reference tests cover its prose, and it is
+ *   servable by name only as a side effect of that. Neither has a reader
+ *   outside the CLI that sends the response.
  */
 export const INTERNAL_TOPICS = [
   "auth",
@@ -86,6 +92,8 @@ export const INTERNAL_TOPICS = [
   "create-remote-rule",
   "delete-rule",
   "detect",
+  "feedback",
+  "feedback-invite",
   "improve-rule",
   "info",
   "init",
