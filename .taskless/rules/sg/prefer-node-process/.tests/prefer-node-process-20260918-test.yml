@@ -15,19 +15,47 @@ valid:
     const process = spawn("node", ["dist/index.js"]);
     process.stdout.on("data", () => {});
   - |
+    export const process = spawn("node", ["dist/index.js"]);
+    process.stdout.on("data", () => {});
+  - |
     function kill(process: ChildProcess) {
       process.kill();
     }
   - |
     const run = (process?: ChildProcess) => process?.pid;
   - |
+    const pid = (process) => process.pid;
+  - |
+    class Runner {
+      stop(process: ChildProcess) {
+        return process.kill();
+      }
+    }
+  - |
+    try {
+      run();
+    } catch (process) {
+      console.error(process);
+    }
+  - |
+    function main() {
+      const process = spawn("git", ["status"]);
+      if (process.pid) {
+        process.stdout.on("data", () => {});
+      }
+    }
+  - |
+    function outer() {
+      const process = spawn("git", ["status"]);
+      const inner = () => process.pid;
+      return inner();
+    }
+  - |
     const settings = { process: "batch" };
     const mode = settings.process;
   - |
     import { execFile } from "node:child_process";
     execFile("git", ["status"]);
-  - |
-    const nodeProcess = globalThis.process;
 invalid:
   - |
     const ci = process.env.CI === "true";
@@ -43,3 +71,34 @@ invalid:
   - |
     import type { Process } from "./types";
     const { env } = process;
+  - |
+    function kill(process: ChildProcess) {
+      process.kill();
+    }
+    function cwd() {
+      return process.cwd();
+    }
+  - |
+    function main() {
+      {
+        const process = spawn("git", ["status"]);
+        process.stdout.on("data", () => {});
+      }
+      return process.cwd();
+    }
+  - |
+    try {
+      run();
+    } catch (process) {
+      console.error(process);
+    }
+    process.exitCode = 1;
+  - |
+    const nodeProcess = globalThis.process;
+  - |
+    import process from "node:process";
+    const home = globalThis.process.env.HOME;
+  - |
+    function main(process: ChildProcess) {
+      return globalThis.process.cwd();
+    }
