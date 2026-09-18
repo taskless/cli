@@ -29,8 +29,6 @@ note: |
     dependency this rule asks for. Import and use `process` instead.
 files:
   - "packages/cli/src/**/*.ts"
-ignores:
-  - ".github/scripts/**"
 rule:
   any:
     - pattern: globalThis.process
