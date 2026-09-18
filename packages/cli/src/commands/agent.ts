@@ -9,6 +9,7 @@ import {
 
 import { getTelemetry } from "../telemetry";
 import { getRecipe } from "../prompts/recipes";
+import { withSurveyInvite } from "../survey/invite";
 import { applyCliInvocation } from "../util/invocation";
 import {
   detectCliInvocation,
@@ -188,9 +189,10 @@ export function createAgentCommand(subCommands: SubCommandsDef) {
       // `nodejs_compat`, where a module-scope `process` read throws at import
       // time. When the launcher is unknown the value is `undefined` and the
       // renderer falls back to its agent-fill marker.
+      const invocation = detectCliInvocation(processLauncherContext());
       const recipe = getRecipe(key, {
         anonymous: args.anonymous,
-        invocation: detectCliInvocation(processLauncherContext()),
+        invocation,
         // What this command serves IS a fetch, so the served text says so:
         // resolved now, fetch again next task, and a session that installed
         // or upgraded mid-way holds a stale skill. The prompts export leaves
@@ -202,7 +204,17 @@ export function createAgentCommand(subCommands: SubCommandsDef) {
         // cli_agent: agent fetched a specific recipe (intent signal). The topic
         // is the served topic; filtering on it replaces the old per-topic events.
         telemetry.capture("cli_agent", { topic: key });
-        console.log(recipe.trimEnd());
+        // A surveyed topic may carry the feedback invite after its last
+        // section; the gate decides, and the render path above never sees it.
+        console.log(
+          await withSurveyInvite({
+            recipe,
+            topic: key,
+            invocation,
+            cwd,
+            ci: process.env.CI,
+          })
+        );
       } else {
         // cli_agent for an unknown topic — still the attempted topic string.
         telemetry.capture("cli_agent", { topic: key });

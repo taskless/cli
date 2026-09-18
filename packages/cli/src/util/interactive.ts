@@ -17,6 +17,16 @@ export function shouldLaunchWizard(input: {
   stdinIsTTY: boolean | undefined;
   ci: string | undefined;
 }): boolean {
-  if (input.ci === "true" || input.ci === "1") return false;
+  if (isCiEnvironment(input.ci)) return false;
   return input.stdoutIsTTY === true && input.stdinIsTTY === true;
+}
+
+/**
+ * The one reading of `CI` this CLI has. `"true"` and `"1"` are what runners
+ * set; anything else, including an empty string, is not a claim of CI. The
+ * wizard and the survey invite both ask this, and neither should decide it
+ * on its own.
+ */
+export function isCiEnvironment(ci: string | undefined): boolean {
+  return ci === "true" || ci === "1";
 }

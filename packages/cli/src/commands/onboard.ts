@@ -5,6 +5,7 @@ import { defineCommand } from "citty";
 import { ensureTasklessDirectory } from "../filesystem/directory";
 import { readManifest, writeManifest } from "../filesystem/migrate";
 import { getRecipe } from "../prompts/recipes";
+import { withSurveyInvite } from "../survey/invite";
 import { getTelemetry } from "../telemetry";
 import { CLIError } from "../util/cli-error";
 import {
@@ -100,12 +101,13 @@ export const onboardCommand = defineCommand({
     }
 
     // Detected here rather than inside the prompts module, which Workers
-    // import without `nodejs_compat`. `taskless onboard` is the ONLY serving
-    // path for this recipe — it is not a topic `agent` dispatches — so
-    // omitting this renders every invocation in it as the agent-fill marker
-    // for anyone running a published build.
+    // import without `nodejs_compat`. This command serves the recipe on its
+    // own, without going through `agent`, so omitting this renders every
+    // invocation in it as the agent-fill marker for anyone running a
+    // published build.
+    const invocation = detectCliInvocation(processLauncherContext());
     const recipe = getRecipe("onboard", {
-      invocation: detectCliInvocation(processLauncherContext()),
+      invocation,
       // Served text is a fetch, the same as `agent onboard`, which this must
       // match byte for byte.
       directive: true,
@@ -116,6 +118,16 @@ export const onboardCommand = defineCommand({
       process.exitCode = 1;
       throw new CLIError("recipe missing", undefined, { reported: true });
     }
-    console.log(recipe.trimEnd());
+    // Same gate as `agent onboard`: this is the other serving path for the
+    // same recipe, and the invite has to reach both or the cadence lies.
+    console.log(
+      await withSurveyInvite({
+        recipe,
+        topic: "onboard",
+        invocation,
+        cwd,
+        ci: process.env.CI,
+      })
+    );
   },
 });

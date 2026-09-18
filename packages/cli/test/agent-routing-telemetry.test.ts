@@ -13,6 +13,10 @@ vi.mock("../src/telemetry", () => ({
     })
   ),
   shutdownTelemetry: () => Promise.resolve(),
+  // The survey gate asks this before touching the cadence store. Off here,
+  // so these tests measure `cli_agent` alone; survey-invite.test.ts owns the
+  // gate.
+  isTelemetryEnabled: () => false,
 }));
 
 const { createAgentCommand } = await import("../src/commands/agent");
