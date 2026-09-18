@@ -49,6 +49,16 @@ function isTelemetryDisabled(): boolean {
   );
 }
 
+/**
+ * Whether captures reach PostHog at all. The same predicate that hands out
+ * the no-op client, exposed so a caller that must NOT do work under the
+ * opt-out (the survey invite, which has nowhere to send an answer) asks this
+ * rather than restating the two variables.
+ */
+export function isTelemetryEnabled(): boolean {
+  return !isTelemetryDisabled();
+}
+
 const noopClient: TelemetryClient = {
   capture() {},
   async shutdown() {},

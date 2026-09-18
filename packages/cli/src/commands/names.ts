@@ -15,6 +15,7 @@ export const SUBCOMMAND_NAMES = [
   "check",
   "demo",
   "detect",
+  "feedback",
   "info",
   "init",
   "onboard",

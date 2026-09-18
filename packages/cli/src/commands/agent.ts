@@ -45,8 +45,8 @@ async function resolveDescription(
 /**
  * Commands this index deliberately does not advertise.
  *
- * A declared list rather than a condition, because the two entries are absent
- * for unrelated reasons and a bare `name === "agent"` recorded neither.
+ * A declared list rather than a condition, because the entries are absent for
+ * unrelated reasons and a bare `name === "agent"` recorded none of them.
  *
  * - `agent` is the index itself, so listing it would be circular.
  * - `demo` writes a fixed example rule for someone learning what a rule is. It
@@ -59,10 +59,16 @@ async function resolveDescription(
  *   verb gave it discoverability it does not want yet, and this is the cost of
  *   that choice, paid here.
  *
+ * - `feedback` is reached only through the survey invite a served recipe
+ *   carries. Listed, it would invite an agent to run it unprompted, and a
+ *   `survey sent` with no invite behind it is noise in the funnel. When a
+ *   general feedback channel exists this surface folds into it, and that is
+ *   the point to reconsider listing.
+ *
  * Absence from this list is what puts a command in the index, so adding one is
  * a decision someone made rather than a step they forgot.
  */
-const UNLISTED_COMMANDS = new Set(["agent", "demo"]);
+const UNLISTED_COMMANDS = new Set(["agent", "demo", "feedback"]);
 
 export function createAgentCommand(subCommands: SubCommandsDef) {
   return defineCommand({
