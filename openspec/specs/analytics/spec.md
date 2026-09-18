@@ -177,6 +177,16 @@ Commands that carry no concrete state beyond the invocation (e.g. `info`,
 (`cli_<action>`, `cli_<action>_completed`, `help_index`, `help_<topic>`,
 `help_unknown`) SHALL be removed in this release; there is no dual-emit window.
 
+The survey events are the one exception to the prefix. `survey shown`,
+`survey dismissed`, and `survey sent` are PostHog's own event literals for a
+custom survey, and their `$survey_id` and `$survey_response_<question id>`
+keys are PostHog's property contract; the CLI SHALL emit them under those
+exact names and SHALL add no survey-specific property of its own. They go
+through the same capture path as every other event, so the standard
+properties (`cli`, `cliVersion`, `scaffoldVersion`, `ghOwner`, and the
+adoption dimensions) ride on them the way they ride on everything else. No
+other event SHALL omit the `cli_` prefix.
+
 #### Scenario: Rule creation emits a concrete state event plus cli_run
 
 - **WHEN** a user runs `taskless rule create --from req.json` and a rule is written
@@ -214,6 +224,13 @@ Commands that carry no concrete state beyond the invocation (e.g. `info`,
   of rules the scan had loaded
 - **AND** a scan that loaded no rules SHALL be distinguishable from a scan that
   loaded rules and found nothing
+
+#### Scenario: Survey events keep PostHog's names and carry the standard properties
+
+- **WHEN** the CLI serves a survey invite, records a dismissal, or sends a response
+- **THEN** PostHog SHALL receive `survey shown`, `survey dismissed`, or `survey sent` respectively, under that exact name
+- **AND** the event SHALL carry `$survey_id` and the standard properties, and no survey-specific property beyond PostHog's own keys
+- **AND** no event named `cli_survey_shown`, `cli_survey_dismissed`, or `cli_survey_sent` SHALL be emitted
 
 ### Requirement: Wrong-topic re-routing is observable as a derivable funnel
 
