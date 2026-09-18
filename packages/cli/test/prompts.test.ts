@@ -580,7 +580,7 @@ function importSpecifiers(source: string): string[] {
 }
 
 describe("prompts entry carries no CLI runtime", () => {
-  // Everything the render path is allowed to reach: embedded text, the two leaf
+  // Everything the render path is allowed to reach: embedded text, the leaf
   // Zod schemas, the invocation rewrite, the engine capability constants, and
   // the templating library.
   //
@@ -597,6 +597,10 @@ describe("prompts entry carries no CLI runtime", () => {
     "../rules/capabilities",
     "../schemas/rules-create",
     "../schemas/rules-improve",
+    // A third leaf schema, embedded into the `feedback` recipe. It imports
+    // `zod` and `src/survey/constants.ts`, which is pure data like
+    // `../rules/capabilities` and imports nothing at all.
+    "../schemas/feedback",
     "./recipes.js",
   ]);
 

@@ -8,6 +8,7 @@ import {
 } from "../util/invocation";
 import { inputSchema as ruleCreateInputSchema } from "../schemas/rules-create";
 import { inputSchema as ruleImproveInputSchema } from "../schemas/rules-improve";
+import { inputSchema as feedbackInputSchema } from "../schemas/feedback";
 import {
   AST_GREP_VERSION,
   VALE_VERSION,
@@ -79,6 +80,7 @@ export function canonicalRecipeTopics(): string[] {
 const TOPIC_INPUT_SCHEMAS: Record<string, z.ZodType> = {
   "create-remote-rule": ruleCreateInputSchema,
   "improve-rule": ruleImproveInputSchema,
+  feedback: feedbackInputSchema,
 };
 
 /** Agent-fill marker used when the caller does not supply a real value. */
