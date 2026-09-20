@@ -48,15 +48,17 @@
  *   node .github/scripts/openspec-tracking.cjs < input.json
  *   node .github/scripts/openspec-tracking.cjs --list [changesDirectory]
  *
- * The second form is the one three workflows call to list unarchived change
- * directories: it prints `listUnarchivedChanges()` as a sorted JSON array of
- * names on stdout, and nothing else. That routes the listing through
- * `readdirSync`, which behaves the same on every platform `node` runs on,
- * rather than through a shell `find`, where `-printf` is a GNU extension that
- * a checkout under BSD find (macOS) does not recognise. A missing changes
- * directory prints `[]` and exits zero; an unreadable one throws and exits
- * non-zero, and the calling workflow turns that into a `::warning::`
- * annotation rather than either an empty list or a failed run.
+ * The second form is the one the `openspec-list` composite action
+ * (`.github/actions/openspec-list/run.sh`) calls on behalf of three workflows
+ * to list unarchived change directories: it prints `listUnarchivedChanges()`
+ * as a sorted JSON array of names on stdout, and nothing else. That routes
+ * the listing through `readdirSync`, which behaves the same on every platform
+ * `node` runs on, rather than through a shell `find`, where `-printf` is a
+ * GNU extension that a checkout under BSD find (macOS) does not recognise. A
+ * missing changes directory prints `[]` and exits zero; an unreadable one
+ * throws and exits non-zero, and the action turns that into an `ok=false`
+ * output that the calling workflow reports as a `::warning::` annotation
+ * rather than either an empty list or a failed run.
  *
  * Reads one JSON object on stdin and prints the plan as JSON on stdout:
  *
@@ -407,8 +409,9 @@ const DEFAULT_CHANGES_DIRECTORY = "openspec/changes";
  * A missing directory is not a fault (see `listUnarchivedChanges`) and prints
  * `[]`. An unreadable one throws out of `readdirSync`, which this
  * deliberately does not catch: letting it propagate is what turns it into a
- * non-zero exit for `require.main` to report, which is the signal the calling
- * workflow needs to tell "nothing to report" apart from "could not tell".
+ * non-zero exit for `require.main` to report, which is the signal the
+ * `openspec-list` action needs to tell "nothing to report" apart from "could
+ * not tell".
  */
 function runList(changesDirectory) {
   process.stdout.write(

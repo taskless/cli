@@ -1,0 +1,59 @@
+name: OpenSpec list
+description: >-
+  Lists the unarchived change directories under openspec/changes/ and says
+  whether the listing can be trusted. It never fails the step: a listing that
+  could not be produced reports ok=false and the reason, and the calling
+  workflow decides what "could not tell" means for it.
+
+# One capture, three consumers. `openspec-label.yml`, `openspec-sweep.yml`
+# and `openspec-tracking.yml` each carried a copy of the same safe-capture
+# idiom around `openspec-tracking.cjs --list`, along with a copy of the
+# comment recording why it is shaped the way it is. A change to the capture
+# strategy then had to be applied and hand-verified three times, and a
+# partial edit left one workflow on the old behaviour with nothing reporting
+# it (#289). The idiom lives in `run.sh` beside this file, once, and is
+# covered by `.github/scripts/openspec-list-action.test.cjs`.
+#
+# THE FAILURE RESPONSE STAYS IN THE WORKFLOW. What a failed listing means is
+# genuinely different per consumer: the label workflow leaves the label alone
+# and writes an "OpenSpec: unknown" summary, while the sweep and tracking
+# workflows skip their run so that an unreadable directory is never read as
+# "every change is archived". This action reports; it does not decide.
+#
+# A local action is resolved from the checked-out workspace, so every caller
+# runs `actions/checkout` first. On a `pull_request` event that checkout is
+# the head commit, which means a pull request can change this action's script
+# and the workflow runs the changed copy, exactly as it already runs the
+# changed `openspec-tracking.cjs`. That is why none of the callers uses
+# `pull_request_target`: a fork's read-only token is the only privilege a
+# fork-authored script here ever gets.
+
+outputs:
+  changes:
+    description: >-
+      The unarchived change directory names as a compact JSON array of
+      strings, validated before it is written, so a consumer can pass it
+      straight to `jq` without a second parse guard. Empty when `ok` is
+      false; gate on `ok`, not on this value.
+    value: ${{ steps.list.outputs.changes }}
+  ok:
+    description: >-
+      "true" when the listing ran and parsed as an array of strings, "false"
+      otherwise. "false" means "could not tell", never "nothing unarchived".
+    value: ${{ steps.list.outputs.ok }}
+  error:
+    description: >-
+      One line describing why `ok` is false: the exit status and whatever the
+      listing wrote to stderr, or the parse failure. Empty when `ok` is true.
+    value: ${{ steps.list.outputs.error }}
+
+runs:
+  using: composite
+  steps:
+    - id: list
+      shell: bash
+      # The script exits zero on every path it knows about, so the step's
+      # own `-e` (the composite default shell is `bash -eo pipefail`) has
+      # nothing to trip on. The script, not this line, is what the test
+      # suite exercises.
+      run: bash "$GITHUB_ACTION_PATH/run.sh"

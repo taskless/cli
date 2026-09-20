@@ -49,6 +49,21 @@ jobs:
         with:
           fetch-depth: 0 # full history, so `git log` can date each change directory
 
+      # The listing and its safe-capture idiom live in the composite action,
+      # shared with openspec-label.yml and openspec-tracking.yml (#289). It
+      # never fails: an unreadable `openspec/changes` comes back as `ok=false`
+      # with the reason in `error`, and the plan step decides what that means
+      # here. This file once listed with `find ... -printf '%f\n'` inside a
+      # process substitution: `done < <(...)` hands the loop the
+      # substitution's own exit status, not find's, so a failed `-printf` on
+      # BSD find ran the loop zero times and this step silently reported "0
+      # unarchived changes" and exited 0. That is the exact silent case this
+      # workflow exists to avoid, and the action's `ok` output is what makes
+      # the failure visible instead.
+      - name: List unarchived OpenSpec changes
+        id: list
+        uses: ./.github/actions/openspec-list
+
       - name: Plan escalations
         id: plan
         env:
@@ -56,39 +71,15 @@ jobs:
           REPO: ${{ github.repository }}
           SHA: ${{ github.sha }}
           LABEL: Open OpenSpec
+          LIST_OK: ${{ steps.list.outputs.ok }}
+          LIST_CHANGES: ${{ steps.list.outputs.changes }}
+          LIST_ERROR: ${{ steps.list.outputs.error }}
         run: |
           set -euo pipefail
 
           unarchived='[]'
           now=$(date +%s)
-          # The listing is delegated to openspec-tracking.cjs --list rather
-          # than to a shell `find`. This file once carried `find ... -printf
-          # '%f\n'` inside a process substitution: `done < <(...)` hands the
-          # loop the substitution's own exit status, not find's, so a failed
-          # `-printf` on BSD find (macOS) ran the loop zero times and this
-          # step silently reported "0 unarchived changes" and exited 0. That
-          # is the exact silent case this workflow exists to avoid, and a
-          # different `find` form only fixes this one occurrence of it.
-          # Routing the listing through `readdirSync`, already covered by
-          # openspec-tracking.test.cjs, removes the question of which `find`
-          # flags are portable rather than answering it correctly once. The
-          # script's own exit status is captured by a plain assignment, not a
-          # process substitution, so its failure cannot go unseen the same way.
-          #
-          # STDERR GOES TO A FILE, NEVER INTO THE CAPTURED VALUE. This read
-          # `2>&1` to keep the warning below informative, which folds anything
-          # node writes to stderr into the JSON. Node writes to stderr while
-          # exiting zero all the time: an ExperimentalWarning, a deprecation
-          # notice from a newer runner image, a NODE_OPTIONS preload message.
-          # Measured with a single `(node:1) Warning: something at startup`
-          # line, the guard below does not fire, `jq` then fails on the
-          # polluted value, and `unarchived` stays `[]`. The planner reads `[]`
-          # as "every change is archived" and closes every open tracking issue
-          # with a false "Archived" comment. The stderr text is still available
-          # for the warning, it is just read from the file on the failure branch
-          # instead of being mixed into the data.
-          list_stderr=/tmp/openspec-sweep-list.err
-          if ! changes_json=$(node .github/scripts/openspec-tracking.cjs --list 2>"$list_stderr"); then
+          if [ "$LIST_OK" != "true" ]; then
             # SKIP THE RUN, do not fall through. An empty `unarchived` is not
             # "we could not tell", it is "every change is archived": the
             # planner's close-as-archived pass closes every open tracking issue
@@ -97,47 +88,42 @@ jobs:
             # openspec/changes/archive/", which is false, on nothing worse than
             # a transient read error. This mirrors openspec-tracking.yml, which
             # gates its apply step the same way.
-            echo "::warning::Could not list openspec/changes/ ($(tr '\n' ' ' <"$list_stderr")). Reporting zero unarchived changes would close every open tracking issue as archived, so this run is skipped instead."
+            echo "::warning::Could not list openspec/changes/ ($LIST_ERROR). Reporting zero unarchived changes would close every open tracking issue as archived, so this run is skipped instead."
             echo "skipped=true" >> "$GITHUB_OUTPUT"
             exit 0
-          else
-            # Names and ages go into JSON as jq ARGUMENTS, never joined into a
-            # line and split back apart. A directory name containing a space
-            # desynced the split, `tonumber` threw on the wrong field, and under
-            # `set -euo pipefail` that failed the whole run: the "signal expected
-            # to be red" failure this workflow exists to avoid. Nothing enforces
-            # kebab-case directory names, so the encoding must not assume it.
-            #
-            # `jq` RUNS IN ASSIGNMENT POSITION, NOT AS `done < <(jq ...)`. A
-            # process substitution hands the loop its own exit status, so `jq`
-            # failing on a malformed listing ran the loop zero times and this
-            # step reported "0 unarchived changes" and exited 0, which is the
-            # exact silent case the comment above describes for `find`. The same
-            # trap, one line further down, on a second command. Reading it into
-            # a variable first puts the failure somewhere it can be seen, and
-            # the guard below skips the run rather than failing it, because a
-            # scheduled red is the other failure mode this workflow refuses.
-            if ! names=$(jq -r '.[]' <<<"$changes_json"); then
-              echo "::warning::Could not parse the change listing. Reporting zero unarchived changes would close every open tracking issue as archived, so this run is skipped instead."
-              echo "skipped=true" >> "$GITHUB_OUTPUT"
-              exit 0
-            fi
-
-            while IFS= read -r name; do
-              [ -z "$name" ] && continue
-              # The last commit that touched this change directory. A directory
-              # with no commits at all is treated as brand new rather than
-              # infinitely old, so a checkout quirk cannot manufacture a report.
-              last=$(git log -1 --format=%ct -- "openspec/changes/$name" || true)
-              if [ -z "$last" ]; then
-                age=0
-              else
-                age=$(( (now - last) / 86400 ))
-              fi
-              unarchived=$(jq -c --arg name "$name" --argjson age "$age" \
-                '. + [{name: $name, ageDays: $age}]' <<<"$unarchived")
-            done <<<"$names"
           fi
+
+          # Names and ages go into JSON as jq ARGUMENTS, never joined into a
+          # line and split back apart. A directory name containing a space
+          # desynced the split, `tonumber` threw on the wrong field, and under
+          # `set -euo pipefail` that failed the whole run: the "signal expected
+          # to be red" failure this workflow exists to avoid. Nothing enforces
+          # kebab-case directory names, so the encoding must not assume it.
+          #
+          # `jq` RUNS IN ASSIGNMENT POSITION, NOT AS `done < <(jq ...)`. A
+          # process substitution hands the loop its own exit status, so `jq`
+          # failing on a malformed listing ran the loop zero times and this
+          # step reported "0 unarchived changes" and exited 0, the same trap
+          # the `find` note above describes, one line further down. The action
+          # validated `changes` as a JSON array of strings before writing it,
+          # so this `jq` cannot fail on the value; the assignment form is kept
+          # because it is the one where a failure could be seen if it did.
+          names=$(jq -r '.[]' <<<"$LIST_CHANGES")
+
+          while IFS= read -r name; do
+            [ -z "$name" ] && continue
+            # The last commit that touched this change directory. A directory
+            # with no commits at all is treated as brand new rather than
+            # infinitely old, so a checkout quirk cannot manufacture a report.
+            last=$(git log -1 --format=%ct -- "openspec/changes/$name" || true)
+            if [ -z "$last" ]; then
+              age=0
+            else
+              age=$(( (now - last) / 86400 ))
+            fi
+            unarchived=$(jq -c --arg name "$name" --argjson age "$age" \
+              '. + [{name: $name, ageDays: $age}]' <<<"$unarchived")
+          done <<<"$names"
 
           # Bodies are handed over raw. The marker is parsed in one place, in
           # openspec-tracking.cjs, rather than re-implemented as a `jq capture`
