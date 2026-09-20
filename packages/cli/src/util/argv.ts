@@ -77,3 +77,15 @@ export function hasHelpFlag(rawArguments: string[]): boolean {
   const { flags } = splitRawArguments(rawArguments);
   return flags.includes("--help") || flags.includes("-h");
 }
+
+/**
+ * True when argv asks for the version. Same scan as `hasHelpFlag`, for the
+ * same reason: `taskless -d -v check` names a directory, and `taskless check
+ * -- -v` names a path. Position is not consulted, so `taskless check
+ * --version` answers with the version too — the question is about the tool,
+ * not the subcommand, and no subcommand defines `-v` or `--version` itself.
+ */
+export function hasVersionFlag(rawArguments: string[]): boolean {
+  const { flags } = splitRawArguments(rawArguments);
+  return flags.includes("--version") || flags.includes("-v");
+}
