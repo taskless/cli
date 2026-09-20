@@ -135,11 +135,9 @@ describe("Vale config assembly", () => {
     expect(await assembleValeConfig(cwd)).toBeUndefined();
   });
 
-  // `sections` is read by `findOversizedFiles` (vale/formats.ts) to scope its
-  // preemptive size guard to files a rule could actually reach, instead of
-  // walking the whole project. It has to carry every section this config
-  // will actually have Vale evaluate — a re-parse of the written file, which
-  // this is not, would be a second, weaker source of the same fact.
+  // `sections` has to carry every section this config will actually have
+  // Vale evaluate — a re-parse of the written file, which this is not, would
+  // be a second, weaker source of the same fact.
   it("returns every section pattern it wrote, deduplicated and sorted", async () => {
     await valeRule("no-simply", "[*.md]\nno-simply.no-simply = YES\n");
     await valeRule(

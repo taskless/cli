@@ -1,4 +1,4 @@
-# Topic: update     (CLI v%(CLI_VERSION)s / topic v6)
+# Topic: update     (CLI v%(CLI_VERSION)s / topic v7)
 
 ## You are here
 This is `update`. It tells you what an upgrade changed for the rules
@@ -292,6 +292,20 @@ alone. `%(TASKLESS_CLI)s agent create-vale-rule` has the shapes and the
 one trap (a leaf element on its own, `doc(h2)`, is inert; chain it).
 No existing rule changes; this is a reason to revisit one that was
 narrowed by hand.
+
+### Migrating to 0.11.3
+
+**Files over 128KB are linted again.** 0.11.2 skipped any target file
+over 128KB that a matcher's section reached, naming it in a `notices`
+entry instead of checking it, because Vale 3.20.0's cost grew
+superlinearly with the size of one Markdown block and a single large
+file could consume the whole run's time budget. 3.21.0, the Vale that
+0.11.2 itself shipped, made that cost linear (a 3MB single-block file
+measures ~230ms where 3.20.0 took ~81s), so the skip is gone. A file
+that was reported as skipped now produces findings, and the `notices`
+entry that named it no longer appears. Nothing in a rule changes; if a
+large generated file was being kept quiet by that skip, narrow the
+matcher's section so it is not reached.
 
 ## Errors
 

@@ -14,10 +14,9 @@ import {
   converterFor,
   escapeGlobLiteral,
   findConverterDependentFiles,
-  findOversizedFiles,
   skippedFilesNotice,
 } from "../src/rules/vale/formats";
-import { runVale, VALE_MAX_FILE_BYTES } from "../src/rules/vale/run";
+import { runVale } from "../src/rules/vale/run";
 
 /**
  * The exclusion derived from the format tiers, and the run that uses it.
@@ -168,9 +167,9 @@ describe("the exclusion glob", () => {
 describe("escaping a literal path for buildValeGlob's alternation (taskless/cli#323 review)", () => {
   it("escapes every character the alternation would otherwise reinterpret", () => {
     // Mirrors GLOB_METACHARACTERS in git-ignored.ts exactly: the same nine
-    // characters, escaped here instead of dropped, because dropping an
-    // oversized file from ITS OWN exclusion defeats the guard for exactly the
-    // pathological file it exists to protect.
+    // characters, escaped here instead of dropped, because dropping a target
+    // file from the per-file retry's exclusion leaves the one file that aborts
+    // the run inside it.
     expect(escapeGlobLiteral("big,comma.md")).toBe(String.raw`big\,comma.md`);
     expect(escapeGlobLiteral("a{b}c.md")).toBe(String.raw`a\{b\}c.md`);
     expect(escapeGlobLiteral("weird[1].md")).toBe(String.raw`weird\[1\].md`);
@@ -287,105 +286,6 @@ describe("finding converter-dependent files", () => {
     expect(await findConverterDependentFiles(cwd, ["docs/GUIDE.ADOC"])).toEqual(
       []
     );
-  });
-});
-
-// No Vale binary needed for these: `findOversizedFiles` on its own never
-// spawns Vale — only `stat` and `glob`. `makeProject` (above) is overkill
-// here, since it scaffolds a whole rule tree just to reach a hand-written
-// `.vale.ini`; these tests only need a plain directory.
-function makeScratchProject(documents: Record<string, string>): string {
-  const cwd = mkdtempSync(join(tmpdir(), "vale-oversized-"));
-  workspaces.push(cwd);
-  for (const [path, body] of Object.entries(documents)) {
-    const full = join(cwd, path);
-    mkdirSync(join(full, ".."), { recursive: true });
-    writeFileSync(full, body);
-  }
-  return cwd;
-}
-
-describe("finding oversized files, scoped to what Vale would actually lint", () => {
-  const oversizedBody = "x".repeat(VALE_MAX_FILE_BYTES + 1);
-
-  it("reports an oversized file matching a section pattern", async () => {
-    const cwd = makeScratchProject({ "README.md": oversizedBody });
-    expect(
-      await findOversizedFiles(cwd, [], VALE_MAX_FILE_BYTES, true, [
-        "**/README.md",
-      ])
-    ).toEqual([{ file: "README.md", size: oversizedBody.length }]);
-  });
-
-  it("does not report an oversized file no section pattern reaches", async () => {
-    // The taskless/cli#321 follow-up: `pnpm-lock.yaml` and
-    // `packages/cli/CHANGELOG.md`, both over the limit in this repository,
-    // are named by no rule's `[section]` — Vale was never going to open
-    // either one, so reporting them is a false positive, not a caught
-    // coverage hole. Reproduced in miniature: a lockfile-shaped file sits
-    // alongside an in-scope README, and only the README is named.
-    const cwd = makeScratchProject({
-      "README.md": oversizedBody,
-      "pnpm-lock.yaml": oversizedBody,
-    });
-
-    // MUTATION CHECK: replace the `sectionGlobs` branch's early loop with
-    // the fallback `**/*` walk (or simply drop the `!wholeProject &&
-    // !roots.some(...)` narrowing and the `wholeProject` check that selects
-    // this branch) and this assertion fails — `pnpm-lock.yaml` starts
-    // appearing alongside `README.md`. Verified locally: reverting restores
-    // the single-entry result below.
-    expect(
-      await findOversizedFiles(cwd, [], VALE_MAX_FILE_BYTES, true, [
-        "**/README.md",
-      ])
-    ).toEqual([{ file: "README.md", size: oversizedBody.length }]);
-  });
-
-  it("still checks a matching file that is not oversized", async () => {
-    const cwd = makeScratchProject({ "README.md": "Just simply do it.\n" });
-    expect(
-      await findOversizedFiles(cwd, [], VALE_MAX_FILE_BYTES, true, [
-        "**/README.md",
-      ])
-    ).toEqual([]);
-  });
-
-  it("still reports an oversized file when the caller passes paths: ['.'] (taskless/cli#323 review)", async () => {
-    // `check .` — a near-default invocation — reaches `runVale` with
-    // `paths = ["."]`, not `[]`: `filterExistingPaths` (`commands/check.ts`)
-    // normalizes a bare `.` into that literal string rather than dropping
-    // back to an empty array. Every OTHER test in this describe block uses
-    // `paths: []`, which is why a `paths.length === 0` test for "whole
-    // project" silently passed them all while being wrong for this one.
-    //
-    // `wholeProject` is the 4th argument precisely so the caller — `runVale`,
-    // via `isWholeProjectWalk` — decides this, rather than this function
-    // re-deriving a broken answer from `paths` on its own.
-    const cwd = makeScratchProject({ "README.md": oversizedBody });
-
-    // MUTATION CHECK: change the call below to pass `paths.length === 0`
-    // (i.e. `false`, since `paths` here is `["."]`) instead of the literal
-    // `true`, simulating the recomputed-internally bug this test exists to
-    // catch, and the assertion fails — `README.md` is no longer reported,
-    // because every glob match (`"README.md"`) fails `relative === "." ||
-    // relative.startsWith("./")`. Verified locally; reverting restores green.
-    expect(
-      await findOversizedFiles(cwd, ["."], VALE_MAX_FILE_BYTES, true, [
-        "**/README.md",
-      ])
-    ).toEqual([{ file: "README.md", size: oversizedBody.length }]);
-  });
-
-  it("falls back to the exhaustive walk when no sections are given", async () => {
-    // The path a caller with no assembled config takes — `verifyValeRule`'s
-    // isolating config, or a test that hands `runVale` a hand-written
-    // `.vale.ini` directly. Unaffected by the scoping above: every file
-    // under the target root is still a candidate, sections or not.
-    const cwd = makeScratchProject({ "pnpm-lock.yaml": oversizedBody });
-    expect(
-      await findOversizedFiles(cwd, [], VALE_MAX_FILE_BYTES, true)
-    ).toEqual([{ file: "pnpm-lock.yaml", size: oversizedBody.length }]);
   });
 });
 
