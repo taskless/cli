@@ -21,7 +21,12 @@ import {
 } from "./telemetry";
 import { emitRunEvents, resolveCommandName, resolveCwd } from "./telemetry-run";
 import { runWizard } from "./wizard";
-import { DIR_FLAGS, hasHelpFlag, splitRawArguments } from "./util/argv";
+import {
+  DIR_FLAGS,
+  hasHelpFlag,
+  hasVersionFlag,
+  splitRawArguments,
+} from "./util/argv";
 import { shouldLaunchWizard } from "./util/interactive";
 import { showResolvedUsage } from "./util/help";
 import { CLIError } from "./util/cli-error";
@@ -71,6 +76,14 @@ const main = defineCommand({
         "Proceed when .taskless/ is newer than this CLI understands (skips migrations)",
       default: false,
     },
+    // Listed so `--help` documents it; the flag itself is intercepted before
+    // dispatch (see the entry below) and never reaches a run handler.
+    version: {
+      type: "boolean",
+      alias: "v",
+      description: "Print the version and exit",
+      default: false,
+    },
   },
   subCommands: {
     ...subCommands,
@@ -87,10 +100,10 @@ const main = defineCommand({
     }
 
     // Only delegate to `init` when the only flags present are ones init
-    // also understands (`-d` / `--dir`). Version/json flags, a bare `--`, and
-    // any unknown flags should fall through to citty's default help instead of
-    // silently launching the wizard. (`--help`/`-h` never reach here — they
-    // are intercepted before dispatch below.)
+    // also understands (`-d` / `--dir`). `--json`, a bare `--`, and any
+    // unknown flags should fall through to citty's default help instead of
+    // silently launching the wizard. (`--help`/`-h` and `--version`/`-v`
+    // never reach here — they are intercepted before dispatch below.)
     const onlyInitFlags = flags.every((flag) => DIR_FLAGS.has(flag));
     if (!onlyInitFlags) {
       await showUsage(cmd);
@@ -142,13 +155,19 @@ const startedAt = Date.now();
 const startIdentity = await resolveRunIdentity(runCwd);
 let thrown: unknown;
 try {
-  // Help is intercepted here, before dispatch, because citty implements
-  // `--help` only in runMain — and runMain exits the process on both its help
-  // and error paths, which would skip the `finally` below and drop the cli_run
-  // denominator. Rendering here returns normally instead.
-  await (hasHelpFlag(rawArguments)
-    ? showResolvedUsage(main, rawArguments)
-    : runCommand(main, { rawArgs: rawArguments }));
+  // Help and version are intercepted here, before dispatch, because citty
+  // implements `--help` and `--version` only in runMain — and runMain exits
+  // the process on both its help and error paths, which would skip the
+  // `finally` below and drop the cli_run denominator. Rendering here returns
+  // normally instead. Version goes to stdout as `<version>\n` and nothing
+  // else, so `taskless --version | …` sees a version and not a banner.
+  if (hasHelpFlag(rawArguments)) {
+    await showResolvedUsage(main, rawArguments);
+  } else if (hasVersionFlag(rawArguments)) {
+    process.stdout.write(`${__VERSION__}\n`);
+  } else {
+    await runCommand(main, { rawArgs: rawArguments });
+  }
 } catch (error) {
   // CLIError = expected failure. Most throw sites (the `fail()` helpers) print
   // and set exitCode first and mark themselves `reported`; one that does not
