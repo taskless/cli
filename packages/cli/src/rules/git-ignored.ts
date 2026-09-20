@@ -119,10 +119,11 @@ const ROOT_ENTRIES = new Set(["./", "."]);
  * An entry carrying any of them is left out of the exclusion rather than
  * escaped **here**. Exported so `escapeGlobLiteral` in `vale/formats.ts` can
  * share this exact character class rather than guessing its own — that
- * function makes the opposite call (escape, not drop) for the oversized-file
- * exclusion, where dropping would mean the pathological file that triggered
- * the guard is the one file left unprotected. See its docblock for why the
- * two literal-path exclusions in this codebase disagree on purpose.
+ * function makes the opposite call (escape, not drop) for the per-file retry
+ * exclusion in `vale/run.ts`, where dropping would mean the one file that
+ * aborts the whole invocation is the one file left in it. See its docblock
+ * for why the two literal-path exclusions in this codebase disagree on
+ * purpose.
  *
  * The cost of dropping here is that one pathologically-named ignored path is
  * still linted — which is exactly the behavior that shipped before this

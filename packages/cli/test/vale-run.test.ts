@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { findValeBinary } from "../src/rules/vale/binary";
-import { runVale, VALE_MAX_FILE_BYTES } from "../src/rules/vale/run";
+import { runVale } from "../src/rules/vale/run";
 
 /**
  * These run the real Vale binary. It ships as an `optionalDependency` for the
@@ -316,10 +316,11 @@ withVale("runVale against the real binary", () => {
     // 17,000: this test asserts the message rather than the blocking flag,
     // which the sibling covers with the larger fixture.
     //
-    // `maxFileBytes` raises `VALE_MAX_FILE_BYTES` for THIS CALL ONLY — not a
-    // CLI flag, not a config surface, just a seam. Without it a document this
-    // size is excluded before Vale sees it (taskless/cli#321) and reports
-    // `status: "ok"` with a notice, never exercising the timeout at all.
+    // Nothing excludes a document this size before Vale sees it. The 128KB
+    // guard that once did (taskless/cli#321) was written against 3.20.0's
+    // superlinear cost and removed once 3.21.0 made it linear
+    // (taskless/cli#351), which is also why the fixture needs no per-call
+    // override to reach the binary.
     const cwd = makeProject(
       `${header}\n[*.md]\nno-simply.no-simply = YES\n`,
       { "no-simply": existenceRule("simply", "Avoid 'simply'") },
@@ -330,7 +331,6 @@ withVale("runVale against the real binary", () => {
       cwd,
       paths: ["doc.md"],
       timeoutMs: 100,
-      maxFileBytes: Number.POSITIVE_INFINITY,
     });
     expect(outcome.status).toBe("timeout");
     if (outcome.status !== "timeout") return;
@@ -470,198 +470,6 @@ withVale("runVale against the real binary", () => {
       expect(outcome.message).toContain("bogus.yml");
     });
   });
-
-  describe("an oversized target file (taskless/cli#321)", () => {
-    // Just over the limit, not a multi-hundred-KB fixture: this is a boundary
-    // test, and repeating a short sentence to the byte count keeps the
-    // workspace this test writes to disk small and the suite fast.
-    //
-    // The sentence contains the rule's own token ("simply") deliberately,
-    // rather than filler with no matches. A filler body of repeated "x"
-    // characters is excluded exactly the same as this one on the happy path
-    // (both are just "some file over the limit" to `findOversizedFiles`), but
-    // it hides a real regression: with the exclusion glob broken, Vale would
-    // still be handed "xxxx…" and find nothing in it either way, so a test
-    // built on filler cannot tell "excluded" from "checked and clean" apart.
-    // A body with real matches can: excluded, it contributes no findings;
-    // handed to Vale, it contributes many. Verified below.
-    const oversizedSentence = "Just simply do it. ";
-    const oversizedBody = oversizedSentence.repeat(
-      Math.ceil((VALE_MAX_FILE_BYTES + 1) / oversizedSentence.length)
-    );
-    // Sized so the WHOLE document (this padding plus the sentence appended
-    // below) lands at EXACTLY `VALE_MAX_FILE_BYTES`, not merely under it: the
-    // guard has to be a strict `>`, and a test that leaves slack would not
-    // notice a `>=` mutation, since the file would still sit under the limit
-    // either way. `"\nJust simply do it.\n"` is 20 bytes.
-    const almostHugeSuffix = "\nJust simply do it.\n";
-    const underLimitBody = "x".repeat(
-      VALE_MAX_FILE_BYTES - almostHugeSuffix.length
-    );
-
-    it("excludes the oversized file while its neighbours' findings still come back", async () => {
-      const cwd = makeProject(
-        `${header}\n[*.md]\nno-simply.no-simply = YES\n`,
-        { "no-simply": existenceRule("simply", "Avoid 'simply'") },
-        {
-          "good-1.md": "Just simply do it.\n",
-          "good-2.md": "Just simply do it, again.\n",
-          "huge.md": oversizedBody,
-        }
-      );
-
-      const outcome = await runVale({
-        cwd,
-        paths: ["good-1.md", "good-2.md", "huge.md"],
-      });
-
-      // MUTATION CHECK: with the `...oversizedInScope.map((entry) =>
-      // entry.file)` spread removed from `exclude` in run.ts, `huge.md` is
-      // handed to Vale instead of excluded, and — because the fixture's
-      // content actually contains "simply" thousands of times — Vale reports
-      // one finding per match. `outcome.results` then has 3-digit length
-      // instead of 2, which `toHaveLength(2)` below catches immediately.
-      // Verified locally: with the spread removed, this test fails with
-      // "expected 2600-ish, got 2" (the exact count depends on Vale's
-      // scope-merging, not asserted here to keep the test robust); reverting
-      // restores it to exactly 2.
-      expect(outcome.status).toBe("ok");
-      if (outcome.status !== "ok") return;
-      expect(outcome.blocking).toBe(false);
-
-      const byFile = new Map(outcome.results.map((r) => [r.file, r]));
-      expect(byFile.get("good-1.md")).toMatchObject({
-        ruleId: "no-simply",
-        file: "good-1.md",
-      });
-      expect(byFile.get("good-2.md")).toMatchObject({
-        ruleId: "no-simply",
-        file: "good-2.md",
-      });
-      // No `huge.md` finding: despite containing "simply" thousands of times,
-      // it was excluded before Vale ever opened it.
-      expect(outcome.results).toHaveLength(2);
-    });
-
-    it("reports the skip as a notice, not a finding", async () => {
-      const cwd = makeProject(
-        `${header}\n[*.md]\nno-simply.no-simply = YES\n`,
-        { "no-simply": existenceRule("simply", "Avoid 'simply'") },
-        { "huge.md": oversizedBody }
-      );
-
-      const outcome = await runVale({ cwd, paths: ["huge.md"] });
-
-      // MUTATION CHECK: remove `oversizedFilesNotice(oversizedInScope, ...)`
-      // from the `notices` array in run.ts and `outcome.notice` comes back
-      // `undefined` — verified locally. A silent skip here is exactly the
-      // failure mode the whole issue is about, one level down: `results` is
-      // empty (the file was excluded, so `no-simply` never got to run on it,
-      // despite the fixture containing that token thousands of times), so the
-      // notice is the ONLY signal this file was declined rather than checked
-      // and found clean.
-      expect(outcome.status).toBe("ok");
-      if (outcome.status !== "ok") return;
-      expect(outcome.results).toEqual([]);
-      expect(outcome.notice).toContain("huge.md");
-      expect(outcome.notice).toContain(String(VALE_MAX_FILE_BYTES));
-    });
-
-    it("still checks a file just under the limit", async () => {
-      const almostHugeBody = `${underLimitBody}${almostHugeSuffix}`;
-      const cwd = makeProject(
-        `${header}\n[*.md]\nno-simply.no-simply = YES\n`,
-        { "no-simply": existenceRule("simply", "Avoid 'simply'") },
-        { "almost-huge.md": almostHugeBody }
-      );
-
-      // The file is exactly `VALE_MAX_FILE_BYTES`, not merely under it — see
-      // the `underLimitBody` comment above.
-      expect(Buffer.byteLength(almostHugeBody)).toBe(VALE_MAX_FILE_BYTES);
-
-      const outcome = await runVale({ cwd, paths: ["almost-huge.md"] });
-
-      // MUTATION CHECK: change the size guard's comparison from `>` to `>=`
-      // in `findOversizedFiles` and this test fails, since the fixture sits
-      // AT the limit: `almost-huge.md` would start being excluded (a notice
-      // naming it, no `no-simply` finding). Verified locally.
-      expect(outcome.status).toBe("ok");
-      if (outcome.status !== "ok") return;
-      expect(outcome.notice).toBeUndefined();
-      expect(outcome.results).toContainEqual(
-        expect.objectContaining({
-          ruleId: "no-simply",
-          file: "almost-huge.md",
-        })
-      );
-    });
-
-    it("names only the oversized files a section pattern actually reaches (taskless/cli#321 follow-up)", async () => {
-      // The false-positive this addresses: an un-scoped scan named
-      // `pnpm-lock.yaml` and `packages/cli/CHANGELOG.md` on this very
-      // repository, neither of which any rule's `.vale.ini` section touches.
-      // Reproduced here with a rule scoped only to `*.md` and an oversized
-      // `.yaml` file alongside an oversized, in-scope `.md` file.
-      const cwd = makeProject(
-        `${header}\n[*.md]\nno-simply.no-simply = YES\n`,
-        { "no-simply": existenceRule("simply", "Avoid 'simply'") },
-        {
-          "huge.md": oversizedBody,
-          "huge.yaml": oversizedBody,
-        }
-      );
-
-      const outcome = await runVale({
-        cwd,
-        paths: ["huge.md", "huge.yaml"],
-        sectionGlobs: ["*.md"],
-      });
-
-      // MUTATION CHECK: pass `sectionGlobs: undefined` instead (or drop the
-      // option from this call) and the assertions below fail: `outcome.notice`
-      // then also names `huge.yaml`, and `results` gains `huge.yaml`'s
-      // thousands of `no-simply` matches instead of staying empty. Verified
-      // locally.
-      expect(outcome.status).toBe("ok");
-      if (outcome.status !== "ok") return;
-      expect(outcome.results).toEqual([]);
-      expect(outcome.notice).toContain("huge.md");
-      expect(outcome.notice).not.toContain("huge.yaml");
-    });
-
-    it("still reports the guard on `check .`, not only on a bare `check` (taskless/cli#323 review)", async () => {
-      // `check .` is a near-default invocation, and it does NOT reach here
-      // the way a bare `check` does: `filterExistingPaths`
-      // (`commands/check.ts`) normalizes a bare `.` positional into the
-      // literal `paths = ["."]`, never back to `[]`. Every other test in this
-      // file uses `paths: []` for its whole-project cases, which is exactly
-      // why this was invisible until someone actually ran `check . --json`
-      // against a real project and compared it to a bare `check --json`.
-      const cwd = makeProject(
-        `${header}\n[**/README.md]\nno-simply.no-simply = YES\n`,
-        { "no-simply": existenceRule("simply", "Avoid 'simply'") },
-        { "README.md": oversizedBody }
-      );
-
-      // MUTATION CHECK: this is an end-to-end restatement of the
-      // `findOversizedFiles` unit test above it in `vale-formats.test.ts`
-      // ("still reports an oversized file when the caller passes paths:
-      // ['.']"). Reintroducing `paths.length === 0` inside that function (in
-      // place of the `wholeProject` parameter `runVale` threads through)
-      // fails this test too: `outcome.notice` comes back `undefined` because
-      // every glob match fails the root-membership check. Verified locally.
-      const outcome = await runVale({
-        cwd,
-        paths: ["."],
-        sectionGlobs: ["**/README.md"],
-      });
-
-      expect(outcome.status).toBe("ok");
-      if (outcome.status !== "ok") return;
-      expect(outcome.results).toEqual([]);
-      expect(outcome.notice).toContain("README.md");
-    });
-  });
 });
 
 describe("ValeRunOutcome.blocking", () => {
@@ -706,9 +514,9 @@ withVale("ValeRunOutcome.blocking against the real binary", () => {
     // A ratio looks worse as the budget shrinks even when the real margin is
     // enormous, which is exactly what a review round measured wrong here
     // (taskless/cli#323): a "35x to 4.5x" ratio comparison on a version of
-    // this test that had shrunk its fixture to fit under `VALE_MAX_FILE_BYTES`
-    // (taskless/cli#321) read as a regression, but the ratio was the wrong
-    // number:
+    // this test that had shrunk its fixture to fit under the then 128KB
+    // file-size guard (taskless/cli#321) read as a regression, but the ratio
+    // was the wrong number:
     //
     // | version                          | duration | budget | headroom |
     // | -------------------------------- | -------- | ------ | -------- |
@@ -721,15 +529,14 @@ withVale("ValeRunOutcome.blocking against the real binary", () => {
     // ~7x reduction from what e1ed936 shipped, worth restoring rather than
     // accepting.
     //
-    // `VALE_MAX_FILE_BYTES` capped how large a fixture this test could use
-    // once it started sharing `runVale`'s production size guard (taskless/
-    // cli#321): a document at or above that limit is excluded before Vale
-    // ever sees it, reporting `status: "ok"` with a notice instead of
-    // exercising the timeout this test is about. `maxFileBytes` (added for
-    // exactly this) raises the guard's limit for THIS CALL ONLY — it is not a
-    // CLI flag or a config surface, just a seam for a test that needs its
-    // fixture back — so the original 320KB fixture and its ~3200ms headroom
-    // are restored without touching the production default.
+    // That size guard capped how large a fixture this test could use once it
+    // started sharing `runVale`'s production guard (taskless/cli#321): a
+    // document over the limit was excluded before Vale ever saw it, reporting
+    // `status: "ok"` with a notice instead of exercising the timeout this
+    // test is about, so a `maxFileBytes` seam raised the limit per call. The
+    // guard and the seam are both gone (taskless/cli#351): 3.21.0 made the
+    // cost linear, so no document is excluded on size any more and the
+    // fixture reaches the binary as written.
     //
     // VALE 3.21.0 RE-MEASURED THE FIXTURE, AGAIN. Its perf work made this
     // workload ~20x faster, so 17,000 repetitions (323KB) ran in ~67ms on the
@@ -750,7 +557,6 @@ withVale("ValeRunOutcome.blocking against the real binary", () => {
         cwd,
         paths: ["doc.md"],
         timeoutMs: 100,
-        maxFileBytes: Number.POSITIVE_INFINITY,
       })
     ).toMatchObject({ status: "timeout", blocking: true });
   });

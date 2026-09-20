@@ -1,4 +1,4 @@
-# Topic: create-vale-rule     (CLI v%(CLI_VERSION)s / topic v8)
+# Topic: create-vale-rule     (CLI v%(CLI_VERSION)s / topic v9)
 
 ## You are here
 This is `create-vale-rule`. It helps you write a Vale rule: a check over
@@ -598,27 +598,13 @@ it.
    matcher that takes `check` down the first time the repo grows a
    `.typ` file. Never put one of those extensions in a glob.
 
-   **A single oversized file is excluded before Vale ever opens it, not
-   linted slowly.** Vale's cost is quadratic in one file's size, so a
-   large enough document can consume the whole run's time budget on its
-   own and cost every other file its findings: the same failure mode as
-   the unreadable-file case above, from a different cause. `check`
-   preempts it: a target file over 128KB is skipped **only if some
-   matcher's own section would actually reach it**. The scan asks the
-   assembled config's own section patterns, the same ones you write in
-   this file's `.vale.ini`, rather than walking every file in the
-   project. A large lockfile or a generated file no rule's glob names is
-   left alone entirely, not merely reported softly: naming a file no
-   matcher was ever going to check would be a false positive, not a
-   caught coverage hole. A file that IS excluded is named in a `notices`
-   entry rather than a finding: unlike the unreadable-file case above,
-   where Vale's own error proves the file was a real target, this is a
-   preemptive guess from a filesystem walk, and a soft advisory fits an
-   unconfirmed guess better than a hard error does. A rule's own
-   fixtures are never this large in practice, so this should not surface
-   while authoring one. It matters when a matcher's glob is broad, such as
-   `[*.md]` or `[**/README.md]` at the project root, where a generated
-   changelog or an exported note can cross it.
+   **A large file is linted, not skipped.** Vale's cost is linear in a
+   file's size as of 3.21.0 (a 3MB single-block document measures
+   ~230ms), so no file is excluded on size and a broad matcher such as
+   `[*.md]` at the project root reaches a generated changelog or an
+   exported note like any other document. If such a file should not be
+   checked, narrow the section rather than expecting `check` to skip
+   it.
 
    That example changed with Vale v3.18.0, which is the point: the
    dangerous extension is whichever one the list above says needs a

@@ -123,9 +123,12 @@ function sectionPatternsOf(body: string): string[] {
  * section patterns it wrote there.
  *
  * `sections` exists so a caller that needs to know what Vale would actually
- * lint — `findOversizedFiles` in `vale/formats.ts`, scoping its preemptive
- * size guard to files some rule's matcher could reach — can ask this module
- * directly instead of re-parsing the config it just wrote.
+ * lint can ask this module directly instead of re-parsing the config it just
+ * wrote. Its only consumer so far, the oversized-file guard's scoped scan,
+ * went with that guard (taskless/cli#351). The field stays: this module is
+ * the generator, so it is the one place this fact can be stated rather than
+ * re-derived, and the next reader of the sections should not have to parse
+ * the file to get it.
  */
 export interface AssembledValeConfig {
   /** Config path relative to the project root, for `--config`. */

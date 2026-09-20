@@ -1,5 +1,5 @@
-import { glob, stat } from "node:fs/promises";
-import { basename, extname, resolve as resolvePath } from "node:path";
+import { glob } from "node:fs/promises";
+import { basename, extname } from "node:path";
 
 import {
   VALE_CONVERTER_BY_EXTENSION,
@@ -155,9 +155,10 @@ export function converterExclusionGlobs(): string[] {
  * **Every entry here must already be safe to splice into `!{…}` verbatim.**
  * This function does not escape or validate — every caller is responsible for
  * that before the pattern reaches here, because a real glob (`.taskless/**`,
- * `**\/*.adoc`) and a literal discovered path (an oversized file's own name)
- * need opposite treatment: a glob's metacharacters are meant, a literal path's
- * are not. See {@link escapeGlobLiteral} for the literal-path side, and
+ * `**\/*.adoc`) and a literal discovered path (the name of a target file the
+ * per-file retry in `run.ts` excludes) need opposite treatment: a glob's
+ * metacharacters are meant, a literal path's are not. See
+ * {@link escapeGlobLiteral} for the literal-path side, and
  * `gitIgnoredExclusionGlobs` in `git-ignored.ts` for the sibling case that
  * drops a dangerous entry instead of escaping it.
  */
@@ -176,13 +177,14 @@ export function buildValeGlob(patterns: string[]): string | undefined {
  * instead of escaping it. This function makes the opposite call, and the
  * difference is not a style preference: dropping a git-ignored entry only
  * costs the exclusion of a path Vale would otherwise walk past anyway (noisy
- * findings inside a vendored tree, nothing more), while dropping an oversized
- * file from ITS exclusion means the pathologically large file that triggered
- * the guard is the one file left unprotected — undoing the entire point of
- * `findOversizedFiles`. A false-positive skip is the wrong failure mode for
- * the same reason a false-positive notice was in the sibling case: the risk
- * this guard exists to prevent is concentrated in exactly the files this
- * would refuse to escape.
+ * findings inside a vendored tree, nothing more), while dropping a target
+ * file the per-file retry in `run.ts` has to exclude (one whose front matter
+ * Vale cannot parse, taskless/cli#300) means the one file that aborts the
+ * whole invocation is the one file left in it, and the retry would spin on
+ * the same failure. A false-positive skip is the wrong failure mode for the
+ * same reason a false-positive notice was in the sibling case: the risk the
+ * retry exists to contain is concentrated in exactly the files this would
+ * refuse to escape.
  *
  * Verified against the real binary, not assumed: `--glob=!{big\,comma.md}`
  * excludes a file literally named `big,comma.md`, while the unescaped form
@@ -202,14 +204,10 @@ const NOTICE_SAMPLE_LIMIT = 5;
  * Render a bounded, comma-joined list for a notice: every label up to
  * {@link NOTICE_SAMPLE_LIMIT}, then `(and N more)` for the rest.
  *
- * Shared by {@link skippedFilesNotice} and {@link oversizedFilesNotice},
- * which otherwise had the identical four lines twice — same limit, same
- * truncation shape, same reason (a notice naming hundreds of files is not
- * more readable than one naming five and a count). Unlike the two
- * declined-to-merge cases elsewhere in this module, this is genuinely one
- * piece of formatting knowledge, so a caller mapping its own items to labels
- * first (`oversizedFilesNotice` maps `OversizedFile` to `.file`) is the only
- * difference between the two call sites.
+ * A notice naming hundreds of files is not more readable than one naming
+ * five and a count. Kept as its own helper so a second notice (there was one,
+ * for files over a size cap, until Vale 3.21.0 made it unnecessary) shares
+ * the limit and the truncation shape instead of restating them.
  */
 function summarizeList(labels: string[]): string {
   const sample = labels.slice(0, NOTICE_SAMPLE_LIMIT);
@@ -225,11 +223,6 @@ const UNWALKED_DIRECTORIES = new Set([
   ".git",
   TASKLESS_DIRECTORY,
 ]);
-
-/** `glob`'s `exclude` predicate for {@link UNWALKED_DIRECTORIES}. */
-function isUnwalkedEntry(entry: string | Buffer): boolean {
-  return UNWALKED_DIRECTORIES.has(basename(String(entry)));
-}
 
 /**
  * Converter-dependent files inside the run's target set.
@@ -301,224 +294,6 @@ export async function findConverterDependentFiles(
 }
 
 /**
- * One file above `maxBytes`, found while walking the run's targets.
- *
- * Carries the measured size alongside the path so the caller can report an
- * exact number rather than just naming the file — see `oversizedFileResult`
- * in `run.ts`, which is the only reader.
- */
-export interface OversizedFile {
-  file: string;
-  size: number;
-}
-
-/**
- * Files inside the run's target set whose size exceeds `maxBytes` —
- * `VALE_MAX_FILE_BYTES` in `run.ts` (not imported here to avoid a cycle;
- * `run.ts` already imports this module).
- *
- * Same shape as {@link findConverterDependentFiles}, and the same reasoning:
- * Vale is not merely slow on an oversized file, it is quadratic in that one
- * file's size (see the docblock on `VALE_MAX_FILE_BYTES`), so one file over the
- * limit can consume the whole run's timeout budget and take every other file's
- * findings down with it. Preemptively excluding it — rather than letting Vale
- * discover the cost the hard way — is the same trade `converterExclusionGlobs`
- * makes for a format Vale cannot parse at all.
- *
- * `sectionGlobs`, when given, is `AssembledValeConfig.sections` from
- * `assembleValeConfig` — the exact section patterns Vale's own rules are
- * scoped to. The scan globs those patterns instead of every file in the
- * tree, exactly as {@link findConverterDependentFiles} globs by its extension
- * list, and for the same reason precision matters here: a bare `**\/*` walk
- * finds every file under the target roots regardless of whether any rule
- * would ever touch it, and reporting one of those as "not checked" is a false
- * positive, not a caught coverage hole. Measured against this repository:
- * `pnpm-lock.yaml` and `packages/cli/CHANGELOG.md` are both over the limit,
- * and neither is named by any `[section]` in any rule's `.vale.ini` — no
- * rule was ever going to open either one, so the un-scoped walk reported
- * lost coverage that never existed.
- *
- * The patterns are read from `assembleValeConfig`'s own return value, never
- * by re-parsing the `.vale.ini` it wrote — see the doc on
- * `sectionPatternsOf` in `assemble.ts` for why that distinction matters.
- *
- * `sectionGlobs === undefined` falls back to the previous exhaustive `**\/*`
- * walk under each target root. That path exists for a caller with no
- * assembled config to ask — `verifyValeRule`'s isolating config, or a test
- * that hands `runVale` a hand-written `.vale.ini` directly — and is
- * unaffected by everything below: same cost, same behavior as before this
- * parameter existed.
- *
- * A named path is stat'd directly when there is no `sectionGlobs` to consult
- * (the fallback below), exactly as `targetFileParseError` does elsewhere in
- * this package: an explicit request is not resolved through the walk that
- * answers a whole-project run. **That changes once `sectionGlobs` is given.**
- * An explicitly named file is not exempt from scoping either — measured
- * against the real binary, Vale spends 9ms and reports nothing on a 128KB+
- * file whose extension no section names, the same as a file it never opened
- * at all, because no rule is ever assigned to run against it. Checking it
- * unconditionally would reintroduce the exact false positive this parameter
- * exists to remove, just reachable via `check some-file.yaml` instead of a
- * whole-project run. So when sections are known, a named file is a candidate
- * only if it is also a match for one of them — the same membership test the
- * walk below already computes.
- *
- * Whether named or discovered by the walk, an oversized file is excluded
- * unconditionally once it qualifies, on every run — the same asymmetry
- * `findConverterDependentFiles` documents, and for the same reason: handing
- * Vale this file does not check it badly, it risks the entire batch's
- * timeout.
- *
- * Errors are swallowed the same way as {@link findConverterDependentFiles} and
- * for the same reason: a target that vanished between listing and stat, an
- * unreadable subtree, a platform where `glob` rejects the pattern — none of
- * them can be allowed to suppress the exclusion that already ran. The failure
- * mode here is "no notice, never no fix".
- *
- * **Known dialect gap, not introduced here: Node's `glob` does not descend
- * into dot-directories, Vale's own walker does.** Measured against this
- * repository with a rule forced to match `**\/README.md` everywhere: the real
- * binary visits 22 files, including `.taskless/rules/vale/*\/.tests/*\/README.md`
- * and other paths under a leading dot; this module's `glob()` call finds only
- * the 10 that sit outside every dot-directory. For {@link
- * findConverterDependentFiles} that gap is one-directional and safe — it
- * costs the *notice* accuracy, never the exclusion, because that exclusion
- * rides on a static extension pattern handed to Vale's own `--glob`, which
- * traverses dot-directories fine. Here it is not fully safe: the discovered
- * path IS the exclusion, so an oversized file living inside a dot-directory
- * this scan cannot see is not excluded, and Vale may still spend its
- * quadratic cost linting it if some section reaches that directory. This
- * repository has no live exposure — the one dot-directory any section here
- * names, `.taskless/`, is separately and unconditionally excluded before
- * Vale ever runs — but a project with section-matched content under another
- * dot-directory (`.github/`, a dotfile-heavy docs tree) would not be
- * protected by this scan for a file that lives there. Left as a documented
- * gap rather than fixed here: closing it means replacing `glob()` with a
- * custom walker that treats dot-directories differently from
- * `UNWALKED_DIRECTORIES`, which is a larger change than this pass, and
- * `VALE_TIMEOUT_MS` remains the backstop if it is ever hit.
- *
- * **Checked and confirmed SAFE: a bare `[section]` pattern does not share
- * `--glob`'s basename-at-any-depth recursion.** `converterExclusionGlobs`'s
- * docblock establishes that Vale's `--glob` CLI flag matches a slash-free
- * pattern against a file's basename at any depth — raising the question of
- * whether a section header like `[CLAUDE.md]` does the same, which would make
- * node's non-recursive `glob("CLAUDE.md")` miss a nested, section-matched,
- * oversized file entirely. Measured against the real binary (pinned in
- * `vale-vendor-contract.test.ts`, "`[section]` header matching vs. the
- * `--glob` CLI flag"): it does not. `[CLAUDE.md]` scoped a rule to the
- * project-root file only; a `sub/CLAUDE.md` fixture at a different depth was
- * not linted. Section matching and node's `glob()` agree on this shape of
- * pattern, so this concern resolved to "confirmed fine," not "fixed."
- */
-export async function findOversizedFiles(
-  cwd: string,
-  paths: string[],
-  maxBytes: number,
-  wholeProject: boolean,
-  sectionGlobs?: string[]
-): Promise<OversizedFile[]> {
-  const roots = wholeProject ? ["."] : paths;
-  const found = new Map<string, OversizedFile>();
-
-  const checkCandidate = async (relative: string): Promise<void> => {
-    if (found.has(relative)) return;
-    try {
-      const stats = await stat(resolvePath(cwd, relative));
-      if (stats.isFile() && stats.size > maxBytes) {
-        found.set(relative, { file: relative, size: stats.size });
-      }
-    } catch {
-      // Gone between listing and stat, or unreadable. Not a reason to drop
-      // the exclusion already computed.
-    }
-  };
-
-  if (sectionGlobs === undefined) {
-    // No assembled config to ask what Vale would actually lint — fall back to
-    // the previous behavior: every named path is a candidate regardless of
-    // scope, and every root is walked exhaustively.
-    for (const path of paths) await checkCandidate(path);
-    for (const root of roots) {
-      const prefix = root === "." || root === "" ? "" : `${root}/`;
-      try {
-        for await (const match of glob(`${prefix}**/*`, {
-          cwd,
-          exclude: isUnwalkedEntry,
-        })) {
-          await checkCandidate(String(match));
-        }
-      } catch {
-        // A target that is not a directory, an unreadable subtree, a
-        // platform where `glob` rejects the pattern: all of them mean "no
-        // notice, never no fix". The exclusion has already been applied by
-        // the time this runs.
-      }
-    }
-  } else {
-    // Section patterns are root-relative, exactly as Vale reads them — never
-    // prefixed per target root, the way the extension-based fallback above
-    // is. A whole-project run needs no further narrowing: every match is
-    // already in scope. An explicit target (`check src/` or `check
-    // src/doc.md`) narrows the matches down to that subtree afterward
-    // instead, because a section like `CLAUDE.md` or `**/README.md` has no
-    // meaningful "under src/" form to prefix onto — Vale itself evaluates
-    // every section against the whole project and only its own target list
-    // decides what it actually visits, so intersecting after the glob
-    // mirrors that rather than guessing at one. This is also what makes a
-    // named file's in-scope test free: it needs no separate membership
-    // check, because a pattern like `**/README.md` already matches a
-    // top-level `README.md` found this way, whether or not the caller named
-    // it explicitly.
-    //
-    // `wholeProject` is a PARAMETER, not `paths.length === 0` computed here —
-    // that test is wrong for `check .`. `filterExistingPaths` (`commands/
-    // check.ts`) normalizes a bare `.` into `paths = ["."]`, length 1, so a
-    // length test reads it as an explicit target, `roots` becomes `["."]`,
-    // and every match (`README.md`) fails `relative === "." ||
-    // relative.startsWith("./")` — every candidate silently dropped, and the
-    // whole guard goes dark on a near-default invocation. `isWholeProjectWalk`
-    // (`walk-scope.ts`) exists precisely for this and is what callers must
-    // resolve `paths` through before reaching here; `runVale` already
-    // computes it for its own `targets`/`.taskless/**` exclusion and passes
-    // the same value in, rather than this function recomputing a second,
-    // broken answer.
-    for (const pattern of sectionGlobs) {
-      try {
-        for await (const match of glob(pattern, {
-          cwd,
-          exclude: isUnwalkedEntry,
-        })) {
-          const relative = String(match);
-          if (
-            !wholeProject &&
-            !roots.some(
-              (root) => relative === root || relative.startsWith(`${root}/`)
-            )
-          ) {
-            continue;
-          }
-          await checkCandidate(relative);
-        }
-      } catch {
-        // Same reasoning as the fallback walk: a malformed pattern or an
-        // unreadable subtree means "no notice, never no fix".
-      }
-    }
-  }
-
-  // One sorted return for both branches — declined to unify further with
-  // `findConverterDependentFiles`'s `[...found].toSorted()` (taskless/cli#323
-  // review): that one sorts a `Set<string>` with the default string
-  // comparator, this one sorts a `Map`'s values by a field via
-  // `localeCompare`. The resemblance is that both produce a stable,
-  // alphabetical order for a notice — not a shared invariant the two could
-  // drift apart on — so a shared helper would exist only to hide two
-  // different container types behind one name.
-  return [...found.values()].toSorted((a, b) => a.file.localeCompare(b.file));
-}
-
-/**
  * The user-facing sentence for a set of skipped files, or `undefined` when
  * nothing was skipped.
  *
@@ -552,63 +327,5 @@ export function skippedFilesNotice(files: string[]): string | undefined {
     `an external program (${converters.join(", ")}), which this build does ` +
     `not ship and does not check for. Scope the rule to a supported format; ` +
     `every other file was checked normally.`
-  );
-}
-
-/**
- * The user-facing sentence for a set of files excluded for being over
- * `maxBytes` (`VALE_MAX_FILE_BYTES` in `run.ts`), or `undefined` when nothing
- * was excluded.
- *
- * A NOTICE, not a finding — deliberately the opposite of what #300
- * (`vale-parse-error` in `run.ts`) chose for an unparseable file, and for a
- * reason that only shows up once a finding is actually tried here. #300's
- * finding is trustworthy because Vale itself proved the file was a real
- * target: it opened the file, tried to parse it, and told us exactly why it
- * failed. {@link findOversizedFiles} proves nothing of the kind — it is a bare
- * filesystem walk that runs before Vale is ever invoked, with no way to know
- * whether any configured rule's matcher would have reached the file at all.
- *
- * That is not a hypothetical gap. Reporting this exclusion as a hard
- * `severity: "error"` finding, and running a whole-project `check` against
- * *this* repository, reported `pnpm-lock.yaml` (152,820 bytes) and
- * `packages/cli/CHANGELOG.md` (139,171 bytes) as failures — and neither file
- * is named by any `[section]` in any rule's `.vale.ini` under
- * `.taskless/rules/vale/`. Vale was
- * never going to open either one, so a finding there is not a caught coverage
- * hole, it is a false one. Confirming true scope would mean re-implementing
- * Vale's own glob-matching against the assembled config from outside Vale —
- * exactly the second parser the "Verify Build Output In The Build, Not By
- * Parsing It" reasoning in `STYLEGUIDE-CODE.md` warns against: Vale already
- * knows which files its rules reach, nothing in this module does, and
- * approximating that knowledge is worse than not claiming it.
- *
- * A converter-dependent file ({@link skippedFilesNotice}, just above) is in
- * the same epistemic position — that walk is equally blind to rule scope —
- * which is why it already reports a notice rather than a finding. This
- * exclusion follows that precedent rather than #300's.
- *
- * None of this changes whether the file is excluded from the Vale invocation:
- * it still is, unconditionally, in every case (see `oversizedInScope` in
- * `run.ts`). That protects against the real risk — a rule DOES turn out to
- * match the file, and Vale's quadratic cost on it consumes the run's
- * timeout — at zero cost on the files above, which no rule was ever going to
- * reach. Only the *reporting* softens to match what we actually know; the
- * exclusion does not.
- */
-export function oversizedFilesNotice(
-  files: OversizedFile[],
-  maxBytes: number
-): string | undefined {
-  if (files.length === 0) return undefined;
-
-  const listed = summarizeList(files.map((entry) => entry.file));
-
-  return (
-    `Vale did not check ${String(files.length)} file(s) over ${String(maxBytes)} ` +
-    `bytes: ${listed}. Vale's cost grows quadratically with a single file's ` +
-    `size, so a file this large risks consuming the whole run's timeout budget ` +
-    `and costing every other file its findings — it was excluded rather than ` +
-    `risk that. Split large files into smaller documents to have them checked.`
   );
 }
