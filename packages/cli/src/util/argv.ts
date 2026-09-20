@@ -69,23 +69,28 @@ export function splitRawArguments(
 }
 
 /**
- * True when argv asks for help. Scanned through `splitRawArguments` so neither
- * a flag value nor a path after `--` that happens to read like `-h` is mistaken
- * for a help request.
+ * True when any of `names` appears as a flag token. Scanned through
+ * `splitRawArguments` so neither a flag value nor a path after `--` that
+ * happens to read like `-h` or `-v` is mistaken for a request. Matched as
+ * whole tokens, the same way citty's own `runMain` matches `--help` and
+ * `--version`.
  */
-export function hasHelpFlag(rawArguments: string[]): boolean {
+function hasFlag(rawArguments: string[], names: readonly string[]): boolean {
   const { flags } = splitRawArguments(rawArguments);
-  return flags.includes("--help") || flags.includes("-h");
+  return names.some((name) => flags.includes(name));
+}
+
+/** True when argv asks for help. */
+export function hasHelpFlag(rawArguments: string[]): boolean {
+  return hasFlag(rawArguments, ["--help", "-h"]);
 }
 
 /**
- * True when argv asks for the version. Same scan as `hasHelpFlag`, for the
- * same reason: `taskless -d -v check` names a directory, and `taskless check
- * -- -v` names a path. Position is not consulted, so `taskless check
- * --version` answers with the version too — the question is about the tool,
- * not the subcommand, and no subcommand defines `-v` or `--version` itself.
+ * True when argv asks for the version. Position is not consulted, so
+ * `taskless check --version` answers with the version too — the question is
+ * about the tool, not the subcommand, and no subcommand defines `-v` or
+ * `--version` itself.
  */
 export function hasVersionFlag(rawArguments: string[]): boolean {
-  const { flags } = splitRawArguments(rawArguments);
-  return flags.includes("--version") || flags.includes("-v");
+  return hasFlag(rawArguments, ["--version", "-v"]);
 }
