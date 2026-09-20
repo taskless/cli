@@ -121,6 +121,20 @@ const LINTER_SIGNALS: readonly LinterSignal[] = [
     deps: ["@biomejs/biome"],
   },
   {
+    name: "oxlint",
+    languages: ["JavaScript", "TypeScript"],
+    // The four names oxlint discovers on its own (oxc.rs, "Configuration").
+    // `oxlint.config.{js,mjs,cjs}` are accepted only via `-c`, never found by
+    // the walk, so listing them would be dead weight in the sweep.
+    configFiles: [
+      ".oxlintrc.json",
+      ".oxlintrc.jsonc",
+      "oxlint.config.ts",
+      "oxlint.config.mts",
+    ],
+    deps: ["oxlint"],
+  },
+  {
     name: "stylelint",
     languages: ["JavaScript", "TypeScript"],
     configFiles: [

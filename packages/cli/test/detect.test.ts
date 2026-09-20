@@ -127,6 +127,35 @@ describe("taskless detect", () => {
     expect(linterNames(result)).toContain("biome");
   });
 
+  it("detects oxlint from .oxlintrc.json", async () => {
+    await writeFile(join(cwd, ".oxlintrc.json"), "{}", "utf8");
+    const result = await detect(cwd);
+    expect(linterNames(result)).toContain("oxlint");
+    expect(linterNames(result)).not.toContain("eslint");
+  });
+
+  it("detects oxlint from a package.json devDependency", async () => {
+    await writeFile(
+      join(cwd, "package.json"),
+      JSON.stringify({ devDependencies: { oxlint: "^1.0.0" } }),
+      "utf8"
+    );
+    const result = await detect(cwd);
+    expect(linterNames(result)).toContain("oxlint");
+  });
+
+  it("does not report oxlint for an eslint-only repo", async () => {
+    await writeFile(join(cwd, ".eslintrc.json"), "{}", "utf8");
+    await writeFile(
+      join(cwd, "package.json"),
+      JSON.stringify({ devDependencies: { eslint: "^9.0.0" } }),
+      "utf8"
+    );
+    const result = await detect(cwd);
+    expect(linterNames(result)).toContain("eslint");
+    expect(linterNames(result)).not.toContain("oxlint");
+  });
+
   it("detects stylelint from a package.json devDependency", async () => {
     await writeFile(
       join(cwd, "package.json"),
