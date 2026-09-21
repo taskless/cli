@@ -237,7 +237,7 @@ withVale("runVale against the real binary", () => {
     // the notice path has to stay pinned for the diagnostics the schema cannot
     // foresee, and W101 is the one Vale is known to emit on a zero exit.
     const cwd = makeProject(
-      `${header}rules.no-simply = YES\n\n[*.md]\nBasedOnStyles =\n`,
+      `${header}rules.no-simply = YES\n\n[*.md]\n`,
       { "no-simply": existenceRule("simply", "Avoid 'simply'") },
       { "doc.md": "Just simply do it.\n" }
     );
@@ -317,7 +317,9 @@ withVale("runVale against the real binary", () => {
     //
     // 350,000 restores the ~900ms headroom the 8,000 fixture had on 3.20.0.
     // The cost scales linearly (~2.8µs per repetition), so the next bump can
-    // pick a number from one timing rather than a search. It is chosen over
+    // pick a number from one timing rather than a search. Re-measured on
+    // 3.22.0 the same way: 80,000 at ~240ms, 350,000 at ~980ms, 1,000,000
+    // at ~2,970ms, within noise of 3.21.0, so the fixture stands. It is chosen over
     // the sibling's 1,000,000 for the same reason 8,000 was chosen over
     // 17,000: this test asserts the message rather than the blocking flag,
     // which the sibling covers with the larger fixture.
