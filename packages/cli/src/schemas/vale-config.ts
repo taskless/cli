@@ -301,15 +301,34 @@ function valeRuleConfigSchema(ruleId: string) {
       return;
     }
 
-    let enabledAnywhere = false;
-    /** Each matcher's final verdict on the rule, in source order. */
-    const verdicts: ("YES" | "NO" | undefined)[] = [];
+    /**
+     * Each matcher's FINAL verdict on the rule, folded by name and in the
+     * order the names first appear.
+     *
+     * Vale merges every `[glob]` section with the same name into one matcher
+     * and keeps the last assignment, so a `YES` followed by a `NO`, in one
+     * section or across two same-glob sections, is a matcher that says `NO`.
+     * The two checks below read these verdicts rather than any single
+     * assignment, because a config whose only `YES` is overridden that way
+     * leaves the rule present but off, which is the silent disable this
+     * schema exists to refuse. `enabledSomewhere` records whether a `YES` was
+     * ever written, which only decides how that rejection is worded.
+     */
+    const verdicts = new Map<
+      string,
+      { section: ValeConfigSection; verdict: "YES" | "NO" | undefined }
+    >();
+    let enabledSomewhere = false;
 
-    for (const [index, section] of matchers.entries()) {
+    for (const section of matchers) {
       const path = ["sections", sections.indexOf(section)];
       const label = matcherLabel(section);
       const assignments = properties(section);
-      let verdict: "YES" | "NO" | undefined;
+      const folded = verdicts.get(section.name) ?? {
+        section,
+        verdict: undefined,
+      };
+      verdicts.set(section.name, folded);
 
       const breadcrumb = assignments.find(
         (property) => property.key === VALE_BREADCRUMB_KEY
@@ -365,30 +384,32 @@ function valeRuleConfigSchema(ruleId: string) {
           );
           continue;
         }
-        verdict = property.value;
-        if (verdict === "YES") enabledAnywhere = true;
+        folded.verdict = property.value;
+        if (property.value === "YES") enabledSomewhere = true;
       }
-      verdicts[index] = verdict;
     }
 
-    if (!enabledAnywhere) {
+    const final = [...verdicts.values()];
+    const firstYes = final.findIndex((entry) => entry.verdict === "YES");
+    if (firstYes === -1) {
       fail(
         "vale-config-enabled-somewhere",
         ["sections"],
-        `${ruleId}/.vale.ini never enables ${ownKey}, so the rule is present but off.`
+        enabledSomewhere
+          ? `${ruleId}/.vale.ini enables ${ownKey} only where a later assignment to the same matcher turns it off again, so the rule is present but off.`
+          : `${ruleId}/.vale.ini never enables ${ownKey}, so the rule is present but off.`
       );
       return;
     }
 
-    // Ordering: a NO before every YES. With BasedOnStyles empty the rule is
-    // off until a YES, so such a NO is dead where nothing else matches and
-    // overridden where the later YES does. Reported against the first YES,
-    // which is the one that re-enables it.
-    const firstYes = verdicts.indexOf("YES");
-    const enabler = matchers[firstYes];
+    // Ordering: a NO-verdict matcher before every YES-verdict matcher. With
+    // BasedOnStyles empty the rule is off until a YES, so such a NO is dead
+    // where nothing else matches and overridden where the later YES does.
+    // Reported against the first YES, which is the one that re-enables it.
+    const enabler = final[firstYes]?.section;
     if (enabler === undefined) return;
-    for (const [index, section] of matchers.slice(0, firstYes).entries()) {
-      if (verdicts[index] !== "NO") continue;
+    for (const { section, verdict } of final.slice(0, firstYes)) {
+      if (verdict !== "NO") continue;
       fail(
         "vale-config-disable-after-enable",
         ["sections", sections.indexOf(section)],

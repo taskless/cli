@@ -251,6 +251,43 @@ describe("validateValeRuleConfig rejects", () => {
     );
   });
 
+  it("a YES overridden by a later NO in the same matcher, as present but off", () => {
+    // The verdict is the matcher's FINAL assignment (Vale keeps the last), so
+    // the only YES here never reaches Vale. The repeat is still advised.
+    const result = verdict("repeat-key");
+    expect(ids(result)).toEqual(["vale-config-enabled-somewhere"]);
+    expect(result.rejections[0]?.message).toBe(
+      "no-simply/.vale.ini enables no-simply.no-simply only where a later assignment to the same matcher turns it off again, so the rule is present but off."
+    );
+    expect(result.advisories).toHaveLength(1);
+    expect(result.advisories[0]).toMatch(/assigns no-simply\.no-simply again/);
+  });
+
+  it("a YES overridden by a NO in a second section with the same glob", () => {
+    // Vale merges same-glob sections before it reads them, so this is the
+    // same override split across two headers.
+    const result = verdict("repeat-across-sections");
+    expect(ids(result)).toEqual(["vale-config-enabled-somewhere"]);
+    expect(result.rejections[0]?.message).toMatch(
+      /enables no-simply\.no-simply only where a later assignment to the same matcher turns it off again/
+    );
+    expect(result.sections).toEqual(["*.md", "*.md"]);
+  });
+
+  it("judges the ordering by folded verdicts, not by any single assignment", () => {
+    // [docs/legacy/**] reads YES then NO, so its verdict is NO, and it sits
+    // before the only YES-verdict matcher: the same rejection as a plain NO.
+    const result = validateValeRuleConfig(
+      RULE,
+      "[docs/legacy/**]\ntskl) rule = no-simply\nno-simply.no-simply = YES\nno-simply.no-simply = NO\n\n" +
+        "[docs/**]\ntskl) rule = no-simply\nBasedOnStyles =\nno-simply.no-simply = YES\n"
+    );
+    expect(ids(result)).toEqual(["vale-config-disable-after-enable"]);
+    expect(result.rejections[0]?.message).toMatch(
+      /line 1: matcher \[docs\/legacy\/\*\*\] disables no-simply before any matcher enables it, and \[docs\/\*\*\] line 6/
+    );
+  });
+
   it("a NO before every YES, naming both matchers", () => {
     const result = verdict("no-before-yes");
     expect(ids(result)).toEqual(["vale-config-disable-after-enable"]);
@@ -274,25 +311,25 @@ describe("validateValeRuleConfig rejects", () => {
 });
 
 describe("validateValeRuleConfig advises, without rejecting", () => {
-  it("a key assigned twice inside one matcher", () => {
-    const result = verdict("repeat-key");
+  it("a key assigned twice inside one matcher, while a YES survives elsewhere", () => {
+    const result = verdict("repeat-key-still-enabled");
     expect(result.rejections).toEqual([]);
     expect(result.advisories).toEqual([
-      "no-simply/.vale.ini line 5: matcher [*.md] assigns no-simply.no-simply again (first line 4). " +
+      "no-simply/.vale.ini line 9: matcher [*.md] assigns no-simply.no-simply again (first line 8). " +
         `Vale ${VALE_VERSION} keeps the last assignment, "NO"; through 3.20.0 it kept the first.`,
     ]);
   });
 
   it("a key assigned once in each of two sections with the same glob", () => {
     // Vale merges duplicate `[glob]` sections, so this is the same repeat.
-    const result = verdict("repeat-across-sections");
+    const result = verdict("repeat-across-sections-still-enabled");
     expect(result.rejections).toEqual([]);
     expect(result.advisories).toHaveLength(1);
     expect(result.advisories[0]).toMatch(
-      /line 8: matcher \[\*\.md\] assigns no-simply\.no-simply again \(first line 4\)/
+      /line 12: matcher \[\*\.md\] assigns no-simply\.no-simply again \(first line 8\)/
     );
-    // Both headers are still reported as sections: the AST is the file's.
-    expect(result.sections).toEqual(["*.md", "*.md"]);
+    // Every header is still reported as a section: the AST is the file's.
+    expect(result.sections).toEqual(["docs/**", "*.md", "*.md"]);
   });
 
   it("a [*] matcher", () => {
