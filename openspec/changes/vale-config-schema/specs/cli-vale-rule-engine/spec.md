@@ -13,11 +13,11 @@ The schema SHALL reject a config that:
 - sets `BasedOnStyles` to anything but empty
 - declares no matcher
 - never assigns `<id>.<id> = YES`
+- declares a `NO` matcher before every `YES` matcher (with `BasedOnStyles` empty a rule is off until a `YES`, so such a `NO` is either dead or overridden by the `YES` that follows; no config means it)
 
 The schema SHALL report, without rejecting, a config that:
 
 - assigns the same key twice inside one matcher (Vale 3.21.0 keeps the last assignment; 3.20.0 kept the first)
-- declares a `NO` matcher before every `YES` matcher (a disable that precedes the enable it narrows is re-enabled by it)
 - declares a `[*]` matcher
 - declares a matcher under `.taskless/**` (`check` excludes that tree before Vale runs, so the matcher acts only under a bare `vale` invocation)
 
@@ -42,6 +42,11 @@ Assembly SHALL write each accepted config's source verbatim. The parsed structur
 
 - **WHEN** a rule's config declares `[*.md]` with `<id>.<id> = YES` and no `tskl) rule` key
 - **THEN** `verify` SHALL reject the rule, naming the matcher
+
+#### Scenario: A disable that precedes every enable is rejected
+
+- **WHEN** a rule's config declares `[docs/legacy/**]` with `<id>.<id> = NO` and then `[docs/**]` with `<id>.<id> = YES`
+- **THEN** `verify` SHALL reject the rule, naming the `NO` matcher and the `YES` that re-enables it
 
 #### Scenario: A repeated key is reported, not rejected
 
@@ -71,7 +76,7 @@ Precedence is **positional**, and the system SHALL order matchers accordingly ra
 - Where two matchers both match a file, the **last** one wins for that rule.
 - Where the same key is assigned twice inside one matcher — including across duplicate `[<glob>]` sections, which Vale merges — the **last** assignment wins. Through Vale 3.20.0 the first assignment won here; 3.21.0 made the two directions agree.
 
-A disable therefore SHALL be declared **after** the enable it narrows, within the rule's own config. Because precedence is positional and the run config is assembled, **assembly SHALL be deterministic**: rules ordered by id, and each rule's own matcher order preserved verbatim. A non-deterministic assembly would make a rule's effective scope depend on directory iteration order.
+A disable therefore SHALL be declared **after** the enable it narrows, within the rule's own config; the config schema rejects a `NO` matcher that precedes every `YES`. Because precedence is positional and the run config is assembled, **assembly SHALL be deterministic**: rules ordered by id, and each rule's own matcher order preserved verbatim. A non-deterministic assembly would make a rule's effective scope depend on directory iteration order.
 
 A rule SHALL NOT be able to override another rule's matchers. It cannot know its own position in the assembled file, and cross-rule overriding through a shared file is the coupling the per-rule layout removes. The config schema enforces this: an assignment key naming any rule but the config's own is a rejection, at `verify` and at assembly.
 
@@ -106,4 +111,31 @@ A rule SHALL NOT be able to override another rule's matchers. It cannot know its
 
 - **WHEN** `no-simply/.vale.ini` assigns `no-hedging.no-hedging = NO`
 - **THEN** `verify` SHALL reject `no-simply`, naming the foreign key
-- **AND** the assembled run config SHALL NOT be written with that line in it
+- **AND** the Vale run SHALL be refused rather than assembled without that rule's config
+
+### Requirement: Vale diagnostics on a successful run are surfaced as notices
+
+When Vale exits zero and writes to stderr, the CLI SHALL surface that output as a notice on the check result. A notice SHALL NOT affect the exit code.
+
+This is the last line of defence, not the first. The case that motivated it — a rule assignment placed at the top level of the file, which Vale reports as ignoring with `W101` on stderr, a zero exit, and a well-formed empty result — is now rejected by the config schema at `verify` and at assembly, so Vale is never run over it. The requirement remains for every diagnostic the schema cannot foresee: Vale's own warnings about a style file, a format, or a config key that a future Vale adds. Discarding that output would leave the author with a rule that verifies, runs, and reports nothing, which is the silent-disable failure this engine's design exists to prevent.
+
+#### Scenario: An ignored rule assignment reaches the user
+
+- **WHEN** `.vale.ini` enables a rule outside any section and `check` runs
+- **THEN** the config schema SHALL reject that rule before Vale is invoked, naming the line
+- **AND** the rejection SHALL reach the user as the Vale engine's failure rather than as a notice
+
+#### Scenario: A diagnostic on a run that exits zero reaches the user
+
+- **WHEN** Vale exits zero and writes a diagnostic to stderr during `check`
+- **THEN** the CLI SHALL surface that diagnostic as a notice on the result
+
+#### Scenario: A diagnostic does not fail the check
+
+- **WHEN** Vale exits zero, writes a diagnostic to stderr, and reports no findings
+- **THEN** the check SHALL exit zero
+
+#### Scenario: Silence stays silent
+
+- **WHEN** Vale exits zero and writes nothing to stderr
+- **THEN** the CLI SHALL add no notice
