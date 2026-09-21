@@ -42,11 +42,11 @@ The two commands split because they have different preconditions. An agent part-
 
 Per engine, `verify` SHALL check:
 
-| Engine    | Components                                                                                           |
-| --------- | ---------------------------------------------------------------------------------------------------- |
-| `sg`      | `<id>.yml` against the ast-grep schema and the Taskless required fields                              |
-| `vale`    | `<id>.yml` against the Vale rule schema and the Taskless required fields, and the rule's `.vale.ini` |
-| `runtime` | `check.ts` present, and at least one capture rule under `captures/`                                  |
+| Engine    | Components                                                                                                                     |
+| --------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| `sg`      | `<id>.yml` against the ast-grep schema and the Taskless required fields                                                        |
+| `vale`    | `<id>.yml` against the Vale rule schema and the Taskless required fields, and the rule's `.vale.ini` against the config schema |
+| `runtime` | `check.ts` present, and at least one capture rule under `captures/`                                                            |
 
 The `vale` row previously read "against Vale's own validation." Measured against the pinned 3.18.0 binary, that covers less than it claims: `level: bananas` is reported, while `extends: nonsense` and `scope: fenced` both verify clean and produce a rule that matches nothing. Vale validates a rule when it _runs_ one, and it runs one field at a time — so a name it does not recognize is not an error, it is a check that never fires. Schema validation is therefore its own layer for `vale`, as it already is for `sg`.
 
@@ -79,6 +79,29 @@ The `vale` row previously read "against Vale's own validation." Measured against
 - **THEN** `verify` SHALL report it before Vale is invoked
 
 The failure it prevents is not a local one: Vale reports this as `E201: has invalid keys` and reads one assembled config per run, so a single rule with a stray field suppresses every other Vale rule's findings.
+
+#### Scenario: A rule config that never enables the rule is rejected
+
+- **WHEN** a Vale rule's `.vale.ini` declares matchers but no `<id>.<id> = YES`
+- **THEN** `verify` SHALL report that the rule is present but off, naming the file
+
+#### Scenario: A rule config that assigns a foreign key is rejected
+
+- **WHEN** a Vale rule's `.vale.ini` assigns a `<style>.<check>` key naming a different rule
+- **THEN** `verify` SHALL report it, naming the key and the line
+- **AND** it SHALL NOT report the rule as valid
+
+#### Scenario: A rule config advisory does not fail verify
+
+- **WHEN** a Vale rule's `.vale.ini` assigns the same key twice inside one matcher, and another matcher still enables the rule
+- **THEN** `verify` SHALL report the rule as valid
+- **AND** the repeat SHALL be printed as a notice on that rule
+
+#### Scenario: A rule config whose only enable is overridden is rejected
+
+- **WHEN** a Vale rule's `.vale.ini` assigns `<id>.<id> = YES` and then `<id>.<id> = NO` in its only matcher
+- **THEN** `verify` SHALL report that the rule is present but off, under `vale-config-enabled-somewhere`
+- **AND** the repeat SHALL still be printed as a notice on that rule
 
 ### Requirement: Test runs a rule's fixtures and runs verify first
 
@@ -209,7 +232,8 @@ A documented value that never fires is a trap an author walks into with the docs
 
 `verify --json` and `test --json` SHALL report, per rule, the constraints a
 rejection violated, pairing a `constraintId` drawn from the published
-`RULE_CONSTRAINTS` with the message that reports it.
+`RULE_CONSTRAINTS` with the message that reports it. Vale config rejections are
+attributable in the same way, under `vale-config-*` constraint ids.
 
 The existing `errors` array SHALL continue to carry every failure message,
 including those that are attributable. A consumer reading only `errors` SHALL
@@ -239,3 +263,9 @@ error message is not a breaking change.
 
 - **WHEN** `verify --json` accepts a rule
 - **THEN** its violations SHALL be empty
+
+#### Scenario: A Vale config rejection is attributed
+
+- **WHEN** `verify --json` rejects a Vale rule whose config assigns a key naming another rule
+- **THEN** the rule's result SHALL carry a violation with `constraintId` `vale-config-own-key-only`
+- **AND** the violation's message SHALL also appear in `errors`
