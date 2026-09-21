@@ -40,11 +40,35 @@
 name: Upgrade Vale
 
 on:
-  # Deliberately DAILY, where the republish detect is weekly. That one waits on
-  # upstream; this one waits on our own publish job, which fires whenever a
-  # manifest pull request merges. A weekly schedule here would mean a Vale
-  # release sat packaged-but-unshipped for up to a week after we published it,
-  # which is the exact failure this workflow exists to end.
+  # THE MANIFEST COMMIT, not a clock. The only event that makes the pins fall
+  # behind is a republish, and a republish starts exactly when a reviewed
+  # manifest change lands on main — the merge of a release-vale.yml detect pull
+  # request. This is the same trigger release-vale.yml publishes on, so the two
+  # halves start from the same commit rather than this one polling for the
+  # other's result.
+  #
+  # Starting together is also the race. release-vale.yml has to fetch, verify,
+  # pack, and publish six packages before the registry can answer "what is
+  # published" with the new set, and the detect step below asks the registry.
+  # Measured on 3.22.0: the manifest merged at 18:09:13Z, the publish run
+  # started three seconds later, the packages were stamped 18:09:30 — and a run
+  # of this workflow started at 18:09 would have compared the pins against the
+  # OLD latest, found nothing to do, and exited clean. The two wait steps
+  # before detect exist for that: the first holds until the `Release Vale` run
+  # for this same commit has concluded, the second holds until the registry
+  # actually serves a newer set. Neither can fail the run; see below.
+  push:
+    branches: [main]
+    paths:
+      - ".github/scripts/vale-manifest.json"
+
+  # A BACKSTOP, not the trigger. Before the push trigger above existed, this
+  # daily cron was the only thing that noticed a publish, and on 3.22.0 it
+  # noticed thirteen hours after the packages were on npm. Now it covers the
+  # cases the push run cannot: a publish that failed and was re-run by hand
+  # (a re-run is not a new push, so nothing above fires), and registry
+  # propagation slower than the wait below is willing to sit through. A push
+  # run that gives up says so in a warning and leaves the work to this.
   schedule:
     - cron: "52 7 * * *"
 
@@ -59,6 +83,7 @@ jobs:
     name: Upgrade the pinned Vale
     runs-on: ubuntu-latest
     permissions:
+      actions: read # wait on the Release Vale run for this commit
       contents: write # push the vendor/vale/upgrade branch
       pull-requests: write # open the upgrade PR
     steps:
@@ -70,6 +95,86 @@ jobs:
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version-file: .nvmrc
+
+      # THE PUBLISH RACE, first half. On a push this run and the `Release Vale`
+      # run for the same commit started within seconds of each other, and the
+      # registry cannot serve packages that have not been published yet. Hold
+      # until that run has concluded, polling every 30 s for up to 25 minutes
+      # (on 3.22.0 the run had stamped the packages 14 s after it started; the
+      # bound is for a queued runner, not for the work).
+      #
+      # EVERY EXIT HERE IS 0. A run that concludes anything but success, or
+      # that never appears inside the bound, is a warning and a clean exit,
+      # never a failed check: this workflow must not go red over a race it did
+      # not cause, and a red here would say "the upgrade is broken" when the
+      # truth is "the publish is". The daily schedule above retries once the
+      # packages are actually there, which is what a backstop is for.
+      #
+      # Only on `push`. A scheduled or dispatched run has no publish to wait
+      # for — its commit is whatever main is, and the run list for that commit
+      # is empty by construction — so waiting there would only burn the bound.
+      # `--commit` is exact, so a publish run for a DIFFERENT manifest commit
+      # (an earlier release still draining) is never mistaken for this one.
+      - name: Wait for the Release Vale run for this commit
+        if: github.event_name == 'push'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          deadline=$(( SECONDS + 25 * 60 ))
+          while :; do
+            # Two fields, tab-separated, one line per run. Empty until the run
+            # is registered, which can lag the push by a few seconds.
+            runs="$(gh run list \
+              --workflow release-vale.yml \
+              --event push \
+              --commit "$GITHUB_SHA" \
+              --json status,conclusion \
+              --jq '.[] | [.status, .conclusion] | @tsv')"
+
+            if [ -n "$runs" ] && ! grep -qv $'^completed\t' <<< "$runs"; then
+              if grep -qv $'\tsuccess$' <<< "$runs"; then
+                echo "::warning::the Release Vale run for ${GITHUB_SHA} did not succeed (${runs//$'\n'/; }); nothing to upgrade to yet. The daily schedule will retry once a publish lands."
+                exit 0
+              fi
+              echo "Release Vale succeeded for ${GITHUB_SHA}."
+              break
+            fi
+
+            if [ "$SECONDS" -ge "$deadline" ]; then
+              echo "::warning::gave up waiting for the Release Vale run for ${GITHUB_SHA} after 25 minutes (${runs:-no run found}). The daily schedule will retry."
+              exit 0
+            fi
+            echo "Release Vale for ${GITHUB_SHA}: ${runs:-not yet registered}; retrying in 30 s."
+            sleep 30
+          done
+
+      # THE PUBLISH RACE, second half. `npm publish` returning is not the same
+      # as the registry's packument for the name serving the new dist-tag; that
+      # propagates, usually in seconds, occasionally longer. Ask the registry
+      # the exact question the detect step is about to ask, with the same
+      # script and no side effects, and give it a few minutes to say yes. Like
+      # the step above this cannot fail the run: if the registry still says
+      # "current" at the end, the detect step will say the same, do nothing,
+      # and the daily schedule picks it up.
+      #
+      # `--json` alone, no `--write` and no `--notes-out`; the script refuses
+      # that combination for exactly this use, a read that changes nothing.
+      - name: Wait for the registry to serve the new set
+        if: github.event_name == 'push'
+        run: |
+          set -euo pipefail
+
+          for attempt in 1 2 3 4 5; do
+            if node .github/scripts/vale-upgrade-detect.cjs --json | grep -q '"ahead":true'; then
+              echo "The registry serves a newer set than the pins."
+              exit 0
+            fi
+            echo "The registry still serves the pinned version (attempt ${attempt} of 5); retrying in 60 s."
+            sleep 60
+          done
+          echo "::warning::the registry still serves the pinned version five minutes after the publish succeeded. The daily schedule will retry."
 
       # No dependency install: the script is zero-dependency CommonJS, and the
       # lockfile step below needs pnpm rather than node_modules. GITHUB_TOKEN is
