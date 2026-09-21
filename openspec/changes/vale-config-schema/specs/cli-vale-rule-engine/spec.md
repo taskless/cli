@@ -12,8 +12,8 @@ The schema SHALL reject a config that:
 - assigns a value other than `YES` or `NO`
 - sets `BasedOnStyles` to anything but empty
 - declares no matcher
-- never assigns `<id>.<id> = YES`
-- declares a `NO` matcher before every `YES` matcher (with `BasedOnStyles` empty a rule is off until a `YES`, so such a `NO` is either dead or overridden by the `YES` that follows; no config means it)
+- never assigns `<id>.<id> = YES` in its final per-matcher verdicts (matchers with the same glob are folded, as Vale merges them, and the last assignment wins, so a `YES` that a later `NO` in the same matcher overrides does not count)
+- declares a `NO`-verdict matcher before every `YES`-verdict matcher (with `BasedOnStyles` empty a rule is off until a `YES`, so such a `NO` is either dead or overridden by the `YES` that follows; no config means it)
 
 The schema SHALL report, without rejecting, a config that:
 
@@ -50,9 +50,15 @@ Assembly SHALL write each accepted config's source verbatim. The parsed structur
 
 #### Scenario: A repeated key is reported, not rejected
 
-- **WHEN** one matcher assigns `<id>.<id> = YES` and then `<id>.<id> = NO`
+- **WHEN** one matcher assigns `<id>.<id> = YES` and then `<id>.<id> = NO`, and an earlier matcher assigns `<id>.<id> = YES`
 - **THEN** `verify` SHALL accept the rule and report the repeat as a notice
 - **AND** `check` SHALL run the Vale engine and carry the same text in its notices
+
+#### Scenario: A rule whose only enable is overridden is rejected
+
+- **WHEN** the only matcher assigning `<id>.<id> = YES` later assigns `<id>.<id> = NO`, in the same section or in a second section with the same glob
+- **THEN** `verify` SHALL reject the rule as present but off, under `vale-config-enabled-somewhere`
+- **AND** the repeat SHALL still be reported as a notice
 
 #### Scenario: A `.taskless/**` matcher is reported as unnecessary
 

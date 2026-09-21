@@ -203,14 +203,31 @@ describe("verify checks components without requiring tests", () => {
   });
 
   it("accepts a Vale config with a repeated key, and says so on notice", async () => {
+    // The repeat is in a matcher that ends NO, but [docs/**] before it keeps
+    // the rule enabled somewhere, so the config is accepted with a notice.
     await valeRule("no-simply", {
-      config: `${SCOPED}no-simply.no-simply = NO\n`,
+      config:
+        "[docs/**]\ntskl) rule = no-simply\nBasedOnStyles =\nno-simply.no-simply = YES\n\n" +
+        `${SCOPED}no-simply.no-simply = NO\n`,
     });
     const result = await runCli(["verify", "-d", cwd, "--json"]);
     expect(result.exitCode).toBe(0);
     const rule = (JSON.parse(result.stdout) as Report).rules[0];
     expect(rule?.ok).toBe(true);
     expect(rule?.violations).toEqual([]);
+    expect(rule?.notice).toMatch(/assigns no-simply\.no-simply again/);
+  });
+
+  it("rejects a Vale config whose only YES a later NO overrides", async () => {
+    await valeRule("no-simply", {
+      config: `${SCOPED}no-simply.no-simply = NO\n`,
+    });
+    const result = await runCli(["verify", "-d", cwd, "--json"]);
+    expect(result.exitCode).not.toBe(0);
+    const rule = (JSON.parse(result.stdout) as Report).rules[0];
+    expect(rule?.violations.map((violation) => violation.constraintId)).toEqual(
+      ["vale-config-enabled-somewhere"]
+    );
     expect(rule?.notice).toMatch(/assigns no-simply\.no-simply again/);
   });
 

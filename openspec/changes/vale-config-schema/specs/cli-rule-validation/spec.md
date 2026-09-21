@@ -59,9 +59,15 @@ The failure it prevents is not a local one: Vale reports this as `E201: has inva
 
 #### Scenario: A rule config advisory does not fail verify
 
-- **WHEN** a Vale rule's `.vale.ini` assigns the same key twice inside one matcher
+- **WHEN** a Vale rule's `.vale.ini` assigns the same key twice inside one matcher, and another matcher still enables the rule
 - **THEN** `verify` SHALL report the rule as valid
 - **AND** the repeat SHALL be printed as a notice on that rule
+
+#### Scenario: A rule config whose only enable is overridden is rejected
+
+- **WHEN** a Vale rule's `.vale.ini` assigns `<id>.<id> = YES` and then `<id>.<id> = NO` in its only matcher
+- **THEN** `verify` SHALL report that the rule is present but off, under `vale-config-enabled-somewhere`
+- **AND** the repeat SHALL still be printed as a notice on that rule
 
 ### Requirement: A rejection names the constraint it violated
 
