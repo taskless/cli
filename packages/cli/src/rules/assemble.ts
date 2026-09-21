@@ -32,6 +32,16 @@ import { RULE_TESTS_DIRECTORY, RULES_DIRECTORY } from "./layout";
  * A consequence worth naming: a rule cannot override another rule's matchers,
  * because it cannot know its own position in the assembled file. That coupling
  * is exactly what per-rule configs remove.
+ *
+ * **Interleaving is also why a rule's config may not carry `BasedOnStyles`.**
+ * Since Vale 3.22.0 an empty value clears every setting a file inherited from
+ * an earlier matcher, and here "earlier" means every other rule whose glob
+ * reaches the file, so a rule writing `BasedOnStyles =` under `[docs/**]`
+ * silences every alphabetically earlier rule under `docs/`. Only a
+ * byte-identical glob, which Vale merges into one section, escapes. The
+ * schema refuses the key (`vale-config-no-based-on-styles`) and migration
+ * 0008 deletes it from installed configs; `vale-vendor-contract.test.ts`
+ * pins the measurement on the exact layout this module writes.
  */
 
 /** Path within `.taskless/`, in the POSIX form both tools' configs expect. */

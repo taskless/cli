@@ -269,7 +269,7 @@ describe("check over a project with both engines", () => {
         );
         await writeFile(
           join(ruleDirectory, ".vale.ini"),
-          "[*.md]\ntskl) rule = no-simply\nBasedOnStyles =\nno-simply.no-simply = YES\n"
+          "[*.md]\ntskl) rule = no-simply\nno-simply.no-simply = YES\n"
         );
         await writeFile(join(scaffold, "doc.md"), "Just simply do it.\n");
 
@@ -305,7 +305,7 @@ describe("check over a project with both engines", () => {
       // checks `verify` used to run passed this; the schema does not.
       await writeFile(
         join(rule, ".vale.ini"),
-        "no-simply.no-simply = YES\n[*.md]\ntskl) rule = no-simply\nBasedOnStyles =\n"
+        "no-simply.no-simply = YES\n[*.md]\ntskl) rule = no-simply\n"
       );
 
       const verified = await runCli(["verify", "-d", project, "--json"]);
@@ -357,7 +357,7 @@ describe("check over a project with both engines", () => {
       const rule = join(project, ".taskless", "rules", "vale", "no-simply");
       await writeFile(
         join(rule, ".vale.ini"),
-        "[*.md]\ntskl) rule = no-simply\nBasedOnStyles =\nno-simply.no-simply = YES\nno-obviously.no-obviously = NO\n"
+        "[*.md]\ntskl) rule = no-simply\nno-simply.no-simply = YES\nno-obviously.no-obviously = NO\n"
       );
 
       const { stdout, exitCode } = await runCli([
@@ -373,7 +373,7 @@ describe("check over a project with both engines", () => {
       expect(exitCode).toBe(1);
       expect(output.failures).toHaveLength(1);
       expect(output.failures?.[0]).toContain("the config of no-simply was");
-      expect(output.failures?.[0]).toContain("no-simply/.vale.ini line 5:");
+      expect(output.failures?.[0]).toContain("no-simply/.vale.ini line 4:");
       expect(output.failures?.[0]).toContain("no-obviously.no-obviously");
       expect(output.failures?.[0]).not.toContain("config of no-obviously");
 
@@ -388,7 +388,7 @@ describe("check over a project with both engines", () => {
       const rule = join(project, ".taskless", "rules", "vale", "no-simply");
       await writeFile(
         join(rule, ".vale.ini"),
-        "[*.md]\ntskl) rule = no-simply\nBasedOnStyles =\nno-simply.no-simply = YES\n\n[.taskless/**]\ntskl) rule = no-simply\nno-simply.no-simply = NO\n"
+        "[*.md]\ntskl) rule = no-simply\nno-simply.no-simply = YES\n\n[.taskless/**]\ntskl) rule = no-simply\nno-simply.no-simply = NO\n"
       );
 
       const { stdout } = await runCli(["check", "-d", project, "--json"]);
@@ -424,7 +424,7 @@ describe("check over a project with both engines", () => {
         );
         await writeFile(
           join(rule, ".vale.ini"),
-          "[*.md]\ntskl) rule = no-simply\nBasedOnStyles =\nno-simply.no-simply = YES\n"
+          "[*.md]\ntskl) rule = no-simply\nno-simply.no-simply = YES\n"
         );
 
         const blog = join(scaffold, "content", "blog");

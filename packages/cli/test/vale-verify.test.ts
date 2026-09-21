@@ -123,10 +123,14 @@ describe("buildIsolatingConfig", () => {
     expect(config).toContain("StylesPath = /proj/.taskless/rules/vale");
   });
 
-  it("loads no bundled styles", () => {
-    // Without this a fixture could trip Vale.Spelling and be counted as the
-    // rule under test firing.
-    expect(buildIsolatingConfig("/proj", "r")).toContain("BasedOnStyles =");
+  it("names no style, and writes no BasedOnStyles line", () => {
+    // Measured on Vale 3.21.0 and 3.22.0: a bundled style loads only when a
+    // run-level `BasedOnStyles` names one, so a fixture cannot trip
+    // `Vale.Spelling` here. The config used to write `BasedOnStyles =` on the
+    // opposite belief; since 3.22.0 an empty value clears a file's inherited
+    // settings, and the schema refuses it in a rule's own config, so the
+    // isolating config no longer writes the shape it refuses.
+    expect(buildIsolatingConfig("/proj", "r")).not.toContain("BasedOnStyles");
   });
 });
 

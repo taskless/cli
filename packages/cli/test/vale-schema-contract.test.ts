@@ -57,7 +57,7 @@ const RULE_ID = "corpus";
  * **This is the third copy of the isolating-config recipe**, alongside
  * `probe()` in `scripts/generate-vale-schema.ts` and `buildIsolatingConfig` in
  * `src/rules/vale/verify.ts`, whose docstrings cross-reference each other. All
- * three agree on `MinAlertLevel = suggestion`, an empty `BasedOnStyles =`, and
+ * three agree on `MinAlertLevel = suggestion`, no `BasedOnStyles` line, and
  * exactly one assignment of the enabled key in exactly one matcher. This copy
  * differs from `buildIsolatingConfig` the same way `probe()` does: it owns its
  * whole temp directory, so it has no absolute `StylesPath` to hand over, and
@@ -78,9 +78,10 @@ function runOne(rule: string, control: string, extension: string): ValeVerdict {
     writeFileSync(join(cwd, "styles", RULE_ID, `${RULE_ID}.yml`), rule);
     writeFileSync(
       join(cwd, ".vale.ini"),
-      // `BasedOnStyles =` is load-bearing: without it a control could trip a
-      // bundled style and be read as the rule under test firing.
-      `StylesPath = styles\nMinAlertLevel = suggestion\n\n[*]\nBasedOnStyles =\n${RULE_ID}.${RULE_ID} = YES\n`
+      // No `BasedOnStyles` line. Measured on 3.21.0 and 3.22.0: no bundled
+      // style fires without one, so a control cannot be read as the rule
+      // under test firing. `probe()` in the generator has the measurement.
+      `StylesPath = styles\nMinAlertLevel = suggestion\n\n[*]\n${RULE_ID}.${RULE_ID} = YES\n`
     );
     writeFileSync(join(cwd, `doc.${extension}`), control);
 

@@ -203,7 +203,7 @@ describe("Vale config assembly", () => {
   // the schema reads it as an AST, Vale reads the author's own bytes.
   it("writes an accepted config verbatim under its breadcrumb", async () => {
     const source =
-      "# scope\n[docs/**]\ntskl) rule = no-simply\nBasedOnStyles =\n\nno-simply.no-simply = YES   \n";
+      "# scope\n[docs/**]\ntskl) rule = no-simply\n\nno-simply.no-simply = YES   \n";
     await valeRule("no-simply", source);
     const assembled = await assembleValeConfig(cwd);
     expect(assembled?.status).toBe("ok");

@@ -89,7 +89,7 @@ async function sgRule(directoryName: string, declaredId: string) {
   );
 }
 
-const SCOPED = `[*.md]\ntskl) rule = no-simply\nBasedOnStyles =\nno-simply.no-simply = YES\n`;
+const SCOPED = `[*.md]\ntskl) rule = no-simply\nno-simply.no-simply = YES\n`;
 
 describe("verify addresses rules by path", () => {
   it("resolves the engine from the path, not the file", async () => {
@@ -171,7 +171,7 @@ describe("verify checks components without requiring tests", () => {
 
   it("fails a Vale rule whose config never enables it", async () => {
     await valeRule("no-simply", {
-      config: "[*.md]\ntskl) rule = no-simply\nBasedOnStyles =\n",
+      config: "[*.md]\ntskl) rule = no-simply\n",
     });
     const result = await runCli(["verify", "-d", cwd, "--json"]);
     expect(result.exitCode).not.toBe(0);
@@ -196,7 +196,7 @@ describe("verify checks components without requiring tests", () => {
     expect(rule?.violations).toHaveLength(1);
     expect(rule?.violations[0]?.constraintId).toBe("vale-config-own-key-only");
     expect(rule?.violations[0]?.message).toMatch(
-      /line 5: matcher \[\*\.md\] assigns "no-hedging\.no-hedging", which names another rule/
+      /line 4: matcher \[\*\.md\] assigns "no-hedging\.no-hedging", which names another rule/
     );
     // Repeated verbatim in `errors`, so a consumer reading only that sees it.
     expect(rule?.errors).toContain(rule?.violations[0]?.message);
@@ -207,7 +207,7 @@ describe("verify checks components without requiring tests", () => {
     // the rule enabled somewhere, so the config is accepted with a notice.
     await valeRule("no-simply", {
       config:
-        "[docs/**]\ntskl) rule = no-simply\nBasedOnStyles =\nno-simply.no-simply = YES\n\n" +
+        "[docs/**]\ntskl) rule = no-simply\nno-simply.no-simply = YES\n\n" +
         `${SCOPED}no-simply.no-simply = NO\n`,
     });
     const result = await runCli(["verify", "-d", cwd, "--json"]);
@@ -416,7 +416,7 @@ withVale("verify schema-checks a Vale rule", () => {
     for (const [id, style] of Object.entries(recipeRules)) {
       await valeRule(id, {
         style,
-        config: `[*.md]\ntskl) rule = ${id}\nBasedOnStyles =\n${id}.${id} = YES\n`,
+        config: `[*.md]\ntskl) rule = ${id}\n${id}.${id} = YES\n`,
       });
     }
 

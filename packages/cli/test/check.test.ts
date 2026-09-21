@@ -94,7 +94,7 @@ describe("check", () => {
     );
     await writeFile(
       join(temporaryDirectory, ".taskless", "vale", ".vale.ini"),
-      "StylesPath = .\nMinAlertLevel = suggestion\n\n[*.md]\nBasedOnStyles =\nrules.no-simply = YES\n"
+      "StylesPath = .\nMinAlertLevel = suggestion\n\n[*.md]\nrules.no-simply = YES\n"
     );
     await writeFile(join(temporaryDirectory, "doc.md"), "Just simply do it.\n");
 

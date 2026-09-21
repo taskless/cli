@@ -35,7 +35,7 @@ describe("migration 0007 ignores scratch request files", () => {
     return content.split("\n").filter(Boolean);
   }
 
-  it("adds the line to a version-6 scaffold and records 7", async () => {
+  it("adds the line to a version-6 scaffold and records the latest version", async () => {
     await mkdir(taskless, { recursive: true });
     await writeFile(
       join(taskless, "taskless.json"),
@@ -60,7 +60,11 @@ describe("migration 0007 ignores scratch request files", () => {
     const manifest = JSON.parse(
       await readFile(join(taskless, "taskless.json"), "utf8")
     ) as { version: number };
-    expect(manifest.version).toBe(7);
+    // The runner applies every migration above 6, so the manifest lands on
+    // whatever is latest, not on 7. Asserting 7 here failed the day 0008
+    // shipped, which is the literal-pinning trap `LATEST_SCHEMA_VERSION`
+    // exists to close.
+    expect(manifest.version).toBe(LATEST_SCHEMA_VERSION);
     expect(LATEST_SCHEMA_VERSION).toBeGreaterThanOrEqual(7);
   });
 
