@@ -62,7 +62,7 @@ function makeProject(documents: Record<string, string>): string {
   );
   writeFileSync(
     join(cwd, ".taskless", ".vale.ini"),
-    "StylesPath = rules/vale\nMinAlertLevel = suggestion\n\n[*]\nBasedOnStyles =\nno-simply.no-simply = YES\n"
+    "StylesPath = rules/vale\nMinAlertLevel = suggestion\n\n[*]\nno-simply.no-simply = YES\n"
   );
   for (const [path, body] of Object.entries(documents)) {
     const full = join(cwd, path);

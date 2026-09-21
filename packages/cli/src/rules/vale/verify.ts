@@ -34,8 +34,16 @@ function stylesPath(cwd: string): string {
  * - `StylesPath` is absolute. The config is written to a temp directory, and
  *   Vale resolves StylesPath relative to the config file, so a relative path
  *   would look for styles beside the temp file.
- * - `BasedOnStyles =` is empty, so none of Vale's bundled styles load. Without
- *   it a fixture could fail on `Vale.Spelling` and be read as the rule firing.
+ * - No `BasedOnStyles` line. The config wrote `BasedOnStyles =` through Vale
+ *   3.21.0 on the claim that without it a fixture could fail on
+ *   `Vale.Spelling`. Measured on 3.21.0 and 3.22.0, with a document baited
+ *   for `Vale.Spelling`, `Vale.Repetition` and `Vale.Terms`: nothing fires
+ *   without the key, and every one of them fires under `BasedOnStyles = Vale`.
+ *   A bundled style loads only when a run-level `BasedOnStyles` names one.
+ *   The line went because 3.22.0 gave an empty value a meaning, clearing a
+ *   file's inherited settings, and the config schema refuses it in a rule's
+ *   own `.vale.ini` for that reason; the isolating config should not write
+ *   the shape `verify` refuses.
  * - Exactly one assignment of the key, in one matcher. Precedence here is
  *   positional in both directions (a later matcher wins, and since Vale
  *   3.21.0 so does a later repeat inside one matcher; through 3.20.0 the
@@ -54,7 +62,6 @@ export function buildIsolatingConfig(cwd: string, ruleId: string): string {
     "MinAlertLevel = suggestion",
     "",
     "[*]",
-    "BasedOnStyles =",
     `${ruleId}.${ruleId} = YES`,
     "",
   ].join("\n");

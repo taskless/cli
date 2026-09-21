@@ -83,7 +83,7 @@ function makeMixedProject(options?: {
   if (valeRules && valeConfig) {
     writeFileSync(
       join(cwd, ".taskless", "rules", "vale", "no-simply", ".vale.ini"),
-      "[*.md]\ntskl) rule = no-simply\nBasedOnStyles =\nno-simply.no-simply = YES\n"
+      "[*.md]\ntskl) rule = no-simply\nno-simply.no-simply = YES\n"
     );
   }
 
@@ -420,7 +420,7 @@ describe("config advisories ride on every Vale outcome", () => {
   // Vale is mocked because the shape under test is dispatch's merge, not the
   // binary; each case drives one branch of `runValeEngine`.
   const ADVISED_CONFIG =
-    "[*.md]\ntskl) rule = no-simply\nBasedOnStyles =\nno-simply.no-simply = YES\n\n" +
+    "[*.md]\ntskl) rule = no-simply\nno-simply.no-simply = YES\n\n" +
     "[.taskless/**]\ntskl) rule = no-simply\nno-simply.no-simply = NO\n";
 
   async function dispatchWithAdvisory(
@@ -539,7 +539,7 @@ withVale("a repository containing a converter-dependent file", () => {
     // while every matcher is Markdown-only.
     writeFileSync(
       join(cwd, ".taskless", "rules", "vale", "no-simply", ".vale.ini"),
-      "[*]\ntskl) rule = no-simply\nBasedOnStyles =\nno-simply.no-simply = YES\n"
+      "[*]\ntskl) rule = no-simply\nno-simply.no-simply = YES\n"
     );
     writeFileSync(join(cwd, "guide.adoc"), "= Guide\n\nJust simply do it.\n");
     mkdirSync(join(cwd, "docs"), { recursive: true });

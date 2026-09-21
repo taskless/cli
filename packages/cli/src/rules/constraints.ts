@@ -164,7 +164,7 @@ export const RULE_CONSTRAINTS = [
     engine: "vale",
     enforcedBy: "verify",
     summary:
-      "Inside a matcher, the only assignments are the breadcrumb, an empty `BasedOnStyles`, and `<id>.<id>`.",
+      "Inside a matcher, the only assignments are the breadcrumb and `<id>.<id>`.",
     rationale:
       "A `<style>.<check>` key naming any other rule is a cross-rule override, and a rule cannot know its own position in the assembled file, so whether the override wins depends on directory sort order. Any other key is a run-level or Vale-wide setting placed where it would apply to every rule after it. The per-rule layout exists to remove that coupling; this is what enforces it.",
   },
@@ -177,12 +177,12 @@ export const RULE_CONSTRAINTS = [
       "Vale also accepts a level name here (`warning`, `error`) to override the style's own, which would make the rule's severity depend on its config rather than its style file, and it reads anything else as `NO` without saying so. A rule's scope is a yes-or-no question, and its level is answered once, in the style.",
   },
   {
-    id: "vale-config-based-on-styles-empty",
+    id: "vale-config-no-based-on-styles",
     engine: "vale",
     enforcedBy: "verify",
-    summary: "`BasedOnStyles` is empty in every matcher that sets it.",
+    summary: "No matcher sets `BasedOnStyles`, empty or otherwise.",
     rationale:
-      "`BasedOnStyles = Vale` loads a whole bundled style alongside the rule, so a fixture that fails on `Vale.Spelling` reads as the rule firing, and every other rule's matchers inherit the style wherever the globs overlap. The isolating config `test` runs sets it empty for the same reason. A rule enables itself by name, not by style.",
+      "Measured on Vale 3.22.0, an empty `BasedOnStyles` clears every setting a file inherited from an earlier matcher (upstream c2d62437), and the assembled run config interleaves every rule's matchers in id order. A rule writing `BasedOnStyles =` under `[docs/**]` therefore silences every alphabetically earlier rule under `docs/`, and only byte-identical globs, which Vale merges into one section, escape it. Through 3.21.0 the line was inert. A non-empty value was always refused: `BasedOnStyles = Vale` loads a whole bundled style alongside the rule and reaches every rule whose matchers overlap. Neither value was ever needed. Vale loads no bundled style unless a run-level `BasedOnStyles` names one, and the assembled header names none, so a rule enables itself by name and the key has no job in a rule's config.",
   },
   {
     id: "vale-config-matcher-required",
@@ -198,7 +198,7 @@ export const RULE_CONSTRAINTS = [
     enforcedBy: "verify",
     summary: "Some matcher assigns `<id>.<id> = YES`.",
     rationale:
-      "With `BasedOnStyles` empty a rule is off until a matcher turns it on. A config whose every matcher says `NO`, or none says anything, leaves the rule present but off: it verifies, it is assembled, and it reports nothing.",
+      "No style is loaded, so a rule is off until a matcher turns it on. A config whose every matcher says `NO`, or none says anything, leaves the rule present but off: it verifies, it is assembled, and it reports nothing.",
   },
   {
     id: "vale-config-disable-after-enable",

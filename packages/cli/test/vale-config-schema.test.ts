@@ -13,9 +13,10 @@ import {
  * The config schema, over an ini fixture set.
  *
  * One fixture per rejection and per advisory, plus the dogfood shape the
- * schema was written against: three matchers carrying the breadcrumb, an empty
- * `BasedOnStyles`, `<id>.<id> = YES`, and the trailing `.taskless/**` block
- * that `check` never needs. Every message is asserted on its text as well as
+ * schema was written against: three matchers carrying the breadcrumb and
+ * `<id>.<id> = YES`, and the trailing `.taskless/**` block that `check` never
+ * needs. The `BasedOnStyles =` those matchers used to carry is now its own
+ * rejection fixture. Every message is asserted on its text as well as
  * its constraint id, so a fixture refused for some unrelated reason fails here
  * rather than passing quietly.
  *
@@ -98,7 +99,7 @@ describe("parseValeRuleConfig", () => {
       ast.sections[0]?.nodes.map((node) =>
         node.kind === "property" ? node.key : node.text
       )
-    ).toEqual(["tskl) rule", "BasedOnStyles", "no-simply.no-simply"]);
+    ).toEqual(["tskl) rule", "no-simply.no-simply"]);
   });
 
   it("attaches the source line to every header and property", () => {
@@ -109,10 +110,10 @@ describe("parseValeRuleConfig", () => {
     ]);
     expect(lines).toEqual([
       [undefined, [1, 2]],
-      [3, [4, 5, 6]],
-      [8, [9, 10]],
-      [12, [13, 14, 15]],
-      [17, [18, 19]],
+      [3, [4, 5]],
+      [7, [8, 9]],
+      [11, [12, 13]],
+      [15, [16, 17]],
     ]);
   });
 
@@ -127,7 +128,7 @@ describe("validateValeRuleConfig accepts", () => {
     expect(result.rejections).toEqual([]);
     expect(result.advisories).toHaveLength(1);
     expect(result.advisories[0]).toMatch(
-      /line 17: matcher \[\.taskless\/\*\*\]/
+      /line 15: matcher \[\.taskless\/\*\*\]/
     );
     expect(result.sections).toEqual([
       "*.md",
@@ -201,7 +202,7 @@ describe("validateValeRuleConfig rejects", () => {
     const result = verdict("foreign-key");
     expect(ids(result)).toEqual(["vale-config-own-key-only"]);
     expect(result.rejections[0]?.message).toBe(
-      'no-simply/.vale.ini line 5: matcher [*.md] assigns "no-hedging.no-hedging", which names another rule. ' +
+      'no-simply/.vale.ini line 4: matcher [*.md] assigns "no-hedging.no-hedging", which names another rule. ' +
         "A rule's config may only enable or disable itself, as no-simply.no-simply; anything else is a cross-rule override."
     );
   });
@@ -210,8 +211,8 @@ describe("validateValeRuleConfig rejects", () => {
     const result = verdict("stray-key");
     expect(ids(result)).toEqual(["vale-config-own-key-only"]);
     expect(result.rejections[0]?.message).toBe(
-      'no-simply/.vale.ini line 4: matcher [*.md] assigns "MinAlertLevel", which is not a per-rule setting. ' +
-        'Inside a matcher a rule\'s config carries only "tskl) rule", an empty BasedOnStyles, and no-simply.no-simply.'
+      'no-simply/.vale.ini line 3: matcher [*.md] assigns "MinAlertLevel", which is not a per-rule setting. ' +
+        'Inside a matcher a rule\'s config carries only "tskl) rule" and no-simply.no-simply.'
     );
   });
 
@@ -224,16 +225,52 @@ describe("validateValeRuleConfig rejects", () => {
       "vale-config-enabled-somewhere",
     ]);
     expect(result.rejections[0]?.message).toMatch(
-      /^no-simply\/\.vale\.ini line 4: no-simply\.no-simply = "yes" is not YES or NO\. Vale [\d.]+ reads a level name here/
+      /^no-simply\/\.vale\.ini line 3: no-simply\.no-simply = "yes" is not YES or NO\. Vale [\d.]+ reads a level name here/
     );
   });
 
-  it("a non-empty BasedOnStyles", () => {
+  it("an empty BasedOnStyles", () => {
+    // Rejected since Vale 3.22.0, where it was inert before. Measured on
+    // that binary: an empty `BasedOnStyles` in a later matcher clears every
+    // setting the file inherited from an earlier one, and the assembled run
+    // config is every rule's matchers in id order, so the line silences the
+    // other rules under whatever the matcher reaches. Only a byte-identical
+    // glob, which Vale merges into one section, escapes. Pinned in
+    // `vale-vendor-contract.test.ts`; migration 0008 deletes the line.
     const result = verdict("based-on-styles");
-    expect(ids(result)).toEqual(["vale-config-based-on-styles-empty"]);
+    expect(ids(result)).toEqual(["vale-config-no-based-on-styles"]);
+    expect(result.rejections[0]?.message).toBe(
+      "no-simply/.vale.ini line 3: matcher [*.md] sets BasedOnStyles to empty. " +
+        `On Vale ${VALE_VERSION} an empty BasedOnStyles clears every earlier matcher's settings for a file this one reaches, ` +
+        "which silences the other rules whose globs overlap. Delete the line: no bundled style loads unless a run-level BasedOnStyles names one."
+    );
+  });
+
+  it("a [formats] section, as a matcher it cannot be", () => {
+    // Vale 3.22.0 lets a `[formats]` key be a file name or a glob, which
+    // moves a file between parser tiers. The schema has no notion of the
+    // section: it is a matcher named `formats` with no breadcrumb and a
+    // foreign key, so it is refused on both counts and the tier table's
+    // extension-decides-the-parser claim stays true of every assembled run.
+    const result = validateValeRuleConfig(
+      RULE,
+      "[formats]\nNOTES = md\n\n[*.md]\ntskl) rule = no-simply\nno-simply.no-simply = YES\n"
+    );
+    expect(ids(result)).toEqual([
+      "vale-config-breadcrumb-required",
+      "vale-config-own-key-only",
+    ]);
+    expect(result.rejections[1]?.message).toMatch(
+      /line 2: matcher \[formats\] assigns "NOTES", which is not a per-rule setting/
+    );
+  });
+
+  it("a BasedOnStyles naming a style", () => {
+    const result = verdict("based-on-styles-named");
+    expect(ids(result)).toEqual(["vale-config-no-based-on-styles"]);
     expect(result.rejections[0]?.message).toBe(
       'no-simply/.vale.ini line 3: matcher [*.md] sets BasedOnStyles = "Vale". ' +
-        "It must be empty: a bundled style loaded here fires alongside no-simply and reaches every rule whose matchers overlap."
+        "A bundled style loaded here fires alongside no-simply and reaches every rule whose matchers overlap. Delete the line: a rule enables itself by name."
     );
   });
 
@@ -280,7 +317,7 @@ describe("validateValeRuleConfig rejects", () => {
     const result = validateValeRuleConfig(
       RULE,
       "[docs/legacy/**]\ntskl) rule = no-simply\nno-simply.no-simply = YES\nno-simply.no-simply = NO\n\n" +
-        "[docs/**]\ntskl) rule = no-simply\nBasedOnStyles =\nno-simply.no-simply = YES\n"
+        "[docs/**]\ntskl) rule = no-simply\nno-simply.no-simply = YES\n"
     );
     expect(ids(result)).toEqual(["vale-config-disable-after-enable"]);
     expect(result.rejections[0]?.message).toMatch(
@@ -315,7 +352,7 @@ describe("validateValeRuleConfig advises, without rejecting", () => {
     const result = verdict("repeat-key-still-enabled");
     expect(result.rejections).toEqual([]);
     expect(result.advisories).toEqual([
-      "no-simply/.vale.ini line 9: matcher [*.md] assigns no-simply.no-simply again (first line 8). " +
+      "no-simply/.vale.ini line 8: matcher [*.md] assigns no-simply.no-simply again (first line 7). " +
         `Vale ${VALE_VERSION} keeps the last assignment, "NO"; through 3.20.0 it kept the first.`,
     ]);
   });
@@ -326,7 +363,7 @@ describe("validateValeRuleConfig advises, without rejecting", () => {
     expect(result.rejections).toEqual([]);
     expect(result.advisories).toHaveLength(1);
     expect(result.advisories[0]).toMatch(
-      /line 12: matcher \[\*\.md\] assigns no-simply\.no-simply again \(first line 8\)/
+      /line 11: matcher \[\*\.md\] assigns no-simply\.no-simply again \(first line 7\)/
     );
     // Every header is still reported as a section: the AST is the file's.
     expect(result.sections).toEqual(["docs/**", "*.md", "*.md"]);
@@ -345,7 +382,7 @@ describe("validateValeRuleConfig advises, without rejecting", () => {
     const result = verdict("taskless-tree");
     expect(result.rejections).toEqual([]);
     expect(result.advisories).toEqual([
-      "no-simply/.vale.ini line 6: matcher [.taskless/**] is unnecessary: check excludes .taskless/ before Vale runs, " +
+      "no-simply/.vale.ini line 5: matcher [.taskless/**] is unnecessary: check excludes .taskless/ before Vale runs, " +
         "so it acts only under a bare vale invocation.",
     ]);
   });

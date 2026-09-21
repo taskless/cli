@@ -143,7 +143,7 @@ async function verifyValeConfig(
 
 /** The config every Vale scenario below is a mutation of. */
 const VALID_VALE_CONFIG =
-  "[*.md]\ntskl) rule = probe-rule\nBasedOnStyles =\nprobe-rule.probe-rule = YES\n";
+  "[*.md]\ntskl) rule = probe-rule\nprobe-rule.probe-rule = YES\n";
 
 /**
  * The scenario that must violate each documented constraint.
@@ -235,10 +235,7 @@ const VIOLATIONS: Record<string, Scenario> = {
     names: /"StylesPath" is assigned above the first \[matcher\]/,
   },
   "vale-config-breadcrumb-required": {
-    run: () =>
-      verifyValeConfig(
-        "[*.md]\nBasedOnStyles =\nprobe-rule.probe-rule = YES\n"
-      ),
+    run: () => verifyValeConfig("[*.md]\nprobe-rule.probe-rule = YES\n"),
     names: /has no "tskl\) rule = probe-rule" breadcrumb/,
   },
   "vale-config-own-key-only": {
@@ -249,16 +246,16 @@ const VIOLATIONS: Record<string, Scenario> = {
   "vale-config-value-yes-no": {
     run: () =>
       verifyValeConfig(
-        "[*.md]\ntskl) rule = probe-rule\nBasedOnStyles =\nprobe-rule.probe-rule = warning\n"
+        "[*.md]\ntskl) rule = probe-rule\nprobe-rule.probe-rule = warning\n"
       ),
     names: /probe-rule\.probe-rule = "warning" is not YES or NO/,
   },
-  "vale-config-based-on-styles-empty": {
+  "vale-config-no-based-on-styles": {
     run: () =>
       verifyValeConfig(
-        "[*.md]\ntskl) rule = probe-rule\nBasedOnStyles = Vale\nprobe-rule.probe-rule = YES\n"
+        "[*.md]\ntskl) rule = probe-rule\nBasedOnStyles =\nprobe-rule.probe-rule = YES\n"
       ),
-    names: /sets BasedOnStyles = "Vale"/,
+    names: /sets BasedOnStyles to empty/,
   },
   "vale-config-matcher-required": {
     run: () => verifyValeConfig("# nothing here\n"),
@@ -267,7 +264,7 @@ const VIOLATIONS: Record<string, Scenario> = {
   "vale-config-enabled-somewhere": {
     run: () =>
       verifyValeConfig(
-        "[*.md]\ntskl) rule = probe-rule\nBasedOnStyles =\nprobe-rule.probe-rule = NO\n"
+        "[*.md]\ntskl) rule = probe-rule\nprobe-rule.probe-rule = NO\n"
       ),
     names:
       /never enables probe-rule\.probe-rule, so the rule is present but off/,
@@ -276,7 +273,7 @@ const VIOLATIONS: Record<string, Scenario> = {
     run: () =>
       verifyValeConfig(
         "[docs/legacy/**]\ntskl) rule = probe-rule\nprobe-rule.probe-rule = NO\n\n" +
-          "[docs/**]\ntskl) rule = probe-rule\nBasedOnStyles =\nprobe-rule.probe-rule = YES\n"
+          "[docs/**]\ntskl) rule = probe-rule\nprobe-rule.probe-rule = YES\n"
       ),
     names: /disables probe-rule before any matcher enables it/,
   },
