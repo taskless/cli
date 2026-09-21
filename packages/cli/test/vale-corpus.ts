@@ -361,6 +361,24 @@ const SCOPES: ValeCorpusEntry[] = [
   // every one of these, which is worse than the gap the schema closes.
   { name: "scope/negation", scope: "~code", control: MIXED },
   { name: "scope/chain", scope: "text & ~code", control: MIXED },
+  // A negated INLINE element, which Vale 3.22.0 gave a second meaning: the
+  // rule still runs on the paragraph, and the element's text is blanked out
+  // of it. `link`, `strong` and `emphasis` are the operands that changed
+  // (`code` too, but inline code was never in prose text to begin with). The
+  // grammar accepted every one of these before, so nothing here is new to
+  // the schema; the rows exist so the control, which carries prose OUTSIDE
+  // the element, keeps proving the rule reaches the paragraph at all.
+  // `vale-vendor-contract.test.ts` pins what the negation subtracts.
+  {
+    name: "scope/negated-link",
+    scope: "~link",
+    control: "Prose simply here, see [the link](https://example.com).\n",
+  },
+  {
+    name: "scope/negated-strong-and-emphasis",
+    scope: "~strong & ~emphasis",
+    control: "Prose simply here, **bold** and *italic*.\n",
+  },
   // `doc(<selector>)`, new in Vale 3.21.0: elements of the document by CSS
   // selector, where a heading and everything under it is a `section`. Four
   // shapes, because they behave differently and the schema accepts all four:
@@ -433,6 +451,23 @@ const INVALID_SCOPES: ValeCorpusEntry[] = [
   // term as a dotted operand it does not have, and the rule is inert. The
   // schema rejects it for the same reason it rejects `fenced`.
   { name: "scope/doc-unclosed", scope: "doc(h1", control: HEADINGS },
+  // The 3.22.0 release note describes inline negation as "`text.raw`,
+  // `paragraph.link`, and so on". Measured on that binary, neither dotted
+  // spelling is an operand: bare, the rule is inert; negated, it subtracts
+  // nothing. The operands that negate an inline element are the bare
+  // `link`, `strong`, `emphasis` and `code`, above. The schema keeps
+  // rejecting the dotted forms, which is what an author who copied the
+  // release note needs to hear.
+  {
+    name: "scope/text.raw",
+    scope: "text.raw",
+    control: "Prose simply here.\n\n```\nsimply fenced\n```\n",
+  },
+  {
+    name: "scope/paragraph.link",
+    scope: "paragraph.link",
+    control: "See [simply link](https://example.com).\n",
+  },
 ].map(({ name, scope, control }) => ({
   name,
   construct: `scope: ${scope}`,
