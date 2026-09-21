@@ -37,9 +37,10 @@ function stylesPath(cwd: string): string {
  * - `BasedOnStyles =` is empty, so none of Vale's bundled styles load. Without
  *   it a fixture could fail on `Vale.Spelling` and be read as the rule firing.
  * - Exactly one assignment of the key, in one matcher. Precedence here is
- *   positional (a later matcher wins; a repeat inside one matcher is
- *   discarded), so a config that assigned it twice would be relying on the
- *   rule that bit the scoping spec.
+ *   positional in both directions (a later matcher wins, and since Vale
+ *   3.21.0 so does a later repeat inside one matcher; through 3.20.0 the
+ *   first repeat won), so a config that assigned it twice would be relying
+ *   on the rule that bit the scoping spec, and on which Vale is reading it.
  *
  * `scripts/generate-vale-schema.ts` builds a second isolating config for its
  * probes, and `runOne` in `test/vale-schema-contract.test.ts` a third. Neither
