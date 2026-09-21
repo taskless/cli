@@ -289,60 +289,119 @@ describe("check over a project with both engines", () => {
 
     // The pairing that keeps a per-rule config honest. Scope is the author's
     // decision, which means the assignment can land above every matcher in
-    // their own `.vale.ini`. Vale does not error on that: it warns on stderr,
-    // exits zero, and returns a well-formed empty result, which is
-    // indistinguishable from a clean run. Surfacing the warning is the only
-    // thing standing between that mistake and a silently disabled rule.
+    // their own `.vale.ini`. Vale does not error on that: it warns `W101` on
+    // stderr, exits zero, and returns a well-formed empty result, which is
+    // indistinguishable from a clean run.
     //
-    // `verify` rejects this config before Vale ever sees it: the config schema
-    // refuses any assignment above the first matcher, under
-    // `vale-config-no-root-keys`. `check` does not yet consult the schema (that
-    // is the next slice of taskless/cli#359), so its run-time notice remains
-    // the last line of defence and is asserted here alongside the rejection.
-    it("surfaces Vale's W101 when an assignment sits outside every matcher", async () => {
-      const scaffold = await mkdtemp(join(tmpdir(), "taskless-w101-"));
-      try {
-        const init = await runCli(["init", "-d", scaffold]);
-        expect(init.exitCode).toBe(0);
+    // The config schema now turns that file away before Vale ever sees it, at
+    // `verify` (a rejection under `vale-config-no-root-keys`) and at `check`
+    // (the Vale engine's failure, which reaches the exit code). The run-time
+    // W101 notice is still pinned, in `vale-run.test.ts`, for the diagnostics
+    // the schema cannot foresee; this is the case it can.
+    it("refuses the Vale run when an assignment sits outside every matcher", async () => {
+      const rule = join(project, ".taskless", "rules", "vale", "no-simply");
+      // The mistake: enabled, but above the `[…]` line, so it belongs to no
+      // matcher. A matcher exists and the check is named, so the substring
+      // checks `verify` used to run passed this; the schema does not.
+      await writeFile(
+        join(rule, ".vale.ini"),
+        "no-simply.no-simply = YES\n[*.md]\ntskl) rule = no-simply\nBasedOnStyles =\n"
+      );
 
-        const rule = join(scaffold, ".taskless", "rules", "vale", "no-simply");
-        await mkdir(rule, { recursive: true });
-        await writeFile(
-          join(rule, "no-simply.yml"),
-          "extends: existence\nmessage: \"Avoid 'simply'\"\nlevel: warning\ntokens:\n  - simply\n"
-        );
-        // The mistake: enabled, but above the `[…]` line, so it belongs to no
-        // matcher. A matcher exists and the check is named, so the substring
-        // checks `verify` used to run passed this; the schema does not.
-        await writeFile(
-          join(rule, ".vale.ini"),
-          "no-simply.no-simply = YES\n[*.md]\ntskl) rule = no-simply\nBasedOnStyles =\n"
-        );
-        await writeFile(join(scaffold, "doc.md"), "Just simply do it.\n");
+      const verified = await runCli(["verify", "-d", project, "--json"]);
+      expect(verified.exitCode).not.toBe(0);
+      const report = JSON.parse(verified.stdout) as {
+        rules: { ruleId: string; violations: { constraintId: string }[] }[];
+      };
+      const rejected = report.rules.find(
+        (entry) => entry.ruleId === "no-simply"
+      );
+      expect(
+        rejected?.violations.map((violation) => violation.constraintId)
+      ).toContain("vale-config-no-root-keys");
 
-        const verified = await runCli(["verify", "-d", scaffold, "--json"]);
-        expect(verified.exitCode).not.toBe(0);
-        const report = JSON.parse(verified.stdout) as {
-          rules: { violations: { constraintId: string }[] }[];
-        };
-        expect(
-          report.rules[0]?.violations.map((violation) => violation.constraintId)
-        ).toContain("vale-config-no-root-keys");
+      const { stdout, exitCode } = await runCli([
+        "check",
+        "-d",
+        project,
+        "--json",
+      ]);
+      const output = JSON.parse(stdout.trim()) as CheckOutput & {
+        failures?: string[];
+        notices?: string[];
+      };
 
-        const { stdout, stderr, exitCode } = await runCli([
-          "check",
-          "-d",
-          scaffold,
-        ]);
+      // Refused rather than stripped: the failure names the rule and the line,
+      // and the exit code hears it. Vale is never run, so the run-time W101
+      // notice that used to be the last line of defence has nothing to say.
+      expect(exitCode).toBe(1);
+      expect(output.success).toBe(false);
+      expect(output.failures).toHaveLength(1);
+      expect(output.failures?.[0]).toContain("Vale did not run");
+      expect(output.failures?.[0]).toContain("no-simply/.vale.ini line 1:");
+      expect(output.failures?.[0]).toContain("no-simply.no-simply");
+      expect(output.notices).toBeUndefined();
 
-        // Advisory, so the run still succeeds: nothing is broken, something is
-        // misplaced. Failing here would make an ignorable warning block a check.
-        expect(exitCode).toBe(0);
-        expect(`${stdout}${stderr}`).toContain("W101");
-        expect(`${stdout}${stderr}`).toContain("no-simply");
-      } finally {
-        await rm(scaffold, { recursive: true, force: true });
-      }
+      // The other engine is unaffected: ast-grep still reports, and Vale, which
+      // was refused, reports nothing rather than something partial.
+      const sources = new Set(output.results.map((finding) => finding.source));
+      expect(sources).toContain("ast-grep");
+      expect(sources).not.toContain("vale");
+    });
+
+    // The cross-rule prohibition the spec has always stated and nothing
+    // enforced: a rule cannot override another rule's matchers. The offending
+    // config here is `no-simply`'s, so its neighbour `no-obviously`, which is
+    // fine, is not the rule named.
+    it("refuses the Vale run when a rule assigns another rule's key", async () => {
+      const rule = join(project, ".taskless", "rules", "vale", "no-simply");
+      await writeFile(
+        join(rule, ".vale.ini"),
+        "[*.md]\ntskl) rule = no-simply\nBasedOnStyles =\nno-simply.no-simply = YES\nno-obviously.no-obviously = NO\n"
+      );
+
+      const { stdout, exitCode } = await runCli([
+        "check",
+        "-d",
+        project,
+        "--json",
+      ]);
+      const output = JSON.parse(stdout.trim()) as CheckOutput & {
+        failures?: string[];
+      };
+
+      expect(exitCode).toBe(1);
+      expect(output.failures).toHaveLength(1);
+      expect(output.failures?.[0]).toContain("the config of no-simply was");
+      expect(output.failures?.[0]).toContain("no-simply/.vale.ini line 5:");
+      expect(output.failures?.[0]).toContain("no-obviously.no-obviously");
+      expect(output.failures?.[0]).not.toContain("config of no-obviously");
+
+      const sources = new Set(output.results.map((finding) => finding.source));
+      expect(sources).toContain("ast-grep");
+      expect(sources).not.toContain("vale");
+    });
+
+    // An advisory is said, not refused: the run proceeds and the exit code
+    // hears only the findings.
+    it("carries a config advisory as a notice on a run that still happens", async () => {
+      const rule = join(project, ".taskless", "rules", "vale", "no-simply");
+      await writeFile(
+        join(rule, ".vale.ini"),
+        "[*.md]\ntskl) rule = no-simply\nBasedOnStyles =\nno-simply.no-simply = YES\n\n[.taskless/**]\ntskl) rule = no-simply\nno-simply.no-simply = NO\n"
+      );
+
+      const { stdout } = await runCli(["check", "-d", project, "--json"]);
+      const output = JSON.parse(stdout.trim()) as CheckOutput & {
+        failures?: string[];
+        notices?: string[];
+      };
+
+      expect(output.failures).toBeUndefined();
+      expect(output.notices?.join("\n")).toContain("[.taskless/**]");
+      expect(output.notices?.join("\n")).toContain("unnecessary");
+      const sources = new Set(output.results.map((finding) => finding.source));
+      expect(sources).toContain("vale");
     });
   });
 

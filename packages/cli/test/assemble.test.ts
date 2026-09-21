@@ -10,10 +10,24 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { assembleSgConfig, assembleValeConfig } from "../src/rules/assemble";
+import {
+  assembleSgConfig,
+  assembleValeConfig,
+  type ValeAssembly,
+} from "../src/rules/assemble";
 import { ruleDirectory, ruleTestsDirectory } from "../src/rules/engines";
 
 let cwd: string;
+
+/** The written config's path, failing loudly when assembly did not write one. */
+function okPath(assembled: ValeAssembly | undefined): string {
+  if (assembled?.status !== "ok") {
+    throw new Error(
+      `expected an assembled config, got ${JSON.stringify(assembled)}`
+    );
+  }
+  return assembled.path;
+}
 
 beforeEach(async () => {
   cwd = await mkdtemp(join(tmpdir(), "tskl-assemble-"));
@@ -57,9 +71,12 @@ async function sgRuleWithoutTests(id: string): Promise<void> {
 
 describe("Vale config assembly", () => {
   it("writes a header naming the Vale rules tree as StylesPath", async () => {
-    await valeRule("no-simply", "[*.md]\nno-simply.no-simply = YES\n");
+    await valeRule(
+      "no-simply",
+      "[*.md]\ntskl) rule = no-simply\nno-simply.no-simply = YES\n"
+    );
     const assembled = await assembleValeConfig(cwd);
-    const contents = await readFile(join(cwd, assembled?.path ?? ""), "utf8");
+    const contents = await readFile(join(cwd, okPath(assembled)), "utf8");
 
     // StylesPath is what makes `<id>/<id>.yml` resolve as check `<id>.<id>`.
     // Under `.` it resolves to nothing at all, so this line is the difference
@@ -72,24 +89,24 @@ describe("Vale config assembly", () => {
   // directory iteration would give a rule a different effective scope
   // depending on the machine it ran on.
   it("emits rules in sorted id order", async () => {
-    await valeRule("zebra", "[*.md]\nzebra.zebra = YES\n");
-    await valeRule("alpha", "[*.md]\nalpha.alpha = YES\n");
+    await valeRule("zebra", "[*.md]\ntskl) rule = zebra\nzebra.zebra = YES\n");
+    await valeRule("alpha", "[*.md]\ntskl) rule = alpha\nalpha.alpha = YES\n");
 
     const assembled = await assembleValeConfig(cwd);
-    const contents = await readFile(join(cwd, assembled?.path ?? ""), "utf8");
+    const contents = await readFile(join(cwd, okPath(assembled)), "utf8");
     expect(contents.indexOf("alpha.alpha")).toBeLessThan(
       contents.indexOf("zebra.zebra")
     );
   });
 
   it("is byte-identical across runs", async () => {
-    await valeRule("one", "[*.md]\none.one = YES\n");
-    await valeRule("two", "[docs/**]\ntwo.two = YES\n");
+    await valeRule("one", "[*.md]\ntskl) rule = one\none.one = YES\n");
+    await valeRule("two", "[docs/**]\ntskl) rule = two\ntwo.two = YES\n");
 
     const first = await assembleValeConfig(cwd);
-    const a = await readFile(join(cwd, first?.path ?? ""), "utf8");
+    const a = await readFile(join(cwd, okPath(first)), "utf8");
     const second = await assembleValeConfig(cwd);
-    const b = await readFile(join(cwd, second?.path ?? ""), "utf8");
+    const b = await readFile(join(cwd, okPath(second)), "utf8");
     expect(a).toBe(b);
   });
 
@@ -99,34 +116,115 @@ describe("Vale config assembly", () => {
   it("preserves each rule's own matcher order", async () => {
     await valeRule(
       "scoped",
-      "[marketing/**]\nscoped.scoped = YES\n\n[marketing/legacy/**]\nscoped.scoped = NO\n"
+      "[marketing/**]\ntskl) rule = scoped\nscoped.scoped = YES\n\n[marketing/legacy/**]\ntskl) rule = scoped\nscoped.scoped = NO\n"
     );
     const assembled = await assembleValeConfig(cwd);
-    const contents = await readFile(join(cwd, assembled?.path ?? ""), "utf8");
+    const contents = await readFile(join(cwd, okPath(assembled)), "utf8");
     expect(contents.indexOf("[marketing/**]")).toBeLessThan(
       contents.indexOf("[marketing/legacy/**]")
     );
   });
 
   it("tags each block with the rule it came from", async () => {
-    await valeRule("no-simply", "[*.md]\nno-simply.no-simply = YES\n");
+    await valeRule(
+      "no-simply",
+      "[*.md]\ntskl) rule = no-simply\nno-simply.no-simply = YES\n"
+    );
     const assembled = await assembleValeConfig(cwd);
-    const contents = await readFile(join(cwd, assembled?.path ?? ""), "utf8");
+    const contents = await readFile(join(cwd, okPath(assembled)), "utf8");
     // Provenance is otherwise lost the moment two rules' matchers interleave.
     expect(contents).toContain("tskl) rule = no-simply");
   });
 
   // A per-rule StylesPath would either duplicate the header or silently fight
-  // it, and it is a property of the run rather than of a rule.
-  it("drops a StylesPath an author copied into a rule config", async () => {
+  // it, and it is a property of the run rather than of a rule. Assembly used
+  // to strip it; now the schema rejects it, and assembly refuses rather than
+  // edits, because the file Vale reads has to be the file the author wrote.
+  it("refuses a StylesPath an author copied into a rule config", async () => {
     await valeRule(
       "no-simply",
-      "StylesPath = .\nMinAlertLevel = error\n\n[*.md]\nno-simply.no-simply = YES\n"
+      "StylesPath = .\nMinAlertLevel = error\n\n[*.md]\ntskl) rule = no-simply\nno-simply.no-simply = YES\n"
     );
     const assembled = await assembleValeConfig(cwd);
-    const contents = await readFile(join(cwd, assembled?.path ?? ""), "utf8");
-    expect(contents).not.toContain("StylesPath = .");
-    expect(contents).not.toContain("MinAlertLevel = error");
+    expect(assembled?.status).toBe("refused");
+    if (assembled?.status !== "refused") return;
+    expect(assembled.refusals.map((refusal) => refusal.ruleId)).toEqual([
+      "no-simply",
+    ]);
+    expect(
+      assembled.refusals[0]?.rejections.map((r) => r.constraintId)
+    ).toContain("vale-config-no-root-keys");
+    expect(assembled.refusals[0]?.rejections[0]?.message).toContain(
+      "no-simply/.vale.ini line 1:"
+    );
+  });
+
+  // Refused means refused: nothing on disk. A stale config left behind from an
+  // earlier run would let Vale lint against yesterday's rules and report them
+  // as today's.
+  it("leaves the assembled config unwritten when a rule assigns a foreign key", async () => {
+    await valeRule(
+      "no-hedging",
+      "[*.md]\ntskl) rule = no-hedging\nno-hedging.no-hedging = YES\n"
+    );
+    await valeRule(
+      "no-simply",
+      "[*.md]\ntskl) rule = no-simply\nno-simply.no-simply = YES\nno-hedging.no-hedging = NO\n"
+    );
+    const assembled = await assembleValeConfig(cwd);
+    expect(assembled?.status).toBe("refused");
+    if (assembled?.status !== "refused") return;
+    // Only the rule that broke the schema is named; its neighbour is fine.
+    expect(assembled.refusals.map((refusal) => refusal.ruleId)).toEqual([
+      "no-simply",
+    ]);
+    expect(assembled.refusals[0]?.rejections[0]?.constraintId).toBe(
+      "vale-config-own-key-only"
+    );
+    expect(assembled.refusals[0]?.rejections[0]?.message).toContain("line 4");
+    await expect(stat(join(cwd, ".taskless", ".vale.ini"))).rejects.toThrow();
+  });
+
+  // Every refused rule is reported at once. An author with two broken configs
+  // should not fix one, re-run, and only then hear about the other.
+  it("names every refused rule, not just the first", async () => {
+    await valeRule("alpha", "alpha.alpha = YES\n");
+    await valeRule("beta", "[*.md]\ntskl) rule = beta\nbeta.beta = NO\n");
+    const assembled = await assembleValeConfig(cwd);
+    expect(assembled?.status).toBe("refused");
+    if (assembled?.status !== "refused") return;
+    expect(assembled.refusals.map((refusal) => refusal.ruleId)).toEqual([
+      "alpha",
+      "beta",
+    ]);
+  });
+
+  // The config is the generator's structured input and is never re-serialized:
+  // the schema reads it as an AST, Vale reads the author's own bytes.
+  it("writes an accepted config verbatim under its breadcrumb", async () => {
+    const source =
+      "# scope\n[docs/**]\ntskl) rule = no-simply\nBasedOnStyles =\n\nno-simply.no-simply = YES   \n";
+    await valeRule("no-simply", source);
+    const assembled = await assembleValeConfig(cwd);
+    expect(assembled?.status).toBe("ok");
+    if (assembled?.status !== "ok") return;
+    const contents = await readFile(join(cwd, assembled.path), "utf8");
+    expect(contents).toContain(`# tskl) rule = no-simply\n${source}`);
+  });
+
+  // What the schema notes without refusing rides on the result, so `check` can
+  // say it without the exit code hearing it.
+  it("carries the schema's advisories", async () => {
+    await valeRule(
+      "no-simply",
+      "[*.md]\ntskl) rule = no-simply\nno-simply.no-simply = YES\n\n[.taskless/**]\ntskl) rule = no-simply\nno-simply.no-simply = NO\n"
+    );
+    const assembled = await assembleValeConfig(cwd);
+    expect(assembled?.status).toBe("ok");
+    if (assembled?.status !== "ok") return;
+    expect(assembled.advisories).toHaveLength(1);
+    expect(assembled.advisories[0]).toContain("[.taskless/**]");
+    expect(assembled.advisories[0]).toContain("unnecessary");
   });
 
   // Writing an empty config would have Vale lint the project against no rules
@@ -139,14 +237,19 @@ describe("Vale config assembly", () => {
   // Vale evaluate — a re-parse of the written file, which this is not, would
   // be a second, weaker source of the same fact.
   it("returns every section pattern it wrote, deduplicated and sorted", async () => {
-    await valeRule("no-simply", "[*.md]\nno-simply.no-simply = YES\n");
+    await valeRule(
+      "no-simply",
+      "[*.md]\ntskl) rule = no-simply\nno-simply.no-simply = YES\n"
+    );
     await valeRule(
       "no-very",
-      "[*.md]\nno-very.no-very = YES\n\n[**/README.md]\nno-very.no-very = YES\n"
+      "[*.md]\ntskl) rule = no-very\nno-very.no-very = YES\n\n[**/README.md]\ntskl) rule = no-very\nno-very.no-very = YES\n"
     );
 
     const assembled = await assembleValeConfig(cwd);
-    expect(assembled?.sections).toEqual(["**/README.md", "*.md"]);
+    expect(assembled?.status).toBe("ok");
+    if (assembled?.status !== "ok") return;
+    expect(assembled.sections).toEqual(["**/README.md", "*.md"]);
   });
 });
 

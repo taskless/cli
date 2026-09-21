@@ -1,5 +1,6 @@
 import { readdir } from "node:fs/promises";
 import type { CheckResult } from "../types/check";
+import type { RefusedValeConfig, ValeAssembly } from "./assemble";
 import { engineRulesDirectory } from "./engines";
 import { type EngineName } from "./layout";
 import { isMissingDirectory } from "./errno";
@@ -81,16 +82,21 @@ export interface DispatchOptions {
    */
   astGrepConfigPath: string | undefined;
   /**
-   * The assembled Vale `--config` path, or `undefined` when assembly produced
-   * nothing to run.
+   * What Vale assembly produced: the `--config` path with its advisories, a
+   * refusal because a rule's config broke the schema, or `undefined` when
+   * assembly produced nothing to run.
    *
    * Distinct from "the project has a Vale rules directory". A rule directory can
    * exist while every rule in it declares no config, and assembly then writes no
    * file and deletes none — so gating on the directory alone ran Vale against a
    * config left behind by a previous run, or against a path that was never
    * written. The config is the only honest signal that there is Vale work.
+   *
+   * A refusal arrives here rather than being resolved by the caller because it
+   * is the Vale engine's failure: the engine was present, had rules to run,
+   * and could not, which has to reach the exit code the same way a crash does.
    */
-  valeConfigPath: string | undefined;
+  vale: ValeAssembly | undefined;
   /** Runtime rules that survived planning. Empty means the harness is skipped. */
   runtimeRules: RuntimeRule[];
   runtimeTimeoutMs?: number;
@@ -153,7 +159,8 @@ async function runAstGrepEngine(
  * and failing there would make `check` unrunnable on a machine where the other
  * engines work; a timeout or a crash is a failure, because Vale was present and
  * asked to work, and reporting that as a skip lets a broken rule file read as
- * "no Vale findings".
+ * "no Vale findings". A refused assembly sits on the failure side for the same
+ * reason, and is decided before the binary is even looked for.
  *
  * Reading the severity off the outcome rather than asking a helper is the point
  * of that field: an engine reports how bad its own trouble is, and a caller
@@ -165,8 +172,23 @@ async function runValeEngine(options: DispatchOptions): Promise<EngineOutcome> {
   // work, and there is nothing to point Vale at. Checked before the directory
   // gate because it is the stronger claim — a rules directory can be present
   // while assembly yields nothing.
-  if (options.valeConfigPath === undefined) {
+  if (options.vale === undefined) {
     return { engine: "vale", results: [] };
+  }
+  // A refused assembly is a failure, not a notice, and not a quiet omission of
+  // the offending rule. The config schema turned away a file Vale would have
+  // read as something other than what its author wrote, so there is no config
+  // to run. Leaving that rule out and running the rest would have it verify,
+  // run, and report nothing, which is the silent disable this engine exists
+  // to prevent; downgrading it to a notice would let a broken engine exit
+  // zero. The rejection messages already name the rule and the line, so they
+  // are carried as written rather than paraphrased.
+  if (options.vale.status === "refused") {
+    return {
+      engine: "vale",
+      results: [],
+      failure: describeValeRefusal(options.vale),
+    };
   }
   if (!(await hasValeRules(options.cwd))) {
     return { engine: "vale", results: [] };
@@ -175,24 +197,60 @@ async function runValeEngine(options: DispatchOptions): Promise<EngineOutcome> {
   const outcome = await runVale({
     cwd: options.cwd,
     paths: options.paths,
-    configPath: options.valeConfigPath,
+    configPath: options.vale.path,
     timeoutMs: options.valeTimeoutMs,
   });
 
+  // What the schema said about the configs without refusing them travels with
+  // whatever Vale itself has to say, both advisory.
+  const advisories = options.vale.advisories;
+
   if (outcome.status === "ok") {
-    // A zero-exit run that still wrote to stderr carries a diagnostic — most
-    // often a rule assignment Vale ignored for sitting outside a section. It
-    // rides through as a notice and never as a failure: the run succeeded, and
-    // letting it touch the exit code would fail checks over a warning.
+    // A zero-exit run that still wrote to stderr carries a diagnostic the
+    // schema could not foresee: Vale's own warning about a style file, a
+    // format, or a key a future Vale adds. It rides through as a notice and
+    // never as a failure: the run succeeded, and letting it touch the exit
+    // code would fail checks over a warning.
+    const notice = joinNotices([...advisories, outcome.notice]);
     return {
       engine: "vale",
       results: outcome.results,
-      ...(outcome.notice === undefined ? {} : { notice: outcome.notice }),
+      ...(notice === undefined ? {} : { notice }),
     };
   }
-  return outcome.blocking
-    ? { engine: "vale", results: [], failure: outcome.message }
-    : { engine: "vale", results: [], notice: outcome.message };
+  if (outcome.blocking) {
+    return { engine: "vale", results: [], failure: outcome.message };
+  }
+  return {
+    engine: "vale",
+    results: [],
+    notice: joinNotices([...advisories, outcome.message]) ?? outcome.message,
+  };
+}
+
+/**
+ * The Vale engine's failure message for a refused assembly.
+ *
+ * One message, because an outcome carries one `failure`, but every refused
+ * rule and every rejection is in it: an author with two broken configs should
+ * not fix one, re-run, and discover the other.
+ */
+function describeValeRefusal(refused: RefusedValeConfig): string {
+  const rules = refused.refusals.map((refusal) => refusal.ruleId).join(", ");
+  const lines = refused.refusals.flatMap((refusal) =>
+    refusal.rejections.map((rejection) => rejection.message)
+  );
+  return [
+    `Vale did not run: the config of ${rules} was rejected by the config schema. ` +
+      `Run \`taskless verify\` for the constraint behind each line.`,
+    ...lines,
+  ].join("\n");
+}
+
+/** Every present notice on its own line, or `undefined` when there are none. */
+function joinNotices(notices: Array<string | undefined>): string | undefined {
+  const present = notices.filter((notice) => notice !== undefined);
+  return present.length === 0 ? undefined : present.join("\n");
 }
 
 /** The runtime harness, over rules that planning already cleared to run. */
