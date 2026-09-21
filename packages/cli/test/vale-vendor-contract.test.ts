@@ -21,6 +21,7 @@ import {
   valeMarkupList,
   valePlaintextList,
 } from "../src/rules/capabilities";
+import { parseValeRuleConfig } from "../src/schemas/vale-config";
 import { VALE_CHECK_TYPES } from "../src/schemas/vale-rule";
 
 /**
@@ -1396,3 +1397,64 @@ withVale("[section] header matching vs. the --glob CLI flag", () => {
     expect(Object.keys(stdout)).not.toContain("sub/CLAUDE.md");
   });
 });
+
+withVale(
+  "[section] globs read by the config parser match what Vale enables",
+  () => {
+    /**
+     * For each glob shape the corpus uses, the section name `parseValeRuleConfig`
+     * reads out of a config is the matcher Vale applies: the rule fires on the
+     * files the glob names and nowhere else.
+     *
+     * Depended on by: `schemas/vale-config.ts`, whose `sections` is what
+     * assembly will report as the run's matcher patterns, and every `verify`
+     * rejection that names a matcher. If the parser ever read a header
+     * differently from Vale — a character class truncated at its `]`, a numeric
+     * segment resolved to a number — a rejection would name a matcher that is
+     * not in the file, and `sections` would describe a run Vale did not make.
+     */
+    const shapes: {
+      glob: string;
+      fires: string[];
+      quiet: string[];
+    }[] = [
+      // `*` crosses `/`: Vale compiles a matcher without a path separator, so
+      // `[*.md]` is every markdown file at any depth. The block above shows the
+      // other half: a literal name does not recurse.
+      { glob: "*.md", fires: ["doc.md", "docs/deep.md"], quiet: ["doc.txt"] },
+      {
+        glob: "docs/**/*.md",
+        fires: ["docs/deep.md", "docs/a/b.md"],
+        quiet: ["doc.md", "docs/deep.txt"],
+      },
+      {
+        glob: "docs/[a-z]*.md",
+        fires: ["docs/deep.md"],
+        quiet: ["docs/Deep.md", "docs/1.md", "doc.md"],
+      },
+      { glob: "2024/**", fires: ["2024/note.md"], quiet: ["2023/note.md"] },
+    ];
+
+    it.each(shapes)("$glob", ({ glob, fires, quiet }) => {
+      const config = `${header}\n[${glob}]\ntskl) rule = no-simply\nrules.no-simply = YES\n`;
+      // The parser's reading of the header, before Vale's.
+      expect(parseValeRuleConfig(config).sections.at(-1)?.name).toBe(glob);
+
+      const documents = Object.fromEntries(
+        [...fires, ...quiet].map((path) => [path, "Just simply do it.\n"])
+      );
+      const cwd = project(config, { "no-simply": existence("simply") }, {});
+      for (const [path, body] of Object.entries(documents)) {
+        mkdirSync(join(cwd, path, ".."), { recursive: true });
+        writeFileSync(join(cwd, path), body);
+      }
+      // The whole tree, as `check` runs it. Measured the same with the paths
+      // passed explicitly; `.` is used so the block above and this one ask
+      // Vale the same way.
+      const result = runRaw(cwd, ["."], ["--no-exit"]);
+      expect(result.status, result.stderr).toBe(0);
+      const parsed = JSON.parse(result.stdout) as Record<string, unknown[]>;
+      expect(Object.keys(parsed).toSorted()).toEqual(fires.toSorted());
+    });
+  }
+);
