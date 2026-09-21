@@ -35,6 +35,15 @@ import { resolvePlatformBinary } from "../src/rules/platform-binary";
  * disagreed with both. Together they are what makes the published constant a
  * fact rather than a claim.
  *
+ * The bot pin bumps (`vale-upgrade.yml`, `ast-grep-upgrade.yml`) move the
+ * constant with the pins and run this file before they push, so a bot commit
+ * satisfies link 1 by construction. It used not to: a bump that moved only
+ * the pins was red here before anyone had read it (taskless/cli#368), and the
+ * child (#372) had to carry the constant along with its real work. The check
+ * is unchanged by that. It is what holds a HUMAN bump to the same standard,
+ * and what would catch the bot's rewrite if the declaration it anchors on
+ * ever moved.
+ *
  * This is deliberately NOT derived from `optionalDependencies` at build time.
  * The generator team asked for that, reasoning that a hand-maintained constant
  * is a second copy of a fact we already hold. The reasoning is right and the
