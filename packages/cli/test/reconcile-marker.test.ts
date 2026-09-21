@@ -5,6 +5,8 @@ import { join, resolve } from "node:path";
 import { promisify } from "node:util";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
+import { AST_GREP_VERSION, VALE_VERSION } from "../src/rules/capabilities";
+
 const execFileAsync = promisify(execFile);
 const binPath = resolve(import.meta.dirname, "../dist/index.js");
 
@@ -85,8 +87,15 @@ describe("recording a rules reconciliation", () => {
     const rules = await readRules();
     expect(rules?.reconciledTo).toBe(version);
     // Engine versions are the input a later differential needs. Recorded here
-    // and nowhere else, so an upgrade cannot silently refresh them.
-    expect(rules?.engines).toEqual({ sg: "0.45.3", vale: "3.22.0" });
+    // and nowhere else, so an upgrade cannot silently refresh them. Asserted
+    // against the constants rather than as literals: this test is about the
+    // marker CARRYING the engine versions, and engine-version-consistency
+    // already holds the constants to the pins. A literal here was one more
+    // thing a bot pin bump broke by construction (taskless/cli#368).
+    expect(rules?.engines).toEqual({
+      sg: AST_GREP_VERSION,
+      vale: VALE_VERSION,
+    });
   });
 
   it("reports the marker through info", async () => {
