@@ -1,4 +1,4 @@
-# Topic: create-vale-rule     (CLI v%(CLI_VERSION)s / topic v10)
+# Topic: create-vale-rule     (CLI v%(CLI_VERSION)s / topic v11)
 
 ## You are here
 This is `create-vale-rule`. It helps you write a Vale rule: a check over
@@ -230,6 +230,19 @@ it.
    **`scope` also takes `~` and `&`.** `~code` is everything but inline
    code; `text & ~code` chains two operands; a list (`[code, text]`) is a
    union. All three parse and behave.
+
+   **Negating an inline element removes its text from the paragraph, as
+   of Vale 3.22.0.** `~link`, `~strong`, `~emphasis` and `~code` are the
+   four. A rule with `text & ~link` still runs on every paragraph, and
+   the link text inside a paragraph is blanked before the rule sees it,
+   so a casing or wording rule can leave link text and bold terms alone
+   without giving up the sentence around them. Positions after the
+   blanked element do not move. Through 3.21.0 the same scope only kept
+   the rule off the link's own fragment, and the paragraph still carried
+   the link text, so a rule written this way now reports fewer findings.
+   The release note spells these `text.raw` and `paragraph.link`; those
+   dotted forms are not scopes on the binary, bare or negated, and
+   `verify` rejects them. Write the bare inline name.
 
    **A negation over a scope Vale does not know is a silent no-op.**
    Measured: `~banana` and `text & ~banana` both fire on everything,
@@ -503,11 +516,10 @@ it.
    # Which files this rule applies to.
    [*.md]
    tskl) rule = no-simply
-   BasedOnStyles =
    no-simply.no-simply = YES
    ```
 
-   Four lines, and each one earns its place:
+   Three lines, and each one earns its place:
 
    - `[*.md]` is a **matcher**: a glob over paths, deciding which files
      this rule sees. Match it to the files the rule is actually about,
@@ -520,13 +532,24 @@ it.
      matchers into one file. Vale parses the key and ignores it. Write it
      in every matcher you add, or the tooling loses track of who owns
      what.
-   - `BasedOnStyles =` with an empty value says explicitly that no
-     bundled style loads. The default is already empty, so this changes
-     nothing today. Write it anyway: it tells the next reader that no
-     style is missing.
    - `no-simply.no-simply = YES` turns the rule on. The first half is
      the style, which is this rule's directory; the second is the check
      inside it, which is the file. Both are the id.
+
+   **Do not write `BasedOnStyles`, empty or otherwise.** Older versions
+   of this recipe put `BasedOnStyles =` in every matcher, on the belief
+   that it kept Vale's bundled styles from loading. It never did that
+   (no bundled style loads unless a run-level `BasedOnStyles` names one,
+   and the assembled header names none), and as of Vale 3.22.0 an empty
+   value has a meaning: it clears every setting the file inherited from
+   an earlier matcher. Taskless assembles every rule's matchers into one
+   file in id order, so a rule writing the line under `[docs/**]`
+   silences every alphabetically earlier rule under `docs/`, and
+   `[*.md]` beside another rule's `[*.{md,markdown}]` silences the first
+   on every `.md` file. Only two rules with byte-identical globs escape,
+   because Vale merges those into one section. `verify` rejects the key
+   in any matcher, and `%(TASKLESS_CLI)s init` deletes it from configs
+   written by the older recipe.
 
    **Scope a rule *out* with a second matcher, not a cleverer glob.** A
    glob says which files a rule sees; it has no way to say "these but not
@@ -538,7 +561,6 @@ it.
    # Every markdown file…
    [*.md]
    tskl) rule = no-simply
-   BasedOnStyles =
    no-simply.no-simply = YES
 
    # …except the changelog, which quotes release notes verbatim.
@@ -580,7 +602,7 @@ it.
    - an assignment key other than `<id>.<id>` (a key naming another rule
      is a cross-rule override, which a rule cannot do)
    - a value other than `YES` or `NO`
-   - a `BasedOnStyles` that is not empty
+   - a `BasedOnStyles` assignment, with any value, empty included
    - a config with no matcher, or one that never assigns `YES`
    - a `NO` matcher that precedes every `YES` matcher
 
