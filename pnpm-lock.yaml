@@ -74,6 +74,9 @@ importers:
       '@clack/prompts':
         specifier: ^1.2.0
         version: 1.2.0
+      '@jedmao/ini-parser':
+        specifier: 0.2.4
+        version: 0.2.4
       chalk:
         specifier: ^5.6.2
         version: 5.6.2
@@ -673,6 +676,9 @@ packages:
     peerDependenciesMeta:
       '@types/node':
         optional: true
+
+  '@jedmao/ini-parser@0.2.4':
+    resolution: {integrity: sha512-h/hrZFTA23DAXBF2ssK2jGI9W6X0YYVmlzRpsuOAEXdRfBTfh9W47w26FDHmTqJEQGPNxHp0mqD3G+eThZGMag==}
 
   '@jridgewell/sourcemap-codec@1.5.5':
     resolution: {integrity: sha512-cYQ9310grqxueWbl+WuIUIaiUaDcj7WOq5fVhEljNVgRfOUhY9fy2zTvfoqWsnebh8Sl70VScFbICvJnLKB0Og==}
@@ -2996,6 +3002,8 @@ snapshots:
   '@inquirer/type@4.1.1(@types/node@25.3.3)':
     optionalDependencies:
       '@types/node': 25.3.3
+
+  '@jedmao/ini-parser@0.2.4': {}
 
   '@jridgewell/sourcemap-codec@1.5.5': {}
 
