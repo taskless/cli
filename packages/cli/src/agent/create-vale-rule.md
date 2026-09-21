@@ -1,4 +1,4 @@
-# Topic: create-vale-rule     (CLI v%(CLI_VERSION)s / topic v9)
+# Topic: create-vale-rule     (CLI v%(CLI_VERSION)s / topic v10)
 
 ## You are here
 This is `create-vale-rule`. It helps you write a Vale rule: a check over
@@ -547,17 +547,54 @@ it.
    no-simply.no-simply = NO
    ```
 
-   Write the breadcrumb in the second matcher too, or assembly attributes
-   it to nobody. Reversing the two blocks silently re-enables the rule on
-   the file you meant to exempt, and nothing reports that.
+   Write the breadcrumb in the second matcher too, or `verify` rejects
+   the matcher as unattributed. Reversing the two blocks would silently
+   re-enable the rule on the file you meant to exempt, so the schema
+   rejects a `NO` matcher that precedes every `YES`: with no style
+   loaded the rule is off until something turns it on, which makes such
+   a `NO` either dead or overridden. Put the `NO` after the `YES` it
+   narrows.
 
    **Do NOT write `StylesPath` or `MinAlertLevel` here.** Those describe
-   the run rather than a rule, the assembler supplies them, and a copy
-   in a rule's config is dropped on the way in.
+   the run rather than a rule, and the assembler supplies them. A copy in
+   a rule's config is rejected, not dropped: the file you write is the
+   file Vale reads, byte for byte, so nothing is edited on the way in.
 
    Keep assignments underneath a matcher. An assignment above the first
-   `[…]` line belongs to no matcher, and Vale ignores it after warning
-   on stderr.
+   `[…]` line belongs to no matcher; Vale would ignore it after a
+   warning on stderr and leave the rule enabled nowhere, so the schema
+   rejects it instead.
+
+   **The config is schema-checked.** `verify` parses `.vale.ini` into a
+   structure and validates it against a schema keyed by the rule's
+   directory name, naming the line and the `vale-config-*` constraint
+   behind each rejection. `check` runs the same schema before assembling
+   the run config, and a rejected config refuses the Vale engine for
+   that run: the failure names the rule and the line, the exit code is
+   non-zero, and the other engines still run. A rule is never quietly
+   left out. What is **rejected**:
+
+   - anything assigned above the first matcher (`StylesPath`,
+     `MinAlertLevel`, or a rule assignment)
+   - a matcher without a `tskl) rule = <id>` breadcrumb naming this rule
+   - an assignment key other than `<id>.<id>` (a key naming another rule
+     is a cross-rule override, which a rule cannot do)
+   - a value other than `YES` or `NO`
+   - a `BasedOnStyles` that is not empty
+   - a config with no matcher, or one that never assigns `YES`
+   - a `NO` matcher that precedes every `YES` matcher
+
+   What is **advised**, on the rule's notice, without rejecting:
+
+   - the same key assigned twice inside one matcher (Vale keeps the last
+     assignment as of 3.21.0; 3.20.0 kept the first)
+   - a `[*]` matcher, which reaches every file Vale can read
+   - a matcher under `.taskless/**`, which `check` already excludes
+     before Vale runs, so it acts only under a bare `vale` invocation
+
+   Each advisory has a legitimate reading, which is what separates the
+   two lists. Fix a rejection before moving on; read an advisory and
+   decide.
 
    **What a matcher's glob is allowed to catch.** Vale (v%(VALE_VERSION)s)
    treats a file one of four ways, decided by extension. The lists are
