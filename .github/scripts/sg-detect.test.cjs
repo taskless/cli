@@ -26,6 +26,20 @@ const CLI_PACKAGE_JSON = JSON.parse(
   )
 );
 
+/**
+ * A capabilities.ts with the declaration `--write` rewrites, plus the kind of
+ * neighbour it must not touch: the Vale constant, and a docblock naming the
+ * old version.
+ */
+const CAPABILITIES_AT = (version) =>
+  [
+    "/** Measured at 0.45.2; see {@link AST_GREP_VERSION}. */",
+    `export const AST_GREP_VERSION = "${version}";`,
+    "",
+    'export const VALE_VERSION = "3.21.0";',
+    "",
+  ].join("\n");
+
 /** Run main() with the registry stubbed and $GITHUB_OUTPUT captured. */
 async function runDetect({
   upstream,
@@ -34,6 +48,7 @@ async function runDetect({
   argv = [],
   release,
   wantNotes = false,
+  capabilitiesSource = CAPABILITIES_AT("0.45.2"),
 }) {
   const directory = mkdtempSync(join(tmpdir(), "sg-detect-test-"));
   const outputPath = join(directory, "github-output");
@@ -44,6 +59,11 @@ async function runDetect({
   if (packageJsonSource !== undefined) {
     writeFileSync(packageJsonPath, packageJsonSource);
   }
+  // --write also rewrites AST_GREP_VERSION, so the fixture carries a
+  // capabilities.ts of its own for the same reason. The committed one is
+  // never written to here either.
+  const capabilitiesPath = join(directory, "capabilities.ts");
+  writeFileSync(capabilitiesPath, capabilitiesSource);
   const previous = process.env.GITHUB_OUTPUT;
   const releasesFetched = [];
   process.env.GITHUB_OUTPUT = outputPath;
@@ -57,6 +77,7 @@ async function runDetect({
       },
       packageJsonPath,
       packageJson,
+      capabilitiesPath,
     });
     const outputs = Object.fromEntries(
       readFileSync(outputPath, "utf8")
@@ -81,12 +102,14 @@ async function runDetect({
       packageJsonSource === undefined
         ? undefined
         : readFileSync(packageJsonPath, "utf8");
+    const capabilitiesWritten = readFileSync(capabilitiesPath, "utf8");
     return {
       comparison,
       outputs,
       notesWritten,
       releasesFetched,
       packageJsonWritten,
+      capabilitiesWritten,
     };
   } finally {
     if (previous === undefined) {
@@ -289,7 +312,7 @@ const sourcePinnedAt = (version) =>
   )}\n`;
 
 test("sg-detect: --write bumps every pin in the file on disk", async () => {
-  const { packageJsonWritten, outputs } = await runDetect({
+  const { packageJsonWritten, capabilitiesWritten, outputs } = await runDetect({
     upstream: "0.45.3",
     packageJson: pinnedAt("0.45.2"),
     packageJsonSource: sourcePinnedAt("0.45.2"),
@@ -299,11 +322,16 @@ test("sg-detect: --write bumps every pin in the file on disk", async () => {
   assert.equal(outputs.update, "true");
   assert.doesNotMatch(packageJsonWritten, /0\.45\.2/);
   assert.equal(packageJsonWritten.match(/0\.45\.3/g).length, 3);
+  // The constant moves with the pins, and nothing around it does. This is
+  // what keeps the bot commit green under engine-version-consistency.test.ts.
+  assert.equal(capabilitiesWritten, CAPABILITIES_AT("0.45.3"));
+  assert.match(capabilitiesWritten, /Measured at 0\.45\.2/);
+  assert.match(capabilitiesWritten, /VALE_VERSION = "3\.21\.0"/);
 });
 
-test("sg-detect: --write leaves the file alone when the pin is current", async () => {
+test("sg-detect: --write leaves the files alone when the pin is current", async () => {
   const before = sourcePinnedAt("0.45.2");
-  const { packageJsonWritten } = await runDetect({
+  const { packageJsonWritten, capabilitiesWritten } = await runDetect({
     upstream: "0.45.2",
     packageJson: pinnedAt("0.45.2"),
     packageJsonSource: before,
@@ -311,6 +339,25 @@ test("sg-detect: --write leaves the file alone when the pin is current", async (
   });
 
   assert.equal(packageJsonWritten, before);
+  assert.equal(capabilitiesWritten, CAPABILITIES_AT("0.45.2"));
+});
+
+/**
+ * The declaration the workflow depends on has moved or been renamed. Failing
+ * here is the point: pushing the pins without the constant is exactly the
+ * red-by-construction pull request this rewrite exists to end.
+ */
+test("sg-detect: --write fails when AST_GREP_VERSION is not declared once", async () => {
+  await assert.rejects(
+    runDetect({
+      upstream: "0.45.3",
+      packageJson: pinnedAt("0.45.2"),
+      packageJsonSource: sourcePinnedAt("0.45.2"),
+      argv: ["--write"],
+      capabilitiesSource: 'export const VALE_VERSION = "3.21.0";\n',
+    }),
+    /expected exactly one `export const AST_GREP_VERSION = "…";` declaration, found 0/
+  );
 });
 
 /**

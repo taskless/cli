@@ -41,8 +41,10 @@
  *            nothing. This is what update-badges.cjs calls.
  *
  *   --write  rewrite every `@ast-grep/cli*` pin in packages/cli/package.json to
- *            the upstream version. `ast-grep-upgrade.yml` then regenerates the
- *            lockfile and opens a pull request.
+ *            the upstream version, and `AST_GREP_VERSION` in
+ *            packages/cli/src/rules/capabilities.ts with it.
+ *            `ast-grep-upgrade.yml` then regenerates the lockfile and the rule
+ *            schema, checks the result, and opens a pull request.
  *
  *            THIS REVERSES AN EARLIER DECISION, deliberately. This script used
  *            to refuse to write on the grounds that a lockfile-touching bump
@@ -84,7 +86,7 @@
 const { appendFileSync, readFileSync, writeFileSync } = require("node:fs");
 const { join } = require("node:path");
 
-const { bumpPins } = require("./pin-bump.cjs");
+const { bumpPins, bumpVersionConstant } = require("./pin-bump.cjs");
 const {
   fetchReleaseByTag,
   formatReleaseNotes,
@@ -100,6 +102,25 @@ const PACKAGE_JSON_PATH = join(
   "cli",
   "package.json"
 );
+
+/**
+ * Where `AST_GREP_VERSION` is declared by hand. `--write` moves it with the
+ * pins, because `test/engine-version-consistency.test.ts` holds the two
+ * together and a bump that moved only the pins failed Validate before anyone
+ * had looked at it (taskless/cli#368, the Vale instance of the same shape).
+ */
+const CAPABILITIES_PATH = join(
+  __dirname,
+  "..",
+  "..",
+  "packages",
+  "cli",
+  "src",
+  "rules",
+  "capabilities.ts"
+);
+
+const VERSION_CONSTANT = "AST_GREP_VERSION";
 
 /** `@ast-grep/cli` itself and its per-platform siblings. */
 const PIN_PATTERN = /^@ast-grep\/cli(-|$)/;
@@ -242,6 +263,7 @@ async function main({
   releaseFor = fetchReleaseByTag,
   packageJsonPath = PACKAGE_JSON_PATH,
   packageJson = JSON.parse(readFileSync(packageJsonPath, "utf8")),
+  capabilitiesPath = CAPABILITIES_PATH,
 } = {}) {
   const json = argv.includes("--json");
   const write = argv.includes("--write");
@@ -294,6 +316,19 @@ async function main({
     }
     writeFileSync(packageJsonPath, bumped);
     log(`Rewrote ${count} pins in ${packageJsonPath} to ${upstream}.`);
+
+    // Upstream's own packages, so the constant is the pin verbatim. Rewritten
+    // in the same run as the pins so the bot commit is self-consistent: a
+    // missing declaration throws here, before anything is pushed, rather than
+    // failing Validate later.
+    const { source: constants, from } = bumpVersionConstant(
+      readFileSync(capabilitiesPath, "utf8"),
+      { name: VERSION_CONSTANT, to: upstream }
+    );
+    writeFileSync(capabilitiesPath, constants);
+    log(
+      `Rewrote ${VERSION_CONSTANT} in ${capabilitiesPath}: ${from} -> ${upstream}.`
+    );
   }
 
   // Only the ahead path has a bump to describe. A second request, unlike Vale's

@@ -46,6 +46,21 @@ const sourcePinnedAt = (version) =>
     2
   )}\n`;
 
+/**
+ * A capabilities.ts with the declaration `--write` rewrites, plus the kind of
+ * neighbour it must not touch: the ast-grep constant, and a docblock naming
+ * the old version. The constant carries the BASE version; the stamp stays in
+ * package.json.
+ */
+const CAPABILITIES_AT = (version) =>
+  [
+    "/** The tier table is a property of {@link VALE_VERSION}'s binary. */",
+    `export const VALE_VERSION = "${version}";`,
+    "",
+    'export const AST_GREP_VERSION = "0.45.3";',
+    "",
+  ].join("\n");
+
 async function run({
   packageJson,
   packageJsonSource,
@@ -53,6 +68,7 @@ async function run({
   argv = [],
   release,
   wantNotes = false,
+  capabilitiesSource = CAPABILITIES_AT("3.20.0"),
 }) {
   const directory = mkdtempSync(join(tmpdir(), "vale-upgrade-test-"));
   const outputPath = join(directory, "github-output");
@@ -61,6 +77,10 @@ async function run({
   if (packageJsonSource !== undefined) {
     writeFileSync(packageJsonPath, packageJsonSource);
   }
+  // --write also rewrites VALE_VERSION, so the fixture carries a
+  // capabilities.ts of its own. The committed one is never written to here.
+  const capabilitiesPath = join(directory, "capabilities.ts");
+  writeFileSync(capabilitiesPath, capabilitiesSource);
   const previous = process.env.GITHUB_OUTPUT;
   const tagsFetched = [];
   process.env.GITHUB_OUTPUT = outputPath;
@@ -75,6 +95,7 @@ async function run({
       },
       packageJsonPath,
       packageJson,
+      capabilitiesPath,
       manifest: MANIFEST,
     });
     const outputs = Object.fromEntries(
@@ -98,7 +119,15 @@ async function run({
       packageJsonSource === undefined
         ? undefined
         : readFileSync(packageJsonPath, "utf8");
-    return { comparison, outputs, notesWritten, tagsFetched, written };
+    const capabilitiesWritten = readFileSync(capabilitiesPath, "utf8");
+    return {
+      comparison,
+      outputs,
+      notesWritten,
+      tagsFetched,
+      written,
+      capabilitiesWritten,
+    };
   } finally {
     if (previous === undefined) {
       delete process.env.GITHUB_OUTPUT;
@@ -200,6 +229,56 @@ test("--write moves every pin and nothing else", async () => {
   assert.equal(written.match(/3\.21\.0-20260914010203/g).length, 6);
   assert.doesNotMatch(written, /3\.20\.0-20260907164938/);
   assert.match(written, /"zod": "\^4"/);
+});
+
+/**
+ * The constant is what `test/engine-version-consistency.test.ts` holds to the
+ * pins, so it moves in the same write. It takes the BASE version — the one the
+ * binary reports — not the stamped one npm serves, and nothing else in the
+ * file moves with it.
+ */
+test("--write moves VALE_VERSION to the base version, not the stamp", async () => {
+  const { capabilitiesWritten } = await run({
+    packageJson: pinnedAt("3.20.0-20260907164938"),
+    packageJsonSource: sourcePinnedAt("3.20.0-20260907164938"),
+    published: "3.21.0-20260914010203",
+    argv: ["--write"],
+  });
+
+  assert.equal(capabilitiesWritten, CAPABILITIES_AT("3.21.0"));
+  assert.doesNotMatch(capabilitiesWritten, /20260914010203/);
+  assert.match(capabilitiesWritten, /AST_GREP_VERSION = "0\.45\.3"/);
+});
+
+test("--write leaves both files alone when the pins are current", async () => {
+  const before = sourcePinnedAt("3.20.0-20260907164938");
+  const { written, capabilitiesWritten } = await run({
+    packageJson: pinnedAt("3.20.0-20260907164938"),
+    packageJsonSource: before,
+    published: "3.20.0-20260907164938",
+    argv: ["--write"],
+  });
+
+  assert.equal(written, before);
+  assert.equal(capabilitiesWritten, CAPABILITIES_AT("3.20.0"));
+});
+
+/**
+ * The declaration the workflow depends on has moved or been renamed. Failing
+ * here is the point: pushing the pins without the constant is exactly the
+ * red-by-construction pull request (taskless/cli#368) this rewrite ends.
+ */
+test("--write fails when VALE_VERSION is not declared exactly once", async () => {
+  await assert.rejects(
+    run({
+      packageJson: pinnedAt("3.20.0-20260907164938"),
+      packageJsonSource: sourcePinnedAt("3.20.0-20260907164938"),
+      published: "3.21.0-20260914010203",
+      argv: ["--write"],
+      capabilitiesSource: 'export const AST_GREP_VERSION = "0.45.3";\n',
+    }),
+    /expected exactly one `export const VALE_VERSION = "…";` declaration, found 0/
+  );
 });
 
 test("the changelog is upstream's, fetched by the BASE version's tag", async () => {

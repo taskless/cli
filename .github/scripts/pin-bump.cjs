@@ -76,4 +76,59 @@ function bumpPins(source, { pattern, from, to }) {
   return { source: bumped, count };
 }
 
-module.exports = { bumpPins, escapeLiteral };
+/**
+ * Move one `export const NAME = "…";` declaration to a new version, in the
+ * TypeScript source text of `packages/cli/src/rules/capabilities.ts`.
+ *
+ * WHY THIS IS PART OF THE BUMP. `capabilities.ts` publishes `AST_GREP_VERSION`
+ * and `VALE_VERSION` by hand, and `test/engine-version-consistency.test.ts`
+ * asserts they agree with the pins. That test is deliberate and the constant
+ * is deliberately NOT derived from package.json (its docblock says why), so a
+ * bot commit that moves the pins and not the constant fails Validate BY
+ * CONSTRUCTION. That is what happened on taskless/cli#368: the base of a stack
+ * was red before anyone had looked at it, and the child (#372) had to carry
+ * the constant along with the real work. The bot moves both now, so the
+ * consistency test is what it was meant to be — a check on humans, not a
+ * scheduled failure.
+ *
+ * WHY TEXT AGAIN. The same reason as `bumpPins`: the file is prettier-formatted
+ * and the diff a reviewer reads should be one string. The match is anchored on
+ * the whole declaration line, so a mention of the name in a docblock or a
+ * `{@link VALE_VERSION}` is not a candidate.
+ *
+ * WHY EXACTLY ONE. Zero means the declaration moved or was renamed and the
+ * workflow would otherwise push a commit the consistency test rejects — the
+ * failure this exists to remove. Two means the anchor is no longer specific,
+ * and rewriting both would be a guess. Either is a failed run.
+ *
+ * @param source  the capabilities.ts text
+ * @param name    the exported constant, e.g. `VALE_VERSION`
+ * @param to      the version to write. For Vale this is the BASE version the
+ *                binary reports (`3.22.0`), not the stamped npm version.
+ * @returns the rewritten source and the version the declaration held before
+ */
+function bumpVersionConstant(source, { name, to }) {
+  if (!/^[A-Z][A-Z0-9_]*$/.test(String(name))) {
+    throw new Error(
+      `the constant name must be an UPPER_SNAKE identifier, got ${JSON.stringify(name)}`
+    );
+  }
+  const matcher = new RegExp(
+    `^(export const ${name} = ")([^"\\n]*)(";)$`,
+    "gm"
+  );
+  const matches = [...source.matchAll(matcher)];
+  if (matches.length !== 1) {
+    throw new Error(
+      `expected exactly one \`export const ${name} = "…";\` declaration, found ${matches.length}`
+    );
+  }
+  const [match] = matches;
+  const [whole, head, from, tail] = match;
+  const at = match.index;
+  const bumped =
+    source.slice(0, at) + head + to + tail + source.slice(at + whole.length);
+  return { source: bumped, from };
+}
+
+module.exports = { bumpPins, bumpVersionConstant, escapeLiteral };
