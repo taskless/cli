@@ -142,6 +142,8 @@ A disable therefore SHALL be declared **after** the enable it narrows, within th
 
 A rule SHALL NOT be able to override another rule's matchers. It cannot know its own position in the assembled file, and cross-rule overriding through a shared file is the coupling the per-rule layout removes. The config schema enforces this: an assignment key naming any rule but the config's own is a rejection, at `verify` and at assembly.
 
+A rule's config SHALL NOT carry `BasedOnStyles`, with any value. Measured against Vale 3.22.0, an empty `BasedOnStyles` in a matcher clears every setting the file inherited from an earlier matcher, and in the assembled config "earlier" means every other rule whose glob reaches the file, so the line is a cross-rule override in the other direction: a rule writing it under `[docs/**]` silences every alphabetically earlier rule under `docs/`, and only two rules with byte-identical globs, which Vale merges into one section, escape. Through 3.21.0 the line was inert. A non-empty value loads a bundled style alongside every rule whose matchers overlap. Neither value has a job in a rule's config: Vale loads no bundled style unless a run-level `BasedOnStyles` names one, and the assembled header names none. The config schema rejects the key, and migration 8 deletes it from installed configs.
+
 #### Scenario: A rule scopes itself
 
 - **WHEN** a rule's own config enables it under `[marketing/**]`
@@ -168,6 +170,17 @@ A rule SHALL NOT be able to override another rule's matchers. It cannot know its
 
 - **WHEN** two rules each declare a `[*.md]` matcher
 - **THEN** both rules run on a matching `.md` file (Vale merges the matchers)
+
+#### Scenario: Overlapping matchers do not interfere
+
+- **WHEN** one rule declares `[*.md]` and another declares `[docs/**]`, and neither config carries `BasedOnStyles`
+- **THEN** both rules run on a matching file under `docs/`
+
+#### Scenario: A BasedOnStyles line is refused rather than assembled
+
+- **WHEN** a rule's config carries `BasedOnStyles =` in any matcher
+- **THEN** `verify` SHALL reject the rule under `vale-config-no-based-on-styles`, naming the line
+- **AND** the Vale run SHALL be refused rather than assembled with the line, which on the pinned Vale would silence every earlier rule under that matcher's files
 
 #### Scenario: A rule cannot assign another rule's key
 
@@ -211,10 +224,10 @@ The schema SHALL reject a config that:
 - declares a matcher without a `tskl) rule = <id>` breadcrumb naming this rule
 - assigns a key other than `<id>.<id>` (a `<style>.<check>` key naming any other rule is a cross-rule override)
 - assigns a value other than `YES` or `NO`
-- sets `BasedOnStyles` to anything but empty
+- assigns `BasedOnStyles`, with any value, empty included (on Vale 3.22.0 an empty value clears every earlier matcher's settings for the file, which in the assembled config silences every other rule whose glob reaches it; a named style loads alongside every overlapping rule; and no rule config ever needed either, since no bundled style loads unless a run-level `BasedOnStyles` names one)
 - declares no matcher
 - never assigns `<id>.<id> = YES` in its final per-matcher verdicts (matchers with the same glob are folded, as Vale merges them, and the last assignment wins, so a `YES` that a later `NO` in the same matcher overrides does not count)
-- declares a `NO`-verdict matcher before every `YES`-verdict matcher (with `BasedOnStyles` empty a rule is off until a `YES`, so such a `NO` is either dead or overridden by the `YES` that follows; no config means it)
+- declares a `NO`-verdict matcher before every `YES`-verdict matcher (no style is loaded, so a rule is off until a `YES`, and such a `NO` is either dead or overridden by the `YES` that follows; no config means it)
 
 The schema SHALL report, without rejecting, a config that:
 
@@ -248,6 +261,17 @@ Assembly SHALL write each accepted config's source verbatim. The parsed structur
 
 - **WHEN** a rule's config declares `[docs/legacy/**]` with `<id>.<id> = NO` and then `[docs/**]` with `<id>.<id> = YES`
 - **THEN** `verify` SHALL reject the rule, naming the `NO` matcher and the `YES` that re-enables it
+
+#### Scenario: A BasedOnStyles assignment is rejected
+
+- **WHEN** a rule's config sets `BasedOnStyles =` inside a matcher
+- **THEN** `verify` SHALL reject the rule under `vale-config-no-based-on-styles`, naming the line and saying that the line silences the other rules whose globs overlap
+- **AND** a `BasedOnStyles` naming a style SHALL be rejected under the same constraint
+
+#### Scenario: A [formats] section is rejected as a matcher it cannot be
+
+- **WHEN** a rule's config declares a `[formats]` section
+- **THEN** `verify` SHALL reject it for the breadcrumb it lacks and the foreign key it assigns, so no rule config can move a file between parser tiers
 
 #### Scenario: A repeated key is reported, not rejected
 
