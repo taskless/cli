@@ -414,6 +414,80 @@ describe("runEngines when Vale is unavailable", () => {
   );
 });
 
+describe("config advisories ride on every Vale outcome", () => {
+  // The schema's advisories are decided at assembly, before Vale runs, so
+  // whether the author hears them cannot depend on how Vale's own run went.
+  // Vale is mocked because the shape under test is dispatch's merge, not the
+  // binary; each case drives one branch of `runValeEngine`.
+  const ADVISED_CONFIG =
+    "[*.md]\ntskl) rule = no-simply\nBasedOnStyles =\nno-simply.no-simply = YES\n\n" +
+    "[.taskless/**]\ntskl) rule = no-simply\nno-simply.no-simply = NO\n";
+
+  async function dispatchWithAdvisory(
+    outcome: Awaited<
+      ReturnType<(typeof import("../src/rules/vale/run"))["runVale"]>
+    >
+  ) {
+    const run = await import("../src/rules/vale/run");
+    vi.spyOn(run, "runVale").mockResolvedValue(outcome);
+    const cwd = makeMixedProject();
+    writeFileSync(
+      join(cwd, ".taskless", "rules", "vale", "no-simply", ".vale.ini"),
+      ADVISED_CONFIG
+    );
+    const assembledVale = await assembleValeConfig(cwd);
+    return runEngines({
+      cwd,
+      paths: ["doc.md"],
+      astGrepConfigPath: await assembleSgConfig(cwd),
+      vale: assembledVale,
+      runtimeRules: [],
+    });
+  }
+
+  it("joins Vale's own zero-exit diagnostic on a run that succeeded", async () => {
+    const dispatched = await dispatchWithAdvisory({
+      status: "ok",
+      blocking: false,
+      results: [],
+      notice: "W101 something Vale said",
+    });
+    expect(dispatched.notices).toHaveLength(1);
+    expect(dispatched.notices[0]).toContain("[.taskless/**]");
+    expect(dispatched.notices[0]).toContain("W101 something Vale said");
+    expect(dispatched.failures).toEqual([]);
+  });
+
+  it("survives a Vale timeout as a notice beside the failure", async () => {
+    // The case a reviewer caught: the blocking branch used to return only the
+    // failure, so an advisory was heard only on runs where Vale did not crash.
+    const dispatched = await dispatchWithAdvisory({
+      status: "timeout",
+      blocking: true,
+      message: "Vale timed out after 1ms",
+    });
+    expect(dispatched.failures).toEqual(["Vale timed out after 1ms"]);
+    expect(dispatched.notices).toHaveLength(1);
+    expect(dispatched.notices[0]).toContain("[.taskless/**]");
+    // An advisory is not what failed the run, so it is not in the failure.
+    expect(dispatched.failures[0]).not.toContain("[.taskless/**]");
+    expect(dispatched.exitCode).toBe(1);
+  });
+
+  it("joins the skip notice when the binary is unavailable", async () => {
+    const dispatched = await dispatchWithAdvisory({
+      status: "unavailable",
+      blocking: false,
+      message: "Vale binary not found",
+    });
+    expect(dispatched.notices).toHaveLength(1);
+    expect(dispatched.notices[0]).toContain("[.taskless/**]");
+    expect(dispatched.notices[0]).toContain("Vale binary not found");
+    expect(dispatched.failures).toEqual([]);
+    expect(dispatched.exitCode).toBe(0);
+  });
+});
+
 describe("an engine failure under --json", () => {
   it("reaches the machine envelope, not only the suppressed warning", async () => {
     // `warn()` is a no-op under `--json`, so without a field for it the

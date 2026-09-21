@@ -219,7 +219,18 @@ async function runValeEngine(options: DispatchOptions): Promise<EngineOutcome> {
     };
   }
   if (outcome.blocking) {
-    return { engine: "vale", results: [], failure: outcome.message };
+    // The failure is Vale's; the advisories are still the schema's, and they
+    // are still advisory. They ride on `notice` beside the failure rather
+    // than being folded into it (an advisory is not what failed the run) or
+    // dropped (the config's authors would hear about a `[*]` matcher only on
+    // a run where Vale happened not to crash).
+    const notice = joinNotices(advisories);
+    return {
+      engine: "vale",
+      results: [],
+      failure: outcome.message,
+      ...(notice === undefined ? {} : { notice }),
+    };
   }
   return {
     engine: "vale",
