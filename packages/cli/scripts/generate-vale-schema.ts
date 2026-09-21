@@ -135,18 +135,26 @@ type ProbeOutcome =
 /**
  * Run one rule over one document in a config isolated from everything else.
  *
- * `BasedOnStyles =` is load-bearing. Without it Vale loads its bundled styles
- * and a control document can trip one of those, which a finding count cannot
- * tell apart from the rule under test firing.
+ * No `BasedOnStyles` line, and that is measured rather than assumed. The
+ * recipe used to write `BasedOnStyles =` on the claim that without it Vale
+ * loads its bundled styles and a control document trips one. Measured on
+ * 3.21.0 and 3.22.0 with a document baited for `Vale.Spelling`,
+ * `Vale.Repetition` and `Vale.Terms`: nothing but the probe fires when the
+ * key is absent, and the control (`BasedOnStyles = Vale`) fires all of them.
+ * Vale loads no bundled style unless a run-level `BasedOnStyles` names one.
+ * The line went when 3.22.0 gave an empty value a meaning (it clears a
+ * file's inherited settings), which is inert in a single-matcher config but
+ * is the shape the config schema now refuses in a rule's own `.vale.ini`.
  *
  * `--no-exit` suppresses the non-zero status Vale returns merely for *finding*
  * something, so a non-zero status here means the config itself failed.
  *
  * **This config is the sibling of `buildIsolatingConfig` in
  * `src/rules/vale/verify.ts`, and the two are kept deliberately separate.**
- * They agree on three details: `MinAlertLevel = suggestion`, an empty
- * `BasedOnStyles =`, and exactly one assignment of the enabled key in exactly
- * one matcher, the last two of which that docstring explains are load-bearing.
+ * They agree on three details: `MinAlertLevel = suggestion`, no
+ * `BasedOnStyles` line, and exactly one assignment of the enabled key in
+ * exactly one matcher, the last of which that docstring explains is
+ * load-bearing.
  * They differ on the fourth, which is why this is not a call to that function:
  * `buildIsolatingConfig` needs an absolute `StylesPath` because it writes its
  * config to a temp directory while the styles stay in the user's
@@ -171,7 +179,7 @@ function probe(
     writeFileSync(join(cwd, "styles", "probe", "probe.yml"), rule);
     writeFileSync(
       join(cwd, ".vale.ini"),
-      "StylesPath = styles\nMinAlertLevel = suggestion\n\n[*]\nBasedOnStyles =\nprobe.probe = YES\n"
+      "StylesPath = styles\nMinAlertLevel = suggestion\n\n[*]\nprobe.probe = YES\n"
     );
     writeFileSync(join(cwd, `doc.${extension}`), document);
 

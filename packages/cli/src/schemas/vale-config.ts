@@ -352,14 +352,16 @@ function valeRuleConfigSchema(ruleId: string) {
       for (const property of assignments) {
         if (property.key === VALE_BREADCRUMB_KEY) continue;
         if (property.key === BASED_ON_STYLES_KEY) {
-          if (property.value !== "") {
-            fail(
-              "vale-config-based-on-styles-empty",
-              path,
-              `${where(ruleId, property)} matcher ${label} sets BasedOnStyles = "${property.value}". ` +
-                `It must be empty: a bundled style loaded here fires alongside ${ruleId} and reaches every rule whose matchers overlap.`
-            );
-          }
+          fail(
+            "vale-config-no-based-on-styles",
+            path,
+            property.value === ""
+              ? `${where(ruleId, property)} matcher ${label} sets BasedOnStyles to empty. ` +
+                  `On Vale ${VALE_VERSION} an empty BasedOnStyles clears every earlier matcher's settings for a file this one reaches, ` +
+                  `which silences the other rules whose globs overlap. Delete the line: no bundled style loads unless a run-level BasedOnStyles names one.`
+              : `${where(ruleId, property)} matcher ${label} sets BasedOnStyles = "${property.value}". ` +
+                  `A bundled style loaded here fires alongside ${ruleId} and reaches every rule whose matchers overlap. Delete the line: a rule enables itself by name.`
+          );
           continue;
         }
         if (property.key !== ownKey) {
@@ -371,7 +373,7 @@ function valeRuleConfigSchema(ruleId: string) {
               ? `${where(ruleId, property)} matcher ${label} assigns "${property.key}", which names another rule. ` +
                   `A rule's config may only enable or disable itself, as ${ownKey}; anything else is a cross-rule override.`
               : `${where(ruleId, property)} matcher ${label} assigns "${property.key}", which is not a per-rule setting. ` +
-                  `Inside a matcher a rule's config carries only "${VALE_BREADCRUMB_KEY}", an empty BasedOnStyles, and ${ownKey}.`
+                  `Inside a matcher a rule's config carries only "${VALE_BREADCRUMB_KEY}" and ${ownKey}.`
           );
           continue;
         }
@@ -402,8 +404,8 @@ function valeRuleConfigSchema(ruleId: string) {
       return;
     }
 
-    // Ordering: a NO-verdict matcher before every YES-verdict matcher. With
-    // BasedOnStyles empty the rule is off until a YES, so such a NO is dead
+    // Ordering: a NO-verdict matcher before every YES-verdict matcher. No
+    // style is loaded, so the rule is off until a YES, and such a NO is dead
     // where nothing else matches and overridden where the later YES does.
     // Reported against the first YES, which is the one that re-enables it.
     const enabler = final[firstYes]?.section;
