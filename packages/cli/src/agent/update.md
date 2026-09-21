@@ -1,4 +1,4 @@
-# Topic: update     (CLI v%(CLI_VERSION)s / topic v8)
+# Topic: update     (CLI v%(CLI_VERSION)s / topic v9)
 
 ## You are here
 This is `update`. It tells you what an upgrade changed for the rules
@@ -328,6 +328,63 @@ overriding. A `.taskless/**` matcher is reported as unnecessary rather
 than rejected, since `check` excludes that tree before Vale runs;
 delete it. `%(TASKLESS_CLI)s agent create-vale-rule` lists every
 rejection and advisory.
+
+Vale also moves from 3.21.0 to 3.22.0 in this release. Two things
+follow for existing Vale rules, both measured against both binaries;
+the rest of the release is additions a rule can now use.
+
+**`BasedOnStyles =` is deleted from every rule's `.vale.ini`, and
+`verify` rejects one that still carries it.** Every version of the
+`create-vale-rule` recipe before this one told you to write the line in
+every matcher. Through 3.21.0 it was inert: no bundled style loads
+unless a run-level `BasedOnStyles` names one, and the assembled header
+names none. Vale 3.22.0 gave an empty value a meaning (upstream
+c2d62437): it clears every setting the file inherited from an earlier
+matcher. Taskless assembles every rule's matchers into one file in id
+order, so under 3.22.0 a rule writing the line under `[docs/**]`
+silenced every alphabetically earlier rule under `docs/`, and `[*.md]`
+beside another rule's `[*.{md,markdown}]` silenced the first on every
+`.md` file, with nothing reported. Only rules whose globs were
+byte-identical escaped, because Vale merges those into one section.
+Running `%(TASKLESS_CLI)s init` applies migration 0008, which deletes
+every `BasedOnStyles` line from `.taskless/rules/vale/*/.vale.ini` and
+touches nothing else in the file; `check` and `verify` refuse to run
+until it has, naming `init`. Commit the rewritten configs. A config
+that still carries the key after that, from a hand edit or a rule
+copied in from elsewhere, fails `verify` under
+`vale-config-no-based-on-styles` and refuses the Vale engine at
+`check`, so the failure names the line rather than silencing a
+neighbour. Nothing about a rule's scope changes once the line is gone;
+the migrated config enables exactly what the old one did on 3.21.0.
+
+**A negated inline scope no longer sees the element's text.** A rule
+whose `scope` carries `~link`, `~strong`, `~emphasis` or `~code` still
+runs on the paragraph the element sits in, and the element's text is
+now blanked out of that paragraph before the rule sees it (upstream
+79a48752). Through 3.21.0 the negation only kept the rule off the
+element's own fragment, and the paragraph still carried the text, so a
+token inside a link or a bold span was reported from the paragraph.
+Findings inside those elements disappear; positions of findings after
+them do not move. If the rule was meant to reach link text after all,
+drop the negation. Search `.taskless/rules/vale` for a `scope:` line
+carrying `~link`, `~strong`, `~emphasis` or `~code` to find the rules
+to read.
+
+A `[formats]` key may now be a file name or a glob (upstream 6c2d99d9).
+No rule config can carry one, since the schema reads `[formats]` as a
+matcher named `formats` and rejects it, and the assembled header writes
+none, so nothing installed changes. A front-matter finding is now placed
+at the field's own position, every occurrence (5ab91a5d): a
+`frontmatter` rule that matched twice in one field reported the first
+match only; it now reports both. A `.yml` file that is itself a Vale
+rule has only its `message` and `description` linted as prose
+(f2785853); `check` never reaches `.taskless/rules/vale/`, so this
+touches only a project linting other styles under a `[*.yml]` matcher.
+A one-line MDX element's text is linted (49422de5), and a `spelling`
+rule with `split: true` checks the parts of an identifier and reports
+each at its own position (85992f2a); 3.21.0 accepted the key and did
+neither. `UNSET` as a rule's value behaves as `NO` and is not accepted
+by the schema; YES and NO remain the two values.
 
 ## Errors
 
