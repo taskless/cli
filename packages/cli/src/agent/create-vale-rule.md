@@ -587,7 +587,11 @@ it.
    What is **advised**, on the rule's notice, without rejecting:
 
    - the same key assigned twice inside one matcher (Vale keeps the last
-     assignment as of 3.21.0; 3.20.0 kept the first)
+     assignment as of 3.21.0; 3.20.0 kept the first). The rejections
+     above judge each matcher by that final verdict, so a `YES` that a
+     later `NO` in the same matcher overrides does not count as enabling
+     the rule: if it was the only `YES`, the config is rejected, not
+     advised
    - a `[*]` matcher, which reaches every file Vale can read
    - a matcher under `.taskless/**`, which `check` already excludes
      before Vale runs, so it acts only under a bare `vale` invocation
