@@ -209,7 +209,7 @@ export const AST_GREP_TSX_SPLIT: Readonly<
  * Pinned against the binary by `test/vale-vendor-contract.test.ts`
  * ("engine capabilities" → "reports the pinned version").
  */
-export const VALE_VERSION = "3.21.0";
+export const VALE_VERSION = "3.22.0";
 
 /**
  * Which tier Vale routes an extension to.
@@ -270,6 +270,19 @@ const CONVERTER_TIER_PREFIX = "converter:";
  * is a format Vale *learns*: an extension missing from this table is read as
  * plain text today, but the moment Vale routes it to a converter the same
  * omission is a crash that takes down every Vale rule in the run.
+ *
+ * 3.21.0 → 3.22.0 LEARNED NO FORMAT. Every row was re-probed against the
+ * 3.22.0 binary and none moved. The v3.21.0...v3.22.0 tree adds no
+ * `internal/lint/<format>.go` (its additions there are two `_test.go` files);
+ * `md.go`, `mdx.go`, `html.go`, `dita.go`, `code.go` and `metadata.go` change
+ * in what they do with a file, not in which files reach them. What did move
+ * is beside this table: an empty `BasedOnStyles` in a rule's `.vale.ini`
+ * clears every earlier matcher's settings for the file (see
+ * `src/schemas/vale-config.ts`, which now refuses the key, and migration
+ * 0008), a negated inline scope blanks the element's text out of its block,
+ * a `[formats]` key may be a file name or glob, and `lint.go`'s directory walk
+ * now skips the `StylesPath` tree unless a path inside it is named. All of it
+ * is pinned in `test/vale-vendor-contract.test.ts`.
  *
  * 3.20.0 → 3.21.0 LEARNED ONE FORMAT, AND THE SOURCE CHECK IS WHAT FOUND IT.
  * Every existing row was re-probed against the 3.21.0 binary and none moved.
