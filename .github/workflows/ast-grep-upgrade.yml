@@ -38,6 +38,22 @@
 #     `@taskless/cli` user runs. `patch`, because the package is pre-1.0 — see
 #     the bump guidance in CLAUDE.md before reaching for `minor`.
 #
+# THE BOT COMMIT IS SELF-CONSISTENT, AND CHECKED BEFORE IT IS PUSHED.
+# `AST_GREP_VERSION` in packages/cli/src/rules/capabilities.ts is maintained by
+# hand and test/engine-version-consistency.test.ts holds it to the pins
+# (deliberately — read that test's docblock before deriving the constant from
+# package.json), and src/generated/ast-grep-rule-schema.json is fetched from
+# upstream by tag. A commit that moved only the pins failed Validate BY
+# CONSTRUCTION; vale-upgrade.yml measured it on #368/#372, and this workflow
+# had the same shape. So `--write` moves the constant with the pins, the rule
+# schema is refetched for the new tag, and the consistency check runs here,
+# before `vendor-pr.cjs` pushes. If it fails, the run fails and nothing is
+# proposed: pushing an inconsistent commit is the thing being removed. What
+# stays for a human child pull request is judgment, not bookkeeping: the
+# measured additions to ast-grep-vendor-contract.test.ts, the `update` ledger,
+# and the changeset prose. That contract test is NOT gated here, on purpose:
+# see the check step.
+#
 # ONE ROLLING BRANCH, `vendor/ast-grep/upgrade`. `vendor-pr.cjs` owns that
 # lifecycle for every vendor workflow — rebuild from `main`, retitle and rewrite
 # as upstream moves, and force-push only when the proposal changed and only when
@@ -87,8 +103,13 @@ jobs:
         with:
           node-version-file: .nvmrc
 
-      # No dependency install: sg-detect.cjs is zero-dependency CommonJS, and
-      # the lockfile step below needs pnpm rather than node_modules.
+      # No dependency install yet: sg-detect.cjs is zero-dependency CommonJS,
+      # and the install below has to come AFTER the bump so it resolves the
+      # new pins.
+      #
+      # `--write` moves the eight pins and `AST_GREP_VERSION` in
+      # capabilities.ts together, and fails the run if the declaration is not
+      # found exactly once.
       #
       # `--notes-out` writes upstream's release notes to a FILE rather than to a
       # step output, because they are third-party Markdown and a $GITHUB_OUTPUT
@@ -109,6 +130,48 @@ jobs:
       - name: Regenerate the lockfile
         if: steps.detect.outputs.update == 'true'
         run: pnpm install --lockfile-only --ignore-scripts
+
+      # A real install this time, because the schema refetch and the check
+      # below run under the package's toolchain, and the check spawns the NEW
+      # ast-grep. Under CI pnpm applies `--frozen-lockfile` on its own, and the
+      # lockfile rewritten one step ago satisfies it — a third check that
+      # resolution matched the pins. Still a registry-only install under the
+      # default GITHUB_TOKEN, with no NODE_AUTH_TOKEN and no npm identity; the
+      # root `postinstall` skips itself under CI.
+      - name: Install
+        if: steps.detect.outputs.update == 'true'
+        run: pnpm install
+
+      # The rule schema is upstream's, fetched by the tag the new pin names
+      # (raw.githubusercontent.com, the same network this job already uses for
+      # the release notes). The generator reads the version from the bumped
+      # package.json, and writes no timestamp, so a rerun against an unchanged
+      # upstream leaves the tree unchanged and `vendor-pr.cjs` stays inert.
+      - name: Regenerate the ast-grep rule schema
+        if: steps.detect.outputs.update == 'true'
+        run: pnpm --filter @taskless/cli generate:ast-grep-schema
+
+      # The consistency check Validate would run, before anything is pushed. It
+      # imports source directly and needs no build: it holds the constant to
+      # the pins and spawns the pinned binary to confirm it reports that
+      # version. A failure here is a bookkeeping defect in this job's own
+      # output, so the run fails and proposes nothing.
+      #
+      # Deliberately ONLY that test. ast-grep-vendor-contract.test.ts holds the
+      # language list and a set of measured behaviours to the binary, and a new
+      # ast-grep that adds a language or changes a behaviour fails it —
+      # correctly, and the fix is a measured edit that belongs in the child
+      # pull request. Gated here, that signal would become a scheduled run
+      # failing every Monday with no pull request and no changelog to read;
+      # left to Validate, it is a red check on a pull request that already
+      # carries upstream's notes. (Measured: rewinding the pin to 0.45.2 through
+      # these exact steps passed engine-version-consistency and failed four
+      # behaviours the contract recorded at 0.45.3.)
+      - name: Check the bump is self-consistent
+        if: steps.detect.outputs.update == 'true'
+        run: >-
+          pnpm --filter @taskless/cli test --project cli
+          engine-version-consistency
 
       # "upgrade to", the same verb vale-upgrade.yml uses, because it is the
       # same operation: moving the pins a user resolves. ast-grep has no
@@ -159,10 +222,16 @@ jobs:
           the old version is a different ast-grep on one platform than on the
           others. \`sg-detect.cjs\` fails the run rather than open a partial bump.
 
-          Nothing else is edited. The rewrite replaces a version string in pins
-          it can already enumerate and refuses if the count does not match, so
-          it cannot add a dependency or reformat the file — the diff below is
-          eight version strings, a resolved lockfile, and a changeset.
+          The rewrite replaces a version string in pins it can already
+          enumerate and refuses if the count does not match, so it cannot add a
+          dependency or reformat the file. It also moves \`AST_GREP_VERSION\` in
+          \`capabilities.ts\` and refetches \`src/generated/ast-grep-rule-schema.json\`
+          for the ${SG_VERSION} tag, and the workflow ran
+          \`engine-version-consistency\` against the result before pushing. What
+          this does **not** carry is judgment: if \`ast-grep-vendor-contract\`
+          is red on this pull request, ast-grep ${SG_VERSION} added a language
+          or changed a measured behaviour, and that edit, the \`update\` ledger,
+          and the release note's prose belong in a child pull request.
 
           This pull request rolls: if upstream releases again before it merges,
           the branch, title, and body are rewritten to the newer version rather
@@ -186,4 +255,6 @@ jobs:
             --title "chore(ast-grep): upgrade to ast-grep ${SG_VERSION}" \
             --message "chore(ast-grep): upgrade to ast-grep ${SG_VERSION}" \
             --body-file "$body" \
-            -- packages/cli/package.json pnpm-lock.yaml "$changeset"
+            -- packages/cli/package.json pnpm-lock.yaml "$changeset" \
+               packages/cli/src/rules/capabilities.ts \
+               packages/cli/src/generated/ast-grep-rule-schema.json

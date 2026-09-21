@@ -35,6 +35,29 @@
 # inside the stamp is the release upstream actually tagged, and that is what
 # gets fetched.
 #
+# THE BOT COMMIT IS SELF-CONSISTENT, AND CHECKED BEFORE IT IS PUSHED. Moving the
+# pins alone is not a green commit: `VALE_VERSION` in
+# packages/cli/src/rules/capabilities.ts is maintained by hand and
+# test/engine-version-consistency.test.ts holds it to the pins (deliberately —
+# read that test's docblock before deriving the constant from package.json),
+# and src/generated/vale-vocabulary.ts is derived from the binary and
+# typechecked against the constant. A commit that moved only the pins therefore
+# failed Validate BY CONSTRUCTION. Measured on #368: the bump was red before
+# anyone read it, the child #372 had to carry the constant, the regenerated
+# vocabulary and a test literal along with its real work, and the stack could
+# not use GitHub's landing because its base was red.
+#
+# So this job now writes everything the consistency check compares — the pins,
+# the constant, the lockfile, and the vocabulary regenerated from the new
+# binary — and runs that check itself before `vendor-pr.cjs` pushes. If it
+# fails, the run fails and nothing is proposed, which is the correct outcome:
+# pushing an inconsistent commit is the thing being removed. What stays for a
+# human child pull request is judgment, not bookkeeping: the vendor contract
+# (the measured `Vale <version>` block in vale-vendor-contract.test.ts and the
+# verdict corpus in vale-schema-contract.test.ts), the `update` ledger, any
+# migration, and the changeset prose. Those tests are NOT gated here, on
+# purpose: see the check step.
+#
 # Action refs are pinned to commit SHAs; the trailing comment records the tag.
 
 name: Upgrade Vale
@@ -198,9 +221,14 @@ jobs:
           done
           echo "::warning::no probe in five minutes after the publish succeeded reported a newer set than the pins; each attempt is logged above with its result. The daily schedule will retry."
 
-      # No dependency install: the script is zero-dependency CommonJS, and the
-      # lockfile step below needs pnpm rather than node_modules. GITHUB_TOKEN is
-      # only for the rate limit on the release-notes lookup.
+      # No dependency install yet: the script is zero-dependency CommonJS, and
+      # the install below has to come AFTER the bump so it resolves the new
+      # pins. GITHUB_TOKEN is only for the rate limit on the release-notes
+      # lookup.
+      #
+      # `--write` moves the six pins and `VALE_VERSION` in capabilities.ts
+      # together, the latter to the base version the binary reports. It fails
+      # the run if the declaration is not found exactly once.
       #
       # `--notes-out` writes third-party Markdown to a FILE rather than a step
       # output, because a $GITHUB_OUTPUT line is delimited text that a release
@@ -219,6 +247,46 @@ jobs:
       - name: Regenerate the lockfile
         if: steps.detect.outputs.update == 'true'
         run: pnpm install --lockfile-only --ignore-scripts
+
+      # A real install this time, because the next step spawns the NEW Vale
+      # and the check after it imports the package's test toolchain. Under CI
+      # pnpm applies `--frozen-lockfile` on its own, and the lockfile rewritten
+      # one step ago satisfies it — a third check that resolution matched the
+      # pins. This is still a registry-only install under the default
+      # GITHUB_TOKEN, with no NODE_AUTH_TOKEN and no npm identity: the platform
+      # packages carry no lifecycle script, and the root `postinstall` skips
+      # itself under CI.
+      - name: Install
+        if: steps.detect.outputs.update == 'true'
+        run: pnpm install
+
+      # The vocabulary is derived by running the vendored binary, and its
+      # generator refuses a binary that does not report VALE_VERSION — which is
+      # why the constant had to move first. The output is deterministic for a
+      # given binary (no timestamp), so a rerun against an unchanged upstream
+      # leaves the tree unchanged and `vendor-pr.cjs` stays inert.
+      - name: Regenerate the Vale vocabulary
+        if: steps.detect.outputs.update == 'true'
+        run: pnpm --filter @taskless/cli generate:vale-schema
+
+      # The consistency check Validate would run, before anything is pushed. It
+      # imports source directly and needs no build: it holds the constant to
+      # the pins and spawns the pinned binary to confirm it reports that
+      # version. A failure here is a bookkeeping defect in this job's own
+      # output, so the run fails and proposes nothing.
+      #
+      # Deliberately ONLY that test. vale-schema-contract.test.ts and
+      # vale-vendor-contract.test.ts hold a recorded corpus of what the binary
+      # DOES, and a new Vale that changes a verdict fails them — correctly, and
+      # the fix is a measured edit that belongs in the child pull request. Gated
+      # here, that signal would become a scheduled run failing every morning
+      # with no pull request and no changelog to read; left to Validate, it is
+      # a red check on a pull request that already carries upstream's notes.
+      - name: Check the bump is self-consistent
+        if: steps.detect.outputs.update == 'true'
+        run: >-
+          pnpm --filter @taskless/cli test --project cli
+          engine-version-consistency
 
       - name: Propose the upgrade
         if: steps.detect.outputs.update == 'true'
@@ -262,6 +330,16 @@ jobs:
           packages are selected by optional dependency, so a straggler left at
           the old version is a different Vale on one platform than on the others.
 
+          It also moves \`VALE_VERSION\` in \`capabilities.ts\` to
+          \`${BASE_VERSION}\` and regenerates \`src/generated/vale-vocabulary.ts\`
+          from the new binary, and the workflow ran
+          \`engine-version-consistency\` against the result before pushing. What
+          this does **not** carry is judgment: if \`vale-schema-contract\` or
+          \`vale-vendor-contract\` is red on this pull request, Vale
+          ${BASE_VERSION} changed a measured behaviour, and that edit, the
+          \`update\` ledger, any migration, and the release note's prose belong
+          in a child pull request.
+
           **This is the half that reaches a user.** Republishing the platform
           packages changes nobody's install, because the CLI pins each one
           exactly; merging this is what ships the new Vale.
@@ -288,4 +366,7 @@ jobs:
             --title "chore(vale): upgrade to Vale ${BASE_VERSION}" \
             --message "chore(vale): upgrade to Vale ${BASE_VERSION}" \
             --body-file "$body" \
-            -- packages/cli/package.json pnpm-lock.yaml "$changeset"
+            -- packages/cli/package.json pnpm-lock.yaml "$changeset" \
+               packages/cli/src/rules/capabilities.ts \
+               packages/cli/src/generated/vale-vocabulary.ts \
+               packages/cli/src/generated/vale-vocabulary-report.md
