@@ -21,7 +21,8 @@
  * in front of whoever bumps them.
  *
  * This script is that detection. It asks whether a newer platform set exists on
- * npm and, with `--write`, moves every pin to it.
+ * npm and, with `--write`, moves every pin to it and `VALE_VERSION` in
+ * packages/cli/src/rules/capabilities.ts to the base version inside the stamp.
  *
  * WHY npm AND NOT THE MANIFEST. The manifest records what we intend to publish;
  * npm records what was actually published. Between the two sits a publish job
@@ -55,7 +56,7 @@
 const { appendFileSync, readFileSync, writeFileSync } = require("node:fs");
 const { join } = require("node:path");
 
-const { bumpPins } = require("./pin-bump.cjs");
+const { bumpPins, bumpVersionConstant } = require("./pin-bump.cjs");
 const {
   fetchReleaseByTag,
   formatReleaseNotes,
@@ -78,6 +79,25 @@ const PACKAGE_JSON_PATH = join(
 );
 
 const MANIFEST_PATH = join(__dirname, "vale-manifest.json");
+
+/**
+ * Where `VALE_VERSION` is declared by hand. `--write` moves it with the pins,
+ * to the BASE version, because `test/engine-version-consistency.test.ts` holds
+ * the two together and a bump that moved only the pins failed Validate before
+ * anyone had looked at it (taskless/cli#368).
+ */
+const CAPABILITIES_PATH = join(
+  __dirname,
+  "..",
+  "..",
+  "packages",
+  "cli",
+  "src",
+  "rules",
+  "capabilities.ts"
+);
+
+const VERSION_CONSTANT = "VALE_VERSION";
 
 const PIN_PREFIX = "@taskless/vale-";
 
@@ -199,6 +219,7 @@ async function main({
   releaseFor = fetchReleaseByTag,
   packageJsonPath = PACKAGE_JSON_PATH,
   packageJson = JSON.parse(readFileSync(packageJsonPath, "utf8")),
+  capabilitiesPath = CAPABILITIES_PATH,
   manifest = assertManifest(JSON.parse(readFileSync(MANIFEST_PATH, "utf8"))),
 } = {}) {
   const json = argv.includes("--json");
@@ -244,6 +265,20 @@ async function main({
     }
     writeFileSync(packageJsonPath, bumped);
     log(`Rewrote ${count} pins in ${packageJsonPath} to ${upstream}.`);
+
+    // The constant carries the version the BINARY reports, which is the base
+    // version, not the stamped one npm serves. Rewritten in the same run as the
+    // pins so the bot commit is self-consistent: a missing declaration throws
+    // here, before anything is pushed, rather than failing Validate later.
+    const base = baseVersion(upstream);
+    const { source: constants, from } = bumpVersionConstant(
+      readFileSync(capabilitiesPath, "utf8"),
+      { name: VERSION_CONSTANT, to: base }
+    );
+    writeFileSync(capabilitiesPath, constants);
+    log(
+      `Rewrote ${VERSION_CONSTANT} in ${capabilitiesPath}: ${from} -> ${base}.`
+    );
   }
 
   // The changelog a reviewer wants is UPSTREAM's, not ours. Our stamp says when
