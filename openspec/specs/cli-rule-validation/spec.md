@@ -85,6 +85,12 @@ The failure it prevents is not a local one: Vale reports this as `E201: has inva
 - **WHEN** a Vale rule's `.vale.ini` declares matchers but no `<id>.<id> = YES`
 - **THEN** `verify` SHALL report that the rule is present but off, naming the file
 
+#### Scenario: A rule config that carries BasedOnStyles is rejected
+
+- **WHEN** a Vale rule's `.vale.ini` assigns `BasedOnStyles` in any matcher, with any value
+- **THEN** `verify` SHALL report it under `vale-config-no-based-on-styles`, naming the line
+- **AND** it SHALL NOT report the rule as valid
+
 #### Scenario: A rule config that assigns a foreign key is rejected
 
 - **WHEN** a Vale rule's `.vale.ini` assigns a `<style>.<check>` key naming a different rule
