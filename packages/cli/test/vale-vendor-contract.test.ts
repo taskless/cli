@@ -164,6 +164,70 @@ const hedge = (scope: string) =>
 const budget = (scope: string) =>
   `extends: metric\nmessage: "%s words"\nlevel: error\nscope: '${scope}'\nformula: words\ncondition: "> 8"\n`;
 
+/**
+ * Two rules on the assembled layout, `a-rule` then `b-rule`, in id order
+ * as `assembleValeConfig` emits them, each matcher carrying the
+ * breadcrumb and whatever `extra` lines the case puts beside it. The
+ * config is written where the assembler writes it (`.taskless/.vale.ini`,
+ * `StylesPath = rules/vale`), so a rule at `rules/vale/<id>/<id>.yml`
+ * resolves as `<id>.<id>` exactly as it does under `check`.
+ */
+function assembled(
+  sections: string
+): Record<"doc.md" | "docs/inner.md" | "doc.markdown", string[]> {
+  const cwd = mkdtempSync(join(tmpdir(), "vale-contract-"));
+  workspaces.push(cwd);
+  for (const id of ["a-rule", "b-rule"]) {
+    mkdirSync(join(cwd, ".taskless", "rules", "vale", id), {
+      recursive: true,
+    });
+    writeFileSync(
+      join(cwd, ".taskless", "rules", "vale", id, `${id}.yml`),
+      existence(id === "a-rule" ? "alpha" : "bravo")
+    );
+  }
+  writeFileSync(
+    join(cwd, ".taskless", ".vale.ini"),
+    `StylesPath = rules/vale\nMinAlertLevel = suggestion\n\n${sections}`
+  );
+  mkdirSync(join(cwd, "docs"));
+  const body = "Just alpha and bravo here.\n";
+  const names = ["doc.md", "docs/inner.md", "doc.markdown"] as const;
+  for (const name of names) writeFileSync(join(cwd, name), body);
+  const result = spawnSync(
+    binary as string,
+    [
+      "--config",
+      ".taskless/.vale.ini",
+      "--output=JSON",
+      "--no-exit",
+      "--",
+      ...names,
+    ],
+    { cwd, encoding: "utf8" }
+  );
+  expect(result.status, result.stderr).toBe(0);
+  const parsed = JSON.parse(result.stdout || "{}") as Record<
+    string,
+    Array<{ Check: string }>
+  >;
+  return {
+    "doc.md": (parsed["doc.md"] ?? []).map((finding) => finding.Check),
+    "docs/inner.md": (parsed["docs/inner.md"] ?? []).map(
+      (finding) => finding.Check
+    ),
+    "doc.markdown": (parsed["doc.markdown"] ?? []).map(
+      (finding) => finding.Check
+    ),
+  };
+}
+const matcher = (glob: string, id: string, ...extra: string[]) =>
+  [`[${glob}]`, `tskl) rule = ${id}`, ...extra, `${id}.${id} = YES`, ""].join(
+    "\n"
+  );
+const A = "a-rule.a-rule";
+const B = "b-rule.b-rule";
+
 withVale("Vale vendor contract", () => {
   it("reports its own name in --version", () => {
     // Depended on by: PlatformBinarySpec.identity (/vale/i). If Vale stops
@@ -839,6 +903,405 @@ withVale("Vale vendor contract", () => {
           ]).lines
         ).toEqual([4]);
       });
+    });
+  });
+
+  /**
+   * What 3.22.0 changed under a rule this CLI assembles, and what it added.
+   *
+   * The first group is the one that moved the config schema: every case is
+   * measured against the exact shape `assembleValeConfig` writes, because the
+   * question is not "what does Vale do with `BasedOnStyles`" but "what does
+   * Vale do with the file this CLI hands it". Every case here was run against
+   * the 3.21.0 binary as well, and the comments record what that one said.
+   */
+  describe("Vale 3.22.0", () => {
+    describe("an empty BasedOnStyles clears what a file inherited from earlier matchers", () => {
+      // Depended on by: `vale-config-no-based-on-styles` in
+      // `src/schemas/vale-config.ts`, migration 0008, and the recipe's
+      // `.vale.ini` template, which through 3.21.0 told every author to
+      // write `BasedOnStyles =` in every matcher. Upstream c2d62437, "let an
+      // empty BasedOnStyles reset a file's inherited rule settings". The
+      // word doing the damage is INHERITED: it is not only bundled styles
+      // that are cleared but every `<id>.<id> = YES` an earlier matcher set
+      // for the file, and the assembled config is every rule's matchers in
+      // id order. Measured on 3.21.0, every case in this group fired both
+      // rules on every file both globs reach.
+
+      it("spares two rules whose globs are byte-identical, which Vale merges", () => {
+        // The shape the recipe's template produces when every rule uses
+        // `[*.md]`, and the reason this repository's own five rules did not
+        // notice: duplicate section headers fold into one section, so there
+        // is no earlier section to inherit from.
+        const findings = assembled(
+          matcher("*.md", "a-rule", "BasedOnStyles =") +
+            "\n" +
+            matcher("*.md", "b-rule", "BasedOnStyles =")
+        );
+        expect(findings["doc.md"]).toEqual([A, B]);
+        expect(findings["docs/inner.md"]).toEqual([A, B]);
+      });
+
+      it("silences the earlier rule wherever a later, different glob also matches", () => {
+        // `[*.md]` and `[*.{md,markdown}]` reach the same `.md` files and
+        // are not the same section, so b-rule's `BasedOnStyles =` clears
+        // a-rule's enable on every one of them. 3.21.0: both fire on doc.md.
+        const findings = assembled(
+          matcher("*.md", "a-rule", "BasedOnStyles =") +
+            "\n" +
+            matcher("*.{md,markdown}", "b-rule", "BasedOnStyles =")
+        );
+        expect(findings["doc.md"]).toEqual([B]);
+        expect(findings["docs/inner.md"]).toEqual([B]);
+        expect(findings["doc.markdown"]).toEqual([B]);
+      });
+
+      it("silences the earlier rule under a narrower later glob", () => {
+        // 3.21.0: docs/inner.md reported both.
+        const findings = assembled(
+          matcher("*.md", "a-rule", "BasedOnStyles =") +
+            "\n" +
+            matcher("docs/**", "b-rule", "BasedOnStyles =")
+        );
+        expect(findings["doc.md"]).toEqual([A]);
+        expect(findings["docs/inner.md"]).toEqual([B]);
+      });
+
+      it("is decided by position, so id order decides which rule survives", () => {
+        // The same two matchers with the ids swapped: now `[docs/**]` comes
+        // first and `[*.md]` clears IT under docs/. Which rule a project
+        // loses depends on how its rule ids sort, which is the property
+        // that made this a schema rejection rather than a documented trap.
+        // 3.21.0: docs/inner.md reported both.
+        const findings = assembled(
+          matcher("docs/**", "a-rule", "BasedOnStyles =") +
+            "\n" +
+            matcher("*.md", "b-rule", "BasedOnStyles =")
+        );
+        expect(findings["doc.md"]).toEqual([B]);
+        expect(findings["docs/inner.md"]).toEqual([B]);
+      });
+
+      it("does nothing when neither rule writes the key", () => {
+        // What migration 0008 leaves behind, and what the schema now
+        // requires. Same answer on 3.21.0.
+        const findings = assembled(
+          matcher("*.md", "a-rule") + "\n" + matcher("docs/**", "b-rule")
+        );
+        expect(findings["doc.md"]).toEqual([A]);
+        expect(findings["docs/inner.md"]).toEqual([A, B]);
+      });
+
+      it("turns a rule off under its own later matcher that carries only the key", () => {
+        // A single rule's second matcher with `BasedOnStyles =` and no
+        // assignment at all: the rule is off under docs/. 3.21.0: on.
+        const findings = assembled(
+          matcher("*.md", "a-rule", "BasedOnStyles =") +
+            "\n[docs/**]\ntskl) rule = a-rule\nBasedOnStyles =\n"
+        );
+        expect(findings["doc.md"]).toEqual([A]);
+        expect(findings["docs/inner.md"]).toEqual([]);
+      });
+
+      it("reaches every rule when a NO matcher carries the key", () => {
+        // The recipe's exclusion shape with the key copied into the NO
+        // block: a-rule's `[docs/**] NO` also silences b-rule under docs/.
+        // Without the key, the same config reports b-rule there, on both
+        // binaries.
+        const withKey = assembled(
+          matcher("*.md", "a-rule", "BasedOnStyles =") +
+            "\n" +
+            matcher("*.md", "b-rule", "BasedOnStyles =") +
+            "\n[docs/**]\ntskl) rule = a-rule\nBasedOnStyles =\na-rule.a-rule = NO\n"
+        );
+        expect(withKey["docs/inner.md"]).toEqual([]);
+        const without = assembled(
+          matcher("*.md", "a-rule") +
+            "\n" +
+            matcher("*.md", "b-rule") +
+            "\n[docs/**]\ntskl) rule = a-rule\na-rule.a-rule = NO\n"
+        );
+        expect(without["docs/inner.md"]).toEqual([B]);
+      });
+    });
+
+    describe("UNSET", () => {
+      // The same upstream commit's second half. Recorded because the schema
+      // accepts only YES and NO as a value, and an author reading the release
+      // notes will ask whether UNSET should be a third. Measured: as a
+      // rule's value it behaves as NO on both binaries (3.21.0 reads any
+      // value that is not YES as off), and at the STYLE level, the shape
+      // the release note describes, it does not reach a rule this CLI
+      // enabled by name. Nothing here is a reason to accept it.
+
+      it("as a rule's value turns the rule off, like NO", () => {
+        const findings = assembled(
+          matcher("*.md", "a-rule") +
+            "\n" +
+            matcher("*.md", "b-rule") +
+            "\n[docs/**]\na-rule.a-rule = UNSET\n"
+        );
+        expect(findings["doc.md"]).toEqual([A, B]);
+        expect(findings["docs/inner.md"]).toEqual([B]);
+      });
+
+      it("at the style level leaves a rule enabled by name alone", () => {
+        const findings = assembled(
+          matcher("*.md", "a-rule") +
+            "\n" +
+            matcher("*.md", "b-rule") +
+            "\n[docs/**]\na-rule = UNSET\n"
+        );
+        expect(findings["docs/inner.md"]).toEqual([A, B]);
+      });
+    });
+
+    it("loads no bundled style when no BasedOnStyles is written anywhere", () => {
+      // Depended on by: `buildIsolatingConfig`, the generator's `probe()`
+      // and `runOne` in `vale-schema-contract.test.ts`, which wrote
+      // `BasedOnStyles =` on the belief that its absence let `Vale.Spelling`
+      // fire on a fixture. It never did; measured the same on 3.21.0. The
+      // control proves the bait works: naming the style fires all of it.
+      const bait =
+        "Teh alpha is very very good, so utilize it. Recieve the the thing.\n";
+      const checks = (section: string) => {
+        const cwd = project(
+          `${header}\n[*.md]\n${section}rules.no-alpha = YES\n`,
+          { "no-alpha": existence("alpha") },
+          { "doc.md": bait }
+        );
+        const parsed = JSON.parse(
+          runRaw(cwd, ["doc.md"], ["--no-exit"]).stdout
+        ) as Record<string, Array<{ Check: string }>>;
+        return [
+          ...new Set((parsed["doc.md"] ?? []).map((finding) => finding.Check)),
+        ].toSorted();
+      };
+      expect(checks("")).toEqual(["rules.no-alpha"]);
+      expect(checks("BasedOnStyles = Vale\n")).toEqual([
+        "Vale.Repetition",
+        "Vale.Spelling",
+        "rules.no-alpha",
+      ]);
+    });
+
+    describe("a negated inline scope blanks the element's text out of the block", () => {
+      // Depended on by: the recipe's scope guidance and the `~link` /
+      // `~strong` / `~emphasis` corpus rows. Upstream 79a48752. Through
+      // 3.21.0 `~link` only kept the rule off the link's own fragment; the
+      // paragraph the link sits in still carried the link text, so a token
+      // inside the link was reported from the paragraph. 3.22.0 blanks the
+      // element out of the paragraph, rune for rune, so positions after it
+      // hold. The inline scopes it applies to are `link`, `strong`,
+      // `emphasis` and `code`, from `inlineScopes` in
+      // `internal/check/scope.go`; the release note's `text.raw` and
+      // `paragraph.link` are not operands on either binary, and the corpus
+      // records both as inert.
+      const document =
+        "Plain bogus one. See [bogus link](http://x) and **bogus strong** and *bogus em* and `bogus code`.\n\n# Heading bogus\n";
+      const at = (scope: string) =>
+        lines(hedge(scope).replace("worth noting", "bogus"), document).lines;
+      /** The spans on line 1 at `scope`, for the rune-for-rune claim. */
+      const spans = (scope: string) => {
+        const cwd = project(
+          `${header}\n[*]\nrules.r = YES\n`,
+          { r: hedge(scope).replace("worth noting", "bogus") },
+          { "doc.md": document }
+        );
+        const parsed = JSON.parse(
+          runRaw(cwd, ["doc.md"], ["--no-exit"]).stdout
+        ) as Record<string, Array<{ Line: number; Span: [number, number] }>>;
+        return (parsed["doc.md"] ?? [])
+          .filter((finding) => finding.Line === 1)
+          .map((finding) => finding.Span);
+      };
+
+      it("reaches every prose occurrence at `text`", () => {
+        // Five: plain, link, strong, emphasis, heading. Inline code was
+        // never prose, on any version.
+        expect(at("text")).toEqual([1, 1, 1, 1, 3]);
+      });
+
+      it("drops the link text under ~link, keeping the paragraph", () => {
+        // 3.21.0: five.
+        expect(at("~link")).toEqual([1, 1, 1, 3]);
+        expect(at("text & ~link")).toEqual([1, 1, 1, 3]);
+      });
+
+      it("drops strong and emphasis text under their negations", () => {
+        // 3.21.0: five.
+        expect(at("~strong & ~emphasis")).toEqual([1, 1, 3]);
+      });
+
+      it("combines with a block negation", () => {
+        // `~heading` was already honored; `~link` now is too. 3.21.0: four.
+        expect(at("~heading & ~link")).toEqual([1, 1, 1]);
+      });
+
+      it("keeps the positions after a blanked element", () => {
+        // The strong text sits after the link. Its span is the same with
+        // and without the link blanked, which is the rune-for-rune claim.
+        expect(spans("~link")).toEqual([
+          [7, 11],
+          [51, 55],
+          [71, 75],
+        ]);
+        expect(spans("text")).toEqual([
+          [7, 11],
+          [23, 27],
+          [51, 55],
+          [71, 75],
+        ]);
+      });
+
+      it("does not know the release note's dotted spellings", () => {
+        expect(at("text.raw")).toEqual([]);
+        expect(at("~text.raw")).toEqual([1, 1, 1, 1, 3]);
+        expect(at("paragraph.link")).toEqual([]);
+        expect(at("~paragraph.link")).toEqual([1, 1, 1, 1, 3]);
+      });
+    });
+
+    describe("a [formats] key can be a file name or a glob", () => {
+      // Depended on by: nothing this CLI writes. The assembled header
+      // carries no `[formats]`, and a rule's own `.vale.ini` cannot: the
+      // schema reads `[formats]` as a matcher named `formats` and refuses
+      // it for the breadcrumb it lacks and the foreign key it assigns
+      // (`vale-config-schema.test.ts`). Pinned so the tier table's claim
+      // that an extension decides the parser stays a claim about THIS
+      // config: a `[formats]` line would move a file between tiers, and
+      // 3.22.0 widened what such a line can name. Upstream 6c2d99d9.
+      // Measured on 3.21.0: the file-name and glob keys were accepted and
+      // ignored, so NOTES was linted as plain text and the fence fired.
+      const fenced = "Prose simply.\n\n```\nsimply fenced\n```\n";
+      const under = (formats: string, name: string) => {
+        const cwd = project(
+          `${header}\n${formats}[*]\nrules.no-simply = YES\n`,
+          { "no-simply": existence("simply") },
+          { [name]: fenced }
+        );
+        const parsed = JSON.parse(
+          runRaw(cwd, [name], ["--no-exit"]).stdout
+        ) as Record<string, Array<{ Line: number }>>;
+        return (parsed[name] ?? []).map((finding) => finding.Line);
+      };
+
+      it("routes a file with no extension to Markdown by its name", () => {
+        expect(under("", "NOTES")).toEqual([1, 4]);
+        expect(under("[formats]\nNOTES = md\n\n", "NOTES")).toEqual([1]);
+      });
+
+      it("routes a glob's files to Markdown", () => {
+        expect(under("", "thing.special")).toEqual([1, 4]);
+        expect(under("[formats]\n*.special = md\n\n", "thing.special")).toEqual(
+          [1]
+        );
+      });
+
+      it("still routes by bare extension, the shape 3.21.0 had", () => {
+        expect(under("[formats]\nspecial = md\n\n", "thing.special")).toEqual([
+          1,
+        ]);
+      });
+    });
+
+    it("places a front-matter finding at the field's own position, every occurrence", () => {
+      // Depended on by: `toValeCheckResults`, which passes `Line` and `Span`
+      // through, and any `frontmatter` or `frontmatter.<key>` rule. Upstream
+      // 5ab91a5d: alerts were placed by searching the file for the field's
+      // text, so a token appearing twice in one field was found once (the
+      // first occurrence, on 3.21.0), and a value that also appeared earlier
+      // in the file could be placed on the wrong line. Now the field's own
+      // span is used.
+      const cwd = project(
+        `${header}\n[*]\nrules.r = YES\n`,
+        {
+          r: `extends: existence\nmessage: "%s"\nlevel: warning\nscope: frontmatter\ntokens:\n  - bogus\n`,
+        },
+        {
+          "doc.md":
+            "---\ntitle: bogus\ndescription: bogus twice bogus\n---\n\nbogus body.\n",
+        }
+      );
+      const parsed = JSON.parse(
+        runRaw(cwd, ["doc.md"], ["--no-exit"]).stdout
+      ) as Record<string, Array<{ Line: number; Span: [number, number] }>>;
+      expect(
+        (parsed["doc.md"] ?? []).map((finding) => [
+          finding.Line,
+          ...finding.Span,
+        ])
+      ).toEqual([
+        [2, 8, 12],
+        [3, 14, 18],
+        [3, 26, 30],
+      ]);
+    });
+
+    it("lints a rule file's message and description, not its patterns", () => {
+      // Depended on by: nothing under `check`, which excludes `.taskless/`
+      // before Vale runs, so `.taskless/rules/vale/<id>/<id>.yml` is never a
+      // target (`vale-run.test.ts` pins the exclusion). Pinned because a
+      // project that keeps other Vale styles outside `.taskless/` under a
+      // `[*.yml]` matcher now sees fewer findings from them. Upstream
+      // f2785853. Measured on 3.21.0: every line was prose, so `link`,
+      // `tokens` and `exceptions` fired too (six findings).
+      const style =
+        'extends: existence\nmessage: "Avoid bogus wording"\ndescription: |\n  A bogus description.\nlevel: warning\nlink: https://x/bogus\ntokens:\n  - bogus\n  - "(?i)bogus-pattern"\nexceptions:\n  - bogus-exception\n';
+      const cwd = project(
+        `${header}\n[*]\nrules.r = YES\n`,
+        { r: existence("bogus"), other: style },
+        {}
+      );
+      const target = join(".taskless", "vale", "rules", "other.yml");
+      const parsed = JSON.parse(
+        runRaw(cwd, [target], ["--no-exit"]).stdout
+      ) as Record<string, Array<{ Line: number }>>;
+      expect((parsed[target] ?? []).map((finding) => finding.Line)).toEqual([
+        2, 4,
+      ]);
+    });
+
+    it("lints a one-line MDX element's text", () => {
+      // Upstream 49422de5. The other MDX changes in the release (indented
+      // blocks, an expression followed by prose) measured the same on both
+      // binaries for the shapes tried and are not pinned. 3.21.0: line 7
+      // absent.
+      const document =
+        'import X from "y"\n\n# Heading bogus\n\nProse bogus {expr} after bogus.\n\n<Note>bogus inside one-line element</Note>\n\n    indented bogus block\n';
+      expect(
+        lines(
+          hedge("text").replace("worth noting", "bogus"),
+          document,
+          "page.mdx"
+        ).lines
+      ).toEqual([3, 5, 5, 7, 9]);
+    });
+
+    it("checks the parts of an identifier under split: true", () => {
+      // Upstream 85992f2a. 3.21.0 accepted the key, reported `recieveData`
+      // whole and missed `getHTTPResponsze_v2` entirely. The `split` field
+      // is a measured member of the `spelling` field table, so the schema
+      // already accepts it; this pins what it does.
+      const cwd = project(
+        `${header}\n[*]\nrules.sp = YES\n`,
+        {
+          sp: 'extends: spelling\nmessage: "spell: %s"\nlevel: warning\nsplit: true\n',
+        },
+        { "doc.md": "Call getHTTPResponsze_v2 and recieveData now.\n" }
+      );
+      const parsed = JSON.parse(
+        runRaw(cwd, ["doc.md"], ["--no-exit"]).stdout
+      ) as Record<string, Array<{ Match: string; Span: [number, number] }>>;
+      expect(
+        (parsed["doc.md"] ?? []).map((finding) => [
+          finding.Match,
+          ...finding.Span,
+        ])
+      ).toEqual([
+        ["Responsze", 13, 21],
+        ["recieve", 30, 36],
+      ]);
     });
   });
 });
