@@ -35,6 +35,7 @@ interface Report {
     ok: boolean;
     errors: string[];
     violations: { constraintId: string; message: string }[];
+    notice?: string;
   }[];
 }
 
@@ -169,12 +170,48 @@ describe("verify checks components without requiring tests", () => {
   });
 
   it("fails a Vale rule whose config never enables it", async () => {
-    await valeRule("no-simply", { config: "[*.md]\nBasedOnStyles =\n" });
+    await valeRule("no-simply", {
+      config: "[*.md]\ntskl) rule = no-simply\nBasedOnStyles =\n",
+    });
     const result = await runCli(["verify", "-d", cwd, "--json"]);
     expect(result.exitCode).not.toBe(0);
-    expect(
-      (JSON.parse(result.stdout) as Report).rules[0]?.errors.join(" ")
-    ).toContain("present but off");
+    const rule = (JSON.parse(result.stdout) as Report).rules[0];
+    expect(rule?.errors.join(" ")).toContain("present but off");
+    expect(rule?.violations.map((violation) => violation.constraintId)).toEqual(
+      ["vale-config-enabled-somewhere"]
+    );
+  });
+
+  // The config schema, through the real CLI. `vale-config-schema.test.ts`
+  // holds every rejection and advisory to its fixture; this says the schema is
+  // wired into `verify`, and that a rejection reaches `--json` attributed to
+  // its constraint, the way an sg rejection already does.
+  it("attributes a foreign key in a Vale config to its constraint", async () => {
+    await valeRule("no-simply", {
+      config: `${SCOPED}no-hedging.no-hedging = NO\n`,
+    });
+    const result = await runCli(["verify", "-d", cwd, "--json"]);
+    expect(result.exitCode).not.toBe(0);
+    const rule = (JSON.parse(result.stdout) as Report).rules[0];
+    expect(rule?.violations).toHaveLength(1);
+    expect(rule?.violations[0]?.constraintId).toBe("vale-config-own-key-only");
+    expect(rule?.violations[0]?.message).toMatch(
+      /line 5: matcher \[\*\.md\] assigns "no-hedging\.no-hedging", which names another rule/
+    );
+    // Repeated verbatim in `errors`, so a consumer reading only that sees it.
+    expect(rule?.errors).toContain(rule?.violations[0]?.message);
+  });
+
+  it("accepts a Vale config with a repeated key, and says so on notice", async () => {
+    await valeRule("no-simply", {
+      config: `${SCOPED}no-simply.no-simply = NO\n`,
+    });
+    const result = await runCli(["verify", "-d", cwd, "--json"]);
+    expect(result.exitCode).toBe(0);
+    const rule = (JSON.parse(result.stdout) as Report).rules[0];
+    expect(rule?.ok).toBe(true);
+    expect(rule?.violations).toEqual([]);
+    expect(rule?.notice).toMatch(/assigns no-simply\.no-simply again/);
   });
 
   // Found by running the recipe's own worked `consistency` rule under the
