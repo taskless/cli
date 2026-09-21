@@ -294,10 +294,11 @@ describe("check over a project with both engines", () => {
     // indistinguishable from a clean run. Surfacing the warning is the only
     // thing standing between that mistake and a silently disabled rule.
     //
-    // `verify` catches the coarser version of this (no matcher at all, or the
-    // check never enabled) — see `verify-test-commands.test.ts`. It cannot
-    // catch a misplaced assignment, because the file does contain a matcher
-    // and does name the check. Only Vale knows, and only at run time.
+    // `verify` rejects this config before Vale ever sees it: the config schema
+    // refuses any assignment above the first matcher, under
+    // `vale-config-no-root-keys`. `check` does not yet consult the schema (that
+    // is the next slice of taskless/cli#359), so its run-time notice remains
+    // the last line of defence and is asserted here alongside the rejection.
     it("surfaces Vale's W101 when an assignment sits outside every matcher", async () => {
       const scaffold = await mkdtemp(join(tmpdir(), "taskless-w101-"));
       try {
@@ -311,8 +312,8 @@ describe("check over a project with both engines", () => {
           "extends: existence\nmessage: \"Avoid 'simply'\"\nlevel: warning\ntokens:\n  - simply\n"
         );
         // The mistake: enabled, but above the `[…]` line, so it belongs to no
-        // matcher. `verify` passes this — a matcher exists and the check is
-        // named — which is exactly why the run-time notice has to survive.
+        // matcher. A matcher exists and the check is named, so the substring
+        // checks `verify` used to run passed this; the schema does not.
         await writeFile(
           join(rule, ".vale.ini"),
           "no-simply.no-simply = YES\n[*.md]\ntskl) rule = no-simply\nBasedOnStyles =\n"
@@ -320,7 +321,13 @@ describe("check over a project with both engines", () => {
         await writeFile(join(scaffold, "doc.md"), "Just simply do it.\n");
 
         const verified = await runCli(["verify", "-d", scaffold, "--json"]);
-        expect(verified.exitCode).toBe(0);
+        expect(verified.exitCode).not.toBe(0);
+        const report = JSON.parse(verified.stdout) as {
+          rules: { violations: { constraintId: string }[] }[];
+        };
+        expect(
+          report.rules[0]?.violations.map((violation) => violation.constraintId)
+        ).toContain("vale-config-no-root-keys");
 
         const { stdout, stderr, exitCode } = await runCli([
           "check",

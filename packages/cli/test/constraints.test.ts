@@ -114,6 +114,38 @@ async function verifyWritten(options: {
 }
 
 /**
+ * Write one Vale rule directory with the given `.vale.ini`, then run `verify`.
+ *
+ * The style file is always valid, so the only thing that can refuse the rule
+ * is its config, which is what every `vale-config-*` scenario probes.
+ */
+async function verifyValeConfig(
+  config: string,
+  ruleId = "probe-rule"
+): Promise<{ ok: boolean; errors: string[]; violations: RuleViolation[] }> {
+  const directory = join(project, ".taskless/rules/vale", ruleId);
+  await mkdir(directory, { recursive: true });
+  await writeFile(
+    join(directory, `${ruleId}.yml`),
+    "extends: existence\nmessage: \"Avoid '%s'\"\nlevel: warning\ntokens:\n  - simply\n"
+  );
+  await writeFile(join(directory, ".vale.ini"), config);
+  const verification = await verifyOneRule(project, {
+    engine: "vale",
+    ruleId,
+  });
+  return {
+    ok: verification.ok,
+    errors: verification.errors,
+    violations: verification.violations,
+  };
+}
+
+/** The config every Vale scenario below is a mutation of. */
+const VALID_VALE_CONFIG =
+  "[*.md]\ntskl) rule = probe-rule\nBasedOnStyles =\nprobe-rule.probe-rule = YES\n";
+
+/**
  * The scenario that must violate each documented constraint.
  *
  * `names` is text only THIS constraint's refusal produces, so a scenario that
@@ -197,6 +229,56 @@ const VIOLATIONS: Record<string, Scenario> = {
           "id: some-other-rule\nvalid:\n  - const a = 1;\ninvalid:\n  - eval(x);\n",
       }),
     names: /has no fixtures, so nothing shows it fires or stays quiet/,
+  },
+  "vale-config-no-root-keys": {
+    run: () => verifyValeConfig(`StylesPath = .\n${VALID_VALE_CONFIG}`),
+    names: /"StylesPath" is assigned above the first \[matcher\]/,
+  },
+  "vale-config-breadcrumb-required": {
+    run: () =>
+      verifyValeConfig(
+        "[*.md]\nBasedOnStyles =\nprobe-rule.probe-rule = YES\n"
+      ),
+    names: /has no "tskl\) rule = probe-rule" breadcrumb/,
+  },
+  "vale-config-own-key-only": {
+    run: () =>
+      verifyValeConfig(`${VALID_VALE_CONFIG}other-rule.other-rule = NO\n`),
+    names: /assigns "other-rule\.other-rule", which names another rule/,
+  },
+  "vale-config-value-yes-no": {
+    run: () =>
+      verifyValeConfig(
+        "[*.md]\ntskl) rule = probe-rule\nBasedOnStyles =\nprobe-rule.probe-rule = warning\n"
+      ),
+    names: /probe-rule\.probe-rule = "warning" is not YES or NO/,
+  },
+  "vale-config-based-on-styles-empty": {
+    run: () =>
+      verifyValeConfig(
+        "[*.md]\ntskl) rule = probe-rule\nBasedOnStyles = Vale\nprobe-rule.probe-rule = YES\n"
+      ),
+    names: /sets BasedOnStyles = "Vale"/,
+  },
+  "vale-config-matcher-required": {
+    run: () => verifyValeConfig("# nothing here\n"),
+    names: /declares no matcher, so the rule is scoped to nothing/,
+  },
+  "vale-config-enabled-somewhere": {
+    run: () =>
+      verifyValeConfig(
+        "[*.md]\ntskl) rule = probe-rule\nBasedOnStyles =\nprobe-rule.probe-rule = NO\n"
+      ),
+    names:
+      /never enables probe-rule\.probe-rule, so the rule is present but off/,
+  },
+  "vale-config-disable-after-enable": {
+    run: () =>
+      verifyValeConfig(
+        "[docs/legacy/**]\ntskl) rule = probe-rule\nprobe-rule.probe-rule = NO\n\n" +
+          "[docs/**]\ntskl) rule = probe-rule\nBasedOnStyles =\nprobe-rule.probe-rule = YES\n"
+      ),
+    names: /disables probe-rule before any matcher enables it/,
   },
 };
 
@@ -339,6 +421,12 @@ describe("every documented constraint is a check that still fires", () => {
     expect(result.ok, result.errors.join("; ")).toBe(true);
     // A rule that passed broke no constraint. Reporting one here would make
     // `violations` unreadable as "what generation must learn".
+    expect(result.violations).toEqual([]);
+  });
+
+  it("accepts the Vale config every vale-config-* scenario is a mutation of", async () => {
+    const result = await verifyValeConfig(VALID_VALE_CONFIG);
+    expect(result.ok, result.errors.join("; ")).toBe(true);
     expect(result.violations).toEqual([]);
   });
 });

@@ -21,6 +21,7 @@ import {
   describeFixtureReport,
   runRuntimeFixtures,
 } from "./runtime/run-fixtures";
+import { validateValeRuleConfig } from "../schemas/vale-config";
 import { validateValeRule } from "../schemas/vale-rule";
 import { verifyRule, type VerifyResult } from "./verify";
 import { violate, type RuleViolation } from "./constraints";
@@ -238,33 +239,53 @@ export async function verifyOneRule(
       errors.push(`Style file not found or unreadable: ${stylePath}`);
     }
 
-    // A Vale rule with no config of its own declares no scope, so it is enabled
-    // nowhere — it would verify, run, and report nothing. That is the silent
-    // disable this engine's design exists to prevent, so it is an error here.
+    // The rule's own config, against the config schema. A Vale rule with no
+    // config declares no scope, so it is enabled nowhere — it would verify,
+    // run, and report nothing. That is the silent disable this engine's design
+    // exists to prevent, so a missing file is an error, and so is a config
+    // Vale would accept and read as something other than what its author
+    // wrote: a rule assignment above the first matcher, a matcher with no
+    // breadcrumb, a key naming another rule. Each rejection is attributed to
+    // its `vale-config-*` constraint; what is true but not invalid rides on
+    // `notice`.
+    const violations: RuleViolation[] = [];
+    let notice: string | undefined;
     const configPath = ruleConfigPath(cwd, engine, ruleId);
     if (configPath !== undefined) {
+      let config: string | undefined;
       try {
-        const config = await readFile(configPath, "utf8");
-        if (!config.includes("[")) {
-          errors.push(
-            `${ruleId}/.vale.ini declares no matcher, so the rule is scoped to nothing and will never run.`
-          );
-        } else if (!config.includes(`${ruleId}.${ruleId}`)) {
-          errors.push(
-            `${ruleId}/.vale.ini never enables ${ruleId}.${ruleId}, so the rule is present but off.`
-          );
-        }
+        config = await readFile(configPath, "utf8");
       } catch {
         errors.push(
           `${ruleId} has no .vale.ini, so nothing scopes it and it will never run.`
         );
       }
+      if (config !== undefined) {
+        const verdict = validateValeRuleConfig(ruleId, config);
+        for (const rejection of verdict.rejections) {
+          violate(
+            { errors, violations },
+            rejection.constraintId,
+            rejection.message
+          );
+        }
+        if (verdict.advisories.length > 0) {
+          notice = verdict.advisories.join("\n");
+        }
+      }
     }
 
-    // No constraint is published for this engine, so nothing here is
-    // attributable. Empty, never absent: a consumer must be able to tell "no
-    // constraint was broken" from "this CLI does not report violations".
-    return { engine, ruleId, ok: errors.length === 0, errors, violations: [] };
+    // `violations` is empty, never absent, when nothing failed: a consumer
+    // must be able to tell "no constraint was broken" from "this CLI does not
+    // report violations".
+    return {
+      engine,
+      ruleId,
+      ok: errors.length === 0,
+      errors,
+      violations,
+      ...(notice === undefined ? {} : { notice }),
+    };
   }
 
   // runtime
