@@ -1,4 +1,4 @@
-# Topic: update     (CLI v%(CLI_VERSION)s / topic v7)
+# Topic: update     (CLI v%(CLI_VERSION)s / topic v8)
 
 ## You are here
 This is `update`. It tells you what an upgrade changed for the rules
@@ -306,6 +306,28 @@ that was reported as skipped now produces findings, and the `notices`
 entry that named it no longer appears. Nothing in a rule changes; if a
 large generated file was being kept quiet by that skip, narrow the
 matcher's section so it is not reached.
+
+**A Vale rule's `.vale.ini` is validated against a schema, and a
+config `check` used to tolerate now refuses the Vale run.** Every
+config was carried into the run verbatim; nothing checked that a
+matcher carried its breadcrumb, that an assignment named this rule and
+not another, or that the run-level keys stayed out. Each of those is a
+config Vale accepts and reads as something other than what its author
+wrote, with a zero exit and an empty report. Now `verify` rejects such
+a config, naming the line and the `vale-config-*` constraint, and
+`check` refuses the Vale engine over it: the failure names the rule and
+the line, the exit code is non-zero, and ast-grep still runs. Run
+`%(TASKLESS_CLI)s verify` to see every rejected line at once. The four
+most likely to trip an existing rule: an assignment above the first
+matcher (`StylesPath`, `MinAlertLevel`, or the rule's own key, which
+Vale was ignoring with a `W101`); a matcher with no `tskl) rule = <id>`
+breadcrumb; a key naming another rule (`no-hedging.no-hedging = NO`
+inside `no-simply`'s config, which was a cross-rule override); and a
+`NO` matcher declared before every `YES`, which the `YES` was
+overriding. A `.taskless/**` matcher is reported as unnecessary rather
+than rejected, since `check` excludes that tree before Vale runs;
+delete it. `%(TASKLESS_CLI)s agent create-vale-rule` lists every
+rejection and advisory.
 
 ## Errors
 
