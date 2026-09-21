@@ -183,7 +183,7 @@ describe("exit code carried on the dispatch result", () => {
       cwd,
       paths: ["app.js"],
       astGrepConfigPath: await assembleSgConfig(cwd),
-      valeConfigPath: undefined,
+      vale: undefined,
       runtimeRules: [],
     });
     expect(dispatched.results.length).toBeGreaterThan(0);
@@ -196,7 +196,7 @@ describe("exit code carried on the dispatch result", () => {
       cwd,
       paths: ["app.js"],
       astGrepConfigPath: await assembleSgConfig(cwd),
-      valeConfigPath: undefined,
+      vale: undefined,
       runtimeRules: [],
     });
     expect(
@@ -211,7 +211,7 @@ describe("exit code carried on the dispatch result", () => {
       cwd,
       paths: ["doc.md"], // the sg rule is javascript-only, so nothing matches
       astGrepConfigPath: await assembleSgConfig(cwd),
-      valeConfigPath: undefined,
+      vale: undefined,
       runtimeRules: [],
     });
     expect(dispatched.results).toEqual([]);
@@ -230,7 +230,7 @@ withVale("runEngines over a mixed corpus", () => {
       cwd,
       paths: ["app.js", "doc.md"],
       astGrepConfigPath: await assembleSgConfig(cwd),
-      valeConfigPath: assembledVale?.path,
+      vale: assembledVale,
       runtimeRules: [],
     });
 
@@ -249,7 +249,7 @@ withVale("runEngines over a mixed corpus", () => {
       cwd,
       paths: ["app.js", "doc.md"],
       astGrepConfigPath: await assembleSgConfig(cwd),
-      valeConfigPath: assembledVale?.path,
+      vale: assembledVale,
       runtimeRules: [],
     });
     expect(dispatched.results.every((result) => result.source !== "vale")).toBe(
@@ -284,7 +284,7 @@ describe("runEngines when a Vale rule directory assembles to nothing", () => {
       cwd,
       paths: ["app.js", "doc.md"],
       astGrepConfigPath: await assembleSgConfig(cwd),
-      valeConfigPath: assembledVale?.path,
+      vale: assembledVale,
       runtimeRules: [],
     });
 
@@ -315,7 +315,7 @@ describe("runEngines when Vale is unavailable", () => {
       cwd,
       paths: ["app.js", "doc.md"],
       astGrepConfigPath: await assembleSgConfig(cwd),
-      valeConfigPath: assembledVale?.path,
+      vale: assembledVale,
       runtimeRules: [],
     });
 
@@ -369,7 +369,7 @@ describe("runEngines when Vale is unavailable", () => {
       cwd,
       paths: ["doc.md"],
       astGrepConfigPath: await assembleSgConfig(cwd),
-      valeConfigPath: assembledVale?.path,
+      vale: assembledVale,
       runtimeRules: [],
     });
 
@@ -400,7 +400,7 @@ describe("runEngines when Vale is unavailable", () => {
           cwd,
           paths: ["app.js", "doc.md"],
           astGrepConfigPath: await assembleSgConfig(cwd),
-          valeConfigPath: assembledVale?.path,
+          vale: assembledVale,
           runtimeRules: [],
         });
 

@@ -10,8 +10,8 @@
 
 ## 2. Slice 2: assembly refusal, dispatch, recipe, ledger (tip)
 
-- [ ] 2.1 In `rules/assemble.ts`, delete `ruleConfigBody` and `sectionPatternsOf`; `assembleValeConfig` validates each config, and on any rejection returns a refusal naming the rule and line without writing the file. Accepted configs are written verbatim under their breadcrumb; `sections` comes from the AST. Verify the "Assembly order is stable" test still asserts byte-identical output, and a new test asserts a foreign key leaves `.taskless/.vale.ini` unwritten.
-- [ ] 2.2 In `rules/dispatch.ts`, a refusal becomes the Vale engine's `failure` (reaches the exit code); advisories join `notices`. Verify a mixed-engine test shows ast-grep results alongside the Vale failure and a non-zero exit.
+- [x] 2.1 In `rules/assemble.ts`, delete `ruleConfigBody` and `sectionPatternsOf`; `assembleValeConfig` validates each config, and on any rejection returns a refusal naming the rule and line without writing the file. Accepted configs are written verbatim under their breadcrumb; `sections` comes from the AST. Verify the "Assembly order is stable" test still asserts byte-identical output, and a new test asserts a foreign key leaves `.taskless/.vale.ini` unwritten.
+- [x] 2.2 In `rules/dispatch.ts`, a refusal becomes the Vale engine's `failure` (reaches the exit code); advisories join `notices`. Verify a mixed-engine test shows ast-grep results alongside the Vale failure and a non-zero exit.
 - [ ] 2.3 Recipe `packages/cli/src/agent/create-vale-rule.md`: state that the config is schema-checked, list what is rejected and what is advised, drop any `.taskless/**` matcher from its examples, and bump the topic version. Verify `pnpm build && pnpm cli agent create-vale-rule` renders and `pnpm cli check` is clean over the prose.
 - [ ] 2.4 `packages/cli/src/agent/update.md`: 0.11.3 ledger entry — a config `check` used to tolerate now refuses the Vale run, with the `verify` command that names the line; bump the topic version.
 - [ ] 2.5 Extend the changeset with the refusal. Run `pnpm typecheck`, `pnpm lint`, `pnpm --filter @taskless/cli test`; open PR 2 against PR 1's branch.

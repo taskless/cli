@@ -134,6 +134,13 @@ export const RULE_CONSTRAINTS = [
   // never over the file's text. The common thread is that Vale accepts each of
   // these configs and does something other than what the author wrote, with a
   // zero exit and an empty report: the rule verifies, runs, and finds nothing.
+  //
+  // `enforcedBy` reads `verify` for all of them even though `check` runs the
+  // same schema and refuses the Vale run on a rejection. The field answers a
+  // consumer's ordering question — can this be decided from the files alone,
+  // before anything executes? — and for every entry here it can. `verify` is
+  // where the author is told which line and which constraint; `check` only
+  // refuses, and points back at `verify`.
   {
     id: "vale-config-no-root-keys",
     engine: "vale",

@@ -8,6 +8,8 @@ import {
   ruleConfigPath,
   ruleTestsDirectory,
 } from "./engines";
+import { validateValeRuleConfig } from "../schemas/vale-config";
+import type { RuleViolation } from "./constraints";
 import { RULE_TESTS_DIRECTORY, RULES_DIRECTORY } from "./layout";
 
 /**
@@ -71,56 +73,39 @@ function valeHeader(): string {
 }
 
 /**
- * Read a rule's own config, dropping a leading `StylesPath`/`MinAlertLevel` if
- * an author copied one in.
+ * A rule's assembled block: its breadcrumb comment, then its config verbatim.
  *
- * Those two are properties of the run, not of a rule, and a per-rule copy would
- * either be redundant or silently fight the header. Everything else — matchers,
- * assignments, `tskl)` breadcrumbs, comments — is carried through **verbatim**,
- * because matcher order inside a rule is the author's expression of precedence.
+ * The config is the generator's structured input and is never re-serialized.
+ * The schema has already read it as an AST, for validation and for the matcher
+ * list; what Vale reads is the file's own bytes, so matcher order, comments and
+ * spacing survive exactly as the author wrote them. Matcher order inside a rule
+ * is the author's expression of precedence, so anything short of verbatim
+ * would be a semantic edit. The only addition is a newline after a source that
+ * lacks one, so the next rule's breadcrumb starts its own line.
+ *
+ * This is also why the schema, not this module, turns away a copied-in
+ * `StylesPath` or `MinAlertLevel`. Assembly used to strip those two by
+ * splitting each line on `=`; that was the one string edit it performed, and
+ * it meant the file Vale read was not the file the author wrote. A run-level
+ * key above the first matcher is now a rejection, so there is nothing left to
+ * strip.
  */
-function ruleConfigBody(source: string): string {
-  const lines = source.split("\n");
-  const kept: string[] = [];
-  let seenSection = false;
-  for (const line of lines) {
-    if (line.trimStart().startsWith("[")) seenSection = true;
-    if (!seenSection) {
-      const key = line.split("=")[0]?.trim().toLowerCase();
-      if (key === "stylespath" || key === "minalertlevel") continue;
-    }
-    kept.push(line);
-  }
-  return kept.join("\n").trim();
+function valeRuleBlock(ruleId: string, source: string): string {
+  const terminated = source.endsWith("\n") ? source : `${source}\n`;
+  return `# tskl) rule = ${ruleId}\n${terminated}`;
 }
 
-/** A rule's assembled block, tagged so its provenance survives interleaving. */
-function valeRuleBlock(ruleId: string, body: string): string {
-  return [`# tskl) rule = ${ruleId}`, body, ""].join("\n");
+/** One rule whose config the schema refused. */
+export interface ValeConfigRefusal {
+  ruleId: string;
+  /** Every rejection, each naming the line and the constraint it broke. */
+  rejections: RuleViolation[];
 }
 
 /**
- * A section header (`[pattern]`) from an assembled rule's own body.
- *
- * Read from the exact string this module is about to write — never from the
- * file after writing it. Re-reading the written `.vale.ini` to recover its
- * own sections would be the mistake `STYLEGUIDE-CODE.md`'s "Verify Build
- * Output In The Build, Not By Parsing It" warns against: this function
- * already IS the generator, holding the structured pieces before they are
- * joined into text, so there is nothing to re-derive.
- */
-function sectionPatternsOf(body: string): string[] {
-  const patterns: string[] = [];
-  for (const line of body.split("\n")) {
-    const match = /^\[(.+)\]$/.exec(line.trim());
-    if (match?.[1] !== undefined) patterns.push(match[1]);
-  }
-  return patterns;
-}
-
-/**
- * What `assembleValeConfig` produced: where to point `--config`, and the
- * section patterns it wrote there.
+ * What `assembleValeConfig` produced when every config passed the schema:
+ * where to point `--config`, the section patterns it wrote there, and what the
+ * schema noted about the configs without rejecting them.
  *
  * `sections` exists so a caller that needs to know what Vale would actually
  * lint can ask this module directly instead of re-parsing the config it just
@@ -131,30 +116,64 @@ function sectionPatternsOf(body: string): string[] {
  * the file to get it.
  */
 export interface AssembledValeConfig {
+  status: "ok";
   /** Config path relative to the project root, for `--config`. */
   path: string;
   /**
    * Every section glob pattern written into the config, deduplicated and
    * sorted for a stable read order. Root-relative, exactly as Vale reads
-   * them — the same strings a `[…]` line in a rule's own `.vale.ini` names.
+   * them — the same strings a `[…]` line in a rule's own `.vale.ini` names,
+   * read from the parsed structure rather than from the text.
    */
   sections: string[];
+  /**
+   * What the schema said about the configs without refusing them: a repeated
+   * key, a `[*]` matcher, a `.taskless/**` matcher. Advisory, so the caller
+   * surfaces them as notices and they never touch the exit code.
+   */
+  advisories: string[];
 }
+
+/**
+ * What `assembleValeConfig` produced when a config was refused: nothing on
+ * disk, and every rule it refused with the rejections the schema raised.
+ *
+ * Refusing rather than omitting the rule is the point. A rule left out of the
+ * assembled config would verify, run, and report nothing, which is the silent
+ * disable this engine's design exists to prevent. Refusing rather than
+ * stripping the offending line is the same decision from the other side: a
+ * config the schema rejects is one Vale would have read as something other
+ * than what its author wrote.
+ */
+export interface RefusedValeConfig {
+  status: "refused";
+  /** Every rule refused, in id order. Never empty. */
+  refusals: ValeConfigRefusal[];
+}
+
+export type ValeAssembly = AssembledValeConfig | RefusedValeConfig;
 
 /**
  * Assemble `.taskless/.vale.ini` from every Vale rule's own config.
  *
- * Returns the config path and its section patterns, or `undefined` when no
- * Vale rule declares any config — there is nothing to run, and writing an empty
- * config would invite Vale to lint the project against no rules and report a
- * clean pass.
+ * Every config is validated against the config schema first. On any rejection
+ * the file is not written and the refusal names each rule and line, so the
+ * caller can report it as the Vale engine's failure. Otherwise the header and
+ * each rule's verbatim config are written, and the result carries the config
+ * path, its section patterns, and the schema's advisories.
+ *
+ * Returns `undefined` when no Vale rule declares any config — there is nothing
+ * to run, and writing an empty config would invite Vale to lint the project
+ * against no rules and report a clean pass.
  */
 export async function assembleValeConfig(
   cwd: string
-): Promise<AssembledValeConfig | undefined> {
+): Promise<ValeAssembly | undefined> {
   const ruleIds = await listRuleIds(cwd, "vale");
   const blocks: string[] = [];
   const sections = new Set<string>();
+  const advisories: string[] = [];
+  const refusals: ValeConfigRefusal[] = [];
 
   for (const ruleId of ruleIds) {
     const configPath = ruleConfigPath(cwd, "vale", ruleId);
@@ -168,19 +187,29 @@ export async function assembleValeConfig(
       // `verify` reports it.
       continue;
     }
-    const body = ruleConfigBody(source);
-    if (body === "") continue;
-    for (const pattern of sectionPatternsOf(body)) sections.add(pattern);
-    blocks.push(valeRuleBlock(ruleId, body));
+    const verdict = validateValeRuleConfig(ruleId, source);
+    if (verdict.rejections.length > 0) {
+      refusals.push({ ruleId, rejections: verdict.rejections });
+      continue;
+    }
+    for (const pattern of verdict.sections) sections.add(pattern);
+    advisories.push(...verdict.advisories);
+    blocks.push(valeRuleBlock(ruleId, source));
   }
 
+  if (refusals.length > 0) return { status: "refused", refusals };
   if (blocks.length === 0) return undefined;
 
   const contents = [valeHeader(), ...blocks].join("\n");
   const target = join(cwd, ASSEMBLED_VALE_CONFIG);
   await mkdir(dirname(target), { recursive: true });
   await writeFile(target, contents, "utf8");
-  return { path: ASSEMBLED_VALE_CONFIG, sections: [...sections].toSorted() };
+  return {
+    status: "ok",
+    path: ASSEMBLED_VALE_CONFIG,
+    sections: [...sections].toSorted(),
+    advisories,
+  };
 }
 
 /**
@@ -239,8 +268,11 @@ export async function assembleSgConfig(
 
 /** Both assembled configs, for a run that needs whichever engines are present. */
 export interface AssembledConfigs {
-  /** Vale's config and section patterns, or `undefined` when no Vale rule is configured. */
-  vale: AssembledValeConfig | undefined;
+  /**
+   * Vale's config and section patterns, the refusal that kept it unwritten,
+   * or `undefined` when no Vale rule is configured.
+   */
+  vale: ValeAssembly | undefined;
   /** `-c` for ast-grep, or `undefined` when there are no ast-grep rules. */
   sg: string | undefined;
 }
@@ -257,7 +289,6 @@ export async function assembleEngineConfigs(
 
 /** Exported for the assembly tests, which assert on the artifact directly. */
 export const ASSEMBLY_INTERNALS = {
-  ruleConfigBody,
   valeHeader,
   RULE_TESTS_DIRECTORY,
 };

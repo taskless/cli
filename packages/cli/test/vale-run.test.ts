@@ -230,6 +230,12 @@ withVale("runVale against the real binary", () => {
     // and ignores it. Measured: `W101 … isn't a core option` on stderr, exit
     // zero, an empty result on stdout. Without the notice this is a clean run
     // with no findings — the rule is disabled and nothing says so.
+    //
+    // `check` no longer reaches Vale with this file: the config schema rejects
+    // a root-level assignment at assembly. The config is hand-written here and
+    // handed to `runVale` directly, deliberately around the schema, because
+    // the notice path has to stay pinned for the diagnostics the schema cannot
+    // foresee, and W101 is the one Vale is known to emit on a zero exit.
     const cwd = makeProject(
       `${header}rules.no-simply = YES\n\n[*.md]\nBasedOnStyles =\n`,
       { "no-simply": existenceRule("simply", "Avoid 'simply'") },
