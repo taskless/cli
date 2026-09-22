@@ -292,10 +292,13 @@ async function main({
     console.log(JSON.stringify(comparison));
   }
 
-  // Only the ahead path has anything to write. The pins are rewritten before
-  // the notes are fetched so that a network failure on the (optional) changelog
-  // cannot leave a half-done bump: by the time anything can throw below, the
-  // file on disk is either fully bumped or untouched.
+  // Only the ahead path has anything to write. BOTH rewrites are computed
+  // before EITHER file is written, and the writes come before the notes are
+  // fetched, so that neither a refused rewrite nor a network failure on the
+  // (optional) changelog can leave a half-done bump: by the time anything can
+  // throw below, the two files on disk are either both bumped or both
+  // untouched. A `--write` run by hand that fails therefore leaves a clean
+  // tree, not a package.json that moved without its constant.
   if (write && ahead) {
     const pins = collectPins(packageJson);
     const source = readFileSync(packageJsonPath, "utf8");
@@ -314,18 +317,19 @@ async function main({
         `expected to rewrite ${pins.size} @ast-grep/cli* pins, rewrote ${count}`
       );
     }
-    writeFileSync(packageJsonPath, bumped);
-    log(`Rewrote ${count} pins in ${packageJsonPath} to ${upstream}.`);
 
     // Upstream's own packages, so the constant is the pin verbatim. Rewritten
     // in the same run as the pins so the bot commit is self-consistent: a
-    // missing declaration throws here, before anything is pushed, rather than
-    // failing Validate later.
+    // missing declaration throws here, before anything is written, rather
+    // than failing Validate later.
     const { source: constants, from } = bumpVersionConstant(
       readFileSync(capabilitiesPath, "utf8"),
       { name: VERSION_CONSTANT, to: upstream }
     );
+
+    writeFileSync(packageJsonPath, bumped);
     writeFileSync(capabilitiesPath, constants);
+    log(`Rewrote ${count} pins in ${packageJsonPath} to ${upstream}.`);
     log(
       `Rewrote ${VERSION_CONSTANT} in ${capabilitiesPath}: ${from} -> ${upstream}.`
     );

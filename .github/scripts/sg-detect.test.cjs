@@ -361,6 +361,36 @@ test("sg-detect: --write fails when AST_GREP_VERSION is not declared once", asyn
 });
 
 /**
+ * The half of that failure that matters to a tree: when the constant cannot
+ * be rewritten, the pins must not have been written either. Both rewrites are
+ * computed before either file is touched, so a refused run leaves package.json
+ * exactly as it found it rather than bumped without its constant.
+ */
+test("sg-detect: a refused constant rewrite leaves package.json untouched", async () => {
+  const before = sourcePinnedAt("0.45.2");
+  const directory = mkdtempSync(join(tmpdir(), "sg-detect-atomic-"));
+  const packageJsonPath = join(directory, "package.json");
+  const capabilitiesPath = join(directory, "capabilities.ts");
+  writeFileSync(packageJsonPath, before);
+  writeFileSync(capabilitiesPath, 'export const VALE_VERSION = "3.21.0";\n');
+  try {
+    await assert.rejects(
+      main({
+        argv: ["--write"],
+        latestVersion: async () => "0.45.3",
+        packageJsonPath,
+        packageJson: pinnedAt("0.45.2"),
+        capabilitiesPath,
+      }),
+      /found 0/
+    );
+    assert.equal(readFileSync(packageJsonPath, "utf8"), before);
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+/**
  * The half-applied bump this guard exists for. `packageJson` says there are
  * three pins; the source text on disk only spells two of them at the old
  * version, so a rewrite would leave a straggler behind — a different ast-grep

@@ -238,6 +238,9 @@ async function main({
     latestVersion
   );
   const ahead = compareStampedVersions(upstream, pinned) > 0;
+  // The release upstream actually tagged: what the constant records, what the
+  // changelog is fetched by, and what the workflow names the pull request.
+  const base = baseVersion(upstream);
 
   log(`pinned: ${pinned}   published latest: ${upstream}`);
   log(
@@ -251,6 +254,11 @@ async function main({
     console.log(JSON.stringify(comparison));
   }
 
+  // BOTH rewrites are computed before EITHER file is written, so a refused
+  // rewrite (a pin the pattern cannot reach, a constant declaration that has
+  // moved) leaves the two files on disk either both bumped or both untouched.
+  // A `--write` run by hand that fails therefore leaves a clean tree, not a
+  // package.json that moved without its constant.
   if (write && ahead) {
     const source = readFileSync(packageJsonPath, "utf8");
     const { source: bumped, count } = bumpPins(source, {
@@ -263,19 +271,19 @@ async function main({
         `expected to rewrite ${pins.size} ${PIN_PREFIX}* pins, rewrote ${count}`
       );
     }
-    writeFileSync(packageJsonPath, bumped);
-    log(`Rewrote ${count} pins in ${packageJsonPath} to ${upstream}.`);
 
     // The constant carries the version the BINARY reports, which is the base
     // version, not the stamped one npm serves. Rewritten in the same run as the
     // pins so the bot commit is self-consistent: a missing declaration throws
-    // here, before anything is pushed, rather than failing Validate later.
-    const base = baseVersion(upstream);
+    // here, before anything is written, rather than failing Validate later.
     const { source: constants, from } = bumpVersionConstant(
       readFileSync(capabilitiesPath, "utf8"),
       { name: VERSION_CONSTANT, to: base }
     );
+
+    writeFileSync(packageJsonPath, bumped);
     writeFileSync(capabilitiesPath, constants);
+    log(`Rewrote ${count} pins in ${packageJsonPath} to ${upstream}.`);
     log(
       `Rewrote ${VERSION_CONSTANT} in ${capabilitiesPath}: ${from} -> ${base}.`
     );
@@ -284,7 +292,6 @@ async function main({
   // The changelog a reviewer wants is UPSTREAM's, not ours. Our stamp says when
   // the package was built; `v<base>` is the release whose behaviour changes.
   if (notesOut && ahead) {
-    const base = baseVersion(upstream);
     const release = await releaseFor(manifest.upstream.repository, `v${base}`);
     writeNotesFile(
       notesOut,
@@ -300,7 +307,7 @@ async function main({
   setOutput("update", String(ahead));
   setOutput("vale_version", upstream);
   setOutput("pinned_version", pinned);
-  setOutput("base_version", baseVersion(upstream));
+  setOutput("base_version", base);
   return comparison;
 }
 
