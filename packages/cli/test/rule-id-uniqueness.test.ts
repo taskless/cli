@@ -147,10 +147,10 @@ describe("verify refuses a rule id held by more than one engine", () => {
 });
 
 describe("migration 0009 renames a colliding project", () => {
-  // Symmetric: neither engine keeps the bare id, because any precedence rule
-  // would be arbitrary and would leave a user working out which of their two
-  // rules silently kept the name.
-  it("renames every colliding copy to <id>-<engine>", async () => {
+  // Symmetric between the engines that move: neither `sg` nor `vale` keeps the
+  // bare id, because any precedence rule between them would be arbitrary and
+  // would leave a user working out which of their two rules kept the name.
+  it("renames both sg and vale copies to <id>-<engine>", async () => {
     await sgRule("no-eval");
     await valeRule("no-eval");
 
@@ -196,14 +196,68 @@ describe("migration 0009 renames a colliding project", () => {
     expect(config).not.toContain("no-eval.no-eval");
   });
 
-  it("renames a runtime rule by directory alone", async () => {
-    await runtimeRule("no-eval");
-    await valeRule("no-eval");
+  // Runtime rules are the signed tier. Leaving them alone keeps the migration
+  // clear of that machinery entirely — and costs nothing, because within one
+  // engine the filesystem already guarantees one directory per id, so moving
+  // the other copy is enough to resolve the collision.
+  it("never renames a runtime rule, moving only the sg copy", async () => {
+    await sgRule("no-eval");
+    const runtimeDirectory = await runtimeRule("no-eval");
+    const before = await snapshot(runtimeDirectory);
 
     await migration(join(cwd, ".taskless"));
 
-    const directory = rulePath("runtime", "no-eval-runtime");
-    expect(await exists(join(directory, "check.ts"))).toBe(true);
+    // Byte-identical: same paths, same sizes, same mtimes.
+    expect(await snapshot(runtimeDirectory)).toEqual(before);
+    expect(await exists(rulePath("runtime", "no-eval"))).toBe(true);
+    expect(await exists(rulePath("runtime", "no-eval-runtime"))).toBe(false);
+    expect(await exists(rulePath("sg", "no-eval"))).toBe(false);
+    expect(await exists(rulePath("sg", "no-eval-sg"))).toBe(true);
+    expect(await findRuleIdCollisions(cwd)).toEqual([]);
+  });
+
+  it("never renames a runtime rule when Vale is the other holder", async () => {
+    await valeRule("no-eval");
+    await runtimeRule("no-eval");
+
+    await migration(join(cwd, ".taskless"));
+
+    expect(await exists(rulePath("runtime", "no-eval"))).toBe(true);
+    expect(await exists(rulePath("vale", "no-eval-vale"))).toBe(true);
+    const verified = await verifyOneRule(cwd, {
+      engine: "vale",
+      ruleId: "no-eval-vale",
+    });
+    expect(verified.ok).toBe(true);
+    expect(await findRuleIdCollisions(cwd)).toEqual([]);
+  });
+
+  it("moves sg and vale and leaves runtime alone when all three collide", async () => {
+    await sgRule("no-eval");
+    await valeRule("no-eval");
+    const runtimeDirectory = await runtimeRule("no-eval");
+    const before = await snapshot(runtimeDirectory);
+
+    await migration(join(cwd, ".taskless"));
+
+    expect(await exists(rulePath("sg", "no-eval-sg"))).toBe(true);
+    expect(await exists(rulePath("vale", "no-eval-vale"))).toBe(true);
+    expect(await exists(rulePath("runtime", "no-eval"))).toBe(true);
+    expect(await snapshot(runtimeDirectory)).toEqual(before);
+    expect(await findRuleIdCollisions(cwd)).toEqual([]);
+
+    // Every surviving rule still verifies. The runtime one keeps the bare id
+    // and is no longer in collision with anything.
+    for (const rule of [
+      { engine: "vale", ruleId: "no-eval-vale" },
+      { engine: "runtime", ruleId: "no-eval" },
+    ] as const) {
+      const result = await verifyOneRule(cwd, rule);
+      expect(
+        result.errors.filter((error) => error.includes("is held by")),
+        `${rule.engine}/${rule.ruleId}`
+      ).toEqual([]);
+    }
   });
 
   // Never clobbers. `<id>-<engine>` taken means the next free ascending
