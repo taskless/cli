@@ -1,4 +1,4 @@
-# Topic: create-vale-rule     (CLI v%(CLI_VERSION)s / topic v12)
+# Topic: create-vale-rule     (CLI v%(CLI_VERSION)s / topic v13)
 
 ## You are here
 This is `create-vale-rule`. It helps you write a Vale rule: a check over
@@ -471,15 +471,26 @@ it.
    expect to add to the list.
 
 3. **Know what you are writing: `tokens` and `swap` keys are patterns,
-   not literals.** They compile as **Go RE2** regular expressions.
+   not literals.** They compile as Go regular expressions.
 
    *This step is about `tokens` and `swap` only. A `capitalization`,
    `occurrence` or `metric` rule has neither, skip to step 4.*
 
    - `(?:…)`, `[…]`, `|`, `+`, `?` all work.
-   - **Lookahead and lookbehind do not exist in RE2.** A rule that needs
-     "X but not when followed by Y" cannot be written as a single
-     `substitution`; split it or narrow with `scope`.
+   - **Lookaround and backreferences work, and they are not free.**
+     Vale compiles a pattern with Go's own `regexp` first and falls
+     back to `regexp2` when that engine refuses it, so `(?=…)`,
+     `(?<=…)` and `\1` are all available even though Go's `regexp` has
+     none of them. Measured on Vale v%(VALE_VERSION)s with throwaway
+     rules, each firing on its `fail/` fixture and quiet on `pass/`: a
+     repeated-word `\b(\w+) \1\b`, a `foo(?= bar)` lookahead, and a
+     `(?<=x )y` lookbehind. The fallback engine backtracks and is the
+     slower of the two, so keep lookaround off a pattern that runs
+     over every file in the project, and prove any rule that uses one
+     with a fixture rather than trusting the syntax. "X but not when
+     followed by Y" is therefore writable as a single `substitution`,
+     but splitting it or narrowing with `scope` is still the cheaper
+     rule when either will do.
    - **Word boundaries are applied for you, around the whole pattern.**
      Measured: `Github` does not fire inside `GithubToken`, and the
      multi-word `click here` does not fire inside `Clicking here`.
@@ -939,12 +950,34 @@ it.
    reported one entry per rule. `.taskless/rules/vale` covers every Vale
    rule; no argument at all covers the project.
 
-   If you would rather see the raw findings, the message text and the
-   line numbers, run `check` against a bucket instead:
+   **`test` answers pass-or-fail and never shows you the finding**, so
+   it cannot tell you that a `substitution` message renders its two
+   `%%s` slots in the wrong order: the rule fires, the fixture is
+   satisfied, and `test` reports `ok`. To read the rendered message,
+   the line numbers and the matched text, name the bucket to `check`:
 
    ```
    %(TASKLESS_CLI)s check .taskless/rules/vale/<id>/.tests/fail --json
    ```
+
+   **That works because a path you name is honored.** `.taskless/` is
+   excluded from the *whole-project* walk only, so a bare `check` over
+   the project reports nothing from anyone's fixtures while the command
+   above reports every finding in that bucket. Measured on this build:
+   a whole-project `check` returned no result under `.taskless/`, and
+   the same rule's `fail/` bucket named explicitly returned its
+   findings with the message text rendered.
+
+   **If that command returns `results: []` for a rule whose `test` is
+   green, suspect the rule's own config before the pattern.** A
+   `[.taskless/**]` matcher setting `<id>.<id> = NO` turns the bucket
+   off for exactly this invocation, which is the one shape that
+   reproduces "`test` says the fixture fired, `check` on the same
+   fixture says nothing". Measured: adding that matcher to a working
+   rule left `test` at `ok: true` and emptied `results`. The tell is
+   in the same envelope, as a notice reading `matcher [.taskless/**]
+   is unnecessary`. `verify` reports it too, as an advisory. Delete
+   the matcher; step 4 explains why no rule needs one.
 
    Read `results` there. Ignore `success` and the exit code: `success`
    says the run worked rather than that the fixture behaved, and the
@@ -1014,6 +1047,10 @@ it.
 
    When a `fail/` document does not fire, work down this list before
    touching the pattern. The cause is usually further up:
+   - Read the finding first, with the `check` on the `fail/` bucket
+     above. What the run saw is cheaper than any guess about why it
+     saw nothing, and it separates "no finding" from "a finding whose
+     message is wrong".
    - Does the rule have a `.vale.ini` at all?
    - Is the assignment underneath a `[…]` matcher?
    - Is it spelled `<id>.<id>`, both halves the same?
@@ -1191,7 +1228,7 @@ either:
 
 **The id must be word characters only.** `consistency` is the one
 extension point that compiles the rule's own name into the pattern, as
-a `(?P<id>…)` capture group, and Go RE2 rejects a group name containing
+a `(?P<id>…)` capture group, and Go's `regexp` rejects a group name containing
 a hyphen. Measured: an id of `ize-ise` fails with `E201 … invalid group
 name` and takes **every** Vale rule in the project down with it, because
 Vale reads one config for the whole run. Name this one `izeise` or
