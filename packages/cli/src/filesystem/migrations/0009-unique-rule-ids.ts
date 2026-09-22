@@ -5,7 +5,7 @@ import {
   findRuleIdCollisions,
   metadataSidecarPath,
 } from "../../rules/id-uniqueness";
-import { ruleDirectory } from "../../rules/engines";
+import { listRuleIds, ruleDirectory } from "../../rules/engines";
 // Safe to reach for now that the manifest lives in `filesystem/manifest.ts`.
 // `reconcile-marker` reads the manifest, and while that meant importing
 // `migrate.ts` — the module holding the migration registry — this import
@@ -13,6 +13,7 @@ import { ruleDirectory } from "../../rules/engines";
 // knows migrations exist, so the path stops here.
 import { pathExists } from "../../rules/reconcile-marker";
 import {
+  ENGINE_LAYOUTS,
   ENGINES,
   RULE_TESTS_DIRECTORY,
   type EngineName,
@@ -155,25 +156,9 @@ const migration: Migration = async (directory) => {
 async function occupiedRuleIds(cwd: string): Promise<Set<string>> {
   const ids = new Set<string>();
   for (const engine of ENGINES) {
-    for (const id of await listEngineRuleIds(cwd, engine)) ids.add(id);
+    for (const id of await listRuleIds(cwd, engine)) ids.add(id);
   }
   return ids;
-}
-
-async function listEngineRuleIds(
-  cwd: string,
-  engine: EngineName
-): Promise<string[]> {
-  try {
-    const entries = await readdir(join(cwd, ".taskless", "rules", engine), {
-      withFileTypes: true,
-    });
-    return entries
-      .filter((entry) => entry.isDirectory())
-      .map((entry) => entry.name);
-  } catch {
-    return [];
-  }
 }
 
 /**
@@ -218,12 +203,12 @@ async function renameRule(
 
   if (engine === "sg") {
     lines.push(
-      ...(await renameRuleFile(toPath, from, to)),
+      ...(await renameRuleFile(toPath, engine, from, to)),
       ...(await renameSgFixtures(toPath, from, to))
     );
   } else if (engine === "vale") {
     lines.push(
-      ...(await renameRuleFile(toPath, from, to)),
+      ...(await renameRuleFile(toPath, engine, from, to)),
       ...(await rewriteValeConfig(toPath, from, to))
     );
   }
@@ -231,19 +216,32 @@ async function renameRule(
   return lines;
 }
 
-/** `<from>.yml` becomes `<to>.yml`, and its own `id:` follows. */
+/**
+ * The rule file named after `from` becomes the one named after `to`, and its
+ * own `id:` follows.
+ *
+ * The name comes from {@link ENGINE_LAYOUTS}, the table that decides it, so
+ * the two engines this runs for stop being a second place that has to agree
+ * with `layout.ts` about `${id}.yml`. Not `ruleFilePath`, which takes a `cwd`
+ * and a rule id and would resolve into the PRE-rename directory: by the time
+ * this is called the directory has already moved, and only the file inside it
+ * still carries the old name.
+ */
 async function renameRuleFile(
   ruleDirectoryPath: string,
+  engine: EngineName,
   from: string,
   to: string
 ): Promise<string[]> {
-  const fromFile = join(ruleDirectoryPath, `${from}.yml`);
+  const fromName = ENGINE_LAYOUTS[engine].ruleFile(from);
+  const toName = ENGINE_LAYOUTS[engine].ruleFile(to);
+  const fromFile = join(ruleDirectoryPath, fromName);
   if (!(await pathExists(fromFile))) return [];
-  const toFile = join(ruleDirectoryPath, `${to}.yml`);
+  const toFile = join(ruleDirectoryPath, toName);
   await rename(fromFile, toFile);
   const rewritten = await rewriteIdField(toFile, from, to);
   return [
-    `    renamed ${from}.yml -> ${to}.yml${rewritten ? " and its id: field" : ""}`,
+    `    renamed ${fromName} -> ${toName}${rewritten ? " and its id: field" : ""}`,
   ];
 }
 
