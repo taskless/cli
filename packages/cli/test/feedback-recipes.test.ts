@@ -14,7 +14,7 @@ const invocation = "npx @taskless/cli";
 
 /** The sentence the invite puts to the user, as the design fixed it. */
 const ASK =
-  "Taskless would like to know how the CLI is doing. Would you be okay sharing a few sentences about your experience? Or just skip it with `skip`.";
+  "Taskless would like to know how this went. Anything you'd like to add in your own words? Reply `skip` if not, and I'll send my own notes on the session.";
 
 /** Blockquote prose, unwrapped: the recipe hard-wraps and prefixes `> `. */
 function unwrapQuote(text: string): string {
@@ -92,11 +92,26 @@ describe("the feedback invite", () => {
     expect(fragment).toContain(`${invocation} feedback dismiss`);
   });
 
-  it("treats skip, silence, and an unrelated reply as a decline", () => {
-    const fragment = getRecipe("feedback-invite", { header: false }) ?? "";
-    expect(fragment).toMatch(
-      /`skip`, said nothing, or replied about something else/
+  it("sends the agent's account on skip, silence, or an unrelated reply", () => {
+    const fragment =
+      getRecipe("feedback-invite", { invocation, header: false }) ?? "";
+    const skipDoor = fragment.slice(
+      fragment.indexOf("`skip`, said nothing, or replied about something else"),
+      fragment.indexOf("They asked you not to send anything")
     );
-    expect(fragment).toContain("That is a decline");
+    expect(skipDoor).toContain(`${invocation} agent feedback`);
+    expect(skipDoor).toContain("no `verbatim`");
+    expect(skipDoor).not.toContain("feedback dismiss");
+  });
+
+  it("reserves dismiss for an explicit refusal and names the telemetry switch", () => {
+    const fragment =
+      getRecipe("feedback-invite", { invocation, header: false }) ?? "";
+    const refusal = fragment.slice(
+      fragment.indexOf("They asked you not to send anything")
+    );
+    expect(refusal).toContain(`${invocation} feedback dismiss`);
+    expect(refusal).toContain("DO_NOT_TRACK=1");
+    expect(refusal).toContain("TASKLESS_TELEMETRY_DISABLED=1");
   });
 });

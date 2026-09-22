@@ -17,18 +17,22 @@
  * recipe; it cannot know the agent put the question to a person. The funnel
  * reads shown ≫ sent by design, and nothing here pretends otherwise.
  *
- * A question's id changes when its type changes in PostHog. Q3 became single
- * choice on 2026-09-17 and took a new id; the one below is current.
+ * A question's id is PostHog's and changes whenever the question does. The
+ * survey below replaced `01a0b1a0-80fb-0000-5dc1-baa4ec44e619` for 0.11.3:
+ * seven questions, only the first required, every id new. The cadence store
+ * is keyed by survey id, so every install is invited once more.
  */
-export const SURVEY_ID = "01a0b1a0-80fb-0000-5dc1-baa4ec44e619";
+export const SURVEY_ID = "01a0c7b9-dfe4-0000-d05e-ce253e90a68c";
 
 /** The payload keys, in question order. */
 export type FeedbackKey =
+  | "ruleKind"
   | "verbatim"
-  | "goal"
   | "completed"
   | "workedWell"
-  | "needsImprovement";
+  | "needsImprovement"
+  | "agents"
+  | "mostValuableRule";
 
 export interface SurveyQuestion {
   key: FeedbackKey;
@@ -38,30 +42,43 @@ export interface SurveyQuestion {
 
 export const SURVEY_QUESTIONS: readonly SurveyQuestion[] = [
   {
-    key: "verbatim",
-    id: "5feff6a3-6768-4817-92d7-5ae3975c6baa",
-    question: "What was the user's comments verbatim?",
+    key: "ruleKind",
+    id: "0874591f-c554-4ac3-8930-e11c436d859e",
+    question: "What kind of rule was the user trying to create?",
   },
   {
-    key: "goal",
-    id: "561e87f4-a1b7-4855-b728-29d19421f7e7",
-    question: "What was the user trying to accomplish?",
+    key: "verbatim",
+    id: "2c3c80dc-dcda-4e29-b52e-a25ef58b5ca2",
+    question: "Did the user offer any comments? (leave blank if no comments)",
   },
   {
     key: "completed",
-    id: "6ebdfabb-3575-49aa-857c-47b6bbfdebc8",
+    id: "605e12a8-82b6-480f-93b2-ab8de0fa08bd",
     question: "Did the user successfully complete the task in your opinion?",
   },
   {
     key: "workedWell",
-    id: "2316428e-dc3e-4c96-ae67-a6e8c66d7db5",
-    question: "What steps of the interaction with Taskless worked well?",
+    id: "b5375d87-e295-4833-84ed-fca8140ba992",
+    question:
+      "What steps of the interaction with the Taskless skills & CLI worked well?",
   },
   {
     key: "needsImprovement",
-    id: "67bedbd9-ca70-4c1c-b1a6-6df830a453dd",
+    id: "a8cf706d-3ff7-4845-bea9-501013be958c",
     question:
-      "What steps of the interaction with Taskless could use improvement?",
+      "What steps of the interaction with Taskless skills & CLI could use improvement?",
+  },
+  {
+    key: "agents",
+    id: "f85b22df-8e51-4c9c-8219-261b33b71c90",
+    question:
+      "What agent(s) or framework(s) is the user using that are open sourced and publicly available?",
+  },
+  {
+    key: "mostValuableRule",
+    id: "4f8e938e-22f6-449c-9b8c-43c51d08e214",
+    question:
+      "Of the rules created so far, what rule is creating the most value for the team and why? (leave blank if there are no rules)",
   },
 ];
 
