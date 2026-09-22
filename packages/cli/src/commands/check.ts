@@ -14,6 +14,7 @@ import { makeErrorEnvelope, writeJsonError } from "../types/errors";
 import { CLIError } from "../util/cli-error";
 import { requireCurrentSchema } from "../filesystem/migrate";
 import { discoverRuntimeRules } from "../rules/runtime/discover";
+import { resolveRuleSelection, type RuleSelection } from "../rules/rule-filter";
 // The gate lives beside the runtime engine rather than inside this command,
 // because `test` runs a rule's fixtures under exactly this policy. Sharing the
 // implementation is what makes that a fact rather than an intention.
@@ -65,7 +66,46 @@ async function filterExistingPaths(
  * value-taking flag, so it is named here rather than in the shared set.
  */
 function extractPositionalPaths(rawArguments: string[]): string[] {
-  return splitRawArguments(rawArguments, ["--timeout"]).positionals;
+  return splitRawArguments(rawArguments, VALUE_FLAGS).positionals;
+}
+
+/**
+ * `check`'s own value-taking flags, for the shared argv scanner.
+ *
+ * `--rule` has to be here or its value is scanned as a positional path:
+ * `check --rule no-eval` would look for a file called `no-eval`, find none, and
+ * take the "every supplied path was filtered out" branch — a clean exit 0 with
+ * no findings, which is the same output a rule that fires nowhere produces.
+ */
+const VALUE_FLAGS = ["--timeout", "--rule"] as const;
+
+/**
+ * Every `--rule` value in argv, in the order given.
+ *
+ * Read from raw argv rather than from citty's parsed `args` because the flag is
+ * REPEATABLE, and a parser that collapses a repeat to a single value turns
+ * `--rule a --rule b` into a measurement of one rule while the author reads the
+ * number as covering two. Both spellings are accepted (`--rule a` and
+ * `--rule=a`), and scanning stops at `--` so a path literally named `--rule`
+ * after the end-of-options marker is a path.
+ */
+export function extractRuleFilters(rawArguments: string[]): string[] {
+  const ids: string[] = [];
+  for (let index = 0; index < rawArguments.length; index++) {
+    const argument = rawArguments[index]!;
+    if (argument === "--") break;
+    if (argument === "--rule") {
+      const value = rawArguments[index + 1];
+      if (value !== undefined && value !== "--") {
+        ids.push(value);
+        index++;
+      }
+      continue;
+    }
+    if (argument.startsWith("--rule="))
+      ids.push(argument.slice("--rule=".length));
+  }
+  return ids.filter((id) => id !== "");
 }
 
 /** Parse `--timeout <seconds>` into milliseconds; invalid/absent → undefined (default). */
@@ -107,6 +147,10 @@ export const checkCommand = defineCommand({
     timeout: {
       type: "string",
       description: "Per-runtime-check timeout in seconds (default 10)",
+    },
+    rule: {
+      type: "string",
+      description: "Run only the named rule; repeatable (--rule a --rule b)",
     },
   },
   async run({ args, rawArgs }) {
@@ -182,6 +226,34 @@ export const checkCommand = defineCommand({
         }
         throw error;
       }
+      // Resolved BEFORE the "no rules configured" gate, so a mistyped id is
+      // reported as a mistyped id in every project rather than as "no rules
+      // configured" in some of them. The refusal is handled here for the same
+      // reason the scaffold refusal above is: it asks the caller to fix the
+      // command line, not to read a failed scan.
+      const requestedRules = extractRuleFilters(rawArgs);
+      let mutableSelection: RuleSelection | undefined;
+      if (requestedRules.length > 0) {
+        try {
+          mutableSelection = await resolveRuleSelection(cwd, requestedRules);
+        } catch (error) {
+          if (error instanceof CLIError) {
+            if (args.json) {
+              writeJsonError(error.code ?? "INVALID_INPUT", error.message);
+            } else {
+              console.error(`Error: ${error.message}`);
+            }
+            process.exitCode = 1;
+            return;
+          }
+          throw error;
+        }
+      }
+
+      // Rebound as a const so narrowing survives into the callbacks below: a
+      // `let` is re-widened inside a closure, and the filter is read from one.
+      const selection = mutableSelection;
+
       const dispatch = await planEngineDispatch(cwd);
 
       // Static rules (trusted ast-grep YAML) always run; runtime rules
@@ -200,9 +272,19 @@ export const checkCommand = defineCommand({
       const runtimeEnabled =
         runtimeDispatch?.present === true &&
         runtimeDispatch.executor === "runtime-harness";
-      const runtimeRules = runtimeEnabled
+      const discoveredRuntimeRules = runtimeEnabled
         ? await discoverRuntimeRules(cwd)
         : [];
+      // `--rule` narrows WHAT runs; it does not widen what may run. A runtime
+      // rule named here is still subject to the signature gate, so an
+      // unauthenticated `check --rule <runtime-rule>` reports the same skip it
+      // would have reported inside a whole-project run.
+      const runtimeRules =
+        selection === undefined
+          ? discoveredRuntimeRules
+          : discoveredRuntimeRules.filter((rule) =>
+              selection.runtime.includes(rule.name)
+            );
 
       // "No rules configured" has to mean *no engine* has any, not just these
       // two: a project whose only rules live in `.taskless/rules/vale/` would
@@ -253,11 +335,22 @@ export const checkCommand = defineCommand({
         // Assemble both engine configs from the per-rule tree. Each returns
         // `undefined` when its engine has no rules, which dispatch reads as
         // "nothing to run" rather than running an empty config.
-        const assembled = await assembleEngineConfigs(cwd);
+        const assembled = await assembleEngineConfigs(
+          cwd,
+          selection === undefined ? {} : { ruleIds: selection.vale }
+        );
         const dispatched = await runEngines({
           cwd,
           paths: existingPaths,
-          astGrepConfigPath: assembled.sg,
+          // An `sg` selection that is empty means no ast-grep rule was named,
+          // so the engine has nothing to do and is skipped rather than being
+          // handed a filter that matches nothing — which would still spawn
+          // ast-grep, load every rule, and walk the project to report none.
+          astGrepConfigPath:
+            selection !== undefined && selection.sg.length === 0
+              ? undefined
+              : assembled.sg,
+          ...(selection === undefined ? {} : { astGrepRuleIds: selection.sg }),
           vale: assembled.vale,
           runtimeRules: plan.execute,
           runtimeTimeoutMs: parseTimeoutMs(args.timeout),
@@ -290,7 +383,12 @@ export const checkCommand = defineCommand({
           warningCount,
           findings: results.length,
           ruleCount:
-            astGrepRuleIds.length + valeRuleIds.length + runtimeRules.length,
+            astGrepRuleIds.length +
+            valeRuleIds.length +
+            // Discovered, not the `--rule` subset: the question this count
+            // answers is how many rules the workspace has configured, and the
+            // other two terms are unfiltered for the same reason.
+            discoveredRuntimeRules.length,
         };
 
         // Computed by `runEngines`, not here: the exit code is a fact about a

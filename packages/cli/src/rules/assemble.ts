@@ -163,6 +163,37 @@ export interface RefusedValeConfig {
 
 export type ValeAssembly = AssembledValeConfig | RefusedValeConfig;
 
+/** Narrowing shared by the engine assemblers. */
+export interface AssembleOptions {
+  /**
+   * Restrict assembly to these rule ids — `check --rule`. `undefined` is the
+   * ordinary whole-project run and means every rule; an empty array means no
+   * rule was selected for this engine, so it assembles nothing and the engine
+   * is skipped.
+   *
+   * Narrowing Vale by REMOVING the other rules' blocks, rather than by writing
+   * a config that enables one rule under `[*]`, is what makes a filtered run
+   * report what an unfiltered run would have reported for that rule. Each rule
+   * keeps its own matchers verbatim, so its scope is unchanged, and the schema
+   * refuses a config that assigns another rule's key (the "names another rule"
+   * rejection in `schemas/vale-config.ts`), so no removed block could have been
+   * setting the selected rule's `<id>.<id>` value. Vale's positional precedence
+   * therefore has nothing left to act on across rules, and the surviving block
+   * resolves exactly as it did among the others.
+   */
+  ruleIds?: readonly string[];
+}
+
+/** `available` narrowed to `selected`, or all of it when nothing was selected. */
+function selectRuleIds(
+  available: string[],
+  selected: readonly string[] | undefined
+): string[] {
+  if (selected === undefined) return available;
+  const wanted = new Set(selected);
+  return available.filter((ruleId) => wanted.has(ruleId));
+}
+
 /**
  * Assemble `.taskless/.vale.ini` from every Vale rule's own config.
  *
@@ -177,9 +208,13 @@ export type ValeAssembly = AssembledValeConfig | RefusedValeConfig;
  * against no rules and report a clean pass.
  */
 export async function assembleValeConfig(
-  cwd: string
+  cwd: string,
+  options: AssembleOptions = {}
 ): Promise<ValeAssembly | undefined> {
-  const ruleIds = await listRuleIds(cwd, "vale");
+  const ruleIds = selectRuleIds(
+    await listRuleIds(cwd, "vale"),
+    options.ruleIds
+  );
   const blocks: string[] = [];
   const sections = new Set<string>();
   const advisories: string[] = [];
@@ -288,10 +323,11 @@ export interface AssembledConfigs {
 }
 
 export async function assembleEngineConfigs(
-  cwd: string
+  cwd: string,
+  options: AssembleOptions = {}
 ): Promise<AssembledConfigs> {
   const [vale, sg] = await Promise.all([
-    assembleValeConfig(cwd),
+    assembleValeConfig(cwd, options),
     assembleSgConfig(cwd),
   ]);
   return { vale, sg };
