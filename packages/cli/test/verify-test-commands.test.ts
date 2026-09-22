@@ -276,6 +276,18 @@ describe("verify checks components without requiring tests", () => {
       expect.stringContaining("raw has 2 entries"),
       expect.stringContaining("assigns no-twist.no-twist again"),
     ]);
+
+    // Text mode prefixes every line, so the second advisory is labelled too
+    // rather than trailing the first as an unindented stray.
+    const text = await runCli(["verify", "-d", cwd]);
+    const noticeLines = text.stdout
+      .split("\n")
+      .filter((line) => line.startsWith("    notice: "));
+    expect(noticeLines).toEqual([
+      expect.stringContaining("notice: no-twist: raw has 2 entries"),
+      expect.stringContaining("notice: no-twist/.vale.ini"),
+    ]);
+    expect(noticeLines[1]).toContain("assigns no-twist.no-twist again");
   });
 
   it("rejects a Vale config whose only YES a later NO overrides", async () => {
