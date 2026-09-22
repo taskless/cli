@@ -63,7 +63,7 @@
  * Usage:
  *   node .github/scripts/vale-upgrade-wait.cjs
  *     [--workflow <file>] [--timeout-minutes <n>] [--poll-seconds <n>]
- *     [--attempts <n>] [--interval-seconds <n>]
+ *     [--attempts <n>] [--interval-seconds <n>] [--call-timeout-seconds <n>]
  *
  * Reads GITHUB_EVENT_NAME and GITHUB_SHA. `gh` needs GH_TOKEN with
  * `actions: read`.
@@ -89,6 +89,7 @@ const DEFAULTS = {
   pollMs: 30 * SECOND,
   attempts: 5,
   intervalMs: 60 * SECOND,
+  callTimeoutMs: 60 * SECOND,
 };
 
 function setOutput(key, value, env = process.env) {
@@ -127,24 +128,53 @@ function parseArgs(argv) {
       DEFAULTS.intervalMs / SECOND,
       SECOND
     ),
+    callTimeoutMs: read(
+      "--call-timeout-seconds",
+      DEFAULTS.callTimeoutMs / SECOND,
+      SECOND
+    ),
   };
 }
+
+/**
+ * What a call that hit its `timeout` looks like, so the message says so
+ * rather than repeating the signal name. Node reports it as ETIMEDOUT on the
+ * error and kills the child with SIGTERM; either alone is enough.
+ */
+const timedOut = (error) =>
+  error.code === "ETIMEDOUT" || error.signal === "SIGTERM";
 
 /**
  * `gh` as an argv array, never through a shell. A non-zero exit becomes a
  * thrown Error carrying stderr, which the poll loop treats as "not yet
  * registered": one rate-limited or 5xx'd call in fifty polls must not end the
  * wait, let alone the run.
+ *
+ * BOUNDED PER CALL, not only between calls. The 25-minute deadline is checked
+ * after each poll returns, so a single call that HANGS (a stalled TLS
+ * handshake, a DNS lookup that never answers) would otherwise sit on the
+ * runner until GitHub's six-hour job timeout, well past every bound this
+ * script advertises. A call past `timeoutMs` is killed and thrown, and from
+ * there it is an ordinary failed call: logged, polled again, exit 0. The
+ * bound lives here and not on the step as `timeout-minutes`, because a step
+ * timeout FAILS the check, which is the one outcome this script must never
+ * produce over a race it did not cause.
  */
-function runGh(args) {
+function runGh(
+  args,
+  { timeoutMs = DEFAULTS.callTimeoutMs, command = "gh" } = {}
+) {
   try {
-    return execFileSync("gh", args, {
+    return execFileSync(command, args, {
       encoding: "utf8",
       stdio: ["ignore", "pipe", "pipe"],
+      timeout: timeoutMs,
     });
   } catch (error) {
-    const detail = error.stderr?.toString().trim() || error.message;
-    throw new Error(`gh ${args.join(" ")} failed: ${detail}`);
+    const detail = timedOut(error)
+      ? `timed out after ${timeoutMs / SECOND} s`
+      : error.stderr?.toString().trim() || error.message;
+    throw new Error(`${command} ${args.join(" ")} failed: ${detail}`);
   }
 }
 
@@ -153,16 +183,33 @@ function runGh(args) {
  * reasons: its stderr passes straight through, so "see the error above" in the
  * log is literally true; and its own $GITHUB_OUTPUT writes stay out of THIS
  * step's outputs, which would otherwise pick up a stray `update=false`.
+ *
+ * Bounded per call for the same reason as runGh: the six registry reads
+ * inside it are network calls, and a hung one must count as a failed probe
+ * rather than stall the attempt loop.
  */
-function probeRegistry() {
+function probeRegistry({
+  timeoutMs = DEFAULTS.callTimeoutMs,
+  script = DETECT_SCRIPT,
+} = {}) {
   const env = { ...process.env };
   delete env.GITHUB_OUTPUT;
-  const stdout = execFileSync(process.execPath, [DETECT_SCRIPT, "--json"], {
-    encoding: "utf8",
-    env,
-    stdio: ["ignore", "pipe", "inherit"],
-  });
-  return JSON.parse(stdout.trim());
+  try {
+    const stdout = execFileSync(process.execPath, [script, "--json"], {
+      encoding: "utf8",
+      env,
+      stdio: ["ignore", "pipe", "inherit"],
+      timeout: timeoutMs,
+    });
+    return JSON.parse(stdout.trim());
+  } catch (error) {
+    if (timedOut(error)) {
+      throw new Error(
+        `the registry probe timed out after ${timeoutMs / SECOND} s`
+      );
+    }
+    throw error;
+  }
 }
 
 const sleepFor = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -338,12 +385,15 @@ async function main({
     throw new Error("GITHUB_SHA must be set on a push");
   }
 
+  // The per-call bound reaches the real runners through a second argument an
+  // injected fake is free to ignore.
+  const call = { timeoutMs: options.callTimeoutMs };
   const release = await waitForReleaseRun({
     sha,
     workflow: options.workflow,
     timeoutMs: options.timeoutMs,
     intervalMs: options.pollMs,
-    runGh: gh,
+    runGh: (args) => gh(args, call),
     sleep,
     log,
     now,
@@ -365,7 +415,7 @@ async function main({
   const registry = await waitForRegistry({
     attempts: options.attempts,
     intervalMs: options.intervalMs,
-    probe,
+    probe: () => probe(call),
     sleep,
     log,
   });
@@ -413,7 +463,9 @@ module.exports = {
   main,
   parseArgs,
   parseRuns,
+  probeRegistry,
   recover,
+  runGh,
   waitForRegistry,
   waitForReleaseRun,
 };
