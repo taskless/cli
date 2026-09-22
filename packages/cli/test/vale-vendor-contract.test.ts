@@ -87,9 +87,6 @@ function runRaw(cwd: string, paths: string[], extraArguments: string[] = []) {
 
 const header = "StylesPath = .\nMinAlertLevel = suggestion\n";
 
-/** An `existence` rule whose single `raw` entry is the pattern under test. */
-const rawPatternRule = (pattern: string) =>
-  `extends: existence\nmessage: "%s"\nlevel: warning\nraw:\n  - '${pattern}'\n`;
 const existence = (token: string, level = "warning") =>
   `extends: existence\nmessage: "Avoid '${token}'"\nlevel: ${level}\ntokens:\n  - ${token}\n`;
 
@@ -761,7 +758,7 @@ withVale("Vale vendor contract", () => {
     // pattern that compiled and did not match, so the negative half alone
     // would pass for the wrong reason.
     it("matches a backreference to an earlier group", () => {
-      const repeated = rawPatternRule(String.raw`\b(\w+) \1\b`);
+      const repeated = existenceOver("raw", String.raw`'\b(\w+) \1\b'`);
       expect(lines(repeated, "A the the repeated word.\n").messages).toEqual([
         "the the",
       ]);
@@ -769,7 +766,7 @@ withVale("Vale vendor contract", () => {
     });
 
     it("matches a lookahead", () => {
-      const ahead = rawPatternRule("foo(?= bar)");
+      const ahead = existenceOver("raw", "'foo(?= bar)'");
       expect(lines(ahead, "We wrote foo bar here.\n").messages).toEqual([
         "foo",
       ]);
@@ -777,7 +774,7 @@ withVale("Vale vendor contract", () => {
     });
 
     it("matches a lookbehind", () => {
-      const behind = rawPatternRule("(?<=x )y");
+      const behind = existenceOver("raw", "'(?<=x )y'");
       expect(lines(behind, "Here is x y now.\n").messages).toEqual(["y"]);
       expect(lines(behind, "Here is z y now.\n").lines).toEqual([]);
     });
