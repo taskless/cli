@@ -712,8 +712,9 @@ it.
      the rule: if it was the only `YES`, the config is rejected, not
      advised
    - a `[*]` matcher, which reaches every file Vale can read
-   - a matcher under `.taskless/**`, which `check` already excludes
-     before Vale runs, so it acts only under a bare `vale` invocation
+   - a matcher under `.taskless/**`, which a whole-project `check`
+     already excludes, and which silences the rule over a fixture
+     bucket you name on purpose (step 6)
 
    Each advisory has a legitimate reading, which is what separates the
    two lists. Fix a rejection before moving on; read an advisory and
@@ -1038,11 +1039,12 @@ it.
    run `vale` directly, and do not add config to make a bare run
    behave. The matcher that comes from doing so is `[.taskless/**]`
    with the rule set to `NO`, meant to keep a bare run quiet over
-   fixtures that hold violations on purpose. `check` excludes
-   `.taskless/` before Vale runs on a whole-project walk, so that block
-   only ever acts under the invocation this paragraph tells you not to
-   use, and `verify` reports it as unnecessary (step 4 lists the
-   advisory). A rule needs the matchers for the files it is about and
+   fixtures that hold violations on purpose. It does not stay confined
+   to the invocation it was written for: a whole-project `check` skips
+   `.taskless/` without its help, and on a fixture bucket you name it
+   is the one thing acting, which is how it empties the `check` above
+   while `test` stays green. `verify` reports it as an advisory (step 4
+   lists it). A rule needs the matchers for the files it is about and
    no more.
 
    When a `fail/` document does not fire, work down this list before

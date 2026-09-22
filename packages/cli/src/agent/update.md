@@ -1,4 +1,4 @@
-# Topic: update     (CLI v%(CLI_VERSION)s / topic v9)
+# Topic: update     (CLI v%(CLI_VERSION)s / topic v10)
 
 ## You are here
 This is `update`. It tells you what an upgrade changed for the rules
@@ -324,9 +324,10 @@ Vale was ignoring with a `W101`); a matcher with no `tskl) rule = <id>`
 breadcrumb; a key naming another rule (`no-hedging.no-hedging = NO`
 inside `no-simply`'s config, which was a cross-rule override); and a
 `NO` matcher declared before every `YES`, which the `YES` was
-overriding. A `.taskless/**` matcher is reported as unnecessary rather
-than rejected, since `check` excludes that tree before Vale runs;
-delete it. `%(TASKLESS_CLI)s agent create-vale-rule` lists every
+overriding. A `.taskless/**` matcher is reported as an advisory rather
+than rejected: a whole-project `check` excludes that tree anyway, and
+on a fixture path you name the matcher is what silences the rule.
+Delete it. `%(TASKLESS_CLI)s agent create-vale-rule` lists every
 rejection and advisory.
 
 Vale also moves from 3.21.0 to 3.22.0 in this release. Two things
