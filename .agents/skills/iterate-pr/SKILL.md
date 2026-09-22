@@ -317,8 +317,11 @@ be red is not a signal. The channel is the label and an issue. Once no open PR's
 diff touches the change directory, the next push to `main` has
 `openspec-tracking.yml` open `OpenSpec: <change> is unarchived on main`, labelled
 `Open OpenSpec`, which closes itself when the change reaches
-`openspec/changes/archive/`. `openspec-sweep.yml` escalates on that issue daily
-once the directory has gone seven days without git activity.
+`openspec/changes/archive/`. `openspec-sweep.yml` runs on a daily cron but
+escalates on that issue at most once per seven-day window: it acts only once the
+directory has gone seven days without git activity, and then only if the issue
+itself has been idle that long, so any comment on the thread defers the next
+escalation by another window.
 
 #### Stacked PRs: two other check behaviours worth knowing
 
