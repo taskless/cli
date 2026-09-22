@@ -46,3 +46,16 @@ __pycache__/
 
 # Agent and manual git worktrees (full second checkouts; see worktrees-pnpm skill)
 worktrees/
+
+# Scratch fixture written by `packages/cli/test/import-cycle-lint.test.ts`. That
+# test writes a real a.ts <-> b.ts cycle INSIDE `packages/cli/src` and asserts
+# `import-x/no-cycle` reports it. The location is forced, not a convenience: the
+# rule only sees files the flat config matches, and the type-aware block needs
+# the file inside a tsconfig (`packages/cli/tsconfig.json` includes `src`) — a
+# fixture in the OS temp dir is refused as outside the config base path, and one
+# elsewhere in the repo fails to parse and reports zero cycles, which is the
+# vacuous green the test exists to rule out. Cleanup runs in `afterAll`, so a
+# killed run (Ctrl+C, OOM, CI cancellation) can strand a live cycle in the
+# source tree. This keeps that debris out of commits; delete the directory, not
+# this line.
+/packages/cli/src/__cycle-guard-*/
