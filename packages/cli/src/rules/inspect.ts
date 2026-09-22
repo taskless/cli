@@ -25,6 +25,7 @@ import { validateValeRuleConfig } from "../schemas/vale-config";
 import { validateValeRule } from "../schemas/vale-rule";
 import { verifyRule, type VerifyResult } from "./verify";
 import { violate, type RuleViolation } from "./constraints";
+import { describeRuleIdCollision, findRuleIdCollision } from "./id-uniqueness";
 import { verifyValeRule } from "./vale/verify";
 import type { ResolvedRule } from "./resolve-path";
 
@@ -191,6 +192,54 @@ async function verifySgRule(
  * `verify` and `test` are separate commands.
  */
 export async function verifyOneRule(
+  cwd: string,
+  rule: ResolvedRule
+): Promise<RuleVerification> {
+  return withIdCollision(
+    cwd,
+    rule.ruleId,
+    await verifyRuleComponents(cwd, rule)
+  );
+}
+
+/**
+ * Fail a verdict whose rule id is held by more than one engine.
+ *
+ * Applied AFTER the engine's own layers rather than instead of them, so the
+ * author still hears everything that is wrong with the rule in front of them.
+ * The collision is listed first because it is the only one of the failures
+ * that is about the project rather than about the file, and the only one whose
+ * remedy is a rename.
+ *
+ * Not a {@link RULE_CONSTRAINTS} entry, deliberately. Every constraint is
+ * declared for one `engine` and published per engine in the conformance
+ * corpus, because a constraint answers "what does this CLI require of a rule
+ * for THIS engine beyond what the engine itself requires". This requires
+ * nothing of the rule: the file is valid, and what is wrong is that a sibling
+ * tree holds the same directory name. Giving it an engine would mean either
+ * inventing an engine-agnostic constraint kind for a single entry, or filing
+ * three near-identical ones and telling a generator that ast-grep has a house
+ * rule about Vale.
+ */
+async function withIdCollision(
+  cwd: string,
+  ruleId: string,
+  verification: RuleVerification
+): Promise<RuleVerification> {
+  const collision = await findRuleIdCollision(cwd, ruleId);
+  if (collision === undefined) return verification;
+  return {
+    ...verification,
+    ok: false,
+    errors: [
+      `${describeRuleIdCollision(cwd, collision)} Rename one of them.`,
+      ...verification.errors,
+    ],
+  };
+}
+
+/** {@link verifyOneRule} minus the cross-engine uniqueness check. */
+async function verifyRuleComponents(
   cwd: string,
   { engine, ruleId }: ResolvedRule
 ): Promise<RuleVerification> {
@@ -359,7 +408,11 @@ export async function testOneRule(
     // One call covers both halves. The verdict is still consulted first and
     // still short-circuits, so the ordering above is unchanged — the tests
     // simply already ran alongside the layers that decide it.
-    const { verification, result } = await verifySgRule(cwd, ruleId);
+    const { verification: verdict, result } = await verifySgRule(cwd, ruleId);
+    // `test` runs `verify` first, and the uniqueness check is part of `verify`.
+    // Reached through the same helper rather than by a second `verifySgRule`
+    // call, which would spawn `sg test` twice for one answer.
+    const verification = await withIdCollision(cwd, ruleId, verdict);
     if (!verification.ok) {
       return { ...verification, ran: false };
     }
