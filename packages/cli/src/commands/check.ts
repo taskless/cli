@@ -88,24 +88,20 @@ const VALUE_FLAGS = ["--timeout", "--rule"] as const;
  * number as covering two. Both spellings are accepted (`--rule a` and
  * `--rule=a`), and scanning stops at `--` so a path literally named `--rule`
  * after the end-of-options marker is a path.
+ *
+ * Read through `splitRawArguments`, the same scanner {@link extractPositionalPaths}
+ * uses, rather than a second scan of its own. A private scan would not know
+ * which OTHER flags consume a token. For the malformed `check --timeout --rule
+ * no-eval`, the shared scanner hands `--rule` to `--timeout` as its value and
+ * `no-eval` to `positionals`; a `--rule`-only scan would instead read `--rule`
+ * as a flag and claim `no-eval` as a rule id, so the same tokens would be both
+ * a path and a rule id in one run. One pass cannot disagree with itself.
  */
 export function extractRuleFilters(rawArguments: string[]): string[] {
-  const ids: string[] = [];
-  for (let index = 0; index < rawArguments.length; index++) {
-    const argument = rawArguments[index]!;
-    if (argument === "--") break;
-    if (argument === "--rule") {
-      const value = rawArguments[index + 1];
-      if (value !== undefined && value !== "--") {
-        ids.push(value);
-        index++;
-      }
-      continue;
-    }
-    if (argument.startsWith("--rule="))
-      ids.push(argument.slice("--rule=".length));
-  }
-  return ids.filter((id) => id !== "");
+  return splitRawArguments(rawArguments, VALUE_FLAGS)
+    .values.filter((entry) => entry.flag === "--rule")
+    .map((entry) => entry.value)
+    .filter((id) => id !== "");
 }
 
 /** Parse `--timeout <seconds>` into milliseconds; invalid/absent → undefined (default). */

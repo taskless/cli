@@ -22,6 +22,8 @@ MinAlertLevel = suggestion
 
 **Instead, assembly is narrowed.** `assembleValeConfig` takes the selected ids and emits only those rules' blocks, each rule's own matchers verbatim. The rule's scope is then byte-identical to what it is in a full run.
 
+**Narrowing applies to what is written, not to what is validated.** Every Vale rule's config is still read and put through the config schema, and any rejection still refuses the whole assembly; only the surviving blocks are filtered. Validating just the selected rules would let `check --rule good` exit clean in a project where `bad`'s config is rejected, while an unfiltered `check` there refuses the Vale engine and reports nothing for `good` — the filtered run would then report findings the unfiltered run never produced, which is the exact equality this flag rests on.
+
 Removing the other rules' blocks cannot change the surviving rule's effective setting, and that is a fact about the config schema rather than an assumption: a rule's config may only assign its own `<id>.<id>` key — the schema rejects an assignment that "names another rule" — so no removed block could have been turning the selected rule on or off. Vale's positional precedence (last matcher wins; since 3.21.0 last assignment within a matcher wins) has nothing to act on across rules.
 
 ### ast-grep narrows with `--filter`, not by narrowing `ruleDirs`

@@ -1,6 +1,6 @@
 import { CLIError } from "../util/cli-error";
-import { listRuleIds } from "./engines";
-import { ENGINES, RULES_DIRECTORY, type EngineName } from "./layout";
+import { findRuleEngines } from "./engines";
+import { RULES_DIRECTORY, type EngineName } from "./layout";
 
 /**
  * Which rules a run is restricted to, split by the engine that owns each one.
@@ -16,14 +16,6 @@ export interface RuleSelection {
   sg: string[];
   vale: string[];
   runtime: string[];
-}
-
-/** Whether `id` names a rule directory under any engine, engine by engine. */
-function enginesHolding(
-  id: string,
-  byEngine: Record<EngineName, string[]>
-): EngineName[] {
-  return ENGINES.filter((engine) => byEngine[engine].includes(id));
 }
 
 /**
@@ -53,21 +45,25 @@ export async function resolveRuleSelection(
   cwd: string,
   requested: readonly string[]
 ): Promise<RuleSelection> {
-  const byEngine = {} as Record<EngineName, string[]>;
-  await Promise.all(
-    ENGINES.map(async (engine) => {
-      byEngine[engine] = await listRuleIds(cwd, engine);
-    })
-  );
-
   // Deduplicated, because `--rule a --rule a` is one rule, and an id repeated
   // into the ast-grep filter alternation or the Vale assembly would otherwise
   // be a rule listed twice. Insertion order is kept so the unknown-id message
   // reads back in the order the ids were typed.
   const unique = [...new Set(requested)];
-  const unknown = unique.filter(
-    (id) => enginesHolding(id, byEngine).length === 0
+
+  // `findRuleEngines` is the one implementation of "which engines hold this
+  // id", shared with `rules delete` and `test`. A second copy here — listing
+  // every engine's directory and matching names — would be a second definition
+  // of rule identity, and a later change to one (case-insensitive ids, a new
+  // engine) would silently diverge from the other.
+  const holders = new Map<string, EngineName[]>();
+  await Promise.all(
+    unique.map(async (id) => {
+      holders.set(id, await findRuleEngines(cwd, id));
+    })
   );
+
+  const unknown = unique.filter((id) => holders.get(id)!.length === 0);
   if (unknown.length > 0) {
     throw new CLIError(
       `No rule named ${unknown.map((id) => `"${id}"`).join(", ")} under ` +
@@ -79,8 +75,7 @@ export async function resolveRuleSelection(
 
   const selection: RuleSelection = { sg: [], vale: [], runtime: [] };
   for (const id of unique) {
-    for (const engine of enginesHolding(id, byEngine))
-      selection[engine].push(id);
+    for (const engine of holders.get(id)!) selection[engine].push(id);
   }
   return selection;
 }

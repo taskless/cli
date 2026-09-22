@@ -180,18 +180,17 @@ export interface AssembleOptions {
    * setting the selected rule's `<id>.<id>` value. Vale's positional precedence
    * therefore has nothing left to act on across rules, and the surviving block
    * resolves exactly as it did among the others.
+   *
+   * **This narrows what is WRITTEN, never what is VALIDATED.** Every Vale rule
+   * in the project is still read and put through the config schema, and any
+   * rejection still refuses the whole assembly. Skipping an unselected rule's
+   * validation would make `--rule good` exit clean in a project where `bad`'s
+   * config is rejected, while an unfiltered `check` in that same project
+   * refuses the Vale engine outright — so the filtered run would report
+   * findings the unfiltered run never produced, which is the one equality this
+   * flag exists to preserve.
    */
   ruleIds?: readonly string[];
-}
-
-/** `available` narrowed to `selected`, or all of it when nothing was selected. */
-function selectRuleIds(
-  available: string[],
-  selected: readonly string[] | undefined
-): string[] {
-  if (selected === undefined) return available;
-  const wanted = new Set(selected);
-  return available.filter((ruleId) => wanted.has(ruleId));
 }
 
 /**
@@ -211,10 +210,12 @@ export async function assembleValeConfig(
   cwd: string,
   options: AssembleOptions = {}
 ): Promise<ValeAssembly | undefined> {
-  const ruleIds = selectRuleIds(
-    await listRuleIds(cwd, "vale"),
-    options.ruleIds
-  );
+  const ruleIds = await listRuleIds(cwd, "vale");
+  // A filter selects which validated blocks are written, and is deliberately
+  // NOT applied to `ruleIds`: the loop below has to reach every rule so a
+  // rejected sibling still lands in `refusals`.
+  const selected =
+    options.ruleIds === undefined ? undefined : new Set(options.ruleIds);
   const blocks: string[] = [];
   const sections = new Set<string>();
   const advisories: string[] = [];
@@ -237,6 +238,9 @@ export async function assembleValeConfig(
       refusals.push({ ruleId, rejections: verdict.rejections });
       continue;
     }
+    // Validated above, filtered here. Its sections and advisories are dropped
+    // with its block, because they describe a rule this run does not run.
+    if (selected !== undefined && !selected.has(ruleId)) continue;
     for (const pattern of verdict.sections) sections.add(pattern);
     advisories.push(...verdict.advisories);
     blocks.push(valeRuleBlock(ruleId, source));
