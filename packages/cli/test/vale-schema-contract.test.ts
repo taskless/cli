@@ -349,6 +349,88 @@ describe("the permissive checks stay permissive", () => {
   });
 });
 
+/**
+ * What the schema says without failing the rule.
+ *
+ * The corpus has three verdicts and none of them is "accepted, with a note",
+ * so an advisory cannot be a row there; it is pinned here instead, beside the
+ * other tests that ask the schema rather than the binary. The behaviour the
+ * advisory describes is measured in `vale-vendor-contract.test.ts`
+ * ("existence `raw` entries join into one pattern"); this asks only that the
+ * schema says so, and only when it applies.
+ */
+describe("advisories are said, not refused", () => {
+  const RAW_TWO =
+    'extends: existence\nmessage: "x"\nlevel: warning\nraw:\n  - "\\\\bstops being\\\\b"\n  - "\\\\band becomes\\\\b"\n';
+
+  it("warns on a raw list with more than one entry, and still accepts the rule", () => {
+    const { valid, errors, advisories } = validateValeRule(
+      "no-twist",
+      parseYaml(RAW_TWO)
+    );
+    expect(valid).toBe(true);
+    expect(errors).toEqual([]);
+    expect(advisories).toEqual([
+      "no-twist: raw has 2 entries; Vale joins them into one pattern with no separator, so the second never matches on its own. Write one entry with (a|b) unless the join is intended.",
+    ]);
+  });
+
+  it("counts the entries it saw", () => {
+    const { advisories } = validateValeRule(
+      "demo",
+      parseYaml('extends: existence\nmessage: "x"\nraw:\n  - a\n  - b\n  - c\n')
+    );
+    expect(advisories[0]).toContain("raw has 3 entries");
+  });
+
+  it("is silent on a one-entry raw list", () => {
+    const { advisories } = validateValeRule(
+      "demo",
+      parseYaml(
+        'extends: existence\nmessage: "x"\nraw:\n  - "(\\\\bstops being\\\\b|\\\\band becomes\\\\b)"\n'
+      )
+    );
+    expect(advisories).toEqual([]);
+  });
+
+  it("is silent on a tokens list, which Vale does alternate", () => {
+    const { advisories } = validateValeRule(
+      "demo",
+      parseYaml('extends: existence\nmessage: "x"\ntokens:\n  - a\n  - b\n')
+    );
+    expect(advisories).toEqual([]);
+  });
+
+  it("reads the key case-insensitively, as Vale decodes it", () => {
+    const { advisories } = validateValeRule(
+      "demo",
+      parseYaml('extends: existence\nmessage: "x"\nRaw:\n  - a\n  - b\n')
+    );
+    expect(advisories).toHaveLength(1);
+  });
+
+  it("still speaks beside a rejection of another field", () => {
+    // An advisory about `raw` is no less true because `scope` is wrong, and an
+    // author fixing the one should hear about the other in the same pass.
+    const { valid, advisories } = validateValeRule(
+      "demo",
+      parseYaml(
+        'extends: existence\nmessage: "x"\nscope: fenced\nraw:\n  - a\n  - b\n'
+      )
+    );
+    expect(valid).toBe(false);
+    expect(advisories).toHaveLength(1);
+  });
+
+  it("carries an empty list, never an absent one, when there is nothing to say", () => {
+    const { advisories } = validateValeRule(
+      "demo",
+      parseYaml('extends: existence\nmessage: "x"\ntokens: [a]\n')
+    );
+    expect(advisories).toEqual([]);
+  });
+});
+
 // --- Helpers -----------------------------------------------------------------
 
 /**
