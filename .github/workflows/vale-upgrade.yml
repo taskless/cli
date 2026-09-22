@@ -126,12 +126,19 @@ jobs:
           while :; do
             # Two fields, tab-separated, one line per run. Empty until the run
             # is registered, which can lag the push by a few seconds.
+            #
+            # `|| runs=""` is load-bearing under `set -e`: a plain assignment
+            # from a command substitution is NOT one of errexit's exempt
+            # contexts, so without it one rate-limited or 5xx'd `gh` call in
+            # fifty polls would abort the step and turn the run red — the one
+            # outcome this step exists to rule out. A failed call is treated
+            # exactly like "not yet registered" and polled again.
             runs="$(gh run list \
               --workflow release-vale.yml \
               --event push \
               --commit "$GITHUB_SHA" \
               --json status,conclusion \
-              --jq '.[] | [.status, .conclusion] | @tsv')"
+              --jq '.[] | [.status, .conclusion] | @tsv')" || runs=""
 
             if [ -n "$runs" ] && ! grep -qv $'^completed\t' <<< "$runs"; then
               if grep -qv $'\tsuccess$' <<< "$runs"; then
@@ -161,20 +168,35 @@ jobs:
       #
       # `--json` alone, no `--write` and no `--notes-out`; the script refuses
       # that combination for exactly this use, a read that changes nothing.
+      #
+      # A probe that ERRORS is kept apart from a probe that answers "current".
+      # The script prints its error to stderr and nothing to stdout, so a bare
+      # grep on stdout would read a registry outage as "still the old version"
+      # and the closing warning would then blame propagation for something
+      # else. Each outcome is logged as what it was, and the closing warning
+      # claims only what was observed. An error that persists is not this
+      # step's to report: the detect step runs the same code next and fails
+      # loudly on it, which is right — a broken registry read is a real
+      # failure, not the race.
       - name: Wait for the registry to serve the new set
         if: github.event_name == 'push'
         run: |
           set -euo pipefail
 
           for attempt in 1 2 3 4 5; do
-            if node .github/scripts/vale-upgrade-detect.cjs --json | grep -q '"ahead":true'; then
-              echo "The registry serves a newer set than the pins."
-              exit 0
+            if comparison="$(node .github/scripts/vale-upgrade-detect.cjs --json)"; then
+              if grep -q '"ahead":true' <<< "$comparison"; then
+                echo "The registry serves a newer set than the pins: ${comparison}"
+                exit 0
+              fi
+              echo "The registry still serves the pinned version (attempt ${attempt} of 5): ${comparison}"
+            else
+              echo "The registry probe failed (attempt ${attempt} of 5); see the error above."
             fi
-            echo "The registry still serves the pinned version (attempt ${attempt} of 5); retrying in 60 s."
+            echo "Retrying in 60 s."
             sleep 60
           done
-          echo "::warning::the registry still serves the pinned version five minutes after the publish succeeded. The daily schedule will retry."
+          echo "::warning::no probe in five minutes after the publish succeeded reported a newer set than the pins; each attempt is logged above with its result. The daily schedule will retry."
 
       # No dependency install: the script is zero-dependency CommonJS, and the
       # lockfile step below needs pnpm rather than node_modules. GITHUB_TOKEN is
