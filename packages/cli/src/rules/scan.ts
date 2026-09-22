@@ -132,6 +132,37 @@ export interface ScanOptions {
    * layout pass the ephemeral config written for it instead.
    */
   configPath?: string;
+  /**
+   * Restrict reporting to these rule ids — `check --rule`. Omitted (or empty)
+   * runs every rule the config loads.
+   *
+   * Expressed as ast-grep's own `--filter <REGEX>` rather than by narrowing
+   * `ruleDirs` in the assembled config, because the filter changes exactly one
+   * thing: which loaded rules may report. The config, the walk, the
+   * `.gitignore` handling and the `--globs` exclusions are byte-identical to an
+   * unfiltered run, so a filtered count is the unfiltered count for that rule
+   * by construction rather than by two code paths agreeing.
+   */
+  ruleIds?: readonly string[];
+}
+
+/**
+ * `--filter` argv restricting the scan to `ruleIds`, or nothing when there is
+ * no restriction.
+ *
+ * Anchored, and the ids escaped, because `--filter` takes a REGEX matched
+ * against every loaded rule id: unanchored, `--rule no-eval` would also report
+ * `no-eval-in-tests`, which is a different rule the author did not ask to
+ * measure. Rule ids are `[a-z0-9-]`, so nothing in one is a regex metacharacter
+ * today; the escape is here so that a later widening of `isValidRuleId` cannot
+ * turn an id into a pattern silently.
+ */
+export function sgFilterArgv(ruleIds: readonly string[] | undefined): string[] {
+  if (ruleIds === undefined || ruleIds.length === 0) return [];
+  const alternation = ruleIds
+    .map((ruleId) => ruleId.replaceAll(/[$()*+.?[\\\]^{|}]/g, String.raw`\$&`))
+    .join("|");
+  return ["--filter", `^(?:${alternation})$`];
 }
 
 /**
@@ -246,6 +277,7 @@ export async function runAstGrepScan(
       "--config",
       options.configPath ?? ASSEMBLED_SG_CONFIG,
       "--json=stream",
+      ...sgFilterArgv(options.ruleIds),
       ...sgWalkArgv(paths),
       ...(paths.length > 0 ? ["--", ...paths] : []),
     ];

@@ -82,6 +82,16 @@ export interface DispatchOptions {
    */
   astGrepConfigPath: string | undefined;
   /**
+   * Rule ids the ast-grep engine is restricted to — `check --rule`. Omitted is
+   * the ordinary run and means every rule in the config.
+   *
+   * Vale needs no equivalent here: its narrowing happened at assembly, so what
+   * arrives on `vale` is already the filtered config. Two engines, two
+   * mechanisms, because ast-grep can be told which loaded rules may report and
+   * Vale cannot.
+   */
+  astGrepRuleIds?: readonly string[];
+  /**
    * What Vale assembly produced: the `--config` path with its advisories, a
    * refusal because a rule's config broke the schema, or `undefined` when
    * assembly produced nothing to run.
@@ -147,6 +157,9 @@ async function runAstGrepEngine(
   }
   const scan = await runAstGrepScan(options.cwd, options.paths, {
     configPath: options.astGrepConfigPath,
+    ...(options.astGrepRuleIds === undefined
+      ? {}
+      : { ruleIds: options.astGrepRuleIds }),
   });
   return { engine: "sg", results: scan.results };
 }
