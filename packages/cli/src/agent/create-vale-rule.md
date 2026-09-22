@@ -1,4 +1,4 @@
-# Topic: create-vale-rule     (CLI v%(CLI_VERSION)s / topic v11)
+# Topic: create-vale-rule     (CLI v%(CLI_VERSION)s / topic v12)
 
 ## You are here
 This is `create-vale-rule`. It helps you write a Vale rule: a check over
@@ -218,6 +218,51 @@ it.
    found one, `code` found one, `[code, text]` found two, `raw` found all
    three. If you want prose and inline code but not fenced blocks, write
    the list, `raw` is not "a bit wider", it is everything.
+
+   **Front matter is text, to `raw` and to every other scope but its
+   own.** A product-casing rule under `scope: raw` flagged
+   `target: taskless` in a blog post's front matter, where the lowercase
+   value is a machine key the publish path reads, and capitalizing it
+   would have broken the corpus. That is not a `raw` peculiarity:
+   measured on Vale v%(VALE_VERSION)s with the same rule, `text`, the
+   default scope and `[raw, code, text]` all reported the value on the
+   front-matter line too, so dropping `scope: raw` on its own fixes
+   nothing. `paragraph` and `sentence` skip it, and `frontmatter.<key>`
+   matches only that key and never leaks into body prose; `~frontmatter`
+   also left the key alone and fired on the body, but chained onto `raw`
+   (`raw & ~frontmatter`) it matched nothing at all, so the negation
+   does not rescue a `raw` rule. Three fixes, then: `scope: paragraph`
+   or `sentence` when the rule is about prose, `frontmatter.<key>` when
+   it is about a field, and in either case a `pass/` fixture that
+   carries the machine key, so the rule cannot regress onto it without
+   `test` saying so:
+
+   ```markdown
+   ---
+   target: taskless
+   ---
+   Taskless compiles the correction into a rule.
+   ```
+
+   The first line is a machine key, read by the publish path. The last
+   is prose, correctly cased. A rule that fires on this document is
+   reading the wrong one.
+
+   The same reach is useful in the other direction. `occurrence` with
+   `min: 1` under `scope: raw` can require a front-matter field to
+   exist, because `raw` reads the key and the value as one unparsed
+   line. Measured: this fires on a document whose front matter has a
+   `title` and no `description`, fires on one with no front matter at
+   all, and stays quiet once the field is there.
+
+   ```yaml
+   extends: occurrence
+   message: "A blog draft needs a description in its frontmatter."
+   level: error
+   scope: raw
+   min: 1
+   token: '(?m)^description: .+$'
+   ```
 
    **Vale drops everything inside a `<figure>` element.** Measured: a
    `<figcaption>` nested in `<figure>` is invisible to *every* scope,
@@ -452,8 +497,49 @@ it.
      already equals the replacement.** Measured with `Github: GitHub`:
      `github` and `Github` are flagged, `GitHub` is not. You do not need
      `ignorecase: false` to protect the correct spelling.
-   - `raw` takes a full regex when `tokens` is too restrictive;
-     `nonword` removes the implicit boundaries.
+   - `raw` takes a full regex, used verbatim, when `tokens` is too
+     restrictive; `nonword` removes the implicit boundaries from
+     `tokens`.
+   - **`raw` entries concatenate, they do not alternate.** `tokens` is
+     a list of alternatives. `raw` is not: Vale joins every entry into
+     one pattern, back to back, with nothing between them. Measured on
+     Vale v%(VALE_VERSION)s with two entries, `\bstops ` and `being\b`:
+     `It stops being.` fires, and a document holding either half alone
+     does not. So a second entry added to widen a rule never fires on
+     its own, and its `fail/` fixture fails, which is how this was
+     found. Alternation goes inside one entry, as `(a|b|c)`:
+
+     ```yaml
+     # wrong: the second entry is appended to the first, so the new
+     # branch never fires on its own
+     extends: existence
+     raw:
+       - "\\bstops being\\b[^.!?\\n]{0,80}\\band becomes\\b"
+       - "[A-Z][^.!?\\n]{3,70}[.!?] (The|That|This|It)('s| is| was) the (problem|twist|point)\\b\\."
+     ```
+
+     ```yaml
+     # right: one entry, the branches alternated inside it
+     extends: existence
+     raw:
+       - "(\\bstops being\\b[^.!?\\n]{0,80}\\band becomes\\b|[A-Z][^.!?\\n]{3,70}[.!?] (The|That|This|It)('s| is| was) the (problem|twist|point)\\b\\.)"
+     ```
+
+     No `nonword` there, and none is needed: `nonword` governs
+     `tokens`, which Vale wraps in `\b…\b` unless it is set, and a
+     `raw` entry is used verbatim. Measured, `nonword: true` beside a
+     `raw` list changes nothing. Write the boundaries you want into the
+     pattern, as above.
+
+     `verify` reports a `raw` list with more than one entry, on the
+     rule's `notice` rather than in `errors`:
+
+     ```
+     <id>: raw has N entries; Vale joins them into one pattern with no separator, so the second never matches on its own. Write one entry with (a|b) unless the join is intended.
+     ```
+
+     If the join is intended, and the pieces are only split for
+     readability, the notice is yours to read and set aside.
    - **A token made only of punctuation can never match without
      `nonword: true`.** The boundaries above are `\b`, which needs a word
      character on the inside. An em dash has none, on either side.
@@ -763,6 +849,55 @@ it.
    Do that once, on a file you have deliberately made violate the rule,
    before you believe the rule works.
 
+   **A voice or tone rule is a floor, not a ceiling.** A regex catches
+   the shape it was written for and nothing beyond it, so a rule about
+   how prose sounds only ever holds the misses already measured. From a
+   repository running eleven such rules: an antithesis rule keyed on
+   "not" and "never", the sentence a reader called out had neither, and
+   twelve days later `The correction was right. The place it landed was
+   the problem.` passed the widened rule for the same reason. Treat
+   every miss as the next branch, and grow the fixtures with it:
+
+   - The sentence that got through becomes a `fail/` fixture, dated.
+   - The legitimate uses of the same words go into `pass/` in the same
+     change, so the branch cannot drift wider than what was measured.
+
+   ```
+   I've seen that read as a hole in his argument. It's the frame proving itself.   (fail, first miss)
+   The correction was right. The place it landed was the problem.                  (fail, twelve days on)
+   Two collections beats one. This is the answer we shipped in June.               (pass, must keep passing)
+   ```
+
+   **Run a new branch over the repository's own prose before it ships
+   at `warning`, and record the count beside the branch.** Fixtures say
+   the branch fires where it should; only the corpus says how often it
+   fires where it should not, and a rule with no number gets switched
+   off the first week it fires on real prose. A verdict-noun branch
+   that read as broad returned one hit outside its fixtures. Keep the
+   count in a comment next to the pattern, dated, so the next author
+   knows what the branch cost when it was written:
+
+   ```yaml
+   # Every branch measured against the repo's 1,100 markdown files on
+   # 20 September. Corpus false positives per branch: 0, 0, 4, 2, 1. All
+   # of the four were written by the assistant, never by the human author.
+   ```
+
+   There is no single command that runs one Vale rule over the project
+   and counts (taskless/cli#379 tracks one). `test` isolates the rule
+   but sees only its fixtures. The workable way is a whole-project
+   `check` filtered afterwards by rule id:
+
+   ```
+   %(TASKLESS_CLI)s check --json | jq '[.results[] | select(.ruleId == "<id>")] | length'
+   ```
+
+   A finding carries no record of which alternative matched, so to
+   count one branch, run the rule with that branch as its only `raw`
+   entry, note the number, then fold it back into the alternation. Drop
+   `| length` to read the hits themselves, which is what tells you
+   whether a hit is a false positive or a real one nobody had noticed.
+
 6. **Verify, then test.** Two commands, both taking the rule's
    directory as their argument, both run from the project root:
 
@@ -816,6 +951,66 @@ it.
    exit code follows severity, so a `level: error` rule exits 1 on
    `fail/` while a `warning` rule exits 0 and both are correct. `test`
    answers pass-or-fail; `check` shows you the finding.
+
+   **An empty `results` is a clean pass only when nothing else in the
+   envelope says otherwise.** Two things can leave a file unchecked
+   while `results` reads `[]` for it, and both are reported, so read
+   for them before you believe the silence:
+
+   - **A `vale-parse-error` finding.** A document whose front matter
+     Vale cannot parse used to abort the whole invocation, and `check`
+     returned `[]` for the run, indistinguishable from a clean pass.
+     Now the run retries around the file Vale blames and files it as a
+     finding of its own, at `severity: "error"`, so a file that
+     could not be read never reads as a file with nothing to report.
+     Measured, with an unquoted colon in a front-matter value:
+
+     ```json
+     {"source":"vale","ruleId":"vale-parse-error","severity":"error",
+      "message":"Vale could not check this file: E201: yaml: mapping values are not allowed in this context",
+      "file":"broken.md", …}
+     ```
+
+     Every other file's findings are reported normally, and no rule of
+     yours ran over this one. If it is a fixture, `test` shows the same
+     gap from the other side: a `fail/` fixture Vale cannot parse
+     reports as `fail fixture did not fire`, and a `pass/` fixture it
+     cannot parse stays green, since a rule that never ran cannot fire.
+     Fix the front matter rather than the pattern.
+
+   - **A `notices` entry.** Under `--json` the key is absent when there
+     is nothing to say, so its presence is the signal. One notice
+     reads `Vale did not check N file(s): …` and names documents in a
+     format this build has no converter for, which `check` excludes
+     rather than letting one of them take the run down; another begins
+     `Vale reported while running:` and carries whatever Vale wrote to
+     stderr on a run that still exited zero. The one to expect there is
+     the `W101` warning about a rule assignment placed above any
+     matcher, the mistake step 4 warns of. `test` surfaces the same
+     text as a per-rule `notice`, printed even on a pass.
+
+   A `failures` key is the third case and the loud one: the engine was
+   present and did not finish (a malformed rule, a timeout), `success`
+   is `false`, and `results` holds only what the other engines
+   reported. Only `results: []` with no `vale-parse-error` finding, no
+   `notices` and no `failures` is the clean pass it looks like.
+
+   **The binary that answers is the vendored one, and only that one
+   counts.** `verify`, `test` and `check` all run the Vale that ships
+   with this CLI, v%(VALE_VERSION)s, which is what every measurement in
+   this recipe was taken on. A bare `vale` on your `PATH` proves nothing
+   about what `check` will report: one first attempt validated a rule
+   set against Homebrew's 3.15 while Taskless pinned 3.20, and rules
+   that passed on one and not the other told nobody anything. Do not
+   run `vale` directly, and do not add config to make a bare run
+   behave. The matcher that comes from doing so is `[.taskless/**]`
+   with the rule set to `NO`, meant to keep a bare run quiet over
+   fixtures that hold violations on purpose. `check` excludes
+   `.taskless/` before Vale runs on a whole-project walk, so that block
+   only ever acts under the invocation this paragraph tells you not to
+   use, and `verify` reports it as unnecessary (step 4 lists the
+   advisory). A rule needs the matchers for the files it is about and
+   no more.
 
    When a `fail/` document does not fire, work down this list before
    touching the pattern. The cause is usually further up:

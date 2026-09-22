@@ -1,4 +1,4 @@
-# Topic: verify-rule     (CLI v%(CLI_VERSION)s / topic v3)
+# Topic: verify-rule     (CLI v%(CLI_VERSION)s / topic v4)
 
 ## Goal
 Check that a rule is well-formed (`verify`), then run its tests
@@ -85,6 +85,22 @@ Both commands answer in the same shape, one entry per rule:
   never executed, and false for a runtime rule the execution policy
   refused. The second case also carries `refused` with the reason, and
   is the one where `ok` alone would mislead you.
+- `notice` is something true about the rule that is not a failure, and
+  it is reported on a pass as well. For a Vale rule it carries what
+  Vale wrote to stderr on a run that still exited zero, such as the
+  `W101` warning about an assignment placed above any matcher: the rule
+  verifies, Vale ignores it, and only this field says so. Read it
+  before `ok`, the same as `ran`.
+
+A green Vale `test` also assumes Vale read every fixture. A fixture
+whose front matter Vale cannot parse is excluded from the run and
+reported as a `vale-parse-error` finding under `check`, but `test`
+counts only findings from the rule under test. Measured: such a
+document under `fail/` reports `fail fixture did not fire`, which is
+loud; the same document under `pass/` stays green even when it holds a
+violation, because a rule that never ran cannot fire. When a `fail/`
+fixture reports not firing and the pattern looks right, check the
+fixture's front matter before the rule.
 
 Without `--json` the same information prints as a `✓`/`✗`/`○` line per
 rule with its errors indented beneath. `○` is a rule that did not run.
