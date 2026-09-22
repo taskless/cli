@@ -160,6 +160,17 @@ function lines(
 const hedge = (scope: string) =>
   `extends: existence\nmessage: "hedge: %s"\nlevel: warning\nscope: '${scope}'\ntokens:\n  - worth noting\n`;
 
+/**
+ * An existence rule with one `tokens` or `raw` entry, `message: "%s"` so a
+ * finding's message is the match, and `extra` lines above the list.
+ */
+const existenceOver = (
+  key: "tokens" | "raw",
+  pattern: string,
+  extra = ""
+): string =>
+  `extends: existence\nmessage: "%s"\nlevel: warning\n${extra}${key}:\n  - ${pattern}\n`;
+
 /** A word budget of 8 over whatever `scope` names. */
 const budget = (scope: string) =>
   `extends: metric\nmessage: "%s words"\nlevel: error\nscope: '${scope}'\nformula: words\ncondition: "> 8"\n`;
@@ -668,6 +679,175 @@ withVale("Vale vendor contract", () => {
       // ... -->` line and reports a finding on the directive that silences it.
       expect(hedgingFindings(rawRule, unzoned)).toBe(2);
       expect(hedgingFindings(rawRule, zoned)).toBe(1);
+    });
+  });
+
+  /**
+   * How an `existence` rule's `raw` list is read, and what `nonword` does and
+   * does not govern. Both from the 2026-09-21 dogfood notes (taskless/cli#360):
+   * a second `raw` entry added to a working rule never fired, and its fail
+   * fixture failed, with no error anywhere.
+   *
+   * Depended on by: the `verify` advisory in `schemas/vale-rule.ts` that
+   * warns on a multi-entry `raw`, and the recipe's guidance to write
+   * alternation as one `(a|b)` entry. If Vale ever started treating the
+   * entries as alternatives the advisory would be telling authors to fix a
+   * rule that works.
+   */
+  describe("existence `raw` entries join into one pattern", () => {
+    /** Two entries, each a real pattern on its own. */
+    const twoEntries =
+      'extends: existence\nmessage: "%s"\nlevel: warning\nraw:\n' +
+      '  - "\\\\bstops being\\\\b"\n' +
+      '  - "[^.]{0,20}\\\\band becomes\\\\b"\n';
+    /** The same two patterns as one entry, alternated. */
+    const oneAlternation =
+      'extends: existence\nmessage: "%s"\nlevel: warning\nraw:\n' +
+      '  - "(\\\\bstops being\\\\b|[^.]{0,20}\\\\band becomes\\\\b)"\n';
+    const secondOnly = "It and becomes fun.\n";
+    const firstOnly = "It stops being fun.\n";
+    const both = "It stops being dull and becomes fun.\n";
+
+    it("never matches an entry on its own", () => {
+      // Vale joins `raw` with no separator (`strings.Join(rule.Raw, "")`),
+      // so the list is one regex whose pieces happen to be on separate
+      // lines. A line that matches only the second entry is silent, and so
+      // is one that matches only the first.
+      expect(lines(twoEntries, secondOnly).lines).toEqual([]);
+      expect(lines(twoEntries, firstOnly).lines).toEqual([]);
+    });
+
+    it("matches the entries in sequence, as the one regex they became", () => {
+      expect(lines(twoEntries, both).messages).toEqual([
+        "stops being dull and becomes",
+      ]);
+    });
+
+    it("joins three the same way: the middle entry alone is silent", () => {
+      const three =
+        'extends: existence\nmessage: "%s"\nlevel: warning\nraw:\n' +
+        '  - "alpha"\n  - "bravo"\n  - "charlie"\n';
+      expect(
+        lines(three, "bravo alone. alphabravocharlie together.\n").messages
+      ).toEqual(["alphabravocharlie"]);
+    });
+
+    it("fires on either branch when the alternation is inside one entry", () => {
+      // The form the recipe teaches. Same two patterns, one entry.
+      expect(lines(oneAlternation, secondOnly).messages).toEqual([
+        "It and becomes",
+      ]);
+      expect(lines(oneAlternation, firstOnly).messages).toEqual([
+        "stops being",
+      ]);
+    });
+  });
+
+  describe("`nonword` governs `tokens`, not `raw`", () => {
+    // Vale wraps the pattern in `\b…\b` only when the rule has `tokens` and
+    // `nonword` is unset, and `raw` is inserted verbatim either way. So a
+    // `tokens` entry that starts or ends on punctuation needs `nonword: true`
+    // to be reachable at all (`\b` needs a word character on one side), while
+    // a `raw` pattern edged on punctuation fires with or without it. The
+    // corpus row `field/existence+nonword` (`vale-corpus.ts`) proves the
+    // em dash token fires WITH the key; this is the other half, that it is
+    // silent without it, and that `raw` does not care.
+    //
+    // Depended on by: the recipe's `nonword` guidance, which must say which
+    // key the flag is for. Issue #360's worked example carries `nonword:
+    // true` beside a `raw` list, where it is harmless and does nothing.
+    const emDash = "This is a sentence — with an em dash.\n";
+    const twist = "That is the twist. Yes.\n";
+    const twistPattern = String.raw`"(The|That|This) is the twist\\."`;
+    const NONWORD = "nonword: true\n";
+
+    it("a punctuation-only token is silent until nonword: true", () => {
+      expect(lines(existenceOver("tokens", '"—"'), emDash).lines).toEqual([]);
+      expect(
+        lines(existenceOver("tokens", '"—"', NONWORD), emDash).messages
+      ).toEqual(["—"]);
+    });
+
+    it("a raw pattern edged on punctuation fires with or without it", () => {
+      expect(lines(existenceOver("raw", '"—"'), emDash).messages).toEqual([
+        "—",
+      ]);
+      expect(
+        lines(existenceOver("raw", '"—"', NONWORD), emDash).messages
+      ).toEqual(["—"]);
+      expect(lines(existenceOver("raw", twistPattern), twist).messages).toEqual(
+        ["That is the twist."]
+      );
+      expect(
+        lines(existenceOver("raw", twistPattern, NONWORD), twist).messages
+      ).toEqual(["That is the twist."]);
+    });
+  });
+
+  /**
+   * Which scopes see YAML front matter. From the same dogfood notes
+   * (taskless/cli#361): a `scope: raw` casing rule flagged `target: taskless`
+   * in blog front matter, where lowercase is a machine key.
+   *
+   * Depended on by: the recipe's scope guidance, which must say that `raw`
+   * (and, measured here, the default scope) lint front matter as prose, and
+   * that `frontmatter.<key>` is how a rule reaches one key and nothing else.
+   */
+  describe("front matter under each scope", () => {
+    // `taskless` on line 2 (a front-matter value) and line 5 (body prose).
+    const document =
+      "---\ntarget: taskless\n---\n\nSee taskless in the body.\n";
+    const at = (scope: string) =>
+      lines(
+        existenceOver(
+          "tokens",
+          "taskless",
+          scope === "" ? "" : `scope: ${scope}\n`
+        ),
+        document
+      ).lines;
+
+    it("`raw` lints a front-matter value as text", () => {
+      expect(at("raw")).toEqual([2, 5]);
+    });
+
+    it("so do `text` and the default scope", () => {
+      // The surprise is not confined to `raw`. A rule with no `scope` at all
+      // reads the front matter too, so the recipe cannot say "just drop
+      // `scope: raw`" as the fix.
+      expect(at("text")).toEqual([2, 5]);
+      expect(at("")).toEqual([2, 5]);
+    });
+
+    it("`paragraph` and `sentence` skip it", () => {
+      expect(at("paragraph")).toEqual([5]);
+      expect(at("sentence")).toEqual([5]);
+    });
+
+    it("`frontmatter.<key>` reaches that key and never the body", () => {
+      expect(at("frontmatter.target")).toEqual([2]);
+      // A key the document does not have: silent, not an error.
+      expect(at("frontmatter.title")).toEqual([]);
+    });
+
+    it("`frontmatter` reaches the block and never the body", () => {
+      expect(at("frontmatter")).toEqual([2]);
+    });
+
+    it("`occurrence` with `min: 1` at `raw` can require a field", () => {
+      // The flip side, and the shape the recipe now recommends for "a draft
+      // needs a description". `(?m)` is what lets `^` and `$` anchor to a
+      // line inside the raw text.
+      const requireDescription =
+        'extends: occurrence\nmessage: "needs a description"\nlevel: error\n' +
+        "scope: raw\nmin: 1\ntoken: '(?m)^description: .+$'\n";
+      const without = "---\ntitle: x\n---\n\nBody.\n";
+      const withField =
+        "---\ntitle: x\ndescription: a real one\n---\n\nBody.\n";
+      expect(lines(requireDescription, without).lines).toEqual([1]);
+      expect(lines(requireDescription, withField).lines).toEqual([]);
+      // No front matter at all is the same shortfall, reported the same way.
+      expect(lines(requireDescription, "Body only.\n").lines).toEqual([1]);
     });
   });
 
