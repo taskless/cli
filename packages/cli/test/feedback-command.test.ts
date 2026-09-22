@@ -39,8 +39,8 @@ function verb(name: "dismiss" | "send"): RunnableCommand {
 }
 
 const VALID = {
+  ruleKind: "ast-grep, forbid eval in TypeScript",
   verbatim: "The second rule took three tries but the verify loop caught it.",
-  goal: "Forbid eval in TypeScript",
   completed: "Yes",
   needsImprovement: "The first draft used a language name ast-grep rejects.",
 };
@@ -115,15 +115,30 @@ describe("feedback command", () => {
       expect(capture).toHaveBeenCalledTimes(1);
       expect(capture).toHaveBeenCalledWith("survey sent", {
         $survey_id: SURVEY_ID,
-        "$survey_response_5feff6a3-6768-4817-92d7-5ae3975c6baa": VALID.verbatim,
-        "$survey_response_561e87f4-a1b7-4855-b728-29d19421f7e7": VALID.goal,
-        "$survey_response_6ebdfabb-3575-49aa-857c-47b6bbfdebc8": "Yes",
-        "$survey_response_67bedbd9-ca70-4c1c-b1a6-6df830a453dd":
+        "$survey_response_0874591f-c554-4ac3-8930-e11c436d859e": VALID.ruleKind,
+        "$survey_response_2c3c80dc-dcda-4e29-b52e-a25ef58b5ca2": VALID.verbatim,
+        "$survey_response_605e12a8-82b6-480f-93b2-ab8de0fa08bd": "Yes",
+        "$survey_response_a8cf706d-3ff7-4845-bea9-501013be958c":
           VALID.needsImprovement,
       });
-      // The unanswered optional (`workedWell`) has no key at all.
+      // The unanswered optionals have no key at all.
       const properties = capture.mock.calls[0]![1] as Record<string, unknown>;
       expect(Object.keys(properties)).toHaveLength(5);
+    });
+
+    it("sends the agent's account alone when the user gave no words", async () => {
+      // A `skip` reply is not a dismissal: the payload omits `verbatim` and
+      // the rest still goes, keyed to the survey's required question.
+      const from = await writePayload({ ruleKind: "none (onboarding)" });
+      await verb("send").run({
+        args: { dir: cwd, from, json: false },
+        rawArgs: [],
+      });
+      expect(capture).toHaveBeenCalledWith("survey sent", {
+        $survey_id: SURVEY_ID,
+        "$survey_response_0874591f-c554-4ac3-8930-e11c436d859e":
+          "none (onboarding)",
+      });
     });
 
     it("leaves the input file in place and creates no .taskless/", async () => {
@@ -186,7 +201,7 @@ describe("feedback command", () => {
 
     it("validates before honoring the opt-out, then sends nothing", async () => {
       enabled = false;
-      const bad = await writePayload({ goal: "x" });
+      const bad = await writePayload({ verbatim: "x" });
       await expect(
         verb("send").run({
           args: { dir: cwd, from: bad, json: false },
@@ -209,15 +224,17 @@ describe("feedback command", () => {
   describe("buildSurveyResponse", () => {
     it("maps every answered key and no unanswered one", () => {
       const properties = buildSurveyResponse({
+        ruleKind: "r",
         verbatim: "v",
-        goal: "g",
         completed: "Unknown",
+        agents: "Claude Code",
       });
       expect(properties).toEqual({
         $survey_id: SURVEY_ID,
-        "$survey_response_5feff6a3-6768-4817-92d7-5ae3975c6baa": "v",
-        "$survey_response_561e87f4-a1b7-4855-b728-29d19421f7e7": "g",
-        "$survey_response_6ebdfabb-3575-49aa-857c-47b6bbfdebc8": "Unknown",
+        "$survey_response_0874591f-c554-4ac3-8930-e11c436d859e": "r",
+        "$survey_response_2c3c80dc-dcda-4e29-b52e-a25ef58b5ca2": "v",
+        "$survey_response_605e12a8-82b6-480f-93b2-ab8de0fa08bd": "Unknown",
+        "$survey_response_f85b22df-8e51-4c9c-8219-261b33b71c90": "Claude Code",
       });
     });
   });

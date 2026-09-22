@@ -15,17 +15,19 @@ import {
 } from "../src/survey/constants";
 
 describe("survey constants", () => {
-  // The identifiers are PostHog's, transcribed once. Q3's id changed when the
-  // question became single choice, which is exactly the kind of drift this
-  // pins: the value here is what the live survey holds as of 2026-09-17.
+  // The identifiers are PostHog's, transcribed once. A question's id changes
+  // whenever the question does, which is exactly the kind of drift this pins:
+  // the values here are what the 0.11.3 survey holds as of 2026-09-21.
   it("carries the live survey's question ids in question order", () => {
-    expect(SURVEY_ID).toBe("01a0b1a0-80fb-0000-5dc1-baa4ec44e619");
+    expect(SURVEY_ID).toBe("01a0c7b9-dfe4-0000-d05e-ce253e90a68c");
     expect(SURVEY_QUESTIONS.map(({ key, id }) => [key, id])).toEqual([
-      ["verbatim", "5feff6a3-6768-4817-92d7-5ae3975c6baa"],
-      ["goal", "561e87f4-a1b7-4855-b728-29d19421f7e7"],
-      ["completed", "6ebdfabb-3575-49aa-857c-47b6bbfdebc8"],
-      ["workedWell", "2316428e-dc3e-4c96-ae67-a6e8c66d7db5"],
-      ["needsImprovement", "67bedbd9-ca70-4c1c-b1a6-6df830a453dd"],
+      ["ruleKind", "0874591f-c554-4ac3-8930-e11c436d859e"],
+      ["verbatim", "2c3c80dc-dcda-4e29-b52e-a25ef58b5ca2"],
+      ["completed", "605e12a8-82b6-480f-93b2-ab8de0fa08bd"],
+      ["workedWell", "b5375d87-e295-4833-84ed-fca8140ba992"],
+      ["needsImprovement", "a8cf706d-3ff7-4845-bea9-501013be958c"],
+      ["agents", "f85b22df-8e51-4c9c-8219-261b33b71c90"],
+      ["mostValuableRule", "4f8e938e-22f6-449c-9b8c-43c51d08e214"],
     ]);
   });
 
