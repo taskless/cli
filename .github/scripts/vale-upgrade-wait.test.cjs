@@ -15,6 +15,7 @@
 
 const test = require("node:test");
 const assert = require("node:assert/strict");
+const { execFileSync } = require("node:child_process");
 const { mkdtempSync, readFileSync, rmSync } = require("node:fs");
 const { tmpdir } = require("node:os");
 const { join } = require("node:path");
@@ -24,9 +25,12 @@ const {
   main,
   parseArgs,
   parseRuns,
+  recover,
   waitForRegistry,
   waitForReleaseRun,
 } = require("./vale-upgrade-wait.cjs");
+
+const SCRIPT = join(__dirname, "vale-upgrade-wait.cjs");
 
 const SHA = "0123456789abcdef0123456789abcdef01234567";
 
@@ -483,4 +487,81 @@ test("main: flags shorten the bounds", async () => {
   });
   assert.deepEqual(outputs, { ready: "false", outcome: "publish-unfinished" });
   assert.deepEqual(slept, [20_000, 20_000, 20_000]);
+});
+
+test("recover: a thrown error is a warning and ready=true, never a failure", () => {
+  const directory = mkdtempSync(join(tmpdir(), "vale-upgrade-wait-test-"));
+  const outputPath = join(directory, "github-output");
+  const logged = [];
+  try {
+    recover(new Error("GITHUB_SHA must be set on a push"), {
+      env: { GITHUB_OUTPUT: outputPath },
+      log: (line) => logged.push(line),
+    });
+    assert.match(logged[0], /^::warning::vale-upgrade-wait failed: GITHUB_SHA/);
+    assert.equal(
+      readFileSync(outputPath, "utf8"),
+      "ready=true\noutcome=wait-errored\n"
+    );
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test("recover: an unwritable GITHUB_OUTPUT is a second warning, not a throw", () => {
+  const logged = [];
+  assert.doesNotThrow(() =>
+    recover(new Error("boom"), {
+      env: { GITHUB_OUTPUT: join(tmpdir(), "does-not-exist", "x", "output") },
+      log: (line) => logged.push(line),
+    })
+  );
+  assert.equal(logged.length, 2);
+  assert.match(logged[1], /^::warning::could not write GITHUB_OUTPUT/);
+});
+
+/**
+ * The real entry point, spawned. Everything above drives the exports; this is
+ * the one test of the `require.main === module` wiring, and it is the property
+ * the script exists for: a run that cannot even start still exits 0.
+ */
+function spawnScript(env, argv = []) {
+  const directory = mkdtempSync(join(tmpdir(), "vale-upgrade-wait-test-"));
+  const outputPath = join(directory, "github-output");
+  try {
+    const stdout = execFileSync(process.execPath, [SCRIPT, ...argv], {
+      encoding: "utf8",
+      env: { PATH: process.env.PATH, GITHUB_OUTPUT: outputPath, ...env },
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    let outputs = "";
+    try {
+      outputs = readFileSync(outputPath, "utf8");
+    } catch {
+      // nothing written
+    }
+    return { stdout, outputs };
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+}
+
+test("entry point: GITHUB_SHA missing on a push exits 0 with ready=true", () => {
+  // execFileSync throws on a non-zero exit, so reaching the assertions is the
+  // exit-code check.
+  const { stdout, outputs } = spawnScript({ GITHUB_EVENT_NAME: "push" });
+  assert.match(
+    stdout,
+    /::warning::vale-upgrade-wait failed: GITHUB_SHA must be set on a push; running detect without waiting\./
+  );
+  assert.equal(outputs, "ready=true\noutcome=wait-errored\n");
+});
+
+test("entry point: a malformed flag exits 0 with ready=true", () => {
+  const { stdout, outputs } = spawnScript({ GITHUB_EVENT_NAME: "push" }, [
+    "--attempts",
+    "0",
+  ]);
+  assert.match(stdout, /--attempts needs a positive number, got 0/);
+  assert.equal(outputs, "ready=true\noutcome=wait-errored\n");
 });
