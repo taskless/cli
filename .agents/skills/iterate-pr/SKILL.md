@@ -281,26 +281,44 @@ Run `${CLAUDE_SKILL_ROOT}/scripts/fetch_pr_checks.cjs` to get structured failure
 
 This applies even when the check itself has already concluded. A review bot can report its check `success` while its comment is still the placeholder it posted on trigger — check `summary.review_in_progress` from `fetch_pr_feedback.cjs` (step 2), not the body text or the check's conclusion, and wait for it to drop to 0 before treating that bot's feedback as final.
 
-#### No PR check asks whether the OpenSpec change is archived
+#### The OpenSpec archive signal is a label and a warning, not a check
 
-A change is archived exactly once, at the END of the work, so an unarchived
-directory under `openspec/changes/` is the normal state of a pull request.
-There is no gate for it, in either direction.
+`openspec-label.yml` runs on every pull request with no `branches:` filter. It
+reads the head tree and asks one question: does any directory other than
+`archive/` exist under `openspec/changes/`? If one does, the PR gets the
+`Open OpenSpec` label. The predicate asks nothing about stack position, so
+every PR in a stack gets the same answer, and the label clears when a branch in
+the stack archives the change.
 
-There were two, and both measured the wrong thing. A PR-time gate had to infer
-stack position to avoid firing on in-flight work, and a check that is
-expected-red on most of a stack teaches people to ignore red. Moving it to
-`main` fixed the false positives and introduced a worse problem: a
-forward-merging stack leaves its change directory on `main` until the final
-slice, so `main` ran red for the whole time the stack was draining. A signal
-that is expected to be red is not a signal.
+The tip gets more. After labelling, the workflow runs
+`gh pr list --state open --base <this branch>`; a count of zero means nothing is
+stacked above, so this is the last branch that can archive before the change
+reaches `main`. It then emits a `::warning::` annotation and a job-summary block
+listing one `pnpm openspec archive <change>` line per change. That is an
+annotation and a summary, not a PR comment, so read the `OpenSpec Label` job
+rather than waiting for something to appear in the conversation. A fork PR gets
+neither the label nor the tip warning: the token is read-only and the fork's
+head branch cannot be a base here, which would report every fork PR as the tip.
 
-What is worth detecting is work that stalled and was abandoned. Neither gate
-measured that; both measured "work is in progress". A replacement is a separate
-piece of design.
+**On a tip PR, treat that warning as feedback to act on before merge.** Sync the
+deltas into `openspec/specs/`, archive, push. "Archive on landing" is not an
+option, because `main` only takes PRs: a change that lands unarchived needs a
+second PR to correct it. On `taskless/marketing`, #50 and #51 landed unarchived
+and the fix could not be pushed directly, since the `main` ruleset has no bypass
+actors, so #52 was a third PR to do what the tip should have done.
 
-Practically, on a PR: archive when the PR is the last in the chain, and leave
-the change directory alone otherwise. Nothing will fail either way.
+**On a non-tip PR, leave the change directory alone and let the label stand.**
+Archiving mid-stack rewrites `openspec/specs/` before the work it describes has
+landed.
+
+Nothing fails either way, and that is deliberate: a gate here was expected-red
+for as long as a forward-merging stack took to drain, and a signal expected to
+be red is not a signal. The channel is the label and an issue. Once no open PR's
+diff touches the change directory, the next push to `main` has
+`openspec-tracking.yml` open `OpenSpec: <change> is unarchived on main`, labelled
+`Open OpenSpec`, which closes itself when the change reaches
+`openspec/changes/archive/`. `openspec-sweep.yml` escalates on that issue daily
+once the directory has gone seven days without git activity.
 
 #### Stacked PRs: two other check behaviours worth knowing
 
