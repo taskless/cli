@@ -812,8 +812,57 @@ export const valeRuleSchema = valeHeaderSchema
   .transform(canonicalKeys)
   .pipe(valeBodySchema);
 
-/** What the schema layer concluded. Shared with the ast-grep path. */
-export type ValeSchemaResult = SchemaLayerResult;
+/**
+ * What is true about a rule that does not make it invalid.
+ *
+ * The counterpart of `adviseValeRuleConfig` in `vale-config.ts`, and held to
+ * the same line: each entry has a legitimate reading, so none is a rejection.
+ * Said rather than refused, on `notice`.
+ *
+ * Read off the canonical keys, because `Raw:` is decoded case-insensitively
+ * like every non-literal field; and off the mapping whether or not the schema
+ * passed it, since an advisory about one field is as true beside a rejection
+ * of another as it is alone.
+ */
+function adviseValeRule(ruleId: string, data: unknown): string[] {
+  if (typeof data !== "object" || data === null || Array.isArray(data)) {
+    return [];
+  }
+  const rule = canonicalKeys(data as Record<string, unknown>);
+  const advisories: string[] = [];
+
+  // Vale joins an `existence` rule's `raw` list with no separator
+  // (`strings.Join(rule.Raw, "")`), so two entries are one regex, not two
+  // alternatives, and a line matching only the second entry is silent. That
+  // is a real authoring trap (taskless/cli#360: the second entry's fail
+  // fixture never fired, with no error anywhere) and also a real way to write
+  // a long pattern across lines, which is why it is a notice. Pinned on the
+  // binary in `vale-vendor-contract.test.ts`, "existence `raw` entries join
+  // into one pattern".
+  if (
+    rule.extends === "existence" &&
+    Array.isArray(rule.raw) &&
+    rule.raw.length > 1
+  ) {
+    advisories.push(
+      `${ruleId}: raw has ${String(rule.raw.length)} entries; Vale joins them into one pattern with no separator, so the second never matches on its own. Write one entry with (a|b) unless the join is intended.`
+    );
+  }
+  return advisories;
+}
+
+/**
+ * What the schema layer concluded, plus what it noticed.
+ *
+ * `valid` and `errors` are the shape shared with the ast-grep path;
+ * `advisories` is the Vale layer's own, since its checks are hand-authored
+ * against a measured binary and some of what they know is worth saying without
+ * being worth failing.
+ */
+export interface ValeSchemaResult extends SchemaLayerResult {
+  /** True things about the rule that do not make it invalid. */
+  advisories: string[];
+}
 
 /**
  * Validate a parsed Vale style file structurally, before Vale is invoked.
@@ -826,8 +875,11 @@ export function validateValeRule(
   ruleId: string,
   data: unknown
 ): ValeSchemaResult {
-  return schemaLayer(
-    valeRuleSchema.safeParse(data),
-    (issue) => `${ruleId}.yml: ${issue.message}`
-  );
+  return {
+    ...schemaLayer(
+      valeRuleSchema.safeParse(data),
+      (issue) => `${ruleId}.yml: ${issue.message}`
+    ),
+    advisories: adviseValeRule(ruleId, data),
+  };
 }

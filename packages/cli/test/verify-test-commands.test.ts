@@ -218,6 +218,66 @@ describe("verify checks components without requiring tests", () => {
     expect(rule?.notice).toMatch(/assigns no-simply\.no-simply again/);
   });
 
+  // The style schema's own advisory, through the real CLI.
+  // `vale-schema-contract.test.ts` holds the advisory to its rule; this says
+  // it reaches `notice` on `verify` output and `--json`, joined with whatever
+  // the config layer had to say, and that a one-entry list draws nothing.
+  it("accepts a Vale rule whose raw has two entries, and says so on notice", async () => {
+    await valeRule("no-twist", {
+      config: "[*.md]\ntskl) rule = no-twist\nno-twist.no-twist = YES\n",
+      style:
+        'extends: existence\nmessage: "Avoid the twist"\nlevel: warning\nraw:\n' +
+        '  - "\\\\bstops being\\\\b"\n  - "\\\\band becomes\\\\b"\n',
+    });
+    const json = await runCli(["verify", "-d", cwd, "--json"]);
+    expect(json.exitCode).toBe(0);
+    const rule = (JSON.parse(json.stdout) as Report).rules[0];
+    expect(rule?.ok).toBe(true);
+    expect(rule?.errors).toEqual([]);
+    expect(rule?.notice).toBe(
+      "no-twist: raw has 2 entries; Vale joins them into one pattern with no separator, so the second never matches on its own. Write one entry with (a|b) unless the join is intended."
+    );
+
+    const text = await runCli(["verify", "-d", cwd]);
+    expect(text.exitCode).toBe(0);
+    expect(text.stdout).toContain("notice: no-twist: raw has 2 entries");
+  });
+
+  it("says nothing about a one-entry raw list", async () => {
+    await valeRule("no-twist", {
+      config: "[*.md]\ntskl) rule = no-twist\nno-twist.no-twist = YES\n",
+      style:
+        'extends: existence\nmessage: "Avoid the twist"\nlevel: warning\nraw:\n' +
+        '  - "(\\\\bstops being\\\\b|\\\\band becomes\\\\b)"\n',
+    });
+    const json = await runCli(["verify", "-d", cwd, "--json"]);
+    expect(json.exitCode).toBe(0);
+    const rule = (JSON.parse(json.stdout) as Report).rules[0];
+    expect(rule?.ok).toBe(true);
+    expect(rule?.notice).toBeUndefined();
+
+    const text = await runCli(["verify", "-d", cwd]);
+    expect(text.stdout).not.toContain("notice:");
+  });
+
+  it("joins a raw advisory and a config advisory on one notice", async () => {
+    await valeRule("no-twist", {
+      config:
+        "[docs/**]\ntskl) rule = no-twist\nno-twist.no-twist = YES\n\n" +
+        "[*.md]\ntskl) rule = no-twist\nno-twist.no-twist = YES\nno-twist.no-twist = NO\n",
+      style:
+        'extends: existence\nmessage: "Avoid the twist"\nlevel: warning\nraw:\n' +
+        "  - a\n  - b\n",
+    });
+    const result = await runCli(["verify", "-d", cwd, "--json"]);
+    expect(result.exitCode).toBe(0);
+    const rule = (JSON.parse(result.stdout) as Report).rules[0];
+    expect(rule?.notice?.split("\n")).toEqual([
+      expect.stringContaining("raw has 2 entries"),
+      expect.stringContaining("assigns no-twist.no-twist again"),
+    ]);
+  });
+
   it("rejects a Vale config whose only YES a later NO overrides", async () => {
     await valeRule("no-simply", {
       config: `${SCOPED}no-simply.no-simply = NO\n`,

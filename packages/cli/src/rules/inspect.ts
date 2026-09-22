@@ -206,6 +206,11 @@ export async function verifyOneRule(
   }
 
   if (engine === "vale") {
+    // What is true but not invalid, from the style file and the config alike,
+    // rides on `notice`. Both schema layers speak in that register: the style
+    // layer about a `raw` list Vale will join into one pattern, the config
+    // layer about a repeated key or a `[*]` matcher.
+    const advisories: string[] = [];
     const stylePath = ruleFilePath(cwd, engine, ruleId);
     try {
       const style = await readYaml(stylePath);
@@ -216,7 +221,9 @@ export async function verifyOneRule(
       // catches are not local — Vale reads one assembled config per run, so an
       // unknown `extends` or a foreign field takes down every other Vale
       // rule's findings rather than just this one's.
-      errors.push(...validateValeRule(ruleId, style).errors);
+      const schema = validateValeRule(ruleId, style);
+      errors.push(...schema.errors);
+      advisories.push(...schema.advisories);
 
       if (typeof style === "object" && style !== null) {
         const record = style as Record<string, unknown>;
@@ -246,10 +253,8 @@ export async function verifyOneRule(
     // Vale would accept and read as something other than what its author
     // wrote: a rule assignment above the first matcher, a matcher with no
     // breadcrumb, a key naming another rule. Each rejection is attributed to
-    // its `vale-config-*` constraint; what is true but not invalid rides on
-    // `notice`.
+    // its `vale-config-*` constraint.
     const violations: RuleViolation[] = [];
-    let notice: string | undefined;
     const configPath = ruleConfigPath(cwd, engine, ruleId);
     if (configPath !== undefined) {
       let config: string | undefined;
@@ -269,9 +274,7 @@ export async function verifyOneRule(
             rejection.message
           );
         }
-        if (verdict.advisories.length > 0) {
-          notice = verdict.advisories.join("\n");
-        }
+        advisories.push(...verdict.advisories);
       }
     }
 
@@ -284,7 +287,7 @@ export async function verifyOneRule(
       ok: errors.length === 0,
       errors,
       violations,
-      ...(notice === undefined ? {} : { notice }),
+      ...(advisories.length === 0 ? {} : { notice: advisories.join("\n") }),
     };
   }
 
