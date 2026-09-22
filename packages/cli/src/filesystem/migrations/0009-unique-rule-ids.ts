@@ -45,7 +45,7 @@ import type { Migration } from "../types";
  * | --------- | -------------------------------------------------------------------------- |
  * | `sg`      | directory, `<id>.yml`, its `id:` field, `.tests/<id>-*-test.yml` and each file's `id:` |
  * | `vale`    | directory, `<id>.yml`, and in `.vale.ini` the `tskl) rule` breadcrumb and the `<id>.<id>` assignment |
- * | `runtime` | directory only — `check.ts` is a fixed name, and a capture's `id:` and `metadata.taskless.name` are its own, not the rule's |
+ * | `runtime` | nothing — a runtime rule is never renamed; see below |
  *
  * Both Vale segments move because `StylesPath` points at `rules/vale`, so the
  * rule directory is the style and `<id>.yml` is the check inside it. Nothing
@@ -53,12 +53,29 @@ import type { Migration } from "../types";
  * records versions rather than rules, and the runtime reconcile join is by
  * content signature, so a moved-but-unchanged rule still resolves.
  *
- * ## The rename is symmetric
+ * ## Runtime rules are never renamed
  *
- * Every colliding copy becomes `<id>-<engine>`; no engine keeps the bare id.
- * Any precedence rule would be arbitrary, and a symmetric rename means nobody
- * has to work out which of their two rules silently kept the name. `check`
- * output moves with it, which is why the changeset says to expect it.
+ * A `runtime` copy keeps the bare id, and only `sg` and `vale` copies are
+ * moved. Runtime rules are the tier whose artifacts are signed and blessed,
+ * and leaving them untouched keeps this migration clear of that machinery
+ * entirely rather than reasoning about it. Measured, a rename would in fact be
+ * safe — `signRuleFile` hashes the CONTENT of `check.ts` and never its path,
+ * and the reconcile join is by signature, so a moved-but-unchanged rule still
+ * resolves — so this is a precaution rather than a correctness fix. It costs
+ * nothing: the result is collision-free either way.
+ *
+ * ## Among the engines that do move, the rename is symmetric
+ *
+ * When `sg` and `vale` both hold an id, both move; neither keeps it. Any
+ * precedence rule between them would be arbitrary, and a symmetric rename
+ * means nobody has to work out which of their two rules silently kept the
+ * name. `check` output moves with it, which is why the changeset says to
+ * expect it.
+ *
+ * The result is collision-free in every case, because within one engine the
+ * filesystem already guarantees one directory per id. `sg` + `runtime` leaves
+ * `sg/<id>-sg` beside `runtime/<id>`; all three leaves `sg/<id>-sg`,
+ * `vale/<id>-vale` and `runtime/<id>`.
  *
  * ## What it will not do
  *
@@ -78,6 +95,14 @@ import type { Migration } from "../types";
  * Idempotent, and read-only when there is nothing to do. A project with no
  * collision is enumerated and nothing is written, so `git status` stays clean.
  */
+/**
+ * The engine whose rules keep their id whatever else holds it.
+ *
+ * Named rather than inlined so the carve-out is one fact in one place: the
+ * loop, the docblock table and the report all mean the same thing by it.
+ */
+const NEVER_RENAMED: EngineName = "runtime";
+
 const migration: Migration = async (directory) => {
   // The collision is a fact about `.taskless/rules/`, and every helper that
   // describes it takes the PROJECT root, which is this directory's parent.
@@ -89,6 +114,17 @@ const migration: Migration = async (directory) => {
   const lines: string[] = [];
   for (const collision of collisions) {
     for (const engine of collision.engines) {
+      if (engine === NEVER_RENAMED) {
+        // Said out loud rather than left as a silent omission: a reader
+        // looking at a three-engine collision must not be left wondering why
+        // one of the three did not move. Its id stays in `taken`, so nothing
+        // else can be renamed onto it.
+        lines.push(
+          `  ${ruleDirectory(cwd, engine, collision.ruleId)}`,
+          `    kept its id (runtime rules are never renamed)`
+        );
+        continue;
+      }
       const to = freeRuleId(collision.ruleId, engine, taken);
       taken.add(to);
       lines.push(...(await renameRule(cwd, engine, collision.ruleId, to)));
@@ -191,9 +227,7 @@ async function renameRule(
       ...(await rewriteValeConfig(toPath, from, to))
     );
   }
-  // `runtime` carries the id in the directory name alone: `check.ts` is a
-  // fixed name, and a capture file's `id:` and `metadata.taskless.name` are
-  // the capture's own identifiers, not the rule's.
+  // No `runtime` branch: this is never called for one. See `NEVER_RENAMED`.
   return lines;
 }
 

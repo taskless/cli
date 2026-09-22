@@ -2,7 +2,11 @@
 
 ### Requirement: Migration 9 renames a rule id held by more than one engine
 
-Migration `9` SHALL read `.taskless/rules/` and, for every rule id that is a directory name under more than one engine, SHALL rename EVERY holding copy to `<id>-<engine>`. No engine SHALL keep the bare id. Any precedence rule would be arbitrary, and a symmetric rename means no user has to work out which of their two rules silently kept the name.
+Migration `9` SHALL read `.taskless/rules/` and, for every rule id that is a directory name under more than one engine, SHALL rename the `sg` and `vale` copies to `<id>-<engine>`.
+
+A `runtime` copy SHALL NEVER be renamed, and SHALL keep the bare id. Runtime rules are the tier whose artifacts are signed and blessed, and leaving them untouched keeps the migration clear of that machinery rather than reasoning about it. It costs nothing, because within one engine the filesystem already guarantees one directory per id, so moving the other copies resolves the collision either way.
+
+Where two engines that DO move both hold an id, neither SHALL keep it. Any precedence rule between them would be arbitrary, and a symmetric rename means no user has to work out which of their two rules silently kept the name.
 
 It SHALL rename rather than refuse. A throwing migration walls `init`, which is the command `SCAFFOLD_MIGRATION_REQUIRED` sends a stale scaffold to, so a refusal leaves the CLI's own instruction failing and a multi-file hand edit as the only way out.
 
@@ -14,22 +18,36 @@ The rename SHALL carry every reference to the id inside the rule's own directory
 | `vale`    | the directory, `<id>.yml`, and in `.vale.ini` both the `tskl) rule` breadcrumb and both segments of `<id>.<id>` |
 | `runtime` | the directory only                                                                                              |
 
-Both Vale segments move because `StylesPath` points at `rules/vale`, so the rule directory is the style and `<id>.yml` is the check inside it. A runtime rule carries the id in its directory alone: `check.ts` is a fixed name, and a capture file's `id:` and `metadata.taskless.name` identify the capture rather than the rule.
+Both Vale segments move because `StylesPath` points at `rules/vale`, so the rule directory is the style and `<id>.yml` is the check inside it.
 
 It SHALL NOT clobber. When `<id>-<engine>` is already in use the migration SHALL take the first free `<id>-<engine>-N` counting from 2, and a name SHALL count as free only when NO engine holds it, so resolving one collision cannot create another. Every name it chooses SHALL satisfy the rule id contract.
 
 It SHALL NOT move or delete `.taskless/rule-metadata/<id>.yml`. The rename is symmetric, so the sidecar has no owner to follow and moving it to either side would be a guess.
 
-It SHALL print every rename: the old path, the new path, and each file rewritten inside it. A migration that silently renames a user's rules is worse than one that refuses.
+It SHALL print every rename: the old path, the new path, and each file rewritten inside it. A migration that silently renames a user's rules is worse than one that refuses. It SHALL also name any `runtime` copy that kept its id, so a reader of a three-engine collision is not left wondering why one of the three did not move.
 
 It SHALL write nothing when there is no collision. A project in that state SHALL be read and left exactly as it is, so a second run touches nothing and the working tree stays clean. A project with no `rules/` tree SHALL be left as it is.
 
-#### Scenario: Every colliding copy is renamed symmetrically
+#### Scenario: Colliding sg and vale copies are renamed symmetrically
 
 - **WHEN** `no-eval` exists under both `sg` and `vale` and migration 9 runs
 - **THEN** `rules/sg/no-eval` SHALL become `rules/sg/no-eval-sg`
 - **AND** `rules/vale/no-eval` SHALL become `rules/vale/no-eval-vale`
 - **AND** no engine SHALL still hold the bare id
+
+#### Scenario: A colliding runtime rule keeps its id
+
+- **WHEN** `no-eval` exists under both `sg` and `runtime` and migration 9 runs
+- **THEN** `rules/sg/no-eval` SHALL become `rules/sg/no-eval-sg`
+- **AND** `rules/runtime/no-eval` SHALL be left byte for byte as it was
+- **AND** no id SHALL be held by more than one engine afterwards
+
+#### Scenario: Only the sg and vale copies move when all three collide
+
+- **WHEN** `no-eval` exists under `sg`, `vale` and `runtime` and migration 9 runs
+- **THEN** the `sg` and `vale` copies SHALL be renamed
+- **AND** `rules/runtime/no-eval` SHALL keep the bare id
+- **AND** the report SHALL say that the runtime copy kept its id
 
 #### Scenario: An sg rule's file, id field and fixtures follow it
 
@@ -43,12 +61,6 @@ It SHALL write nothing when there is no collision. A project in that state SHALL
 - **THEN** `<old>.yml` SHALL become `<new>.yml`
 - **AND** the `.vale.ini` breadcrumb SHALL name the new id
 - **AND** the `<old>.<old>` assignment SHALL become `<new>.<new>`
-
-#### Scenario: A runtime rule is renamed by directory alone
-
-- **WHEN** migration 9 renames a colliding `runtime` rule
-- **THEN** the directory SHALL be renamed
-- **AND** `check.ts` and the capture files SHALL be left as they are
 
 #### Scenario: A taken target name takes the next free suffix
 
