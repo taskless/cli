@@ -427,4 +427,32 @@ describe("recipes state engine reach from the pinned versions", () => {
     // otherwise is stale the moment it slips.
     expect(recipe).not.toMatch(/\b20\d\d-\d\d\b/);
   });
+
+  it("does not tell a Vale author that lookaround is unavailable", async () => {
+    // The recipe claimed `tokens` and `swap` compile as RE2 and that
+    // lookaround therefore does not exist (taskless/cli#371). It does: Vale
+    // falls back to `regexp2`, measured in `vale-vendor-contract.test.ts`.
+    // The claim is worth pinning as an absence because it does not fail
+    // anything — it only costs an author a rule split into two that one
+    // pattern expresses.
+    const recipe = await rendered("create-vale-rule.md");
+    expect(recipe).not.toMatch(/do not exist in RE2/);
+    expect(recipe).toContain("regexp2");
+    // The two notes that shared that bullet list and did measure true. Losing
+    // them to the rewrite above would be the quiet half of the same edit.
+    expect(recipe).toContain("Word boundaries are applied for you");
+    expect(recipe).toContain("A hyphen is a boundary");
+  });
+
+  it("explains why a named fixture bucket is reachable by check", async () => {
+    // `check` on a `fail/` bucket is the only way to read a rendered `%s`
+    // message, and it works: `.taskless/` is excluded from the whole-project
+    // walk only. taskless/cli#370 read an empty `results` as proof the
+    // command could never work, so the recipe now says which exclusion is
+    // which, and names the rule-local matcher that really does empty it.
+    const recipe = await rendered("create-vale-rule.md");
+    expect(recipe).toContain(".tests/fail --json");
+    expect(recipe).toContain("a path you name is honored");
+    expect(recipe).toContain("matcher [.taskless/**]");
+  });
 });
