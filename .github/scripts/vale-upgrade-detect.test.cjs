@@ -281,6 +281,40 @@ test("--write fails when VALE_VERSION is not declared exactly once", async () =>
   );
 });
 
+/**
+ * The half of that failure that matters to a tree: when the constant cannot
+ * be rewritten, the pins must not have been written either. Both rewrites are
+ * computed before either file is touched, so a refused run leaves package.json
+ * exactly as it found it rather than bumped without its constant.
+ */
+test("a refused constant rewrite leaves package.json untouched", async () => {
+  const before = sourcePinnedAt("3.20.0-20260907164938");
+  const directory = mkdtempSync(join(tmpdir(), "vale-upgrade-atomic-"));
+  const packageJsonPath = join(directory, "package.json");
+  const capabilitiesPath = join(directory, "capabilities.ts");
+  writeFileSync(packageJsonPath, before);
+  writeFileSync(
+    capabilitiesPath,
+    'export const AST_GREP_VERSION = "0.45.3";\n'
+  );
+  try {
+    await assert.rejects(
+      main({
+        argv: ["--write"],
+        latestVersion: async () => "3.21.0-20260914010203",
+        packageJsonPath,
+        packageJson: pinnedAt("3.20.0-20260907164938"),
+        capabilitiesPath,
+        manifest: MANIFEST,
+      }),
+      /found 0/
+    );
+    assert.equal(readFileSync(packageJsonPath, "utf8"), before);
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
 test("the changelog is upstream's, fetched by the BASE version's tag", async () => {
   const { notesWritten, tagsFetched } = await run({
     packageJson: pinnedAt("3.20.0-20260907164938"),
