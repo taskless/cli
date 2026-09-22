@@ -491,6 +491,22 @@ it.
      followed by Y" is therefore writable as a single `substitution`,
      but splitting it or narrowing with `scope` is still the cheaper
      rule when either will do.
+
+     Two measured limits sit on top of that, and both are silent:
+
+     - **A backreference does nothing in `swap`.** The same
+       `(\w+) \1` that fires under `tokens` and under `raw` produces
+       no finding as a `swap` key, with nothing on stderr and the
+       rule loading cleanly, so the rule looks healthy and never
+       fires at all. A repeated-word check has to be an `existence`
+       rule; it cannot be a `substitution`.
+     - **A trailing lookahead in `tokens` or `swap` has to peek at a
+       non-word character.** The implicit `\b` is appended after the
+       lookahead (the lookahead is zero-width, so the position is
+       still where the match ended), which puts the boundary between
+       the match and the text peeked at. `foo(?= bar)` fires;
+       `foo(?=bar)` can never match, whatever the document says. Use
+       `raw` when the lookahead has to land on a word character.
    - **Word boundaries are applied for you, around the whole pattern.**
      Measured: `Github` does not fire inside `GithubToken`, and the
      multi-word `click here` does not fire inside `Clicking here`.

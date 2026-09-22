@@ -233,7 +233,7 @@ The schema SHALL report, without rejecting, a config that:
 
 - assigns the same key twice inside one matcher (Vale 3.21.0 keeps the last assignment; 3.20.0 kept the first)
 - declares a `[*]` matcher
-- declares a matcher under `.taskless/**` (`check` excludes that tree before Vale runs, so the matcher acts only under a bare `vale` invocation)
+- declares a matcher under `.taskless/**` (`check` excludes that tree from a whole-project walk, so the matcher is unnecessary there; it is not harmless, because it silences the rule on a path named explicitly, such as the rule's own fixture bucket under `.taskless/`)
 
 A rejected config SHALL refuse the Vale engine for that `check` run: the engine reports a failure naming the rule and the offending line, that failure SHALL reach the exit code, and other engines SHALL still run. A rule with a rejected config SHALL NOT be silently omitted from the assembled config, because a rule that is present, verifies, and reports nothing is the silent-disable failure this engine's design exists to prevent. Advisories SHALL be surfaced as notices and SHALL NOT affect the exit code.
 
@@ -288,7 +288,8 @@ Assembly SHALL write each accepted config's source verbatim. The parsed structur
 #### Scenario: A `.taskless/**` matcher is reported as unnecessary
 
 - **WHEN** a rule's config declares a matcher under `.taskless/**`
-- **THEN** `verify` SHALL accept the rule and report that `check` already excludes that tree
+- **THEN** `verify` SHALL accept the rule and report both halves: that the matcher is unnecessary on a whole-project check, which excludes `.taskless/` before Vale runs, AND that it silences the rule on a path named explicitly, such as the rule's own fixture bucket
+- **AND** `check` SHALL carry the same text in its notices
 
 #### Scenario: An accepted config is assembled byte-for-byte
 
