@@ -384,6 +384,28 @@ async function main({
   return finish(true, "probe-errored");
 }
 
+/**
+ * The last line of the "always exit 0" guarantee. A wait that cannot run
+ * (a malformed flag, GITHUB_SHA missing on a push, anything main() throws)
+ * must not also suppress the upgrade, so the detect step is told to go ahead,
+ * which is the behaviour before the wait existed, and the failure is a
+ * warning in the log. Exported so the test can drive it without spawning;
+ * the spawn test covers the wiring below.
+ */
+function recover(error, { env = process.env, log = console.log } = {}) {
+  log(
+    `::warning::vale-upgrade-wait failed: ${error.message}; running detect without waiting.`
+  );
+  try {
+    setOutput("ready", "true", env);
+    setOutput("outcome", "wait-errored", env);
+  } catch (outputError) {
+    // An unwritable $GITHUB_OUTPUT is the one thing this cannot report
+    // through the output; say so and still exit 0.
+    log(`::warning::could not write GITHUB_OUTPUT: ${outputError.message}`);
+  }
+}
+
 // Exported so vale-upgrade-wait.test.cjs can drive each wait with `gh`, the
 // probe, and the clock replaced, and main() end to end the same way.
 module.exports = {
@@ -391,19 +413,11 @@ module.exports = {
   main,
   parseArgs,
   parseRuns,
+  recover,
   waitForRegistry,
   waitForReleaseRun,
 };
 
 if (require.main === module) {
-  main().catch((error) => {
-    // Still exit 0. A wait that cannot run must not also suppress the
-    // upgrade, so the detect step is told to go ahead — the behaviour before
-    // the wait existed — and the failure is a warning in the log.
-    console.log(
-      `::warning::vale-upgrade-wait failed: ${error.message}; running detect without waiting.`
-    );
-    setOutput("ready", "true");
-    setOutput("outcome", "wait-errored");
-  });
+  main().catch((error) => recover(error));
 }
