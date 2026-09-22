@@ -159,8 +159,14 @@ async function runOverPath(options: {
       // Printed even when the rule passed. A misplaced `.vale.ini` assignment
       // makes Vale exit zero having enabled nothing, so the clean line above
       // is exactly the moment the author needs to hear this.
+      //
+      // A notice is one advisory per line, joined with `\n` (a style-layer
+      // advisory beside a config-layer one, say). Every line gets the prefix,
+      // so the second reads as a notice rather than as an unlabelled stray.
       if ("notice" in result && result.notice !== undefined) {
-        console.log(`    notice: ${result.notice}`);
+        for (const line of result.notice.split("\n")) {
+          console.log(`    notice: ${line}`);
+        }
       }
     }
     // A rule that did not run is not among the rules tested. Counting it there
