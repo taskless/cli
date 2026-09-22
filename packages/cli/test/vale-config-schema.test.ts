@@ -382,8 +382,14 @@ describe("validateValeRuleConfig advises, without rejecting", () => {
     const result = verdict("taskless-tree");
     expect(result.rejections).toEqual([]);
     expect(result.advisories).toEqual([
-      "no-simply/.vale.ini line 5: matcher [.taskless/**] is unnecessary: check excludes .taskless/ before Vale runs, " +
-        "so it acts only under a bare vale invocation.",
+      // The advisory names both halves deliberately. It said the matcher only
+      // ever acted under a bare `vale`, which is wrong: `check` drops
+      // `.taskless/` on a whole-project walk only, so the matcher does bite on
+      // an explicitly named fixture bucket, and there it empties the one
+      // command that shows a rendered message (taskless/cli#370).
+      "no-simply/.vale.ini line 5: matcher [.taskless/**] is unnecessary on a whole-project check, " +
+        "which excludes .taskless/ before Vale runs, " +
+        "and it silences the rule on a path you name, such as its own fixture bucket.",
     ]);
   });
 });

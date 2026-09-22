@@ -425,7 +425,7 @@ function valeRuleConfigSchema(ruleId: string) {
 
 // --- Advisories --------------------------------------------------------------
 
-/** The tree `check` excludes before Vale runs. */
+/** The tree `check` excludes before Vale runs, on a whole-project walk. */
 const TASKLESS_TREE_PREFIX = ".taskless/";
 
 /**
@@ -433,8 +433,18 @@ const TASKLESS_TREE_PREFIX = ".taskless/";
  *
  * Each of these has a legitimate reading, so none is a rejection: a repeated
  * key may be a deliberate override an author is mid-way through, `[*]` may be
- * meant, and a `.taskless/**` matcher is harmless, only unnecessary. They are
- * said rather than refused.
+ * meant, and a `.taskless/**` matcher may be an author keeping a bare `vale`
+ * run quiet over fixtures that hold violations on purpose. They are said
+ * rather than refused.
+ *
+ * The `.taskless/**` advisory used to call that matcher harmless, on the
+ * reasoning that `check` excludes the tree anyway. It does not always: the
+ * exclusion is applied on a whole-project walk only, because an explicit path
+ * is a request (`rules/vale/run.ts`). So the matcher does act on
+ * `check .taskless/rules/vale/<id>/.tests/fail`, which is the one command
+ * that shows an author a rendered message, and it empties the result while
+ * `test` stays green (taskless/cli#370). Still an advisory, since the matcher
+ * has a reading; no longer described as costing nothing.
  */
 function adviseValeRuleConfig(
   ruleId: string,
@@ -460,8 +470,8 @@ function adviseValeRuleConfig(
     }
     if (section.name.startsWith(TASKLESS_TREE_PREFIX)) {
       advisories.push(
-        `${where(ruleId, section)} matcher ${label} is unnecessary: check excludes .taskless/ before Vale runs, ` +
-          `so it acts only under a bare vale invocation.`
+        `${where(ruleId, section)} matcher ${label} is unnecessary on a whole-project check, which excludes .taskless/ before Vale runs, ` +
+          `and it silences the rule on a path you name, such as its own fixture bucket.`
       );
     }
 
