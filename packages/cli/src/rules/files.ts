@@ -14,6 +14,7 @@ import {
   findRuleEngines,
 } from "./engines";
 import type { EngineName } from "./layout";
+import { describeRuleIdCollision, findRuleIdCollision } from "./id-uniqueness";
 import { isValidRuleId } from "./validate-id";
 import {
   assessDelivery,
@@ -125,6 +126,7 @@ export async function writeRuleFile(
     ) {
       onWarning?.(`Rule "${rule.id}" ${missingFixtures}.`);
     }
+    await warnOnIdCollision(cwd, rule.id, onWarning);
     // The rule file, so the caller's contract ("where did this rule land")
     // is unchanged whichever envelope delivered it.
     return ruleFilePath(cwd, engine, rule.id);
@@ -154,7 +156,33 @@ export async function writeRuleFile(
   await mkdir(ruleDirectory(cwd, engine, rule.id), { recursive: true });
   const filePath = ruleFilePath(cwd, engine, rule.id);
   await writeFile(filePath, stringify(rule.content, { lineWidth: 0 }), "utf8");
+  await warnOnIdCollision(cwd, rule.id, onWarning);
   return filePath;
+}
+
+/**
+ * Say so when the rule just written shares its id with another engine's.
+ *
+ * A WARNING, never a refusal, and that is the whole design. `check`'s repair
+ * path calls {@link writeRuleFile}, so refusing here would brick repair for
+ * both colliding rules — strictly worse than the silence it replaces. The
+ * failure belongs in `verify`, which is what the message points at.
+ *
+ * After the write, like the fixtures warning above it: this is an observation
+ * about a rule that is now on disk, and warning first would read as a reason
+ * it was refused.
+ */
+async function warnOnIdCollision(
+  cwd: string,
+  ruleId: string,
+  onWarning?: (message: string) => void
+): Promise<void> {
+  if (onWarning === undefined) return;
+  const collision = await findRuleIdCollision(cwd, ruleId);
+  if (collision === undefined) return;
+  onWarning(
+    `${describeRuleIdCollision(cwd, collision)} \`verify\` fails both until one is renamed.`
+  );
 }
 
 /**
