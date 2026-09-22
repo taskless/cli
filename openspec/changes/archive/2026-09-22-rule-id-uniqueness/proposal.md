@@ -40,6 +40,7 @@ None.
 - `packages/cli/src/rules/id-uniqueness.ts` (new): the collision finders and the shared wording.
 - `packages/cli/src/rules/inspect.ts`: `verifyOneRule` applies the check around the engine layers; the `sg` branch of `testOneRule` reaches it through the same helper rather than a second `verifySgRule` call.
 - `packages/cli/src/rules/files.ts`: `writeRuleFile` warns after the write.
-- `packages/cli/src/filesystem/migrations/0009-unique-rule-ids.ts` (new), registered in `migrate.ts`; `LATEST_SCHEMA_VERSION` becomes 9 and `.taskless/taskless.json` is migrated and committed. Its imports stay on filesystem primitives and the layout table: `rules/reconcile-marker` imports the migration runner back, and that cycle leaves `migrations["9"]` undefined on any graph entered through `rules/files.ts`.
+- `packages/cli/src/filesystem/migrations/0009-unique-rule-ids.ts` (new), registered in `migrate.ts`; `LATEST_SCHEMA_VERSION` becomes 9 and `.taskless/taskless.json` is migrated and committed.
+- `packages/cli/src/filesystem/manifest.ts` (new): the manifest shape and its two accessors, extracted from `migrate.ts` so reading the manifest no longer loads the migration registry. `install/state.ts`, `rules/reconcile-marker.ts`, `commands/info.ts`, `commands/init.ts`, `commands/onboard.ts` and `test/migrate-install.test.ts` import it directly; nothing re-exports from `migrate.ts`. This is what lets `0009` reach `reconcile-marker` for `pathExists` at all: while the two halves shared a module, that import closed a loop through the runner and left `migrations["9"]` undefined.
 - Tests: `packages/cli/test/rule-id-uniqueness.test.ts`.
 - `.changeset/rule-id-uniqueness.md`.

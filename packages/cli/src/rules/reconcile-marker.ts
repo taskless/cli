@@ -2,7 +2,7 @@ import { access } from "node:fs/promises";
 import { join } from "node:path";
 
 import { AST_GREP_VERSION, VALE_VERSION } from "./capabilities";
-import { readManifest, writeManifest } from "../filesystem/migrate";
+import { readManifest, writeManifest } from "../filesystem/manifest";
 import { TASKLESS_DIRECTORY } from "./vale/formats";
 import { CLIError } from "../util/cli-error";
 import { getCliVersion } from "../wizard/intro";

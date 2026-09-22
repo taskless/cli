@@ -3,8 +3,8 @@ import { join } from "node:path";
 import type {
   TasklessInstallManifest,
   TasklessInstallTarget,
-} from "../filesystem/migrate";
-import { readManifest, writeManifest } from "../filesystem/migrate";
+} from "../filesystem/manifest";
+import { readManifest, writeManifest } from "../filesystem/manifest";
 
 const TASKLESS_DIR = ".taskless";
 

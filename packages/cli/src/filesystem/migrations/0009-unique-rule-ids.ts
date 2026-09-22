@@ -1,4 +1,4 @@
-import { readdir, readFile, rename, stat, writeFile } from "node:fs/promises";
+import { readdir, readFile, rename, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
 import {
@@ -6,6 +6,12 @@ import {
   metadataSidecarPath,
 } from "../../rules/id-uniqueness";
 import { ruleDirectory } from "../../rules/engines";
+// Safe to reach for now that the manifest lives in `filesystem/manifest.ts`.
+// `reconcile-marker` reads the manifest, and while that meant importing
+// `migrate.ts` — the module holding the migration registry — this import
+// closed a loop that left `migrations["9"]` undefined. The manifest no longer
+// knows migrations exist, so the path stops here.
+import { pathExists } from "../../rules/reconcile-marker";
 import {
   ENGINES,
   RULE_TESTS_DIRECTORY,
@@ -333,26 +339,6 @@ async function rewriteIdField(
 /** A rule id is `[a-z0-9-]+`, but escaping keeps this honest if that widens. */
 function escapeForRegExp(value: string): string {
   return value.replaceAll(/[$()*+.?[\\\]^{|}]/g, String.raw`\$&`);
-}
-
-/**
- * Whether `path` exists.
- *
- * Local rather than `rules/reconcile-marker`'s copy, and that is load-bearing:
- * `reconcile-marker` imports `readManifest`/`writeManifest` from `migrate.ts`,
- * which imports this migration, and the cycle left `migrations["9"]` holding
- * `undefined` whenever the graph was entered through `rules/files.ts` —
- * "migrate is not a function", in the middle of a rule write. A migration
- * should reach for filesystem primitives and the layout table, nothing that
- * can import the runner back.
- */
-async function pathExists(path: string): Promise<boolean> {
-  try {
-    await stat(path);
-    return true;
-  } catch {
-    return false;
-  }
 }
 
 export default migration;
