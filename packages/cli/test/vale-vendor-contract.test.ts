@@ -172,6 +172,13 @@ const existenceOver = (
 ): string =>
   `extends: existence\nmessage: "%s"\nlevel: warning\n${extra}${key}:\n  - ${pattern}\n`;
 
+/**
+ * A `substitution` rule whose single `swap` key is the pattern under test,
+ * `message: "%s -> %s"` so a finding shows the replacement and the match.
+ */
+const swapPatternRule = (pattern: string): string =>
+  `extends: substitution\nmessage: "%s -> %s"\nlevel: warning\nswap:\n  '${pattern}': REPLACED\n`;
+
 /** A word budget of 8 over whatever `scope` names. */
 const budget = (scope: string) =>
   `extends: metric\nmessage: "%s words"\nlevel: error\nscope: '${scope}'\nformula: words\ncondition: "> 8"\n`;
@@ -747,11 +754,17 @@ withVale("Vale vendor contract", () => {
   describe("lookaround and backreferences compile", () => {
     // Vale tries Go's own `regexp` first and falls back to `regexp2` when a
     // pattern will not compile, so constructs Go's engine has never had are
-    // still available. The recipe said the opposite for twelve topic
-    // revisions (taskless/cli#371) and sent authors off to split a rule that
-    // one pattern expresses, so the correction is pinned against the binary
-    // rather than restated in prose: if a future Vale drops the fallback,
-    // these go red and the recipe's step 3 is wrong again.
+    // still available. The recipe said the opposite from topic v1 (2026-08-13,
+    // the commit that introduced the claim) through v12, corrected here at v13
+    // (taskless/cli#371), and sent authors off to split a rule that one
+    // pattern expresses, so the correction is pinned against the binary rather
+    // than restated in prose: if a future Vale drops the fallback, these go
+    // red and the recipe's step 3 is wrong again.
+    //
+    // The recipe scopes the claim to `tokens` and `swap`, so those are
+    // measured here too rather than inferred from `raw`. They do not behave
+    // the same, and the two differences below are why the prose now carries
+    // caveats instead of a flat "they work".
     //
     // Each case is asserted in both directions. A pattern that fails to
     // compile produces no findings at all, which is indistinguishable from a
@@ -777,6 +790,78 @@ withVale("Vale vendor contract", () => {
       const behind = existenceOver("raw", "'(?<=x )y'");
       expect(lines(behind, "Here is x y now.\n").messages).toEqual(["y"]);
       expect(lines(behind, "Here is z y now.\n").lines).toEqual([]);
+    });
+
+    // A `tokens` entry is wrapped in `\b…\b` (the block below pins that
+    // wrapping directly), and the trailing `\b` lands AFTER a trailing
+    // lookahead, because the lookahead is zero-width and leaves the position
+    // where the match ended. So the boundary is tested between the match and
+    // whatever the lookahead peeked at. With a space there it is a boundary
+    // and the rule fires; with a word character it is not, and the pattern
+    // cannot match at all however the document is written. `raw` is inserted
+    // verbatim and has no such limit, which is the one case where the recipe
+    // has to send an author to `raw` for a lookaround.
+    it("wraps a `tokens` lookahead in the implicit word boundaries", () => {
+      const spaced = existenceOver("tokens", "'foo(?= bar)'");
+      expect(lines(spaced, "We wrote foo bar here.\n").messages).toEqual([
+        "foo",
+      ]);
+      expect(lines(spaced, "We wrote foo baz here.\n").lines).toEqual([]);
+
+      // The lookahead peeks at a word character, so the appended `\b` can
+      // never hold. Silent under `tokens`, fires under `raw`.
+      const glued = "'foo(?=bar)'";
+      expect(
+        lines(existenceOver("tokens", glued), "We wrote foobar.\n").lines
+      ).toEqual([]);
+      expect(
+        lines(existenceOver("raw", glued), "We wrote foobar.\n").messages
+      ).toEqual(["foo"]);
+    });
+
+    // `swap` takes the same lookaround, so the recipe's "X but not when
+    // followed by Y" advice holds for a substitution rule.
+    it("matches lookaround in a `swap` key", () => {
+      const ahead = swapPatternRule("foo(?= bar)");
+      expect(lines(ahead, "We wrote foo bar here.\n").messages).toEqual([
+        "REPLACED -> foo",
+      ]);
+      expect(lines(ahead, "We wrote foo baz here.\n").lines).toEqual([]);
+
+      const behind = swapPatternRule("(?<=x )y");
+      expect(lines(behind, "Here is x y now.\n").messages).toEqual([
+        "REPLACED -> y",
+      ]);
+      expect(lines(behind, "Here is z y now.\n").lines).toEqual([]);
+    });
+
+    // ...but a backreference is SILENTLY inert in `swap`, where the identical
+    // pattern fires under both `tokens` and `raw`. Nothing is written to
+    // stderr and the rule loads, so a `swap` rule built on `\1` looks healthy
+    // and never fires at all. The literal control pins that the rule shape and
+    // the document are otherwise fine, so the silence is the backreference and
+    // not the scaffolding. This is why the recipe's step 3 can no longer say
+    // "backreferences work" for `tokens` and `swap` in one breath.
+    it("silently ignores a backreference in a `swap` key", () => {
+      const repeated = "A the the repeated word.\n";
+
+      // The control: a literal key over the same document does fire.
+      expect(lines(swapPatternRule("the the"), repeated).messages).toEqual([
+        "REPLACED -> the the",
+      ]);
+
+      for (const pattern of [String.raw`(\w+) \1`, String.raw`(the) \1`]) {
+        const swapped = lines(swapPatternRule(pattern), repeated);
+        expect(swapped.lines, `swap key ${pattern}`).toEqual([]);
+        expect(swapped.stderr, `swap key ${pattern}`).toBe("");
+        // The same pattern under `tokens` and `raw`, for contrast.
+        expect(
+          lines(existenceOver("tokens", `'${pattern}'`), repeated).messages
+        ).toEqual(["the the"]);
+        expect(
+          lines(existenceOver("raw", `'${pattern}'`), repeated).messages
+        ).toEqual(["the the"]);
+      }
     });
   });
 
