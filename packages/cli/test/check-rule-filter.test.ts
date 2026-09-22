@@ -319,6 +319,25 @@ describe("check --rule", () => {
       // `rules delete` refuses an ambiguous id because deleting the wrong rule
       // is irreversible. Measuring is not, and an unfiltered `check` would have
       // run both, so both run and `source` tells them apart.
+
+      // MIGRATE FIRST, THEN BUILD THE COLLISION. Migration 9
+      // (`0009-unique-rule-ids`) renames every id held by more than one engine,
+      // so a collision seeded into the fixture before it runs is renamed to
+      // `no-eval-sg`/`no-eval-vale` and `--rule no-eval` then names no rule at
+      // all — `check` exits `RULE_NOT_FOUND` and this test dies in `triples()`
+      // reading `.map` of an undefined `results`. `runCli` migrates on every
+      // invocation via `migrateFixture`, so the migration has to happen here,
+      // before the second engine's copy exists.
+      //
+      // That is not a trick to keep the old wording alive: it is the only way a
+      // project can hold this state now. The migration clears the collisions
+      // already on disk, and what remains is one created AFTER it ran — by
+      // hand, or by a merge landing a same-id rule under another engine — which
+      // is exactly the case the per-rule check in `verify` exists to catch.
+      // `check` still has to measure both, and `rules/rule-filter.ts` says so.
+      // Do not "simplify" this back into the `beforeEach`.
+      await migrateFixture(["-d", project]);
+
       const valeRule = join(project, ".taskless/rules/vale/no-eval");
       await mkdir(valeRule, { recursive: true });
       await writeFile(
