@@ -28,6 +28,26 @@ export interface SplitArguments {
    * by a value-taking flag are not included.
    */
   flags: string[];
+  /**
+   * Every value a value-taking flag carried, in order, in both spellings
+   * (`--flag value` and `--flag=value`).
+   *
+   * Here rather than in each caller because a second scanner is a second
+   * opinion about what the same tokens mean. `check` needs every `--rule`
+   * value, and a hand-rolled scan of its own would not know that `--timeout`
+   * consumes the token after it: `check --timeout --rule no-eval` would give
+   * `no-eval` to `--rule` while this scanner had already handed it to
+   * `positionals`. Reading both answers off one pass makes that disagreement
+   * impossible rather than unlikely.
+   */
+  values: FlagValue[];
+}
+
+/** One occurrence of a value-taking flag, with the value it consumed. */
+export interface FlagValue {
+  /** The flag as written, without any `=value` suffix. */
+  flag: string;
+  value: string;
 }
 
 /**
@@ -43,6 +63,7 @@ export function splitRawArguments(
     valueFlags.length > 0 ? new Set([...DIR_FLAGS, ...valueFlags]) : DIR_FLAGS;
   const positionals: string[] = [];
   const flags: string[] = [];
+  const values: FlagValue[] = [];
   for (let index = 0; index < rawArguments.length; index++) {
     const argument = rawArguments[index]!;
     if (argument === END_OF_OPTIONS) {
@@ -54,18 +75,26 @@ export function splitRawArguments(
       flags.push(argument);
       // `--dir=<path>` carries its own value; `-d <path>` eats the next token —
       // unless that token is `--`, which ends the options rather than being one.
+      const equals = argument.indexOf("=");
+      if (equals > 0) {
+        const flag = argument.slice(0, equals);
+        if (consumesValue.has(flag))
+          values.push({ flag, value: argument.slice(equals + 1) });
+        continue;
+      }
       if (
         consumesValue.has(argument) &&
         rawArguments[index + 1] !== undefined &&
         rawArguments[index + 1] !== END_OF_OPTIONS
       ) {
+        values.push({ flag: argument, value: rawArguments[index + 1]! });
         index++;
       }
       continue;
     }
     positionals.push(argument);
   }
-  return { positionals, flags };
+  return { positionals, flags, values };
 }
 
 /**

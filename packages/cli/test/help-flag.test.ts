@@ -105,6 +105,7 @@ describe("splitRawArguments", () => {
     expect(splitRawArguments(["-d", "/tmp", "check"])).toEqual({
       positionals: ["check"],
       flags: ["-d"],
+      values: [{ flag: "-d", value: "/tmp" }],
     });
   });
 
@@ -112,6 +113,7 @@ describe("splitRawArguments", () => {
     expect(splitRawArguments(["check", "--", "-h", "--json"])).toEqual({
       positionals: ["check", "-h", "--json"],
       flags: ["--"],
+      values: [],
     });
   });
 
@@ -119,6 +121,7 @@ describe("splitRawArguments", () => {
     expect(splitRawArguments(["-d", "--", "src"])).toEqual({
       positionals: ["src"],
       flags: ["-d", "--"],
+      values: [],
     });
   });
 
@@ -127,6 +130,25 @@ describe("splitRawArguments", () => {
       splitRawArguments(["check", "--timeout", "5", "src"], ["--timeout"])
         .positionals
     ).toEqual(["check", "src"]);
+  });
+
+  it("reports a value-taking flag's value in both spellings", () => {
+    // One pass answers both "which tokens are paths" and "what did this flag
+    // get", so a caller that needs the second never writes a second scanner.
+    expect(
+      splitRawArguments(
+        ["check", "--rule", "a", "--rule=b", "--dir=/tmp"],
+        ["--rule"]
+      ).values
+    ).toEqual([
+      { flag: "--rule", value: "a" },
+      { flag: "--rule", value: "b" },
+      { flag: "--dir", value: "/tmp" },
+    ]);
+  });
+
+  it("does not report a value for a flag that takes none", () => {
+    expect(splitRawArguments(["check", "--json=yes"]).values).toEqual([]);
   });
 });
 

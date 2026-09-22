@@ -7,6 +7,7 @@ import { promisify } from "node:util";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { extractRuleFilters } from "../src/commands/check";
+import { splitRawArguments } from "../src/util/argv";
 import { sgFilterArgv } from "../src/rules/scan";
 import { findValeBinary } from "../src/rules/vale/binary";
 import { migrateFixture } from "./support/current-project";
@@ -66,6 +67,7 @@ interface CheckFinding {
 interface CheckOutput {
   success: boolean;
   results: CheckFinding[];
+  failures?: string[];
 }
 
 /** `(source, ruleId, file)` triples, sorted, for order-free comparison. */
@@ -88,6 +90,17 @@ describe("extractRuleFilters", () => {
   it("stops at the end-of-options marker", () => {
     // After `--` every token is a path, including one spelled like this flag.
     expect(extractRuleFilters(["check", "--", "--rule", "a"])).toEqual([]);
+  });
+
+  it("agrees with the positional scan about a value-taking flag", () => {
+    // Malformed: `--timeout` was given no value, so it eats `--rule` and
+    // `no-eval` is a path. Both readings come off one scan, so they cannot
+    // disagree about whether `no-eval` is a path or a rule id.
+    const argv = ["check", "--timeout", "--rule", "no-eval"];
+    expect(extractRuleFilters(argv)).toEqual([]);
+    expect(
+      splitRawArguments(argv, ["--timeout", "--rule"]).positionals
+    ).toEqual(["check", "no-eval"]);
   });
 });
 
@@ -195,6 +208,74 @@ describe("check --rule", () => {
 
       // Not vacuous: the tracked copy of the same file still fires.
       expect(triples(filtered.results)).toEqual(["ast-grep no-eval sample.js"]);
+    });
+  });
+
+  describe("with a sibling Vale rule the config schema rejects", () => {
+    // No Vale binary needed: a rejected config refuses the engine during
+    // assembly, before anything is spawned.
+    beforeEach(async () => {
+      const broken = join(project, ".taskless/rules/vale/bad-rule");
+      await mkdir(broken, { recursive: true });
+      await writeFile(
+        join(broken, "bad-rule.yml"),
+        [
+          "extends: existence",
+          "message: \"Avoid 'bad'\"",
+          "level: warning",
+          "tokens:",
+          "  - bad",
+          "",
+        ].join("\n")
+      );
+      // Assigns ANOTHER rule's key, which `schemas/vale-config.ts` rejects as
+      // a cross-rule override.
+      await writeFile(
+        join(broken, ".vale.ini"),
+        [
+          "[*.md]",
+          "tskl) rule = bad-rule",
+          "no-simply.no-simply = NO",
+          "",
+        ].join("\n")
+      );
+    });
+
+    it("refuses a filtered run exactly as the unfiltered run does", async () => {
+      const everything = await check();
+      const filtered = await check("--rule", "no-obviously");
+
+      // The unfiltered run is the reference: one rejected config refuses the
+      // whole Vale engine, fail-closed, and nothing Vale would have found is
+      // reported.
+      expect(everything.success).toBe(false);
+      expect(everything.failures?.join("\n")).toContain("bad-rule");
+
+      // `--rule` narrows what runs; it must not narrow what is VALIDATED.
+      // Were the unselected `bad-rule` skipped before validation, this run
+      // would assemble `no-obviously` alone, report its findings and exit
+      // clean — a number the unfiltered run never produces for that id.
+      expect(filtered.success).toBe(false);
+      expect(filtered.failures?.join("\n")).toContain("bad-rule");
+      expect(
+        filtered.results.filter((finding) => finding.source === "vale")
+      ).toEqual([]);
+      expect(triples(filtered.results)).toEqual(
+        triples(
+          everything.results.filter(
+            (finding) => finding.ruleId === "no-obviously"
+          )
+        )
+      );
+    });
+
+    it("refuses even when the filter names no Vale rule at all", async () => {
+      // The ast-grep selection is the only non-empty one here, so this is the
+      // path where Vale assembly could most plausibly be skipped outright.
+      const filtered = await check("--rule", "no-eval");
+
+      expect(filtered.success).toBe(false);
+      expect(filtered.failures?.join("\n")).toContain("bad-rule");
     });
   });
 

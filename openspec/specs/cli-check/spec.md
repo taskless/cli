@@ -426,6 +426,12 @@ A rule id is the name of a rule's directory under `.taskless/rules/<engine>/`. T
 - **WHEN** a user runs `taskless check --rule <id>` with no positional paths in a project with git-ignored directories
 - **THEN** the CLI SHALL NOT report findings from `.taskless/`, `.git/`, or git-ignored paths
 
+#### Scenario: A refused sibling config refuses a filtered run too
+
+- **WHEN** a user runs `taskless check --rule <id>` in a project where a DIFFERENT Vale rule's config is rejected by the config schema
+- **THEN** the CLI SHALL refuse the Vale engine and exit non-zero, exactly as an unfiltered `taskless check` does
+- **AND** the refusal SHALL name the rejected rule even though `--rule` did not select it
+
 #### Scenario: An unknown rule id is refused
 
 - **WHEN** a user runs `taskless check --rule <id>` and no engine directory holds a rule directory named `<id>`
