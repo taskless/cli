@@ -5,11 +5,13 @@ import { join } from "node:path";
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import migration from "../src/filesystem/migrations/0009-unique-rule-ids";
+import migration, {
+  retargetValeConfig,
+} from "../src/filesystem/migrations/0009-unique-rule-ids";
 import { writeRuleFile } from "../src/rules/files";
 import { verifyOneRule } from "../src/rules/inspect";
 import { findRuleIdCollisions } from "../src/rules/id-uniqueness";
-import { CLIError } from "../src/util/cli-error";
+import type { EngineName } from "../src/rules/layout";
 
 /**
  * A rule id is a directory name under `.taskless/rules/<engine>/`, and nothing
@@ -36,6 +38,37 @@ async function valeRule(id: string): Promise<string> {
     "utf8"
   );
   await writeFile(join(directory, ".vale.ini"), SCOPED(id), "utf8");
+  return directory;
+}
+
+/** `.taskless/rules/<engine>/<id>`, for asserting on where a rule landed. */
+function rulePath(engine: EngineName, id: string): string {
+  return join(cwd, ".taskless", "rules", engine, id);
+}
+
+async function exists(path: string): Promise<boolean> {
+  try {
+    await stat(path);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** An sg rule, with the `id:` field and one fixture the rename has to follow. */
+async function sgRule(id: string): Promise<string> {
+  const directory = join(cwd, ".taskless", "rules", "sg", id);
+  await mkdir(join(directory, ".tests"), { recursive: true });
+  await writeFile(
+    join(directory, `${id}.yml`),
+    `id: ${id}\nlanguage: TypeScript\nseverity: error\nmessage: no eval\nrule:\n  pattern: eval($A)\n`,
+    "utf8"
+  );
+  await writeFile(
+    join(directory, ".tests", `${id}-20260101-test.yml`),
+    `id: ${id}\nvalid:\n  - const a = 1;\ninvalid:\n  - eval(x);\n`,
+    "utf8"
+  );
   return directory;
 }
 
@@ -113,44 +146,129 @@ describe("verify refuses a rule id held by more than one engine", () => {
   });
 });
 
-describe("migration 0009 refuses a colliding project", () => {
-  it("throws naming both directories and the rename to perform", async () => {
-    const valePath = await valeRule("no-eval");
-    const runtimePath = await runtimeRule("no-eval");
+describe("migration 0009 renames a colliding project", () => {
+  // Symmetric: neither engine keeps the bare id, because any precedence rule
+  // would be arbitrary and would leave a user working out which of their two
+  // rules silently kept the name.
+  it("renames every colliding copy to <id>-<engine>", async () => {
+    await sgRule("no-eval");
+    await valeRule("no-eval");
 
-    const error = await migration(join(cwd, ".taskless")).then(
-      () => {},
-      (error_: unknown) => error_
-    );
-    expect(error).toBeInstanceOf(CLIError);
-    const message = (error as CLIError).message;
-    expect(message).toContain(valePath);
-    expect(message).toContain(runtimePath);
-    expect(message).toContain("rule-metadata");
-    expect((error as CLIError).code).toBe("RULE_ID_AMBIGUOUS");
+    await migration(join(cwd, ".taskless"));
 
-    // Detects, never renames: nothing here can tell which rule should keep the
-    // id, and the sidecar, the `.tests/` fixtures and the server-side id all
-    // reference the old name.
-    const valeStats = await stat(valePath);
-    const runtimeStats = await stat(runtimePath);
-    expect(valeStats.isDirectory()).toBe(true);
-    expect(runtimeStats.isDirectory()).toBe(true);
+    expect(await exists(rulePath("sg", "no-eval"))).toBe(false);
+    expect(await exists(rulePath("vale", "no-eval"))).toBe(false);
+    expect(await exists(rulePath("sg", "no-eval-sg"))).toBe(true);
+    expect(await exists(rulePath("vale", "no-eval-vale"))).toBe(true);
   });
 
-  // The migration runs on `init`, and `check`/`verify` send a stale scaffold
-  // to `init`. If the refusal did not say what to do BEFORE re-running `init`,
-  // the two messages would form a loop.
-  it("tells the user to rename before re-running init", async () => {
+  it("moves an sg rule's file, its id: field, and its fixtures", async () => {
+    await sgRule("no-eval");
+    await valeRule("no-eval");
+
+    await migration(join(cwd, ".taskless"));
+
+    const directory = rulePath("sg", "no-eval-sg");
+    expect(await readFile(join(directory, "no-eval-sg.yml"), "utf8")).toContain(
+      "id: no-eval-sg"
+    );
+    // BOTH halves matter: the filename prefix is how `discoverRuleTestFiles`
+    // claims a fixture for a rule, and the `id:` inside is what ast-grep
+    // attributes cases by. Miss either and the rule reads as untested.
+    const fixture = join(directory, ".tests", "no-eval-sg-20260101-test.yml");
+    expect(await exists(fixture)).toBe(true);
+    expect(await readFile(fixture, "utf8")).toContain("id: no-eval-sg");
+  });
+
+  it("moves a Vale rule's style file and both segments of its config", async () => {
+    await sgRule("no-eval");
+    await valeRule("no-eval");
+
+    await migration(join(cwd, ".taskless"));
+
+    const directory = rulePath("vale", "no-eval-vale");
+    expect(await exists(join(directory, "no-eval-vale.yml"))).toBe(true);
+    const config = await readFile(join(directory, ".vale.ini"), "utf8");
+    expect(config).toContain("tskl) rule = no-eval-vale");
+    // The style directory AND the style file basename both moved, because
+    // StylesPath points at rules/vale.
+    expect(config).toContain("no-eval-vale.no-eval-vale = YES");
+    expect(config).not.toContain("no-eval.no-eval");
+  });
+
+  it("renames a runtime rule by directory alone", async () => {
+    await runtimeRule("no-eval");
+    await valeRule("no-eval");
+
+    await migration(join(cwd, ".taskless"));
+
+    const directory = rulePath("runtime", "no-eval-runtime");
+    expect(await exists(join(directory, "check.ts"))).toBe(true);
+  });
+
+  // Never clobbers. `<id>-<engine>` taken means the next free ascending
+  // suffix, and free means held by NO engine, so clearing one collision
+  // cannot create another.
+  it("takes the next free suffix when <id>-<engine> is taken", async () => {
+    await sgRule("no-eval");
+    await valeRule("no-eval");
+    await sgRule("no-eval-sg");
+
+    await migration(join(cwd, ".taskless"));
+
+    // The pre-existing `no-eval-sg` is untouched and keeps its own id.
+    expect(
+      await readFile(
+        join(rulePath("sg", "no-eval-sg"), "no-eval-sg.yml"),
+        "utf8"
+      )
+    ).toContain("id: no-eval-sg");
+    expect(await exists(rulePath("sg", "no-eval-sg-2"))).toBe(true);
+    expect(
+      await readFile(
+        join(rulePath("sg", "no-eval-sg-2"), "no-eval-sg-2.yml"),
+        "utf8"
+      )
+    ).toContain("id: no-eval-sg-2");
+  });
+
+  it("leaves the metadata sidecar in place rather than guessing an owner", async () => {
+    await sgRule("no-eval");
+    await valeRule("no-eval");
+    const sidecar = join(cwd, ".taskless", "rule-metadata", "no-eval.yml");
+    await mkdir(join(cwd, ".taskless", "rule-metadata"), { recursive: true });
+    await writeFile(sidecar, "title: something\n", "utf8");
+
+    await migration(join(cwd, ".taskless"));
+
+    expect(await readFile(sidecar, "utf8")).toBe("title: something\n");
+  });
+
+  // The rewritten Vale config has to still describe a rule Vale would enable:
+  // both segments of `<id>.<id>` moved, and a half-renamed assignment verifies
+  // as a rule that is present and off.
+  it("leaves the renamed Vale rule verifying clean", async () => {
+    await sgRule("no-eval");
+    await valeRule("no-eval");
+
+    await migration(join(cwd, ".taskless"));
+
+    const result = await verifyOneRule(cwd, {
+      engine: "vale",
+      ruleId: "no-eval-vale",
+    });
+    expect(result.errors).toEqual([]);
+    expect(result.ok).toBe(true);
+  });
+
+  it("leaves no collision behind", async () => {
+    await sgRule("no-eval");
     await valeRule("no-eval");
     await runtimeRule("no-eval");
 
-    const error = (await migration(join(cwd, ".taskless")).catch(
-      (error_: unknown) => error_
-    )) as CLIError;
-    expect(error.message).toMatch(/Rename one of those directories before/);
-    expect(error.message).toContain("init");
-    expect(error.message).toContain("nothing is renamed for you");
+    await migration(join(cwd, ".taskless"));
+
+    expect(await findRuleIdCollisions(cwd)).toEqual([]);
   });
 
   it("is a no-op on a project with no collision, writing nothing", async () => {
@@ -164,9 +282,50 @@ describe("migration 0009 refuses a colliding project", () => {
     expect(await snapshot(join(cwd, ".taskless"))).toEqual(before);
   });
 
+  it("is idempotent: a second run after a rename changes nothing", async () => {
+    await sgRule("no-eval");
+    await valeRule("no-eval");
+    await migration(join(cwd, ".taskless"));
+    const after = await snapshot(join(cwd, ".taskless"));
+
+    await migration(join(cwd, ".taskless"));
+
+    expect(await snapshot(join(cwd, ".taskless"))).toEqual(after);
+  });
+
   it("is a no-op on a project with no rules tree at all", async () => {
     await rm(join(cwd, ".taskless", "rules"), { recursive: true });
     await expect(migration(join(cwd, ".taskless"))).resolves.toBeUndefined();
+  });
+});
+
+describe("retargetValeConfig", () => {
+  it("moves the breadcrumb and both assignment segments, leaving other bytes", () => {
+    const source =
+      "# no-eval is mentioned in this comment\n" +
+      "[*.md]\n" +
+      "tskl) rule = no-eval\n" +
+      "no-eval.no-eval = YES\n" +
+      "\n" +
+      "[CHANGELOG.md]\n" +
+      "tskl) rule = no-eval\n" +
+      "no-eval.no-eval = NO\n";
+
+    expect(retargetValeConfig(source, "no-eval", "no-eval-vale")).toBe(
+      "# no-eval is mentioned in this comment\n" +
+        "[*.md]\n" +
+        "tskl) rule = no-eval-vale\n" +
+        "no-eval-vale.no-eval-vale = YES\n" +
+        "\n" +
+        "[CHANGELOG.md]\n" +
+        "tskl) rule = no-eval-vale\n" +
+        "no-eval-vale.no-eval-vale = NO\n"
+    );
+  });
+
+  it("leaves a config naming a different rule alone", () => {
+    const source = "[*.md]\ntskl) rule = other\nother.other = YES\n";
+    expect(retargetValeConfig(source, "no-eval", "no-eval-vale")).toBe(source);
   });
 });
 
