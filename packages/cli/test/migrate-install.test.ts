@@ -4,11 +4,8 @@ import { tmpdir } from "node:os";
 import { describe, expect, it, beforeEach, afterEach } from "vitest";
 
 import { ensureTasklessDirectory } from "../src/filesystem/directory";
-import {
-  readManifest,
-  writeManifest,
-  LATEST_SCHEMA_VERSION,
-} from "../src/filesystem/migrate";
+import { readManifest, writeManifest } from "../src/filesystem/manifest";
+import { LATEST_SCHEMA_VERSION } from "../src/filesystem/migrate";
 
 describe("install-state migrations", () => {
   let temporaryDirectory: string;

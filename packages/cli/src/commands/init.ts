@@ -33,7 +33,7 @@ import {
   reconciliationStart,
   stampNewProjectRules,
 } from "../rules/reconcile-marker";
-import { readManifest } from "../filesystem/migrate";
+import { readManifest } from "../filesystem/manifest";
 import type { MigrationReport } from "../filesystem/migrate";
 import { TASKLESS_DIRECTORY } from "../rules/vale/formats";
 import { CLIError } from "../util/cli-error";

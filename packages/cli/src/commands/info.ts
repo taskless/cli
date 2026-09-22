@@ -8,7 +8,7 @@ import { fetchWhoami } from "../auth/whoami";
 import { outputSchema as infoOutputSchema } from "../schemas/info";
 import { makeErrorEnvelope } from "../types/errors";
 import { resolveRepositoryContext } from "../util/git-remote";
-import { readManifest } from "../filesystem/migrate";
+import { readManifest } from "../filesystem/manifest";
 import { reconciliationStart } from "../rules/reconcile-marker";
 import { TASKLESS_DIRECTORY } from "../rules/vale/formats";
 

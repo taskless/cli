@@ -4,7 +4,7 @@ import process from "node:process";
 import { defineCommand } from "citty";
 
 import { ensureTasklessDirectory } from "../filesystem/directory";
-import { readManifest, writeManifest } from "../filesystem/migrate";
+import { readManifest, writeManifest } from "../filesystem/manifest";
 import { getRecipe } from "../prompts/recipes";
 import { withSurveyInvite } from "../survey/invite";
 import { getTelemetry } from "../telemetry";
