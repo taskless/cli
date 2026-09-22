@@ -16,7 +16,7 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const { execFileSync } = require("node:child_process");
-const { mkdtempSync, readFileSync, rmSync } = require("node:fs");
+const { mkdtempSync, readFileSync, rmSync, writeFileSync } = require("node:fs");
 const { tmpdir } = require("node:os");
 const { join } = require("node:path");
 
@@ -25,7 +25,9 @@ const {
   main,
   parseArgs,
   parseRuns,
+  probeRegistry,
   recover,
+  runGh,
   waitForRegistry,
   waitForReleaseRun,
 } = require("./vale-upgrade-wait.cjs");
@@ -105,6 +107,7 @@ test("parseArgs scales the flags into milliseconds and keeps the defaults", () =
     pollMs: DEFAULTS.pollMs,
     attempts: DEFAULTS.attempts,
     intervalMs: DEFAULTS.intervalMs,
+    callTimeoutMs: DEFAULTS.callTimeoutMs,
   });
   const options = parseArgs([
     "--workflow",
@@ -117,7 +120,10 @@ test("parseArgs scales the flags into milliseconds and keeps the defaults", () =
     "3",
     "--interval-seconds",
     "10",
+    "--call-timeout-seconds",
+    "7",
   ]);
+  assert.equal(options.callTimeoutMs, 7_000);
   assert.equal(options.workflow, "other.yml");
   assert.equal(options.timeoutMs, 120_000);
   assert.equal(options.pollMs, 5_000);
@@ -564,4 +570,99 @@ test("entry point: a malformed flag exits 0 with ready=true", () => {
   ]);
   assert.match(stdout, /--attempts needs a positive number, got 0/);
   assert.equal(outputs, "ready=true\noutcome=wait-errored\n");
+});
+
+/** A child that never exits on its own, for the per-call timeout tests. */
+const HANG = "setTimeout(() => {}, 30_000)";
+
+test("runGh: a call that hangs is killed at the bound and thrown as a failure", () => {
+  const started = Date.now();
+  assert.throws(
+    () => runGh(["-e", HANG], { command: process.execPath, timeoutMs: 300 }),
+    /failed: timed out after 0\.3 s/
+  );
+  // Killed at the bound, not at the child's own 30 s.
+  assert.ok(Date.now() - started < 5_000);
+});
+
+test("probeRegistry: a probe that hangs is a thrown failure, not a stall", () => {
+  const directory = mkdtempSync(join(tmpdir(), "vale-upgrade-wait-test-"));
+  const script = join(directory, "hang.cjs");
+  writeFileSync(script, `${HANG};\n`);
+  try {
+    assert.throws(
+      () => probeRegistry({ script, timeoutMs: 300 }),
+      /registry probe timed out after 0\.3 s/
+    );
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test("release run: a timed-out gh call is polled again like any failed call", async () => {
+  const time = clock();
+  const logged = [];
+  const { gh, calls } = ghScript([
+    new Error("gh run list failed: timed out after 60 s"),
+    [succeeded],
+  ]);
+  const result = await waitForReleaseRun({
+    sha: SHA,
+    runGh: gh,
+    sleep: time.sleep,
+    now: time.now,
+    log: (line) => logged.push(line),
+  });
+  assert.equal(result.outcome, "succeeded");
+  assert.equal(calls.length, 2);
+  assert.match(
+    logged[0],
+    /timed out after 60 s; treating as not yet registered/
+  );
+});
+
+test("registry: a timed-out probe counts as a failed probe", async () => {
+  const time = clock();
+  const logged = [];
+  const { probe } = probeScript([
+    new Error("the registry probe timed out after 60 s"),
+    ahead,
+  ]);
+  const result = await waitForRegistry({
+    probe,
+    sleep: time.sleep,
+    log: (line) => logged.push(line),
+  });
+  assert.equal(result.outcome, "ahead");
+  assert.equal(result.attempt, 2);
+  assert.match(logged[0], /probe failed \(attempt 1 of 5\): .*timed out/);
+});
+
+test("main: the call timeout reaches gh and the probe as a second argument", async () => {
+  const seen = { gh: [], probe: [] };
+  const directory = mkdtempSync(join(tmpdir(), "vale-upgrade-wait-test-"));
+  try {
+    await main({
+      argv: ["--call-timeout-seconds", "9"],
+      env: {
+        GITHUB_EVENT_NAME: "push",
+        GITHUB_SHA: SHA,
+        GITHUB_OUTPUT: join(directory, "github-output"),
+      },
+      runGh: (args, options) => {
+        seen.gh.push(options);
+        return JSON.stringify([succeeded]);
+      },
+      probe: async (options) => {
+        seen.probe.push(options);
+        return ahead;
+      },
+      sleep: async () => {},
+      log: () => {},
+    });
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+  assert.deepEqual(seen.gh, [{ timeoutMs: 9_000 }]);
+  assert.deepEqual(seen.probe, [{ timeoutMs: 9_000 }]);
 });
