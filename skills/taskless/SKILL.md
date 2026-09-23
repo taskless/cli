@@ -20,7 +20,7 @@ description: |
   `agent route`; it does NOT suppress the skill.
 metadata:
   author: taskless
-  version: 0.11.2
+  version: 0.11.3
   commandName: tskl
 compatibility: Designed for Agents implementing the Agent Skills specification.
 ---

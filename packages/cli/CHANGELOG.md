@@ -1,5 +1,173 @@
 # @taskless/cli
 
+## 0.11.3
+
+[Compare with v0.11.2](https://github.com/taskless/cli/compare/v0.11.2...v0.11.3)
+
+### Patch Changes
+
+- aa49d45: `taskless check --rule <id>` (repeatable) restricts a run to the named rules, so a rule can be measured over the whole project without running every other rule and filtering the JSON afterwards. The filter applies to both static engines and to runtime rules, keeps every exclusion a whole-project run applies, and refuses an id no rule directory has.
+- d7b33ab: `taskless detect` recognizes oxlint alongside eslint, biome and stylelint, from `.oxlintrc.json`, `.oxlintrc.jsonc`, `oxlint.config.ts`, `oxlint.config.mts`, or an `oxlint` entry in `package.json`.
+- 5047148: The feedback survey is replaced for 0.11.3. Only the kind of rule the user was trying to create is required now; the user's own words, the completion verdict, what worked, what did not, the agent in use, and the most valuable rule so far are all optional. A `skip` at the invite no longer dismisses the survey: the agent sends its own account of the session and leaves the user's words out. `feedback dismiss` is reserved for a user who asks that nothing be sent. Every install is invited once more, since the new survey keeps its own cadence.
+- dcfb546: Scaffold migration `9` — the one that renames a rule id held by more than one engine — now survives being interrupted, and no longer double-suffixes a fixture you had already named `<id>-sg-…`.
+
+  Migration 9 has not been in a released version, so nothing on disk anywhere was produced by the old behaviour and there is no repair step to run. `latest` is `0.11.2`, tagged 2026-09-19; the migration landed 2026-09-22.
+
+  **It could not resume.** It renamed the rule directory first and then chased the files inside it, but renaming the directory is what resolves the collision, and the migration returns early when no collision is left. So a run that died in between — a `Ctrl-C`, a full disk, an editor holding a file open — left `sg/no-eval-sg/` containing `no-eval.yml` with `id: no-eval` and fixtures still under the `no-eval-` prefix. `verify` reported that as broken, and running `taskless init` again fixed nothing, because every later run found no collision and returned.
+
+  The order is reversed: the rule file, its `id:` field, the `.tests/` fixtures and a Vale rule's `.vale.ini` are all rewritten under the old directory name, and the directory rename is the last thing to happen. A directory rename is a single atomic operation, so it is the moment a rule is done. A rule interrupted before it still collides and is picked up by the next run; a rule interrupted after it is already whole. Each inner step also tolerates having already run, and every file rewrite is committed by renaming a temporary sibling, so an interrupted write cannot truncate a rule file.
+
+  One asymmetry can survive an interruption. Where `sg` and `vale` both hold an id, a complete run moves both and neither keeps the bare id. If a run is interrupted between the two halves, the half that finished keeps its suffix and the other keeps the bare id, because the collision it would have been renamed for is gone. The tree is collision-free and every rule is internally consistent; only the symmetry is lost. Rename it yourself if you want the pair to match.
+
+  **A fixture already named `<id>-sg-…` is no longer renamed again.** The predicate picking fixtures to rename matched every name it produced, so `no-eval-sg-basic-test.yml` in `sg/no-eval/.tests/` came out as `no-eval-sg-sg-basic-test.yml` on the first run. Such a fixture is already at the right prefix, so it now keeps its name and only its `id:` field follows — which still matters, since ast-grep attributes cases by the `id:` inside the file and a stale one reads as a rule that shipped no cases.
+
+- 5ac99d2: A failing schema migration is now reported once instead of twice, and the message names the migration that refused. `runMigrations` used to print `Migration N failed: <message>` itself and then rethrow the original, so the caller printed the same text again without the migration number — the longer and more useful the refusal, the worse it read. The prefix now rides on the rethrown error, so there is one string and one printer, and the original `CLIError` code (for example `SCAFFOLD_CONFLICT`) is preserved.
+
+  `taskless init --json` also emits an error envelope when a migration fails. It previously wrote nothing at all to stdout and put prose on stderr, leaving a machine consumer with only the exit code; it now writes the standard `{ ok: false, code, message }` envelope, with the migration number in `message`.
+
+- 1800521: `taskless check` now marks every notice it prints. A run with more than one advisory used to print the first behind a `Notice: ` marker and the rest as bare, unindented lines with nothing identifying them as notices — so a Vale config advisory sitting beside Vale's own diagnostic read as stray output. `verify` had the same defect and it was fixed earlier; `check` did not get the fix until now.
+
+  A second, related gap in the same output: the notices from runtime rule planning — what was repaired, what could not be, and why — were printed by their own loop with no `Notice: ` marker at all, while engine notices were marked. `check --json` merges both into one `notices` array, so the same message looked like two different kinds of thing depending on which list it arrived on. Every notice `check` prints is now marked, and every line of one is.
+
+  The cause was that notices were joined into one string before they reached the renderer, so `check --json` also published array elements that were several notices glued together, with no separator a consumer could rely on to split them back apart. Notices are now carried as a list from producer to output: in `check --json` the `notices` array keeps its name and type, and only its element boundaries change — one element is now exactly one notice.
+
+  **What a consumer crosses:** the optional `notice` string on `verify --json` and `test --json` per-rule results is now a `notices` array of strings, present and empty rather than absent when there is nothing to say. The same replacement applies to the exported `verifyOutputSchema` (its `schema` layer) and `valeVerifyOutputSchema`. Read `notices` where you read `notice`, and render one marker per element instead of splitting on a separator. It was replaced rather than mirrored because a joined `notice` kept alongside would preserve the convention this change removes, and nothing ever published the separator that would have made splitting it safe. `check --json` consumers need change nothing.
+
+- 6c3eff7: `taskless info --json` renames its `tools` key to `harnesses`, and gives
+  `tools` to the command-line binaries found on `PATH`.
+
+  **This is the consumer-visible part.** The array that lists Claude Code,
+  Codex, Cursor and OpenCode, with each one's installed skills and their
+  staleness, is unchanged in shape — it now lives under `harnesses`. Anything
+  reading `.tools[].skills` from `info --json` reads `.harnesses[].skills`
+  instead. The new `tools` array carries `{ name, present, applicable, path? }`
+  for `gh`, `git` and `jq`.
+
+  `present` is established by looking for a file of that name on `PATH`.
+  Taskless does not spawn a detected binary, does not read its version, and does
+  not hash it, so `present: true` is presence and not a working install. A
+  sha256-against-published-releases tier was considered and dropped on
+  measurement: GitHub publishes digests for `gh`'s release archives and
+  installers rather than for the extracted binary, and a Homebrew-installed `gh`
+  2.97.0 matched 0 of the 21 official digests — a tier that reports "unverified"
+  for the ordinary macOS install path is worse than no tier at all.
+
+  `applicable` is the separate question of whether a tool could accomplish
+  anything where it is being asked to. `gh` in a repository with no GitHub
+  `origin` is present and inapplicable, and reporting that as "missing" would
+  produce the one instruction that cannot help — "install `gh`".
+
+  The `onboard` recipe (topic v4) uses both. Its source menu now states what was
+  found rather than telling the agent to run `command -v gh`, says in one line
+  why a source is not offered instead of dropping it silently, and no longer
+  names Linear as the expected issue tracker: a bug-tracker scan is offered when
+  the agent has an MCP that reaches one, with Jira and Linear as examples of the
+  class. `@taskless/cli/prompts` is unaffected — with no host state supplied the
+  recipe renders its full menu, unchanged.
+
+  `patch` rather than `minor`: the package is `0.y.z`, where semver puts added
+  surface outside the stability guarantee.
+
+- d41576f: Two rules can no longer share an id across engines. `verify` fails a rule whose id is also a directory name under another engine, and a new scaffold migration (`9`) renames the ones that already exist.
+
+  `.taskless/rules/sg/no-eval/` beside `.taskless/rules/vale/no-eval/` was silent: `check`'s human output prints `error[no-eval]` with no engine, so a collision shows two identical lines, and every id-addressed command had two answers to choose between.
+
+  **Your rule ids may change on upgrade, and `check` output changes with them.** The first `taskless init` after upgrading renames the colliding `sg` and `vale` copies to `<id>-<engine>` — `sg/no-eval` becomes `sg/no-eval-sg`, `vale/no-eval` becomes `vale/no-eval-vale`. Where both move, neither keeps the bare id, so nobody has to work out which of their two rules kept the name. If `<id>-<engine>` is already taken it uses the next free `<id>-<engine>-2`, `-3`, … and never overwrites an existing rule.
+
+  **A `runtime` rule is never renamed** and keeps the bare id, so a collision between `runtime` and another engine moves only the other one. Runtime rules are the signed and blessed tier, and this keeps the upgrade clear of that machinery. Nothing is left colliding either way, because one engine can only hold one directory per id.
+
+  Everything the rename touches is inside the rule's own directory: the directory name, the rule file, its `id:` field, an sg rule's `.tests/` fixtures and their `id:` fields, and a Vale rule's `.vale.ini` breadcrumb and both segments of its `<id>.<id>` assignment. Every rename is printed — old path, new path, and each file rewritten — as is any runtime rule that kept its id, so you can see exactly what moved before committing it. Update any CI config, baseline file or suppression comment that names an old id — including `check --rule <id>`, which errors with `RULE_NOT_FOUND` rather than reporting zero findings when the id it names has been renamed out from under it.
+
+  `.taskless/rule-metadata/<id>.yml` is left where it is rather than following either rule, since a symmetric rename gives it no owner. In practice there is nothing there: this CLI has never written a sidecar, because the service does not return the metadata block they are written from.
+
+- 8178d47: `test` now reports the findings an ast-grep rule's fixtures produced, with the
+  message as ast-grep rendered it. Previously only Vale and runtime rules carried
+  `findings`; an ast-grep rule reported an empty array, so a rule whose message
+  interpolated its metavariables in the wrong order fired in exactly the right
+  places and was reported green.
+
+  Each snippet is replayed through `ast-grep scan --stdin`, so the language comes
+  from the rule's own `language:` key and no temporary file is written. A finding
+  names the test YAML that declares the snippet, at the snippet's real line and
+  column in that file.
+
+  Additive, and `patch` under the pre-1.0 rule: the `findings` array was already
+  present on every rule result and documented as possibly empty, so nothing a
+  consumer reads changes shape. Vale and runtime behaviour is untouched, and the
+  verdict `ast-grep test` decides is unchanged — findings are gathered after it
+  and cannot alter it.
+
+- c000762: `test --json` now reports the findings a rule's fixtures produced.
+
+  Each rule result carries a `findings` array: the same finding shape `check --json` prints — `source`, `ruleId`, `severity`, `message`, `file`, `range`, `matchedText`, and the optional `note` and `fix` — plus a `bucket` of `"pass"` or `"fail"` naming the fixture that produced it. The rendered `message` is the point. A rule whose message interpolates its captures can have the slots in the wrong order, fire on every `fail/` fixture, stay quiet on every `pass/` one, and be reported as a rule that passed; the rendered message is the only evidence otherwise, and until now the only way to see it was a second `check` run against a fixture path you had to construct yourself.
+
+  The array is **always present and empty rather than absent** — for a rule that produced nothing, one whose verification failed before its fixtures ran, a refused runtime rule, `verify` (which runs no fixtures at all), and ast-grep rules, whose findings are not surfaced yet. Fail-bucket findings are reported on a passing run too, since that is the only run that produces them.
+
+  On the human path a passing rule still prints one line. A **failing** rule now prints the findings that bear on the failure beneath it, labelled by bucket and rendered the way `check` renders a finding. That includes pass-bucket findings: `pass fixture wrongly fired: <file>` said _that_ it happened and never what matched.
+
+  Vale and runtime rules only. ast-grep follows separately: the vendored binary's `sg test` has no `--json` and no output-format flag, and its fixtures are inline YAML scalars rather than files.
+
+  No flag was added, and nothing new is executed: the findings were already in hand and were being discarded.
+
+  **If you consume `@taskless/cli/schemas`:** `zod`'s `.parse()` strips keys the schema does not declare, so a consumer still on the previously published `verifyTestOutputSchema` will silently drop `findings` from the payload it returns until the dependency is upgraded. Nothing breaks — but the field simply not being there, on a CLI that is emitting it, is the kind of thing that generates a bug report.
+
+- d3befa0: Update the bundled Vale to 3.22.0.
+
+  For a rule under `.taskless/rules/vale/`, what you can now write:
+  - `scope: text & ~link` (and `~strong`, `~emphasis`, `~code`) runs on the paragraph and blanks the element's text out of it before the rule sees it, so a wording or casing rule can leave link text and bold terms alone without giving up the sentence around them. Positions after the blanked element do not move. The release note's `text.raw` and `paragraph.link` spellings are not scopes; `verify` rejects them, so write the bare inline name.
+  - `split: true` on a `spelling` rule checks the parts of an identifier (`getHTTPResponsze_v2` reports `Responsze`) and places each at its own position. 3.21.0 accepted the key and did neither.
+  - A `frontmatter` or `frontmatter.<key>` rule reports every occurrence in a field at the field's own position; a token appearing twice in one field was reported once.
+  - A one-line MDX element's text (`<Note>...</Note>`) is linted.
+
+  What changes for a rule you already have:
+  - **`BasedOnStyles =` is removed from every rule's `.vale.ini`, by migration 0008 on the next `init`, and `verify` now rejects the key with any value (`vale-config-no-based-on-styles`).** Every earlier version of the `create-vale-rule` recipe wrote the line into every matcher, where it was inert: no bundled style loads unless a run-level `BasedOnStyles` names one, and the assembled header names none. On 3.22.0 an empty value clears every setting a file inherited from an earlier matcher, and the assembled run config is every rule's matchers in id order, so a rule writing the line under `[docs/**]` silenced every alphabetically earlier rule under `docs/`, and `[*.md]` beside another rule's `[*.{md,markdown}]` silenced the first on every `.md` file, with nothing reported. `check` and `verify` refuse to run until `init` has migrated the configs, and name it; commit the rewritten files. A migrated config enables exactly what the old one did on 3.21.0.
+  - A rule whose `scope` negates `link`, `strong`, `emphasis` or `code` no longer sees that element's text inside a paragraph. Through 3.21.0 the paragraph still carried it, so findings inside those elements disappear. Drop the negation if the rule was meant to reach them.
+  - The isolating config `test` and `verify` build no longer writes `BasedOnStyles =`. Measured on both binaries, nothing fires without it and `Vale.Spelling` never could, so fixtures behave as before.
+
+  Not changed for a rule this CLI assembles: a `[formats]` key may now be a file name or a glob, but no rule config can carry one and the assembled header writes none, so the extension still decides the parser. `UNSET` as a rule's value behaves as `NO` and is not accepted; `YES` and `NO` remain the two values.
+
+  `taskless agent update` carries the same list, with what to do about each.
+
+- 620865e: `verify` validates a Vale rule's `.vale.ini` against a schema and names the constraint each rejection violates. The config is parsed into an ordered structure and checked there: an assignment above the first matcher, a matcher without its `tskl) rule` breadcrumb, a key naming another rule, a value other than `YES`/`NO`, a `BasedOnStyles` assignment with any value, a config with no matcher or no `YES`, and a `NO` matcher that precedes every `YES` (both judged by each matcher's final verdict, so a `YES` a later `NO` in the same matcher overrides does not count) are each rejected under a `vale-config-*` constraint that `verify --json` reports in `violations[]` and `reference.json` publishes. A repeated key, a `[*]` matcher, and a `.taskless/**` matcher are reported as a notice without failing the rule.
+
+  `check` runs the same schema before assembling the Vale run config, and a rejected config refuses the Vale engine for that run: the failure names the rule and the line, reaches the exit code, and ast-grep still runs. A rule is never silently left out of the assembled config. Accepted configs are written verbatim under their breadcrumb, so the one string edit assembly used to make (dropping a copied-in `StylesPath`) is gone; that line is now a rejection. Advisories reach `check`'s notices. To find every rejected line at once, run `taskless verify`.
+
+  This is still `patch`. The package is `0.y.z`, and every config the schema refuses was already being misread by Vale: a rule enabled nowhere with a `W101` on stderr, a rule silently overriding a neighbour, a disable the following enable cancelled. The release surfaces a defect the consumer already had rather than introducing one, the same call as linting files over 128 KB again in 0.11.3.
+
+- 78dc643: `verify` warns when a Vale rule's `raw` list has more than one entry, since Vale concatenates them into one pattern rather than alternating them; the `create-vale-rule` recipe explains the `(a|b)` form. The warning rides on `notice` and does not fail the rule.
+- 3acb5a1: `agent create-vale-rule` (topic v13) corrects two claims that cost rule authors work. Vale patterns are not RE2-only: Vale compiles with Go's `regexp` and falls back to `regexp2`, so lookahead, lookbehind and backreferences work, and the recipe no longer tells you to split a rule that one pattern expresses. Two silent limits are measured and documented alongside it: a backreference does nothing as a `swap` key, and the implicit word boundary on `tokens`/`swap` lands after a trailing lookahead, so that lookahead has to peek at a non-word character. `check` on a rule's `.tests/fail` bucket is a supported way to read a rendered message, because `.taskless/` is excluded from the whole-project walk only; when that bucket comes back empty, the recipe now sends you to the rule's own config, specifically a `[.taskless/**]` matcher, before the pattern.
+
+  `verify` carried the same imprecision and now states both halves: a `[.taskless/**]` matcher is unnecessary on a whole-project check, AND it silences the rule on a path you name, such as the rule's own fixture bucket. It was previously described as acting only under a bare `vale` invocation, which read as harmless. `agent update` (topic v10) is corrected to match.
+
+- b2e2662: `check` no longer skips Vale target files over 128 KB. The guard
+  (`VALE_MAX_FILE_BYTES`, added in 0.11.2) was written against Vale 3.20.0,
+  whose lint time grew superlinearly with the size of a single Markdown block,
+  so one large file could consume the run's whole timeout and, because Vale
+  writes nothing until the run finishes, cost every other file its findings.
+  The same release moved the vendored Vale to 3.21.0, whose perf work makes that
+  cost linear regardless of block structure, so the cap no longer separates a
+  cheap file from an expensive one. Re-measured on the reproduction from
+  taskless/cli#325 against the vendored 3.21.0 binary (darwin/arm64, warm, median
+  of three):
+
+  | fixture                         | Vale 3.20.0 | Vale 3.21.0 |
+  | ------------------------------- | ----------- | ----------- |
+  | 3.2 MB, one block (`huge.md`)   | ~81,000 ms  | ~230 ms     |
+  | 3.2 MB, blank-line separated    | ~4,400 ms   | ~290 ms     |
+  | 128 KB, one block (the old cap) | ~770 ms     | ~26 ms      |
+  | 25 MB, one block                | —           | ~2,200 ms   |
+
+  What a user sees: a file that 0.11.2 named in a `Vale did not check N file(s)
+over 131072 bytes` notice is linted again and produces findings; the notice is
+  gone. The per-file retry for a target whose front matter Vale cannot parse
+  (taskless/cli#300) is unchanged, as is the 60 s run timeout. Vale still emits
+  nothing until the run completes, so a run killed by an external time limit
+  still loses every finding; with linear cost that takes a file in the hundreds
+  of megabytes rather than the hundreds of kilobytes.
+
+- 59e1163: `verify` now rejects a Vale `substitution` rule whose `swap` key carries a backreference. No capture group survives a swap key: Vale compiles a rule's keys into one alternation, wrapping each in a capture group of its own and rewriting the author's groups to non-capturing, so `\1` refers to Vale's wrapper and matches nothing. Vale reports none of this, so the rule loads, runs and silently never fires. The detector is character-class aware, since `\1` inside `[…]` is an octal escape and works. `$1` in the swap _value_ is unaffected and still works. The `create-vale-rule` topic goes to v14: the claim that Vale tries Go's `regexp` before falling back to `regexp2` is removed (there is no fallback; it compiles with `regexp2` unconditionally), the `swap` constraint is generalised, and the leading-lookbehind mirror of the trailing-lookahead limit is documented.
+- f97365d: `taskless --version` and `-v` print the version. Before, both fell through to the full usage banner, and `-v` was not recognised at all.
+
 ## 0.11.2
 
 [Compare with v0.11.1](https://github.com/taskless/cli/compare/v0.11.1...v0.11.2)
