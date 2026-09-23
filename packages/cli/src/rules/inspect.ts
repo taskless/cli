@@ -9,6 +9,7 @@ import {
   ruleFilePath,
 } from "./engines";
 import { describeCoverageShortfall, type FixtureFinding } from "./fixtures";
+import { collectSgFixtureFindings } from "./sg-fixture-findings";
 import { type EngineName } from "./layout";
 import {
   assessCaptureDirectory,
@@ -498,14 +499,13 @@ export async function testOneRule(
       violations,
       ran: true,
       notices: verification.notices,
-      // Empty, and true. `sg test` reports `test result: ok. N passed; N
-      // failed;` and nothing else — the vendored binary has no `--json` and no
-      // output-format flag — and its fixtures are inline YAML scalars rather
-      // than files, so there is no document to attribute a finding to.
-      // Surfacing them needs a different mechanism than reading what the
-      // engine already handed us, which is the whole of what this does for the
-      // other two engines.
-      findings: [],
+      // `sg test` still decides the verdict above and still cannot produce a
+      // finding — the vendored binary has no `--json` and no output-format
+      // flag. So unlike the other two engines, these are not read back out of
+      // what the run already handed us: each fixture snippet is replayed
+      // through `scan --stdin`, which renders the message the author needs to
+      // see. Gathered AFTER the verdict, and never able to change it.
+      findings: await collectSgFixtureFindings(cwd, ruleId),
     };
   }
 
