@@ -1,5 +1,5 @@
 import type { HostTool } from "../prompts/recipes";
-import { findOnPath } from "../rules/platform-binary";
+import { executableName, findOnPath } from "../rules/platform-binary";
 import { UNKNOWN_GH_OWNER, resolveRepositoryContext } from "../util/git-remote";
 
 // `HostTool` is declared in `prompts/recipes.ts` rather than here because the
@@ -46,7 +46,14 @@ export async function detectHostTools(cwd: string): Promise<HostTool[]> {
   const onGitHub = ghOwner !== UNKNOWN_GH_OWNER;
 
   return DETECTED_TOOLS.map((name) => {
-    const path = findOnPath(name);
+    // `executableName` first, ALWAYS. `findOnPath` matches a `PATH` entry
+    // joined with the literal string and consults no `PATHEXT`, so a bare
+    // `"gh"` finds nothing on Windows, where the file is `gh.exe`. The failure
+    // is silent and lands as `present: false` for a tool the user has
+    // installed — which the recipe then renders as "install the GitHub CLI",
+    // the one instruction that cannot help them. CI runs `ubuntu-latest`
+    // only, so nothing else catches it.
+    const path = findOnPath(executableName(name));
     return {
       name,
       present: path !== undefined,

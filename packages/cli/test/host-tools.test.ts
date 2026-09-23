@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
@@ -74,6 +74,31 @@ describe("detectHostTools", () => {
     const tools = await detectHostTools(cwd);
 
     expect(tools.find((tool) => tool.name === "gh")?.applicable).toBe(false);
+  });
+
+  // CI runs `ubuntu-latest` only, so a Windows regression here is invisible
+  // unless the platform is stubbed. `findOnPath` does an exact `existsSync`
+  // against each `PATH` entry and consults no `PATHEXT`, so detection must go
+  // through `executableName` or a Windows user with `gh.exe` installed is told
+  // to install the GitHub CLI they already have.
+  it("finds a .exe on a win32 host", async () => {
+    cwd = await mkdtemp(join(tmpdir(), "taskless-host-tools-win-"));
+    await writeFile(join(cwd, "gh.exe"), "", "utf8");
+    const platform = Object.getOwnPropertyDescriptor(process, "platform");
+    Object.defineProperty(process, "platform", { value: "win32" });
+    // `;` because `findOnPath` splits on the win32 separator once the platform
+    // says win32 — the two have to agree or the fixture tests nothing.
+    process.env.PATH = cwd;
+
+    try {
+      const tools = await detectHostTools(cwd);
+      const gh = tools.find((tool) => tool.name === "gh");
+
+      expect(gh?.present).toBe(true);
+      expect(gh?.path).toBe(join(cwd, "gh.exe"));
+    } finally {
+      if (platform) Object.defineProperty(process, "platform", platform);
+    }
   });
 
   // The precedence rule, at the layer that produces it: `present` and
