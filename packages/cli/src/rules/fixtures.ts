@@ -2,6 +2,7 @@ import type { Dirent } from "node:fs";
 import { readdir } from "node:fs/promises";
 
 import { isMissingDirectory } from "./errno";
+import type { CheckResult } from "../types/check";
 
 /**
  * The two questions every engine's fixture reader asks, answered once.
@@ -97,4 +98,31 @@ export function describeCoverageShortfall(
   return coverage === "none"
     ? `${ruleId} has no fixtures, so nothing shows it fires or stays quiet.`
     : `${ruleId} has only ${coverage.replace("-only", "")}${suffix} fixtures — half a claim.`;
+}
+
+/**
+ * The two buckets a fixture lives in, over the two engines whose buckets are
+ * directories.
+ *
+ * Declared here rather than beside either engine because a bucket is now part
+ * of what `test` REPORTS, not only of how each engine reads its own tests: a
+ * consumer reading `findings[].bucket` is reading one vocabulary, and it should
+ * not be one engine's copy of it that they happen to be reading. ast-grep's
+ * buckets are the `valid:`/`invalid:` keys of its own test YAML and keep their
+ * own spelling, for {@link FixtureCoverage}'s reason.
+ */
+export type FixtureBucket = "pass" | "fail";
+
+/**
+ * One finding a fixture produced, with the bucket that produced it.
+ *
+ * {@link CheckResult} verbatim, which is deliberate: it is already the shape
+ * `check --json` prints, so a finding means the same thing whichever command
+ * surfaced it, and there is one shape to keep in step with the engines rather
+ * than two. `bucket` is the only addition, and it is the half a `CheckResult`
+ * cannot carry — a finding does not know whether the document it came from was
+ * supposed to be clean.
+ */
+export interface FixtureFinding extends CheckResult {
+  bucket: FixtureBucket;
 }

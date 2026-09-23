@@ -7,6 +7,50 @@ import { z } from "zod";
  * so they share one envelope. `ran` is `test`-only: `verify` never reaches a
  * test run, and `test` reports `false` when verification failed first.
  */
+/**
+ * A position, zero-based in both axes, exactly as `check --json` reports one.
+ */
+const positionSchema = z.object({
+  line: z.number().int(),
+  column: z.number().int(),
+});
+
+/**
+ * One finding a rule's fixtures produced.
+ *
+ * The `CheckResult` shape `check --json` already prints, plus the `bucket` the
+ * fixture that produced it lives in. Reused verbatim rather than narrowed to
+ * what `test` "needs": a finding means the same thing whichever command
+ * surfaced it, and a second, smaller shape would be a second thing to keep in
+ * step with the engines.
+ *
+ * `message` is the field this exists for. It is the RENDERED message, with the
+ * rule's captures already interpolated, and it is the only evidence that a
+ * rule whose message interpolates its captures put the slots in the right
+ * order — such a rule fires on every `fail/` fixture, stays quiet on every
+ * `pass/` one, and a boolean verdict reports it as a rule that passed.
+ */
+const fixtureFindingSchema = z.object({
+  source: z.string().describe("The engine that produced it"),
+  ruleId: z.string(),
+  severity: z.enum(["error", "warning", "info", "hint"]),
+  message: z
+    .string()
+    .describe(
+      "The message as the engine rendered it, with the rule's captures already interpolated"
+    ),
+  note: z.string().optional(),
+  file: z.string().describe("The fixture the finding was reported against"),
+  range: z.object({ start: positionSchema, end: positionSchema }),
+  matchedText: z.string(),
+  fix: z.string().optional(),
+  bucket: z
+    .enum(["pass", "fail"])
+    .describe(
+      "The fixture bucket that produced it. A `pass` finding is a rule that fired where it should not have; a `fail` finding is the rule doing its job"
+    ),
+});
+
 const ruleResultSchema = z.object({
   engine: z.enum(["sg", "vale", "runtime"]),
   ruleId: z.string(),
@@ -46,6 +90,12 @@ const ruleResultSchema = z.object({
     .array(z.string())
     .describe(
       "Things true about the rule that do not make it a failure, reported even on a pass. One notice per element, so a consumer can render each on its own; empty when there is nothing to say, never absent"
+    ),
+  findings: z
+    .array(fixtureFindingSchema)
+    .default([])
+    .describe(
+      "The findings this rule's fixtures produced, each tagged with its bucket. ALWAYS PRESENT, empty rather than absent — for a rule that produced nothing, for one whose verification failed before its fixtures ran, for a refused run, for `verify`, which runs no fixtures at all, and for an engine whose fixture findings are not surfaced yet. A key that is sometimes absent is one a reader learns to treat as optional, and reads absence as zero. The `fail` bucket is reported on a passing run too: it is the evidence that the rendered messages say what their author meant, and a payload carrying that only once the rule is already failing carries it at the one moment it is no longer needed"
     ),
 });
 

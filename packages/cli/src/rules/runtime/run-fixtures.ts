@@ -1,4 +1,4 @@
-import { describeCoverageShortfall } from "../fixtures";
+import { describeCoverageShortfall, type FixtureFinding } from "../fixtures";
 import type { RuntimeRule } from "./discover";
 import { executeRuntimeRuleDetailed } from "./harness";
 import type { RuntimeRunOptions } from "./harness";
@@ -43,6 +43,20 @@ export interface RuntimeFixtureReport {
   neverInvoked: string[];
   /** Cases where the narrow or the check itself failed, rather than found nothing. */
   checkFailures: FixtureCheckFailure[];
+  /**
+   * Every finding the check produced, each tagged with its case's bucket.
+   *
+   * The lists above are counts of cases that broke an expectation; this is what
+   * the check actually SAID, which is the half a verdict cannot carry. A rule
+   * whose message interpolates its captures can have the slots reversed and
+   * still fire in every `fail/` case and stay quiet in every `pass/` one.
+   *
+   * A case counted in `checkFailures` contributes nothing here. A harness
+   * failure arrives as a single synthesized error-severity finding, and
+   * reporting that as something the rule found would attribute the harness's
+   * crash to the rule — the exact confusion `checkFailures` exists to prevent.
+   */
+  findings: FixtureFinding[];
 }
 
 /** `fail/case-1` — the bucket is half the identity of a case. */
@@ -71,6 +85,7 @@ export async function runRuntimeFixtures(
   const unexpectedFindings: string[] = [];
   const neverInvoked: string[] = [];
   const checkFailures: FixtureCheckFailure[] = [];
+  const findings: FixtureFinding[] = [];
 
   for (const fixtureCase of fixtures.cases) {
     const execution = await executeRuntimeRuleDetailed(
@@ -93,6 +108,14 @@ export async function runRuntimeFixtures(
     if (!execution.invoked) {
       neverInvoked.push(label(fixtureCase));
       continue;
+    }
+
+    // Collected before the bucket expectations are judged, so a case that met
+    // its expectation still reports what it found. That is the whole point on
+    // the `fail/` side: those findings are the evidence the messages render
+    // correctly, and they exist only on the runs that passed.
+    for (const finding of execution.findings) {
+      findings.push({ ...finding, bucket: fixtureCase.bucket });
     }
 
     if (fixtureCase.bucket === "fail") {
@@ -118,6 +141,7 @@ export async function runRuntimeFixtures(
     unexpectedFindings,
     neverInvoked,
     checkFailures,
+    findings,
   };
 }
 
