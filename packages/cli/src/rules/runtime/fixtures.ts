@@ -3,12 +3,10 @@ import { join } from "node:path";
 import {
   bucketEntries,
   classifyCoverage,
+  type FixtureBucket,
   type FixtureCoverage,
 } from "../fixtures";
 import { ruleTestsDirectory } from "../engines";
-
-/** The two buckets a fixture case can live in. */
-export type FixtureBucket = "pass" | "fail";
 
 /**
  * One fixture case: a DIRECTORY, whose path is the `root` the harness hands

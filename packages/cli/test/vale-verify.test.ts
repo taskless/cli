@@ -247,6 +247,11 @@ withVale("verifyValeRule", () => {
       }
     );
     const result = await verifyValeRule(cwd, "no-simply");
+    // Exhaustive on purpose: a field added to the verification shows up here
+    // rather than sliding in unasserted. `findings` is spelled out per finding
+    // for the same reason — it is carried rather than reduced to the file paths
+    // in `missingFailures`/`unexpectedFindings`, and the rendered `message` is
+    // the field the array exists to carry.
     expect(result).toEqual({
       ruleId: "no-simply",
       passed: true,
@@ -254,6 +259,34 @@ withVale("verifyValeRule", () => {
       unexpectedFindings: [],
       fixtures: "both",
       notices: [],
+      findings: [
+        {
+          source: "vale",
+          ruleId: "no-simply",
+          severity: "warning",
+          message: "Avoid 'simply'",
+          file: ".taskless/rules/vale/no-simply/.tests/fail/a.md",
+          range: {
+            start: { line: 0, column: 5 },
+            end: { line: 0, column: 10 },
+          },
+          matchedText: "simply",
+          bucket: "fail",
+        },
+        {
+          source: "vale",
+          ruleId: "no-simply",
+          severity: "warning",
+          message: "Avoid 'simply'",
+          file: ".taskless/rules/vale/no-simply/.tests/fail/b.md",
+          range: {
+            start: { line: 0, column: 8 },
+            end: { line: 0, column: 13 },
+          },
+          matchedText: "simply",
+          bucket: "fail",
+        },
+      ],
     });
   });
 

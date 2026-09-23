@@ -8,6 +8,7 @@ import {
   bucketEntries,
   classifyCoverage,
   type FixtureCoverage,
+  type FixtureFinding,
 } from "../fixtures";
 import { runVale, type ValeRunOutcome } from "./run";
 
@@ -147,6 +148,21 @@ export interface ValeRuleVerification {
   /** Fixtures that should have been clean and were not. */
   unexpectedFindings: string[];
   /**
+   * Every finding the fixtures produced, each tagged with its bucket.
+   *
+   * Carried ALONGSIDE the two lists above rather than instead of them. They
+   * answer "which fixture is wrong", which is what decides `passed`; this
+   * answers "what did the rule actually say", which is what an author needs to
+   * see and what no verdict can express — a rule whose message interpolates
+   * its captures can have the slots reversed, fire on every `fail/` fixture,
+   * stay quiet on every `pass/` one, and pass.
+   *
+   * Empty when Vale was never run, which a one-sided fixture set short-circuits
+   * into, for `findings`' reason on the reported envelope: absent and empty must
+   * not be two different answers to the same question.
+   */
+  findings: FixtureFinding[];
+  /**
    * Which buckets held documents. Only `"both"` can be `passed: true`: a
    * `fail/` fixture proves the rule fires, a `pass/` fixture proves it does not
    * over-fire, and either alone is half a claim. A rule with only `pass/`
@@ -247,6 +263,7 @@ export async function verifyValeRule(
       passed: false,
       missingFailures: [],
       unexpectedFindings: [],
+      findings: [],
       fixtures,
       notices: [],
     };
@@ -269,11 +286,27 @@ export async function verifyValeRule(
     // Only findings for the rule under test count. The config isolates it, so
     // this should be every finding — filtering anyway means a leak shows up as
     // a verification that still measures the right thing.
-    const firedIn = new Set(
-      outcome.results
-        .filter((result) => result.ruleId === ruleId)
-        .map((result) => result.file)
+    const ruleResults = outcome.results.filter(
+      (result) => result.ruleId === ruleId
     );
+    const firedIn = new Set(ruleResults.map((result) => result.file));
+
+    // The findings themselves, kept rather than reduced away. `firedIn` above
+    // is the same data with everything but the file path thrown out, and what
+    // it throws out — the rendered message, the range, the matched text — is
+    // the only evidence an author has that the rule says what they wrote.
+    //
+    // Bucketed by membership in `pass/`, with `fail/` as the remainder rather
+    // than as a second lookup. Vale ran over the rule's tests directory and
+    // nothing else, and `fixtureFiles` refuses a nested directory inside a
+    // bucket, so every file here is a fixture in one bucket or the other.
+    const passPaths = new Set(
+      passFixtures.map((file) => toRelativePosix(cwd, file))
+    );
+    const findings: FixtureFinding[] = ruleResults.map((result) => ({
+      ...result,
+      bucket: passPaths.has(result.file) ? "pass" : "fail",
+    }));
 
     const missingFailures = failFixtures
       .map((file) => toRelativePosix(cwd, file))
@@ -287,6 +320,7 @@ export async function verifyValeRule(
       passed: missingFailures.length === 0 && unexpectedFindings.length === 0,
       missingFailures,
       unexpectedFindings,
+      findings,
       fixtures,
       notices: outcome.notices,
     };

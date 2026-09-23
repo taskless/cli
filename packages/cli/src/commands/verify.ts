@@ -5,6 +5,7 @@ import { defineCommand } from "citty";
 
 import { ensureTasklessDirectory } from "../filesystem/directory";
 import { requireCurrentSchema } from "../filesystem/migrate";
+import type { FixtureFinding } from "../rules/fixtures";
 import {
   testOneRule,
   verifyOneRule,
@@ -19,7 +20,50 @@ import {
 import { outputSchema as verifyTestOutputSchema } from "../schemas/verify-test";
 import { makeErrorEnvelope, writeJsonError } from "../types/errors";
 import { CLIError } from "../util/cli-error";
+import { formatText } from "../util/format";
 import { markNotice } from "../util/notices";
+
+/**
+ * The findings a result carries, or none.
+ *
+ * `verify` never runs fixtures, so its results have no `findings` at all, while
+ * `test`'s always do — a narrowing rather than an optional field, because the
+ * two commands share this renderer and only one of them has anything to render.
+ */
+function findingsOf(
+  result: RuleVerification | RuleTestResult
+): FixtureFinding[] {
+  return "findings" in result ? result.findings : [];
+}
+
+/**
+ * The findings under a FAILING rule, labelled by bucket.
+ *
+ * Printed only on a failure, and only on the human path. A green run says one
+ * line per rule, which is what makes a wall of ticks readable; the evidence a
+ * passing run produced goes to `--json`, where something is reading it on
+ * purpose.
+ *
+ * `pass` first, because a `pass/` fixture that fired is usually the reason the
+ * rule failed, and because it is the case the existing output serves worst:
+ * `pass fixture wrongly fired: <file>` says THAT it happened and never what
+ * matched, which is the one thing the author has to know to fix it.
+ *
+ * Rendered through `check`'s own `formatText` rather than a second renderer.
+ * These are `CheckResult`s, which is its parameter type, and a finding that
+ * read two ways depending on which command surfaced it would be a worse
+ * outcome than any formatting this costs.
+ */
+function printFindings(findings: FixtureFinding[]): void {
+  for (const bucket of ["pass", "fail"] as const) {
+    const inBucket = findings.filter((finding) => finding.bucket === bucket);
+    if (inBucket.length === 0) continue;
+    console.log(`    ${bucket} fixture findings:`);
+    for (const line of formatText(inBucket).split("\n")) {
+      console.log(line === "" ? "" : `    ${line}`);
+    }
+  }
+}
 
 /**
  * The shared body of `verify` and `test`.
@@ -170,6 +214,12 @@ async function runOverPath(options: {
         for (const line of markNotice(notice, "    notice: ")) {
           console.log(line);
         }
+      }
+      // Under the errors, because the errors say which fixture is wrong and
+      // these say what the rule reported about it. A refused run has nothing
+      // to show: nothing ran.
+      if (!result.ok && !isRefused(result)) {
+        printFindings(findingsOf(result));
       }
     }
     // A rule that did not run is not among the rules tested. Counting it there

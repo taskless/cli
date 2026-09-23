@@ -8,7 +8,7 @@ import {
   ruleDirectory,
   ruleFilePath,
 } from "./engines";
-import { describeCoverageShortfall } from "./fixtures";
+import { describeCoverageShortfall, type FixtureFinding } from "./fixtures";
 import { type EngineName } from "./layout";
 import {
   assessCaptureDirectory,
@@ -116,6 +116,21 @@ export interface RuleTestResult {
    * on a pass, since a pass is the case it exists for.
    */
   notices: string[];
+  /**
+   * Every finding this rule's fixtures produced, tagged with its bucket.
+   *
+   * ALWAYS PRESENT, empty rather than absent. A rule that produced nothing, a
+   * rule whose `verify` failed before its fixtures ran, a refused runtime rule
+   * and an ast-grep rule all report `[]`, because a consumer must never have to
+   * tell "this rule produced no findings" from "this command does not report
+   * findings" — a key that is sometimes absent is one a reader learns to treat
+   * as optional, and then reads absence as zero.
+   *
+   * Both buckets, including on a rule that passed. The `fail` bucket is the
+   * evidence that the rendered messages say what their author meant, and it is
+   * only ever produced by the runs that passed.
+   */
+  findings: FixtureFinding[];
 }
 
 /** What `test` needs beyond a rule, all of it about the runtime engine. */
@@ -425,7 +440,7 @@ export async function testOneRule(
     // call, which would spawn `sg test` twice for one answer.
     const verification = await withIdCollision(cwd, ruleId, verdict);
     if (!verification.ok) {
-      return { ...verification, ran: false };
+      return { ...verification, ran: false, findings: [] };
     }
     const errors = [...result.tests.errors];
     const violations: RuleViolation[] = [];
@@ -483,12 +498,20 @@ export async function testOneRule(
       violations,
       ran: true,
       notices: verification.notices,
+      // Empty, and true. `sg test` reports `test result: ok. N passed; N
+      // failed;` and nothing else — the vendored binary has no `--json` and no
+      // output-format flag — and its fixtures are inline YAML scalars rather
+      // than files, so there is no document to attribute a finding to.
+      // Surfacing them needs a different mechanism than reading what the
+      // engine already handed us, which is the whole of what this does for the
+      // other two engines.
+      findings: [],
     };
   }
 
   const verification = await verifyOneRule(cwd, rule);
   if (!verification.ok) {
-    return { ...verification, ran: false };
+    return { ...verification, ran: false, findings: [] };
   }
 
   if (engine === "vale") {
@@ -502,6 +525,7 @@ export async function testOneRule(
         violations: [],
         ran: false,
         notices: [],
+        findings: [],
       };
     }
     const errors: string[] = [];
@@ -523,6 +547,7 @@ export async function testOneRule(
       violations: [],
       ran: true,
       notices: result.notices,
+      findings: result.findings,
     };
   }
 
@@ -561,6 +586,7 @@ export async function testOneRule(
       errors: [reason],
       violations: [],
       ran: false,
+      findings: [],
       refused: reason,
       notices: [],
     };
@@ -585,6 +611,7 @@ export async function testOneRule(
       errors: [reason],
       violations: [],
       ran: false,
+      findings: [],
       refused: reason,
       notices: [],
     };
@@ -606,6 +633,7 @@ export async function testOneRule(
       violations: [],
       ran: false,
       notices: [],
+      findings: [],
     };
   }
 
@@ -622,5 +650,6 @@ export async function testOneRule(
     violations: [],
     ran: true,
     notices: [],
+    findings: report.findings,
   };
 }
