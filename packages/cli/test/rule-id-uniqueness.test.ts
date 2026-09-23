@@ -1,9 +1,9 @@
 import { mkdir, mkdtemp, readFile, readdir, rm, stat } from "node:fs/promises";
 import { writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import migration, {
   retargetValeConfig,
@@ -25,6 +25,41 @@ import type { EngineName } from "../src/rules/layout";
  * proves the same thing an `sg`/`vale` pair would.
  */
 let cwd: string;
+
+/**
+ * Basename of a `rename` target the migration must die on, or `undefined` for
+ * a run that is allowed to finish.
+ *
+ * A crash is injected at a NAMED destination rather than at the Nth call, so a
+ * case says which step it interrupts and stays readable when the number of
+ * writes changes. Basename rather than full path because the pre-fix ordering
+ * renames the directory first, so the same step happens under a different
+ * parent there — matching the whole path would make these cases silently stop
+ * injecting anything against the code they exist to fail against.
+ */
+let crashAtRenameTo: string | undefined;
+
+vi.mock("node:fs/promises", async () => {
+  const actual =
+    await vi.importActual<typeof import("node:fs/promises")>(
+      "node:fs/promises"
+    );
+  return {
+    ...actual,
+    rename: async (
+      from: Parameters<typeof actual.rename>[0],
+      to: Parameters<typeof actual.rename>[1]
+    ) => {
+      if (
+        crashAtRenameTo !== undefined &&
+        basename(to.toString()) === crashAtRenameTo
+      ) {
+        throw new Error(`simulated crash renaming to ${to.toString()}`);
+      }
+      return actual.rename(from, to);
+    },
+  };
+});
 
 const SCOPED = (id: string): string =>
   `[*.md]\ntskl) rule = ${id}\n${id}.${id} = YES\n`;
@@ -80,6 +115,7 @@ async function runtimeRule(id: string): Promise<string> {
 }
 
 beforeEach(async () => {
+  crashAtRenameTo = undefined;
   cwd = await mkdtemp(join(tmpdir(), "tskl-rule-id-"));
   await mkdir(join(cwd, ".taskless", "rules"), { recursive: true });
 });
@@ -345,6 +381,99 @@ describe("migration 0009 renames a colliding project", () => {
     await migration(join(cwd, ".taskless"));
 
     expect(await snapshot(join(cwd, ".taskless"))).toEqual(after);
+  });
+
+  // THE CENTREPIECE. A run that dies part-way must leave a tree the next run
+  // repairs. The first two crash points are unrecoverable against the previous
+  // ordering, which renamed the rule DIRECTORY first: that cleared the
+  // collision while the files inside still carried the old id, so the next run
+  // returned at the `collisions.length === 0` gate and nothing ever fixed it.
+  // Now the directory rename is the last step and therefore the commit point,
+  // so an interrupted rule still collides and is picked up again.
+  it.each([
+    ["the sg rule file rename", "no-eval-sg.yml"],
+    ["the sg fixture rename", "no-eval-sg-20260101-test.yml"],
+    ["the sg directory commit", "no-eval-sg"],
+  ])(
+    "resumes to a correct end state after crashing at %s",
+    async (_step, target) => {
+      await sgRule("no-eval");
+      await valeRule("no-eval");
+
+      crashAtRenameTo = target;
+      await expect(migration(join(cwd, ".taskless"))).rejects.toThrow(
+        "simulated crash"
+      );
+      crashAtRenameTo = undefined;
+
+      // The interrupted rule still holds the colliding id. That is the whole
+      // reason the next run looks at it again.
+      expect(await findRuleIdCollisions(cwd)).toHaveLength(1);
+
+      await migration(join(cwd, ".taskless"));
+
+      expect(await findRuleIdCollisions(cwd)).toEqual([]);
+      const directory = rulePath("sg", "no-eval-sg");
+      expect(await exists(rulePath("sg", "no-eval"))).toBe(false);
+      expect(
+        await readFile(join(directory, "no-eval-sg.yml"), "utf8")
+      ).toContain("id: no-eval-sg");
+      // Directory, fixture filename and the `id:` inside it all agree, which
+      // is the state `verify` demands and a half-migrated tree never reaches.
+      expect(await readdir(join(directory, ".tests"))).toEqual([
+        "no-eval-sg-20260101-test.yml",
+      ]);
+      expect(
+        await readFile(
+          join(directory, ".tests", "no-eval-sg-20260101-test.yml"),
+          "utf8"
+        )
+      ).toContain("id: no-eval-sg");
+      // The vale half never started, so the resuming run renames it too.
+      const valeDirectory = rulePath("vale", "no-eval-vale");
+      expect(
+        await readFile(join(valeDirectory, ".vale.ini"), "utf8")
+      ).toContain("no-eval-vale.no-eval-vale = YES");
+      const verified = await verifyOneRule(cwd, {
+        engine: "vale",
+        ruleId: "no-eval-vale",
+      });
+      expect(verified.ok).toBe(true);
+    }
+  );
+
+  // The output of the fixture rename used to match its own input predicate, so
+  // a fixture a human had named `<id>-sg-…` BEFORE this ever ran came back out
+  // double-suffixed on the very first run. It is already at the target prefix,
+  // so it is left where it is and only its `id:` follows.
+  it("does not double-suffix a fixture already named <id>-sg-...", async () => {
+    await sgRule("no-eval");
+    await valeRule("no-eval");
+    await writeFile(
+      join(rulePath("sg", "no-eval"), ".tests", "no-eval-sg-basic-test.yml"),
+      `id: no-eval\nvalid:\n  - const a = 1;\n`,
+      "utf8"
+    );
+
+    await migration(join(cwd, ".taskless"));
+
+    const tests = await readdir(join(rulePath("sg", "no-eval-sg"), ".tests"));
+    expect(tests.toSorted((a, b) => a.localeCompare(b))).toEqual([
+      "no-eval-sg-20260101-test.yml",
+      "no-eval-sg-basic-test.yml",
+    ]);
+    // The `id:` still has to follow, or ast-grep attributes no case to it and
+    // the rule reads as having shipped none.
+    expect(
+      await readFile(
+        join(
+          rulePath("sg", "no-eval-sg"),
+          ".tests",
+          "no-eval-sg-basic-test.yml"
+        ),
+        "utf8"
+      )
+    ).toContain("id: no-eval-sg");
   });
 
   it("is a no-op on a project with no rules tree at all", async () => {
