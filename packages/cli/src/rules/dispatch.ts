@@ -248,7 +248,10 @@ async function runValeEngine(options: DispatchOptions): Promise<EngineOutcome> {
   return {
     engine: "vale",
     results: [],
-    notice: joinNotices([...advisories, outcome.message]) ?? outcome.message,
+    // No `?? outcome.message` fallback: this branch is `unavailable`, whose
+    // `message` is a `string`, so the list is never empty and the joiner always
+    // returns a value. The fallback read as a safety net and was dead code.
+    notice: joinNotices([...advisories, outcome.message]),
   };
 }
 
