@@ -1,4 +1,4 @@
-# Topic: create-vale-rule     (CLI v%(CLI_VERSION)s / topic v13)
+# Topic: create-vale-rule     (CLI v%(CLI_VERSION)s / topic v14)
 
 ## You are here
 This is `create-vale-rule`. It helps you write a Vale rule: a check over
@@ -478,28 +478,52 @@ it.
 
    - `(?:…)`, `[…]`, `|`, `+`, `?` all work.
    - **Lookaround and backreferences work, and they are not free.**
-     Vale compiles a pattern with Go's own `regexp` first and falls
-     back to `regexp2` when that engine refuses it, so `(?=…)`,
-     `(?<=…)` and `\1` are all available even though Go's `regexp` has
-     none of them. Measured on Vale v%(VALE_VERSION)s with throwaway
-     rules, each firing on its `fail/` fixture and quiet on `pass/`: a
-     repeated-word `\b(\w+) \1\b`, a `foo(?= bar)` lookahead, and a
-     `(?<=x )y` lookbehind. The fallback engine backtracks and is the
-     slower of the two, so keep lookaround off a pattern that runs
-     over every file in the project, and prove any rule that uses one
-     with a fixture rather than trusting the syntax. "X but not when
-     followed by Y" is therefore writable as a single `substitution`,
-     but splitting it or narrowing with `scope` is still the cheaper
-     rule when either will do.
+     Vale compiles every pattern with `regexp2` in RE2 compatibility
+     mode, so `(?=…)`, `(?<=…)` and `\1` are all available even
+     though Go's own `regexp` has none of them. (Older versions of
+     this topic said Vale tried Go's `regexp` first and fell back.
+     There is no fallback and never was; the conclusion was right and
+     the reason was not.) Measured on Vale v%(VALE_VERSION)s with
+     throwaway rules, each firing on its `fail/` fixture and quiet on
+     `pass/`: a repeated-word `\b(\w+) \1\b`, a `foo(?= bar)`
+     lookahead, and a `(?<=x )y` lookbehind. That engine backtracks
+     and is slower than a pattern without lookaround, so keep
+     lookaround off a rule that runs over every file in the project,
+     and prove any rule that uses one with a fixture rather than
+     trusting the syntax. "X but not when followed by Y" is therefore
+     writable as a single `substitution`, but splitting it or
+     narrowing with `scope` is still the cheaper rule when either
+     will do.
 
-     Two measured limits sit on top of that, and both are silent:
+     Three measured limits sit on top of that, and all three are
+     silent:
 
-     - **A backreference does nothing in `swap`.** The same
-       `(\w+) \1` that fires under `tokens` and under `raw` produces
-       no finding as a `swap` key, with nothing on stderr and the
-       rule loading cleanly, so the rule looks healthy and never
-       fires at all. A repeated-word check has to be an `existence`
-       rule; it cannot be a `substitution`.
+     - **No capture group survives a `swap` key**, so a
+       backreference in one can never match. Vale compiles all of a
+       rule's swap keys into ONE alternation and wraps each key in a
+       capture group of its own, because the number of the group
+       that matched is how it knows which replacement to offer. Those
+       wrappers have to be numbered 1, 2, 3…, so any group you wrote
+       is rewritten to `(?:…)` first. Whichever way round, `\1` ends
+       up pointing at Vale's wrapper (the group still being matched)
+       and matches nothing. Measured silent, with nothing on
+       stderr and the rule loading cleanly: `(\w+) \1`, `(the) \1`,
+       `the \1` and `(?:\w+) \1`. **`%(TASKLESS_CLI)s verify` rejects a
+       `swap` key with a backreference**, because a rule that loads
+       and never fires is indistinguishable from a clean project. A
+       repeated-word check has to be an `existence` rule, where the
+       same pattern works under both `tokens` and `raw`.
+
+       Two things this does NOT mean:
+
+       - **`$1` in the swap VALUE works.** Vale expands it against
+         the original key, before the rewrite, so
+         `colour(s?): color$1` offers `colors` for `colours` and
+         `color` for `colour`. Only the key loses its groups.
+       - **`\1` inside a character class is fine**, because there it
+         is an octal escape rather than a backreference. `[\1a]bc`
+         matches `abc` and `verify` accepts it.
+
      - **A trailing lookahead in `tokens` or `swap` has to peek at a
        non-word character.** The implicit `\b` is appended after the
        lookahead (the lookahead is zero-width, so the position is
@@ -507,6 +531,12 @@ it.
        the match and the text peeked at. `foo(?= bar)` fires;
        `foo(?=bar)` can never match, whatever the document says. Use
        `raw` when the lookahead has to land on a word character.
+     - **A leading lookbehind has the same problem at the other
+       end.** The implicit `\b` goes on before it, so the boundary
+       is tested between what the lookbehind peeked at and the match.
+       `(?<=x )y` fires; `(?<=x)foo` is silent under `tokens` and
+       under `swap` on a document reading `xfoo`, and fires under
+       `raw`. Same fix: use `raw`.
    - **Word boundaries are applied for you, around the whole pattern.**
      Measured: `Github` does not fire inside `GithubToken`, and the
      multi-word `click here` does not fire inside `Clicking here`.

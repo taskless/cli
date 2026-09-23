@@ -431,6 +431,153 @@ describe("advisories are said, not refused", () => {
   });
 });
 
+/**
+ * The `swap` backreference rejection, both directions.
+ *
+ * The first hard error this layer raises for a pattern-quality problem Vale
+ * itself accepts, which makes the detector's precision load-bearing: there is
+ * no suppression mechanism anywhere in the CLI, so a false positive leaves an
+ * author with nothing to reach for. Every accepted case below was measured
+ * firing against the vendored binary, and the behaviour the rejection describes
+ * is pinned in `vale-vendor-contract.test.ts` ("a backreference is silently
+ * inert in a `swap` key"); this asks only that the schema says so, and only
+ * where it applies.
+ */
+const swapRule = (key: string): string =>
+  `extends: substitution\nmessage: "x %s"\nlevel: error\nswap:\n  '${key}': X\n`;
+
+const swapVerdict = (key: string) =>
+  validateValeRule("demo", parseYaml(swapRule(key)));
+
+describe("a backreference in a swap key is rejected", () => {
+  // Every one of these was measured silent against Vale: the rule loads, Vale
+  // writes nothing to stderr, and no document ever produces a finding.
+  const inert = [
+    // The capturing form. `convertCaptureGroups` rewrites `(\w+)` to
+    // `(?:\w+)`, so `\1` lands on Vale's own wrapper group.
+    String.raw`(\w+) \1`,
+    String.raw`(the) \1`,
+    // The two forms with no capture group at all, where Vale's rewrite is
+    // skipped and `\1` is the wrapper directly. Variant B of the detector --
+    // "flag a backreference only when the key has a group to convert" -- would
+    // have missed both, which is why the detector does not look for the group.
+    String.raw`the \1`,
+    String.raw`(?:\w+) \1`,
+  ];
+
+  for (const key of inert) {
+    it(`rejects ${key}`, () => {
+      const { valid, errors } = swapVerdict(key);
+      expect(valid).toBe(false);
+      expect(errors).toHaveLength(1);
+      expect(errors[0]).toContain(JSON.stringify(key));
+      // The message has to carry its own justification, because unlike every
+      // other rejection in this layer it cannot point at a broken run.
+      expect(errors[0]).toContain("never match");
+      expect(errors[0]).toContain("existence");
+    });
+  }
+
+  // Each of these was measured FIRING against the binary, so rejecting one
+  // would block a rule that works.
+  const accepted = [
+    // Inside a character class `\1` is an octal escape, not a backreference.
+    // `[\1a]bc` was measured matching `abc`.
+    String.raw`[\1a]bc`,
+    // An escaped backslash, then a literal `1`. Measured matching `a\1b`.
+    String.raw`a\\1b`,
+    // Escaped parentheses: literal text, no group and no reference. Measured
+    // matching `q(1)z`.
+    String.raw`q\(1\)z`,
+    // A non-capturing group and no backreference at all. Measured matching
+    // `ox-like`.
+    String.raw`(?:bull|ox)-like`,
+    // The plain case, for contrast.
+    "utilize",
+  ];
+
+  for (const key of accepted) {
+    it(`accepts ${key}`, () => {
+      const { valid, errors } = swapVerdict(key);
+      expect(errors).toEqual([]);
+      expect(valid).toBe(true);
+    });
+  }
+
+  it("names every offending key when a rule has more than one", () => {
+    const { valid, errors } = validateValeRule(
+      "demo",
+      parseYaml(
+        'extends: substitution\nmessage: "x %s"\nlevel: error\nswap:\n' +
+          "  '(\\w+) \\1': X\n  'the \\2': Y\n  utilize: use\n"
+      )
+    );
+    expect(valid).toBe(false);
+    expect(errors).toHaveLength(2);
+  });
+
+  it("leaves a swap on another check to the field table", () => {
+    // `swap` is `substitution`'s field alone, so the union rejects it on
+    // `existence` first and this check never adds a second sentence about a
+    // key that was never going to be read.
+    const { valid, errors } = validateValeRule(
+      "demo",
+      parseYaml(
+        'extends: existence\nmessage: "x"\nlevel: error\nswap:\n' +
+          "  '(\\w+) \\1': X\n"
+      )
+    );
+    expect(valid).toBe(false);
+    expect(errors).toHaveLength(1);
+    expect(errors[0]).toContain("not a field of the existence check");
+  });
+
+  it("is silent on a swap map under a permissive check", () => {
+    // `consistency` decodes loosely, so a `swap` map on it reaches this check
+    // rather than being stopped by the field table. Vale ignores the field
+    // there, and the alternation this rejection describes is not built, so
+    // there is nothing true to say -- and saying it anyway would reject a
+    // rule the binary runs.
+    const { valid, errors } = validateValeRule(
+      "demo",
+      parseYaml(
+        'extends: consistency\nmessage: "x"\nlevel: error\nswap:\n' +
+          "  '(\\w+) \\1': X\n"
+      )
+    );
+    expect(errors).toEqual([]);
+    expect(valid).toBe(true);
+  });
+
+  it("reads the key case-insensitively, as Vale decodes it", () => {
+    const { valid, errors } = validateValeRule(
+      "demo",
+      parseYaml(
+        'extends: substitution\nmessage: "x %s"\nlevel: error\nSwap:\n' +
+          "  '(\\w+) \\1': X\n"
+      )
+    );
+    expect(valid).toBe(false);
+    expect(errors).toHaveLength(1);
+  });
+
+  it("says that `$1` in the swap VALUE is a different thing and works", () => {
+    // Measured: `colour(s?)` -> `color$1` offers `colors` on `colours`. Vale
+    // re-applies the ORIGINAL, unconverted key to the observed text to expand
+    // `$1` (`subMsg` in `internal/check/substitution.go`), which is why the
+    // value is untouched by the rewrite that breaks the key.
+    const { valid, errors } = validateValeRule(
+      "demo",
+      parseYaml(
+        'extends: substitution\nmessage: "x %s"\nlevel: error\nswap:\n' +
+          "  'colour(s?)': 'color$1'\n"
+      )
+    );
+    expect(errors).toEqual([]);
+    expect(valid).toBe(true);
+  });
+});
+
 // --- Helpers -----------------------------------------------------------------
 
 /**
