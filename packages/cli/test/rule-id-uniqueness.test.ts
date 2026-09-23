@@ -27,17 +27,35 @@ import type { EngineName } from "../src/rules/layout";
 let cwd: string;
 
 /**
- * Basename of a `rename` target the migration must die on, or `undefined` for
- * a run that is allowed to finish.
+ * The `rename` the migration must die on, named by the basename of its source,
+ * its destination, or both. `undefined` lets a run finish.
  *
- * A crash is injected at a NAMED destination rather than at the Nth call, so a
- * case says which step it interrupts and stays readable when the number of
- * writes changes. Basename rather than full path because the pre-fix ordering
- * renames the directory first, so the same step happens under a different
+ * A crash is injected at a NAMED rename rather than at the Nth call, so a case
+ * says which step it interrupts and stays readable when the number of writes
+ * changes. Basenames rather than whole paths because the pre-fix ordering
+ * renamed the directory first, so the same step happens under a different
  * parent there — matching the whole path would make these cases silently stop
  * injecting anything against the code they exist to fail against.
+ *
+ * BOTH ENDS ARE MATCHABLE BECAUSE THE DESTINATION ALONE IS AMBIGUOUS. Putting
+ * `<to>.yml` in place and committing a rewrite OF `<to>.yml` are two renames
+ * with the same destination, and the first always runs first — so a
+ * destination-only harness can never stop between them, which is exactly the
+ * state `renameRuleFile`'s resume branch exists to repair. Naming the source
+ * separates them: the commit's source is the `.tskl-0009.tmp` sibling, the file
+ * rename's source is `<from>.yml`.
  */
-let crashAtRenameTo: string | undefined;
+let crashAtRename: { from?: string; to?: string } | undefined;
+
+/**
+ * The suffix {@link writeFileAtomically} gives its temporary sibling.
+ *
+ * Duplicated from the migration on purpose rather than exported for the test:
+ * it is an implementation detail the migration is free to change, and a case
+ * naming it is asserting on the step it means to interrupt. If this ever stops
+ * matching, the affected cases fail by never injecting a crash, which is loud.
+ */
+const ATOMIC_WRITE_SUFFIX = ".tskl-0009.tmp";
 
 vi.mock("node:fs/promises", async () => {
   const actual =
@@ -50,11 +68,16 @@ vi.mock("node:fs/promises", async () => {
       from: Parameters<typeof actual.rename>[0],
       to: Parameters<typeof actual.rename>[1]
     ) => {
+      const wanted = crashAtRename;
       if (
-        crashAtRenameTo !== undefined &&
-        basename(to.toString()) === crashAtRenameTo
+        wanted !== undefined &&
+        (wanted.from === undefined ||
+          wanted.from === basename(from.toString())) &&
+        (wanted.to === undefined || wanted.to === basename(to.toString()))
       ) {
-        throw new Error(`simulated crash renaming to ${to.toString()}`);
+        throw new Error(
+          `simulated crash renaming ${from.toString()} -> ${to.toString()}`
+        );
       }
       return actual.rename(from, to);
     },
@@ -115,7 +138,7 @@ async function runtimeRule(id: string): Promise<string> {
 }
 
 beforeEach(async () => {
-  crashAtRenameTo = undefined;
+  crashAtRename = undefined;
   cwd = await mkdtemp(join(tmpdir(), "tskl-rule-id-"));
   await mkdir(join(cwd, ".taskless", "rules"), { recursive: true });
 });
@@ -391,20 +414,31 @@ describe("migration 0009 renames a colliding project", () => {
   // Now the directory rename is the last step and therefore the commit point,
   // so an interrupted rule still collides and is picked up again.
   it.each([
-    ["the sg rule file rename", "no-eval-sg.yml"],
-    ["the sg fixture rename", "no-eval-sg-20260101-test.yml"],
-    ["the sg directory commit", "no-eval-sg"],
+    ["the sg rule file rename", { from: "no-eval.yml", to: "no-eval-sg.yml" }],
+    [
+      "the sg rule file's id: commit",
+      { from: `no-eval-sg.yml${ATOMIC_WRITE_SUFFIX}` },
+    ],
+    [
+      "the sg fixture rename",
+      { from: "no-eval-20260101-test.yml", to: "no-eval-sg-20260101-test.yml" },
+    ],
+    [
+      "the sg fixture's id: commit",
+      { from: `no-eval-sg-20260101-test.yml${ATOMIC_WRITE_SUFFIX}` },
+    ],
+    ["the sg directory commit", { to: "no-eval-sg" }],
   ])(
     "resumes to a correct end state after crashing at %s",
     async (_step, target) => {
       await sgRule("no-eval");
       await valeRule("no-eval");
 
-      crashAtRenameTo = target;
+      crashAtRename = target;
       await expect(migration(join(cwd, ".taskless"))).rejects.toThrow(
         "simulated crash"
       );
-      crashAtRenameTo = undefined;
+      crashAtRename = undefined;
 
       // The interrupted rule still holds the colliding id. That is the whole
       // reason the next run looks at it again.
@@ -441,6 +475,44 @@ describe("migration 0009 renames a colliding project", () => {
       expect(verified.ok).toBe(true);
     }
   );
+
+  // The same window, built by hand instead of by crashing into it. The harness
+  // proves the migration REACHES this state; this proves the repair works on
+  // one that arrived any other way — a run killed by SIGKILL, a container
+  // evicted mid-write — with no dependence on the temporary file's name.
+  it("finishes a rename left between the file move and its id: field", async () => {
+    const directory = join(cwd, ".taskless", "rules", "sg", "no-eval");
+    await mkdir(join(directory, ".tests"), { recursive: true });
+    // Renamed, `id:` not yet rewritten: what an interrupted run leaves. The
+    // old early return read a missing `no-eval.yml` as "no rule file" and left
+    // both stale ids behind.
+    await writeFile(
+      join(directory, "no-eval-sg.yml"),
+      `id: no-eval\nlanguage: TypeScript\nseverity: error\nmessage: no eval\nrule:\n  pattern: eval($A)\n`,
+      "utf8"
+    );
+    await writeFile(
+      join(directory, ".tests", "no-eval-sg-20260101-test.yml"),
+      `id: no-eval\nvalid:\n  - const a = 1;\n`,
+      "utf8"
+    );
+    await valeRule("no-eval");
+
+    await migration(join(cwd, ".taskless"));
+
+    const moved = rulePath("sg", "no-eval-sg");
+    expect(await exists(join(moved, "no-eval.yml"))).toBe(false);
+    expect(await readFile(join(moved, "no-eval-sg.yml"), "utf8")).toContain(
+      "id: no-eval-sg"
+    );
+    expect(
+      await readFile(
+        join(moved, ".tests", "no-eval-sg-20260101-test.yml"),
+        "utf8"
+      )
+    ).toContain("id: no-eval-sg");
+    expect(await findRuleIdCollisions(cwd)).toEqual([]);
+  });
 
   // The output of the fixture rename used to match its own input predicate, so
   // a fixture a human had named `<id>-sg-…` BEFORE this ever ran came back out
