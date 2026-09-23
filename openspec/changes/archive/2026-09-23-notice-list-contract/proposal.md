@@ -70,5 +70,10 @@ consumer crosses.
 **Single PR.** The helper, the structural change, the renderer fix, the tests
 and these deltas are one reviewable diff, and splitting them would land a spec
 describing behaviour that is not yet there, or a renderer fix without the
-requirement that keeps it fixed. This PR is the tip, so the change is archived
-here.
+requirement that keeps it fixed.
+
+This PR is the tip — no open PR is based on this branch — so the change is
+archived here, on this PR, rather than on landing. `openspec-label.yml` reports
+an unarchived change directory, and `main` takes pull requests only, so a change
+that reaches `main` unarchived needs a second PR to do what the tip should have
+done.
