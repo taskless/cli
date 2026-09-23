@@ -2,6 +2,7 @@ import { join, resolve } from "node:path";
 import process from "node:process";
 import { defineCommand } from "citty";
 
+import { detectHostTools } from "../detect/host-tools";
 import { checkStaleness } from "../install/install";
 import { getToken } from "../auth/token";
 import { fetchWhoami } from "../auth/whoami";
@@ -40,8 +41,12 @@ export const infoCommand = defineCommand({
     // The repository context resolves regardless of `--anonymous`: it comes
     // from the local git remote, not from the API, so suppressing it would
     // hide capability state that has nothing to do with the auth probe.
-    const [tools, token, repository, manifest] = await Promise.all([
+    const [harnesses, tools, token, repository, manifest] = await Promise.all([
       checkStaleness(cwd),
+      // Presence on `PATH`, nothing executed. Resolves its own repository
+      // context, which is the same never-throwing call as `repository` below
+      // and cheap enough not to be worth threading through.
+      detectHostTools(cwd),
       args.anonymous ? Promise.resolve() : getToken(cwd),
       resolveRepositoryContext(cwd),
       // Never fails: an absent or unreadable manifest is an ordinary state for
@@ -68,6 +73,9 @@ export const infoCommand = defineCommand({
     const result = {
       success: true as const,
       version: __VERSION__,
+      // `harnesses` carried the key `tools` until the word was needed for what
+      // it actually says. The array is unchanged; only the key moved.
+      harnesses,
       tools,
       loggedIn: token !== undefined,
       auth,
@@ -122,11 +130,11 @@ export const infoCommand = defineCommand({
     // Human-readable output
     console.log(`Taskless CLI v${__VERSION__}\n`);
 
-    if (tools.length === 0) {
-      console.log("Tools: none detected");
+    if (harnesses.length === 0) {
+      console.log("Harnesses: none detected");
     } else {
-      console.log("Tools:");
-      for (const tool of tools) {
+      console.log("Harnesses:");
+      for (const tool of harnesses) {
         const total = tool.skills.length;
         const upToDate = tool.skills.filter((s) => s.current).length;
         const stale = total - upToDate;
@@ -148,6 +156,19 @@ export const infoCommand = defineCommand({
           }
         }
       }
+    }
+
+    console.log("");
+    // Presence, phrased as presence. Nothing here was run, so nothing here
+    // may be reported as working.
+    console.log("Tools on PATH:");
+    for (const tool of tools) {
+      const where = tool.applicable
+        ? tool.present
+          ? `found${tool.path === undefined ? "" : ` at ${tool.path}`}`
+          : "not found"
+        : "not applicable here";
+      console.log(`  ${tool.name}: ${where}`);
     }
 
     console.log("");

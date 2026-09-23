@@ -26,7 +26,7 @@ which version of the CLI/skills the agent is talking to.
    {
      "success": true,
      "version": "0.7.0",
-     "tools": [
+     "harnesses": [
        {
          "name": "Claude Code",
          "skills": [
@@ -35,6 +35,13 @@ which version of the CLI/skills the agent is talking to.
          ]
        }
      ],
+     "tools": [
+       { "name": "gh", "present": true, "path": "/opt/homebrew/bin/gh",
+         "applicable": true },
+       { "name": "git", "present": true, "path": "/usr/bin/git",
+         "applicable": true },
+       { "name": "jq", "present": false, "applicable": true }
+     ],
      "loggedIn": true,
      "auth": { "user": "...", "email": "...", "orgs": ["..."] }
    }
@@ -42,8 +49,16 @@ which version of the CLI/skills the agent is talking to.
 
 3. **Report to the user.** Summarize:
    - CLI version
-   - For each tool: number of installed skills, count out-of-date
+   - For each harness: number of installed skills, count out-of-date
    - Auth: logged in as <user> (orgs) OR not logged in
+
+   `harnesses` is the agent harnesses Taskless installs into. `tools`
+   is the command-line binaries found on PATH, and it is presence
+   only: Taskless looked for a file of each name and ran none of
+   them, so do not report a tool as working or name a version.
+   `applicable: false` means the tool could do nothing in this
+   repository whatever is installed, which is not the same as
+   missing, and must not be reported as missing.
 
 4. **Suggest reinit on staleness.** If any skill has `current: false`,
    suggest `%(TASKLESS_CLI)s` to reinstall and pull the latest

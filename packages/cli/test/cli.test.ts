@@ -15,7 +15,7 @@ describe("cli", () => {
   });
 
   describe("info", () => {
-    it("outputs version and tools as JSON", async () => {
+    it("outputs version, harnesses and tools as JSON", async () => {
       const { stdout } = await execFileAsync("node", [
         binPath,
         "info",
@@ -23,13 +23,27 @@ describe("cli", () => {
       ]);
       const parsed = JSON.parse(stdout.trim()) as {
         version: string;
-        tools: unknown[];
+        harnesses: unknown[];
+        tools: Array<{ name: string; present: boolean; applicable: boolean }>;
       };
       expect(parsed).toHaveProperty("version");
       expect(typeof parsed.version).toBe("string");
       expect(parsed.version).toMatch(/^\d+\.\d+\.\d+/);
-      expect(parsed).toHaveProperty("tools");
+      // The agent harnesses. This array was published as `tools` until that
+      // word was needed for what it says; the entry shape did not change.
+      expect(parsed).toHaveProperty("harnesses");
+      expect(Array.isArray(parsed.harnesses)).toBe(true);
+      // `tools` now carries the command-line binaries found on PATH.
       expect(Array.isArray(parsed.tools)).toBe(true);
+      expect(parsed.tools.map((tool) => tool.name)).toEqual([
+        "gh",
+        "git",
+        "jq",
+      ]);
+      // `git` is how this test suite got here, so it is a safe assertion
+      // about a real host rather than about a fixture.
+      const git = parsed.tools.find((tool) => tool.name === "git");
+      expect(git).toMatchObject({ present: true, applicable: true });
     });
   });
 
@@ -105,14 +119,14 @@ describe("cli", () => {
       ]);
       const parsed = JSON.parse(stdout.trim()) as {
         version: string;
-        tools: Array<{
+        harnesses: Array<{
           name: string;
           skills: Array<{ name: string; current: boolean }>;
         }>;
       };
 
-      expect(parsed.tools.length).toBeGreaterThan(0);
-      const claudeTool = parsed.tools.find((t) => t.name === "Claude Code");
+      expect(parsed.harnesses.length).toBeGreaterThan(0);
+      const claudeTool = parsed.harnesses.find((t) => t.name === "Claude Code");
       expect(claudeTool).toBeDefined();
       expect(claudeTool!.skills[0]!.current).toBe(true);
     });
