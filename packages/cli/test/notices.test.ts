@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { collectNotices } from "../src/util/notices";
+import { collectNotices, markNotice } from "../src/util/notices";
 
 /**
  * The one place the `notices` contract is decided, so it is the one place the
@@ -51,6 +51,51 @@ describe("collectNotices", () => {
     // renderers prefix each of its lines instead.
     expect(collectNotices(["line one\nline two"])).toEqual([
       "line one\nline two",
+    ]);
+  });
+});
+
+/**
+ * The renderers' half of the same contract.
+ *
+ * `check` and `verify` differ only in the marker, so they share this. The
+ * multi-line case is the one worth pinning directly: no notice the CLI
+ * produces today spans lines, but several embed text the CLI did not author —
+ * Vale's stderr, and an `Error.message` inside a runtime repair notice — so it
+ * is a latent case that will arrive without anyone choosing it.
+ */
+describe("markNotice", () => {
+  it("marks every line of a multi-line notice, not just the first", () => {
+    // The whole defect, in one assertion. An unmarked second line reads as
+    // stray output rather than as part of the notice above it.
+    expect(markNotice("first line\nsecond line\nthird", "Notice: ")).toEqual([
+      "Notice: first line",
+      "Notice: second line",
+      "Notice: third",
+    ]);
+  });
+
+  it("renders a single-line notice as exactly one line", () => {
+    expect(markNotice("just the one", "Notice: ")).toEqual([
+      "Notice: just the one",
+    ]);
+  });
+
+  it("carries the caller's marker, which is the only difference between the two renderers", () => {
+    // `verify` indents under the rule the notice belongs to; `check` marks at
+    // the left margin. Presentation, not a second contract.
+    expect(markNotice("a\nb", "    notice: ")).toEqual([
+      "    notice: a",
+      "    notice: b",
+    ]);
+  });
+
+  it("keeps an empty trailing line marked rather than dropping it", () => {
+    // Splitting is not filtering. A notice that ends in a newline still had
+    // that line, and silently dropping output is how a notice loses its tail.
+    expect(markNotice("text\n", "Notice: ")).toEqual([
+      "Notice: text",
+      "Notice: ",
     ]);
   });
 });

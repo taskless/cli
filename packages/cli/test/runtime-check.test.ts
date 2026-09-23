@@ -285,7 +285,18 @@ describe("check: static vs runtime dispatch", () => {
       directory,
       "--dangerously-run-scripts",
     ]);
-    expect(stderr).toContain("dangerously-run-scripts");
+    // The warning is a runtime PLAN notice, and plan notices used to be
+    // printed by their own loop with no marker at all while the dispatched
+    // ones were marked — so the same message looked like two different kinds
+    // of thing depending on which list it arrived on, and `--json` mixed both
+    // into one `notices` array. Every notice `check` prints is marked now.
+    const warningLines = stderr
+      .split("\n")
+      .filter((line) => line.includes("dangerously-run-scripts"));
+    expect(warningLines.length).toBeGreaterThan(0);
+    for (const line of warningLines) {
+      expect(line.startsWith("Notice: ")).toBe(true);
+    }
     expect(stdout).toContain("demo"); // runtime finding surfaced
   });
 

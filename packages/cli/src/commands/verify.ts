@@ -19,6 +19,7 @@ import {
 import { outputSchema as verifyTestOutputSchema } from "../schemas/verify-test";
 import { makeErrorEnvelope, writeJsonError } from "../types/errors";
 import { CLIError } from "../util/cli-error";
+import { markNotice } from "../util/notices";
 
 /**
  * The shared body of `verify` and `test`.
@@ -166,8 +167,8 @@ async function runOverPath(options: {
       // second line reads as an unlabelled stray rather than as a notice,
       // which is the defect `241e1c4` fixed.
       for (const notice of result.notices) {
-        for (const line of notice.split("\n")) {
-          console.log(`    notice: ${line}`);
+        for (const line of markNotice(notice, "    notice: ")) {
+          console.log(line);
         }
       }
     }

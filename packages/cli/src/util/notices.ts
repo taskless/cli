@@ -51,3 +51,28 @@ export function collectNotices(
     (notice): notice is string => notice !== undefined && notice !== ""
   );
 }
+
+/**
+ * Render one notice as the lines a command prints, each behind `marker`.
+ *
+ * **Every line, not just the first.** A notice can be multi-line prose that
+ * the CLI did not author: Vale's stderr is passed through as written, and a
+ * runtime repair notice embeds an `Error.message` from whatever failed. Mark
+ * only the first line and the rest read as stray output rather than as
+ * something the run is telling its author — the defect `241e1c4` fixed for
+ * `verify`, which `check` then carried on its dispatched notices and, on the
+ * runtime plan's notices, printed with no marker at all.
+ *
+ * Shared by both renderers so the two cannot drift apart again. They differ
+ * only in the marker — `commands/check.ts` prints `Notice: ` at the left
+ * margin, `commands/verify.ts` prints `    notice: ` indented under the rule
+ * it belongs to — which is a presentation choice, not a second contract.
+ *
+ * @param notice One notice, as {@link collectNotices} yields it.
+ * @param marker The prefix to put on each of its lines.
+ * @returns One string per line of `notice`, each already prefixed. Never
+ * empty: a notice with no newline renders as exactly one line.
+ */
+export function markNotice(notice: string, marker: string): string[] {
+  return notice.split("\n").map((line) => `${marker}${line}`);
+}

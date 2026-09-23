@@ -19,6 +19,7 @@ import { resolveRuleSelection, type RuleSelection } from "../rules/rule-filter";
 // because `test` runs a rule's fixtures under exactly this policy. Sharing the
 // implementation is what makes that a fact rather than an intention.
 import { planRuntime } from "../rules/runtime/plan";
+import { markNotice } from "../util/notices";
 
 async function pathExists(absolutePath: string): Promise<boolean> {
   try {
@@ -160,6 +161,28 @@ export const checkCommand = defineCommand({
     // machine consumer cannot read stderr prose.
     const warn = (message: string) => {
       if (!args.json) console.error(message);
+    };
+
+    /**
+     * Print one notice, marking EVERY line of it.
+     *
+     * One marker per notice, and one per line within a notice that spans
+     * lines. Both halves matter and both were missing somewhere. A notice can
+     * be multi-line prose — Vale's stderr is passed through as written, and a
+     * runtime repair notice embeds an `Error.message` it did not author — so
+     * marking the first line alone leaves the rest reading as stray output
+     * rather than as something the run is telling its author. That is the
+     * defect `241e1c4` fixed for `verify`; `check` had it on the dispatched
+     * notices, and printed the runtime plan's notices with no marker at all.
+     *
+     * Every notice `check` prints in text goes through here, so the three
+     * sources cannot drift apart again: the `--json` `notices` array mixes
+     * them, and text output that marked some and not others made the same
+     * message look like two different kinds of thing depending on which list
+     * it arrived on.
+     */
+    const warnNotice = (notice: string) => {
+      for (const line of markNotice(notice, "Notice: ")) warn(line);
     };
 
     // Set when a scan actually runs; drives cli_check_completed with counts
@@ -319,10 +342,10 @@ export const checkCommand = defineCommand({
           anonymous: args.anonymous,
           dangerouslyRunScripts: Boolean(args["dangerously-run-scripts"]),
         });
-        for (const notice of plan.notices) warn(notice);
+        for (const notice of plan.notices) warnNotice(notice);
         for (const skipped of plan.skipped) {
-          warn(
-            `Notice: runtime rule ${skipped.rule} was not run — ${skipped.reason}.`
+          warnNotice(
+            `runtime rule ${skipped.rule} was not run — ${skipped.reason}.`
           );
         }
 
@@ -353,14 +376,7 @@ export const checkCommand = defineCommand({
         });
         const results = dispatched.results;
 
-        // One marker per notice, and one per line within a notice that spans
-        // lines. `dispatched.notices` is already flat — one element per notice
-        // — but a single notice can still be multi-line prose, Vale's stderr
-        // above all, and without this split only its first line was marked.
-        // The same defect `241e1c4` fixed in `verify`.
-        for (const notice of dispatched.notices) {
-          for (const line of notice.split("\n")) warn(`Notice: ${line}`);
-        }
+        for (const notice of dispatched.notices) warnNotice(notice);
         const runNotices = [...plan.notices, ...dispatched.notices];
         for (const failure of dispatched.failures) warn(`Error: ${failure}`);
 
