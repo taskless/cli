@@ -51,7 +51,7 @@ The CLI SHALL use Vite in library mode to produce a single bundled ESM output fi
 #### Scenario: Build embeds agent recipe files
 
 - **WHEN** `pnpm build` is run in `packages/cli/`
-- **THEN** every `.txt` file under `packages/cli/src/agent/` SHALL be embedded in the output bundle
+- **THEN** every `.md` file under `packages/cli/src/agent/` SHALL be embedded in the output bundle
 
 #### Scenario: Build fails on version mismatch
 

@@ -10,8 +10,8 @@ Defines the `agent` subcommand for the `@taskless/cli` package, including recipe
 
 The CLI SHALL support an `agent` subcommand that accepts at most one positional argument identifying a topic AND an optional `--anonymous` boolean flag. Topics SHALL be addressed by a single token; the subcommand SHALL NOT join multiple positionals into a topic key. When a topic is provided, the subcommand SHALL look up a matching recipe file embedded at build time using the following resolution order:
 
-1. If `--anonymous` is set AND `<topic>.anonymous.txt` exists in the embedded map, return that file.
-2. Otherwise, return `<topic>.txt`.
+1. If `--anonymous` is set AND `<topic>.anonymous.md` exists in the embedded map, return that file.
+2. Otherwise, return `<topic>.md`.
 3. If neither exists, exit with code 1 and an error message suggesting `taskless agent` for the topic index.
 
 When no positional argument is provided, the subcommand SHALL print a topic index containing a one-paragraph human slug followed by a topic disambiguation table mapping topic names to their summaries.
@@ -21,18 +21,18 @@ The subcommand is named for its reader. It serves agents fetching a procedure, n
 #### Scenario: Agent subcommand for a topic returns the recipe
 
 - **WHEN** a user runs `taskless agent check`
-- **THEN** the CLI SHALL print the contents of `check.txt` to stdout
+- **THEN** the CLI SHALL print the contents of `check.md` to stdout
 
 #### Scenario: Multi-word topic paths are not resolved
 
 - **WHEN** a user runs `taskless agent rule create`
-- **THEN** the CLI SHALL NOT look up `rule-create.txt` by joining the positionals
+- **THEN** the CLI SHALL NOT look up `rule-create.md` by joining the positionals
 - **AND** it SHALL exit non-zero rather than guessing a topic
 
 #### Scenario: Formerly nested topics are addressed by one token
 
 - **WHEN** a user runs `taskless agent improve-rule`
-- **THEN** the CLI SHALL look up `improve-rule.txt` and print its contents
+- **THEN** the CLI SHALL look up `improve-rule.md` and print its contents
 
 #### Scenario: The former command name is gone
 
@@ -41,7 +41,7 @@ The subcommand is named for its reader. It serves agents fetching a procedure, n
 
 ### Requirement: Recipe files are embedded at build time
 
-Recipe files SHALL be located at `packages/cli/src/agent/` as plain `.txt` files. The Vite build SHALL embed these files into the CLI bundle via `import.meta.glob` with raw imports. A recipe file SHALL exist for every registered command and subcommand.
+Recipe files SHALL be located at `packages/cli/src/agent/` as `.md` files. The Vite build SHALL embed these files into the CLI bundle via `import.meta.glob` with raw imports. A recipe file SHALL exist for every registered command and subcommand.
 
 #### Scenario: Recipe files are available without filesystem access
 
@@ -51,15 +51,15 @@ Recipe files SHALL be located at `packages/cli/src/agent/` as plain `.txt` files
 #### Scenario: Recipe file naming convention
 
 - **WHEN** a recipe file is created for the `rule create` subcommand
-- **THEN** the file SHALL be named `rule-create.txt` in `packages/cli/src/agent/`
+- **THEN** the file SHALL be named `rule-create.md` in `packages/cli/src/agent/`
 
 ### Requirement: Recipe files follow a consistent format
 
-Every recipe file at `packages/cli/src/agent/<topic>.txt` SHALL follow the canonical recipe template: a single-line header `# Topic: <name>     (CLI v%(CLI_VERSION)s / topic v<n>)`, followed by `## Goal`, `## Preconditions`, `## Steps`, optional `## Input schema` (for recipes that take `--from`), `## Errors`, and `## See Also` sections in that order. Recipe templates SHALL use sprintf-js `%(KEY)s` named-argument placeholders for all substitution. The header SHALL embed `%(CLI_VERSION)s` for the CLI version. Topics that document a `--from` input SHALL embed `%(INPUT_SCHEMA)s` inside the `## Input schema` fenced code block. The topic version integer in the header SHALL be a literal value maintained by the recipe author and bumped when the recipe changes meaningfully.
+Every recipe file at `packages/cli/src/agent/<topic>.md` SHALL follow the canonical recipe template: a single-line header `# Topic: <name>     (CLI v%(CLI_VERSION)s / topic v<n>)`, followed by `## Goal`, `## Preconditions`, `## Steps`, optional `## Input schema` (for recipes that take `--from`), `## Errors`, and `## See Also` sections in that order. Recipe templates SHALL use sprintf-js `%(KEY)s` named-argument placeholders for all substitution. The header SHALL embed `%(CLI_VERSION)s` for the CLI version. Topics that document a `--from` input SHALL embed `%(INPUT_SCHEMA)s` inside the `## Input schema` fenced code block. The topic version integer in the header SHALL be a literal value maintained by the recipe author and bumped when the recipe changes meaningfully.
 
 #### Scenario: Recipe contains all template sections
 
-- **WHEN** any `<topic>.txt` file is read
+- **WHEN** any `<topic>.md` file is read
 - **THEN** it SHALL begin with a `# Topic:` header containing `%(CLI_VERSION)s` and the topic version integer
 - **AND** SHALL contain `## Goal`, `## Preconditions`, `## Steps`, `## Errors`, and `## See Also` sections in that order
 
@@ -206,20 +206,20 @@ Fetching a routing recipe SHALL emit the command's single intent event, `cli_age
 
 ### Requirement: Anonymous variant lookup uses a compile-time map
 
-The `agent` command SHALL construct, at build time, a Set of topic names that have a corresponding `<topic>.anonymous.txt` file. Lookup at runtime SHALL be O(1). The Set SHALL be derived from `import.meta.glob` matching `*.anonymous.txt` in the recipe directory.
+The `agent` command SHALL construct, at build time, a Set of topic names that have a corresponding `<topic>.anonymous.md` file. Lookup at runtime SHALL be O(1). The Set SHALL be derived from `import.meta.glob` matching `*.anonymous.md` in the recipe directory.
 
 #### Scenario: Topics with variants are detected at build time
 
 - **WHEN** the CLI bundle is built
-- **AND** a file `improve-rule.anonymous.txt` exists
+- **AND** a file `improve-rule.anonymous.md` exists
 - **THEN** the embedded variants set SHALL contain `improve-rule`
 
 #### Scenario: Topics without variants are absent from the map
 
 - **WHEN** the CLI bundle is built
-- **AND** no `check.anonymous.txt` file exists
+- **AND** no `check.anonymous.md` file exists
 - **THEN** the embedded variants set SHALL NOT contain `check`
-- **AND** `taskless agent check --anonymous` SHALL fall back to `check.txt`
+- **AND** `taskless agent check --anonymous` SHALL fall back to `check.md`
 
 ### Requirement: Embedded JSON schemas are generated via zod-to-json-schema
 
