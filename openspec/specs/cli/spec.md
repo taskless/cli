@@ -244,6 +244,8 @@ The CLI SHALL support a `taskless info` subcommand that outputs a JSON object to
 
 `tools` SHALL carry the command-line binaries this CLI's recipes can make use of. Each entry SHALL include the tool `name`, a `present` boolean, an `applicable` boolean, and a `path` string when and only when the tool is present. `present` SHALL be established by looking for a file of that name on `PATH` and SHALL NOT be established by executing anything: the CLI SHALL NOT spawn a detected binary, SHALL NOT read its version, and SHALL NOT hash it. `applicable` SHALL be `false` when the tool could accomplish nothing in this repository whatever is installed — `gh` in a repository with no GitHub `origin` — and `true` otherwise. The two fields SHALL remain distinct: a tool MAY be present and inapplicable, and that state SHALL NOT be reported as absence.
 
+An inapplicable entry SHALL additionally carry a `reason` string stating why, as a fragment naming the property that makes the tool useless there. The field SHALL be optional and SHALL be absent on an applicable tool, which has nothing to explain. It exists so a consumer can tell an unfixable condition from a fixable one without inferring it from the tool's name: `applicable: false` says to drop the capability, and the reason says whether any action by the user would change that.
+
 `repositoryUrl` SHALL be the canonical GitHub repository URL when one is resolvable from the git remote, and `null` otherwise. `ghOwner` SHALL be the owner segment of that URL when resolvable, and the literal `[unknown]` otherwise, matching the value telemetry records. The `applicable` field above SHALL be derived from that same resolution rather than from a second one, so the two cannot disagree.
 
 These fields exist so a caller deciding whether remote generation is available reads the same resolution the CLI enforces, rather than re-deriving the remote itself. `info` carries them because it is already the command consulted for capability state, and is already JSON. No new subcommand SHALL be added for this.
@@ -290,6 +292,12 @@ Neither field SHALL make `info` fail: an unresolvable remote is an ordinary stat
 - **WHEN** a user runs `taskless info --json` in a repository with no GitHub `origin`, on a host where `gh` is on `PATH`
 - **THEN** the `gh` entry SHALL report `present: true` and `applicable: false`
 - **AND** `ghOwner` SHALL be `[unknown]`
+
+#### Scenario: An inapplicable tool reports why
+
+- **WHEN** a user runs `taskless info --json` in a repository with no GitHub `origin`
+- **THEN** the `gh` entry SHALL carry a `reason` naming the absent GitHub origin
+- **AND** an entry reporting `applicable: true` SHALL carry no `reason`
 
 #### Scenario: Info reports logged in when token exists
 

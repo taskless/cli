@@ -185,6 +185,77 @@ describe("onboard recipe renders host-tool state", () => {
   });
 });
 
+// #394 review: `toolLine` hardcoded "this repository has no GitHub origin" for
+// ANY inapplicable tool. Unreachable through `detectHostTools`, which only ever
+// marks `gh` inapplicable — but this is a public render over a caller-supplied
+// array, so the guard belongs at the render, not at the one caller that happens
+// to be well behaved today.
+function renderWith(tools: HostTool[]): string {
+  return getRecipe("onboard", { hostTools: tools }) ?? "";
+}
+
+describe("an inapplicable tool renders its own reason", () => {
+  it("prints a non-gh tool's own reason verbatim", () => {
+    const rendered = renderWith([
+      { name: "gh", present: true, applicable: true },
+      { name: "git", present: true, applicable: true },
+      {
+        name: "jq",
+        present: true,
+        applicable: false,
+        reason: "this project ships no JSON fixtures",
+      },
+    ]);
+
+    expect(rendered).toContain(
+      "`jq`: nothing to do here (this project ships no JSON fixtures)"
+    );
+    // The bug: a reason belonging to another tool, asserted confidently.
+    expect(rendered).not.toContain(
+      "`jq`: nothing to do here (this repository has no GitHub origin)"
+    );
+  });
+
+  it("falls back to a generic line, never to the GitHub one, with no reason", () => {
+    const rendered = renderWith([
+      { name: "gh", present: true, applicable: true },
+      { name: "git", present: true, applicable: true },
+      { name: "jq", present: true, applicable: false },
+    ]);
+
+    expect(rendered).toContain("`jq`: nothing to do here");
+    // Nothing established a GitHub reason, so the render must not invent one.
+    expect(rendered).not.toContain("`jq`: nothing to do here (");
+    expect(rendered).not.toContain("no GitHub origin");
+  });
+
+  it("still carries gh's reason, which the detector supplies", async () => {
+    cwd = await makeRepository("https://gitlab.com/acme/widgets.git");
+    const tools = await detectHostTools(cwd);
+    const gh = tools.find((tool) => tool.name === "gh");
+
+    expect(gh?.reason).toBe("this repository has no GitHub origin");
+    expect(renderWith(tools)).toContain(
+      "`gh`: nothing to do here (this repository has no GitHub origin)"
+    );
+  });
+
+  // An applicable tool has nothing to explain, so the detector attaches
+  // nothing rather than an empty string a consumer would have to test for.
+  it("attaches no reason to an applicable tool", async () => {
+    cwd = await makeRepository("https://github.com/acme/widgets.git");
+
+    for (const tool of await detectHostTools(cwd)) {
+      if (tool.applicable) expect(tool.reason).toBeUndefined();
+    }
+  });
+
+  let cwd: string;
+  afterEach(async () => {
+    if (cwd) await rm(cwd, { recursive: true, force: true });
+  });
+});
+
 describe("the prompts export renders the full menu with no options", () => {
   it("offers every source and claims nothing about the host", () => {
     const rendered = getRecipe("onboard") ?? "";

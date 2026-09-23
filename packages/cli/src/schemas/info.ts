@@ -27,6 +27,11 @@ const hostToolSchema = z.object({
   present: z.boolean(),
   path: z.string().optional(),
   applicable: z.boolean(),
+  // Why `applicable` is false. Present only on an inapplicable tool, and
+  // carried here rather than left to the reader to infer: "not applicable"
+  // says to drop a source, the reason says whether anything the user could do
+  // would change that.
+  reason: z.string().optional(),
 });
 
 const authSchema = z.object({
