@@ -35,7 +35,7 @@ interface Report {
     ok: boolean;
     errors: string[];
     violations: { constraintId: string; message: string }[];
-    notice?: string;
+    notices: string[];
   }[];
 }
 
@@ -202,7 +202,7 @@ describe("verify checks components without requiring tests", () => {
     expect(rule?.errors).toContain(rule?.violations[0]?.message);
   });
 
-  it("accepts a Vale config with a repeated key, and says so on notice", async () => {
+  it("accepts a Vale config with a repeated key, and says so on notices", async () => {
     // The repeat is in a matcher that ends NO, but [docs/**] before it keeps
     // the rule enabled somewhere, so the config is accepted with a notice.
     await valeRule("no-simply", {
@@ -215,14 +215,16 @@ describe("verify checks components without requiring tests", () => {
     const rule = (JSON.parse(result.stdout) as Report).rules[0];
     expect(rule?.ok).toBe(true);
     expect(rule?.violations).toEqual([]);
-    expect(rule?.notice).toMatch(/assigns no-simply\.no-simply again/);
+    expect(rule?.notices).toEqual([
+      expect.stringMatching(/assigns no-simply\.no-simply again/),
+    ]);
   });
 
   // The style schema's own advisory, through the real CLI.
   // `vale-schema-contract.test.ts` holds the advisory to its rule; this says
-  // it reaches `notice` on `verify` output and `--json`, joined with whatever
-  // the config layer had to say, and that a one-entry list draws nothing.
-  it("accepts a Vale rule whose raw has two entries, and says so on notice", async () => {
+  // it reaches `notices` on `verify` output and `--json`, beside whatever the
+  // config layer had to say, and that a one-entry list draws nothing.
+  it("accepts a Vale rule whose raw has two entries, and says so on notices", async () => {
     await valeRule("no-twist", {
       config: "[*.md]\ntskl) rule = no-twist\nno-twist.no-twist = YES\n",
       style:
@@ -234,9 +236,9 @@ describe("verify checks components without requiring tests", () => {
     const rule = (JSON.parse(json.stdout) as Report).rules[0];
     expect(rule?.ok).toBe(true);
     expect(rule?.errors).toEqual([]);
-    expect(rule?.notice).toBe(
-      "no-twist: raw has 2 entries; Vale joins them into one pattern with no separator, so the second never matches on its own. Write one entry with (a|b) unless the join is intended."
-    );
+    expect(rule?.notices).toEqual([
+      "no-twist: raw has 2 entries; Vale joins them into one pattern with no separator, so the second never matches on its own. Write one entry with (a|b) unless the join is intended.",
+    ]);
 
     const text = await runCli(["verify", "-d", cwd]);
     expect(text.exitCode).toBe(0);
@@ -254,13 +256,13 @@ describe("verify checks components without requiring tests", () => {
     expect(json.exitCode).toBe(0);
     const rule = (JSON.parse(json.stdout) as Report).rules[0];
     expect(rule?.ok).toBe(true);
-    expect(rule?.notice).toBeUndefined();
+    expect(rule?.notices).toEqual([]);
 
     const text = await runCli(["verify", "-d", cwd]);
     expect(text.stdout).not.toContain("notice:");
   });
 
-  it("joins a raw advisory and a config advisory on one notice", async () => {
+  it("carries a raw advisory and a config advisory as two notices", async () => {
     await valeRule("no-twist", {
       config:
         "[docs/**]\ntskl) rule = no-twist\nno-twist.no-twist = YES\n\n" +
@@ -272,10 +274,16 @@ describe("verify checks components without requiring tests", () => {
     const result = await runCli(["verify", "-d", cwd, "--json"]);
     expect(result.exitCode).toBe(0);
     const rule = (JSON.parse(result.stdout) as Report).rules[0];
-    expect(rule?.notice?.split("\n")).toEqual([
+    // Two elements, not one string a consumer has to split on a separator
+    // nothing published. `--json` is the shape an agent reads, so the split
+    // has to have happened before it gets there.
+    expect(rule?.notices).toEqual([
       expect.stringContaining("raw has 2 entries"),
       expect.stringContaining("assigns no-twist.no-twist again"),
     ]);
+    for (const notice of rule?.notices ?? []) {
+      expect(notice).not.toContain("\n");
+    }
 
     // Text mode prefixes every line, so the second advisory is labelled too
     // rather than trailing the first as an unindented stray.
@@ -300,7 +308,9 @@ describe("verify checks components without requiring tests", () => {
     expect(rule?.violations.map((violation) => violation.constraintId)).toEqual(
       ["vale-config-enabled-somewhere"]
     );
-    expect(rule?.notice).toMatch(/assigns no-simply\.no-simply again/);
+    expect(rule?.notices).toEqual([
+      expect.stringMatching(/assigns no-simply\.no-simply again/),
+    ]);
   });
 
   // Found by running the recipe's own worked `consistency` rule under the

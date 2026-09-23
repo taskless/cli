@@ -42,11 +42,10 @@ const ruleResultSchema = z.object({
     .describe(
       "`test` only: the execution policy declined to run the rule's fixtures, and why. Neither a pass nor a failure, excluded from the rules tested, and never on its own a reason for a non-zero exit"
     ),
-  notice: z
-    .string()
-    .optional()
+  notices: z
+    .array(z.string())
     .describe(
-      "Something true about the rule that does not make it a failure, reported even on a pass"
+      "Things true about the rule that do not make it a failure, reported even on a pass. One notice per element, so a consumer can render each on its own; empty when there is nothing to say, never absent"
     ),
 });
 

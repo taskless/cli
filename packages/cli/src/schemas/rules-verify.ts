@@ -49,18 +49,22 @@ const layerResultSchema = z.object({
 });
 
 /**
- * Layer 1, which alone can also report something true that is not a failure.
+ * Layer 1, which alone can also report things that are true but not failures.
  *
  * An sg rule spelled `language: typescript` reaches the right parser and
  * verifies clean, but `TypeScript` is how ast-grep spells it. That is worth
  * saying on a rule that passed, so it cannot ride in `errors`.
+ *
+ * A list, one notice per element, because a rule can be true of more than one
+ * of these at once — an off-list spelling and a `files:` glob its language
+ * cannot parse. It was a single string joined with a space, which a consumer
+ * could not split back apart and which rendered as one run-on line.
  */
 const schemaLayerResultSchema = layerResultSchema.extend({
-  notice: z
-    .string()
-    .optional()
+  notices: z
+    .array(z.string())
     .describe(
-      "Something true about the rule that does not make it invalid — an accepted-but-off-list `language:` spelling above all. Present only when there is something to say"
+      "Things true about the rule that do not make it invalid — an accepted-but-off-list `language:` spelling above all. One notice per element; empty when there is nothing to say, never absent"
     ),
 });
 
@@ -117,11 +121,10 @@ export const valeVerifyOutputSchema = z.object({
   unexpectedFindings: z
     .array(z.string())
     .describe("pass/ fixtures the rule flagged and should not have"),
-  notice: z
-    .string()
-    .optional()
+  notices: z
+    .array(z.string())
     .describe(
-      "What Vale wrote to stderr while still exiting zero — a W101 ignored-assignment warning above all. Present only when Vale said something"
+      "What Vale wrote to stderr while still exiting zero — a W101 ignored-assignment warning above all — plus the converter-skip notice, one per element. Empty when Vale said nothing, never absent"
     ),
 });
 

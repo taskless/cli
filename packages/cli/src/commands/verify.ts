@@ -160,11 +160,13 @@ async function runOverPath(options: {
       // makes Vale exit zero having enabled nothing, so the clean line above
       // is exactly the moment the author needs to hear this.
       //
-      // A notice is one advisory per line, joined with `\n` (a style-layer
-      // advisory beside a config-layer one, say). Every line gets the prefix,
-      // so the second reads as a notice rather than as an unlabelled stray.
-      if ("notice" in result && result.notice !== undefined) {
-        for (const line of result.notice.split("\n")) {
+      // One marker per notice (a style-layer advisory beside a config-layer
+      // one, say), and one per line within a notice that spans lines — Vale's
+      // stderr is passed through as written. Without the inner split the
+      // second line reads as an unlabelled stray rather than as a notice,
+      // which is the defect `241e1c4` fixed.
+      for (const notice of result.notices) {
+        for (const line of notice.split("\n")) {
           console.log(`    notice: ${line}`);
         }
       }

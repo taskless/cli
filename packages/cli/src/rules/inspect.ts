@@ -23,6 +23,7 @@ import {
 } from "./runtime/run-fixtures";
 import { validateValeRuleConfig } from "../schemas/vale-config";
 import { validateValeRule } from "../schemas/vale-rule";
+import { collectNotices } from "../util/notices";
 import { verifyRule, type VerifyResult } from "./verify";
 import { violate, type RuleViolation } from "./constraints";
 import { describeRuleIdCollision, findRuleIdCollision } from "./id-uniqueness";
@@ -51,13 +52,18 @@ export interface RuleVerification {
    */
   violations: RuleViolation[];
   /**
-   * Something true about the rule that does not make it invalid. An sg rule
-   * spelled `language: typescript` reaches the right parser and fails nothing,
-   * but the canonical spelling is `TypeScript` — worth saying, not worth
-   * failing. Surfaced even on a pass, for the same reason
-   * {@link RuleTestResult.notice} is.
+   * Things true about the rule that do not make it invalid, one per element. An
+   * sg rule spelled `language: typescript` reaches the right parser and fails
+   * nothing, but the canonical spelling is `TypeScript` — worth saying, not
+   * worth failing. Surfaced even on a pass, for the same reason
+   * {@link RuleTestResult.notices} is.
+   *
+   * A list rather than one joined string so the renderer owns presentation: it
+   * prints one `    notice: ` marker per element. A producer that picked its own
+   * separator mis-rendered instead — which is exactly what `language:` did,
+   * joining two independent advisories with a space into one run-on line.
    */
-  notice?: string;
+  notices: string[];
 }
 
 /** What `test` concluded about one rule. */
@@ -102,14 +108,14 @@ export interface RuleTestResult {
    */
   refused?: string;
   /**
-   * Something the engine said about its own configuration, as opposed to about
-   * the rule. Vale reports a misplaced `.vale.ini` assignment this way: it
-   * exits zero and finds nothing, so the run looks clean precisely when the
-   * rule was never enabled. Carried separately from `errors` because it does
-   * not make the result a failure — and surfaced even on a pass, since a pass
-   * is the case it exists for.
+   * What the engine said about its own configuration, as opposed to about the
+   * rule, one notice per element. Vale reports a misplaced `.vale.ini`
+   * assignment this way: it exits zero and finds nothing, so the run looks
+   * clean precisely when the rule was never enabled. Carried separately from
+   * `errors` because it does not make the result a failure — and surfaced even
+   * on a pass, since a pass is the case it exists for.
    */
-  notice?: string;
+  notices: string[];
 }
 
 /** What `test` needs beyond a rule, all of it about the runtime engine. */
@@ -175,9 +181,7 @@ async function verifySgRule(
       ok: errors.length === 0,
       errors,
       violations,
-      ...(result.schema.notice === undefined
-        ? {}
-        : { notice: result.schema.notice }),
+      notices: result.schema.notices,
     },
     result,
   };
@@ -336,7 +340,7 @@ async function verifyRuleComponents(
       ok: errors.length === 0,
       errors,
       violations,
-      ...(advisories.length === 0 ? {} : { notice: advisories.join("\n") }),
+      notices: collectNotices(advisories),
     };
   }
 
@@ -385,7 +389,14 @@ async function verifyRuleComponents(
       }
     }
   }
-  return { engine, ruleId, ok: errors.length === 0, errors, violations: [] };
+  return {
+    engine,
+    ruleId,
+    ok: errors.length === 0,
+    errors,
+    violations: [],
+    notices: [],
+  };
 }
 
 /**
@@ -471,9 +482,7 @@ export async function testOneRule(
       errors,
       violations,
       ran: true,
-      ...(verification.notice === undefined
-        ? {}
-        : { notice: verification.notice }),
+      notices: verification.notices,
     };
   }
 
@@ -492,6 +501,7 @@ export async function testOneRule(
         errors: [result.outcome.message],
         violations: [],
         ran: false,
+        notices: [],
       };
     }
     const errors: string[] = [];
@@ -512,7 +522,7 @@ export async function testOneRule(
       errors,
       violations: [],
       ran: true,
-      ...(result.notice === undefined ? {} : { notice: result.notice }),
+      notices: result.notices,
     };
   }
 
@@ -552,6 +562,7 @@ export async function testOneRule(
       violations: [],
       ran: false,
       refused: reason,
+      notices: [],
     };
   }
 
@@ -575,6 +586,7 @@ export async function testOneRule(
       violations: [],
       ran: false,
       refused: reason,
+      notices: [],
     };
   }
 
@@ -593,6 +605,7 @@ export async function testOneRule(
       errors: [error instanceof Error ? error.message : String(error)],
       violations: [],
       ran: false,
+      notices: [],
     };
   }
 
@@ -608,5 +621,6 @@ export async function testOneRule(
     errors: describeFixtureReport(ruleId, report),
     violations: [],
     ran: true,
+    notices: [],
   };
 }

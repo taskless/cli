@@ -334,8 +334,11 @@ withVale(
 
       expect(outcome.status).toBe("ok");
       if (outcome.status !== "ok") return;
-      expect(outcome.notice).toContain("docs/nested.adoc");
-      expect(outcome.notice).toContain("asciidoctor");
+      // One skip notice, as one element: the converter-skip advisory is a
+      // single notice, not two glued together by a separator.
+      expect(outcome.notices).toHaveLength(1);
+      expect(outcome.notices[0]).toContain("docs/nested.adoc");
+      expect(outcome.notices[0]).toContain("asciidoctor");
     });
 
     it("declines a converter-dependent file even when named explicitly", async () => {
@@ -359,7 +362,8 @@ withVale(
         true
       );
       expect(outcome.results.length).toBeGreaterThan(0);
-      expect(outcome.notice).toContain("d.adoc");
+      expect(outcome.notices).toHaveLength(1);
+      expect(outcome.notices[0]).toContain("d.adoc");
     });
 
     it("keeps out of .taskless/ while excluding converter formats", () => {
