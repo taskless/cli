@@ -147,12 +147,12 @@ Recipe authors SHALL escape any literal `%` character in recipe content as `%%` 
 
 ### Requirement: onboard topic is registered in the agent index
 
-An agent topic `onboard` SHALL be registered. The CLI SHALL embed `packages/cli/src/agent/onboard.txt` at build time via the existing `import.meta.glob` mechanism. `taskless agent onboard` SHALL print the contents of `onboard.txt`. The topic SHALL appear in the output of `taskless agent` (the index) with a one-line summary describing it as the post-install rule-discovery flow.
+An agent topic `onboard` SHALL be registered. The CLI SHALL embed `packages/cli/src/agent/onboard.md` at build time via the existing `import.meta.glob` mechanism. `taskless agent onboard` SHALL print the contents of `onboard.md`. The topic SHALL appear in the output of `taskless agent` (the index) with a one-line summary describing it as the post-install rule-discovery flow.
 
 #### Scenario: The onboard topic returns the recipe
 
 - **WHEN** a user runs `taskless agent onboard`
-- **THEN** the CLI SHALL print the contents of `onboard.txt` to stdout
+- **THEN** the CLI SHALL print the contents of `onboard.md` to stdout
 - **AND** SHALL exit with code 0
 
 #### Scenario: Topic index includes onboard
