@@ -43,3 +43,7 @@
 - [x] 3.3 Add the separate-advisories contract to `cli-vale-rule-engine`.
 - [x] 3.4 Dry-run `openspec archive` and diff requirement and scenario counts
       per capability to prove nothing standing is dropped.
+- [x] 3.5 Archive for real on this PR, which is the tip, and check the result
+      against the dry run's counts. `openspec-label.yml` reports an unarchived
+      change directory, and `main` takes pull requests only, so a change that
+      lands unarchived needs a second PR to correct it.
