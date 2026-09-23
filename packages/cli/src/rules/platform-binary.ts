@@ -66,8 +66,15 @@ export function platformPackageName(spec: PlatformBinarySpec): string {
   return `${spec.packagePrefix}-${parts.join("-")}`;
 }
 
-/** Executable name for this platform. */
-function executableName(name: string): string {
+/**
+ * Executable name for this platform.
+ *
+ * Exported because {@link findOnPath} does an exact `existsSync` against each
+ * `PATH` entry and consults neither `PATHEXT` nor any extension list, so every
+ * caller must apply this first or silently find nothing on Windows. Pairing
+ * the two here is what keeps that from being re-derived per caller.
+ */
+export function executableName(name: string): string {
   return process.platform === "win32" ? `${name}.exe` : name;
 }
 
