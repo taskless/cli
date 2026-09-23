@@ -73,7 +73,35 @@ export const initCommand = defineCommand({
     const cwd = resolve(args.dir ?? process.cwd());
     const telemetry = await getTelemetry(cwd);
 
-    const result = await runNonInteractive(cwd, { json: args.json });
+    // Under `--json`, a failure has to reach stdout as an envelope like every
+    // other machine-readable command's does. It did not: a throwing migration
+    // left stdout completely empty and put prose on stderr, so a consumer that
+    // parses stdout saw nothing at all and had only the exit code to go on.
+    // `update` has carried the envelope for its own failures all along
+    // (`makeErrorEnvelope` below); this is the same shape, not a second one.
+    //
+    // The rethrow is what keeps this from becoming a swallow: `reported`
+    // suppresses the top-level handler's stderr print (the envelope is the
+    // report) while the throw still sets the exit code and gives telemetry the
+    // failure to classify. Carrying the original `code` through means
+    // `SCAFFOLD_CONFLICT` is still what `cli_error` records.
+    let result: Awaited<ReturnType<typeof runNonInteractive>>;
+    try {
+      result = await runNonInteractive(cwd, { json: args.json });
+    } catch (error) {
+      if (!args.json) throw error;
+      const message = error instanceof Error ? error.message : String(error);
+      const code =
+        error instanceof CLIError && error.code ? error.code : "INTERNAL_ERROR";
+      console.log(JSON.stringify(makeErrorEnvelope(code, message)));
+      throw new CLIError(
+        message,
+        error instanceof CLIError ? error.code : undefined,
+        {
+          reported: true,
+        }
+      );
+    }
     if (args.json) {
       console.log(
         JSON.stringify({
