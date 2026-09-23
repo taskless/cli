@@ -411,6 +411,18 @@ function toolLine(tool: HostTool): string {
  * The title is inside the substitution because it is the part that is wrong in
  * the other state: "probe before promising" is the correct instruction when
  * nothing has been measured and a stale one the moment the CLI has answered.
+ *
+ * THE LIST IS WHAT THE CALLER SUPPLIED, NOT A CENSUS. `hostTools` is public
+ * surface and a caller may pass a subset — the mechanism is meant to be reused
+ * by recipes with their own tools — so a name can be missing because nobody
+ * looked, not because it is not installed. The step says so, because otherwise
+ * "the list above is the answer" invites exactly the inference this change
+ * exists to prevent: a verdict read out of silence.
+ *
+ * Without that line the two passages contradict each other on a partial array.
+ * {@link prReviewSource} asks {@link toolState} about `gh` specifically and
+ * renders the unmeasured default when the array does not mention it, while
+ * this step would claim the enumeration was exhaustive.
  */
 function hostToolsStep(tools: HostTool[] | undefined): string {
   if (tools === undefined || tools.length === 0) {
@@ -427,10 +439,13 @@ file is what its name says.
 
 ${tools.map((tool) => toolLine(tool)).join("\n")}
 
-Do not run \`command -v\` for any of them; the list above is the
-answer, and re-deriving it costs a turn and can only agree. MCP
-servers are deliberately absent from it — Taskless cannot see your MCP
-roster, so whether a bug tracker is reachable stays your judgement.`;
+Do not run \`command -v\` for the tools listed above; for those the
+list is the answer, and re-deriving it costs a turn and can only
+agree. A tool NOT listed was not looked for, which is not the same as
+not installed — treat it as unknown and probe it yourself if you need
+it. MCP servers are absent from the list for that reason: Taskless
+cannot see your MCP roster, so whether a bug tracker is reachable
+stays your judgement.`;
 }
 
 /** The invocation a render should use, resolved the same way `TASKLESS_CLI` is. */
