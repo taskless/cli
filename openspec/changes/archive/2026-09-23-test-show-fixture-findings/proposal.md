@@ -39,7 +39,9 @@ So this is plumbing rather than a new engine invocation: no extra subprocess, no
 
 ## Delivery shape
 
-**Stacked, merging forward — this is the bottom PR of two.** Each unit reaches production on its own: this one plumbs the two engines that already hold `CheckResult[]`, and an ast-grep rule reporting `findings: []` is true rather than misleading, since the array's contract is "present and empty when there is nothing to report". PR 2 adds ast-grep, which needs a way to get structured output out of a binary that offers none, and would otherwise hold a working feature behind an unrelated investigation. The changeset lands here, at the bottom, and PR 2 extends it.
+**Single PR, targeting `main`.** The spec, the implementation and the archive land together. It is not a stack: nothing is stacked above this branch and nothing needs to be, because the two engines that already hold a `CheckResult[]` are the whole of what this change plumbs.
+
+ast-grep is deliberately **out of scope rather than a later slice of this change**, and gets its own proposal when it is written. Surfacing its findings is not more of the same work: `sg test` has no `--json` and no output-format flag, and its fixtures are inline YAML scalars rather than files, so it needs a way to get structured output out of a binary that offers none. Nothing in this change's spec delta requires it — the requirement states that the array is empty for an engine that does not yet surface its fixture findings, which is exactly what an ast-grep rule reports here and is true rather than misleading.
 
 ## Capabilities
 
