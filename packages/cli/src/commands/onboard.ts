@@ -3,6 +3,7 @@ import process from "node:process";
 
 import { defineCommand } from "citty";
 
+import { detectHostTools } from "../detect/host-tools";
 import { ensureTasklessDirectory } from "../filesystem/directory";
 import { readManifest, writeManifest } from "../filesystem/manifest";
 import { getRecipe } from "../prompts/recipes";
@@ -107,8 +108,14 @@ export const onboardCommand = defineCommand({
     // invocation in it as the agent-fill marker for anyone running a
     // published build.
     const invocation = detectCliInvocation(processLauncherContext());
+    // Detected here for the same reason `invocation` is: the render path is
+    // imported by Workers without `nodejs_compat` and may not read `PATH`.
+    // `agent onboard` computes the same state from the same `cwd`; the two
+    // must agree, and `onboard.test.ts` asserts they do byte for byte.
+    const hostTools = await detectHostTools(cwd);
     const recipe = getRecipe("onboard", {
       invocation,
+      hostTools,
       // Served text is a fetch, the same as `agent onboard`, which this must
       // match byte for byte.
       directive: true,

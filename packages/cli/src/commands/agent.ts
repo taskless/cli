@@ -9,7 +9,12 @@ import {
 } from "citty";
 
 import { getTelemetry } from "../telemetry";
-import { getRecipe } from "../prompts/recipes";
+import { detectHostTools } from "../detect/host-tools";
+import {
+  HOST_TOOL_VARIABLES,
+  getRawRecipe,
+  getRecipe,
+} from "../prompts/recipes";
 import { withSurveyInvite } from "../survey/invite";
 import { applyCliInvocation } from "../util/invocation";
 import {
@@ -191,9 +196,22 @@ export function createAgentCommand(subCommands: SubCommandsDef) {
       // time. When the launcher is unknown the value is `undefined` and the
       // renderer falls back to its agent-fill marker.
       const invocation = detectCliInvocation(processLauncherContext());
+      // Host-tool detection is likewise a CLI-side read passed in, but unlike
+      // the invocation it costs a `git` subprocess, so it runs only for the
+      // topics whose template actually contains a conditioned passage. The
+      // template is asked (`variables` comes from sprintf's own parse) rather
+      // than a topic name being hardcoded, so the next recipe to use the
+      // mechanism needs no edit here.
+      const template = getRawRecipe(key, { anonymous: args.anonymous });
+      const hostTools = template?.variables.some((name) =>
+        HOST_TOOL_VARIABLES.has(name)
+      )
+        ? await detectHostTools(cwd)
+        : undefined;
       const recipe = getRecipe(key, {
         anonymous: args.anonymous,
         invocation,
+        hostTools,
         // What this command serves IS a fetch, so the served text says so:
         // resolved now, fetch again next task, and a session that installed
         // or upgraded mid-way holds a stale skill. The prompts export leaves

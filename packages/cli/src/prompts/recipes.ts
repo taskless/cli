@@ -96,6 +96,39 @@ const PACKAGE_MANAGER_DLX_MARKER = "<package-manager-dlx>";
  */
 const TASKLESS_CLI_MARKER = "<taskless-cli>";
 
+/**
+ * One command-line tool a recipe can condition on, as the host measured it.
+ *
+ * PRESENCE, NEVER VERIFICATION. `present` means a file of that name was found
+ * on the host's `PATH`. Nothing was executed, nothing was hashed and no
+ * version was read, so a rendering must say "is on your PATH" and never "is
+ * available" — the second is a claim about a working install that nobody
+ * checked.
+ *
+ * Declared HERE rather than beside the detector because this is the render
+ * contract, and this module is what `@taskless/cli/prompts` publishes. The
+ * detector (`src/detect/host-tools.ts`) imports the type; nothing flows the
+ * other way, so the prompts chunk graph stays free of node builtins.
+ */
+export interface HostTool {
+  /** The command as it would be typed, e.g. `gh`. */
+  name: string;
+  /** A file of this name was found on the host's `PATH`. */
+  present: boolean;
+  /** Where it was found. Absent exactly when `present` is false. */
+  path?: string;
+  /**
+   * This tool could accomplish something where the recipe will run.
+   *
+   * A SEPARATE AXIS FROM `present`. `gh` in a repository with no GitHub
+   * `origin` is inapplicable however well it is installed, and the sentence a
+   * reader needs there ("there are no pull requests to mine") is not the
+   * sentence a missing binary earns ("install it"). See
+   * {@link RecipeOptions.hostTools} for the precedence this buys.
+   */
+  applicable: boolean;
+}
+
 /** Options accepted by the shared render path. */
 export interface RecipeOptions {
   /**
@@ -174,6 +207,27 @@ export interface RecipeOptions {
    * @default false
    */
   directive?: boolean;
+  /**
+   * What the host has on its `PATH`, for the passages that condition on it.
+   *
+   * AN ARGUMENT, NEVER AN AMBIENT READ, for the same reason `invocation` is:
+   * reading `PATH` needs `process`, and this module is imported by Workers
+   * without `nodejs_compat`. The CLI detects (`src/detect/host-tools.ts`) and
+   * passes the result in.
+   *
+   * Omitting it renders every conditioned passage at its default, which is the
+   * recipe's full text with no source dropped and no claim made about what is
+   * installed. That is the right answer for a consumer of
+   * `@taskless/cli/prompts`: it has no `PATH` worth describing, and a recipe
+   * trimmed against THIS host's tooling would be describing the wrong machine.
+   *
+   * When it is supplied, a passage is selected on both fields, and
+   * `applicable: false` OUTRANKS `present: false`. A tool that could do
+   * nothing here is reported as inapplicable rather than as missing, whether
+   * or not it is installed — otherwise a repository with no GitHub remote is
+   * told to install `gh`, which is the one instruction that cannot help it.
+   */
+  hostTools?: HostTool[];
 }
 
 /**
@@ -216,6 +270,135 @@ function runBlock(
   connective: string
 ): string {
   return `Run:\n   \`\`\`\n   ${invocation} ${command}\n   \`\`\`\n   ${connective}`;
+}
+
+/**
+ * Indent every line after the first, so a multi-line block substituted into an
+ * indented `%(KEY)s` is still the markdown unit it replaces.
+ *
+ * The placeholder sits at the position of the block's FIRST line, so that line
+ * is already indented by the template and must not be indented again. A blank
+ * line stays blank: trailing whitespace on an empty line is a diff nobody
+ * wants and `prettier` would strip it back out of the recipe source anyway.
+ */
+function indentBlock(text: string, indent: string): string {
+  return text
+    .split("\n")
+    .map((line, index) => (index === 0 || line === "" ? line : indent + line))
+    .join("\n");
+}
+
+/**
+ * The variable names whose value depends on {@link RecipeOptions.hostTools}.
+ *
+ * Exported so a caller can ask a TEMPLATE whether detection is worth paying
+ * for — `getRawRecipe(topic).variables` reports what sprintf's own parse
+ * found — instead of keeping a list of which topics use the mechanism, which
+ * would go stale the first time a second recipe adopts one of these.
+ */
+export const HOST_TOOL_VARIABLES: ReadonlySet<string> = new Set([
+  "SOURCE_PR_REVIEW",
+  "HOST_TOOLS",
+]);
+
+/** The state a passage conditioned on one tool renders from. */
+type ToolState = "unknown" | "present" | "absent" | "not-applicable";
+
+/**
+ * How a named tool stands, collapsed to the four cases a passage has prose for.
+ *
+ * `undefined` tools — the whole option omitted, or a list that does not mention
+ * this one — are `unknown`, which renders the unconditioned default rather than
+ * an absence. Nothing was measured, so nothing may be claimed.
+ *
+ * PRECEDENCE IS THE POINT: `applicable` is read before `present`, so a tool
+ * that is installed but useless here is `not-applicable` and never `absent`.
+ */
+function toolState(tools: HostTool[] | undefined, name: string): ToolState {
+  const tool = tools?.find((candidate) => candidate.name === name);
+  if (tool === undefined) return "unknown";
+  if (!tool.applicable) return "not-applicable";
+  return tool.present ? "present" : "absent";
+}
+
+/**
+ * The PR-review entry in the onboard recipe's source menu, as a whole list
+ * item.
+ *
+ * A WHOLE ITEM, connective included, for the reason written above
+ * {@link runBlock}: the bullet's own marker and label are part of what changes
+ * between states, and a substitution that replaced only the sentence would
+ * leave a bullet whose label contradicts its body. Every branch below is
+ * valid markdown at the same nesting level.
+ *
+ * The `absent` and `not-applicable` branches SAY WHY rather than dropping the
+ * bullet. `route.md` reached the same conclusion for the remote-generation
+ * tier it declines to offer: a reader who is not told reads the omission as an
+ * oversight and asks for it, which costs a turn and arrives back here.
+ */
+function prReviewSource(tools: HostTool[] | undefined): string {
+  switch (toolState(tools, "gh")) {
+    case "present": {
+      return `- **Recent PR review comments**: \`gh\` is on your PATH.
+Taskless looked for the file and did not run it, so treat that as
+presence rather than as a working install. Suggest scanning the last
+30 days of merged PRs for repeated reviewer feedback patterns.`;
+    }
+    case "absent": {
+      return `- **Recent PR review comments** are not on this menu: \`gh\` is
+not on your PATH. Say that rather than passing over the source in
+silence, and offer to pick it up if the user installs the GitHub CLI.`;
+    }
+    case "not-applicable": {
+      return `- **Recent PR review comments** are not on this menu: this
+repository has no GitHub origin, so there are no pull requests to
+mine. Installing the GitHub CLI does not change that. Say so rather
+than passing over the source in silence.`;
+    }
+    default: {
+      return `- **Recent PR review comments**: reading merged PRs needs the
+GitHub CLI (\`gh\`) or something equivalent. Suggest scanning the last
+30 days of merged PRs for repeated reviewer feedback patterns.`;
+    }
+  }
+}
+
+/** One line of the detected-tool list, phrased as presence. */
+function toolLine(tool: HostTool): string {
+  if (!tool.applicable) {
+    return `- \`${tool.name}\`: nothing to do here (this repository has no GitHub origin)`;
+  }
+  return tool.present
+    ? `- \`${tool.name}\`: on your PATH${tool.path === undefined ? "" : ` (${tool.path})`}`
+    : `- \`${tool.name}\`: not on your PATH`;
+}
+
+/**
+ * The onboard recipe's tool step, as a whole numbered step including its title.
+ *
+ * The title is inside the substitution because it is the part that is wrong in
+ * the other state: "probe before promising" is the correct instruction when
+ * nothing has been measured and a stale one the moment the CLI has answered.
+ */
+function hostToolsStep(tools: HostTool[] | undefined): string {
+  if (tools === undefined || tools.length === 0) {
+    return `**Confirm a tool exists before promising a scan.** For each source
+the user picks, check that whatever it needs is actually there. Don't
+tell the user "I'll scan PR comments" if the GitHub CLI isn't
+installed; say "PR comments need the GitHub CLI, or equivalent; want
+me to skip this or wait while you install it?"`;
+  }
+  return `**Taskless already looked, so don't probe again.** It checked your
+PATH for a file of each of these names and executed none of them.
+This is presence: not a version, not a working install, not proof the
+file is what its name says.
+
+${tools.map((tool) => toolLine(tool)).join("\n")}
+
+Do not run \`command -v\` for any of them; the list above is the
+answer, and re-deriving it costs a turn and can only agree. MCP
+servers are deliberately absent from it — Taskless cannot see your MCP
+roster, so whether a bug tracker is reachable stays your judgement.`;
 }
 
 /** The invocation a render should use, resolved the same way `TASKLESS_CLI` is. */
@@ -264,6 +447,13 @@ export function buildVariables(
     // knows: the caller was told how the CLI was launched; the build is a
     // nightly/dev/self that knows what it is; nobody knows, so ask the agent.
     TASKLESS_CLI: resolveInvocation(options),
+    // Conditional blocks: one of a fixed set of whole passages, chosen by
+    // state the CALLER measured. Substituted whole — bullet marker, step
+    // title, connective and all — for the reason `runBlock` documents above,
+    // and never post-stripped, which could not promise the default rendering
+    // is byte-for-byte the text a consumer with no host receives.
+    SOURCE_PR_REVIEW: indentBlock(prReviewSource(options.hostTools), "     "),
+    HOST_TOOLS: indentBlock(hostToolsStep(options.hostTools), "   "),
   };
   if (content.includes("%(INPUT_SCHEMA)s")) {
     const schema = TOPIC_INPUT_SCHEMAS[topic];

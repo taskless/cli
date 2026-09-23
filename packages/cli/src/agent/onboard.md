@@ -1,4 +1,4 @@
-# Topic: onboard     (CLI v%(CLI_VERSION)s / topic v3)
+# Topic: onboard     (CLI v%(CLI_VERSION)s / topic v4)
 
 ## Goal
 Help a user who has just installed Taskless go from zero rules to a
@@ -61,22 +61,20 @@ rules as a bullet list the user can choose to materialize via the
    - **Agent-memory files**: read `CLAUDE.md`, `AGENTS.md`,
      `.cursorrules`, `.opencode/AGENTS.md`, and similar agent-context
      files for explicit rules and conventions stated in prose.
-   - **Recent PR review comments**: only if the `gh` CLI is
-     available. Probe with `command -v gh`. Suggest scanning the last
-     30 days of merged PRs for repeated reviewer feedback patterns.
-   - **Issue tracker tickets**: only if a relevant MCP is wired in
-     (Linear, Jira, GitHub issues via `gh issue list`, etc.). Use
-     whatever issue-tracker tools you have available.
+   %(SOURCE_PR_REVIEW)s
+   - **Bug-tracker tickets**: only if you have an MCP that reaches a
+     tracker. Taskless cannot see your MCP roster, so this one is your
+     call rather than something it can answer for you: look at the
+     tools you actually have and offer the source only if one of them
+     gets you tickets. Jira and Linear are examples of the class, not
+     the expected answer, and a self-hosted tracker behind an MCP
+     counts exactly the same.
 
    Then explicitly ask: "Are there other places I should look, a
    team wiki, an internal docs site, a specific design doc, a Slack
    channel export?" The user often knows about sources you don't.
 
-4. **Probe tool availability before promising a scan.** For each
-   source the user picks, verify the tool exists before committing
-   to it. Don't tell the user "I'll scan PR comments" if `gh` isn't
-   installed, say "PR comments need the GitHub CLI, or equivalent; want me to skip
-   this or wait while you install these tools?"
+4. %(HOST_TOOLS)s
 
 5. **Scan with high-signal filtering.** For each chosen source:
 

@@ -111,6 +111,16 @@ export type PromptTopic = (typeof TOPICS)[number];
 export type PromptOptions = RecipeOptions;
 
 /**
+ * One command-line tool the CALLER measured on its host, for
+ * {@link PromptOptions.hostTools}.
+ *
+ * Re-exported rather than left implicit: `declaration: true` requires every
+ * type reachable from an exported signature to be exported itself, and a
+ * consumer building the array needs the shape by name.
+ */
+export type { HostTool } from "./recipes.js";
+
+/**
  * Render a prompt to finished text. Every `%(KEY)s` placeholder is resolved
  * from values the package already holds, so the caller never handles a
  * template dialect.

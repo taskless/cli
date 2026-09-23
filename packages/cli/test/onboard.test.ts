@@ -314,3 +314,85 @@ describe("onboard recipe establishes the routing surface first", () => {
     expect(stdout).not.toContain("create-remote-rule");
   });
 });
+
+// #393: the recipe now carries passages conditioned on what the host has on
+// `PATH` and on whether the repository is on GitHub. `onboard` is not a topic
+// `agent` dispatches to a shared detection step — each command detects for
+// itself — so a state one computes and the other does not is exactly the
+// regression byte-parity exists to catch, and the pre-existing parity test
+// cannot see it: it runs in one state only.
+async function repositoryWith(origin?: string): Promise<string> {
+  const directory = await mkdtemp(join(tmpdir(), "taskless-onboard-tools-"));
+  await execFileAsync("git", ["init", "-q"], { cwd: directory });
+  if (origin !== undefined) {
+    await execFileAsync("git", ["remote", "add", "origin", origin], {
+      cwd: directory,
+    });
+  }
+  return directory;
+}
+
+describe("the two serving paths agree in every host-tool state", () => {
+  let cwd: string;
+
+  afterEach(async () => {
+    await rm(cwd, { recursive: true, force: true });
+  });
+
+  async function bothPaths(
+    environment: NodeJS.ProcessEnv = {}
+  ): Promise<[string, string]> {
+    // `process.execPath` rather than `node`, so the PATH-less case below can
+    // empty `PATH` without also losing the interpreter.
+    const run = async (args: string[]): Promise<string> => {
+      const { stdout } = await execFileAsync(
+        process.execPath,
+        [binPath, ...args],
+        { cwd, env: { ...process.env, ...environment } }
+      );
+      return stdout.trim();
+    };
+    return [
+      await run(["onboard", "--force", "-d", cwd]),
+      await run(["agent", "onboard", "-d", cwd]),
+    ];
+  }
+
+  it("agrees, and offers the PR source, in a GitHub repository", async () => {
+    cwd = await repositoryWith("https://github.com/acme/widgets.git");
+
+    const [viaOnboard, viaAgent] = await bothPaths();
+
+    expect(viaOnboard).toBe(viaAgent);
+    expect(viaOnboard).toContain("Taskless already looked");
+  });
+
+  it("agrees, and drops the PR source, outside GitHub", async () => {
+    cwd = await repositoryWith("https://gitlab.com/acme/widgets.git");
+
+    const [viaOnboard, viaAgent] = await bothPaths();
+
+    expect(viaOnboard).toBe(viaAgent);
+    expect(viaOnboard).toContain("repository has no GitHub origin");
+    expect(viaOnboard).not.toContain("**Recent PR review comments**: `gh` is");
+  });
+
+  it("agrees when PATH holds nothing at all", async () => {
+    cwd = await repositoryWith("https://github.com/acme/widgets.git");
+
+    const [viaOnboard, viaAgent] = await bothPaths({ PATH: "" });
+
+    expect(viaOnboard).toBe(viaAgent);
+    expect(viaOnboard).toContain("`git`: not on your PATH");
+    expect(viaOnboard).toContain("`jq`: not on your PATH");
+    // `gh` reports INAPPLICABLE here, not merely absent, and that is correct
+    // rather than a leak: with no `git` to run, the remote cannot be
+    // resolved, `ghOwner` is the `[unknown]` sentinel, and the repository is
+    // indistinguishable from one that is not on GitHub. The precedence rule
+    // then picks the reason that installing something cannot fix, which is
+    // the honest answer — nothing here established that there are PRs to
+    // mine.
+    expect(viaOnboard).toContain("`gh`: nothing to do here");
+    expect(viaOnboard).not.toContain("command -v gh");
+  });
+});
