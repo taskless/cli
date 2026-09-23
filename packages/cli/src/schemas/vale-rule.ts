@@ -618,6 +618,137 @@ function fatalShapeMessages(
 }
 
 /**
+ * A backreference in a `swap` key, which can never match.
+ *
+ * The first hard error in this layer for a pattern-quality problem the binary
+ * itself accepts. Every other rejection here is justified by whole-run blast
+ * radius — an `E201` suppresses every rule's findings, a panic ends the run —
+ * and their messages say so. This one cannot borrow that argument: Vale loads
+ * the rule, runs it, writes nothing to stderr, and reports nothing. The rule is
+ * silently dead, and a dead rule is indistinguishable from a clean project, so
+ * the author learns nothing at the only moment they are looking.
+ *
+ * ## Why no capture group survives a swap key
+ *
+ * Measured against Vale {@link PINNED_VALE_VERSION} and read off
+ * `internal/check/substitution.go` (`NewSubstitution`). Vale compiles all of a
+ * rule's swap keys into **one** alternation, wrapping each key in a capture
+ * group of its own so that the index of the group that matched says which key
+ * it was, and therefore which replacement to offer:
+ *
+ * ```go
+ * tokens += `(` + regexstr + `)|`
+ * ```
+ *
+ * Those wrapper groups have to be numbered 1..n for that lookup to work, so
+ * any group the author wrote would shift the numbering. Vale removes them:
+ *
+ * ```go
+ * convertCaptureGroups(regexstr)   // `(?<!\\)\((?!\?)` -> `(?:`
+ * ```
+ *
+ * The two halves together mean a `\1` in a swap key never refers to anything
+ * the author wrote, in either branch of Vale's own guard:
+ *
+ * - The key **has** a capturing group — `(\w+) \1` — so the rewrite runs and
+ *   the group becomes `(?:\w+)`. `\1` is now Vale's wrapper.
+ * - The key has **no** capturing group — `the \1`, `(?:\w+) \1` — so the
+ *   rewrite is skipped (the guard counts `(` against `(?` and `\(`) and `\1`
+ *   is Vale's wrapper directly.
+ *
+ * Either way `\1` is a self-reference to the group still being matched, which
+ * is empty at that point and can never hold the text the author meant. Both
+ * forms were measured silent; the same patterns under `tokens` and under `raw`
+ * fire, which is what makes this a `swap`-only defect rather than a claim about
+ * Vale's regex engine. Vale compiles every pattern with `regexp2` in RE2 mode
+ * unconditionally (`internal/regex/regex.go:63`), so backreferences are
+ * available everywhere else.
+ *
+ * ## Why detection can be this literal
+ *
+ * The rewrite only ever replaces `(`, so it can neither create nor destroy a
+ * `\<digit>`. "Apply `convertCaptureGroups`, then look for a surviving
+ * backreference" therefore collapses to a single left-to-right scan for an
+ * unescaped `\<1-9>`, with no rewrite to perform.
+ *
+ * The scan tracks character classes because that is a measured difference, not
+ * defensive programming. Inside `[…]` a `\1` is an **octal** escape, not a
+ * backreference: `[\1a]bc` matches `abc` and was measured firing. A detector
+ * that skipped the class bookkeeping would reject a working rule, and there is
+ * no suppression mechanism anywhere in the CLI for the author to reach for.
+ *
+ * Also measured as accepted, and each covered by a test: `a\\1b` (an escaped
+ * backslash, then a literal `1`), `q\(1\)z` (escaped parentheses), and
+ * `(?:bull|ox)-like` (a non-capturing group and no backreference at all).
+ */
+function hasLiveBackreference(pattern: string): boolean {
+  let inClass = false;
+  for (let index = 0; index < pattern.length; index += 1) {
+    const character = pattern[index];
+    if (character === "\\") {
+      const next = pattern[index + 1];
+      if (!inClass && next !== undefined && next >= "1" && next <= "9") {
+        return true;
+      }
+      // Skip the escaped character, so `\\1` reads as a backslash then a `1`.
+      index += 1;
+      continue;
+    }
+    if (inClass) {
+      if (character === "]") {
+        inClass = false;
+      }
+      continue;
+    }
+    if (character === "[") {
+      inClass = true;
+    }
+  }
+  return false;
+}
+
+function swapBackreferenceMessages(
+  rule: Record<string, unknown>
+): { path: PropertyKey[]; message: string }[] {
+  const { swap } = rule;
+  // Scoped to `substitution` deliberately, and the guard is not redundant with
+  // the field tables. `swap` is `substitution`'s field alone, so the strict
+  // union already rejects it on the other ten checks with an `E201` message —
+  // but `consistency` and `spelling` decode loosely (see `permissiveCheck`),
+  // so a `swap` map on either reaches here. Only `NewSubstitution` builds the
+  // alternation described above, so only there is the diagnosis below the true
+  // one, and claiming it elsewhere would be the too-strict direction on a
+  // guess.
+  if (
+    rule.extends !== "substitution" ||
+    typeof swap !== "object" ||
+    swap === null ||
+    Array.isArray(swap)
+  ) {
+    return [];
+  }
+  return Object.keys(swap)
+    .filter((key) => hasLiveBackreference(key))
+    .map((key) => ({
+      path: ["swap", key],
+      message:
+        `swap key ${JSON.stringify(key)} uses a backreference, and it can ` +
+        `never match. Vale compiles a rule's swap keys into one alternation, ` +
+        `wrapping each key in a capture group of its own and rewriting every ` +
+        `group you wrote to a non-capturing one, so ` +
+        String.raw`'\1'` +
+        ` refers to Vale's ` +
+        `wrapper rather than to anything in your pattern. Nothing is ` +
+        `reported: Vale ${PINNED_VALE_VERSION} loads the rule, writes nothing ` +
+        `to stderr, and the rule never fires on any document — so a silently ` +
+        `dead rule reads exactly like a clean project. Write it as an ` +
+        `'existence' rule instead, where a backreference works under both ` +
+        `'tokens' and 'raw'. ('$1' in the swap VALUE is a different thing and ` +
+        `does work; only the key is affected.)`,
+    }));
+}
+
+/**
  * The action names Vale 3.21.0 accepts at load.
  *
  * Transcribed, not derived, and the provenance is `checkAction` in upstream
@@ -791,6 +922,7 @@ const valeBodySchema = z
     const rule = context.value as Record<string, unknown>;
     for (const { path, message } of [
       ...fatalShapeMessages(rule),
+      ...swapBackreferenceMessages(rule),
       ...actionMessages(rule),
     ]) {
       context.issues.push({ code: "custom", input: rule, path, message });

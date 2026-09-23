@@ -179,6 +179,14 @@ const existenceOver = (
 const swapPatternRule = (pattern: string): string =>
   `extends: substitution\nmessage: "%s -> %s"\nlevel: warning\nswap:\n  '${pattern}': REPLACED\n`;
 
+/** A `consistency` rule whose single `either` key is the pattern under test. */
+const consistencyEither = (key: string): string =>
+  `extends: consistency\nmessage: "%s"\nlevel: warning\nnonword: false\neither:\n  '${key}': 'zzzz'\n`;
+
+/** A `conditional` rule whose `first` is the pattern under test. */
+const conditionalFirst = (first: string): string =>
+  `extends: conditional\nmessage: "%s"\nlevel: warning\nfirst: '${first}'\nsecond: 'zzzz'\n`;
+
 /** A word budget of 8 over whatever `scope` names. */
 const budget = (scope: string) =>
   `extends: metric\nmessage: "%s words"\nlevel: error\nscope: '${scope}'\nformula: words\ncondition: "> 8"\n`;
@@ -752,14 +760,18 @@ withVale("Vale vendor contract", () => {
   });
 
   describe("lookaround and backreferences compile", () => {
-    // Vale tries Go's own `regexp` first and falls back to `regexp2` when a
-    // pattern will not compile, so constructs Go's engine has never had are
-    // still available. The recipe said the opposite from topic v1 (2026-08-13,
-    // the commit that introduced the claim) through v12, corrected here at v13
-    // (taskless/cli#371), and sent authors off to split a rule that one
-    // pattern expresses, so the correction is pinned against the binary rather
-    // than restated in prose: if a future Vale drops the fallback, these go
-    // red and the recipe's step 3 is wrong again.
+    // Vale compiles EVERY pattern with `regexp2` in RE2 compatibility mode,
+    // unconditionally -- `regexp2.Compile(expr, regexp2.RE2)`, the whole body
+    // of `Compile` in `internal/regex/regex.go:63`. There is no Go-`regexp`
+    // path and nothing falls back to anything, so constructs Go's own engine
+    // has never had are simply available. The recipe said the opposite from
+    // topic v1 (2026-08-13, the commit that introduced the claim) through v12,
+    // and sent authors off to split a rule that one pattern expresses. v13
+    // (taskless/cli#371) fixed the user-facing conclusion but explained it
+    // with a two-engine fallback that does not exist; v14 (taskless/cli#392)
+    // corrects the explanation. The conclusion is pinned against the binary
+    // rather than restated in prose: if a future Vale narrows the engine,
+    // these go red and the recipe's step 3 is wrong again.
     //
     // The recipe scopes the claim to `tokens` and `swap`, so those are
     // measured here too rather than inferred from `raw`. They do not behave
@@ -835,13 +847,30 @@ withVale("Vale vendor contract", () => {
       expect(lines(behind, "Here is z y now.\n").lines).toEqual([]);
     });
 
-    // ...but a backreference is SILENTLY inert in `swap`, where the identical
-    // pattern fires under both `tokens` and `raw`. Nothing is written to
-    // stderr and the rule loads, so a `swap` rule built on `\1` looks healthy
-    // and never fires at all. The literal control pins that the rule shape and
-    // the document are otherwise fine, so the silence is the backreference and
-    // not the scaffolding. This is why the recipe's step 3 can no longer say
-    // "backreferences work" for `tokens` and `swap` in one breath.
+    // ...but a backreference is SILENTLY inert in a `swap` key, where the
+    // identical pattern fires under both `tokens` and `raw`. Nothing is
+    // written to stderr and the rule loads, so a `swap` rule built on `\1`
+    // looks healthy and never fires at all.
+    //
+    // The cause is not the regex engine, which is the same `regexp2` here as
+    // everywhere else. It is that NO CAPTURE GROUP SURVIVES A SWAP KEY.
+    // `NewSubstitution` (`internal/check/substitution.go`) compiles all of a
+    // rule's keys into one alternation, wrapping each key in a group of its
+    // own so the index of the group that matched says which replacement to
+    // offer (`tokens += "(" + regexstr + ")|"`). Those wrappers must be
+    // numbered 1..n, so any group the author wrote is rewritten away first by
+    // `convertCaptureGroups`, whose pattern is `(?<!\\)\((?!\?)` -> `(?:`.
+    //
+    // That is why the four cases below all behave the same despite differing
+    // in whether there is a group to convert: Vale's guard skips the rewrite
+    // when the key has no capturing `(`, and then `\1` is the wrapper
+    // directly. Either way `\1` is a self-reference to the group still being
+    // matched.
+    //
+    // Depended on by: the `swap` backreference REJECTION in
+    // `src/schemas/vale-rule.ts` (and its tests in
+    // `vale-schema-contract.test.ts`), which is a hard error. If Vale ever
+    // makes these work, this test goes red and that error must come out.
     it("silently ignores a backreference in a `swap` key", () => {
       const repeated = "A the the repeated word.\n";
 
@@ -861,6 +890,124 @@ withVale("Vale vendor contract", () => {
         expect(
           lines(existenceOver("raw", `'${pattern}'`), repeated).messages
         ).toEqual(["the the"]);
+      }
+    });
+
+    // The half a "does the key have a capture group?" detector would miss.
+    // Neither of these has one, so Vale's rewrite never runs -- and both are
+    // just as inert, because the number they reference belongs to Vale's own
+    // wrapper. The schema's detector therefore looks for the backreference and
+    // never for the group.
+    it("ignores a `swap` backreference with no capture group to convert", () => {
+      const repeated = "A the the repeated word.\n";
+      for (const pattern of [String.raw`the \1`, String.raw`(?:\w+) \1`]) {
+        const swapped = lines(swapPatternRule(pattern), repeated);
+        expect(swapped.lines, `swap key ${pattern}`).toEqual([]);
+        expect(swapped.stderr, `swap key ${pattern}`).toBe("");
+      }
+    });
+
+    // Inside a character class `\1` is an OCTAL escape, not a backreference,
+    // so the key works and the schema must not reject it. This is the one
+    // case that makes the detector's character-class bookkeeping mandatory
+    // rather than polish: there is no suppression mechanism in the CLI, so a
+    // false positive here leaves an author with no recourse.
+    it("honors `\\1` inside a character class, where it is an octal escape", () => {
+      expect(
+        lines(swapPatternRule(String.raw`[\1a]bc`), "Here is abc now.\n")
+          .messages
+      ).toEqual(["REPLACED -> abc"]);
+    });
+
+    // The other forms the detector must not mistake for a backreference, each
+    // measured firing: an escaped backslash then a literal digit, and escaped
+    // parentheses.
+    it("honors keys that only look like backreferences", () => {
+      expect(
+        lines(swapPatternRule(String.raw`a\\1b`), "here a\\1b now.\n").messages
+      ).toEqual([String.raw`REPLACED -> a\1b`]);
+      expect(
+        lines(swapPatternRule(String.raw`q\(1\)z`), "here q(1)z now.\n")
+          .messages
+      ).toEqual(["REPLACED -> q(1)z"]);
+    });
+
+    // The asymmetry worth teaching beside the rejection: `$1` in the swap
+    // VALUE does work, because `subMsg` re-applies the ORIGINAL, unconverted
+    // key to the observed text to expand it. Only the key is affected by the
+    // rewrite, so "capture groups are useless in a substitution rule" would be
+    // the wrong lesson to take from the rejection.
+    it("expands `$1` in a `swap` value from the unconverted key", () => {
+      const rule =
+        'extends: substitution\nmessage: "%s"\nlevel: warning\nswap:\n' +
+        "  'colour(s?)': 'color$1'\n";
+      expect(lines(rule, "Many colours here.\n").messages).toEqual(["colors"]);
+      expect(lines(rule, "One colour here.\n").messages).toEqual(["color"]);
+    });
+
+    // The mirror of the trailing-lookahead case above, and the recipe
+    // documented only one direction until v14. A `tokens` entry is wrapped in
+    // `\b…\b`, and the LEADING `\b` lands BEFORE a leading lookbehind, so the
+    // boundary is tested between whatever the lookbehind peeked at and the
+    // match. With a word character there it is not a boundary and the pattern
+    // cannot match at all. `swap` wraps the same way and behaves the same;
+    // `raw` is verbatim and fires.
+    it("wraps a leading lookbehind in the implicit word boundaries", () => {
+      const glued = String.raw`(?<=x)foo`;
+      const document = "We wrote xfoo here.\n";
+      expect(
+        lines(existenceOver("tokens", `'${glued}'`), document).lines
+      ).toEqual([]);
+      expect(lines(swapPatternRule(glued), document).lines).toEqual([]);
+      expect(
+        lines(existenceOver("raw", `'${glued}'`), document).messages
+      ).toEqual(["foo"]);
+    });
+
+    // The blast radius, measured rather than assumed. `swap` is the only
+    // pattern field with this defect: `consistency` wraps each `either` key in
+    // a NAMED group (`(?P<chk2>…)`, `internal/check/consistency.go`) and
+    // regexp2 numbers named groups after unnamed ones, so the author's `\1`
+    // still points at the author's group; `conditional` compiles `first` and
+    // `second` directly with no wrapping at all. If a future Vale widens
+    // `convertCaptureGroups` to either, these go red and the schema's
+    // rejection has to widen with it.
+    //
+    // Each direction is asserted, because a pattern that fails to compile and
+    // a pattern that compiled and did not match are indistinguishable from a
+    // finding count alone.
+    it("honors a backreference in a `consistency` key", () => {
+      const both = "A the the repeat and a zzzz here.\n";
+      const neither = "A the cat sat and a zzzz here.\n";
+
+      // The literal control establishes what "working" looks like: both forms
+      // present flags the minority spelling, one form alone says nothing.
+      expect(lines(consistencyEither("the the"), both).messages).toEqual([
+        "zzzz",
+      ]);
+      expect(lines(consistencyEither("the the"), neither).lines).toEqual([]);
+
+      // The backreference tracks it exactly, so it matched.
+      const backref = consistencyEither(String.raw`(\w+) \1`);
+      expect(lines(backref, both).messages).toEqual(["zzzz"]);
+      expect(lines(backref, neither).lines).toEqual([]);
+    });
+
+    it("honors a backreference in a `conditional` first", () => {
+      const repeated = "A the the repeated word.\n";
+      const satisfied = "A the the repeated word and zzzz.\n";
+
+      expect(lines(conditionalFirst("the the"), repeated).messages).toEqual([
+        "the the",
+      ]);
+      for (const first of [String.raw`(\w+) \1`, String.raw`(the) \1`]) {
+        expect(
+          lines(conditionalFirst(first), repeated).messages,
+          first
+        ).toEqual(["the the"]);
+        expect(lines(conditionalFirst(first), satisfied).lines, first).toEqual(
+          []
+        );
       }
     });
   });
