@@ -506,7 +506,9 @@ async function fixtureCoverage(
     // author has written nothing, the other has written a file that is sitting
     // right there and silently not counted. Only the second is
     // `sg-fixture-id-matches-rule`, so only the second may be attributed to it.
-    if (buckets.id !== ruleId) {
+    // Compared as a string: an unquoted numeric `id:` resolves to a JS number,
+    // which never equals the string ruleId.
+    if (String(buckets.id) !== ruleId) {
       excludedById = true;
       continue;
     }

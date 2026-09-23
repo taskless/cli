@@ -130,16 +130,28 @@ function anchorOf(source: string, item: Scalar): SnippetAnchor {
   const newline = source.indexOf("\n", start);
   if (newline === -1) return { line: lineOf(start), indent: 0, perLine: false };
   const contentStart = newline + 1;
-  const nextNewline = source.indexOf("\n", contentStart);
-  const firstLine = source.slice(
-    contentStart,
-    nextNewline === -1 ? undefined : nextNewline
-  );
-  return {
-    line: lineOf(contentStart),
-    indent: firstLine.length - firstLine.trimStart().length,
-    perLine: true,
-  };
+  // YAML detects a block scalar's indentation from its first NON-EMPTY line:
+  // leading blank lines carry no indentation and must not be measured. Reading
+  // the literal first line instead reports indent 0 for a snippet written with
+  // a leading blank line, which shifts every column left by the real indent —
+  // wrong rather than merely imprecise, since `perLine` stays true here.
+  // `line` still refers to the first content line, blank or not, because the
+  // value handed to ast-grep keeps those blanks and its line numbers count them.
+  let indent = 0;
+  for (
+    let lineStart = contentStart;
+    lineStart < source.length;
+    lineStart = source.indexOf("\n", lineStart) + 1
+  ) {
+    const lineEnd = source.indexOf("\n", lineStart);
+    const text = source.slice(lineStart, lineEnd === -1 ? undefined : lineEnd);
+    if (text.trim() !== "") {
+      indent = text.length - text.trimStart().length;
+      break;
+    }
+    if (lineEnd === -1) break;
+  }
+  return { line: lineOf(contentStart), indent, perLine: true };
 }
 
 /** Move a finding's position from snippet coordinates into file coordinates. */
@@ -283,7 +295,11 @@ export async function collectSgFixtureFindings(
     // The same exclusion `countFixtures` applies: a file carrying another
     // rule's `id:` is not this rule's fixture set, and ast-grep would not run
     // it under this rule either.
-    if (document.get("id") !== ruleId) continue;
+    // Compared as a string: an unquoted numeric `id:` (`id: 123`) resolves to
+    // the JS number 123, which never equals the string ruleId, so the file
+    // would be excluded from its own rule's fixtures and the findings would
+    // silently read as empty.
+    if (String(document.get("id")) !== ruleId) continue;
 
     const reportedFile = toRelativePosix(cwd, testFile);
 
