@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { promisify } from "node:util";
@@ -33,9 +33,11 @@ const withVale = findValeBinary().path === undefined ? describe.skip : describe;
 
 let cwd: string;
 
-async function runCli(args: string[]) {
+async function runCli(args: string[], env?: NodeJS.ProcessEnv) {
   try {
-    const { stdout, stderr } = await execFileAsync("node", [binPath, ...args]);
+    const { stdout, stderr } = await execFileAsync("node", [binPath, ...args], {
+      env: env === undefined ? process.env : { ...process.env, ...env },
+    });
     return { stdout, stderr, exitCode: 0 };
   } catch (error) {
     return cliRejectionToResult(error, [binPath, ...args]);
@@ -390,6 +392,246 @@ describe("a runtime rule's fixture findings", () => {
 });
 
 /* -------------------------------------------------------------------------- */
+/* ast-grep                                                                    */
+/* -------------------------------------------------------------------------- */
+
+const SG_RULE = "swap-args";
+
+/**
+ * A rule whose message interpolates TWO metavariables, chosen for the same
+ * reason Vale's `substitution` was.
+ *
+ * `swap($FIRST, $SECOND)` with a message naming them in the other order is the
+ * ast-grep spelling of the defect this file exists for: the rule fires on every
+ * `invalid:` snippet, stays quiet on every `valid:` one, and `sg test` reports
+ * it green whichever order the message names them in. Only the rendered string
+ * tells the two apart.
+ */
+const SG_RULE_YAML = [
+  `id: ${SG_RULE}`,
+  "language: TypeScript",
+  "severity: warning",
+  "message: replace $SECOND with $FIRST",
+  "rule:",
+  "  pattern: swap($FIRST, $SECOND)",
+  "",
+].join("\n");
+
+/** What the rule above renders for `swap(alpha, beta)`. */
+const SG_RENDERED = "replace beta with alpha";
+
+/** The message a rule with the slots the other way round would render. */
+const SG_REVERSED = "replace alpha with beta";
+
+/**
+ * Literal block scalars (`|`), which is what ast-grep's own test files use and
+ * the spelling a per-line position mapping is sound for. The exact line and
+ * column asserted below are read off this layout, so it is load-bearing:
+ *
+ * ```
+ * 1  id: swap-args
+ * 2  valid:
+ * 3    - |
+ * 4      <valid snippet>
+ * 5  invalid:
+ * 6    - |
+ * 7      swap(alpha, beta);
+ * ```
+ */
+function sgTestYaml(validSnippet: string): string {
+  return [
+    `id: ${SG_RULE}`,
+    "valid:",
+    "  - |",
+    `    ${validSnippet}`,
+    "invalid:",
+    "  - |",
+    "    swap(alpha, beta);",
+    "",
+  ].join("\n");
+}
+
+async function writeSwapRule(options: { validFires?: boolean } = {}) {
+  const directory = join(cwd, ".taskless", "rules", "sg", SG_RULE);
+  await mkdir(join(directory, ".tests"), { recursive: true });
+  await writeFile(join(directory, `${SG_RULE}.yml`), SG_RULE_YAML);
+  await writeFile(
+    join(directory, ".tests", `${SG_RULE}-test.yml`),
+    sgTestYaml(
+      (options.validFires ?? false) ? "swap(one, two);" : "const fine = 1;"
+    )
+  );
+}
+
+/** The fixture file a finding must point back at, cwd-relative and POSIX. */
+const SG_TEST_FILE = `.taskless/rules/sg/${SG_RULE}/.tests/${SG_RULE}-test.yml`;
+
+async function testSg(...extra: string[]) {
+  return runCli(["test", `.taskless/rules/sg/${SG_RULE}`, "-d", cwd, ...extra]);
+}
+
+/** As {@link testSg}, but with the CLI's whole temp directory redirected. */
+async function testSgWithTemporary(temporary: string, ...extra: string[]) {
+  return runCli(
+    ["test", `.taskless/rules/sg/${SG_RULE}`, "-d", cwd, ...extra],
+    {
+      TMPDIR: temporary,
+    }
+  );
+}
+
+describe("an ast-grep rule's fixture findings", () => {
+  it("reports the rendered message, so swapped metavariables cannot pass", async () => {
+    // THE test, and the ast-grep half of what #386 asked for. Both orderings
+    // fire in exactly the same places and both are reported green by
+    // `sg test`; this string is the only thing that distinguishes them.
+    await writeSwapRule();
+
+    const { stdout, exitCode } = await testSg("--json");
+    const report = JSON.parse(stdout) as Report;
+
+    expect(exitCode).toBe(0);
+    expect(report.ok).toBe(true);
+    const messages = findingsOf(report).map((finding) => finding.message);
+    expect(messages).toEqual([SG_RENDERED]);
+    expect(messages).not.toContain(SG_REVERSED);
+  });
+
+  it("carries the whole check finding, pointing back into the fixture file", async () => {
+    // `file` is the test YAML, not ast-grep's `STDIN` and not a temp path.
+    // Both of those are unopenable, and the author's next move after reading a
+    // wrong message is to go and edit the snippet.
+    await writeSwapRule();
+
+    const { stdout } = await testSg("--json");
+    const report = JSON.parse(stdout) as Report;
+    const finding = findingsOf(report)[0];
+
+    expect(finding).toBeDefined();
+    expect(finding?.source).toBe("ast-grep");
+    expect(finding?.ruleId).toBe(SG_RULE);
+    expect(finding?.severity).toBe("warning");
+    expect(finding?.matchedText).toBe("swap(alpha, beta)");
+    expect(finding?.file).toBe(SG_TEST_FILE);
+    // Line 7 of the layout above, zero-based, and column 4 for the block
+    // scalar's indentation — the real coordinates of `swap(alpha, beta);` in
+    // the fixture file, not the snippet-relative 0:0 ast-grep reports.
+    expect(finding?.range.start.line).toBe(6);
+    expect(finding?.range.start.column).toBe(4);
+  });
+
+  it("reports the invalid bucket as `fail` on a run that passed", async () => {
+    await writeSwapRule();
+
+    const { stdout } = await testSg("--json");
+    const report = JSON.parse(stdout) as Report;
+
+    expect(report.rules[0]?.ok).toBe(true);
+    expect(findingsOf(report, "fail")).toHaveLength(1);
+    expect(findingsOf(report, "pass")).toHaveLength(0);
+  });
+
+  it("tags a wrongly-fired valid snippet as the pass bucket", async () => {
+    await writeSwapRule({ validFires: true });
+
+    const { stdout, exitCode } = await testSg("--json");
+    const report = JSON.parse(stdout) as Report;
+
+    expect(exitCode).toBe(1);
+    expect(report.ok).toBe(false);
+    const passFindings = findingsOf(report, "pass");
+    expect(passFindings).toHaveLength(1);
+    expect(passFindings[0]?.file).toBe(SG_TEST_FILE);
+    expect(passFindings[0]?.message).toBe("replace two with one");
+    // Line 4 of the layout: the `valid:` snippet, three lines above the
+    // `invalid:` one, so the two buckets cannot be reporting the same position.
+    expect(passFindings[0]?.range.start.line).toBe(3);
+  });
+
+  it("prints one line and no findings when the rule passed", async () => {
+    await writeSwapRule();
+
+    const { stdout } = await testSg();
+
+    expect(stdout).toContain(`✓ sg/${SG_RULE}`);
+    expect(stdout).not.toContain(SG_RENDERED);
+    expect(stdout).not.toContain("fixture findings");
+  });
+
+  it("prints what matched under a failing rule, through check's renderer", async () => {
+    await writeSwapRule({ validFires: true });
+
+    const { stdout } = await testSg();
+
+    expect(stdout).toContain(`✗ sg/${SG_RULE}`);
+    expect(stdout).toContain("pass fixture findings:");
+    expect(stdout).toContain("replace two with one");
+    // `check`'s own renderer, so a finding does not read two ways depending on
+    // which command surfaced it — and the fixture file with a line a reader can
+    // go to.
+    expect(stdout).toContain(`warning[${SG_RULE}] replace two with one`);
+    expect(stdout).toContain(`${SG_TEST_FILE}:4:5`);
+  });
+
+  it("degrades to no findings when ast-grep cannot parse the rule's language", async () => {
+    // A `language:` ast-grep does not recognise makes it refuse the rule file
+    // outright. Collecting findings must not turn that into a crash, and
+    // because the collector loads this ONE rule with `-r`, it cannot take any
+    // other rule's report down with it either.
+    const directory = join(cwd, ".taskless", "rules", "sg", SG_RULE);
+    await mkdir(join(directory, ".tests"), { recursive: true });
+    await writeFile(
+      join(directory, `${SG_RULE}.yml`),
+      SG_RULE_YAML.replace("language: TypeScript", "language: Cobolesque")
+    );
+    await writeFile(
+      join(directory, ".tests", `${SG_RULE}-test.yml`),
+      sgTestYaml("const fine = 1;")
+    );
+
+    const { stdout } = await testSg("--json");
+    const report = JSON.parse(stdout) as Report;
+
+    // Reported as a rule with no findings rather than an absent key, and the
+    // command still produced a parseable report at all.
+    expect(report.rules[0]?.findings).toEqual([]);
+  });
+
+  it("leaves no temp files behind, on a passing run or a failing one", async () => {
+    // The route deliberately writes nothing: each snippet is streamed to
+    // `ast-grep scan --stdin`. This pins that, since the alternative design
+    // (materialise each snippet as a file) is the one that could strand
+    // artifacts and be picked up by a later `check`.
+    //
+    // The CLI's whole temp directory is redirected to a private one rather than
+    // diffing the shared `tmpdir()`, which other suites are writing to
+    // concurrently — a diff there would be measuring the rest of the run.
+    const temporary = await mkdtemp(join(tmpdir(), "tskl-sg-tmp-"));
+
+    await writeSwapRule();
+    const passing = await testSgWithTemporary(temporary, "--json");
+    expect(passing.exitCode).toBe(0);
+    expect(await readdir(temporary)).toEqual([]);
+
+    await writeSwapRule({ validFires: true });
+    const failing = await testSgWithTemporary(temporary, "--json");
+    expect(failing.exitCode).toBe(1);
+    expect(await readdir(temporary)).toEqual([]);
+
+    await rm(temporary, { recursive: true, force: true });
+
+    // And nothing stray inside the rule directory either — only the rule file
+    // and its `.tests/`.
+    const ruleDirectory = join(cwd, ".taskless", "rules", "sg", SG_RULE);
+    const ruleEntries = await readdir(ruleDirectory);
+    expect(ruleEntries.toSorted()).toEqual([".tests", `${SG_RULE}.yml`]);
+    expect(await readdir(join(ruleDirectory, ".tests"))).toEqual([
+      `${SG_RULE}-test.yml`,
+    ]);
+  });
+});
+
+/* -------------------------------------------------------------------------- */
 /* Always present                                                              */
 /* -------------------------------------------------------------------------- */
 
@@ -408,13 +650,27 @@ async function writeSgRule() {
 }
 
 describe("the findings array is present on every rule result", () => {
-  it("is empty rather than absent for an ast-grep rule", async () => {
-    // `sg test` reports a count and nothing else, and its fixtures are inline
-    // YAML scalars rather than files. Empty is the true answer here, and it has
-    // to be stated rather than left to an absent key.
-    await writeSgRule();
+  it("is empty rather than absent for an ast-grep rule that matched nothing", async () => {
+    // An `invalid:` snippet the rule does not match is a rule whose fixtures
+    // produced nothing. Empty is the true answer, and it has to be stated
+    // rather than left to an absent key.
+    //
+    // `sg test` fails the rule for it, which is the point: the verdict and the
+    // findings are decided separately, and an empty `findings` is not the same
+    // claim as a passing rule.
+    const directory = join(cwd, ".taskless", "rules", "sg", "no-eval-sg");
+    await mkdir(join(directory, ".tests"), { recursive: true });
+    await writeFile(
+      join(directory, "no-eval-sg.yml"),
+      "id: no-eval-sg\nlanguage: TypeScript\nseverity: error\n" +
+        "message: no eval\nrule:\n  pattern: eval($ARG)\n"
+    );
+    await writeFile(
+      join(directory, ".tests", "no-eval-sg-test.yml"),
+      "id: no-eval-sg\nvalid:\n  - const a = 1;\ninvalid:\n  - const b = 2;\n"
+    );
 
-    const { stdout, exitCode } = await runCli([
+    const { stdout } = await runCli([
       "test",
       ".taskless/rules/sg/no-eval-sg",
       "-d",
@@ -423,8 +679,6 @@ describe("the findings array is present on every rule result", () => {
     ]);
     const report = JSON.parse(stdout) as Report;
 
-    expect(exitCode).toBe(0);
-    expect(report.rules[0]?.ok).toBe(true);
     expect(report.rules[0]?.findings).toEqual([]);
   });
 
