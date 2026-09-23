@@ -93,6 +93,45 @@ import type { Migration } from "../types";
  * it. A migration that silently renames a user's rules is worse than one that
  * refuses.
  *
+ * ## An interrupted run is resumable, because the commit point is the rename
+ *
+ * Every edit a rule needs happens INSIDE the rule's old directory, and the
+ * directory rename is the last thing to run. That ordering is the whole
+ * atomicity story: `rename(2)` on a directory is a single atomic operation, so
+ * it is the point at which a rule is done, and nothing before it is observable
+ * as progress.
+ *
+ * It also makes the "is there a collision" gate a sound resume signal, which is
+ * why this migration still returns early on a collision-free tree. The commit
+ * is the operation that CLEARS the collision, so a rule that crashed before it
+ * still collides and is picked up again; a rule that crashed after it is
+ * already whole. The reverse ordering — rename the directory first, then chase
+ * its contents — clears the collision before the rule is consistent, and the
+ * next run's gate then reports nothing to do over a rule whose files and `id:`
+ * fields still carry the old name.
+ *
+ * Every step inside the directory is written to tolerate having already run: a
+ * file rename whose source is gone but whose target is there still has its
+ * `id:` rewritten, and a fixture already carrying the target prefix is never
+ * renamed a second time. File rewrites go to a temporary sibling and are
+ * committed with a rename, so a crash cannot leave a half-written rule file.
+ *
+ * Two windows remain, and neither leaves a tree a re-run cannot repair:
+ *
+ * - Between the first edit and the commit the directory name disagrees with
+ *   the files inside it. `verify` reports that, and the next migration run
+ *   finishes it. The scaffold version is written only after every migration
+ *   returns, so the next `taskless` command runs this again by itself.
+ * - When a symmetric collision is interrupted between its two halves, the half
+ *   that committed keeps its suffix and the half that never started keeps the
+ *   bare id, because the collision it was named for is gone. The tree is
+ *   collision-free and every rule is internally consistent; only the symmetry
+ *   a complete run would have produced is lost.
+ *
+ * Durability past a power loss — between `rename(2)` returning and the
+ * directory entry reaching disk — is not addressed, and no user-space rename
+ * dance would address it.
+ *
  * Idempotent, and read-only when there is nothing to do. A project with no
  * collision is enumerated and nothing is written, so `git status` stays clean.
  */
@@ -109,6 +148,10 @@ const migration: Migration = async (directory) => {
   // describes it takes the PROJECT root, which is this directory's parent.
   const cwd = join(directory, "..");
   const collisions = await findRuleIdCollisions(cwd);
+  // Sound as a resume signal, not merely as a "nothing to do" check: the
+  // directory rename that clears a collision is also the LAST thing each
+  // rename does, so a rule interrupted part-way still collides and is
+  // enumerated again here. See the atomicity section above.
   if (collisions.length === 0) return;
 
   const taken = await occupiedRuleIds(cwd);
@@ -189,7 +232,16 @@ function freeRuleId(
   }
 }
 
-/** Rename one rule and every reference to its id inside its own directory. */
+/**
+ * Rename one rule and every reference to its id inside its own directory.
+ *
+ * THE ORDER IS THE ATOMICITY. Everything inside the rule is rewritten under the
+ * OLD directory name first, and the directory rename runs last as the single
+ * atomic commit. Until it lands the rule still holds the colliding id, so a
+ * crash anywhere above leaves work the next run's collision scan finds.
+ * Renaming the directory first would clear the collision while the files inside
+ * still carried the old id, and no re-run would ever look again.
+ */
 async function renameRule(
   cwd: string,
   engine: EngineName,
@@ -198,22 +250,24 @@ async function renameRule(
 ): Promise<string[]> {
   const fromPath = ruleDirectory(cwd, engine, from);
   const toPath = ruleDirectory(cwd, engine, to);
-  await rename(fromPath, toPath);
-  const lines = [`  ${fromPath}`, `    -> ${toPath}`];
 
+  const inside: string[] = [];
   if (engine === "sg") {
-    lines.push(
-      ...(await renameRuleFile(toPath, engine, from, to)),
-      ...(await renameSgFixtures(toPath, from, to))
+    inside.push(
+      ...(await renameRuleFile(fromPath, engine, from, to)),
+      ...(await renameSgFixtures(fromPath, from, to))
     );
   } else if (engine === "vale") {
-    lines.push(
-      ...(await renameRuleFile(toPath, engine, from, to)),
-      ...(await rewriteValeConfig(toPath, from, to))
+    inside.push(
+      ...(await renameRuleFile(fromPath, engine, from, to)),
+      ...(await rewriteValeConfig(fromPath, from, to))
     );
   }
   // No `runtime` branch: this is never called for one. See `NEVER_RENAMED`.
-  return lines;
+  await rename(fromPath, toPath);
+  // Reported directory-first even though it ran last: the report is read as
+  // "this rule moved, and here is what moved with it".
+  return [`  ${fromPath}`, `    -> ${toPath}`, ...inside];
 }
 
 /**
@@ -223,9 +277,13 @@ async function renameRule(
  * The name comes from {@link ENGINE_LAYOUTS}, the table that decides it, so
  * the two engines this runs for stop being a second place that has to agree
  * with `layout.ts` about `${id}.yml`. Not `ruleFilePath`, which takes a `cwd`
- * and a rule id and would resolve into the PRE-rename directory: by the time
- * this is called the directory has already moved, and only the file inside it
- * still carries the old name.
+ * and a rule id: this runs BEFORE the directory moves, so the path it would
+ * build is the one this rule is leaving rather than the one it is in.
+ *
+ * Resumable both ways round. A source that is gone with the target already in
+ * place is an earlier run that died between the rename and the `id:` rewrite,
+ * so the rewrite is completed rather than skipped — the old early return read
+ * that state as "no rule file" and left the id behind.
  */
 async function renameRuleFile(
   ruleDirectoryPath: string,
@@ -236,13 +294,18 @@ async function renameRuleFile(
   const fromName = ENGINE_LAYOUTS[engine].ruleFile(from);
   const toName = ENGINE_LAYOUTS[engine].ruleFile(to);
   const fromFile = join(ruleDirectoryPath, fromName);
-  if (!(await pathExists(fromFile))) return [];
   const toFile = join(ruleDirectoryPath, toName);
-  await rename(fromFile, toFile);
-  const rewritten = await rewriteIdField(toFile, from, to);
-  return [
-    `    renamed ${fromName} -> ${toName}${rewritten ? " and its id: field" : ""}`,
-  ];
+  if (await pathExists(fromFile)) {
+    await rename(fromFile, toFile);
+    const rewritten = await rewriteIdField(toFile, from, to);
+    return [
+      `    renamed ${fromName} -> ${toName}${rewritten ? " and its id: field" : ""}`,
+    ];
+  }
+  if (!(await pathExists(toFile))) return [];
+  return (await rewriteIdField(toFile, from, to))
+    ? [`    finished an interrupted rename: ${toName} id: field`]
+    : [];
 }
 
 /**
@@ -256,6 +319,16 @@ async function renameRuleFile(
  * actually RUNS is keyed on the `id:` inside the file, so a renamed file
  * still carrying the old id is discovered, silently not counted, and the rule
  * reads as having shipped no cases.
+ *
+ * THE PREDICATE MUST NOT MATCH ITS OWN OUTPUT. `to` is always `<from>-…`, so a
+ * plain `startsWith(`${from}-`)` accepts every name this loop produces. It cost
+ * a double suffix on the FIRST run for a fixture a human had already named
+ * `no-eval-sg-basic-test.yml`, which came back out as
+ * `no-eval-sg-sg-basic-test.yml`; and on a resumed run it would re-suffix every
+ * fixture the interrupted run had already moved. A name that already carries
+ * the target prefix is therefore never renamed — it is where it belongs either
+ * way — and only its `id:` follows, which is also what finishes a rename
+ * interrupted between the two.
  */
 async function renameSgFixtures(
   ruleDirectoryPath: string,
@@ -273,7 +346,14 @@ async function renameSgFixtures(
   }
   const lines: string[] = [];
   for (const entry of entries) {
-    if (!entry.startsWith(`${from}-`) || !entry.endsWith("-test.yml")) continue;
+    if (!entry.endsWith("-test.yml")) continue;
+    if (entry.startsWith(`${to}-`)) {
+      if (await rewriteIdField(join(testsPath, entry), from, to)) {
+        lines.push(`    rewrote ${RULE_TESTS_DIRECTORY}/${entry} id: field`);
+      }
+      continue;
+    }
+    if (!entry.startsWith(`${from}-`)) continue;
     const renamed = `${to}-${entry.slice(from.length + 1)}`;
     await rename(join(testsPath, entry), join(testsPath, renamed));
     const rewritten = await rewriteIdField(join(testsPath, renamed), from, to);
@@ -306,7 +386,7 @@ async function rewriteValeConfig(
   }
   const rewritten = retargetValeConfig(source, from, to);
   if (rewritten === source) return [];
-  await writeFile(configPath, rewritten, "utf8");
+  await writeFileAtomically(configPath, rewritten);
   return [`    rewrote .vale.ini breadcrumb and ${from}.${from} assignment`];
 }
 
@@ -364,8 +444,29 @@ async function rewriteIdField(
     `$1$2${to}$2$3`
   );
   if (rewritten === source) return false;
-  await writeFile(path, rewritten, "utf8");
+  await writeFileAtomically(path, rewritten);
   return true;
+}
+
+/**
+ * Write a file by writing a sibling and renaming it over the target, so a crash
+ * mid-write cannot leave a truncated rule file or fixture.
+ *
+ * The temporary name is DERIVED FROM THE TARGET rather than randomized, so a
+ * crash between the write and the rename leaves one predictable path that the
+ * next run overwrites and consumes: the target still holds its pre-edit bytes,
+ * so the next run rewrites it and reaches this same temporary again. A random
+ * suffix would strand a file in the rule directory instead. The name matches
+ * neither `<id>.yml` nor `*-test.yml` nor `.vale.ini`, so nothing that scans
+ * the rule directory picks it up while it exists.
+ */
+async function writeFileAtomically(
+  path: string,
+  contents: string
+): Promise<void> {
+  const temporary = `${path}.tskl-0009.tmp`;
+  await writeFile(temporary, contents, "utf8");
+  await rename(temporary, path);
 }
 
 /** A rule id is `[a-z0-9-]+`, but escaping keeps this honest if that widens. */
