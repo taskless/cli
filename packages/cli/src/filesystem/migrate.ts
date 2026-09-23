@@ -297,9 +297,6 @@ export async function runMigrations(
     try {
       await migrate(tasklessDirectory);
     } catch (error) {
-      console.error(
-        `Migration ${String(v)} failed: ${error instanceof Error ? error.message : String(error)}`
-      );
       // Write manifest at last successful version so we don't re-run
       // completed migrations. Re-read from disk so we preserve whatever
       // earlier successful migrations wrote (instead of writing back `raw`,
@@ -332,7 +329,40 @@ export async function runMigrations(
           });
         }
       }
-      throw error;
+      // One string, one printer. This used to `console.error` the prefixed
+      // message here and then rethrow the original, so whoever owns the
+      // surface printed the same text a second time: once naming the
+      // migration, once not (taskless/cli#389). Folding the prefix into the
+      // rethrown message keeps the migration number — the only thing that
+      // says WHICH migration refused, since a migration's own message names
+      // paths and never itself — and leaves the printing to the one layer
+      // that owns it: the top-level handler, the wizard, or a `--json`
+      // envelope.
+      //
+      // Both branches end in a throw, unconditionally. The failure mode
+      // opposite to a doubled line is swallowing, which would exit 0 and let
+      // `init` report success over a half-migrated tree.
+      if (error instanceof CLIError) {
+        // `code` is carried through rather than re-coded: telemetry attributes
+        // on it, and collapsing every migration failure to one code would
+        // flatten `SCAFFOLD_CONFLICT` (a deliberate, actionable refusal) into
+        // the same bucket as an unexpected fault. `reported` rides along so a
+        // throw site that already showed the user something is still not
+        // printed again.
+        throw new CLIError(
+          `Migration ${String(v)} failed: ${error.message}`,
+          error.code,
+          { reported: error.reported }
+        );
+      }
+      // Deliberately a plain `Error`, not a `CLIError`: an unrecognized fault
+      // should keep classifying as INTERNAL_ERROR, exactly as it did when the
+      // original propagated. Only the message gains the prefix, and `cause`
+      // keeps the original reachable for anything inspecting it.
+      throw new Error(
+        `Migration ${String(v)} failed: ${error instanceof Error ? error.message : String(error)}`,
+        { cause: error }
+      );
     }
   }
 
