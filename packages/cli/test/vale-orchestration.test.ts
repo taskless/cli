@@ -111,13 +111,17 @@ const binPath = resolve(import.meta.dirname, "../dist/index.js");
 /** Run the built CLI, tolerating a non-zero exit. */
 async function runCli(
   args: string[]
-): Promise<{ stdout: string; exitCode: number }> {
+): Promise<{ stdout: string; stderr: string; exitCode: number }> {
   try {
-    const { stdout } = await execFileAsync("node", [binPath, ...args]);
-    return { stdout, exitCode: 0 };
+    const { stdout, stderr } = await execFileAsync("node", [binPath, ...args]);
+    return { stdout, stderr, exitCode: 0 };
   } catch (error) {
-    const execError = error as { stdout: string; code: number };
-    return { stdout: execError.stdout ?? "", exitCode: execError.code };
+    const execError = error as { stdout: string; stderr: string; code: number };
+    return {
+      stdout: execError.stdout ?? "",
+      stderr: execError.stderr ?? "",
+      exitCode: execError.code,
+    };
   }
 }
 
@@ -572,5 +576,91 @@ withVale("a repository containing a converter-dependent file", () => {
     expect(notices).toContain("docs/api.rst");
     expect(notices).toContain("asciidoctor");
     expect(notices).toContain("rst2html");
+  });
+});
+
+/** A project whose two Vale rules each draw a repeated-key advisory. */
+function makeTwoAdvisoryProject(): string {
+  const cwd = mkdtempSync(join(tmpdir(), "vale-notices-"));
+  workspaces.push(cwd);
+  mkdirSync(join(cwd, ".taskless", "rules", "vale"), { recursive: true });
+  for (const ruleId of ["no-simply", "no-twist"] as const) {
+    const token = ruleId === "no-simply" ? "simply" : "twist";
+    mkdirSync(join(cwd, ".taskless", "rules", "vale", ruleId), {
+      recursive: true,
+    });
+    writeFileSync(
+      join(cwd, ".taskless", "rules", "vale", ruleId, `${ruleId}.yml`),
+      `extends: existence\nmessage: "Avoid '${token}'"\nlevel: warning\ntokens:\n  - ${token}\n`
+    );
+    // The repeat has to be within ONE matcher, which is what the config
+    // schema says something about. `[docs/**]` keeps the rule enabled
+    // somewhere, so the repeat under `[*.md]` stays an advisory rather than
+    // becoming a rejection for a rule that is off everywhere.
+    writeFileSync(
+      join(cwd, ".taskless", "rules", "vale", ruleId, ".vale.ini"),
+      `[docs/**]\ntskl) rule = ${ruleId}\n${ruleId}.${ruleId} = YES\n\n` +
+        `[*.md]\ntskl) rule = ${ruleId}\n${ruleId}.${ruleId} = YES\n` +
+        `${ruleId}.${ruleId} = NO\n`
+    );
+  }
+  writeFileSync(
+    join(cwd, ".taskless", "taskless.json"),
+    JSON.stringify({ version: LATEST_SCHEMA_VERSION, install: {} })
+  );
+  writeFileSync(join(cwd, "doc.md"), "Just simply do it.\n");
+  return cwd;
+}
+
+/**
+ * `check` renders one marker per notice, on stderr.
+ *
+ * The defect these cover was user-visible and lived in `check` alone. Every
+ * producer used to glue its advisories into ONE string with `"\n"`, and
+ * `check` printed `Notice: ` once per element — so a run with two advisories
+ * printed the first behind a marker and the second as a bare, unindented line
+ * with nothing marking it as a notice. `verify` had the same bug and it was
+ * fixed in `241e1c4`; `check` kept it.
+ *
+ * Driven through the built CLI over a real project rather than through
+ * `runEngines`, because the renderer is what regressed and it lives in the
+ * command. Two Vale rules each carrying a config advisory is the smallest
+ * project that produces two independent notices, and it needs no Vale binary:
+ * the advisories come from the config schema at assembly time, so they are on
+ * the result whether Vale then runs or reports itself unavailable.
+ */
+describe("check renders one marker per notice", () => {
+  it("gives each advisory its own Notice: line in text output", async () => {
+    const cwd = makeTwoAdvisoryProject();
+    const { stderr } = await runCli(["check", "-d", cwd]);
+
+    const advisoryLines = stderr
+      .split("\n")
+      .filter((line) => line.includes("assigns"));
+
+    // Two advisories, two lines, each marked. Before the fix these arrived as
+    // one `"\n"`-joined element and printed as one marked line plus one stray.
+    expect(advisoryLines).toHaveLength(2);
+    for (const line of advisoryLines) {
+      expect(line.startsWith("Notice: ")).toBe(true);
+    }
+    expect(advisoryLines.some((line) => line.includes("no-simply"))).toBe(true);
+    expect(advisoryLines.some((line) => line.includes("no-twist"))).toBe(true);
+  });
+
+  it("publishes them as separate --json elements, none spanning lines", async () => {
+    const cwd = makeTwoAdvisoryProject();
+    const { stdout } = await runCli(["check", "-d", cwd, "--json"]);
+    const notices = parseJson(stdout).notices ?? [];
+
+    expect(notices.filter((notice) => notice.includes("assigns"))).toHaveLength(
+      2
+    );
+    // The half a consumer sees. A `"\n"` inside an element means several
+    // notices were shipped as one, and nothing published the separator that
+    // would let the consumer split them back apart.
+    for (const notice of notices) {
+      expect(notice).not.toContain("\n");
+    }
   });
 });
