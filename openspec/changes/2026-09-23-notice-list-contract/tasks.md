@@ -17,6 +17,11 @@
 - [x] 1.6 Replace the published `notice?: string` with `notices: string[]` in
       `verifyOutputSchema.schema`, `valeVerifyOutputSchema` and the
       `verify`/`test` envelope.
+- [x] 1.7 Mark the runtime plan's notices too. They were printed by their own
+      loop with no marker while the dispatched ones were marked, though
+      `--json` merges both into one array.
+- [x] 1.8 Share one `markNotice` helper between `check` and `verify`, so the
+      two renderers differ only in the marker.
 
 ## 2. Tests
 
@@ -26,7 +31,9 @@
       advisories, two `Notice: ` lines.
 - [x] 2.3 Assert `check --json` publishes them as separate elements, none
       spanning lines.
-- [x] 2.4 Strengthen the three separator-blind tests to assert on elements
+- [x] 2.4 Unit-test `markNotice` on a multi-line notice, and assert
+      end-to-end that the runtime plan's warning is marked.
+- [x] 2.5 Strengthen the three separator-blind tests to assert on elements
       rather than `toContain` over the whole field.
 
 ## 3. Spec
