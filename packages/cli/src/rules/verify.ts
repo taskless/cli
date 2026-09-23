@@ -54,13 +54,18 @@ export interface LayerResult {
  * Layer 1's verdict, plus anything true about the rule that is worth saying
  * without failing it.
  *
- * The `notice` carries the non-fatal half of the `language:` check — an
+ * `notices` carries the non-fatal half of the `language:` check — an
  * accepted-but-off-list spelling, or a `files:` glob a valid language cannot
- * reach. Separate from `errors` for the same reason `RuleTestResult.notice` is:
- * it must be sayable on a rule that passed, and it must not turn CI red.
+ * reach. Separate from `errors` for the same reason `RuleTestResult.notices`
+ * is: it must be sayable on a rule that passed, and it must not turn CI red.
+ *
+ * One notice per element, and the two above can both be true of one rule. They
+ * used to be joined with a space into a single string, which the renderer then
+ * printed behind one `    notice: ` marker as a run-on sentence. Handing back
+ * elements is what lets the renderer mark each one.
  */
 export interface SchemaLayerResult extends LayerResult {
-  notice?: string;
+  notices: string[];
 }
 
 export interface RequirementsResult extends LayerResult {
@@ -738,7 +743,7 @@ export async function verifyRule(
     return {
       success: false,
       ruleId,
-      schema: { valid: false, errors: [errorMessage] },
+      schema: { valid: false, errors: [errorMessage], notices: [] },
       requirements: { valid: false, errors: [errorMessage] },
       tests: {
         valid: false,
@@ -771,6 +776,7 @@ export async function verifyRule(
         errors: [
           `Rule file not found: .taskless/${RULES_DIRECTORY}/sg/${ruleId}/${ruleId}.yml`,
         ],
+        notices: [],
       },
       requirements: {
         valid: false,
@@ -794,7 +800,7 @@ export async function verifyRule(
     return {
       success: false,
       ruleId,
-      schema: { valid: false, errors: [message] },
+      schema: { valid: false, errors: [message], notices: [] },
       requirements: {
         valid: false,
         errors: ["Cannot check requirements: invalid YAML"],
@@ -822,9 +828,7 @@ export async function verifyRule(
     valid: parsed.valid && language.errors.length === 0,
     errors: [...parsed.errors, ...language.errors],
     violations: language.violations,
-    ...(language.notices.length === 0
-      ? {}
-      : { notice: language.notices.join(" ") }),
+    notices: language.notices,
   };
 
   // Layer 2

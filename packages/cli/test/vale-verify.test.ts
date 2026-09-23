@@ -253,6 +253,7 @@ withVale("verifyValeRule", () => {
       missingFailures: [],
       unexpectedFindings: [],
       fixtures: "both",
+      notices: [],
     });
   });
 
@@ -495,24 +496,25 @@ describe("verifyValeRule and Vale's notice", () => {
           matchedText: "simply",
         },
       ],
-      notice: NOTICE,
+      notices: [NOTICE],
     });
 
     const result = verification(await verifyValeRule(cwd, "no-simply"));
     expect(result.passed).toBe(true);
-    expect(result.notice).toBe(NOTICE);
+    expect(result.notices).toEqual([NOTICE]);
   });
 
-  it("leaves the notice absent when Vale said nothing", async () => {
+  it("leaves the notices empty when Vale said nothing", async () => {
     const cwd = bothBuckets();
     const run = await import("../src/rules/vale/run");
     vi.spyOn(run, "runVale").mockResolvedValue({
       status: "ok",
       blocking: false,
       results: [],
+      notices: [],
     });
 
     const result = verification(await verifyValeRule(cwd, "no-simply"));
-    expect(result.notice).toBeUndefined();
+    expect(result.notices).toEqual([]);
   });
 });

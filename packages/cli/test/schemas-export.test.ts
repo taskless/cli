@@ -226,7 +226,7 @@ describe("verifyOutputSchema and valeVerifyOutputSchema", () => {
         fixtures: result.fixtures,
         missingFailures: result.missingFailures,
         unexpectedFindings: result.unexpectedFindings,
-        ...(result.notice === undefined ? {} : { notice: result.notice }),
+        notices: result.notices,
       }) as { success: boolean; ruleId: string };
 
       expect(parsed.success).toBe(true);

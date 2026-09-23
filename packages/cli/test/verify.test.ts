@@ -476,7 +476,10 @@ describe("verifyRule", () => {
         runTests: false,
       });
       expect(result.schema.valid).toBe(true);
-      expect(result.schema.notice).toContain(
+      // One element, asserted as the whole list: a producer that appended a
+      // second advisory into the same string would fail here.
+      expect(result.schema.notices).toHaveLength(1);
+      expect(result.schema.notices[0]).toContain(
         "TypeScript is how ast-grep spells it"
       );
     });
@@ -490,7 +493,8 @@ describe("verifyRule", () => {
         runTests: false,
       });
       expect(result.schema.valid).toBe(true);
-      expect(result.schema.notice).toContain('"ts" works');
+      expect(result.schema.notices).toHaveLength(1);
+      expect(result.schema.notices[0]).toContain('"ts" works');
     });
 
     it("says nothing at all about the canonical spelling", async () => {
@@ -499,7 +503,7 @@ describe("verifyRule", () => {
         runTests: false,
       });
       expect(result.schema.valid).toBe(true);
-      expect(result.schema.notice).toBeUndefined();
+      expect(result.schema.notices).toEqual([]);
     });
 
     it("fails a TypeScript rule scoped only to .tsx files", async () => {
@@ -529,7 +533,8 @@ describe("verifyRule", () => {
         runTests: false,
       });
       expect(result.schema.valid).toBe(true);
-      expect(result.schema.notice).toContain("some globs name .tsx");
+      expect(result.schema.notices).toHaveLength(1);
+      expect(result.schema.notices[0]).toContain("some globs name .tsx");
     });
 
     it("says nothing about globs that name no extension", async () => {
@@ -542,7 +547,7 @@ describe("verifyRule", () => {
         runTests: false,
       });
       expect(result.schema.valid).toBe(true);
-      expect(result.schema.notice).toBeUndefined();
+      expect(result.schema.notices).toEqual([]);
     });
 
     it("catches the mirror image: Tsx scoped only to .ts", async () => {
@@ -587,7 +592,8 @@ describe("verifyRule", () => {
         runTests: false,
       });
       expect(result.schema.valid).toBe(true);
-      expect(result.schema.notice).toContain("some globs name .tsx");
+      expect(result.schema.notices).toHaveLength(1);
+      expect(result.schema.notices[0]).toContain("some globs name .tsx");
     });
 
     it("leaves a missing language to the required-fields layer", async () => {

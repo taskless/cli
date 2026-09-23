@@ -29,6 +29,7 @@ import {
   type ValeConfigError,
   type ValeOutput,
 } from "./map";
+import { collectNotices } from "../../util/notices";
 
 /**
  * The Vale config a run reads, relative to the project root.
@@ -81,7 +82,7 @@ export const VALE_TIMEOUT_MS = 60_000;
  * `ok` is non-blocking even when it carries findings: severity decides the exit
  * code there, the same as for every other engine.
  *
- * `ok` also carries an optional `notice`: whatever Vale wrote to stderr while
+ * `ok` also carries `notices`: whatever Vale wrote to stderr while
  * still exiting zero. That combination is not noise. Vale reports a rule
  * assignment placed outside any section as `W101 … is ignoring it` — on stderr,
  * with exit 0 and a well-formed empty result on stdout — so discarding it
@@ -94,8 +95,16 @@ export type ValeRunOutcome =
       status: "ok";
       blocking: false;
       results: CheckResult[];
-      /** Vale's stderr on a zero-exit run, when it wrote any. */
-      notice?: string;
+      /**
+       * What this run has to say without failing: Vale's stderr on a zero-exit
+       * run, and the converter-skip notice, one element each.
+       *
+       * A list rather than one joined string, because the two are independent —
+       * a project can perfectly well have a section-less rule assignment *and*
+       * an AsciiDoc file — and every consumer renders one notice per marker.
+       * Empty, never absent, so a caller can concatenate without a fallback.
+       */
+      notices: string[];
     }
   | { status: "unavailable"; blocking: false; message: string }
   | { status: "timeout"; blocking: true; message: string }
@@ -286,7 +295,7 @@ async function targetFileParseError(
  * message it also carries.
  */
 type ValeAttempt =
-  | { status: "ok"; results: CheckResult[]; notice?: string }
+  | { status: "ok"; results: CheckResult[]; notices: string[] }
   | { status: "timeout"; message: string }
   | { status: "failed"; message: string; configError?: ValeConfigError };
 
@@ -388,18 +397,16 @@ async function spawnVale(
       // Attached to every `ok` path so a diagnostic cannot be dropped by which
       // branch happened to produce the (empty) results.
       const diagnostic = stderrChunks.join("").trim();
-      // Both advisories share one field, so they are joined rather than one
-      // overwriting the other: a project can perfectly well have a section-less
-      // rule assignment *and* an AsciiDoc file, and dropping either message
-      // would be a silent skip wearing the other's clothes.
-      const advisories = [
-        ...(skipped === undefined ? [] : [skipped]),
-        ...(diagnostic === ""
-          ? []
-          : [`Vale reported while running: ${diagnostic}`]),
-      ];
-      const notice =
-        advisories.length === 0 ? {} : { notice: advisories.join("\n") };
+      // Both advisories ride the same field as separate elements, rather than
+      // one overwriting the other: a project can perfectly well have a
+      // section-less rule assignment *and* an AsciiDoc file, and dropping
+      // either message would be a silent skip wearing the other's clothes.
+      const notices = collectNotices([
+        skipped,
+        diagnostic === ""
+          ? undefined
+          : `Vale reported while running: ${diagnostic}`,
+      ]);
 
       const stdout = stdoutChunks.join("").trim();
       if (stdout === "") {
@@ -407,7 +414,7 @@ async function spawnVale(
         // maps to [] below. This branch is for a Vale that says nothing at all
         // — cheap insurance against JSON.parse("") reporting a clean run as a
         // failure.
-        settle({ status: "ok", results: [], ...notice });
+        settle({ status: "ok", results: [], notices });
         return;
       }
 
@@ -434,7 +441,7 @@ async function spawnVale(
         settle({
           status: "ok",
           results: toValeCheckResults(parsed as ValeOutput),
-          ...notice,
+          notices,
         });
       } catch (error) {
         settle({
@@ -648,7 +655,7 @@ export async function runVale(
         status: "ok",
         blocking: false,
         results: [...excludedFindings, ...attempt.results],
-        ...(attempt.notice === undefined ? {} : { notice: attempt.notice }),
+        notices: attempt.notices,
       };
     }
 

@@ -155,15 +155,17 @@ export interface ValeRuleVerification {
    */
   fixtures: ValeFixtureCoverage;
   /**
-   * Vale's stderr from a run that still exited zero, when it wrote any.
+   * What Vale said about a run that still exited zero, one notice per element.
    *
    * Carried on the verification rather than dropped at this seam because the
    * `W101 … isn't a core option` warning — what Vale says about an assignment
    * placed above the first `[…]` section — arrives on exactly this path: exit
    * zero, empty findings, a rule that verifies clean while Vale ignores it.
-   * Absent when Vale was never run (a one-sided fixture set short-circuits).
+   * Empty when Vale was never run (a one-sided fixture set short-circuits) and
+   * when it ran with nothing to say; the two are not worth distinguishing, and
+   * empty-never-absent lets a caller concatenate without a fallback.
    */
-  notice?: string;
+  notices: string[];
 }
 
 /**
@@ -246,6 +248,7 @@ export async function verifyValeRule(
       missingFailures: [],
       unexpectedFindings: [],
       fixtures,
+      notices: [],
     };
   }
 
@@ -285,7 +288,7 @@ export async function verifyValeRule(
       missingFailures,
       unexpectedFindings,
       fixtures,
-      ...(outcome.notice === undefined ? {} : { notice: outcome.notice }),
+      notices: outcome.notices,
     };
   } finally {
     rmSync(configDirectory, { recursive: true, force: true });

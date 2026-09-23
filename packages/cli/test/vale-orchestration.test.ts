@@ -361,6 +361,7 @@ describe("runEngines when Vale is unavailable", () => {
           matchedText: "simply",
         },
       ],
+      notices: [],
     });
 
     const cwd = makeMixedProject();
@@ -445,16 +446,22 @@ describe("config advisories ride on every Vale outcome", () => {
     });
   }
 
-  it("joins Vale's own zero-exit diagnostic on a run that succeeded", async () => {
+  it("carries Vale's own zero-exit diagnostic beside the schema advisory", async () => {
     const dispatched = await dispatchWithAdvisory({
       status: "ok",
       blocking: false,
       results: [],
-      notice: "W101 something Vale said",
+      notices: ["W101 something Vale said"],
     });
-    expect(dispatched.notices).toHaveLength(1);
+    // TWO elements, not one string carrying both. The schema advisory and
+    // Vale's own diagnostic are independent notices, and a producer that
+    // joined them — with "\n", "; " or anything else — would fail here.
+    expect(dispatched.notices).toHaveLength(2);
     expect(dispatched.notices[0]).toContain("[.taskless/**]");
-    expect(dispatched.notices[0]).toContain("W101 something Vale said");
+    expect(dispatched.notices[1]).toBe("W101 something Vale said");
+    expect(dispatched.notices.some((notice) => notice.includes("\n"))).toBe(
+      false
+    );
     expect(dispatched.failures).toEqual([]);
   });
 
@@ -474,15 +481,18 @@ describe("config advisories ride on every Vale outcome", () => {
     expect(dispatched.exitCode).toBe(1);
   });
 
-  it("joins the skip notice when the binary is unavailable", async () => {
+  it("carries the skip notice beside the unavailable message", async () => {
     const dispatched = await dispatchWithAdvisory({
       status: "unavailable",
       blocking: false,
       message: "Vale binary not found",
     });
-    expect(dispatched.notices).toHaveLength(1);
+    // Two independent notices, two elements. The advisory is about the config
+    // and the message is about the binary; gluing them into one string made
+    // `check` render the second without its `Notice: ` marker.
+    expect(dispatched.notices).toHaveLength(2);
     expect(dispatched.notices[0]).toContain("[.taskless/**]");
-    expect(dispatched.notices[0]).toContain("Vale binary not found");
+    expect(dispatched.notices[1]).toContain("Vale binary not found");
     expect(dispatched.failures).toEqual([]);
     expect(dispatched.exitCode).toBe(0);
   });

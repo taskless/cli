@@ -119,7 +119,12 @@ withVale("runVale against the real binary", () => {
     const outcome = await runVale({ cwd, paths: ["doc.md"] });
     // Vale prints nothing at all when it finds nothing; that must read as an
     // empty result rather than as unparseable output.
-    expect(outcome).toEqual({ status: "ok", blocking: false, results: [] });
+    expect(outcome).toEqual({
+      status: "ok",
+      blocking: false,
+      results: [],
+      notices: [],
+    });
   });
 
   it("normalizes suggestion to hint", async () => {
@@ -246,11 +251,15 @@ withVale("runVale against the real binary", () => {
     expect(outcome.status).toBe("ok");
     if (outcome.status !== "ok") return;
     expect(outcome.results).toEqual([]);
-    expect(outcome.notice).toContain("W101");
-    expect(outcome.notice).toContain("rules.no-simply");
+    // One notice per element. Asserting on the element rather than on the
+    // whole field is what makes a producer that glued two advisories together
+    // fail here instead of passing a substring match.
+    expect(outcome.notices).toHaveLength(1);
+    expect(outcome.notices[0]).toContain("W101");
+    expect(outcome.notices[0]).toContain("rules.no-simply");
   });
 
-  it("reports no notice when Vale writes nothing to stderr", async () => {
+  it("reports no notices when Vale writes nothing to stderr", async () => {
     const cwd = makeProject(
       `${header}\n[*.md]\nrules.no-simply = YES\n`,
       { "no-simply": existenceRule("simply", "Avoid 'simply'") },
@@ -260,7 +269,7 @@ withVale("runVale against the real binary", () => {
     const outcome = await runVale({ cwd, paths: ["doc.md"] });
     expect(outcome.status).toBe("ok");
     if (outcome.status !== "ok") return;
-    expect(outcome.notice).toBeUndefined();
+    expect(outcome.notices).toEqual([]);
   });
 
   it("terminates and reports a timeout rather than hanging", async () => {

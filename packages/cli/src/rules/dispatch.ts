@@ -8,6 +8,7 @@ import { executeRuntimeRules } from "./runtime/harness";
 import type { RuntimeRule } from "./runtime/discover";
 import { runAstGrepScan } from "./scan";
 import { runVale } from "./vale/run";
+import { collectNotices } from "../util/notices";
 
 /**
  * Whether `.taskless/rules/vale/` holds anything to run.
@@ -47,10 +48,17 @@ export interface EngineOutcome {
   engine: EngineName;
   results: CheckResult[];
   /**
-   * Something the user should see that is not a finding — an engine that could
-   * not run. Advisory: it does not affect the exit code.
+   * Things the user should see that are not findings — an engine that could not
+   * run, a config advisory. Advisory: they do not affect the exit code.
+   *
+   * A list rather than one joined string, so `runEngines` can concatenate every
+   * engine's notices into a genuinely flat `DispatchResult.notices`. When this
+   * was one `"\n"`-joined string, two advisories from one engine arrived as a
+   * single array element, which `check --json` published with an embedded
+   * newline and `check`'s text output rendered with only its first line
+   * prefixed.
    */
-  notice?: string;
+  notices: string[];
   /**
    * The engine was present and failed. Unlike a notice this must reach the exit
    * code, or a broken engine reads as a clean run.
@@ -153,7 +161,7 @@ async function runAstGrepEngine(
   options: DispatchOptions
 ): Promise<EngineOutcome> {
   if (options.astGrepConfigPath === undefined) {
-    return { engine: "sg", results: [] };
+    return { engine: "sg", results: [], notices: [] };
   }
   const scan = await runAstGrepScan(options.cwd, options.paths, {
     configPath: options.astGrepConfigPath,
@@ -161,7 +169,7 @@ async function runAstGrepEngine(
       ? {}
       : { ruleIds: options.astGrepRuleIds }),
   });
-  return { engine: "sg", results: scan.results };
+  return { engine: "sg", results: scan.results, notices: [] };
 }
 
 /**
@@ -186,7 +194,7 @@ async function runValeEngine(options: DispatchOptions): Promise<EngineOutcome> {
   // gate because it is the stronger claim — a rules directory can be present
   // while assembly yields nothing.
   if (options.vale === undefined) {
-    return { engine: "vale", results: [] };
+    return { engine: "vale", results: [], notices: [] };
   }
   // A refused assembly is a failure, not a notice, and not a quiet omission of
   // the offending rule. The config schema turned away a file Vale would have
@@ -200,11 +208,12 @@ async function runValeEngine(options: DispatchOptions): Promise<EngineOutcome> {
     return {
       engine: "vale",
       results: [],
+      notices: [],
       failure: describeValeRefusal(options.vale),
     };
   }
   if (!(await hasValeRules(options.cwd))) {
-    return { engine: "vale", results: [] };
+    return { engine: "vale", results: [], notices: [] };
   }
 
   const outcome = await runVale({
@@ -224,11 +233,10 @@ async function runValeEngine(options: DispatchOptions): Promise<EngineOutcome> {
     // format, or a key a future Vale adds. It rides through as a notice and
     // never as a failure: the run succeeded, and letting it touch the exit
     // code would fail checks over a warning.
-    const notice = joinNotices([...advisories, outcome.notice]);
     return {
       engine: "vale",
       results: outcome.results,
-      ...(notice === undefined ? {} : { notice }),
+      notices: collectNotices([...advisories, ...outcome.notices]),
     };
   }
   if (outcome.blocking) {
@@ -237,21 +245,17 @@ async function runValeEngine(options: DispatchOptions): Promise<EngineOutcome> {
     // than being folded into it (an advisory is not what failed the run) or
     // dropped (the config's authors would hear about a `[*]` matcher only on
     // a run where Vale happened not to crash).
-    const notice = joinNotices(advisories);
     return {
       engine: "vale",
       results: [],
       failure: outcome.message,
-      ...(notice === undefined ? {} : { notice }),
+      notices: collectNotices(advisories),
     };
   }
   return {
     engine: "vale",
     results: [],
-    // No `?? outcome.message` fallback: this branch is `unavailable`, whose
-    // `message` is a `string`, so the list is never empty and the joiner always
-    // returns a value. The fallback read as a safety net and was dead code.
-    notice: joinNotices([...advisories, outcome.message]),
+    notices: collectNotices([...advisories, outcome.message]),
   };
 }
 
@@ -274,24 +278,18 @@ function describeValeRefusal(refused: RefusedValeConfig): string {
   ].join("\n");
 }
 
-/** Every present notice on its own line, or `undefined` when there are none. */
-function joinNotices(notices: Array<string | undefined>): string | undefined {
-  const present = notices.filter((notice) => notice !== undefined);
-  return present.length === 0 ? undefined : present.join("\n");
-}
-
 /** The runtime harness, over rules that planning already cleared to run. */
 async function runRuntimeEngine(
   options: DispatchOptions
 ): Promise<EngineOutcome> {
   if (options.runtimeRules.length === 0) {
-    return { engine: "runtime", results: [] };
+    return { engine: "runtime", results: [], notices: [] };
   }
   const results = await executeRuntimeRules(options.cwd, options.runtimeRules, {
     paths: options.paths,
     timeoutMs: options.runtimeTimeoutMs,
   });
-  return { engine: "runtime", results };
+  return { engine: "runtime", results, notices: [] };
 }
 
 /**
@@ -330,6 +328,7 @@ export async function runEngines(
     return {
       engine,
       results: [],
+      notices: [],
       failure: `${engine} engine failed: ${
         reason instanceof Error ? reason.message : String(reason)
       }`,
@@ -341,7 +340,7 @@ export async function runEngines(
 
   return {
     results,
-    notices: outcomes.flatMap((outcome) => outcome.notice ?? []),
+    notices: outcomes.flatMap((outcome) => outcome.notices),
     failures,
     outcomes,
     exitCode:

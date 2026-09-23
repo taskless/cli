@@ -353,7 +353,14 @@ export const checkCommand = defineCommand({
         });
         const results = dispatched.results;
 
-        for (const notice of dispatched.notices) warn(`Notice: ${notice}`);
+        // One marker per notice, and one per line within a notice that spans
+        // lines. `dispatched.notices` is already flat — one element per notice
+        // — but a single notice can still be multi-line prose, Vale's stderr
+        // above all, and without this split only its first line was marked.
+        // The same defect `241e1c4` fixed in `verify`.
+        for (const notice of dispatched.notices) {
+          for (const line of notice.split("\n")) warn(`Notice: ${line}`);
+        }
         const runNotices = [...plan.notices, ...dispatched.notices];
         for (const failure of dispatched.failures) warn(`Error: ${failure}`);
 
