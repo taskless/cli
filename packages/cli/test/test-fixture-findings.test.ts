@@ -629,6 +629,101 @@ describe("an ast-grep rule's fixture findings", () => {
       `${SG_RULE}-test.yml`,
     ]);
   });
+
+  it("measures block-scalar indent from the first non-empty line", async () => {
+    // YAML detects a block scalar's indentation from its first NON-EMPTY line.
+    // Reading the literal first line instead reports indent 0 for a snippet
+    // written with a leading blank, shifting every column left by the real
+    // indent — silently wrong, since this path still maps per-line.
+    //
+    //   1  id: swap-args
+    //   2  valid:
+    //   3    - |
+    //   4      const fine = 1;
+    //   5  invalid:
+    //   6    - |
+    //   7  (blank)
+    //   8      swap(alpha, beta);
+    const directory = join(cwd, ".taskless", "rules", "sg", SG_RULE);
+    await mkdir(join(directory, ".tests"), { recursive: true });
+    await writeFile(join(directory, `${SG_RULE}.yml`), SG_RULE_YAML);
+    await writeFile(
+      join(directory, ".tests", `${SG_RULE}-test.yml`),
+      [
+        `id: ${SG_RULE}`,
+        "valid:",
+        "  - |",
+        "    const fine = 1;",
+        "invalid:",
+        "  - |",
+        "",
+        "    swap(alpha, beta);",
+        "",
+      ].join("\n")
+    );
+
+    const { stdout } = await testSg("--json");
+    const report = JSON.parse(stdout) as Report;
+    const finding = findingsOf(report)[0];
+
+    expect(finding?.message).toBe(SG_RENDERED);
+    // Column 4 is the snippet's real indentation. Measuring the blank first
+    // line instead yields 0.
+    expect(finding?.range.start.column).toBe(4);
+  });
+
+  it("matches a numeric fixture-file id against its rule", async () => {
+    // A test file's unquoted `id: 123` resolves to the JS number 123, which
+    // never equals the string "123", so the file would be excluded from its
+    // own rule's fixtures and the findings would silently read as empty while
+    // the rule still passed.
+    //
+    // The rule file's own id has to be quoted for this to be reachable: an
+    // unquoted numeric id there is rejected by the rule schema ("id: Invalid
+    // input") before any fixture runs, so that variant never gets this far.
+    const numericId = "123";
+    const directory = join(cwd, ".taskless", "rules", "sg", numericId);
+    await mkdir(join(directory, ".tests"), { recursive: true });
+    await writeFile(
+      join(directory, `${numericId}.yml`),
+      [
+        `id: "${numericId}"`,
+        "language: TypeScript",
+        "severity: warning",
+        "message: replace $SECOND with $FIRST",
+        "rule:",
+        "  pattern: swap($FIRST, $SECOND)",
+        "",
+      ].join("\n")
+    );
+    await writeFile(
+      join(directory, ".tests", `${numericId}-test.yml`),
+      [
+        `id: ${numericId}`,
+        "valid:",
+        "  - |",
+        "    const fine = 1;",
+        "invalid:",
+        "  - |",
+        "    swap(alpha, beta);",
+        "",
+      ].join("\n")
+    );
+
+    const { stdout } = await runCli([
+      "test",
+      `.taskless/rules/sg/${numericId}`,
+      "-d",
+      cwd,
+      "--json",
+    ]);
+    const report = JSON.parse(stdout) as Report;
+
+    expect(report.rules[0]?.ok).toBe(true);
+    expect(findingsOf(report).map((finding) => finding.message)).toEqual([
+      SG_RENDERED,
+    ]);
+  });
 });
 
 /* -------------------------------------------------------------------------- */
