@@ -126,6 +126,16 @@ That is deliberately stricter than the policy `check` applies, not softer. `chec
 
 A run refused for want of the flag SHALL be reported as not run, and SHALL be reported as neither a pass nor a failure: the rule is not defective, and no action available to its holder would make a failure green. The refusal SHALL name the flag, and SHALL NOT direct the reader to authenticate — authenticating cannot bless a rule that never left the working tree, so naming it would offer a fix that is not one.
 
+`test` SHALL report, per rule, the findings its fixtures produced, as a `findings` array carrying the same finding shape `check --json` prints — `source`, `ruleId`, `severity`, `message`, `file`, `range`, `matchedText` and the optional `note` and `fix` — plus the `bucket` the fixture that produced it belongs to.
+
+The RENDERED message is the point, and it is what a verdict cannot carry. A rule whose message interpolates its captures can have its slots in the wrong order and still fire on every `fail/` fixture and stay quiet on every `pass/` one, so a boolean verdict reports it as a rule that passed. The only evidence that the message says what its author meant is the message as the engine rendered it, against material the author wrote, which `test` already has in hand and discards.
+
+The array SHALL be present on every rule result and SHALL be empty rather than absent when there is nothing to report — including for an engine that does not yet surface its fixture findings, a rule whose verification failed before fixtures ran, and a run the execution policy refused. A consumer SHALL NOT have to distinguish "this rule produced no findings" from "this command does not report findings", because a key that is sometimes absent is one a reader learns to treat as optional, and the reading that follows is that its absence means zero.
+
+Fail-bucket findings SHALL be reported under `--json` on a passing run. They are the evidence, and a payload that carries the evidence only once the rule is already failing carries it at the one moment it is no longer needed.
+
+The human rendering SHALL stay a single line per passing rule. Under a FAILING rule it SHALL print the findings that bear on the failure, labelled by bucket, using the same renderer `check` prints findings with, so one finding does not read two ways depending on which command surfaced it. A pass-bucket finding SHALL be printed there: it is a fixture that wrongly fired, and naming the file says only that it happened, while the finding says what matched.
+
 #### Scenario: A malformed rule reports the malformation, not the fixtures
 
 - **WHEN** `test` runs against a rule that is both invalid and missing a fixture bucket
@@ -182,6 +192,27 @@ A run refused for want of the flag SHALL be reported as not run, and SHALL be re
 
 - **WHEN** a runtime rule's check raises while running a fixture case
 - **THEN** that SHALL be reported as the check failing, not as the case producing no findings
+
+#### Scenario: Test reports the findings its fixtures produced
+
+- **WHEN** `test --json` runs against a rule whose fixtures produced findings
+- **THEN** each rule result SHALL carry a `findings` array
+- **AND** each entry SHALL carry the rendered `message`, `file`, `range`, `matchedText` and `severity` that `check --json` reports for the same finding
+- **AND** each entry SHALL name the bucket of the fixture that produced it
+- **AND** the fail-bucket findings SHALL be reported even when the rule passed
+
+#### Scenario: The findings array is present and empty rather than absent
+
+- **WHEN** `test --json` reports a rule that produced no findings, whose verification failed before its fixtures ran, whose run was refused, or whose engine does not surface fixture findings
+- **THEN** the rule result SHALL still carry a `findings` array
+- **AND** that array SHALL be empty
+
+#### Scenario: A failing rule prints the findings that bear on the failure
+
+- **WHEN** `test` runs without `--json` and a rule fails because a `pass/` fixture fired
+- **THEN** the offending findings SHALL be printed under that rule, labelled by bucket
+- **AND** they SHALL be rendered the way `check` renders a finding
+- **AND** a rule that passed SHALL still print one line
 
 ### Requirement: The generation loop runs verify and test
 
