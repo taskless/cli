@@ -167,7 +167,8 @@ export const infoCommand = defineCommand({
         ? tool.present
           ? `found${tool.path === undefined ? "" : ` at ${tool.path}`}`
           : "not found"
-        : "not applicable here";
+        : // The detector's own reason, never one inferred here.
+          `not applicable here${tool.reason === undefined ? "" : ` (${tool.reason})`}`;
       console.log(`  ${tool.name}: ${where}`);
     }
 

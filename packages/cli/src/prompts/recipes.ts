@@ -127,6 +127,27 @@ export interface HostTool {
    * {@link RecipeOptions.hostTools} for the precedence this buys.
    */
   applicable: boolean;
+  /**
+   * WHY {@link applicable} is false, in a fragment that reads inside
+   * parentheses — "this repository has no GitHub origin".
+   *
+   * OPTIONAL, deliberately. This is published surface (`@taskless/cli/prompts`
+   * re-exports the type), so requiring it would break every caller already
+   * building a `HostTool[]`, and it is meaningless on an applicable tool. The
+   * render falls back to a generic line when it is absent, and MUST NOT
+   * substitute a reason of its own: a renderer that guesses is how the
+   * GitHub-specific sentence came to be printed for tools that have nothing to
+   * do with GitHub.
+   *
+   * It carries an explanation rather than a code because its consumer is an
+   * agent reading prose. "Not applicable" tells it to drop a source; the
+   * reason tells it whether anything the user could do would change that, which
+   * is the difference between staying quiet and suggesting a fix that cannot
+   * work.
+   *
+   * Ignored when `applicable` is true.
+   */
+  reason?: string;
 }
 
 /** Options accepted by the shared render path. */
@@ -363,10 +384,21 @@ GitHub CLI (\`gh\`) or something equivalent. Suggest scanning the last
   }
 }
 
-/** One line of the detected-tool list, phrased as presence. */
+/**
+ * One line of the detected-tool list, phrased as presence.
+ *
+ * The inapplicable branch prints the TOOL'S OWN reason and never one of its
+ * own. It used to hardcode "this repository has no GitHub origin" for every
+ * inapplicable tool, which was merely unreachable rather than correct: this is
+ * a public render over a caller-supplied array, so a caller marking `jq`
+ * inapplicable for an unrelated reason got a confident GitHub explanation.
+ * Absent a reason the line stays generic, because a renderer that fills one in
+ * is exactly how that happened.
+ */
 function toolLine(tool: HostTool): string {
   if (!tool.applicable) {
-    return `- \`${tool.name}\`: nothing to do here (this repository has no GitHub origin)`;
+    const because = tool.reason === undefined ? "" : ` (${tool.reason})`;
+    return `- \`${tool.name}\`: nothing to do here${because}`;
   }
   return tool.present
     ? `- \`${tool.name}\`: on your PATH${tool.path === undefined ? "" : ` (${tool.path})`}`

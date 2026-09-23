@@ -18,6 +18,15 @@ import { UNKNOWN_GH_OWNER, resolveRepositoryContext } from "../util/git-remote";
 const DETECTED_TOOLS = ["gh", "git", "jq"] as const;
 
 /**
+ * Why `gh` is inapplicable when the repository has no GitHub `origin`.
+ *
+ * States the property of the PROJECT, not of the install, because that is the
+ * part no action by the user changes. An agent that reads this should stop
+ * offering the source rather than suggest installing anything.
+ */
+const NO_GITHUB_ORIGIN = "this repository has no GitHub origin";
+
+/**
  * What the host has, for the recipes that condition on it.
  *
  * ESTABLISHED BY LOOKING, NOT BY RUNNING. {@link findOnPath} walks `PATH` and
@@ -61,6 +70,11 @@ export async function detectHostTools(cwd: string): Promise<HostTool[]> {
       // `gh` is the only tool whose usefulness depends on the repository.
       // `git` and `jq` are applicable wherever they are installed.
       applicable: name === "gh" ? onGitHub : true,
+      // The reason travels WITH the verdict, because the renderer must not
+      // infer one. It is the detector that knows why `gh` is inapplicable, and
+      // the phrasing is a fragment so a consumer can set it in parentheses or
+      // in a sentence of its own.
+      ...(name === "gh" && !onGitHub ? { reason: NO_GITHUB_ORIGIN } : {}),
     };
   });
 }

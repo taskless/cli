@@ -2,7 +2,9 @@
 
 ### Requirement: Host tool state is a render option, never an ambient read
 
-`PromptOptions` SHALL accept `hostTools`, an optional list of the command-line tools the host was found to have. Each entry SHALL carry the tool `name`, a `present` boolean, and an `applicable` boolean, and MAY carry the `path` at which it was found.
+`PromptOptions` SHALL accept `hostTools`, an optional list of the command-line tools the host was found to have. Each entry SHALL carry the tool `name`, a `present` boolean, and an `applicable` boolean, and MAY carry the `path` at which it was found and a `reason` explaining an `applicable: false` verdict.
+
+`reason` SHALL be optional, because the type is published surface and a required field would break every caller already building the array. A passage rendering an inapplicable tool SHALL print that tool's own `reason` and SHALL NOT supply one of its own: absent a reason the render SHALL fall back to a statement that names no cause. A renderer that infers a cause will assert it for tools it does not hold for, which is the defect this field replaces.
 
 The render path SHALL NOT discover this for itself. It SHALL NOT read `PATH`, SHALL NOT call the filesystem, and SHALL NOT spawn a process, for the same reason it does not read `process` for `invocation`: the module is imported by Workers without `nodejs_compat`, and the build refuses to emit a prompts entry whose graph reaches a node builtin. Detection lives in the CLI, which passes the result in.
 
@@ -27,6 +29,18 @@ When `hostTools` is supplied, a passage conditioned on a tool SHALL be selected 
 - **WHEN** a consumer supplies a tool with `present: true` and `applicable: false`
 - **THEN** the passage SHALL render the inapplicable reason
 - **AND** SHALL NOT render the reason used for a tool that is merely missing
+
+#### Scenario: An inapplicable tool renders its own reason
+
+- **WHEN** a consumer supplies a tool with `applicable: false` and a `reason`
+- **THEN** the rendered passage SHALL state that reason
+- **AND** SHALL NOT state a reason belonging to a different tool
+
+#### Scenario: A missing reason renders no cause at all
+
+- **WHEN** a consumer supplies a tool with `applicable: false` and no `reason`
+- **THEN** the rendered passage SHALL state that the tool has nothing to do here
+- **AND** SHALL NOT name any cause, GitHub included
 
 #### Scenario: The prompts entry graph stays host-free
 
