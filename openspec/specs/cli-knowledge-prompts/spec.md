@@ -2,7 +2,7 @@
 
 ## Purpose
 
-The CLI's `agent/*.txt` recipes are the authoritative guidance Taskless gives an
+The CLI's `agent/*.md` recipes are the authoritative guidance Taskless gives an
 agent about authoring and operating rules. Until now the only way to read them
 was to run `taskless agent`, which puts them out of reach of anything that cannot
 spawn the CLI — notably the service-side generator, which needs the same text to
@@ -20,7 +20,7 @@ silently become public API.
 
 ### Requirement: The package exposes knowledge prompts via a dedicated import
 
-The package SHALL expose its knowledge prompts (the `agent/*.txt` recipes) through a subpath export `@taskless/cli/prompts`, built into `dist` and listed in `files`, so consumers can import them without invoking the CLI.
+The package SHALL expose its knowledge prompts (the `agent/*.md` recipes) through a subpath export `@taskless/cli/prompts`, built into `dist` and listed in `files`, so consumers can import them without invoking the CLI.
 
 #### Scenario: Importing a prompt by topic
 
@@ -112,7 +112,7 @@ The `@taskless/cli/prompts` module SHALL contain only embedded prompt data, type
 
 ### Requirement: Anonymous variants are accessible distinctly from canonical
 
-Where a `<topic>.anonymous.txt` variant exists, the export SHALL make it retrievable distinctly via `PromptOptions.anonymous`, falling back to the canonical recipe when no variant exists.
+Where a `<topic>.anonymous.md` variant exists, the export SHALL make it retrievable distinctly via `PromptOptions.anonymous`, falling back to the canonical recipe when no variant exists.
 
 #### Scenario: Anonymous variant retrieval and fallback
 
@@ -141,18 +141,18 @@ What the requirement actually protects is not the version number but the notice.
 
 ### Requirement: Topic membership is explicit and verified against the recipe files
 
-`PromptTopic` SHALL be derived from an explicit, hand-maintained list of exported topics rather than inferred from whatever recipe files are present, so that adding or removing an `agent/*.txt` file cannot silently change the public API. Recipe files deliberately withheld from the export SHALL be recorded in an explicit internal-topics list.
+`PromptTopic` SHALL be derived from an explicit, hand-maintained list of exported topics rather than inferred from whatever recipe files are present, so that adding or removing an `agent/*.md` file cannot silently change the public API. Recipe files deliberately withheld from the export SHALL be recorded in an explicit internal-topics list.
 
-An automated check SHALL assert that the set of canonical `agent/*.txt` topics on disk is exactly the union of the exported topics and the internal-topics list, failing when the two diverge in either direction.
+An automated check SHALL assert that the set of canonical `agent/*.md` topics on disk is exactly the union of the exported topics and the internal-topics list, failing when the two diverge in either direction.
 
 #### Scenario: A new recipe file is added without being classified
 
-- **WHEN** a new canonical `agent/<topic>.txt` is added and appears in neither the exported topics nor the internal-topics list
+- **WHEN** a new canonical `agent/<topic>.md` is added and appears in neither the exported topics nor the internal-topics list
 - **THEN** the completeness check SHALL fail, requiring the author to either export the topic or record it as internal
 
 #### Scenario: An exported topic loses its recipe file
 
-- **WHEN** a topic remains in `PromptTopic` but its canonical `agent/<topic>.txt` no longer exists
+- **WHEN** a topic remains in `PromptTopic` but its canonical `agent/<topic>.md` no longer exists
 - **THEN** the completeness check SHALL fail, rather than the topic rendering empty or undefined at runtime
 
 #### Scenario: A deliberately internal recipe stays unexported
