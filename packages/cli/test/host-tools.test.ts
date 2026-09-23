@@ -256,6 +256,53 @@ describe("an inapplicable tool renders its own reason", () => {
   });
 });
 
+// #394 review: `prReviewSource` asks `toolState` about `gh` by name and renders
+// the unmeasured default when the array does not mention it, while
+// `hostToolsStep` gated only on `tools.length === 0` and claimed "the list
+// above is the answer" for ANY non-empty array. On a partial array the two
+// passages contradicted each other, and the tool-list step invited a reader to
+// infer "not installed" from "not listed" — a verdict read out of silence, the
+// same category as the `toolLine` defect.
+//
+// Unreachable through `detectHostTools`, which always returns all three. But
+// `hostTools` is published surface and the mechanism is meant for recipes with
+// their own tool subsets, so the guard belongs at the render.
+describe("a partial hostTools array does not read as a census", () => {
+  const partial = [{ name: "git", present: true, applicable: true }];
+
+  it("does not claim the list is exhaustive", () => {
+    const rendered = renderWith(partial);
+
+    expect(rendered).toContain("A tool NOT listed was not looked for");
+    expect(rendered).toContain("not installed — treat it as unknown");
+    // The sentence that made omission read as absence.
+    expect(rendered).not.toContain("for any of them; the list above is the");
+  });
+
+  it("agrees with the PR-review bullet, which reports gh unmeasured", () => {
+    const rendered = renderWith(partial);
+
+    // `prReviewSource` renders its unconditioned default for an unmentioned
+    // tool, so the step must not simultaneously imply gh was ruled out.
+    expect(rendered).toContain("reading merged PRs needs the");
+    expect(rendered).not.toContain("`gh`: not on your PATH");
+    expect(rendered).not.toContain("`gh`: on your PATH");
+  });
+
+  // The full array is the common case and must still read as a firm answer.
+  it("still states the list is the answer for the tools it does hold", () => {
+    const rendered = renderWith([
+      { name: "gh", present: true, applicable: true },
+      { name: "git", present: true, applicable: true },
+      { name: "jq", present: false, applicable: true },
+    ]);
+
+    expect(rendered).toContain("Taskless already looked");
+    expect(rendered).toContain("`gh`: on your PATH");
+    expect(rendered).toContain("list is the answer, and re-deriving it");
+  });
+});
+
 describe("the prompts export renders the full menu with no options", () => {
   it("offers every source and claims nothing about the host", () => {
     const rendered = getRecipe("onboard") ?? "";
