@@ -7,9 +7,26 @@ const skillStatusSchema = z.object({
   current: z.boolean(),
 });
 
-const toolStatusSchema = z.object({
+const harnessStatusSchema = z.object({
   name: z.string(),
   skills: z.array(skillStatusSchema),
+});
+
+/**
+ * A command-line tool found on `PATH`.
+ *
+ * `present` is established by looking for a file of that name and nothing
+ * else: the CLI does not spawn a detected binary, read its version, or hash
+ * it, so a consumer must read this as presence rather than as a working
+ * install. `applicable` is the separate question of whether the tool could
+ * accomplish anything here at all — `gh` in a repository with no GitHub
+ * `origin` is present and inapplicable, and must not be reported as missing.
+ */
+const hostToolSchema = z.object({
+  name: z.string(),
+  present: z.boolean(),
+  path: z.string().optional(),
+  applicable: z.boolean(),
 });
 
 const authSchema = z.object({
@@ -21,7 +38,18 @@ const authSchema = z.object({
 export const outputSchema = z.object({
   success: z.literal(true),
   version: z.string().describe("CLI version"),
-  tools: z.array(toolStatusSchema).describe("Detected tools and skill status"),
+  harnesses: z
+    .array(harnessStatusSchema)
+    .describe(
+      "Detected agent harnesses and their skill status. Published under " +
+        "the key `tools` before that name was given to the CLI binaries " +
+        "below; the entry shape is unchanged."
+    ),
+  tools: z
+    .array(hostToolSchema)
+    .describe(
+      "Command-line tools found on PATH. Presence only: nothing is executed"
+    ),
   loggedIn: z.boolean().describe("Whether the user is authenticated"),
   auth: authSchema.optional().describe("User identity if logged in"),
   repositoryUrl: z
