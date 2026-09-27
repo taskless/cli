@@ -138,6 +138,38 @@ const RUNTIME_CHECK = `export default async function (root, matches) {
 
 const CHECK_REPORT_PATH = ".taskless/runtime/rules/demo/check.ts";
 
+const UPGRADE_URL = "https://app.taskless.io/o/acme/upgrade?from=reconcile";
+
+/** The `--json` line with the entitlement field this suite asserts on. */
+function parseEntitlementJson(stdout: string): ReturnType<typeof parseJson> & {
+  entitlement?: {
+    runtimeSignatures: false;
+    reason?: string;
+    upgradeUrl?: string;
+    withheld: string[];
+  };
+} {
+  return parseJson(stdout) as ReturnType<typeof parseEntitlementJson>;
+}
+
+/** A reconcile body withholding the reported files ending in `endsWith`. */
+function withholding(request: ReconcileRequestBody, ...endsWith: string[]) {
+  return {
+    run: [],
+    unsafe: [],
+    unknown: [],
+    missing: [],
+    entitlement: {
+      runtimeSignatures: false,
+      reason: "RUNTIME_SIGNATURES_NOT_IN_PLAN",
+      upgradeUrl: UPGRADE_URL,
+      withheld: request.files
+        .filter((f) => endsWith.some((suffix) => f.file.endsWith(suffix)))
+        .map((f) => ({ ruleId: "r", file: f.file })),
+    },
+  };
+}
+
 describe("check: static vs runtime dispatch", () => {
   let directory: string;
 
@@ -342,6 +374,208 @@ describe("check: static vs runtime dispatch", () => {
       expect(server.requests[0]!.files).toHaveLength(1);
     } finally {
       await server.close();
+    }
+  });
+
+  it("withheld for the plan: fails the run and names the cause, not drift", async () => {
+    const server = await startMockServer((request) => ({
+      statusCode: 200,
+      body: withholding(request, "demo/check.ts"),
+    }));
+    try {
+      const { stdout, exitCode } = await runCli(
+        ["check", "-d", directory, "--json"],
+        { TASKLESS_TOKEN: "fake.token", TASKLESS_API_URL: server.apiUrl }
+      );
+      const output = parseEntitlementJson(stdout);
+      // The only finding is a warning, so this is the withhold alone failing.
+      expect(exitCode).toBe(1);
+      expect(output.success).toBe(false);
+      expect(output.results.some((r) => r.ruleId === "no-console")).toBe(true);
+      expect(output.results.some((r) => r.source === "taskless-runtime")).toBe(
+        false
+      );
+      const skip = output.skipped?.find((s) => s.rule === "demo");
+      expect(skip?.reason).toBe("not included in your Taskless plan");
+      expect(skip?.reason).not.toMatch(/unsafe|unknown|drift/);
+      expect(output.entitlement).toEqual({
+        runtimeSignatures: false,
+        reason: "RUNTIME_SIGNATURES_NOT_IN_PLAN",
+        upgradeUrl: UPGRADE_URL,
+        withheld: ["demo"],
+      });
+    } finally {
+      await server.close();
+    }
+  });
+
+  it("withheld for the plan, human output: one notice carries the upgrade URL", async () => {
+    const server = await startMockServer((request) => ({
+      statusCode: 200,
+      body: withholding(request, "demo/check.ts"),
+    }));
+    try {
+      const { stderr, exitCode } = await runCli(["check", "-d", directory], {
+        TASKLESS_TOKEN: "fake.token",
+        TASKLESS_API_URL: server.apiUrl,
+      });
+      expect(exitCode).toBe(1);
+      expect(stderr.split(UPGRADE_URL)).toHaveLength(2);
+      expect(stderr).toContain("RUNTIME_SIGNATURES_NOT_IN_PLAN");
+    } finally {
+      await server.close();
+    }
+  });
+
+  it("blessed and withheld together: the blessed rule runs and the run still fails", async () => {
+    const other = join(directory, ".taskless", "runtime", "rules", "other");
+    await mkdir(other, { recursive: true });
+    await writeFile(join(other, "logs.yml"), RUNTIME_CAPTURE, "utf8");
+    await writeFile(join(other, "check.ts"), RUNTIME_CHECK + "// other\n");
+
+    const server = await startMockServer((request) => ({
+      statusCode: 200,
+      body: {
+        ...withholding(request, "other/check.ts"),
+        run: [
+          {
+            ruleId: "demo",
+            file: CHECK_REPORT_PATH,
+            signature: sig(request, "demo/check.ts"),
+          },
+        ],
+      },
+    }));
+    try {
+      const { stdout, exitCode } = await runCli(
+        ["check", "-d", directory, "--json"],
+        { TASKLESS_TOKEN: "fake.token", TASKLESS_API_URL: server.apiUrl }
+      );
+      const output = parseEntitlementJson(stdout);
+      expect(exitCode).toBe(1);
+      expect(output.results.some((r) => r.source === "taskless-runtime")).toBe(
+        true
+      );
+      expect(output.entitlement?.withheld).toEqual(["other"]);
+    } finally {
+      await server.close();
+    }
+  });
+
+  it("a withheld file matching no local rule still fails, named by its path", async () => {
+    const server = await startMockServer(() => ({
+      statusCode: 200,
+      body: {
+        run: [],
+        unsafe: [],
+        unknown: [],
+        missing: [],
+        entitlement: {
+          runtimeSignatures: false,
+          withheld: [{ ruleId: "r", file: "elsewhere/check.ts" }],
+        },
+      },
+    }));
+    try {
+      const { stdout, exitCode } = await runCli(
+        ["check", "-d", directory, "--json"],
+        { TASKLESS_TOKEN: "fake.token", TASKLESS_API_URL: server.apiUrl }
+      );
+      const output = parseEntitlementJson(stdout);
+      expect(exitCode).toBe(1);
+      expect(output.entitlement?.withheld).toEqual(["elsewhere/check.ts"]);
+      // `demo` was reported and not withheld, so it keeps the ordinary reason.
+      expect(output.skipped?.find((s) => s.rule === "demo")?.reason).toMatch(
+        /not blessed/
+      );
+    } finally {
+      await server.close();
+    }
+  });
+
+  it("a file withheld for the plan is never sent to restore", async () => {
+    // The service keeps withheld files out of `unsafe`; this is the guard for
+    // the day it does not. Restoring bytes the plan will not run fixes nothing.
+    const server = await startMockServer((request) => {
+      const body = withholding(request, "demo/check.ts");
+      const file = body.entitlement.withheld[0]!.file;
+      return {
+        statusCode: 200,
+        body: {
+          ...body,
+          unsafe: [
+            { ruleId: "r", file, expected: "1;h=sha-256;d=00", got: "x" },
+          ],
+        },
+      };
+    });
+    try {
+      const { stdout } = await runCli(["check", "-d", directory, "--json"], {
+        TASKLESS_TOKEN: "fake.token",
+        TASKLESS_API_URL: server.apiUrl,
+      });
+      const output = JSON.parse(
+        stdout
+          .trim()
+          .split("\n")
+          .findLast((l) => l.startsWith("{")) ?? "{}"
+      ) as { notices?: string[] };
+      expect(
+        (output.notices ?? []).some((notice) => /restor/.test(notice))
+      ).toBe(false);
+    } finally {
+      await server.close();
+    }
+  });
+
+  it("unentitled with nothing withheld: exit 0, entitlement still reported", async () => {
+    const server = await startMockServer(() => ({
+      statusCode: 200,
+      body: {
+        run: [],
+        unsafe: [],
+        unknown: [],
+        missing: [],
+        entitlement: { runtimeSignatures: false, withheld: [] },
+      },
+    }));
+    try {
+      const { stdout, exitCode } = await runCli(
+        ["check", "-d", directory, "--json"],
+        { TASKLESS_TOKEN: "fake.token", TASKLESS_API_URL: server.apiUrl }
+      );
+      const output = parseEntitlementJson(stdout);
+      expect(exitCode).toBe(0);
+      expect(output.success).toBe(true);
+      expect(output.entitlement).toEqual({
+        runtimeSignatures: false,
+        withheld: [],
+      });
+    } finally {
+      await server.close();
+    }
+  });
+
+  it("entitled or legacy responses are unchanged: exit 0, no entitlement field", async () => {
+    for (const entitlement of [undefined, { runtimeSignatures: true }]) {
+      const server = await startMockServer(() => ({
+        statusCode: 200,
+        body: { run: [], unsafe: [], unknown: [], missing: [], entitlement },
+      }));
+      try {
+        const { stdout, exitCode } = await runCli(
+          ["check", "-d", directory, "--json"],
+          { TASKLESS_TOKEN: "fake.token", TASKLESS_API_URL: server.apiUrl }
+        );
+        const output = parseEntitlementJson(stdout);
+        expect(exitCode).toBe(0);
+        expect(output).not.toHaveProperty("entitlement");
+        expect(output.skipped?.find((s) => s.rule === "demo")?.reason).toMatch(
+          /not blessed/
+        );
+      } finally {
+        await server.close();
+      }
     }
   });
 

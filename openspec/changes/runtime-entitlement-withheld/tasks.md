@@ -21,19 +21,19 @@
 
 ## 3. Check fails and explains
 
-- [ ] 3.1 Split `selectBlessedRuntimeRules`' non-`run` rules into
+- [x] 3.1 Split `selectBlessedRuntimeRules`' non-`run` rules into
       entitlement-withheld (reported path in `entitlement.withheld`) and the
       rest; give the former the plan skip reason and keep today's reason for the
       latter.
-- [ ] 3.2 Exclude entitlement-withheld rules from restore targets (the server
+- [x] 3.2 Exclude entitlement-withheld rules from restore targets (the server
       already omits them from `missing`; guard anyway so an `unsafe` listing
       cannot race a withhold into a repair).
-- [ ] 3.3 Carry the normalized entitlement on `RuntimePlan`, and add one plan
+- [x] 3.3 Carry the normalized entitlement on `RuntimePlan`, and add one plan
       notice naming the withheld rules, reason, and upgrade URL.
-- [ ] 3.4 In `check`, force exit code 1 and `success: false` when the plan's
+- [x] 3.4 In `check`, force exit code 1 and `success: false` when the plan's
       entitlement has a non-empty `withheld`; add the optional `entitlement`
       field to `schemas/check.ts` and emit it under `--json`.
-- [ ] 3.5 Tests: withheld-only run exits 1 with the notice; mixed run executes
+- [x] 3.5 Tests: withheld-only run exits 1 with the notice; mixed run executes
       blessed rules and still exits 1; no `entitlement` is byte-identical to
       today; `runtimeSignatures: false` with empty `withheld` exits 0; degrade
       paths unchanged.

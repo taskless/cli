@@ -413,7 +413,17 @@ export const checkCommand = defineCommand({
         // Computed by `runEngines`, not here: the exit code is a fact about a
         // completed dispatch, and an engine failure has to fail the check even
         // with no findings.
-        const { exitCode } = dispatched;
+        //
+        // With one exception decided here: a runtime rule the service withheld
+        // for the plan fails the run whatever the scan found. Every other skip
+        // leaves the exit code alone because the CLI could not ask; this one
+        // is the answer to asking, and a green run would say the rule is still
+        // protecting the repository when it has stopped running.
+        const withheldForPlan = (plan.entitlement?.withheld.length ?? 0) > 0;
+        const exitCode =
+          dispatched.exitCode === 0 && withheldForPlan
+            ? 1
+            : dispatched.exitCode;
 
         if (args.json) {
           const output = checkOutputSchema.parse({
@@ -429,6 +439,9 @@ export const checkCommand = defineCommand({
             // channel a CI run reads dropped the entire output of the feature
             // whose whole purpose is explaining a rule that did not run.
             ...(runNotices.length > 0 ? { notices: runNotices } : {}),
+            ...(plan.entitlement === undefined
+              ? {}
+              : { entitlement: plan.entitlement }),
           });
           console.log(JSON.stringify(output));
         } else {

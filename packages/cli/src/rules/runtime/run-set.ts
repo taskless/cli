@@ -47,14 +47,23 @@ export async function signRuntimeChecks(
   return { signed, unreadable };
 }
 
+/**
+ * The path a rule's `check.ts` is reported under. One function, because
+ * `entitlement.withheld` carries no signature and is joined back to local rules
+ * by this path: a second spelling of it would silently match nothing.
+ */
+export function reportedCheckPath(cwd: string, rule: RuntimeRule): string {
+  // Reconcile paths are repo-relative POSIX; normalize Windows separators.
+  return relative(cwd, rule.checkFile).split(sep).join("/");
+}
+
 /** Map signed runtime rules to the reconcile report (`check.ts` path + signature). */
 export function reportRuntimeChecks(
   cwd: string,
   signed: SignedRuntimeRule[]
 ): ReportedFile[] {
   return signed.map(({ rule, signature }) => ({
-    // Reconcile paths are repo-relative POSIX; normalize Windows separators.
-    file: relative(cwd, rule.checkFile).split(sep).join("/"),
+    file: reportedCheckPath(cwd, rule),
     signature,
   }));
 }
