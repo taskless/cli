@@ -40,15 +40,15 @@
 
 ## 4. Write-time warnings
 
-- [ ] 4.1 Restore notice in `repairWithheldRules`: when the restore outcome
+- [x] 4.1 Restore notice in `repairWithheldRules`: when the restore outcome
       carries `runtimeSignatures: false`, replace the "blessed through the
       ordinary path" sentence with one saying the bytes were restored but will
       not run on the current plan.
-- [ ] 4.2 `rule create` / `rule improve`: when the generated status carries
+- [x] 4.2 `rule create` / `rule improve`: when the generated status carries
       `runtimeSignatures: false` and a written rule is a runtime rule, push the
       warning into `notices` (read defensively off the body until the schema
       carries it).
-- [ ] 4.3 Tests for both, including static rules and legacy responses emitting
+- [x] 4.3 Tests for both, including static rules and legacy responses emitting
       nothing.
 
 ## 5. Docs and release

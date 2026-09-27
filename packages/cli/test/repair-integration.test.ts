@@ -247,6 +247,69 @@ describe("repairing a drifted runtime rule, end to end", () => {
     }
   });
 
+  it("does not promise blessing when the plan will not run the restored rule", async () => {
+    // The ordinary notice says the next `check` blesses the repaired bytes.
+    // Under a plan without runtime signatures it will not, so the restore
+    // still writes the blessed bytes and withdraws only the promise.
+    const upgradeUrl = "https://app.taskless.io/o/acme/upgrade?from=restore";
+    const blessed = await canonicalHash(BLESSED);
+    const restoreBody = (entitlement: unknown) => ({
+      statusCode: 200,
+      body: {
+        ruleId: "demo",
+        entitlement,
+        rules: [
+          {
+            id: "demo",
+            engine: "runtime",
+            files: [
+              { path: "check.ts", content: BLESSED },
+              { path: "captures/logs.yml", content: CAPTURE },
+            ],
+            signature: blessed,
+          },
+        ],
+      },
+    });
+
+    const mock = await startMock({
+      reconcile: driftedReconcile(blessed),
+      restore: () => restoreBody({ runtimeSignatures: false, upgradeUrl }),
+    });
+    try {
+      const { stdout } = await runCli(["check", "-d", directory, "--json"], {
+        TASKLESS_TOKEN: "fake.token",
+        TASKLESS_API_URL: mock.apiUrl,
+      });
+      const notices = (envelope(stdout).notices ?? []).join("\n");
+      expect(notices).toContain(`${REPORTED} was restored`);
+      expect(notices).toMatch(/will not run/);
+      expect(notices).toContain(upgradeUrl);
+      expect(notices).not.toMatch(/next `check`/);
+      await expect(readFile(checkFile, "utf8")).resolves.toBe(BLESSED);
+    } finally {
+      await mock.close();
+    }
+
+    // An entitled response keeps the ordinary notice and warns about nothing.
+    await writeFile(checkFile, DRIFTED, "utf8");
+    const entitled = await startMock({
+      reconcile: driftedReconcile(blessed),
+      restore: () => restoreBody({ runtimeSignatures: true }),
+    });
+    try {
+      const { stdout } = await runCli(["check", "-d", directory, "--json"], {
+        TASKLESS_TOKEN: "fake.token",
+        TASKLESS_API_URL: entitled.apiUrl,
+      });
+      const notices = (envelope(stdout).notices ?? []).join("\n");
+      expect(notices).toMatch(/next `check`/);
+      expect(notices).not.toMatch(/will not run/);
+    } finally {
+      await entitled.close();
+    }
+  });
+
   it("leaves the rule directory holding exactly the blessed set, minus fixtures", async () => {
     // #233. Repair runs BECAUSE the directory's trustworthiness is in
     // question, and only `check.ts` is signed — so a stray capture beside the

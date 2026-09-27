@@ -4,6 +4,7 @@ import { resolveRepositoryUrl } from "../../util/git-remote";
 import { getCliPrefix } from "../../util/package-manager";
 import { reconcile } from "../../api/reconcile";
 import type { ReconcileResponse } from "../../api/reconcile";
+import { notRunOnPlanSentence } from "../../api/entitlement";
 import { restoreRule } from "../../api/restore";
 import { writeRuleFile } from "../files";
 import { PurgeIncompleteError } from "../deliver";
@@ -444,6 +445,16 @@ async function repairWithheldRules(
       }
       const message = error instanceof Error ? error.message : String(error);
       notices.push(`${target.file} could not be written (${message}).`);
+      continue;
+    }
+    // The usual notice below promises the next `check` blesses the rule, which
+    // a plan without runtime signatures will not do. The bytes are still the
+    // right bytes and are still written; only the promise is withdrawn.
+    if (outcome.entitlement !== undefined) {
+      notices.push(
+        `${target.file} was restored with the bytes the service blessed. ` +
+          notRunOnPlanSentence(outcome.entitlement)
+      );
       continue;
     }
     // Now says what the DIRECTORY contains, not just what was written. The

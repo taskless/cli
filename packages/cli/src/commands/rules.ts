@@ -13,6 +13,7 @@ import {
   isSingleContentRule,
   type GeneratedRule,
 } from "../api/rules";
+import { notRunOnPlanSentence, parseEntitlement } from "../api/entitlement";
 import {
   writeRuleFile,
   writeRuleTestFile,
@@ -20,6 +21,7 @@ import {
   readRuleMetaFile,
   deleteRuleFiles,
 } from "../rules/files";
+import { resolveIngestEngine } from "../rules/engines";
 import { RULES_DIRECTORY } from "../rules/layout";
 import { unsupportedMessage } from "../rules/unsupported";
 import {
@@ -34,6 +36,29 @@ import { outputSchema as metaOutputSchema } from "../schemas/rules-meta";
 import { getTelemetry } from "../telemetry";
 import { CLIError } from "../util/cli-error";
 import { type CLIErrorCode, writeJsonError } from "../types/errors";
+
+/**
+ * The warning for a runtime rule written under a plan that will not run it, or
+ * `undefined` when there is nothing to say.
+ *
+ * The rule is still written: it is the organization's rule, and it runs again
+ * the moment the plan allows. What must not happen is the author finishing
+ * `rule create` believing it is live. Read off the raw status because the
+ * generated type does not carry `entitlement` until the schema is regenerated
+ * after taskless/taskless#207 deploys; static rules never warn.
+ */
+function notRunOnPlanNotice(
+  status: unknown,
+  rule: unknown,
+  ruleFile: string
+): string | undefined {
+  const entitlement = parseEntitlement(
+    (status as { entitlement?: unknown }).entitlement
+  );
+  if (entitlement === undefined) return undefined;
+  if (resolveIngestEngine(rule) !== "runtime") return undefined;
+  return `${ruleFile} was written. ${notRunOnPlanSentence(entitlement)}`;
+}
 
 /** Format today's date as YYYYMMDD */
 function getTimestamp(): string {
@@ -276,6 +301,11 @@ const createCommand = defineCommand({
                 if (!args.json) console.error(`Warning: ${message}`);
               });
               writtenFiles.push(ruleFile);
+              const planWarning = notRunOnPlanNotice(status, rule, ruleFile);
+              if (planWarning !== undefined) {
+                notices.push(planWarning);
+                if (!args.json) console.error(`Warning: ${planWarning}`);
+              }
 
               // See `fileSetTestsFieldError` for why this is a guard rather
               // than a silent drop.
@@ -547,6 +577,11 @@ const improveCommand = defineCommand({
                 if (!args.json) console.error(`Warning: ${message}`);
               });
               writtenFiles.push(ruleFile);
+              const planWarning = notRunOnPlanNotice(status, rule, ruleFile);
+              if (planWarning !== undefined) {
+                notices.push(planWarning);
+                if (!args.json) console.error(`Warning: ${planWarning}`);
+              }
 
               // See `fileSetTestsFieldError` for why this is a guard rather
               // than a silent drop.
