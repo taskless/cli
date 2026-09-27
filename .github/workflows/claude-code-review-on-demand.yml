@@ -405,6 +405,13 @@ jobs:
       # THAT MARKER IS A CONTRACT WITH THE PROMPT. If the review-mode
       # instruction is ever reworded or dropped, change it here in the same
       # commit, or this step starts failing every run.
+      #
+      # A COPY OF THIS STEP lives in claude-code-focus-on-demand.yml, differing
+      # in its marker (`Focus areas:`). A fix to the detection logic here
+      # belongs in both. It is copied rather than shared because a local
+      # composite action (`uses: ./.github/actions/...`) loads from the
+      # checkout, which is the PR's contributor-authored tree, and would run
+      # with this job's write token.
       - name: Verify the review actually ran
         if: always()
         env:
