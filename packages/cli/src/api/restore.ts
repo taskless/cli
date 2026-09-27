@@ -1,6 +1,10 @@
 import type { paths } from "../generated/api";
 import { getApiBaseUrl } from "./config";
-import { parseEntitlement, type Entitlement } from "./entitlement";
+import {
+  parseEntitlement,
+  type Entitlement,
+  type MayCarryEntitlement,
+} from "./entitlement";
 import { CLI_VERSION, CLI_VERSION_HEADER } from "../version";
 
 /**
@@ -93,17 +97,13 @@ export async function restoreRule(
     return { status: "unavailable", reason: "invalid response body" };
   }
 
-  const data = body as Partial<RestoreResponse>;
+  const data = body as Partial<MayCarryEntitlement<RestoreResponse>>;
   const rules = data.rules;
   if (!Array.isArray(rules)) {
     return { status: "unavailable", reason: "response carried no `rules`" };
   }
-  // Read off the raw body rather than the generated type, which does not
-  // carry `entitlement` until taskless/taskless#207 deploys and the schema is
-  // regenerated. The normalizer treats a missing field as "entitled".
-  const entitlement = parseEntitlement(
-    (body as { entitlement?: unknown }).entitlement
-  );
+  // Absent means entitled, and every service before #207 omits it.
+  const entitlement = parseEntitlement(data.entitlement);
   return {
     status: "ok",
     rules,

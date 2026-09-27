@@ -13,7 +13,11 @@ import {
   isSingleContentRule,
   type GeneratedRule,
 } from "../api/rules";
-import { notRunOnPlanSentence, parseEntitlement } from "../api/entitlement";
+import {
+  notRunOnPlanSentence,
+  parseEntitlement,
+  type MayCarryEntitlement,
+} from "../api/entitlement";
 import {
   writeRuleFile,
   writeRuleTestFile,
@@ -43,18 +47,14 @@ import { type CLIErrorCode, writeJsonError } from "../types/errors";
  *
  * The rule is still written: it is the organization's rule, and it runs again
  * the moment the plan allows. What must not happen is the author finishing
- * `rule create` believing it is live. Read off the raw status because the
- * generated type does not carry `entitlement` until the schema is regenerated
- * after taskless/taskless#207 deploys; static rules never warn.
+ * `rule create` believing it is live. Static rules never warn.
  */
 function notRunOnPlanNotice(
-  status: unknown,
+  status: MayCarryEntitlement<object>,
   rule: unknown,
   ruleFile: string
 ): string | undefined {
-  const entitlement = parseEntitlement(
-    (status as { entitlement?: unknown }).entitlement
-  );
+  const entitlement = parseEntitlement(status.entitlement);
   if (entitlement === undefined) return undefined;
   if (resolveIngestEngine(rule) !== "runtime") return undefined;
   return `${ruleFile} was written. ${notRunOnPlanSentence(entitlement)}`;

@@ -30,6 +30,17 @@ export interface Entitlement {
   withheld: WithheldEntry[];
 }
 
+/**
+ * A generated response type that may also carry `entitlement`.
+ *
+ * The service adds the field (taskless/taskless#207) before the vendored
+ * schema does, so the CLI ships assuming it MIGHT be there rather than waiting
+ * on the deploy. `unknown`, not `Entitlement`: the field is untrusted until it
+ * has been through {@link parseEntitlement}. When the schema carries it, this
+ * collapses to the generated type and the wrapper can go.
+ */
+export type MayCarryEntitlement<T> = T & { entitlement?: unknown };
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }

@@ -59,12 +59,14 @@
 - [x] 5.2 Changeset (`patch`, pre-1.0) stating the exit-code change and what a
       CI owner does about it.
 - [x] 5.3 `pnpm typecheck` and `pnpm lint`.
-- [ ] 5.4 Archive the change on this PR.
+- [x] 5.4 Archive the change on this PR.
 
-## 6. Follow-up, after taskless/taskless#207 deploys
+## 6. Follow-up (tracked outside this change)
 
-- [ ] 6.1 Regenerate `api.schema.json` / `api.d.ts` and replace the defensive
-      reads in 2.3 and 4.2 with the typed field. May land as its own PR.
-      Do not regenerate before the cloud restores `signature` on the
-      config-based (static) file sets: the live schema drops it today as an
-      interim state, and a refresh now would vendor that gap.
+- [x] 6.1 Ship the entitlement as a field that MIGHT be present
+      (`MayCarryEntitlement<T>`), so this change does not wait on
+      taskless/taskless#207. Regenerating the schema and tightening the types
+      once the service always returns `entitlement` and static file-set
+      signatures is its own feature: #409.
+- [x] 6.2 Gating `--dangerously-run-scripts` on a TTY or `CI=1`, so an agent
+      cannot add it to get green: #408.

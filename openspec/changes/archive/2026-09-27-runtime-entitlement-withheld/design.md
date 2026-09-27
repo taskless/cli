@@ -69,11 +69,11 @@ so `--json` consumers reading `skipped` alone still see the right cause.
 entitlement warning is one more entry in each, so no new output channel and no
 schema change beyond `check`'s `entitlement` field.
 
-The restore response is typed from the generated schema, which does not yet
-carry `entitlement`. `restore.ts` reads it off the parsed body with the same
-normalizer as reconcile rather than widening the generated type by hand; the
-schema refresh that follows #207's deploy replaces the defensive read with the
-typed field.
+The restore and retrieval responses are typed from the generated schema, which
+does not yet carry `entitlement`. They are widened with `MayCarryEntitlement<T>`
+(the field as optional `unknown`) and read through the same normalizer as
+reconcile, so the CLI ships assuming the field MIGHT be there instead of waiting
+on #207's deploy. Tightening that once the service always sends it is #409.
 
 ## Risks
 
@@ -81,6 +81,6 @@ typed field.
   Accepted: failing closed is the property runtime rules exist for, and the
   failure names its cause and the URL to check.
 - **The vendored schema is stale in an unrelated way.** A refresh on 2026-09-27
-  also changes `successCases`/`failureCases` and drops `signature` from several
-  file-set responses. Out of scope here; noted so the follow-up regeneration is
-  reviewed rather than accepted wholesale.
+  also changes `successCases`/`failureCases` and drops `signature` from the
+  `sg`/`vale` file-set variants (the `runtime` variant keeps it). The cloud will
+  restore those signatures; regeneration waits for that (#409).
