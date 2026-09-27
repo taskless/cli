@@ -53,12 +53,12 @@
 
 ## 5. Docs and release
 
-- [ ] 5.1 Update `agent/check.md` and `agent/ci.md`: a withheld runtime rule
+- [x] 5.1 Update `agent/check.md` and `agent/ci.md`: a withheld runtime rule
       exits 1 with `entitlement` in `--json`, and a CI recipe should report it
       as a plan problem rather than a findings failure.
-- [ ] 5.2 Changeset (`patch`, pre-1.0) stating the exit-code change and what a
+- [x] 5.2 Changeset (`patch`, pre-1.0) stating the exit-code change and what a
       CI owner does about it.
-- [ ] 5.3 `pnpm typecheck` and `pnpm lint`.
+- [x] 5.3 `pnpm typecheck` and `pnpm lint`.
 - [ ] 5.4 Archive the change on this PR.
 
 ## 6. Follow-up, after taskless/taskless#207 deploys
