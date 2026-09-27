@@ -23,11 +23,13 @@ describe("ask wrapper", () => {
   it("the thrown error carries the step name", async () => {
     const { ask, WizardCancelled } = await import("../src/wizard/ask");
     try {
-      await ask("auth", () => Promise.resolve(fakeCancelSymbol));
+      await ask("summary", () => Promise.resolve(fakeCancelSymbol));
       expect.fail("expected WizardCancelled");
     } catch (error) {
       expect(error).toBeInstanceOf(WizardCancelled);
-      expect((error as InstanceType<typeof WizardCancelled>).step).toBe("auth");
+      expect((error as InstanceType<typeof WizardCancelled>).step).toBe(
+        "summary"
+      );
     }
   });
 });
