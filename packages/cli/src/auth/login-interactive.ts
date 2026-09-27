@@ -26,7 +26,7 @@ export interface LoginInteractiveOptions {
  * polls the Taskless auth endpoint, persists the token on success, and
  * returns a tagged result the caller can surface however it wants.
  *
- * Does NOT emit telemetry — the caller (wizard or `auth login` command) is
+ * Does NOT emit telemetry — the caller (the `auth login` command) is
  * responsible for its own telemetry events so the events stay scoped to
  * their originating flow.
  */
@@ -37,9 +37,9 @@ export async function loginInteractive(
   const out = options.out ?? ((line) => console.log(line));
   const error_ = options.err ?? ((line) => console.error(line));
 
-  // Silent: we're inside an interactive (clack) flow — stderr warnings from
-  // legacy/tracked-token checks would corrupt the UI. Pre-checks happen in
-  // promptAuth() before we get here.
+  // Silent: this is only an "already logged in?" probe. Stderr warnings from
+  // legacy/tracked-token checks belong to the commands that use the token,
+  // not to the login flow that is about to replace it.
   const existing = await getToken(cwd, { silent: true });
   if (existing) {
     return { status: "already_logged_in" };
