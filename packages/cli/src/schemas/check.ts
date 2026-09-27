@@ -49,6 +49,28 @@ export const outputSchema = z.object({
     .array(z.string())
     .optional()
     .describe("Advisory messages: engines that could not run"),
+  // Present only when reconcile answered for a plan without runtime rules. A
+  // non-empty `withheld` is why `success` is false on a run with no findings,
+  // and the one field that tells a CI job the fix is the plan, not the code.
+  entitlement: z
+    .object({
+      runtimeSignatures: z.literal(false),
+      reason: z
+        .string()
+        .optional()
+        .describe(
+          "Machine-readable reason, e.g. RUNTIME_SIGNATURES_NOT_IN_PLAN"
+        ),
+      upgradeUrl: z
+        .string()
+        .optional()
+        .describe("Where the organization can upgrade its plan"),
+      withheld: z
+        .array(z.string())
+        .describe("Runtime rules the service declined to run for this plan"),
+    })
+    .optional()
+    .describe("Runtime rules withheld because the plan does not include them"),
 });
 
 /** Error schema for `taskless check --json` on failure */

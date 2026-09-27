@@ -12,6 +12,7 @@ import { RUN_SCRIPTS_WARNING } from "./harness";
 import { type RuntimeRule } from "./discover";
 import {
   materializeRuntimeRules,
+  reportedCheckPath,
   reportRuntimeChecks,
   selectBlessedRuntimeRules,
   signRuntimeChecks,
@@ -46,6 +47,24 @@ export interface SkippedRuntimeRule {
   reason: string;
 }
 
+/**
+ * The service declined to run runtime rules for this organization's plan.
+ *
+ * Unlike every other skip, this one fails `check`. The degrade paths skip
+ * because the CLI could not ask; this skip is the answer to a question it did
+ * ask, and it will be the same answer on every run until someone acts on it.
+ */
+export interface PlanEntitlement {
+  runtimeSignatures: false;
+  reason?: string;
+  upgradeUrl?: string;
+  /**
+   * Local rule names the service withheld, plus the reported path of any
+   * withheld entry that matched no local rule. Non-empty means `check` fails.
+   */
+  withheld: string[];
+}
+
 /** The runtime-execution plan resolved from auth state and flags. */
 export interface RuntimePlan {
   /** Rules to execute — materialized when gated, live under `--dangerously-run-scripts`. */
@@ -54,7 +73,12 @@ export interface RuntimePlan {
   skipped: SkippedRuntimeRule[];
   /** Human-only notices about the runtime disposition. */
   notices: string[];
+  /** Present only when reconcile answered for a plan without runtime signatures. */
+  entitlement?: PlanEntitlement;
 }
+
+/** The skip reason for a rule withheld because the plan lacks runtime rules. */
+export const NOT_IN_PLAN_REASON = "not included in your Taskless plan";
 
 /** Skip every runtime rule with a shared reason (an unverified path). */
 function skipAllRuntime(rules: RuntimeRule[], reason: string): RuntimePlan {
@@ -179,6 +203,17 @@ export async function planRuntime(
     signed,
     outcome.result.run
   );
+  // Joined by reported path, since a withheld entry carries no signature. A
+  // withheld rule is split out of the generic "not blessed" skips so it is
+  // never described as drift: nothing about its bytes is wrong.
+  const entitlement = outcome.result.entitlement;
+  const withheldFiles = new Set(
+    (entitlement?.withheld ?? []).map((entry) => entry.file)
+  );
+  const planWithheld = withheld.filter((rule) =>
+    withheldFiles.has(reportedCheckPath(cwd, rule))
+  );
+  const notBlessed = withheld.filter((rule) => !planWithheld.includes(rule));
   let execute: RuntimeRule[] = [];
   try {
     execute =
@@ -195,9 +230,22 @@ export async function planRuntime(
   // below whether or not its bytes were just restored. Fetching code and
   // executing it in the same pass that discovered the drift would move the
   // gate, and the gate is the point.
+  //
+  // A file withheld for the plan is never sent to restore. The service keeps
+  // it out of `unsafe` and `missing` already; this holds if it ever does not,
+  // because restoring bytes the plan will not run fixes nothing and says the
+  // opposite.
   const repair = await repairWithheldRules(cwd, token, {
     repositoryUrl,
-    result: outcome.result,
+    result: {
+      ...outcome.result,
+      unsafe: outcome.result.unsafe.filter(
+        (entry) => !withheldFiles.has(entry.file)
+      ),
+      missing: outcome.result.missing.filter(
+        (entry) => !withheldFiles.has(entry.file)
+      ),
+    },
   });
 
   // A rule can be blessed and then vanish before it is executed. `execute` is
@@ -214,18 +262,75 @@ export async function planRuntime(
   // independently of which specific route caused it.
   const droppedSkips = accountForDroppedRules(blessed, execute);
 
+  const planEntitlement =
+    entitlement === undefined
+      ? undefined
+      : summarizeEntitlement(cwd, entitlement, planWithheld);
+
   return {
     execute,
     skipped: [
       ...unreadableSkips,
-      ...withheld.map((rule) => ({
+      ...notBlessed.map((rule) => ({
         rule: rule.name,
         reason: "not blessed by the server (unsafe / unknown / drift)",
       })),
+      ...planWithheld.map((rule) => ({
+        rule: rule.name,
+        reason: NOT_IN_PLAN_REASON,
+      })),
       ...droppedSkips,
     ],
-    notices: repair.notices,
+    notices: [
+      ...(planEntitlement === undefined || planEntitlement.withheld.length === 0
+        ? []
+        : [withheldNotice(planEntitlement)]),
+      ...repair.notices,
+    ],
+    ...(planEntitlement === undefined ? {} : { entitlement: planEntitlement }),
   };
+}
+
+/**
+ * Name what the service withheld, locally where possible.
+ *
+ * A withheld entry whose file matches no local rule is kept by its reported
+ * path rather than dropped. The service said something will not run, and the
+ * CLI failing to attribute it is not a reason for the run to go green.
+ */
+function summarizeEntitlement(
+  cwd: string,
+  entitlement: NonNullable<ReconcileResponse["entitlement"]>,
+  planWithheld: RuntimeRule[]
+): PlanEntitlement {
+  const matched = new Set(
+    planWithheld.map((rule) => reportedCheckPath(cwd, rule))
+  );
+  const unmatched = entitlement.withheld
+    .map((entry) => entry.file)
+    .filter((file) => !matched.has(file));
+  return {
+    runtimeSignatures: false,
+    ...(entitlement.reason === undefined ? {} : { reason: entitlement.reason }),
+    ...(entitlement.upgradeUrl === undefined
+      ? {}
+      : { upgradeUrl: entitlement.upgradeUrl }),
+    withheld: [...planWithheld.map((rule) => rule.name), ...unmatched],
+  };
+}
+
+/** The one notice a withheld run prints, so the upgrade URL appears once. */
+function withheldNotice(entitlement: PlanEntitlement): string {
+  const count = entitlement.withheld.length;
+  return (
+    `${String(count)} runtime ${count === 1 ? "rule was" : "rules were"} ` +
+    `withheld because runtime rules are not included in your Taskless plan` +
+    (entitlement.reason === undefined ? "" : ` (${entitlement.reason})`) +
+    `: ${entitlement.withheld.join(", ")}. \`check\` fails until they can run` +
+    (entitlement.upgradeUrl === undefined
+      ? "."
+      : `. Upgrade at ${entitlement.upgradeUrl}`)
+  );
 }
 
 /**
