@@ -1,4 +1,5 @@
 import { getApiBaseUrl } from "./config";
+import { parseEntitlement, type Entitlement } from "./entitlement";
 import { CLI_VERSION, CLI_VERSION_HEADER } from "../version";
 
 /**
@@ -57,6 +58,11 @@ export interface ReconcileResponse {
   unsafe: UnsafeEntry[];
   unknown: UnknownEntry[];
   missing: MissingEntry[];
+  /**
+   * Present only when the service withheld runtime blessing for the plan.
+   * Absent means the four buckets are the whole answer, as they always were.
+   */
+  entitlement?: Entitlement;
 }
 
 /**
@@ -124,7 +130,8 @@ export async function reconcile(
     return { status: "unavailable", reason: "invalid response body" };
   }
 
-  const data = body as Partial<ReconcileResponse>;
+  const data = body as Partial<Record<keyof ReconcileResponse, unknown>>;
+  const entitlement = parseEntitlement(data.entitlement);
   return {
     status: "ok",
     result: {
@@ -132,6 +139,7 @@ export async function reconcile(
       unsafe: asArray<UnsafeEntry>(data.unsafe),
       unknown: asArray<UnknownEntry>(data.unknown),
       missing: asArray<MissingEntry>(data.missing),
+      ...(entitlement === undefined ? {} : { entitlement }),
     },
   };
 }

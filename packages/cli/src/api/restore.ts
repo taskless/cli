@@ -1,5 +1,6 @@
 import type { paths } from "../generated/api";
 import { getApiBaseUrl } from "./config";
+import { parseEntitlement, type Entitlement } from "./entitlement";
 import { CLI_VERSION, CLI_VERSION_HEADER } from "../version";
 
 /**
@@ -36,7 +37,7 @@ export type RestoredRule = NonNullable<RestoreResponse["rules"]>[number];
  * already a safe state.
  */
 export type RestoreOutcome =
-  | { status: "ok"; rules: RestoredRule[] }
+  | { status: "ok"; rules: RestoredRule[]; entitlement?: Entitlement }
   | { status: "unauthorized" }
   | { status: "unavailable"; reason: string };
 
@@ -97,5 +98,15 @@ export async function restoreRule(
   if (!Array.isArray(rules)) {
     return { status: "unavailable", reason: "response carried no `rules`" };
   }
-  return { status: "ok", rules };
+  // Read off the raw body rather than the generated type, which does not
+  // carry `entitlement` until taskless/taskless#207 deploys and the schema is
+  // regenerated. The normalizer treats a missing field as "entitled".
+  const entitlement = parseEntitlement(
+    (body as { entitlement?: unknown }).entitlement
+  );
+  return {
+    status: "ok",
+    rules,
+    ...(entitlement === undefined ? {} : { entitlement }),
+  };
 }

@@ -8,15 +8,15 @@
 
 ## 2. Parse the entitlement
 
-- [ ] 2.1 Add a `parseEntitlement(value: unknown)` normalizer beside
+- [x] 2.1 Add a `parseEntitlement(value: unknown)` normalizer beside
       `reconcile` returning `Entitlement | undefined` per design decision 3
       (`runtimeSignatures === false` only; drop `withheld` entries without a
       string `file`; keep `upgradeUrl` only as an absolute `https:` URL).
-- [ ] 2.2 Carry `entitlement?: Entitlement` on `ReconcileResponse`, populated by
+- [x] 2.2 Carry `entitlement?: Entitlement` on `ReconcileResponse`, populated by
       `reconcile`.
-- [ ] 2.3 Surface `entitlement` on `RestoreOutcome` `ok` from the raw restore
+- [x] 2.3 Surface `entitlement` on `RestoreOutcome` `ok` from the raw restore
       body with the same normalizer; do not hand-widen the generated type.
-- [ ] 2.4 Unit-test the normalizer: absent, `true`, `false` with and without
+- [x] 2.4 Unit-test the normalizer: absent, `true`, `false` with and without
       `withheld`, malformed entries, non-https and relative URLs.
 
 ## 3. Check fails and explains
@@ -63,7 +63,8 @@
 
 ## 6. Follow-up, after taskless/taskless#207 deploys
 
-- [ ] 6.1 Regenerate `api.schema.json` / `api.d.ts`, review the unrelated drift
-      noted in the design (dropped `signature` on file sets) rather than
-      accepting it wholesale, and replace the defensive reads in 2.3 and 4.2
-      with the typed field. May land as its own PR.
+- [ ] 6.1 Regenerate `api.schema.json` / `api.d.ts` and replace the defensive
+      reads in 2.3 and 4.2 with the typed field. May land as its own PR.
+      Do not regenerate before the cloud restores `signature` on the
+      config-based (static) file sets: the live schema drops it today as an
+      interim state, and a refresh now would vendor that gap.
