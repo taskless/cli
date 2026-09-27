@@ -250,10 +250,13 @@ jobs:
       # `num_turns`, why bodies go through `@json`, why the run id is anchored
       # on its right, and why only bot comments count.
       #
-      # This is INLINE rather than a shared script on purpose. On issue_comment
-      # the workflow file comes from the default branch, but the checkout above
-      # is the PR's contributor-authored tree. A script run from that tree would
-      # execute whatever the PR changed it to, holding this job's write token.
+      # This is INLINE rather than a shared script or a local composite action
+      # on purpose. On issue_comment the workflow file comes from the default
+      # branch, but the checkout above is the PR's contributor-authored tree,
+      # and both a script and `uses: ./.github/actions/...` load from it. Either
+      # would run whatever the PR changed it to, holding this job's write token.
+      # A fix to the detection logic belongs in both copies; the review
+      # workflow's step points back here.
       #
       # Metrics are diagnostic only: the run fails on no posted summary or an
       # action-reported error, and warns on permission denials, naming the
