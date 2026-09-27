@@ -83,8 +83,8 @@ Nothing changes for unauthenticated or `--anonymous` runs, for
   condition, which a CI recipe must not read as a findings failure.
 - `api.schema.json` / `api.d.ts`: **not** regenerated here. #207 is not
   deployed; the live `__schema` carries no `entitlement` today (measured
-  2026-09-27). Restore and retrieval read the field off the body defensively
-  until it is, and a follow-up task regenerates once it ships.
+  2026-09-27). Restore and retrieval type it as a field that might be present
+  (`MayCarryEntitlement<T>`); tightening once it always is, is #409.
 
 ## Delivery shape
 
