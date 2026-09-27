@@ -80,16 +80,15 @@ export function parseEntitlement(value: unknown): Entitlement | undefined {
 }
 
 /**
- * The warning for a runtime rule written under a plan that will not run it.
- * Shared by `rule create`/`improve` and restore so the sentence cannot drift.
+ * Why a runtime rule just written will not run. Shared by `rule create`,
+ * `rule improve`, and restore, which each name the rule their own way, so the
+ * explanation cannot drift between them.
  */
-export function notRunOnPlanWarning(
-  file: string,
-  entitlement: Entitlement
-): string {
+export function notRunOnPlanSentence(entitlement: Entitlement): string {
+  // The URL ends the sentence with no trailing period, so copying it from a
+  // terminal does not copy a `.` into the address.
   return (
-    `${file} was written, but runtime rules are not included in your ` +
-    `Taskless plan, so it will not run` +
+    "It will not run: runtime rules are not included in your Taskless plan" +
     (entitlement.upgradeUrl === undefined
       ? "."
       : `. Upgrade at ${entitlement.upgradeUrl}`)
