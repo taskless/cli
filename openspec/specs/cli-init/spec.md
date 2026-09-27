@@ -464,47 +464,6 @@ Each selected directory SHALL produce exactly one `reference` stub target, even 
 - **THEN** `.taskless/` SHALL NOT appear as a selectable option
 - **AND** `.taskless/` SHALL NOT be pre-checked even though the manifest records it as a target
 
-### Requirement: Wizard explains the auth tradeoff and offers to log in
-
-The wizard SHALL present a short informational screen describing the tradeoff between anonymous and authenticated use: authenticated rules retain conversation history across teammates, enabling rule provenance (answering "why do we have this rule?"). The screen SHALL be followed by a yes/no prompt asking the user whether they want to log in now. If the user accepts, the wizard SHALL invoke the shared interactive login routine (the same routine used by `taskless auth login`) and SHALL block until the login flow completes or is cancelled. If the user declines, the wizard SHALL print a one-line hint that they can run `taskless auth login` later and proceed to the install step. If a valid token is already present, the wizard SHALL skip this step entirely.
-
-#### Scenario: Auth step is shown when not logged in
-
-- **WHEN** the wizard reaches the auth step and no valid token is resolvable
-- **THEN** the wizard SHALL display the tradeoff explanation
-- **AND** SHALL prompt the user to log in
-
-#### Scenario: Accepting login blocks until completion
-
-- **WHEN** the user accepts the login prompt
-- **THEN** the wizard SHALL invoke the shared interactive login routine
-- **AND** SHALL NOT advance to the install step until the login routine resolves
-
-#### Scenario: Declining login advances with a hint
-
-- **WHEN** the user declines the login prompt
-- **THEN** the wizard SHALL print a hint mentioning `taskless auth login`
-- **AND** SHALL advance to the install step
-
-#### Scenario: Auth step is skipped when already logged in
-
-- **WHEN** the wizard reaches the auth step and a valid token already exists for the working directory
-- **THEN** the wizard SHALL skip the auth explanation and prompt entirely
-
-### Requirement: Shared interactive login routine
-
-The CLI SHALL expose a single `loginInteractive()` function that performs the device-code login flow and returns once the token is stored or cancelled. Both the `auth login` subcommand and the wizard's auth step SHALL call this function. No duplicate login implementation SHALL exist.
-
-#### Scenario: Auth login uses the shared routine
-
-- **WHEN** a user runs `taskless auth login`
-- **THEN** the command handler SHALL call `loginInteractive()`
-
-#### Scenario: Wizard uses the shared routine
-
-- **WHEN** the wizard user accepts the login prompt
-- **THEN** the wizard SHALL call `loginInteractive()`
-
 ### Requirement: Wizard shows a diff-style summary before writing
 
 Before any filesystem writes, the wizard SHALL display a summary of planned actions grouped by target location. The summary SHALL include:
@@ -531,28 +490,6 @@ If the summary contains any removals, the wizard SHALL require an explicit `conf
 
 - **WHEN** the summary contains only additions and unchanged entries
 - **THEN** the wizard MAY proceed directly to writes without an extra confirm
-
-### Requirement: Wizard cancellation aborts without filesystem writes
-
-If the user cancels the wizard at any step (Ctrl-C, Esc, or equivalent clack cancel signal) before the install step completes, the CLI SHALL NOT write any skill files, command files, or manifest updates. The CLI SHALL exit with a non-zero exit code and print a short message indicating how to resume (`taskless init`).
-
-#### Scenario: Cancel at locations step
-
-- **WHEN** the user cancels the wizard during the locations step
-- **THEN** no files SHALL be written
-- **AND** the CLI SHALL exit non-zero
-
-#### Scenario: Cancel at auth step
-
-- **WHEN** the user cancels the wizard during the auth step
-- **THEN** no skill files or manifest updates SHALL be written
-- **AND** the CLI SHALL exit non-zero
-
-#### Scenario: Cancel at summary confirm
-
-- **WHEN** the user declines the summary confirm
-- **THEN** no files SHALL be written
-- **AND** the CLI SHALL exit non-zero
 
 ### Requirement: Install manifest records what was installed per target
 
@@ -825,3 +762,43 @@ The `migrated` field is unchanged: present with the migration report when a migr
 - **WHEN** `taskless init --json` runs
 - **THEN** the envelope SHALL contain `cliVersion.previous` (a string or `null`), `cliVersion.installed`, a `targets` array with one entry per install target, and a boolean `changed`
 - **AND** `changed` SHALL be `true` exactly when `migrated` is present, any target's written or removed list is non-empty, or `cliVersion.previous` is non-null and differs from `cliVersion.installed`
+
+### Requirement: Wizard does not offer to log in
+
+The wizard SHALL NOT prompt the user to log in, and SHALL NOT display an authentication explanation, at any step. It SHALL proceed from the tool-selection step directly to the install summary whether or not a token is available. Setup requires no account: authoring and running local rules needs none, and `taskless auth login` remains available, as do the "run `taskless auth login`" remedies on commands that require authentication.
+
+#### Scenario: Wizard advances from tools to summary without a login prompt
+
+- **WHEN** the wizard completes the tool-selection step and no valid token is resolvable
+- **THEN** the wizard SHALL NOT display an authentication note or a login prompt
+- **AND** SHALL advance to the install summary
+
+#### Scenario: Wizard does not start the login flow
+
+- **WHEN** the wizard runs to completion
+- **THEN** it SHALL NOT call `loginInteractive()`
+
+### Requirement: A single interactive login routine serves auth login
+
+The CLI SHALL expose a single `loginInteractive()` function that performs the device-code login flow and returns once the token is stored or cancelled. The `auth login` subcommand SHALL call this function. No duplicate login implementation SHALL exist.
+
+#### Scenario: Auth login uses the shared routine
+
+- **WHEN** a user runs `taskless auth login`
+- **THEN** the command handler SHALL call `loginInteractive()`
+
+### Requirement: Cancelling the wizard writes nothing
+
+If the user cancels the wizard at any step (Ctrl-C, Esc, or equivalent clack cancel signal) before the install step completes, the CLI SHALL NOT write any skill files, command files, or manifest updates. The CLI SHALL exit with a non-zero exit code and print a short message indicating how to resume (`taskless init`).
+
+#### Scenario: Cancel at locations step
+
+- **WHEN** the user cancels the wizard during the locations step
+- **THEN** no files SHALL be written
+- **AND** the CLI SHALL exit non-zero
+
+#### Scenario: Cancel at summary confirm
+
+- **WHEN** the user declines the summary confirm
+- **THEN** no files SHALL be written
+- **AND** the CLI SHALL exit non-zero

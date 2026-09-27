@@ -17,7 +17,6 @@ import { CLIError } from "../util/cli-error";
 import { WizardCancelled } from "./ask";
 import { getCliVersion, renderIntro } from "./intro";
 import { promptLocations } from "./steps/locations";
-import { promptAuth } from "./steps/auth";
 import { renderSummaryAndConfirm } from "./steps/summary";
 
 export interface RunWizardOptions {
@@ -28,8 +27,6 @@ export interface WizardResult {
   status: "completed" | "cancelled";
   locations: string[];
   optionalSkills: string[];
-  authPromptShown: boolean;
-  authCompleted: boolean;
   durationMs: number;
   cancelledStep?: string;
 }
@@ -44,17 +41,12 @@ export async function runWizard(
   let locations: string[] = [];
   // Optional skills no longer exist post-consolidation — always empty.
   const optionalSkills: string[] = [];
-  let authPromptShown = false;
-  let authCompleted = false;
 
   console.error(renderIntro());
   intro(" Taskless setup ");
 
   try {
     locations = await promptLocations(options.cwd);
-    const authResult = await promptAuth(options.cwd);
-    authPromptShown = authResult.prompted;
-    authCompleted = authResult.loggedIn;
 
     // Catalog has one entry now (`taskless`); install all embedded skills.
     const plan = buildInstallPlan(
@@ -129,8 +121,6 @@ export async function runWizard(
       status: args.status,
       locations,
       optionalSkills,
-      authPromptShown,
-      authCompleted,
       durationMs,
       cancelledStep,
     };

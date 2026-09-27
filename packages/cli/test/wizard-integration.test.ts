@@ -26,7 +26,6 @@ const cancelSpy = vi.fn();
 // Clack mock responses are set per-test via these mutable refs.
 const clackResponses: {
   locations?: string[] | symbol;
-  auth?: boolean | symbol;
   summary?: boolean | symbol;
 } = {};
 
@@ -49,9 +48,6 @@ vi.mock("@clack/prompts", () => ({
   isCancel: (value: unknown) => value === fakeCancelSymbol,
   multiselect: vi.fn(() => Promise.resolve(clackResponses.locations)),
   confirm: vi.fn(({ message }: { message: string }) => {
-    if (message.toLowerCase().includes("log in")) {
-      return Promise.resolve(clackResponses.auth);
-    }
     summaryConfirmMessage = message;
     return Promise.resolve(clackResponses.summary);
   }),
@@ -74,7 +70,6 @@ beforeEach(async () => {
   captureSpy.mockClear();
   cancelSpy.mockClear();
   clackResponses.locations = undefined;
-  clackResponses.auth = undefined;
   clackResponses.summary = undefined;
   summaryConfirmMessage = undefined;
   vi.stubEnv("TASKLESS_TOKEN", "stub-token");
@@ -111,6 +106,25 @@ describe("runWizard end-to-end", () => {
     expect(manifest.install.targets[".claude"]?.skills).toContain("taskless");
 
     expect(captureSpy).toHaveBeenCalledWith("cli_installed");
+  });
+
+  it("completes without a token and never offers to log in", async () => {
+    vi.stubEnv("TASKLESS_TOKEN", "");
+    clackResponses.locations = [".claude"];
+    clackResponses.summary = true;
+
+    const clack = await import("@clack/prompts");
+    const confirmMock = vi.mocked(clack.confirm);
+    confirmMock.mockClear();
+
+    const { runWizard } = await import("../src/wizard");
+    const result = await runWizard({ cwd });
+
+    expect(result.status).toBe("completed");
+    const messages = confirmMock.mock.calls.map(([options]) =>
+      String(options.message)
+    );
+    expect(messages.filter((m) => /log\s*in/i.test(m))).toEqual([]);
   });
 
   it("re-running with the same location is idempotent", async () => {
