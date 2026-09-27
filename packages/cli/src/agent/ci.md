@@ -1,4 +1,4 @@
-# Topic: ci     (CLI v%(CLI_VERSION)s / topic v1)
+# Topic: ci     (CLI v%(CLI_VERSION)s / topic v2)
 
 ## Goal
 Wire `%(TASKLESS_CLI)s check` into the user's existing CI so rules run
@@ -69,6 +69,12 @@ Run `%(TASKLESS_CLI)s check`:
 - "No rules configured" → stop. Fetch `%(TASKLESS_CLI)s agent route`.
 - Findings → tell the user CI will fail; ask whether to fix,
   suppress, or proceed knowing the first CI run will be red.
+- Runtime rules withheld for the plan (a notice with an upgrade URL,
+  or `entitlement.withheld` under `--json`) → tell the user CI will
+  fail until the organization's plan includes runtime rules. This is
+  not a findings failure and editing the rules will not fix it. Do not
+  add `--anonymous` or `--dangerously-run-scripts` to the CI command to
+  get green; both hide that the rules are not running.
 
 ### 4. Generate the config
 
