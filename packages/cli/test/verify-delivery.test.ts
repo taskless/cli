@@ -146,3 +146,39 @@ describe("verifyServedRule", () => {
     expect(verdict.ok ? "" : verdict.reason).toContain("check.ts entry");
   });
 });
+
+describe("verifyServedRule: a malformed set is named by its field", () => {
+  it.each([
+    ["files is not an array", { files: "x" }, "`files` that is not an array"],
+    [
+      "an entry is not an object",
+      { files: [1] },
+      "`files[0]` that is not an object",
+    ],
+    [
+      "an entry has no path",
+      { files: [{ content: "" }] },
+      "`files[0]` with no string `path`",
+    ],
+    [
+      "an entry has no content",
+      { files: [{ path: "a.yml" }] },
+      "`a.yml` with no string `content`",
+    ],
+    [
+      "signatures is not an array",
+      { signatures: null },
+      "`signatures` that is not an array",
+    ],
+    ["an engine is missing", { engine: undefined }, "no string `engine`"],
+  ])("refuses a set where %s", async (_, patch, reason) => {
+    const body = (await servedBody(SG, "rev-1")) as unknown as {
+      rules: Record<string, unknown>[];
+    };
+    Object.assign(body.rules[0]!, patch);
+    const verdict = await verifyServedRule(body as unknown as ServedRule, {
+      ruleId: SG.id,
+    });
+    expect(verdict.ok ? "" : verdict.reason).toContain(reason);
+  });
+});

@@ -10,7 +10,7 @@ import {
 } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, join, relative, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { promisify } from "node:util";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
@@ -18,18 +18,13 @@ import { ensureTasklessDirectory } from "../src/filesystem/directory";
 import {
   listRuleIds,
   planEngineDispatch,
-  resolveIngestEngine,
   ruleDirectory,
 } from "../src/rules/engines";
 import type { EngineName } from "../src/rules/layout";
-import {
-  deleteRuleFiles,
-  writeRuleFile,
-  writeRuleTestFile,
-} from "../src/rules/files";
+import { deleteRuleFiles, writeServedRule } from "../src/rules/files";
 import { verifyOneRule } from "../src/rules/inspect";
 import { discoverRuntimeRules } from "../src/rules/runtime/discover";
-import type { GeneratedRule } from "../src/api/rules";
+import type { ServedFileSet } from "../src/api/v2";
 import { CLIError } from "../src/util/cli-error";
 import { migrateFixture } from "./support/current-project";
 
@@ -649,90 +644,28 @@ describe("service-delivered rule ingest", () => {
     await rm(temporaryDirectory, { recursive: true, force: true });
   });
 
-  const rule = {
-    id: "no-eval",
-    content: { id: "no-eval", language: "typescript" },
-    tests: { valid: ["ok()"], invalid: ["eval(1)"] },
-  } as unknown as GeneratedRule;
-
-  it("files an engine-less payload under sg/", async () => {
-    const rulePath = await writeRuleFile(temporaryDirectory, rule);
-    const testPath = await writeRuleTestFile(
-      temporaryDirectory,
-      rule,
-      "20260730"
-    );
-
-    expect(rulePath).toBe(
-      join(tasklessDirectory, "rules", "sg", "no-eval", "no-eval.yml")
-    );
-    expect(testPath).toBe(
-      join(
-        tasklessDirectory,
-        "rules",
-        "sg",
-        "no-eval",
-        ".tests",
-        "no-eval-20260730-test.yml"
-      )
-    );
-  });
-
-  it("lands a delivered rule where the migration puts the same rule", async () => {
-    // Migrated: seeded at the legacy path, moved by 0004.
-    const migrated = await mkdtemp(join(tmpdir(), "tskl-ingest-migrated-"));
-    try {
-      await mkdir(join(migrated, ".taskless", "rules"), { recursive: true });
-      await writeFile(
-        join(migrated, ".taskless", "taskless.json"),
-        JSON.stringify({ version: 3 }),
-        "utf8"
-      );
-      await writeFile(
-        join(migrated, ".taskless", "rules", "no-eval.yml"),
-        NO_EVAL_RULE,
-        "utf8"
-      );
-      await ensureTasklessDirectory(migrated);
-
-      const delivered = await writeRuleFile(temporaryDirectory, rule);
-
-      // Both come to rest at the same `.taskless/`-relative path.
-      expect(relative(temporaryDirectory, delivered)).toBe(
-        join(".taskless", "rules", "sg", "no-eval", "no-eval.yml")
-      );
-      expect(
-        await exists(
-          join(migrated, ".taskless", "rules", "sg", "no-eval", "no-eval.yml")
-        )
-      ).toBe(true);
-    } finally {
-      await rm(migrated, { recursive: true, force: true });
-    }
-  });
-
   it("refuses an engine the CLI does not recognize and writes nothing", async () => {
-    const unknown = { ...rule, engine: "semgrep" } as unknown as GeneratedRule;
+    // v2 always names the engine, so there is no default to fall back to. A
+    // name this CLI does not know is a payload newer than the CLI: refused as
+    // an unreported CLIError, so the top-level handler cannot exit 0 on it.
+    const unknown = {
+      id: "no-eval",
+      engine: "semgrep",
+      files: [{ path: "no-eval.yml", content: NO_EVAL_RULE }],
+      signatures: [],
+    } as unknown as ServedFileSet;
 
-    await expect(writeRuleFile(temporaryDirectory, unknown)).rejects.toThrow(
-      /semgrep/
+    const refusal = await writeServedRule(temporaryDirectory, unknown).catch(
+      (error: unknown) => error
     );
-    await expect(writeRuleFile(temporaryDirectory, unknown)).rejects.toThrow(
-      CLIError
-    );
+    expect(refusal).toBeInstanceOf(CLIError);
+    expect((refusal as CLIError).message).toContain("semgrep");
+    expect((refusal as CLIError).reported).toBe(false);
 
     // Nothing under any engine directory.
     for (const engine of ["sg", "vale", "runtime"]) {
       const entries = await readdir(join(tasklessDirectory, "rules", engine));
       expect(entries.filter((entry) => entry !== ".gitkeep")).toEqual([]);
     }
-  });
-
-  it("resolves engines directly: absent is sg, known passes through", () => {
-    expect(resolveIngestEngine({})).toBe("sg");
-    expect(resolveIngestEngine({ engine: "" })).toBe("sg");
-    expect(resolveIngestEngine({ engine: "sg" })).toBe("sg");
-    expect(resolveIngestEngine({ engine: "vale" })).toBe("vale");
-    expect(() => resolveIngestEngine({ engine: "nope" })).toThrow(/nope/);
   });
 });

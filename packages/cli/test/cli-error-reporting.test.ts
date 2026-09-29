@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 
 import { CLIError } from "../src/util/cli-error";
-import { resolveIngestEngine } from "../src/rules/engines";
+import type { ServedFileSet } from "../src/api/v2";
+import { writeServedRule } from "../src/rules/files";
 
 /**
  * `index.ts` decides whether to print a failure and set a non-zero exit from
@@ -20,15 +21,15 @@ describe("CLIError reporting contract", () => {
     expect(error.reported).toBe(true);
   });
 
-  it("throws an unreported error for an engine the CLI does not know", () => {
+  it("throws an unreported error for an engine the CLI does not know", async () => {
     // Nothing prints before this throw, so the top-level handler is the only
     // thing standing between an unsupported engine and a silent exit 0.
-    let thrown: unknown;
-    try {
-      resolveIngestEngine({ engine: "from-a-newer-cli" });
-    } catch (error) {
-      thrown = error;
-    }
+    const thrown = await writeServedRule("/nonexistent-project", {
+      id: "rule",
+      engine: "from-a-newer-cli",
+      files: [],
+      signatures: [],
+    } as unknown as ServedFileSet).catch((error: unknown) => error);
 
     expect(thrown).toBeInstanceOf(CLIError);
     expect((thrown as CLIError).reported).toBe(false);

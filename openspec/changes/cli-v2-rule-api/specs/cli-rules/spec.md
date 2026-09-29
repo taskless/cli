@@ -125,7 +125,7 @@ and "Every API call is a v2 call carrying the CLI version".
 ### Requirement: Rule generation request endpoint accepts a request and returns a requestId
 
 **Reason**: A v1 server route the CLI no longer calls. The v2 contract is owned by the server
-(taskless/taskless#229) and vendored as `api.schema.json`.
+(taskless/taskless#229) and vendored as `api-v2.schema.json`.
 **Migration**: See `POST /cli/api/v2/request` in the vendored schema.
 
 ### Requirement: Iterate endpoint accepts guidance and returns a requestId

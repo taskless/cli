@@ -4,7 +4,7 @@ import { readFile } from "node:fs/promises";
  * Canonical rule hashing — the CLI half of the server-owned reconciliation
  * contract (TSKL-270). This MUST reproduce the server reference
  * (`packages/shared/src/rule-hash.ts`) byte-for-byte; the conformance vectors
- * at `GET /cli/api/rule-hash-vectors` exist to catch any divergence.
+ * at `GET /cli/api/v2/rule-hash-vectors` exist to catch any divergence.
  *
  * The hash is built on web-standard APIs only (`crypto.subtle` + `TextEncoder`)
  * so it matches in workerd and Node 20+ without a Node-specific crypto module.

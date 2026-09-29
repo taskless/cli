@@ -30,7 +30,7 @@ import { escapeRegExp } from "../src/util/regex";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SOURCE_ROOT = join(HERE, "..", "src");
-const SCHEMA_PATH = join(SOURCE_ROOT, "generated", "api.schema.json");
+const SCHEMA_PATH = join(SOURCE_ROOT, "generated", "api-v2.schema.json");
 
 interface OpenApiDocument {
   paths: Record<string, Record<string, { deprecated?: boolean } | undefined>>;
@@ -101,6 +101,34 @@ describe("deprecated API paths", () => {
       }
     }
 
+    expect(offenders).toEqual([]);
+  });
+});
+
+/**
+ * No source file may call a v1 data route.
+ *
+ * The v1 schema is gone, so a typed call to a v1 path no longer compiles. A
+ * hand-built URL still would, and v1 answers a CLI at or above the v2 floor
+ * with `410 moved`: the failure would reach users in the field, not CI. This
+ * reads SOURCE, never the bundle (the code style guide's rule: a check on
+ * build output belongs in the build), and looks only where a request path is
+ * spelled: right after a quote, or right after a template interpolation such
+ * as `${baseUrl}`. Prose in comments names v1 routes to explain history and
+ * is deliberately out of reach of this pattern.
+ */
+describe("v1 API routes", () => {
+  it("are not called by any source file", async () => {
+    const pattern = /["'}]\/cli\/api\/(?!v2\/)/;
+    const offenders: string[] = [];
+    for (const file of await typeScriptSources(SOURCE_ROOT)) {
+      const source = await readFile(file, "utf8");
+      for (const [index, line] of source.split("\n").entries()) {
+        if (pattern.test(line)) {
+          offenders.push(`${relative(SOURCE_ROOT, file)}:${String(index + 1)}`);
+        }
+      }
+    }
     expect(offenders).toEqual([]);
   });
 });

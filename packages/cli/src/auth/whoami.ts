@@ -1,13 +1,9 @@
-import { createApiClient } from "../api/client";
+import { whoami, type WhoamiResult } from "../api/v2";
 
 /** Fetch identity info for the current token. Returns undefined on failure. */
-export async function fetchWhoami(token: string) {
-  try {
-    const client = createApiClient(token);
-    const { data, error } = await client.GET("/cli/api/whoami");
-    if (error) return;
-    return data;
-  } catch {
-    return;
-  }
+export async function fetchWhoami(
+  token: string
+): Promise<WhoamiResult | undefined> {
+  const outcome = await whoami(token);
+  return outcome.status === "ok" ? outcome.data : undefined;
 }

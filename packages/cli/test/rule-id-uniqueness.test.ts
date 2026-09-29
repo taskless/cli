@@ -8,7 +8,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import migration, {
   retargetValeConfig,
 } from "../src/filesystem/migrations/0009-unique-rule-ids";
-import { writeRuleFile } from "../src/rules/files";
+import { writeServedRule } from "../src/rules/files";
 import { verifyOneRule } from "../src/rules/inspect";
 import { findRuleIdCollisions } from "../src/rules/id-uniqueness";
 import type { EngineName } from "../src/rules/layout";
@@ -584,27 +584,27 @@ describe("retargetValeConfig", () => {
   });
 });
 
-describe("writeRuleFile keeps working through a collision", () => {
-  // `check`'s repair path calls `writeRuleFile`. A refusal here would brick
-  // repair for BOTH colliding rules, which is worse than the silence it would
+describe("writeServedRule keeps working through a collision", () => {
+  // `rule restore` writes through `writeServedRule`. A refusal here would brick
+  // recovery for BOTH colliding rules, which is worse than the silence it would
   // replace, so the write succeeds and only warns.
   it("writes the rule and warns instead of refusing", async () => {
     await valeRule("no-eval");
     const warnings: string[] = [];
 
-    const written = await writeRuleFile(
+    const written = await writeServedRule(
       cwd,
       {
         id: "no-eval",
         engine: "sg",
-        content: {
-          id: "no-eval",
-          language: "TypeScript",
-          severity: "error",
-          message: "no eval",
-          rule: { pattern: "eval($A)" },
-        },
-      } as Parameters<typeof writeRuleFile>[1],
+        files: [
+          {
+            path: "no-eval.yml",
+            content: `id: no-eval\nlanguage: TypeScript\nseverity: error\nmessage: no eval\nrule:\n  pattern: eval($A)\n`,
+          },
+        ],
+        signatures: [],
+      } as unknown as Parameters<typeof writeServedRule>[1],
       (message) => warnings.push(message)
     );
 
@@ -614,19 +614,21 @@ describe("writeRuleFile keeps working through a collision", () => {
 
   it("does not warn when the id is held by one engine", async () => {
     const warnings: string[] = [];
-    await writeRuleFile(
+    await writeServedRule(
       cwd,
       {
         id: "no-debugger",
         engine: "sg",
-        content: {
-          id: "no-debugger",
-          language: "TypeScript",
-          severity: "error",
-          message: "no debugger",
-          rule: { pattern: "debugger" },
-        },
-      } as Parameters<typeof writeRuleFile>[1],
+        files: [
+          {
+            path: "no-debugger.yml",
+            content: `id: no-debugger\nlanguage: TypeScript\nseverity: error\nmessage: no debugger\nrule:\n  pattern: debugger\n`,
+          },
+          // A fixture, so the only warning this can produce is a collision.
+          { path: ".tests/fail/case.ts", content: "debugger;\n" },
+        ],
+        signatures: [],
+      } as unknown as Parameters<typeof writeServedRule>[1],
       (message) => warnings.push(message)
     );
     expect(warnings).toEqual([]);

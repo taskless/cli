@@ -17,7 +17,7 @@ export class CLIError extends Error {
    *
    * The `fail()` helpers print (or emit a JSON envelope) and set `exitCode`
    * before throwing, so the top-level handler must not print again. A throw
-   * site that does neither — `resolveIngestEngine`, for one — would otherwise
+   * site that does neither — `writeServedRule` refusing an unknown engine, for one — would otherwise
    * exit 0 with no output, which reads as success. Defaulting to `false` makes
    * "reported" the claim a caller has to make, rather than something the
    * handler assumes of every CLIError.

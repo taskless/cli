@@ -8,7 +8,7 @@ import { apiBaseUrl, packageFile, writeJsonArtifact } from "./artifacts";
  *
  * `generate:api` used to pipe the live `__schema` straight into
  * `openapi-typescript`, which meant the only committed record of the contract
- * was `api.d.ts`. That is a poor place to notice a change. A path being
+ * was the generated `.d.ts`. That is a poor place to notice a change. A path being
  * renamed, a field being deprecated, or a response gaining a variant all
  * arrive as type churn — hundreds of lines of regenerated declarations — and
  * the sentence the service wrote to explain the change (`deprecated: true`,
@@ -16,7 +16,7 @@ import { apiBaseUrl, packageFile, writeJsonArtifact } from "./artifacts";
  *
  * Committing the document itself makes the refresh reviewable: `pnpm
  * --filter @taskless/cli generate:api` writes both files, and the diff on
- * `api.schema.json` is the API's own account of what changed.
+ * the vendored `.schema.json` is the API's own account of what changed.
  *
  * Two deliberate choices:
  *
@@ -39,9 +39,8 @@ import { apiBaseUrl, packageFile, writeJsonArtifact } from "./artifacts";
 
 /**
  * The v2 document only. The server versions its API in the path, and v2 has
- * its own `__schema` listing nothing but v2 routes. The v1 `api.schema.json`
- * beside it is frozen: nothing refetches it, and it is deleted with its last
- * caller at the tip of the `cli-v2-rule-api` stack.
+ * its own `__schema` listing nothing but v2 routes, and v2 is the only API
+ * this CLI calls.
  */
 const OUTPUT_PATH = packageFile("src", "generated", "api-v2.schema.json");
 
