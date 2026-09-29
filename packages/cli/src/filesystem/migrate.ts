@@ -16,6 +16,7 @@ import refreshReadme from "./migrations/0006-refresh-readme";
 import ignoreScratchFiles from "./migrations/0007-ignore-scratch-files";
 import dropBasedOnStyles from "./migrations/0008-drop-based-on-styles";
 import uniqueRuleIds from "./migrations/0009-unique-rule-ids";
+import adoptStrayTests from "./migrations/0010-adopt-stray-tests";
 
 const migrations: Migrations = {
   "1": init,
@@ -27,6 +28,7 @@ const migrations: Migrations = {
   "7": ignoreScratchFiles,
   "8": dropBasedOnStyles,
   "9": uniqueRuleIds,
+  "10": adoptStrayTests,
 };
 
 /** Global flag that downgrades a too-new scaffold from an error to a skip. */
