@@ -1,0 +1,6 @@
+# Prettier reads `.prettierignore` from the directory it runs in, not from the
+# repository root, so the root file's rules do not apply to a run started here.
+# Repeated for the one rule whose miss does damage: the agent recipes are
+# served verbatim and their column alignment is compared byte for byte, and
+# `prettier --write src` from this directory once reflowed all of them.
+src/agent/*.md
