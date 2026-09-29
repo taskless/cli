@@ -55,9 +55,9 @@ upgradeUrl }`, strip C0/C1 control characters except newline from
       and that `rules` holds exactly one set whose `id` is the requested id.
       Unit tests for each refusal.
 - [ ] 3.2 Make `writeDeliveredFileSet` the only write path for a served rule and
-      make it replace the directory (purge files the set lacks; purge `.tests/`
-      only when the set carries a `.tests/` file, pending the rules team's
-      confirmation that fixtures ship). Drop the legacy single-`content` branch from `deliver.ts` and
+      make it replace the directory (purge files the set lacks, `.tests/`
+      included; create each file's parent directories).
+      Drop the legacy single-`content` branch from `deliver.ts` and
       `files.ts`. `deliver.test.ts` covers a local extra capture being removed.
 - [ ] 3.3 Move `rule create` to v2: submit, poll, fetch each produced
       `{ ruleId, revisionId }` head in parallel without `revision`, confirm

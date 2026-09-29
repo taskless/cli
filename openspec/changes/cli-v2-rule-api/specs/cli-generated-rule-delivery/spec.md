@@ -88,9 +88,10 @@ Any failure SHALL refuse the whole rule and write nothing.
 ### Requirement: A delivered rule replaces its directory
 
 After verification, the CLI SHALL write a served rule so that its directory holds exactly the
-served files: every file in the directory that the served set does not contain SHALL be removed.
-Files under `.tests/` SHALL be replaced only when the served set carries at least one `.tests/`
-file; otherwise the local `.tests/` SHALL be left in place. When a stale file cannot be removed, the CLI SHALL say that the served
+served files: every file in the directory that the served set does not contain SHALL be removed,
+including under `.tests/`, since a served set always carries the rule's fixtures. The CLI SHALL
+create each served file's parent directories as needed, so a nested path such as
+`captures/env.yml` or `.tests/fail/case.ts` is written wherever it lands. When a stale file cannot be removed, the CLI SHALL say that the served
 bytes were written and name each entry it could not remove.
 
 #### Scenario: A local extra file does not survive
@@ -98,10 +99,10 @@ bytes were written and name each entry it could not remove.
 - **WHEN** a rule directory holds `captures/extra.yml` and the served set does not
 - **THEN** after the write `captures/extra.yml` SHALL NOT exist
 
-#### Scenario: Local fixtures survive a set that carries none
+#### Scenario: Nested paths are written
 
-- **WHEN** a served set carries no file under `.tests/` and the local rule has `.tests/`
-- **THEN** the local `.tests/` SHALL be left in place
+- **WHEN** a served set carries `.tests/fail/case.ts` and the rule directory does not exist
+- **THEN** the CLI SHALL create `.tests/fail/` and write the file
 
 #### Scenario: A generated rule's revision is confirmed
 

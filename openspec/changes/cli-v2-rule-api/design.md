@@ -232,11 +232,9 @@ must have a signature. Then the rule directory is replaced, reusing
 reporting included), so a stale local file cannot survive and make the rule
 `unsafe` on the next run.
 
-**Fixtures (pending the rules team's confirmation that served sets include `.tests/`):**
-the purge covers `.tests/` only when the served set carries at least one `.tests/` file. If a
-served set carries none, local fixtures are left in place rather than deleted. When fixtures are
-confirmed to always ship, this guard is harmless; if they turn out not to ship, it is what keeps
-every restore from deleting them.
+**Fixtures ship with every served set** (confirmed with the rules team,
+2026-09-29), so the replace covers `.tests/` like everything else, and each file's
+parent directories are created as it is written.
 
 For create and improve the CLI also checks that the fetched `revisionId` equals
 the one the request produced. The head is fetched without `revision=`, so a
