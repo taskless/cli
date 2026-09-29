@@ -1,6 +1,14 @@
 import { execFile } from "node:child_process";
+import { createHash } from "node:crypto";
 import { createServer, type Server } from "node:http";
-import { mkdtemp, rm, mkdir, writeFile } from "node:fs/promises";
+import {
+  mkdtemp,
+  readdir,
+  readFile,
+  rm,
+  mkdir,
+  writeFile,
+} from "node:fs/promises";
 import { resolve, join } from "node:path";
 import { tmpdir } from "node:os";
 import { promisify } from "node:util";
@@ -10,13 +18,13 @@ import { migrateFixture } from "./support/current-project";
 const execFileAsync = promisify(execFile);
 const binPath = resolve(import.meta.dirname, "../dist/index.js");
 
-interface ReportedFile {
-  file: string;
-  signature: string;
+interface ReportedRule {
+  ruleId: string;
+  files: { path: string; signature: string }[];
 }
 interface ReconcileRequestBody {
   repositoryUrl: string;
-  files: ReportedFile[];
+  rules: ReportedRule[];
 }
 type Responder = (request: ReconcileRequestBody) => {
   statusCode: number;
@@ -25,16 +33,20 @@ type Responder = (request: ReconcileRequestBody) => {
 interface MockServer {
   apiUrl: string;
   requests: ReconcileRequestBody[];
+  /** Every path requested, so a test can assert nothing but reconcile was called. */
+  paths: string[];
   headers: Record<string, string | string[] | undefined>[];
   close: () => Promise<void>;
 }
 
-/** Start a mock reconcile endpoint on a random port. */
+/** Start a mock v2 reconcile endpoint on a random port. */
 function startMockServer(responder: Responder): Promise<MockServer> {
   const requests: ReconcileRequestBody[] = [];
+  const paths: string[] = [];
   const headers: Record<string, string | string[] | undefined>[] = [];
   const server: Server = createServer((request, response) => {
-    if (request.method !== "POST" || request.url !== "/cli/api/reconcile") {
+    paths.push(`${request.method ?? ""} ${request.url ?? ""}`);
+    if (request.method !== "POST" || request.url !== "/cli/api/v2/reconcile") {
       response.writeHead(404).end("{}");
       return;
     }
@@ -56,6 +68,7 @@ function startMockServer(responder: Responder): Promise<MockServer> {
       resolvePromise({
         apiUrl: `http://127.0.0.1:${String(port)}/cli`,
         requests,
+        paths,
         headers,
         close: () => new Promise((done) => server.close(() => done())),
       });
@@ -63,9 +76,105 @@ function startMockServer(responder: Responder): Promise<MockServer> {
   });
 }
 
-/** Echo a reported file's signature back so the mock can bless it. */
-function sig(request: ReconcileRequestBody, endsWith: string): string {
-  return request.files.find((f) => f.file.endsWith(endsWith))?.signature ?? "";
+/**
+ * Every call except the identity lookup, which resolves the org subject and is
+ * not a data route: the assertion is that nothing but reconcile touched rules.
+ */
+function dataCalls(server: MockServer): string[] {
+  return server.paths.filter((path) => !path.endsWith("/whoami"));
+}
+
+const ENGINES: Record<string, string> = {
+  "no-console": "sg",
+  demo: "runtime",
+  other: "runtime",
+  broken: "runtime",
+};
+
+type Answer =
+  | "run"
+  | "unknown"
+  | "withheld"
+  | "omit"
+  | { unsafe: { path: string; expected?: string; got?: string }[] };
+
+const UPGRADE_URL = "https://app.taskless.io/o/acme/upgrade?from=reconcile";
+
+/**
+ * A v2 reconcile answer: each reported rule gets the verdict \`answers\` names,
+ * \`unknown\` by default. \`withheld\` rules make the organization unentitled.
+ */
+function answer(
+  request: ReconcileRequestBody,
+  answers: Record<string, Answer> = {},
+  extra: {
+    missing?: { ruleId: string; engine: string; revisionId: string }[];
+  } = {}
+) {
+  const rules: unknown[] = [];
+  const unknown: { ruleId: string }[] = [];
+  const withheld: { ruleId: string; revisionId: string }[] = [];
+  for (const { ruleId } of request.rules) {
+    const verdict = answers[ruleId] ?? "unknown";
+    const engine = ENGINES[ruleId] ?? "sg";
+    switch (verdict) {
+      case "omit": {
+        break;
+      }
+      case "unknown": {
+        unknown.push({ ruleId });
+        break;
+      }
+      case "withheld": {
+        withheld.push({ ruleId, revisionId: "rev-1" });
+        break;
+      }
+      case "run": {
+        rules.push({ ruleId, engine, verdict: "run", revisionId: "rev-1" });
+        break;
+      }
+      default: {
+        rules.push({
+          ruleId,
+          engine,
+          verdict: "unsafe",
+          files: verdict.unsafe,
+        });
+      }
+    }
+  }
+  for (const missing of extra.missing ?? []) {
+    rules.push({ ...missing, verdict: "missing" });
+  }
+  return {
+    rules,
+    unknown,
+    entitlement:
+      withheld.length === 0
+        ? { runtimeSignatures: true }
+        : {
+            runtimeSignatures: false,
+            reason: "RUNTIME_SIGNATURES_NOT_IN_PLAN",
+            upgradeUrl: UPGRADE_URL,
+            withheld,
+          },
+  };
+}
+
+/** A digest of every file under \`.taskless/rules/\`, to prove \`check\` wrote nothing there. */
+async function treeDigest(directory: string): Promise<string> {
+  const root = join(directory, ".taskless", "rules");
+  const hash = createHash("sha256");
+  const entries = await readdir(root, { recursive: true, withFileTypes: true });
+  const files = entries
+    .filter((entry) => entry.isFile())
+    .map((entry) => join(entry.parentPath, entry.name))
+    .toSorted();
+  for (const file of files) {
+    hash.update(file);
+    hash.update(await readFile(file));
+  }
+  return hash.digest("hex");
 }
 
 async function runCli(
@@ -90,20 +199,33 @@ async function runCli(
 }
 
 /** The check `--json` line, ignoring any preceding migration output. */
-function parseJson(stdout: string): {
+interface CheckJson {
   success: boolean;
   results: { source: string; ruleId: string }[];
   skipped?: { rule: string; reason: string }[];
-} {
+  failures?: string[];
+  notices?: string[];
+  integrity?: {
+    ruleId: string;
+    engine?: string;
+    verdict: string;
+    files?: unknown[];
+    revisionId?: string;
+  }[];
+  entitlement?: {
+    runtimeSignatures: false;
+    reason?: string;
+    upgradeUrl?: string;
+    withheld: string[];
+  };
+}
+
+function parseJson(stdout: string): CheckJson {
   const line = stdout
     .trim()
     .split("\n")
     .findLast((l) => l.trim().startsWith("{"));
-  return JSON.parse(line ?? "{}") as {
-    success: boolean;
-    results: { source: string; ruleId: string }[];
-    skipped?: { rule: string; reason: string }[];
-  };
+  return JSON.parse(line ?? "{}") as CheckJson;
 }
 
 const STATIC_RULE = [
@@ -135,40 +257,6 @@ const RUNTIME_CHECK = `export default async function (root, matches) {
   return matches.map((m) => ({ file: m.file, line: m.line, message: "runtime " + m.rule, severity: "warning" }));
 }
 `;
-
-const CHECK_REPORT_PATH = ".taskless/runtime/rules/demo/check.ts";
-
-const UPGRADE_URL = "https://app.taskless.io/o/acme/upgrade?from=reconcile";
-
-/** The `--json` line with the entitlement field this suite asserts on. */
-function parseEntitlementJson(stdout: string): ReturnType<typeof parseJson> & {
-  entitlement?: {
-    runtimeSignatures: false;
-    reason?: string;
-    upgradeUrl?: string;
-    withheld: string[];
-  };
-} {
-  return parseJson(stdout) as ReturnType<typeof parseEntitlementJson>;
-}
-
-/** A reconcile body withholding the reported files ending in `endsWith`. */
-function withholding(request: ReconcileRequestBody, ...endsWith: string[]) {
-  return {
-    run: [],
-    unsafe: [],
-    unknown: [],
-    missing: [],
-    entitlement: {
-      runtimeSignatures: false,
-      reason: "RUNTIME_SIGNATURES_NOT_IN_PLAN",
-      upgradeUrl: UPGRADE_URL,
-      withheld: request.files
-        .filter((f) => endsWith.some((suffix) => f.file.endsWith(suffix)))
-        .map((f) => ({ ruleId: "r", file: f.file })),
-    },
-  };
-}
 
 describe("check: static vs runtime dispatch", () => {
   let directory: string;
@@ -218,96 +306,257 @@ describe("check: static vs runtime dispatch", () => {
     expect(stdout).toContain("no-console");
   });
 
-  it("authed + blessed check.ts: runtime runs; only check.ts is reported", async () => {
-    const server = await startMockServer((request) => ({
+  /** Run \`check\` authenticated against a mock that answers with \`responder\`. */
+  async function authedCheck(
+    responder: Responder,
+    extraArguments: string[] = ["--json"]
+  ) {
+    const server = await startMockServer(responder);
+    try {
+      const result = await runCli(
+        ["check", "-d", directory, ...extraArguments],
+        {
+          TASKLESS_TOKEN: "fake.token",
+          TASKLESS_API_URL: server.apiUrl,
+        }
+      );
+      return { ...result, server };
+    } finally {
+      await server.close();
+    }
+  }
+
+  it("reports every rule directory of every engine, files relative, fixtures excluded", async () => {
+    await migrateFixture(["-d", directory]);
+    const fixtures = join(
+      directory,
+      ".taskless",
+      "rules",
+      "runtime",
+      "demo",
+      ".tests"
+    );
+    await mkdir(fixtures, { recursive: true });
+    await writeFile(join(fixtures, "case.ts"), "console.log(1);\n");
+    const { server } = await authedCheck((request) => ({
       statusCode: 200,
-      body: {
-        run: [
+      body: answer(request, { "no-console": "run", demo: "run" }),
+    }));
+    expect(dataCalls(server)).toEqual(["POST /cli/api/v2/reconcile"]);
+    const rules = server.requests[0]!.rules;
+    const byId = Object.fromEntries(
+      rules.map((rule) => [rule.ruleId, rule.files.map((file) => file.path)])
+    );
+    expect(byId).toEqual({
+      "no-console": ["no-console.yml"],
+      demo: ["captures/logs.yml", "check.ts"],
+    });
+    for (const rule of rules) {
+      for (const file of rule.files) {
+        expect(file.signature).toMatch(/^1;h=sha-256;d=[0-9a-f]{64}$/);
+      }
+    }
+    const version = server.headers[0]?.["x-taskless-cli-version"];
+    expect(typeof version).toBe("string");
+    expect(version).not.toBe("");
+  });
+
+  it("run for every rule: runtime executes and static runs, from the snapshot", async () => {
+    const { stdout, exitCode } = await authedCheck((request) => ({
+      statusCode: 200,
+      body: answer(request, { "no-console": "run", demo: "run" }),
+    }));
+    const output = parseJson(stdout);
+    expect(exitCode).toBe(0);
+    expect(output.results.some((r) => r.source === "taskless-runtime")).toBe(
+      true
+    );
+    expect(output.results.some((r) => r.ruleId === "no-console")).toBe(true);
+    expect(output).not.toHaveProperty("integrity");
+  });
+
+  it("unknown: a local static rule runs silently, a local runtime rule does not execute", async () => {
+    const { stdout, stderr, exitCode } = await authedCheck(
+      (request) => ({ statusCode: 200, body: answer(request) }),
+      []
+    );
+    expect(exitCode).toBe(0);
+    expect(stdout).toContain("no-console");
+    expect(stderr).not.toMatch(/no-console/);
+    expect(stderr).toMatch(
+      /runtime rule demo was not run — not issued by the rule service/
+    );
+  });
+
+  it("an edited static rule does not run, fails the run, and names restore", async () => {
+    await migrateFixture(["-d", directory]);
+    const before = await treeDigest(directory);
+    const { stdout, exitCode } = await authedCheck((request) => ({
+      statusCode: 200,
+      body: answer(request, {
+        demo: "run",
+        "no-console": {
+          unsafe: [
+            {
+              path: "no-console.yml",
+              expected: "1;h=sha-256;d=00",
+              got: "1;h=sha-256;d=11",
+            },
+          ],
+        },
+      }),
+    }));
+    const output = parseJson(stdout);
+    expect(exitCode).toBe(1);
+    expect(output.success).toBe(false);
+    expect(output.results.some((r) => r.ruleId === "no-console")).toBe(false);
+    expect(output.results.some((r) => r.source === "taskless-runtime")).toBe(
+      true
+    );
+    expect(output.failures?.join("\n")).toMatch(
+      /sg rule no-console was edited .*changed no-console\.yml.*rule restore no-console/
+    );
+    expect(output.integrity).toEqual([
+      {
+        ruleId: "no-console",
+        engine: "sg",
+        verdict: "unsafe",
+        files: [
           {
-            ruleId: "demo",
-            file: CHECK_REPORT_PATH,
-            signature: sig(request, "check.ts"),
+            path: "no-console.yml",
+            expected: "1;h=sha-256;d=00",
+            got: "1;h=sha-256;d=11",
           },
         ],
-        unsafe: [],
-        unknown: [],
-        missing: [],
       },
-    }));
-    try {
-      const { stdout } = await runCli(["check", "-d", directory, "--json"], {
-        TASKLESS_TOKEN: "fake.token",
-        TASKLESS_API_URL: server.apiUrl,
-      });
-      // Only the runtime check.ts is reported — never the static rule.
-      expect(server.requests).toHaveLength(1);
-      expect(server.requests[0]!.files).toHaveLength(1);
-      expect(server.requests[0]!.files[0]!.file.endsWith("check.ts")).toBe(
-        true
-      );
-      const output = parseJson(stdout);
-      expect(output.results.some((r) => r.source === "taskless-runtime")).toBe(
-        true
-      );
-      expect(output.results.some((r) => r.ruleId === "no-console")).toBe(true);
-    } finally {
-      await server.close();
-    }
+    ]);
+    // `check` never writes the rules tree, even to repair.
+    expect(await treeDigest(directory)).toBe(before);
   });
 
-  it("authed + empty run set: runtime withheld, static still runs", async () => {
-    const server = await startMockServer(() => ({
+  it("an edited runtime rule does not execute and does not fail the run", async () => {
+    const { stdout, exitCode } = await authedCheck((request) => ({
       statusCode: 200,
-      body: { run: [], unsafe: [], unknown: [], missing: [] },
+      body: answer(request, {
+        "no-console": "run",
+        demo: {
+          unsafe: [{ path: "captures/extra.yml", got: "1;h=sha-256;d=22" }],
+        },
+      }),
     }));
-    try {
-      const { stdout } = await runCli(["check", "-d", directory, "--json"], {
-        TASKLESS_TOKEN: "fake.token",
-        TASKLESS_API_URL: server.apiUrl,
-      });
-      const output = parseJson(stdout);
-      expect(output.results.some((r) => r.source === "taskless-runtime")).toBe(
-        false
-      );
-      expect(output.results.some((r) => r.ruleId === "no-console")).toBe(true);
-      expect(output.skipped?.some((s) => s.rule === "demo")).toBe(true);
-    } finally {
-      await server.close();
-    }
+    const output = parseJson(stdout);
+    expect(exitCode).toBe(0);
+    expect(output.results.some((r) => r.source === "taskless-runtime")).toBe(
+      false
+    );
+    expect(output.skipped?.find((s) => s.rule === "demo")?.reason).toMatch(
+      /edited .*added captures\/extra\.yml/
+    );
+    expect(output.notices?.join("\n")).toMatch(/rule restore demo/);
   });
 
-  it("reconcile unavailable: runtime skipped, static runs, exit 0", async () => {
-    const server = await startMockServer(() => ({ statusCode: 503 }));
-    try {
-      const { stdout, exitCode } = await runCli(
-        ["check", "-d", directory, "--json"],
-        { TASKLESS_TOKEN: "fake.token", TASKLESS_API_URL: server.apiUrl }
-      );
-      const output = parseJson(stdout);
-      expect(exitCode).toBe(0);
-      expect(output.results.some((r) => r.ruleId === "no-console")).toBe(true);
-      expect(output.skipped?.some((s) => s.rule === "demo")).toBe(true);
-    } finally {
-      await server.close();
-    }
+  it("missing warns, names restore, and fetches nothing", async () => {
+    const { stdout, exitCode, server } = await authedCheck((request) => ({
+      statusCode: 200,
+      body: answer(
+        request,
+        { "no-console": "run", demo: "run" },
+        {
+          missing: [
+            { ruleId: "gone-3fa9c21b", engine: "vale", revisionId: "rev-9" },
+          ],
+        }
+      ),
+    }));
+    const output = parseJson(stdout);
+    expect(exitCode).toBe(0);
+    expect(dataCalls(server)).toEqual(["POST /cli/api/v2/reconcile"]);
+    expect(output.integrity).toEqual([
+      {
+        ruleId: "gone-3fa9c21b",
+        engine: "vale",
+        verdict: "missing",
+        revisionId: "rev-9",
+      },
+    ]);
+    expect(output.notices?.join("\n")).toMatch(/rule restore gone-3fa9c21b/);
+  });
+
+  it("a reported rule the answer does not account for does not run and fails the run", async () => {
+    const { stdout, exitCode } = await authedCheck((request) => ({
+      statusCode: 200,
+      body: answer(request, { "no-console": "run", demo: "omit" }),
+    }));
+    const output = parseJson(stdout);
+    expect(exitCode).toBe(1);
+    expect(output.results.some((r) => r.source === "taskless-runtime")).toBe(
+      false
+    );
+    expect(output.integrity).toEqual([
+      { ruleId: "demo", engine: "runtime", verdict: "unaccounted" },
+    ]);
+  });
+
+  it("an id shared across engines stops the run before reconcile", async () => {
+    const decoy = join(directory, ".taskless", "rules", "sg", "demo");
+    await migrateFixture(["-d", directory]);
+    await mkdir(decoy, { recursive: true });
+    await writeFile(
+      join(decoy, "demo.yml"),
+      STATIC_RULE.replace("no-console", "demo")
+    );
+    const { stdout, exitCode, server } = await authedCheck((request) => ({
+      statusCode: 200,
+      body: answer(request, { "no-console": "run", demo: "run" }),
+    }));
+    const output = parseJson(stdout);
+    expect(exitCode).toBe(1);
+    expect(server.requests).toHaveLength(0);
+    expect(output.results.some((r) => r.ruleId === "demo")).toBe(false);
+    expect(output.results.some((r) => r.source === "taskless-runtime")).toBe(
+      false
+    );
+    expect(output.failures?.join("\n")).toMatch(
+      /\.taskless\/rules\/sg\/demo\/.*\.taskless\/rules\/runtime\/demo\//
+    );
+  });
+
+  it("reconcile unavailable: runtime skipped, static runs, exit 0, and it says so", async () => {
+    const { stdout, exitCode } = await authedCheck(() => ({ statusCode: 503 }));
+    const output = parseJson(stdout);
+    expect(exitCode).toBe(0);
+    expect(output.results.some((r) => r.ruleId === "no-console")).toBe(true);
+    expect(output.skipped?.some((s) => s.rule === "demo")).toBe(true);
+    expect(output.notices?.join("\n")).toMatch(
+      /verification could not be performed/
+    );
   });
 
   it("--anonymous with a token: skips runtime and never calls reconcile", async () => {
-    const server = await startMockServer(() => ({
-      statusCode: 200,
-      body: { run: [], unsafe: [], unknown: [], missing: [] },
-    }));
-    try {
-      const { stdout } = await runCli(
-        ["check", "-d", directory, "--json", "--anonymous"],
-        { TASKLESS_TOKEN: "fake.token", TASKLESS_API_URL: server.apiUrl }
-      );
-      expect(server.requests).toHaveLength(0);
-      const output = parseJson(stdout);
-      expect(output.skipped?.some((s) => s.rule === "demo")).toBe(true);
-    } finally {
-      await server.close();
-    }
+    const { stdout, server } = await authedCheck(
+      (request) => ({ statusCode: 200, body: answer(request) }),
+      ["--json", "--anonymous"]
+    );
+    expect(dataCalls(server)).toHaveLength(0);
+    expect(parseJson(stdout).skipped?.some((s) => s.rule === "demo")).toBe(
+      true
+    );
+  });
+
+  it("--dangerously-run-scripts while authenticated: no reconcile, no checksums, everything runs", async () => {
+    const { stdout, server } = await authedCheck(
+      (request) => ({
+        statusCode: 200,
+        body: answer(request, { "no-console": { unsafe: [] } }),
+      }),
+      ["--json", "--dangerously-run-scripts"]
+    );
+    expect(dataCalls(server)).toHaveLength(0);
+    const output = parseJson(stdout);
+    expect(output.results.some((r) => r.source === "taskless-runtime")).toBe(
+      true
+    );
+    expect(output.results.some((r) => r.ruleId === "no-console")).toBe(true);
   });
 
   it("--dangerously-run-scripts: runs runtime offline behind a warning", async () => {
@@ -317,11 +566,6 @@ describe("check: static vs runtime dispatch", () => {
       directory,
       "--dangerously-run-scripts",
     ]);
-    // The warning is a runtime PLAN notice, and plan notices used to be
-    // printed by their own loop with no marker at all while the dispatched
-    // ones were marked — so the same message looked like two different kinds
-    // of thing depending on which list it arrived on, and `--json` mixed both
-    // into one `notices` array. Every notice `check` prints is marked now.
     const warningLines = stderr
       .split("\n")
       .filter((line) => line.includes("dangerously-run-scripts"));
@@ -329,273 +573,102 @@ describe("check: static vs runtime dispatch", () => {
     for (const line of warningLines) {
       expect(line.startsWith("Notice: ")).toBe(true);
     }
-    expect(stdout).toContain("demo"); // runtime finding surfaced
+    expect(stdout).toContain("demo");
   });
 
-  it("a runtime rule missing check.ts is skipped, not fatal; static still runs", async () => {
-    // A malformed rule (capture yml, no check.ts) must not abort the whole check.
-    const broken = join(directory, ".taskless", "runtime", "rules", "broken");
-    await mkdir(broken, { recursive: true });
-    await writeFile(join(broken, "logs.yml"), RUNTIME_CAPTURE, "utf8");
-
-    const server = await startMockServer((request) => ({
+  it("a malformed runtime rule is reported and skipped, never fatal", async () => {
+    await migrateFixture(["-d", directory]);
+    const broken = join(directory, ".taskless", "rules", "runtime", "broken");
+    await mkdir(join(broken, "captures"), { recursive: true });
+    await writeFile(
+      join(broken, "captures", "logs.yml"),
+      RUNTIME_CAPTURE,
+      "utf8"
+    );
+    const { stdout, exitCode, server } = await authedCheck((request) => ({
       statusCode: 200,
-      body: {
-        run: [
-          {
-            ruleId: "demo",
-            file: CHECK_REPORT_PATH,
-            signature: sig(request, "check.ts"),
-          },
-        ],
-        unsafe: [],
-        unknown: [],
-        missing: [],
-      },
+      body: answer(request, { "no-console": "run", demo: "run" }),
     }));
-    try {
-      const { stdout, exitCode } = await runCli(
-        ["check", "-d", directory, "--json"],
-        {
-          TASKLESS_TOKEN: "fake.token",
-          TASKLESS_API_URL: server.apiUrl,
-        }
-      );
-      const output = parseJson(stdout);
-      expect(exitCode).toBe(0); // not SCAN_FAILED
-      // The good runtime rule still ran and static still ran.
-      expect(output.results.some((r) => r.source === "taskless-runtime")).toBe(
-        true
-      );
-      expect(output.results.some((r) => r.ruleId === "no-console")).toBe(true);
-      // The broken rule is reported as skipped, not crashed.
-      expect(output.skipped?.some((s) => s.rule === "broken")).toBe(true);
-      // Only the readable check.ts was reported to the server.
-      expect(server.requests[0]!.files).toHaveLength(1);
-    } finally {
-      await server.close();
-    }
+    const output = parseJson(stdout);
+    expect(exitCode).toBe(0);
+    expect(server.requests[0]!.rules.map((rule) => rule.ruleId)).toContain(
+      "broken"
+    );
+    expect(output.results.some((r) => r.source === "taskless-runtime")).toBe(
+      true
+    );
+    expect(output.skipped?.some((s) => s.rule === "broken")).toBe(true);
   });
 
   it("withheld for the plan: fails the run and names the cause, not drift", async () => {
-    const server = await startMockServer((request) => ({
+    const { stdout, exitCode } = await authedCheck((request) => ({
       statusCode: 200,
-      body: withholding(request, "demo/check.ts"),
+      body: answer(request, { "no-console": "run", demo: "withheld" }),
     }));
-    try {
-      const { stdout, exitCode } = await runCli(
-        ["check", "-d", directory, "--json"],
-        { TASKLESS_TOKEN: "fake.token", TASKLESS_API_URL: server.apiUrl }
-      );
-      const output = parseEntitlementJson(stdout);
-      // The only finding is a warning, so this is the withhold alone failing.
-      expect(exitCode).toBe(1);
-      expect(output.success).toBe(false);
-      expect(output.results.some((r) => r.ruleId === "no-console")).toBe(true);
-      expect(output.results.some((r) => r.source === "taskless-runtime")).toBe(
-        false
-      );
-      const skip = output.skipped?.find((s) => s.rule === "demo");
-      expect(skip?.reason).toBe("not included in your Taskless plan");
-      expect(skip?.reason).not.toMatch(/unsafe|unknown|drift/);
-      expect(output.entitlement).toEqual({
-        runtimeSignatures: false,
-        reason: "RUNTIME_SIGNATURES_NOT_IN_PLAN",
-        upgradeUrl: UPGRADE_URL,
-        withheld: ["demo"],
-      });
-    } finally {
-      await server.close();
-    }
+    const output = parseJson(stdout);
+    expect(exitCode).toBe(1);
+    expect(output.success).toBe(false);
+    expect(output.results.some((r) => r.ruleId === "no-console")).toBe(true);
+    expect(output.results.some((r) => r.source === "taskless-runtime")).toBe(
+      false
+    );
+    const skip = output.skipped?.find((s) => s.rule === "demo");
+    expect(skip?.reason).toBe("not included in your Taskless plan");
+    expect(output.entitlement).toEqual({
+      runtimeSignatures: false,
+      reason: "RUNTIME_SIGNATURES_NOT_IN_PLAN",
+      upgradeUrl: UPGRADE_URL,
+      withheld: ["demo"],
+    });
+    expect(output).not.toHaveProperty("integrity");
   });
 
   it("withheld for the plan, human output: one notice carries the upgrade URL", async () => {
-    const server = await startMockServer((request) => ({
-      statusCode: 200,
-      body: withholding(request, "demo/check.ts"),
-    }));
-    try {
-      const { stderr, exitCode } = await runCli(["check", "-d", directory], {
-        TASKLESS_TOKEN: "fake.token",
-        TASKLESS_API_URL: server.apiUrl,
-      });
-      expect(exitCode).toBe(1);
-      expect(stderr.split(UPGRADE_URL)).toHaveLength(2);
-      expect(stderr).toContain("RUNTIME_SIGNATURES_NOT_IN_PLAN");
-    } finally {
-      await server.close();
-    }
+    const { stderr, exitCode } = await authedCheck(
+      (request) => ({
+        statusCode: 200,
+        body: answer(request, { "no-console": "run", demo: "withheld" }),
+      }),
+      []
+    );
+    expect(exitCode).toBe(1);
+    expect(stderr.split(UPGRADE_URL)).toHaveLength(2);
+    expect(stderr).toContain("RUNTIME_SIGNATURES_NOT_IN_PLAN");
+    expect(stderr).not.toMatch(/restore demo/);
   });
 
-  it("blessed and withheld together: the blessed rule runs and the run still fails", async () => {
-    const other = join(directory, ".taskless", "runtime", "rules", "other");
-    await mkdir(other, { recursive: true });
-    await writeFile(join(other, "logs.yml"), RUNTIME_CAPTURE, "utf8");
+  it("run and withheld together: the run rule executes and the run still fails", async () => {
+    await migrateFixture(["-d", directory]);
+    const other = join(directory, ".taskless", "rules", "runtime", "other");
+    await mkdir(join(other, "captures"), { recursive: true });
+    await writeFile(
+      join(other, "captures", "logs.yml"),
+      RUNTIME_CAPTURE,
+      "utf8"
+    );
     await writeFile(join(other, "check.ts"), RUNTIME_CHECK + "// other\n");
-
-    const server = await startMockServer((request) => ({
+    const { stdout, exitCode } = await authedCheck((request) => ({
       statusCode: 200,
-      body: {
-        ...withholding(request, "other/check.ts"),
-        run: [
-          {
-            ruleId: "demo",
-            file: CHECK_REPORT_PATH,
-            signature: sig(request, "demo/check.ts"),
-          },
-        ],
-      },
+      body: answer(request, {
+        "no-console": "run",
+        demo: "run",
+        other: "withheld",
+      }),
     }));
-    try {
-      const { stdout, exitCode } = await runCli(
-        ["check", "-d", directory, "--json"],
-        { TASKLESS_TOKEN: "fake.token", TASKLESS_API_URL: server.apiUrl }
-      );
-      const output = parseEntitlementJson(stdout);
-      expect(exitCode).toBe(1);
-      expect(output.results.some((r) => r.source === "taskless-runtime")).toBe(
-        true
-      );
-      expect(output.entitlement?.withheld).toEqual(["other"]);
-    } finally {
-      await server.close();
-    }
+    const output = parseJson(stdout);
+    expect(exitCode).toBe(1);
+    expect(output.results.some((r) => r.source === "taskless-runtime")).toBe(
+      true
+    );
+    expect(output.entitlement?.withheld).toEqual(["other"]);
   });
 
-  it("a withheld file matching no local rule still fails, named by its path", async () => {
-    const server = await startMockServer(() => ({
+  it("an entitled organization: exit 0 and no entitlement field", async () => {
+    const { stdout, exitCode } = await authedCheck((request) => ({
       statusCode: 200,
-      body: {
-        run: [],
-        unsafe: [],
-        unknown: [],
-        missing: [],
-        entitlement: {
-          runtimeSignatures: false,
-          withheld: [{ ruleId: "r", file: "elsewhere/check.ts" }],
-        },
-      },
+      body: answer(request, { "no-console": "run", demo: "run" }),
     }));
-    try {
-      const { stdout, exitCode } = await runCli(
-        ["check", "-d", directory, "--json"],
-        { TASKLESS_TOKEN: "fake.token", TASKLESS_API_URL: server.apiUrl }
-      );
-      const output = parseEntitlementJson(stdout);
-      expect(exitCode).toBe(1);
-      expect(output.entitlement?.withheld).toEqual(["elsewhere/check.ts"]);
-      // `demo` was reported and not withheld, so it keeps the ordinary reason.
-      expect(output.skipped?.find((s) => s.rule === "demo")?.reason).toMatch(
-        /not blessed/
-      );
-    } finally {
-      await server.close();
-    }
-  });
-
-  it("a file withheld for the plan is never sent to restore", async () => {
-    // The service keeps withheld files out of `unsafe`; this is the guard for
-    // the day it does not. Restoring bytes the plan will not run fixes nothing.
-    const server = await startMockServer((request) => {
-      const body = withholding(request, "demo/check.ts");
-      const file = body.entitlement.withheld[0]!.file;
-      return {
-        statusCode: 200,
-        body: {
-          ...body,
-          unsafe: [
-            { ruleId: "r", file, expected: "1;h=sha-256;d=00", got: "x" },
-          ],
-        },
-      };
-    });
-    try {
-      const { stdout } = await runCli(["check", "-d", directory, "--json"], {
-        TASKLESS_TOKEN: "fake.token",
-        TASKLESS_API_URL: server.apiUrl,
-      });
-      const output = JSON.parse(
-        stdout
-          .trim()
-          .split("\n")
-          .findLast((l) => l.startsWith("{")) ?? "{}"
-      ) as { notices?: string[] };
-      expect(
-        (output.notices ?? []).some((notice) => /restor/.test(notice))
-      ).toBe(false);
-    } finally {
-      await server.close();
-    }
-  });
-
-  it("unentitled with nothing withheld: exit 0, entitlement still reported", async () => {
-    const server = await startMockServer(() => ({
-      statusCode: 200,
-      body: {
-        run: [],
-        unsafe: [],
-        unknown: [],
-        missing: [],
-        entitlement: { runtimeSignatures: false, withheld: [] },
-      },
-    }));
-    try {
-      const { stdout, exitCode } = await runCli(
-        ["check", "-d", directory, "--json"],
-        { TASKLESS_TOKEN: "fake.token", TASKLESS_API_URL: server.apiUrl }
-      );
-      const output = parseEntitlementJson(stdout);
-      expect(exitCode).toBe(0);
-      expect(output.success).toBe(true);
-      expect(output.entitlement).toEqual({
-        runtimeSignatures: false,
-        withheld: [],
-      });
-    } finally {
-      await server.close();
-    }
-  });
-
-  it("entitled or legacy responses are unchanged: exit 0, no entitlement field", async () => {
-    for (const entitlement of [undefined, { runtimeSignatures: true }]) {
-      const server = await startMockServer(() => ({
-        statusCode: 200,
-        body: { run: [], unsafe: [], unknown: [], missing: [], entitlement },
-      }));
-      try {
-        const { stdout, exitCode } = await runCli(
-          ["check", "-d", directory, "--json"],
-          { TASKLESS_TOKEN: "fake.token", TASKLESS_API_URL: server.apiUrl }
-        );
-        const output = parseEntitlementJson(stdout);
-        expect(exitCode).toBe(0);
-        expect(output).not.toHaveProperty("entitlement");
-        expect(output.skipped?.find((s) => s.rule === "demo")?.reason).toMatch(
-          /not blessed/
-        );
-      } finally {
-        await server.close();
-      }
-    }
-  });
-
-  it("declares the CLI version via the x-taskless-cli-version header", async () => {
-    const server = await startMockServer(() => ({
-      statusCode: 200,
-      body: { run: [], unsafe: [], unknown: [], missing: [] },
-    }));
-    try {
-      await runCli(["check", "-d", directory, "--json"], {
-        TASKLESS_TOKEN: "fake.token",
-        TASKLESS_API_URL: server.apiUrl,
-      });
-      expect(server.requests).toHaveLength(1);
-      const version = server.headers[0]?.["x-taskless-cli-version"];
-      expect(typeof version).toBe("string");
-      expect(version).not.toBe("");
-      expect(version).not.toBe("unknown");
-    } finally {
-      await server.close();
-    }
+    expect(exitCode).toBe(0);
+    expect(parseJson(stdout)).not.toHaveProperty("entitlement");
   });
 });

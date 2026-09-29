@@ -77,58 +77,57 @@ upgradeUrl }`, strip C0/C1 control characters except newline from
 
 ## 4. Snapshot (slice 3)
 
-- [ ] 4.1 Measure first: run one Vale rule whose `.vale.ini` scopes a
-      subdirectory glob with its assembled config at `.taskless/.vale.ini` and
-      at `.taskless/.run/.vale.ini`, and assert identical findings. Do the same
-      for an ast-grep rule with `.sgconfig.yml`. If either differs, stop and
-      revise design Decision 2 before continuing.
-- [ ] 4.2 Add `rules/snapshot.ts`: replace `.taskless/.run/rules/` with a
+- [x] 4.1 Measure first: the mixed-engine fixture plus a Vale rule scoped to
+      `[docs/**/*.md]`, run with configs assembled at `.taskless/` and in the
+      mirrored snapshot, gives identical findings (7 across 5 rules) and the
+      same subdirectory scoping. Design Decision 2 records the layout.
+- [x] 4.2 Add `rules/snapshot.ts`: replace `.taskless/.run/snapshot/` with a
       dereferencing copy of `.taskless/rules/`, skipping `.DS_Store`,
       `Thumbs.db`, `desktop.ini`; a dangling link drops the file. Tests cover a
       symlinked capture, a dangling link, and an OS metadata file.
-- [ ] 4.3 Parameterize `assembleValeConfig` / `assembleSgConfig` (and what they
-      read through `engines.ts`) by a root, so `check` assembles into
-      `.taskless/.run/` from the snapshot while `verify` / `test` keep today's
-      paths. `assemble.test.ts` covers both roots.
-- [ ] 4.4 Run runtime rules from `.taskless/.run/rules/runtime/`; delete
+- [x] 4.3 Run `check`'s assembly against the snapshot base, so its configs land
+      inside the snapshot while `verify` / `test` keep today's paths. A test
+      pins identical findings from both locations, including a
+      subdirectory-scoped Vale rule.
+- [x] 4.4 Run runtime rules from the snapshot; delete
       `materializeRuntimeRules` and `RUNTIME_RUN_DIR`. A test edits a live
       `check.ts` after signing and asserts the snapshot's bytes executed.
 
 ## 5. Per-rule reconcile and the verdict policy (slice 3)
 
-- [ ] 5.1 Add `rules/report.ts`: discover every rule directory of every engine
+- [x] 5.1 Add `rules/report.ts`: discover every rule directory of every engine
       in the snapshot, refuse duplicate ids across engines (naming both
       directories), and build `{ ruleId, files: [{ path, signature }] }` with
       POSIX paths, excluding `.tests/**`. Tests: all engines reported,
       fixtures excluded, a duplicate id refused, `--rule` not narrowing.
-- [ ] 5.2 Add `rules/verdicts.ts`: turn a v2 reconcile response into a per-rule
+- [x] 5.2 Add `rules/verdicts.ts`: turn a v2 reconcile response into a per-rule
       disposition (run / exclude / fail reason / notice) by engine per the
       table in design Decision 5, and compute accounting (a reported rule in
       zero or several of `rules`, `unknown`, `withheld` is unaccounted). Pure
       function, table-driven tests including an `unsafe` sg rule, a static and
       a runtime `unknown`, `missing`, withheld, unaccounted, and double-listed.
-- [ ] 5.3 Replace `planRuntime` with a `planCheck` that snapshots, reports,
+- [x] 5.3 Replace `planRuntime` with a `planCheck` that snapshots, reports,
       reconciles, applies dispositions, and removes excluded rules from the
       snapshot before assembly. Degrade paths (no token, `--anonymous`, no
       remote, 401, 404 `organization_not_found`, unreachable) run every static
       rule unverified and skip runtime rules, as today. Delete
       `repairWithheldRules`, `repair.ts`, and `run-set.ts`'s v1 helpers.
-- [ ] 5.4 Rewire `commands/check.ts` onto `planCheck`: exit 1 on withheld, an
+- [x] 5.4 Rewire `commands/check.ts` onto `planCheck`: exit 1 on withheld, an
       `unsafe` static rule, an unaccounted rule, or a duplicate id; one notice
       per `unsafe` naming each differing path and `taskless rule restore`; one
       notice per `missing`. `check.test.ts`, `runtime-check.test.ts`, and
       `mixed-engine-check.test.ts` cover each exit condition.
-- [ ] 5.5 Assert `check` never writes `.taskless/rules/`: a test hashes the tree
+- [x] 5.5 Assert `check` never writes `.taskless/rules/`: a test hashes the tree
       before and after a run with `unsafe` and `missing` verdicts, and asserts
       no restore or fetch route was called.
 
 ## 6. check --json and recipes (slice 3)
 
-- [ ] 6.1 Add the optional `integrity` array to `schemas/check.ts` and emit it;
+- [x] 6.1 Add the optional `integrity` array to `schemas/check.ts` and emit it;
       keep `skipped`, `failures`, `notices`, and `entitlement` (withheld names
       resolved by rule id). Tests cover an `unsafe` entry with files, an
       unaccounted entry, and its omission on a clean run.
-- [ ] 6.2 Update the `check` and `ci` recipes: an edited static rule and an
+- [x] 6.2 Update the `check` and `ci` recipes: an edited static rule and an
       unaccounted rule fail the run; the fix is `rule restore`, not editing the
       rule back by hand; `missing` only warns. Update `create-runtime-rule`
       where it describes reconcile.
@@ -153,7 +152,9 @@ upgradeUrl }`, strip C0/C1 control characters except newline from
       output.
 - [ ] 7.5 Add a `recover-rule` agent recipe (restore versus rollback, what a
       refusal means, recovering from git per the refusal's `message`) and link
-      it from the `check` recipe. `recipe-cross-references.test.ts` passes.
+      it from the `check` recipe's "An edited rule" section (slice 3 left the
+      pointer out, since the topic did not exist yet).
+      `recipe-cross-references.test.ts` passes.
 
 ## 8. Retire v1 (slice 5)
 
@@ -169,9 +170,12 @@ upgradeUrl }`, strip C0/C1 control characters except newline from
       string literal not followed by `v2/`, or delete the idea if the grep in
       8.1 plus the types already make a v1 call impossible to write. Record
       which, and why, in the PR.
-- [ ] 8.3 Remove or rewrite tests that exercised v1 (`api-deprecated-paths`,
-      `repair`, `repair-integration`, `reconciliation-start`, and the v1 paths
-      in `entitlement` and `api-rule-errors`). `pnpm test` passes.
+- [ ] 8.3 Remove or rewrite what still exercises v1. Already gone in slice 3:
+      `repair`, `repair-integration`, `runtime-dropped-rules`, the v1 relayout
+      reconcile test, `api/reconcile.ts`, `api/restore.ts`, and the runtime
+      `plan` / `repair` / `run-set` modules. Left for here: `api-deprecated-paths`,
+      the v1 parser in `entitlement.test.ts`, and whatever 8.1 deletes.
+      `pnpm test` passes.
 - [ ] 8.4 Run `pnpm typecheck` and `pnpm lint` (which rebuilds and runs
       `pnpm cli check`) from the repository root; both pass.
 

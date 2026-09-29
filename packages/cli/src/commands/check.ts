@@ -15,10 +15,8 @@ import { CLIError } from "../util/cli-error";
 import { requireCurrentSchema } from "../filesystem/migrate";
 import { discoverRuntimeRules } from "../rules/runtime/discover";
 import { resolveRuleSelection, type RuleSelection } from "../rules/rule-filter";
-// The gate lives beside the runtime engine rather than inside this command,
-// because `test` runs a rule's fixtures under exactly this policy. Sharing the
-// implementation is what makes that a fact rather than an intention.
-import { planRuntime } from "../rules/runtime/plan";
+import { planCheck } from "../rules/plan-check";
+import { fromProjectRoot } from "../rules/snapshot";
 import { markNotice } from "../util/notices";
 
 async function pathExists(absolutePath: string): Promise<boolean> {
@@ -335,29 +333,49 @@ export const checkCommand = defineCommand({
       }
 
       try {
-        // Runtime rules are planned before dispatch, not during it: planning
-        // consults auth and reconcile state, which is a decision about *what*
-        // may run rather than part of running it.
-        const plan = await planRuntime(cwd, runtimeRules, {
+        // Planned before dispatch, not during it: planning snapshots the rules
+        // tree and consults auth and reconcile state, which decides WHAT runs.
+        // Everything below reads the snapshot, never `.taskless/rules/`, so
+        // the bytes that run are the bytes that were judged.
+        const plan = await planCheck(cwd, {
           anonymous: args.anonymous,
           dangerouslyRunScripts: Boolean(args["dangerously-run-scripts"]),
         });
         for (const notice of plan.notices) warnNotice(notice);
+        for (const failure of plan.failures) warn(`Error: ${failure}`);
         for (const skipped of plan.skipped) {
           warnNotice(
             `runtime rule ${skipped.rule} was not run — ${skipped.reason}.`
           );
         }
 
-        // Every engine runs concurrently and merges into one result set. An
-        // engine that cannot run reports a notice and the others still return.
-        // Assemble both engine configs from the per-rule tree. Each returns
-        // `undefined` when its engine has no rules, which dispatch reads as
-        // "nothing to run" rather than running an empty config.
+        // Assembled against the snapshot base, whose layout mirrors the
+        // project's, so both configs resolve their rules inside the snapshot.
+        // The engines still run from the project root; only the config path
+        // is relative to it.
         const assembled = await assembleEngineConfigs(
-          cwd,
+          plan.snapshot.base,
           selection === undefined ? {} : { ruleIds: selection.vale }
         );
+        const valeAssembly =
+          assembled.vale?.status === "ok"
+            ? {
+                ...assembled.vale,
+                path: fromProjectRoot(plan.snapshot, assembled.vale.path),
+              }
+            : assembled.vale;
+        const sgConfig =
+          assembled.sg === undefined
+            ? undefined
+            : fromProjectRoot(plan.snapshot, assembled.sg);
+        // `--rule` narrows WHAT runs; it does not widen what may run. A runtime
+        // rule named here is still subject to the plan.
+        const runtimeExecute =
+          selection === undefined
+            ? plan.execute
+            : plan.execute.filter((rule) =>
+                selection.runtime.includes(rule.name)
+              );
         const dispatched = await runEngines({
           cwd,
           paths: existingPaths,
@@ -368,10 +386,10 @@ export const checkCommand = defineCommand({
           astGrepConfigPath:
             selection !== undefined && selection.sg.length === 0
               ? undefined
-              : assembled.sg,
+              : sgConfig,
           ...(selection === undefined ? {} : { astGrepRuleIds: selection.sg }),
-          vale: assembled.vale,
-          runtimeRules: plan.execute,
+          vale: valeAssembly,
+          runtimeRules: runtimeExecute,
           runtimeTimeoutMs: parseTimeoutMs(args.timeout),
         });
         const results = dispatched.results;
@@ -419,20 +437,26 @@ export const checkCommand = defineCommand({
         // leaves the exit code alone because the CLI could not ask; this one
         // is the answer to asking, and a green run would say the rule is still
         // protecting the repository when it has stopped running.
+        //
+        // The plan's failures are the same kind of answer: an edited ast-grep
+        // or Vale rule, a rule the service's answer did not account for, or
+        // ids that collide across engines. Each is a verified outcome, never a
+        // degrade path, and a green run would say the rule is protecting the
+        // repository when it did not run.
         const withheldForPlan = (plan.entitlement?.withheld.length ?? 0) > 0;
         const exitCode =
-          dispatched.exitCode === 0 && withheldForPlan
+          dispatched.exitCode === 0 &&
+          (withheldForPlan || plan.failures.length > 0)
             ? 1
             : dispatched.exitCode;
+        const allFailures = [...plan.failures, ...dispatched.failures];
 
         if (args.json) {
           const output = checkOutputSchema.parse({
             success: exitCode === 0,
             results,
             ...(plan.skipped.length > 0 ? { skipped: plan.skipped } : {}),
-            ...(dispatched.failures.length > 0
-              ? { failures: dispatched.failures }
-              : {}),
+            ...(allFailures.length > 0 ? { failures: allFailures } : {}),
             // BOTH sources. `plan.notices` carries the repair diagnostics —
             // what was restored, what could not be, and why — and they used to
             // reach only `warn()`, which is a no-op under `--json`. So the one
@@ -442,6 +466,7 @@ export const checkCommand = defineCommand({
             ...(plan.entitlement === undefined
               ? {}
               : { entitlement: plan.entitlement }),
+            ...(plan.integrity.length > 0 ? { integrity: plan.integrity } : {}),
           });
           console.log(JSON.stringify(output));
         } else {

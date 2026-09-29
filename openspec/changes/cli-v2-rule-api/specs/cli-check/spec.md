@@ -8,7 +8,7 @@ The CLI SHALL exit with code 0 when no error-severity matches are found (includi
 - returned an `unsafe` verdict for an `sg` or `vale` rule; or
 - left a reported rule unaccounted for (in none, or more than one, of `rules`, `unknown`, and `entitlement.withheld`).
 
-The CLI SHALL also exit with code 1 when two rule directories under different engines share an id. Under `--json`, `success` SHALL be `false` whenever the exit code is non-zero.
+On an authenticated run that would reconcile, the CLI SHALL also exit with code 1 when two rule directories under different engines share an id. A logged-out run verifies nothing and does not fail on it. Under `--json`, `success` SHALL be `false` whenever the exit code is non-zero.
 
 #### Scenario: Exit 0 when clean
 

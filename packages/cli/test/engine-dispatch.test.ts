@@ -28,14 +28,7 @@ import {
   writeRuleTestFile,
 } from "../src/rules/files";
 import { verifyOneRule } from "../src/rules/inspect";
-import {
-  discoverRuntimeRules,
-  discoverRuntimeRulesIn,
-} from "../src/rules/runtime/discover";
-import {
-  reportRuntimeChecks,
-  signRuntimeChecks,
-} from "../src/rules/runtime/run-set";
+import { discoverRuntimeRules } from "../src/rules/runtime/discover";
 import type { GeneratedRule } from "../src/api/rules";
 import { CLIError } from "../src/util/cli-error";
 import { migrateFixture } from "./support/current-project";
@@ -741,57 +734,5 @@ describe("service-delivered rule ingest", () => {
     expect(resolveIngestEngine({ engine: "sg" })).toBe("sg");
     expect(resolveIngestEngine({ engine: "vale" })).toBe("vale");
     expect(() => resolveIngestEngine({ engine: "nope" })).toThrow(/nope/);
-  });
-});
-
-describe("reconcile compatibility across the relayout", () => {
-  let temporaryDirectory: string;
-
-  beforeEach(async () => {
-    temporaryDirectory = await mkdtemp(join(tmpdir(), "tskl-reconcile-"));
-  });
-
-  afterEach(async () => {
-    await rm(temporaryDirectory, { recursive: true, force: true });
-  });
-
-  it("keeps signatures identical and reports the moved path", async () => {
-    const tasklessDirectory = join(temporaryDirectory, ".taskless");
-    const legacyRule = join(tasklessDirectory, "runtime-rules", "demo");
-    await mkdir(legacyRule, { recursive: true });
-    await writeFile(
-      join(tasklessDirectory, "taskless.json"),
-      JSON.stringify({ version: 3 }),
-      "utf8"
-    );
-    await writeFile(join(legacyRule, "logs.yml"), RUNTIME_CAPTURE, "utf8");
-    await writeFile(join(legacyRule, "check.ts"), RUNTIME_CHECK, "utf8");
-
-    // Discovery reads the current layout only, so the pre-migration tree
-    // cannot be discovered — it is described directly. What the test is about
-    // is the signature, which is computed over `check.ts` bytes and must
-    // survive the move.
-    const before = await signRuntimeChecks([
-      {
-        name: "demo",
-        dir: legacyRule,
-        captureRules: [],
-        checkFile: join(legacyRule, "check.ts"),
-      },
-    ]);
-    const beforeReport = reportRuntimeChecks(temporaryDirectory, before.signed);
-
-    await ensureTasklessDirectory(temporaryDirectory);
-
-    const after = await signRuntimeChecks(
-      await discoverRuntimeRulesIn(join(tasklessDirectory, "rules", "runtime"))
-    );
-    const afterReport = reportRuntimeChecks(temporaryDirectory, after.signed);
-
-    // The path follows the moved tree...
-    expect(beforeReport[0]?.file).toBe(".taskless/runtime-rules/demo/check.ts");
-    expect(afterReport[0]?.file).toBe(".taskless/rules/runtime/demo/check.ts");
-    // ...while the signature — what the server joins on — does not change.
-    expect(afterReport[0]?.signature).toBe(beforeReport[0]?.signature);
   });
 });
