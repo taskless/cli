@@ -132,7 +132,7 @@ describe("run directories", () => {
     }
   });
 
-  it("sweeps any owned directory a day old: live pid or other host", async () => {
+  it("sweeps any owned directory a day old: live pid, other host, or preserved", async () => {
     const dayAgo = new Date(Date.now() - 25 * 60 * 60 * 1000).toISOString();
     const owners = {
       "20200101T000000Z-cccccc": { pid: process.pid, hostname: hostname() },
@@ -140,6 +140,7 @@ describe("run directories", () => {
         pid: deadPid(),
         hostname: "some-other-host",
       },
+      "20200101T000000Z-eeeeee": { pid: deadPid(), hostname: hostname() },
     };
     for (const [name, owner] of Object.entries(owners)) {
       const directory = join(cwd, ".taskless", ".run", name);
@@ -149,8 +150,30 @@ describe("run directories", () => {
         JSON.stringify({ ...owner, startedAt: dayAgo })
       );
     }
+    await writeFile(
+      join(cwd, ".taskless", ".run", "20200101T000000Z-eeeeee", "preserve"),
+      ""
+    );
     const swept = await sweepAbandonedRuns(cwd);
     expect(swept.toSorted()).toEqual(Object.keys(owners));
+  });
+
+  it("keeps a dead run's directory while its preserve marker is there", async () => {
+    const kept = join(cwd, ".taskless", ".run", "20200101T000000Z-ffffff");
+    await mkdir(kept, { recursive: true });
+    await writeFile(
+      join(kept, "owner"),
+      JSON.stringify({
+        pid: deadPid(),
+        hostname: hostname(),
+        startedAt: new Date().toISOString(),
+      })
+    );
+    await writeFile(join(kept, "preserve"), "");
+    expect(await sweepAbandonedRuns(cwd)).toEqual([]);
+    // Deleting the marker releases it to the next sweep.
+    await rm(join(kept, "preserve"));
+    expect(await sweepAbandonedRuns(cwd)).toEqual(["20200101T000000Z-ffffff"]);
   });
 
   it("sweeps the ownerless directories earlier versions left", async () => {
@@ -324,6 +347,7 @@ describe("check and its run directory", () => {
       "sg.log",
       "vale.log",
       "owner",
+      "preserve",
       "snapshot",
     ]) {
       expect(files).toContain(name);
@@ -334,8 +358,11 @@ describe("check and its run directory", () => {
     expect(await readFile(join(directory, "engine.log"), "utf8")).toContain(
       "unverified run"
     );
-    // The next run sweeps it only once its owner is gone, which it is.
+    // Its owner has exited, but it was kept on purpose: the next run, such as
+    // an editor's on-save `check`, must not delete it. It goes after a day.
     await check();
-    expect(await runDirectories(cwd)).toEqual([]);
+    expect(await runDirectories(cwd)).toEqual([
+      output.runDirectory?.split("/").at(-1),
+    ]);
   });
 });

@@ -621,13 +621,26 @@ that no run rewrites a tracked file. `rule restore` SHALL take its snapshot the 
 instead of removing it: the snapshot that ran, the assembled configs, the `owner` record, and
 the logs. Human output SHALL name the kept directory on stderr. Under `--json`, the output
 SHALL carry an additive, optional `runDirectory` field, the directory's path relative to the
-project root, present only when the flag is set.
+project root, present only when the flag is set. A kept directory SHALL hold a `preserve` marker
+beside its `owner` record, and SHALL survive later runs while the marker is there, until it is
+swept for age (see "Abandoned run directories are swept"). Deleting the marker SHALL release the
+directory to the next run's sweep.
 
 #### Scenario: A preserved run is named and complete
 
 - **WHEN** a user runs `taskless check --json --preserve-logs`
 - **THEN** stdout SHALL include `runDirectory`
-- **AND** that directory SHALL hold `engine.log`, `sg.log`, `vale.log`, `runtime.log`, `owner`, and the snapshot
+- **AND** that directory SHALL hold `engine.log`, `sg.log`, `vale.log`, `runtime.log`, `owner`, `preserve`, and the snapshot
+
+#### Scenario: A preserved run survives the next run
+
+- **WHEN** a `taskless check --preserve-logs` run has ended and another `taskless check` starts
+- **THEN** the kept run directory SHALL still exist
+
+#### Scenario: Deleting the marker releases a kept directory
+
+- **WHEN** the `preserve` marker is deleted from a kept run directory whose run has ended
+- **THEN** the next run SHALL remove the directory
 
 #### Scenario: A preserved authenticated run holds no credential
 
@@ -639,10 +652,11 @@ project root, present only when the flag is set.
 At the start of every run, the CLI SHALL remove each directory under `.taskless/.run/` whose
 `owner` names a process on this host that is no longer alive, and each directory with no
 `owner` record (left by an earlier version). It SHALL NOT remove a directory whose owning
-process is alive, or one owned by another host, since this host cannot tell whether that
-process lives. Liveness SHALL be the test, not age, with one backstop:
+process is alive, one owned by another host, since this host cannot tell whether that process
+lives, or one holding a `preserve` marker. Liveness SHALL be the test, not age, with one backstop:
 a directory whose run started more than 24 hours ago SHALL be removed whatever its owner. That
-covers a dead run's process id recycled by an unrelated process, and a host that never returns.
+covers a dead run's process id recycled by an unrelated process, a host that never returns, and
+a kept directory nobody went back to.
 
 #### Scenario: A killed run's directory is swept
 
@@ -658,7 +672,7 @@ covers a dead run's process id recycled by an unrelated process, and a host that
 #### Scenario: A day-old directory is swept whatever its owner
 
 - **WHEN** a run directory's run started more than 24 hours ago
-- **THEN** the next run SHALL remove it, even if its process id names a live process or it is owned by another host
+- **THEN** the next run SHALL remove it, even if its process id names a live process, it is owned by another host, or it was kept by `--preserve-logs`
 
 ### Requirement: Check reports rule integrity under --json
 
