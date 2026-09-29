@@ -4,6 +4,7 @@ import { reconcileRules } from "../api/v2";
 import { resolveRepositoryUrl } from "../util/git-remote";
 import { getCliPrefix } from "../util/package-manager";
 import { reportRules } from "./report";
+import type { RunDirectory } from "./run-directory";
 import { RUN_SCRIPTS_WARNING } from "./runtime/harness";
 import { discoverRuntimeRulesIn, type RuntimeRule } from "./runtime/discover";
 import {
@@ -76,9 +77,12 @@ export interface PlanOptions {
  */
 export async function planCheck(
   cwd: string,
+  run: RunDirectory,
   options: PlanOptions
 ): Promise<CheckPlan> {
-  const snapshot = await takeSnapshot(cwd);
+  const log = run.logs.engine;
+  const snapshot = await takeSnapshot(cwd, run);
+  log.write(`snapshot taken at ${snapshot.base}`);
   const runtimeRoot = snapshotEngineDirectory(snapshot, "runtime");
   const discovered = await discoverRuntimeRulesIn(runtimeRoot);
   const empty = {
@@ -91,14 +95,20 @@ export async function planCheck(
   };
 
   if (options.dangerouslyRunScripts) {
+    log.write(
+      "--dangerously-run-scripts: no reconcile; every rule runs unverified"
+    );
     return { ...empty, execute: discovered, notices: [RUN_SCRIPTS_WARNING] };
   }
 
-  const unverified = (reason: string, notice?: string): CheckPlan => ({
-    ...empty,
-    skipped: discovered.map((rule) => ({ rule: rule.name, reason })),
-    notices: notice === undefined ? [] : [notice],
-  });
+  const unverified = (reason: string, notice?: string): CheckPlan => {
+    log.write(`unverified run: ${reason}`);
+    return {
+      ...empty,
+      skipped: discovered.map((rule) => ({ rule: rule.name, reason })),
+      notices: notice === undefined ? [] : [notice],
+    };
+  };
 
   if (options.anonymous) {
     return unverified(
@@ -121,6 +131,23 @@ export async function planCheck(
   }
 
   const report = await reportRules(snapshot);
+  log.write(
+    `reporting ${String(report.rules.length)} rule(s): ` +
+      report.rules
+        .map(
+          (rule) =>
+            `${rule.engine}/${rule.ruleId} (${String(rule.files.length)} files)`
+        )
+        .join(", ")
+  );
+  for (const duplicate of report.duplicates) {
+    log.write(
+      `duplicate id ${duplicate.ruleId} across ${duplicate.engines.join(", ")}`
+    );
+  }
+  for (const rule of report.unreadable) {
+    log.write(`unreadable ${rule.engine}/${rule.ruleId}: ${rule.reason}`);
+  }
   const failures: string[] = [];
   const integrity: IntegrityEntry[] = [];
 
@@ -171,6 +198,17 @@ export async function planCheck(
     rules: report.rules.map(({ ruleId, files }) => ({ ruleId, files })),
   });
 
+  log.write(
+    outcome.status === "ok"
+      ? "reconcile answered"
+      : `reconcile did not answer: ${outcome.status}${
+          outcome.status === "error"
+            ? ` (${outcome.code})`
+            : outcome.status === "unavailable"
+              ? ` (${outcome.reason})`
+              : ""
+        }`
+  );
   if (outcome.status !== "ok") {
     const cause =
       outcome.status === "unauthorized"
@@ -203,11 +241,25 @@ export async function planCheck(
     (ruleId) => `${getCliPrefix()} rule restore ${ruleId}`
   );
   for (const disposition of verdicts.dispositions) {
+    log.write(
+      `${disposition.engine}/${disposition.ruleId}: ${
+        disposition.run
+          ? "runs"
+          : `excluded (${disposition.reason ?? "not verified"})`
+      }`
+    );
     if (!disposition.run) {
       await excludeFromSnapshot(
         snapshot,
         disposition.engine,
         disposition.ruleId
+      );
+    }
+  }
+  for (const entry of verdicts.integrity) {
+    if (entry.verdict === "missing") {
+      log.write(
+        `missing: ${entry.ruleId} (revision ${entry.revisionId ?? "unknown"})`
       );
     }
   }

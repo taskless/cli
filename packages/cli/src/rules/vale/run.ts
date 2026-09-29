@@ -309,9 +309,11 @@ async function spawnVale(
   argv: string[],
   cwd: string,
   timeoutMs: number,
-  skipped: string | undefined
+  skipped: string | undefined,
+  log?: (text: string) => void
 ): Promise<ValeAttempt> {
   return new Promise<ValeAttempt>((settlePromise) => {
+    log?.(`$ ${binary} ${argv.join(" ")}  (cwd ${cwd})`);
     const child = spawn(binary, argv, {
       cwd,
       stdio: ["ignore", "pipe", "pipe"],
@@ -336,6 +338,9 @@ async function spawnVale(
     const settle = (outcome: ValeAttempt): void => {
       if (settled) return;
       settled = true;
+      log?.(
+        `attempt ${outcome.status}${"message" in outcome ? `: ${outcome.message}` : ""}`
+      );
       clearTimeout(timer);
       settlePromise(outcome);
     };
@@ -377,6 +382,11 @@ async function spawnVale(
       // rather than leaving bytes unaccounted for.
       stdoutChunks.push(stdoutDecoder.end());
       stderrChunks.push(stderrDecoder.end());
+      log?.(`exit ${String(code)}`);
+      const rawStdout = stdoutChunks.join("").trim();
+      const rawStderr = stderrChunks.join("").trim();
+      if (rawStdout !== "") log?.(`stdout: ${rawStdout}`);
+      if (rawStderr !== "") log?.(`stderr: ${rawStderr}`);
 
       // With --no-exit, a non-zero code is Vale failing, not Vale finding.
       if (code !== null && code !== 0) {
@@ -463,6 +473,8 @@ export interface ValeRunOptions {
   /** Config path relative to `cwd`. Defaults to the assembled run config. */
   configPath?: string;
   timeoutMs?: number;
+  /** Receives each attempt's command line, output, and exit, for `vale.log`. */
+  log?: (text: string) => void;
 }
 
 /**
@@ -647,7 +659,8 @@ export async function runVale(
       argv,
       options.cwd,
       timeoutMs,
-      skipped
+      skipped,
+      options.log
     );
 
     if (attempt.status === "ok") {

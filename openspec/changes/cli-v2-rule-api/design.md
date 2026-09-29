@@ -115,6 +115,31 @@ vale, which run whatever the verdict for `unknown`.
 
 `verify` and `test` keep assembling from the live tree at the existing paths.
 
+### 2a. Every run gets its own run directory, removed when the run ends
+
+The snapshot started as one shared `.taskless/.run/snapshot/`, replaced at the start of every
+run. Two concurrent runs (a pre-commit hook during an editor's on-save `check`) then shared
+it: the second deleted and re-copied the tree the first was still reading, so the first could
+run a half-copied tree, or a copy whose signatures it never checked. That is the exact failure
+the snapshot exists to prevent.
+
+So each run works in `.taskless/.run/<runId>/`: `<timestamp>-<random>`, sortable and unique.
+It holds the snapshot, the assembled configs, an `owner` record (pid, host, start time), and
+four logs: `engine.log` (the plan), `sg.log`, `vale.log`, `runtime.log`. It is removed in a
+`finally`, and synchronously on SIGINT/SIGTERM before the signal is re-raised.
+`--preserve-logs` (`-l`) keeps the WHOLE directory rather than only the logs, because the logs
+name files by their snapshot paths and "what exactly ran" is usually the question
+(product decision, 2026-09-29).
+
+A SIGKILL skips all cleanup, so every run first sweeps directories whose owner process is gone
+on this host, plus ownerless ones left by earlier versions (0.11's `runtime-rules/`). Liveness,
+not age, is the test (product decision): an age limit either deletes a slow live run or keeps
+junk for hours. A directory owned by another host is left alone; that only arises on a shared
+filesystem, and this host cannot tell whether the process lives.
+
+`.taskless/.run/.gitignore` (`*`) is written only if missing, since concurrent runs would race
+on it.
+
 ### 3. What is reported for a rule
 
 One `{ ruleId, files }` per directory under `.taskless/rules/<engine>/`, where

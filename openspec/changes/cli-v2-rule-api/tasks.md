@@ -182,6 +182,24 @@ upgradeUrl }`, strip C0/C1 control characters except newline from
 - [x] 8.4 Run `pnpm typecheck` and `pnpm lint` (which rebuilds and runs
       `pnpm cli check`) from the repository root; both pass.
 
+## 10. Run directories (slice 6)
+
+- [x] 10.1 Add `rules/run-directory.ts`: `.taskless/.run/<runId>/` per run with an
+      `owner` record, four logs, removal on close and on SIGINT/SIGTERM, a sweep of
+      directories whose owner is gone (or that have no owner), and a self-ignoring
+      `.taskless/.run/.gitignore` written only if missing. Unit tests cover unique
+      ids, close, preserve, sweeping a dead owner, sparing a live or foreign one,
+      and the legacy ownerless directories.
+- [x] 10.2 Move the snapshot into the run directory; `check` and `rule restore`
+      each open a run and always close it.
+- [x] 10.3 Thread the logs through: ast-grep and Vale take an optional `log`
+      (command line, raw output, exit), dispatch times each runtime rule into
+      `runtime.log`, and the planner writes the plan to `engine.log`.
+- [x] 10.4 Add `check --preserve-logs` / `-l` and the `--json` `runDirectory`
+      field. End-to-end tests: nothing left behind, four concurrent checks match a
+      lone check, a preserved run holds the logs and snapshot, and no log from an
+      authenticated run contains the token.
+
 ## 9. End to end, then archive (slice 5)
 
 - [ ] 9.1 From a nightly stamped `0.12.0-*`, against production v2, run the full

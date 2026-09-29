@@ -122,6 +122,10 @@ Slices, each targeting the one below it:
 4. **Recovery**: `rule restore`, `rule rollback`, the refusal.
 5. **Retire v1**: delete v1 code and tests, recipes, the end-to-end round trip
    against production, and the archive.
+6. **Run directories**: a per-run `.taskless/.run/<runId>/` holding the
+   snapshot and engine logs, removed when the run ends unless
+   `--preserve-logs`, with abandoned ones swept. Fixes concurrent `check`s
+   sharing one snapshot.
 
 The changeset is `minor` and lives on slice 1. Two reasons, either sufficient:
 `check` now fails on an edited sg or vale rule, and `rule create --json` renames

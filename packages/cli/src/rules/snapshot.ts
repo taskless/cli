@@ -1,15 +1,8 @@
-import {
-  copyFile,
-  mkdir,
-  readdir,
-  realpath,
-  rm,
-  stat,
-  writeFile,
-} from "node:fs/promises";
+import { copyFile, mkdir, readdir, realpath, rm, stat } from "node:fs/promises";
 import { join, relative } from "node:path";
 
 import { isMissingDirectory } from "./errno";
+import type { RunDirectory } from "./run-directory";
 import { engineRulesDirectory, ruleDirectory, rulesRoot } from "./engines";
 import type { EngineName } from "./layout";
 
@@ -22,8 +15,11 @@ import type { EngineName } from "./layout";
  * side. Taking the copy first and never reading the live tree again closes both:
  * whatever the verdict describes is exactly what runs.
  *
+ * It lives inside the run's own directory (see `run-directory.ts`), so
+ * concurrent runs never share one and it goes when the run does.
+ *
  * **The snapshot mirrors the project's layout** under a base directory:
- * `.taskless/.run/snapshot/.taskless/rules/`. Every path helper in this package
+ * `.taskless/.run/<runId>/snapshot/.taskless/rules/`. Every path helper in this package
  * takes a project root and appends `.taskless/rules/...`, and both config
  * assemblers write root-relative paths (`StylesPath`, `ruleDirs`), so handing
  * them the base instead of the project root points all of it at the snapshot
@@ -31,9 +27,6 @@ import type { EngineName } from "./layout";
  * relying on it: identical findings from both config locations, including a
  * Vale rule scoped to a subdirectory glob.
  */
-
-/** The snapshot base, relative to `.taskless/`. Gitignored with the rest of `.run/`. */
-const SNAPSHOT_DIRECTORY = join(".run", "snapshot");
 
 /**
  * Operating-system metadata that is neither copied nor reported.
@@ -62,7 +55,7 @@ export interface Snapshot {
 }
 
 /**
- * Replace the snapshot with a fresh copy of `.taskless/rules/`.
+ * Copy `.taskless/rules/` into the run's directory.
  *
  * Symbolic links are DEREFERENCED: what is signed has to be what runs, and a
  * link resolved at run time is bytes nobody signed. A link that does not
@@ -73,15 +66,12 @@ export interface Snapshot {
  * NOT a cycle, and each is copied in full: skipping the second would drop a
  * rule's files from the snapshot without any verdict saying so.
  */
-export async function takeSnapshot(cwd: string): Promise<Snapshot> {
-  const base = join(cwd, ".taskless", SNAPSHOT_DIRECTORY);
-  await rm(base, { recursive: true, force: true });
+export async function takeSnapshot(
+  cwd: string,
+  run: RunDirectory
+): Promise<Snapshot> {
+  const base = join(run.path, "snapshot");
   await mkdir(join(base, ".taskless"), { recursive: true });
-  // The run directory ignores ITSELF. Adding `.run/` to `.taskless/.gitignore`
-  // instead would make every `check` rewrite a tracked file, and `check`
-  // writes nothing under `.taskless/` outside `.taskless/.run/`. git, and the
-  // ignore walkers ast-grep and Vale use, all honor a nested `.gitignore`.
-  await writeFile(join(cwd, ".taskless", ".run", ".gitignore"), "*\n");
 
   const source = rulesRoot(cwd);
   const target = rulesRoot(base);
