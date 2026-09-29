@@ -113,13 +113,13 @@ describe("deprecated API paths", () => {
  * with `410 moved`: the failure would reach users in the field, not CI. This
  * reads SOURCE, never the bundle (the code style guide's rule: a check on
  * build output belongs in the build), and looks only where a request path is
- * spelled: right after a quote, or right after a template interpolation such
- * as `${baseUrl}`. Prose in comments names v1 routes to explain history and
+ * spelled: right after a quote or backtick, or right after a template
+ * interpolation such as `${baseUrl}`. Prose in comments names v1 routes to explain history and
  * is deliberately out of reach of this pattern.
  */
 describe("v1 API routes", () => {
   it("are not called by any source file", async () => {
-    const pattern = /["'}]\/cli\/api\/(?!v2\/)/;
+    const pattern = /["'`}]\/cli\/api\/(?!v2\/)/;
     const offenders: string[] = [];
     for (const file of await typeScriptSources(SOURCE_ROOT)) {
       const source = await readFile(file, "utf8");
