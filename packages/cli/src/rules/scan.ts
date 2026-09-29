@@ -126,6 +126,12 @@ export function findSgBinary(): string {
 
 export interface ScanOptions {
   /**
+   * Receives the command line, every raw stdout line, stderr, and the exit
+   * code, for the run's `sg.log`. Optional: nothing about the scan depends on
+   * whether anyone is listening.
+   */
+  log?: (text: string) => void;
+  /**
    * ast-grep config to scan with, relative to `cwd`. Defaults to the committed
    * `sg` engine config — the source of truth for the ast-grep engine, read
    * as-is rather than generated per run. Callers scanning the pre-migration
@@ -281,6 +287,7 @@ export async function runAstGrepScan(
       ...sgWalkArgv(paths),
       ...(paths.length > 0 ? ["--", ...paths] : []),
     ];
+    options.log?.(`$ ${sgBinary} ${argv.join(" ")}  (cwd ${cwd})`);
     const child = spawn(sgBinary, argv, {
       cwd,
       stdio: ["ignore", "pipe", "pipe"],
@@ -304,6 +311,7 @@ export async function runAstGrepScan(
 
     const rl = createInterface({ input: child.stdout });
     rl.on("line", (line) => {
+      options.log?.(`stdout: ${line}`);
       const trimmed = line.trim();
       if (trimmed === "") return;
       try {
@@ -338,6 +346,12 @@ export async function runAstGrepScan(
       // stream that ends mid-character contributes its replacement char once
       // rather than leaving bytes unaccounted for.
       stderrChunks.push(stderrDecoder.end());
+      const stderrText = stderrChunks.join("");
+      if (stderrText.trim() !== "")
+        options.log?.(`stderr: ${stderrText.trim()}`);
+      options.log?.(
+        `exit ${String(code)}; ${String(results.length)} finding(s)`
+      );
 
       // ast-grep exits 1 when error-severity matches found — that's expected
       // Only treat spawn/binary failures (exit > 1) as errors

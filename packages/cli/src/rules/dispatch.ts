@@ -4,6 +4,7 @@ import type { RefusedValeConfig, ValeAssembly } from "./assemble";
 import { engineRulesDirectory } from "./engines";
 import { type EngineName } from "./layout";
 import { isMissingDirectory } from "./errno";
+import type { RunLogs } from "./run-directory";
 import { executeRuntimeRules } from "./runtime/harness";
 import type { RuntimeRule } from "./runtime/discover";
 import { runAstGrepScan } from "./scan";
@@ -119,6 +120,12 @@ export interface DispatchOptions {
   runtimeRules: RuntimeRule[];
   runtimeTimeoutMs?: number;
   valeTimeoutMs?: number;
+  /**
+   * The run's logs, when there is a run directory to write them to. Engines
+   * log through here and never read it back, so a run without logs behaves
+   * identically.
+   */
+  logs?: RunLogs;
 }
 
 export interface DispatchResult {
@@ -164,6 +171,9 @@ async function runAstGrepEngine(
     return { engine: "sg", results: [], notices: [] };
   }
   const scan = await runAstGrepScan(options.cwd, options.paths, {
+    ...(options.logs === undefined
+      ? {}
+      : { log: (text: string) => options.logs?.sg.write(text) }),
     configPath: options.astGrepConfigPath,
     ...(options.astGrepRuleIds === undefined
       ? {}
@@ -221,6 +231,9 @@ async function runValeEngine(options: DispatchOptions): Promise<EngineOutcome> {
     paths: options.paths,
     configPath: options.vale.path,
     timeoutMs: options.valeTimeoutMs,
+    ...(options.logs === undefined
+      ? {}
+      : { log: (text: string) => options.logs?.vale.write(text) }),
   });
 
   // What the schema said about the configs without refusing them travels with
@@ -285,10 +298,32 @@ async function runRuntimeEngine(
   if (options.runtimeRules.length === 0) {
     return { engine: "runtime", results: [], notices: [] };
   }
-  const results = await executeRuntimeRules(options.cwd, options.runtimeRules, {
-    paths: options.paths,
-    timeoutMs: options.runtimeTimeoutMs,
-  });
+  // One rule at a time, as the harness runs them anyway, so each gets its own
+  // duration and outcome in `runtime.log`.
+  const results: CheckResult[] = [];
+  for (const rule of options.runtimeRules) {
+    const started = Date.now();
+    options.logs?.runtime.write(`${rule.name}: started (${rule.dir})`);
+    try {
+      const found = await executeRuntimeRules(options.cwd, [rule], {
+        paths: options.paths,
+        timeoutMs: options.runtimeTimeoutMs,
+      });
+      results.push(...found);
+      options.logs?.runtime.write(
+        `${rule.name}: ${String(found.length)} finding(s) in ${String(Date.now() - started)}ms`
+      );
+    } catch (error) {
+      options.logs?.runtime.write(
+        `${rule.name}: failed after ${String(Date.now() - started)}ms: ${
+          error instanceof Error
+            ? (error.stack ?? error.message)
+            : String(error)
+        }`
+      );
+      throw error;
+    }
+  }
   return { engine: "runtime", results, notices: [] };
 }
 
@@ -335,6 +370,15 @@ export async function runEngines(
     };
   });
 
+  for (const outcome of outcomes) {
+    options.logs?.engine.write(
+      `${outcome.engine}: ${String(outcome.results.length)} finding(s)` +
+        (outcome.failure === undefined ? "" : `; failed: ${outcome.failure}`) +
+        (outcome.notices.length === 0
+          ? ""
+          : `; notices: ${outcome.notices.join(" | ")}`)
+    );
+  }
   const results = outcomes.flatMap((outcome) => outcome.results);
   const failures = outcomes.flatMap((outcome) => outcome.failure ?? []);
 

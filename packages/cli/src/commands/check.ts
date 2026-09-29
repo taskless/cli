@@ -16,6 +16,7 @@ import { requireCurrentSchema } from "../filesystem/migrate";
 import { discoverRuntimeRules } from "../rules/runtime/discover";
 import { resolveRuleSelection, type RuleSelection } from "../rules/rule-filter";
 import { planCheck } from "../rules/plan-check";
+import { openRun } from "../rules/run-directory";
 import { fromProjectRoot } from "../rules/snapshot";
 import { markNotice } from "../util/notices";
 
@@ -146,6 +147,13 @@ export const checkCommand = defineCommand({
     rule: {
       type: "string",
       description: "Run only the named rule; repeatable (--rule a --rule b)",
+    },
+    "preserve-logs": {
+      type: "boolean",
+      alias: "l",
+      description:
+        "Keep this run's directory under .taskless/.run/ (snapshot, configs, and engine logs) instead of removing it",
+      default: false,
     },
   },
   async run({ args, rawArgs }) {
@@ -332,12 +340,17 @@ export const checkCommand = defineCommand({
         return;
       }
 
+      // This run's own directory under `.taskless/.run/`: the snapshot, the
+      // assembled configs, and the logs. Removed when the run ends, however
+      // it ends, unless `--preserve-logs` keeps it for debugging.
+      const preserve = Boolean(args["preserve-logs"]);
+      const run = await openRun(cwd, { preserve });
       try {
         // Planned before dispatch, not during it: planning snapshots the rules
         // tree and consults auth and reconcile state, which decides WHAT runs.
         // Everything below reads the snapshot, never `.taskless/rules/`, so
         // the bytes that run are the bytes that were judged.
-        const plan = await planCheck(cwd, {
+        const plan = await planCheck(cwd, run, {
           anonymous: args.anonymous,
           dangerouslyRunScripts: Boolean(args["dangerously-run-scripts"]),
         });
@@ -391,6 +404,7 @@ export const checkCommand = defineCommand({
           vale: valeAssembly,
           runtimeRules: runtimeExecute,
           runtimeTimeoutMs: parseTimeoutMs(args.timeout),
+          logs: run.logs,
         });
         const results = dispatched.results;
 
@@ -467,10 +481,14 @@ export const checkCommand = defineCommand({
               ? {}
               : { entitlement: plan.entitlement }),
             ...(plan.integrity.length > 0 ? { integrity: plan.integrity } : {}),
+            ...(preserve ? { runDirectory: run.relativePath } : {}),
           });
           console.log(JSON.stringify(output));
         } else {
           console.log(formatText(results));
+          if (preserve) {
+            console.error(`Run directory kept: ${run.relativePath}`);
+          }
         }
 
         if (exitCode !== 0) {
@@ -493,6 +511,8 @@ export const checkCommand = defineCommand({
           console.error(message);
         }
         process.exitCode = 1;
+      } finally {
+        await run.close();
       }
     } finally {
       // Concrete state event: a scan completed; counts only, no matched code.

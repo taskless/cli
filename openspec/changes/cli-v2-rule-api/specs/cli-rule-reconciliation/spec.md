@@ -230,8 +230,9 @@ outside this check.
 
 ### Requirement: The CLI runs the bytes it reported
 
-Before signing anything, `check` SHALL copy `.taskless/rules/` into a snapshot under
-`.taskless/.run/`, replacing any previous snapshot and dereferencing symbolic links.
+Before signing anything, `check` SHALL copy `.taskless/rules/` into a snapshot inside its own
+run directory under `.taskless/.run/` (per the `cli-check` capability), dereferencing symbolic
+links.
 It SHALL compute every reported signature from the snapshot and SHALL run every engine
 from the snapshot, with the assembled configs written under `.taskless/.run/`. A rule the
 verdict excludes SHALL be removed from the snapshot before any engine configuration is

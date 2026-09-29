@@ -259,6 +259,67 @@ name the command that repairs the rule, `taskless rule restore <ruleId>`. The on
 - **THEN** `check` SHALL NOT call any restore or fetch endpoint
 - **AND** SHALL NOT create the rule's directory
 
+### Requirement: Each check run works in its own run directory
+
+`taskless check` SHALL do its work (the snapshot, the assembled engine configs, and its logs)
+in a directory of its own, `.taskless/.run/<runId>/`, where `<runId>` is unique per run and
+sorts by start time. Two runs SHALL never share a run directory. The directory SHALL hold an
+`owner` record naming the process and host using it, and the logs `engine.log` (the plan: what
+was copied, reported, judged, excluded, and run), `sg.log` and `vale.log` (each engine's
+command line, output, and exit code), and `runtime.log` (each runtime rule's duration,
+findings, and any error). No log SHALL contain a credential. The CLI SHALL remove the run
+directory when the run ends, whether it succeeded or failed, and on SIGINT or SIGTERM, unless
+`--preserve-logs` is set. `.taskless/.run/` SHALL ignore itself with its own `.gitignore`, so
+that no run rewrites a tracked file. `rule restore` SHALL take its snapshot the same way.
+
+#### Scenario: Concurrent runs do not disturb each other
+
+- **WHEN** several `taskless check` runs execute at the same time in one project
+- **THEN** each SHALL report the same findings it reports alone
+- **AND** none SHALL read another's snapshot
+
+#### Scenario: Nothing is left behind
+
+- **WHEN** a `taskless check` run ends, successfully or not, without `--preserve-logs`
+- **THEN** its run directory SHALL no longer exist
+
+### Requirement: Check accepts --preserve-logs to keep its run directory
+
+`taskless check` SHALL accept `--preserve-logs` (alias `-l`), which keeps the run directory
+instead of removing it: the snapshot that ran, the assembled configs, the `owner` record, and
+the logs. Human output SHALL name the kept directory on stderr. Under `--json`, the output
+SHALL carry an additive, optional `runDirectory` field, the directory's path relative to the
+project root, present only when the flag is set.
+
+#### Scenario: A preserved run is named and complete
+
+- **WHEN** a user runs `taskless check --json --preserve-logs`
+- **THEN** stdout SHALL include `runDirectory`
+- **AND** that directory SHALL hold `engine.log`, `sg.log`, `vale.log`, `runtime.log`, `owner`, and the snapshot
+
+#### Scenario: A preserved authenticated run holds no credential
+
+- **WHEN** an authenticated `check --preserve-logs` reconciles
+- **THEN** no file in the kept run directory SHALL contain the token
+
+### Requirement: Abandoned run directories are swept
+
+At the start of every run, the CLI SHALL remove each directory under `.taskless/.run/` whose
+`owner` names a process on this host that is no longer alive, and each directory with no
+`owner` record (left by an earlier version). It SHALL NOT remove a directory whose owning
+process is alive, or one owned by another host, since this host cannot tell whether that
+process lives. A directory's age SHALL NOT be the test.
+
+#### Scenario: A killed run's directory is swept
+
+- **WHEN** a run directory's `owner` names a process on this host that has exited
+- **THEN** the next run SHALL remove it
+
+#### Scenario: A live run is never swept
+
+- **WHEN** a run directory's owning process is still running, or it is owned by another host
+- **THEN** no other run SHALL remove it
+
 ### Requirement: Check reports rule integrity under --json
 
 Under `--json`, `taskless check` SHALL carry an additive, optional `integrity` array with one

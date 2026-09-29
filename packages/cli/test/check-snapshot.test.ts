@@ -16,6 +16,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { assembleEngineConfigs } from "../src/rules/assemble";
 import { runEngines } from "../src/rules/dispatch";
 import { reportRules } from "../src/rules/report";
+import { openRun, type RunDirectory } from "../src/rules/run-directory";
 import type { CheckResult } from "../src/types/check";
 import { canonicalHash } from "../src/rules/rule-hash";
 import {
@@ -23,6 +24,20 @@ import {
   fromProjectRoot,
   takeSnapshot,
 } from "../src/rules/snapshot";
+
+/** Runs opened by a test, closed after it so no signal handler outlives it. */
+const runs: RunDirectory[] = [];
+
+/** Take a snapshot inside a fresh run directory, as `check` does. */
+async function snap(cwd: string) {
+  const run = await openRun(cwd);
+  runs.push(run);
+  return takeSnapshot(cwd, run);
+}
+
+afterEach(async () => {
+  for (const run of runs.splice(0)) await run.close();
+});
 
 describe("the check snapshot", () => {
   let cwd: string;
@@ -48,8 +63,8 @@ describe("the check snapshot", () => {
   });
 
   it("mirrors the project layout under the base, and ignores itself", async () => {
-    const snapshot = await takeSnapshot(cwd);
-    expect(snapshot.base).toBe(join(cwd, ".taskless", ".run", "snapshot"));
+    const snapshot = await snap(cwd);
+    expect(snapshot.base).toBe(join(runs.at(-1)!.path, "snapshot"));
     expect(
       existsSync(
         join(
@@ -68,12 +83,12 @@ describe("the check snapshot", () => {
     ).toBe("*\n");
     expect(existsSync(join(cwd, ".taskless", ".gitignore"))).toBe(false);
     expect(fromProjectRoot(snapshot, ".taskless/.vale.ini")).toBe(
-      join(".taskless", ".run", "snapshot", ".taskless", ".vale.ini")
+      join(runs.at(-1)!.relativePath, "snapshot", ".taskless", ".vale.ini")
     );
   });
 
   it("is what gets signed: an edit after the snapshot does not reach the report", async () => {
-    const snapshot = await takeSnapshot(cwd);
+    const snapshot = await snap(cwd);
     await writeFile(
       join(rules(), "sg", "no-eval-3fa9c21b", "no-eval-3fa9c21b.yml"),
       "id: edited\n"
@@ -95,7 +110,7 @@ describe("the check snapshot", () => {
       outside,
       join(rules(), "sg", "no-eval-3fa9c21b", "no-eval-3fa9c21b.yml")
     );
-    const snapshot = await takeSnapshot(cwd);
+    const snapshot = await snap(cwd);
     await writeFile(outside, "id: changed after the snapshot\n");
     const report = await reportRules(snapshot);
     expect(report.rules[0]?.files[0]?.signature).toBe(
@@ -108,7 +123,7 @@ describe("the check snapshot", () => {
       join(cwd, "nowhere.yml"),
       join(rules(), "sg", "no-eval-3fa9c21b", "dangling.yml")
     );
-    const report = await reportRules(await takeSnapshot(cwd));
+    const report = await reportRules(await snap(cwd));
     expect(report.rules[0]?.files.map((file) => file.path)).toEqual([
       "no-eval-3fa9c21b.yml",
     ]);
@@ -141,7 +156,7 @@ describe("the check snapshot", () => {
 
   it("neither copies nor reports operating-system metadata", async () => {
     await writeFile(join(rules(), "sg", "no-eval-3fa9c21b", ".DS_Store"), "x");
-    const snapshot = await takeSnapshot(cwd);
+    const snapshot = await snap(cwd);
     const report = await reportRules(snapshot);
     expect(report.rules[0]?.files.map((file) => file.path)).toEqual([
       "no-eval-3fa9c21b.yml",
@@ -164,7 +179,7 @@ describe("the check snapshot", () => {
     const nested = join(rules(), "sg", "no-eval-3fa9c21b", "extra", ".tests");
     await mkdir(nested, { recursive: true });
     await writeFile(join(nested, "a.yml"), "id: a\n");
-    const report = await reportRules(await takeSnapshot(cwd));
+    const report = await reportRules(await snap(cwd));
     expect(report.rules[0]?.files.map((file) => file.path)).toEqual([
       "extra/.tests/a.yml",
       "no-eval-3fa9c21b.yml",
@@ -177,7 +192,7 @@ describe("the check snapshot", () => {
       join(rules(), "vale", "no-eval-3fa9c21b", "no-eval-3fa9c21b.yml"),
       "extends: existence\n"
     );
-    const report = await reportRules(await takeSnapshot(cwd));
+    const report = await reportRules(await snap(cwd));
     expect(report.rules).toEqual([]);
     expect(report.duplicates).toEqual([
       { ruleId: "no-eval-3fa9c21b", engines: ["sg", "vale"] },
@@ -185,7 +200,7 @@ describe("the check snapshot", () => {
   });
 
   it("excluding a rule removes it from the snapshot only", async () => {
-    const snapshot = await takeSnapshot(cwd);
+    const snapshot = await snap(cwd);
     await excludeFromSnapshot(snapshot, "sg", "no-eval-3fa9c21b");
     const { rules: reported } = await reportRules(snapshot);
     expect(reported).toEqual([]);
@@ -194,7 +209,7 @@ describe("the check snapshot", () => {
 
   it("an empty project snapshots to no rules", async () => {
     await rm(rules(), { recursive: true });
-    const report = await reportRules(await takeSnapshot(cwd));
+    const report = await reportRules(await snap(cwd));
     expect(report).toEqual({ rules: [], duplicates: [], unreadable: [] });
   });
 });
@@ -256,7 +271,7 @@ describe("engines read the snapshot exactly as they read the live tree", () => {
       runtimeRules: [],
     });
 
-    const snapshot = await takeSnapshot(cwd);
+    const snapshot = await snap(cwd);
     const assembled = await assembleEngineConfigs(snapshot.base);
     const fromSnapshot = await runEngines({
       cwd,

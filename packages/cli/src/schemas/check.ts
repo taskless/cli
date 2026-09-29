@@ -77,6 +77,12 @@ export const outputSchema = z.object({
   // a runtime rule the service never issued, unaccounted for, or an id shared
   // across engines. Locally written ast-grep and Vale rules are `unknown` too
   // and are deliberately NOT listed: they run, and every run would repeat them.
+  runDirectory: z
+    .string()
+    .optional()
+    .describe(
+      "Present only with --preserve-logs: the kept run directory, relative to the project root. It holds the snapshot that ran, the assembled engine configs, and engine.log, sg.log, vale.log, and runtime.log"
+    ),
   integrity: z
     .array(
       z.object({

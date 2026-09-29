@@ -16,6 +16,7 @@ import { writeServedRule } from "./files";
 import { orgNotFoundMessage } from "./generate";
 import { isKnownEngine, type EngineName } from "./layout";
 import { reportRules } from "./report";
+import { openRun } from "./run-directory";
 import { takeSnapshot } from "./snapshot";
 import { verifyServedRule } from "./verify-delivery";
 
@@ -130,8 +131,15 @@ export async function beginRestore(
   identity: Identity,
   ruleId: string
 ): Promise<RestoreStart> {
-  const snapshot = await takeSnapshot(cwd);
-  const report = await reportRules(snapshot);
+  // Its own run directory, for the snapshot only: restore needs the report,
+  // never the copy, so the directory goes as soon as the report is taken.
+  const run = await openRun(cwd);
+  let report;
+  try {
+    report = await reportRules(await takeSnapshot(cwd, run));
+  } finally {
+    await run.close();
+  }
   const duplicate = report.duplicates.find((entry) => entry.ruleId === ruleId);
   if (duplicate !== undefined) {
     throw new CLIError(

@@ -671,4 +671,26 @@ describe("check: static vs runtime dispatch", () => {
     expect(exitCode).toBe(0);
     expect(parseJson(stdout)).not.toHaveProperty("entitlement");
   });
+
+  it("--preserve-logs keeps an authenticated run's logs, and no log holds the token", async () => {
+    const { stdout } = await authedCheck(
+      (request) => ({
+        statusCode: 200,
+        body: answer(request, { "no-console": "run", demo: "run" }),
+      }),
+      ["--json", "--preserve-logs"]
+    );
+    const output = parseJson(stdout) as CheckJson & { runDirectory?: string };
+    expect(output.runDirectory).toBeDefined();
+    const kept = join(directory, output.runDirectory ?? "");
+    const logs = await Promise.all(
+      ["engine.log", "sg.log", "runtime.log"].map((name) =>
+        readFile(join(kept, name), "utf8")
+      )
+    );
+    expect(logs[0]).toContain("reconcile answered");
+    expect(logs[0]).toContain("runtime/demo: runs");
+    expect(logs[2]).toMatch(/demo: \d+ finding\(s\) in \d+ms/);
+    for (const log of logs) expect(log).not.toContain("fake.token");
+  });
 });

@@ -112,6 +112,12 @@ delete the rules to make `check` pass, and do not suggest
 - `--anonymous`: run only static rules; skip runtime rules.
 - `--dangerously-run-scripts`: run runtime `check.ts` unverified.
 - `--timeout <seconds>`: per-runtime-check wall-clock bound (default 10).
+- `--preserve-logs` / `-l`: keep this run's directory under
+  `.taskless/.run/` (the snapshot that ran, the engine configs, and
+  `engine.log`, `sg.log`, `vale.log`, `runtime.log`) instead of removing it.
+  Its path is printed on stderr, or returned as `runDirectory` under
+  `--json`. Use it to debug a rule that behaves unexpectedly; the logs hold
+  matched source, so treat the directory like any local build output.
 
 ## Steps
 
