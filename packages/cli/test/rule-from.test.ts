@@ -110,7 +110,12 @@ describe("rules create --from", () => {
 });
 
 describe("the create and improve --json envelopes carry delivery notices", () => {
-  const CREATE = { success: true, ruleId: "req-1", rules: ["a"], files: ["f"] };
+  const CREATE = {
+    success: true,
+    requestId: "req-1",
+    rules: ["a"],
+    files: ["f"],
+  };
   const IMPROVE = {
     success: true,
     requestId: "req-1",

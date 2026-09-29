@@ -1,4 +1,4 @@
-# Topic: create-remote-rule     (CLI v%(CLI_VERSION)s / topic v3)
+# Topic: create-remote-rule     (CLI v%(CLI_VERSION)s / topic v4)
 
 ## You are here
 This is `create-remote-rule`. It helps you have the Taskless service
@@ -125,17 +125,20 @@ Two ways to legitimately be here:
 8. **Clean up.** Delete `.taskless/.tmp-rule-request.json` whether the
    call succeeded or failed.
 
-9. **Report.** The service writes the rule to
-   `.taskless/rules/sg/<id>/<id>.yml` and its tests to
-   `.taskless/rules/sg/<id>/.tests/<id>-YYYYMMDD-test.yml`. These are
-   the same paths and the same shape a locally authored rule uses, so
-   `check`, `improve-rule`, `verify`, and `test` treat them
-   identically. Nothing is written under `.taskless/rule-metadata/`.
-   Show the user the paths and suggest `%(TASKLESS_CLI)s agent check`.
+9. **Report.** The CLI writes each generated rule, fixtures included,
+   to `.taskless/rules/<engine>/<id>/`, replacing anything already in
+   that directory. These are the same paths and the same shape a
+   locally authored rule uses, so `check`, `improve-rule`, `verify`, and
+   `test` treat them identically. Nothing is written under
+   `.taskless/rule-metadata/`. Show the user the paths and suggest
+   `%(TASKLESS_CLI)s agent check`.
 
-   **Record the `ruleId` from the `--json` output.** It is the ticket
-   id the iterate endpoint is addressed by, `improve-rule` asks for it,
-   and no file on disk carries it.
+   **`rules` in the `--json` output lists each written rule's id**, and
+   the id is the rule's directory name (for example
+   `no-eval-3fa9c21b`). It is what `rule improve`, `rule restore`, and
+   `rule rollback` take, and it is on disk, so nothing needs recording.
+   `requestId` names the generation request only; no command takes it
+   back, and passing it to `rule improve` fails with `RULE_NOT_FOUND`.
 
    **Read `notices` if it is present.** It is an optional array of
    advisory messages about a delivery that was written anyway. A rule

@@ -193,16 +193,6 @@ export function describeIncompleteSet(
  * policed: what makes a fixture meaningful differs per engine, every engine's
  * own runner already judges it, and a second opinion here would be a worse one
  * computed from less.
- *
- * **This answers a question about the DELIVERY, and the caller must not report
- * it as a question about the rule.** `.tests/` is in {@link PRESERVED_SUBTREES},
- * so fixtures already on disk survive a delivery that never mentions them —
- * which is the normal case rather than an edge one, since `writeRuleTestFile`
- * accumulates fixtures locally that no later file set names by construction.
- * A rule can therefore be delivered with no fixtures and still be exercised by
- * every one of them. {@link writeRuleFile} pairs this with what is actually on
- * disk before saying anything, and the message here is written to be true only
- * under that pairing.
  */
 export function describeMissingFixtures(
   files: readonly DeliveredFile[]
@@ -294,42 +284,6 @@ export function assessDelivery(
   return { ok: true, files };
 }
 
-/**
- * The one subtree inside a rule directory a delivered set does not govern.
- *
- * **`.tests/` SURVIVES A DELIVERY THAT DOES NOT MENTION IT, DELIBERATELY.**
- * Everything else under the rule directory is removed when the set omits it
- * (see {@link writeDeliveredFileSet}). Stating the exception here rather than
- * deciding it silently is the point: a fixture that vanishes surfaces later as
- * a rule that tests nothing, and nobody connects that to a delivery weeks
- * earlier.
- *
- * Two reasons, and the first is the one that matters:
- *
- * - **Nothing under `.tests/` reaches an engine.** The dot is what makes
- *   ast-grep skip the directory during rule discovery (see
- *   {@link RULE_TESTS_DIRECTORY}), `strayModules` already exempts it for the
- *   same reason, and runtime capture discovery skips it by name. A stale
- *   fixture therefore cannot change what a rule matches, which is the entire
- *   harm this purge exists to prevent. A stale fixture fails a test run loudly,
- *   in front of someone already looking at that rule.
- * - **This CLI writes files there that no delivered set will ever name.**
- *   `writeRuleTestFile` writes `<id>-<timestamp>-test.yml` on every
- *   single-content create and iterate, so fixtures accumulate locally and are
- *   absent from a later file-set delivery by construction. Purging `.tests/`
- *   would delete a rule's whole local test history the first time it was
- *   redelivered as a file set.
- *
- * Only the top-level `.tests/` is exempt. `RULE_TESTS_DIRECTORY` is defined
- * relative to the rule directory, so a nested `captures/.tests/` is not a test
- * directory — it is a file an engine reads, and it is purged like any other.
- *
- * A delivered set may still WRITE into `.tests/`; that is how a file set ships
- * its own fixtures. Exempt means "not deleted for going unmentioned", not "off
- * limits".
- */
-const PRESERVED_SUBTREES = new Set<string>([RULE_TESTS_DIRECTORY]);
-
 /** What a rule directory holds, as paths relative to it. */
 interface RuleDirectoryContents {
   /** Every file and symlink the purge may consider. */
@@ -339,8 +293,14 @@ interface RuleDirectoryContents {
 }
 
 /**
- * Enumerate a rule directory, skipping the subtrees a delivered set does not
- * govern.
+ * Enumerate a rule directory, every subtree included.
+ *
+ * `.tests/` is enumerated like everything else. It used to be spared, because
+ * the v1 single-content envelope wrote fixtures locally that no later file set
+ * would name. v2 serves a rule's fixtures in every file set (confirmed with the
+ * rules team, 2026-09-29), so a fixture the set does not name is stale, and a
+ * stale fixture makes `taskless test` judge the rule against cases nobody
+ * issued.
  *
  * Symlinks are listed as files rather than descended into. `readdir` does not
  * follow them, so `isDirectory()` is false for a link to a directory, and
@@ -369,7 +329,6 @@ async function readRuleDirectory(
     }
     for (const entry of entries) {
       const path = prefix === "" ? entry.name : `${prefix}/${entry.name}`;
-      if (PRESERVED_SUBTREES.has(path)) continue;
       if (entry.isDirectory()) {
         directories.push(path);
         await walk(join(absolute, entry.name), path);
@@ -522,8 +481,8 @@ async function purgeUndeliveredFiles(
 
   // Deepest first, so a directory emptied by pruning its children is prunable
   // in the same pass. `rmdir` rather than a recursive `rm` precisely because it
-  // REFUSES a non-empty directory: one still holding a delivered file, or a
-  // preserved `.tests/`, must survive, and the filesystem answering "not empty"
+  // REFUSES a non-empty directory: one still holding a delivered file must
+  // survive, and the filesystem answering "not empty"
   // is a stronger guarantee of that than bookkeeping kept correct by hand.
   const deepestFirst = contents.directories.toSorted(
     (a, b) => b.split("/").length - a.split("/").length

@@ -310,7 +310,7 @@ describe("repairing a drifted runtime rule, end to end", () => {
     }
   });
 
-  it("leaves the rule directory holding exactly the blessed set, minus fixtures", async () => {
+  it("leaves the rule directory holding exactly the blessed set", async () => {
     // #233. Repair runs BECAUSE the directory's trustworthiness is in
     // question, and only `check.ts` is signed — so a stray capture beside the
     // rule is never reported by reconcile, was never replaced by the repair,
@@ -356,7 +356,11 @@ describe("repairing a drifted runtime rule, end to end", () => {
       });
 
       expect(existsSync(join(rule, "captures", "stray.yml"))).toBe(false);
-      expect(existsSync(join(rule, ".tests", "demo-1970-test.yml"))).toBe(true);
+      // A served set is the whole directory, fixtures included, so a fixture
+      // it does not name is stale and goes with the rest.
+      expect(existsSync(join(rule, ".tests", "demo-1970-test.yml"))).toBe(
+        false
+      );
       // The rule is whole afterwards. A repair that leaves it inert would be
       // the bug, not a trade-off.
       await expect(readFile(checkFile, "utf8")).resolves.toBe(BLESSED);

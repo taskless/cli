@@ -6,26 +6,16 @@ import { defineCommand } from "citty";
 import { ZodError } from "zod";
 
 import { identityFailureCode, resolveIdentity } from "../auth/identity";
+import { iterateRule, submitRequest, type V2Outcome } from "../api/v2";
+import type { Identity } from "../auth/identity";
+import { readRuleMetaFile, deleteRuleFiles } from "../rules/files";
 import {
-  submitRule,
-  pollRuleStatus,
-  iterateRule,
-  isSingleContentRule,
-  type GeneratedRule,
-} from "../api/rules";
-import {
-  notRunOnPlanSentence,
-  parseEntitlement,
-  type MayCarryEntitlement,
-} from "../api/entitlement";
-import {
-  writeRuleFile,
-  writeRuleTestFile,
-  writeRuleMetaFiles,
-  readRuleMetaFile,
-  deleteRuleFiles,
-} from "../rules/files";
-import { resolveIngestEngine } from "../rules/engines";
+  awaitRequest,
+  deliverRevisions,
+  orgNotFoundMessage,
+  requestErrorText,
+  type Delivered,
+} from "../rules/generate";
 import { RULES_DIRECTORY } from "../rules/layout";
 import { unsupportedMessage } from "../rules/unsupported";
 import {
@@ -41,63 +31,158 @@ import { getTelemetry } from "../telemetry";
 import { CLIError } from "../util/cli-error";
 import { type CLIErrorCode, writeJsonError } from "../types/errors";
 
-/**
- * The warning for a runtime rule written under a plan that will not run it, or
- * `undefined` when there is nothing to say.
- *
- * The rule is still written: it is the organization's rule, and it runs again
- * the moment the plan allows. What must not happen is the author finishing
- * `rule create` believing it is live. Static rules never warn.
- */
-function notRunOnPlanNotice(
-  status: MayCarryEntitlement<object>,
-  rule: unknown,
-  ruleFile: string
-): string | undefined {
-  const entitlement = parseEntitlement(status.entitlement);
-  if (entitlement === undefined) return undefined;
-  if (resolveIngestEngine(rule) !== "runtime") return undefined;
-  return `${ruleFile} was written. ${notRunOnPlanSentence(entitlement)}`;
+/** Why submitting a request or an iteration failed, as a message and a code. */
+function describeSubmitFailure(
+  outcome: Exclude<V2Outcome<unknown, string>, { status: "ok" }>,
+  ruleId?: string
+): { message: string; code: CLIErrorCode } {
+  switch (outcome.status) {
+    case "unauthorized": {
+      return {
+        message: "Authentication was rejected. Log in again.",
+        code: "AUTH_REQUIRED",
+      };
+    }
+    case "unavailable": {
+      return {
+        message: `Request submission failed: ${outcome.reason}.`,
+        code: "NETWORK_ERROR",
+      };
+    }
+    case "refused": {
+      return { message: outcome.refusal.message, code: "NETWORK_ERROR" };
+    }
+    case "error": {
+      switch (outcome.code) {
+        case "validation_error": {
+          return {
+            message: `Validation error: ${(outcome.details ?? []).join(", ")}`,
+            code: "INVALID_INPUT",
+          };
+        }
+        case "organization_not_found": {
+          return { message: orgNotFoundMessage(), code: "NETWORK_ERROR" };
+        }
+        case "rule_not_found": {
+          // The caller supplied this id, so "no such rule" is a state they can
+          // act on: re-check it. It is a rule's directory name, never the
+          // request id `rule create` prints.
+          return {
+            message:
+              `Rule ${ruleId ?? ""} was not found for this repository. ` +
+              `\`ruleId\` is the rule's directory name under \`.taskless/rules/<engine>/\`.`,
+            code: "RULE_NOT_FOUND",
+          };
+        }
+        case "enqueue_failed": {
+          return {
+            message:
+              "The request was recorded but could not be queued. Try again.",
+            code: "NETWORK_ERROR",
+          };
+        }
+        default: {
+          return {
+            message: `Request submission failed (${outcome.code}).`,
+            code: "NETWORK_ERROR",
+          };
+        }
+      }
+    }
+  }
 }
 
-/** Format today's date as YYYYMMDD */
-function getTimestamp(): string {
-  const now = new Date();
-  const year = String(now.getFullYear());
-  const month = String(now.getMonth() + 1).padStart(2, "0");
-  const day = String(now.getDate()).padStart(2, "0");
-  return `${year}${month}${day}`;
+/** How {@link completeRequest} reports, per command. */
+interface CompletionOptions {
+  json: boolean;
+  fail: (message: string, code?: CLIErrorCode) => never;
+  /** "Generated" or "Updated", for human output. */
+  verb: string;
+  /** The prefix for a request that ended `failed`. */
+  failedPrefix: string;
+  /** The command's `--json` success envelope for what was written. */
+  output: (
+    result: Omit<Delivered, "notices"> & { notices?: string[] }
+  ) => unknown;
 }
 
-const POLL_INTERVAL_MS = 15_000;
-
 /**
- * A file set rule carries its fixtures as ordinary files under `.tests/`,
- * already written by `writeRuleFile`. Only the single-content envelope has a
- * separate `tests` field to write.
- *
- * A file set arriving WITH a stray `tests` is unrepresentable in the
- * published schema, and if the service ever sent one it would be dropped in
- * silence. Named rather than ignored, because everything else on this path
- * fails loudly when the contract is broken, and a fixture that vanishes is
- * exactly the kind of loss that shows up later as a rule which tests nothing.
- *
- * `create` and `improve` both run this guard over the same
- * `GeneratedRule` shape with the same remedy, so it is shared here rather
- * than copied: two unmaintained copies is how they drift, and neither had a
- * test before this one did.
+ * Poll a submitted request to its end and deliver what it produced. Shared by
+ * `create` and `improve`, whose only differences are wording and the envelope.
+ * Returns how many rules were written.
  */
-function fileSetTestsFieldError(rule: GeneratedRule): string | undefined {
-  if (
-    !isSingleContentRule(rule) &&
-    (rule as { tests?: unknown }).tests !== undefined
-  ) {
-    return (
-      `Rule "${rule.id}" was delivered as a file set and also carries \`tests\`; ` +
-      `a file set's fixtures belong in its own \`.tests/\` files.`
+async function completeRequest(
+  cwd: string,
+  identity: Identity,
+  requestId: string,
+  options: CompletionOptions
+): Promise<number> {
+  const context = {
+    token: identity.token,
+    repositoryUrl: identity.repositoryUrl,
+    orgId: identity.orgSubject,
+    onProgress: (message: string) => console.error(message),
+  };
+
+  let delivered: Delivered;
+  try {
+    const status = await awaitRequest(context, requestId);
+    switch (status.status) {
+      case "unsupported": {
+        options.fail(
+          unsupportedMessage(requestErrorText(status)),
+          "RULE_UNSUPPORTED"
+        );
+        break;
+      }
+      case "failed": {
+        options.fail(
+          `${options.failedPrefix}: ${requestErrorText(status) ?? "no reason was given"}`,
+          "RULE_GENERATION_FAILED"
+        );
+        break;
+      }
+      case "generated": {
+        break;
+      }
+      default: {
+        // `pr`, `merged`, `closed`: states a CLI request does not reach. Report
+        // the state rather than inventing a delivery.
+        if (options.json) {
+          console.log(JSON.stringify(options.output({ rules: [], files: [] })));
+        } else {
+          console.log(`Request ${requestId} is in state "${status.status}".`);
+        }
+        return 0;
+      }
+    }
+    delivered = await deliverRevisions(cwd, context, status.revisions);
+  } catch (error) {
+    if (error instanceof CLIError && error.reported) throw error;
+    options.fail(
+      error instanceof Error ? error.message : String(error),
+      error instanceof CLIError && error.code ? error.code : "INTERNAL_ERROR"
     );
   }
-  return undefined;
+
+  if (options.json) {
+    console.log(
+      JSON.stringify(
+        options.output({
+          rules: delivered.rules,
+          files: delivered.files,
+          ...(delivered.notices.length > 0
+            ? { notices: delivered.notices }
+            : {}),
+        })
+      )
+    );
+  } else {
+    for (const notice of delivered.notices) console.error(`Warning: ${notice}`);
+    console.log(`${options.verb} ${String(delivered.rules.length)} rule(s):\n`);
+    for (const filePath of delivered.files) console.log(`  ${filePath}`);
+  }
+  return delivered.rules.length;
 }
 
 const createCommand = defineCommand({
@@ -218,163 +303,31 @@ const createCommand = defineCommand({
         fail(message, identityFailureCode(error));
       }
 
-      // 3. Submit rule to API
-      let ruleId: string;
-      try {
-        const response = await submitRule(identity.token, {
-          orgId: identity.orgSubject,
-          repositoryUrl: identity.repositoryUrl,
-          prompt: request.prompt,
-          successCases: request.successCases,
-          failureCases: request.failureCases,
-        });
-        // The canonical field. `ruleId` is still on the response, carrying the
-        // same value, and is marked deprecated: it never named a rule. The
-        // local keeps its name because it feeds this command's own `--json`
-        // `ruleId` field, which is OUR published contract and a separate
-        // decision from the service's — renaming that one moves the ground
-        // under every recipe and agent that reads it.
-        ruleId = response.requestId;
-      } catch (error) {
-        fail(
-          error instanceof Error ? error.message : String(error),
-          "NETWORK_ERROR"
-        );
+      // 3. Submit the request
+      const submitted = await submitRequest(identity.token, {
+        orgId: identity.orgSubject,
+        repositoryUrl: identity.repositoryUrl,
+        prompt: request.prompt,
+        successCases: request.successCases,
+        failureCases: request.failureCases,
+      });
+      if (submitted.status !== "ok") {
+        const failure = describeSubmitFailure(submitted);
+        fail(failure.message, failure.code);
       }
+      const requestId = submitted.data.requestId;
 
-      // 4. Poll for results
-      console.error(`Rule submitted (${ruleId}). Waiting for generation...`);
-
-      while (true) {
-        await new Promise((resolve) => setTimeout(resolve, POLL_INTERVAL_MS));
-
-        let status;
-        try {
-          status = await pollRuleStatus(identity.token, ruleId);
-        } catch (error) {
-          fail(
-            `Polling failed: ${error instanceof Error ? error.message : String(error)}`,
-            "NETWORK_ERROR"
-          );
-        }
-
-        switch (status.status) {
-          case "accepted": {
-            console.error("Status: accepted — waiting for processing...");
-            break;
-          }
-          case "classifying": {
-            console.error("Status: classifying — analyzing your request...");
-            break;
-          }
-          case "building": {
-            console.error("Status: building — generating rules...");
-            break;
-          }
-          case "unsupported": {
-            fail(unsupportedMessage(status.error), "RULE_UNSUPPORTED");
-            break;
-          }
-          case "failed": {
-            fail(
-              `Rule generation failed: ${status.error}`,
-              "RULE_GENERATION_FAILED"
-            );
-            break;
-          }
-          case "generated": {
-            // 6. Write files
-            const timestamp = getTimestamp();
-            const writtenFiles: string[] = [];
-            const notices: string[] = [];
-            const rules = status.rules ?? [];
-
-            for (const rule of rules) {
-              // Collected AND printed, and neither alone is enough. Under
-              // `--json` the prose is suppressed and the message rides in the
-              // envelope instead, because a machine consumer cannot read
-              // stderr — and an unattended caller is the one most likely to
-              // act on a fixture-less delivery. `check` already settles this
-              // trade the same way. The rule is written either way.
-              const ruleFile = await writeRuleFile(cwd, rule, (message) => {
-                notices.push(message);
-                if (!args.json) console.error(`Warning: ${message}`);
-              });
-              writtenFiles.push(ruleFile);
-              const planWarning = notRunOnPlanNotice(status, rule, ruleFile);
-              if (planWarning !== undefined) {
-                notices.push(planWarning);
-                if (!args.json) console.error(`Warning: ${planWarning}`);
-              }
-
-              // See `fileSetTestsFieldError` for why this is a guard rather
-              // than a silent drop.
-              const strayTestsError = fileSetTestsFieldError(rule);
-              if (strayTestsError !== undefined) {
-                // Route through `fail()`, not a bare throw: this is inside
-                // the command's own `try`, and a throw here that never
-                // touches `fail()` skips the `--json` envelope entirely (see
-                // #280). `writtenFiles` already holds every rule file written
-                // earlier in this loop, but the envelope shape this command
-                // publishes has no field to carry a partial file list on
-                // failure — extending it is a schema change, out of scope
-                // here (see the PR description).
-                fail(strayTestsError, "RULE_GENERATION_FAILED");
-              }
-              if (isSingleContentRule(rule) && rule.tests) {
-                const testFile = await writeRuleTestFile(cwd, rule, timestamp);
-                writtenFiles.push(testFile);
-              }
-            }
-
-            // Dead in practice, and kept deliberately. The service does not
-            // populate `meta` on a status response, so no sidecar has ever
-            // been written from here; the branch is what would start writing
-            // one the day it does. `rule meta` says as much when asked, rather
-            // than the code pretending the file is merely absent.
-            if (status.meta) {
-              const metaFiles = await writeRuleMetaFiles(cwd, status.meta);
-              writtenFiles.push(...metaFiles);
-            }
-
-            // 7. Output results
-            if (args.json) {
-              const output = createOutputSchema.parse({
-                success: true,
-                ruleId,
-                rules: rules.map((r) => r.id),
-                files: writtenFiles,
-                ...(notices.length > 0 ? { notices } : {}),
-              });
-              console.log(JSON.stringify(output));
-            } else {
-              console.log(`Generated ${String(rules.length)} rule(s):\n`);
-              for (const filePath of writtenFiles) {
-                console.log(`  ${filePath}`);
-              }
-            }
-            if (rules.length > 0) createdRuleCount = rules.length;
-            return;
-          }
-          case "pr":
-          case "merged":
-          case "closed": {
-            // Terminal states beyond generation — treat as done without files
-            if (args.json) {
-              const output = createOutputSchema.parse({
-                success: true,
-                ruleId,
-                rules: [],
-                files: [],
-              });
-              console.log(JSON.stringify(output));
-            } else {
-              console.log(`Rule ${ruleId} is in state "${status.status}".`);
-            }
-            return;
-          }
-        }
-      }
+      // 4. Poll, then fetch, verify, and write each produced rule
+      console.error(`Rule requested (${requestId}). Waiting for generation...`);
+      const written = await completeRequest(cwd, identity, requestId, {
+        json: args.json,
+        fail,
+        verb: "Generated",
+        failedPrefix: "Rule generation failed",
+        output: (result) =>
+          createOutputSchema.parse({ success: true, requestId, ...result }),
+      });
+      if (written > 0) createdRuleCount = written;
     } finally {
       // Concrete state event: a rule was actually generated and written.
       if (createdRuleCount !== undefined) {
@@ -496,162 +449,34 @@ const improveCommand = defineCommand({
         fail(message, identityFailureCode(error));
       }
 
-      // 3. Submit iterate request to API
-      let requestId: string;
-      try {
-        const response = await iterateRule(identity.token, request.ruleId, {
-          orgId: identity.orgSubject,
-          guidance: request.guidance,
-          references: request.references,
-        });
-        requestId = response.requestId;
-      } catch (error) {
-        // `iterateRule` marks the failures the caller can act on by throwing a
-        // CLIError carrying the code (a 404 on the supplied ticket id is
-        // RULE_NOT_FOUND, not something to retry). Everything else really is
-        // an unclassified transport/API failure.
-        fail(
-          error instanceof Error ? error.message : String(error),
-          error instanceof CLIError && error.code ? error.code : "NETWORK_ERROR"
-        );
+      // 3. Submit the iterate request, addressed by the rule's own id
+      const submitted = await iterateRule(identity.token, request.ruleId, {
+        orgId: identity.orgSubject,
+        repositoryUrl: identity.repositoryUrl,
+        guidance: request.guidance,
+        ...(request.references === undefined
+          ? {}
+          : { references: request.references }),
+      });
+      if (submitted.status !== "ok") {
+        const failure = describeSubmitFailure(submitted, request.ruleId);
+        fail(failure.message, failure.code);
       }
+      const requestId = submitted.data.requestId;
 
-      // 4. Poll for results using the requestId
+      // 4. Poll, then fetch, verify, and write the new revision
       console.error(
         `Iterate request submitted (${requestId}). Waiting for generation...`
       );
-
-      while (true) {
-        await new Promise((resolve) => setTimeout(resolve, POLL_INTERVAL_MS));
-
-        let status;
-        try {
-          status = await pollRuleStatus(identity.token, requestId);
-        } catch (error) {
-          fail(
-            `Polling failed: ${error instanceof Error ? error.message : String(error)}`,
-            "NETWORK_ERROR"
-          );
-        }
-
-        switch (status.status) {
-          case "accepted": {
-            console.error("Status: accepted — waiting for processing...");
-            break;
-          }
-          case "classifying": {
-            console.error("Status: classifying — analyzing your request...");
-            break;
-          }
-          case "building": {
-            console.error("Status: building — generating rules...");
-            break;
-          }
-          case "unsupported": {
-            fail(unsupportedMessage(status.error), "RULE_UNSUPPORTED");
-            break;
-          }
-          case "failed": {
-            fail(
-              `Rule iteration failed: ${status.error}`,
-              "RULE_GENERATION_FAILED"
-            );
-            break;
-          }
-          case "generated": {
-            // 6. Write files (overwrites existing rule files)
-            const timestamp = getTimestamp();
-            const writtenFiles: string[] = [];
-            const notices: string[] = [];
-            const rules = status.rules ?? [];
-
-            for (const rule of rules) {
-              // Collected AND printed, and neither alone is enough. Under
-              // `--json` the prose is suppressed and the message rides in the
-              // envelope instead, because a machine consumer cannot read
-              // stderr — and an unattended caller is the one most likely to
-              // act on a fixture-less delivery. `check` already settles this
-              // trade the same way. The rule is written either way.
-              const ruleFile = await writeRuleFile(cwd, rule, (message) => {
-                notices.push(message);
-                if (!args.json) console.error(`Warning: ${message}`);
-              });
-              writtenFiles.push(ruleFile);
-              const planWarning = notRunOnPlanNotice(status, rule, ruleFile);
-              if (planWarning !== undefined) {
-                notices.push(planWarning);
-                if (!args.json) console.error(`Warning: ${planWarning}`);
-              }
-
-              // See `fileSetTestsFieldError` for why this is a guard rather
-              // than a silent drop.
-              const strayTestsError = fileSetTestsFieldError(rule);
-              if (strayTestsError !== undefined) {
-                // Route through `fail()`, not a bare throw: this is inside
-                // the command's own `try`, and a throw here that never
-                // touches `fail()` skips the `--json` envelope entirely (see
-                // #280). `writtenFiles` already holds every rule file written
-                // earlier in this loop, but the envelope shape this command
-                // publishes has no field to carry a partial file list on
-                // failure — extending it is a schema change, out of scope
-                // here (see the PR description).
-                fail(strayTestsError, "RULE_GENERATION_FAILED");
-              }
-              if (isSingleContentRule(rule) && rule.tests) {
-                const testFile = await writeRuleTestFile(cwd, rule, timestamp);
-                writtenFiles.push(testFile);
-              }
-            }
-
-            // Dead in practice, and kept deliberately. The service does not
-            // populate `meta` on a status response, so no sidecar has ever
-            // been written from here; the branch is what would start writing
-            // one the day it does. `rule meta` says as much when asked, rather
-            // than the code pretending the file is merely absent.
-            if (status.meta) {
-              const metaFiles = await writeRuleMetaFiles(cwd, status.meta);
-              writtenFiles.push(...metaFiles);
-            }
-
-            // 7. Output results
-            if (args.json) {
-              const output = improveOutputSchema.parse({
-                success: true,
-                requestId,
-                rules: rules.map((r) => r.id),
-                files: writtenFiles,
-                ...(notices.length > 0 ? { notices } : {}),
-              });
-              console.log(JSON.stringify(output));
-            } else {
-              console.log(`Updated ${String(rules.length)} rule(s):\n`);
-              for (const filePath of writtenFiles) {
-                console.log(`  ${filePath}`);
-              }
-            }
-            if (rules.length > 0) improvedRuleCount = rules.length;
-            return;
-          }
-          case "pr":
-          case "merged":
-          case "closed": {
-            if (args.json) {
-              const output = improveOutputSchema.parse({
-                success: true,
-                requestId,
-                rules: [],
-                files: [],
-              });
-              console.log(JSON.stringify(output));
-            } else {
-              console.log(
-                `Request ${requestId} is in state "${status.status}".`
-              );
-            }
-            return;
-          }
-        }
-      }
+      const written = await completeRequest(cwd, identity, requestId, {
+        json: args.json,
+        fail,
+        verb: "Updated",
+        failedPrefix: "Rule iteration failed",
+        output: (result) =>
+          improveOutputSchema.parse({ success: true, requestId, ...result }),
+      });
+      if (written > 0) improvedRuleCount = written;
     } finally {
       // Concrete state event: a rule was actually iterated and rewritten.
       if (improvedRuleCount !== undefined) {
@@ -719,7 +544,7 @@ const metaCommand = defineCommand({
         `No metadata sidecar exists for rule "${args.id}", and this version of the CLI never writes one: ` +
           `the rule service does not return the metadata block that ` +
           `.taskless/rule-metadata/ is written from. This is not specific to "${args.id}". ` +
-          `To iterate on a rule, pass the ticket id returned as "ruleId" by \`taskless rule create --json\` ` +
+          `To iterate on a rule, pass its id (the rule's directory name under .taskless/rules/<engine>/) ` +
           `to \`taskless rule improve --from <file>\`, or use the local-only improve flow.`,
         "RULE_META_UNAVAILABLE"
       );

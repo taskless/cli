@@ -1,10 +1,10 @@
-# Topic: improve-rule     (CLI v%(CLI_VERSION)s / topic v5)
+# Topic: improve-rule     (CLI v%(CLI_VERSION)s / topic v6)
 
 ## Goal
 Iterate on an existing Taskless rule. The CLI submits the user's
 guidance to the Taskless API iterate endpoint, which returns an
 updated rule that overwrites the original on disk. The agent's job
-is to gather the right ruleId + guidance + supporting references and
+is to gather the right rule id + guidance + supporting references and
 to report the result.
 
 If the user wants the local-only flow (no API call), fetch
@@ -18,12 +18,12 @@ If the user wants the local-only flow (no API call), fetch
   `[unknown]`, stop and say the tier is unavailable rather than
   submitting. `auth login` does not fix it, no GitHub owner is a
   property of the project, not the session.
-- The target rule exists at `.taskless/rules/sg/<id>/<id>.yml`.
-- You have the rule's **ticket id**: the value `%(TASKLESS_CLI)s rule
-  create --json` printed as `ruleId` when the rule was generated. The
-  iterate endpoint is addressed by that id. Nothing on disk holds it,
-  so it comes from the create output or from the user. Without it,
-  fetch the anonymous variant instead.
+- The target rule exists at `.taskless/rules/<engine>/<id>/`, and the
+  Taskless service issued it. Its **rule id is its directory name**
+  (for example `no-eval-3fa9c21b`), which is what the iterate endpoint
+  is addressed by. A rule you wrote locally, or one generated before
+  CLI 0.12.0, is not known to the service: improving it fails with
+  `RULE_NOT_FOUND`, so fetch the anonymous variant instead.
 
 ## Steps
 
@@ -31,20 +31,15 @@ If the user wants the local-only flow (no API call), fetch
    `loggedIn`. If false, fetch `%(TASKLESS_CLI)s agent auth`.
 
 2. **Identify the rule to improve.** If the user named one, use it.
-   Otherwise, list rules in `.taskless/rules/sg/` and ask which one.
-   Read the existing rule file so you can summarize what it does.
+   Otherwise, list the rule directories under `.taskless/rules/<engine>/`
+   and ask which one. Read the existing rule files so you can summarize
+   what the rule does.
 
-3. **Get the ticket id.** This is the id the iterate endpoint is
-   addressed by, and it is the `ruleId` field from that rule's
-   `%(TASKLESS_CLI)s rule create --json` output. Take it from the
-   session that created the rule, or ask the user for it.
-
-   **Do not run `%(TASKLESS_CLI)s rule meta <id>` to get it.** That
-   command reads `.taskless/rule-metadata/<id>.yml`, a sidecar this CLI
-   never writes, so it exits 1 with `RULE_META_UNAVAILABLE` for every
-   rule. If no one has the ticket id, fetch
-   `%(TASKLESS_CLI)s agent improve-rule --anonymous` and iterate
-   locally.
+3. **Take the rule id from the directory name.** It is the `<id>` in
+   `.taskless/rules/<engine>/<id>/`, and the same value
+   `%(TASKLESS_CLI)s rule create --json` listed in `rules`. It is never
+   the `requestId` that command printed. You do not need
+   `%(TASKLESS_CLI)s rule meta` for it; that command has nothing to read.
 
 4. **Gather improvement guidance.** Ask the user what should change:
    - Are there false positives we need to exclude?
@@ -116,9 +111,9 @@ The `--from` JSON file conforms to:
 %(INPUT_SCHEMA)s
 ```
 
-`ruleId` is the original rule's ticket ID, printed as `ruleId` by
-`%(TASKLESS_CLI)s rule create --json`. It is not the YAML file name,
-and it is not readable from anything under `.taskless/`.
+`ruleId` is the rule's directory name under `.taskless/rules/<engine>/`,
+as `%(TASKLESS_CLI)s rule create --json` lists it in `rules`. It is not
+the `requestId` from that output.
 
 ## Errors
 
@@ -132,7 +127,7 @@ When `--json` is set, failures emit `{ ok: false, code, message }`:
 | `NO_ORIGIN_REMOTE`       | git repository, no `origin`         | tell the user; `auth login` cannot fix it     |
 | `UNSUPPORTED_REMOTE_HOST`| `origin` is not GitHub              | tell the user; `auth login` cannot fix it     |
 | `INVALID_INPUT`          | `--from` JSON failed validation     | re-read input schema, fix, retry              |
-| `RULE_NOT_FOUND`         | the service has no such ticket id   | re-check the id from `rule create --json`     |
+| `RULE_NOT_FOUND`         | the service did not issue this rule | re-check the directory name; a local or pre-0.12.0 rule needs the anonymous flow |
 | `NETWORK_ERROR`          | API submit/poll failed              | report and suggest retry                      |
 | `RULE_GENERATION_FAILED` | API returned a generation failure   | report; suggest enriching guidance/references |
 | `RULE_UNSUPPORTED`       | plan lacks this generation type     | tell the user to enable it; do not retry      |

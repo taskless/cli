@@ -6,7 +6,9 @@ export const inputSchema = z.object({
     .string()
     .trim()
     .min(1, "ruleId must be a non-empty string")
-    .describe("ID of the rule to improve"),
+    .describe(
+      "Id of the rule to improve: its directory name under `.taskless/rules/<engine>/`, as `rule create --json` lists it in `rules`"
+    ),
   guidance: z
     .string()
     .trim()
@@ -26,8 +28,10 @@ export const inputSchema = z.object({
 /** Output schema for `taskless rule improve --json` on success */
 export const outputSchema = z.object({
   success: z.literal(true),
-  requestId: z.string().describe("The request ID for polling status"),
-  rules: z.array(z.string()).describe("Rule IDs that were updated"),
+  requestId: z.string().describe("The iterate request's id"),
+  rules: z
+    .array(z.string())
+    .describe("Ids of the rules that were written (their directory names)"),
   files: z.array(z.string()).describe("File paths that were written"),
   notices: z
     .array(z.string())
