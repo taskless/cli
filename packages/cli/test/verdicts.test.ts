@@ -115,7 +115,7 @@ describe("applyVerdicts", () => {
       restore
     );
     expect(plan.dispositions).toEqual([
-      { ruleId: SG.ruleId, engine: "sg", run: true },
+      { ruleId: SG.ruleId, engine: "sg", run: true, verdict: "unknown" },
       expect.objectContaining({ ruleId: RT.ruleId, run: false }),
     ]);
     expect(plan.notices).toEqual([]);
@@ -143,6 +143,7 @@ describe("applyVerdicts", () => {
         ruleId: RT.ruleId,
         engine: "runtime",
         run: false,
+        verdict: "withheld",
         reason: NOT_IN_PLAN_REASON,
       },
     ]);

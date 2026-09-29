@@ -7,6 +7,7 @@ import {
   readdir,
   readFile,
   rm,
+  utimes,
   writeFile,
 } from "node:fs/promises";
 import { hostname, tmpdir } from "node:os";
@@ -145,6 +146,20 @@ describe("run directories", () => {
     expect(
       await readFile(join(cwd, ".taskless", ".run", ".gitignore"), "utf8")
     ).toBe("*\n# kept\n");
+  });
+  it("spares a run-id directory with no owner yet, which is a run starting", async () => {
+    const starting = join(cwd, ".taskless", ".run", "20260101T000000Z-cccccc");
+    await mkdir(starting, { recursive: true });
+    expect(await sweepAbandonedRuns(cwd)).toEqual([]);
+    expect(existsSync(starting)).toBe(true);
+  });
+
+  it("sweeps a run-id directory that stayed ownerless past the grace", async () => {
+    const orphan = join(cwd, ".taskless", ".run", "20200101T000000Z-dddddd");
+    await mkdir(orphan, { recursive: true });
+    const old = new Date(Date.now() - 5 * 60_000);
+    await utimes(orphan, old, old);
+    expect(await sweepAbandonedRuns(cwd)).toEqual(["20200101T000000Z-dddddd"]);
   });
 });
 

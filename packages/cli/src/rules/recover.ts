@@ -65,8 +65,11 @@ function failure(
   switch (outcome.status) {
     case "refused": {
       const { message, upgradeUrl } = outcome.refusal;
+      // The service writes the upgrade link into `message` itself (measured
+      // against production, 2026-09-29), so it is added only when absent.
+      // Printing it twice reads as two different links.
       return new CLIError(
-        upgradeUrl === undefined
+        upgradeUrl === undefined || message.includes(upgradeUrl)
           ? message
           : `${message}\n\nUpgrade: ${upgradeUrl}`,
         "RULE_RECOVERY_NOT_IN_PLAN"

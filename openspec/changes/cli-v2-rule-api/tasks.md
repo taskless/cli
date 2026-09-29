@@ -200,6 +200,15 @@ upgradeUrl }`, strip C0/C1 control characters except newline from
       lone check, a preserved run holds the logs and snapshot, and no log from an
       authenticated run contains the token.
 
+- [x] 10.5 Found by running the concurrency test repeatedly: keep Vale's
+      whole-project walk out of `.taskless/` (it `lstat`s directories other runs
+      delete), and give an ownerless run-id directory a grace period before it
+      is swept. 0 of 48 concurrent runs fail, against 4 of 24 before.
+- [x] 10.6 Found by the production round trip: `engine.log` records each rule's
+      verdict (a local `unknown` and a `run` both run and read the same
+      otherwise), and a restore refusal no longer repeats an upgrade link the
+      service already wrote into its message.
+
 ## 9. End to end, then archive (slice 5)
 
 - [ ] 9.1 From a nightly stamped `0.12.0-*`, against production v2, run the full

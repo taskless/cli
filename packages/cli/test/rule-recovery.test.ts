@@ -418,6 +418,8 @@ describe("rule restore / rule rollback", () => {
     });
     expect(String(output.message)).toContain("Recover it with git");
     expect(String(output.message)).toContain(REFUSAL.upgradeUrl);
+    // Not in the service's message here, so the CLI adds it, once.
+    expect(String(output.message).split(REFUSAL.upgradeUrl)).toHaveLength(2);
     expect(String(output.message)).not.toContain("\u001B");
     expect(await readFile(ruleFile(), "utf8")).toBe(EDITED);
   });
@@ -515,5 +517,18 @@ describe("rule restore / rule rollback", () => {
     const notice = String((output.notices as string[]).at(-1));
     expect(notice).toContain("will not run");
     expect(notice).not.toContain("next `check` verifies");
+  });
+
+  it("does not repeat an upgrade link the service already wrote into the message", async () => {
+    await writeLocal(EDITED);
+    stub({
+      verdict: { kind: "unsafe", expected: await canonicalHash(ISSUED) },
+      served: {
+        ...REFUSAL,
+        message: `Not in your plan. See plan options at ${REFUSAL.upgradeUrl}`,
+      },
+    });
+    const output = await run(["restore", RULE_ID]);
+    expect(String(output.message).split(REFUSAL.upgradeUrl)).toHaveLength(2);
   });
 });
