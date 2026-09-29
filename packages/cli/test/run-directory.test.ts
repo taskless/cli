@@ -132,6 +132,27 @@ describe("run directories", () => {
     }
   });
 
+  it("sweeps any owned directory a day old: live pid or other host", async () => {
+    const dayAgo = new Date(Date.now() - 25 * 60 * 60 * 1000).toISOString();
+    const owners = {
+      "20200101T000000Z-cccccc": { pid: process.pid, hostname: hostname() },
+      "20200101T000000Z-dddddd": {
+        pid: deadPid(),
+        hostname: "some-other-host",
+      },
+    };
+    for (const [name, owner] of Object.entries(owners)) {
+      const directory = join(cwd, ".taskless", ".run", name);
+      await mkdir(directory, { recursive: true });
+      await writeFile(
+        join(directory, "owner"),
+        JSON.stringify({ ...owner, startedAt: dayAgo })
+      );
+    }
+    const swept = await sweepAbandonedRuns(cwd);
+    expect(swept.toSorted()).toEqual(Object.keys(owners));
+  });
+
   it("sweeps the ownerless directories earlier versions left", async () => {
     for (const legacy of ["runtime-rules", "snapshot"]) {
       await mkdir(join(cwd, ".taskless", ".run", legacy, "x"), {

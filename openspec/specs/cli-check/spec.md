@@ -640,7 +640,9 @@ At the start of every run, the CLI SHALL remove each directory under `.taskless/
 `owner` names a process on this host that is no longer alive, and each directory with no
 `owner` record (left by an earlier version). It SHALL NOT remove a directory whose owning
 process is alive, or one owned by another host, since this host cannot tell whether that
-process lives. A directory's age SHALL NOT be the test.
+process lives. Liveness SHALL be the test, not age, with one backstop:
+a directory whose run started more than 24 hours ago SHALL be removed whatever its owner. That
+covers a dead run's process id recycled by an unrelated process, and a host that never returns.
 
 #### Scenario: A killed run's directory is swept
 
@@ -650,7 +652,13 @@ process lives. A directory's age SHALL NOT be the test.
 #### Scenario: A live run is never swept
 
 - **WHEN** a run directory's owning process is still running, or it is owned by another host
+- **AND** its run started less than 24 hours ago
 - **THEN** no other run SHALL remove it
+
+#### Scenario: A day-old directory is swept whatever its owner
+
+- **WHEN** a run directory's run started more than 24 hours ago
+- **THEN** the next run SHALL remove it, even if its process id names a live process or it is owned by another host
 
 ### Requirement: Check reports rule integrity under --json
 
