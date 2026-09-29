@@ -10,6 +10,8 @@
  * tell "the server declined to run this for your plan" apart from drift.
  */
 
+import { isRecord } from "../util/is-record";
+
 /** A reported file the service withheld for entitlement, not for tampering. */
 export interface WithheldEntry {
   ruleId?: string;
@@ -40,10 +42,6 @@ export interface Entitlement {
  * collapses to the generated type and the wrapper can go.
  */
 export type MayCarryEntitlement<T> = T & { entitlement?: unknown };
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
 
 /**
  * An upgrade URL is printed as a link the user is invited to follow, so a value
