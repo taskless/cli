@@ -118,8 +118,9 @@ delete the rules to make `check` pass, and do not suggest
   Its path is printed on stderr, or returned as `runDirectory` under
   `--json`. Use it to debug a rule that behaves unexpectedly; the logs hold
   matched source, so treat the directory like any local build output. It
-  survives later runs and is removed after a day; delete its `preserve`
-  file to let the next run remove it sooner.
+  survives later runs until the `keepUntil` in its `preserve` file, a
+  day out in unix milliseconds. Raise it to keep the directory longer, or
+  delete the file to let the next run remove it.
 
 ## Steps
 

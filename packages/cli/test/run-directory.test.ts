@@ -35,6 +35,30 @@ function deadPid(): number {
   return child.pid ?? 0;
 }
 
+const HOUR = 60 * 60 * 1000;
+
+/** Lay out a run directory with the given `owner` and, optionally, `preserve`. */
+async function plantRun(
+  cwd: string,
+  name: string,
+  owner: unknown,
+  preserve?: unknown
+): Promise<string> {
+  const directory = join(cwd, ".taskless", ".run", name);
+  await mkdir(directory, { recursive: true });
+  await writeFile(
+    join(directory, "owner"),
+    typeof owner === "string" ? owner : JSON.stringify(owner)
+  );
+  if (preserve !== undefined) {
+    await writeFile(
+      join(directory, "preserve"),
+      typeof preserve === "string" ? preserve : JSON.stringify(preserve)
+    );
+  }
+  return directory;
+}
+
 async function runDirectories(cwd: string): Promise<string[]> {
   try {
     const entries = await readdir(join(cwd, ".taskless", ".run"), {
@@ -105,7 +129,11 @@ describe("run directories", () => {
     await mkdir(stale, { recursive: true });
     await writeFile(
       join(stale, "owner"),
-      JSON.stringify({ pid: deadPid(), hostname: hostname(), startedAt: "x" })
+      JSON.stringify({
+        pid: deadPid(),
+        hostname: hostname(),
+        startedAt: Date.now(),
+      })
     );
     expect(await sweepAbandonedRuns(cwd)).toEqual(["20200101T000000Z-aaaaaa"]);
     expect(existsSync(stale)).toBe(false);
@@ -120,7 +148,7 @@ describe("run directories", () => {
       JSON.stringify({
         pid: deadPid(),
         hostname: "some-other-host",
-        startedAt: "x",
+        startedAt: Date.now(),
       })
     );
     try {
@@ -132,48 +160,113 @@ describe("run directories", () => {
     }
   });
 
-  it("sweeps any owned directory a day old: live pid, other host, or preserved", async () => {
-    const dayAgo = new Date(Date.now() - 25 * 60 * 60 * 1000).toISOString();
-    const owners = {
-      "20200101T000000Z-cccccc": { pid: process.pid, hostname: hostname() },
-      "20200101T000000Z-dddddd": {
-        pid: deadPid(),
-        hostname: "some-other-host",
-      },
-      "20200101T000000Z-eeeeee": { pid: deadPid(), hostname: hostname() },
-    };
-    for (const [name, owner] of Object.entries(owners)) {
-      const directory = join(cwd, ".taskless", ".run", name);
-      await mkdir(directory, { recursive: true });
-      await writeFile(
-        join(directory, "owner"),
-        JSON.stringify({ ...owner, startedAt: dayAgo })
-      );
-    }
-    await writeFile(
-      join(cwd, ".taskless", ".run", "20200101T000000Z-eeeeee", "preserve"),
-      ""
-    );
+  it("sweeps any owned directory a day old, live pid or other host", async () => {
+    const dayAgo = Date.now() - 25 * HOUR;
+    await plantRun(cwd, "20200101T000000Z-cccccc", {
+      pid: process.pid,
+      hostname: hostname(),
+      startedAt: dayAgo,
+    });
+    await plantRun(cwd, "20200101T000000Z-dddddd", {
+      pid: deadPid(),
+      hostname: "some-other-host",
+      startedAt: dayAgo,
+    });
     const swept = await sweepAbandonedRuns(cwd);
-    expect(swept.toSorted()).toEqual(Object.keys(owners));
+    expect(swept.toSorted()).toEqual([
+      "20200101T000000Z-cccccc",
+      "20200101T000000Z-dddddd",
+    ]);
   });
 
-  it("keeps a dead run's directory while its preserve marker is there", async () => {
-    const kept = join(cwd, ".taskless", ".run", "20200101T000000Z-ffffff");
-    await mkdir(kept, { recursive: true });
-    await writeFile(
-      join(kept, "owner"),
-      JSON.stringify({
-        pid: deadPid(),
-        hostname: hostname(),
-        startedAt: new Date().toISOString(),
-      })
-    );
-    await writeFile(join(kept, "preserve"), "");
+  it("treats an owner whose start time is not a number as a day old", async () => {
+    // A live pid on this host would otherwise keep it forever.
+    await plantRun(cwd, "20200101T000000Z-eeeeee", {
+      pid: process.pid,
+      hostname: hostname(),
+      startedAt: "2026-09-29T00:00:00.000Z",
+    });
+    expect(await sweepAbandonedRuns(cwd)).toEqual(["20200101T000000Z-eeeeee"]);
+  });
+
+  it("spares a run whose owner record is still half-written", async () => {
+    // A run writes `owner` just after creating its directory; a sweep landing
+    // in between must see a run starting, not a day-old one.
+    await plantRun(cwd, "20200101T000000Z-e0e0e0", "{");
+    expect(await sweepAbandonedRuns(cwd)).toEqual([]);
+  });
+
+  it("keeps a dead run's directory until its marker's keepUntil", async () => {
+    const owner = {
+      pid: deadPid(),
+      hostname: hostname(),
+      startedAt: Date.now(),
+    };
+    const kept = await plantRun(cwd, "20200101T000000Z-ffffff", owner, {
+      keepUntil: Date.now() + HOUR,
+    });
     expect(await sweepAbandonedRuns(cwd)).toEqual([]);
     // Deleting the marker releases it to the next sweep.
     await rm(join(kept, "preserve"));
     expect(await sweepAbandonedRuns(cwd)).toEqual(["20200101T000000Z-ffffff"]);
+  });
+
+  it("keeps a directory past the day-old backstop while keepUntil is raised", async () => {
+    await plantRun(
+      cwd,
+      "20200101T000000Z-a1a1a1",
+      {
+        pid: deadPid(),
+        hostname: hostname(),
+        startedAt: Date.now() - 48 * HOUR,
+      },
+      { keepUntil: Date.now() + HOUR }
+    );
+    expect(await sweepAbandonedRuns(cwd)).toEqual([]);
+  });
+
+  it("releases a directory whose marker has expired or cannot be read", async () => {
+    const owner = {
+      pid: deadPid(),
+      hostname: hostname(),
+      startedAt: Date.now(),
+    };
+    await plantRun(cwd, "20200101T000000Z-b1b1b1", owner, {
+      keepUntil: Date.now() - 1,
+    });
+    await plantRun(cwd, "20200101T000000Z-c1c1c1", owner, "not json");
+    await plantRun(cwd, "20200101T000000Z-d1d1d1", owner, {
+      keepUntil: "tomorrow",
+    });
+    const swept = await sweepAbandonedRuns(cwd);
+    expect(swept.toSorted()).toEqual([
+      "20200101T000000Z-b1b1b1",
+      "20200101T000000Z-c1c1c1",
+      "20200101T000000Z-d1d1d1",
+    ]);
+  });
+
+  it("records unix-ms times, and a preserved run's deadline a day out", async () => {
+    const before = Date.now();
+    const run = await openRun(cwd, { preserve: true });
+    await run.close();
+    const owner = JSON.parse(
+      await readFile(join(run.path, "owner"), "utf8")
+    ) as { startedAt: number };
+    const marker = JSON.parse(
+      await readFile(join(run.path, "preserve"), "utf8")
+    ) as { keepUntil: number };
+    expect(owner.startedAt).toBeGreaterThanOrEqual(before);
+    expect(marker.keepUntil).toBe(owner.startedAt + 24 * HOUR);
+  });
+
+  it("creates all four logs when the run opens, even ones never written", async () => {
+    const run = await openRun(cwd, { preserve: true });
+    await run.close();
+    for (const name of ["engine.log", "sg.log", "vale.log", "runtime.log"]) {
+      expect(existsSync(join(run.path, name))).toBe(true);
+    }
+    expect(await readFile(join(run.path, "runtime.log"), "utf8")).toBe("");
   });
 
   it("sweeps the ownerless directories earlier versions left", async () => {
@@ -346,6 +439,7 @@ describe("check and its run directory", () => {
       "engine.log",
       "sg.log",
       "vale.log",
+      "runtime.log",
       "owner",
       "preserve",
       "snapshot",

@@ -622,9 +622,11 @@ instead of removing it: the snapshot that ran, the assembled configs, the `owner
 the logs. Human output SHALL name the kept directory on stderr. Under `--json`, the output
 SHALL carry an additive, optional `runDirectory` field, the directory's path relative to the
 project root, present only when the flag is set. A kept directory SHALL hold a `preserve` marker
-beside its `owner` record, and SHALL survive later runs while the marker is there, until it is
-swept for age (see "Abandoned run directories are swept"). Deleting the marker SHALL release the
-directory to the next run's sweep.
+beside its `owner` record, recording `keepUntil` in unix milliseconds, set to the run's start plus
+24 hours. The directory SHALL survive later runs while the current time is before `keepUntil`,
+whatever its owner or age, so raising `keepUntil` keeps it longer. A marker that is deleted,
+past its `keepUntil`, or unreadable SHALL hold nothing, and the directory SHALL fall to the
+ordinary sweep (see "Abandoned run directories are swept").
 
 #### Scenario: A preserved run is named and complete
 
@@ -642,6 +644,18 @@ directory to the next run's sweep.
 - **WHEN** the `preserve` marker is deleted from a kept run directory whose run has ended
 - **THEN** the next run SHALL remove the directory
 
+#### Scenario: A raised keepUntil outlasts the day
+
+- **WHEN** a kept run directory's run started more than 24 hours ago
+- **AND** its marker's `keepUntil` is still in the future
+- **THEN** the next run SHALL NOT remove it
+
+#### Scenario: An unreadable marker holds nothing
+
+- **WHEN** a kept run directory's `preserve` marker does not parse, or its `keepUntil` is not a number
+- **AND** its run has ended
+- **THEN** the next run SHALL remove the directory
+
 #### Scenario: A preserved authenticated run holds no credential
 
 - **WHEN** an authenticated `check --preserve-logs` reconciles
@@ -653,10 +667,14 @@ At the start of every run, the CLI SHALL remove each directory under `.taskless/
 `owner` names a process on this host that is no longer alive, and each directory with no
 `owner` record (left by an earlier version). It SHALL NOT remove a directory whose owning
 process is alive, one owned by another host, since this host cannot tell whether that process
-lives, or one holding a `preserve` marker. Liveness SHALL be the test, not age, with one backstop:
-a directory whose run started more than 24 hours ago SHALL be removed whatever its owner. That
-covers a dead run's process id recycled by an unrelated process, a host that never returns, and
-a kept directory nobody went back to.
+lives, or one whose `preserve` marker still holds it. Liveness SHALL be the test, not age, with one
+backstop: a directory whose run started more than 24 hours ago SHALL be removed whatever its
+owner, unless its `preserve` marker still holds it. That covers a dead run's process id recycled
+by an unrelated process, and a host that never returns. A run's start time SHALL be read from its
+`owner` record, as unix milliseconds, and never from a filesystem timestamp; a well-formed
+`owner` record whose start time is not a number SHALL count as past the backstop. An `owner`
+record that does not parse SHALL count as absent, since a run writes it just after creating its
+directory.
 
 #### Scenario: A killed run's directory is swept
 
@@ -672,7 +690,8 @@ a kept directory nobody went back to.
 #### Scenario: A day-old directory is swept whatever its owner
 
 - **WHEN** a run directory's run started more than 24 hours ago
-- **THEN** the next run SHALL remove it, even if its process id names a live process, it is owned by another host, or it was kept by `--preserve-logs`
+- **AND** its `preserve` marker, if any, no longer holds it
+- **THEN** the next run SHALL remove it, even if its process id names a live process or it is owned by another host
 
 ### Requirement: Check reports rule integrity under --json
 
