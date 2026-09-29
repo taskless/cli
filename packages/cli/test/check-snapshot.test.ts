@@ -135,7 +135,7 @@ describe("the check snapshot", () => {
     await writeFile(join(shared, "helper.yml"), "x: 1\n");
     await symlink(shared, join(rules(), "sg", "no-eval-3fa9c21b", "a"));
     await symlink(shared, join(rules(), "sg", "no-eval-3fa9c21b", "b"));
-    const report = await reportRules(await takeSnapshot(cwd));
+    const report = await reportRules(await snap(cwd));
     expect(report.rules[0]?.files.map((file) => file.path)).toEqual([
       "a/helper.yml",
       "b/helper.yml",
@@ -148,7 +148,7 @@ describe("the check snapshot", () => {
       join(rules(), "sg", "no-eval-3fa9c21b"),
       join(rules(), "sg", "no-eval-3fa9c21b", "loop")
     );
-    const report = await reportRules(await takeSnapshot(cwd));
+    const report = await reportRules(await snap(cwd));
     expect(report.rules[0]?.files.map((file) => file.path)).toEqual([
       "no-eval-3fa9c21b.yml",
     ]);
