@@ -209,6 +209,13 @@ upgradeUrl }`, strip C0/C1 control characters except newline from
       otherwise), and a restore refusal no longer repeats an upgrade link the
       service already wrote into its message.
 
+- [x] 10.7 Found by the production round trip: migration 10 moves ast-grep tests
+      that 0005 left in `.taskless/sg/rule-tests/` (rules whose ids end in a
+      timestamp, tested as `<id>-test.yml`) into the matching rule's `.tests/`,
+      by longest matching rule id, never overwriting, leaving anything it cannot
+      match. Verified on the sandbox clone that exposed it; this repository's
+      scaffold moves to version 10.
+
 ## 9. End to end, then archive (slice 5)
 
 - [ ] 9.1 From a nightly stamped `0.12.0-*`, against production v2, run the full
