@@ -114,6 +114,31 @@ describe("the check snapshot", () => {
     ]);
   });
 
+  it("copies two links that converge on one directory, each in full", async () => {
+    const shared = join(cwd, "shared");
+    await mkdir(shared);
+    await writeFile(join(shared, "helper.yml"), "x: 1\n");
+    await symlink(shared, join(rules(), "sg", "no-eval-3fa9c21b", "a"));
+    await symlink(shared, join(rules(), "sg", "no-eval-3fa9c21b", "b"));
+    const report = await reportRules(await takeSnapshot(cwd));
+    expect(report.rules[0]?.files.map((file) => file.path)).toEqual([
+      "a/helper.yml",
+      "b/helper.yml",
+      "no-eval-3fa9c21b.yml",
+    ]);
+  });
+
+  it("does not follow a link back into a directory it is already inside", async () => {
+    await symlink(
+      join(rules(), "sg", "no-eval-3fa9c21b"),
+      join(rules(), "sg", "no-eval-3fa9c21b", "loop")
+    );
+    const report = await reportRules(await takeSnapshot(cwd));
+    expect(report.rules[0]?.files.map((file) => file.path)).toEqual([
+      "no-eval-3fa9c21b.yml",
+    ]);
+  });
+
   it("neither copies nor reports operating-system metadata", async () => {
     await writeFile(join(rules(), "sg", "no-eval-3fa9c21b", ".DS_Store"), "x");
     const snapshot = await takeSnapshot(cwd);

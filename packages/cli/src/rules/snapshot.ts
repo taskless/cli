@@ -67,8 +67,11 @@ export interface Snapshot {
  * Symbolic links are DEREFERENCED: what is signed has to be what runs, and a
  * link resolved at run time is bytes nobody signed. A link that does not
  * resolve is left out, which surfaces as a missing file in the verdict rather
- * than as a surprise when an engine follows it. A directory reached twice
- * through links is copied once, so a cycle cannot recurse forever.
+ * than as a surprise when an engine follows it. A link back to a directory
+ * the walk is already inside is a cycle and is not followed, so the copy
+ * cannot recurse forever. Two links that merely converge on one directory are
+ * NOT a cycle, and each is copied in full: skipping the second would drop a
+ * rule's files from the snapshot without any verdict saying so.
  */
 export async function takeSnapshot(cwd: string): Promise<Snapshot> {
   const base = join(cwd, ".taskless", SNAPSHOT_DIRECTORY);
@@ -82,9 +85,8 @@ export async function takeSnapshot(cwd: string): Promise<Snapshot> {
 
   const source = rulesRoot(cwd);
   const target = rulesRoot(base);
-  const visited = new Set<string>();
   try {
-    await copyTree(source, target, visited);
+    await copyTree(source, target, new Set<string>());
   } catch (error) {
     if (!isMissingDirectory(error)) throw error;
     // No rules tree: an empty snapshot, which the callers read as no rules.
@@ -93,14 +95,19 @@ export async function takeSnapshot(cwd: string): Promise<Snapshot> {
   return { cwd, base };
 }
 
+/**
+ * `ancestors` holds the real paths of the directories on the CURRENT path from
+ * the root, not every directory seen so far: only re-entering one of those is a
+ * cycle. Each call extends its own copy, so siblings never see each other's.
+ */
 async function copyTree(
   source: string,
   target: string,
-  visited: Set<string>
+  ancestors: ReadonlySet<string>
 ): Promise<void> {
   const real = await realpath(source);
-  if (visited.has(real)) return;
-  visited.add(real);
+  if (ancestors.has(real)) return;
+  const chain = new Set(ancestors).add(real);
 
   await mkdir(target, { recursive: true });
   const entries = await readdir(source, { withFileTypes: true });
@@ -132,7 +139,7 @@ async function copyTree(
           : "other";
     }
 
-    if (kind === "directory") await copyTree(from, to, visited);
+    if (kind === "directory") await copyTree(from, to, chain);
     else if (kind === "file") await copyFile(from, to);
     // Sockets, FIFOs, devices: not rule files, and not copyable as bytes.
   }
