@@ -1,7 +1,6 @@
 import { lstat, mkdir, readdir, rm, rmdir, writeFile } from "node:fs/promises";
 import { dirname, isAbsolute, join, resolve, sep } from "node:path";
 
-import type { GeneratedRule } from "../api/rules";
 import {
   ENGINE_LAYOUTS,
   RULE_TESTS_DIRECTORY,
@@ -10,73 +9,12 @@ import {
 import { ruleDirectory } from "./engines";
 import { isMissingDirectory } from "./errno";
 
-/**
- * One file of a delivered rule, its path relative to the rule directory.
- *
- * NOT YET IN THE GENERATED SCHEMA. `GeneratedRule` is derived from
- * `src/generated/api.d.ts`, which is generated from the service's own OpenAPI
- * document, and the file-set tier is not live there yet. This shape is the
- * agreed contract read structurally in the meantime; when the tier ships, the
- * schema is regenerated and this narrows to a field access.
- */
+/** One file of a delivered rule, its path relative to the rule directory. */
 export interface DeliveredFile {
   /** Path relative to `.taskless/rules/<engine>/<id>/`. */
   path: string;
   /** The file's text, written verbatim. */
   content: string;
-}
-
-/**
- * What a delivered rule says about a file set: nothing, something malformed,
- * or a usable one.
- *
- * THREE OUTCOMES, NOT TWO. Folding "malformed" into "absent" would send the
- * payload down the legacy `content` path, where a rule carrying `files` has no
- * `content` to serialize and the rule file is written from `undefined`.
- * Folding it into "an empty set" is what this used to do, and it reported
- * `delivered no files` for a payload that delivered several — sending whoever
- * is debugging a real shape defect to look in the wrong place.
- */
-export type DeliveredFileSet =
-  | { kind: "absent" }
-  | { kind: "malformed"; reason: string }
-  | { kind: "present"; files: DeliveredFile[] };
-
-/** Read a delivered rule's file set. */
-export function deliveredFiles(rule: GeneratedRule): DeliveredFileSet {
-  const candidate = (rule as { files?: unknown }).files;
-  if (candidate === undefined) return { kind: "absent" };
-  if (!Array.isArray(candidate)) {
-    return {
-      kind: "malformed",
-      reason: "carries a `files` that is not an array",
-    };
-  }
-  const files: DeliveredFile[] = [];
-  for (const [index, entry] of candidate.entries()) {
-    if (typeof entry !== "object" || entry === null) {
-      return {
-        kind: "malformed",
-        reason: `carries a \`files[${index}]\` that is not an object`,
-      };
-    }
-    const file = entry as Partial<DeliveredFile>;
-    // Named individually so the error points at the field, not the entry.
-    if (typeof file.path !== "string") {
-      return {
-        kind: "malformed",
-        reason: `carries a \`files[${index}]\` with no string \`path\``,
-      };
-    }
-    if (typeof file.content !== "string") {
-      return {
-        kind: "malformed",
-        reason: `carries \`${file.path}\` with no string \`content\``,
-      };
-    }
-    files.push({ path: file.path, content: file.content });
-  }
-  return { kind: "present", files };
 }
 
 /**

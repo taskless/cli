@@ -96,7 +96,8 @@ skipped, as today.
   new `--json` fields, new `restore` / `rollback` subcommands, create/improve
   output.
 - `packages/cli/scripts/fetch-api-schema.ts`, `fetch-rule-hash-vectors.ts`,
-  `src/generated/api.schema.json`, `api.d.ts`: vendor v2.
+  `src/generated/`: vendor v2 as `api-v2.schema.json` / `api-v2.d.ts` and
+  delete the v1 files.
 - Agent recipes: `check`, `ci`, `create-remote-rule`, `improve-rule`,
   `rule-meta`, `create-runtime-rule`, plus a recipe for recovering a rule.
 - Cross-repo: the server sets `V2_CLI_FLOOR` from this release. After it ships,

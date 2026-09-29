@@ -158,25 +158,28 @@ upgradeUrl }`, strip C0/C1 control characters except newline from
 
 ## 8. Retire v1 (slice 5)
 
-- [ ] 8.1 Delete `api/rules.ts` (its v1 request, poll, and iterate calls went
+- [x] 8.1 Delete `api/rules.ts` (its v1 request, poll, and iterate calls went
       in slice 2), `api/reconcile.ts`, `api/restore.ts`, the frozen v1
       `api.schema.json` / `api.d.ts`, the legacy single-`content` path in
       `files.ts` / `deliver.ts` (`writeRuleFile`, `writeRuleTestFile`,
       `writeRuleMetaFiles`, `deliveredFiles`, `resolveIngestEngine`), and
       every v1 type use; move `auth/whoami.ts` and `auth/org.ts` to v2 whoami. Verify
       `grep -rn "/cli/api/" packages/cli/src` finds only `/cli/api/v2/` paths.
-- [ ] 8.2 Add a vite build check (per the code style guide, not a test that
-      scans output) that fails the build if the bundle contains a `/cli/api/`
-      string literal not followed by `v2/`, or delete the idea if the grep in
-      8.1 plus the types already make a v1 call impossible to write. Record
-      which, and why, in the PR.
-- [ ] 8.3 Remove or rewrite what still exercises v1. Already gone in slice 3:
+- [x] 8.2 Guard against a v1 call. Decided against a bundle check: the recipes
+      embed prose that names v1 routes, which is exactly the false positive the
+      code style guide's worked example describes, and with the v1 types gone a
+      typed v1 call no longer compiles. Instead `api-deprecated-paths.test.ts`
+      reads SOURCE for a request path spelled after a quote or a template
+      interpolation (`"/cli/api/…"`, `${base}/cli/api/…`) outside `v2/`. It is
+      proven to fail by planting one, and its deprecated-path half now reads
+      the v2 schema.
+- [x] 8.3 Remove or rewrite what still exercises v1. Already gone in slice 3:
       `repair`, `repair-integration`, `runtime-dropped-rules`, the v1 relayout
       reconcile test, `api/reconcile.ts`, `api/restore.ts`, and the runtime
       `plan` / `repair` / `run-set` modules. Left for here: `api-deprecated-paths`,
       the v1 parser in `entitlement.test.ts`, and whatever 8.1 deletes.
       `pnpm test` passes.
-- [ ] 8.4 Run `pnpm typecheck` and `pnpm lint` (which rebuilds and runs
+- [x] 8.4 Run `pnpm typecheck` and `pnpm lint` (which rebuilds and runs
       `pnpm cli check`) from the repository root; both pass.
 
 ## 9. End to end, then archive (slice 5)

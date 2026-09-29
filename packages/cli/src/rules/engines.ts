@@ -1,12 +1,10 @@
 import { readdir, stat } from "node:fs/promises";
 import { join } from "node:path";
 
-import { CLIError } from "../util/cli-error";
 import { isMissingDirectory } from "./errno";
 import {
   ENGINE_LAYOUTS,
   ENGINES,
-  isKnownEngine,
   RULE_TESTS_DIRECTORY,
   RULES_DIRECTORY,
   TASKLESS_DIRECTORY,
@@ -192,38 +190,4 @@ export async function findRuleEngines(
     }
   }
   return found;
-}
-
-/**
- * Resolve the engine a service-delivered rule is filed under.
- *
- * The delivery API carries no engine discriminator — `/cli/api/request/{requestId}`
- * documents `rules[].content` as an ast-grep rule definition — so a payload
- * that identifies no engine **is** ast-grep. That default is permanent, not a
- * migration window: published CLIs keep receiving engine-less payloads, and it
- * files a delivered rule exactly where the migrations put the same rule already
- * on disk.
- *
- * Absence and an unrecognized value are different. An engine this CLI does not
- * know means the payload is newer than the CLI; defaulting it to `sg` would
- * file it where the wrong parser reads it, surfacing as a broken rule rather
- * than version skew. That throws, and nothing is written.
- */
-export function resolveIngestEngine(payload: unknown): EngineName {
-  const declared =
-    typeof payload === "object" &&
-    payload !== null &&
-    "engine" in payload &&
-    typeof (payload as { engine?: unknown }).engine === "string"
-      ? (payload as { engine: string }).engine.trim()
-      : "";
-
-  if (declared === "") return "sg";
-  if (!isKnownEngine(declared)) {
-    throw new CLIError(
-      `Rule engine "${declared}" is not supported by this CLI. Upgrade the CLI to use rules for this engine.`,
-      "RULE_UNSUPPORTED"
-    );
-  }
-  return declared;
 }

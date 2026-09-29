@@ -40,6 +40,47 @@ function isFixture(path: string): boolean {
   return path.startsWith(`${RULE_TESTS_DIRECTORY}/`);
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+/** Why a served file set is not the documented shape, or `undefined`. */
+function describeMalformedSet(fileSet: unknown): string | undefined {
+  if (!isRecord(fileSet))
+    return "was served as something other than a file set";
+  if (typeof fileSet.id !== "string") return "was served with no string `id`";
+  if (typeof fileSet.engine !== "string") {
+    return "was served with no string `engine`";
+  }
+  if (!Array.isArray(fileSet.files)) {
+    return "carries a `files` that is not an array";
+  }
+  for (const [index, file] of fileSet.files.entries()) {
+    if (!isRecord(file)) {
+      return `carries a \`files[${String(index)}]\` that is not an object`;
+    }
+    if (typeof file.path !== "string") {
+      return `carries a \`files[${String(index)}]\` with no string \`path\``;
+    }
+    if (typeof file.content !== "string") {
+      return `carries \`${file.path}\` with no string \`content\``;
+    }
+  }
+  if (!Array.isArray(fileSet.signatures)) {
+    return "carries a `signatures` that is not an array";
+  }
+  for (const [index, entry] of fileSet.signatures.entries()) {
+    if (
+      !isRecord(entry) ||
+      typeof entry.path !== "string" ||
+      typeof entry.signature !== "string"
+    ) {
+      return `carries a \`signatures[${String(index)}]\` that is not a { path, signature }`;
+    }
+  }
+  return undefined;
+}
+
 /**
  * Verify a served rule. Never throws for a payload problem; every refusal is a
  * reason naming the rule and what was wrong.
@@ -72,6 +113,13 @@ export async function verifyServedRule(
     };
   }
   const fileSet = served.rules[0] as ServedFileSet;
+  // The response is typed, but it arrived over a network and is checked
+  // before anything reads it field by field. A defect is named by the field it
+  // is in, so whoever debugs it looks in the right place.
+  const malformed = describeMalformedSet(fileSet);
+  if (malformed !== undefined) {
+    return { ok: false, reason: `rule ${ruleId} ${malformed}` };
+  }
   if (fileSet.id !== ruleId) {
     return {
       ok: false,

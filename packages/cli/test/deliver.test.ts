@@ -4,7 +4,6 @@ import {
   mkdir,
   mkdtemp,
   readFile,
-  readdir,
   rm,
   symlink,
   writeFile,
@@ -15,13 +14,13 @@ import { dirname, join } from "node:path";
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { writeRuleFile } from "../src/rules/files";
+import { writeServedRule } from "../src/rules/files";
 import {
   PurgeIncompleteError,
   describeMissingFixtures,
 } from "../src/rules/deliver";
 import { ruleDirectory } from "../src/rules/engines";
-import type { GeneratedRule } from "../src/api/rules";
+import type { ServedFileSet } from "../src/api/v2";
 
 let cwd: string;
 
@@ -32,13 +31,17 @@ afterEach(async () => {
   await rm(cwd, { recursive: true, force: true });
 });
 
-/** A delivered rule carrying a file set, shaped as the contract describes. */
+/**
+ * A served file set, shaped as the v2 contract describes. `signatures` is left
+ * empty: writing trusts a set `verifyServedRule` already checked, and these
+ * tests are about what writing does.
+ */
 function delivered(
   engine: string,
   id: string,
   files: { path: string; content: string }[]
-): GeneratedRule {
-  return { id, engine, files } as unknown as GeneratedRule;
+): ServedFileSet {
+  return { id, engine, files, signatures: [] } as unknown as ServedFileSet;
 }
 
 const CAPTURE = [
@@ -57,7 +60,7 @@ const CAPTURE = [
 
 describe("delivering a rule as a file set", () => {
   it("writes a complete runtime rule", async () => {
-    await writeRuleFile(
+    await writeServedRule(
       cwd,
       delivered("runtime", "logs-abc12345", [
         { path: "check.ts", content: "export default async () => [];\n" },
@@ -80,7 +83,7 @@ describe("delivering a rule as a file set", () => {
   it("writes a Vale rule with its own config", async () => {
     // G2: the generator owns the `.vale.ini`, because it holds the scope
     // knowledge and the client cannot infer it from the rule YAML.
-    await writeRuleFile(
+    await writeServedRule(
       cwd,
       delivered("vale", "no-click-here-abc12345", [
         {
@@ -118,7 +121,7 @@ describe("delivering a rule as a file set", () => {
       { path, content: "owned\n" },
     ]);
 
-    await expect(writeRuleFile(cwd, rule)).rejects.toThrow(/path that/);
+    await expect(writeServedRule(cwd, rule)).rejects.toThrow(/path that/);
 
     // Refused as a unit: not one file of it exists, including the files that
     // were themselves fine. A half-written rule verifies as a broken rule two
@@ -130,7 +133,7 @@ describe("delivering a rule as a file set", () => {
 
   it("refuses a runtime rule with no check.ts", async () => {
     await expect(
-      writeRuleFile(
+      writeServedRule(
         cwd,
         delivered("runtime", "logs-abc12345", [
           { path: "captures/logs.yml", content: CAPTURE },
@@ -141,7 +144,7 @@ describe("delivering a rule as a file set", () => {
 
   it("refuses a runtime rule with no captures", async () => {
     await expect(
-      writeRuleFile(
+      writeServedRule(
         cwd,
         delivered("runtime", "logs-abc12345", [
           { path: "check.ts", content: "export default async () => [];\n" },
@@ -154,7 +157,7 @@ describe("delivering a rule as a file set", () => {
     // Without it no matcher enables the rule: it would be written, verified,
     // and never fire.
     await expect(
-      writeRuleFile(
+      writeServedRule(
         cwd,
         delivered("vale", "no-click-here-abc12345", [
           {
@@ -168,7 +171,7 @@ describe("delivering a rule as a file set", () => {
 
   it("refuses the same path twice", async () => {
     await expect(
-      writeRuleFile(
+      writeServedRule(
         cwd,
         delivered("runtime", "logs-abc12345", [
           { path: "check.ts", content: "a\n" },
@@ -189,7 +192,7 @@ describe("delivering a rule as a file set", () => {
     "refuses a path that is an ancestor of another (%s)",
     async (_label, [first, second]) => {
       await expect(
-        writeRuleFile(
+        writeServedRule(
           cwd,
           delivered("runtime", "logs-abc12345", [
             { path: first as string, content: "a\n" },
@@ -209,7 +212,7 @@ describe("delivering a rule as a file set", () => {
     // On APFS and NTFS these are one file: the second write clobbers the
     // first, and the rule loses a capture nobody was told was dropped.
     await expect(
-      writeRuleFile(
+      writeServedRule(
         cwd,
         delivered("runtime", "logs-abc12345", [
           { path: "check.ts", content: "export default async () => [];\n" },
@@ -218,97 +221,6 @@ describe("delivering a rule as a file set", () => {
         ])
       )
     ).rejects.toThrow(/differing only in case/);
-  });
-
-  // A malformed set used to normalize to `[]` and report "delivered no files"
-  // for a payload that delivered several, sending anyone debugging a real
-  // shape defect to look in the wrong place.
-  it.each([
-    ["files is not an array", "nope", /files` that is not an array/],
-    [
-      "an entry is not an object",
-      ["check.ts"],
-      /files\[0\]` that is not an object/,
-    ],
-    [
-      "an entry has no path",
-      [{ content: "x\n" }],
-      /files\[0\]` with no string `path`/,
-    ],
-    [
-      "an entry has no content",
-      [{ path: "check.ts" }],
-      /`check\.ts` with no string `content`/,
-    ],
-  ])("names the defect when %s", async (_label, files, expected) => {
-    const rule = {
-      id: "logs-abc12345",
-      engine: "runtime",
-      files,
-    } as unknown as GeneratedRule;
-    await expect(writeRuleFile(cwd, rule)).rejects.toThrow(expected);
-    expect(existsSync(ruleDirectory(cwd, "runtime", "logs-abc12345"))).toBe(
-      false
-    );
-  });
-
-  it("refuses a payload carrying both files and content", async () => {
-    const rule = {
-      id: "logs-abc12345",
-      engine: "runtime",
-      content: { id: "logs-abc12345", language: "typescript", rule: {} },
-      files: [{ path: "check.ts", content: "x\n" }],
-    } as unknown as GeneratedRule;
-    await expect(writeRuleFile(cwd, rule)).rejects.toThrow(
-      /mutually exclusive/
-    );
-  });
-
-  it.each([
-    ["content is null", { id: "no-eval-abc12345", content: null }],
-    ["content is a string", { id: "no-eval-abc12345", content: "rule: {}" }],
-    ["content is a number", { id: "no-eval-abc12345", content: 0 }],
-  ])("refuses a payload where %s", async (_label, rule) => {
-    // `yaml` renders every one of these as a scalar document rather than
-    // throwing, so without this the rule file is created and its entire
-    // contents are `null`, `rule: {}` or `0`. The mutual-exclusion check above
-    // treats a present-but-null `content` as "the service sent both", which is
-    // the right answer to a different question; this asks whether the value can
-    // be written at all.
-    await expect(
-      writeRuleFile(cwd, rule as unknown as GeneratedRule)
-    ).rejects.toThrow(/no usable `content`/);
-    expect(existsSync(ruleDirectory(cwd, "sg", "no-eval-abc12345"))).toBe(
-      false
-    );
-  });
-
-  it("refuses a payload carrying neither files nor content", async () => {
-    // Before the published union forced the variants apart, this fell through
-    // to the single-content branch and handed `stringify` an `undefined`,
-    // which returns the STRING "undefined" rather than throwing. The rule file
-    // was written, and what it contained was the word undefined.
-    const rule = { id: "no-eval-abc12345" } as unknown as GeneratedRule;
-    await expect(writeRuleFile(cwd, rule)).rejects.toThrow(
-      /no usable `content`/
-    );
-    expect(existsSync(ruleDirectory(cwd, "sg", "no-eval-abc12345"))).toBe(
-      false
-    );
-  });
-
-  it("still writes a legacy single-content payload", async () => {
-    // The envelope every published CLI receives, and will keep receiving.
-    const rule = {
-      id: "no-eval-abc12345",
-      content: { id: "no-eval-abc12345", language: "typescript", rule: {} },
-    } as unknown as GeneratedRule;
-    const written = await writeRuleFile(cwd, rule);
-    expect(written).toBe(
-      join(ruleDirectory(cwd, "sg", "no-eval-abc12345"), "no-eval-abc12345.yml")
-    );
-    const entries = await readdir(ruleDirectory(cwd, "sg", "no-eval-abc12345"));
-    expect(entries).toEqual(["no-eval-abc12345.yml"]);
   });
 });
 
@@ -329,7 +241,7 @@ describe("a delivered set defines what the rule directory contains", () => {
   ];
 
   async function writeComplete(): Promise<string> {
-    await writeRuleFile(cwd, delivered("runtime", "logs-abc12345", COMPLETE));
+    await writeServedRule(cwd, delivered("runtime", "logs-abc12345", COMPLETE));
     return ruleDirectory(cwd, "runtime", "logs-abc12345");
   }
 
@@ -439,7 +351,7 @@ describe("a delivered set defines what the rule directory contains", () => {
     // Assess and purge are a unit, the same way assess and write already were.
     // A refused set must not be the reason a directory is half emptied.
     await expect(
-      writeRuleFile(
+      writeServedRule(
         cwd,
         delivered("runtime", "logs-abc12345", [
           ...COMPLETE,
@@ -467,7 +379,7 @@ describe("a delivered set defines what the rule directory contains", () => {
     await symlink(outside, directory);
 
     await expect(
-      writeRuleFile(cwd, delivered("runtime", "logs-abc12345", COMPLETE))
+      writeServedRule(cwd, delivered("runtime", "logs-abc12345", COMPLETE))
     ).rejects.toThrow(/symlink/);
 
     // Nothing written through the link, and the link itself is left for a
@@ -518,22 +430,6 @@ describe("a delivered set defines what the rule directory contains", () => {
       "export default async () => [];\n"
     );
   });
-
-  it("does not purge on the single-content envelope", async () => {
-    // There is no set to be authoritative about, so the legacy path keeps
-    // overwriting one file and touching nothing else.
-    const rule = {
-      id: "no-eval-abc12345",
-      content: { id: "no-eval-abc12345", language: "typescript", rule: {} },
-    } as unknown as GeneratedRule;
-    await writeRuleFile(cwd, rule);
-    const directory = ruleDirectory(cwd, "sg", "no-eval-abc12345");
-    await writeFile(join(directory, "hand-written.yml"), "kept\n", "utf8");
-
-    await writeRuleFile(cwd, rule);
-
-    expect(existsSync(join(directory, "hand-written.yml"))).toBe(true);
-  });
 });
 
 /**
@@ -551,7 +447,7 @@ asUser("a purge that cannot finish", () => {
   ];
 
   it("removes what it can, and names what it could not", async () => {
-    await writeRuleFile(cwd, delivered("runtime", "logs-abc12345", COMPLETE));
+    await writeServedRule(cwd, delivered("runtime", "logs-abc12345", COMPLETE));
     const directory = ruleDirectory(cwd, "runtime", "logs-abc12345");
     // A stray whose parent denies unlinking, plus an ordinary one. `rm` with
     // `force` swallows only `ENOENT`, so the first is a genuine failure.
@@ -562,7 +458,7 @@ asUser("a purge that cannot finish", () => {
 
     try {
       await expect(
-        writeRuleFile(cwd, delivered("runtime", "logs-abc12345", COMPLETE))
+        writeServedRule(cwd, delivered("runtime", "logs-abc12345", COMPLETE))
       ).rejects.toThrow(/could not remove.*blocked\/a\.txt/s);
 
       // The rest of the pass still ran. Abandoning it at the first failure
@@ -583,14 +479,14 @@ asUser("a purge that cannot finish", () => {
     // reader for opposite things — "the rule is not there" versus "the rule
     // IS there and something stale is too" — and a caller that could only
     // match on prose gets it wrong the first time the wording changes.
-    await writeRuleFile(cwd, delivered("runtime", "logs-abc12345", COMPLETE));
+    await writeServedRule(cwd, delivered("runtime", "logs-abc12345", COMPLETE));
     const directory = ruleDirectory(cwd, "runtime", "logs-abc12345");
     await mkdir(join(directory, "blocked"), { recursive: true });
     await writeFile(join(directory, "blocked", "a.txt"), "stuck\n", "utf8");
     await chmod(join(directory, "blocked"), 0o500);
 
     try {
-      const error = await writeRuleFile(
+      const error = await writeServedRule(
         cwd,
         delivered("runtime", "logs-abc12345", COMPLETE)
       ).catch((error_: unknown) => error_);
@@ -611,7 +507,7 @@ describe("a delivery that carries no fixtures", () => {
 
   it("warns, and still writes the rule", async () => {
     const warnings: string[] = [];
-    await writeRuleFile(
+    await writeServedRule(
       cwd,
       delivered("sg", "no-eval-abc12345", [
         { path: "no-eval-abc12345.yml", content: SG_RULE },
@@ -637,7 +533,7 @@ describe("a delivery that carries no fixtures", () => {
 
   it("says why it matters rather than only what is absent", async () => {
     const warnings: string[] = [];
-    await writeRuleFile(
+    await writeServedRule(
       cwd,
       delivered("sg", "no-eval-abc12345", [
         { path: "no-eval-abc12345.yml", content: SG_RULE },
@@ -665,7 +561,7 @@ describe("a delivery that carries no fixtures", () => {
     );
 
     const warnings: string[] = [];
-    await writeRuleFile(
+    await writeServedRule(
       cwd,
       delivered("sg", "no-eval-abc12345", [
         { path: "no-eval-abc12345.yml", content: SG_RULE },
@@ -681,7 +577,7 @@ describe("a delivery that carries no fixtures", () => {
 
   it("stays silent when fixtures are present", async () => {
     const warnings: string[] = [];
-    await writeRuleFile(
+    await writeServedRule(
       cwd,
       delivered("sg", "no-eval-abc12345", [
         { path: "no-eval-abc12345.yml", content: SG_RULE },
@@ -697,7 +593,7 @@ describe("a delivery that carries no fixtures", () => {
     // `onWarning` is optional, and a caller that omits it must still get the
     // rule on disk rather than an unhandled throw.
     await expect(
-      writeRuleFile(
+      writeServedRule(
         cwd,
         delivered("sg", "no-eval-abc12345", [
           { path: "no-eval-abc12345.yml", content: SG_RULE },

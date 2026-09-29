@@ -1,165 +1,20 @@
-import { mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
-import { basename, join, resolve } from "node:path";
+import { mkdir, readFile, rm } from "node:fs/promises";
+import { join } from "node:path";
 
-import { parse, stringify } from "yaml";
+import { parse } from "yaml";
 
 import { ensureTasklessDirectory } from "../filesystem/directory";
-import { isSingleContentRule } from "../api/rules";
-import type { GeneratedRule, RuleMetadata } from "../api/rules";
+import { CLIError } from "../util/cli-error";
 import type { ServedFileSet } from "../api/v2";
-import {
-  resolveIngestEngine,
-  ruleDirectory,
-  ruleFilePath,
-  ruleTestsDirectory,
-  findRuleEngines,
-} from "./engines";
+import { ruleDirectory, ruleFilePath, findRuleEngines } from "./engines";
 import { isKnownEngine, type EngineName } from "./layout";
 import { describeRuleIdCollision, findRuleIdCollision } from "./id-uniqueness";
 import { isValidRuleId } from "./validate-id";
 import {
   assessDelivery,
-  deliveredFiles,
   describeMissingFixtures,
   writeDeliveredFileSet,
 } from "./deliver";
-
-/**
- * Whether the rule's `.tests/` holds any file at all, at any depth.
- *
- * Asked of the DISK rather than of the delivery, and the difference is not
- * academic. `.tests/` is preserved through a delivered set's purge, and
- * `writeRuleTestFile` accumulates local fixtures that no later file set names,
- * so "this payload carried no fixtures" and "this rule has no fixtures" come
- * apart in the ordinary course of using the CLI — a redelivery of a rule that
- * has been tested locally hits it every time.
- *
- * A missing directory is no fixtures; anything else rethrows. Reading an
- * `EACCES` as absence would warn that nothing exercises a rule whose fixtures
- * we merely failed to look at, which is the false claim this exists to prevent,
- * arrived at from the other side.
- */
-async function hasFixturesOnDisk(
-  cwd: string,
-  engine: EngineName,
-  ruleId: string
-): Promise<boolean> {
-  try {
-    const entries = await readdir(ruleTestsDirectory(cwd, engine, ruleId), {
-      recursive: true,
-      withFileTypes: true,
-    });
-    return entries.some((entry) => !entry.isDirectory());
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") return false;
-    throw error;
-  }
-}
-
-/**
- * Write a generated rule's content into its own rule directory —
- * `.taskless/rules/sg/{kebab-id}/{kebab-id}.yml` for the engine-less payloads
- * the API delivers today (see {@link resolveIngestEngine}).
- *
- * `onWarning` receives anything worth saying about a delivery that was still
- * written. Optional, and a caller that omits it loses the message rather than
- * the write — see {@link describeMissingFixtures} for why a missing fixture is
- * reported this way instead of refused.
- */
-export async function writeRuleFile(
-  cwd: string,
-  rule: GeneratedRule,
-  onWarning?: (message: string) => void
-): Promise<string> {
-  if (!isValidRuleId(rule.id)) {
-    throw new Error(`Invalid rule ID "${rule.id}"`);
-  }
-  // Resolve the engine before touching the filesystem: an unrecognized engine
-  // must write nothing at all.
-  const engine = resolveIngestEngine(rule);
-
-  // A file set and a single `content` are mutually exclusive, per the contract.
-  // Carrying both means the service is unsure what it sent, and picking one
-  // would write a rule nobody described.
-  const delivered = deliveredFiles(rule);
-  if (delivered.kind === "malformed") {
-    throw new Error(`Rule "${rule.id}" ${delivered.reason}.`);
-  }
-  if (delivered.kind === "present") {
-    // The published union makes this unrepresentable, and the check stays.
-    // The type states what the service PROMISES; this defends against it
-    // breaking that promise, which is the only reason the client validates a
-    // payload at all.
-    if ((rule as { content?: unknown }).content !== undefined) {
-      throw new Error(
-        `Rule "${rule.id}" carries both \`files\` and \`content\`; they are mutually exclusive.`
-      );
-    }
-    // Assessed as a unit before anything is written. A half-written rule
-    // directory verifies as a broken rule two steps from the cause, and the
-    // delivery that produced it has already reported success.
-    const assessment = assessDelivery(cwd, engine, rule.id, delivered.files);
-    if (!assessment.ok) {
-      throw new Error(`Rule "${rule.id}" ${assessment.reason}.`);
-    }
-    await ensureTasklessDirectory(cwd);
-    await mkdir(ruleDirectory(cwd, engine, rule.id), { recursive: true });
-    // The set is the directory, not an overlay on it: anything already there
-    // that the set does not name is removed, `.tests/` excepted. The same for
-    // every caller of this function — see {@link writeDeliveredFileSet} for why
-    // repair is not special-cased. The single-content path below has no set to
-    // be authoritative about and keeps overwriting one file.
-    await writeDeliveredFileSet(cwd, engine, rule.id, assessment);
-    // AFTER the write, deliberately. This is an observation about a rule that
-    // is now on disk, and warning first would read as a reason it was refused.
-    //
-    // Both halves are required, and the disk is the one that makes the message
-    // true. `describeMissingFixtures` reports on the PAYLOAD, while the message
-    // claims nothing exercises the RULE — and those diverge whenever `.tests/`
-    // already holds fixtures the new set did not repeat, which the purge
-    // deliberately preserves. Warning on the payload alone tells the holder of
-    // a locally-tested rule that it has nothing proving it, while the fixtures
-    // that prove it sit in the directory just written.
-    const missingFixtures = describeMissingFixtures(assessment.files);
-    if (
-      missingFixtures !== undefined &&
-      !(await hasFixturesOnDisk(cwd, engine, rule.id))
-    ) {
-      onWarning?.(`Rule "${rule.id}" ${missingFixtures}.`);
-    }
-    await warnOnIdCollision(cwd, rule.id, onWarning);
-    // The rule file, so the caller's contract ("where did this rule land")
-    // is unchanged whichever envelope delivered it.
-    return ruleFilePath(cwd, engine, rule.id);
-  }
-
-  // `files` is absent past the branch above, so this is the single-content
-  // envelope, and what remains is whether its `content` can actually be
-  // written. Checked BEFORE anything is created.
-  //
-  // The test is "a usable object", not "not undefined". `yaml` does not throw
-  // on a value it cannot make a document of, it renders one: `undefined`
-  // becomes the string "undefined" and `null` becomes the string "null", so
-  // either way the rule file is created and its entire contents are that word
-  // — a malformed rule discovered two steps from the cause.
-  //
-  // Note this deliberately asks a different question from the mutual-exclusion
-  // check above, which treats ANY present `content` (including `null`) as the
-  // service having sent both envelopes. That one is about what the payload
-  // claims; this one is about what can be written. Reusing a single predicate
-  // for both would make one of them wrong.
-  if (!isUsableContent(rule)) {
-    throw new Error(
-      `Rule "${rule.id}" carries no usable \`content\`, and no \`files\`.`
-    );
-  }
-  await ensureTasklessDirectory(cwd);
-  await mkdir(ruleDirectory(cwd, engine, rule.id), { recursive: true });
-  const filePath = ruleFilePath(cwd, engine, rule.id);
-  await writeFile(filePath, stringify(rule.content, { lineWidth: 0 }), "utf8");
-  await warnOnIdCollision(cwd, rule.id, onWarning);
-  return filePath;
-}
 
 /**
  * Write a rule served by the v2 API into `.taskless/rules/<engine>/<id>/`.
@@ -182,8 +37,11 @@ export async function writeServedRule(
   }
   const engine: string = fileSet.engine;
   if (!isKnownEngine(engine)) {
-    throw new Error(
-      `Rule "${fileSet.id}" is a ${engine} rule, which this version of the CLI does not support. Upgrade the Taskless CLI and try again.`
+    // A CLIError, unreported: nothing has printed yet, so the top-level
+    // handler is what stands between a newer engine and a silent exit 0.
+    throw new CLIError(
+      `Rule "${fileSet.id}" is a ${engine} rule, which this version of the CLI does not support. Upgrade the Taskless CLI and try again.`,
+      "RULE_UNSUPPORTED"
     );
   }
   const assessment = assessDelivery(cwd, engine, fileSet.id, fileSet.files);
@@ -207,10 +65,11 @@ export async function writeServedRule(
 /**
  * Say so when the rule just written shares its id with another engine's.
  *
- * A WARNING, never a refusal, and that is the whole design. `check`'s repair
- * path calls {@link writeRuleFile}, so refusing here would brick repair for
- * both colliding rules — strictly worse than the silence it replaces. The
- * failure belongs in `verify`, which is what the message points at.
+ * A WARNING, never a refusal, and that is the whole design. `rule restore`
+ * writes through here, so refusing would brick recovery for both colliding
+ * rules — strictly worse than the silence it replaces. The failure belongs in
+ * `verify` (and in `check`, which refuses a logged-in run over it), which is
+ * what the message points at.
  *
  * After the write, like the fixtures warning above it: this is an observation
  * about a rule that is now on disk, and warning first would read as a reason
@@ -227,69 +86,6 @@ async function warnOnIdCollision(
   onWarning(
     `${describeRuleIdCollision(cwd, collision)} \`verify\` fails both until one is renamed.`
   );
-}
-
-/**
- * Whether a rule's `content` is something a rule file can be written from.
- *
- * A rule body is a YAML mapping. `undefined`, `null` and any primitive are all
- * values `yaml` will happily render as a scalar document, which is how a rule
- * file containing nothing but `null` reaches a developer's disk.
- */
-function isUsableContent(
-  rule: GeneratedRule
-): rule is GeneratedRule & { content: Record<string, unknown> } {
-  const content = (rule as { content?: unknown }).content;
-  return typeof content === "object" && content !== null;
-}
-
-/**
- * Write a rule's test cases inside its own rule directory —
- * `.taskless/rules/sg/{kebab-id}/.tests/{kebab-id}-{timestamp}-test.yml`.
- */
-export async function writeRuleTestFile(
-  cwd: string,
-  rule: GeneratedRule,
-  timestamp: string
-): Promise<string> {
-  if (!isValidRuleId(rule.id)) {
-    throw new Error(`Invalid rule ID "${rule.id}"`);
-  }
-  const engine = resolveIngestEngine(rule);
-  await ensureTasklessDirectory(cwd);
-  const directory = ruleTestsDirectory(cwd, engine, rule.id);
-  await mkdir(directory, { recursive: true });
-  const filePath = join(directory, `${rule.id}-${timestamp}-test.yml`);
-  // Only the single-content envelope carries `tests`; a file set delivers its
-  // fixtures as ordinary files under `.tests/`.
-  const tests = isSingleContentRule(rule) ? rule.tests : undefined;
-  const content = {
-    id: rule.id,
-    valid: tests?.valid ?? [],
-    invalid: tests?.invalid ?? [],
-  };
-  await writeFile(filePath, stringify(content, { lineWidth: 0 }), "utf8");
-  return filePath;
-}
-
-/** Write sidecar metadata files to .taskless/rule-metadata/{key}.yml */
-export async function writeRuleMetaFiles(
-  cwd: string,
-  meta: RuleMetadata
-): Promise<string[]> {
-  const directory = join(cwd, ".taskless", "rule-metadata");
-  await mkdir(directory, { recursive: true });
-  const writtenFiles: string[] = [];
-  for (const [key, value] of Object.entries(meta)) {
-    const sanitized = basename(key);
-    const filePath = resolve(directory, `${sanitized}.yml`);
-    if (!filePath.startsWith(directory)) {
-      continue;
-    }
-    await writeFile(filePath, stringify(value, { lineWidth: 0 }), "utf8");
-    writtenFiles.push(filePath);
-  }
-  return writtenFiles;
 }
 
 /** Read a rule's sidecar metadata from .taskless/rule-metadata/{id}.yml. Returns null if not found. */

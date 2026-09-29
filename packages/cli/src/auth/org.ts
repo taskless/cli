@@ -1,13 +1,12 @@
-import type { paths } from "../generated/api";
+import type { WhoamiResult } from "../api/v2";
 import { decodeOrgId, NIL_ORG_ID } from "./jwt";
 import { fetchWhoami } from "./whoami";
 import { listRemoteOwnerUrls } from "../util/git-remote";
 
-type WhoamiData =
-  paths["/cli/api/whoami"]["get"]["responses"]["200"]["content"]["application/json"];
+type WhoamiData = WhoamiResult;
 
 /**
- * One organization from `GET /cli/api/whoami`. Adapts the generated OpenAPI
+ * One organization from `GET /cli/api/v2/whoami`. Adapts the generated OpenAPI
  * shape to what the CLI actually acts on, staying forward-compatible with the
  * server's coming identity cleanup:
  *
