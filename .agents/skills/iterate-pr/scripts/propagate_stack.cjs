@@ -33,7 +33,14 @@
  *   * Push uses --force-with-lease against a freshly fetched origin; the lease
  *     is only meaningful if remote-tracking refs are current, so we fetch first.
  *
- *     node ${CLAUDE_SKILL_ROOT}/scripts/propagate_stack.cjs --root <branch> [--dry-run] [--no-push]
+ * SIGNING: every replayed commit is GPG-signed (`rebase --gpg-sign`). A rebase
+ * writes new commits, and without the flag git signs them only if
+ * `commit.gpgSign` is set, which it is not when a repository signs with an
+ * explicit `commit -S`. Measured on a six-branch stack: 21 of 25 commits came
+ * back unsigned after one propagation, every one of them signed before it.
+ * `--no-sign` opts out, for a repository that does not sign at all.
+ *
+ *     node ${CLAUDE_SKILL_ROOT}/scripts/propagate_stack.cjs --root <branch> [--dry-run] [--no-push] [--no-sign]
  */
 
 const { parseArgs } = require("node:util");
@@ -136,6 +143,7 @@ const main = ({
       "dry-run": { type: "boolean", default: false },
       "no-push": { type: "boolean", default: false },
       "max-own": { type: "string", default: "15" },
+      "no-sign": { type: "boolean", default: false },
     },
   });
 
@@ -227,10 +235,23 @@ const main = ({
     }
 
     const before = gitOut(git, "rev-parse", child);
-    const rebase = git("rebase", "--onto", parent, upstream);
+    const sign = values["no-sign"] ? [] : ["--gpg-sign"];
+    const rebase = git("rebase", ...sign, "--onto", parent, upstream);
     if (rebase.code !== 0) {
       const conflicts = gitOut(git, "diff", "--name-only", "--diff-filter=U");
       git("rebase", "--abort");
+      if (!conflicts && /failed to sign|gpg failed/i.test(rebase.stderr)) {
+        // Not a conflict, and reporting it as one sends the reader looking for
+        // files that do not exist. The key is usually just locked.
+        emit(
+          `  ✗ SIGNING FAILED rebasing ${child}; nothing was rewritten. ` +
+            "Unlock the key (`echo test | gpg --sign > /dev/null`) and run " +
+            "again, or pass --no-sign if this repository does not sign:" +
+            `\n${rebase.stderr.trim()}`
+        );
+        if (start) git("checkout", start);
+        return 7;
+      }
       emit(
         `  ✗ CONFLICT: ${child} onto ${parent} (from ${upstream.slice(0, 9)}, ` +
           `${source}). Needs manual reconcile:`
