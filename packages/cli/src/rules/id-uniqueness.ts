@@ -94,11 +94,11 @@ export function metadataSidecarPath(cwd: string, ruleId: string): string {
  * conditions, so the opening clause is shared verbatim and only the
  * consequence differs.
  *
- * The sidecar is named because it is the damage. `writeRuleMetaFiles` keys
- * `.taskless/rule-metadata/{id}.yml` on the id alone, so the two rules share
- * one file: the second `rule create` or `rule improve` overwrites the first's
- * metadata silently, and `deleteRuleFiles` removes it for whichever rule goes
- * first. That happens whether or not anyone runs `check`.
+ * The sidecar is named because it is the damage. The path
+ * `.taskless/rule-metadata/{id}.yml` is keyed on the id alone, so the two
+ * rules share one file: `rule meta` reports it for either, and
+ * `deleteRuleFiles` removes it for whichever rule goes first. That happens
+ * whether or not anyone runs `check`.
  */
 export function describeRuleIdCollision(
   cwd: string,
@@ -107,7 +107,6 @@ export function describeRuleIdCollision(
   return (
     `Rule "${collision.ruleId}" is held by ${String(collision.engines.length)} engines, ` +
     `so its id does not name one rule: ${collision.paths.join(", ")}. ` +
-    `They share one metadata sidecar at ${metadataSidecarPath(cwd, collision.ruleId)}, ` +
-    `so whichever was written last owns it.`
+    `Any metadata sidecar at ${metadataSidecarPath(cwd, collision.ruleId)} is shared by both.`
   );
 }
