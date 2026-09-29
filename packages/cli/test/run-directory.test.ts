@@ -1,6 +1,7 @@
 import { execFile, spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import {
+  chmod,
   cp,
   mkdir,
   mkdtemp,
@@ -20,6 +21,13 @@ import { migrateFixture } from "./support/current-project";
 
 const execFileAsync = promisify(execFile);
 const binPath = resolve(import.meta.dirname, "../dist/index.js");
+// `--import tsx` rather than the `tsx` binary, which relays a signal death as
+// an exit code and so hides the signal a test asserts on.
+const packageRoot = resolve(import.meta.dirname, "..");
+const runDirectorySource = resolve(
+  import.meta.dirname,
+  "../src/rules/run-directory.ts"
+);
 
 /** A pid that certainly belonged to a process that has exited. */
 function deadPid(): number {
@@ -160,6 +168,71 @@ describe("run directories", () => {
     const old = new Date(Date.now() - 5 * 60_000);
     await utimes(orphan, old, old);
     expect(await sweepAbandonedRuns(cwd)).toEqual(["20200101T000000Z-dddddd"]);
+  });
+
+  it("close does not throw when the directory cannot be removed", async () => {
+    const run = await openRun(cwd);
+    const root = join(cwd, ".taskless", ".run");
+    // A read-only parent makes the removal fail with something other than
+    // ENOENT, which `force` does not forgive.
+    await chmod(root, 0o555);
+    try {
+      await expect(run.close()).resolves.toBeUndefined();
+    } finally {
+      await chmod(root, 0o755);
+    }
+    expect(existsSync(run.path)).toBe(true);
+  });
+
+  it("a signal flushes a preserved run's logs before the process exits", async () => {
+    // Every entry is queued and none awaited, then SIGINT: without a flush
+    // the default disposition terminates before the appends land.
+    const script = join(cwd, "interrupt.mts");
+    await writeFile(
+      script,
+      [
+        `import { openRun } from ${JSON.stringify(runDirectorySource)};`,
+        `const run = await openRun(process.argv[2], { preserve: true });`,
+        `for (let i = 0; i < 50; i++) run.logs.engine.write("entry " + i);`,
+        `run.logs.sg.write("sg line");`,
+        `process.kill(process.pid, "SIGINT");`,
+        `setTimeout(() => {}, 10_000);`,
+      ].join("\n")
+    );
+    const child = spawnSync(
+      process.execPath,
+      ["--import", "tsx", script, cwd],
+      { cwd: packageRoot, encoding: "utf8" }
+    );
+    expect(child.signal, child.stderr).toBe("SIGINT");
+    const [id] = await runDirectories(cwd);
+    const directory = join(cwd, ".taskless", ".run", id ?? "");
+    const engine = await readFile(join(directory, "engine.log"), "utf8");
+    expect(engine).toContain("entry 49");
+    expect(engine).toContain("run interrupted by SIGINT; directory preserved");
+    expect(await readFile(join(directory, "sg.log"), "utf8")).toContain(
+      "sg line"
+    );
+  });
+
+  it("a signal removes an unpreserved run's directory", async () => {
+    const script = join(cwd, "interrupt.mts");
+    await writeFile(
+      script,
+      [
+        `import { openRun } from ${JSON.stringify(runDirectorySource)};`,
+        `await openRun(process.argv[2]);`,
+        `process.kill(process.pid, "SIGTERM");`,
+        `setTimeout(() => {}, 10_000);`,
+      ].join("\n")
+    );
+    const child = spawnSync(
+      process.execPath,
+      ["--import", "tsx", script, cwd],
+      { cwd: packageRoot, encoding: "utf8" }
+    );
+    expect(child.signal, child.stderr).toBe("SIGTERM");
+    expect(await runDirectories(cwd)).toEqual([]);
   });
 });
 

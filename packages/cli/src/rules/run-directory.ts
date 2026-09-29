@@ -56,6 +56,12 @@ const RUN_ID = /^\d{8}T\d{6}Z-[0-9a-f]{6}$/;
  */
 const OWNERLESS_GRACE_MS = 60_000;
 
+/**
+ * How long a signal waits for a preserved run's logs to reach the disk before
+ * re-raising anyway.
+ */
+const SIGNAL_FLUSH_MS = 2000;
+
 /** Who is using a run directory, so a later run can tell if it was abandoned. */
 interface Owner {
   pid: number;
@@ -236,18 +242,43 @@ export async function openRun(
   // A signal skips `finally`, so the directory would outlive the run. Removed
   // synchronously, then the signal re-raised so the process still exits the
   // way the signal asked.
+  //
+  // A preserved directory is kept for its logs, and `RunLog.write` only
+  // queues: re-raising at once, with no handler left, terminates before the
+  // queued appends land. Measured: 1 of 52 engine entries survived. So a
+  // preserved run flushes first, bounded, since a hung disk must not turn
+  // Ctrl-C into a hang. A second signal meanwhile finds no handler and
+  // terminates at once, which is what pressing it twice should do.
   const onSignal = (signal: NodeJS.Signals): void => {
-    if (!closed && !preserve) {
+    const wasClosed = closed;
+    closed = true;
+    process.off("SIGINT", onSignal);
+    process.off("SIGTERM", onSignal);
+    const reraise = (): void => {
+      process.kill(process.pid, signal);
+    };
+    if (wasClosed) {
+      reraise();
+      return;
+    }
+    if (!preserve) {
       try {
         rmSync(path, { recursive: true, force: true });
       } catch {
         // The next run's sweep removes it.
       }
+      reraise();
+      return;
     }
-    closed = true;
-    process.off("SIGINT", onSignal);
-    process.off("SIGTERM", onSignal);
-    process.kill(process.pid, signal);
+    logs.engine.write(`run interrupted by ${signal}; directory preserved`);
+    void Promise.race([
+      Promise.all(
+        [logs.engine, logs.sg, logs.vale, logs.runtime].map((log) =>
+          log.flush()
+        )
+      ),
+      new Promise((resolve) => setTimeout(resolve, SIGNAL_FLUSH_MS).unref()),
+    ]).finally(reraise);
   };
   process.once("SIGINT", onSignal);
   process.once("SIGTERM", onSignal);
@@ -270,7 +301,16 @@ export async function openRun(
           log.flush()
         )
       );
-      if (!preserve) await rm(path, { recursive: true, force: true });
+      if (preserve) return;
+      // `close` runs in a `finally` after the run's output is written, so a
+      // throw here would replace a finished run's exit code with a crash.
+      // `force` only forgives a missing path; EBUSY or EPERM from a child
+      // still letting go of a file must be forgiven too.
+      try {
+        await rm(path, { recursive: true, force: true });
+      } catch {
+        // The next run's sweep removes it.
+      }
     },
   };
 }
