@@ -73,10 +73,29 @@ fi
 
 mkdir -p "$(dirname "$worktree_dir")"
 
-# Mirror the default: a fresh branch per worktree, based on current HEAD. The
-# agent checks out whatever branch it actually needs once inside. -B rather than
-# -b so a leftover branch from a removed worktree does not wedge creation.
+# A fresh branch per worktree, based on the remote's default branch as of NOW.
+# Not HEAD: the main checkout's HEAD is whatever branch it last had checked out,
+# at whatever commit it was last pulled to, so a worktree cut from it can start
+# dozens of commits behind and nothing says so until someone reads stale code
+# as current. Fetch first, every time, and fail rather than fall back: a
+# worktree on a stale base is the failure this exists to prevent, and "could
+# not fetch" is a far clearer thing to be told than "your base was old".
+# The agent checks out whatever branch it actually needs once inside. -B rather
+# than -b so a leftover branch from a removed worktree does not wedge creation.
 # All git chatter goes to stderr; stdout carries the path and nothing else.
-git -C "$repo_root" worktree add -B "worktree-$worktree_id" "$worktree_dir" >&2
+remote=origin
+default_branch=$(git -C "$repo_root" ls-remote --symref "$remote" HEAD 2>/dev/null \
+  | awk '$1 == "ref:" && $3 == "HEAD" { sub("^refs/heads/", "", $2); print $2 }') \
+  || true # pipefail would exit here silently; the check below says why
+if [ -z "$default_branch" ]; then
+  echo "WorktreeCreate: could not resolve $remote's default branch (offline?)" >&2
+  exit 1
+fi
+if ! git -C "$repo_root" fetch --quiet "$remote" "$default_branch" >&2; then
+  echo "WorktreeCreate: fetching $remote/$default_branch failed; refusing to branch from a stale base" >&2
+  exit 1
+fi
+git -C "$repo_root" worktree add --no-track -B "worktree-$worktree_id" \
+  "$worktree_dir" "refs/remotes/$remote/$default_branch" >&2
 
 echo "$worktree_dir"
