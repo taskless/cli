@@ -1,3 +1,4 @@
+import { isRecord } from "../util/is-record";
 import { parseUpgradeUrl } from "./entitlement";
 
 /**
@@ -18,10 +19,6 @@ export interface Refusal {
   message: string;
   /** Present only when it parsed as an absolute `https:` URL. */
   upgradeUrl?: string;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 /**

@@ -3,6 +3,7 @@ import createClient from "openapi-fetch";
 import type { paths } from "../generated/api-v2";
 import { getApiBaseUrl } from "./config";
 import { parseRefusal, type Refusal } from "./refusal";
+import { isRecord } from "../util/is-record";
 import { CLI_VERSION, CLI_VERSION_HEADER } from "../version";
 
 /**
@@ -91,10 +92,6 @@ export function createV2Client(token: string) {
       [CLI_VERSION_HEADER]: CLI_VERSION,
     },
   });
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 type Fetched = { data?: unknown; error?: unknown; response: Response };
