@@ -69,6 +69,13 @@ the skill gets them; wiring them up is two edits.
 replaces the default placement logic entirely — it runs `git worktree add` itself and prints the
 path it made — and `WorktreeRemove` is its counterpart.
 
+**Every worktree starts from the remote's default branch as of the moment it is made.** The
+hook fetches `origin`'s default branch and branches from `origin/<default>`. It never uses the
+main checkout's `HEAD`, which is whatever that checkout was last pulled to: a worktree cut from it
+can start dozens of commits behind `main`, and nothing flags it until someone reads stale code as
+current. If the fetch fails (offline, no `origin`), creation fails with a message rather than
+falling back to a stale base. The new branch has no upstream; push it with an explicit refspec.
+
 ```json
 {
   "hooks": {
@@ -107,7 +114,8 @@ Verify without waiting for an agent, by feeding a hook its payload directly:
 ```bash
 printf '{"hook_event_name":"WorktreeCreate","cwd":"%s","worktree_id":"probe"}' "$PWD" \
   | .agents/skills/worktrees-pnpm/scripts/worktree-create.sh
-# expect: <repo>/worktrees/probe on stdout, git chatter on stderr, exit 0
+# expect: <repo>/worktrees/probe on stdout, git chatter on stderr, exit 0,
+# and `git -C worktrees/probe rev-parse HEAD` equal to `origin/main` just fetched
 
 # The id field is not stable across callers, so .worktreeId and .name are read
 # too — `.name` is what a background agent's payload actually carries.
