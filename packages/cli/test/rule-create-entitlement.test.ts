@@ -276,6 +276,54 @@ describe("rule create/improve: a runtime rule the plan will not run", () => {
     expect(envelope.message).not.toContain("\u001B");
   });
 
+  it("reports a poll whose request is gone as NETWORK_ERROR, not RULE_NOT_FOUND", async () => {
+    stubV2Server({ produced: [] });
+    const fetchMock = globalThis.fetch as unknown as {
+      getMockImplementation: () => (input: Request) => Promise<Response>;
+      mockImplementation: (f: (input: Request) => Promise<Response>) => void;
+    };
+    const original = fetchMock.getMockImplementation();
+    fetchMock.mockImplementation(async (input: Request) => {
+      const url = new URL(input.url);
+      if (url.pathname.startsWith("/cli/api/v2/request/")) {
+        return Response.json({ error: "request_not_found" }, { status: 404 });
+      }
+      return original(input);
+    });
+
+    await expect(create()).rejects.toThrow();
+    const envelope = JSON.parse(String(logSpy.mock.calls.at(-1)?.[0])) as {
+      code?: string;
+      message?: string;
+    };
+    expect(envelope.code).toBe("NETWORK_ERROR");
+    expect(envelope.message).toContain(REQUEST_ID);
+  });
+
+  it("reports a generated status with no revisions list as a malformed response", async () => {
+    stubV2Server({ produced: [] });
+    const fetchMock = globalThis.fetch as unknown as {
+      getMockImplementation: () => (input: Request) => Promise<Response>;
+      mockImplementation: (f: (input: Request) => Promise<Response>) => void;
+    };
+    const original = fetchMock.getMockImplementation();
+    fetchMock.mockImplementation(async (input: Request) => {
+      const url = new URL(input.url);
+      if (url.pathname.startsWith("/cli/api/v2/request/")) {
+        return Response.json({ requestId: REQUEST_ID, status: "generated" });
+      }
+      return original(input);
+    });
+
+    await expect(create()).rejects.toThrow();
+    const envelope = JSON.parse(String(logSpy.mock.calls.at(-1)?.[0])) as {
+      code?: string;
+      message?: string;
+    };
+    expect(envelope.code).toBe("NETWORK_ERROR");
+    expect(envelope.message).toContain("invalid response body");
+  });
+
   it("rule improve reports an unknown rule id as RULE_NOT_FOUND", async () => {
     vi.stubGlobal(
       "fetch",
