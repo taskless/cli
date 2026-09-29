@@ -6,6 +6,7 @@ import { parse, stringify } from "yaml";
 import { ensureTasklessDirectory } from "../filesystem/directory";
 import { isSingleContentRule } from "../api/rules";
 import type { GeneratedRule, RuleMetadata } from "../api/rules";
+import type { ServedFileSet } from "../api/v2";
 import {
   resolveIngestEngine,
   ruleDirectory,
@@ -13,7 +14,7 @@ import {
   ruleTestsDirectory,
   findRuleEngines,
 } from "./engines";
-import type { EngineName } from "./layout";
+import { isKnownEngine, type EngineName } from "./layout";
 import { describeRuleIdCollision, findRuleIdCollision } from "./id-uniqueness";
 import { isValidRuleId } from "./validate-id";
 import {
@@ -158,6 +159,49 @@ export async function writeRuleFile(
   await writeFile(filePath, stringify(rule.content, { lineWidth: 0 }), "utf8");
   await warnOnIdCollision(cwd, rule.id, onWarning);
   return filePath;
+}
+
+/**
+ * Write a rule served by the v2 API into `.taskless/rules/<engine>/<id>/`.
+ *
+ * The caller must already have passed the set through `verifyServedRule`:
+ * this function checks that the set is a complete, writable rule, and trusts
+ * that its bytes are the issued ones. The engine is the set's own `engine`,
+ * which v2 always sends, so nothing is inferred from the payload's shape.
+ *
+ * The set IS the directory: whatever is on disk that the set does not name is
+ * removed, `.tests/` included, since v2 serves a rule's fixtures with it.
+ */
+export async function writeServedRule(
+  cwd: string,
+  fileSet: ServedFileSet,
+  onWarning?: (message: string) => void
+): Promise<string> {
+  if (!isValidRuleId(fileSet.id)) {
+    throw new Error(`Invalid rule ID "${fileSet.id}"`);
+  }
+  const engine: string = fileSet.engine;
+  if (!isKnownEngine(engine)) {
+    throw new Error(
+      `Rule "${fileSet.id}" is a ${engine} rule, which this version of the CLI does not support. Upgrade the Taskless CLI and try again.`
+    );
+  }
+  const assessment = assessDelivery(cwd, engine, fileSet.id, fileSet.files);
+  if (!assessment.ok) {
+    throw new Error(`Rule "${fileSet.id}" ${assessment.reason}.`);
+  }
+  await ensureTasklessDirectory(cwd);
+  await mkdir(ruleDirectory(cwd, engine, fileSet.id), { recursive: true });
+  await writeDeliveredFileSet(cwd, engine, fileSet.id, assessment);
+  // After the write, and asked of the set alone: the purge made the directory
+  // equal to the set, so "the delivery carried no fixtures" and "the rule has
+  // none" are now the same statement.
+  const missingFixtures = describeMissingFixtures(assessment.files);
+  if (missingFixtures !== undefined) {
+    onWarning?.(`Rule "${fileSet.id}" ${missingFixtures}.`);
+  }
+  await warnOnIdCollision(cwd, fileSet.id, onWarning);
+  return ruleFilePath(cwd, engine, fileSet.id);
 }
 
 /**

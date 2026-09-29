@@ -16,6 +16,12 @@ import {
 import { runCommand } from "citty";
 
 import { ruleCommand } from "../src/commands/rules";
+import {
+  REQUEST_ID,
+  servedBody,
+  stubV2Server,
+  type StubRule,
+} from "./support/v2-server";
 
 /**
  * A runtime rule written under a plan without runtime signatures is still
@@ -41,19 +47,21 @@ const CAPTURE = [
   "",
 ].join("\n");
 
-const runtimeRule = {
+const runtimeRule: StubRule = {
   id: "plan-runtime-rule",
   engine: "runtime",
   files: [
+    { path: ".tests/fail/case.ts", content: "console.log(1);\n" },
     { path: "check.ts", content: "export default async () => [];\n" },
     { path: "captures/logs.yml", content: CAPTURE },
   ],
 };
 
-const staticRule = {
+const staticRule: StubRule = {
   id: "plan-static-rule",
   engine: "sg",
   files: [
+    { path: ".tests/fail/case.ts", content: "foo();\n" },
     {
       path: "plan-static-rule.yml",
       content:
@@ -62,44 +70,19 @@ const staticRule = {
   ],
 };
 
+/** Serve `rule` from a request, with `extra` on its served body. */
+async function stubFetch(
+  rule: StubRule,
+  extra: Record<string, unknown> = {}
+): Promise<void> {
+  stubV2Server({
+    produced: [{ rule, body: await servedBody(rule, "rev-1", extra) }],
+  });
+}
+
 describe("rule create/improve: a runtime rule the plan will not run", () => {
   let cwd: string;
   let logSpy: MockInstance<(...data: unknown[]) => void>;
-
-  const requestId = "33333333-3333-3333-3333-333333333333";
-  const iterateRequestId = "44444444-4444-4444-4444-444444444444";
-
-  function stubFetch(status: Record<string, unknown>): void {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn((input: string | URL | Request, init?: RequestInit) => {
-        const url = new URL(
-          typeof input === "string"
-            ? input
-            : input instanceof URL
-              ? input.href
-              : input.url
-        );
-        const method = (
-          init?.method ?? (input instanceof Request ? input.method : "GET")
-        ).toUpperCase();
-        const { pathname } = url;
-        if (pathname === "/cli/api/whoami") {
-          return Response.json({}, { status: 500 });
-        }
-        if (method === "POST" && pathname === "/cli/api/request") {
-          return Response.json({ requestId }, { status: 200 });
-        }
-        if (method === "POST" && pathname.endsWith("/iterate")) {
-          return Response.json({ requestId: iterateRequestId });
-        }
-        if (method === "GET" && pathname.startsWith("/cli/api/request/")) {
-          return Response.json({ status: "generated", ...status });
-        }
-        throw new Error(`unexpected ${method} ${pathname}`);
-      })
-    );
-  }
 
   beforeEach(async () => {
     cwd = await mkdtemp(join(tmpdir(), "taskless-rule-plan-"));
@@ -156,8 +139,7 @@ describe("rule create/improve: a runtime rule the plan will not run", () => {
   }
 
   it("rule create writes the rule and warns under --json", async () => {
-    stubFetch({
-      rules: [runtimeRule],
+    await stubFetch(runtimeRule, {
       entitlement: { runtimeSignatures: false, upgradeUrl: UPGRADE },
     });
     await create();
@@ -174,8 +156,7 @@ describe("rule create/improve: a runtime rule the plan will not run", () => {
   });
 
   it("rule improve warns the same way", async () => {
-    stubFetch({
-      rules: [runtimeRule],
+    await stubFetch(runtimeRule, {
       entitlement: { runtimeSignatures: false },
     });
     const requestFile = join(cwd, "improve.json");
@@ -191,18 +172,134 @@ describe("rule create/improve: a runtime rule the plan will not run", () => {
 
   it("an entitled or legacy response does not warn", async () => {
     for (const entitlement of [undefined, { runtimeSignatures: true }]) {
-      stubFetch({ rules: [runtimeRule], entitlement });
+      await stubFetch(
+        runtimeRule,
+        entitlement === undefined ? {} : { entitlement }
+      );
       await create();
       expect(planWarnings()).toEqual([]);
     }
   });
 
   it("a static rule never warns, whatever the plan", async () => {
-    stubFetch({
-      rules: [staticRule],
+    await stubFetch(staticRule, {
       entitlement: { runtimeSignatures: false, upgradeUrl: UPGRADE },
     });
     await create();
     expect(planWarnings()).toEqual([]);
+  });
+
+  it("rule create --json names the request and the written rules, and no ruleId", async () => {
+    await stubFetch(staticRule);
+    await create();
+    const envelope = JSON.parse(
+      String(logSpy.mock.calls.at(-1)?.[0])
+    ) as Record<string, unknown>;
+    expect(envelope.requestId).toBe(REQUEST_ID);
+    expect(envelope.rules).toEqual(["plan-static-rule"]);
+    expect(envelope).not.toHaveProperty("ruleId");
+  });
+
+  it("replaces the rule directory, fixtures included, and creates nested paths", async () => {
+    const directory = join(cwd, ".taskless", "rules", "sg", "plan-static-rule");
+    await mkdir(join(directory, ".tests", "stale"), { recursive: true });
+    await writeFile(join(directory, ".tests", "stale", "old.ts"), "old\n");
+    await writeFile(join(directory, "stray.yml"), "id: stray\n");
+
+    await stubFetch(staticRule);
+    await create();
+
+    expect(existsSync(join(directory, ".tests", "fail", "case.ts"))).toBe(true);
+    expect(existsSync(join(directory, ".tests", "stale", "old.ts"))).toBe(
+      false
+    );
+    expect(existsSync(join(directory, "stray.yml"))).toBe(false);
+  });
+
+  it("refuses a served head whose revision is not the one the request produced", async () => {
+    stubV2Server({
+      produced: [
+        {
+          rule: staticRule,
+          body: {
+            ...(await servedBody(staticRule, "rev-2")),
+            // Polling reports the revision the stub's body names, so pin the
+            // poll to rev-1 by serving a mismatched body under a rev-1 claim.
+            revisionId: "rev-2",
+          },
+        },
+      ],
+    });
+    // Polling reads `body.revisionId`; make it disagree with what is served.
+    const fetchMock = globalThis.fetch as unknown as {
+      getMockImplementation: () => (input: Request) => Promise<Response>;
+      mockImplementation: (f: (input: Request) => Promise<Response>) => void;
+    };
+    const original = fetchMock.getMockImplementation();
+    fetchMock.mockImplementation(async (input: Request) => {
+      const url = new URL(input.url);
+      if (url.pathname.startsWith("/cli/api/v2/request/")) {
+        return Response.json({
+          requestId: REQUEST_ID,
+          status: "generated",
+          revisions: [{ ruleId: "plan-static-rule", revisionId: "rev-1" }],
+        });
+      }
+      return original(input);
+    });
+
+    await expect(create()).rejects.toThrow();
+    const envelope = JSON.parse(String(logSpy.mock.calls.at(-1)?.[0])) as {
+      code?: string;
+      message?: string;
+    };
+    expect(envelope.code).toBe("RULE_GENERATION_FAILED");
+    expect(envelope.message).toContain("rev-2");
+    expect(
+      existsSync(join(cwd, ".taskless", "rules", "sg", "plan-static-rule"))
+    ).toBe(false);
+  });
+
+  it("prints a failed request's error as given", async () => {
+    stubV2Server({
+      produced: [],
+      status: "failed",
+      error: "REMOTE_GENERATION_NOT_IN_PLAN: \u001B[31mupgrade\u001B[0m",
+    });
+    await expect(create()).rejects.toThrow();
+    const envelope = JSON.parse(String(logSpy.mock.calls.at(-1)?.[0])) as {
+      code?: string;
+      message?: string;
+    };
+    expect(envelope.code).toBe("RULE_GENERATION_FAILED");
+    expect(envelope.message).toContain("REMOTE_GENERATION_NOT_IN_PLAN");
+    expect(envelope.message).not.toContain("\u001B");
+  });
+
+  it("rule improve reports an unknown rule id as RULE_NOT_FOUND", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((input: Request) => {
+        const { pathname } = new URL(input.url);
+        if (pathname === "/cli/api/whoami") {
+          return Response.json({}, { status: 500 });
+        }
+        return Response.json({ error: "rule_not_found" }, { status: 404 });
+      })
+    );
+    const requestFile = join(cwd, "improve.json");
+    await writeFile(
+      requestFile,
+      JSON.stringify({ ruleId: "gone-00000000", guidance: "tighten" })
+    );
+    await expect(
+      runCommand(ruleCommand, {
+        rawArgs: ["improve", "--from", requestFile, "--json", "-d", cwd],
+      })
+    ).rejects.toThrow();
+    const envelope = JSON.parse(String(logSpy.mock.calls.at(-1)?.[0])) as {
+      code?: string;
+    };
+    expect(envelope.code).toBe("RULE_NOT_FOUND");
   });
 });

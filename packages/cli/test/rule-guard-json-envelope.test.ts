@@ -1,4 +1,5 @@
 import { execFileSync } from "node:child_process";
+import { existsSync } from "node:fs";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -15,87 +16,53 @@ import {
 import { runCommand } from "citty";
 
 import { ruleCommand } from "../src/commands/rules";
+import {
+  servedBody,
+  stubV2Server,
+  type StubFile,
+  type StubRule,
+} from "./support/v2-server";
 
 /**
- * #280: the guard refusing a file-set rule that also carries a stray `tests`
- * field threw a bare `CLIError` from inside the command's own `try`, never
- * touching `fail()`. Under `--json` that skipped the envelope entirely —
- * stdout empty, prose on stderr, exit 1, indistinguishable from a crash.
+ * #280: a guard refusing a delivered rule from inside the command's own `try`
+ * threw a bare `CLIError` that never touched `fail()`. Under `--json` that
+ * skipped the envelope entirely — stdout empty, prose on stderr, exit 1,
+ * indistinguishable from a crash.
  *
- * These tests drive the ACTUAL command (via citty's own `runCommand`, which
- * parses argv exactly like the built CLI does) rather than the guard function
- * in isolation, because a unit test proving the function throws correctly
- * says nothing about whether the command reports it correctly — that is
- * exactly the seam #280 slipped through.
+ * The guard is now signature verification: a served rule whose bytes do not
+ * match its signatures is refused before anything is written. These tests
+ * drive the ACTUAL command (via citty's own `runCommand`, which parses argv
+ * exactly like the built CLI does), because a unit test proving the verifier
+ * refuses says nothing about whether the command reports it — that is exactly
+ * the seam #280 slipped through.
  */
-describe("rule create/improve --json: file-set rule with a stray `tests` field", () => {
+describe("rule create/improve --json: a served rule that fails verification", () => {
   let cwd: string;
   let logSpy: MockInstance<(...data: unknown[]) => void>;
 
-  const requestId = "11111111-1111-1111-1111-111111111111";
-  const iterateRequestId = "22222222-2222-2222-2222-222222222222";
-
-  // A minimal ast-grep file-set delivery for engine "sg": one file at
-  // `<id>.yml` (the only file `ENGINE_LAYOUTS.sg` requires), plus the stray
-  // `tests` field the schema says a file set must never carry.
-  const badRule = {
-    id: "guard-test-rule",
+  const rule: StubRule = {
+    id: "guard-test-rule-3fa9c21b",
     engine: "sg",
     files: [
       {
-        path: "guard-test-rule.yml",
+        path: "guard-test-rule-3fa9c21b.yml",
         content:
-          "id: guard-test-rule\nlanguage: TypeScript\nrule:\n  pattern: foo\n",
+          "id: guard-test-rule-3fa9c21b\nlanguage: TypeScript\nrule:\n  pattern: foo\n",
       },
+      { path: ".tests/fail/case.ts", content: "foo();\n" },
     ],
-    tests: { valid: ["const x = 1;"], invalid: ["foo();"] },
   };
 
-  function stubFetch(pollRequestId: string): void {
-    const fetchMock = vi.fn(
-      (input: string | URL | Request, init?: RequestInit) => {
-        const url = new URL(
-          typeof input === "string"
-            ? input
-            : input instanceof URL
-              ? input.href
-              : input.url
-        );
-        const method = (
-          init?.method ?? (input instanceof Request ? input.method : "GET")
-        ).toUpperCase();
-        const { pathname } = url;
-
-        if (pathname === "/cli/api/whoami") {
-          // Swallowed by fetchWhoami; resolveOrgSubject falls back to the
-          // token-claim path. Not what this test is about.
-          return Response.json({}, { status: 500 });
-        }
-        if (method === "POST" && pathname === "/cli/api/request") {
-          return Response.json({ requestId }, { status: 200 });
-        }
-        if (
-          method === "GET" &&
-          pathname === `/cli/api/request/${pollRequestId}`
-        ) {
-          return Response.json(
-            { status: "generated", rules: [badRule] },
-            { status: 200 }
-          );
-        }
-        if (
-          method === "POST" &&
-          pathname === "/cli/api/request/guard-test-rule/iterate"
-        ) {
-          return Response.json(
-            { requestId: iterateRequestId },
-            { status: 200 }
-          );
-        }
-        throw new Error(`unexpected ${method} ${pathname}`);
-      }
-    );
-    vi.stubGlobal("fetch", fetchMock);
+  /** Serve the rule with its file edited AFTER signing. */
+  async function stubTampered(): Promise<void> {
+    const body = await servedBody(rule, "rev-1");
+    const [fileSet] = body.rules as Array<{ files: StubFile[] }>;
+    fileSet!.files[0] = {
+      path: "guard-test-rule-3fa9c21b.yml",
+      content:
+        "id: guard-test-rule-3fa9c21b\nlanguage: TypeScript\nrule:\n  pattern: bar\n",
+    };
+    stubV2Server({ produced: [{ rule, body }] });
   }
 
   beforeEach(async () => {
@@ -158,7 +125,7 @@ describe("rule create/improve --json: file-set rule with a stray `tests` field",
   }
 
   it("rule create --json: reports RULE_GENERATION_FAILED as an envelope on stdout, not a bare throw", async () => {
-    stubFetch(requestId);
+    await stubTampered();
     const requestFile = join(cwd, "request.json");
     await writeFile(requestFile, JSON.stringify({ prompt: "add a rule" }));
 
@@ -172,16 +139,20 @@ describe("rule create/improve --json: file-set rule with a stray `tests` field",
     const envelope = lastEnvelope();
     expect(envelope.ok).toBe(false);
     expect(envelope.code).toBe("RULE_GENERATION_FAILED");
-    expect(envelope.message).toContain("guard-test-rule");
-    expect(envelope.message).toContain("tests");
+    expect(envelope.message).toContain(rule.id);
+    expect(envelope.message).toContain("signature");
+    // Refused before anything was written.
+    expect(existsSync(join(cwd, ".taskless", "rules", "sg", rule.id))).toBe(
+      false
+    );
   });
 
   it("rule improve --json: reports RULE_GENERATION_FAILED as an envelope on stdout, not a bare throw", async () => {
-    stubFetch(iterateRequestId);
+    await stubTampered();
     const requestFile = join(cwd, "improve-request.json");
     await writeFile(
       requestFile,
-      JSON.stringify({ ruleId: "guard-test-rule", guidance: "tighten it" })
+      JSON.stringify({ ruleId: rule.id, guidance: "tighten it" })
     );
 
     const runPromise = runCommand(ruleCommand, {
@@ -194,7 +165,11 @@ describe("rule create/improve --json: file-set rule with a stray `tests` field",
     const envelope = lastEnvelope();
     expect(envelope.ok).toBe(false);
     expect(envelope.code).toBe("RULE_GENERATION_FAILED");
-    expect(envelope.message).toContain("guard-test-rule");
-    expect(envelope.message).toContain("tests");
+    expect(envelope.message).toContain(rule.id);
+    expect(envelope.message).toContain("signature");
+    // Refused before anything was written.
+    expect(existsSync(join(cwd, ".taskless", "rules", "sg", rule.id))).toBe(
+      false
+    );
   });
 });

@@ -20,8 +20,16 @@ export const inputSchema = z.object({
 /** Output schema for `taskless rule create --json` on success */
 export const outputSchema = z.object({
   success: z.literal(true),
-  ruleId: z.string().describe("UUID of the generated rule job"),
-  rules: z.array(z.string()).describe("Rule IDs that were generated"),
+  requestId: z
+    .string()
+    .describe(
+      "The generation request's id. Not a rule id: nothing takes it back as one"
+    ),
+  rules: z
+    .array(z.string())
+    .describe(
+      "Ids of the rules that were written: each rule's directory name under `.taskless/rules/<engine>/`, which is what `rule improve`, `rule restore`, and `rule rollback` take"
+    ),
   files: z.array(z.string()).describe("File paths that were written"),
   notices: z
     .array(z.string())

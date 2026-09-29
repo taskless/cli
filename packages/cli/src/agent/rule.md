@@ -1,4 +1,4 @@
-# Topic: rule     (CLI v%(CLI_VERSION)s / topic v2)
+# Topic: rule     (CLI v%(CLI_VERSION)s / topic v3)
 
 ## Goal
 Umbrella for rule operations. Fetch the topic for the action you want.
@@ -15,7 +15,8 @@ Umbrella for rule operations. Fetch the topic for the action you want.
 
 `rule meta` reads a sidecar this CLI never writes, so it fails for every
 rule. Fetch `rule-meta` only to learn what to do instead. `improve-rule`
-takes the ticket id from `rule create --json`.
+takes the rule's id, which is its directory name under
+`.taskless/rules/<engine>/`.
 
 `route` is the entry point for authoring: it reads the request and
 names the `create-*-rule` topic that fits, so you do not pick an engine

@@ -374,11 +374,10 @@ describe("a delivered set defines what the rule directory contains", () => {
     expect(existsSync(join(directory, "captures", "logs.yml"))).toBe(true);
   });
 
-  it("keeps .tests/ fixtures the set does not mention", async () => {
-    // The stated exception. Nothing under `.tests/` reaches an engine (the dot
-    // is what makes ast-grep skip it), and this CLI writes timestamped
-    // fixtures there itself that no delivered set will ever name. Purging them
-    // would delete a rule's local test history on its first file-set delivery.
+  it("removes .tests/ fixtures the set does not mention", async () => {
+    // v2 serves a rule's fixtures in every file set, so a fixture the set does
+    // not name is stale. Left in place it would make `taskless test` judge
+    // the rule against cases nobody issued.
     const directory = await writeComplete();
     await mkdir(join(directory, ".tests", "valid"), { recursive: true });
     await writeFile(
@@ -396,9 +395,9 @@ describe("a delivered set defines what the rule directory contains", () => {
 
     expect(
       existsSync(join(directory, ".tests", "logs-abc12345-1970-test.yml"))
-    ).toBe(true);
+    ).toBe(false);
     expect(existsSync(join(directory, ".tests", "valid", "sample.ts"))).toBe(
-      true
+      false
     );
   });
 
@@ -651,13 +650,9 @@ describe("a delivery that carries no fixtures", () => {
     expect(warnings[0]).toContain("nothing exercises it");
   });
 
-  it("stays silent when the purge preserved fixtures the set never mentioned", async () => {
-    // The case the delivered-set check alone gets wrong, and it is the ordinary
-    // one rather than an edge: `.tests/` survives a set that does not name it,
-    // and `writeRuleTestFile` accumulates local fixtures no later set will
-    // name by construction. Warning here tells the holder of a rule they have
-    // tested that nothing proves it, while the proof sits in the directory
-    // just written.
+  it("warns when the set carries no fixtures, since the purge removed the old ones", async () => {
+    // The set is the directory, `.tests/` included, so a set with no
+    // fixtures leaves a rule with none, and the warning is true of the rule.
     const testsDirectory = join(
       ruleDirectory(cwd, "sg", "no-eval-abc12345"),
       ".tests"
@@ -678,12 +673,10 @@ describe("a delivery that carries no fixtures", () => {
       (message) => warnings.push(message)
     );
 
-    expect(warnings).toEqual([]);
-    // And the fixture is still there — the silence is because the purge kept
-    // it, not because the warning was dropped along with it.
+    expect(warnings).toHaveLength(1);
     expect(
       existsSync(join(testsDirectory, "no-eval-abc12345-20260101-test.yml"))
-    ).toBe(true);
+    ).toBe(false);
   });
 
   it("stays silent when fixtures are present", async () => {

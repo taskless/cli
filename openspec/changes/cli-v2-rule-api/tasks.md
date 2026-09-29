@@ -49,28 +49,29 @@ upgradeUrl }`, strip C0/C1 control characters except newline from
 
 ## 3. Generation on v2 (slice 2)
 
-- [ ] 3.1 Add `rules/verify-delivery.ts`: verify a served file set against its
+- [x] 3.1 Add `rules/verify-delivery.ts`: verify a served file set against its
       `signatures` (every signature names a file, every non-`.tests/` file has
       one, each hash matches, runtime `signature` equals the `check.ts` entry)
       and that `rules` holds exactly one set whose `id` is the requested id.
       Unit tests for each refusal.
-- [ ] 3.2 Make `writeDeliveredFileSet` the only write path for a served rule and
-      make it replace the directory (purge files the set lacks, `.tests/`
-      included; create each file's parent directories).
-      Drop the legacy single-`content` branch from `deliver.ts` and
-      `files.ts`. `deliver.test.ts` covers a local extra capture being removed.
-- [ ] 3.3 Move `rule create` to v2: submit, poll, fetch each produced
+- [x] 3.2 Make `writeDeliveredFileSet` the only write path for a served rule
+      (`writeServedRule`) and make it replace the directory (purge files the
+      set lacks, `.tests/` included; create each file's parent directories).
+      `deliver.test.ts` covers a stale fixture and a local extra capture being
+      removed. The legacy single-`content` branch still has a caller in the v1
+      repair path until 5.3, so it is dropped in 8.1.
+- [x] 3.3 Move `rule create` to v2: submit, poll, fetch each produced
       `{ ruleId, revisionId }` head in parallel without `revision`, confirm
       `revisionId`, verify, write. Print `error` verbatim (sanitized) on
       `failed` / `unsupported`. `--json` prints `requestId` and `rules`, no
       `ruleId`; update `schemas/rules-create.ts`. Tests use a stubbed v2 server.
-- [ ] 3.4 Move `rule improve` to `POST v2/rule/{ruleId}/iterate`, with the input
+- [x] 3.4 Move `rule improve` to `POST v2/rule/{ruleId}/iterate`, with the input
       `ruleId` meaning the directory name; `404 rule_not_found` →
       `RULE_NOT_FOUND`. Tests cover success and the not-found code.
-- [ ] 3.5 Keep the write-time entitlement warning for runtime sets served with
+- [x] 3.5 Keep the write-time entitlement warning for runtime sets served with
       `runtimeSignatures: false`; `rule-create-entitlement.test.ts` passes
       against v2 fixtures.
-- [ ] 3.6 Update the `create-remote-rule`, `improve-rule`, and `rule-meta`
+- [x] 3.6 Update the `create-remote-rule`, `improve-rule`, and `rule-meta`
       recipes: record the rule ids from `rules`, pass a directory name to
       `improve`, never the request id. `recipe-cross-references.test.ts` passes.
 
@@ -156,8 +157,12 @@ upgradeUrl }`, strip C0/C1 control characters except newline from
 
 ## 8. Retire v1 (slice 5)
 
-- [ ] 8.1 Delete `api/rules.ts`, `api/reconcile.ts`, `api/restore.ts`, the
-      frozen v1 `api.schema.json` / `api.d.ts`, and every v1 type use; move `auth/whoami.ts` and `auth/org.ts` to v2 whoami. Verify
+- [ ] 8.1 Delete `api/rules.ts` (its v1 request, poll, and iterate calls went
+      in slice 2), `api/reconcile.ts`, `api/restore.ts`, the frozen v1
+      `api.schema.json` / `api.d.ts`, the legacy single-`content` path in
+      `files.ts` / `deliver.ts` (`writeRuleFile`, `writeRuleTestFile`,
+      `writeRuleMetaFiles`, `deliveredFiles`, `resolveIngestEngine`), and
+      every v1 type use; move `auth/whoami.ts` and `auth/org.ts` to v2 whoami. Verify
       `grep -rn "/cli/api/" packages/cli/src` finds only `/cli/api/v2/` paths.
 - [ ] 8.2 Add a vite build check (per the code style guide, not a test that
       scans output) that fails the build if the bundle contains a `/cli/api/`
