@@ -34,7 +34,7 @@ function toAsciiJson(value: unknown): string {
 // The vectors endpoint is unauthenticated and lives under /cli/api/.
 // `apiBaseUrl` documents the one tier of the runtime client's origin
 // resolution these scripts skip.
-const sourceUrl = `${apiBaseUrl()}/cli/api/rule-hash-vectors`;
+const sourceUrl = `${apiBaseUrl()}/cli/api/v2/rule-hash-vectors`;
 
 console.log(`Fetching rule-hash conformance vectors...`);
 console.log(`  URL: ${sourceUrl}`);

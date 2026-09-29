@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { parseEntitlement } from "../src/api/entitlement";
+import { parseEntitlement, parseEntitlementV2 } from "../src/api/entitlement";
 
 const UPGRADE = "https://app.taskless.io/o/acme/upgrade?from=reconcile";
 
@@ -70,6 +70,59 @@ describe("parseEntitlement", () => {
       const parsed = parseEntitlement({ runtimeSignatures: false, upgradeUrl });
       expect(parsed).toBeDefined();
       expect(parsed).not.toHaveProperty("upgradeUrl");
+    }
+  });
+});
+
+describe("parseEntitlementV2", () => {
+  it("keeps every withheld rule, which the v1 parser would have dropped (#403)", () => {
+    const withheld = [
+      { ruleId: "no-env-leak-3fa9c21b", revisionId: "rev-1" },
+      { ruleId: "no-eval-00000000", revisionId: "rev-2" },
+    ];
+    const body = {
+      runtimeSignatures: false,
+      reason: "RUNTIME_SIGNATURES_NOT_IN_PLAN",
+      upgradeUrl: UPGRADE,
+      withheld,
+    };
+
+    // The hazard: v1's parser keys on `file`, which v2 entries do not carry.
+    expect(parseEntitlement(body)?.withheld).toEqual([]);
+
+    expect(parseEntitlementV2(body)).toEqual({
+      runtimeSignatures: false,
+      reason: "RUNTIME_SIGNATURES_NOT_IN_PLAN",
+      upgradeUrl: UPGRADE,
+      withheld,
+    });
+  });
+
+  it("keeps an entry that lacks a revision id", () => {
+    expect(
+      parseEntitlementV2({
+        runtimeSignatures: false,
+        withheld: [{ ruleId: "a" }],
+      })?.withheld
+    ).toEqual([{ ruleId: "a" }]);
+  });
+
+  it("drops only an entry with no rule id, since nothing can be joined to it", () => {
+    expect(
+      parseEntitlementV2({
+        runtimeSignatures: false,
+        withheld: [{ revisionId: "r" }, "junk", { ruleId: "a" }],
+      })?.withheld
+    ).toEqual([{ ruleId: "a" }]);
+  });
+
+  it("is undefined for an entitled organization or anything but exactly false", () => {
+    for (const value of [
+      undefined,
+      { runtimeSignatures: true },
+      { runtimeSignatures: "false" },
+    ]) {
+      expect(parseEntitlementV2(value)).toBeUndefined();
     }
   });
 });
