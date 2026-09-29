@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import { stat } from "node:fs/promises";
+import { readdir, stat } from "node:fs/promises";
 import { isAbsolute, join, resolve as resolvePath } from "node:path";
 import process from "node:process";
 import { StringDecoder } from "node:string_decoder";
@@ -465,6 +465,27 @@ async function spawnVale(
   });
 }
 
+/**
+ * Top-level directories Vale is never handed on a whole-project walk.
+ *
+ * `.taskless/` holds the per-run directories under `.taskless/.run/`, which
+ * other `check`s create and delete while this one runs. Vale's `--glob`
+ * exclusion filters which files it LINTS, not where it WALKS: it still lists
+ * and `lstat`s every directory it passes through, and a path that vanishes
+ * between the two is fatal (`E100: lstat …: no such file or directory`, exit 2).
+ * Measured: 4 of 24 concurrent whole-project `check`s lost every Vale finding
+ * that way. `.git/` is never a lint target either. Every other top-level entry
+ * is handed over as-is, so the files Vale lints are exactly the ones a walk of
+ * `.` would have linted, less those two trees.
+ */
+const NEVER_WALKED = new Set([TASKLESS_DIRECTORY, ".git"]);
+
+/** The targets that stand in for `.` on a whole-project walk. */
+async function wholeProjectTargets(cwd: string): Promise<string[]> {
+  const entries = await readdir(cwd);
+  return entries.filter((name) => !NEVER_WALKED.has(name)).toSorted();
+}
+
 export interface ValeRunOptions {
   /** Project root. Vale runs here, so the config's relative paths resolve. */
   cwd: string;
@@ -520,7 +541,12 @@ export async function runVale(
   // `.taskless/` on any `check .`, independently of the ast-grep fix in this
   // change. Same defect, same signal, one line apart.
   const wholeProject = isWholeProjectWalk(paths);
-  const targets = wholeProject ? ["."] : paths;
+  const targets = wholeProject ? await wholeProjectTargets(options.cwd) : paths;
+  // A project with nothing but `.taskless/` and `.git/` has nothing to lint.
+  // Handing Vale an empty target list would make it walk `.` after all.
+  if (targets.length === 0) {
+    return { status: "ok", blocking: false, results: [], notices: [] };
+  }
 
   // Two exclusions reach Vale, and they have to travel together because Vale
   // accepts exactly one `--glob` and the last one wins — pass two flags and the

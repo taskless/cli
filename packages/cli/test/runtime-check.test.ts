@@ -689,7 +689,7 @@ describe("check: static vs runtime dispatch", () => {
       )
     );
     expect(logs[0]).toContain("reconcile answered");
-    expect(logs[0]).toContain("runtime/demo: runs");
+    expect(logs[0]).toContain("runtime/demo: run, runs");
     expect(logs[2]).toMatch(/demo: \d+ finding\(s\) in \d+ms/);
     for (const log of logs) expect(log).not.toContain("fake.token");
   });

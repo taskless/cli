@@ -59,6 +59,12 @@ export interface RuleDisposition {
   engine: EngineName;
   /** Whether it stays in the snapshot the engines read. */
   run: boolean;
+  /**
+   * What the service answered, for the run's `engine.log`. `run` and a local
+   * static rule's `unknown` both run, and the log is where telling them apart
+   * matters.
+   */
+  verdict: "run" | "unsafe" | "unknown" | "withheld" | "unaccounted";
   /** Why it did not run, for `skipped` (runtime) and notices. */
   reason?: string;
 }
@@ -112,7 +118,13 @@ export function describeDifferences(files: readonly DifferingFile[]): string {
 /** Record a reported rule the answer did not account for: it does not run, and the run fails. */
 function unaccounted(plan: VerdictPlan, rule: ReportedRule, why: string): void {
   const { ruleId, engine } = rule;
-  plan.dispositions.push({ ruleId, engine, run: false, reason: why });
+  plan.dispositions.push({
+    ruleId,
+    engine,
+    run: false,
+    verdict: "unaccounted",
+    reason: why,
+  });
   plan.integrity.push({ ruleId, engine, verdict: "unaccounted" });
   plan.failures.push(`${engine} rule ${ruleId} did not run: ${why}.`);
 }
@@ -175,6 +187,7 @@ export function applyVerdicts(
         ruleId,
         engine,
         run: false,
+        verdict: "withheld",
         reason: NOT_IN_PLAN_REASON,
       });
       continue;
@@ -184,13 +197,24 @@ export function applyVerdicts(
       if (engine === "runtime") {
         const reason =
           "not issued by the rule service for this repository, so it runs only with --dangerously-run-scripts";
-        plan.dispositions.push({ ruleId, engine, run: false, reason });
+        plan.dispositions.push({
+          ruleId,
+          engine,
+          run: false,
+          verdict: "unknown",
+          reason,
+        });
         plan.integrity.push({ ruleId, engine, verdict: "unknown" });
       } else {
         // Locally written static rules are first-class, and every one of them
         // is `unknown`. A notice per rule per run would be noise that trains
         // people to skip notices.
-        plan.dispositions.push({ ruleId, engine, run: true });
+        plan.dispositions.push({
+          ruleId,
+          engine,
+          run: true,
+          verdict: "unknown",
+        });
       }
       continue;
     }
@@ -214,7 +238,7 @@ export function applyVerdicts(
 
     switch (answer.verdict) {
       case "run": {
-        plan.dispositions.push({ ruleId, engine, run: true });
+        plan.dispositions.push({ ruleId, engine, run: true, verdict: "run" });
         break;
       }
       case "unsafe": {
@@ -226,6 +250,7 @@ export function applyVerdicts(
             ruleId,
             engine,
             run: false,
+            verdict: "unsafe",
             reason: `edited since Taskless issued it (${changes})`,
           });
           plan.notices.push(
@@ -236,6 +261,7 @@ export function applyVerdicts(
             ruleId,
             engine,
             run: false,
+            verdict: "unsafe",
             reason: `edited since Taskless issued it (${changes})`,
           });
           plan.failures.push(

@@ -140,6 +140,19 @@ filesystem, and this host cannot tell whether the process lives.
 `.taskless/.run/.gitignore` (`*`) is written only if missing, since concurrent runs would race
 on it.
 
+Two defects the concurrency test found once it was run repeatedly, both fixed:
+
+- **Vale walked other runs' directories.** Vale's `--glob` exclusion filters which files it
+  lints, not where it walks, so it `lstat`ed directories other runs were deleting and died
+  with `E100` (4 of 24 concurrent runs lost every Vale finding). A whole-project Vale run is
+  now handed each top-level entry except `.taskless/` and `.git/` instead of `.`, so it never
+  enters `.taskless/`. ast-grep's walker honors the nested `.gitignore` and needed nothing.
+  Measured after: 0 of 48.
+- **A starting run looked abandoned.** A run creates its directory and writes `owner` as two
+  steps, so a concurrent sweep could see a live run with no owner. Only non-run-id names
+  (the legacy `snapshot/`, `runtime-rules/`) are swept for being ownerless; a run-id
+  directory without an owner is swept only after a one-minute grace.
+
 ### 3. What is reported for a rule
 
 One `{ ruleId, files }` per directory under `.taskless/rules/<engine>/`, where

@@ -6,6 +6,7 @@ import {
   readdir,
   readFile,
   rm,
+  stat,
   writeFile,
 } from "node:fs/promises";
 import { hostname } from "node:os";
@@ -33,12 +34,27 @@ import process from "node:process";
  * because it would either delete a slow run still in progress or keep junk for
  * hours. A directory owned by another host (a shared filesystem) is left
  * alone, since this host cannot tell whether that process lives. A directory
- * with no `owner` file predates run ids (0.11's `runtime-rules/`, the first
- * 0.12 `snapshot/`) and is swept too.
+ * whose name is not a run id predates run ids (0.11's `runtime-rules/`, the
+ * first 0.12 `snapshot/`) and is swept too. A run-id directory with no `owner`
+ * is swept only after a grace period, because that is also what a run looks
+ * like in the instant between creating its directory and recording its owner.
  */
 
 /** `.taskless/.run`, relative to the project root. */
 const RUN_ROOT = join(".taskless", ".run");
+
+/** A run id, as {@link newRunId} makes them. */
+const RUN_ID = /^\d{8}T\d{6}Z-[0-9a-f]{6}$/;
+
+/**
+ * How long a run-id directory may go without an `owner` record before it
+ * counts as abandoned. A run creates its directory and writes its owner as two
+ * steps, so for an instant a LIVE run has no owner; a sweep landing there must
+ * leave it alone. Measured: four concurrent `check`s swept each other's
+ * directories when ownerless meant abandoned. A run killed inside that instant
+ * is caught by the next sweep after this grace.
+ */
+const OWNERLESS_GRACE_MS = 60_000;
 
 /** Who is using a run directory, so a later run can tell if it was abandoned. */
 interface Owner {
@@ -128,6 +144,15 @@ async function readOwner(directory: string): Promise<Owner | undefined> {
   }
 }
 
+async function olderThan(path: string, ms: number): Promise<boolean> {
+  try {
+    const { mtimeMs } = await stat(path);
+    return Date.now() - mtimeMs > ms;
+  } catch {
+    return false;
+  }
+}
+
 /**
  * Remove every run directory whose owner is gone. Returns what was removed,
  * for the engine log. Never throws: a sweep that cannot finish leaves junk,
@@ -149,6 +174,12 @@ export async function sweepAbandonedRuns(cwd: string): Promise<string[]> {
     if (owner !== undefined) {
       if (owner.hostname !== hostname()) continue;
       if (isAlive(owner.pid)) continue;
+    } else if (
+      // A run id with no owner yet is most likely a run starting right now.
+      RUN_ID.test(entry.name) &&
+      !(await olderThan(directory, OWNERLESS_GRACE_MS))
+    ) {
+      continue;
     }
     try {
       await rm(directory, { recursive: true, force: true });

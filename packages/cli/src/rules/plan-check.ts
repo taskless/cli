@@ -242,7 +242,7 @@ export async function planCheck(
   );
   for (const disposition of verdicts.dispositions) {
     log.write(
-      `${disposition.engine}/${disposition.ruleId}: ${
+      `${disposition.engine}/${disposition.ruleId}: ${disposition.verdict}, ${
         disposition.run
           ? "runs"
           : `excluded (${disposition.reason ?? "not verified"})`
