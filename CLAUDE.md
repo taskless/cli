@@ -21,6 +21,8 @@ This is not hypothetical. An agent followed `pnpm cli agent create-sg-rule` from
 
 **The installed Taskless skill pins a published nightly**, recorded as `install.cliVersion` in `.taskless/taskless.json`, and every command in `.taskless/skills/taskless/SKILL.md` carries that pin. The pin and `pnpm cli` disagree exactly when `dist/` is behind HEAD, and neither is automatically right: the pin is a real build of some commit, `pnpm cli` is this tree only after you rebuild it. Rebuild, then prefer `pnpm cli`: it is the only one that can reflect uncommitted work. Note that the nightly package is blocked by a deny rule here, so `pnpm build` is the practical way to get current recipes, not a fallback.
 
+**Before `pnpm cli` talks to the Taskless service, build with `pnpm build:next`, not `pnpm build`.** The service and the rule generator decide what a client may do from its `x-taskless-cli-version` header: which API it may call, and whether it may be sent runtime rules. A plain build reports the last RELEASED version from `package.json`, so a tree carrying unreleased API work presents itself as the old client and trips the "unsupported" and upgrade gates meant for one. `build:next` stamps the version the pending changesets will release, as `<next>-next-<sha>` (for example `0.12.0-next-fa9ae7c`), which the service reads as that release. It builds the same nightly target CI publishes, so the only difference from a real nightly is the suffix. `pnpm lint` runs a plain `pnpm build`, so rebuild with `build:next` after linting if you are about to call the service.
+
 When running OpenSpec commands in this repo, use `pnpm openspec` instead of a bare `openspec`. The bare command is not on `PATH` here and is blocked by a deny rule.
 
 ## Git Command Help for Agents
