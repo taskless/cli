@@ -156,12 +156,14 @@ test("a grandchild is rebased from its parent's pre-rebase tip, not from the par
 
   // The fake answers `rev-parse kid` with "sha-of-kid", so that string IS kid's
   // tip as it stood before the first rebase below rewrote it.
-  const rebases = git.calls.filter((c) => c.startsWith("rebase --onto"));
+  const rebases = git.calls.filter((c) =>
+    c.startsWith("rebase --gpg-sign --onto")
+  );
   assert.deepEqual(rebases, [
-    "rebase --onto root kid-forked-at",
-    // NOT "rebase --onto kid kid" — the upstream is where grandkid forked,
+    "rebase --gpg-sign --onto root kid-forked-at",
+    // NOT "rebase --gpg-sign --onto kid kid" — the upstream is where grandkid forked,
     // which is kid's tip BEFORE the line above rewrote it.
-    "rebase --onto kid sha-of-kid",
+    "rebase --gpg-sign --onto kid sha-of-kid",
   ]);
 });
 
@@ -224,7 +226,7 @@ test("--max-own bounds a branch whose expected own-count is unknown", () => {
 test("a conflict aborts the rebase, names the files, and stops the cascade", () => {
   const git = fakeGit({
     overrides: [
-      ["rebase --onto", { code: 1, stderr: "CONFLICT" }],
+      ["rebase --gpg-sign --onto", { code: 1, stderr: "CONFLICT" }],
       ["diff --name-only", { code: 0, stdout: "src/a.ts\nsrc/b.ts" }],
     ],
   });
@@ -240,6 +242,38 @@ test("a conflict aborts the rebase, names the files, and stops the cascade", () 
     "checkout start",
     "returns to the starting branch"
   );
+});
+
+// A rebase writes new commits, and git signs them only when told to. Without
+// the flag, a stack whose commits were all signed came back 21 of 25 unsigned.
+test("every replayed commit is signed unless --no-sign is passed", () => {
+  const signed = run(["--root", "root", "--no-push"], { git: fakeGit() }).git;
+  assert.ok(signed.calls.some((c) => c.startsWith("rebase --gpg-sign --onto")));
+
+  const unsigned = run(["--root", "root", "--no-push", "--no-sign"], {
+    git: fakeGit(),
+  }).git;
+  assert.ok(unsigned.calls.some((c) => c.startsWith("rebase --onto")));
+  assert.ok(!unsigned.calls.some((c) => c.includes("--gpg-sign")));
+});
+
+test("a signing failure is reported as one, not as a conflict", () => {
+  const git = fakeGit({
+    overrides: [
+      [
+        "rebase --gpg-sign --onto",
+        { code: 1, stderr: "error: gpg failed to sign the data" },
+      ],
+    ],
+  });
+  const { code, lines } = run(["--root", "root"], { git });
+
+  assert.equal(code, 7);
+  assert.match(lines, /SIGNING FAILED rebasing child/);
+  assert.doesNotMatch(lines, /CONFLICT/);
+  assert.ok(git.calls.includes("rebase --abort"));
+  assert.ok(!git.calls.some((c) => c.startsWith("push")));
+  assert.equal(git.calls.at(-1), "checkout start");
 });
 
 // Continuing past a failed checkout would rebase and force-push whichever
@@ -275,7 +309,7 @@ test("--no-push skips the fetch and the push, but still rebases", () => {
 
   assert.equal(code, 0);
   assert.match(lines, /not pushed \(--no-push\)/);
-  assert.ok(git.calls.some((c) => c.startsWith("rebase --onto")));
+  assert.ok(git.calls.some((c) => c.startsWith("rebase --gpg-sign --onto")));
   assert.ok(!git.calls.some((c) => c.startsWith("fetch")));
   assert.ok(!git.calls.some((c) => c.startsWith("push")));
 });
@@ -346,7 +380,7 @@ test("a branch missing locally is skipped without stopping the cascade", () => {
   assert.equal(code, 0);
   assert.match(lines, /· skip gone/);
   assert.ok(
-    git.calls.includes("rebase --onto root forked-at"),
+    git.calls.includes("rebase --gpg-sign --onto root forked-at"),
     "the other branch still runs"
   );
 });
@@ -399,7 +433,7 @@ test("with no reflog knowledge of a rewrite, the guard agrees with a wrong upstr
   assert.equal(code, 0, "the run reports success");
   assert.match(lines, /rebased onto root/);
   assert.ok(
-    git.calls.includes("rebase --onto root root"),
+    git.calls.includes("rebase --gpg-sign --onto root root"),
     "the upstream fell back to the parent itself"
   );
   assert.ok(
@@ -459,7 +493,7 @@ test("a conflict on a guessed upstream says which side is the superseded one", (
   const git = fakeGit({
     overrides: [
       ["merge-base --is-ancestor", { code: 1 }],
-      ["rebase --onto", { code: 1, stderr: "CONFLICT" }],
+      ["rebase --gpg-sign --onto", { code: 1, stderr: "CONFLICT" }],
       ["diff --name-only", { code: 0, stdout: "parent.txt" }],
     ],
   });
@@ -476,7 +510,7 @@ test("a conflict on a known fork point carries no guess warning", () => {
   const git = fakeGit({
     forkPoints: { "root->child": "forked-at" },
     overrides: [
-      ["rebase --onto", { code: 1, stderr: "CONFLICT" }],
+      ["rebase --gpg-sign --onto", { code: 1, stderr: "CONFLICT" }],
       ["diff --name-only", { code: 0, stdout: "parent.txt" }],
     ],
   });
@@ -490,7 +524,7 @@ test("the conflict line names where the upstream came from", () => {
   const git = fakeGit({
     forkPoints: { "root->child": "forked-at" },
     overrides: [
-      ["rebase --onto", { code: 1, stderr: "CONFLICT" }],
+      ["rebase --gpg-sign --onto", { code: 1, stderr: "CONFLICT" }],
       ["diff --name-only", { code: 0, stdout: "a.ts" }],
     ],
   });

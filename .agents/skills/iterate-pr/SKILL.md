@@ -131,8 +131,10 @@ that same upstream, so its expectation cannot be inflated by the parent's
 superseded commits.
 
 ```bash
-node ${CLAUDE_SKILL_ROOT}/scripts/propagate_stack.cjs --root <branch> [--dry-run] [--no-push]
+node ${CLAUDE_SKILL_ROOT}/scripts/propagate_stack.cjs --root <branch> [--dry-run] [--no-push] [--no-sign]
 ```
+
+**Every replayed commit is GPG-signed.** A rebase writes new commits, and git signs them only when told to, so a stack signed with `commit -S` comes back unsigned from a plain rebase. The script passes `--gpg-sign`, and a signing failure (usually a locked key) is reported as one, not as a conflict. `--no-sign` opts out for a repository that does not sign.
 
 **One failure path leaves the repo on another branch.** Normal completion, a
 rebase conflict, a balloon guard trip, and a push failure all `checkout` the
