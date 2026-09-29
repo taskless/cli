@@ -69,7 +69,8 @@ carries the same as data:
 ```
 
 **Do not edit the rule back by hand, and do not delete it.** Run
-`%(TASKLESS_CLI)s rule restore <ruleId>`. If the edit was intended, the
+`%(TASKLESS_CLI)s rule restore <ruleId>` (see
+`%(TASKLESS_CLI)s agent recover-rule`). If the edit was intended, the
 rule has to be improved through the service (`improve-rule`) or
 rewritten as a local rule under a new id. An edited rule is exactly what
 an agent tuning a rule until its own violation passes looks like, which

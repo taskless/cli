@@ -5,9 +5,12 @@ import { defineCommand } from "citty";
 
 import { ZodError } from "zod";
 
-import { identityFailureCode, resolveIdentity } from "../auth/identity";
+import {
+  identityFailureCode,
+  resolveIdentity,
+  type Identity,
+} from "../auth/identity";
 import { iterateRule, submitRequest, type V2Outcome } from "../api/v2";
-import type { Identity } from "../auth/identity";
 import { readRuleMetaFile, deleteRuleFiles } from "../rules/files";
 import {
   awaitRequest,
@@ -27,6 +30,13 @@ import {
   outputSchema as improveOutputSchema,
 } from "../schemas/rules-improve";
 import { outputSchema as metaOutputSchema } from "../schemas/rules-meta";
+import { outputSchema as recoverOutputSchema } from "../schemas/rules-recover";
+import {
+  beginRestore,
+  restore,
+  rollback,
+  type Recovered,
+} from "../rules/recover";
 import { getTelemetry } from "../telemetry";
 import { CLIError } from "../util/cli-error";
 import { type CLIErrorCode, writeJsonError } from "../types/errors";
@@ -661,6 +671,134 @@ const deleteCommand = defineCommand({
   },
 });
 
+/**
+ * The shared body of `rule restore` and `rule rollback`: resolve identity, run
+ * the recovery, and report it in both output modes. Every failure is a
+ * `CLIError` carrying the code an agent branches on.
+ */
+async function runRecovery(
+  args: { dir?: string; json: boolean },
+  ruleId: string,
+  recover: (cwd: string, identity: Identity) => Promise<Recovered | string>
+): Promise<void> {
+  const cwd = resolve(args.dir ?? process.cwd());
+  const report = (message: string, code: CLIErrorCode): void => {
+    if (args.json) writeJsonError(code, message);
+    else console.error(`Error: ${message}`);
+    process.exitCode = 1;
+  };
+
+  let identity: Identity;
+  try {
+    identity = await resolveIdentity(cwd);
+  } catch (error) {
+    report(
+      error instanceof Error ? error.message : String(error),
+      identityFailureCode(error)
+    );
+    return;
+  }
+
+  let outcome: Recovered | string;
+  try {
+    outcome = await recover(cwd, identity);
+  } catch (error) {
+    report(
+      error instanceof Error ? error.message : String(error),
+      error instanceof CLIError && error.code ? error.code : "INTERNAL_ERROR"
+    );
+    return;
+  }
+
+  // A string is "nothing to do": the rule is already intact.
+  if (typeof outcome === "string") {
+    if (args.json) {
+      console.log(
+        JSON.stringify(
+          recoverOutputSchema.parse({
+            success: true,
+            ruleId,
+            files: [],
+            notices: [outcome],
+          })
+        )
+      );
+    } else {
+      console.log(outcome);
+    }
+    return;
+  }
+
+  if (args.json) {
+    console.log(
+      JSON.stringify(
+        recoverOutputSchema.parse({
+          success: true,
+          ruleId: outcome.ruleId,
+          revisionId: outcome.revisionId,
+          files: outcome.files,
+          ...(outcome.notices.length > 0 ? { notices: outcome.notices } : {}),
+        })
+      )
+    );
+  } else {
+    for (const notice of outcome.notices) console.log(notice);
+  }
+}
+
+const restoreCommand = defineCommand({
+  meta: {
+    name: "restore",
+    description:
+      "Put back the version of a rule Taskless issued, after it was edited or deleted",
+  },
+  args: {
+    dir: { type: "string", alias: "d", description: "Working directory" },
+    json: { type: "boolean", description: "Output as JSON", default: false },
+    id: {
+      type: "positional",
+      description:
+        "Rule id: its directory name under .taskless/rules/<engine>/",
+      required: true,
+    },
+  },
+  async run({ args }) {
+    await runRecovery(args, args.id, async (cwd, identity) => {
+      const start = await beginRestore(cwd, identity, args.id);
+      if (start.kind === "intact") return start.message;
+      return restore(cwd, identity, args.id, start.expect);
+    });
+  },
+});
+
+const rollbackCommand = defineCommand({
+  meta: {
+    name: "rollback",
+    description:
+      "Make an earlier revision of a rule current, and write it to disk",
+  },
+  args: {
+    dir: { type: "string", alias: "d", description: "Working directory" },
+    json: { type: "boolean", description: "Output as JSON", default: false },
+    id: {
+      type: "positional",
+      description:
+        "Rule id: its directory name under .taskless/rules/<engine>/",
+      required: true,
+    },
+    revision: {
+      type: "positional",
+      description: "The revision id to make current",
+      required: true,
+    },
+  },
+  async run({ args }) {
+    await runRecovery(args, args.id, (cwd, identity) =>
+      rollback(cwd, identity, args.id, args.revision)
+    );
+  },
+});
+
 export const ruleCommand = defineCommand({
   meta: {
     name: "rule",
@@ -671,5 +809,7 @@ export const ruleCommand = defineCommand({
     improve: improveCommand,
     meta: metaCommand,
     delete: deleteCommand,
+    restore: restoreCommand,
+    rollback: rollbackCommand,
   },
 });

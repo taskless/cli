@@ -10,6 +10,7 @@ Umbrella for rule operations. Fetch the topic for the action you want.
 | Create a rule      | `%(TASKLESS_CLI)s agent route`                        |
 | Improve a rule     | `%(TASKLESS_CLI)s agent improve-rule`                 |
 | Delete a rule      | `%(TASKLESS_CLI)s agent delete-rule`                  |
+| Restore or roll back a rule | `%(TASKLESS_CLI)s agent recover-rule`        |
 | Verify a rule      | `%(TASKLESS_CLI)s agent verify-rule` (agent-internal) |
 | Read rule metadata | `%(TASKLESS_CLI)s agent rule-meta`   (agent-internal) |
 
