@@ -1,6 +1,13 @@
 import { execFileSync } from "node:child_process";
 import { existsSync } from "node:fs";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import {
+  chmod,
+  mkdir,
+  mkdtemp,
+  readFile,
+  rm,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -44,8 +51,8 @@ function sgRule(content: string): StubRule {
 
 type Verdict =
   | { kind: "run" | "unknown" | "withheld" }
-  | { kind: "unsafe"; expected: string }
-  | { kind: "missing"; revisionId: string };
+  | { kind: "unsafe"; expected: string; engine?: string }
+  | { kind: "missing"; revisionId: string; engine?: string };
 
 interface Stub {
   verdict: Verdict;
@@ -105,7 +112,7 @@ describe("rule restore / rule rollback", () => {
                   ? [
                       {
                         ruleId: RULE_ID,
-                        engine: "sg",
+                        engine: v.engine ?? "sg",
                         verdict: "unsafe",
                         files: [
                           {
@@ -120,7 +127,7 @@ describe("rule restore / rule rollback", () => {
                     ? [
                         {
                           ruleId: RULE_ID,
-                          engine: "sg",
+                          engine: v.engine ?? "sg",
                           verdict: "missing",
                           revisionId: v.revisionId,
                         },
@@ -278,11 +285,91 @@ describe("rule restore / rule rollback", () => {
     ).toBe(true);
   });
 
+  it.skipIf(process.getuid?.() === 0)(
+    "still names the rule file when only the stale-entry cleanup failed",
+    async () => {
+      await writeLocal(NEWER);
+      const blocked = join(cwd, ".taskless", "rules", "sg", RULE_ID, "blocked");
+      await mkdir(blocked);
+      await writeFile(join(blocked, "stale.ts"), "stale\n");
+      await chmod(blocked, 0o500);
+      try {
+        stub({
+          verdict: { kind: "run" },
+          served: {
+            ...(await servedBody(sgRule(ISSUED), "r1")),
+            restoreRules: true,
+          },
+        });
+        const output = await run(["rollback", RULE_ID, "r1"]);
+        expect(output).toMatchObject({
+          success: true,
+          files: [ruleFile()],
+        });
+        expect(await readFile(ruleFile(), "utf8")).toBe(ISSUED);
+        expect(String((output.notices as string[]).at(-1))).toContain(
+          "could not be removed"
+        );
+      } finally {
+        await chmod(blocked, 0o700);
+      }
+    }
+  );
+
   it("refuses a missing rule served at a different revision", async () => {
     stub({
       verdict: { kind: "missing", revisionId: "r1" },
       served: {
         ...(await servedBody(sgRule(NEWER), "r2")),
+        restoreRules: true,
+      },
+    });
+    const output = await run(["restore", RULE_ID]);
+    expect(output).toMatchObject({ ok: false, code: "RULE_RESTORE_MISMATCH" });
+    expect(existsSync(ruleFile())).toBe(false);
+  });
+
+  it("refuses a missing verdict for a rule that is on disk, and writes nothing", async () => {
+    await writeLocal(EDITED);
+    stub({
+      verdict: { kind: "missing", revisionId: "r2" },
+      served: {
+        ...(await servedBody(sgRule(NEWER), "r2")),
+        restoreRules: true,
+      },
+    });
+    const output = await run(["restore", RULE_ID]);
+    expect(output).toMatchObject({ ok: false, code: "NETWORK_ERROR" });
+    expect(String(output.message)).toContain("is missing");
+    expect(await readFile(ruleFile(), "utf8")).toBe(EDITED);
+    expect(restoreCalled()).toBe(false);
+  });
+
+  it("refuses a verdict judged under another engine, without calling restore", async () => {
+    await writeLocal(EDITED);
+    stub({
+      verdict: {
+        kind: "unsafe",
+        expected: await canonicalHash(ISSUED),
+        engine: "vale",
+      },
+      served: {
+        ...(await servedBody(sgRule(ISSUED), "r1")),
+        restoreRules: true,
+      },
+    });
+    const output = await run(["restore", RULE_ID]);
+    expect(output).toMatchObject({ ok: false, code: "NETWORK_ERROR" });
+    expect(String(output.message)).toContain("vale rule");
+    expect(await readFile(ruleFile(), "utf8")).toBe(EDITED);
+    expect(restoreCalled()).toBe(false);
+  });
+
+  it("refuses a missing rule served under another engine, and writes nothing", async () => {
+    stub({
+      verdict: { kind: "missing", revisionId: "r1", engine: "vale" },
+      served: {
+        ...(await servedBody(sgRule(ISSUED), "r1")),
         restoreRules: true,
       },
     });
@@ -412,7 +499,7 @@ describe("rule restore / rule rollback", () => {
       ],
     };
     stub({
-      verdict: { kind: "missing", revisionId: "r1" },
+      verdict: { kind: "missing", revisionId: "r1", engine: "runtime" },
       served: {
         ...(await servedBody(runtime, "r1", {
           entitlement: {

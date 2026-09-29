@@ -8,10 +8,13 @@ import {
 import { notRunOnPlanSentence, parseEntitlementV2 } from "../api/entitlement";
 import type { Identity } from "../auth/identity";
 import { CLIError } from "../util/cli-error";
+import { isRecord } from "../util/is-record";
 import { getCliPrefix } from "../util/package-manager";
 import { PurgeIncompleteError } from "./deliver";
+import { ruleFilePath } from "./engines";
 import { writeServedRule } from "./files";
 import { orgNotFoundMessage } from "./generate";
+import { isKnownEngine, type EngineName } from "./layout";
 import { reportRules } from "./report";
 import { takeSnapshot } from "./snapshot";
 import { verifyServedRule } from "./verify-delivery";
@@ -46,12 +49,8 @@ export type RestoreStart =
   | { kind: "restore"; expect: Expectation };
 
 type Expectation =
-  | { verdict: "unsafe"; signatures: Map<string, string> }
-  | { verdict: "missing"; revisionId: string };
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
+  | { verdict: "unsafe"; engine: EngineName; signatures: Map<string, string> }
+  | { verdict: "missing"; engine: EngineName; revisionId: string };
 
 function records(value: unknown): Record<string, unknown>[] {
   return Array.isArray(value) ? value.filter((entry) => isRecord(entry)) : [];
@@ -178,6 +177,13 @@ export async function beginRestore(
   }
 
   const verdict = records(body.rules).find((entry) => entry.ruleId === ruleId);
+  // The engine the service judged, exactly as `check` reads it: without one
+  // the verdict cannot be tied to a directory, and restore would write
+  // wherever the served set happens to point.
+  const judged =
+    typeof verdict?.engine === "string" && isKnownEngine(verdict.engine)
+      ? verdict.engine
+      : undefined;
   switch (verdict?.verdict) {
     case "run": {
       return {
@@ -186,7 +192,13 @@ export async function beginRestore(
       };
     }
     case "unsafe": {
-      if (local === undefined) break;
+      if (local === undefined || judged === undefined) break;
+      if (judged !== local.engine) {
+        throw new CLIError(
+          `The rule service judged rule ${ruleId} as a ${judged} rule, but it is a ${local.engine} rule here, so nothing was restored.`,
+          "NETWORK_ERROR"
+        );
+      }
       const signatures = new Map(
         local.files.map((file) => [file.path, file.signature])
       );
@@ -199,13 +211,31 @@ export async function beginRestore(
           signatures.delete(entry.path);
         }
       }
-      return { kind: "restore", expect: { verdict: "unsafe", signatures } };
-    }
-    case "missing": {
-      if (typeof verdict.revisionId !== "string") break;
       return {
         kind: "restore",
-        expect: { verdict: "missing", revisionId: verdict.revisionId },
+        expect: { verdict: "unsafe", engine: local.engine, signatures },
+      };
+    }
+    case "missing": {
+      // `missing` names a rule that was NOT reported, which is how `check`
+      // reads it too. Against a rule that is on disk it is not a verdict, and
+      // acting on it would overwrite local content nothing compared.
+      if (local !== undefined) {
+        throw new CLIError(
+          `The rule service answered that rule ${ruleId} is missing, but it is in .taskless/rules/${local.engine}/. That is not an answer restore can act on, so nothing was restored.`,
+          "NETWORK_ERROR"
+        );
+      }
+      if (typeof verdict.revisionId !== "string" || judged === undefined) {
+        break;
+      }
+      return {
+        kind: "restore",
+        expect: {
+          verdict: "missing",
+          engine: judged,
+          revisionId: verdict.revisionId,
+        },
       };
     }
     default: {
@@ -238,6 +268,14 @@ export async function restore(
   if (!verdict.ok) {
     throw new CLIError(
       `Rule ${ruleId} was not restored: ${verdict.reason}. Nothing was written.`,
+      "RULE_RESTORE_MISMATCH"
+    );
+  }
+
+  const servedEngine: string = verdict.fileSet.engine;
+  if (servedEngine !== expect.engine) {
+    throw new CLIError(
+      `Rule ${ruleId} was not restored: the service served it as a ${servedEngine} rule, but reconcile judged it as a ${expect.engine} rule. Nothing was written.`,
       "RULE_RESTORE_MISMATCH"
     );
   }
@@ -308,7 +346,17 @@ async function write(
       notices.push(
         `Rule ${fileSet.id} was ${verb}, but ${String(error.failures.length)} stale ${error.failures.length === 1 ? "entry" : "entries"} could not be removed and an engine still reads ${error.failures.length === 1 ? "it" : "them"}: ${error.failures.join(", ")}.`
       );
-      return { ruleId: fileSet.id, revisionId, files: [], notices };
+      // Thrown only after every delivered file was written: the rule IS on
+      // disk, so `files` says so. Only the stale entries beside it failed.
+      const engine: string = fileSet.engine;
+      return {
+        ruleId: fileSet.id,
+        revisionId,
+        files: isKnownEngine(engine)
+          ? [ruleFilePath(cwd, engine, fileSet.id)]
+          : [],
+        notices,
+      };
     }
     throw error;
   }
