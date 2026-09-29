@@ -13,6 +13,8 @@ import { hostname } from "node:os";
 import { join, relative } from "node:path";
 import process from "node:process";
 
+import { isRecord } from "../util/is-record";
+
 /**
  * The transient verification space one `check` (or `rule restore`) works in:
  * `.taskless/.run/<runId>/`.
@@ -43,9 +45,12 @@ import process from "node:process";
  *
  * **Age is only a backstop.** Any owned directory whose run started more than
  * {@link ABANDONED_AFTER_MS} ago is swept whatever its owner. That covers what
- * liveness cannot: a dead run's pid recycled by an unrelated process, a
- * foreign host that never came back, and a preserved directory nobody went
- * back to. No `check` runs for a day. A directory
+ * liveness cannot: a dead run's pid recycled by an unrelated process, and a
+ * foreign host that never came back. No `check` runs for a day. Every time is
+ * unix milliseconds recorded by the run itself, never a filesystem timestamp,
+ * which copies, checkouts, and backups rewrite. A preserved directory is kept
+ * by its marker's own `keepUntil`, which `--preserve-logs` sets to the same day
+ * and a user may raise. A directory
  * whose name is not a run id predates run ids (0.11's `runtime-rules/`, the
  * first 0.12 `snapshot/`) and is swept too. A run-id directory with no `owner`
  * is swept only after a grace period, because that is also what a run looks
@@ -84,11 +89,23 @@ const SIGNAL_FLUSH_MS = 2000;
 interface Owner {
   pid: number;
   hostname: string;
-  startedAt: string;
+  /** Unix milliseconds. A number, not a date string, so reading it cannot fail softly. */
+  startedAt: number;
 }
 
 /** The marker `--preserve-logs` writes beside `owner`. */
 const PRESERVE_MARKER = "preserve";
+
+/**
+ * What the marker holds. `keepUntil` is the directory's own deadline, in unix
+ * milliseconds, so a kept directory's lifetime depends on nothing but this
+ * file: not on `owner`, and never on a filesystem timestamp. Raising it keeps
+ * the directory longer; deleting the file releases it.
+ */
+interface PreserveMarker {
+  keepUntil: number;
+  note: string;
+}
 
 /** One append-only log file in a run directory. */
 export class RunLog {
@@ -158,32 +175,47 @@ function isAlive(pid: number): boolean {
   }
 }
 
-async function readOwner(directory: string): Promise<Owner | undefined> {
+async function readJson(path: string): Promise<Record<string, unknown>> {
   try {
-    const parsed = JSON.parse(
-      await readFile(join(directory, "owner"), "utf8")
-    ) as Partial<Owner>;
-    return typeof parsed.pid === "number" && typeof parsed.hostname === "string"
-      ? (parsed as Owner)
-      : undefined;
+    const parsed: unknown = JSON.parse(await readFile(path, "utf8"));
+    return isRecord(parsed) ? parsed : {};
   } catch {
-    return undefined;
+    return {};
   }
 }
 
 /**
- * Whether the run that owns `directory` started more than `ms` ago, from the
- * owner's `startedAt`, or the directory's own mtime when that does not parse.
+ * The `owner` record, or `undefined` when there is none or it is not a record
+ * yet. A run writes `owner` just after creating its directory, so a sweep can
+ * read it half-written; that must look ownerless (and get the grace), never
+ * old. A well-formed record whose `startedAt` is not a finite number reads as
+ * starting at the epoch, past the day-old backstop: an age that cannot be
+ * known is treated as old, never as new.
  */
-async function ownerOlderThan(
-  owner: Owner,
-  directory: string,
-  ms: number
-): Promise<boolean> {
-  const started = Date.parse(owner.startedAt);
-  return Number.isNaN(started)
-    ? olderThan(directory, ms)
-    : Date.now() - started > ms;
+async function readOwner(directory: string): Promise<Owner | undefined> {
+  const parsed = await readJson(join(directory, "owner"));
+  if (typeof parsed.pid !== "number" || typeof parsed.hostname !== "string") {
+    return undefined;
+  }
+  return {
+    pid: parsed.pid,
+    hostname: parsed.hostname,
+    startedAt: Number.isFinite(parsed.startedAt)
+      ? (parsed.startedAt as number)
+      : 0,
+  };
+}
+
+/**
+ * Whether the directory's `preserve` marker still holds it. A marker that is
+ * missing, unreadable, or has no numeric `keepUntil` holds nothing, and the
+ * directory falls back to the ordinary liveness rules.
+ */
+async function isPreserved(directory: string): Promise<boolean> {
+  const path = join(directory, PRESERVE_MARKER);
+  if (!(await exists(path))) return false;
+  const { keepUntil } = await readJson(path);
+  return Number.isFinite(keepUntil) && Date.now() < (keepUntil as number);
 }
 
 async function exists(path: string): Promise<boolean> {
@@ -221,15 +253,11 @@ export async function sweepAbandonedRuns(cwd: string): Promise<string[]> {
   for (const entry of entries) {
     if (!entry.isDirectory()) continue;
     const directory = join(root, entry.name);
+    if (await isPreserved(directory)) continue;
     const owner = await readOwner(directory);
     if (owner !== undefined) {
-      const expired = await ownerOlderThan(
-        owner,
-        directory,
-        ABANDONED_AFTER_MS
-      );
+      const expired = Date.now() - owner.startedAt > ABANDONED_AFTER_MS;
       if (!expired) {
-        if (await exists(join(directory, PRESERVE_MARKER))) continue;
         if (owner.hostname !== hostname()) continue;
         if (isAlive(owner.pid)) continue;
       }
@@ -275,13 +303,17 @@ export async function openRun(
   const owner: Owner = {
     pid: process.pid,
     hostname: hostname(),
-    startedAt: now.toISOString(),
+    startedAt: now.getTime(),
   };
   if (preserve) {
     // Before `owner`, so no sweep can see this run owned but unmarked.
+    const marker: PreserveMarker = {
+      keepUntil: now.getTime() + ABANDONED_AFTER_MS,
+      note: "Kept by --preserve-logs until keepUntil (unix ms). Raise it to keep this directory longer; delete this file to let the next run remove it.",
+    };
     await writeFile(
       join(path, PRESERVE_MARKER),
-      "Kept by --preserve-logs. A run sweeps this directory once it is a day old; delete this file to let the next run sweep it sooner.\n",
+      `${JSON.stringify(marker, undefined, 2)}\n`,
       "utf8"
     );
   }
@@ -293,6 +325,14 @@ export async function openRun(
     vale: new RunLog(join(path, "vale.log")),
     runtime: new RunLog(join(path, "runtime.log")),
   };
+  // Every log exists from the start, so a kept directory always holds all
+  // four, and an empty one says that engine had nothing to do rather than
+  // leaving the reader to wonder whether it was ever logged.
+  await Promise.all(
+    [logs.engine, logs.sg, logs.vale, logs.runtime].map(async (log) =>
+      writeFile(log.path, "", { flag: "a" })
+    )
+  );
   logs.engine.write(`run ${id} started (pid ${String(process.pid)})`);
   if (swept.length > 0) {
     logs.engine.write(`swept abandoned run directories: ${swept.join(", ")}`);
