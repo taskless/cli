@@ -29,37 +29,17 @@ The migration to the engine-partitioned layout SHALL move the existing `.taskles
 - **WHEN** the migration runs
 - **THEN** `.taskless/vale/` is created with empty `rules/` and `rule-tests/`, and `.taskless/runtime-rules/` becomes `.taskless/runtime/rules/` with byte-identical contents
 
-### Requirement: Service-delivered rules without an engine are written as ast-grep
-
-The rule ingest path SHALL write a service-delivered rule into the engine directory its payload identifies. The current API carries **no** engine discriminator — `/cli/api/rule/{ruleId}` returns `rules[].content` documented as an ast-grep rule definition — so a payload that does not identify an engine SHALL be written as ast-grep, under `.taskless/sg/rules/<id>.yml`, with its tests under `.taskless/sg/rule-tests/`.
-
-This default is permanent, not a migration window: published CLIs and stored payloads without an engine field continue to exist indefinitely, and the default matches what the migration does to the same rules already on disk.
-
-Absence of an engine and an **unrecognized** engine are distinct. If a payload identifies an engine the installed CLI does not know, ingest SHALL fail with an error naming the engine and instructing the user to upgrade, and SHALL NOT fall back to ast-grep.
-
-#### Scenario: Engine-less payload is filed under sg
-
-- **WHEN** a rule is delivered by the service with no engine identified in its payload
-- **THEN** it is written to `.taskless/sg/rules/<id>.yml` and its tests to `.taskless/sg/rule-tests/`, and a subsequent `check` dispatches it to ast-grep
-
-#### Scenario: Ingest and migration agree on destination
-
-- **WHEN** a rule that predates the engine-partitioned layout is migrated, and an equivalent rule is delivered fresh by the service
-- **THEN** both come to rest at the same path under `.taskless/sg/rules/`
-
-#### Scenario: Unrecognized engine fails loudly
-
-- **WHEN** a payload identifies an engine the installed CLI does not support
-- **THEN** ingest exits with an error naming the engine and directing the user to upgrade, and no rule file is written under any engine directory
-
 ### Requirement: Reconciliation survives the relayout
 
-The CLI SHALL report rule files to the reconcile endpoint at their post-migration repo-relative paths. Because the server joins reported files by content signature rather than by path, moving a rule without editing it SHALL NOT change its reconciled state.
+The CLI SHALL report each rule to the reconcile endpoint by its `ruleId` (the rule's directory
+name) with file paths relative to the rule's own directory, so where the engine-partitioned
+layout places a rule's directory is not part of what is reported. Moving a rule directory
+without renaming or editing it SHALL NOT change its reconciled state.
 
 #### Scenario: Moved rules reconcile unchanged
 
-- **WHEN** `check` reconciles after the migration has moved rules from `.taskless/rules/` to `.taskless/sg/rules/` and runtime rules to `.taskless/runtime/rules/`
-- **THEN** each file's signature is unchanged, the server resolves it to the same rule, and no rule is reported as new or missing
+- **WHEN** `check` reconciles after the migration has moved rules into `.taskless/rules/<engine>/<id>/`
+- **THEN** each rule is reported under the same `ruleId` with the same relative paths and signatures, the server resolves it to the same rule, and no rule is reported as new or missing
 
 ### Requirement: The CLI refuses a scaffold newer than it understands unless overridden
 
@@ -173,3 +153,21 @@ Each engine SHALL have one canonical on-disk location per rule — the rule dire
 - **WHEN** `verify` or `test` is given `.taskless/rules/<engine>/<id>/`
 - **THEN** it operates on exactly that rule
 - **AND** the engine is determined from the path without reading the rule
+
+### Requirement: A served rule is filed under the engine it names
+
+The CLI SHALL write a rule served by the v2 API into `.taskless/rules/<engine>/<id>/`, where
+`<engine>` is the file set's own `engine`, which v2 always sends. If the set names an engine
+the installed CLI does not know, the CLI SHALL refuse it with an error naming the engine and
+directing the user to upgrade, SHALL write nothing under any engine directory, and SHALL NOT
+fall back to ast-grep.
+
+#### Scenario: A served rule lands under its engine
+
+- **WHEN** a served file set declares engine `vale`
+- **THEN** it is written under `.taskless/rules/vale/<id>/`
+
+#### Scenario: An unrecognized engine fails loudly
+
+- **WHEN** a served file set declares an engine the installed CLI does not support
+- **THEN** the CLI exits with an error naming the engine and directing the user to upgrade, and no rule file is written under any engine directory
