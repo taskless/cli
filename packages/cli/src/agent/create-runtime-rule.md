@@ -1,4 +1,4 @@
-# Topic: create-runtime-rule     (CLI v%(CLI_VERSION)s / topic v2)
+# Topic: create-runtime-rule     (CLI v%(CLI_VERSION)s / topic v3)
 
 ## You are here
 This is `create-runtime-rule`. It helps you write a runtime rule: a
@@ -70,11 +70,13 @@ A runtime rule's `check.ts` is a program that runs on the developer's
 machine with the developer's permissions. A rule file that arrives in a
 pull request is code that arrives in a pull request. So `check`:
 
-1. **Signs** each `check.ts`, a signature over the exact bytes on disk.
+1. **Copies** the rules aside and **signs** every file of each rule
+   (`check.ts` and every capture), a signature over the exact bytes it
+   will run.
 2. **Reconciles** those signatures with the Taskless service, which
-   answers with the set it will vouch for.
-3. **Runs only what came back blessed.** Anything else is reported as
-   skipped, with the reason.
+   says whether each rule is exactly what it issued.
+3. **Runs only what came back verified, from that copy.** Anything else
+   is reported as skipped, with the reason.
 
 Reconciliation is what makes the signature mean something: it is the
 service saying "this rule, these exact bytes, for this repository."

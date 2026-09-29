@@ -230,8 +230,8 @@ outside this check.
 
 ### Requirement: The CLI runs the bytes it reported
 
-Before signing anything, `check` SHALL copy `.taskless/rules/` into a snapshot at
-`.taskless/.run/rules/`, replacing any previous snapshot and dereferencing symbolic links.
+Before signing anything, `check` SHALL copy `.taskless/rules/` into a snapshot under
+`.taskless/.run/`, replacing any previous snapshot and dereferencing symbolic links.
 It SHALL compute every reported signature from the snapshot and SHALL run every engine
 from the snapshot, with the assembled configs written under `.taskless/.run/`. A rule the
 verdict excludes SHALL be removed from the snapshot before any engine configuration is
@@ -246,7 +246,7 @@ assembled. The snapshot SHALL be taken on every path, including unauthenticated 
 #### Scenario: Static rules run from the snapshot
 
 - **WHEN** `check` runs sg and vale rules
-- **THEN** the ast-grep and Vale configs SHALL point into `.taskless/.run/rules/`
+- **THEN** the ast-grep and Vale configs SHALL point into the snapshot under `.taskless/.run/`
 - **AND** SHALL NOT point into `.taskless/rules/`
 
 #### Scenario: An excluded rule is absent from what runs

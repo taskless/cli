@@ -1,4 +1,4 @@
-# Topic: ci     (CLI v%(CLI_VERSION)s / topic v2)
+# Topic: ci     (CLI v%(CLI_VERSION)s / topic v3)
 
 ## Goal
 Wire `%(TASKLESS_CLI)s check` into the user's existing CI so rules run
@@ -75,6 +75,10 @@ Run `%(TASKLESS_CLI)s check`:
   not a findings failure and editing the rules will not fix it. Do not
   add `--anonymous` or `--dangerously-run-scripts` to the CI command to
   get green; both hide that the rules are not running.
+- A rule reported as edited (`failures` names it; `integrity` lists it
+  as `unsafe`) → CI will fail until it is put back. Run
+  `%(TASKLESS_CLI)s rule restore <ruleId>`; do not edit it back by hand
+  and do not add a flag to the CI command to skip verification.
 
 ### 4. Generate the config
 
@@ -172,17 +176,19 @@ different structure for CircleCI. The six steps stay the same.
 `%(TASKLESS_CLI)s check` does NOT require authentication. The generated CI
 config works out of the box with no secrets and scans all local rules.
 
-Static ast-grep rules always run in CI with no secrets. **Runtime
-rules** (`.taskless/rules/runtime/`, which execute a `check.ts`) only
-run when their code is server-verified, so an unauthenticated CI job
-runs the static rules and skips the runtime ones.
+Static ast-grep and Vale rules always run in CI with no secrets.
+**Runtime rules** (`.taskless/rules/runtime/`, which execute a
+`check.ts`) only run when their code is server-verified, so an
+unauthenticated CI job runs the static rules and skips the runtime ones.
 
-Exposing a `TASKLESS_TOKEN` secret turns CI into the **backstop** for
-runtime rules: an authenticated `check` reconciles each runtime rule's
-`check.ts` against the Taskless service and runs exactly the
-server-blessed set, withholding any that drift or were never issued.
-This is the enforcement point for runtime rules, local developer runs
-skip them unless `--dangerously-run-scripts` is passed. To wire it, set
+Exposing a `TASKLESS_TOKEN` secret turns CI into the **backstop**: an
+authenticated `check` verifies every file of every rule against what
+Taskless issued. Runtime rules run only when verified. An issued
+ast-grep or Vale rule that was edited does not run and fails the job,
+so a rule loosened to let its own violation through cannot pass CI.
+Without the token neither check happens, which is why this is the
+enforcement point; local developer runs skip runtime rules unless
+`--dangerously-run-scripts` is passed. To wire it, set
 the token as an env var on the check step (GitHub Actions):
 
 ```yaml

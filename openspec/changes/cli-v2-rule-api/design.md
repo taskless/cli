@@ -72,13 +72,29 @@ place, not by staying on raw `fetch`.
 
 ### 2. One snapshot per `check`, taken before anything is signed
 
-`check` copies `.taskless/rules/` to `.taskless/.run/rules/` first (replacing
-any previous snapshot). Everything after reads only the snapshot: signing,
-reporting, config assembly, and all three engines. The assembled configs for a
-`check` are written beside it as `.taskless/.run/.vale.ini` and
-`.taskless/.run/.sgconfig.yml`, so their root-relative `StylesPath` and
-`ruleDirs` resolve into the snapshot unchanged. Runtime rules execute from
-`.taskless/.run/rules/runtime/`, replacing `.run/runtime-rules/`.
+`check` copies `.taskless/rules/` to `.taskless/.run/snapshot/.taskless/rules/`
+first (replacing any previous snapshot). The snapshot **mirrors the project's
+layout** under a base directory, `.taskless/.run/snapshot/`, so every existing
+path helper and both assemblers work unchanged when handed that base in place of
+the project root: the assembled configs land at
+`.taskless/.run/snapshot/.taskless/.vale.ini` and `.sgconfig.yml`, and their
+root-relative `StylesPath` and `ruleDirs` resolve into the snapshot. The engines
+still run from the project root, with only the config path changed. Everything
+after the copy reads only the snapshot: signing, reporting, config assembly, and
+all three engines. Runtime rules execute from the snapshot, replacing
+`.run/runtime-rules/`.
+
+Measured before building on it (task 4.1): the mixed-engine fixture plus a Vale
+rule scoped to `[docs/**/*.md]` produced the same seven findings across five
+rules from both config locations, and the subdirectory-scoped rule fired on
+`docs/deep/a.md` and not on a top-level file in both.
+
+The run directory ignores itself (`.taskless/.run/.gitignore` holds `*`), rather
+than `check` adding `.run/` to the tracked `.taskless/.gitignore`: a `check` that
+rewrote a tracked file would contradict "check writes only under `.taskless/.run/`",
+and the first lint run on this repository after the change did exactly that. git,
+ast-grep, and Vale all honor the nested file; a test runs both engines with no
+outer ignore entry and gets identical findings.
 
 The snapshot is taken on every path, including unauthenticated and
 `--anonymous`, so there is one execution path rather than a verified one and an
@@ -260,9 +276,8 @@ Free organization is never refused for a just-generated rule.
 ## Risks / Trade-offs
 
 - **[Risk] Vale section globs might resolve relative to the config file.** The
-  assembled config moves from `.taskless/` to `.taskless/.run/`. → A test runs
-  one Vale rule scoped to a subdirectory glob from both locations and asserts
-  identical findings before the snapshot is wired into `check`.
+  assembled config moves into the snapshot. → Measured identical before building
+  (Decision 2), and a test pins it.
 - **[Risk] 0.11.x stops working when the floor is set.** Remote generation fails
   and reconcile returns `400` once 0.12.0 ships. → Accepted server-side (#229);
   0.11.x degrades to "service unavailable" and skips runtime rules without

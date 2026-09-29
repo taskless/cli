@@ -44,7 +44,9 @@ export const outputSchema = z.object({
   failures: z
     .array(z.string())
     .optional()
-    .describe("Engines that were present and failed"),
+    .describe(
+      "Why the run failed besides findings: engines that were present and failed, and rules that were edited, unaccounted for, or collide"
+    ),
   notices: z
     .array(z.string())
     .optional()
@@ -71,6 +73,46 @@ export const outputSchema = z.object({
     })
     .optional()
     .describe("Runtime rules withheld because the plan does not include them"),
+  // One entry per rule whose verified outcome needs attention: edited, missing,
+  // a runtime rule the service never issued, unaccounted for, or an id shared
+  // across engines. Locally written ast-grep and Vale rules are `unknown` too
+  // and are deliberately NOT listed: they run, and every run would repeat them.
+  integrity: z
+    .array(
+      z.object({
+        ruleId: z.string(),
+        engine: z.enum(["sg", "vale", "runtime"]).optional(),
+        verdict: z
+          .enum(["unsafe", "missing", "unknown", "unaccounted", "duplicate"])
+          .describe(
+            "unsafe: edited since issued; missing: issued but not on disk; unknown: a runtime rule the service never issued; unaccounted: the service's answer did not account for it; duplicate: its id is used by more than one engine"
+          ),
+        files: z
+          .array(
+            z.object({
+              path: z.string(),
+              expected: z
+                .string()
+                .optional()
+                .describe("Issued signature; absent for an added file"),
+              got: z
+                .string()
+                .optional()
+                .describe("Reported signature; absent for a removed file"),
+            })
+          )
+          .optional()
+          .describe("For unsafe: each file that differs from what was issued"),
+        revisionId: z
+          .string()
+          .optional()
+          .describe("For missing: the revision `rule restore` brings back"),
+      })
+    )
+    .optional()
+    .describe(
+      "Rules whose verified state needs attention. `taskless rule restore <ruleId>` repairs unsafe and missing ones"
+    ),
 });
 
 /** Error schema for `taskless check --json` on failure */
