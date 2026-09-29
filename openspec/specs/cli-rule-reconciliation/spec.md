@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Defines the CLI-side contract for server-owned rule reconciliation: how the CLI computes a canonical signature envelope for each rule file, how it calls the `POST /cli/api/reconcile` endpoint, and how it executes only the server's `run` set. The server-side record is authoritative; local signatures are advisory only.
+Defines the CLI-side contract for server-owned rule reconciliation: how the CLI computes a canonical signature envelope for each file of a rule, how it reports every rule of every engine to `POST /cli/api/v2/reconcile` from a snapshot it then runs, and how it applies the per-rule verdicts, accounts for every rule it reported, and reads the plan entitlement. The server-side record is authoritative; local signatures are advisory only.
 
 ## Requirements
 
@@ -15,16 +15,15 @@ before the **first** `;` is the algoVersion and SHALL be read up to that one del
 detect the version (and therefore the normalization procedure and hash algorithm) before
 any `key=value` parameters are parsed. Signatures SHALL be compared as whole strings.
 
-The algoVersion SHALL also determine **what the signature covers**. A signature at
-algoVersion `1` covers exactly one file: the engine's `ruleFile` from the rule layout
-table, which is `check.ts` for the runtime engine. An engine that requires more than one
-file to be signed SHALL do so under a later algoVersion.
+The algoVersion SHALL also determine **what one signature covers**. A signature at
+algoVersion `1` covers exactly one file. **Which** files of a rule are signed is set by the
+reconcile contract, not by the envelope: every file in the rule's directory except those
+under `.tests/`, each with its own signature.
 
-**Rationale.** Coverage is a property of the signature scheme, not of the delivery that
-carries a signature. Stating it on the version keeps a payload from having to say which
-of its files is the signed one, and gives a future multi-file scheme a mechanism that
-already exists rather than a new payload shape. Leaving it unstated is what let both
-teams hold the same binding as a private assumption.
+**Rationale.** Coverage per signature is a property of the signature scheme; the set of
+signed files is a property of the rule contract. Keeping them apart is what lets the rule
+contract grow from "`check.ts` only" to "every non-fixture file" without a new algoVersion,
+because no single signature's meaning changed.
 
 #### Scenario: Envelope is emitted for algoVersion 1
 
@@ -42,10 +41,21 @@ teams hold the same binding as a private assumption.
 - **WHEN** the CLI compares two signatures for equality
 - **THEN** it SHALL compare the full envelope strings, not the bare digests
 
+#### Scenario: A v1 signature covers exactly one file
+
+- **WHEN** the CLI computes an algoVersion-1 signature for a rule
+- **THEN** that signature SHALL be over one file's bytes and over no other file
+
 #### Scenario: A v1 signature covers the engine's rule file
 
-- **WHEN** a runtime rule carries a signature at algoVersion 1
-- **THEN** that signature SHALL be over `check.ts` and over no other file in the rule directory
+- **WHEN** a served runtime rule carries its singular `signature`
+- **THEN** that signature SHALL be over `check.ts` and SHALL equal the `check.ts` entry in `signatures`
+
+#### Scenario: Every non-fixture file of a rule is signed
+
+- **WHEN** the CLI signs a rule directory for reconcile
+- **THEN** it SHALL compute one signature per file in the directory
+- **AND** SHALL NOT sign any file under `.tests/`
 
 ### Requirement: Signature normalization procedure (algoVersion 1)
 
@@ -103,7 +113,7 @@ reproduces the server's reference implementation byte-for-byte.
 ### Requirement: Conformance vectors are fetched and asserted
 
 The CLI SHALL consume the cross-repo conformance vectors served at
-`GET /cli/api/rule-hash-vectors` (unauthenticated) as `{ vectors: [{ name, input, signature }] }`,
+`GET /cli/api/v2/rule-hash-vectors` (unauthenticated) as `{ vectors: [{ name, input, signature }] }`,
 commit a copy as a fixture, and assert in its test suite that its independent
 `normalize()`-plus-hash reproduces every vector's `signature` exactly. Non-ASCII `input`
 SHALL be parsed as JSON (decoding `\uXXXX` escapes) before hashing. A vector mismatch SHALL
@@ -120,112 +130,40 @@ be a release blocker (the test SHALL fail the build).
 - **THEN** the test SHALL fail
 - **AND** the build SHALL NOT pass
 
-### Requirement: Reconcile reports every runtime rule's check.ts
+#### Scenario: Vectors come from the v2 surface
 
-Reconciliation SHALL be scoped to the **`check.ts` of runtime rules** — the only artifact that
-carries arbitrary code execution. Static ast-grep rules and runtime-rule capture `*.yml` are
-inert data, always available, and SHALL NOT be reported to or gated by reconciliation. The CLI
-SHALL reconcile by sending `POST /cli/api/reconcile` with an `Authorization: Bearer <cli-token>`
-header and a JSON body `{ repositoryUrl, files }`, where `repositoryUrl` is the full repository
-URL and `files` is an array of `{ file, signature }` covering the `check.ts` of **every**
-runtime rule the CLI holds under `.taskless/rules/runtime/`. `file` SHALL be the `check.ts`'s
-delivered path as it exists on disk and `signature` SHALL be the full envelope computed for its
-bytes. The CLI SHALL send the whole signature envelope, not a bare digest.
-
-#### Scenario: Every runtime rule's check.ts is reported
-
-- **WHEN** the CLI reconciles with runtime rules present under `.taskless/rules/runtime/`
-- **THEN** the request body SHALL include one `{ file, signature }` entry for the `check.ts` of each runtime rule
-
-#### Scenario: Inert files are not reported
-
-- **WHEN** the CLI reconciles and static `*.yml` rules and capture `*.yml` are also present
-- **THEN** the request body SHALL NOT include entries for those inert files
-- **AND** the static rules SHALL run regardless of the reconcile response
-
-#### Scenario: Full envelope is sent
-
-- **WHEN** the CLI reports a file's signature
-- **THEN** it SHALL send the complete `1;h=sha-256;d=<hex>` envelope, not only the digest
-
-### Requirement: Reconcile response buckets drive execution
-
-The reconcile response SHALL be interpreted as four buckets — `run`, `unsafe`, `unknown`,
-and `missing` — and each SHALL drive a specific CLI action:
-
-- `run`: the file's content matches a rule the server blessed. The CLI SHALL execute it. This
-  is the complete allow-list.
-- `unsafe`: a rule held by delivered name whose content differs from what the server blessed
-  (`expected` vs `got`). The CLI SHALL NOT run it and SHALL surface it as tamper/drift.
-- `unknown`: a reported file the server never issued. The CLI SHALL NOT run it and SHALL
-  surface it as advisory.
-- `missing`: a rule the server expected that the CLI did not report. It is not actionable for
-  execution and SHALL be treated as advisory/audit only.
-
-The CLI SHALL match each `run` entry back to a local file by its `signature` (content-based
-join), so a file that was moved but not changed still resolves.
-
-#### Scenario: Run entries are matched by signature
-
-- **WHEN** the CLI processes a `run` entry
-- **THEN** it SHALL locate the corresponding local file by matching the `signature`, not the path
-
-#### Scenario: Unsafe is surfaced and not run
-
-- **WHEN** a reported file lands in `unsafe`
-- **THEN** the CLI SHALL NOT execute it
-- **AND** SHALL surface it as tamper/drift
-
-#### Scenario: Unknown is surfaced and not run
-
-- **WHEN** a reported file lands in `unknown`
-- **THEN** the CLI SHALL NOT execute it
-- **AND** SHALL surface it as an advisory notice
-
-#### Scenario: Missing is advisory only
-
-- **WHEN** the response includes `missing` entries
-- **THEN** the CLI SHALL treat them as advisory/audit only and SHALL NOT fail execution on them
-
-### Requirement: The CLI executes only the server run set
-
-When reconciliation succeeds, the CLI SHALL execute a runtime rule only if its **`check.ts`**
-is present in the server's `run` set, and SHALL execute no runtime rule whose `check.ts` is
-absent from `run`. The CLI SHALL NOT run a runtime rule on the basis of its own local
-comparison of signatures. This replaces any local classification of runtime rules. Static
-ast-grep rules and capture `*.yml` are outside this gate.
-
-#### Scenario: Only rules with a blessed check.ts execute
-
-- **WHEN** reconciliation returns a `run` set covering the `check.ts` of some runtime rules but not others
-- **THEN** the CLI SHALL execute only the runtime rules whose `check.ts` is in `run`
-- **AND** SHALL withhold any runtime rule whose `check.ts` is absent from `run`
-
-#### Scenario: No local self-classification
-
-- **WHEN** the CLI holds a local signature or sidecar for a runtime rule's `check.ts`
-- **THEN** it SHALL NOT treat that local value as authorization to execute the rule
+- **WHEN** the build refreshes the committed vectors
+- **THEN** it SHALL fetch `GET /cli/api/v2/rule-hash-vectors`
+- **AND** SHALL NOT call a v1 route
 
 ### Requirement: Reconcile is scoped to the token's organization
 
-The reconcile endpoint SHALL be authorized by the same bearer-token / `orgId`-claim scheme as
-all `/cli/api/*` endpoints and SHALL be scoped to the organization the token owns. The CLI
-SHALL handle the documented edges: a `401` with `{ error: "unauthorized" }` for a missing or
-invalid token; an empty corpus (empty `run`/`missing`, every reported file in `unknown`,
-nothing runs); and an empty report (empty `run`/`unsafe`/`unknown`, the full corpus in
-`missing`).
+The reconcile endpoint SHALL be authorized by the bearer token and SHALL be scoped to the
+organization named by the optional `orgId` (a Taskless org UUID, preferred, or a numeric
+GitHub org id) or, when absent, by the token. The CLI SHALL handle the documented edges: a
+`401` with `{ error: "unauthorized" }` for a missing or invalid token; a `404` with
+`{ error: "organization_not_found" }` when the organization is not accessible or the
+repository is not covered by its installation (deliberately indistinguishable); an empty
+corpus (every reported rule in `unknown`, nothing runs on a verdict); and an empty report
+(every issued rule in `missing`).
 
 #### Scenario: Unauthorized token
 
 - **WHEN** the CLI calls reconcile without a valid bearer token
 - **THEN** the server SHALL return `401` with `{ error: "unauthorized" }`
-- **AND** the CLI SHALL NOT execute any rule from a `run` set
+- **AND** the CLI SHALL NOT execute any runtime rule on the basis of that call
 
 #### Scenario: Empty corpus runs nothing
 
-- **WHEN** the repository has no blessed rules and the CLI reports files
-- **THEN** every reported file SHALL be returned in `unknown`
-- **AND** the CLI SHALL execute nothing
+- **WHEN** the repository has no issued rules and the CLI reports rules
+- **THEN** every reported rule SHALL be returned in `unknown`
+- **AND** the CLI SHALL execute no runtime rule
+
+#### Scenario: Organization not found is not a service outage
+
+- **WHEN** reconcile answers `404` with `{ error: "organization_not_found" }`
+- **THEN** the CLI SHALL name both causes (the installation does not cover this repository, or the login lost access)
+- **AND** SHALL treat the run as unverified rather than as a verdict
 
 ### Requirement: Local signatures are advisory only
 
@@ -239,71 +177,178 @@ signal. The server-side record is authoritative and the server decides what runs
 - **THEN** the CLI SHALL NOT run the file on that basis alone
 - **AND** SHALL rely on the server's `run` set for authorization
 
-### Requirement: The reported file path is contractual
+### Requirement: Reconcile reports every rule directory
 
-The CLI SHALL report each runtime check to reconcile as a **repo-root-relative POSIX path**,
-`.taskless/rules/runtime/<id>/check.ts`, with platform separators normalized so every host
-reports the same string for the same rule.
+When `check` reconciles, the CLI SHALL send `POST /cli/api/v2/reconcile` with
+`{ repositoryUrl, orgId?, rules }`, where `rules` holds exactly one
+`{ ruleId, files: [{ path, signature }] }` for **every** rule directory under
+`.taskless/rules/<engine>/`, of every engine, whatever `--rule` selects to run. `ruleId`
+SHALL be the directory name. `files` SHALL list every regular file under the directory,
+recursively, except files under `.tests/` and the operating-system metadata files
+`.DS_Store`, `Thumbs.db`, and `desktop.ini`. `path` SHALL be relative to the rule directory
+with `/` separators on every platform, and `signature` SHALL be the full algoVersion-1
+envelope of the snapshot's bytes for that file.
 
-This is a cross-team contract, not an implementation detail. Reconcile matches `run` by content
-digest and is path-independent, but the `unsafe` versus `unknown` split is a lookup on the
-reported name: a spelling mismatch downgrades a tampered file from `unsafe` ("content changed in
-place") to `unknown` ("never issued") — a diagnostic loss on the one path where the diagnosis
-matters.
+#### Scenario: Every engine is reported
 
-#### Scenario: The reported path is repo-relative and POSIX
+- **WHEN** `.taskless/rules/sg/`, `.taskless/rules/vale/`, and `.taskless/rules/runtime/` each hold rules
+- **THEN** the request SHALL carry one entry per rule directory across all three engines
 
-- **WHEN** the CLI reports a runtime check to reconcile
-- **THEN** the `file` SHALL be `.taskless/rules/runtime/<id>/check.ts`
-- **AND** the separators SHALL be `/` regardless of host platform
+#### Scenario: A rule's files are reported relative to its directory
 
-### Requirement: A withheld rule can be re-fetched
+- **WHEN** runtime rule `no-env-leak-3fa9c21b` holds `check.ts` and `captures/env.yml`
+- **THEN** its entry SHALL be `{ ruleId: "no-env-leak-3fa9c21b", files: [{ path: "check.ts", … }, { path: "captures/env.yml", … }] }`
 
-When reconcile reports a rule as `unsafe` or `unknown`, the CLI SHALL be able to request the
-blessed bytes for that rule rather than only warning. The request SHALL carry the rule id **and**
-the signature the client holds, scoped like reconcile itself, so that a bare digest cannot be used
-to retrieve content across organizations.
+#### Scenario: Fixtures are not reported
 
-The response SHALL be the bytes matching the held signature, never the newest generation.
-Answering with newer bytes would upgrade a rule in the middle of a `check` without anyone asking;
-upgrading is regeneration and SHALL remain an explicit action.
+- **WHEN** a rule directory holds files under `.tests/`
+- **THEN** no reported path SHALL begin with `.tests/`
 
-#### Scenario: An unsafe rule is repaired
+#### Scenario: --rule does not narrow the report
 
-- **WHEN** reconcile reports a rule as `unsafe`
-- **THEN** the CLI SHALL be able to re-fetch the blessed bytes for that rule
-- **AND** the rule SHALL reconcile as `run` after the bytes are restored
+- **WHEN** a user runs `check --rule a` in a project holding rules `a` and `b`
+- **THEN** the reconcile request SHALL report both `a` and `b`
+- **AND** only `a` SHALL run
 
-#### Scenario: Re-fetch does not upgrade
+### Requirement: Rule ids are unique across engines
 
-- **WHEN** a newer generation of the same rule exists server-side
-- **THEN** re-fetch SHALL still return the bytes matching the signature the client reported
+Before reconciling, the CLI SHALL refuse the run when two rule directories under different
+engines share a directory name, naming both directories. It SHALL NOT report either rule
+and SHALL NOT resolve the collision by skipping one of them.
 
-### Requirement: The CLI reads the reconcile entitlement object
+#### Scenario: A duplicate id stops the run
 
-The CLI SHALL read the optional `entitlement` object on a successful reconcile response. It SHALL treat the organization as unentitled only when `entitlement.runtimeSignatures` is exactly `false`; an absent, malformed, or `true` value SHALL be treated as no entitlement outcome, leaving the four buckets to drive execution exactly as before. For an unentitled response the CLI SHALL read `reason`, `upgradeUrl`, and `withheld` (a list of `{ ruleId, file }`), SHALL drop a `withheld` entry without a string `file`, and SHALL surface `upgradeUrl` only when it is an absolute `https:` URL.
+- **WHEN** both `.taskless/rules/sg/foo-3fa9c21b/` and `.taskless/rules/vale/foo-3fa9c21b/` exist
+- **THEN** `check` SHALL exit non-zero naming both directories
+- **AND** SHALL NOT call reconcile
 
-`entitlement.withheld` SHALL be a disposition distinct from the four buckets: a withheld file SHALL NOT be executed, SHALL NOT be surfaced as tamper, drift, or never-issued, and SHALL NOT be sent to restore. The CLI SHALL match a withheld entry to a local runtime rule by the `file` it reported, since the entry carries no signature. A withheld entry that matches no reported file SHALL still count as withheld for the purpose of the exit code.
+#### Scenario: A decoy cannot neutralize an issued rule
 
-#### Scenario: Absent entitlement changes nothing
+- **WHEN** someone creates a directory under a second engine with the id of an issued rule
+- **THEN** the issued rule SHALL NOT run as though it were locally authored
 
-- **WHEN** a reconcile response carries no `entitlement` object
-- **THEN** the CLI SHALL drive execution from `run`, `unsafe`, `unknown`, and `missing` exactly as before
+### Requirement: Reconcile verdicts are applied per engine
 
-#### Scenario: Entitled response changes nothing
+The CLI SHALL read the v2 reconcile response as a list of per-rule verdicts
+(`rules[]`, each `{ ruleId, engine, verdict }` with `verdict` one of `run`, `unsafe`,
+`missing`), a list of `unknown` rule ids, and `entitlement.withheld`, and SHALL apply this
+policy:
+
+| Verdict    | runtime                                            | sg / vale                                     |
+| ---------- | -------------------------------------------------- | --------------------------------------------- |
+| `run`      | execute                                            | run                                           |
+| `withheld` | do not execute; fail `check`                       | (never sent)                                  |
+| `unsafe`   | do not execute; name `rule restore`                | do not run; fail `check`; name `rule restore` |
+| `missing`  | warn; name `rule restore`                          | warn; name `rule restore`                     |
+| `unknown`  | do not execute (needs `--dangerously-run-scripts`) | run                                           |
+
+The engine SHALL be taken from the verdict's `engine` for `rules[]` entries and from the
+reporting directory for `unknown` entries. An `unsafe` notice SHALL name the rule and each
+differing path, saying whether it changed, was removed, or was added. A signature SHALL
+authorize running a runtime rule only through a `run` verdict, never by local comparison.
+
+#### Scenario: An edited static rule fails and does not run
+
+- **WHEN** reconcile returns `{ ruleId: "no-simply-1a2b3c4d", engine: "vale", verdict: "unsafe", files: [{ path: ".vale.ini", expected, got }] }`
+- **THEN** the rule SHALL NOT run
+- **AND** `check` SHALL exit non-zero naming the rule and `.vale.ini` as changed
+
+#### Scenario: A locally written static rule runs
+
+- **WHEN** reconcile lists a static rule's id in `unknown`
+- **THEN** that rule SHALL run
+- **AND** the CLI SHALL emit no notice for it
+
+#### Scenario: A locally written runtime rule does not execute
+
+- **WHEN** reconcile lists a runtime rule's id in `unknown` and `--dangerously-run-scripts` is not set
+- **THEN** the rule SHALL NOT execute
+- **AND** its skip reason SHALL say it was not issued by the rule service
+
+#### Scenario: Missing warns and does not fail
+
+- **WHEN** reconcile returns a `missing` verdict for any engine
+- **THEN** the CLI SHALL warn naming the rule and `taskless rule restore <ruleId>`
+- **AND** SHALL NOT change the exit code because of it
+
+#### Scenario: An edited runtime rule is withheld, not failed
+
+- **WHEN** reconcile returns an `unsafe` verdict for a runtime rule
+- **THEN** the rule SHALL NOT execute
+- **AND** the exit code SHALL NOT change because of that verdict alone
+
+### Requirement: Every reported rule is accounted for
+
+After a reconcile completes, every `ruleId` the CLI reported SHALL appear in exactly one of
+`rules[]`, `unknown[]`, or `entitlement.withheld[]`. A reported rule that appears in none,
+or in more than one, SHALL be treated as unaccounted: it SHALL NOT run or execute, and
+`check` SHALL fail naming it. `missing` verdicts name rules that were not reported and are
+outside this check.
+
+#### Scenario: A dropped rule fails the run
+
+- **WHEN** the CLI reports rule `a` and the response names `a` in none of `rules`, `unknown`, or `entitlement.withheld`
+- **THEN** `a` SHALL NOT run
+- **AND** `check` SHALL exit non-zero naming `a`
+
+#### Scenario: A rule answered twice fails the run
+
+- **WHEN** a reported rule appears both in `rules[]` and in `entitlement.withheld`
+- **THEN** it SHALL NOT run
+- **AND** `check` SHALL exit non-zero naming it
+
+### Requirement: The CLI runs the bytes it reported
+
+Before signing anything, `check` SHALL copy `.taskless/rules/` into a snapshot inside its own
+run directory under `.taskless/.run/` (per the `cli-check` capability), dereferencing symbolic
+links.
+It SHALL compute every reported signature from the snapshot and SHALL run every engine
+from the snapshot, with the assembled configs written under `.taskless/.run/`. A rule the
+verdict excludes SHALL be removed from the snapshot before any engine configuration is
+assembled. The snapshot SHALL be taken on every path, including unauthenticated and
+`--anonymous` runs.
+
+#### Scenario: An edit after signing does not run
+
+- **WHEN** a rule file under `.taskless/rules/` is edited after `check` has signed the snapshot
+- **THEN** the engines SHALL run the snapshot's bytes, not the edited file
+
+#### Scenario: Static rules run from the snapshot
+
+- **WHEN** `check` runs sg and vale rules
+- **THEN** the ast-grep and Vale configs SHALL point into the snapshot under `.taskless/.run/`
+- **AND** SHALL NOT point into `.taskless/rules/`
+
+#### Scenario: An excluded rule is absent from what runs
+
+- **WHEN** a static rule's verdict is `unsafe`
+- **THEN** its directory SHALL be absent from the snapshot the engines read
+
+### Requirement: The CLI reads the v2 reconcile entitlement
+
+The CLI SHALL read the reconcile response's `entitlement` object, which v2 always sends. It
+SHALL treat the organization as unentitled only when `entitlement.runtimeSignatures` is
+exactly `false`, SHALL read `reason`, `upgradeUrl`, and `withheld` as a list of
+`{ ruleId, revisionId }`, SHALL match a withheld entry to a reported rule by `ruleId`, and
+SHALL surface `upgradeUrl` only when it is an absolute `https:` URL. A withheld entry SHALL
+NOT be dropped for lacking any field other than `ruleId`. A withheld rule SHALL NOT be
+executed, SHALL NOT be described as unsafe, unknown, or drifted, and SHALL NOT be offered
+restore.
+
+#### Scenario: Withheld is matched by rule id
+
+- **WHEN** `entitlement.withheld` lists `{ ruleId: "no-env-leak-3fa9c21b", revisionId }` and the CLI reported that rule
+- **THEN** the rule SHALL be classified as withheld for entitlement and SHALL NOT execute
+
+#### Scenario: Entitled response withholds nothing
 
 - **WHEN** a reconcile response carries `entitlement: { runtimeSignatures: true }`
-- **THEN** the CLI SHALL drive execution from the four buckets exactly as before
+- **THEN** no rule SHALL be classified as withheld
 
-#### Scenario: Withheld is matched by reported path
-
-- **WHEN** `entitlement.withheld` lists `{ ruleId, file }` and `file` equals the path the CLI reported for a runtime rule's `check.ts`
-- **THEN** the CLI SHALL classify that rule as withheld for entitlement and SHALL NOT execute it
-
-#### Scenario: Withheld is not repaired
+#### Scenario: Withheld is not offered restore
 
 - **WHEN** a runtime rule is withheld for entitlement
-- **THEN** the CLI SHALL NOT request a restore for it
+- **THEN** no notice SHALL suggest restoring it
 
 #### Scenario: A malformed upgrade URL is not shown
 

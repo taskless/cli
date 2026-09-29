@@ -218,16 +218,21 @@ upgradeUrl }`, strip C0/C1 control characters except newline from
 
 ## 9. End to end, then archive (slice 5)
 
-- [ ] 9.1 From a nightly stamped `0.12.0-*`, against production v2, run the full
-      round trip in an organization we own: `rule create` → `check` shows `run`
-      → edit a signed file → `check` fails with `unsafe` → `rule restore` →
-      `check` shows `run`. Repeat the edit on a vale rule's `.vale.ini`. Record
-      commands and outputs in the PR.
-- [ ] 9.2 Report the round trip to the cloud team so they can close TSKL-307.
-- [ ] 9.3 File the follow-ups as issues: a rule-revisions list endpoint (enables
-      rollback without the dashboard), plan features on `whoami`, the
-      directory-swap gap, the superseded-revision signal, and the v1
-      `Entitlement` type on served file sets.
-- [ ] 9.4 Archive the change on the tip branch (`pnpm openspec archive
+- [x] 9.1 Round trip against production v2 from a `0.12.0-next-*` build (`pnpm
+  build:next`; a nightly publishes only from `main`, which the stack reaches
+      last), in `taskless-sandbox/nextjs-sass-starter` because the `taskless`
+      installation did not then cover `taskless/cli`. Generated two sg rules and
+      one Vale rule; `check` returned `run`; a loosened sg pattern and a
+      disabled `.vale.ini` each returned `unsafe` and failed the run; `rule
+  restore` on the Free plan returned the git-recovery refusal and wrote
+      nothing; the issued bytes put back returned `run`. The served-restore
+      success path needs a paid plan and is covered by stubbed tests only.
+- [x] 9.2 Round-trip report drafted for the cloud team to close TSKL-307 (sent
+      by hand). The Vale `BasedOnStyles =` defect it found is
+      taskless/taskless#258.
+- [x] 9.3 Follow-ups filed: taskless/taskless#252 (v1 `Entitlement` on served
+      file sets), #253 (rule revisions listing), #254 (plan features on
+      `whoami`), #255 (directory-swap gap), #256 (superseded-revision signal).
+- [x] 9.4 Archive the change on the tip branch (`pnpm openspec archive
 cli-v2-rule-api`), then re-run the scenario-survival check from 1.1
       against the archived specs.
