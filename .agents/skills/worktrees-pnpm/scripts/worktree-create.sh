@@ -91,7 +91,27 @@ if [ -z "$default_branch" ]; then
   echo "WorktreeCreate: could not resolve $remote's default branch (offline?)" >&2
   exit 1
 fi
-if ! git -C "$repo_root" fetch --quiet "$remote" "$default_branch" >&2; then
+# The refspec is spelled out because a bare branch name only updates the
+# remote-tracking ref when remote.<name>.fetch covers it, and a single-branch
+# clone (which --depth implies) covers only the branch it was cloned on: the
+# fetch would succeed, write FETCH_HEAD alone, and leave the ref below stale or
+# missing. FETCH_HEAD is no substitute, since every concurrent fetch rewrites it.
+#
+# Concurrent creations race on that ref: each fetch records the value it expects
+# to replace, and all but one find it already moved ("cannot lock ref ... is at
+# X but expected Y"). Measured at 55 failures in 60 concurrent fetches, and
+# core.filesRefLockTimeout does not help, since nothing is waiting on a lock. A
+# loser's retry finds the ref already at the tip and succeeds, so retry.
+fetched=
+for attempt in 1 2 3; do
+  if git -C "$repo_root" fetch --quiet "$remote" \
+    "+refs/heads/$default_branch:refs/remotes/$remote/$default_branch" >&2; then
+    fetched=1
+    break
+  fi
+  [ "$attempt" -lt 3 ] && sleep "$attempt"
+done
+if [ -z "$fetched" ]; then
   echo "WorktreeCreate: fetching $remote/$default_branch failed; refusing to branch from a stale base" >&2
   exit 1
 fi
