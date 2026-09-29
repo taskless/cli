@@ -49,16 +49,20 @@ Where the CLI stands at `86799ef`:
 
 ## Decisions
 
-### 1. v2 replaces v1 in the vendored schema; nothing keeps v1
+### 1. v2 is vendored beside v1, and v1 is deleted at the tip
 
-`fetch-api-schema.ts` reads `/cli/api/v2/__schema`, and `api.schema.json` /
-`api.d.ts` become the v2 document. After this change nothing the CLI calls is
-in v1: whoami and the hash vectors have v2 twins (measured byte-identical on
-2026-09-29), and `/cli/auth/*` is outside both schemas and already hand-typed.
+`fetch-api-schema.ts` reads `/cli/api/v2/__schema` into `api-v2.schema.json` /
+`api-v2.d.ts`. The v1 `api.schema.json` / `api.d.ts` stay frozen (never
+refetched) until slice 5 deletes them with their last caller. After this change
+nothing the CLI calls is in v1: whoami and the hash vectors have v2 twins
+(measured byte-identical on 2026-09-29), and `/cli/auth/*` is outside both
+schemas and already hand-typed.
 
-_Alternative:_ vendor both schemas side by side through the migration. Rejected
-because the stack merges down, so no intermediate state ships, and a second
-schema is a second place for a v1 call to hide.
+_Alternative:_ replace `api.d.ts` with v2 in slice 1. Rejected: every v1 caller
+(`api/rules.ts`, `api/restore.ts`, `auth/org.ts`) would fail typecheck until
+slice 5, so every PR in the stack would be red and review would happen against
+code that does not compile. The v2 name is kept after v1 is gone because the
+server versions its API in the path, and the file should say which one it is.
 
 All v2 calls go through one `openapi-fetch` client that sets
 `x-taskless-cli-version` on every request, replacing the hand-rolled `fetch` in

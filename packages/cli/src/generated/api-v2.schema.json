@@ -1,0 +1,2310 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Taskless CLI API v2",
+    "version": "2.0.0-private",
+    "description": "The v2 CLI API: rules addressed by their own id. Authentication (/cli/auth/*) is shared with every version and not listed here."
+  },
+  "components": {
+    "schemas": {
+      "Entitlement": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "runtimeSignatures": {
+            "type": "boolean",
+            "description": "Whether the organization's plan includes runtime signatures. When false, no runtime rule is placed in `run`."
+          },
+          "reason": {
+            "description": "Present iff `runtimeSignatures` is false: the plan does not include runtime signatures.",
+            "type": "string",
+            "const": "RUNTIME_SIGNATURES_NOT_IN_PLAN"
+          },
+          "upgradeUrl": {
+            "description": "Present iff `runtimeSignatures` is false: the absolute URL of the organization's upgrade page.",
+            "type": "string"
+          },
+          "withheld": {
+            "description": "Reconcile only, present iff `runtimeSignatures` is false: reported runtime files whose content matches the issued rule but that were not placed in `run`, `unsafe`, `unknown`, or `missing`. A client should report these as not run because of the plan, and fail.",
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "ruleId": {
+                  "type": "string",
+                  "description": "The model-assigned rule identifier"
+                },
+                "file": {
+                  "type": "string",
+                  "description": "Delivered rule filename the client reported"
+                }
+              },
+              "required": ["ruleId", "file"],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": ["runtimeSignatures"],
+        "additionalProperties": false,
+        "description": "The organization's entitlement to have runtime rules blessed. Additive: the rest of the response means what it did without it. Always present on reconcile; on restore and request retrieval, present whenever the response carries a runtime file set."
+      },
+      "EntitlementV2": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "runtimeSignatures": {
+            "$ref": "#/components/schemas/Entitlement/properties/runtimeSignatures"
+          },
+          "reason": {
+            "$ref": "#/components/schemas/Entitlement/properties/reason"
+          },
+          "upgradeUrl": {
+            "$ref": "#/components/schemas/Entitlement/properties/upgradeUrl"
+          },
+          "withheld": {
+            "description": "Reconcile only, present iff `runtimeSignatures` is false: reported runtime rules that exactly match an issued revision but are not run on this plan. A client reports these as not run because of the plan, and fails.",
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "ruleId": {
+                  "type": "string",
+                  "description": "The rule id (its directory name)"
+                },
+                "revisionId": {
+                  "type": "string",
+                  "description": "The revision it matched exactly"
+                }
+              },
+              "required": ["ruleId", "revisionId"],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": ["runtimeSignatures"],
+        "additionalProperties": false
+      }
+    },
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT",
+        "description": "JWT issued via the device authorization flow (POST /cli/auth/token), shared by every API version."
+      }
+    }
+  },
+  "security": [
+    {
+      "bearerAuth": []
+    }
+  ],
+  "paths": {
+    "/cli/api/v2/whoami": {
+      "get": {
+        "summary": "Returns authenticated user identity and organizations",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$schema": "https://json-schema.org/draft/2020-12/schema",
+                  "type": "object",
+                  "properties": {
+                    "user": {
+                      "type": "string",
+                      "description": "Display name"
+                    },
+                    "email": {
+                      "description": "Email address",
+                      "type": "string"
+                    },
+                    "orgs": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "orgId": {
+                            "type": "number",
+                            "description": "GitHub org ID"
+                          },
+                          "id": {
+                            "type": "string",
+                            "description": "Taskless organization UUID"
+                          },
+                          "name": {
+                            "type": "string",
+                            "description": "Organization name"
+                          },
+                          "source": {
+                            "type": "string",
+                            "const": "github",
+                            "description": "Identity provider"
+                          },
+                          "url": {
+                            "type": "string",
+                            "description": "Canonical owner URL the client matches its repository against"
+                          }
+                        },
+                        "required": ["orgId", "id", "name", "source", "url"],
+                        "additionalProperties": false
+                      }
+                    }
+                  },
+                  "required": ["user", "orgs"],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`unauthorized`: Missing or invalid bearer token. Log in again.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$schema": "https://json-schema.org/draft/2020-12/schema",
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "enum": ["unauthorized"],
+                      "description": "Machine-readable error code"
+                    }
+                  },
+                  "required": ["error"],
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/cli/api/v2/reconcile": {
+      "post": {
+        "summary": "Judge each rule the client holds, as a whole: run only on an exact match with one issued revision",
+        "description": "Every reported rule is placed in exactly one of `rules`, `unknown`, or `entitlement.withheld`; a client must fail its check on any reported rule the response does not place.",
+        "requestBody": {
+          "description": "OK",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "type": "object",
+                "properties": {
+                  "orgId": {
+                    "description": "Taskless org UUID (preferred) or numeric GitHub org id; falls back to the deprecated token claim",
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "number"
+                      }
+                    ]
+                  },
+                  "repositoryUrl": {
+                    "type": "string",
+                    "description": "Full repository URL"
+                  },
+                  "rules": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "ruleId": {
+                          "type": "string",
+                          "description": "The rule directory name"
+                        },
+                        "files": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "path": {
+                                "type": "string",
+                                "description": "Path relative to the rule directory"
+                              },
+                              "signature": {
+                                "type": "string",
+                                "description": "Canonical signature of the file (`1;h=sha-256;d=<hex>`)"
+                              }
+                            },
+                            "required": ["path", "signature"],
+                            "additionalProperties": false
+                          },
+                          "description": "Every file of the rule directory except its test fixtures, with the signature the client computed for its local copy"
+                        }
+                      },
+                      "required": ["ruleId", "files"],
+                      "additionalProperties": false
+                    },
+                    "description": "Every rule directory the client holds"
+                  }
+                },
+                "required": ["repositoryUrl", "rules"],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$schema": "https://json-schema.org/draft/2020-12/schema",
+                  "type": "object",
+                  "properties": {
+                    "rules": {
+                      "type": "array",
+                      "items": {
+                        "oneOf": [
+                          {
+                            "type": "object",
+                            "properties": {
+                              "ruleId": {
+                                "type": "string"
+                              },
+                              "engine": {
+                                "type": "string",
+                                "enum": ["sg", "vale", "runtime"],
+                                "description": "The rule’s engine"
+                              },
+                              "verdict": {
+                                "type": "string",
+                                "const": "run",
+                                "description": "The reported files exactly equal one issued revision"
+                              },
+                              "revisionId": {
+                                "type": "string",
+                                "description": "The revision they equal"
+                              }
+                            },
+                            "required": [
+                              "ruleId",
+                              "engine",
+                              "verdict",
+                              "revisionId"
+                            ],
+                            "additionalProperties": false
+                          },
+                          {
+                            "type": "object",
+                            "properties": {
+                              "ruleId": {
+                                "type": "string"
+                              },
+                              "engine": {
+                                "type": "string",
+                                "enum": ["sg", "vale", "runtime"],
+                                "description": "The rule’s engine"
+                              },
+                              "verdict": {
+                                "type": "string",
+                                "const": "unsafe",
+                                "description": "The reported files equal no issued revision. Never run it; offer restore. For sg and vale, fail the check."
+                              },
+                              "files": {
+                                "type": "array",
+                                "items": {
+                                  "type": "object",
+                                  "properties": {
+                                    "path": {
+                                      "type": "string"
+                                    },
+                                    "expected": {
+                                      "description": "The issued signature, when the file was issued",
+                                      "type": "string"
+                                    },
+                                    "got": {
+                                      "description": "The reported signature, when the file was reported",
+                                      "type": "string"
+                                    }
+                                  },
+                                  "required": ["path"],
+                                  "additionalProperties": false
+                                },
+                                "description": "The diff against the current (or newest) revision: changed, removed, and added files"
+                              }
+                            },
+                            "required": [
+                              "ruleId",
+                              "engine",
+                              "verdict",
+                              "files"
+                            ],
+                            "additionalProperties": false
+                          },
+                          {
+                            "type": "object",
+                            "properties": {
+                              "ruleId": {
+                                "type": "string"
+                              },
+                              "engine": {
+                                "type": "string",
+                                "enum": ["sg", "vale", "runtime"],
+                                "description": "The rule’s engine"
+                              },
+                              "verdict": {
+                                "type": "string",
+                                "const": "missing",
+                                "description": "Issued and current, but not reported. Warn."
+                              },
+                              "revisionId": {
+                                "type": "string",
+                                "description": "The current revision to restore"
+                              }
+                            },
+                            "required": [
+                              "ruleId",
+                              "engine",
+                              "verdict",
+                              "revisionId"
+                            ],
+                            "additionalProperties": false
+                          }
+                        ]
+                      },
+                      "description": "A verdict for each reported rule that is not unknown or withheld, and each missing rule"
+                    },
+                    "unknown": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "ruleId": {
+                            "type": "string"
+                          }
+                        },
+                        "required": ["ruleId"],
+                        "additionalProperties": false
+                      },
+                      "description": "Reported rules that are not rules of this repository (locally written, or issued before rule storage)"
+                    },
+                    "entitlement": {
+                      "$ref": "#/components/schemas/EntitlementV2"
+                    }
+                  },
+                  "required": ["rules", "unknown", "entitlement"],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`validation_error`: The body or query failed validation, or the body is not JSON; `details` lists why. Not retryable as sent.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$schema": "https://json-schema.org/draft/2020-12/schema",
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "enum": ["validation_error"],
+                      "description": "Machine-readable error code"
+                    },
+                    "details": {
+                      "description": "Human-readable reasons, when the code carries them",
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  },
+                  "required": ["error"],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`unauthorized`: Missing or invalid bearer token. Log in again.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$schema": "https://json-schema.org/draft/2020-12/schema",
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "enum": ["unauthorized"],
+                      "description": "Machine-readable error code"
+                    }
+                  },
+                  "required": ["error"],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`organization_not_found`: The organization is not accessible to this user, or its GitHub App installation does not cover the repository. Deliberately indistinguishable, so a probe cannot tell 'not yours' from 'does not exist'.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$schema": "https://json-schema.org/draft/2020-12/schema",
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "enum": ["organization_not_found"],
+                      "description": "Machine-readable error code"
+                    }
+                  },
+                  "required": ["error"],
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/cli/api/v2/request": {
+      "post": {
+        "summary": "Request a new rule",
+        "description": "A request the organization's plan does not permit is not refused with an HTTP error: it is accepted, and polling returns status `unsupported` with its reason.",
+        "requestBody": {
+          "description": "OK",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "type": "object",
+                "properties": {
+                  "repositoryUrl": {
+                    "type": "string",
+                    "description": "Full repository URL"
+                  },
+                  "prompt": {
+                    "type": "string",
+                    "description": "Description of the rule to generate"
+                  },
+                  "successCases": {
+                    "description": "Examples that should PASS the rule (optional). Each entry is either a code string (one file, named for you) or a case — `{ name?, files: [{ path, content }] }` — whose files are written into one directory, which is how an example spans more than one file",
+                    "type": "array",
+                    "items": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "object",
+                          "properties": {
+                            "name": {
+                              "description": "The case's directory name, e.g. `undeclared`. Generated positionally when absent",
+                              "type": "string"
+                            },
+                            "files": {
+                              "minItems": 1,
+                              "type": "array",
+                              "items": {
+                                "type": "object",
+                                "properties": {
+                                  "path": {
+                                    "type": "string",
+                                    "minLength": 1,
+                                    "description": "Path relative to the case root, e.g. `src/config.ts`. Required: a file in a multi-file case is identified by where it sits"
+                                  },
+                                  "content": {
+                                    "type": "string",
+                                    "description": "The file contents"
+                                  }
+                                },
+                                "required": ["path", "content"],
+                                "additionalProperties": false
+                              },
+                              "description": "The files in this case"
+                            }
+                          },
+                          "required": ["files"],
+                          "additionalProperties": false
+                        }
+                      ]
+                    }
+                  },
+                  "failureCases": {
+                    "description": "Examples that should FAIL the rule (optional). Same shape as `successCases`: a code string, or a case of files. A case spanning files is what a `runtime` rule is for — the read in `src/config.ts` judged against the `.env` beside it",
+                    "type": "array",
+                    "items": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "object",
+                          "properties": {
+                            "name": {
+                              "description": "The case's directory name, e.g. `undeclared`. Generated positionally when absent",
+                              "type": "string"
+                            },
+                            "files": {
+                              "minItems": 1,
+                              "type": "array",
+                              "items": {
+                                "type": "object",
+                                "properties": {
+                                  "path": {
+                                    "type": "string",
+                                    "minLength": 1,
+                                    "description": "Path relative to the case root, e.g. `src/config.ts`. Required: a file in a multi-file case is identified by where it sits"
+                                  },
+                                  "content": {
+                                    "type": "string",
+                                    "description": "The file contents"
+                                  }
+                                },
+                                "required": ["path", "content"],
+                                "additionalProperties": false
+                              },
+                              "description": "The files in this case"
+                            }
+                          },
+                          "required": ["files"],
+                          "additionalProperties": false
+                        }
+                      ]
+                    }
+                  },
+                  "orgId": {
+                    "description": "Taskless org UUID (preferred) or numeric GitHub org id; falls back to the deprecated token claim",
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "number"
+                      }
+                    ]
+                  }
+                },
+                "required": ["repositoryUrl", "prompt"],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$schema": "https://json-schema.org/draft/2020-12/schema",
+                  "type": "object",
+                  "properties": {
+                    "requestId": {
+                      "type": "string",
+                      "description": "UUID of the generation request, for polling GET /cli/api/v2/request/{requestId}"
+                    },
+                    "status": {
+                      "type": "string",
+                      "const": "accepted",
+                      "description": "Initial status"
+                    }
+                  },
+                  "required": ["requestId", "status"],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`validation_error`: The body or query failed validation, or the body is not JSON; `details` lists why. Not retryable as sent.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$schema": "https://json-schema.org/draft/2020-12/schema",
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "enum": ["validation_error"],
+                      "description": "Machine-readable error code"
+                    },
+                    "details": {
+                      "description": "Human-readable reasons, when the code carries them",
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  },
+                  "required": ["error"],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`unauthorized`: Missing or invalid bearer token. Log in again.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$schema": "https://json-schema.org/draft/2020-12/schema",
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "enum": ["unauthorized"],
+                      "description": "Machine-readable error code"
+                    }
+                  },
+                  "required": ["error"],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`organization_not_found`: The organization is not accessible to this user, or its GitHub App installation does not cover the repository. Deliberately indistinguishable, so a probe cannot tell 'not yours' from 'does not exist'.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$schema": "https://json-schema.org/draft/2020-12/schema",
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "enum": ["organization_not_found"],
+                      "description": "Machine-readable error code"
+                    }
+                  },
+                  "required": ["error"],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "`enqueue_failed`: The request was recorded but could not be queued, and polls as `failed`. Retryable: send the request again.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$schema": "https://json-schema.org/draft/2020-12/schema",
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "enum": ["enqueue_failed"],
+                      "description": "Machine-readable error code"
+                    }
+                  },
+                  "required": ["error"],
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/cli/api/v2/request/{requestId}": {
+      "get": {
+        "summary": "A request’s status and the rule revisions it produced (poll until terminal)",
+        "parameters": [
+          {
+            "name": "requestId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "UUID of the generation request. Poll it until terminal, then fetch each rule it produced by its rule id."
+          },
+          {
+            "name": "repositoryUrl",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "Full repository URL the request was for"
+            },
+            "description": "Full repository URL the request was for"
+          },
+          {
+            "name": "orgId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "description": "Taskless org UUID (preferred) or numeric GitHub org id; falls back to the deprecated token claim",
+              "type": "string"
+            },
+            "description": "Taskless org UUID (preferred) or numeric GitHub org id; falls back to the deprecated token claim"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$schema": "https://json-schema.org/draft/2020-12/schema",
+                  "type": "object",
+                  "properties": {
+                    "requestId": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "accepted",
+                        "classifying",
+                        "building",
+                        "generated",
+                        "failed",
+                        "pr",
+                        "merged",
+                        "closed",
+                        "unsupported"
+                      ]
+                    },
+                    "revisions": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "ruleId": {
+                            "type": "string",
+                            "description": "The rule id: fetch it by this"
+                          },
+                          "revisionId": {
+                            "type": "string",
+                            "description": "The revision this request produced"
+                          }
+                        },
+                        "required": ["ruleId", "revisionId"],
+                        "additionalProperties": false
+                      },
+                      "description": "The rule revisions this request produced. Fetch each with GET /cli/api/v2/rule/{ruleId}?revision={revisionId}, which serves them on every plan while they are the head."
+                    },
+                    "error": {
+                      "description": "Why the request ended the way it did (failed or unsupported). Print it rather than substituting your own.",
+                      "type": "string"
+                    },
+                    "errorCode": {
+                      "description": "Machine-readable code for error",
+                      "type": "string"
+                    }
+                  },
+                  "required": ["requestId", "status", "revisions"],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`validation_error`: The body or query failed validation, or the body is not JSON; `details` lists why. Not retryable as sent.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$schema": "https://json-schema.org/draft/2020-12/schema",
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "enum": ["validation_error"],
+                      "description": "Machine-readable error code"
+                    },
+                    "details": {
+                      "description": "Human-readable reasons, when the code carries them",
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  },
+                  "required": ["error"],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`unauthorized`: Missing or invalid bearer token. Log in again.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$schema": "https://json-schema.org/draft/2020-12/schema",
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "enum": ["unauthorized"],
+                      "description": "Machine-readable error code"
+                    }
+                  },
+                  "required": ["error"],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`organization_not_found`: The organization is not accessible to this user, or its GitHub App installation does not cover the repository. Deliberately indistinguishable, so a probe cannot tell 'not yours' from 'does not exist'.\n\n`request_not_found`: Not a request of this repository.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$schema": "https://json-schema.org/draft/2020-12/schema",
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "enum": ["organization_not_found", "request_not_found"],
+                      "description": "Machine-readable error code"
+                    }
+                  },
+                  "required": ["error"],
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/cli/api/v2/rule/{ruleId}/iterate": {
+      "post": {
+        "summary": "Request a new revision of a rule; creates a new request targeting it",
+        "parameters": [
+          {
+            "name": "ruleId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The rule id reconcile returns: the rule’s directory name, stable for the life of the rule. NOT a request id, unlike the legacy v1 `rule/{ruleId}`."
+          }
+        ],
+        "requestBody": {
+          "description": "OK",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "type": "object",
+                "properties": {
+                  "orgId": {
+                    "description": "Taskless org UUID (preferred) or numeric GitHub org id; falls back to the deprecated token claim",
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "number"
+                      }
+                    ]
+                  },
+                  "repositoryUrl": {
+                    "type": "string",
+                    "description": "Full repository URL the rule belongs to"
+                  },
+                  "guidance": {
+                    "type": "string",
+                    "description": "What to change about the rule"
+                  },
+                  "references": {
+                    "description": "Reference files to include as context (optional)",
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "filename": {
+                          "type": "string",
+                          "description": "File path relative to .taskless/"
+                        },
+                        "content": {
+                          "type": "string",
+                          "description": "File content"
+                        }
+                      },
+                      "required": ["filename", "content"],
+                      "additionalProperties": false
+                    }
+                  }
+                },
+                "required": ["repositoryUrl", "guidance"],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$schema": "https://json-schema.org/draft/2020-12/schema",
+                  "type": "object",
+                  "properties": {
+                    "requestId": {
+                      "type": "string",
+                      "description": "UUID of the NEW request this iteration created, for polling"
+                    },
+                    "status": {
+                      "type": "string",
+                      "const": "accepted"
+                    }
+                  },
+                  "required": ["requestId", "status"],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`validation_error`: The body or query failed validation, or the body is not JSON; `details` lists why. Not retryable as sent.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$schema": "https://json-schema.org/draft/2020-12/schema",
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "enum": ["validation_error"],
+                      "description": "Machine-readable error code"
+                    },
+                    "details": {
+                      "description": "Human-readable reasons, when the code carries them",
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  },
+                  "required": ["error"],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`unauthorized`: Missing or invalid bearer token. Log in again.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$schema": "https://json-schema.org/draft/2020-12/schema",
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "enum": ["unauthorized"],
+                      "description": "Machine-readable error code"
+                    }
+                  },
+                  "required": ["error"],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`organization_not_found`: The organization is not accessible to this user, or its GitHub App installation does not cover the repository. Deliberately indistinguishable, so a probe cannot tell 'not yours' from 'does not exist'.\n\n`rule_not_found`: Not a rule of this repository. On restore, also a rule with no current revision (it exists only on an open pull request). Answered on every plan, before any plan refusal.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$schema": "https://json-schema.org/draft/2020-12/schema",
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "enum": ["organization_not_found", "rule_not_found"],
+                      "description": "Machine-readable error code"
+                    }
+                  },
+                  "required": ["error"],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "`enqueue_failed`: The request was recorded but could not be queued, and polls as `failed`. Retryable: send the request again.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$schema": "https://json-schema.org/draft/2020-12/schema",
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "enum": ["enqueue_failed"],
+                      "description": "Machine-readable error code"
+                    }
+                  },
+                  "required": ["error"],
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/cli/api/v2/rule/{ruleId}/rollback": {
+      "post": {
+        "summary": "Make an earlier revision current now and return its files; a 200 refusal when the plan lacks restoreRules",
+        "parameters": [
+          {
+            "name": "ruleId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The rule id reconcile returns: the rule’s directory name, stable for the life of the rule. NOT a request id, unlike the legacy v1 `rule/{ruleId}`."
+          }
+        ],
+        "requestBody": {
+          "description": "OK",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "type": "object",
+                "properties": {
+                  "orgId": {
+                    "description": "Taskless org UUID (preferred) or numeric GitHub org id; falls back to the deprecated token claim",
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "number"
+                      }
+                    ]
+                  },
+                  "repositoryUrl": {
+                    "type": "string",
+                    "description": "Full repository URL the rule belongs to"
+                  },
+                  "revisionId": {
+                    "type": "string",
+                    "description": "The revision of this rule to make current again"
+                  }
+                },
+                "required": ["repositoryUrl", "revisionId"],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$schema": "https://json-schema.org/draft/2020-12/schema",
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "ruleId": {
+                          "type": "string",
+                          "description": "The rule id: its directory name, stable for life"
+                        },
+                        "revisionId": {
+                          "type": "string",
+                          "description": "The revision these bytes are"
+                        },
+                        "rules": {
+                          "type": "array",
+                          "items": {
+                            "oneOf": [
+                              {
+                                "type": "object",
+                                "properties": {
+                                  "id": {
+                                    "type": "string",
+                                    "description": "The rule directory name under .taskless/rules/<engine>/"
+                                  },
+                                  "files": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "object",
+                                      "properties": {
+                                        "path": {
+                                          "type": "string",
+                                          "description": "Path relative to .taskless/rules/<engine>/<id>/"
+                                        },
+                                        "content": {
+                                          "type": "string",
+                                          "description": "The file’s exact bytes"
+                                        }
+                                      },
+                                      "required": ["path", "content"],
+                                      "additionalProperties": false
+                                    },
+                                    "description": "Every file the rule directory must contain"
+                                  },
+                                  "engine": {
+                                    "type": "string",
+                                    "const": "sg",
+                                    "description": "ast-grep — inert declarative rules"
+                                  },
+                                  "signatures": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "object",
+                                      "properties": {
+                                        "path": {
+                                          "type": "string",
+                                          "description": "Path relative to the rule directory"
+                                        },
+                                        "signature": {
+                                          "type": "string",
+                                          "description": "Canonical signature of the file (`1;h=sha-256;d=<hex>`)"
+                                        }
+                                      },
+                                      "required": ["path", "signature"],
+                                      "additionalProperties": false
+                                    },
+                                    "description": "REQUIRED on every engine. The signatures of every file of the rule except its test fixtures, as issued. A record of what was issued, never a grant: whether a rule runs is decided by reconcile."
+                                  }
+                                },
+                                "required": [
+                                  "id",
+                                  "files",
+                                  "engine",
+                                  "signatures"
+                                ],
+                                "additionalProperties": false
+                              },
+                              {
+                                "type": "object",
+                                "properties": {
+                                  "id": {
+                                    "type": "string",
+                                    "description": "The rule directory name under .taskless/rules/<engine>/"
+                                  },
+                                  "files": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "object",
+                                      "properties": {
+                                        "path": {
+                                          "type": "string",
+                                          "description": "Path relative to .taskless/rules/<engine>/<id>/"
+                                        },
+                                        "content": {
+                                          "type": "string",
+                                          "description": "The file’s exact bytes"
+                                        }
+                                      },
+                                      "required": ["path", "content"],
+                                      "additionalProperties": false
+                                    },
+                                    "description": "Every file the rule directory must contain"
+                                  },
+                                  "engine": {
+                                    "type": "string",
+                                    "const": "vale",
+                                    "description": "Vale — inert prose/markup rules"
+                                  },
+                                  "signatures": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "object",
+                                      "properties": {
+                                        "path": {
+                                          "type": "string",
+                                          "description": "Path relative to the rule directory"
+                                        },
+                                        "signature": {
+                                          "type": "string",
+                                          "description": "Canonical signature of the file (`1;h=sha-256;d=<hex>`)"
+                                        }
+                                      },
+                                      "required": ["path", "signature"],
+                                      "additionalProperties": false
+                                    },
+                                    "description": "REQUIRED on every engine. The signatures of every file of the rule except its test fixtures, as issued. A record of what was issued, never a grant: whether a rule runs is decided by reconcile."
+                                  }
+                                },
+                                "required": [
+                                  "id",
+                                  "files",
+                                  "engine",
+                                  "signatures"
+                                ],
+                                "additionalProperties": false
+                              },
+                              {
+                                "type": "object",
+                                "properties": {
+                                  "id": {
+                                    "type": "string",
+                                    "description": "The rule directory name under .taskless/rules/<engine>/"
+                                  },
+                                  "files": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "object",
+                                      "properties": {
+                                        "path": {
+                                          "type": "string",
+                                          "description": "Path relative to .taskless/rules/<engine>/<id>/"
+                                        },
+                                        "content": {
+                                          "type": "string",
+                                          "description": "The file’s exact bytes"
+                                        }
+                                      },
+                                      "required": ["path", "content"],
+                                      "additionalProperties": false
+                                    },
+                                    "description": "Every file the rule directory must contain"
+                                  },
+                                  "engine": {
+                                    "type": "string",
+                                    "const": "runtime",
+                                    "description": "Executable — check.ts runs against a file tree"
+                                  },
+                                  "signature": {
+                                    "type": "string",
+                                    "description": "REQUIRED. Execution is gated on this signature, so a runtime rule without one could never run."
+                                  },
+                                  "signatures": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "object",
+                                      "properties": {
+                                        "path": {
+                                          "type": "string",
+                                          "description": "Path relative to the rule directory"
+                                        },
+                                        "signature": {
+                                          "type": "string",
+                                          "description": "Canonical signature of the file (`1;h=sha-256;d=<hex>`)"
+                                        }
+                                      },
+                                      "required": ["path", "signature"],
+                                      "additionalProperties": false
+                                    },
+                                    "description": "REQUIRED on every engine. The signatures of every file of the rule except its test fixtures, as issued. A record of what was issued, never a grant: whether a rule runs is decided by reconcile."
+                                  }
+                                },
+                                "required": [
+                                  "id",
+                                  "files",
+                                  "engine",
+                                  "signature",
+                                  "signatures"
+                                ],
+                                "additionalProperties": false
+                              }
+                            ],
+                            "description": "A rule directory as files, with the signatures of its surface"
+                          },
+                          "description": "Exactly one file set: the requested rule, never its siblings"
+                        },
+                        "entitlement": {
+                          "$ref": "#/components/schemas/Entitlement"
+                        },
+                        "restoreRules": {
+                          "type": "boolean",
+                          "const": true,
+                          "description": "Rolled back: write this file set in place of the rule directory"
+                        }
+                      },
+                      "required": [
+                        "ruleId",
+                        "revisionId",
+                        "rules",
+                        "restoreRules"
+                      ],
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "restoreRules": {
+                          "type": "boolean",
+                          "const": false
+                        },
+                        "reason": {
+                          "type": "string",
+                          "const": "RESTORE_RULES_NOT_IN_PLAN"
+                        },
+                        "message": {
+                          "type": "string",
+                          "description": "Print verbatim: names the plan, says the rule is in the repository’s git history, and links the pull request that delivered it when one is recorded."
+                        },
+                        "upgradeUrl": {
+                          "type": "string",
+                          "description": "The absolute URL of the organization's upgrade page"
+                        }
+                      },
+                      "required": [
+                        "restoreRules",
+                        "reason",
+                        "message",
+                        "upgradeUrl"
+                      ],
+                      "additionalProperties": false,
+                      "description": "The organization's plan does not include restoring rules. Only given for a rule that exists and belongs to the caller; a rule that does not is a 404."
+                    }
+                  ],
+                  "description": "The revision rolled back to, or the refusal when the plan lacks it"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`validation_error`: The body or query failed validation, or the body is not JSON; `details` lists why. Not retryable as sent.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$schema": "https://json-schema.org/draft/2020-12/schema",
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "enum": ["validation_error"],
+                      "description": "Machine-readable error code"
+                    },
+                    "details": {
+                      "description": "Human-readable reasons, when the code carries them",
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  },
+                  "required": ["error"],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`unauthorized`: Missing or invalid bearer token. Log in again.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$schema": "https://json-schema.org/draft/2020-12/schema",
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "enum": ["unauthorized"],
+                      "description": "Machine-readable error code"
+                    }
+                  },
+                  "required": ["error"],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`organization_not_found`: The organization is not accessible to this user, or its GitHub App installation does not cover the repository. Deliberately indistinguishable, so a probe cannot tell 'not yours' from 'does not exist'.\n\n`rule_not_found`: Not a rule of this repository. On restore, also a rule with no current revision (it exists only on an open pull request). Answered on every plan, before any plan refusal.\n\n`revision_not_found`: Not a revision of this rule.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$schema": "https://json-schema.org/draft/2020-12/schema",
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "enum": [
+                        "organization_not_found",
+                        "rule_not_found",
+                        "revision_not_found"
+                      ],
+                      "description": "Machine-readable error code"
+                    }
+                  },
+                  "required": ["error"],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`rule_not_restorable`: A stored revision cannot be served as a file set; `details` says why. Should not happen: report it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$schema": "https://json-schema.org/draft/2020-12/schema",
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "enum": ["rule_not_restorable"],
+                      "description": "Machine-readable error code"
+                    },
+                    "details": {
+                      "description": "Human-readable reasons, when the code carries them",
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  },
+                  "required": ["error"],
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/cli/api/v2/rule/{ruleId}": {
+      "get": {
+        "summary": "A rule by its id: its head on every plan, or an older revision with restoreRules",
+        "parameters": [
+          {
+            "name": "ruleId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The rule id reconcile returns: the rule’s directory name, stable for the life of the rule. NOT a request id, unlike the legacy v1 `rule/{ruleId}`."
+          },
+          {
+            "name": "repositoryUrl",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "Full repository URL the rule belongs to"
+            },
+            "description": "Full repository URL the rule belongs to"
+          },
+          {
+            "name": "orgId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "description": "Taskless org UUID (preferred) or numeric GitHub org id; falls back to the deprecated token claim",
+              "type": "string"
+            },
+            "description": "Taskless org UUID (preferred) or numeric GitHub org id; falls back to the deprecated token claim"
+          },
+          {
+            "name": "revision",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "description": "A revision of this rule to fetch instead of its head. Any revision other than the head requires the plan's restoreRules entitlement.",
+              "type": "string"
+            },
+            "description": "A revision of this rule to fetch instead of its head. Any revision other than the head requires the plan's restoreRules entitlement."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$schema": "https://json-schema.org/draft/2020-12/schema",
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "ruleId": {
+                          "type": "string",
+                          "description": "The rule id: its directory name, stable for life"
+                        },
+                        "revisionId": {
+                          "type": "string",
+                          "description": "The revision these bytes are"
+                        },
+                        "rules": {
+                          "type": "array",
+                          "items": {
+                            "oneOf": [
+                              {
+                                "type": "object",
+                                "properties": {
+                                  "id": {
+                                    "type": "string",
+                                    "description": "The rule directory name under .taskless/rules/<engine>/"
+                                  },
+                                  "files": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "object",
+                                      "properties": {
+                                        "path": {
+                                          "type": "string",
+                                          "description": "Path relative to .taskless/rules/<engine>/<id>/"
+                                        },
+                                        "content": {
+                                          "type": "string",
+                                          "description": "The file’s exact bytes"
+                                        }
+                                      },
+                                      "required": ["path", "content"],
+                                      "additionalProperties": false
+                                    },
+                                    "description": "Every file the rule directory must contain"
+                                  },
+                                  "engine": {
+                                    "type": "string",
+                                    "const": "sg",
+                                    "description": "ast-grep — inert declarative rules"
+                                  },
+                                  "signatures": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "object",
+                                      "properties": {
+                                        "path": {
+                                          "type": "string",
+                                          "description": "Path relative to the rule directory"
+                                        },
+                                        "signature": {
+                                          "type": "string",
+                                          "description": "Canonical signature of the file (`1;h=sha-256;d=<hex>`)"
+                                        }
+                                      },
+                                      "required": ["path", "signature"],
+                                      "additionalProperties": false
+                                    },
+                                    "description": "REQUIRED on every engine. The signatures of every file of the rule except its test fixtures, as issued. A record of what was issued, never a grant: whether a rule runs is decided by reconcile."
+                                  }
+                                },
+                                "required": [
+                                  "id",
+                                  "files",
+                                  "engine",
+                                  "signatures"
+                                ],
+                                "additionalProperties": false
+                              },
+                              {
+                                "type": "object",
+                                "properties": {
+                                  "id": {
+                                    "type": "string",
+                                    "description": "The rule directory name under .taskless/rules/<engine>/"
+                                  },
+                                  "files": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "object",
+                                      "properties": {
+                                        "path": {
+                                          "type": "string",
+                                          "description": "Path relative to .taskless/rules/<engine>/<id>/"
+                                        },
+                                        "content": {
+                                          "type": "string",
+                                          "description": "The file’s exact bytes"
+                                        }
+                                      },
+                                      "required": ["path", "content"],
+                                      "additionalProperties": false
+                                    },
+                                    "description": "Every file the rule directory must contain"
+                                  },
+                                  "engine": {
+                                    "type": "string",
+                                    "const": "vale",
+                                    "description": "Vale — inert prose/markup rules"
+                                  },
+                                  "signatures": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "object",
+                                      "properties": {
+                                        "path": {
+                                          "type": "string",
+                                          "description": "Path relative to the rule directory"
+                                        },
+                                        "signature": {
+                                          "type": "string",
+                                          "description": "Canonical signature of the file (`1;h=sha-256;d=<hex>`)"
+                                        }
+                                      },
+                                      "required": ["path", "signature"],
+                                      "additionalProperties": false
+                                    },
+                                    "description": "REQUIRED on every engine. The signatures of every file of the rule except its test fixtures, as issued. A record of what was issued, never a grant: whether a rule runs is decided by reconcile."
+                                  }
+                                },
+                                "required": [
+                                  "id",
+                                  "files",
+                                  "engine",
+                                  "signatures"
+                                ],
+                                "additionalProperties": false
+                              },
+                              {
+                                "type": "object",
+                                "properties": {
+                                  "id": {
+                                    "type": "string",
+                                    "description": "The rule directory name under .taskless/rules/<engine>/"
+                                  },
+                                  "files": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "object",
+                                      "properties": {
+                                        "path": {
+                                          "type": "string",
+                                          "description": "Path relative to .taskless/rules/<engine>/<id>/"
+                                        },
+                                        "content": {
+                                          "type": "string",
+                                          "description": "The file’s exact bytes"
+                                        }
+                                      },
+                                      "required": ["path", "content"],
+                                      "additionalProperties": false
+                                    },
+                                    "description": "Every file the rule directory must contain"
+                                  },
+                                  "engine": {
+                                    "type": "string",
+                                    "const": "runtime",
+                                    "description": "Executable — check.ts runs against a file tree"
+                                  },
+                                  "signature": {
+                                    "type": "string",
+                                    "description": "REQUIRED. Execution is gated on this signature, so a runtime rule without one could never run."
+                                  },
+                                  "signatures": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "object",
+                                      "properties": {
+                                        "path": {
+                                          "type": "string",
+                                          "description": "Path relative to the rule directory"
+                                        },
+                                        "signature": {
+                                          "type": "string",
+                                          "description": "Canonical signature of the file (`1;h=sha-256;d=<hex>`)"
+                                        }
+                                      },
+                                      "required": ["path", "signature"],
+                                      "additionalProperties": false
+                                    },
+                                    "description": "REQUIRED on every engine. The signatures of every file of the rule except its test fixtures, as issued. A record of what was issued, never a grant: whether a rule runs is decided by reconcile."
+                                  }
+                                },
+                                "required": [
+                                  "id",
+                                  "files",
+                                  "engine",
+                                  "signature",
+                                  "signatures"
+                                ],
+                                "additionalProperties": false
+                              }
+                            ],
+                            "description": "A rule directory as files, with the signatures of its surface"
+                          },
+                          "description": "Exactly one file set: the requested rule, never its siblings"
+                        },
+                        "entitlement": {
+                          "$ref": "#/components/schemas/Entitlement"
+                        }
+                      },
+                      "required": ["ruleId", "revisionId", "rules"],
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "restoreRules": {
+                          "type": "boolean",
+                          "const": false
+                        },
+                        "reason": {
+                          "type": "string",
+                          "const": "RESTORE_RULES_NOT_IN_PLAN"
+                        },
+                        "message": {
+                          "type": "string",
+                          "description": "Print verbatim: names the plan, says the rule is in the repository’s git history, and links the pull request that delivered it when one is recorded."
+                        },
+                        "upgradeUrl": {
+                          "type": "string",
+                          "description": "The absolute URL of the organization's upgrade page"
+                        }
+                      },
+                      "required": [
+                        "restoreRules",
+                        "reason",
+                        "message",
+                        "upgradeUrl"
+                      ],
+                      "additionalProperties": false,
+                      "description": "The organization's plan does not include restoring rules. Only given for a rule that exists and belongs to the caller; a rule that does not is a 404."
+                    }
+                  ],
+                  "description": "The rule, or, for a non-head revision on a plan without restoreRules, the refusal"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`validation_error`: The body or query failed validation, or the body is not JSON; `details` lists why. Not retryable as sent.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$schema": "https://json-schema.org/draft/2020-12/schema",
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "enum": ["validation_error"],
+                      "description": "Machine-readable error code"
+                    },
+                    "details": {
+                      "description": "Human-readable reasons, when the code carries them",
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  },
+                  "required": ["error"],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`unauthorized`: Missing or invalid bearer token. Log in again.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$schema": "https://json-schema.org/draft/2020-12/schema",
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "enum": ["unauthorized"],
+                      "description": "Machine-readable error code"
+                    }
+                  },
+                  "required": ["error"],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`organization_not_found`: The organization is not accessible to this user, or its GitHub App installation does not cover the repository. Deliberately indistinguishable, so a probe cannot tell 'not yours' from 'does not exist'.\n\n`rule_not_found`: Not a rule of this repository. On restore, also a rule with no current revision (it exists only on an open pull request). Answered on every plan, before any plan refusal.\n\n`revision_not_found`: Not a revision of this rule.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$schema": "https://json-schema.org/draft/2020-12/schema",
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "enum": [
+                        "organization_not_found",
+                        "rule_not_found",
+                        "revision_not_found"
+                      ],
+                      "description": "Machine-readable error code"
+                    }
+                  },
+                  "required": ["error"],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`rule_not_restorable`: A stored revision cannot be served as a file set; `details` says why. Should not happen: report it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$schema": "https://json-schema.org/draft/2020-12/schema",
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "enum": ["rule_not_restorable"],
+                      "description": "Machine-readable error code"
+                    },
+                    "details": {
+                      "description": "Human-readable reasons, when the code carries them",
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  },
+                  "required": ["error"],
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/cli/api/v2/rule/{ruleId}/restore": {
+      "post": {
+        "summary": "Restore a rule’s current revision by its id; a 200 refusal when the plan lacks restoreRules",
+        "parameters": [
+          {
+            "name": "ruleId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The rule id reconcile returns: the rule’s directory name, stable for the life of the rule. NOT a request id, unlike the legacy v1 `rule/{ruleId}`."
+          }
+        ],
+        "requestBody": {
+          "description": "OK",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "type": "object",
+                "properties": {
+                  "orgId": {
+                    "description": "Taskless org UUID (preferred) or numeric GitHub org id; falls back to the deprecated token claim",
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "number"
+                      }
+                    ]
+                  },
+                  "repositoryUrl": {
+                    "type": "string",
+                    "description": "Full repository URL the rule belongs to"
+                  }
+                },
+                "required": ["repositoryUrl"],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$schema": "https://json-schema.org/draft/2020-12/schema",
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "ruleId": {
+                          "type": "string",
+                          "description": "The rule id: its directory name, stable for life"
+                        },
+                        "revisionId": {
+                          "type": "string",
+                          "description": "The revision these bytes are"
+                        },
+                        "rules": {
+                          "type": "array",
+                          "items": {
+                            "oneOf": [
+                              {
+                                "type": "object",
+                                "properties": {
+                                  "id": {
+                                    "type": "string",
+                                    "description": "The rule directory name under .taskless/rules/<engine>/"
+                                  },
+                                  "files": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "object",
+                                      "properties": {
+                                        "path": {
+                                          "type": "string",
+                                          "description": "Path relative to .taskless/rules/<engine>/<id>/"
+                                        },
+                                        "content": {
+                                          "type": "string",
+                                          "description": "The file’s exact bytes"
+                                        }
+                                      },
+                                      "required": ["path", "content"],
+                                      "additionalProperties": false
+                                    },
+                                    "description": "Every file the rule directory must contain"
+                                  },
+                                  "engine": {
+                                    "type": "string",
+                                    "const": "sg",
+                                    "description": "ast-grep — inert declarative rules"
+                                  },
+                                  "signatures": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "object",
+                                      "properties": {
+                                        "path": {
+                                          "type": "string",
+                                          "description": "Path relative to the rule directory"
+                                        },
+                                        "signature": {
+                                          "type": "string",
+                                          "description": "Canonical signature of the file (`1;h=sha-256;d=<hex>`)"
+                                        }
+                                      },
+                                      "required": ["path", "signature"],
+                                      "additionalProperties": false
+                                    },
+                                    "description": "REQUIRED on every engine. The signatures of every file of the rule except its test fixtures, as issued. A record of what was issued, never a grant: whether a rule runs is decided by reconcile."
+                                  }
+                                },
+                                "required": [
+                                  "id",
+                                  "files",
+                                  "engine",
+                                  "signatures"
+                                ],
+                                "additionalProperties": false
+                              },
+                              {
+                                "type": "object",
+                                "properties": {
+                                  "id": {
+                                    "type": "string",
+                                    "description": "The rule directory name under .taskless/rules/<engine>/"
+                                  },
+                                  "files": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "object",
+                                      "properties": {
+                                        "path": {
+                                          "type": "string",
+                                          "description": "Path relative to .taskless/rules/<engine>/<id>/"
+                                        },
+                                        "content": {
+                                          "type": "string",
+                                          "description": "The file’s exact bytes"
+                                        }
+                                      },
+                                      "required": ["path", "content"],
+                                      "additionalProperties": false
+                                    },
+                                    "description": "Every file the rule directory must contain"
+                                  },
+                                  "engine": {
+                                    "type": "string",
+                                    "const": "vale",
+                                    "description": "Vale — inert prose/markup rules"
+                                  },
+                                  "signatures": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "object",
+                                      "properties": {
+                                        "path": {
+                                          "type": "string",
+                                          "description": "Path relative to the rule directory"
+                                        },
+                                        "signature": {
+                                          "type": "string",
+                                          "description": "Canonical signature of the file (`1;h=sha-256;d=<hex>`)"
+                                        }
+                                      },
+                                      "required": ["path", "signature"],
+                                      "additionalProperties": false
+                                    },
+                                    "description": "REQUIRED on every engine. The signatures of every file of the rule except its test fixtures, as issued. A record of what was issued, never a grant: whether a rule runs is decided by reconcile."
+                                  }
+                                },
+                                "required": [
+                                  "id",
+                                  "files",
+                                  "engine",
+                                  "signatures"
+                                ],
+                                "additionalProperties": false
+                              },
+                              {
+                                "type": "object",
+                                "properties": {
+                                  "id": {
+                                    "type": "string",
+                                    "description": "The rule directory name under .taskless/rules/<engine>/"
+                                  },
+                                  "files": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "object",
+                                      "properties": {
+                                        "path": {
+                                          "type": "string",
+                                          "description": "Path relative to .taskless/rules/<engine>/<id>/"
+                                        },
+                                        "content": {
+                                          "type": "string",
+                                          "description": "The file’s exact bytes"
+                                        }
+                                      },
+                                      "required": ["path", "content"],
+                                      "additionalProperties": false
+                                    },
+                                    "description": "Every file the rule directory must contain"
+                                  },
+                                  "engine": {
+                                    "type": "string",
+                                    "const": "runtime",
+                                    "description": "Executable — check.ts runs against a file tree"
+                                  },
+                                  "signature": {
+                                    "type": "string",
+                                    "description": "REQUIRED. Execution is gated on this signature, so a runtime rule without one could never run."
+                                  },
+                                  "signatures": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "object",
+                                      "properties": {
+                                        "path": {
+                                          "type": "string",
+                                          "description": "Path relative to the rule directory"
+                                        },
+                                        "signature": {
+                                          "type": "string",
+                                          "description": "Canonical signature of the file (`1;h=sha-256;d=<hex>`)"
+                                        }
+                                      },
+                                      "required": ["path", "signature"],
+                                      "additionalProperties": false
+                                    },
+                                    "description": "REQUIRED on every engine. The signatures of every file of the rule except its test fixtures, as issued. A record of what was issued, never a grant: whether a rule runs is decided by reconcile."
+                                  }
+                                },
+                                "required": [
+                                  "id",
+                                  "files",
+                                  "engine",
+                                  "signature",
+                                  "signatures"
+                                ],
+                                "additionalProperties": false
+                              }
+                            ],
+                            "description": "A rule directory as files, with the signatures of its surface"
+                          },
+                          "description": "Exactly one file set: the requested rule, never its siblings"
+                        },
+                        "entitlement": {
+                          "$ref": "#/components/schemas/Entitlement"
+                        },
+                        "restoreRules": {
+                          "type": "boolean",
+                          "const": true,
+                          "description": "The rule was restored: its file set follows"
+                        }
+                      },
+                      "required": [
+                        "ruleId",
+                        "revisionId",
+                        "rules",
+                        "restoreRules"
+                      ],
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "restoreRules": {
+                          "type": "boolean",
+                          "const": false
+                        },
+                        "reason": {
+                          "type": "string",
+                          "const": "RESTORE_RULES_NOT_IN_PLAN"
+                        },
+                        "message": {
+                          "type": "string",
+                          "description": "Print verbatim: names the plan, says the rule is in the repository’s git history, and links the pull request that delivered it when one is recorded."
+                        },
+                        "upgradeUrl": {
+                          "type": "string",
+                          "description": "The absolute URL of the organization's upgrade page"
+                        }
+                      },
+                      "required": [
+                        "restoreRules",
+                        "reason",
+                        "message",
+                        "upgradeUrl"
+                      ],
+                      "additionalProperties": false,
+                      "description": "The organization's plan does not include restoring rules. Only given for a rule that exists and belongs to the caller; a rule that does not is a 404."
+                    }
+                  ],
+                  "description": "The restored rule, or the refusal when the plan lacks it"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`validation_error`: The body or query failed validation, or the body is not JSON; `details` lists why. Not retryable as sent.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$schema": "https://json-schema.org/draft/2020-12/schema",
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "enum": ["validation_error"],
+                      "description": "Machine-readable error code"
+                    },
+                    "details": {
+                      "description": "Human-readable reasons, when the code carries them",
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  },
+                  "required": ["error"],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`unauthorized`: Missing or invalid bearer token. Log in again.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$schema": "https://json-schema.org/draft/2020-12/schema",
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "enum": ["unauthorized"],
+                      "description": "Machine-readable error code"
+                    }
+                  },
+                  "required": ["error"],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`organization_not_found`: The organization is not accessible to this user, or its GitHub App installation does not cover the repository. Deliberately indistinguishable, so a probe cannot tell 'not yours' from 'does not exist'.\n\n`rule_not_found`: Not a rule of this repository. On restore, also a rule with no current revision (it exists only on an open pull request). Answered on every plan, before any plan refusal.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$schema": "https://json-schema.org/draft/2020-12/schema",
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "enum": ["organization_not_found", "rule_not_found"],
+                      "description": "Machine-readable error code"
+                    }
+                  },
+                  "required": ["error"],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`rule_not_restorable`: A stored revision cannot be served as a file set; `details` says why. Should not happen: report it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$schema": "https://json-schema.org/draft/2020-12/schema",
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "enum": ["rule_not_restorable"],
+                      "description": "Machine-readable error code"
+                    },
+                    "details": {
+                      "description": "Human-readable reasons, when the code carries them",
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  },
+                  "required": ["error"],
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/cli/api/v2/rule-hash-vectors": {
+      "get": {
+        "summary": "Public: canonical rule-hash conformance vectors for cross-repo validation",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$schema": "https://json-schema.org/draft/2020-12/schema",
+                  "type": "object",
+                  "properties": {
+                    "vectors": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "name": {
+                            "type": "string",
+                            "description": "Human-readable case name, e.g. \"crlf-equals-lf\""
+                          },
+                          "input": {
+                            "type": "string",
+                            "description": "Raw rule text to hash"
+                          },
+                          "signature": {
+                            "type": "string",
+                            "description": "Canonical signature envelope: <algoVersion>;h=<algo>;d=<hex>"
+                          }
+                        },
+                        "required": ["name", "input", "signature"],
+                        "additionalProperties": false
+                      },
+                      "description": "Canonical conformance vectors every implementation must reproduce"
+                    }
+                  },
+                  "required": ["vectors"],
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

@@ -49,7 +49,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
  * An upgrade URL is printed as a link the user is invited to follow, so a value
  * that is not an absolute `https:` URL is dropped rather than shown.
  */
-function parseUpgradeUrl(value: unknown): string | undefined {
+export function parseUpgradeUrl(value: unknown): string | undefined {
   if (typeof value !== "string") return undefined;
   try {
     return new URL(value).protocol === "https:" ? value : undefined;
@@ -90,12 +90,68 @@ export function parseEntitlement(value: unknown): Entitlement | undefined {
   };
 }
 
+/** A runtime rule the v2 service withheld for entitlement, not for tampering. */
+export interface WithheldRule {
+  ruleId: string;
+  /** The revision it matched exactly. Kept for reporting; never a join key. */
+  revisionId?: string;
+}
+
+/** A v2 entitlement outcome. As with v1, only the unentitled case is represented. */
+export interface EntitlementV2 {
+  runtimeSignatures: false;
+  reason?: string;
+  /** Present only when it parsed as an absolute `https:` URL. */
+  upgradeUrl?: string;
+  /** Always an array; empty on served file sets, which never carry it. */
+  withheld: WithheldRule[];
+}
+
+/**
+ * Normalize an untrusted v2 `entitlement` field.
+ *
+ * v2 names withheld RULES, `{ ruleId, revisionId }`, where v1 named files. The
+ * v1 {@link parseEntitlement} drops any entry without a string `file`, so
+ * handing it a v2 body drops every withheld rule, `withheld` comes back empty,
+ * and `check` passes on a plan that ran nothing (taskless/cli#403). This parser
+ * keys on `ruleId` alone and keeps an entry whatever else it lacks. An entry
+ * with no `ruleId` cannot be joined to anything reported and is dropped here,
+ * which is safe only because `check` separately fails any reported rule the
+ * response did not account for.
+ */
+export function parseEntitlementV2(value: unknown): EntitlementV2 | undefined {
+  if (!isRecord(value) || value.runtimeSignatures !== false) return undefined;
+
+  const withheld: WithheldRule[] = [];
+  if (Array.isArray(value.withheld)) {
+    for (const entry of value.withheld) {
+      if (!isRecord(entry) || typeof entry.ruleId !== "string") continue;
+      withheld.push({
+        ruleId: entry.ruleId,
+        ...(typeof entry.revisionId === "string"
+          ? { revisionId: entry.revisionId }
+          : {}),
+      });
+    }
+  }
+
+  const upgradeUrl = parseUpgradeUrl(value.upgradeUrl);
+  return {
+    runtimeSignatures: false,
+    ...(typeof value.reason === "string" ? { reason: value.reason } : {}),
+    ...(upgradeUrl === undefined ? {} : { upgradeUrl }),
+    withheld,
+  };
+}
+
 /**
  * Why a runtime rule just written will not run. Shared by `rule create`,
  * `rule improve`, and restore, which each name the rule their own way, so the
  * explanation cannot drift between them.
  */
-export function notRunOnPlanSentence(entitlement: Entitlement): string {
+export function notRunOnPlanSentence(
+  entitlement: Pick<Entitlement, "upgradeUrl">
+): string {
   // The URL ends the sentence with no trailing period, so copying it from a
   // terminal does not copy a `.` into the address.
   return (

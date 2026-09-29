@@ -10,39 +10,41 @@ branch targeting the one below; the stack merges down.
       `cli-check`, `cli-rule-reconciliation`, `cli-generated-rule-delivery`,
       `cli-rules`, and `cli-runtime-rule-execution` survives, and that only the
       requirements listed under REMOVED disappear. `pnpm openspec validate
-  cli-v2-rule-api --strict` passes.
+cli-v2-rule-api --strict` passes.
 - [x] 1.2 Add the `minor` changeset on this branch. The body says: the CLI now
       speaks only the v2 API and 0.11.x stops working once 0.12.0 is the
       server's floor; `check` fails on an edited sg or vale rule; `rule create
-  --json` prints `requestId` instead of `ruleId`; `rule restore` and `rule
-  rollback` exist. Verify `pnpm changeset status` proposes `0.12.0`.
+--json` prints `requestId` instead of `ruleId`; `rule restore` and `rule
+rollback` exist. Verify `pnpm changeset status` proposes `0.12.0`.
 - [x] 1.3 Confirm the nightly stamp: run `node .github/scripts/nightly-pack.cjs
-  --print-version --status <changeset status output> --sha <sha>` on this branch and check it prints `0.12.0-*`, since the
+--print-version --status <changeset status output> --sha <sha>` on this branch and check it prints `0.12.0-*`, since the
       server resolves a prerelease to the release it precedes.
 
 ## 2. v2 schema and client (slice 1)
 
-- [ ] 2.1 Point `scripts/fetch-api-schema.ts` at `/cli/api/v2/__schema`, run
-      `pnpm --filter @taskless/cli generate:api`, and review the
-      `api.schema.json` diff. Verify every v2 operation (whoami, reconcile,
+- [x] 2.1 Point `scripts/fetch-api-schema.ts` at `/cli/api/v2/__schema`,
+      writing `api-v2.schema.json` / `api-v2.d.ts` beside the frozen v1 files
+      (design Decision 1), run `pnpm --filter @taskless/cli generate:api`, and
+      review the new document. Verify every v2 operation (whoami, reconcile,
       request, request status, rule fetch, iterate, restore, rollback,
       rule-hash-vectors) is present with its documented error responses.
-- [ ] 2.2 Point `scripts/fetch-rule-hash-vectors.ts` at
+- [x] 2.2 Point `scripts/fetch-rule-hash-vectors.ts` at
       `/cli/api/v2/rule-hash-vectors`; the committed fixture is unchanged
       (measured identical to v1) and `rule-hash.test.ts` passes.
-- [ ] 2.3 Add `api/v2.ts`: one typed `openapi-fetch` client over the v2 `paths`,
+- [x] 2.3 Add `api/v2.ts`: one typed `openapi-fetch` client over the v2 `paths`,
       always sending `x-taskless-cli-version`, with one function per operation
       returning an outcome union (`ok` / `refused` / typed error codes /
       `unauthorized` / `unavailable`) and never throwing for expected
       conditions. Unit tests cover each operation's success, each documented
       error code, a network failure, and an unparseable body.
-- [ ] 2.4 Add `api/refusal.ts`: parse `{ restoreRules: false, reason, message,
-  upgradeUrl }`, strip C0/C1 control characters except newline from
+- [x] 2.4 Add `api/refusal.ts`: parse `{ restoreRules: false, reason, message,
+upgradeUrl }`, strip C0/C1 control characters except newline from
       `message`, keep `upgradeUrl` only as absolute `https:`. Tests cover an
       unknown `reason`, an ANSI escape in `message`, and a relative URL.
-- [ ] 2.5 Rewrite `api/entitlement.ts` for v2: `withheld` is
-      `{ ruleId, revisionId }[]`, matched by `ruleId`; no entry is dropped for
-      lacking `file`. Tests include the #403 hazard: a v2 withheld list parses
+- [x] 2.5 Add `parseEntitlementV2` beside the v1 parser in
+      `api/entitlement.ts` (v1 is deleted in 8.1 with its last caller):
+      `withheld` is `{ ruleId, revisionId }[]`, matched by `ruleId`; no entry is
+      dropped for lacking `file`. Tests include the #403 hazard: a v2 withheld list parses
       to the same number of entries it arrived with.
 
 ## 3. Generation on v2 (slice 2)
@@ -154,8 +156,8 @@ branch targeting the one below; the stack merges down.
 
 ## 8. Retire v1 (slice 5)
 
-- [ ] 8.1 Delete `api/rules.ts`, `api/reconcile.ts`, `api/restore.ts`, and every
-      v1 type use; move `auth/whoami.ts` and `auth/org.ts` to v2 whoami. Verify
+- [ ] 8.1 Delete `api/rules.ts`, `api/reconcile.ts`, `api/restore.ts`, the
+      frozen v1 `api.schema.json` / `api.d.ts`, and every v1 type use; move `auth/whoami.ts` and `auth/org.ts` to v2 whoami. Verify
       `grep -rn "/cli/api/" packages/cli/src` finds only `/cli/api/v2/` paths.
 - [ ] 8.2 Add a vite build check (per the code style guide, not a test that
       scans output) that fails the build if the bundle contains a `/cli/api/`
@@ -181,5 +183,5 @@ branch targeting the one below; the stack merges down.
       directory-swap gap, the superseded-revision signal, and the v1
       `Entitlement` type on served file sets.
 - [ ] 9.4 Archive the change on the tip branch (`pnpm openspec archive
-  cli-v2-rule-api`), then re-run the scenario-survival check from 1.1
+cli-v2-rule-api`), then re-run the scenario-survival check from 1.1
       against the archived specs.

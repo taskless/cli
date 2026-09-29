@@ -37,11 +37,17 @@ import { apiBaseUrl, packageFile, writeJsonArtifact } from "./artifacts";
  *   "no API changes" when what actually happened was "no API reached".
  */
 
-const OUTPUT_PATH = packageFile("src", "generated", "api.schema.json");
+/**
+ * The v2 document only. The server versions its API in the path, and v2 has
+ * its own `__schema` listing nothing but v2 routes. The v1 `api.schema.json`
+ * beside it is frozen: nothing refetches it, and it is deleted with its last
+ * caller at the tip of the `cli-v2-rule-api` stack.
+ */
+const OUTPUT_PATH = packageFile("src", "generated", "api-v2.schema.json");
 
 // `__schema` is unauthenticated. `apiBaseUrl` documents the one tier of the
 // runtime client's origin resolution these scripts skip.
-const sourceUrl = `${apiBaseUrl()}/cli/api/__schema`;
+const sourceUrl = `${apiBaseUrl()}/cli/api/v2/__schema`;
 
 console.log(`Fetching the Taskless CLI API schema...`);
 console.log(`  URL: ${sourceUrl}`);
