@@ -117,7 +117,9 @@ delete the rules to make `check` pass, and do not suggest
   `engine.log`, `sg.log`, `vale.log`, `runtime.log`) instead of removing it.
   Its path is printed on stderr, or returned as `runDirectory` under
   `--json`. Use it to debug a rule that behaves unexpectedly; the logs hold
-  matched source, so treat the directory like any local build output.
+  matched source, so treat the directory like any local build output. It
+  survives later runs and is removed after a day; delete its `preserve`
+  file to let the next run remove it sooner.
 
 ## Steps
 

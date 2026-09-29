@@ -34,12 +34,18 @@ import process from "node:process";
  * test, not age, which alone would either delete a slow run still in progress
  * or keep junk for hours. A directory owned by another host (a shared
  * filesystem) is left alone, since this host cannot tell whether that process
- * lives.
+ * lives. A preserved directory is left alone too: `--preserve-logs` writes a
+ * `preserve` marker beside `owner`, because its owner exits by design and the
+ * next on-save `check` must not delete what the user asked to keep. The two
+ * files answer different questions (`owner`: is the run still going;
+ * `preserve`: should the directory outlive it), and deleting the marker is how
+ * a user releases a kept directory to the next sweep.
  *
  * **Age is only a backstop.** Any owned directory whose run started more than
  * {@link ABANDONED_AFTER_MS} ago is swept whatever its owner. That covers what
  * liveness cannot: a dead run's pid recycled by an unrelated process, a
- * foreign host that never came back. No `check` runs for a day. A directory
+ * foreign host that never came back, and a preserved directory nobody went
+ * back to. No `check` runs for a day. A directory
  * whose name is not a run id predates run ids (0.11's `runtime-rules/`, the
  * first 0.12 `snapshot/`) and is swept too. A run-id directory with no `owner`
  * is swept only after a grace period, because that is also what a run looks
@@ -64,7 +70,7 @@ const OWNERLESS_GRACE_MS = 60_000;
 
 /**
  * How old a run may be before its directory is swept whatever its owner: live
- * pid or other host. See the module comment.
+ * pid, other host, or preserved. See the module comment.
  */
 const ABANDONED_AFTER_MS = 24 * 60 * 60 * 1000;
 
@@ -80,6 +86,9 @@ interface Owner {
   hostname: string;
   startedAt: string;
 }
+
+/** The marker `--preserve-logs` writes beside `owner`. */
+const PRESERVE_MARKER = "preserve";
 
 /** One append-only log file in a run directory. */
 export class RunLog {
@@ -177,6 +186,15 @@ async function ownerOlderThan(
     : Date.now() - started > ms;
 }
 
+async function exists(path: string): Promise<boolean> {
+  try {
+    await stat(path);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 async function olderThan(path: string, ms: number): Promise<boolean> {
   try {
     const { mtimeMs } = await stat(path);
@@ -211,6 +229,7 @@ export async function sweepAbandonedRuns(cwd: string): Promise<string[]> {
         ABANDONED_AFTER_MS
       );
       if (!expired) {
+        if (await exists(join(directory, PRESERVE_MARKER))) continue;
         if (owner.hostname !== hostname()) continue;
         if (isAlive(owner.pid)) continue;
       }
@@ -258,6 +277,14 @@ export async function openRun(
     hostname: hostname(),
     startedAt: now.toISOString(),
   };
+  if (preserve) {
+    // Before `owner`, so no sweep can see this run owned but unmarked.
+    await writeFile(
+      join(path, PRESERVE_MARKER),
+      "Kept by --preserve-logs. A run sweeps this directory once it is a day old; delete this file to let the next run sweep it sooner.\n",
+      "utf8"
+    );
+  }
   await writeFile(join(path, "owner"), `${JSON.stringify(owner)}\n`, "utf8");
 
   const logs: RunLogs = {
