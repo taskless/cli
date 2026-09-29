@@ -1,4 +1,5 @@
 import type { ServedFileSet, ServedRule } from "../api/v2";
+import { isRecord } from "../util/is-record";
 import { canonicalHash } from "./rule-hash";
 import { RULE_TESTS_DIRECTORY } from "./layout";
 
@@ -38,10 +39,6 @@ export interface DeliveryExpectation {
 
 function isFixture(path: string): boolean {
   return path.startsWith(`${RULE_TESTS_DIRECTORY}/`);
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 /** Why a served file set is not the documented shape, or `undefined`. */
