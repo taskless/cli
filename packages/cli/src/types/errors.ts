@@ -48,6 +48,19 @@ export type CLIErrorCode =
   // id-addressed command left; `verify` and `test` take a path and cannot
   // produce this.
   | "RULE_ID_AMBIGUOUS"
+  // The organization's plan does not include restoring or rolling back rules.
+  // The service ANSWERED, with guidance for recovering the rule from git, so
+  // this is never NETWORK_ERROR: an agent that retries gets the same answer
+  // forever. The message carries the service's recovery instructions.
+  | "RULE_RECOVERY_NOT_IN_PLAN"
+  // A rollback named a revision that is not one of this rule's. The rule id
+  // is fine; the revision is the thing to re-check.
+  | "REVISION_NOT_FOUND"
+  // The service served bytes other than the ones reconcile said the rule
+  // should be, or than the revision asked for. Nothing was written. Restore
+  // repairs a rule and never advances it, so this is refused rather than
+  // accepted as an upgrade.
+  | "RULE_RESTORE_MISMATCH"
   | "INVALID_INPUT"
   | "NETWORK_ERROR"
   | "SCAN_FAILED"

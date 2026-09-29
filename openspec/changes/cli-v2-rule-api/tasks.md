@@ -134,23 +134,23 @@ upgradeUrl }`, strip C0/C1 control characters except newline from
 
 ## 7. Recovery commands (slice 4)
 
-- [ ] 7.1 Add `rule restore <ruleId>` per the `cli-rule-recovery` spec: reuse
+- [x] 7.1 Add `rule restore <ruleId>` per the `cli-rule-recovery` spec: reuse
       the snapshot, report, and reconcile from group 5, read only the named
       rule's verdict, and build the expected signature map (`unsafe`) or
       revision (`missing`). Tests cover `run`, withheld, `unknown`, `unsafe`,
       and `missing`.
-- [ ] 7.2 Verify the served set against both its signatures and the
+- [x] 7.2 Verify the served set against both its signatures and the
       expectation before writing; a mismatch exits `RULE_RESTORE_MISMATCH` and
       writes nothing. A test serves a newer revision for an `unsafe` rule and
       asserts the tree is untouched.
-- [ ] 7.3 Add `rule rollback <ruleId> <revisionId>`: served `revisionId` must
+- [x] 7.3 Add `rule rollback <ruleId> <revisionId>`: served `revisionId` must
       equal the requested one; `revision_not_found` and `rule_not_found` map to
       their codes. Tests for each.
-- [ ] 7.4 Handle the refusal in both commands: print the sanitized `message` and
+- [x] 7.4 Handle the refusal in both commands: print the sanitized `message` and
       `upgradeUrl`, write nothing, exit with `RULE_RECOVERY_NOT_IN_PLAN`.
       Add the new codes to `types/errors.ts`. Tests cover human and `--json`
       output.
-- [ ] 7.5 Add a `recover-rule` agent recipe (restore versus rollback, what a
+- [x] 7.5 Add a `recover-rule` agent recipe (restore versus rollback, what a
       refusal means, recovering from git per the refusal's `message`) and link
       it from the `check` recipe's "An edited rule" section (slice 3 left the
       pointer out, since the topic did not exist yet).
