@@ -30,10 +30,16 @@ import process from "node:process";
  *
  * **Abandoned directories are swept** at the start of every run: a run killed
  * with SIGKILL never gets to clean up. A directory is abandoned when the
- * process named in its `owner` file is gone on this host. Age is not the test,
- * because it would either delete a slow run still in progress or keep junk for
- * hours. A directory owned by another host (a shared filesystem) is left
- * alone, since this host cannot tell whether that process lives. A directory
+ * process named in its `owner` file is gone on this host. Liveness is the
+ * test, not age, which alone would either delete a slow run still in progress
+ * or keep junk for hours. A directory owned by another host (a shared
+ * filesystem) is left alone, since this host cannot tell whether that process
+ * lives.
+ *
+ * **Age is only a backstop.** Any owned directory whose run started more than
+ * {@link ABANDONED_AFTER_MS} ago is swept whatever its owner. That covers what
+ * liveness cannot: a dead run's pid recycled by an unrelated process, a
+ * foreign host that never came back. No `check` runs for a day. A directory
  * whose name is not a run id predates run ids (0.11's `runtime-rules/`, the
  * first 0.12 `snapshot/`) and is swept too. A run-id directory with no `owner`
  * is swept only after a grace period, because that is also what a run looks
@@ -55,6 +61,12 @@ const RUN_ID = /^\d{8}T\d{6}Z-[0-9a-f]{6}$/;
  * is caught by the next sweep after this grace.
  */
 const OWNERLESS_GRACE_MS = 60_000;
+
+/**
+ * How old a run may be before its directory is swept whatever its owner: live
+ * pid or other host. See the module comment.
+ */
+const ABANDONED_AFTER_MS = 24 * 60 * 60 * 1000;
 
 /**
  * How long a signal waits for a preserved run's logs to reach the disk before
@@ -150,6 +162,21 @@ async function readOwner(directory: string): Promise<Owner | undefined> {
   }
 }
 
+/**
+ * Whether the run that owns `directory` started more than `ms` ago, from the
+ * owner's `startedAt`, or the directory's own mtime when that does not parse.
+ */
+async function ownerOlderThan(
+  owner: Owner,
+  directory: string,
+  ms: number
+): Promise<boolean> {
+  const started = Date.parse(owner.startedAt);
+  return Number.isNaN(started)
+    ? olderThan(directory, ms)
+    : Date.now() - started > ms;
+}
+
 async function olderThan(path: string, ms: number): Promise<boolean> {
   try {
     const { mtimeMs } = await stat(path);
@@ -178,8 +205,15 @@ export async function sweepAbandonedRuns(cwd: string): Promise<string[]> {
     const directory = join(root, entry.name);
     const owner = await readOwner(directory);
     if (owner !== undefined) {
-      if (owner.hostname !== hostname()) continue;
-      if (isAlive(owner.pid)) continue;
+      const expired = await ownerOlderThan(
+        owner,
+        directory,
+        ABANDONED_AFTER_MS
+      );
+      if (!expired) {
+        if (owner.hostname !== hostname()) continue;
+        if (isAlive(owner.pid)) continue;
+      }
     } else if (
       // A run id with no owner yet is most likely a run starting right now.
       RUN_ID.test(entry.name) &&
@@ -214,6 +248,7 @@ export async function openRun(
     () => {}
   );
 
+  const preserve = options.preserve === true;
   const now = new Date();
   const id = newRunId(now);
   const path = join(root, id);
@@ -236,7 +271,6 @@ export async function openRun(
     logs.engine.write(`swept abandoned run directories: ${swept.join(", ")}`);
   }
 
-  const preserve = options.preserve === true;
   let closed = false;
 
   // A signal skips `finally`, so the directory would outlive the run. Removed
