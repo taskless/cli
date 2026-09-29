@@ -1,4 +1,5 @@
 import { parseEntitlementV2, type EntitlementV2 } from "../api/entitlement";
+import { isRecord } from "../util/is-record";
 import type { EngineName } from "./layout";
 import { isKnownEngine } from "./layout";
 import type { ReportedRule } from "./report";
@@ -77,10 +78,6 @@ export interface VerdictPlan {
 
 /** The reason a runtime rule the plan withholds did not run. */
 export const NOT_IN_PLAN_REASON = "not included in your Taskless plan";
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
 
 function records(value: unknown): Record<string, unknown>[] {
   return Array.isArray(value) ? value.filter((entry) => isRecord(entry)) : [];
