@@ -61,8 +61,9 @@ export type FinishedRequest = RequestStatus;
  * Poll a request until it stops moving.
  *
  * Throws a `CLIError` for anything that is not an answer about the request:
- * `request_not_found` (the id will never resolve), a rejected token, and an
- * unreachable service, each with the code a caller branches on.
+ * `request_not_found` (the id will never resolve, reported as `NETWORK_ERROR`
+ * because the remedy is to resubmit), a rejected token, and an unreachable
+ * service, each with the code a caller branches on.
  */
 export async function awaitRequest(
   context: GenerationContext,
@@ -86,13 +87,16 @@ export async function awaitRequest(
         );
       }
       case "error": {
+        // `request_not_found` names the request id this CLI submitted a moment
+        // ago, never a rule id the caller supplied, so it is not
+        // RULE_NOT_FOUND: that code's documented remedy is "re-check the
+        // directory name", and `rule create` has no rule id at all. It is a
+        // poll that failed, and the remedy is to submit again.
         throw new CLIError(
           outcome.code === "request_not_found"
-            ? `Request ${requestId} was not found for this repository.`
+            ? `Request ${requestId} is no longer known to the service for this repository. Submit the request again.`
             : `Polling failed (${outcome.code}).`,
-          outcome.code === "request_not_found"
-            ? "RULE_NOT_FOUND"
-            : "NETWORK_ERROR"
+          "NETWORK_ERROR"
         );
       }
       case "refused":
@@ -161,6 +165,18 @@ export async function deliverRevisions(
   context: GenerationContext,
   revisions: FinishedRequest["revisions"]
 ): Promise<Delivered> {
+  // The contract requires `revisions` on every status, but `getRequestStatus`
+  // only checks that the body is an object. A `generated` status without the
+  // list is a malformed response, reported the way `api/v2.ts` reports any
+  // other one. Not `?? []`: that would print "0 rule(s)" and exit cleanly for
+  // a request that did generate something, a silent success.
+  if (!Array.isArray(revisions)) {
+    throw new CLIError(
+      "The service reported the request as generated but did not list the rules it produced (invalid response body).",
+      "NETWORK_ERROR"
+    );
+  }
+
   const fetched = await Promise.all(
     revisions.map(async ({ ruleId, revisionId }) => ({
       ruleId,
