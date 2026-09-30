@@ -17,7 +17,7 @@ import {
 describe("survey constants", () => {
   // The identifiers are PostHog's, transcribed once. A question's id changes
   // whenever the question does, which is exactly the kind of drift this pins:
-  // the values here are what the 0.11.3 survey holds as of 2026-09-21.
+  // the values here are what the 0.12.0 survey holds as of 2026-09-21.
   it("carries the live survey's question ids in question order", () => {
     expect(SURVEY_ID).toBe("01a0c7b9-dfe4-0000-d05e-ce253e90a68c");
     expect(SURVEY_QUESTIONS.map(({ key, id }) => [key, id])).toEqual([
