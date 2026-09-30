@@ -48,6 +48,24 @@
         "additionalProperties": false,
         "description": "The organization's entitlement to have runtime rules blessed. Additive: the rest of the response means what it did without it. Always present on reconcile; on restore and request retrieval, present whenever the response carries a runtime file set."
       },
+      "EntitlementAnnotation": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "runtimeSignatures": {
+            "$ref": "#/components/schemas/Entitlement/properties/runtimeSignatures"
+          },
+          "reason": {
+            "$ref": "#/components/schemas/Entitlement/properties/reason"
+          },
+          "upgradeUrl": {
+            "$ref": "#/components/schemas/Entitlement/properties/upgradeUrl"
+          }
+        },
+        "required": ["runtimeSignatures"],
+        "additionalProperties": false,
+        "description": "The entitlement annotation on a served runtime file set: whether it will be blessed on this plan. Never carries `withheld`, which only reconcile reports."
+      },
       "EntitlementV2": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "type": "object",
@@ -145,6 +163,30 @@
                           "url": {
                             "type": "string",
                             "description": "Canonical owner URL the client matches its repository against"
+                          },
+                          "entitlements": {
+                            "type": "object",
+                            "properties": {
+                              "remoteGeneration": {
+                                "type": "boolean",
+                                "description": "Taskless Cloud may generate rules for this organization"
+                              },
+                              "runtimeSignatures": {
+                                "type": "boolean",
+                                "description": "Reconcile may place this organization's runtime rules in `run`"
+                              },
+                              "restoreRules": {
+                                "type": "boolean",
+                                "description": "Restore, rollback, and fetching a revision other than the head are served"
+                              }
+                            },
+                            "required": [
+                              "remoteGeneration",
+                              "runtimeSignatures",
+                              "restoreRules"
+                            ],
+                            "additionalProperties": false,
+                            "description": "What the organization's plan grants, one boolean per entitlement. A hint for the client, never a gate: every endpoint an entitlement gates refuses on its own. Absent only when reading the plan failed (a transport or Durable Object error), which means unknown, not refused. An organization with no plan configured still reports the default plan's entitlements."
                           }
                         },
                         "required": ["orgId", "id", "name", "source", "url"],
@@ -184,7 +226,7 @@
     "/cli/api/v2/reconcile": {
       "post": {
         "summary": "Judge each rule the client holds, as a whole: run only on an exact match with one issued revision",
-        "description": "Every reported rule is placed in exactly one of `rules`, `unknown`, or `entitlement.withheld`; a client must fail its check on any reported rule the response does not place.",
+        "description": "Every reported rule is placed in exactly one of `rules`, `unknown`, or `entitlement.withheld`; a client must fail its check on any reported rule the response does not place. An sg or vale `unknown` rule that carries `copyOf` is a copy of an issued rule: a client must not run it and must fail its check.",
         "requestBody": {
           "description": "OK",
           "content": {
@@ -378,6 +420,44 @@
                         "properties": {
                           "ruleId": {
                             "type": "string"
+                          },
+                          "copyOf": {
+                            "description": "Present when the rule carries a file Taskless issued to another rule of this repository: a renamed copy. For sg and vale, never run it and fail the check; a runtime unknown rule is never executed anyway",
+                            "type": "object",
+                            "properties": {
+                              "ruleId": {
+                                "type": "string",
+                                "description": "The issued rule it carries files of"
+                              },
+                              "revisionId": {
+                                "type": "string",
+                                "description": "The revision of that rule it matches best"
+                              },
+                              "files": {
+                                "type": "array",
+                                "items": {
+                                  "type": "object",
+                                  "properties": {
+                                    "path": {
+                                      "type": "string"
+                                    },
+                                    "expected": {
+                                      "description": "The issued signature, when the file was issued",
+                                      "type": "string"
+                                    },
+                                    "got": {
+                                      "description": "The reported signature, when the file was reported",
+                                      "type": "string"
+                                    }
+                                  },
+                                  "required": ["path"],
+                                  "additionalProperties": false
+                                },
+                                "description": "The diff against that revision, pairing files by signature before path: a file carried under a new name is not listed"
+                              }
+                            },
+                            "required": ["ruleId", "revisionId", "files"],
+                            "additionalProperties": false
                           }
                         },
                         "required": ["ruleId"],
@@ -1308,7 +1388,7 @@
                           "description": "Exactly one file set: the requested rule, never its siblings"
                         },
                         "entitlement": {
-                          "$ref": "#/components/schemas/Entitlement"
+                          "$ref": "#/components/schemas/EntitlementAnnotation"
                         },
                         "restoreRules": {
                           "type": "boolean",
@@ -1886,7 +1966,7 @@
                           "description": "Exactly one file set: the requested rule, never its siblings"
                         },
                         "entitlement": {
-                          "$ref": "#/components/schemas/Entitlement"
+                          "$ref": "#/components/schemas/EntitlementAnnotation"
                         }
                       },
                       "required": ["ruleId", "revisionId", "rules"],
@@ -2283,7 +2363,7 @@
                           "description": "Exactly one file set: the requested rule, never its siblings"
                         },
                         "entitlement": {
-                          "$ref": "#/components/schemas/Entitlement"
+                          "$ref": "#/components/schemas/EntitlementAnnotation"
                         },
                         "restoreRules": {
                           "type": "boolean",

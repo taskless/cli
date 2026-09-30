@@ -46,6 +46,15 @@ export interface paths {
                 source: "github";
                 /** @description Canonical owner URL the client matches its repository against */
                 url: string;
+                /** @description What the organization's plan grants, one boolean per entitlement. A hint for the client, never a gate: every endpoint an entitlement gates refuses on its own. Absent only when reading the plan failed (a transport or Durable Object error), which means unknown, not refused. An organization with no plan configured still reports the default plan's entitlements. */
+                entitlements?: {
+                  /** @description Taskless Cloud may generate rules for this organization */
+                  remoteGeneration: boolean;
+                  /** @description Reconcile may place this organization's runtime rules in `run` */
+                  runtimeSignatures: boolean;
+                  /** @description Restore, rollback, and fetching a revision other than the head are served */
+                  restoreRules: boolean;
+                };
               }[];
             };
           };
@@ -86,7 +95,7 @@ export interface paths {
     put?: never;
     /**
      * Judge each rule the client holds, as a whole: run only on an exact match with one issued revision
-     * @description Every reported rule is placed in exactly one of `rules`, `unknown`, or `entitlement.withheld`; a client must fail its check on any reported rule the response does not place.
+     * @description Every reported rule is placed in exactly one of `rules`, `unknown`, or `entitlement.withheld`; a client must fail its check on any reported rule the response does not place. An sg or vale `unknown` rule that carries `copyOf` is a copy of an issued rule: a client must not run it and must fail its check.
      */
     post: {
       parameters: {
@@ -183,6 +192,21 @@ export interface paths {
               /** @description Reported rules that are not rules of this repository (locally written, or issued before rule storage) */
               unknown: {
                 ruleId: string;
+                /** @description Present when the rule carries a file Taskless issued to another rule of this repository: a renamed copy. For sg and vale, never run it and fail the check; a runtime unknown rule is never executed anyway */
+                copyOf?: {
+                  /** @description The issued rule it carries files of */
+                  ruleId: string;
+                  /** @description The revision of that rule it matches best */
+                  revisionId: string;
+                  /** @description The diff against that revision, pairing files by signature before path: a file carried under a new name is not listed */
+                  files: {
+                    path: string;
+                    /** @description The issued signature, when the file was issued */
+                    expected?: string;
+                    /** @description The reported signature, when the file was reported */
+                    got?: string;
+                  }[];
+                };
               }[];
               entitlement: components["schemas"]["EntitlementV2"];
             };
@@ -762,7 +786,7 @@ export interface paths {
                         }[];
                       }
                   )[];
-                  entitlement?: components["schemas"]["Entitlement"];
+                  entitlement?: components["schemas"]["EntitlementAnnotation"];
                   /**
                    * @description Rolled back: write this file set in place of the rule directory
                    * @constant
@@ -1093,7 +1117,7 @@ export interface paths {
                         }[];
                       }
                   )[];
-                  entitlement?: components["schemas"]["Entitlement"];
+                  entitlement?: components["schemas"]["EntitlementAnnotation"];
                 }
               | {
                   /** @constant */
@@ -1308,7 +1332,7 @@ export interface paths {
                         }[];
                       }
                   )[];
-                  entitlement?: components["schemas"]["Entitlement"];
+                  entitlement?: components["schemas"]["EntitlementAnnotation"];
                   /**
                    * @description The rule was restored: its file set follows
                    * @constant
@@ -1471,6 +1495,12 @@ export interface components {
         /** @description Delivered rule filename the client reported */
         file: string;
       }[];
+    };
+    /** @description The entitlement annotation on a served runtime file set: whether it will be blessed on this plan. Never carries `withheld`, which only reconcile reports. */
+    EntitlementAnnotation: {
+      runtimeSignatures: components["schemas"]["Entitlement"]["runtimeSignatures"];
+      reason?: components["schemas"]["Entitlement"]["reason"];
+      upgradeUrl?: components["schemas"]["Entitlement"]["upgradeUrl"];
     };
     EntitlementV2: {
       runtimeSignatures: components["schemas"]["Entitlement"]["runtimeSignatures"];
