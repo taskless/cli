@@ -18,7 +18,7 @@
  * reads shown ≫ sent by design, and nothing here pretends otherwise.
  *
  * A question's id is PostHog's and changes whenever the question does. The
- * survey below replaced `01a0b1a0-80fb-0000-5dc1-baa4ec44e619` for 0.11.3:
+ * survey below replaced `01a0b1a0-80fb-0000-5dc1-baa4ec44e619` for 0.12.0:
  * seven questions, only the first required, every id new. The cadence store
  * is keyed by survey id, so every install is invited once more.
  */
