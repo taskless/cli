@@ -2,12 +2,9 @@ import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
 import type { Migration } from "../types";
+import { isRecord } from "../../util/is-record";
 
 const MANIFEST_FILE = "taskless.json";
-
-function isPlainObject(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
 
 /**
  * Migration 3 — drop the unused `install.installedAt` timestamp.
@@ -22,7 +19,7 @@ const migration: Migration = async (directory) => {
   try {
     const content = await readFile(manifestPath, "utf8");
     const parsed = JSON.parse(content) as unknown;
-    if (isPlainObject(parsed)) {
+    if (isRecord(parsed)) {
       raw = parsed;
     }
   } catch {
@@ -31,7 +28,7 @@ const migration: Migration = async (directory) => {
   }
 
   const install = raw.install;
-  if (isPlainObject(install) && "installedAt" in install) {
+  if (isRecord(install) && "installedAt" in install) {
     delete install.installedAt;
     await writeFile(manifestPath, JSON.stringify(raw, null, 2) + "\n", "utf8");
   }
