@@ -80,7 +80,8 @@ write nothing they cannot verify.
    ```
    %(TASKLESS_CLI)s rule rollback <ruleId> <revisionId> --json
    ```
-   Read the result as in step 3 above, then run `%(TASKLESS_CLI)s check`.
+   Read the result the way restore's is read ("Read the result" under
+   Steps), then run `%(TASKLESS_CLI)s check`.
 
 ## When the plan does not include recovery
 
@@ -102,7 +103,7 @@ When `--json` is set, failures emit `{ ok: false, code, message }`:
 | `AUTH_REQUIRED`             | not logged in, or the token was rejected              | fetch `%(TASKLESS_CLI)s agent auth`                   |
 | `RULE_RECOVERY_NOT_IN_PLAN` | the plan does not include recovery                     | follow the git steps in `message`; do not retry       |
 | `RULE_NOT_FOUND`            | Taskless did not issue this rule for this repository  | check the id; a local rule cannot be restored         |
-| `REVISION_NOT_FOUND`        | rollback named a revision that is not this rule's     | list them with `rule revisions <ruleId>`              |
+| `REVISION_NOT_FOUND`        | rollback named a revision that is not this rule's     | list them with `%(TASKLESS_CLI)s rule revisions <ruleId>` |
 | `RULE_RESTORE_MISMATCH`     | the service served bytes other than the expected ones | nothing was written; report it, do not retry blindly  |
 | `RULE_ID_AMBIGUOUS`         | two engines hold this id                               | rename the local one, then restore                    |
 | `NETWORK_ERROR`             | the service could not be reached or failed            | report and suggest a retry                            |

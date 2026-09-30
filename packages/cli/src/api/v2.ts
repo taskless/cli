@@ -307,9 +307,6 @@ export function rollbackRule(
 /** A rule's recent revisions: the `200` body of the revisions listing. */
 export type RevisionList = OkBody<"/cli/api/v2/rule/{ruleId}/revisions", "get">;
 
-/** One entry of a {@link RevisionList}. */
-export type RevisionEntry = RevisionList["revisions"][number];
-
 export type RevisionsCode = ErrorCode<
   "/cli/api/v2/rule/{ruleId}/revisions",
   "get"
