@@ -234,18 +234,21 @@ The CLI SHALL read the v2 reconcile response as a list of per-rule verdicts
 `missing`), a list of `unknown` rules (each `{ ruleId, copyOf? }`), and
 `entitlement.withheld`, and SHALL apply this policy:
 
-| Verdict              | runtime                                            | sg / vale                                     |
-| -------------------- | -------------------------------------------------- | --------------------------------------------- |
-| `run`                | execute                                            | run                                           |
-| `withheld`           | do not execute; fail `check`                       | (never sent)                                  |
-| `unsafe`             | do not execute; name `rule restore`                | do not run; fail `check`; name `rule restore` |
-| `missing`            | warn; name `rule restore`                          | warn; name `rule restore`                     |
-| `unknown`            | do not execute (needs `--dangerously-run-scripts`) | run                                           |
-| `unknown` + `copyOf` | do not execute; name the source                    | do not run; fail `check`; name the source     |
+| Verdict              | runtime                                            | sg / vale                                   |
+| -------------------- | -------------------------------------------------- | ------------------------------------------- |
+| `run`                | execute                                            | run                                         |
+| `withheld`           | do not execute; fail `check`                       | (never sent)                                |
+| `unsafe`             | do not execute; name the recovery                  | do not run; fail `check`; name the recovery |
+| `missing`            | warn; name the recovery                            | warn; name the recovery                     |
+| `unknown`            | do not execute (needs `--dangerously-run-scripts`) | run                                         |
+| `unknown` + `copyOf` | do not execute; name the source                    | do not run; fail `check`; name the source   |
 
 The engine SHALL be taken from the verdict's `engine` for `rules[]` entries and from the
 reporting directory for `unknown` entries. An `unsafe` notice SHALL name the rule and each
-differing path, saying whether it changed, was removed, or was added. A signature SHALL
+differing path, saying whether it changed, was removed, or was added. "Name the recovery"
+means `taskless rule restore <ruleId>`, or, when the organization's plan is known to exclude
+rule recovery, the git steps for the rule's directory (see `cli-rule-recovery`, "Recovery
+suggestions follow the plan"). A signature SHALL
 authorize running a runtime rule only through a `run` verdict, never by local comparison.
 
 #### Scenario: An edited static rule fails and does not run
@@ -268,7 +271,7 @@ authorize running a runtime rule only through a `run` verdict, never by local co
 
 #### Scenario: Missing warns and does not fail
 
-- **WHEN** reconcile returns a `missing` verdict for any engine, and no `unknown` rule names it in `copyOf`
+- **WHEN** reconcile returns a `missing` verdict for any engine, and no `unknown` rule names it in `copyOf`, and the organization's plan is not known to exclude rule recovery
 - **THEN** the CLI SHALL warn naming the rule and `taskless rule restore <ruleId>`
 - **AND** SHALL NOT change the exit code because of it
 
@@ -367,7 +370,8 @@ was not issued by the rule service.
 
 When `copyOf.ruleId` is also returned as `missing`, the CLI SHALL report the pair as one
 rename: the copy's message SHALL say the source was deleted and SHALL name
-`taskless rule restore <copyOf.ruleId>`, and the CLI SHALL NOT print a separate `missing`
+`taskless rule restore <copyOf.ruleId>`, or, when the organization's plan is known to exclude
+rule recovery, the git steps for the source's directory, and the CLI SHALL NOT print a separate `missing`
 warning for the source. A runtime rename SHALL be one notice and SHALL NOT change the exit
 code. `copyOf` absent or `null` SHALL be treated as no copy. A `copyOf` that is present but
 has no non-empty string `ruleId` SHALL fail closed: the rule SHALL be treated as
@@ -375,7 +379,7 @@ unaccounted.
 
 #### Scenario: A renamed and loosened Vale rule fails check as one rename
 
-- **WHEN** reconcile returns vale rule `bar-2` in `unknown` with `copyOf.ruleId` `foo-1` and `copyOf.files` listing `.vale.ini` changed, and returns `foo-1` as `missing`
+- **WHEN** reconcile returns vale rule `bar-2` in `unknown` with `copyOf.ruleId` `foo-1` and `copyOf.files` listing `.vale.ini` changed, and returns `foo-1` as `missing`, and the organization's plan is not known to exclude rule recovery
 - **THEN** `bar-2` SHALL NOT run
 - **AND** `check` SHALL exit non-zero with one message saying `bar-2` is a copy of `foo-1`, which was deleted, naming `.vale.ini` as changed and `taskless rule restore foo-1`
 - **AND** the CLI SHALL NOT print a separate warning that `foo-1` is missing
