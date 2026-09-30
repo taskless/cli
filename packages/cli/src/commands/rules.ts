@@ -31,9 +31,12 @@ import {
 } from "../schemas/rules-improve";
 import { outputSchema as metaOutputSchema } from "../schemas/rules-meta";
 import { outputSchema as recoverOutputSchema } from "../schemas/rules-recover";
+import { outputSchema as revisionsOutputSchema } from "../schemas/rules-revisions";
 import {
   beginRestore,
+  describeRevisions,
   restore,
+  revisions,
   rollback,
   type Recovered,
 } from "../rules/recover";
@@ -672,15 +675,15 @@ const deleteCommand = defineCommand({
 });
 
 /**
- * The shared body of `rule restore` and `rule rollback`: resolve identity, run
- * the recovery, and report it in both output modes. Every failure is a
- * `CLIError` carrying the code an agent branches on.
+ * Resolve identity and run `act` for a command that addresses an issued rule
+ * by id, reporting any failure in both output modes. Every failure is a
+ * `CLIError` carrying the code an agent branches on. Returns `undefined` once
+ * a failure has been reported.
  */
-async function runRecovery(
+async function runForIssuedRule<T>(
   args: { dir?: string; json: boolean },
-  ruleId: string,
-  recover: (cwd: string, identity: Identity) => Promise<Recovered | string>
-): Promise<void> {
+  act: (cwd: string, identity: Identity) => Promise<T>
+): Promise<T | undefined> {
   const cwd = resolve(args.dir ?? process.cwd());
   const report = (message: string, code: CLIErrorCode): void => {
     if (args.json) writeJsonError(code, message);
@@ -696,19 +699,31 @@ async function runRecovery(
       error instanceof Error ? error.message : String(error),
       identityFailureCode(error)
     );
-    return;
+    return undefined;
   }
 
-  let outcome: Recovered | string;
   try {
-    outcome = await recover(cwd, identity);
+    return await act(cwd, identity);
   } catch (error) {
     report(
       error instanceof Error ? error.message : String(error),
       error instanceof CLIError && error.code ? error.code : "INTERNAL_ERROR"
     );
-    return;
+    return undefined;
   }
+}
+
+/**
+ * The shared body of `rule restore` and `rule rollback`: run the recovery and
+ * report it in both output modes.
+ */
+async function runRecovery(
+  args: { dir?: string; json: boolean },
+  ruleId: string,
+  recover: (cwd: string, identity: Identity) => Promise<Recovered | string>
+): Promise<void> {
+  const outcome = await runForIssuedRule(args, recover);
+  if (outcome === undefined) return;
 
   // A string is "nothing to do": the rule is already intact.
   if (typeof outcome === "string") {
@@ -799,6 +814,37 @@ const rollbackCommand = defineCommand({
   },
 });
 
+const revisionsCommand = defineCommand({
+  meta: {
+    name: "revisions",
+    description:
+      "List a rule's recent revisions, to choose one for `rule rollback`",
+  },
+  args: {
+    dir: { type: "string", alias: "d", description: "Working directory" },
+    json: { type: "boolean", description: "Output as JSON", default: false },
+    id: {
+      type: "positional",
+      description:
+        "Rule id: its directory name under .taskless/rules/<engine>/",
+      required: true,
+    },
+  },
+  async run({ args }) {
+    const list = await runForIssuedRule(args, (_cwd, identity) =>
+      revisions(identity, args.id)
+    );
+    if (list === undefined) return;
+    if (args.json) {
+      console.log(
+        JSON.stringify(revisionsOutputSchema.parse({ success: true, ...list }))
+      );
+    } else {
+      for (const line of describeRevisions(list)) console.log(line);
+    }
+  },
+});
+
 export const ruleCommand = defineCommand({
   meta: {
     name: "rule",
@@ -811,5 +857,6 @@ export const ruleCommand = defineCommand({
     delete: deleteCommand,
     restore: restoreCommand,
     rollback: rollbackCommand,
+    revisions: revisionsCommand,
   },
 });

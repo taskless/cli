@@ -5,14 +5,14 @@
 
 ## 2. Command
 
-- [ ] 2.1 Add `schemas/rules-revisions.ts` (`{ success, ruleId, revisions[], truncated }`) and export it from `@taskless/cli/schemas`; verify `pnpm typecheck` and the schemas entry build pass
-- [ ] 2.2 Add the listing to `rules/recover.ts`, reusing `failure()` with the pull-request clause dropped from `rule_not_found`; verify with `rule-recovery.test.ts` cases for each spec scenario (current marked by flag not position, truncation note, plan-less listing exits 0, `RULE_NOT_FOUND`)
-- [ ] 2.3 Add `rule revisions <ruleId> [--json]` to `commands/rules.ts`, sharing identity resolution and error reporting with `runRecovery`; verify human output names `rule rollback`, and `--json` success and error envelopes match the spec
+- [x] 2.1 Add `schemas/rules-revisions.ts` (`{ success, ruleId, revisions[], truncated }`) beside `rules-recover.ts`, internal like it; verify `pnpm typecheck` passes
+- [x] 2.2 Add the listing to `rules/recover.ts`, reusing `failure()` with the pull-request clause dropped from `rule_not_found`; verify with `rule-recovery.test.ts` cases for each spec scenario (current marked by flag not position, truncation note, plan-less listing exits 0, `RULE_NOT_FOUND`)
+- [x] 2.3 Add `rule revisions <ruleId> [--json]` to `commands/rules.ts`, sharing identity resolution and error reporting with `runRecovery`; verify human output names `rule rollback`, and `--json` success and error envelopes match the spec
 
 ## 3. Guidance
 
 - [ ] 3.1 Update `agent/recover-rule.md` to topic v2: a step for choosing a revision with `rule revisions --json`, and `REVISION_NOT_FOUND`'s fix pointing at it instead of the dashboard (hand-edited, no prettier); verify `prompts.test.ts` and `recipe-cross-references.test.ts` pass
-- [ ] 3.2 Point `REVISION_NOT_FOUND`'s CLI message at `rule revisions <ruleId>`; verify with the existing rollback test
+- [x] 3.2 Point `REVISION_NOT_FOUND`'s CLI message at `rule revisions <ruleId>`; verify with the existing rollback test
 - [ ] 3.3 Add a patch changeset for `@taskless/cli` describing the new command
 
 ## 4. Verify
