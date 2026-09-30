@@ -1,4 +1,4 @@
-# Topic: recover-rule     (CLI v%(CLI_VERSION)s / topic v1)
+# Topic: recover-rule     (CLI v%(CLI_VERSION)s / topic v2)
 
 ## Goal
 Put an issued rule back the way Taskless issued it, after `check`
@@ -11,8 +11,11 @@ write nothing they cannot verify.
   edited (`unsafe`) or is missing.
 - `%(TASKLESS_CLI)s rule rollback <ruleId> <revisionId>` makes an
   earlier revision the rule's current one and writes it. Use it only
-  when the user asks to go back to a specific revision; the revision id
-  comes from the Taskless dashboard's rule history.
+  when the user asks to go back to a specific revision; take the
+  revision id from `rule revisions` (see Rolling back).
+- `%(TASKLESS_CLI)s rule revisions <ruleId>` lists the rule's recent
+  revisions and marks the current one. It reads only, and it works on
+  every plan.
 
 `check` never does either. It reports and names `rule restore`.
 
@@ -54,6 +57,31 @@ write nothing they cannot verify.
    (`%(TASKLESS_CLI)s agent improve-rule`) or write a new local rule
    under a new id.
 
+## Rolling back
+
+1. **List the revisions.**
+   ```
+   %(TASKLESS_CLI)s rule revisions <ruleId> --json
+   ```
+   `revisions` is newest first, each with `revisionId`, `createdAt`,
+   `delivery`, and `prUrl` for a pull-request delivery. Find the
+   current one by `current: true`, not by position: a current revision
+   older than the newest ten is listed after them. When no entry is
+   current, the rule exists only on a pull request that has not merged,
+   and there is nothing to roll back from. `truncated: true` means
+   older revisions exist that the listing omits; the rule's page on
+   the Taskless dashboard lists every one.
+
+2. **Pick the revision the user described**, such as "the one before
+   the last change" or "the one from that pull request". If more than
+   one fits, show the user the candidates and ask. Do not guess.
+
+3. **Roll back to it.**
+   ```
+   %(TASKLESS_CLI)s rule rollback <ruleId> <revisionId> --json
+   ```
+   Read the result as in step 3 above, then run `%(TASKLESS_CLI)s check`.
+
 ## When the plan does not include recovery
 
 On a plan without rule recovery, restore and rollback answer with
@@ -74,7 +102,7 @@ When `--json` is set, failures emit `{ ok: false, code, message }`:
 | `AUTH_REQUIRED`             | not logged in, or the token was rejected              | fetch `%(TASKLESS_CLI)s agent auth`                   |
 | `RULE_RECOVERY_NOT_IN_PLAN` | the plan does not include recovery                     | follow the git steps in `message`; do not retry       |
 | `RULE_NOT_FOUND`            | Taskless did not issue this rule for this repository  | check the id; a local rule cannot be restored         |
-| `REVISION_NOT_FOUND`        | rollback named a revision that is not this rule's     | check the revision id in the dashboard                |
+| `REVISION_NOT_FOUND`        | rollback named a revision that is not this rule's     | list them with `rule revisions <ruleId>`              |
 | `RULE_RESTORE_MISMATCH`     | the service served bytes other than the expected ones | nothing was written; report it, do not retry blindly  |
 | `RULE_ID_AMBIGUOUS`         | two engines hold this id                               | rename the local one, then restore                    |
 | `NETWORK_ERROR`             | the service could not be reached or failed            | report and suggest a retry                            |
