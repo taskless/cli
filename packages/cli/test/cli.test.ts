@@ -57,6 +57,43 @@ describe("cli", () => {
     });
   });
 
+  // citty resolves a subcommand from the first token not starting with `-`,
+  // so before argv was joined, the path after `-d` was read as a command name
+  // and every parent with subcommands failed with "Unknown command".
+  describe("-d <path> before a subcommand", () => {
+    let temporaryDirectory: string;
+
+    beforeEach(async () => {
+      temporaryDirectory = await mkdtemp(join(tmpdir(), "taskless-test-"));
+    });
+
+    afterEach(async () => {
+      await rm(temporaryDirectory, { recursive: true, force: true });
+    });
+
+    it("runs auth status against the given directory", async () => {
+      const environment = { ...process.env };
+      delete environment.TASKLESS_TOKEN;
+      const { stdout } = await execFileAsync(
+        "node",
+        [binPath, "auth", "-d", temporaryDirectory],
+        { env: environment }
+      );
+      expect(stdout).toContain("Not logged in.");
+    });
+
+    it("dispatches the root's subcommand after -d", async () => {
+      const { stdout } = await execFileAsync("node", [
+        binPath,
+        "-d",
+        temporaryDirectory,
+        "info",
+        "--json",
+      ]);
+      expect(JSON.parse(stdout.trim())).toHaveProperty("version");
+    });
+  });
+
   describe("init", () => {
     let temporaryDirectory: string;
 

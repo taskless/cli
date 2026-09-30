@@ -6,6 +6,7 @@
  *
  * - `-d`/`--dir` take a value, so the token after one of them is a flag value
  *   and NOT a positional (`taskless -d /tmp check` runs `check`, not `/tmp`).
+ *   citty does not know this on its own; see `joinDirectoryValues`.
  * - `--` is the POSIX end-of-options marker: every token after it is a
  *   positional even if it starts with `-`, which is what lets `taskless check
  *   -- -h` scan a path literally named `-h` instead of asking for help.
@@ -95,6 +96,45 @@ export function splitRawArguments(
     positionals.push(argument);
   }
   return { positionals, flags, values };
+}
+
+/**
+ * Rewrite `-d <path>` and `--dir <path>` into the one-token `--dir=<path>`.
+ *
+ * citty picks a subcommand from the first raw token that does not start with
+ * `-`, at every level that has subcommands, and it does that before parsing
+ * any flags. In `taskless auth -d .` that token is `.`, the flag's value, so
+ * citty reports "Unknown command `.`" before `auth` ever runs. The `=`
+ * spelling keeps the value inside the flag token, where citty's resolution
+ * skips it and its parser still reads it as `dir`.
+ *
+ * Applied once to argv before dispatch rather than per command, because every
+ * command with subcommands (the root included) has the same exposure. A value
+ * that itself starts with `-` is left alone: citty already skips it, and
+ * joining it would change what citty parses. Tokens after `--` are
+ * positionals and are never touched.
+ */
+export function joinDirectoryValues(rawArguments: string[]): string[] {
+  const joined: string[] = [];
+  for (let index = 0; index < rawArguments.length; index++) {
+    const argument = rawArguments[index]!;
+    if (argument === END_OF_OPTIONS) {
+      joined.push(...rawArguments.slice(index));
+      break;
+    }
+    const value = rawArguments[index + 1];
+    if (
+      DIR_FLAGS.has(argument) &&
+      value !== undefined &&
+      !value.startsWith("-")
+    ) {
+      joined.push(`--dir=${value}`);
+      index++;
+      continue;
+    }
+    joined.push(argument);
+  }
+  return joined;
 }
 
 /**

@@ -7,6 +7,7 @@ import { getToken, removeToken } from "../auth/token";
 import { fetchWhoami } from "../auth/whoami";
 import { getTelemetry } from "../telemetry";
 import { type CLIErrorCode, writeJsonError } from "../types/errors";
+import { splitRawArguments } from "../util/argv";
 
 const loginCommand = defineCommand({
   meta: {
@@ -162,8 +163,9 @@ export const authCommand = defineCommand({
   },
   async run({ args, rawArgs }) {
     // citty always calls the parent's run handler, even after a subcommand.
-    // Only show status when no subcommand was provided.
-    if (rawArgs.some((argument) => !argument.startsWith("-"))) {
+    // Only show status when no subcommand was provided. The shared scanner
+    // skips flag values, so the path in `auth -d <path>` is not read as one.
+    if (splitRawArguments(rawArgs).positionals.length > 0) {
       return;
     }
 

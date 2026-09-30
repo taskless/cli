@@ -25,6 +25,7 @@ import {
   DIR_FLAGS,
   hasHelpFlag,
   hasVersionFlag,
+  joinDirectoryValues,
   splitRawArguments,
 } from "./util/argv";
 import { shouldLaunchWizard } from "./util/interactive";
@@ -146,7 +147,9 @@ const main = defineCommand({
 });
 
 // main loop to run cli and make every attempt to shut down gracefully
-const rawArguments = process.argv.slice(2);
+// `-d <path>` is joined into `--dir=<path>` so citty's subcommand resolution
+// cannot mistake the path for a command name (see joinDirectoryValues).
+const rawArguments = joinDirectoryValues(process.argv.slice(2));
 const runCwd = resolveCwd(rawArguments);
 const startedAt = Date.now();
 // Resolve identity at invocation START so cli_run reports who *initiated* the
