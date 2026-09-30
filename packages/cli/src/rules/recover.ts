@@ -1,7 +1,9 @@
 import {
+  listRevisions,
   reconcileRules,
   restoreRule,
   rollbackRule,
+  type RevisionList,
   type ServedRule,
   type V2Outcome,
 } from "../api/v2";
@@ -57,10 +59,17 @@ function records(value: unknown): Record<string, unknown>[] {
   return Array.isArray(value) ? value.filter((entry) => isRecord(entry)) : [];
 }
 
-/** Map a v2 failure to the error a recovery command reports. */
+/**
+ * Map a v2 failure to the error a recovery command reports.
+ *
+ * `notFound` replaces the `rule_not_found` message for a route where that code
+ * means less than it does on restore, which also answers it for a rule that
+ * exists only on an open pull request.
+ */
 function failure(
   outcome: Exclude<V2Outcome<unknown, string>, { status: "ok" }>,
-  ruleId: string
+  ruleId: string,
+  notFound?: string
 ): CLIError {
   switch (outcome.status) {
     case "refused": {
@@ -91,13 +100,14 @@ function failure(
       switch (outcome.code) {
         case "rule_not_found": {
           return new CLIError(
-            `Rule ${ruleId} is not a rule Taskless issued for this repository, or it only exists on an open pull request, so there is nothing to recover.`,
+            notFound ??
+              `Rule ${ruleId} is not a rule Taskless issued for this repository, or it only exists on an open pull request, so there is nothing to recover.`,
             "RULE_NOT_FOUND"
           );
         }
         case "revision_not_found": {
           return new CLIError(
-            `That revision is not a revision of rule ${ruleId}. Check the revision id.`,
+            `That revision is not a revision of rule ${ruleId}. Run \`${getCliPrefix()} rule revisions ${ruleId}\` to list its revisions.`,
             "REVISION_NOT_FOUND"
           );
         }
@@ -382,4 +392,67 @@ async function write(
       : `Rule ${fileSet.id} was ${verb} to revision ${revisionId}. ${notRunOnPlanSentence(entitlement)}`
   );
   return { ruleId: fileSet.id, revisionId, files: [ruleFile], notices };
+}
+
+/**
+ * List `ruleId`'s recent revisions, to choose one for `rule rollback`.
+ *
+ * Read-only and served on every plan, so unlike restore and rollback there is
+ * no refusal to relay and nothing is reconciled first.
+ */
+export async function revisions(
+  identity: Identity,
+  ruleId: string
+): Promise<RevisionList> {
+  const outcome = await listRevisions(identity.token, ruleId, {
+    repositoryUrl: identity.repositoryUrl,
+    orgId: identity.orgSubject,
+  });
+  if (outcome.status !== "ok") {
+    throw failure(
+      outcome,
+      ruleId,
+      `Rule ${ruleId} is not a rule Taskless issued for this repository, so it has no revisions.`
+    );
+  }
+  return outcome.data;
+}
+
+/**
+ * The listing as a person reads it. Order is the service's; the current
+ * revision is found by its flag, because one older than the newest ten is
+ * appended after them.
+ */
+export function describeRevisions(list: RevisionList): string[] {
+  const { ruleId } = list;
+  if (list.revisions.length === 0) {
+    return [`Rule ${ruleId} has no revisions.`];
+  }
+  const lines = [`Revisions of rule ${ruleId}, newest first:`, ""];
+  for (const revision of list.revisions) {
+    const fields = [
+      revision.current ? "*" : " ",
+      revision.revisionId,
+      revision.createdAt,
+      revision.delivery,
+      ...(revision.prUrl === undefined ? [] : [revision.prUrl]),
+      ...(revision.current ? ["(current)"] : []),
+    ];
+    lines.push(fields.join("  "));
+  }
+  lines.push("");
+  if (list.truncated) {
+    lines.push(
+      "Older revisions exist and are not listed here; the rule's page on the Taskless dashboard lists every one."
+    );
+  }
+  if (!list.revisions.some((revision) => revision.current)) {
+    lines.push(
+      `Rule ${ruleId} has no current revision: it exists only on a pull request that has not merged, and gets one when that pull request merges.`
+    );
+  }
+  lines.push(
+    `Make a revision current with \`${getCliPrefix()} rule rollback ${ruleId} <revisionId>\`.`
+  );
+  return lines;
 }

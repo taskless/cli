@@ -60,6 +60,8 @@ interface Stub {
   served?: Record<string, unknown>;
   /** A status for restore / rollback other than 200. */
   status?: number;
+  /** The body the revisions listing answers with, and its status. */
+  revisions?: { body: unknown; status?: number };
 }
 
 const REFUSAL = {
@@ -69,6 +71,28 @@ const REFUSAL = {
     "Restoring rules is not included in your Free plan.\nRecover it with git: git log -- .taskless/rules/sg/no-eval-3fa9c21b\u001B[2J",
   upgradeUrl: "https://app.taskless.io/org/1/upgrade?from=restore",
 };
+
+function revision(
+  revisionId: string,
+  current: boolean,
+  extra: Record<string, unknown> = {}
+) {
+  return {
+    revisionId,
+    createdAt: "2026-09-29T12:00:00.000Z",
+    delivery: "cli",
+    requestId: `req-${revisionId}`,
+    current,
+    ...extra,
+  };
+}
+
+function listing(revisions: unknown[], truncated = false) {
+  return { ruleId: RULE_ID, revisions, truncated };
+}
+
+const currentLine = (printed: string) =>
+  printed.split("\n").filter((line) => line.includes("(current)"));
 
 describe("rule restore / rule rollback", () => {
   let cwd: string;
@@ -148,6 +172,11 @@ describe("rule restore / rule rollback", () => {
                 : { runtimeSignatures: true },
           });
         }
+        if (url.pathname.endsWith("/revisions") && options.revisions) {
+          return Response.json(options.revisions.body, {
+            status: options.revisions.status ?? 200,
+          });
+        }
         if (
           url.pathname.endsWith("/restore") ||
           url.pathname.endsWith("/rollback")
@@ -174,6 +203,14 @@ describe("rule restore / rule rollback", () => {
       string,
       unknown
     >;
+  }
+
+  /** Run without `--json`, returning what was printed to stdout. */
+  async function print(): Promise<string> {
+    await runCommand(ruleCommand, {
+      rawArgs: ["revisions", RULE_ID, "-d", cwd],
+    });
+    return logSpy.mock.calls.map((call) => String(call[0])).join("\n");
   }
 
   const restoreCalled = () => calls.some((call) => call.endsWith("/restore"));
@@ -475,6 +512,7 @@ describe("rule restore / rule rollback", () => {
     });
     const output = await run(["rollback", RULE_ID, "someone-elses"]);
     expect(output).toMatchObject({ ok: false, code: "REVISION_NOT_FOUND" });
+    expect(String(output.message)).toContain(`rule revisions ${RULE_ID}`);
   });
 
   it("rollback relays a plan refusal", async () => {
@@ -530,5 +568,89 @@ describe("rule restore / rule rollback", () => {
     });
     const output = await run(["restore", RULE_ID]);
     expect(String(output.message).split(REFUSAL.upgradeUrl)).toHaveLength(2);
+  });
+
+  describe("rule revisions", () => {
+    it("lists revisions in the service's order and marks the current one", async () => {
+      stub({
+        verdict: { kind: "run" },
+        revisions: {
+          body: listing([
+            revision("r3", false),
+            revision("r2", true),
+            revision("r1", false),
+          ]),
+        },
+      });
+      const printed = await print();
+      expect(printed.indexOf("r3")).toBeLessThan(printed.indexOf("r2"));
+      expect(printed.indexOf("r2")).toBeLessThan(printed.indexOf("r1"));
+      expect(currentLine(printed)).toHaveLength(1);
+      expect(currentLine(printed)[0]).toContain("r2");
+      expect(printed).not.toContain("Older revisions");
+      expect(printed).toContain(`rule rollback ${RULE_ID} <revisionId>`);
+      expect(process.exitCode).toBeUndefined();
+    });
+
+    it("marks a current revision appended after the newest ten by its flag", async () => {
+      const newest = Array.from({ length: 10 }, (_, index) =>
+        revision(`n${String(10 - index)}`, false)
+      );
+      stub({
+        verdict: { kind: "run" },
+        revisions: {
+          body: listing([...newest, revision("old", true)], true),
+        },
+      });
+      const printed = await print();
+      expect(currentLine(printed)).toHaveLength(1);
+      expect(currentLine(printed)[0]).toContain("old");
+    });
+
+    it("marks none for a rule that exists only on an unmerged pull request", async () => {
+      const prUrl = "https://github.com/test/test/pull/7";
+      stub({
+        verdict: { kind: "run" },
+        revisions: {
+          body: listing([
+            revision("r1", false, { delivery: "pull-request", prUrl }),
+          ]),
+        },
+      });
+      const printed = await print();
+      expect(currentLine(printed)).toHaveLength(0);
+      expect(printed).toContain(prUrl);
+      expect(printed).toContain("has no current revision");
+    });
+
+    it("says when older revisions were omitted, and where to find them", async () => {
+      stub({
+        verdict: { kind: "run" },
+        revisions: { body: listing([revision("r1", true)], true) },
+      });
+      expect(await print()).toContain("Taskless dashboard");
+    });
+
+    it("prints the listing under --json, without reconciling or reading the plan", async () => {
+      const body = listing([revision("r2", true), revision("r1", false)]);
+      stub({ verdict: { kind: "run" }, revisions: { body } });
+      const output = await run(["revisions", RULE_ID]);
+      expect(output).toEqual({ success: true, ...body });
+      expect(process.exitCode).toBeUndefined();
+      expect(calls).toContain(`GET /cli/api/v2/rule/${RULE_ID}/revisions`);
+      expect(calls.some((call) => call.endsWith("/reconcile"))).toBe(false);
+    });
+
+    it("reports an unknown rule as RULE_NOT_FOUND", async () => {
+      stub({
+        verdict: { kind: "run" },
+        revisions: { body: { error: "rule_not_found" }, status: 404 },
+      });
+      const output = await run(["revisions", RULE_ID]);
+      expect(output).toMatchObject({ ok: false, code: "RULE_NOT_FOUND" });
+      // Restore's pull-request clause does not apply: a PR-only rule is listed.
+      expect(String(output.message)).not.toContain("pull request");
+      expect(process.exitCode).toBe(1);
+    });
   });
 });

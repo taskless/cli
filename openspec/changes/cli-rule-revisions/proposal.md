@@ -39,8 +39,9 @@ _None._
 - `packages/cli/src/api/v2.ts`: a `listRevisions` call beside `restoreRule` / `rollbackRule`.
 - `packages/cli/src/rules/recover.ts`: the listing, reusing its failure mapping.
 - `packages/cli/src/commands/rules.ts`: the `revisions` subcommand.
-- `packages/cli/src/schemas/`: an output schema for `rule revisions --json`, published
-  through `@taskless/cli/schemas` like the others.
+- `packages/cli/src/schemas/`: an output schema for `rule revisions --json` beside
+  `rules-recover.ts`. Like that one it is internal, not exported from `@taskless/cli/schemas`,
+  which publishes only the `verify` / `test` envelopes.
 - `packages/cli/src/agent/recover-rule.md`: the topic version is bumped, and it gains a
   step for choosing a revision.
 - `packages/cli/src/generated/api-v2.*`: the regenerated contract.

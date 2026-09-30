@@ -14,7 +14,7 @@ refusal: the listing carries no bytes, so the service never reads the plan for i
 
 - A revision id an agent can pass to `rule rollback` without leaving the terminal.
 - The listing fits the existing recovery surface: the same identity resolution, the same error
-  codes, and a `--json` shape published through `@taskless/cli/schemas`.
+  codes, and a `--json` shape parsed from a schema, as `rules-recover.ts` is.
 
 **Non-Goals:**
 
@@ -60,8 +60,8 @@ factoring out its `report` / `resolveIdentity` prelude. Its success path prints 
 Two copies of the prelude does not meet the threshold for a shared helper. If a third caller
 appears, that is the time to extract one.
 
-**`--json` passes the service's revision objects through, parsed by the published schema.**
-`rulesRevisionsOutputSchema` in `schemas/rules-revisions.ts` declares every field the service
+**`--json` passes the service's revision objects through, parsed by its schema.**
+The `outputSchema` in `schemas/rules-revisions.ts`, internal like `rules-recover.ts`, declares every field the service
 documents, with `prUrl` optional. The output is `schema.parse(...)` of the assembled
 object, as the other recovery commands do. This keeps the output to exactly what is
 declared, so a field the service adds later does not leak into our output unannounced.
