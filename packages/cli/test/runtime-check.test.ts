@@ -24,6 +24,7 @@ interface ReportedRule {
 }
 interface ReconcileRequestBody {
   repositoryUrl: string;
+  orgId?: string | number;
   rules: ReportedRule[];
 }
 type Responder = (request: ReconcileRequestBody) => {
@@ -39,13 +40,29 @@ interface MockServer {
   close: () => Promise<void>;
 }
 
-/** Start a mock v2 reconcile endpoint on a random port. */
-function startMockServer(responder: Responder): Promise<MockServer> {
+/**
+ * Start a mock v2 reconcile endpoint on a random port. `whoami`, when given,
+ * is served as `GET /cli/api/v2/whoami`; otherwise that route is a 404, which
+ * the CLI reads as an unknown organization.
+ */
+function startMockServer(
+  responder: Responder,
+  whoami?: unknown
+): Promise<MockServer> {
   const requests: ReconcileRequestBody[] = [];
   const paths: string[] = [];
   const headers: Record<string, string | string[] | undefined>[] = [];
   const server: Server = createServer((request, response) => {
     paths.push(`${request.method ?? ""} ${request.url ?? ""}`);
+    if (
+      whoami !== undefined &&
+      request.method === "GET" &&
+      request.url === "/cli/api/v2/whoami"
+    ) {
+      response.writeHead(200, { "content-type": "application/json" });
+      response.end(JSON.stringify(whoami));
+      return;
+    }
     if (request.method !== "POST" || request.url !== "/cli/api/v2/reconcile") {
       response.writeHead(404).end("{}");
       return;
@@ -315,9 +332,10 @@ describe("check: static vs runtime dispatch", () => {
   /** Run \`check\` authenticated against a mock that answers with \`responder\`. */
   async function authedCheck(
     responder: Responder,
-    extraArguments: string[] = ["--json"]
+    extraArguments: string[] = ["--json"],
+    whoami?: unknown
   ) {
-    const server = await startMockServer(responder);
+    const server = await startMockServer(responder, whoami);
     try {
       const result = await runCli(
         ["check", "-d", directory, ...extraArguments],
@@ -486,6 +504,52 @@ describe("check: static vs runtime dispatch", () => {
       },
     ]);
     expect(output.notices?.join("\n")).toMatch(/rule restore gone-3fa9c21b/);
+  });
+
+  it("on a plan without rule recovery, an edited or missing rule gets git steps, not rule restore", async () => {
+    const whoami = {
+      user: "Ada",
+      orgs: [
+        {
+          id: "uuid-acme",
+          name: "acme",
+          source: "github",
+          url: "https://github.com/acme",
+          entitlements: {
+            remoteGeneration: true,
+            runtimeSignatures: true,
+            restoreRules: false,
+          },
+        },
+      ],
+    };
+    const { stdout, server } = await authedCheck(
+      (request) => ({
+        statusCode: 200,
+        body: answer(
+          request,
+          {
+            "no-console": "run",
+            demo: {
+              unsafe: [{ path: "captures/extra.yml", got: "1;h=sha-256;d=22" }],
+            },
+          },
+          {
+            missing: [
+              { ruleId: "gone-3fa9c21b", engine: "vale", revisionId: "rev-9" },
+            ],
+          }
+        ),
+      }),
+      ["--json"],
+      whoami
+    );
+    const notices = parseJson(stdout).notices?.join("\n") ?? "";
+    // The acting org came from the same whoami call that carried the plan.
+    expect(server.requests[0]?.orgId).toBe("uuid-acme");
+    expect(notices).toContain("git log -- .taskless/rules/runtime/demo/");
+    expect(notices).toContain("git log -- .taskless/rules/vale/gone-3fa9c21b/");
+    expect(notices).not.toContain("rule restore");
   });
 
   it("a renamed copy of an issued rule does not run, fails once as a rename, and logs it", async () => {

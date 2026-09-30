@@ -2,6 +2,7 @@ import { parseEntitlementV2, type EntitlementV2 } from "../api/entitlement";
 import { isRecord } from "../util/is-record";
 import type { EngineName } from "./layout";
 import { isKnownEngine } from "./layout";
+import type { Recovery } from "./recovery-advice";
 import type { ReportedRule } from "./report";
 
 /**
@@ -106,6 +107,10 @@ export interface VerdictPlan {
 /** The reason a runtime rule the plan withholds did not run. */
 export const NOT_IN_PLAN_REASON = "not included in your Taskless plan";
 
+function readEngine(value: unknown): EngineName | undefined {
+  return typeof value === "string" && isKnownEngine(value) ? value : undefined;
+}
+
 function records(value: unknown): Record<string, unknown>[] {
   return Array.isArray(value) ? value.filter((entry) => isRecord(entry)) : [];
 }
@@ -195,7 +200,8 @@ function applyCopy(
   rule: ReportedRule,
   copy: Extract<CopyOfRead, { status: "copy" }>,
   sourceMissing: boolean,
-  restoreCommand: (ruleId: string) => string
+  sourceEngine: EngineName | undefined,
+  recovery: Recovery
 ): void {
   const { ruleId, engine } = rule;
   const source = copy.ruleId;
@@ -206,7 +212,12 @@ function applyCopy(
     ? `is a copy of Taskless rule ${source}, which was deleted${changes}`
     : `is a copy of Taskless rule ${source}${changes}`;
   const fix = sourceMissing
-    ? `Run \`${restoreCommand(source)}\` to put back the issued rule, then delete ${directory}.`
+    ? recovery({
+        ruleId: source,
+        ...(sourceEngine === undefined ? {} : { engine: sourceEngine }),
+        purpose: "put back the issued rule",
+        afterwards: `delete ${directory}`,
+      })
     : `Delete ${directory}, or rewrite the files it carries from ${source} so it is your own rule.`;
 
   plan.integrity.push({
@@ -254,13 +265,13 @@ function applyCopy(
 /**
  * Apply a reconcile response to the rules that were reported.
  *
- * `restoreCommand` renders the command a notice points at, so this stays free
- * of how the CLI was invoked.
+ * `recovery` renders how a notice says to put a rule back, so this stays free
+ * of how the CLI was invoked and of what the organization's plan serves.
  */
 export function applyVerdicts(
   reported: readonly ReportedRule[],
   response: unknown,
-  restoreCommand: (ruleId: string) => string
+  recovery: Recovery
 ): VerdictPlan {
   const body = isRecord(response) ? response : {};
   const entitlement = parseEntitlementV2(body.entitlement);
@@ -285,13 +296,13 @@ export function applyVerdicts(
   };
 
   const reportedIds = new Set(reported.map((rule) => rule.ruleId));
-  // Rules answered `missing` that were not reported: a copy naming one of
-  // these as its source is a rename.
-  const missingIds = new Set(
+  // Rules answered `missing` that were not reported, with their engine when
+  // known: a copy naming one of these as its source is a rename.
+  const missingIds = new Map(
     verdicts
       .filter((entry) => entry.verdict === "missing")
-      .map((entry) => entry.ruleId as string)
-      .filter((id) => !reportedIds.has(id))
+      .filter((entry) => !reportedIds.has(entry.ruleId as string))
+      .map((entry) => [entry.ruleId as string, readEngine(entry.engine)])
   );
   // Sources already reported as half of a rename, so their `missing`
   // notice is not repeated.
@@ -343,7 +354,14 @@ export function applyVerdicts(
       if (copy.status === "copy") {
         const sourceMissing = missingIds.has(copy.ruleId);
         if (sourceMissing) renamed.add(copy.ruleId);
-        applyCopy(plan, rule, copy, sourceMissing, restoreCommand);
+        applyCopy(
+          plan,
+          rule,
+          copy,
+          sourceMissing,
+          missingIds.get(copy.ruleId),
+          recovery
+        );
         continue;
       }
       if (engine === "runtime") {
@@ -406,7 +424,7 @@ export function applyVerdicts(
             reason: `edited since Taskless issued it (${changes})`,
           });
           plan.notices.push(
-            `runtime rule ${ruleId} was edited since Taskless issued it (${changes}), so it did not run. Run \`${restoreCommand(ruleId)}\` to put back the issued version.`
+            `runtime rule ${ruleId} was edited since Taskless issued it (${changes}), so it did not run. ${recovery({ ruleId, engine, purpose: "put back the issued version" })}`
           );
         } else {
           plan.dispositions.push({
@@ -417,7 +435,7 @@ export function applyVerdicts(
             reason: `edited since Taskless issued it (${changes})`,
           });
           plan.failures.push(
-            `${engine} rule ${ruleId} was edited since Taskless issued it (${changes}), so it did not run and \`check\` fails. Run \`${restoreCommand(ruleId)}\` to put back the issued version.`
+            `${engine} rule ${ruleId} was edited since Taskless issued it (${changes}), so it did not run and \`check\` fails. ${recovery({ ruleId, engine, purpose: "put back the issued version" })}`
           );
         }
         break;
@@ -438,10 +456,7 @@ export function applyVerdicts(
     if (entry.verdict !== "missing") continue;
     const ruleId = entry.ruleId as string;
     if (reportedIds.has(ruleId)) continue; // already failed as unaccounted
-    const engine =
-      typeof entry.engine === "string" && isKnownEngine(entry.engine)
-        ? entry.engine
-        : undefined;
+    const engine = readEngine(entry.engine);
     const revisionId =
       typeof entry.revisionId === "string" ? entry.revisionId : undefined;
     plan.integrity.push({
@@ -453,7 +468,14 @@ export function applyVerdicts(
     // Half of a rename: the copy's own message already says it was deleted.
     if (renamed.has(ruleId)) continue;
     plan.notices.push(
-      `${engine ?? "A"} rule ${ruleId} was issued for this repository but is not in .taskless/rules/. Run \`${restoreCommand(ruleId)}\` to bring it back, or ignore this if it was removed on purpose.`
+      `${engine ?? "A"} rule ${ruleId} was issued for this repository but is not in .taskless/rules/. ${recovery(
+        {
+          ruleId,
+          ...(engine === undefined ? {} : { engine }),
+          purpose: "bring it back",
+          otherwise: "ignore this if it was removed on purpose",
+        }
+      )}`
     );
   }
 

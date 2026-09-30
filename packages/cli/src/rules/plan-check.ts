@@ -3,6 +3,7 @@ import { resolveActingOrg } from "../auth/org";
 import { reconcileRules } from "../api/v2";
 import { resolveRepositoryUrl } from "../util/git-remote";
 import { getCliPrefix } from "../util/package-manager";
+import { recoveryAdvice } from "./recovery-advice";
 import { reportRules } from "./report";
 import type { RunDirectory } from "./run-directory";
 import { RUN_SCRIPTS_WARNING } from "./runtime/harness";
@@ -37,7 +38,8 @@ import {
  *   excludes is removed from the snapshot before any engine is configured.
  *
  * `check` never writes `.taskless/rules/`. An edited or missing rule gets a
- * notice naming `rule restore`; nothing here fetches bytes.
+ * notice naming `rule restore`, or the git steps when the plan is known not
+ * to serve it (`recovery-advice.ts`); nothing here fetches bytes.
  */
 
 /** A runtime rule that will not run, with why. */
@@ -238,7 +240,10 @@ export async function planCheck(
   const verdicts = applyVerdicts(
     report.rules,
     outcome.data,
-    (ruleId) => `${getCliPrefix()} rule restore ${ruleId}`
+    recoveryAdvice(
+      org.restoreRules,
+      (ruleId) => `${getCliPrefix()} rule restore ${ruleId}`
+    )
   );
   for (const disposition of verdicts.dispositions) {
     log.write(
