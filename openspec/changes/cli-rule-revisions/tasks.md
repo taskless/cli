@@ -11,12 +11,12 @@
 
 ## 3. Guidance
 
-- [ ] 3.1 Update `agent/recover-rule.md` to topic v2: a step for choosing a revision with `rule revisions --json`, and `REVISION_NOT_FOUND`'s fix pointing at it instead of the dashboard (hand-edited, no prettier); verify `prompts.test.ts` and `recipe-cross-references.test.ts` pass
+- [x] 3.1 Update `agent/recover-rule.md` to topic v2: a step for choosing a revision with `rule revisions --json`, and `REVISION_NOT_FOUND`'s fix pointing at it instead of the dashboard (hand-edited, no prettier); verify `prompts.test.ts` and `recipe-cross-references.test.ts` pass
 - [x] 3.2 Point `REVISION_NOT_FOUND`'s CLI message at `rule revisions <ruleId>`; verify with the existing rollback test
-- [ ] 3.3 Add a patch changeset for `@taskless/cli` describing the new command
+- [x] 3.3 Add a patch changeset for `@taskless/cli` describing the new command
 
 ## 4. Verify
 
-- [ ] 4.1 Run `pnpm typecheck`, `pnpm lint`, and `pnpm test`; all pass
+- [x] 4.1 Run `pnpm typecheck`, `pnpm lint`, and `pnpm test`; all pass
 - [ ] 4.2 With a `pnpm build:next` build, run `pnpm cli rule revisions <id>` and `--json` against production for a real issued rule, and `rule rollback` to one of the listed ids; record the result in the PR
 - [ ] 4.3 Archive the change on this PR (`pnpm openspec archive cli-rule-revisions -y`), after the pre-archive scenario check that every prior `cli-rule-recovery` scenario survives
