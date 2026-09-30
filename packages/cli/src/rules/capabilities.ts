@@ -271,6 +271,12 @@ const CONVERTER_TIER_PREFIX = "converter:";
  * plain text today, but the moment Vale routes it to a converter the same
  * omission is a crash that takes down every Vale rule in the run.
  *
+ * The upgrade pull request lists the files upstream ADDED under
+ * `internal/lint/` (`.github/scripts/vale-upgrade-report.cjs`), which is the
+ * source check the notes below did by hand. It names the readers, not the
+ * extensions, so each one still needs `internal/core/format.go` read and the
+ * extension probed before a row is added.
+ *
  * 3.22.0 → 3.23.0 LEARNED ONE FORMAT, AND NO TEST NOTICED UNTIL IT WAS
  * PROBED. Every existing row was re-probed against the 3.23.0 binary and none
  * moved, so the contract suite was green. The source check is what shows the

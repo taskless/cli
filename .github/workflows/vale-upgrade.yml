@@ -56,7 +56,9 @@
 # (the measured `Vale <version>` block in vale-vendor-contract.test.ts and the
 # verdict corpus in vale-schema-contract.test.ts), the `update` ledger, any
 # migration, and the changeset prose. Those tests are NOT gated here, on
-# purpose: see the check step.
+# purpose: see the check step. They ARE run, and their verdict is written into
+# the pull request body, because Validate does not run on a pull request this
+# job opens until a maintainer approves it (see the report step).
 #
 # Action refs are pinned to commit SHAs; the trailing comment records the tag.
 
@@ -215,13 +217,55 @@ jobs:
       # DOES, and a new Vale that changes a verdict fails them — correctly, and
       # the fix is a measured edit that belongs in the child pull request. Gated
       # here, that signal would become a scheduled run failing every morning
-      # with no pull request and no changelog to read; left to Validate, it is
-      # a red check on a pull request that already carries upstream's notes.
+      # with no pull request and no changelog to read. The next two steps run
+      # them anyway and report the verdict in the body instead.
       - name: Check the bump is self-consistent
         if: steps.detect.outputs.update == 'true'
         run: >-
           pnpm --filter @taskless/cli test --project cli
           engine-version-consistency
+
+      # REPORTED, NOT GATED, AND NOT LEFT TO VALIDATE. The comment above used to
+      # end "left to Validate, it is a red check on a pull request". It was
+      # not: a pull_request run triggered by github-actions[bot] waits at
+      # `action_required` until a maintainer approves it. Measured on every
+      # bot-opened upgrade, Vale and ast-grep alike, and #427 read as a pull
+      # request with no checks while three contract tests were failing.
+      #
+      # So the suites run here, `continue-on-error` so a changed verdict still
+      # proposes the upgrade, and write a JSON report the next step renders.
+      # The report path is absolute because `--filter` runs vitest from
+      # packages/cli.
+      - name: Run the Vale contract suites
+        if: steps.detect.outputs.update == 'true'
+        continue-on-error: true
+        run: >-
+          pnpm --filter @taskless/cli exec vitest run --project cli
+          vale-schema-contract vale-vendor-contract
+          --reporter=default --reporter=json
+          --outputFile.json="${RUNNER_TEMP}/vale-contract.json"
+
+      # Renders the contract verdict, and the source check capabilities.ts asks
+      # for on every bump by hand: the files upstream ADDED under
+      # internal/lint/, where a new format reader lands. A reader adds an
+      # extension no VALE_FORMAT_TIERS row probes, so no test can catch it;
+      # 3.23.0's kt.go is the one that slipped through. See the script header.
+      # `continue-on-error` because the body is worth opening without it, and
+      # the propose step says so when the file is missing.
+      - name: Report the contract and upstream's new format readers
+        if: steps.detect.outputs.update == 'true'
+        continue-on-error: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PINNED_VERSION: ${{ steps.detect.outputs.pinned_version }}
+          BASE_VERSION: ${{ steps.detect.outputs.base_version }}
+        run: |
+          node .github/scripts/vale-upgrade-report.cjs \
+            --pinned "$PINNED_VERSION" \
+            --to "$BASE_VERSION" \
+            --repository "$(node -p 'require("./.github/scripts/vale-manifest.json").upstream.repository')" \
+            --contract "${RUNNER_TEMP}/vale-contract.json" \
+            --out "${RUNNER_TEMP}/vale-upgrade-report.md"
 
       - name: Propose the upgrade
         if: steps.detect.outputs.update == 'true'
@@ -269,11 +313,11 @@ jobs:
           \`${BASE_VERSION}\` and regenerates \`src/generated/vale-vocabulary.ts\`
           from the new binary, and the workflow ran
           \`engine-version-consistency\` against the result before pushing. What
-          this does **not** carry is judgment: if \`vale-schema-contract\` or
-          \`vale-vendor-contract\` is red on this pull request, Vale
-          ${BASE_VERSION} changed a measured behaviour, and that edit, the
-          \`update\` ledger, any migration, and the release note's prose belong
-          in a child pull request.
+          this does **not** carry is judgment: if the contract suites below
+          report a failure, Vale ${BASE_VERSION} changed a measured behaviour,
+          and that edit, the \`update\` ledger, any migration, and the release
+          note's prose belong in a child pull request. So does a row for each
+          format reader listed below.
 
           **This is the half that reaches a user.** Republishing the platform
           packages changes nobody's install, because the CLI pins each one
@@ -285,6 +329,17 @@ jobs:
           and that stops — the workflow will not force-push over a commit it did
           not write.
           BODY
+
+          # Ours, rendered from the two steps above. Missing only if the report
+          # step itself failed, which must not read as a clean upgrade.
+          report="${RUNNER_TEMP}/vale-upgrade-report.md"
+          if [ -f "$report" ]; then
+            printf '\n' >> "$body"
+            cat "$report" >> "$body"
+          else
+            printf '\n## Measured against Vale %s\n\n**Not measured.** The report step failed; read its log in this run.\n' "$BASE_VERSION" >> "$body"
+            echo "::warning::no upgrade report at ${report}"
+          fi
 
           # Absent only if the detect step reported ahead and then wrote no
           # notes, which it cannot — so warn rather than skip silently.
