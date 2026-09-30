@@ -1,9 +1,12 @@
 import { describe, expect, it } from "vitest";
 
 import type { ReportedRule } from "../src/rules/report";
+import { recoveryAdvice } from "../src/rules/recovery-advice";
 import { applyVerdicts, NOT_IN_PLAN_REASON } from "../src/rules/verdicts";
 
 const restore = (id: string) => `taskless rule restore ${id}`;
+// Unknown plan: today's `rule restore` suggestions, word for word.
+const recovery = recoveryAdvice(undefined, restore);
 
 const SG: ReportedRule = {
   ruleId: "no-eval-3fa9c21b",
@@ -41,7 +44,7 @@ describe("applyVerdicts", () => {
         unknown: [],
         entitlement: entitled,
       },
-      restore
+      recovery
     );
     expect(plan.dispositions.every((d) => d.run)).toBe(true);
     expect(plan.failures).toEqual([]);
@@ -68,7 +71,7 @@ describe("applyVerdicts", () => {
         unknown: [],
         entitlement: entitled,
       },
-      restore
+      recovery
     );
     expect(plan.dispositions).toMatchObject([{ run: false }]);
     expect(plan.failures).toHaveLength(1);
@@ -97,7 +100,7 @@ describe("applyVerdicts", () => {
         unknown: [],
         entitlement: entitled,
       },
-      restore
+      recovery
     );
     expect(plan.dispositions).toMatchObject([{ run: false }]);
     expect(plan.failures).toEqual([]);
@@ -112,7 +115,7 @@ describe("applyVerdicts", () => {
         unknown: [{ ruleId: SG.ruleId }, { ruleId: RT.ruleId }],
         entitlement: entitled,
       },
-      restore
+      recovery
     );
     expect(plan.dispositions).toEqual([
       { ruleId: SG.ruleId, engine: "sg", run: true, verdict: "unknown" },
@@ -146,7 +149,7 @@ describe("applyVerdicts", () => {
           unknown: [{ ruleId: VALE.ruleId, copyOf: COPY_OF }],
           entitlement: entitled,
         },
-        restore
+        recovery
       );
       expect(plan.dispositions).toEqual([
         {
@@ -180,7 +183,7 @@ describe("applyVerdicts", () => {
           unknown: [{ ruleId: VALE.ruleId, copyOf: COPY_OF }],
           entitlement: entitled,
         },
-        restore
+        recovery
       );
       expect(plan.dispositions).toMatchObject([{ run: false }]);
       expect(plan.failures).toEqual([
@@ -211,7 +214,7 @@ describe("applyVerdicts", () => {
           unknown: [{ ruleId: SG.ruleId, copyOf: COPY_OF }],
           entitlement: entitled,
         },
-        restore
+        recovery
       );
       expect(plan.failures).toHaveLength(1);
       expect(plan.failures[0]).toContain(`sg rule ${SG.ruleId} is a copy of`);
@@ -228,7 +231,7 @@ describe("applyVerdicts", () => {
           unknown: [{ ruleId: RT.ruleId, copyOf: { ...COPY_OF, files: [] } }],
           entitlement: entitled,
         },
-        restore
+        recovery
       );
       expect(plan.failures).toEqual([]);
       expect(plan.notices).toEqual([]);
@@ -255,7 +258,7 @@ describe("applyVerdicts", () => {
           unknown: [{ ruleId: RT.ruleId, copyOf: COPY_OF }],
           entitlement: entitled,
         },
-        restore
+        recovery
       );
       expect(plan.failures).toEqual([]);
       expect(plan.notices).toEqual([
@@ -271,7 +274,7 @@ describe("applyVerdicts", () => {
           unknown: [{ ruleId: SG.ruleId, copyOf: null }],
           entitlement: entitled,
         },
-        restore
+        recovery
       );
       expect(plan.dispositions).toMatchObject([{ run: true }]);
       expect(plan.failures).toEqual([]);
@@ -292,7 +295,7 @@ describe("applyVerdicts", () => {
               unknown: [{ ruleId: rule.ruleId, copyOf }],
               entitlement: entitled,
             },
-            restore
+            recovery
           );
           expect(plan.dispositions).toMatchObject([
             { run: false, verdict: "unaccounted" },
@@ -323,7 +326,7 @@ describe("applyVerdicts", () => {
           withheld: [{ ruleId: RT.ruleId, revisionId: "r1" }],
         },
       },
-      restore
+      recovery
     );
     expect(plan.withheld).toEqual([RT.ruleId]);
     expect(plan.dispositions).toEqual([
@@ -342,7 +345,7 @@ describe("applyVerdicts", () => {
     const plan = applyVerdicts(
       [SG],
       { rules: [], unknown: [], entitlement: entitled },
-      restore
+      recovery
     );
     expect(plan.dispositions).toMatchObject([{ run: false }]);
     expect(plan.failures[0]).toContain("did not account for it");
@@ -362,7 +365,7 @@ describe("applyVerdicts", () => {
           withheld: [{ ruleId: RT.ruleId, revisionId: "r1" }],
         },
       },
-      restore
+      recovery
     );
     expect(plan.failures[0]).toContain("more than once");
     expect(plan.withheld).toEqual([]);
@@ -376,7 +379,7 @@ describe("applyVerdicts", () => {
         unknown: [],
         entitlement: entitled,
       },
-      restore
+      recovery
     );
     expect(plan.dispositions).toMatchObject([{ run: false }]);
     expect(plan.failures[0]).toContain("judged it as a vale rule");
@@ -397,7 +400,7 @@ describe("applyVerdicts", () => {
         unknown: [],
         entitlement: entitled,
       },
-      restore
+      recovery
     );
     expect(plan.failures).toEqual([]);
     expect(plan.integrity).toEqual([
@@ -426,15 +429,188 @@ describe("applyVerdicts", () => {
         unknown: [],
         entitlement: entitled,
       },
-      restore
+      recovery
     );
     expect(plan.dispositions).toMatchObject([{ run: false }]);
     expect(plan.failures).toHaveLength(1);
   });
 
   it("a malformed body accounts for nothing, so every reported rule fails", () => {
-    const plan = applyVerdicts([SG, RT], "not an object", restore);
+    const plan = applyVerdicts([SG, RT], "not an object", recovery);
     expect(plan.dispositions.every((d) => !d.run)).toBe(true);
     expect(plan.failures).toHaveLength(2);
+  });
+});
+
+describe("recoveryAdvice", () => {
+  const target = {
+    ruleId: "no-eval-3fa9c21b",
+    engine: "sg" as const,
+    purpose: "put back the issued version",
+  };
+
+  it.each([true, undefined])(
+    "names rule restore when restoreRules is %s",
+    (restoreRules) => {
+      expect(recoveryAdvice(restoreRules, restore)(target)).toBe(
+        "Run `taskless rule restore no-eval-3fa9c21b` to put back the issued version."
+      );
+    }
+  );
+
+  it("gives the git steps for the rule's directory when restoreRules is false", () => {
+    expect(recoveryAdvice(false, restore)(target)).toBe(
+      "Restoring rules is not included in your organization's plan, so recover no-eval-3fa9c21b from git: " +
+        "`git log -- .taskless/rules/sg/no-eval-3fa9c21b/` lists the commits that changed it, and " +
+        "`git restore --source=<commit> -- .taskless/rules/sg/no-eval-3fa9c21b/` puts it back as of one of them."
+    );
+  });
+
+  it("widens to a quoted any-engine pathspec when the engine is unknown", () => {
+    const sentence = recoveryAdvice(
+      false,
+      restore
+    )({
+      ruleId: "gone-3fa9c21b",
+      purpose: "bring it back",
+    });
+    expect(sentence).toContain(
+      "`git log -- '.taskless/rules/*/gone-3fa9c21b/*'`"
+    );
+  });
+
+  it("keeps afterwards and otherwise as sentences of their own", () => {
+    const sentence = recoveryAdvice(
+      false,
+      restore
+    )({
+      ...target,
+      afterwards: "delete .taskless/rules/vale/bar-2/",
+      otherwise: "ignore this if it was removed on purpose",
+    });
+    expect(sentence).toMatch(
+      / Then delete \.taskless\/rules\/vale\/bar-2\/\. Or ignore this if it was removed on purpose\.$/
+    );
+  });
+});
+
+describe("applyVerdicts on a plan without rule recovery", () => {
+  const noRecovery = recoveryAdvice(false, restore);
+  const GIT = "Restoring rules is not included in your organization's plan";
+
+  it("an unsafe static rule fails with git steps, not rule restore", () => {
+    const plan = applyVerdicts(
+      [VALE],
+      {
+        rules: [
+          {
+            ruleId: VALE.ruleId,
+            engine: "vale",
+            verdict: "unsafe",
+            files: [{ path: ".vale.ini", expected: "e", got: "g" }],
+          },
+        ],
+        unknown: [],
+        entitlement: entitled,
+      },
+      noRecovery
+    );
+    expect(plan.failures).toHaveLength(1);
+    expect(plan.failures[0]).toContain(GIT);
+    expect(plan.failures[0]).toContain(
+      `git log -- .taskless/rules/vale/${VALE.ruleId}/`
+    );
+    expect(plan.failures[0]).not.toContain("rule restore");
+  });
+
+  it("an unsafe runtime rule's notice gives git steps, not rule restore", () => {
+    const plan = applyVerdicts(
+      [RT],
+      {
+        rules: [
+          {
+            ruleId: RT.ruleId,
+            engine: "runtime",
+            verdict: "unsafe",
+            files: [],
+          },
+        ],
+        unknown: [],
+        entitlement: entitled,
+      },
+      noRecovery
+    );
+    expect(plan.notices[0]).toContain(
+      `git log -- .taskless/rules/runtime/${RT.ruleId}/`
+    );
+    expect(plan.notices[0]).not.toContain("rule restore");
+  });
+
+  it.each([
+    ["sg", ".taskless/rules/sg/gone-3fa9c21b/"],
+    [undefined, "'.taskless/rules/*/gone-3fa9c21b/*'"],
+  ])(
+    "a missing rule (engine %s) gets git steps and may still be ignored",
+    (engine, directory) => {
+      const plan = applyVerdicts(
+        [],
+        {
+          rules: [
+            {
+              ruleId: "gone-3fa9c21b",
+              ...(engine === undefined ? {} : { engine }),
+              verdict: "missing",
+              revisionId: "r9",
+            },
+          ],
+          unknown: [],
+          entitlement: entitled,
+        },
+        noRecovery
+      );
+      expect(plan.notices).toHaveLength(1);
+      expect(plan.notices[0]).toContain(`git log -- ${directory}`);
+      expect(plan.notices[0]).toContain(
+        "Or ignore this if it was removed on purpose."
+      );
+      expect(plan.notices[0]).not.toContain("rule restore");
+    }
+  );
+
+  it("a rename gives git steps for the source, then says to delete the copy", () => {
+    const SOURCE = "no-simply-00000000";
+    const plan = applyVerdicts(
+      [VALE],
+      {
+        rules: [
+          {
+            ruleId: SOURCE,
+            engine: "vale",
+            verdict: "missing",
+            revisionId: "r8",
+          },
+        ],
+        unknown: [
+          {
+            ruleId: VALE.ruleId,
+            copyOf: {
+              ruleId: SOURCE,
+              revisionId: "r7",
+              files: [{ path: ".vale.ini", expected: "e", got: "g" }],
+            },
+          },
+        ],
+        entitlement: entitled,
+      },
+      noRecovery
+    );
+    expect(plan.failures).toEqual([
+      `vale rule ${VALE.ruleId} is a copy of Taskless rule ${SOURCE}, which was deleted (changed .vale.ini), so it did not run and \`check\` fails. ` +
+        `${GIT}, so recover ${SOURCE} from git: ` +
+        `\`git log -- .taskless/rules/vale/${SOURCE}/\` lists the commits that changed it, and ` +
+        `\`git restore --source=<commit> -- .taskless/rules/vale/${SOURCE}/\` puts it back as of one of them. ` +
+        `Then delete .taskless/rules/vale/${VALE.ruleId}/.`,
+    ]);
+    expect(plan.notices).toEqual([]);
   });
 });

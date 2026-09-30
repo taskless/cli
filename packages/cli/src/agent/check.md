@@ -1,4 +1,4 @@
-# Topic: check     (CLI v%(CLI_VERSION)s / topic v4)
+# Topic: check     (CLI v%(CLI_VERSION)s / topic v5)
 
 ## Goal
 Run the applicable rules against the codebase and report matches. Two
@@ -48,7 +48,9 @@ logged in:
 
 `check` NEVER changes `.taskless/rules/`. An edited or missing rule is
 reported with the command that repairs it:
-`%(TASKLESS_CLI)s rule restore <ruleId>`.
+`%(TASKLESS_CLI)s rule restore <ruleId>`, or, when the organization's
+plan does not include restoring rules, the git steps that do instead
+(see "When the plan does not include restoring rules").
 
 Notices about skipped runtime rules are human-readable stderr only.
 Under `--json` they do NOT appear as warnings; instead an additive
@@ -118,6 +120,28 @@ would bring back), runtime rules the service never issued and copies of issued r
 rules the answer did not account for (`unaccounted`), and ids shared
 across engines (`duplicate`). Locally written ast-grep and Vale rules
 are never listed; they run. A copy is listed with its `copyOf`.
+
+## When the plan does not include restoring rules
+
+When the organization's plan is known not to include restoring rules,
+every notice above gives git steps where it would name `rule restore`:
+
+```
+sg rule no-eval-3fa9c21b was edited since Taskless issued it (changed no-eval-3fa9c21b.yml), so it did not run and `check` fails. Restoring rules is not included in your organization's plan, so recover no-eval-3fa9c21b from git: `git log -- .taskless/rules/sg/no-eval-3fa9c21b/` lists the commits that changed it, and `git restore --source=<commit> -- .taskless/rules/sg/no-eval-3fa9c21b/` puts it back as of one of them.
+```
+
+Follow the git steps, then run `check` again. Do not run
+`rule restore` or `rule rollback` instead: the service refuses both on
+this plan and answers with the same git steps. `integrity` is the same
+on every plan.
+
+Choosing the commit: for an edited rule, restore from the commit just
+before the edit, or from `HEAD` when the edit is not committed yet. For
+a deleted rule, the newest commit is the one
+that deleted it, so restore from its parent (`<commit>~1`). A rule
+whose engine is not known is given as a quoted pathspec,
+`'.taskless/rules/*/<ruleId>/*'`; pass it to git as written. For a
+rename, recover the source, then delete the copy, as above.
 
 ## Withheld for the plan
 
