@@ -116,7 +116,8 @@ When the `--json` flag is set, the CLI SHALL output each `CheckResult` as a JSON
 The CLI SHALL exit with code 0 when no error-severity matches are found (including when only warnings, info, or hints exist) and no reconcile outcome below requires failure. The CLI SHALL exit with code 1 when at least one error-severity match is found. The CLI SHALL also exit with code 1, whatever the findings and in both human and `--json` modes, when a completed reconcile:
 
 - returned a non-empty `entitlement.withheld`;
-- returned an `unsafe` verdict for an `sg` or `vale` rule; or
+- returned an `unsafe` verdict for an `sg` or `vale` rule;
+- returned an `sg` or `vale` rule in `unknown` carrying `copyOf`, or a rule of any engine carrying a `copyOf` the CLI cannot read; or
 - left a reported rule unaccounted for (in none, or more than one, of `rules`, `unknown`, and `entitlement.withheld`).
 
 On an authenticated run that would reconcile, the CLI SHALL also exit with code 1 when two rule directories under different engines share an id. A logged-out run verifies nothing and does not fail on it. Under `--json`, `success` SHALL be `false` whenever the exit code is non-zero.
@@ -150,6 +151,11 @@ On an authenticated run that would reconcile, the CLI SHALL also exit with code 
 #### Scenario: Exit 1 when a static rule was edited
 
 - **WHEN** reconciliation returns an `unsafe` verdict for an `sg` or `vale` rule and the scan produces zero results
+- **THEN** the process SHALL exit with code 1
+
+#### Scenario: Exit 1 when a static rule is a copy of an issued rule
+
+- **WHEN** reconciliation returns an `sg` or `vale` rule in `unknown` with `copyOf`, and the scan produces zero results
 - **THEN** the process SHALL exit with code 1
 
 #### Scenario: Exit 1 when a reported rule is unaccounted for
@@ -696,10 +702,14 @@ directory.
 ### Requirement: Check reports rule integrity under --json
 
 Under `--json`, `taskless check` SHALL carry an additive, optional `integrity` array with one
-entry per rule whose outcome is `unsafe`, `missing`, runtime `unknown`, `unaccounted`, or
-`duplicate`, each `{ ruleId, engine?, verdict, files?, revisionId? }`. `files` SHALL list each
-differing path with `expected` and `got` as the server returned them. Static `unknown` rules
-and `run` rules SHALL NOT appear. The field SHALL be omitted when there is nothing to report.
+entry per rule whose outcome is `unsafe`, `missing`, runtime `unknown`, `unknown` with
+`copyOf` (any engine), `unaccounted`, or `duplicate`, each
+`{ ruleId, engine?, verdict, files?, revisionId?, copyOf? }`. `files` SHALL list each
+differing path with `expected` and `got` as the server returned them; for a copy it SHALL be
+the server's `copyOf.files`. `copyOf` SHALL be `{ ruleId, revisionId?, sourceMissing }`, where
+`sourceMissing` is whether the source rule was answered `missing`. Static `unknown` rules
+without `copyOf` and `run` rules SHALL NOT appear. The field SHALL be omitted when there is
+nothing to report.
 
 #### Scenario: An edited rule appears with its differing files
 
@@ -710,3 +720,9 @@ and `run` rules SHALL NOT appear. The field SHALL be omitted when there is nothi
 
 - **WHEN** every reported rule is `run` or static `unknown` and nothing is `missing`
 - **THEN** `check --json` SHALL NOT include `integrity`
+
+#### Scenario: A renamed rule appears as a copy beside its missing source
+
+- **WHEN** reconciliation returns vale rule `bar-2` in `unknown` with `copyOf: { ruleId: "foo-1", revisionId: "r1", files: [{ path: ".vale.ini", expected, got }] }` and returns `foo-1` as `missing` with `revisionId` `r2`
+- **THEN** `integrity` SHALL include `{ ruleId: "bar-2", engine: "vale", verdict: "unknown", files: [{ path: ".vale.ini", expected, got }], copyOf: { ruleId: "foo-1", revisionId: "r1", sourceMissing: true } }`
+- **AND** SHALL include `{ ruleId: "foo-1", engine: "vale", verdict: "missing", revisionId: "r2" }`
