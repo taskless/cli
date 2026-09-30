@@ -2,12 +2,9 @@ import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
 import type { Migration } from "../types";
+import { isRecord } from "../../util/is-record";
 
 const MANIFEST_FILE = "taskless.json";
-
-function isPlainObject(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
 
 /**
  * Migration 2 — seed an empty `install` object in taskless.json.
@@ -21,14 +18,14 @@ const migration: Migration = async (directory) => {
   try {
     const content = await readFile(manifestPath, "utf8");
     const parsed = JSON.parse(content) as unknown;
-    if (isPlainObject(parsed)) {
+    if (isRecord(parsed)) {
       raw = parsed;
     }
   } catch {
     // Missing or unparseable — fall through and write a minimal manifest
   }
 
-  if (!isPlainObject(raw.install)) {
+  if (!isRecord(raw.install)) {
     raw.install = {};
     await writeFile(manifestPath, JSON.stringify(raw, null, 2) + "\n", "utf8");
   }

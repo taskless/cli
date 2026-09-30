@@ -3,6 +3,7 @@ import { join } from "node:path";
 
 import { CLIError } from "../util/cli-error";
 import { buildInvocation } from "../util/invocation";
+import { isRecord } from "../util/is-record";
 
 /**
  * The `.taskless/taskless.json` manifest: its shape, and reading and writing it.
@@ -149,7 +150,7 @@ export async function readRawManifest(
   // manifest. Reading `.version` off `null` would throw a bare TypeError, and
   // treating it as version 0 has the same consequence as an unparseable file:
   // the next write replaces whatever is there.
-  if (!isPlainObject(parsed)) {
+  if (!isRecord(parsed)) {
     throw unreadableManifest(path, "its top-level value is not a JSON object");
   }
 
@@ -189,8 +190,8 @@ export async function readManifest(
   return {
     manifest: {
       version,
-      install: isPlainObject(install) ? install : undefined,
-      rules: isPlainObject(rules) ? rules : undefined,
+      install: isRecord(install) ? install : undefined,
+      rules: isRecord(rules) ? rules : undefined,
     },
     raw,
   };
@@ -218,8 +219,4 @@ export async function writeManifest(
     merged.rules = manifest.rules;
   }
   await writeRawManifest(directory, merged);
-}
-
-function isPlainObject(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
