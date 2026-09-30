@@ -483,6 +483,11 @@ const FIELD_CANDIDATES: readonly string[] = [
   // View's scope. Offered to every check, like every other candidate, so the
   // partition records which checks own it rather than assuming one does.
   "in",
+  // Documented in Vale 3.23.0's release notes ("a rule can carry its own
+  // `tests:`"), read by `vale test`. Measured accepted on 3.22.0 as well, with
+  // any value, so it was a member before it was announced, and `verify` was
+  // rejecting a key the binary runs, calling it an E201.
+  "tests",
 ].toSorted();
 
 /**
@@ -708,6 +713,7 @@ const CASING_VALUES: Record<string, unknown> = {
   message: "x %s",
   name: "a name",
   scope: "raw",
+  tests: ["fixture.md"],
 };
 
 /**
