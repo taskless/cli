@@ -1,4 +1,4 @@
-# Topic: update     (CLI v%(CLI_VERSION)s / topic v11)
+# Topic: update     (CLI v%(CLI_VERSION)s / topic v12)
 
 ## You are here
 This is `update`. It tells you what an upgrade changed for the rules
@@ -371,9 +371,11 @@ on a fixture path you name the matcher is what silences the rule.
 Delete it. `%(TASKLESS_CLI)s agent create-vale-rule` lists every
 rejection and advisory.
 
-Vale also moves from 3.21.0 to 3.22.0 in this release. Two things
-follow for existing Vale rules, both measured against both binaries;
-the rest of the release is additions a rule can now use.
+Vale also moves from 3.21.0 to 3.23.0 in this release, by way of
+3.22.0. Two things from 3.22.0 change what an existing Vale rule does,
+and 3.23.0 narrows what a rule over code comments reads; each was
+measured against the binaries on both sides of its step. The rest is
+additions a rule can now use.
 
 **`BasedOnStyles =` is deleted from every rule's `.vale.ini`, and
 `verify` rejects one that still carries it.** Every version of the
@@ -427,6 +429,27 @@ rule with `split: true` checks the parts of an identifier and reports
 each at its own position (85992f2a); 3.21.0 accepted the key and did
 neither. `UNSET` as a rule's value behaves as `NO` and is not accepted
 by the schema; YES and NO remain the two values.
+
+**Vale 3.23.0 reads less of a code file.** Nothing to run; findings
+disappear, and none appear that were not already there. A comment
+addressed to a tool (`//nolint` in Go, `# noqa` in Python,
+`eslint-disable` in JavaScript) and a Python docstring's `:param:`
+field are no longer read, so a rule over comments stops reporting on
+them. Kotlin (`.kt`, `.kts`) was linted as one block of prose, string
+literals and identifiers included, and is now comment-aware like the
+other code formats: a rule matching `[*.kt]` sees comments only. If a
+rule was written to catch something in Kotlin code rather than its
+comments, it no longer can; an ast-grep rule is the tool for that.
+
+**`doc(<leaf>)` on its own now fires.** Through 3.22.0 `scope: doc(h2)`
+matched nothing, and the recipe taught `text & doc(h2)` instead. Both
+spellings now lint the heading's text, so a rule written the chained
+way needs nothing. A rule that used the standalone form was inert
+until now and starts reporting.
+
+**A rule's `tests:` key is accepted.** It is read by `vale test`, not
+by `check`, and `verify` rejected it before this release while Vale
+loaded it without complaint.
 
 ## Errors
 

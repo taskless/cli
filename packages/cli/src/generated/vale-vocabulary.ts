@@ -66,6 +66,7 @@ export const VALE_COMMON_FIELDS = [
   "message",
   "name",
   "scope",
+  "tests",
 ] as const;
 
 /**
@@ -99,6 +100,7 @@ export const VALE_LITERAL_KEYS = [
   "message",
   "name",
   "scope",
+  "tests",
 ] as const;
 
 /**
