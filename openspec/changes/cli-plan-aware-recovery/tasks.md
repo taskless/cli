@@ -5,8 +5,8 @@
 
 ## 2. Suggestions in check
 
-- [ ] 2.1 Replace `applyVerdicts`' `restoreCommand` with a `recovery({ ruleId, engine?, purpose })` sentence callback, and add the pure renderer for the restore and git variants (engine-less `missing` uses the quoted any-engine pathspec); verify every existing `verdicts.test.ts` case passes unchanged with `restoreRules` unknown
-- [ ] 2.2 Pass the tri-state from `resolveActingOrg` into the callback in `plan-check.ts`; verify with `verdicts.test.ts` cases for `unsafe` (runtime and static), `missing` (with and without engine), and a rename, each under `false` giving git steps and not naming `rule restore`
+- [x] 2.1 Replace `applyVerdicts`' `restoreCommand` with a `recovery({ ruleId, engine?, purpose })` sentence callback, and add the pure renderer for the restore and git variants (engine-less `missing` uses the quoted any-engine pathspec); verify every existing `verdicts.test.ts` case passes unchanged with `restoreRules` unknown
+- [x] 2.2 Pass the tri-state from `resolveActingOrg` into the callback in `plan-check.ts`; verify with `verdicts.test.ts` cases for `unsafe` (runtime and static), `missing` (with and without engine), and a rename, each under `false` giving git steps and not naming `rule restore`
 
 ## 3. Suggestions in rule revisions
 

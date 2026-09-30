@@ -53,7 +53,7 @@ git: \`git log -- <dir>\` lists the commits that changed it, and
   \`git restore --source=<commit> -- <dir>\` puts it back as of one of them.`
 
 `<dir>` is `.taskless/rules/<engine>/<ruleId>/`, or the quoted glob pathspec
-`'.taskless/rules/*/<ruleId>/'` when a `missing` verdict carries no known engine. The
+`'.taskless/rules/*/<ruleId>/*'` when a `missing` verdict carries no known engine. The
 rendering lives in a small pure function beside `applyVerdicts` so it is tested as a table
 like the rest of the policy. Considered: passing the tri-state into `applyVerdicts`. Rejected
 to keep `verdicts.ts` free of CLI prefix and plan concerns, which is why the callback exists.
@@ -80,9 +80,11 @@ excludes recovery; follow them rather than running a command that will be refuse
   case is one run with a stale suggestion.
 - [A `false` from whoami that the service would not refuse] → The user is sent to git, which
   still works. Nothing is blocked, so a wrong hint costs a detour, never a capability.
-- [Glob pathspec on an unknown engine] → Quoted so the shell does not expand it; git applies
-  glob pathspecs by default. Only reachable when reconcile omits the engine, which it rarely
-  does.
+- [Glob pathspec on an unknown engine] → Quoted so the shell does not expand it, and ending
+  in `/*`: git matches a glob against file paths, so a glob ending in the directory's `/`
+  matches nothing (measured, in a scratch repository: `log` returned no commits, while `/*`
+  found both the add and the delete, and `restore` from the delete's parent brought the
+  files back). Only reachable when reconcile omits the engine.
 
 ## Migration Plan
 
