@@ -92,6 +92,20 @@ describe("cli", () => {
       ]);
       expect(JSON.parse(stdout.trim())).toHaveProperty("version");
     });
+
+    // With no subcommand, `-d` alone still reaches the wizard / agent-index
+    // fallback rather than usage, in both spellings, once argv is joined.
+    it.each([["-d"], ["--dir="]])(
+      "routes a bare %s<path> to the agent index when not a TTY",
+      async (flag) => {
+        const argv =
+          flag === "-d"
+            ? ["-d", temporaryDirectory]
+            : [`--dir=${temporaryDirectory}`];
+        const { stderr } = await execFileAsync("node", [binPath, ...argv]);
+        expect(stderr).toContain("non-interactive context detected");
+      }
+    );
   });
 
   describe("init", () => {

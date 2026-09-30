@@ -105,7 +105,11 @@ const main = defineCommand({
     // unknown flags should fall through to citty's default help instead of
     // silently launching the wizard. (`--help`/`-h` and `--version`/`-v`
     // never reach here — they are intercepted before dispatch below.)
-    const onlyInitFlags = flags.every((flag) => DIR_FLAGS.has(flag));
+    // Compared by name before any `=`: argv arrives with `-d <path>` already
+    // joined into `--dir=<path>` (see joinDirectoryValues).
+    const onlyInitFlags = flags.every((flag) =>
+      DIR_FLAGS.has(flag.split("=", 1)[0]!)
+    );
     if (!onlyInitFlags) {
       await showUsage(cmd);
       return;
