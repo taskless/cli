@@ -4,6 +4,7 @@ import {
   fetchRule,
   getRequestStatus,
   iterateRule,
+  listRevisions,
   reconcileRules,
   restoreRule,
   rollbackRule,
@@ -148,6 +149,54 @@ describe("v2 client", () => {
       respond(200, { restoreRules: true });
       const outcome = await restoreRule("tok", "r", { repositoryUrl: REPO });
       expect(outcome.status).toBe("unavailable");
+    });
+  });
+
+  describe("revisions", () => {
+    const LISTING = {
+      ruleId: "no-eval-3fa9c21b",
+      revisions: [
+        {
+          revisionId: "rev-2",
+          createdAt: "2026-09-29T12:00:00.000Z",
+          delivery: "cli",
+          requestId: "req-2",
+          current: true,
+        },
+      ],
+      truncated: false,
+    };
+
+    it("lists by rule id, with the repository in the query", async () => {
+      respond(200, LISTING);
+      const outcome = await listRevisions("tok", "no-eval-3fa9c21b", {
+        repositoryUrl: REPO,
+        orgId: 42,
+      });
+
+      const url = new URL(sent().url);
+      expect(url.pathname).toBe("/cli/api/v2/rule/no-eval-3fa9c21b/revisions");
+      expect(url.searchParams.get("repositoryUrl")).toBe(REPO);
+      expect(url.searchParams.get("orgId")).toBe("42");
+      expect(outcome).toEqual({ status: "ok", data: LISTING });
+    });
+
+    it("maps rule_not_found, so a caller can report RULE_NOT_FOUND", async () => {
+      respond(404, { error: "rule_not_found" });
+      const outcome = await listRevisions("tok", "r", { repositoryUrl: REPO });
+      expect(outcome).toMatchObject({
+        status: "error",
+        code: "rule_not_found",
+      });
+    });
+
+    it("never reads a body that is not a listing as an empty history", async () => {
+      respond(200, { ruleId: "r", revisions: [] });
+      const outcome = await listRevisions("tok", "r", { repositoryUrl: REPO });
+      expect(outcome).toEqual({
+        status: "unavailable",
+        reason: "the response was not a revision listing",
+      });
     });
   });
 

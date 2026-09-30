@@ -304,6 +304,71 @@ export function rollbackRule(
   );
 }
 
+/** A rule's recent revisions: the `200` body of the revisions listing. */
+export type RevisionList = OkBody<"/cli/api/v2/rule/{ruleId}/revisions", "get">;
+
+/** One entry of a {@link RevisionList}. */
+export type RevisionEntry = RevisionList["revisions"][number];
+
+export type RevisionsCode = ErrorCode<
+  "/cli/api/v2/rule/{ruleId}/revisions",
+  "get"
+>;
+
+const REVISIONS_CODES = errorCodes<
+  ErrorCode<"/cli/api/v2/rule/{ruleId}/revisions", "get">
+>()(["validation_error", "organization_not_found", "rule_not_found"]);
+
+/**
+ * Accept a revisions listing only when it has the documented shape. Anything
+ * else is `unavailable`, never an empty list: reading a malformed body as no
+ * revisions would tell the user the rule has no history.
+ */
+function acceptRevisions<C extends string>(
+  data: unknown
+): V2Outcome<RevisionList, C> {
+  if (
+    !isRecord(data) ||
+    typeof data.ruleId !== "string" ||
+    !Array.isArray(data.revisions) ||
+    typeof data.truncated !== "boolean"
+  ) {
+    return {
+      status: "unavailable",
+      reason: "the response was not a revision listing",
+    };
+  }
+  return { status: "ok", data: data as unknown as RevisionList };
+}
+
+/**
+ * List a rule's recent revisions, to choose one to roll back to. Carries no
+ * rule bytes, so it is served on every plan and never refused.
+ */
+export function listRevisions(
+  token: string,
+  ruleId: string,
+  query: { repositoryUrl: string; orgId?: string | number }
+): Promise<V2Outcome<RevisionList, RevisionsCode>> {
+  const client = createV2Client(token);
+  return settle<RevisionList, RevisionsCode>(
+    () =>
+      client.GET("/cli/api/v2/rule/{ruleId}/revisions", {
+        params: {
+          path: { ruleId },
+          query: {
+            repositoryUrl: query.repositoryUrl,
+            ...(query.orgId === undefined
+              ? {}
+              : { orgId: String(query.orgId) }),
+          },
+        },
+      }),
+    REVISIONS_CODES,
+    acceptRevisions
+  );
+}
+
 // --- Generation: request, poll, iterate ---
 
 export type RequestBody = NonNullable<
