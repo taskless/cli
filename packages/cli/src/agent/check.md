@@ -32,6 +32,7 @@ logged in:
   | **edited** since it was issued | **does not run, and `check` exits 1** | does not run (reported, exit unchanged) |
   | issued but missing from disk | warning only | warning only |
   | written locally (never issued) | runs, silently | does not run |
+  | a **copy** of an issued rule under a new id | **does not run, and `check` exits 1** | does not run |
   | withheld for the plan | never happens | does not run, and `check` exits 1 |
 
   `check` also exits 1 if the service's answer leaves out a rule it was
@@ -76,11 +77,47 @@ rewritten as a local rule under a new id. An edited rule is exactly what
 an agent tuning a rule until its own violation passes looks like, which
 is why `check` refuses it.
 
+## A copied or renamed rule
+
+A rule under a new id that still carries a file Taskless issued to
+another rule of this repository is a copy, not a local rule. The
+service names the rule it came from. An ast-grep or Vale copy does not
+run and `check` exits 1; a runtime copy does not run either (no exit
+change). When the source rule is also missing from disk, the two are
+one rename and are reported once, in place of the source's missing
+warning:
+
+```
+vale rule bar-2 is a copy of Taskless rule foo-1, which was deleted (changed .vale.ini), so it did not run and `check` fails. Run `%(TASKLESS_CLI)s rule restore foo-1` to put back the issued rule, then delete .taskless/rules/vale/bar-2/.
+```
+
+In `integrity` the copy is `unknown` with a `copyOf`, and `files` is
+what differs from the source (a file carried unchanged under a new name
+is not listed). The source keeps its own `missing` entry:
+
+```json
+"integrity": [
+  { "ruleId": "bar-2", "engine": "vale", "verdict": "unknown",
+    "files": [{ "path": ".vale.ini", "expected": "1;h=…", "got": "1;h=…" }],
+    "copyOf": { "ruleId": "foo-1", "revisionId": "…", "sourceMissing": true } },
+  { "ruleId": "foo-1", "engine": "vale", "verdict": "missing", "revisionId": "…" }
+]
+```
+
+**Restore the source and delete the copy.** Run
+`%(TASKLESS_CLI)s rule restore <copyOf.ruleId>`, then remove
+`.taskless/rules/<engine>/<ruleId>/`. Do not restore the copy's own id:
+it was never issued. If the source is still present
+(`sourceMissing: false`), just delete the copy. If the user genuinely
+wants a new local rule, it must not carry Taskless's files unchanged;
+write it from scratch. Renaming an issued rule is not a way to edit it.
+
 `integrity` also lists `missing` rules (with the `revisionId` restore
-would bring back), runtime rules the service never issued (`unknown`),
+would bring back), runtime rules the service never issued and copies of issued rules
+(`unknown`),
 rules the answer did not account for (`unaccounted`), and ids shared
 across engines (`duplicate`). Locally written ast-grep and Vale rules
-are never listed; they run.
+are never listed; they run. A copy is listed with its `copyOf`.
 
 ## Withheld for the plan
 
@@ -179,9 +216,10 @@ delete the rules to make `check` pass, and do not suggest
    useful line/column to surface. The `success` field reflects
    error-severity findings: `success: false` means at least one
    `severity: "error"` finding exists, runtime rules were withheld for
-   the plan (check `entitlement`), or a rule was edited or unaccounted
-   for (check `failures` and `integrity`) (exit code 1); `success: true`
-   with a non-empty `results` array means there are only
+   the plan (check `entitlement`), or a rule was edited, copied from an
+   issued rule, or unaccounted for (check `failures` and `integrity`)
+   (exit code 1); `success: true` with a non-empty `results` array
+   means there are only
    warning/info/hint findings (exit code 0); `success: true` with an
    empty `results` array means the codebase is clean. Findings are
    never reported via the `{ ok: false, code, message }` envelope:
@@ -194,7 +232,8 @@ delete the rules to make `check` pass, and do not suggest
   paths missing
 - `1`: Errors detected, scan failed, runtime rules withheld because
   the plan does not include them, an issued ast-grep or Vale rule was
-  edited, a rule was unaccounted for, or two engines share a rule id
+  edited or copied under a new id, a rule was unaccounted for, or two
+  engines share a rule id
 
 ## Errors
 

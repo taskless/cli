@@ -29,7 +29,9 @@ write nothing they cannot verify.
 
 1. **Take the rule id from `check`.** Under `--json`, each entry in
    `integrity` with `verdict` `unsafe` or `missing` names a rule
-   `rule restore` repairs.
+   `rule restore` repairs. An `unknown` entry with a `copyOf` is a copy
+   of an issued rule under a new id: restore `copyOf.ruleId` (the
+   source), never the copy's own id, then delete the copy's directory.
 
 2. **Restore it.**
    ```

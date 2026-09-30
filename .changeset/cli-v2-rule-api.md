@@ -6,7 +6,7 @@ The CLI now speaks the Taskless v2 rule API, which addresses rules by their own 
 
 What you may need to react to:
 
-- **`taskless check` fails when an issued ast-grep or Vale rule has been edited.** Logged in, every file of every rule is checked against what Taskless issued, and an edited rule of any engine does not run. For ast-grep and Vale rules the run also fails, naming each changed, removed, or added file. To fix it, run `taskless rule restore <ruleId>` rather than editing the rule back by hand. Logged out, with `--anonymous`, or with `--dangerously-run-scripts`, nothing is checked, as before. Rules you wrote yourself are unaffected.
+- **`taskless check` fails when an issued ast-grep or Vale rule has been edited.** Logged in, every file of every rule is checked against what Taskless issued, and an edited rule of any engine does not run. For ast-grep and Vale rules the run also fails, naming each changed, removed, or added file. To fix it, run `taskless rule restore <ruleId>` rather than editing the rule back by hand. The same applies to an issued rule copied or renamed to a new id: the copy does not run, and the run fails naming the rule it came from. Logged out, with `--anonymous`, or with `--dangerously-run-scripts`, nothing is checked, as before. Rules you wrote yourself are unaffected.
 - **`taskless check` never rewrites your rules.** It used to try to repair a changed runtime rule in the middle of a run. It now reports the change and names the command to run.
 - **`taskless rule create --json` prints `requestId` instead of `ruleId`.** The old field always held the request id, never a rule id. The ids of the rules that were written are in `rules`, and those are what `taskless rule improve` takes.
 

@@ -77,6 +77,7 @@ export const outputSchema = z.object({
   // a runtime rule the service never issued, unaccounted for, or an id shared
   // across engines. Locally written ast-grep and Vale rules are `unknown` too
   // and are deliberately NOT listed: they run, and every run would repeat them.
+  // The exception is a copy of an issued rule (`copyOf`), which does not run.
   runDirectory: z
     .string()
     .optional()
@@ -91,7 +92,7 @@ export const outputSchema = z.object({
         verdict: z
           .enum(["unsafe", "missing", "unknown", "unaccounted", "duplicate"])
           .describe(
-            "unsafe: edited since issued; missing: issued but not on disk; unknown: a runtime rule the service never issued; unaccounted: the service's answer did not account for it; duplicate: its id is used by more than one engine"
+            "unsafe: edited since issued; missing: issued but not on disk; unknown: a runtime rule the service never issued, or a rule of any engine carrying an issued rule's file (see copyOf); unaccounted: the service's answer did not account for it; duplicate: its id is used by more than one engine"
           ),
         files: z
           .array(
@@ -108,11 +109,30 @@ export const outputSchema = z.object({
             })
           )
           .optional()
-          .describe("For unsafe: each file that differs from what was issued"),
+          .describe(
+            "For unsafe: each file that differs from what was issued. For a copy: each file that differs from its source revision"
+          ),
         revisionId: z
           .string()
           .optional()
           .describe("For missing: the revision `rule restore` brings back"),
+        copyOf: z
+          .object({
+            ruleId: z.string().describe("The issued rule it was copied from"),
+            revisionId: z
+              .string()
+              .optional()
+              .describe("The source revision it matches best"),
+            sourceMissing: z
+              .boolean()
+              .describe(
+                "The source is also missing from disk: the copy is a rename, and restoring the source is the fix"
+              ),
+          })
+          .optional()
+          .describe(
+            "For unknown: the rule carries a file Taskless issued to another rule. An ast-grep or Vale copy does not run and fails the check"
+          ),
       })
     )
     .optional()

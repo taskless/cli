@@ -262,6 +262,13 @@ export async function planCheck(
         `missing: ${entry.ruleId} (revision ${entry.revisionId ?? "unknown"})`
       );
     }
+    if (entry.copyOf !== undefined) {
+      log.write(
+        `copy: ${entry.ruleId} carries files of ${entry.copyOf.ruleId} (revision ${
+          entry.copyOf.revisionId ?? "unknown"
+        })${entry.copyOf.sourceMissing ? ", which is missing: a rename" : ""}`
+      );
+    }
   }
 
   const execute = await discoverRuntimeRulesIn(runtimeRoot);

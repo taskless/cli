@@ -96,7 +96,8 @@ type Answer =
   | "unknown"
   | "withheld"
   | "omit"
-  | { unsafe: { path: string; expected?: string; got?: string }[] };
+  | { unsafe: { path: string; expected?: string; got?: string }[] }
+  | { copyOf: { ruleId: string; revisionId: string; files: unknown[] } };
 
 const UPGRADE_URL = "https://app.taskless.io/o/acme/upgrade?from=reconcile";
 
@@ -112,7 +113,7 @@ function answer(
   } = {}
 ) {
   const rules: unknown[] = [];
-  const unknown: { ruleId: string }[] = [];
+  const unknown: { ruleId: string; copyOf?: unknown }[] = [];
   const withheld: { ruleId: string; revisionId: string }[] = [];
   for (const { ruleId } of request.rules) {
     const verdict = answers[ruleId] ?? "unknown";
@@ -134,6 +135,10 @@ function answer(
         break;
       }
       default: {
+        if ("copyOf" in verdict) {
+          unknown.push({ ruleId, copyOf: verdict.copyOf });
+          break;
+        }
         rules.push({
           ruleId,
           engine,
@@ -211,6 +216,7 @@ interface CheckJson {
     verdict: string;
     files?: unknown[];
     revisionId?: string;
+    copyOf?: unknown;
   }[];
   entitlement?: {
     runtimeSignatures: false;
@@ -480,6 +486,83 @@ describe("check: static vs runtime dispatch", () => {
       },
     ]);
     expect(output.notices?.join("\n")).toMatch(/rule restore gone-3fa9c21b/);
+  });
+
+  it("a renamed copy of an issued rule does not run, fails once as a rename, and logs it", async () => {
+    await migrateFixture(["-d", directory]);
+    const before = await treeDigest(directory);
+    const copyOf = {
+      ruleId: "no-console-3fa9c21b",
+      revisionId: "rev-4",
+      files: [
+        {
+          path: "no-console.yml",
+          expected: "1;h=sha-256;d=00",
+          got: "1;h=sha-256;d=11",
+        },
+      ],
+    };
+    const { stdout, exitCode } = await authedCheck(
+      (request) => ({
+        statusCode: 200,
+        body: answer(
+          request,
+          { demo: "run", "no-console": { copyOf } },
+          {
+            missing: [
+              {
+                ruleId: "no-console-3fa9c21b",
+                engine: "sg",
+                revisionId: "rev-5",
+              },
+            ],
+          }
+        ),
+      }),
+      ["--json", "--preserve-logs"]
+    );
+    const output = parseJson(stdout) as CheckJson & { runDirectory?: string };
+    expect(exitCode).toBe(1);
+    expect(output.success).toBe(false);
+    // Removed from the snapshot: the copy found nothing, the runtime rule ran.
+    expect(output.results.some((r) => r.ruleId === "no-console")).toBe(false);
+    expect(output.results.some((r) => r.source === "taskless-runtime")).toBe(
+      true
+    );
+    expect(output.failures).toHaveLength(1);
+    expect(output.failures?.[0]).toMatch(
+      /sg rule no-console is a copy of Taskless rule no-console-3fa9c21b, which was deleted \(changed no-console\.yml\).*rule restore no-console-3fa9c21b/
+    );
+    // One finding: the source's own missing warning is folded into the rename.
+    expect(output.notices ?? []).toEqual([]);
+    expect(output.integrity).toEqual([
+      {
+        ruleId: "no-console",
+        engine: "sg",
+        verdict: "unknown",
+        files: copyOf.files,
+        copyOf: {
+          ruleId: "no-console-3fa9c21b",
+          revisionId: "rev-4",
+          sourceMissing: true,
+        },
+      },
+      {
+        ruleId: "no-console-3fa9c21b",
+        engine: "sg",
+        verdict: "missing",
+        revisionId: "rev-5",
+      },
+    ]);
+    const engineLog = await readFile(
+      join(directory, output.runDirectory ?? "", "engine.log"),
+      "utf8"
+    );
+    expect(engineLog).toContain(
+      "copy: no-console carries files of no-console-3fa9c21b (revision rev-4), which is missing: a rename"
+    );
+    expect(engineLog).toMatch(/sg\/no-console: unknown, excluded \(a copy of/);
+    expect(await treeDigest(directory)).toBe(before);
   });
 
   it("a reported rule the answer does not account for does not run and fails the run", async () => {
