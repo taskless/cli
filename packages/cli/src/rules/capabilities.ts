@@ -271,6 +271,25 @@ const CONVERTER_TIER_PREFIX = "converter:";
  * plain text today, but the moment Vale routes it to a converter the same
  * omission is a crash that takes down every Vale rule in the run.
  *
+ * 3.22.0 → 3.23.0 LEARNED ONE FORMAT, AND NO TEST NOTICED UNTIL IT WAS
+ * PROBED. Every existing row was re-probed against the 3.23.0 binary and none
+ * moved, so the contract suite was green. The source check is what shows the
+ * rest: v3.22.0...v3.23.0 adds `internal/lint/code/kt.go` and
+ * `internal/lint/code/toml.go`, and `internal/core/format.go` routes `.kt` and
+ * `.kts` to `code`, so Kotlin left the unnamed plaintext fallback for the
+ * `comment` tier and is two new rows below. The benign direction, and a
+ * narrowing like `.ex` on 3.19.0: a rule matching `[*.kt]` fired on string
+ * literals and identifiers through 3.22.0 and now sees comments only. `.toml`
+ * did NOT move with it. `format.go` routes `.toml`, `.yml` and `.yaml` to
+ * `data`, which reads comments only through a tree-sitter View, and a rule
+ * config here cannot define one, so all three still lint as plaintext.
+ *
+ * Also in that tree, and not a tier change: comment-tier formats now drop a
+ * comment addressed to a tool (`//nolint`, `# noqa`, `eslint-disable`) and a
+ * docstring's `:param:` field, and a standalone `doc(<leaf>)` scope reads the
+ * leaf's text where it was inert. All three are pinned in
+ * `test/vale-vendor-contract.test.ts`.
+ *
  * 3.21.0 → 3.22.0 LEARNED NO FORMAT. Every row was re-probed against the
  * 3.22.0 binary and none moved. The v3.21.0...v3.22.0 tree adds no
  * `internal/lint/<format>.go` (its additions there are two `_test.go` files);
@@ -397,6 +416,8 @@ export const VALE_FORMAT_TIERS: Readonly<Record<string, ValeFormatTier>> = {
   ".jl": "comment",
   ".js": "comment",
   ".jsx": "comment",
+  ".kt": "comment",
+  ".kts": "comment",
   ".less": "comment",
   ".lua": "comment",
   ".php": "comment",

@@ -1175,17 +1175,15 @@ withVale("Vale vendor contract", () => {
         expect(lines(hedge(inContext), adr).lines).toEqual([5]);
       });
 
-      it("is inert on a leaf element on its own, and fires when chained", () => {
-        // THE TRAP. `doc(h2)` alone selects a heading, and a heading has
-        // nothing inside it to aggregate, so the rule matches nothing with
-        // no error anywhere. `text & doc(h2)` reads the heading's own block.
-        // The recipe teaches the chained spelling; if the standalone one
-        // starts firing, that guidance is merely redundant, but if the
-        // chained one stops, it is wrong.
+      it("reads a leaf element's own text when chained", () => {
+        // `text & doc(h2)` reads the heading's own block. On 3.21.0 and
+        // 3.22.0 it was the only spelling that did: `doc(h2)` alone matched
+        // nothing, with no error anywhere, and the recipe taught the chained
+        // form around that. 3.23.0 made the standalone form fire too (pinned
+        // in the 3.23.0 block below), so the chained one is no longer the
+        // workaround, but it is still what the recipe shows, and if it stops
+        // firing the recipe is wrong.
         const heading = `extends: existence\nmessage: "%s"\nlevel: warning\nscope: 'SCOPE'\ntokens:\n  - Decision\n`;
-        expect(lines(heading.replace("SCOPE", "doc(h2)"), adr).lines).toEqual(
-          []
-        );
         expect(
           lines(heading.replace("SCOPE", "text & doc(h2)"), adr).lines
         ).toEqual([7]);
@@ -1751,6 +1749,71 @@ withVale("Vale vendor contract", () => {
         ["Responsze", 13, 21],
         ["recieve", 30, 36],
       ]);
+    });
+  });
+
+  describe("Vale 3.23.0", () => {
+    // Every case below was run against both binaries, 3.22.0 and 3.23.0, on
+    // the same fixture, and differs between them. Each is a narrowing or a
+    // closed trap: findings appear where a rule was inert, or disappear from
+    // text that was never prose. Nothing here fails a run.
+
+    it("reads a leaf element on its own, where 3.22.0 was inert", () => {
+      // Upstream 459d3cda, "Selectors Level 4 in doc(...)". Through 3.22.0 a
+      // standalone `doc(h2)` selected the heading and linted what was inside
+      // it as one block, which for a leaf is nothing: no finding, no error.
+      // The corpus row `scope/doc-leaf-standalone` recorded that as a
+      // divergence and the recipe taught `text & doc(h2)` around it. Both
+      // spellings now fire on the same line.
+      const document = "# Title\n\n## Decision\n\nWe will do it.\n";
+      const heading = `extends: existence\nmessage: "%s"\nlevel: warning\nscope: 'SCOPE'\ntokens:\n  - Decision\n`;
+      expect(
+        lines(heading.replace("SCOPE", "doc(h2)"), document).lines
+      ).toEqual([3]);
+      expect(
+        lines(heading.replace("SCOPE", "text & doc(h2)"), document).lines
+      ).toEqual([3]);
+    });
+
+    describe("a comment addressed to a tool is not read", () => {
+      // Upstream 0ea6b7a1, "mask doc-comment conventions". 3.22.0 linted each
+      // of these directive comments as prose, so a rule over comments fired
+      // on a linter's suppression list. The ordinary comment beside each one
+      // is the control: the file is still comment-aware, only the directive
+      // is dropped. The masking is per language: a `// eslint-disable` line
+      // in a `.go` file is still read, because it is not Go's convention.
+      const rule = existence("simply");
+
+      it("drops a Go //nolint line", () => {
+        expect(
+          lines(rule, "//nolint:simply\n// simply here\nfunc f() {}\n", "a.go")
+            .lines
+        ).toEqual([2]);
+      });
+
+      it("drops a Python # noqa line", () => {
+        expect(
+          lines(rule, "# noqa: simply\n# simply here\nx = 1\n", "a.py").lines
+        ).toEqual([2]);
+      });
+
+      it("drops a JavaScript eslint-disable line", () => {
+        expect(
+          lines(
+            rule,
+            "// eslint-disable-next-line simply\n// simply here\nconst a = 1;\n",
+            "a.js"
+          ).lines
+        ).toEqual([2]);
+      });
+    });
+
+    it("does not read a docstring's :param: field as prose", () => {
+      // Same upstream commit. The docstring's own sentence is still linted;
+      // the field naming the parameter is not. 3.22.0 reported both.
+      const document =
+        'def f(simply):\n    """Do it simply.\n\n    :param simply: a flag\n    """\n';
+      expect(lines(existence("simply"), document, "a.py").lines).toEqual([2]);
     });
   });
 });

@@ -512,28 +512,25 @@ const DIVERGENCES: ValeCorpusEntry[] = [
       "fires on everything, having silently lost the exclusion it was written " +
       "for. The schema rejects it.",
   },
-  // The `doc(...)` family, new in Vale 3.21.0, adds three carve-outs in the
-  // OTHER direction — the schema accepts, Vale does not honor — and each is
-  // the same decision: what is between the parens is a CSS selector, and
-  // judging it means parsing CSS against the document's element tree, which
-  // the schema does not do and should not buy a dependency to do. Vale
-  // reports the bad selector itself, at load, as an E201 that `test`
-  // surfaces; the inert ones it does not report, and that is recorded here
-  // so the gap is a row someone can count rather than a silence.
+  // The `doc(...)` family, new in Vale 3.21.0, added carve-outs in the OTHER
+  // direction — the schema accepts, Vale does not honor — and each is the
+  // same decision: what is between the parens is a CSS selector, and judging
+  // it means parsing CSS against the document's element tree, which the
+  // schema does not do and should not buy a dependency to do. Vale reports
+  // the bad selector itself, at load, as an E201 that `test` surfaces.
+  //
+  // A leaf element on its own was the silent one, inert from 3.21.0 through
+  // 3.22.0. Vale 3.23.0 reads the leaf's own text, so the row now agrees with
+  // the schema and carries no divergence. It stays, because the recipe used to
+  // teach around the old verdict, and a Vale that went back would need the
+  // recipe to go back too.
   {
     name: "scope/doc-leaf-standalone",
     construct: "scope: doc(h1)",
     rule: scoped("doc(h1)"),
     control: HEADINGS,
     proof: SCOPE_PROOF,
-    expected: "ignored",
-    divergence:
-      "A standalone `doc(...)` lints what is INSIDE the selected element as " +
-      "one block, and a leaf element (a heading, a paragraph) has nothing " +
-      "inside it, so the rule is inert. `text & doc(h1)` is the working " +
-      "spelling. Telling a leaf from a container needs the document's " +
-      "element tree, so the schema accepts both and the recipe teaches the " +
-      "difference.",
+    expected: "accepted",
   },
   {
     name: "scope/doc-invalid-selector",
@@ -680,6 +677,16 @@ const FIELDS: ValeCorpusEntry[] = [
     name: "field/existence+limit",
     construct: "limit",
     rule: existence("limit: 1\n"),
+    control: PROSE,
+    expected: "accepted",
+  },
+  {
+    // Read by `vale test`, announced in 3.23.0 and already accepted by
+    // 3.22.0. Absent from the generator's candidates until 3.23.0, so
+    // `verify` rejected it as an E201 Vale never raised.
+    name: "field/existence+tests",
+    construct: "tests",
+    rule: existence("tests:\n  - fixture.md\n"),
     control: PROSE,
     expected: "accepted",
   },

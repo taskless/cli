@@ -1,4 +1,4 @@
-# Topic: create-vale-rule     (CLI v%(CLI_VERSION)s / topic v14)
+# Topic: create-vale-rule     (CLI v%(CLI_VERSION)s / topic v15)
 
 ## You are here
 This is `create-vale-rule`. It helps you write a Vale rule: a check over
@@ -199,12 +199,11 @@ it.
    `metric` with `scope: doc(section:has(> h2:contains("Consequences")))`
    and `formula: words` counts that section's words, not the document's.
 
-   **A leaf element on its own is inert.** `doc(h2)` alone selects a
-   heading, and a heading has nothing inside it to lint as a block, so the
-   rule matches nothing, with no error anywhere. Write `text & doc(h2)`
-   for the heading's own text. The same holds for `doc(p)` and `doc(li)`.
-   `verify` accepts both spellings, because telling a leaf from a container
-   needs the document; `test` shows which one fires.
+   **A leaf element reads its own text either way.** `doc(h2)` alone and
+   `text & doc(h2)` both lint the heading's text, and the same holds for
+   `doc(p)` and `doc(li)`. Prefer the chained form anyway: it says which
+   text you mean, and a rule written for Vale 3.22.0 or earlier, where
+   the standalone form matched nothing, already uses it.
 
    **The selector is Vale's to check, not `verify`'s.** A selector Vale
    cannot compile (`doc(h2[)`) fails the whole run at load with
@@ -778,8 +777,11 @@ it.
    - **comment text only**: the comments are linted and the code body
      <!-- vale no-hedging.no-hedging = NO -->
      is invisible, which is exactly right for "comments must not say
-     'obviously'":
+     'obviously'".
      <!-- vale no-hedging.no-hedging = YES -->
+     A comment addressed to a tool (`//nolint`, `# noqa`,
+     `eslint-disable`) and a docstring's `:param:` field are not read at
+     all, so a rule cannot police what a suppression comment says:
      %(VALE_COMMENT_FORMATS)s
    - **plaintext fallback**: everything else, `.yml` `.toml` `.sh`
      `.sql` and every extension not named above included. There is no
