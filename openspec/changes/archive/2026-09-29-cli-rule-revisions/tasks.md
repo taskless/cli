@@ -18,5 +18,5 @@
 ## 4. Verify
 
 - [x] 4.1 Run `pnpm typecheck`, `pnpm lint`, and `pnpm test`; all pass
-- [ ] 4.2 With a `pnpm build:next` build, run `pnpm cli rule revisions <id>` and `--json` against production for a real issued rule, and `rule rollback` to one of the listed ids; record the result in the PR
+- [x] 4.2 With a `pnpm build:next` build, run `pnpm cli rule revisions <id>` and `--json` against production for a real issued rule, and `rule rollback` to one of the listed ids; record the result in the PR
 - [x] 4.3 Archive the change on this PR (`pnpm openspec archive cli-rule-revisions -y`), after the pre-archive scenario check that every prior `cli-rule-recovery` scenario survives
