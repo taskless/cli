@@ -862,6 +862,124 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/cli/api/v2/rule/{ruleId}/revisions": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** A rule’s newest revisions and which one is current, on every plan, to choose one to roll back to */
+    get: {
+      parameters: {
+        query: {
+          /** @description Full repository URL the rule belongs to */
+          repositoryUrl: string;
+          /** @description Taskless org UUID (preferred) or numeric GitHub org id; falls back to the deprecated token claim */
+          orgId?: string;
+        };
+        header?: never;
+        path: {
+          /** @description The rule id reconcile returns: the rule’s directory name, stable for the life of the rule. NOT a request id, unlike the legacy v1 `rule/{ruleId}`. */
+          ruleId: string;
+        };
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description OK */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              /** @description The rule listed */
+              ruleId: string;
+              /** @description The newest 10 revisions, newest first, followed by the current revision when it is older than those. A rollback writes no revision: it shows only as `current` moving. The cap may change. */
+              revisions: {
+                /** @description Pass to rollback, or to fetch as `revision` */
+                revisionId: string;
+                /** @description When the revision was generated */
+                createdAt: string;
+                /**
+                 * @description How the revision was delivered
+                 * @enum {string}
+                 */
+                delivery: "cli" | "pull-request";
+                /** @description The request that produced it */
+                requestId: string;
+                /** @description The pull request that delivered it; only for pull-request delivery */
+                prUrl?: string;
+                /** @description Whether it is the rule's effective current revision; at most one is */
+                current: boolean;
+              }[];
+              /** @description Whether the rule has older revisions this response omits; the dashboard's rule page lists them all */
+              truncated: boolean;
+            };
+          };
+        };
+        /** @description `validation_error`: The body or query failed validation, or the body is not JSON; `details` lists why. Not retryable as sent. */
+        400: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              /**
+               * @description Machine-readable error code
+               * @enum {string}
+               */
+              error: "validation_error";
+              /** @description Human-readable reasons, when the code carries them */
+              details?: string[];
+            };
+          };
+        };
+        /** @description `unauthorized`: Missing or invalid bearer token. Log in again. */
+        401: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              /**
+               * @description Machine-readable error code
+               * @enum {string}
+               */
+              error: "unauthorized";
+            };
+          };
+        };
+        /**
+         * @description `organization_not_found`: The organization is not accessible to this user, or its GitHub App installation does not cover the repository. Deliberately indistinguishable, so a probe cannot tell 'not yours' from 'does not exist'.
+         *
+         *     `rule_not_found`: Not a rule of this repository. On restore, also a rule with no current revision (it exists only on an open pull request). Answered on every plan, before any plan refusal.
+         */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              /**
+               * @description Machine-readable error code
+               * @enum {string}
+               */
+              error: "organization_not_found" | "rule_not_found";
+            };
+          };
+        };
+      };
+    };
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/cli/api/v2/rule/{ruleId}": {
     parameters: {
       query?: never;

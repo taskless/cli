@@ -1460,6 +1460,177 @@
         }
       }
     },
+    "/cli/api/v2/rule/{ruleId}/revisions": {
+      "get": {
+        "summary": "A rule’s newest revisions and which one is current, on every plan, to choose one to roll back to",
+        "parameters": [
+          {
+            "name": "ruleId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The rule id reconcile returns: the rule’s directory name, stable for the life of the rule. NOT a request id, unlike the legacy v1 `rule/{ruleId}`."
+          },
+          {
+            "name": "repositoryUrl",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "Full repository URL the rule belongs to"
+            },
+            "description": "Full repository URL the rule belongs to"
+          },
+          {
+            "name": "orgId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "description": "Taskless org UUID (preferred) or numeric GitHub org id; falls back to the deprecated token claim",
+              "type": "string"
+            },
+            "description": "Taskless org UUID (preferred) or numeric GitHub org id; falls back to the deprecated token claim"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$schema": "https://json-schema.org/draft/2020-12/schema",
+                  "type": "object",
+                  "properties": {
+                    "ruleId": {
+                      "type": "string",
+                      "description": "The rule listed"
+                    },
+                    "revisions": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "revisionId": {
+                            "type": "string",
+                            "description": "Pass to rollback, or to fetch as `revision`"
+                          },
+                          "createdAt": {
+                            "type": "string",
+                            "description": "When the revision was generated"
+                          },
+                          "delivery": {
+                            "type": "string",
+                            "enum": ["cli", "pull-request"],
+                            "description": "How the revision was delivered"
+                          },
+                          "requestId": {
+                            "type": "string",
+                            "description": "The request that produced it"
+                          },
+                          "prUrl": {
+                            "description": "The pull request that delivered it; only for pull-request delivery",
+                            "type": "string"
+                          },
+                          "current": {
+                            "type": "boolean",
+                            "description": "Whether it is the rule's effective current revision; at most one is"
+                          }
+                        },
+                        "required": [
+                          "revisionId",
+                          "createdAt",
+                          "delivery",
+                          "requestId",
+                          "current"
+                        ],
+                        "additionalProperties": false
+                      },
+                      "description": "The newest 10 revisions, newest first, followed by the current revision when it is older than those. A rollback writes no revision: it shows only as `current` moving. The cap may change."
+                    },
+                    "truncated": {
+                      "type": "boolean",
+                      "description": "Whether the rule has older revisions this response omits; the dashboard's rule page lists them all"
+                    }
+                  },
+                  "required": ["ruleId", "revisions", "truncated"],
+                  "additionalProperties": false,
+                  "description": "A rule's recent revisions, without their files, on every plan. Fetching an older revision or rolling back to one requires restoreRules."
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`validation_error`: The body or query failed validation, or the body is not JSON; `details` lists why. Not retryable as sent.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$schema": "https://json-schema.org/draft/2020-12/schema",
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "enum": ["validation_error"],
+                      "description": "Machine-readable error code"
+                    },
+                    "details": {
+                      "description": "Human-readable reasons, when the code carries them",
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  },
+                  "required": ["error"],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`unauthorized`: Missing or invalid bearer token. Log in again.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$schema": "https://json-schema.org/draft/2020-12/schema",
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "enum": ["unauthorized"],
+                      "description": "Machine-readable error code"
+                    }
+                  },
+                  "required": ["error"],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`organization_not_found`: The organization is not accessible to this user, or its GitHub App installation does not cover the repository. Deliberately indistinguishable, so a probe cannot tell 'not yours' from 'does not exist'.\n\n`rule_not_found`: Not a rule of this repository. On restore, also a rule with no current revision (it exists only on an open pull request). Answered on every plan, before any plan refusal.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$schema": "https://json-schema.org/draft/2020-12/schema",
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "enum": ["organization_not_found", "rule_not_found"],
+                      "description": "Machine-readable error code"
+                    }
+                  },
+                  "required": ["error"],
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/cli/api/v2/rule/{ruleId}": {
       "get": {
         "summary": "A rule by its id: its head on every plan, or an older revision with restoreRules",
