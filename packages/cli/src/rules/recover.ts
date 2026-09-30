@@ -422,8 +422,16 @@ export async function revisions(
  * The listing as a person reads it. Order is the service's; the current
  * revision is found by its flag, because one older than the newest ten is
  * appended after them.
+ *
+ * `restoreRules` is the acting org's plan entitlement. Only `false` changes
+ * anything: the listing is the same on every plan, but the closing line stops
+ * naming `rule rollback`, which the service would refuse. Unknown names it, as
+ * before, and rollback still asks the service either way.
  */
-export function describeRevisions(list: RevisionList): string[] {
+export function describeRevisions(
+  list: RevisionList,
+  restoreRules?: boolean
+): string[] {
   const { ruleId } = list;
   if (list.revisions.length === 0) {
     return [`Rule ${ruleId} has no revisions.`];
@@ -452,7 +460,9 @@ export function describeRevisions(list: RevisionList): string[] {
     );
   }
   lines.push(
-    `Make a revision current with \`${getCliPrefix()} rule rollback ${ruleId} <revisionId>\`.`
+    restoreRules === false
+      ? "Rolling back is not included in your organization's plan; earlier versions of this rule are in the repository's git history."
+      : `Make a revision current with \`${getCliPrefix()} rule rollback ${ruleId} <revisionId>\`.`
   );
   return lines;
 }
