@@ -5,7 +5,11 @@ import { join, resolve } from "node:path";
 import { promisify } from "node:util";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { hasHelpFlag, splitRawArguments } from "../src/util/argv";
+import {
+  hasHelpFlag,
+  joinDirectoryValues,
+  splitRawArguments,
+} from "../src/util/argv";
 
 const execFileAsync = promisify(execFile);
 const binPath = resolve(import.meta.dirname, "../dist/index.js");
@@ -149,6 +153,55 @@ describe("splitRawArguments", () => {
 
   it("does not report a value for a flag that takes none", () => {
     expect(splitRawArguments(["check", "--json=yes"]).values).toEqual([]);
+  });
+});
+
+describe("joinDirectoryValues", () => {
+  it.each([
+    [
+      ["auth", "-d", "."],
+      ["auth", "--dir=."],
+    ],
+    [
+      ["-d", "/tmp", "info"],
+      ["--dir=/tmp", "info"],
+    ],
+    [
+      ["auth", "--dir", "/tmp", "login"],
+      ["auth", "--dir=/tmp", "login"],
+    ],
+    [
+      ["auth", "--dir=."],
+      ["auth", "--dir=."],
+    ],
+  ])("joins %j into %j", (argv, expected) => {
+    expect(joinDirectoryValues(argv)).toEqual(expected);
+  });
+
+  it("leaves a value that starts with - alone", () => {
+    expect(joinDirectoryValues(["auth", "-d", "--json"])).toEqual([
+      "auth",
+      "-d",
+      "--json",
+    ]);
+  });
+
+  it("does not touch anything after --", () => {
+    expect(joinDirectoryValues(["check", "--", "-d", "src"])).toEqual([
+      "check",
+      "--",
+      "-d",
+      "src",
+    ]);
+  });
+
+  it("does not join -- as the value of -d", () => {
+    expect(joinDirectoryValues(["check", "-d", "--", "src"])).toEqual([
+      "check",
+      "-d",
+      "--",
+      "src",
+    ]);
   });
 });
 
