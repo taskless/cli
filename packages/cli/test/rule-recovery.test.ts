@@ -62,6 +62,8 @@ interface Stub {
   status?: number;
   /** The body the revisions listing answers with, and its status. */
   revisions?: { body: unknown; status?: number };
+  /** The acting org's `entitlements.restoreRules`; unset serves no whoami. */
+  restoreRules?: boolean;
 }
 
 const REFUSAL = {
@@ -111,6 +113,27 @@ describe("rule restore / rule rollback", () => {
         calls.push(`${input.method} ${url.pathname}`);
         if (url.pathname === "/cli/api/whoami") {
           return Response.json({}, { status: 500 });
+        }
+        if (url.pathname === "/cli/api/v2/whoami") {
+          if (options.restoreRules === undefined) {
+            return Response.json({}, { status: 500 });
+          }
+          return Response.json({
+            user: "Ada",
+            orgs: [
+              {
+                id: "uuid-test",
+                name: "test",
+                source: "github",
+                url: "https://github.com/test",
+                entitlements: {
+                  remoteGeneration: true,
+                  runtimeSignatures: true,
+                  restoreRules: options.restoreRules,
+                },
+              },
+            ],
+          });
         }
         if (url.pathname === "/cli/api/v2/reconcile") {
           const body = (await input.json()) as {
@@ -461,6 +484,23 @@ describe("rule restore / rule rollback", () => {
     expect(await readFile(ruleFile(), "utf8")).toBe(EDITED);
   });
 
+  it("still asks the service to restore when whoami says the plan excludes it", async () => {
+    await writeLocal(EDITED);
+    stub({
+      verdict: { kind: "unsafe", expected: await canonicalHash(ISSUED) },
+      served: REFUSAL,
+      restoreRules: false,
+    });
+    const output = await run(["restore", RULE_ID]);
+    // A hint, never a gate: the call is made and the refusal relayed.
+    expect(restoreCalled()).toBe(true);
+    expect(output).toMatchObject({
+      ok: false,
+      code: "RULE_RECOVERY_NOT_IN_PLAN",
+    });
+    expect(String(output.message)).toContain("Recover it with git");
+  });
+
   it("prints the refusal to a human, not an outage", async () => {
     await writeLocal(EDITED);
     stub({
@@ -590,6 +630,33 @@ describe("rule restore / rule rollback", () => {
       expect(printed).not.toContain("Older revisions");
       expect(printed).toContain(`rule rollback ${RULE_ID} <revisionId>`);
       expect(process.exitCode).toBeUndefined();
+    });
+
+    it("on a plan known to exclude rollback, lists the same revisions and does not name rollback", async () => {
+      stub({
+        verdict: { kind: "run" },
+        restoreRules: false,
+        revisions: {
+          body: listing([revision("r2", true), revision("r1", false)]),
+        },
+      });
+      const printed = await print();
+      expect(currentLine(printed)[0]).toContain("r2");
+      expect(printed).toContain("r1");
+      expect(printed).toContain(
+        "Rolling back is not included in your organization's plan"
+      );
+      expect(printed).not.toContain("rule rollback");
+      expect(process.exitCode).toBeUndefined();
+    });
+
+    it("on a plan known to include rollback, names rollback", async () => {
+      stub({
+        verdict: { kind: "run" },
+        restoreRules: true,
+        revisions: { body: listing([revision("r1", true)]) },
+      });
+      expect(await print()).toContain(`rule rollback ${RULE_ID} <revisionId>`);
     });
 
     it("marks a current revision appended after the newest ten by its flag", async () => {

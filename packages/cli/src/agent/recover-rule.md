@@ -1,4 +1,4 @@
-# Topic: recover-rule     (CLI v%(CLI_VERSION)s / topic v2)
+# Topic: recover-rule     (CLI v%(CLI_VERSION)s / topic v3)
 
 ## Goal
 Put an issued rule back the way Taskless issued it, after `check`
@@ -17,7 +17,25 @@ write nothing they cannot verify.
   revisions and marks the current one. It reads only, and it works on
   every plan.
 
-`check` never does either. It reports and names `rule restore`.
+`check` never does either. It reports and names `rule restore`, or,
+when the organization's plan does not include recovery, the git steps
+that do the same job (see "When the plan does not include recovery").
+
+**Check the plan before offering either command.** The CLI knows the
+plan from the same login lookup it already makes, and says so in what
+it prints:
+
+- `check` gives git steps ("Restoring rules is not included in your
+  organization's plan, so recover … from git") where it would name
+  `rule restore`.
+- `rule revisions` ends with "Rolling back is not included in your
+  organization's plan" where it would name `rule rollback`.
+
+When either appears, the plan does not include recovery. Follow the
+git steps instead of running `rule restore` or `rule rollback`, which
+the service refuses on this plan. When `check` names `rule restore`,
+the plan includes recovery or could not be read; run the commands as
+below, and the service's answer settles it.
 
 ## Preconditions
 - User is logged in, and the project has a GitHub `origin`. Recovery
@@ -87,7 +105,16 @@ write nothing they cannot verify.
 
 ## When the plan does not include recovery
 
-On a plan without rule recovery, restore and rollback answer with
+If `check` or `rule revisions` already said the plan does not include
+recovery, use the git steps `check` gave. Choosing the commit is covered
+in `%(TASKLESS_CLI)s agent check`, under "When the plan does not include
+restoring rules". To go back to an earlier revision on such a plan,
+find the commit in `git log -- <rule directory>`; `rule revisions`
+still lists when each revision was created and its pull request, which
+helps match a revision to a commit.
+
+If you ran restore or rollback anyway, or the plan could not be read
+beforehand, the service answers with
 guidance instead of a rule: `RULE_RECOVERY_NOT_IN_PLAN`, and a
 `message` that names the plan, says the rule is in the repository's git
 history, and gives the `git log` / `git restore` commands for the rule's

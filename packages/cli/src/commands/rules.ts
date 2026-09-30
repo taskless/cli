@@ -831,16 +831,20 @@ const revisionsCommand = defineCommand({
     },
   },
   async run({ args }) {
-    const list = await runForIssuedRule(args, (_cwd, identity) =>
-      revisions(identity, args.id)
-    );
-    if (list === undefined) return;
+    const result = await runForIssuedRule(args, async (_cwd, identity) => ({
+      list: await revisions(identity, args.id),
+      restoreRules: identity.restoreRules,
+    }));
+    if (result === undefined) return;
+    const { list, restoreRules } = result;
     if (args.json) {
       console.log(
         JSON.stringify(revisionsOutputSchema.parse({ success: true, ...list }))
       );
     } else {
-      for (const line of describeRevisions(list)) console.log(line);
+      for (const line of describeRevisions(list, restoreRules)) {
+        console.log(line);
+      }
     }
   },
 });
