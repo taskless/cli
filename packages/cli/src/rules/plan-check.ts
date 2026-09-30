@@ -1,5 +1,5 @@
 import { getToken } from "../auth/token";
-import { resolveOrgSubject } from "../auth/org";
+import { resolveActingOrg } from "../auth/org";
 import { reconcileRules } from "../api/v2";
 import { resolveRepositoryUrl } from "../util/git-remote";
 import { getCliPrefix } from "../util/package-manager";
@@ -191,9 +191,9 @@ export async function planCheck(
     };
   }
 
-  const orgSubject = await resolveOrgSubject(cwd, token);
+  const org = await resolveActingOrg(cwd, token);
   const outcome = await reconcileRules(token, {
-    orgId: orgSubject,
+    orgId: org.subject,
     repositoryUrl,
     rules: report.rules.map(({ ruleId, files }) => ({ ruleId, files })),
   });

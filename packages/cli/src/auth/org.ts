@@ -65,26 +65,50 @@ export async function resolveCurrentOrg(
   return selectOrgForOwners(ownerUrls, orgs);
 }
 
+/** The organization the CLI acts as, and what its plan is known to grant. */
+export interface ActingOrg {
+  /** The org subject to send on write calls. See `resolveActingOrg`. */
+  subject: string | number;
+  /**
+   * The matched organization's `entitlements.restoreRules`, or `undefined`
+   * when it is unknown: whoami failed, the organization carried no boolean
+   * for it, or no organization matched and the subject came from the token.
+   * A hint for which recovery to suggest, never a gate. The service refuses
+   * a recovery the plan lacks on its own.
+   */
+  restoreRules?: boolean;
+}
+
 /**
- * The org subject to send on write calls. Prefers the current org's Taskless
- * UUID (`id`), resolved by matching the repo's remotes against `whoami`; falls
+ * The org to act as. `subject` prefers the current org's Taskless UUID
+ * (`id`), resolved by matching the repo's remotes against `whoami`; falls
  * back to the token's canonical id (or its deprecated numeric `orgId` claim)
  * when whoami is unavailable or no org owns the repo. A new client thus routes
  * multi-org users correctly, while older single-org behaviour is preserved via
  * the claim.
  *
- * Never `undefined`: when neither a matched org nor a token claim resolves,
- * returns the nil-UUID `NIL_ORG_ID` so the canonical subject is always known
- * (unattributed usage is sent under one stable, known org id).
+ * `subject` is never `undefined`: when neither a matched org nor a token claim
+ * resolves, it is the nil-UUID `NIL_ORG_ID` so the canonical subject is always
+ * known (unattributed usage is sent under one stable, known org id).
+ *
+ * `restoreRules` rides along from the same whoami call, so knowing the plan
+ * costs no request of its own.
  */
-export async function resolveOrgSubject(
+export async function resolveActingOrg(
   cwd: string,
   token: string
-): Promise<string | number> {
+): Promise<ActingOrg> {
   const whoami = await fetchWhoami(token);
   if (whoami && whoami.orgs.length > 0) {
     const org = await resolveCurrentOrg(cwd, whoami.orgs);
-    if (org) return org.id;
+    if (org) {
+      // Read defensively: the schema says an absent `entitlements` means
+      // unknown, and an older service may not send it at all.
+      const restoreRules: unknown = org.entitlements?.restoreRules;
+      return typeof restoreRules === "boolean"
+        ? { subject: org.id, restoreRules }
+        : { subject: org.id };
+    }
   }
-  return decodeOrgId(token) ?? NIL_ORG_ID;
+  return { subject: decodeOrgId(token) ?? NIL_ORG_ID };
 }

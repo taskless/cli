@@ -1,5 +1,5 @@
 import { getToken } from "./token";
-import { resolveOrgSubject } from "./org";
+import { resolveActingOrg } from "./org";
 import { CLIError } from "../util/cli-error";
 import { resolveRepositoryUrl } from "../util/git-remote";
 import { getCliPrefix } from "../util/package-manager";
@@ -9,10 +9,15 @@ export interface Identity {
   token: string;
   /**
    * Org subject to send on write calls: the current org's Taskless UUID
-   * (preferred) or the deprecated numeric `orgId` claim. See `resolveOrgSubject`.
+   * (preferred) or the deprecated numeric `orgId` claim. See `resolveActingOrg`.
    */
   orgSubject: string | number;
   repositoryUrl: string;
+  /**
+   * Whether the acting org's plan includes rule recovery; `undefined` when
+   * unknown. Chooses which recovery to suggest, never whether to try one.
+   */
+  restoreRules?: boolean;
 }
 
 /**
@@ -21,6 +26,8 @@ export interface Identity {
  *   repo's remotes, falling back to the token's canonical id claim, and finally
  *   to the nil-UUID `NIL_ORG_ID` so a subject is always present
  * - repositoryUrl: inferred from `git remote get-url origin`
+ * - restoreRules: the matched org's plan entitlement, from the same `whoami`
+ *   call; absent when unknown
  *
  * Throws a `CLIError` carrying a stable `CLIErrorCode` if auth is missing
  * (`AUTH_REQUIRED`) or the repository URL cannot be resolved, in which case
@@ -39,9 +46,16 @@ export async function resolveIdentity(cwd: string): Promise<Identity> {
   }
 
   const repositoryUrl = await resolveRepositoryUrl(cwd);
-  const orgSubject = await resolveOrgSubject(cwd, token);
+  const org = await resolveActingOrg(cwd, token);
 
-  return { token, orgSubject, repositoryUrl };
+  return {
+    token,
+    orgSubject: org.subject,
+    repositoryUrl,
+    ...(org.restoreRules === undefined
+      ? {}
+      : { restoreRules: org.restoreRules }),
+  };
 }
 
 /**
@@ -52,7 +66,7 @@ export async function resolveIdentity(cwd: string): Promise<Identity> {
  * prose. It is shared by every caller so the mapping cannot drift between
  * them.
  *
- * `resolveOrgSubject` is deliberately absent from the list of expected
+ * `resolveActingOrg` is deliberately absent from the list of expected
  * failures: it cannot throw. `fetchWhoami` swallows every network and HTTP
  * error and returns `undefined`, and `decodeOrgId` falls back to the nil-UUID
  * `NIL_ORG_ID`, so a repo with no matching org resolves a subject rather than
