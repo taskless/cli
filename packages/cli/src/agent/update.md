@@ -295,48 +295,46 @@ narrowed by hand.
 
 ### Migrating to 0.12.0
 
-**The CLI speaks the Taskless v2 rule API, and a rule is addressed by
-its own id: its directory name under `.taskless/rules/<engine>/`.**
-Five things follow for existing rules.
+**Every project: run `%(TASKLESS_CLI)s init` once.** Migration 10 moves
+test files an earlier migration left in `.taskless/sg/rule-tests/` (from
+rules whose ids ended in a timestamp) into each rule's `.tests/`, and
+removes the emptied legacy directory. A test that matches no rule is
+left where it is. `check` refuses to run until the project is migrated,
+logged in or not, and names `init`. Commit the moved files.
 
-**Rules issued before 0.12.0 are treated as locally written.** They
-came through the v1 API, which v2 does not know, so reconcile answers
-them `unknown` and nothing can restore them. An ast-grep or Vale rule
-keeps running, as any rule you wrote yourself. A runtime rule does not:
-an `unknown` runtime rule never executes, so `check` skips it and names
-it. Regenerate each such runtime rule with
-`%(TASKLESS_CLI)s agent create-remote-rule`, then delete the old
-directory. List them with `%(TASKLESS_CLI)s check --json` and read
-`skipped`.
+**Only if `loggedIn` is `true` in `%(TASKLESS_CLI)s info --json`:** the
+CLI now speaks the Taskless v2 rule API, which addresses a rule by its
+own id (its directory name under `.taskless/rules/<engine>/`) and checks
+every issued rule against what Taskless issued. Logged out, nothing is
+checked, runtime rules are skipped as before, and none of the four
+entries below applies.
 
-**An edited issued rule fails `check`.** Logged in, `check` compares
-every file of every issued rule, of every engine, with what Taskless
-issued. An edited ast-grep or Vale rule does not run and fails the run,
-naming each changed, removed or added file; an edited runtime rule does
-not run. Do not edit a rule back by hand: run
-`%(TASKLESS_CLI)s rule restore <ruleId>`, which writes only bytes whose
-signatures verify. On a plan without rule recovery it prints how to
-recover the rule from git instead. `check` itself never rewrites a rule.
-
-**A copied or renamed issued rule fails `check` too.** A rule under a
-new id that still carries a file Taskless issued to another rule does
-not run, and the failure names the rule it came from. If the original
-was deleted, the pair is reported as one rename: restore the original
-with `rule restore <originalId>`, then delete the copy. Never restore
-the copy's own id.
-
-**`rule create --json` prints `requestId`, not `ruleId`.** The old
-field always held the request id. The ids of the rules written are in
-`rules`, and those are what `rule improve`, `rule restore`,
-`rule revisions` and `rule rollback` take. Update anything that read
-`ruleId` from `rule create`.
-
-**Run `%(TASKLESS_CLI)s init` once.** Migration 10 moves test files an
-earlier migration left in `.taskless/sg/rule-tests/` (from rules whose
-ids ended in a timestamp) into each rule's `.tests/`, and removes the
-emptied legacy directory. A test that matches no rule is left where it
-is. `check` refuses to run until the project is migrated, and names
-`init`. Commit the moved files.
+- **Rules issued before 0.12.0 are treated as locally written.** They
+  came through the v1 API, which v2 does not know, so reconcile answers
+  them `unknown` and nothing can restore them. An ast-grep or Vale rule
+  keeps running, as any rule you wrote yourself. A runtime rule does
+  not: an `unknown` runtime rule never executes, so `check` skips it and
+  names it in `skipped` under `--json`. Regenerate each one with
+  `%(TASKLESS_CLI)s agent create-remote-rule`, then delete the old
+  directory.
+- **An edited issued rule fails `check`.** An edited ast-grep or Vale
+  rule does not run and fails the run, naming each changed, removed or
+  added file; an edited runtime rule does not run. Do not edit a rule
+  back by hand: run `%(TASKLESS_CLI)s rule restore <ruleId>`, which
+  writes only bytes whose signatures verify. On a plan without rule
+  recovery it prints how to recover the rule from git instead. `check`
+  itself never rewrites a rule.
+- **A copied or renamed issued rule fails `check` too.** A rule under a
+  new id that still carries a file Taskless issued to another rule does
+  not run, and the failure names the rule it came from. If the original
+  was deleted, the pair is reported as one rename: restore the original
+  with `rule restore <originalId>`, then delete the copy. Never restore
+  the copy's own id.
+- **`rule create --json` prints `requestId`, not `ruleId`.** The old
+  field always held the request id. The ids of the rules written are in
+  `rules`, and those are what `rule improve`, `rule restore`,
+  `rule revisions` and `rule rollback` take. Update anything that read
+  `ruleId` from `rule create`.
 
 **Files over 128KB are linted again.** 0.11.2 skipped any target file
 over 128KB that a matcher's section reached, naming it in a `notices`
