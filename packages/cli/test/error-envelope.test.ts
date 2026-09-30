@@ -6,7 +6,7 @@ import { join, resolve } from "node:path";
 import { promisify } from "node:util";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { resolveOrgSubject } from "../src/auth/org";
+import { resolveActingOrg } from "../src/auth/org";
 import { cliRejectionToResult } from "./support/spawn-cli";
 
 const execFileAsync = promisify(execFile);
@@ -290,7 +290,7 @@ describe("standardized error envelope (--json)", () => {
  * rewording any of these strings fails a test instead of silently telling a
  * machine consumer to log in when the real problem is the git remote.
  *
- * Origin 4, a `resolveOrgSubject` failure, is absent on purpose and is
+ * Origin 4, a `resolveActingOrg` failure, is absent on purpose and is
  * covered by its own test below: it cannot throw.
  */
 describe("resolveIdentity failure codes (--json)", () => {
@@ -501,14 +501,14 @@ describe("resolveIdentity failure codes (--json)", () => {
 });
 
 /**
- * Origin 4 of #181: a `resolveOrgSubject` failure. There is no such failure
+ * Origin 4 of #181: a `resolveActingOrg` failure. There is no such failure
  * to give a code to. `fetchWhoami` returns `undefined` on any network or HTTP
  * error, and `decodeOrgId` falls back to the nil-UUID `NIL_ORG_ID`, so the
  * step resolves a subject rather than throwing. This test holds that shape in
- * place: if `resolveOrgSubject` ever grows a throw, it needs a code of its
+ * place: if `resolveActingOrg` ever grows a throw, it needs a code of its
  * own and this test says so by failing.
  */
-describe("resolveOrgSubject", () => {
+describe("resolveActingOrg", () => {
   let cwd: string;
 
   beforeEach(async () => {
@@ -525,7 +525,7 @@ describe("resolveOrgSubject", () => {
     process.env.TASKLESS_API_URL = "http://127.0.0.1:1/cli";
     try {
       await expect(
-        resolveOrgSubject(cwd, "not-a-real-token")
+        resolveActingOrg(cwd, "not-a-real-token")
       ).resolves.toBeDefined();
     } finally {
       if (previous === undefined) {

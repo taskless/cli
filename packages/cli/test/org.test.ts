@@ -6,7 +6,7 @@ import { promisify } from "node:util";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { fetchWhoami } from "../src/auth/whoami";
 import {
-  resolveOrgSubject,
+  resolveActingOrg,
   selectOrgForOwners,
   type WhoamiOrg,
 } from "../src/auth/org";
@@ -38,6 +38,15 @@ const org = (id: string, url: string, source = "github"): WhoamiOrg =>
     source,
     url,
   }) as WhoamiOrg;
+
+const entitled = (restoreRules: boolean): WhoamiOrg => ({
+  ...org("uuid-acme", "https://github.com/acme"),
+  entitlements: {
+    remoteGeneration: true,
+    runtimeSignatures: true,
+    restoreRules,
+  },
+});
 
 describe("selectOrgForOwners", () => {
   const orgs = [
@@ -78,7 +87,7 @@ describe("selectOrgForOwners", () => {
   });
 });
 
-describe("resolveOrgSubject", () => {
+describe("resolveActingOrg", () => {
   let directory: string;
   const token = makeJwt({ orgId: 4242 });
 
@@ -100,25 +109,84 @@ describe("resolveOrgSubject", () => {
     mockedFetchWhoami.mockResolvedValue(
       whoamiWith([org("uuid-acme", "https://github.com/acme")])
     );
-    expect(await resolveOrgSubject(directory, token)).toBe("uuid-acme");
+    await expect(resolveActingOrg(directory, token)).resolves.toMatchObject({
+      subject: "uuid-acme",
+    });
   });
 
   it("falls back to the numeric claim when no whoami org matches the repo", async () => {
     mockedFetchWhoami.mockResolvedValue(
       whoamiWith([org("uuid-other", "https://github.com/other")])
     );
-    expect(await resolveOrgSubject(directory, token)).toBe(4242);
+    await expect(resolveActingOrg(directory, token)).resolves.toMatchObject({
+      subject: 4242,
+    });
   });
 
   it("falls back to the numeric claim when whoami is unavailable", async () => {
     mockedFetchWhoami.mockResolvedValue(WHOAMI_UNAVAILABLE);
-    expect(await resolveOrgSubject(directory, token)).toBe(4242);
+    await expect(resolveActingOrg(directory, token)).resolves.toMatchObject({
+      subject: 4242,
+    });
   });
 
   it("falls back to the nil-UUID when whoami is unavailable and the token has no org claim", async () => {
     mockedFetchWhoami.mockResolvedValue(WHOAMI_UNAVAILABLE);
-    expect(await resolveOrgSubject(directory, makeJwt({ sub: "u" }))).toBe(
-      "00000000-0000-0000-0000-000000000000"
+    await expect(
+      resolveActingOrg(directory, makeJwt({ sub: "u" }))
+    ).resolves.toMatchObject({
+      subject: "00000000-0000-0000-0000-000000000000",
+    });
+  });
+
+  it.each([true, false])(
+    "carries the matched org's restoreRules (%s) from the same whoami call",
+    async (restoreRules) => {
+      mockedFetchWhoami.mockResolvedValue(whoamiWith([entitled(restoreRules)]));
+      expect(await resolveActingOrg(directory, token)).toEqual({
+        subject: "uuid-acme",
+        restoreRules,
+      });
+      expect(mockedFetchWhoami).toHaveBeenCalledTimes(1);
+    }
+  );
+
+  it("leaves restoreRules unknown when the matched org has no entitlements", async () => {
+    mockedFetchWhoami.mockResolvedValue(
+      whoamiWith([org("uuid-acme", "https://github.com/acme")])
     );
+    expect(await resolveActingOrg(directory, token)).toEqual({
+      subject: "uuid-acme",
+    });
+  });
+
+  it("leaves restoreRules unknown when entitlements carries no boolean for it", async () => {
+    mockedFetchWhoami.mockResolvedValue(
+      whoamiWith([
+        {
+          ...org("uuid-acme", "https://github.com/acme"),
+          entitlements: { remoteGeneration: true } as WhoamiOrg["entitlements"],
+        },
+      ])
+    );
+    expect(await resolveActingOrg(directory, token)).toEqual({
+      subject: "uuid-acme",
+    });
+  });
+
+  it("leaves restoreRules unknown when no org matches, even if another org has it", async () => {
+    mockedFetchWhoami.mockResolvedValue(
+      whoamiWith([
+        { ...entitled(false), url: "https://github.com/other" } as WhoamiOrg,
+      ])
+    );
+    expect(await resolveActingOrg(directory, token)).toEqual({
+      subject: 4242,
+    });
+  });
+
+  it("leaves restoreRules unknown when whoami is unavailable", async () => {
+    mockedFetchWhoami.mockResolvedValue(WHOAMI_UNAVAILABLE);
+    expect(await resolveActingOrg(directory, token)).toEqual({ subject: 4242 });
   });
 });
