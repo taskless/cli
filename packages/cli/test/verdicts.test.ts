@@ -124,6 +124,194 @@ describe("applyVerdicts", () => {
     ]);
   });
 
+  describe("copyOf (taskless/taskless#255)", () => {
+    const SOURCE = "no-simply-00000000";
+    const COPY_OF = {
+      ruleId: SOURCE,
+      revisionId: "r7",
+      files: [{ path: ".vale.ini", expected: "e", got: "g" }],
+    };
+    const missingSource = {
+      ruleId: SOURCE,
+      engine: "vale",
+      verdict: "missing",
+      revisionId: "r8",
+    };
+
+    it("a static copy whose source is still present does not run and fails, naming the source", () => {
+      const plan = applyVerdicts(
+        [VALE],
+        {
+          rules: [],
+          unknown: [{ ruleId: VALE.ruleId, copyOf: COPY_OF }],
+          entitlement: entitled,
+        },
+        restore
+      );
+      expect(plan.dispositions).toEqual([
+        {
+          ruleId: VALE.ruleId,
+          engine: "vale",
+          run: false,
+          verdict: "unknown",
+          reason: `a copy of Taskless rule ${SOURCE} (changed .vale.ini)`,
+        },
+      ]);
+      expect(plan.failures).toEqual([
+        `vale rule ${VALE.ruleId} is a copy of Taskless rule ${SOURCE} (changed .vale.ini), so it did not run and \`check\` fails. Delete .taskless/rules/vale/${VALE.ruleId}/, or rewrite the files it carries from ${SOURCE} so it is your own rule.`,
+      ]);
+      expect(plan.notices).toEqual([]);
+      expect(plan.integrity).toEqual([
+        {
+          ruleId: VALE.ruleId,
+          engine: "vale",
+          verdict: "unknown",
+          files: COPY_OF.files,
+          copyOf: { ruleId: SOURCE, revisionId: "r7", sourceMissing: false },
+        },
+      ]);
+    });
+
+    it("a static copy whose source is missing is ONE rename failure, not a copy plus a missing warning", () => {
+      const plan = applyVerdicts(
+        [VALE],
+        {
+          rules: [missingSource],
+          unknown: [{ ruleId: VALE.ruleId, copyOf: COPY_OF }],
+          entitlement: entitled,
+        },
+        restore
+      );
+      expect(plan.dispositions).toMatchObject([{ run: false }]);
+      expect(plan.failures).toEqual([
+        `vale rule ${VALE.ruleId} is a copy of Taskless rule ${SOURCE}, which was deleted (changed .vale.ini), so it did not run and \`check\` fails. Run \`${restore(SOURCE)}\` to put back the issued rule, then delete .taskless/rules/vale/${VALE.ruleId}/.`,
+      ]);
+      expect(plan.notices).toEqual([]);
+      // Both facts stay machine-readable: the missing entry carries the
+      // revision restore brings back.
+      expect(plan.integrity).toEqual([
+        expect.objectContaining({
+          ruleId: VALE.ruleId,
+          copyOf: { ruleId: SOURCE, revisionId: "r7", sourceMissing: true },
+        }),
+        {
+          ruleId: SOURCE,
+          engine: "vale",
+          verdict: "missing",
+          revisionId: "r8",
+        },
+      ]);
+    });
+
+    it("a missing rule no copy names still warns on its own", () => {
+      const plan = applyVerdicts(
+        [SG],
+        {
+          rules: [{ ...missingSource, ruleId: "other-11111111" }],
+          unknown: [{ ruleId: SG.ruleId, copyOf: COPY_OF }],
+          entitlement: entitled,
+        },
+        restore
+      );
+      expect(plan.failures).toHaveLength(1);
+      expect(plan.failures[0]).toContain(`sg rule ${SG.ruleId} is a copy of`);
+      expect(plan.failures[0]).not.toContain("deleted");
+      expect(plan.notices).toHaveLength(1);
+      expect(plan.notices[0]).toContain(restore("other-11111111"));
+    });
+
+    it("a runtime copy is not executed and does not fail; its skip reason names the source", () => {
+      const plan = applyVerdicts(
+        [RT],
+        {
+          rules: [],
+          unknown: [{ ruleId: RT.ruleId, copyOf: { ...COPY_OF, files: [] } }],
+          entitlement: entitled,
+        },
+        restore
+      );
+      expect(plan.failures).toEqual([]);
+      expect(plan.notices).toEqual([]);
+      expect(plan.dispositions).toEqual([
+        {
+          ruleId: RT.ruleId,
+          engine: "runtime",
+          run: false,
+          verdict: "unknown",
+          reason: `a copy of Taskless rule ${SOURCE}, not issued by the rule service for this repository, so it runs only with --dangerously-run-scripts`,
+        },
+      ]);
+      expect(plan.integrity[0]).toMatchObject({
+        verdict: "unknown",
+        copyOf: { ruleId: SOURCE, sourceMissing: false },
+      });
+    });
+
+    it("a runtime rename is one notice in place of the missing warning, and does not fail", () => {
+      const plan = applyVerdicts(
+        [RT],
+        {
+          rules: [{ ...missingSource, engine: "runtime" }],
+          unknown: [{ ruleId: RT.ruleId, copyOf: COPY_OF }],
+          entitlement: entitled,
+        },
+        restore
+      );
+      expect(plan.failures).toEqual([]);
+      expect(plan.notices).toEqual([
+        `runtime rule ${RT.ruleId} is a copy of Taskless rule ${SOURCE}, which was deleted (changed .vale.ini), so it did not run. Run \`${restore(SOURCE)}\` to put back the issued rule, then delete .taskless/rules/runtime/${RT.ruleId}/.`,
+      ]);
+    });
+
+    it("copyOf: null is a local rule, as if absent", () => {
+      const plan = applyVerdicts(
+        [SG],
+        {
+          rules: [],
+          unknown: [{ ruleId: SG.ruleId, copyOf: null }],
+          entitlement: entitled,
+        },
+        restore
+      );
+      expect(plan.dispositions).toMatchObject([{ run: true }]);
+      expect(plan.failures).toEqual([]);
+    });
+
+    it.each([
+      ["a string", "no-simply-00000000"],
+      ["an object without ruleId", { revisionId: "r7", files: [] }],
+      ["an empty ruleId", { ruleId: "" }],
+    ])(
+      "a copyOf that is %s fails closed: the rule does not run and the run fails",
+      (_label, copyOf) => {
+        for (const rule of [SG, RT]) {
+          const plan = applyVerdicts(
+            [rule],
+            {
+              rules: [],
+              unknown: [{ ruleId: rule.ruleId, copyOf }],
+              entitlement: entitled,
+            },
+            restore
+          );
+          expect(plan.dispositions).toMatchObject([
+            { run: false, verdict: "unaccounted" },
+          ]);
+          expect(plan.failures[0]).toContain(
+            "marked it as a copy of an issued rule without saying which"
+          );
+          expect(plan.integrity).toEqual([
+            {
+              ruleId: rule.ruleId,
+              engine: rule.engine,
+              verdict: "unaccounted",
+            },
+          ]);
+        }
+      }
+    );
+  });
+
   it("withheld is matched by rule id, never runs, and is not offered restore", () => {
     const plan = applyVerdicts(
       [RT],

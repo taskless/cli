@@ -19,6 +19,7 @@ import type { ReportedRule } from "./report";
  * | `unsafe`     | not executed; restore offered   | not run; FAILS; restore offered  |
  * | `missing`    | warn; restore offered           | warn; restore offered            |
  * | `unknown`    | not executed                    | run, silently                    |
+ * | ... `copyOf` | not executed; source named      | not run; FAILS; source named     |
  * | unaccounted  | not executed; fails             | not run; fails                   |
  *
  * **Accounting is computed, not trusted.** Every reported rule must land in
@@ -26,6 +27,15 @@ import type { ReportedRule } from "./report";
  * answer drops, or answers twice, is not run and fails the run. That is what
  * turns a parser that silently drops withheld entries (#403), or a service
  * that forgets a rule, into a red run instead of a green one.
+ *
+ * **A copy of an issued rule is not a local rule** (taskless/taskless#255).
+ * Copying an issued rule to a new directory, loosening it, and deleting the
+ * original once produced an `unknown` rule that ran silently plus a `missing`
+ * warning. The service now marks such an `unknown` rule with `copyOf`, naming
+ * the issued rule whose file it carries. A static copy does not run and fails
+ * the run. When its source is also `missing`, the two are one event, a rename,
+ * and are reported once: the copy's failure says the source was deleted, and
+ * the source gets no separate warning.
  */
 
 /** A differing file, as the service reported it. */
@@ -44,6 +54,15 @@ export type IntegrityVerdict =
   | "unaccounted"
   | "duplicate";
 
+/** The issued rule an `unknown` rule was copied from, as `check --json` reports it. */
+export interface IntegrityCopyOf {
+  ruleId: string;
+  /** The source revision the copy matches best. */
+  revisionId?: string;
+  /** Whether the source was answered `missing`: the copy is a rename. */
+  sourceMissing: boolean;
+}
+
 /** A non-`run` outcome worth reporting, for `check --json`'s `integrity`. */
 export interface IntegrityEntry {
   ruleId: string;
@@ -51,6 +70,8 @@ export interface IntegrityEntry {
   verdict: IntegrityVerdict;
   files?: DifferingFile[];
   revisionId?: string;
+  /** For an `unknown` rule that carries an issued rule's file. */
+  copyOf?: IntegrityCopyOf;
 }
 
 /** What happens to one reported rule. */
@@ -101,6 +122,40 @@ function readFiles(value: unknown): DifferingFile[] {
     }));
 }
 
+/** An `unknown` entry's `copyOf`, as far as it could be read. */
+type CopyOfRead =
+  | { status: "none" }
+  | { status: "malformed" }
+  | {
+      status: "copy";
+      ruleId: string;
+      revisionId?: string;
+      files: DifferingFile[];
+    };
+
+/**
+ * Read `copyOf` from an `unknown` entry.
+ *
+ * Absent (or `null`) is a local rule. Present but unreadable is
+ * `malformed`, which fails closed: the service only sends `copyOf` when it
+ * found issued content, so an unreadable one still says "this is a copy", and
+ * running the rule would ignore exactly that.
+ */
+function readCopyOf(value: unknown): CopyOfRead {
+  if (value === undefined || value === null) return { status: "none" };
+  if (!isRecord(value) || typeof value.ruleId !== "string" || !value.ruleId) {
+    return { status: "malformed" };
+  }
+  return {
+    status: "copy",
+    ruleId: value.ruleId,
+    ...(typeof value.revisionId === "string"
+      ? { revisionId: value.revisionId }
+      : {}),
+    files: readFiles(value.files),
+  };
+}
+
 /** "changed .vale.ini; removed captures/a.yml; added extra.yml" */
 export function describeDifferences(files: readonly DifferingFile[]): string {
   if (files.length === 0) return "its files differ from what was issued";
@@ -130,6 +185,73 @@ function unaccounted(plan: VerdictPlan, rule: ReportedRule, why: string): void {
 }
 
 /**
+ * Apply `copyOf` to an `unknown` rule. The rule never runs. A static copy fails
+ * the run; a runtime one is not executed, as any `unknown` runtime rule, and
+ * fails nothing. When the source is `missing`, the message describes a rename
+ * and points at restoring the source.
+ */
+function applyCopy(
+  plan: VerdictPlan,
+  rule: ReportedRule,
+  copy: Extract<CopyOfRead, { status: "copy" }>,
+  sourceMissing: boolean,
+  restoreCommand: (ruleId: string) => string
+): void {
+  const { ruleId, engine } = rule;
+  const source = copy.ruleId;
+  const changes =
+    copy.files.length === 0 ? "" : ` (${describeDifferences(copy.files)})`;
+  const directory = `.taskless/rules/${engine}/${ruleId}/`;
+  const what = sourceMissing
+    ? `is a copy of Taskless rule ${source}, which was deleted${changes}`
+    : `is a copy of Taskless rule ${source}${changes}`;
+  const fix = sourceMissing
+    ? `Run \`${restoreCommand(source)}\` to put back the issued rule, then delete ${directory}.`
+    : `Delete ${directory}, or rewrite the files it carries from ${source} so it is your own rule.`;
+
+  plan.integrity.push({
+    ruleId,
+    engine,
+    verdict: "unknown",
+    files: copy.files,
+    copyOf: {
+      ruleId: source,
+      ...(copy.revisionId === undefined ? {} : { revisionId: copy.revisionId }),
+      sourceMissing,
+    },
+  });
+
+  if (engine === "runtime") {
+    plan.dispositions.push({
+      ruleId,
+      engine,
+      run: false,
+      verdict: "unknown",
+      reason: `a copy of Taskless rule ${source}${changes}, not issued by the rule service for this repository, so it runs only with --dangerously-run-scripts`,
+    });
+    // A plain runtime copy is already covered by its skip reason. A rename
+    // takes the place of the source's `missing` warning, so it is a notice.
+    if (sourceMissing) {
+      plan.notices.push(
+        `runtime rule ${ruleId} ${what}, so it did not run. ${fix}`
+      );
+    }
+    return;
+  }
+
+  plan.dispositions.push({
+    ruleId,
+    engine,
+    run: false,
+    verdict: "unknown",
+    reason: `a copy of Taskless rule ${source}${changes}`,
+  });
+  plan.failures.push(
+    `${engine} rule ${ruleId} ${what}, so it did not run and \`check\` fails. ${fix}`
+  );
+}
+
+/**
  * Apply a reconcile response to the rules that were reported.
  *
  * `restoreCommand` renders the command a notice points at, so this stays free
@@ -145,9 +267,10 @@ export function applyVerdicts(
   const withheldIds = (entitlement?.withheld ?? []).map(
     (entry) => entry.ruleId
   );
-  const unknownIds = records(body.unknown)
-    .map((entry) => entry.ruleId)
-    .filter((id): id is string => typeof id === "string");
+  const unknownEntries = records(body.unknown).filter(
+    (entry) => typeof entry.ruleId === "string"
+  );
+  const unknownIds = unknownEntries.map((entry) => entry.ruleId as string);
   const verdicts = records(body.rules).filter(
     (entry) => typeof entry.ruleId === "string"
   );
@@ -162,6 +285,17 @@ export function applyVerdicts(
   };
 
   const reportedIds = new Set(reported.map((rule) => rule.ruleId));
+  // Rules answered `missing` that were not reported: a copy naming one of
+  // these as its source is a rename.
+  const missingIds = new Set(
+    verdicts
+      .filter((entry) => entry.verdict === "missing")
+      .map((entry) => entry.ruleId as string)
+      .filter((id) => !reportedIds.has(id))
+  );
+  // Sources already reported as half of a rename, so their `missing`
+  // notice is not repeated.
+  const renamed = new Set<string>();
 
   for (const rule of reported) {
     const { ruleId, engine } = rule;
@@ -194,6 +328,24 @@ export function applyVerdicts(
     }
 
     if (inUnknown === 1) {
+      const entry = unknownEntries.find(
+        (candidate) => candidate.ruleId === ruleId
+      );
+      const copy = readCopyOf(entry?.copyOf);
+      if (copy.status === "malformed") {
+        unaccounted(
+          plan,
+          rule,
+          "the rule service marked it as a copy of an issued rule without saying which"
+        );
+        continue;
+      }
+      if (copy.status === "copy") {
+        const sourceMissing = missingIds.has(copy.ruleId);
+        if (sourceMissing) renamed.add(copy.ruleId);
+        applyCopy(plan, rule, copy, sourceMissing, restoreCommand);
+        continue;
+      }
       if (engine === "runtime") {
         const reason =
           "not issued by the rule service for this repository, so it runs only with --dangerously-run-scripts";
@@ -298,6 +450,8 @@ export function applyVerdicts(
       verdict: "missing",
       ...(revisionId === undefined ? {} : { revisionId }),
     });
+    // Half of a rename: the copy's own message already says it was deleted.
+    if (renamed.has(ruleId)) continue;
     plan.notices.push(
       `${engine ?? "A"} rule ${ruleId} was issued for this repository but is not in .taskless/rules/. Run \`${restoreCommand(ruleId)}\` to bring it back, or ignore this if it was removed on purpose.`
     );
