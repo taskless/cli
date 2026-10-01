@@ -72,7 +72,24 @@ describe("import-x/no-cycle", () => {
       'import { a } from "./a";\n\nexport const b = (): string => a();\n'
     );
 
-    const results = await createESLint().lintFiles([join(directory, "*.ts")]);
+    // Lint the fixture with type-aware parsing off and only this one rule.
+    // `projectService: true` makes the parser build a TypeScript program for
+    // the project, which is CPU-heavy. Under a loaded full-suite run, with
+    // every worker competing for CPU, it slowed this test 15-20x and pushed it
+    // past the 20s testTimeout (taskless/cli#420). The cycle rule needs none
+    // of it: edges come from the import-x resolver and `import-x/extensions`,
+    // both still read from the real config, so what this test exists to prove
+    // is unchanged. The type-checked rules have to be filtered out too, since
+    // they throw when the parser has no program to give them.
+    const eslint = new ESLint({
+      cwd: REPO_ROOT,
+      overrideConfig: {
+        files: ["**/*.ts"],
+        languageOptions: { parserOptions: { projectService: false } },
+      },
+      ruleFilter: ({ ruleId }) => ruleId === "import-x/no-cycle",
+    });
+    const results = await eslint.lintFiles([join(directory, "*.ts")]);
     const cycleMessages = results.flatMap((result) =>
       result.messages.filter(
         (message) => message.ruleId === "import-x/no-cycle"
