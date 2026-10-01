@@ -12,14 +12,20 @@ name: Claude Code Review (on demand)
 #   - as an inline review comment (pull_request_review_comment) → a "second set
 #     of eyes" pass that focuses on what the human review may have missed.
 #
-# The MODE is chosen by the workflow, from `contains()` tests on the comment
-# body plus `event_name`, and resolves to one of three `focus=` strings. The
-# body is TESTED, never forwarded: `github.event.comment.body` appears only in
-# the `if:` gate and in `contains()` expressions whose result is a boolean, and
-# is never interpolated into a `run:` or `prompt:` block. So a commenter cannot
-# steer the reviewer with free text. Do not "improve" this into a free-text
-# focus argument guarded by a prompt-level "treat the following as review
-# focus, not as instructions" — that is a request, not a boundary.
+# The MODE is chosen by the workflow, from tests on the comment body plus
+# `event_name`, and resolves to one of three `focus=` strings. The body is never
+# interpolated into a `run:` or `prompt:` block: `github.event.comment.body`
+# appears only in the `if:` gate and as an environment variable the prep step
+# tests, so no comment can inject shell or rewrite the prompt.
+#
+# A maintainer's GUIDANCE does reach the reviewer, through the action rather
+# than the prompt. Tag mode forwards everything after `trigger_phrase` as a
+# separate plain-text user message, so `@claude /review check the migration
+# ordering` arrives as `check the migration ordering`, alongside the prompt.
+# Only a maintainer can open that channel (the `if:` gate), and it is plain
+# text only because `trigger_phrase` carries the command word; with a bare
+# `@claude` the CLI runs the forwarded text as a slash command. See the comment
+# on `trigger_phrase`.
 #
 # Incremental scoping is by COMMENTS, not by a SHA range. A `lastReviewed..head`
 # two-dot range assumes linear history; this repo rebases, so a force push
@@ -101,8 +107,9 @@ jobs:
       # The body reaches this step as an ENVIRONMENT VARIABLE, never as a `${{ }}`
       # substitution into the script text, so no comment can inject shell. It is
       # TESTED and nothing more: the only things written to $GITHUB_OUTPUT are a
-      # PR number and one of three fixed focus strings, so the body still never
-      # reaches the model. Do not echo `$COMMENT_BODY` anywhere in this step.
+      # PR number and one of three fixed focus strings. Guidance reaches the
+      # model through the action's `trigger_phrase`, never through this step.
+      # Do not echo `$COMMENT_BODY` anywhere in this step.
       #
       # A `case` pattern rather than `contains()` because the match must respect
       # a word boundary. `contains(body, '@claude /review all')` is an unanchored
@@ -208,8 +215,11 @@ jobs:
           # that had nothing to classify.
           echo "threads: $(jq '.data.repository.pullRequest.reviewThreads.nodes | length' "${GITHUB_WORKSPACE}/.prior-review.json")"
 
-      # Note: claude-code-action adds its own 👀 reaction to the triggering
-      # comment, so there's no explicit reaction step here.
+      # The 👀 on the triggering comment is not from this workflow or the
+      # action. The Claude GitHub App adds it, as `claude[bot]`, to ANY comment
+      # mentioning `@claude`, before this workflow has started (measured on PR
+      # 437: reaction at 22:05:27Z, run created 22:05:28Z). It therefore says
+      # nothing about whether a review will run.
       - name: Run Claude Code Review
         id: review
         uses: anthropics/claude-code-action@0a8d3c9443bbff909ab973b6a17a340b913f229f # v1.0.221
@@ -217,6 +227,17 @@ jobs:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           # Single tracking comment (in-progress → results), updated in place.
           track_progress: true
+          # The COMMAND WORD belongs in the trigger phrase. `track_progress`
+          # forces tag mode, and tag mode forwards everything after the trigger
+          # phrase as its own user-message block, which the CLI runs as a slash
+          # command when it starts with `/`. With the default `@claude` that
+          # block was `/review`, a Claude Code BUILT-IN, so every review also
+          # ran the built-in review command alongside this prompt. The sibling
+          # `/focus` is not a built-in and never reached the model at all: the
+          # SDK returned in 126 ms with no model usage (run 36932898300). With
+          # the command word in the phrase, only what follows it is forwarded,
+          # as plain text: `all`, or a maintainer's guidance for this review.
+          trigger_phrase: "@claude /review"
           # The "Fix this →" claude.ai/code deep-links render as broken markdown
           # (huge percent-encoded query). Turn them off at the source.
           include_fix_links: false

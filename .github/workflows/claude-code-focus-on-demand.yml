@@ -14,10 +14,11 @@ name: Claude Code Focus (on demand)
 #   - fires ONLY on a maintainer's comment (author_association gate);
 #   - no `contents: write`, and a read-only tool allowlist, so it can never
 #     write code or push;
-#   - the comment body is TESTED, never forwarded. The only thing taken from it
-#     is N, extracted by a shell regex as digits only and clamped to a range. No free text reaches the prompt, so a commenter cannot steer the
-#     model. Do not add a free-text "focus on X" argument: see the review
-#     workflow header for why a prompt-level guard is not a boundary;
+#   - the comment body is never interpolated into the prompt. The only thing
+#     this workflow takes from it is N, extracted by a shell regex as digits
+#     only and clamped to a range. The action separately forwards whatever
+#     follows `@claude /focus` as plain text (see the review workflow header),
+#     which for `@claude /focus 5` is just `5`;
 #   - `Read` is safe ONLY alongside `persist-credentials: false` on the
 #     checkout, and the checkout MUST be the PR's own ref.
 #
@@ -129,6 +130,10 @@ jobs:
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           track_progress: true
+          # Without the command word here, tag mode forwards `/focus` to the CLI
+          # as a slash command and the run ends before a single model call. The
+          # review workflow's `trigger_phrase` comment has the measurement.
+          trigger_phrase: "@claude /focus"
           include_fix_links: false
           # THE `Focus areas:` LINE IS A CONTRACT with the verify step below.
           # Reword it in both places in the same commit, or every run fails.
