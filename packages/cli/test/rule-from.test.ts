@@ -1,15 +1,16 @@
 import { execFile } from "node:child_process";
 import { writeFile, mkdtemp, rm, mkdir } from "node:fs/promises";
-import { resolve, join } from "node:path";
+import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { promisify } from "node:util";
 import { describe, expect, it, beforeEach, afterEach } from "vitest";
 
 import { outputSchema as createOutputSchema } from "../src/schemas/rules-create";
 import { outputSchema as improveOutputSchema } from "../src/schemas/rules-improve";
+import { builtCli } from "./support/built-cli";
 
 const execFileAsync = promisify(execFile);
-const binPath = resolve(import.meta.dirname, "../dist/index.js");
+const binPath = builtCli();
 
 describe("rules create --from", () => {
   let temporaryDirectory: string;

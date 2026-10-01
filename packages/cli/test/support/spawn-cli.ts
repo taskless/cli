@@ -1,3 +1,6 @@
+import { realpathSync } from "node:fs";
+import { dirname } from "node:path";
+
 /**
  * Tell a CLI that ran and failed apart from a CLI that never ran.
  *
@@ -19,18 +22,41 @@
  * "expected 0 to be greater than 0" from inside a helper. Nothing in that
  * message mentions spawning.
  *
- * That matters because of taskless/cli#262: two spawning tests failed once on a
- * full-suite run and passed on an immediate rerun, with the assertion output
- * lost because it said nothing useful. The plausible cause is fork pressure
- * (`EAGAIN`) from many concurrent spawns, which takes exactly the path above.
- * The flake has not reproduced in 8 consecutive full runs, so the useful move
- * on an unreproducible failure is not to guess at a fix but to make the next
- * occurrence describe itself.
+ * taskless/cli#262 found the second shape the same rejection hides. Two
+ * spawning tests failed once on a full-suite run and passed on a rerun. The
+ * cause was a build emptying `dist/` mid-run: node exits with a NUMERIC code 1,
+ * empty stdout, and `Cannot find module …/dist/index.js` on stderr. Measured:
+ * 22 of 343 spawns failed that way with builds running alongside, 0 of 414
+ * without. That one cannot be told apart by `code`, so it is recognised by
+ * node naming a module inside the CLI's own directory as missing.
+ *
+ * Tests now run a per-run snapshot of `dist/` (./distribution-snapshot.ts), which a
+ * build cannot touch, so the second shape should not occur. If it does, it
+ * should say what it is rather than fail as a contract assertion.
  *
  * Raising a timeout was considered and rejected. Nothing shows the 20s
  * `testTimeout` was ever reached, a CLI spawn is normally sub-second, and a
  * longer ceiling makes a genuine hang slower to surface.
  */
+
+/**
+ * Whether node's stderr reports a missing module inside `directory`.
+ *
+ * The CommonJS loader names the path it was given; the ESM loader names its
+ * realpath (measured on macOS: `/var/…` given, `/private/var/…` reported). A
+ * chunk missing behind the entry is reported the ESM way, so check both.
+ */
+function namesMissingModuleIn(stderr: string, directory: string): boolean {
+  const spellings = new Set([directory]);
+  try {
+    spellings.add(realpathSync(directory));
+  } catch {
+    // The directory itself is gone; the given spelling is all there is.
+  }
+  return [...spellings].some((spelling) =>
+    stderr.includes(`Cannot find module '${spelling}`)
+  );
+}
 
 /** What a spawned CLI did, once we know it actually ran. */
 export interface SpawnedCliResult {
@@ -77,9 +103,24 @@ export function cliRejectionToResult(
       `The CLI never ran: ${cause}.\n` +
         `  command: node ${command.join(" ")}\n` +
         `  This is not a CLI contract failure. It is the process not starting, ` +
-        `most often fork pressure from many concurrent spawns under a full-suite ` +
-        `run. If you are seeing this intermittently, that is taskless/cli#262: ` +
-        `please file a fresh issue quoting this message and the full run output.`
+        `which under a full-suite run is plausibly fork pressure from many ` +
+        `concurrent spawns. taskless/cli#262 investigated spawn flakes and ` +
+        `found a different cause; if you see this one intermittently, please ` +
+        `file a fresh issue quoting this message and the full run output.`
+    );
+  }
+
+  // Node exits 1 when the entry, or a chunk it imports, is missing, so this
+  // one carries a real exit code. Node names the module in both loaders'
+  // messages, and nothing the CLI prints names a file inside its own bundle.
+  const bundle = dirname(command[0] ?? "");
+  if (bundle !== "." && namesMissingModuleIn(rejection.stderr ?? "", bundle)) {
+    throw new Error(
+      `The CLI never ran: its built bundle is incomplete.\n` +
+        `  command: node ${command.join(" ")}\n` +
+        `  ${bundle} is missing a module the CLI loads at startup. Tests read ` +
+        `a per-run snapshot of dist/ so a concurrent build cannot do this; ` +
+        `see ./support/distribution-snapshot.ts and taskless/cli#262.`
     );
   }
 

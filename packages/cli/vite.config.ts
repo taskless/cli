@@ -505,6 +505,9 @@ export default defineConfig({
   test: {
     testTimeout: 20_000,
     hookTimeout: 20_000,
+    // Spawning suites run a per-run copy of `dist/`, so a build that empties
+    // `dist/` mid-run cannot fail them. See test/support/distribution-snapshot.ts.
+    globalSetup: ["./test/support/distribution-snapshot.ts"],
     // Most suites spawn the BUILT CLI, which carries the production PostHog
     // token and opts out only on these env vars. A child inherits the worker's
     // process.env, so without this every `init`/`check` a test spawns posts a

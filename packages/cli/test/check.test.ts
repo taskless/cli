@@ -5,9 +5,10 @@ import { tmpdir } from "node:os";
 import { promisify } from "node:util";
 import { describe, expect, it, beforeEach, afterEach } from "vitest";
 import { migrateFixture } from "./support/current-project";
+import { builtCli } from "./support/built-cli";
 
 const execFileAsync = promisify(execFile);
-const binPath = resolve(import.meta.dirname, "../dist/index.js");
+const binPath = builtCli();
 const fixturesDirectory = resolve(
   import.meta.dirname,
   "fixtures/taskless-project"

@@ -10,7 +10,7 @@ import {
 } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, join, resolve } from "node:path";
+import { dirname, join } from "node:path";
 import { promisify } from "node:util";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
@@ -27,9 +27,10 @@ import { discoverRuntimeRules } from "../src/rules/runtime/discover";
 import type { ServedFileSet } from "../src/api/v2";
 import { CLIError } from "../src/util/cli-error";
 import { migrateFixture } from "./support/current-project";
+import { builtCli } from "./support/built-cli";
 
 const execFileAsync = promisify(execFile);
-const binPath = resolve(import.meta.dirname, "../dist/index.js");
+const binPath = builtCli();
 
 const NO_EVAL_RULE = [
   "id: no-eval",

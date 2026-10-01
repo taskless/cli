@@ -24,11 +24,12 @@ import {
   getRecipe,
   getRenderedRecipe,
 } from "../src/prompts/recipes";
+import { builtDirectory } from "./support/built-cli";
 
 const execFileAsync = promisify(execFile);
 
 const recipeDirectory = resolve(import.meta.dirname, "../src/agent");
-const distributionDirectory = resolve(import.meta.dirname, "../dist");
+const distributionDirectory = builtDirectory();
 const binPath = resolve(distributionDirectory, "index.js");
 const distributionPromptsPath = resolve(distributionDirectory, "prompts.js");
 

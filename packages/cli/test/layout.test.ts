@@ -10,8 +10,9 @@ import {
   RULE_TESTS_DIRECTORY,
   isKnownEngine,
 } from "../src/layout/index.js";
+import { builtDirectory } from "./support/built-cli";
 
-const distributionDirectory = resolve(import.meta.dirname, "../dist");
+const distributionDirectory = builtDirectory();
 const distributionLayoutPath = resolve(distributionDirectory, "layout.js");
 
 /**

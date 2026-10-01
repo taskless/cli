@@ -10,10 +10,11 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { verifyRule } from "../src/rules/verify";
 import { findValeBinary } from "../src/rules/vale/binary";
 import { verifyValeRule } from "../src/rules/vale/verify";
+import { builtDirectory } from "./support/built-cli";
 
 const execFileAsync = promisify(execFile);
 
-const distributionDirectory = resolve(import.meta.dirname, "../dist");
+const distributionDirectory = builtDirectory();
 const distributionSchemasPath = resolve(distributionDirectory, "schemas.js");
 const binPath = resolve(distributionDirectory, "index.js");
 

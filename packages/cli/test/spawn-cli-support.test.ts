@@ -1,4 +1,7 @@
 import { execFile } from "node:child_process";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { promisify } from "node:util";
 import { describe, expect, it } from "vitest";
 
@@ -57,6 +60,33 @@ describe("cliRejectionToResult", () => {
       cliRejectionToResult({ code: "EAGAIN" }, ["dist/index.js"])
     ).toThrow(/taskless\/cli#262/);
   });
+
+  // taskless/cli#262: a build emptying `dist/` mid-run. Node exits with a real
+  // code 1 here, so `code` alone reads it as the CLI failing.
+  it.each([
+    ["the entry", "missing.mjs", undefined],
+    ["a chunk the entry imports", "index.mjs", 'import "./chunk.mjs";\n'],
+  ])(
+    "throws when %s is missing from the bundle, though node exits 1",
+    async (_label, entry, source) => {
+      const bundle = await mkdtemp(join(tmpdir(), "taskless-spawn-cli-"));
+      try {
+        if (source !== undefined) await writeFile(join(bundle, entry), source);
+        const command = [join(bundle, entry), "auth", "login"];
+        try {
+          await execFileAsync("node", command);
+          expect.unreachable("node should have failed to load the bundle");
+        } catch (error) {
+          expect((error as { code?: unknown }).code).toBe(1);
+          expect(() => cliRejectionToResult(error, command)).toThrow(
+            /The CLI never ran: its built bundle is incomplete/
+          );
+        }
+      } finally {
+        await rm(bundle, { recursive: true, force: true });
+      }
+    }
+  );
 
   it("treats a process killed by a signal as never having run", () => {
     // `code` is null and `signal` is set. Reading `code` as an exit status here

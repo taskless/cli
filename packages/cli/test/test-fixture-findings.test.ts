@@ -1,13 +1,14 @@
 import { execFile } from "node:child_process";
 import { mkdir, mkdtemp, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { join } from "node:path";
 import { promisify } from "node:util";
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { findValeBinary } from "../src/rules/vale/binary";
 import { cliRejectionToResult } from "./support/spawn-cli";
+import { builtCli } from "./support/built-cli";
 
 /**
  * The findings `test` reports, per rule and per fixture bucket.
@@ -27,7 +28,7 @@ import { cliRejectionToResult } from "./support/spawn-cli";
  */
 
 const execFileAsync = promisify(execFile);
-const binPath = resolve(import.meta.dirname, "../dist/index.js");
+const binPath = builtCli();
 
 const withVale = findValeBinary().path === undefined ? describe.skip : describe;
 

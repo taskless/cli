@@ -7,9 +7,10 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { findValeBinary } from "../src/rules/vale/binary";
 import { migrateFixture } from "./support/current-project";
+import { builtCli } from "./support/built-cli";
 
 const execFileAsync = promisify(execFile);
-const binPath = resolve(import.meta.dirname, "../dist/index.js");
+const binPath = builtCli();
 
 /** `<repo>/example` — the committed demo project. */
 const exampleSource = resolve(import.meta.dirname, "../../../example");

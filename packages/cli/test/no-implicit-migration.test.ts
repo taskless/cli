@@ -8,15 +8,16 @@ import {
   writeFile,
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { join } from "node:path";
 import { promisify } from "node:util";
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { LATEST_SCHEMA_VERSION } from "../src/filesystem/migrate";
+import { builtCli } from "./support/built-cli";
 
 const execFileAsync = promisify(execFile);
-const binPath = resolve(import.meta.dirname, "../dist/index.js");
+const binPath = builtCli();
 
 /**
  * A command that reports must not rewrite the repository.

@@ -6,9 +6,10 @@ import { promisify } from "node:util";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { AST_GREP_VERSION, VALE_VERSION } from "../src/rules/capabilities";
+import { builtCli } from "./support/built-cli";
 
 const execFileAsync = promisify(execFile);
-const binPath = resolve(import.meta.dirname, "../dist/index.js");
+const binPath = builtCli();
 
 async function runCli(
   args: string[]
