@@ -11,7 +11,10 @@ import { afterAll, describe, expect, it } from "vitest";
  * This does NOT re-implement cycle detection — that would be exactly the
  * "re-derive what the tool already knows" mistake the style guide forbids.
  * Every assertion below asks ESLint, running the repository's real
- * `eslint.config.js`, and checks what it answers.
+ * `eslint.config.js`, and checks what it answers. The second test layers two
+ * narrowings on top of that config, type-aware parsing off and only this rule
+ * run, neither of which touches the settings the rule resolves imports with;
+ * the comment at that call explains why.
  *
  * It exists because the rule's failure mode is silence. While this rule was
  * being added, the config resolved correctly, matched the right files, and
@@ -25,6 +28,7 @@ import { afterAll, describe, expect, it } from "vitest";
 
 const REPO_ROOT = resolve(import.meta.dirname, "..", "..", "..");
 const CLI_SOURCE = resolve(REPO_ROOT, "packages/cli/src");
+const RULE_ID = "import-x/no-cycle";
 
 const temporaryDirectories: string[] = [];
 
@@ -40,7 +44,7 @@ function createESLint(): ESLint {
   return new ESLint({ cwd: REPO_ROOT });
 }
 
-describe("import-x/no-cycle", () => {
+describe(RULE_ID, () => {
   it("is enabled as an error for files in packages/cli/src", async () => {
     const config = (await createESLint().calculateConfigForFile(
       join(CLI_SOURCE, "index.ts")
@@ -48,8 +52,8 @@ describe("import-x/no-cycle", () => {
 
     // "error" is 2 once ESLint normalizes it. A config block that stopped
     // matching `packages/cli/src` would leave this undefined.
-    expect(config.rules?.["import-x/no-cycle"]).toBeDefined();
-    expect((config.rules?.["import-x/no-cycle"] as unknown[])[0]).toBe(2);
+    expect(config.rules?.[RULE_ID]).toBeDefined();
+    expect((config.rules?.[RULE_ID] as unknown[])[0]).toBe(2);
   });
 
   it("reports a value cycle written into packages/cli/src", async () => {
@@ -87,13 +91,11 @@ describe("import-x/no-cycle", () => {
         files: ["**/*.ts"],
         languageOptions: { parserOptions: { projectService: false } },
       },
-      ruleFilter: ({ ruleId }) => ruleId === "import-x/no-cycle",
+      ruleFilter: ({ ruleId }) => ruleId === RULE_ID,
     });
     const results = await eslint.lintFiles([join(directory, "*.ts")]);
     const cycleMessages = results.flatMap((result) =>
-      result.messages.filter(
-        (message) => message.ruleId === "import-x/no-cycle"
-      )
+      result.messages.filter((message) => message.ruleId === RULE_ID)
     );
 
     expect(cycleMessages.length).toBeGreaterThan(0);
