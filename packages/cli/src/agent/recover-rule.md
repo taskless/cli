@@ -27,9 +27,12 @@ it prints:
 
 - `check` gives git steps ("Restoring rules is not included in your
   organization's plan, so recover … from git") where it would name
-  `rule restore`.
+  `rule restore`. Under `--json` the same sentence is in `notices` and
+  `failures`, so read it from there.
 - `rule revisions` ends with "Rolling back is not included in your
-  organization's plan" where it would name `rule rollback`.
+  organization's plan" where it would name `rule rollback`. That line
+  is printed **only without `--json`**; the `--json` listing is the
+  same on every plan and says nothing about it.
 
 When either appears, the plan does not include recovery. Follow the
 git steps instead of running `rule restore` or `rule rollback`, which
@@ -79,7 +82,13 @@ below, and the service's answer settles it.
 
 ## Rolling back
 
-1. **List the revisions.**
+1. **Check the plan, then list the revisions.** If `check` already
+   gave git steps for this rule, the plan does not include rolling
+   back; go to "When the plan does not include recovery". Otherwise
+   run `%(TASKLESS_CLI)s rule revisions <ruleId>` once without
+   `--json` and read its last line: "Rolling back is not included in
+   your organization's plan" means the same. Then list them for
+   reading:
    ```
    %(TASKLESS_CLI)s rule revisions <ruleId> --json
    ```
