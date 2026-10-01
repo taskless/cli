@@ -12,9 +12,10 @@ import { join, resolve } from "node:path";
 import { promisify } from "node:util";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { LATEST_SCHEMA_VERSION } from "../src/filesystem/migrate";
+import { builtCli } from "./support/built-cli";
 
 const execFileAsync = promisify(execFile);
-const binPath = resolve(import.meta.dirname, "../dist/index.js");
+const binPath = builtCli();
 const agentRecipeDirectory = resolve(import.meta.dirname, "../src/agent");
 
 interface ExecError extends Error {

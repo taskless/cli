@@ -1,5 +1,4 @@
 import { execFile } from "node:child_process";
-import { resolve } from "node:path";
 import { promisify } from "node:util";
 
 import { describe, expect, it } from "vitest";
@@ -7,9 +6,10 @@ import { describe, expect, it } from "vitest";
 import { getRecipe } from "../src/prompts/recipes";
 import { inputSchema } from "../src/schemas/feedback";
 import { COMPLETED_CHOICES } from "../src/survey/constants";
+import { builtCli } from "./support/built-cli";
 
 const execFileAsync = promisify(execFile);
-const binPath = resolve(import.meta.dirname, "../dist/index.js");
+const binPath = builtCli();
 const invocation = "npx @taskless/cli";
 
 /** The sentence the invite puts to the user, as the design fixed it. */

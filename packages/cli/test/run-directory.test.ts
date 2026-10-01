@@ -17,10 +17,11 @@ import { promisify } from "node:util";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { openRun, sweepAbandonedRuns } from "../src/rules/run-directory";
+import { builtCli } from "./support/built-cli";
 import { migrateFixture } from "./support/current-project";
 
 const execFileAsync = promisify(execFile);
-const binPath = resolve(import.meta.dirname, "../dist/index.js");
+const binPath = builtCli();
 // `--import tsx` rather than the `tsx` binary, which relays a signal death as
 // an exit code and so hides the signal a test asserts on.
 const packageRoot = resolve(import.meta.dirname, "..");

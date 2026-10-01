@@ -1,7 +1,7 @@
 import { execFile } from "node:child_process";
 import { mkdtemp, rm, writeFile, mkdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { join } from "node:path";
 import { promisify } from "node:util";
 
 import { describe, expect, it, beforeEach, afterEach } from "vitest";
@@ -9,6 +9,7 @@ import { stringify } from "yaml";
 
 import { verifyRule, getSchemaPayload } from "../src/rules/verify";
 import { cliRejectionToResult } from "./support/spawn-cli";
+import { builtCli } from "./support/built-cli";
 
 const execFileAsync = promisify(execFile);
 
@@ -774,7 +775,7 @@ describe("getSchemaPayload", () => {
  * `packages/cli/src/rules/inspect.ts`. `verify` never produces a refusal, so
  * it cannot exercise this split at all.
  */
-const verifyMixedRunBinPath = resolve(import.meta.dirname, "../dist/index.js");
+const verifyMixedRunBinPath = builtCli();
 
 async function runVerifyMixedRunCli(args: string[]) {
   try {

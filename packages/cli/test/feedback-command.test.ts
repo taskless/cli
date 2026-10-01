@@ -1,7 +1,7 @@
 import { execFile } from "node:child_process";
 import { mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { join } from "node:path";
 import { promisify } from "node:util";
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -9,6 +9,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { readNextAsk } from "../src/survey/cadence";
 import { ANSWERED_INTERVAL_MS, SURVEY_ID } from "../src/survey/constants";
 import { CLIError } from "../src/util/cli-error";
+import { builtCli } from "./support/built-cli";
 
 // Spy on telemetry by mocking the module the command imports, the same way
 // agent-telemetry.test.ts does. `enabled` is flipped per test to exercise the
@@ -242,7 +243,7 @@ describe("feedback command", () => {
 
 describe("feedback in the built CLI", () => {
   const execFileAsync = promisify(execFile);
-  const binPath = resolve(import.meta.dirname, "../dist/index.js");
+  const binPath = builtCli();
 
   it("is absent from the agent index", async () => {
     const { stdout } = await execFileAsync("node", [binPath, "agent"]);

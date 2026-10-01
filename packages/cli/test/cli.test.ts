@@ -1,12 +1,14 @@
 import { execFile } from "node:child_process";
 import { readFile, mkdtemp, rm, mkdir } from "node:fs/promises";
-import { resolve, join } from "node:path";
+import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { promisify } from "node:util";
 import { describe, expect, it, beforeEach, afterEach } from "vitest";
 
+import { builtCli } from "./support/built-cli";
+
 const execFileAsync = promisify(execFile);
-const binPath = resolve(import.meta.dirname, "../dist/index.js");
+const binPath = builtCli();
 
 describe("cli", () => {
   it("has a shebang in the built output", async () => {

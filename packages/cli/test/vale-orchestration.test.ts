@@ -7,7 +7,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { join } from "node:path";
 import { promisify } from "node:util";
 
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -16,6 +16,7 @@ import { hasValeRules, runEngines } from "../src/rules/dispatch";
 import { assembleSgConfig, assembleValeConfig } from "../src/rules/assemble";
 import { findValeBinary } from "../src/rules/vale/binary";
 import { LATEST_SCHEMA_VERSION } from "../src/filesystem/migrate";
+import { builtCli } from "./support/built-cli";
 
 const withVale = findValeBinary().path === undefined ? describe.skip : describe;
 
@@ -106,7 +107,7 @@ function makeMixedProject(options?: {
 /** The committed config `makeMixedProject` writes, as `check` would resolve it. */
 
 const execFileAsync = promisify(execFile);
-const binPath = resolve(import.meta.dirname, "../dist/index.js");
+const binPath = builtCli();
 
 /** Run the built CLI, tolerating a non-zero exit. */
 async function runCli(

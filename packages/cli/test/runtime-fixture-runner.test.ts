@@ -1,10 +1,12 @@
 import { execFile } from "node:child_process";
 import { chmod, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { join } from "node:path";
 import { promisify } from "node:util";
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+
+import { builtCli } from "./support/built-cli";
 
 /**
  * `taskless test` against a runtime rule.
@@ -19,7 +21,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
  */
 
 const execFileAsync = promisify(execFile);
-const binPath = resolve(import.meta.dirname, "../dist/index.js");
+const binPath = builtCli();
 
 let cwd: string;
 
