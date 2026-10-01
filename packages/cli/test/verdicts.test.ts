@@ -613,4 +613,40 @@ describe("applyVerdicts on a plan without rule recovery", () => {
     ]);
     expect(plan.notices).toEqual([]);
   });
+
+  it("a rename whose source has no known engine widens the source's pathspec, and still names the copy's directory", () => {
+    const SOURCE = "no-simply-00000000";
+    const plan = applyVerdicts(
+      [VALE],
+      {
+        rules: [{ ruleId: SOURCE, verdict: "missing", revisionId: "r8" }],
+        unknown: [
+          {
+            ruleId: VALE.ruleId,
+            copyOf: {
+              ruleId: SOURCE,
+              revisionId: "r7",
+              files: [{ path: ".vale.ini", expected: "e", got: "g" }],
+            },
+          },
+        ],
+        entitlement: entitled,
+      },
+      noRecovery
+    );
+    expect(plan.failures).toHaveLength(1);
+    expect(plan.failures[0]).toContain(
+      `\`git log -- '.taskless/rules/*/${SOURCE}/*'\``
+    );
+    expect(plan.failures[0]).toContain(
+      `\`git restore --source=<commit> -- '.taskless/rules/*/${SOURCE}/*'\``
+    );
+    expect(
+      plan.failures[0]?.endsWith(
+        ` Then delete .taskless/rules/vale/${VALE.ruleId}/.`
+      )
+    ).toBe(true);
+    // Still one rename: the source's missing warning is not repeated.
+    expect(plan.notices).toEqual([]);
+  });
 });
