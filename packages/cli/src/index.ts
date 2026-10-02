@@ -14,6 +14,7 @@ import { infoCommand } from "./commands/info";
 import { type SubcommandName } from "./commands/names";
 import { onboardCommand } from "./commands/onboard";
 import { ruleCommand } from "./commands/rules";
+import { shareCommand } from "./commands/share";
 import {
   getTelemetry,
   resolveRunIdentity,
@@ -47,6 +48,7 @@ const subCommands = {
   auth: authCommand,
   onboard: onboardCommand,
   rule: ruleCommand,
+  share: shareCommand,
   verify: verifyCommand,
   test: testCommand,
 } satisfies Record<Exclude<SubcommandName, "agent">, unknown>;

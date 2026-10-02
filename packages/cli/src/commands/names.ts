@@ -20,6 +20,7 @@ export const SUBCOMMAND_NAMES = [
   "init",
   "onboard",
   "rule",
+  "share",
   "test",
   "update",
   "verify",
