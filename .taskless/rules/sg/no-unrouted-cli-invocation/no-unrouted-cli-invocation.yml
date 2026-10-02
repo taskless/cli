@@ -64,6 +64,11 @@ ignores:
   # and makes the next one a decision rather than an inheritance.
   - "packages/cli/src/schemas/verify-test.ts"
   - "packages/cli/src/schemas/index.ts"
+  # `share` prints the invocation for SOMEONE ELSE to run, beside a QR code
+  # they scan. A nightly or local build advertising its own pinned launcher
+  # would send that person to a prerelease, so the release spelling is
+  # deliberate here on every build target.
+  - "packages/cli/src/commands/share.ts"
 rule:
   kind: string_fragment
   regex: "@taskless/cli"

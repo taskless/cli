@@ -28,14 +28,23 @@ const BANNER = `
  * non-TTY contexts via chalk's built-in detection.
  */
 export function renderIntro(): string {
+  const version = chalk.dim(`v${CLI_VERSION}`);
+  return `${renderBanner()}\n${version}`;
+}
+
+/** The wordmark alone, colored, for callers that lay out their own content. */
+export function renderBanner(): string {
   // Direct hex instead of chalk.dim(chalk.cyan(…)): the composed form
   // emits reset codes at each newline and the reapplication flashes
   // brighter on some quadrant chars. A single truecolor attribute
   // stays flat across the whole banner.
-  const coloredBanner = chalk.hex("#2B7384")(BANNER);
-  const version = chalk.dim(`v${CLI_VERSION}`);
-  return `${coloredBanner}\n${version}`;
+  return chalk.hex("#2B7384")(BANNER);
 }
+
+/** Columns the widest banner line occupies; every glyph in it is one column. */
+export const BANNER_WIDTH = Math.max(
+  ...BANNER.split("\n").map((line) => line.length)
+);
 
 export function getCliVersion(): string {
   return CLI_VERSION;
