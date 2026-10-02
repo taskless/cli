@@ -123,8 +123,8 @@ export default tseslint.config(
       // the rule resolves our files correctly, walks into them, finds nothing,
       // and reports no cycles — on a tree that provably contains one. A lint
       // run that is green because the rule is inert looks exactly like a lint
-      // run that is green because the code is clean, which is why the
-      // reintroduced-cycle check in this PR's description exists.
+      // run that is green because the code is clean, so treat a change to
+      // this list as a change to whether the rule runs at all.
       "import-x/extensions": [
         ".ts",
         ".tsx",
