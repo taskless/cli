@@ -1,5 +1,7 @@
-import { readFile } from "node:fs/promises";
-import { join } from "node:path";
+import { glob, readFile } from "node:fs/promises";
+import { basename, dirname, join, posix, sep } from "node:path";
+
+import { parse as parseYaml } from "yaml";
 
 import { isRecord } from "../util/is-record";
 import { compareSemver, compareVersions } from "../util/version-compare";
@@ -24,6 +26,11 @@ import { compareSemver, compareVersions } from "../util/version-compare";
  * when it is older than the running CLI. The range is the fallback for a
  * checkout with nothing installed, and is stale only when it cannot reach the
  * running version at all.
+ *
+ * In a monorepo the pin usually lives in a workspace package rather than at
+ * the root, and that package's CI job is the one that breaks, so the
+ * workspace packages the root declares are read too. See
+ * `listWorkspaceManifests()` for what counts as declared.
  *
  * Otherwise detection is deliberately narrow. A spec this module cannot bound
  * (`latest`, `*`, `>=`, a `workspace:` or URL spec) is not reported, because
@@ -68,7 +75,13 @@ const BOUNDED_SPEC =
 
 /** One pin that would run a CLI older than the one that just ran. */
 export interface PinnedCli {
-  /** Where the pin lives: `devDependencies`, or `scripts.<name>`. */
+  /**
+   * The `package.json` holding the pin, relative to the directory searched
+   * and `/`-separated: `package.json` at the root, `packages/app/package.json`
+   * in a workspace package.
+   */
+  manifest: string;
+  /** Where the pin lives in it: `devDependencies`, or `scripts.<name>`. */
   location: string;
   /** The package the pin names. */
   name: string;
@@ -120,46 +133,144 @@ function isStale(spec: string, cliVersion: string): boolean {
 }
 
 /**
- * The version of `name` installed under `<cwd>/node_modules/`, or `undefined`.
- * pnpm links the directory into its store; reading through the link is what
- * resolves the version the project actually runs.
+ * How many workspace manifests are read, at most.
+ *
+ * A pattern like `**` in a large tree can match far more than a workspace
+ * means to declare. This is advice on a successful install, so it stops
+ * reading rather than make `init` or `info` slow; a tree past the cap is one
+ * this check has nothing useful to say about anyway.
  */
-async function readInstalledVersion(
-  cwd: string,
-  name: string
-): Promise<string | undefined> {
+const MAX_WORKSPACE_MANIFESTS = 500;
+
+/** Directories a workspace glob never descends into. */
+const SKIPPED_DIRECTORIES = new Set(["node_modules", ".git"]);
+
+/** The parsed JSON at `path`, or `undefined` when it is absent or malformed. */
+async function readJson(path: string): Promise<unknown> {
   try {
-    const parsed: unknown = JSON.parse(
-      await readFile(join(cwd, "node_modules", name, "package.json"), "utf8")
-    );
-    return isRecord(parsed) && typeof parsed.version === "string"
-      ? parsed.version
-      : undefined;
+    return JSON.parse(await readFile(path, "utf8")) as unknown;
   } catch {
     return undefined;
   }
 }
 
+/** Only the strings of a list that should have held nothing else. */
+function strings(value: unknown): string[] {
+  return Array.isArray(value)
+    ? value.filter((item): item is string => typeof item === "string")
+    : [];
+}
+
 /**
- * Every stale pin in `<cwd>/package.json`, in file order: dependency fields
- * first, then scripts. An absent or unreadable `package.json` has no pins.
- *
- * Unreadable is not an error here. This is advice attached to a successful
- * install, and a malformed manifest is something the package manager will
- * report on its own terms; failing the install over it would be the wrong
- * tool refusing.
+ * The workspace patterns `cwd` declares: the `workspaces` field of its
+ * `package.json` (npm and yarn, as an array or as `{ packages }`), and the
+ * `packages` list of `pnpm-workspace.yaml`. Both are read, since a project
+ * migrating between managers can carry either, and a pattern in one that the
+ * other lacks still names a package something runs.
  */
-export async function findStalePins(
+async function readWorkspacePatterns(
   cwd: string,
+  root: unknown
+): Promise<string[]> {
+  const patterns: string[] = [];
+  if (isRecord(root)) {
+    const { workspaces } = root;
+    patterns.push(
+      ...strings(isRecord(workspaces) ? workspaces.packages : workspaces)
+    );
+  }
+  try {
+    const parsed: unknown = parseYaml(
+      await readFile(join(cwd, "pnpm-workspace.yaml"), "utf8")
+    );
+    if (isRecord(parsed)) patterns.push(...strings(parsed.packages));
+  } catch {
+    // Absent or malformed; pnpm reports the latter on its own terms.
+  }
+  return patterns;
+}
+
+/**
+ * Every workspace package's `package.json` under `cwd`, as sorted
+ * `/`-separated paths relative to it, not including the root's own.
+ *
+ * Each pattern is expanded by `fs.glob` against `<pattern>/package.json`, so
+ * a pattern matches a package exactly when it matches the package's
+ * directory, as it does for pnpm, npm and yarn. A `!`-prefixed pattern
+ * removes what it matches. A pattern that is absolute or climbs out with
+ * `..` is skipped: what it names is not inside this project, and reading it
+ * would walk a tree nobody asked about. `node_modules` is never descended
+ * into, which is also what keeps `**` affordable.
+ */
+async function listWorkspaceManifests(
+  cwd: string,
+  root: unknown
+): Promise<string[]> {
+  const included = new Set<string>();
+  const excluded = new Set<string>();
+  let read = 0;
+  for (const raw of await readWorkspacePatterns(cwd, root)) {
+    const negated = raw.startsWith("!");
+    const pattern = posix
+      .normalize((negated ? raw.slice(1) : raw).trim())
+      .replace(/\/+$/, "");
+    if (
+      pattern === "" ||
+      posix.isAbsolute(pattern) ||
+      pattern.split("/").includes("..")
+    ) {
+      continue;
+    }
+    for await (const entry of glob(`${pattern}/package.json`, {
+      cwd,
+      exclude: (path) => SKIPPED_DIRECTORIES.has(basename(path)),
+    })) {
+      (negated ? excluded : included).add(entry.split(sep).join("/"));
+      read += 1;
+      if (read >= MAX_WORKSPACE_MANIFESTS) break;
+    }
+    if (read >= MAX_WORKSPACE_MANIFESTS) break;
+  }
+  // A `.` pattern names the root, which is read on its own.
+  included.delete("package.json");
+  return [...included].filter((path) => !excluded.has(path)).toSorted();
+}
+
+/**
+ * The version of `name` that `directory` runs, or `undefined`.
+ *
+ * Resolved as Node resolves it: `<directory>/node_modules/<name>`, then each
+ * parent's, stopping at `cwd`. With pnpm a workspace package has its own link,
+ * and that is what it runs even when the root links another version; with npm
+ * or yarn hoisting it may exist only at the root. pnpm links the directory
+ * into its store, and reading through the link is what resolves the version
+ * actually run.
+ */
+async function readInstalledVersion(
+  cwd: string,
+  directory: string,
+  name: string
+): Promise<string | undefined> {
+  for (let current = directory; ; current = dirname(current)) {
+    const parsed = await readJson(
+      join(current, "node_modules", name, "package.json")
+    );
+    if (isRecord(parsed) && typeof parsed.version === "string") {
+      return parsed.version;
+    }
+    if (current === cwd || dirname(current) === current) return undefined;
+  }
+}
+
+/** Every stale pin in one parsed manifest: dependency fields, then scripts. */
+async function findPinsIn(
+  cwd: string,
+  manifest: string,
+  parsed: unknown,
   cliVersion: string
 ): Promise<PinnedCli[]> {
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(await readFile(join(cwd, "package.json"), "utf8"));
-  } catch {
-    return [];
-  }
   if (!isRecord(parsed)) return [];
+  const directory = join(cwd, dirname(manifest));
 
   const pins: PinnedCli[] = [];
   for (const field of DEPENDENCY_FIELDS) {
@@ -168,7 +279,7 @@ export async function findStalePins(
     for (const name of PACKAGE_NAMES) {
       const spec = dependencies[name];
       if (typeof spec !== "string") continue;
-      const installed = await readInstalledVersion(cwd, name);
+      const installed = await readInstalledVersion(cwd, directory, name);
       // Either one is a real failure: an installed build older than this one
       // is what runs today, and a range that cannot reach this version is
       // what a fresh install will resolve.
@@ -177,6 +288,7 @@ export async function findStalePins(
         isStale(spec, cliVersion);
       if (stale) {
         pins.push({
+          manifest,
           location: field,
           name,
           spec,
@@ -200,6 +312,7 @@ export async function findStalePins(
         seen.add(`${name}@${spec}`);
         if (isStale(spec, cliVersion)) {
           pins.push({
+            manifest,
             location: `scripts.${script}`,
             name,
             spec,
@@ -210,6 +323,35 @@ export async function findStalePins(
     }
   }
 
+  return pins;
+}
+
+/**
+ * Every stale pin in `<cwd>/package.json` and in each workspace package it
+ * declares, root first and then workspace packages by path, each in file
+ * order. An absent or unreadable `package.json` has no pins.
+ *
+ * Unreadable is not an error here. This is advice attached to a successful
+ * command, and a malformed manifest is something the package manager will
+ * report on its own terms; failing an install over it would be the wrong
+ * tool refusing.
+ */
+export async function findStalePins(
+  cwd: string,
+  cliVersion: string
+): Promise<PinnedCli[]> {
+  const root = await readJson(join(cwd, "package.json"));
+  const pins = await findPinsIn(cwd, "package.json", root, cliVersion);
+  for (const manifest of await listWorkspaceManifests(cwd, root)) {
+    pins.push(
+      ...(await findPinsIn(
+        cwd,
+        manifest,
+        await readJson(join(cwd, manifest)),
+        cliVersion
+      ))
+    );
+  }
   return pins;
 }
 
@@ -228,8 +370,12 @@ function bumpTarget(cliVersion: string): { name: string; version: string } {
   };
 }
 
-/** One notice line: where the pin is, what it says, and what to change it to. */
-function describePin(pin: PinnedCli, cliVersion: string): string {
+/**
+ * One notice line: which manifest and field the pin is in, what it says, and
+ * what to change it to. The manifest is named even at the root, so a list
+ * mixing the root with workspace packages reads the same way throughout.
+ */
+export function describePin(pin: PinnedCli, cliVersion: string): string {
   const target = bumpTarget(cliVersion);
   const installed =
     pin.installed === null ? "" : ` (installed ${pin.installed})`;
@@ -237,7 +383,7 @@ function describePin(pin: PinnedCli, cliVersion: string): string {
     pin.name === target.name
       ? `${target.name}@${target.version}`
       : `${target.name}@${target.version}, replacing ${pin.name}`;
-  return `  - ${pin.location}: ${pin.name} ${pin.spec}${installed} -> ${move}`;
+  return `  - ${pin.manifest} ${pin.location}: ${pin.name} ${pin.spec}${installed} -> ${move}`;
 }
 
 /**

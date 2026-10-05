@@ -4,6 +4,7 @@ import { defineCommand } from "citty";
 
 import { detectHostTools } from "../detect/host-tools";
 import { checkStaleness } from "../install/install";
+import { describePin, findStalePins } from "../install/pinned-cli";
 import { getToken } from "../auth/token";
 import { fetchWhoami } from "../auth/whoami";
 import { outputSchema as infoOutputSchema } from "../schemas/info";
@@ -41,22 +42,27 @@ export const infoCommand = defineCommand({
     // The repository context resolves regardless of `--anonymous`: it comes
     // from the local git remote, not from the API, so suppressing it would
     // hide capability state that has nothing to do with the auth probe.
-    const [harnesses, tools, token, repository, manifest] = await Promise.all([
-      checkStaleness(cwd),
-      // Presence on `PATH`, nothing executed. Resolves its own repository
-      // context, which is the same never-throwing call as `repository` below
-      // and cheap enough not to be worth threading through.
-      detectHostTools(cwd),
-      args.anonymous ? Promise.resolve() : getToken(cwd),
-      resolveRepositoryContext(cwd),
-      // Never fails: an absent or unreadable manifest is an ordinary state for
-      // a project that has not been initialised, and `info` still has plenty
-      // to report about one.
-      readManifest(join(cwd, TASKLESS_DIRECTORY)).then(
-        (read) => read.manifest,
-        () => null
-      ),
-    ]);
+    const [harnesses, tools, token, repository, manifest, pinnedCli] =
+      await Promise.all([
+        checkStaleness(cwd),
+        // Presence on `PATH`, nothing executed. Resolves its own repository
+        // context, which is the same never-throwing call as `repository` below
+        // and cheap enough not to be worth threading through.
+        detectHostTools(cwd),
+        args.anonymous ? Promise.resolve() : getToken(cwd),
+        resolveRepositoryContext(cwd),
+        // Never fails: an absent or unreadable manifest is an ordinary state for
+        // a project that has not been initialised, and `info` still has plenty
+        // to report about one.
+        readManifest(join(cwd, TASKLESS_DIRECTORY)).then(
+          (read) => read.manifest,
+          () => null
+        ),
+        // Read here as well as on `init`: the `update` recipe reaches this
+        // after a version move, possibly in a later session that never saw
+        // `init`'s output, and `info` is the read-only command it runs.
+        findStalePins(cwd, __VERSION__),
+      ]);
 
     let auth: { user: string; email?: string; orgs: string[] } | undefined;
     if (!args.anonymous && token) {
@@ -107,6 +113,7 @@ export const infoCommand = defineCommand({
         // the ledger reports a walk rather than "nothing to do".
         walk: reconciliationStart(manifest?.rules?.reconciledTo) ?? null,
       },
+      pinnedCli,
     };
 
     if (args.json) {
@@ -170,6 +177,12 @@ export const infoCommand = defineCommand({
         : // The detector's own reason, never one inferred here.
           `not applicable here${tool.reason === undefined ? "" : ` (${tool.reason})`}`;
       console.log(`  ${tool.name}: ${where}`);
+    }
+
+    if (pinnedCli.length > 0) {
+      console.log("");
+      console.log(`Pinned CLI older than v${__VERSION__}:`);
+      for (const pin of pinnedCli) console.log(describePin(pin, __VERSION__));
     }
 
     console.log("");

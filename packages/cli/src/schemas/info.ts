@@ -34,6 +34,30 @@ const hostToolSchema = z.object({
   reason: z.string().optional(),
 });
 
+/**
+ * A `package.json` pin that would run a CLI older than this one. The same
+ * shape `init --json` carries as `pinnedCli`, so an agent reading either one
+ * reads the same thing.
+ */
+const pinnedCliSchema = z.object({
+  manifest: z
+    .string()
+    .describe(
+      "The package.json holding the pin, relative to the working directory"
+    ),
+  location: z
+    .string()
+    .describe("The field in it: `devDependencies`, or `scripts.<name>`"),
+  name: z.string().describe("The package the pin names"),
+  spec: z.string().describe("The pin as written"),
+  installed: z
+    .string()
+    .nullable()
+    .describe(
+      "The installed version the pin runs, or null when nothing is installed or the pin is a script"
+    ),
+});
+
 const authSchema = z.object({
   user: z.string(),
   email: z.string(),
@@ -96,6 +120,11 @@ export const outputSchema = z.object({
     })
     .describe(
       "What the rules are valid against. Distinct from `install`: these advance only on a completed reconciliation, never on an upgrade"
+    ),
+  pinnedCli: z
+    .array(pinnedCliSchema)
+    .describe(
+      "Pins of the Taskless CLI, release or nightly, in package.json and its workspace packages, that would run a CLI older than this one. Empty when nothing is stale"
     ),
 });
 

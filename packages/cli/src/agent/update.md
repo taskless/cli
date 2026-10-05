@@ -1,4 +1,4 @@
-# Topic: update     (CLI v%(CLI_VERSION)s / topic v13)
+# Topic: update     (CLI v%(CLI_VERSION)s / topic v14)
 
 ## You are here
 This is `update`. It tells you what an upgrade changed for the rules
@@ -54,21 +54,24 @@ that you finished.
    it means for existing rules. A section that says there is nothing to
    do means exactly that; it is a claim, not an oversight.
 
-4. **Offer to bump a pinned CLI.** If `package.json` pins
-   `@taskless/cli` or `@taskless/cli-nightly` (a dependency entry, or a
-   script spelling out `@taskless/cli@<version>`) behind the installed
-   CLI, `init` names each pin and the version to move it to, and
-   `init --json` carries them as `pinnedCli`. Re-running `init --json`
-   is safe if you did not see that output yourself: on a current
-   project it changes nothing and still reports the pins. Those pins are
-   what scripts, CI, and git hooks run.
+4. **Offer to bump a pinned CLI.** Read `pinnedCli` from the same
+   `info --json` payload as step 1. Each entry is a pin of
+   `@taskless/cli` or `@taskless/cli-nightly` behind the installed CLI:
+   a dependency entry, or a script spelling out
+   `@taskless/cli@<version>`, in the root `package.json` or a workspace
+   package's (`manifest` names which, `location` the field). An empty
+   list means there is nothing to bump. Those pins are what scripts, CI,
+   and git hooks run. Move each to the installed version on the package
+   that publishes it: a nightly version exists only on
+   `@taskless/cli-nightly`, a release only on `@taskless/cli`.
 
    If the upgrade also migrated an existing `.taskless/` (`init` printed
    a migration, or `init --json` carried `migrated` with `from` above
-   `0`), this is not optional advice: a
-   CLI that predates the new schema refuses the project with
-   `SCAFFOLD_VERSION_MISMATCH`, so CI breaks on the push that carries the
-   migrated files. The bump belongs in that same commit. Without a
+   `0`; if you did not see that output, assume it did), this is not
+   optional advice: a CLI that predates the new schema refuses the
+   project with `SCAFFOLD_VERSION_MISMATCH`, so CI breaks on the push
+   that carries the migrated files. The bump belongs in that same
+   commit. Without a
    migration the pin still reads the layout, but checks rules against
    engines this walk has moved past.
 

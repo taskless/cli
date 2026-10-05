@@ -1,4 +1,4 @@
-# Topic: info     (CLI v%(CLI_VERSION)s / topic v1)
+# Topic: info     (CLI v%(CLI_VERSION)s / topic v2)
 
 ## Goal
 Report local Taskless state: CLI version, installed skill versions
@@ -43,7 +43,12 @@ which version of the CLI/skills the agent is talking to.
        { "name": "jq", "present": false, "applicable": true }
      ],
      "loggedIn": true,
-     "auth": { "user": "...", "email": "...", "orgs": ["..."] }
+     "auth": { "user": "...", "email": "...", "orgs": ["..."] },
+     "pinnedCli": [
+       { "manifest": "packages/app/package.json",
+         "location": "devDependencies", "name": "@taskless/cli",
+         "spec": "^0.6.0", "installed": "0.6.3" }
+     ]
    }
    ```
 
@@ -63,6 +68,15 @@ which version of the CLI/skills the agent is talking to.
 4. **Suggest reinit on staleness.** If any skill has `current: false`,
    suggest `%(TASKLESS_CLI)s` to reinstall and pull the latest
    bundle.
+
+5. **Name stale CLI pins.** `pinnedCli` lists every pin of
+   `@taskless/cli` or `@taskless/cli-nightly` that runs a CLI older
+   than `version`, in the root `package.json` or a workspace package's
+   (`manifest`), with the field it is in (`location`). `installed` is
+   the version that pin actually runs, or `null` when nothing is
+   installed or the pin is a script. Scripts, CI, and git hooks run
+   these pins, so report them and offer the bump to `version`. Do not
+   edit a `package.json` on your own; a pin can be deliberate.
 
 ## Errors
 
