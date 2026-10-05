@@ -123,6 +123,17 @@ describe("the feedback invite", () => {
     expect(reviewDoor).not.toContain("feedback dismiss");
   });
 
+  it("checks for a review before treating a reply as plain feedback", () => {
+    const fragment =
+      getRecipe("feedback-invite", { invocation, header: false }) ?? "";
+    // A reply carrying both words and `review` must reach the review door,
+    // so it is listed, and named as the first check, ahead of plain feedback.
+    expect(fragment.indexOf("They said `review`")).toBeLessThan(
+      fragment.indexOf("They gave feedback")
+    );
+    expect(fragment).toContain("Check for this first");
+  });
+
   it("sends the agent's account on skip, silence, or an unrelated reply", () => {
     const fragment =
       getRecipe("feedback-invite", { invocation, header: false }) ?? "";
