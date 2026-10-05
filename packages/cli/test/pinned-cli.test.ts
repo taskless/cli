@@ -24,8 +24,23 @@ describe("findStalePins", () => {
     await writeFile(join(cwd, "package.json"), JSON.stringify(contents));
   }
 
-  async function install(name: string, version: string): Promise<void> {
-    const directory = join(cwd, "node_modules", ...name.split("/"));
+  async function writeAt(path: string, contents: unknown): Promise<void> {
+    await mkdir(join(cwd, path), { recursive: true });
+    await writeFile(join(cwd, path, "package.json"), JSON.stringify(contents));
+  }
+
+  /** The manifest of every stale pin, in report order. */
+  async function manifestsOf(cliVersion: string): Promise<string[]> {
+    const pins = await findStalePins(cwd, cliVersion);
+    return pins.map((pin) => pin.manifest);
+  }
+
+  async function install(
+    name: string,
+    version: string,
+    path = "."
+  ): Promise<void> {
+    const directory = join(cwd, path, "node_modules", ...name.split("/"));
     await mkdir(directory, { recursive: true });
     await writeFile(
       join(directory, "package.json"),
@@ -72,6 +87,7 @@ describe("findStalePins", () => {
         stale
           ? [
               {
+                manifest: "package.json",
                 location: "devDependencies",
                 name: "@taskless/cli",
                 spec,
@@ -125,6 +141,7 @@ describe("findStalePins", () => {
       await install("@taskless/cli", "0.11.0");
       expect(await findStalePins(cwd, "0.11.2")).toEqual([
         {
+          manifest: "package.json",
           location: "devDependencies",
           name: "@taskless/cli",
           spec: "^0.11.0",
@@ -146,6 +163,7 @@ describe("findStalePins", () => {
       await install("@taskless/cli", "0.11.2");
       expect(await findStalePins(cwd, "0.11.2")).toEqual([
         {
+          manifest: "package.json",
           location: "devDependencies",
           name: "@taskless/cli",
           spec: "^0.10.0",
@@ -173,12 +191,14 @@ describe("findStalePins", () => {
     });
     expect(await findStalePins(cwd, "0.11.2")).toEqual([
       {
+        manifest: "package.json",
         location: "dependencies",
         name: "@taskless/cli",
         spec: "0.9.0",
         installed: null,
       },
       {
+        manifest: "package.json",
         location: "optionalDependencies",
         name: "@taskless/cli-nightly",
         spec: "0.10.0-2026x0",
@@ -199,12 +219,14 @@ describe("findStalePins", () => {
     });
     expect(await findStalePins(cwd, "0.11.2")).toEqual([
       {
+        manifest: "package.json",
         location: "scripts.lint",
         name: "@taskless/cli",
         spec: "0.10.2",
         installed: null,
       },
       {
+        manifest: "package.json",
         location: "scripts.nightly",
         name: "@taskless/cli-nightly",
         spec: "0.10.0-2026x0",
@@ -224,6 +246,7 @@ describe("findStalePins", () => {
       await writePackage({ scripts: { lint: command } });
       expect(await findStalePins(cwd, "0.11.2")).toEqual([
         {
+          manifest: "package.json",
           location: "scripts.lint",
           name: "@taskless/cli",
           spec,
@@ -246,10 +269,115 @@ describe("findStalePins", () => {
     });
     expect(await findStalePins(cwd, "0.11.2")).toHaveLength(1);
   });
+
+  describe("workspace packages", () => {
+    const stalePin = { devDependencies: { "@taskless/cli": "^0.10.2" } };
+
+    it("reads the packages pnpm-workspace.yaml declares, naming the manifest", async () => {
+      await writePackage({ name: "root" });
+      await writeFile(
+        join(cwd, "pnpm-workspace.yaml"),
+        "packages:\n  - 'packages/*'\n"
+      );
+      await writeAt("packages/app", stalePin);
+      await writeAt("packages/lib", { name: "lib" });
+      expect(await findStalePins(cwd, "0.11.2")).toEqual([
+        {
+          manifest: "packages/app/package.json",
+          location: "devDependencies",
+          name: "@taskless/cli",
+          spec: "^0.10.2",
+          installed: null,
+        },
+      ]);
+    });
+
+    it.each([
+      ["an array", ["apps/*"]],
+      ["{ packages }", { packages: ["apps/*"] }],
+    ])("reads the workspaces field as %s", async (_, workspaces) => {
+      await writePackage({ workspaces });
+      await writeAt("apps/web", stalePin);
+      expect(await manifestsOf("0.11.2")).toEqual(["apps/web/package.json"]);
+    });
+
+    it("lists the root first, then workspace packages by path", async () => {
+      await writePackage({ ...stalePin, workspaces: [".", "packages/*"] });
+      await writeAt("packages/b", stalePin);
+      await writeAt("packages/a", stalePin);
+      expect(await manifestsOf("0.11.2")).toEqual([
+        "package.json",
+        "packages/a/package.json",
+        "packages/b/package.json",
+      ]);
+    });
+
+    it("drops what a negated pattern matches", async () => {
+      await writePackage({
+        workspaces: ["packages/*", "!packages/fixture"],
+      });
+      await writeAt("packages/app", stalePin);
+      await writeAt("packages/fixture", stalePin);
+      expect(await manifestsOf("0.11.2")).toEqual([
+        "packages/app/package.json",
+      ]);
+    });
+
+    it("follows ** without descending into node_modules", async () => {
+      await writePackage({ workspaces: ["packages/**"] });
+      await writeAt("packages/group/deep", stalePin);
+      // An installed dependency is not a workspace package, whatever it pins.
+      await writeAt("packages/group/deep/node_modules/dep", stalePin);
+      expect(await manifestsOf("0.11.2")).toEqual([
+        "packages/group/deep/package.json",
+      ]);
+    });
+
+    it("skips a pattern that leaves the project", async () => {
+      const inner = join(cwd, "inner");
+      await writeAt("inner", { workspaces: ["../outside", "/abs/*"] });
+      await writeAt("outside", stalePin);
+      expect(await findStalePins(inner, "0.11.2")).toEqual([]);
+    });
+
+    it("reads the version the workspace package runs: its own link first, then the root's", async () => {
+      await writePackage({ workspaces: ["packages/*"] });
+      const caret = { devDependencies: { "@taskless/cli": "^0.11.0" } };
+      await writeAt("packages/linked", caret);
+      await writeAt("packages/hoisted", caret);
+      // pnpm: the package's own link is what it runs, whatever the root has.
+      await install("@taskless/cli", "0.11.0", "packages/linked");
+      // npm/yarn hoisting: only the root has it.
+      await install("@taskless/cli", "0.11.1");
+      const pins = await findStalePins(cwd, "0.11.2");
+      expect(pins.map((pin) => [pin.manifest, pin.installed])).toEqual([
+        ["packages/hoisted/package.json", "0.11.1"],
+        ["packages/linked/package.json", "0.11.0"],
+      ]);
+    });
+
+    it("is quiet when a workspace package's own link is current", async () => {
+      await writePackage({ workspaces: ["packages/*"] });
+      await writeAt("packages/app", {
+        devDependencies: { "@taskless/cli": "^0.11.0" },
+      });
+      await install("@taskless/cli", "0.11.2", "packages/app");
+      await install("@taskless/cli", "0.11.0");
+      expect(await findStalePins(cwd, "0.11.2")).toEqual([]);
+    });
+
+    it("still reads pnpm-workspace.yaml when the root package.json is malformed", async () => {
+      await writeFile(join(cwd, "package.json"), "{ not json");
+      await writeFile(join(cwd, "pnpm-workspace.yaml"), "packages: [app]\n");
+      await writeAt("app", stalePin);
+      expect(await findStalePins(cwd, "0.11.2")).toHaveLength(1);
+    });
+  });
 });
 
 describe("getPinnedCliNotice", () => {
   const releasePin: PinnedCli = {
+    manifest: "package.json",
     location: "devDependencies",
     name: "@taskless/cli",
     spec: "0.10.2",
@@ -264,15 +392,19 @@ describe("getPinnedCliNotice", () => {
     const notice = getPinnedCliNotice(
       [
         { ...releasePin, spec: "^0.11.0", installed: "0.11.0" },
-        { ...releasePin, location: "scripts.lint" },
+        {
+          ...releasePin,
+          manifest: "packages/app/package.json",
+          location: "scripts.lint",
+        },
       ],
       "0.11.2"
     );
     expect(notice).toContain(
-      "devDependencies: @taskless/cli ^0.11.0 (installed 0.11.0) -> @taskless/cli@0.11.2"
+      "  - package.json devDependencies: @taskless/cli ^0.11.0 (installed 0.11.0) -> @taskless/cli@0.11.2"
     );
     expect(notice).toContain(
-      "scripts.lint: @taskless/cli 0.10.2 -> @taskless/cli@0.11.2"
+      "  - packages/app/package.json scripts.lint: @taskless/cli 0.10.2 -> @taskless/cli@0.11.2"
     );
     expect(notice).toContain("Offer to update them as shown");
   });

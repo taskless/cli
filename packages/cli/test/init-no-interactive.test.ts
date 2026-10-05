@@ -412,6 +412,7 @@ describe("taskless init (the batch install)", () => {
       (JSON.parse(pinned.stdout) as { pinnedCli: unknown }).pinnedCli
     ).toEqual([
       {
+        manifest: "package.json",
         location: "dependencies",
         name: "@taskless/cli",
         spec: "0.0.1",

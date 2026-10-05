@@ -1,4 +1,4 @@
-# Topic: init     (CLI v%(CLI_VERSION)s / topic v3)
+# Topic: init     (CLI v%(CLI_VERSION)s / topic v4)
 
 ## Goal
 Install or update the Taskless skill in this project, and migrate the
@@ -43,7 +43,8 @@ first step, not the whole job.
      "migrated": { "from": 3, "to": 4, "applied": [4],
                    "files": { "added": [], "modified": [], "removed": [] } },
      "pinnedCli": [
-       { "location": "devDependencies", "name": "@taskless/cli",
+       { "manifest": "packages/app/package.json",
+         "location": "devDependencies", "name": "@taskless/cli",
          "spec": "^0.10.0", "installed": "0.10.2" }
      ]
    }
@@ -60,12 +61,13 @@ first step, not the whole job.
      to bump.
    - `migrated` is present only when a migration ran, with the paths it
      added, rewrote, or deleted.
-   - `pinnedCli` is always present. Each entry is a `package.json` pin
-     that runs a Taskless CLI older than `installed`: a dependency whose
-     installed build (`installed`, `null` when nothing is installed) or
-     range is behind, or a script spelling out an older version. It is
-     reported even when `changed` is `false`, because the pin and the
-     project still disagree.
+   - `pinnedCli` is always present. Each entry is a pin that runs a
+     Taskless CLI older than `installed`: a dependency whose installed
+     build (`installed`, `null` when nothing is installed) or range is
+     behind, or a script spelling out an older version. `manifest` is the
+     `package.json` it lives in, the root's or a workspace package's, and
+     `location` the field in it. It is reported even when `changed` is
+     `false`, because the pin and the project still disagree.
 
    Without `--json`, the same facts print as prose: a per-target summary,
    then a trailer naming the directories that changed and, after a
@@ -87,8 +89,8 @@ first step, not the whole job.
    is present with `from` above `0`, say plainly that CI breaks without
    it: a CLI that predates the new schema refuses the project with
    `SCAFFOLD_VERSION_MISMATCH`, so the bump belongs in the same commit as
-   the migrated files. Do not edit `package.json` on your own; a pin can
-   be deliberate, and the bump changes the lockfile.
+   the migrated files. Do not edit a `package.json` on your own; a pin
+   can be deliberate, and the bump changes the lockfile.
 
 4. **After a version move, reconcile the rules.** When
    `cliVersion.previous` is non-null and differs from `installed`, run

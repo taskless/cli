@@ -161,4 +161,37 @@ describe("taskless info --json", () => {
 
     expect(result.install.onboarded).toBe(true);
   });
+
+  it("reports pinnedCli, as an empty list when nothing is stale", async () => {
+    const bare = await info(cwd);
+    expect(bare.pinnedCli).toEqual([]);
+
+    // The `update` recipe reads the pins here, after a version move that may
+    // have happened in another session, so a workspace package's pin has to
+    // be on the read-only command and not only on `init`.
+    await writeFile(
+      join(cwd, "package.json"),
+      JSON.stringify({ workspaces: ["packages/*"] })
+    );
+    await mkdir(join(cwd, "packages", "app"), { recursive: true });
+    await writeFile(
+      join(cwd, "packages", "app", "package.json"),
+      JSON.stringify({ devDependencies: { "@taskless/cli": "0.0.1" } })
+    );
+    const pinned = await info(cwd);
+    expect(pinned.pinnedCli).toEqual([
+      {
+        manifest: "packages/app/package.json",
+        location: "devDependencies",
+        name: "@taskless/cli",
+        spec: "0.0.1",
+        installed: null,
+      },
+    ]);
+
+    const { stdout } = await runCli(["info", "--anonymous", "-d", cwd], cwd);
+    expect(stdout).toContain(
+      "packages/app/package.json devDependencies: @taskless/cli 0.0.1 ->"
+    );
+  });
 });
