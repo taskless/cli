@@ -1,4 +1,4 @@
-# Topic: init     (CLI v%(CLI_VERSION)s / topic v2)
+# Topic: init     (CLI v%(CLI_VERSION)s / topic v3)
 
 ## Goal
 Install or update the Taskless skill in this project, and migrate the
@@ -7,9 +7,10 @@ arrive here because `check`, `verify`, or `test` refused with
 `SCAFFOLD_MIGRATION_REQUIRED`: those commands only read, so the rewrite
 is left to `init`, which is the one command that migrates.
 
-An install rewrites files under version control and can change what an
-upgrade means for the rules already in the project. Running the command
-is the first of three steps, not the whole job.
+An install rewrites files under version control, can leave a pinned CLI
+in `package.json` behind the project, and can change what an upgrade
+means for the rules already in the project. Running the command is the
+first step, not the whole job.
 
 ## Preconditions
 - None at the project level. The command works in any directory and
@@ -40,7 +41,11 @@ is the first of three steps, not the whole job.
      ],
      "changed": true,
      "migrated": { "from": 3, "to": 4, "applied": [4],
-                   "files": { "added": [], "modified": [], "removed": [] } }
+                   "files": { "added": [], "modified": [], "removed": [] } },
+     "pinnedCli": [
+       { "location": "devDependencies", "name": "@taskless/cli",
+         "spec": "^0.10.0", "installed": "0.10.2" }
+     ]
    }
    ```
    - `cliVersion.previous` is `null` on a project with no recorded
@@ -50,14 +55,22 @@ is the first of three steps, not the whole job.
      store; `reference` is a tool directory holding stubs.
    - `changed` is `true` when a migration ran, any target list is
      non-empty, or `cliVersion` moved (that rewrites
-     `.taskless/taskless.json`). When it is `false`, stop here: nothing
-     to commit, nothing to reconcile.
+     `.taskless/taskless.json`). When it is `false` AND `pinnedCli` is
+     empty, stop here: nothing to commit, nothing to reconcile, nothing
+     to bump.
    - `migrated` is present only when a migration ran, with the paths it
      added, rewrote, or deleted.
+   - `pinnedCli` is always present. Each entry is a `package.json` pin
+     that runs a Taskless CLI older than `installed`: a dependency whose
+     installed build (`installed`, `null` when nothing is installed) or
+     range is behind, or a script spelling out an older version. It is
+     reported even when `changed` is `false`, because the pin and the
+     project still disagree.
 
    Without `--json`, the same facts print as prose: a per-target summary,
    then a trailer naming the directories that changed and, after a
-   version move, pointing at `update`.
+   version move, pointing at `update`, then a notice naming each stale
+   pin and the version to move it to.
 
 2. **Tell the user what needs committing.** Every `targets[].dir` with
    a non-empty list, plus `.taskless/` and any `migrated.files` entries,
@@ -66,7 +79,18 @@ is the first of three steps, not the whole job.
    so the user can include them in the commit they choose. Do not stage
    or commit on your own; the git operations are theirs.
 
-3. **After a version move, reconcile the rules.** When
+3. **Offer to bump every stale pin.** For each `pinnedCli` entry, offer
+   the user the update to the installed CLI, along with reinstalling
+   dependencies. When the installed CLI is a nightly and the pin names
+   `@taskless/cli`, or the reverse, the move switches package, since a
+   nightly version only exists on the nightly package. When `migrated`
+   is present with `from` above `0`, say plainly that CI breaks without
+   it: a CLI that predates the new schema refuses the project with
+   `SCAFFOLD_VERSION_MISMATCH`, so the bump belongs in the same commit as
+   the migrated files. Do not edit `package.json` on your own; a pin can
+   be deliberate, and the bump changes the lockfile.
+
+4. **After a version move, reconcile the rules.** When
    `cliVersion.previous` is non-null and differs from `installed`, run
    ```
    %(TASKLESS_CLI)s update
@@ -77,14 +101,14 @@ is the first of three steps, not the whole job.
    engine). `update` is how to find out, and the only way to record that
    the walk was done.
 
-4. **Treat your own session as stale.** A tool loads its skill list once,
+5. **Treat your own session as stale.** A tool loads its skill list once,
    at startup. If Taskless was installed or upgraded during this session,
    the skill text in your context is the previous version. Tell the user
    the skills changed and that a new session, or a skill reload, picks
    them up. Recipes are unaffected: every `agent <topic>` fetch reads the
    installed CLI.
 
-5. **Return to what sent you here.** Re-run the command that refused.
+6. **Return to what sent you here.** Re-run the command that refused.
 
 ## For a person at a terminal
 

@@ -55,13 +55,17 @@ that you finished.
    do means exactly that; it is a claim, not an oversight.
 
 4. **Offer to bump a pinned CLI.** If `package.json` pins
-   `@taskless/cli` (a dependency entry, or a script spelling out
-   `@taskless/cli@<version>`) below the installed CLI, `init` named each
-   pin when it upgraded the project, and `init --json` carries them as
-   `pinnedCli`. Those pins are what scripts, CI, and git hooks run.
+   `@taskless/cli` or `@taskless/cli-nightly` (a dependency entry, or a
+   script spelling out `@taskless/cli@<version>`) behind the installed
+   CLI, `init` names each pin and the version to move it to, and
+   `init --json` carries them as `pinnedCli`. Re-running `init --json`
+   is safe if you did not see that output yourself: on a current
+   project it changes nothing and still reports the pins. Those pins are
+   what scripts, CI, and git hooks run.
 
-   If the upgrade also migrated `.taskless/` (`init` printed a migration,
-   or `init --json` carried `migrated`), this is not optional advice: a
+   If the upgrade also migrated an existing `.taskless/` (`init` printed
+   a migration, or `init --json` carried `migrated` with `from` above
+   `0`), this is not optional advice: a
    CLI that predates the new schema refuses the project with
    `SCAFFOLD_VERSION_MISMATCH`, so CI breaks on the push that carries the
    migrated files. The bump belongs in that same commit. Without a
