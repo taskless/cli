@@ -79,7 +79,7 @@ export async function runWizard(
     const pinnedNotice = getPinnedCliNotice(
       await findStalePins(options.cwd, cliVersion),
       cliVersion,
-      { migratedTo: migrated?.to }
+      { migrated }
     );
     if (pinnedNotice !== undefined) console.log(pinnedNotice);
     const commandsInstalled = plan.targets.some(

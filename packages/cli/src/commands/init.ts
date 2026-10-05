@@ -161,7 +161,7 @@ export const initCommand = defineCommand({
       const pinnedNotice = getPinnedCliNotice(
         result.pinnedCli,
         result.cliVersion,
-        { migratedTo: result.migrated?.to }
+        { migrated: result.migrated }
       );
       if (pinnedNotice !== undefined) {
         console.log(pinnedNotice);

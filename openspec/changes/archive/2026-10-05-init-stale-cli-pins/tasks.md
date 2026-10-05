@@ -34,3 +34,17 @@
       field, the nightly name, scripts, an unreadable `package.json`.
 - [x] 5.2 Integration: notice order and content, `package.json` untouched,
       the no-op re-install, and the `--json` field.
+
+## 6. Review fixes
+
+- [x] 6.1 Judge a dependency by its installed version as well as its range.
+- [x] 6.2 Compare exact and installed versions with semver precedence, so an
+      older nightly of the same base is stale.
+- [x] 6.3 Name each pin's target on the package that publishes it.
+- [x] 6.4 Do not call a fresh install (migration from schema 0) an upgrade.
+- [x] 6.5 `init` recipe topic v3: `pinnedCli` in the envelope and field list,
+      the stop rule, and a bump step.
+- [x] 6.6 Script regex: left boundary, punctuation-terminated versions, one
+      report per repeated pin.
+- [x] 6.7 Tests: the ordering guard, wizard coverage, fresh install, nightly
+      ordering, installed versions.

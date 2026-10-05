@@ -23,3 +23,32 @@ export function compareVersions(a: string, b: string): number {
   }
   return 0;
 }
+
+/**
+ * Compare two versions with semver precedence, prerelease included.
+ *
+ * `compareVersions` is right for the reconciliation ledger and wrong for
+ * asking "is this build older than that one". A nightly is stamped with the
+ * release it ANTICIPATES (`0.12.0-20261002181147x023048f` while 0.11.2 is the
+ * latest), so it sorts before that release, and two nightlies of one base can
+ * sit weeks and several migrations apart. Semver precedence answers both: a
+ * prerelease sorts before its release, and two prereleases compare as strings,
+ * which orders nightlies by build time because the timestamp leads the stamp
+ * and is fixed-width. Build metadata (`+…`) carries no precedence.
+ */
+export function compareSemver(a: string, b: string): number {
+  const core = compareVersions(a, b);
+  if (core !== 0) return core;
+  const left = prerelease(a);
+  const right = prerelease(b);
+  if (left === right) return 0;
+  if (left === undefined) return 1;
+  if (right === undefined) return -1;
+  return left < right ? -1 : 1;
+}
+
+function prerelease(version: string): string | undefined {
+  const withoutBuild = version.split("+")[0] ?? "";
+  const dash = withoutBuild.indexOf("-");
+  return dash === -1 ? undefined : withoutBuild.slice(dash + 1);
+}

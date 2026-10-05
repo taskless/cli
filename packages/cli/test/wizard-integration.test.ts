@@ -370,3 +370,56 @@ describe("the wizard's restart-your-agents banner", () => {
     }
   });
 });
+
+/**
+ * The wizard prints the same stale-pin notice the batch path does. The
+ * detection and wording are covered in `pinned-cli.test.ts`; this is whether
+ * the wizard calls it at all, which is where a dropped line fails silently.
+ */
+describe("the wizard's stale-pin notice", () => {
+  it("names a package.json pin older than the running CLI", async () => {
+    clackResponses.locations = [".claude"];
+    clackResponses.summary = true;
+    const packageJson = JSON.stringify({
+      devDependencies: { "@taskless/cli": "0.0.1" },
+    });
+    await writeFile(join(cwd, "package.json"), packageJson);
+
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+    try {
+      const { runWizard } = await import("../src/wizard");
+      const result = await runWizard({ cwd });
+      expect(result.status).toBe("completed");
+
+      const printed = logSpy.mock.calls.map((call) => String(call[0]));
+      expect(
+        printed.some((line) =>
+          line.includes("devDependencies: @taskless/cli 0.0.1")
+        )
+      ).toBe(true);
+      // Offered, never applied.
+      expect(await readFile(join(cwd, "package.json"), "utf8")).toBe(
+        packageJson
+      );
+    } finally {
+      logSpy.mockRestore();
+    }
+  });
+
+  it("stays quiet without a stale pin", async () => {
+    clackResponses.locations = [".claude"];
+    clackResponses.summary = true;
+
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+    try {
+      const { runWizard } = await import("../src/wizard");
+      await runWizard({ cwd });
+      const printed = logSpy.mock.calls.map((call) => String(call[0]));
+      expect(printed.some((line) => line.includes("package.json pins"))).toBe(
+        false
+      );
+    } finally {
+      logSpy.mockRestore();
+    }
+  });
+});
