@@ -1,10 +1,11 @@
-# Topic: feedback     (CLI v%(CLI_VERSION)s / topic v2)
+# Topic: feedback     (CLI v%(CLI_VERSION)s / topic v3)
 
 ## You are here
 This is `feedback`. It helps you turn what a user just said about
 Taskless into a survey response the CLI can send, and send it.
 You reach it from the invite at the end of an authoring or onboarding
-recipe, whether the user gave you their words or said `skip`.
+recipe, whether the user gave you their words, said `skip`, or said
+`review`.
 If that is not why you are reading this, re-run `%(TASKLESS_CLI)s agent` and
 find the topic you meant.
 
@@ -12,7 +13,9 @@ find the topic you meant.
 Produce one JSON payload that answers the survey, write it to
 `.taskless/.tmp-feedback.json`, send it with `feedback send`, and delete
 the file. The whole thing is one short exchange with the user and a few
-sentences from you; it is not an interview.
+sentences from you; it is not an interview. The one exception is a user
+who replied `review`: they get to see the answers, and correct them,
+before they are sent.
 
 ## Preconditions
 - The invite was put to the user and they replied, or did not. Their
@@ -36,14 +39,19 @@ Do not put the survey's questions to the user one by one.
 ## Steps
 
 1. **Take the user's reply as it is, if there is one.** Whatever they
-   wrote after the invite is `verbatim`. Do not paraphrase, shorten, or
+   wrote after the invite is `verbatim`. If the reply asked for a
+   `review`, that word is the request, not their feedback: leave it out
+   of `verbatim`, keep everything else they wrote, and remember to show
+   the answers at step 4. Do not paraphrase, shorten, or
    tidy it. If they wrote several messages, join them in order with a
    blank line between. If they said `skip`, said nothing, or replied
    about something else, omit `verbatim` and go on: the rest of the
    survey is yours to answer.
 
 2. **Fill the rest from the session.** Ask the user nothing further;
-   the invite already asked for their time once.
+   the invite already asked for their time once. A `review` does not
+   change that: you still answer every key yourself, and the user sees
+   your answers rather than being asked for them.
    - `ruleKind`: the engine and what the rule was for, in a phrase
      (`ast-grep, forbid eval in TypeScript`; `vale, no hedging in
      docs`; `runtime, env var must be set`). If the recipe was
@@ -75,19 +83,39 @@ Do not put the survey's questions to the user one by one.
    them to the survey's own question identifiers, and a payload carrying
    a `$survey_` key is not what it expects.
 
-4. **Send.** Run:
+4. **Show it first, if the user asked for a `review`.** Otherwise go
+   straight to step 5. Put every answer in the payload in the chat,
+   one per line, labelled with its key and written out in full, exactly
+   as it will be sent; name the keys you omitted, so the user can see
+   what is not being said too. Then ask whether they would like
+   anything corrected before you send it.
+   - **Nothing to correct, or a go-ahead.** Send the payload as shown.
+   - **Corrections.** Apply them as the user gives them and rewrite the
+     file. A correction to your own answer replaces it with what the
+     user said; a correction to `verbatim` is theirs to make. A request
+     to drop an answer omits its key, except `ruleKind`, which is
+     required: say so in one line and keep the user's preferred wording
+     for it. Then show the corrected payload in full, the same way, and
+     ask again. Repeat until the user is satisfied; send only on their
+     go-ahead, never on your own judgement that the corrections are
+     done.
+   - **They decide not to send it.** That is a refusal, and it is
+     honoured: delete the file, run `%(TASKLESS_CLI)s feedback dismiss`, and
+     carry on with the user's task.
+
+5. **Send.** Run:
    ```
    %(TASKLESS_CLI)s feedback send --from .taskless/.tmp-feedback.json --json
    ```
    Under `--json`, a failure is `{ ok: false, code, message }`; see the
    table below. On success the command prints a thank-you.
 
-5. **Clean up.** Delete `.taskless/.tmp-feedback.json` whether the call
+6. **Clean up.** Delete `.taskless/.tmp-feedback.json` whether the call
    succeeded or failed. `.taskless/.gitignore` already ignores it, so a
    forgotten file is a stray rather than a commit, but leave nothing
    behind.
 
-6. **Return to the user's task.** Thank them in one line and carry on.
+7. **Return to the user's task.** Thank them in one line and carry on.
    Do not ask for more, and do not run this recipe a second time in the
    same session.
 
@@ -108,8 +136,12 @@ string.
 - Do NOT edit the user's words. `verbatim` is the one answer that is
   theirs, and its value to the people reading it is that it is theirs.
 - Do NOT invent a follow-up interview. The invite asked once, and this
-  recipe asks nothing. An answer you cannot give is an omitted key, or
-  `Unknown` for `completed`.
+  recipe asks nothing beyond the correction rounds a `review` earns.
+  An answer you cannot give is an omitted key, or `Unknown` for
+  `completed`.
+- Do NOT send before the user has seen the answers when they asked for
+  a `review`. The point of the review is that nothing leaves without
+  their look at it.
 - If telemetry is disabled in this environment the command says so and
   exits 0 with nothing sent. That is the expected outcome there, not an
   error to retry.
