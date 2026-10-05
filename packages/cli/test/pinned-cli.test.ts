@@ -92,6 +92,13 @@ describe("findStalePins", () => {
       ["0.11.3-20261005000000xbbbbbbb", "0.11.3-20260901000000xaaaaaaa", false],
       ["0.12.0-20261002181147x023048f", "0.12.0", true],
       ["0.12.0-20261002181147x023048f", "0.11.2", false],
+      // Semver precedence, not string order: numeric identifiers compare by
+      // value, so rc.9 predates rc.10, and a numeric identifier sorts below
+      // an alphanumeric one.
+      ["0.11.0-rc.9", "0.11.0-rc.10", true],
+      ["0.11.0-rc.10", "0.11.0-rc.9", false],
+      ["0.11.0-rc", "0.11.0-rc.1", true],
+      ["0.11.0-1", "0.11.0-alpha", true],
     ])(
       "pin %s against running %s is stale: %s",
       async (pin, running, stale) => {
