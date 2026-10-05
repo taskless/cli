@@ -16,6 +16,11 @@ import { getMandatorySkillNames } from "../install/catalog";
 import type { InstallMode } from "../install/state";
 import { getReloadNotice, versionMoved } from "../install/reload-notice";
 import { getUpgradeTrailer } from "../install/upgrade-trailer";
+import {
+  findStalePins,
+  getPinnedCliNotice,
+  type PinnedCli,
+} from "../install/pinned-cli";
 import { readInstallState } from "../install/state";
 import { getTelemetry } from "../telemetry";
 import { getCliVersion } from "../wizard/intro";
@@ -120,6 +125,9 @@ export const initCommand = defineCommand({
           // is the one value an agent gates its commit step on, and folding
           // four lists and a presence check is how a consumer gets it wrong.
           changed: result.changed,
+          // Always present, empty when nothing is stale, for the same reason
+          // `cliVersion.previous` is `null` rather than absent.
+          pinnedCli: result.pinnedCli,
           // Absent when nothing ran, so a caller distinguishes "the tree was
           // rewritten" from "nothing happened" by presence, never by reading
           // empty arrays out of it.
@@ -146,6 +154,17 @@ export const initCommand = defineCommand({
       });
       if (upgradeTrailer !== undefined) {
         console.log(upgradeTrailer);
+      }
+      // Not gated on the run having changed anything. A re-install that wrote
+      // nothing still leaves the pin and the project disagreeing, and this is
+      // the one place that looks.
+      const pinnedNotice = getPinnedCliNotice(
+        result.pinnedCli,
+        result.cliVersion,
+        { migratedTo: result.migrated?.to }
+      );
+      if (pinnedNotice !== undefined) {
+        console.log(pinnedNotice);
       }
       if (result.reloadNotice !== undefined) {
         console.log(result.reloadNotice);
@@ -315,6 +334,8 @@ async function runNonInteractive(
   targets: TargetOutcome[];
   /** Whether a migration ran or any target wrote or removed anything. */
   changed: boolean;
+  /** `package.json` pins that cannot resolve to the CLI that ran this. */
+  pinnedCli: PinnedCli[];
 }> {
   // Under `--json`, stdout carries only the envelope printed by the caller.
   // This per-target summary is not on that envelope (it is finer-grained than
@@ -466,6 +487,7 @@ async function runNonInteractive(
       migrated !== undefined ||
       targets.some((target) => targetChanged(target)) ||
       versionMoved({ previousCliVersion, cliVersion }),
+    pinnedCli: await findStalePins(cwd, cliVersion),
   };
 }
 

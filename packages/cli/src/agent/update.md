@@ -1,4 +1,4 @@
-# Topic: update     (CLI v%(CLI_VERSION)s / topic v12)
+# Topic: update     (CLI v%(CLI_VERSION)s / topic v13)
 
 ## You are here
 This is `update`. It tells you what an upgrade changed for the rules
@@ -54,7 +54,27 @@ that you finished.
    it means for existing rules. A section that says there is nothing to
    do means exactly that; it is a claim, not an oversight.
 
-4. **Record that you finished.** Run:
+4. **Offer to bump a pinned CLI.** If `package.json` pins
+   `@taskless/cli` (a dependency entry, or a script spelling out
+   `@taskless/cli@<version>`) below the installed CLI, `init` named each
+   pin when it upgraded the project, and `init --json` carries them as
+   `pinnedCli`. Those pins are what scripts, CI, and git hooks run.
+
+   If the upgrade also migrated `.taskless/` (`init` printed a migration,
+   or `init --json` carried `migrated`), this is not optional advice: a
+   CLI that predates the new schema refuses the project with
+   `SCAFFOLD_VERSION_MISMATCH`, so CI breaks on the push that carries the
+   migrated files. The bump belongs in that same commit. Without a
+   migration the pin still reads the layout, but checks rules against
+   engines this walk has moved past.
+
+   Offer the user the bump to the installed version, along with
+   reinstalling dependencies. Do not make it silently: a pin can be
+   deliberate, and the bump changes the lockfile. The walk does not
+   depend on the answer, so record it either way, but if they decline
+   after a migration, tell them plainly that CI will fail.
+
+5. **Record that you finished.** Run:
    ```
    %(TASKLESS_CLI)s update --rules
    ```
