@@ -11,13 +11,15 @@ and only then, put this to the user exactly once, in these words:
 
 Then act on the reply:
 
-- **They gave feedback.** Fetch `%(TASKLESS_CLI)s agent feedback` and follow it.
-  It takes their words as they are and asks you, not them, for the rest.
 - **They said `review`**, alone or alongside their own words. Fetch
   `%(TASKLESS_CLI)s agent feedback` and follow it in review mode: the
   words they wrote besides `review`, if any, are `verbatim`, and you
   show them every answer in the chat, and take their corrections,
-  before anything is sent.
+  before anything is sent. Check for this first: a reply that asks for
+  a review and also gives feedback is a review, not plain feedback.
+- **They gave feedback** without asking for a review. Fetch
+  `%(TASKLESS_CLI)s agent feedback` and follow it. It takes their words as
+  they are and asks you, not them, for the rest.
 - **They said `skip`, said nothing, or replied about something else.**
   Fetch `%(TASKLESS_CLI)s agent feedback` all the same and follow it with
   no `verbatim`. The rest of the survey is your account of the session,
