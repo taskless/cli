@@ -14,7 +14,7 @@ const invocation = "npx @taskless/cli";
 
 /** The sentence the invite puts to the user, as the design fixed it. */
 const ASK =
-  "Taskless would like to know how this went. Anything you'd like to add in your own words? Reply `skip` if not, and I'll send my own notes on the session.";
+  "Taskless would like to know how this went. Anything you'd like to add in your own words? Reply `skip` if not, and I'll send my own notes on the session, or `review` to see what I'd send before it goes.";
 
 /** Blockquote prose, unwrapped: the recipe hard-wraps and prefixes `> `. */
 function unwrapQuote(text: string): string {
@@ -59,6 +59,25 @@ describe("the feedback recipe", () => {
     );
     expect(rendered).toContain("Do NOT edit the user's words");
   });
+
+  it("shows every answer before sending when the user asked for a review", () => {
+    const rendered = getRecipe("feedback", { invocation }) ?? "";
+    const review = rendered.slice(
+      rendered.indexOf("**Show it first, if the user asked for a `review`.**"),
+      rendered.indexOf("**Send.** Run:")
+    );
+    expect(review).toContain("Put every answer in the payload in the chat");
+    expect(review).toContain("anything corrected before you send it");
+    // Corrections loop: each round is shown again, and only the user ends it.
+    expect(review).toContain("show the corrected payload in full");
+    expect(review).toContain("Repeat until the user is satisfied");
+    // A change of heart at the review is a refusal, handled like one.
+    expect(review).toContain(`${invocation} feedback dismiss`);
+    // The review precedes the send, so nothing leaves unseen.
+    expect(rendered.indexOf("**Show it first")).toBeLessThan(
+      rendered.indexOf(`${invocation} feedback send`)
+    );
+  });
 });
 
 describe("the feedback invite", () => {
@@ -90,6 +109,18 @@ describe("the feedback invite", () => {
       }) ?? "";
     expect(fragment).toContain(`${invocation} agent feedback`);
     expect(fragment).toContain(`${invocation} feedback dismiss`);
+  });
+
+  it("offers a review that shows the answers before anything is sent", () => {
+    const fragment =
+      getRecipe("feedback-invite", { invocation, header: false }) ?? "";
+    const reviewDoor = fragment.slice(
+      fragment.indexOf("They said `review`"),
+      fragment.indexOf("`skip`, said nothing, or replied about something else")
+    );
+    expect(reviewDoor).toContain(`${invocation} agent feedback`);
+    expect(reviewDoor).toContain("review mode");
+    expect(reviewDoor).not.toContain("feedback dismiss");
   });
 
   it("sends the agent's account on skip, silence, or an unrelated reply", () => {

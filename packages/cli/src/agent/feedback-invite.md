@@ -1,4 +1,4 @@
-# Topic: feedback-invite     (CLI v%(CLI_VERSION)s / topic v2)
+# Topic: feedback-invite     (CLI v%(CLI_VERSION)s / topic v3)
 
 ## Before you finish: one question for the user
 
@@ -7,12 +7,17 @@ and only then, put this to the user exactly once, in these words:
 
 > Taskless would like to know how this went. Anything you'd like to add
 > in your own words? Reply `skip` if not, and I'll send my own notes on
-> the session.
+> the session, or `review` to see what I'd send before it goes.
 
 Then act on the reply:
 
 - **They gave feedback.** Fetch `%(TASKLESS_CLI)s agent feedback` and follow it.
   It takes their words as they are and asks you, not them, for the rest.
+- **They said `review`**, alone or alongside their own words. Fetch
+  `%(TASKLESS_CLI)s agent feedback` and follow it in review mode: the
+  words they wrote besides `review`, if any, are `verbatim`, and you
+  show them every answer in the chat, and take their corrections,
+  before anything is sent.
 - **They said `skip`, said nothing, or replied about something else.**
   Fetch `%(TASKLESS_CLI)s agent feedback` all the same and follow it with
   no `verbatim`. The rest of the survey is your account of the session,
@@ -29,4 +34,5 @@ Then act on the reply:
 
 Ask once. Do not repeat the question later in this session, do not ask
 before the task is finished, and do not run `feedback send` without
-having asked.
+having asked. Showing the answers after a `review` is not asking again:
+the user asked to see them.
