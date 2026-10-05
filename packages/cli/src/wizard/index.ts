@@ -9,6 +9,7 @@ import {
   getEmbeddedSkills,
   planToStateTargets,
 } from "../install/install";
+import { findStalePins, getPinnedCliNotice } from "../install/pinned-cli";
 import { getReloadNotice } from "../install/reload-notice";
 import { computeInstallDiff, readInstallState } from "../install/state";
 import { getTelemetry } from "../telemetry";
@@ -68,13 +69,19 @@ export async function runWizard(
       return finish({ status: "cancelled" });
     }
 
-    await ensureTasklessDirectory(options.cwd, {
+    const migrated = await ensureTasklessDirectory(options.cwd, {
       onNotice: (message) => log.info(message),
     });
     const cliVersion = getCliVersion();
     await applyInstallPlan(options.cwd, plan, { cliVersion });
 
     outro("Taskless is ready to go.");
+    const pinnedNotice = getPinnedCliNotice(
+      await findStalePins(options.cwd, cliVersion),
+      cliVersion,
+      { migratedTo: migrated?.to }
+    );
+    if (pinnedNotice !== undefined) console.log(pinnedNotice);
     const commandsInstalled = plan.targets.some(
       (t) => t.mode === "reference" && t.commands.length > 0
     );

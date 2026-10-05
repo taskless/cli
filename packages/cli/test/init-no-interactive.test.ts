@@ -277,6 +277,116 @@ describe("taskless init (the batch install)", () => {
     expect(stdout).not.toContain("moved from");
   });
 
+  it("names a package.json pin older than the running CLI, and leaves the pin alone", async () => {
+    // The pin is what CI and `pnpm lint` run after an upgrade made through a
+    // launcher. Offered, not applied: the install never edits package.json.
+    const packageJson = JSON.stringify({
+      devDependencies: { "@taskless/cli": "0.0.1" },
+      scripts: { lint: "npx @taskless/cli@0.0.1 check" },
+    });
+    await writeFile(join(cwd, "package.json"), packageJson);
+    await installAtVersion(cwd, "0.0.1-previous");
+
+    const { stdout } = await execFileAsync("node", [
+      binPath,
+      "init",
+      "-d",
+      cwd,
+    ]);
+
+    expect(stdout).toContain("devDependencies: @taskless/cli 0.0.1");
+    expect(stdout).toContain("scripts.lint: @taskless/cli 0.0.1");
+    expect(stdout).toMatch(/Offer to update them to /);
+    expect(await readFile(join(cwd, "package.json"), "utf8")).toBe(packageJson);
+
+    // After the upgrade trailer, which it follows from; the onboarding line
+    // stays last.
+    const lines = stdout.trimEnd().split("\n");
+    const trailerAt = lines.findIndex((line) => line.includes("next commit"));
+    const pinAt = lines.findIndex((line) => line.includes("package.json pins"));
+    expect(pinAt).toBeGreaterThan(trailerAt);
+    expect(lines.at(-1)).toMatch(/^Next:/);
+  });
+
+  it("says CI will break when the same run migrated .taskless/", async () => {
+    // The pinned CLI refuses a scaffold newer than it knows, and CI meets
+    // that on the push carrying the migrated files. No hedging.
+    await writeFile(
+      join(cwd, "package.json"),
+      JSON.stringify({ devDependencies: { "@taskless/cli": "0.0.1" } })
+    );
+    await mkdir(join(cwd, ".taskless"), { recursive: true });
+    await writeFile(
+      join(cwd, ".taskless", "taskless.json"),
+      JSON.stringify({ version: 2 })
+    );
+
+    const { stdout } = await execFileAsync("node", [
+      binPath,
+      "init",
+      "-d",
+      cwd,
+    ]);
+
+    expect(stdout).toContain(`schema version ${String(LATEST_SCHEMA_VERSION)}`);
+    expect(stdout).toContain("SCAFFOLD_VERSION_MISMATCH");
+    expect(stdout).toContain("same commit as .taskless/");
+    expect(stdout).not.toContain("will likely fail");
+  });
+
+  it("names a stale pin even when the re-install changed nothing", async () => {
+    // Nothing to commit is not the same as nothing to fix: the pin and the
+    // project still disagree.
+    await writeFile(
+      join(cwd, "package.json"),
+      JSON.stringify({ devDependencies: { "@taskless/cli": "^0.0.1" } })
+    );
+    await execFileAsync("node", [binPath, "init", "-d", cwd]);
+
+    const { stdout } = await execFileAsync("node", [
+      binPath,
+      "init",
+      "-d",
+      cwd,
+    ]);
+
+    expect(stdout).not.toContain("next commit");
+    expect(stdout).toContain("devDependencies: @taskless/cli ^0.0.1");
+    // Nothing migrated, so the layout the pin reads did not move.
+    expect(stdout).toContain("will likely fail");
+    expect(stdout).not.toContain("SCAFFOLD_VERSION_MISMATCH");
+  });
+
+  it("carries stale pins on the --json envelope, as an empty list when there are none", async () => {
+    const bare = await execFileAsync("node", [
+      binPath,
+      "init",
+      "--json",
+      "-d",
+      cwd,
+    ]);
+    expect(
+      (JSON.parse(bare.stdout) as { pinnedCli: unknown }).pinnedCli
+    ).toEqual([]);
+
+    await writeFile(
+      join(cwd, "package.json"),
+      JSON.stringify({ dependencies: { "@taskless/cli": "0.0.1" } })
+    );
+    const pinned = await execFileAsync("node", [
+      binPath,
+      "init",
+      "--json",
+      "-d",
+      cwd,
+    ]);
+    expect(
+      (JSON.parse(pinned.stdout) as { pinnedCli: unknown }).pinnedCli
+    ).toEqual([
+      { location: "dependencies", name: "@taskless/cli", spec: "0.0.1" },
+    ]);
+  });
+
   it("`taskless update` does NOT print the onboarding trailer", async () => {
     // Update is the same install plumbing but the trailer is scoped to init.
     await mkdir(join(cwd, ".claude"), { recursive: true });

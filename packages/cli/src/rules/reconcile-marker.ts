@@ -5,6 +5,7 @@ import { AST_GREP_VERSION, VALE_VERSION } from "./capabilities";
 import { readManifest, writeManifest } from "../filesystem/manifest";
 import { TASKLESS_DIRECTORY } from "./vale/formats";
 import { CLIError } from "../util/cli-error";
+import { compareVersions } from "../util/version-compare";
 import { getCliVersion } from "../wizard/intro";
 
 /**
@@ -28,32 +29,6 @@ export interface ReconcileResult {
 }
 
 /**
- * Compare two dotted version strings numerically, ignoring any prerelease
- * suffix.
- *
- * A nightly is `0.11.0-20260826062304x3c78ffe`, so a plain string comparison
- * would sort it after `0.11.0` and let a nightly-built project refuse a
- * release-built one. Only the numeric core is compared, which makes a nightly
- * and its release equal for this purpose. That is the right answer: they carry
- * the same ledger entries.
- */
-function versionCore(version: string): number[] {
-  return (version.split("-")[0] ?? "")
-    .split(".")
-    .map((part) => Number.parseInt(part, 10) || 0);
-}
-
-function compareVersions(a: string, b: string): number {
-  const left = versionCore(a);
-  const right = versionCore(b);
-  for (let index = 0; index < Math.max(left.length, right.length); index++) {
-    const delta = (left[index] ?? 0) - (right[index] ?? 0);
-    if (delta !== 0) return delta;
-  }
-  return 0;
-}
-
-/**
  * Record that the ledger walk completed up to `reconciledTo`.
  *
  * The version is validated rather than trusted. An agent supplies it, and an
@@ -64,7 +39,7 @@ function compareVersions(a: string, b: string): number {
 /**
  * A dotted numeric version, with an optional prerelease suffix.
  *
- * Checked BEFORE either comparison, because `versionCore` coerces an
+ * Checked BEFORE either comparison, because `compareVersions` coerces an
  * unparseable segment to `0`: without this, `abc` parses as `[0]`, compares
  * lower than any real version, sails past both guards, and is written to the
  * manifest verbatim. A pasted SHA or a truncated interpolation would corrupt
