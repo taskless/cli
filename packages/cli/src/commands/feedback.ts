@@ -1,9 +1,7 @@
-import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import process from "node:process";
 
 import { defineCommand } from "citty";
-import { ZodError } from "zod";
 
 import { inputSchema, type FeedbackInput } from "../schemas/feedback";
 import { writeNextAsk } from "../survey/cadence";
@@ -15,6 +13,7 @@ import {
 import { getTelemetry, isTelemetryEnabled } from "../telemetry";
 import { type CLIErrorCode, writeJsonError } from "../types/errors";
 import { CLIError } from "../util/cli-error";
+import { readJsonInput } from "../util/json-input";
 import { getCliPrefix } from "../util/package-manager";
 
 /**
@@ -117,36 +116,10 @@ const sendCommand = defineCommand({
       );
     }
 
-    const filePath = resolve(cwd, args.from);
-    let fileContent: string;
-    try {
-      fileContent = await readFile(filePath, "utf8");
-    } catch {
-      fail(`Could not read file "${args.from}".`, "INVALID_INPUT");
-    }
-
-    let rawJson: unknown;
-    try {
-      rawJson = JSON.parse(fileContent) as unknown;
-    } catch {
-      fail(`"${args.from}" is not valid JSON.`, "INVALID_INPUT");
-    }
-
     let input: FeedbackInput;
     try {
-      input = inputSchema.parse(rawJson);
+      input = await readJsonInput(resolve(cwd, args.from), inputSchema);
     } catch (error) {
-      if (error instanceof ZodError) {
-        fail(
-          `Invalid input: ${error.issues
-            .map(
-              (issue) =>
-                `${issue.path.join(".") || "payload"}: ${issue.message}`
-            )
-            .join(", ")}`,
-          "INVALID_INPUT"
-        );
-      }
       fail(
         error instanceof Error ? error.message : String(error),
         "INVALID_INPUT"

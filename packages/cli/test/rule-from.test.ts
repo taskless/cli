@@ -105,7 +105,11 @@ describe("rules create --from", () => {
       expect.fail("should have exited with non-zero code");
     } catch (error) {
       const execError = error as { stderr: string };
-      expect(execError.stderr).toContain("Invalid input");
+      // The field path, and zod's English detail. The latter only survives
+      // bundling because the CLI entry registers the locale explicitly.
+      expect(execError.stderr).toContain(
+        "prompt: Invalid input: expected string, received undefined"
+      );
     }
   });
 });

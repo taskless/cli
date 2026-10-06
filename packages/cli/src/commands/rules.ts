@@ -1,5 +1,4 @@
 import { resolve } from "node:path";
-import { readFile } from "node:fs/promises";
 import process from "node:process";
 import { defineCommand } from "citty";
 
@@ -48,6 +47,7 @@ import {
 } from "../rules/recover";
 import { getTelemetry } from "../telemetry";
 import { CLIError } from "../util/cli-error";
+import { formatZodIssues, readJsonInput } from "../util/json-input";
 import { type CLIErrorCode, writeJsonError } from "../types/errors";
 import { getCliPrefix } from "../util/package-manager";
 
@@ -283,31 +283,13 @@ const createCommand = defineCommand({
         );
       }
 
-      const filePath = resolve(cwd, args.from);
-      let fileContent: string;
-      try {
-        fileContent = await readFile(filePath, "utf8");
-      } catch {
-        fail(`Could not read file "${args.from}".`, "INVALID_INPUT");
-      }
-
-      let rawJson: unknown;
-      try {
-        rawJson = JSON.parse(fileContent) as unknown;
-      } catch {
-        fail(`"${args.from}" is not valid JSON.`, "INVALID_INPUT");
-      }
-
       let request: ReturnType<typeof createInputSchema.parse>;
       try {
-        request = createInputSchema.parse(rawJson);
+        request = await readJsonInput(
+          resolve(cwd, args.from),
+          createInputSchema
+        );
       } catch (error) {
-        if (error instanceof ZodError) {
-          fail(
-            `Invalid input: ${error.issues.map((issue) => issue.message).join(", ")}`,
-            "INVALID_INPUT"
-          );
-        }
         fail(
           error instanceof Error ? error.message : String(error),
           "INVALID_INPUT"
@@ -429,31 +411,13 @@ const improveCommand = defineCommand({
         );
       }
 
-      const filePath = resolve(cwd, args.from);
-      let fileContent: string;
-      try {
-        fileContent = await readFile(filePath, "utf8");
-      } catch {
-        fail(`Could not read file "${args.from}".`, "INVALID_INPUT");
-      }
-
-      let rawJson: unknown;
-      try {
-        rawJson = JSON.parse(fileContent) as unknown;
-      } catch {
-        fail(`"${args.from}" is not valid JSON.`, "INVALID_INPUT");
-      }
-
       let request: ReturnType<typeof improveInputSchema.parse>;
       try {
-        request = improveInputSchema.parse(rawJson);
+        request = await readJsonInput(
+          resolve(cwd, args.from),
+          improveInputSchema
+        );
       } catch (error) {
-        if (error instanceof ZodError) {
-          fail(
-            `Invalid input: ${error.issues.map((issue) => issue.message).join(", ")}`,
-            "INVALID_INPUT"
-          );
-        }
         fail(
           error instanceof Error ? error.message : String(error),
           "INVALID_INPUT"
@@ -578,7 +542,7 @@ const metaCommand = defineCommand({
       } catch (error) {
         if (error instanceof ZodError) {
           fail(
-            `Invalid metadata for rule "${args.id}": ${error.issues.map((issue) => issue.message).join(", ")}`,
+            `Invalid metadata for rule "${args.id}": ${formatZodIssues(error)}`,
             "INVALID_INPUT"
           );
         }
