@@ -1,19 +1,4 @@
-# CLI Auth
-
-## Purpose
-
-Defines the `auth login` and `auth logout` subcommands, the Device Flow orchestration, and the token persistence layer for the `@taskless/cli` package.
-
-## Requirements
-
-### Requirement: Auth subcommand group exists
-
-The CLI SHALL register an `auth` subcommand group with `login` and `logout` as nested subcommands. Running `taskless auth` with no subcommand SHALL display help text listing the available auth subcommands.
-
-#### Scenario: Auth help is displayed
-
-- **WHEN** a user runs `taskless auth`
-- **THEN** the CLI SHALL print help text listing `login` and `logout` subcommands
+## MODIFIED Requirements
 
 ### Requirement: Auth login initiates Device Flow
 
@@ -120,96 +105,27 @@ A `getToken()` function SHALL exist that encapsulates the token resolution logic
 - **WHEN** `TASKLESS_TOKEN` is not set and no token file exists
 - **THEN** `getToken()` SHALL return `undefined`
 
-### Requirement: Network layer is behind an interface
+## REMOVED Requirements
 
-The Device Flow HTTP calls (device authorization and token polling) SHALL be defined as a TypeScript interface. The implementation SHALL use `fetch` to call the real API endpoints at `POST /cli/auth/device` (device authorization) and `POST /cli/auth/token` (token polling). The API base URL SHALL default to `https://app.taskless.io/cli` and SHALL be overridable via the `TASKLESS_API_URL` environment variable.
+### Requirement: Token is stored in XDG config directory
 
-#### Scenario: Real implementation calls device endpoint
+**Reason**: The CLI no longer writes or reads a global token. Tokens are stored per repository in `.taskless/.env.local.json`, and a leftover `auth.json` under the XDG config directory only produces a notice. The requirement described behavior the CLI has not had since that move.
 
-- **WHEN** `auth login` initiates the device flow
-- **THEN** the provider SHALL send a POST to `{baseUrl}/auth/device` with `{ client_id: "taskless-cli" }`
-- **AND** the provider SHALL return the `device_code`, `user_code`, `verification_uri`, `verification_uri_complete`, `expires_in`, and `interval` from the response
+**Migration**: None for users: the notice already tells anyone with a legacy file to run `auth login` in the repository. "Per-repository token storage in .env.local.json" now states that no global token is written.
 
-#### Scenario: Real implementation polls token endpoint
+### Requirement: Token resolution prefers per-repo over global
 
-- **WHEN** the CLI polls for authorization
-- **THEN** the provider SHALL send a POST to `{baseUrl}/auth/token` with `{ grant_type: "urn:ietf:params:oauth:grant-type:device_code", device_code, client_id: "taskless-cli" }`
-- **AND** the provider SHALL return the appropriate status (`pending`, `slow_down`, `success`, `expired`, or `denied`) based on the response
+**Reason**: The global store is no longer a resolution source, and the requirement's title names it. A title is matched byte-for-byte when the change is archived, so it cannot be corrected by a MODIFIED block. It is removed and re-added as "Token resolution prefers the environment over the saved token".
 
-#### Scenario: Successful token response
+**Migration**: None. The replacement keeps the environment-first order and the no-token result; the global fallback becomes a scenario stating the legacy file is not used.
 
-- **WHEN** the token endpoint returns an `access_token`
-- **THEN** the provider SHALL return a success result with the `access_token`, `token_type`, and `expires_in`
+### Requirement: Per-repository token storage in .env.local.json
 
-#### Scenario: Interface is swappable
+**Reason**: Its scenario "Login also writes to global auth.json" is no longer true: login writes only the per-repo file. A MODIFIED block cannot drop a scenario, and the correction inverts it rather than editing it, so the requirement is removed and re-added as "Login stores the token only in the repository" with that scenario replaced by "Login does not write a global token".
 
-- **WHEN** a different provider implementation is needed (e.g., for testing)
-- **THEN** the provider SHALL be replaceable without changing the command logic
+**Migration**: None. The other scenarios carry over unchanged.
 
-#### Scenario: API base URL is configurable
-
-- **WHEN** `TASKLESS_API_URL` is set to `http://localhost:8787/cli`
-- **THEN** the provider SHALL use that URL as the base for all auth endpoints
-
-#### Scenario: API base URL defaults to production
-
-- **WHEN** `TASKLESS_API_URL` is not set
-- **THEN** the provider SHALL use `https://app.taskless.io/cli` as the base URL
-
-#### Scenario: Network error during device flow
-
-- **WHEN** the `fetch` call fails due to a network error (DNS, timeout, connection refused)
-- **THEN** the provider SHALL throw an error with a descriptive message
-
-#### Scenario: Non-200 response from device endpoint
-
-- **WHEN** the device endpoint returns a non-200 status code
-- **THEN** the provider SHALL throw an error indicating the request failed
-
-### Requirement: CLI warns if .env.local.json is tracked by git
-
-On any command that reads from `.taskless/.env.local.json`, the CLI SHALL check whether the file is tracked by git. If tracked, the CLI SHALL print a warning to stderr.
-
-#### Scenario: .env.local.json is tracked
-
-- **WHEN** the CLI reads `.taskless/.env.local.json` and the file is tracked by git (i.e., `git ls-files .taskless/.env.local.json` returns output)
-- **THEN** the CLI SHALL print a warning to stderr: "Warning: .taskless/.env.local.json is tracked by git. This file contains authentication tokens and should be gitignored."
-
-#### Scenario: .env.local.json is not tracked
-
-- **WHEN** the CLI reads `.taskless/.env.local.json` and the file is not tracked by git
-- **THEN** the CLI SHALL NOT print any warning
-
-### Requirement: Auth error output uses standardized error envelope
-
-When any `taskless auth` subcommand exits with an error AND `--json` was passed, the output SHALL conform to the standardized error envelope `{ "ok": false, "code": "<CODE>", "message": "<...>" }` per the `cli` capability requirements.
-
-#### Scenario: Auth login network failure in JSON mode
-
-- **WHEN** `taskless auth login --json` fails due to a network error
-- **THEN** stdout SHALL contain `{ "ok": false, "code": "NETWORK_ERROR", "message": "..." }`
-- **AND** the exit code SHALL be non-zero
-
-### Requirement: Remote resolution reports which population a failure belongs to
-
-Repository URL resolution SHALL distinguish three failure populations: the directory is not a git repository; the repository has no `origin` remote; the `origin` remote is not a GitHub URL. Each SHALL carry its own stable error code. The pre-existing `NO_GITHUB_REMOTE` code SHALL remain valid so consumers that branch on it keep working.
-
-#### Scenario: Populations are distinguishable
-
-- **WHEN** resolution fails in each of the three populations
-- **THEN** each SHALL produce a distinct code
-- **AND** a consumer SHALL determine the population from the code without parsing the message
-
-#### Scenario: The existing code is retained
-
-- **WHEN** this change ships
-- **THEN** `NO_GITHUB_REMOTE` SHALL remain a member of the error-code contract
-
-#### Scenario: Plain-text auth status is unchanged
-
-- **WHEN** a user runs `taskless auth`
-- **THEN** the output SHALL be the existing plain-text status
-- **AND** no structured payload SHALL be added to this command
+## ADDED Requirements
 
 ### Requirement: Token resolution prefers the environment over the saved token
 
