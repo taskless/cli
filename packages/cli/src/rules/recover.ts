@@ -11,6 +11,7 @@ import {
 import { notRunOnPlanSentence, parseEntitlementV2 } from "../api/entitlement";
 import { describeRefusal } from "../api/refusal";
 import type { Identity } from "../auth/identity";
+import { rejectedTokenRemedy } from "../auth/token";
 import { CLIError } from "../util/cli-error";
 import { isRecord } from "../util/is-record";
 import { getCliPrefix } from "../util/package-manager";
@@ -82,7 +83,7 @@ function failure(
     }
     case "unauthorized": {
       return new CLIError(
-        `Authentication was rejected. Run \`${getCliPrefix()} auth login\` and try again.`,
+        `Authentication was rejected. ${rejectedTokenRemedy()}`,
         "AUTH_REQUIRED"
       );
     }

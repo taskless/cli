@@ -794,7 +794,7 @@ describe("check: static vs runtime dispatch", () => {
       "Confirm the Taskless app is installed on this repository's owner"
     );
     expect(stderr).toMatch(
-      /If access recently changed, re-authenticate with `.+ auth login`/
+      /If access recently changed, re-authenticate with `.+ auth logout` then `.+ auth login`/
     );
   });
 
@@ -811,7 +811,9 @@ describe("check: static vs runtime dispatch", () => {
     expect(notices).not.toMatch(/unavailable|try again/);
   });
 
-  it("token rejected: the notice names auth login and replacing TASKLESS_TOKEN", async () => {
+  // authedCheck supplies the token through TASKLESS_TOKEN, which `auth login`
+  // cannot replace, so the remedy names the variable rather than the command.
+  it("token rejected: the notice names replacing TASKLESS_TOKEN", async () => {
     const { stderr, exitCode } = await authedCheck(
       () => ({ statusCode: 401 }),
       []
@@ -821,8 +823,8 @@ describe("check: static vs runtime dispatch", () => {
     expect(stderr).toContain(
       "Rules were not verified: authentication was rejected."
     );
-    expect(stderr).toMatch(
-      /Re-authenticate with `.+ auth login`, or replace an expired `TASKLESS_TOKEN`\./
+    expect(stderr).toContain(
+      "The token comes from the TASKLESS_TOKEN environment variable, so replace or unset it; `auth login` and `auth logout` do not change it."
     );
     expect(stderr).toContain(
       "runtime rule demo was not run — authentication was rejected, so it was not verified."

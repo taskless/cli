@@ -17,6 +17,7 @@ import {
   submitRequest,
   type V2Outcome,
 } from "../api/v2";
+import { rejectedTokenRemedy } from "../auth/token";
 import { readRuleMetaFile, deleteRuleFiles } from "../rules/files";
 import {
   awaitRequest,
@@ -59,7 +60,7 @@ function describeSubmitFailure(
   switch (outcome.status) {
     case "unauthorized": {
       return {
-        message: "Authentication was rejected. Log in again.",
+        message: `Authentication was rejected. ${rejectedTokenRemedy()}`,
         code: "AUTH_REQUIRED",
       };
     }
