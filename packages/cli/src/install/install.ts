@@ -13,6 +13,7 @@ import {
   type CommandStubFrontmatter,
   type StubFrontmatter,
 } from "./canonical";
+import { CLI_VERSION } from "../version";
 import { parseFrontmatter } from "./frontmatter";
 import {
   computeInstallDiff,
@@ -260,8 +261,43 @@ export async function detectSelectedDirectories(
 
 // --- Embedded Skills ---
 
+/** The `version:` line of a frontmatter `metadata:` block, up to its value. */
+const METADATA_VERSION =
+  /^(metadata:\n(?:[ \t]+.*\n)*?[ \t]+version:[ \t]*).*$/m;
+
+/**
+ * Stamp `metadata.version` in a skill's frontmatter with `version`.
+ *
+ * The source carries the committed package version, which the build asserts
+ * (`assertSkillVersions` in `vite.config.ts`). That is the right stamp for a
+ * prod build and the wrong one for a nightly or `self` build, whose
+ * `__VERSION__` is not the package version: taskless/cli#447 shipped a nightly
+ * that rewrote the skill body to pin itself while the frontmatter kept naming
+ * the last release, and `info` compared that stale stamp against the same
+ * stale stamp and reported the skill current. Only the frontmatter is touched,
+ * so a body line that happens to read `version:` is left alone.
+ */
+export function stampSkillVersion(content: string, version: string): string {
+  const frontmatter = /^---\n[\s\S]*?\n---\n/.exec(content)?.[0];
+  if (frontmatter === undefined) return content;
+  return (
+    frontmatter.replace(METADATA_VERSION, `$1${version}`) +
+    content.slice(frontmatter.length)
+  );
+}
+
+/**
+ * The skills embedded in this build, each stamped with the version of the
+ * build itself (see {@link stampSkillVersion}). Both sides of
+ * {@link checkStaleness} derive from this: what an install writes, and what
+ * the running build considers current.
+ */
 export function getEmbeddedSkills(): EmbeddedSkill[] {
-  return Object.entries(skillFiles).map(([path, content]) => {
+  return Object.entries(skillFiles).map(([path, source]) => {
+    const content =
+      CLI_VERSION === "unknown"
+        ? source
+        : stampSkillVersion(source, CLI_VERSION);
     const parsed = parseFrontmatter(content);
     const data = parsed.data as {
       name?: string;
