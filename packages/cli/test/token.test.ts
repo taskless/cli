@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 import { mkdtemp, readFile, rm, writeFile, mkdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -14,6 +15,7 @@ beforeEach(async () => {
 
 afterEach(async () => {
   vi.useRealTimers();
+  vi.restoreAllMocks();
   vi.unstubAllEnvs();
   await rm(temporaryDirectory, { recursive: true, force: true });
 });
@@ -167,5 +169,38 @@ describe("removeToken", () => {
 
   it("returns false when no cwd is provided", async () => {
     expect(await removeToken()).toBe(false);
+  });
+});
+
+describe("tracked token warning", () => {
+  it("tells the user to untrack the file, not just gitignore it", async () => {
+    await writeAuthFile({ access_token: "tracked-token" });
+    execFileSync("git", ["init", "-q"], { cwd: temporaryDirectory });
+    execFileSync("git", ["add", ".taskless/.env.local.json"], {
+      cwd: temporaryDirectory,
+    });
+    const errors: string[] = [];
+    vi.spyOn(console, "error").mockImplementation((message: unknown) => {
+      errors.push(String(message));
+    });
+
+    expect(await getToken(temporaryDirectory)).toBe("tracked-token");
+
+    const warning = errors.find((line) => line.includes("tracked by git"));
+    expect(warning).toContain("git rm --cached .taskless/.env.local.json");
+    expect(warning).toContain("auth logout");
+    expect(warning).toContain("auth login");
+    expect(warning).toContain("does not revoke");
+  });
+
+  it("stays quiet when the file is not tracked", async () => {
+    await writeAuthFile({ access_token: "untracked-token" });
+    execFileSync("git", ["init", "-q"], { cwd: temporaryDirectory });
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    expect(await getToken(temporaryDirectory)).toBe("untracked-token");
+    expect(
+      spy.mock.calls.some((call) => String(call[0]).includes("tracked by git"))
+    ).toBe(false);
   });
 });
