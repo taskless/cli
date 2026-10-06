@@ -4,12 +4,8 @@ import { defineCommand } from "citty";
 
 import { whoami } from "../api/v2";
 import { loginInteractive } from "../auth/login-interactive";
-import {
-  getToken,
-  isEnvironmentToken,
-  rejectedTokenRemedy,
-  removeToken,
-} from "../auth/token";
+import { describeAuthStatus } from "../auth/status";
+import { getToken, isEnvironmentToken, removeToken } from "../auth/token";
 import { getTelemetry } from "../telemetry";
 import { type CLIErrorCode, writeJsonError } from "../types/errors";
 import { splitRawArguments } from "../util/argv";
@@ -210,28 +206,8 @@ export const authCommand = defineCommand({
       return;
     }
 
-    const source = isEnvironmentToken() ? " via TASKLESS_TOKEN" : "";
-    const outcome = await whoami(token);
-    switch (outcome.status) {
-      case "ok": {
-        const orgs = outcome.data.orgs.map((o) => o.name);
-        const orgSuffix = orgs.length > 0 ? ` (${orgs.join(", ")})` : "";
-        console.log(`Logged in as ${outcome.data.user}${orgSuffix}${source}.`);
-        return;
-      }
-      case "unauthorized": {
-        console.log(`Logged in${source}, but the token was rejected.`);
-        console.log(`It is invalid or expired. ${rejectedTokenRemedy()}`);
-        return;
-      }
-      default: {
-        console.log(`Logged in${source}, but unable to verify identity.`);
-        if (outcome.status === "unavailable") {
-          console.log(
-            `The Taskless service was unreachable (${outcome.reason}).`
-          );
-        }
-      }
+    for (const line of describeAuthStatus(await whoami(token))) {
+      console.log(line);
     }
   },
 });
