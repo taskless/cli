@@ -182,7 +182,8 @@ export const infoCommand = defineCommand({
     if (pinnedCli.length > 0) {
       console.log("");
       console.log(`Pinned CLI older than v${__VERSION__}:`);
-      for (const pin of pinnedCli) console.log(describePin(pin, __VERSION__));
+      for (const pin of pinnedCli)
+        console.log(`  - ${describePin(pin, __VERSION__)}`);
     }
 
     console.log("");
