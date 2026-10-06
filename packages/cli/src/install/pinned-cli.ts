@@ -208,7 +208,9 @@ async function listWorkspaceManifests(
 ): Promise<string[]> {
   const included = new Set<string>();
   const excluded = new Set<string>();
-  let read = 0;
+  // Only inclusions count toward the cap: they are what gets read later. A
+  // broad `!**/fixtures` costing the same budget would leave real packages
+  // listed after it unread, and the silence would look like "nothing stale".
   for (const raw of await readWorkspacePatterns(cwd, root)) {
     const negated = raw.startsWith("!");
     const pattern = posix
@@ -226,10 +228,9 @@ async function listWorkspaceManifests(
       exclude: (path) => SKIPPED_DIRECTORIES.has(basename(path)),
     })) {
       (negated ? excluded : included).add(entry.split(sep).join("/"));
-      read += 1;
-      if (read >= MAX_WORKSPACE_MANIFESTS) break;
+      if (included.size >= MAX_WORKSPACE_MANIFESTS) break;
     }
-    if (read >= MAX_WORKSPACE_MANIFESTS) break;
+    if (included.size >= MAX_WORKSPACE_MANIFESTS) break;
   }
   // A `.` pattern names the root, which is read on its own.
   included.delete("package.json");

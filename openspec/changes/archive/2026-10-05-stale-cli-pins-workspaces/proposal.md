@@ -32,7 +32,7 @@ command, and `update` already runs `info --json` in step 1.
   every line, the root included.
 - `info --json` carries `pinnedCli` in the same shape; plain `info` lists the
   pins.
-- Recipes: `update` topic v14 reads the pins from `info --json` in step 4.
+- Recipes: `update` topic v15 reads the pins from `info --json` in step 4.
   `info` topic v2 documents the field and a step to offer the bump. `init`
   topic v4 documents `manifest`.
 - The existing `init-stale-cli-pins` changeset is extended. #443 has not been
