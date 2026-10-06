@@ -2,7 +2,7 @@ import createClient from "openapi-fetch";
 
 import type { paths } from "../generated/api-v2";
 import { getApiBaseUrl } from "./config";
-import { parseRefusal, type Refusal } from "./refusal";
+import { parseRefusal, stripControlCharacters, type Refusal } from "./refusal";
 import { isRecord } from "../util/is-record";
 import { CLI_VERSION, CLI_VERSION_HEADER } from "../version";
 
@@ -167,14 +167,17 @@ async function settle<T, C extends string>(
   if (response.status === 401) return { status: "unauthorized" };
   if (response.ok) return accept(fetched.data);
 
+  // `details` and an undocumented `code` are server text that ends up printed
+  // to a terminal, so both lose their control characters here, once, rather
+  // than at every message that interpolates them.
   const body = fetched.error;
   const code = isRecord(body) ? body.error : undefined;
   if (typeof code === "string" && (codes as readonly string[]).includes(code)) {
     const details =
       isRecord(body) && Array.isArray(body.details)
-        ? body.details.filter(
-            (detail): detail is string => typeof detail === "string"
-          )
+        ? body.details
+            .filter((detail): detail is string => typeof detail === "string")
+            .map((detail) => stripControlCharacters(detail))
         : undefined;
     return {
       status: "error",
@@ -187,7 +190,7 @@ async function settle<T, C extends string>(
     status: "unavailable",
     reason:
       typeof code === "string"
-        ? `HTTP ${String(response.status)} (${code})`
+        ? `HTTP ${String(response.status)} (${stripControlCharacters(code)})`
         : `HTTP ${String(response.status)}`,
     retryable: isTransientStatus(response.status),
   };
