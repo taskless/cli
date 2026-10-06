@@ -152,6 +152,53 @@ describe("v2 client", () => {
     });
   });
 
+  describe("generation requests", () => {
+    const REQUEST_ID = "6f1c2b9e-4d3a-4e8b-9c7f-0a1b2c3d4e5f";
+
+    it.each([
+      [
+        "submit",
+        () => submitRequest("tok", { repositoryUrl: REPO, prompt: "p" }),
+      ],
+      [
+        "iterate",
+        () => iterateRule("tok", "r", { repositoryUrl: REPO, guidance: "g" }),
+      ],
+    ])("accepts a UUID request id from %s", async (_, call) => {
+      respond(200, { requestId: REQUEST_ID, status: "accepted" });
+      expect(await call()).toEqual({
+        status: "ok",
+        data: { requestId: REQUEST_ID, status: "accepted" },
+      });
+    });
+
+    // The id is printed inside a `--resume` command an agent is told to run,
+    // so server text that is not a request id never gets that far.
+    it.each([
+      ["shell metacharacters", "x; rm -rf ~"],
+      ["a substitution", "$(id)"],
+      ["control characters", `${REQUEST_ID}\u001B[2J`],
+      ["a non-string", 42],
+      ["nothing", undefined],
+    ])(
+      "refuses a request id carrying %s as an invalid body",
+      async (_, requestId) => {
+        const calls = [
+          () => submitRequest("tok", { repositoryUrl: REPO, prompt: "p" }),
+          () => iterateRule("tok", "r", { repositoryUrl: REPO, guidance: "g" }),
+        ];
+        for (const call of calls) {
+          respond(200, { requestId, status: "accepted" });
+          expect(await call()).toEqual({
+            status: "unavailable",
+            reason: "invalid response body",
+            retryable: false,
+          });
+        }
+      }
+    );
+  });
+
   describe("revisions", () => {
     const LISTING = {
       ruleId: "no-eval-3fa9c21b",

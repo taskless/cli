@@ -3,7 +3,7 @@ import { readFile } from "node:fs/promises";
 import process from "node:process";
 import { defineCommand } from "citty";
 
-import { z, ZodError } from "zod";
+import { ZodError } from "zod";
 
 import {
   identityFailureCode,
@@ -12,6 +12,7 @@ import {
 } from "../auth/identity";
 import { describeRefusal } from "../api/refusal";
 import {
+  isRequestId,
   iterateRule,
   retryAdvice,
   submitRequest,
@@ -135,9 +136,7 @@ function resumeRequestId(
     );
   }
   const requestId = args.resume.trim();
-  // The service documents request ids as UUIDs. `guid`, not `uuid`: the
-  // shape is what matters here, not the RFC version bits.
-  if (!z.guid().safeParse(requestId).success) {
+  if (!isRequestId(requestId)) {
     fail(
       `--resume takes the request id a previous \`rule ${subcommand}\` printed, a UUID. Got "${args.resume}".`,
       "INVALID_INPUT"

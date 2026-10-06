@@ -1,4 +1,5 @@
 import createClient from "openapi-fetch";
+import { z } from "zod";
 
 import type { paths } from "../generated/api-v2";
 import { getApiBaseUrl } from "./config";
@@ -431,6 +432,33 @@ export type RequestBody = NonNullable<
 
 export type RequestAccepted = OkBody<"/cli/api/v2/request", "post">;
 
+/**
+ * Whether `value` has the shape of a request id, which the service documents
+ * as a UUID. `guid`, not `uuid`: the shape is what matters, not the RFC
+ * version bits.
+ *
+ * A request id is printed inside a `--resume` command that an agent is told
+ * to run, so one that is anything else is refused rather than passed on: it
+ * would put server-authored text on a command line.
+ */
+export function isRequestId(value: unknown): value is string {
+  return z.guid().safeParse(value).success;
+}
+
+/** Accept a submit or iterate body only when it names a well-formed request. */
+function acceptRequest<C extends string>(
+  data: unknown
+): V2Outcome<RequestAccepted, C> {
+  if (!isRecord(data) || !isRequestId(data.requestId)) {
+    return {
+      status: "unavailable",
+      reason: "invalid response body",
+      retryable: false,
+    };
+  }
+  return { status: "ok", data: data as RequestAccepted };
+}
+
 export type RequestCode = ErrorCode<"/cli/api/v2/request", "post">;
 
 const REQUEST_CODES = errorCodes<ErrorCode<"/cli/api/v2/request", "post">>()([
@@ -448,7 +476,7 @@ export function submitRequest(
   return settle<RequestAccepted, RequestCode>(
     () => client.POST("/cli/api/v2/request", { body }),
     REQUEST_CODES,
-    acceptObject
+    acceptRequest
   );
 }
 
@@ -520,7 +548,7 @@ export function iterateRule(
         body,
       }),
     ITERATE_CODES,
-    acceptObject
+    acceptRequest
   );
 }
 
