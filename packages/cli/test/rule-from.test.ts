@@ -108,7 +108,7 @@ describe("rules create --from", () => {
       // The field path, and zod's English detail. The latter only survives
       // bundling because the CLI entry registers the locale explicitly.
       expect(execError.stderr).toContain(
-        "prompt: Invalid input: expected string, received undefined"
+        "Invalid input: prompt: expected string, received undefined"
       );
     }
   });
