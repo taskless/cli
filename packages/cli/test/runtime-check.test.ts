@@ -802,6 +802,24 @@ describe("check: static vs runtime dispatch", () => {
     expect(notices).not.toMatch(/unavailable|try again/);
   });
 
+  it("token rejected: the notice names auth login and replacing TASKLESS_TOKEN", async () => {
+    const { stderr, exitCode } = await authedCheck(
+      () => ({ statusCode: 401 }),
+      []
+    );
+    expect(exitCode).toBe(0);
+    expect(stderr.split("Rules were not verified")).toHaveLength(2);
+    expect(stderr).toContain(
+      "Rules were not verified: authentication was rejected."
+    );
+    expect(stderr).toMatch(
+      /Re-authenticate with `.+ auth login`, or replace an expired `TASKLESS_TOKEN`\./
+    );
+    expect(stderr).toContain(
+      "runtime rule demo was not run — authentication was rejected, so it was not verified."
+    );
+  });
+
   it("--anonymous with a token: skips runtime and never calls reconcile", async () => {
     const { stdout, server } = await authedCheck(
       (request) => ({ statusCode: 200, body: answer(request) }),
