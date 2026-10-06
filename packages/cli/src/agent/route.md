@@ -241,13 +241,7 @@ answered together.
    Not logged in, no GitHub owner, or not locally expressible are not
    choices. Do not pose them as one.
 
-8. **Name the command.** Finish by telling the user, or running, the
-   exact fetch for the destination you chose:
-   ```
-   %(TASKLESS_CLI)s agent create-vale-rule
-   ```
-   A destination that is not a runnable command is a category, and a
-   category is not an answer.
+8. %(NAME_DESTINATION)s
 
 ## When two destinations both fit
 
@@ -270,7 +264,7 @@ fails against the user's cases:
 - State that generating via the service uses a generation and requires
   login.
 - Call the service only after the user confirms. On yes, fetch
-  `%(TASKLESS_CLI)s agent create-remote-rule`.
+  `%(RECIPE_FETCH)screate-remote-rule`.
 
 Never fall through silently from a failed local attempt to a service
 call. A developer who watches a local attempt fail reads it as a
@@ -304,9 +298,9 @@ will work.
 
 ## See Also
 
-- `%(TASKLESS_CLI)s agent create-legacy-rule`: author in a linter the repo already uses
-- `%(TASKLESS_CLI)s agent create-sg-rule`: author a local ast-grep rule (no login)
-- `%(TASKLESS_CLI)s agent create-vale-rule`: author a local Vale rule (no login)
-- `%(TASKLESS_CLI)s agent create-runtime-rule`: the runtime tier, logged out
-- `%(TASKLESS_CLI)s agent create-remote-rule`: generate via the service (login)
-- `%(TASKLESS_CLI)s agent check`: run every engine over the repo
+- `%(RECIPE_FETCH)screate-legacy-rule`: author in a linter the repo already uses
+- `%(RECIPE_FETCH)screate-sg-rule`: author a local ast-grep rule (no login)
+- `%(RECIPE_FETCH)screate-vale-rule`: author a local Vale rule (no login)
+- `%(RECIPE_FETCH)screate-runtime-rule`: the runtime tier, logged out
+- `%(RECIPE_FETCH)screate-remote-rule`: generate via the service (login)
+- `%(RECIPE_FETCH)scheck`: run every engine over the repo
