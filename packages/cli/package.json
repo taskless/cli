@@ -61,7 +61,6 @@
     "citty": "^0.1.6",
     "jose": "^6.2.2",
     "openapi-fetch": "^0.17.0",
-    "picocolors": "^1.1.1",
     "posthog-node": "^5.28.11",
     "smol-toml": "^1.6.1",
     "sprintf-js": "^1.1.3",

@@ -1,5 +1,10 @@
 import { confirm, log } from "@clack/prompts";
-import pc from "picocolors";
+import chalk from "chalk";
+
+// Sets `chalk.level` from the real terminal on import. This module renders
+// colour, so it establishes that itself rather than inheriting it from
+// whichever caller happened to load `wizard/intro.ts` first.
+import "../../util/color";
 
 import type { InstallDiff } from "../../install/state";
 import { ask } from "../ask";
@@ -18,22 +23,22 @@ export async function renderSummaryAndConfirm(
 
     if (!hasAnyChange && entry.unchanged.skills.length === 0) continue;
 
-    lines.push(pc.bold(entry.target));
+    lines.push(chalk.bold(entry.target));
     for (const skill of entry.additions.skills) {
-      lines.push(`  ${pc.green("+")} skill ${skill}`);
+      lines.push(`  ${chalk.green("+")} skill ${skill}`);
     }
     for (const command of entry.additions.commands) {
-      lines.push(`  ${pc.green("+")} command ${command}`);
+      lines.push(`  ${chalk.green("+")} command ${command}`);
     }
     for (const skill of entry.removals.skills) {
-      lines.push(`  ${pc.red("-")} skill ${skill}`);
+      lines.push(`  ${chalk.red("-")} skill ${skill}`);
     }
     for (const command of entry.removals.commands) {
-      lines.push(`  ${pc.red("-")} command ${command}`);
+      lines.push(`  ${chalk.red("-")} command ${command}`);
     }
     if (entry.unchanged.skills.length > 0) {
       lines.push(
-        `  ${pc.dim("·")} ${pc.dim(
+        `  ${chalk.dim("·")} ${chalk.dim(
           `${entry.unchanged.skills.length} skill(s) unchanged`
         )}`
       );
