@@ -13,14 +13,19 @@ name: Claude Code Focus (on demand)
 # short:
 #   - fires ONLY on a maintainer's comment (author_association gate);
 #   - no `contents: write`, and a read-only tool allowlist, so it can never
-#     write code or push;
+#     write code or push. That holds only because the action is handed
+#     `github_token`; otherwise it mints a `claude` App token whose scopes the
+#     `permissions:` block does not limit;
 #   - the comment body is never interpolated into the prompt. The only thing
 #     this workflow takes from it is N, extracted by a shell regex as digits
 #     only and clamped to a range. The action separately forwards whatever
 #     follows `@claude /focus` as plain text (see the review workflow header),
 #     which for `@claude /focus 5` is just `5`;
 #   - `Read` is safe ONLY alongside `persist-credentials: false` on the
-#     checkout, and the checkout MUST be the PR's own ref.
+#     checkout, `github_token`, and the `--disallowedTools` deny rules on
+#     `.git` and `/proc`, since the action embeds its token in the origin
+#     remote URL and in the Claude process's environment. The checkout MUST be
+#     the PR's own ref.
 #
 # `issue_comment` only, unlike `/review`, which also answers an inline review
 # comment. `/focus` is a whole-diff question, and an inline trigger has no
@@ -42,11 +47,11 @@ jobs:
        github.event.comment.author_association == 'COLLABORATOR') &&
       github.event.issue.pull_request
     runs-on: ubuntu-latest
+    # No `id-token: write`: see the review workflow's `permissions:` comment.
     permissions:
       contents: read
       pull-requests: write
       issues: write
-      id-token: write
 
     steps:
       # The body arrives as an ENVIRONMENT VARIABLE, never as a `${{ }}`
@@ -129,6 +134,9 @@ jobs:
         uses: anthropics/claude-code-action@0a8d3c9443bbff909ab973b6a17a340b913f229f # v1.0.221
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          # The job's own token, bounded by `permissions:` above, instead of the
+          # `claude` App token. See the review workflow's `github_token` comment.
+          github_token: ${{ github.token }}
           track_progress: true
           # Without the command word here, tag mode forwards `/focus` to the CLI
           # as a slash command and the run ends before a single model call. The
@@ -247,6 +255,7 @@ jobs:
           # `gh api` stay out. Do not widen this one independently.
           claude_args: |
             --allowedTools "mcp__github_inline_comment__create_inline_comment,Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*),Read"
+            --disallowedTools "Read(.git/**),Read(//proc/**)"
             --append-system-prompt "Correction to the base instructions, which were written for a code-writing run and do not describe this one. This is a READ-ONLY triage invocation. You cannot stage, commit, push or delete files, there is no push script, and git is not on the allowlist, so git add, git commit, git rm, git status, git diff and git log are all refused. Ignore the base instruction to use git diff origin/main...HEAD for the PR diff. Use gh pr diff for the diff, gh pr view --json commits for the commit list, gh pr view --json headRefOid for the head SHA, gh pr view --json files for changed files, and Read for file contents. Per-file history is genuinely unavailable. Never state that you ran a git command."
 
       # A run that posts NOTHING must not report success. The review

@@ -45,19 +45,32 @@ name: Claude Code Review (on demand)
 # Scoped so Claude can never write code from an invocation:
 #   - runs the code-review PLUGIN with a review prompt (analyze + post findings),
 #     not the general code-writing action;
-#   - no `contents: write`, so it cannot push commits;
+#   - no `contents: write`, so it cannot push commits. This holds only because
+#     the action is handed `github_token` (see that input): without it, the
+#     action mints a `claude` GitHub App token over OIDC, whose scopes come from
+#     the app installation (contents, workflows and actions write) and which
+#     the `permissions:` block below does not limit at all;
 #   - fires ONLY on a maintainer's comment (author_association gate), so an
 #     outside contributor on a fork can never trigger it.
 #
-# `Read` in `--allowedTools` is COUPLED to `persist-credentials: false` on the
-# checkout below. The reviewer needs to open whole files — the findings worth
+# `Read` in `--allowedTools` is COUPLED to keeping every token out of the
+# model's reach. The reviewer needs to open whole files — the findings worth
 # having come from surviving references in untouched regions, from a directory's
 # real contents, from a cross-file ordering dependency — none of which a diff
-# hunk shows. But without `persist-credentials: false`, actions/checkout writes
-# this job's `GITHUB_TOKEN` into `.git/config` INSIDE the tree being reviewed,
-# and `Read` plus `Bash(gh pr comment:*)` is then a complete path from that file
-# to a public comment on a public repo. Do not remove either one without
-# removing the other: they are safe together and unsafe apart.
+# hunk shows. But `Read` plus `Bash(gh pr comment:*)` is a complete path from
+# any file holding a token to a public comment on a public repo, so:
+#   - `persist-credentials: false` on the checkout keeps actions/checkout's
+#     token out of `.git/config`;
+#   - that is NOT sufficient on its own. The action rewrites the origin remote
+#     URL to embed ITS token (`https://x-access-token:<token>@github.com/...`,
+#     logged as "Updated remote URL with authentication token") after checkout,
+#     whatever the checkout did. So `--disallowedTools` denies `Read(.git/**)`;
+#   - the token also sits in the Claude process's environment, which is how
+#     `gh pr comment` authenticates, so `Read(//proc/**)` is denied as well.
+# Do not remove any of these without removing `Read`: they are safe together
+# and unsafe apart. Claude Code applies `Read` deny rules to Grep and Glob on a
+# best-effort basis, and the action grants both by default (it merges its own
+# tool list into ours: check "SDK options" in a run log for the real set).
 #
 # The checkout MUST be the PR's own ref, never the default one. Neither
 # `issue_comment` nor `pull_request_review_comment` is a PR event, so
@@ -91,11 +104,14 @@ jobs:
       (github.event_name == 'pull_request_review_comment' ||
        github.event.issue.pull_request)
     runs-on: ubuntu-latest
+    # These scopes ARE the model's reach, because the action is handed this
+    # job's token. No `id-token: write`: the action used OIDC only to mint the
+    # broader `claude` App token, which is exactly what `github_token` avoids.
+    # Claude itself authenticates with the OAuth token, not OIDC.
     permissions:
       contents: read
       pull-requests: write
       issues: write
-      id-token: write
 
     steps:
       # Resolved BEFORE checkout: the checkout ref depends on it. The PR number
@@ -225,6 +241,13 @@ jobs:
         uses: anthropics/claude-code-action@0a8d3c9443bbff909ab973b6a17a340b913f229f # v1.0.221
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          # The job's own token, bounded by `permissions:` above. A provided
+          # token skips the action's OIDC exchange for the `claude` App token,
+          # which carries the installation's scopes (contents, workflows and
+          # actions write) and would be embedded in `.git/config` for the
+          # model to find. Comments are posted as github-actions[bot]; the
+          # verify step filters on `.user.type == "Bot"`, not on a login.
+          github_token: ${{ github.token }}
           # Single tracking comment (in-progress → results), updated in place.
           track_progress: true
           # The COMMAND WORD belongs in the trigger phrase. `track_progress`
@@ -297,7 +320,8 @@ jobs:
           # In agent mode (comment-triggered) Claude only posts if it has these
           # tools. All read-only or comment-posting — no local build/test, no CI
           # reads. `Read` is read-only file access, and is safe ONLY alongside
-          # `persist-credentials: false` above (see the header). Do NOT add
+          # `persist-credentials: false`, `github_token`, and the
+          # `--disallowedTools` deny rules below (see the header). Do NOT add
           # `gh api`, `git`, or a bare `Bash`: `gh api` is write-capable, and
           # this model ingests untrusted diff content. Privileged work belongs
           # in workflow steps, which are deterministic and never read model
@@ -364,6 +388,7 @@ jobs:
           # looking for another way round.
           claude_args: |
             --allowedTools "mcp__github_inline_comment__create_inline_comment,Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*),Read"
+            --disallowedTools "Read(.git/**),Read(//proc/**)"
             --append-system-prompt "Correction to the base instructions, which were written for a code-writing run and do not describe this one. This is a REVIEW-ONLY invocation. You cannot stage, commit, push or delete files, there is no push script, and git is not on the allowlist, so git add, git commit, git rm, git status, git diff and git log are all refused. Ignore the base instruction to use git diff origin/main...HEAD for the PR diff. Use gh pr diff for the diff, gh pr view --json commits for the commit list, gh pr view --json headRefOid for the head SHA, gh pr view --json files for changed files, and Read for file contents. Per-file history is genuinely unavailable. Never state that you ran a git command."
 
       # A review that posts NOTHING must not report success.
