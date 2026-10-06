@@ -10,7 +10,7 @@ import { dirname, join } from "node:path";
 
 import type { Migration } from "../types";
 import { CLIError } from "../../util/cli-error";
-import { buildInvocation } from "../../util/invocation";
+import { getCliPrefix } from "../../util/package-manager";
 import { escapeRegExp } from "../../util/regex";
 import {
   ENGINES,
@@ -83,7 +83,7 @@ async function assertRootIsFree(directory: string): Promise<void> {
     `Cannot create the rule directories: .taskless/${RULES_DIRECTORY}/ still contains ` +
       `${stray.join(", ")} from the pre-migration layout. Move ` +
       `${stray.length === 1 ? "it" : "them"} into .taskless/sg/rules/ by hand, ` +
-      `then run \`${buildInvocation()} init\` again.`,
+      `then run \`${getCliPrefix()} init\` again.`,
     "SCAFFOLD_CONFLICT"
   );
 }
