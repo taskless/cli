@@ -68,7 +68,7 @@ export async function saveToken(
 
   const tasklessDirectory = join(cwd, ".taskless");
   await mkdir(tasklessDirectory, { recursive: true });
-  await addToGitignore(cwd, [".env.local.json"]);
+  await addToGitignore(cwd, [PER_REPO_AUTH_FILE]);
   await writeFile(join(tasklessDirectory, PER_REPO_AUTH_FILE), content, {
     mode: 0o600,
   });
@@ -126,7 +126,7 @@ function warnIfLegacyToken(): void {
 
 /** Warn if .env.local.json is tracked by git */
 async function warnIfTracked(cwd: string): Promise<void> {
-  const relativePath = ".taskless/.env.local.json";
+  const relativePath = `.taskless/${PER_REPO_AUTH_FILE}`;
   try {
     const output = await new Promise<string>((resolve, reject) => {
       execFile("git", ["ls-files", relativePath], { cwd }, (error, stdout) => {
@@ -145,7 +145,7 @@ async function warnIfTracked(cwd: string): Promise<void> {
         [
           `Warning: ${relativePath} is tracked by git. It contains an authentication token.`,
           `  1. Untrack it and keep your local copy: git rm --cached ${relativePath}`,
-          "  2. Make sure .taskless/.gitignore lists .env.local.json, then commit.",
+          `  2. Make sure .taskless/.gitignore lists ${PER_REPO_AUTH_FILE}, then commit.`,
           `  3. If a commit containing it was pushed, treat the token as exposed and replace it: \`${cli} auth logout\`, then \`${cli} auth login\`. Logout only deletes the local copy, so it does not revoke the old token.`,
         ].join("\n")
       );
