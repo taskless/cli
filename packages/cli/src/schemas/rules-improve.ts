@@ -28,7 +28,11 @@ export const inputSchema = z.object({
 /** Output schema for `taskless rule improve --json` on success */
 export const outputSchema = z.object({
   success: z.literal(true),
-  requestId: z.string().describe("The iterate request's id"),
+  requestId: z
+    .string()
+    .describe(
+      "The iterate request's id. Not a rule id: only `rule improve --resume` takes it back"
+    ),
   rules: z
     .array(z.string())
     .describe("Ids of the rules that were written (their directory names)"),

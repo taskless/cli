@@ -1,7 +1,6 @@
 import {
   fetchRule,
   getRequestStatus,
-  retryAdvice,
   type RequestStatus,
   type ServedRule,
 } from "../api/v2";
@@ -34,9 +33,42 @@ export interface GenerationContext {
   orgId?: string | number;
   /** Progress lines for a human; never part of `--json` output. */
   onProgress: (message: string) => void;
+  /**
+   * The command that picks this request up again without submitting a new
+   * one, named whenever the CLI stops waiting on a request that may still
+   * finish.
+   */
+  resumeCommand: string;
 }
 
 const POLL_INTERVAL_MS = 15_000;
+
+/**
+ * How many retryable `unavailable` outcomes in a row a poll or a rule fetch
+ * absorbs before giving up: about two minutes at `POLL_INTERVAL_MS`, enough to
+ * ride out a deploy or a rate limit without hammering a service that is
+ * telling the CLI to back off. Any answer that is not `unavailable` resets the
+ * count, so it measures one outage, not the request's whole life.
+ */
+const MAX_CONSECUTIVE_UNAVAILABLE = 8;
+
+/** Wait between attempts. Tests collapse it by stubbing `setTimeout`. */
+async function pause(): Promise<void> {
+  await new Promise((resolve) => setTimeout(resolve, POLL_INTERVAL_MS));
+}
+
+/**
+ * The sentences for a request the CLI stopped watching. Giving up on a poll
+ * cancels nothing on the service, so the request may still finish, and
+ * running the command again without `--resume` is a SECOND request rather
+ * than a retry of this one.
+ */
+function abandonedRequestAdvice(
+  context: GenerationContext,
+  requestId: string
+): string {
+  return ` Request ${requestId} was not cancelled and may still complete on the service. Run \`${context.resumeCommand}\` to keep waiting for it; running the command without \`--resume\` submits a new request.`;
+}
 
 /**
  * The service returns the same 404 `organization_not_found` whether the org
@@ -73,22 +105,30 @@ export type FinishedRequest = RequestStatus;
 /**
  * Poll a request until it stops moving.
  *
+ * A retryable `unavailable` (a network failure, `408`, `429`, or a `5xx`) is
+ * not an answer about the request either, but it is one a later poll may not
+ * repeat, so polling carries on through up to `MAX_CONSECUTIVE_UNAVAILABLE` of
+ * them in a row.
+ *
  * Throws a `CLIError` for anything that is not an answer about the request:
  * `request_not_found` (the id will never resolve, reported as `NETWORK_ERROR`
- * because the remedy is to resubmit), a rejected token, and an unreachable
- * service, each with the code a caller branches on.
+ * because the remedy is to resubmit), a rejected token, and a service that
+ * stayed unreachable or answered with something unreadable, each with the
+ * code a caller branches on.
  */
 export async function awaitRequest(
   context: GenerationContext,
   requestId: string
 ): Promise<FinishedRequest> {
+  let unavailable = 0;
   while (true) {
-    await new Promise((resolve) => setTimeout(resolve, POLL_INTERVAL_MS));
+    await pause();
 
     const outcome = await getRequestStatus(context.token, requestId, {
       repositoryUrl: context.repositoryUrl,
       ...(context.orgId === undefined ? {} : { orgId: context.orgId }),
     });
+    if (outcome.status !== "unavailable") unavailable = 0;
     switch (outcome.status) {
       case "ok": {
         break;
@@ -119,8 +159,15 @@ export async function awaitRequest(
         );
       }
       case "unavailable": {
+        unavailable += 1;
+        if (outcome.retryable && unavailable < MAX_CONSECUTIVE_UNAVAILABLE) {
+          context.onProgress(
+            `Status check failed (${outcome.reason}); retrying (${String(unavailable)}/${String(MAX_CONSECUTIVE_UNAVAILABLE - 1)})...`
+          );
+          continue;
+        }
         throw new CLIError(
-          `Polling failed: ${outcome.reason}.${retryAdvice(outcome)}`,
+          `Polling failed: ${outcome.reason}${outcome.retryable ? `, ${String(unavailable)} times in a row` : ""}.${abandonedRequestAdvice(context, requestId)}`,
           "NETWORK_ERROR"
         );
       }
@@ -181,6 +228,7 @@ export interface Delivered {
 export async function deliverRevisions(
   cwd: string,
   context: GenerationContext,
+  requestId: string,
   revisions: FinishedRequest["revisions"]
 ): Promise<Delivered> {
   // The contract requires `revisions` on every status, but `getRequestStatus`
@@ -199,16 +247,13 @@ export async function deliverRevisions(
     revisions.map(async ({ ruleId, revisionId }) => ({
       ruleId,
       revisionId,
-      outcome: await fetchRule(context.token, ruleId, {
-        repositoryUrl: context.repositoryUrl,
-        ...(context.orgId === undefined ? {} : { orgId: context.orgId }),
-      }),
+      ...(await fetchGenerated(context, ruleId)),
     }))
   );
 
   const verified = [];
-  for (const { ruleId, revisionId, outcome } of fetched) {
-    const served = servedOrThrow(ruleId, outcome);
+  for (const { ruleId, revisionId, outcome, attempts } of fetched) {
+    const served = servedOrThrow(context, ruleId, requestId, outcome, attempts);
     const verdict = await verifyServedRule(served, { ruleId, revisionId });
     if (!verdict.ok) {
       throw new CLIError(
@@ -232,9 +277,43 @@ export async function deliverRevisions(
   return delivered;
 }
 
+type FetchOutcome = Awaited<ReturnType<typeof fetchRule>>;
+
+/**
+ * Fetch a just-generated rule, retrying a retryable `unavailable` the way
+ * polling does. The rule already exists by now, so giving up on a blip would
+ * throw away a generation that succeeded. Never throws: the last outcome is
+ * returned with the number of attempts it took, for `servedOrThrow` to judge.
+ */
+async function fetchGenerated(
+  context: GenerationContext,
+  ruleId: string
+): Promise<{ outcome: FetchOutcome; attempts: number }> {
+  for (let attempts = 1; ; attempts += 1) {
+    const outcome = await fetchRule(context.token, ruleId, {
+      repositoryUrl: context.repositoryUrl,
+      ...(context.orgId === undefined ? {} : { orgId: context.orgId }),
+    });
+    if (
+      outcome.status !== "unavailable" ||
+      !outcome.retryable ||
+      attempts >= MAX_CONSECUTIVE_UNAVAILABLE
+    ) {
+      return { outcome, attempts };
+    }
+    context.onProgress(
+      `Fetching rule ${ruleId} failed (${outcome.reason}); retrying (${String(attempts)}/${String(MAX_CONSECUTIVE_UNAVAILABLE - 1)})...`
+    );
+    await pause();
+  }
+}
+
 function servedOrThrow(
+  context: GenerationContext,
   ruleId: string,
-  outcome: Awaited<ReturnType<typeof fetchRule>>
+  requestId: string,
+  outcome: FetchOutcome,
+  attempts: number
 ): ServedRule {
   switch (outcome.status) {
     case "ok": {
@@ -262,8 +341,9 @@ function servedOrThrow(
       );
     }
     case "unavailable": {
+      // Nothing has been written: every rule is fetched before any is.
       throw new CLIError(
-        `Rule ${ruleId} could not be fetched: ${outcome.reason}.${retryAdvice(outcome)}`,
+        `Rule ${ruleId} was generated by request ${requestId} but could not be fetched: ${outcome.reason}${attempts > 1 ? `, ${String(attempts)} times in a row` : ""}. No rules were written. Run \`${context.resumeCommand}\` to fetch it again without generating it again.`,
         "NETWORK_ERROR"
       );
     }

@@ -1,4 +1,4 @@
-# Topic: improve-rule     (CLI v%(CLI_VERSION)s / topic v6)
+# Topic: improve-rule     (CLI v%(CLI_VERSION)s / topic v7)
 
 ## Goal
 Iterate on an existing Taskless rule. The CLI submits the user's
@@ -128,7 +128,7 @@ When `--json` is set, failures emit `{ ok: false, code, message }`:
 | `UNSUPPORTED_REMOTE_HOST`| `origin` is not GitHub              | tell the user; `auth login` cannot fix it     |
 | `INVALID_INPUT`          | `--from` JSON failed validation     | re-read input schema, fix, retry              |
 | `RULE_NOT_FOUND`         | the service did not issue this rule | re-check the directory name; a local or pre-0.12.0 rule needs the anonymous flow |
-| `NETWORK_ERROR`          | API submit/poll failed              | report and suggest retry                      |
+| `NETWORK_ERROR`          | API submit/poll failed              | the CLI already retried transient failures. If the message names a `--resume` command, run that to keep waiting on the same request; re-running with `--from` submits a NEW request, so confirm with the user first |
 | `RULE_GENERATION_FAILED` | API returned a generation failure   | report; suggest enriching guidance/references |
 | `RULE_UNSUPPORTED`       | plan lacks this generation type     | tell the user to enable it; do not retry      |
 

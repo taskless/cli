@@ -65,6 +65,31 @@ export interface StubServerOptions {
   status?: string;
   /** `error` on the terminal status, for `failed` / `unsupported`. */
   error?: string;
+  /**
+   * Failures to answer with before the real response, consumed one per call
+   * in order: an HTTP status, or `"network"` for a fetch that throws the way
+   * Node's does on a transport failure. `poll` answers status checks, and may
+   * also hold `"building"`, a real in-progress answer; `fetch` answers
+   * `GET rule/{ruleId}` across all rules.
+   */
+  failures?: {
+    poll?: Array<StubFailure | "building">;
+    fetch?: StubFailure[];
+  };
+}
+
+/** One injected failure: an HTTP status, or a transport failure. */
+export type StubFailure = number | "network";
+
+function failWith(failure: StubFailure): Response {
+  if (failure === "network") {
+    throw new TypeError("fetch failed", {
+      cause: Object.assign(new Error("connect ECONNREFUSED"), {
+        code: "ECONNREFUSED",
+      }),
+    });
+  }
+  return Response.json({}, { status: failure });
 }
 
 export const REQUEST_ID = "11111111-1111-1111-1111-111111111111";
@@ -74,6 +99,8 @@ export const ITERATE_REQUEST_ID = "22222222-2222-2222-2222-222222222222";
 export function stubV2Server(
   options: StubServerOptions
 ): ReturnType<typeof vi.fn> {
+  const pollFailures = [...(options.failures?.poll ?? [])];
+  const fetchFailures = [...(options.failures?.fetch ?? [])];
   const fetchMock = vi.fn((input: string | URL | Request): Response => {
     const request = input instanceof Request ? input : new Request(input);
     const url = new URL(request.url);
@@ -94,6 +121,15 @@ export function stubV2Server(
       });
     }
     if (method === "GET" && pathname.startsWith("/cli/api/v2/request/")) {
+      const failure = pollFailures.shift();
+      if (failure === "building") {
+        return Response.json({
+          requestId: pathname.split("/").at(-1),
+          status: "building",
+          revisions: [],
+        });
+      }
+      if (failure !== undefined) return failWith(failure);
       return Response.json({
         requestId: pathname.split("/").at(-1),
         status: options.status ?? "generated",
@@ -105,6 +141,8 @@ export function stubV2Server(
       });
     }
     if (method === "GET" && pathname.startsWith("/cli/api/v2/rule/")) {
+      const failure = fetchFailures.shift();
+      if (failure !== undefined) return failWith(failure);
       const ruleId = decodeURIComponent(pathname.split("/").at(-1) ?? "");
       const match = options.produced.find(({ rule }) => rule.id === ruleId);
       return match === undefined
