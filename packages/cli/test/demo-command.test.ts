@@ -168,7 +168,7 @@ describe("the runtime sample does not weaken the execution gate", () => {
     await run(["demo", "runtime", "-d", project]);
   });
 
-  it("is skipped by an unauthenticated check, with the existing reason", async () => {
+  it("is skipped by an unauthenticated check, with the unauthenticated reason", async () => {
     const { stdout, stderr, exitCode } = await run(["check", "-d", project]);
     expect(exitCode).toBe(0);
     // The skip is a NOTICE on stderr, not a finding on stdout: `check` found no
@@ -176,7 +176,7 @@ describe("the runtime sample does not weaken the execution gate", () => {
     // opposite of what the gate means.
     expect(stdout).toContain("No issues found.");
     expect(stderr).toContain("env-keys-declared");
-    expect(stderr).toContain("runtime rules were not verified and did not run");
+    expect(stderr).toContain("not authenticated, so it was not verified");
   });
 
   it("does not execute its fixtures without the documented flag", async () => {

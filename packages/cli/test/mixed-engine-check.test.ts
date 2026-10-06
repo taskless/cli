@@ -341,7 +341,9 @@ describe("check over a project with both engines", () => {
       expect(output.failures?.[0]).toContain("Vale did not run");
       expect(output.failures?.[0]).toContain("no-simply/.vale.ini line 1:");
       expect(output.failures?.[0]).toContain("no-simply.no-simply");
-      expect(output.notices).toBeUndefined();
+      expect(output.notices).toEqual([
+        expect.stringMatching(/^Rules were not verified: not authenticated\./),
+      ]);
 
       // The other engine is unaffected: ast-grep still reports, and Vale, which
       // was refused, reports nothing rather than something partial.

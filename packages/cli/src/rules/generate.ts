@@ -50,9 +50,20 @@ export function orgNotFoundMessage(): string {
     "",
     "Most often the organization's Taskless GitHub App installation does not cover this repository. It can also mean your login no longer has access to the organization.",
     "",
-    "- Confirm the Taskless app is installed on this repository's owner and includes this repository.",
-    `- If access recently changed, re-authenticate with \`${getCliPrefix()} auth login\`.`,
+    ...orgNotFoundRemedy().map((step) => `- ${step}`),
   ].join("\n");
+}
+
+/**
+ * The steps that resolve `organization_not_found`, one sentence each. Shared
+ * with `check`, which reports the same condition and must name the same
+ * remedy.
+ */
+export function orgNotFoundRemedy(): string[] {
+  return [
+    "Confirm the Taskless app is installed on this repository's owner and includes this repository.",
+    `If access recently changed, re-authenticate with \`${getCliPrefix()} auth login\`.`,
+  ];
 }
 
 /** A request's terminal status. */

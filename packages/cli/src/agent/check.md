@@ -1,4 +1,4 @@
-# Topic: check     (CLI v%(CLI_VERSION)s / topic v5)
+# Topic: check     (CLI v%(CLI_VERSION)s / topic v6)
 
 ## Goal
 Run the applicable rules against the codebase and report matches. Two
@@ -40,7 +40,12 @@ logged in:
 - **Logged out, `--anonymous`, no GitHub remote, or service
   unavailable**: nothing is verified. ast-grep and Vale rules run as they
   are on disk, runtime rules are **skipped** (reported, never run), and
-  the exit code is unaffected.
+  the exit code is unaffected. `check` prints ONE notice saying the rules
+  were not verified and naming the fix: `%(TASKLESS_CLI)s auth login` (or
+  a `TASKLESS_TOKEN` secret in CI), dropping `--anonymous`, the specific
+  remote problem, or the GitHub App installation. It prints whether or not
+  the project has runtime rules, because the static rules ran unverified
+  either way. Pass the fix on to the user rather than ignoring it.
 - **`--dangerously-run-scripts`**: nothing is verified and no network
   call is made, logged in or not. Every rule of every engine runs,
   runtime included, behind a prominent warning. This is the only way to
@@ -55,7 +60,8 @@ plan does not include restoring rules, the git steps that do instead
 Notices about skipped runtime rules are human-readable stderr only.
 Under `--json` they do NOT appear as warnings; instead an additive
 optional `skipped: [{ rule, reason }]` array is included alongside the
-unchanged `{ success, results }`, and the CI backstop
+unchanged `{ success, results }`, the not-verified notice is an entry
+in `notices`, and the CI backstop
 (`%(TASKLESS_CLI)s agent ci`) is the enforcement point.
 
 ## An edited rule
