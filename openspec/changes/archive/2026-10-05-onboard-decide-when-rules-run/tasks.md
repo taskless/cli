@@ -12,7 +12,7 @@
 - [x] 2.3 Keep `hooks.md` clear of the hand-written-invocation guard in `recipe-cross-references.test.ts` without an allowlist entry
 - [x] 2.4 Add a `hooks` row to the topic table in `skills/taskless/SKILL.md`
 - [x] 2.5 Point the `ci` recipe at `detect --json`'s `ci` field and at `agent hooks` in See Also (topic v3 → v4)
-- [x] 2.6 Name `agent hooks` in the `check` recipe's See Also (topic v5 → v6)
+- [x] 2.6 Name `agent hooks` in the `check` recipe's See Also (topic v6 → v7)
 
 ## 3. The onboard step
 
