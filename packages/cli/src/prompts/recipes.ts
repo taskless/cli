@@ -197,7 +197,9 @@ export interface RecipeOptions {
    * `false` replaces the evidence steps with a statement of what the caller
    * must supply instead, and reduces a recipe citation to its topic name: the
    * route's final step names the destination rather than its fetch command,
-   * and `See Also` lists topics rather than invocations. It exists because `invocation` cannot do this job: that option
+   * and `See Also` lists topics rather than invocations.
+   *
+   * It exists because `invocation` cannot do this job: that option
    * substitutes the BINARY NAME inside a command, so a consumer with no CLI
    * setting it to a phrase renders `Run: <no CLI available> detect --json` — a
    * malformed instruction rather than a clean absence, and worse than either
