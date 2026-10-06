@@ -196,6 +196,7 @@ describe("v2 client", () => {
       expect(outcome).toEqual({
         status: "unavailable",
         reason: "the response was not a revision listing",
+        retryable: false,
       });
     });
   });
@@ -255,6 +256,7 @@ describe("v2 client", () => {
       expect(outcome).toEqual({
         status: "unavailable",
         reason: "HTTP 404 (rule_not_found)",
+        retryable: false,
       });
     });
 
@@ -264,7 +266,39 @@ describe("v2 client", () => {
         repositoryUrl: REPO,
         rules: [],
       });
-      expect(outcome).toEqual({ status: "unavailable", reason: "HTTP 503" });
+      expect(outcome).toEqual({
+        status: "unavailable",
+        reason: "HTTP 503",
+        retryable: true,
+      });
+    });
+
+    it.each([408, 429, 500, 502])(
+      "marks an undocumented %i as retryable",
+      async (status) => {
+        respond(status, "slow down");
+        const outcome = await reconcileRules("tok", {
+          repositoryUrl: REPO,
+          rules: [],
+        });
+        expect(outcome).toMatchObject({
+          status: "unavailable",
+          retryable: true,
+        });
+      }
+    );
+
+    it("does not mark an undocumented 403 as retryable", async () => {
+      respond(403, "forbidden");
+      const outcome = await reconcileRules("tok", {
+        repositoryUrl: REPO,
+        rules: [],
+      });
+      expect(outcome).toEqual({
+        status: "unavailable",
+        reason: "HTTP 403",
+        retryable: false,
+      });
     });
 
     it("reads a network failure as unavailable, never a throw", async () => {
@@ -276,6 +310,41 @@ describe("v2 client", () => {
       expect(outcome).toEqual({
         status: "unavailable",
         reason: "network error: fetch failed",
+        retryable: true,
+      });
+    });
+
+    it("names a network failure by its cause, which is where Node's fetch puts it", async () => {
+      const cause = Object.assign(
+        new Error("getaddrinfo ENOTFOUND example.invalid"),
+        { code: "ENOTFOUND" }
+      );
+      fetchMock.mockRejectedValue(new TypeError("fetch failed", { cause }));
+      const outcome = await reconcileRules("tok", {
+        repositoryUrl: REPO,
+        rules: [],
+      });
+      expect(outcome).toEqual({
+        status: "unavailable",
+        reason: "network error: getaddrinfo ENOTFOUND example.invalid",
+        retryable: true,
+      });
+    });
+
+    it("falls back to the cause's code when its message is empty", async () => {
+      // A refused connection to a dual-stack host: one error per address,
+      // gathered into an AggregateError whose own message is empty.
+      // eslint-disable-next-line unicorn/error-message -- the empty message is the case under test
+      const cause = Object.assign(new AggregateError([], ""), {
+        code: "ECONNREFUSED",
+      });
+      fetchMock.mockRejectedValue(new TypeError("fetch failed", { cause }));
+      const outcome = await reconcileRules("tok", {
+        repositoryUrl: REPO,
+        rules: [],
+      });
+      expect(outcome).toMatchObject({
+        reason: "network error: ECONNREFUSED",
       });
     });
 
@@ -285,7 +354,11 @@ describe("v2 client", () => {
         repositoryUrl: REPO,
         rules: [],
       });
-      expect(outcome.status).toBe("unavailable");
+      expect(outcome).toEqual({
+        status: "unavailable",
+        reason: "invalid response body",
+        retryable: false,
+      });
     });
   });
 });

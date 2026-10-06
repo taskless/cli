@@ -1,6 +1,6 @@
 import { getToken } from "../auth/token";
 import { resolveActingOrg } from "../auth/org";
-import { reconcileRules } from "../api/v2";
+import { reconcileRules, retryAdvice } from "../api/v2";
 import { resolveRepositoryUrl } from "../util/git-remote";
 import { getCliPrefix } from "../util/package-manager";
 import { recoveryAdvice } from "./recovery-advice";
@@ -212,25 +212,15 @@ export async function planCheck(
         }`
   );
   if (outcome.status !== "ok") {
-    const cause =
-      outcome.status === "unauthorized"
-        ? `authentication was rejected — run \`${getCliPrefix()} auth login\` to re-authenticate`
-        : outcome.status === "error" &&
-            outcome.code === "organization_not_found"
-          ? "the Taskless GitHub App installation does not cover this repository, or your login lost access to the organization"
-          : `the rule service was unavailable (${
-              outcome.status === "unavailable"
-                ? outcome.reason
-                : outcome.status === "error"
-                  ? outcome.code
-                  : "unexpected refusal"
-            })`;
+    const cause = reconcileFailureCause(outcome);
     const remaining = await discoverRuntimeRulesIn(runtimeRoot);
     return {
       ...empty,
       skipped: remaining.map((rule) => ({ rule: rule.name, reason: cause })),
       notices: [
-        `Rule verification could not be performed: ${cause}. Static rules ran unverified and runtime rules did not run.`,
+        `Rule verification could not be performed: ${cause}. Static rules ran unverified and runtime rules did not run.${
+          outcome.status === "unavailable" ? retryAdvice(outcome) : ""
+        }`,
       ],
       failures,
       integrity,
@@ -340,4 +330,36 @@ function withheldNotice(entitlement: PlanEntitlement): string {
       ? "."
       : `. Upgrade at ${entitlement.upgradeUrl}`)
   );
+}
+
+/**
+ * Why reconcile gave no verdicts, as a clause for the notice and each skipped
+ * rule.
+ *
+ * "Unavailable" is kept for the service not answering. A documented code is an
+ * answer, and calling it an outage sends the user to retry something that
+ * will be rejected identically every time.
+ */
+function reconcileFailureCause(
+  outcome: Exclude<Awaited<ReturnType<typeof reconcileRules>>, { status: "ok" }>
+): string {
+  switch (outcome.status) {
+    case "unauthorized": {
+      return `authentication was rejected — run \`${getCliPrefix()} auth login\` to re-authenticate`;
+    }
+    case "unavailable": {
+      return `the rule service was unavailable (${outcome.reason})`;
+    }
+    case "refused": {
+      return "the rule service answered with an unexpected refusal";
+    }
+    case "error": {
+      if (outcome.code === "organization_not_found") {
+        return "the Taskless GitHub App installation does not cover this repository, or your login lost access to the organization";
+      }
+      return `the rule service rejected the verification request (${outcome.code}${
+        outcome.details?.length ? `: ${outcome.details.join(", ")}` : ""
+      })`;
+    }
+  }
 }

@@ -2,12 +2,14 @@ import {
   listRevisions,
   reconcileRules,
   restoreRule,
+  retryAdvice,
   rollbackRule,
   type RevisionList,
   type ServedRule,
   type V2Outcome,
 } from "../api/v2";
 import { notRunOnPlanSentence, parseEntitlementV2 } from "../api/entitlement";
+import { describeRefusal } from "../api/refusal";
 import type { Identity } from "../auth/identity";
 import { CLIError } from "../util/cli-error";
 import { isRecord } from "../util/is-record";
@@ -73,14 +75,8 @@ function failure(
 ): CLIError {
   switch (outcome.status) {
     case "refused": {
-      const { message, upgradeUrl } = outcome.refusal;
-      // The service writes the upgrade link into `message` itself (measured
-      // against production, 2026-09-29), so it is added only when absent.
-      // Printing it twice reads as two different links.
       return new CLIError(
-        upgradeUrl === undefined || message.includes(upgradeUrl)
-          ? message
-          : `${message}\n\nUpgrade: ${upgradeUrl}`,
+        describeRefusal(outcome.refusal),
         "RULE_RECOVERY_NOT_IN_PLAN"
       );
     }
@@ -92,7 +88,7 @@ function failure(
     }
     case "unavailable": {
       return new CLIError(
-        `The rule service was unavailable (${outcome.reason}).`,
+        `The rule service was unavailable (${outcome.reason}).${retryAdvice(outcome)}`,
         "NETWORK_ERROR"
       );
     }
@@ -120,9 +116,17 @@ function failure(
             "NETWORK_ERROR"
           );
         }
+        case "validation_error": {
+          return new CLIError(
+            `The rule service rejected the request as invalid: ${(outcome.details ?? []).join(", ") || "no details were given"}.`,
+            "INVALID_INPUT"
+          );
+        }
         default: {
           return new CLIError(
-            `The rule service refused the request (${outcome.code}).`,
+            `The rule service refused the request (${outcome.code}${
+              outcome.details?.length ? `: ${outcome.details.join(", ")}` : ""
+            }).`,
             "NETWORK_ERROR"
           );
         }

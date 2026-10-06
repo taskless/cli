@@ -555,6 +555,26 @@ describe("rule restore / rule rollback", () => {
     expect(String(output.message)).toContain(`rule revisions ${RULE_ID}`);
   });
 
+  it("rollback reports a transient outage as NETWORK_ERROR and says to try again", async () => {
+    stub({ verdict: { kind: "run" }, served: {}, status: 503 });
+    const output = await run(["rollback", RULE_ID, "r1"]);
+    expect(output).toMatchObject({ ok: false, code: "NETWORK_ERROR" });
+    expect(String(output.message)).toContain("(HTTP 503)");
+    expect(String(output.message)).toContain("try again");
+  });
+
+  it("rollback reports validation_error as INVALID_INPUT with the service's details", async () => {
+    stub({
+      verdict: { kind: "run" },
+      served: { error: "validation_error", details: ["revisionId: invalid"] },
+      status: 400,
+    });
+    const output = await run(["rollback", RULE_ID, "r1"]);
+    expect(output).toMatchObject({ ok: false, code: "INVALID_INPUT" });
+    expect(String(output.message)).toContain("revisionId: invalid");
+    expect(String(output.message)).not.toMatch(/unavailable|try again/);
+  });
+
   it("rollback relays a plan refusal", async () => {
     stub({ verdict: { kind: "run" }, served: REFUSAL });
     const output = await run(["rollback", RULE_ID, "r1"]);

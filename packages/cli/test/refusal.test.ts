@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import { parseRefusal, stripControlCharacters } from "../src/api/refusal";
+import {
+  describeRefusal,
+  parseRefusal,
+  stripControlCharacters,
+} from "../src/api/refusal";
 
 const UPGRADE = "https://app.taskless.io/org/1/upgrade?from=restore";
 
@@ -85,5 +89,28 @@ describe("stripControlCharacters", () => {
 
   it("leaves ordinary Unicode alone", () => {
     expect(stripControlCharacters("restaurée — ✓")).toBe("restaurée — ✓");
+  });
+});
+
+describe("describeRefusal", () => {
+  const reason = "RESTORE_RULES_NOT_IN_PLAN";
+
+  it("appends the upgrade link when the message does not carry it", () => {
+    expect(
+      describeRefusal({ reason, message: "Not in plan.", upgradeUrl: UPGRADE })
+    ).toBe(`Not in plan.\n\nUpgrade: ${UPGRADE}`);
+  });
+
+  it("does not repeat a link the message already carries", () => {
+    const message = `Not in plan. See ${UPGRADE}`;
+    expect(describeRefusal({ reason, message, upgradeUrl: UPGRADE })).toBe(
+      message
+    );
+  });
+
+  it("is the message alone when there is no link", () => {
+    expect(describeRefusal({ reason, message: "Not in plan." })).toBe(
+      "Not in plan."
+    );
   });
 });

@@ -63,3 +63,18 @@ export function parseRefusal(value: unknown): Refusal | undefined {
     ...(upgradeUrl === undefined ? {} : { upgradeUrl }),
   };
 }
+
+/**
+ * The text to print for a refusal: the service's message, followed by the
+ * upgrade link when there is one.
+ *
+ * The service writes the link into `message` itself (measured against
+ * production, 2026-09-29), so it is added only when absent. Printing it twice
+ * reads as two different links, and relying on the service to keep writing it
+ * would drop it silently the day it stops.
+ */
+export function describeRefusal({ message, upgradeUrl }: Refusal): string {
+  return upgradeUrl === undefined || message.includes(upgradeUrl)
+    ? message
+    : `${message}\n\nUpgrade: ${upgradeUrl}`;
+}
