@@ -10,6 +10,7 @@ import { dirname, join } from "node:path";
 
 import type { Migration } from "../types";
 import { CLIError } from "../../util/cli-error";
+import { buildInvocation } from "../../util/invocation";
 import { escapeRegExp } from "../../util/regex";
 import {
   ENGINES,
@@ -64,6 +65,11 @@ async function move(source: string, destination: string): Promise<void> {
  * `sg/rules/`; a `*.yml` still sitting there means `0004` did not complete, and
  * creating `rules/sg/` around it would interleave two layouts in one tree with
  * no way to tell them apart afterwards.
+ *
+ * The remedy is a hand move, not "run 0004". No command runs one migration,
+ * and by the time this runs `0004` is recorded as done, so nothing would ever
+ * run it again. The message also names no migration number: the runner
+ * prefixes it with `Migration 5 failed:`, and a second number reads as noise.
  */
 async function assertRootIsFree(directory: string): Promise<void> {
   const root = join(directory, RULES_DIRECTORY);
@@ -75,8 +81,9 @@ async function assertRootIsFree(directory: string): Promise<void> {
 
   throw new CLIError(
     `Cannot create the rule directories: .taskless/${RULES_DIRECTORY}/ still contains ` +
-      `${stray.join(", ")} from the pre-migration layout. Migration 0004 moves those to ` +
-      `.taskless/sg/rules/; run it to completion first.`,
+      `${stray.join(", ")} from the pre-migration layout. Move ` +
+      `${stray.length === 1 ? "it" : "them"} into .taskless/sg/rules/ by hand, ` +
+      `then run \`${buildInvocation()} init\` again.`,
     "SCAFFOLD_CONFLICT"
   );
 }

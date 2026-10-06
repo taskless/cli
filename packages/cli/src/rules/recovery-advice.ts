@@ -45,13 +45,26 @@ function ruleDirectory(ruleId: string, engine?: EngineName): string {
     : `.taskless/rules/${engine}/${ruleId}/`;
 }
 
-/** The sentence for a plan known not to include rule recovery. */
+/**
+ * The sentence for a plan known not to include rule recovery.
+ *
+ * It restores from the commit BEFORE a change, never from the change itself.
+ * `git log` lists the commit that deleted or edited the rule first, and
+ * restoring from that commit restores the damage: a deleted rule is not in
+ * it at all, so `git restore` puts nothing back. A change not yet committed
+ * appears in no commit, so it gets `HEAD`, which still holds the rule as
+ * issued. One sentence covers an edited, a deleted and a renamed rule alike.
+ *
+ * `~1` rather than `^`: zsh with `extendedglob` reads a bare `^` as a glob
+ * negation, and the `check` recipe already spells the parent `~1`.
+ */
 function gitSteps({ ruleId, engine, afterwards, otherwise }: RecoveryTarget) {
   const directory = ruleDirectory(ruleId, engine);
   return (
-    `Restoring rules is not included in your organization's plan, so recover ${ruleId} from git: ` +
-    `\`git log -- ${directory}\` lists the commits that changed it, and ` +
-    `\`git restore --source=<commit> -- ${directory}\` puts it back as of one of them.` +
+    `Restoring rules is not included in your organization's plan, so recover ${ruleId} from git. ` +
+    `If the change is not committed yet, \`git restore --source=HEAD -- ${directory}\` puts it back. ` +
+    `If it is, \`git log -- ${directory}\` lists the commits that changed it, newest first, and ` +
+    `\`git restore --source=<commit>~1 -- ${directory}\` puts it back as it was before <commit>.` +
     (afterwards === undefined ? "" : ` Then ${afterwards}.`) +
     (otherwise === undefined ? "" : ` Or ${otherwise}.`)
   );

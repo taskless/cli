@@ -8,6 +8,7 @@ import {
 } from "../util/git-remote";
 import { getCliPrefix } from "../util/package-manager";
 import { orgNotFoundRemedy } from "./generate";
+import type { EngineName } from "./layout";
 import { recoveryAdvice } from "./recovery-advice";
 import { reportRules } from "./report";
 import type { RunDirectory } from "./run-directory";
@@ -192,7 +193,7 @@ export async function planCheck(
         duplicate.engines
           .map((engine) => `.taskless/rules/${engine}/${duplicate.ruleId}/`)
           .join(", ") +
-        "), so neither can be verified and neither ran. Rename one."
+        `), so neither can be verified and neither ran. ${renameAdvice(duplicate.ruleId, duplicate.engines)}`
     );
   }
   for (const rule of report.unreadable) {
@@ -341,6 +342,37 @@ export async function planCheck(
 }
 
 /** The one notice a withheld run prints, so the upgrade URL appears once. */
+/**
+ * What a user does about a duplicate id: which rule to rename, and where the id
+ * lives inside it.
+ *
+ * The local rule, never the issued one. Renaming an issued rule turns it into
+ * a copy of the rule service's id, and a copy does not run: `check` fails one
+ * under `sg` or `vale`, and skips one under `runtime`. Which side is issued is
+ * not known here, because the pair is refused before reconcile, so the user is
+ * told how to tell rather than told a path.
+ *
+ * The places are the ones migration `9` rewrites. That migration does this
+ * automatically, but only once: it does not run again on a current scaffold,
+ * so a collision made afterwards is renamed by hand.
+ */
+function renameAdvice(ruleId: string, engines: readonly EngineName[]): string {
+  const places: Record<EngineName, string> = {
+    sg:
+      `under sg, the directory, ${ruleId}.yml and its \`id:\`, and each ` +
+      `.tests/${ruleId}-*-test.yml and its \`id:\``,
+    vale:
+      `under vale, the directory, ${ruleId}.yml, and in .vale.ini the ` +
+      `\`tskl) rule = ${ruleId}\` breadcrumb and the \`${ruleId}.${ruleId}\` key`,
+    runtime: "under runtime, the directory alone",
+  };
+  return (
+    "Rename the rule you wrote locally, not the one Taskless issued: a renamed " +
+    "issued rule becomes a copy, and a copy does not run. The id appears " +
+    `${engines.map((engine) => places[engine]).join("; ")}.`
+  );
+}
+
 function withheldNotice(entitlement: PlanEntitlement): string {
   const count = entitlement.withheld.length;
   return (

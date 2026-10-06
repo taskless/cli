@@ -758,6 +758,15 @@ describe("check: static vs runtime dispatch", () => {
     expect(output.failures?.join("\n")).toMatch(
       /\.taskless\/rules\/sg\/demo\/.*\.taskless\/rules\/runtime\/demo\//
     );
+    // Not "Rename one.": renaming the issued side makes it a copy, which does
+    // not run either, and a rename has to reach every place the id appears.
+    const failure = output.failures?.join("\n") ?? "";
+    expect(failure).toContain(
+      "Rename the rule you wrote locally, not the one Taskless issued"
+    );
+    expect(failure).toContain(
+      "under sg, the directory, demo.yml and its `id:`, and each .tests/demo-*-test.yml and its `id:`; under runtime, the directory alone."
+    );
   });
 
   it("reconcile unavailable: runtime skipped, static runs, exit 0, and it says so", async () => {

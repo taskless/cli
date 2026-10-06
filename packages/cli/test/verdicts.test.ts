@@ -460,9 +460,10 @@ describe("recoveryAdvice", () => {
 
   it("gives the git steps for the rule's directory when restoreRules is false", () => {
     expect(recoveryAdvice(false, restore)(target)).toBe(
-      "Restoring rules is not included in your organization's plan, so recover no-eval-3fa9c21b from git: " +
-        "`git log -- .taskless/rules/sg/no-eval-3fa9c21b/` lists the commits that changed it, and " +
-        "`git restore --source=<commit> -- .taskless/rules/sg/no-eval-3fa9c21b/` puts it back as of one of them."
+      "Restoring rules is not included in your organization's plan, so recover no-eval-3fa9c21b from git. " +
+        "If the change is not committed yet, `git restore --source=HEAD -- .taskless/rules/sg/no-eval-3fa9c21b/` puts it back. " +
+        "If it is, `git log -- .taskless/rules/sg/no-eval-3fa9c21b/` lists the commits that changed it, newest first, and " +
+        "`git restore --source=<commit>~1 -- .taskless/rules/sg/no-eval-3fa9c21b/` puts it back as it was before <commit>."
     );
   });
 
@@ -606,9 +607,10 @@ describe("applyVerdicts on a plan without rule recovery", () => {
     );
     expect(plan.failures).toEqual([
       `vale rule ${VALE.ruleId} is a copy of Taskless rule ${SOURCE}, which was deleted (changed .vale.ini), so it did not run and \`check\` fails. ` +
-        `${GIT}, so recover ${SOURCE} from git: ` +
-        `\`git log -- .taskless/rules/vale/${SOURCE}/\` lists the commits that changed it, and ` +
-        `\`git restore --source=<commit> -- .taskless/rules/vale/${SOURCE}/\` puts it back as of one of them. ` +
+        `${GIT}, so recover ${SOURCE} from git. ` +
+        `If the change is not committed yet, \`git restore --source=HEAD -- .taskless/rules/vale/${SOURCE}/\` puts it back. ` +
+        `If it is, \`git log -- .taskless/rules/vale/${SOURCE}/\` lists the commits that changed it, newest first, and ` +
+        `\`git restore --source=<commit>~1 -- .taskless/rules/vale/${SOURCE}/\` puts it back as it was before <commit>. ` +
         `Then delete .taskless/rules/vale/${VALE.ruleId}/.`,
     ]);
     expect(plan.notices).toEqual([]);
@@ -639,7 +641,7 @@ describe("applyVerdicts on a plan without rule recovery", () => {
       `\`git log -- '.taskless/rules/*/${SOURCE}/*'\``
     );
     expect(plan.failures[0]).toContain(
-      `\`git restore --source=<commit> -- '.taskless/rules/*/${SOURCE}/*'\``
+      `\`git restore --source=<commit>~1 -- '.taskless/rules/*/${SOURCE}/*'\``
     );
     expect(
       plan.failures[0]?.endsWith(
