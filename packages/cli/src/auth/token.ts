@@ -138,8 +138,16 @@ async function warnIfTracked(cwd: string): Promise<void> {
       });
     });
     if (output.length > 0) {
+      // Already in the index, so a .gitignore entry alone changes nothing:
+      // git keeps tracking a file it already tracks.
+      const cli = getCliPrefix();
       console.error(
-        "Warning: .taskless/.env.local.json is tracked by git. This file contains authentication tokens and should be gitignored."
+        [
+          `Warning: ${relativePath} is tracked by git. It contains an authentication token.`,
+          `  1. Untrack it and keep your local copy: git rm --cached ${relativePath}`,
+          "  2. Make sure .taskless/.gitignore lists .env.local.json, then commit.",
+          `  3. If a commit containing it was pushed, treat the token as exposed and replace it: \`${cli} auth logout\`, then \`${cli} auth login\`. Logout only deletes the local copy, so it does not revoke the old token.`,
+        ].join("\n")
       );
     }
   } catch {
