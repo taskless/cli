@@ -219,6 +219,21 @@ describe("v2 client", () => {
       });
     });
 
+    it("strips control characters from server-authored details and codes", async () => {
+      respond(400, {
+        error: "validation_error",
+        details: ["prompt: required\u001B[2J", 42],
+      });
+      expect(
+        await submitRequest("tok", { repositoryUrl: REPO, prompt: "" })
+      ).toMatchObject({ details: ["prompt: required[2J"] });
+
+      respond(404, { error: "not_documented\u001B]0;title\u0007" });
+      expect(
+        await getRequestStatus("tok", "req-1", { repositoryUrl: REPO })
+      ).toMatchObject({ reason: "HTTP 404 (not_documented]0;title)" });
+    });
+
     it("maps rule_not_found on iterate, so a caller can report RULE_NOT_FOUND", async () => {
       respond(404, { error: "rule_not_found" });
       const outcome = await iterateRule("tok", "gone-00000000", {
