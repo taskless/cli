@@ -3,7 +3,7 @@ import { readFile } from "node:fs/promises";
 import process from "node:process";
 import { defineCommand } from "citty";
 
-import { ZodError } from "zod";
+import { z, ZodError } from "zod";
 
 import {
   identityFailureCode,
@@ -115,8 +115,58 @@ function describeSubmitFailure(
   }
 }
 
+/**
+ * The request id `--resume` names, or `undefined` when the flag is absent.
+ *
+ * A resumed request was already submitted, so there is nothing for `--from` to
+ * describe: passing both is a mistake about which request is meant, and is
+ * refused rather than guessed at.
+ */
+function resumeRequestId(
+  args: { resume?: string; from?: string },
+  subcommand: "create" | "improve",
+  fail: (message: string, code?: CLIErrorCode) => never
+): string | undefined {
+  if (args.resume === undefined) return undefined;
+  if (args.from !== undefined) {
+    fail(
+      `--resume picks up a request that was already submitted, so it takes no --from file.\n  Example: ${getCliPrefix()} rule ${subcommand} --resume <requestId>`,
+      "INVALID_INPUT"
+    );
+  }
+  const requestId = args.resume.trim();
+  // The service documents request ids as UUIDs. `guid`, not `uuid`: the
+  // shape is what matters here, not the RFC version bits.
+  if (!z.guid().safeParse(requestId).success) {
+    fail(
+      `--resume takes the request id a previous \`rule ${subcommand}\` printed, a UUID. Got "${args.resume}".`,
+      "INVALID_INPUT"
+    );
+  }
+  return requestId;
+}
+
+/**
+ * Resolve identity (orgId from JWT, repositoryUrl from git remote), or fail.
+ * `resolveIdentity` throws a CLIError carrying its own code. Read the field;
+ * never re-derive the code from the message.
+ */
+async function identityOrFail(
+  cwd: string,
+  fail: (message: string, code?: CLIErrorCode) => never
+): Promise<Identity> {
+  try {
+    return await resolveIdentity(cwd);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    fail(message, identityFailureCode(error));
+  }
+}
+
 /** How {@link completeRequest} reports, per command. */
 interface CompletionOptions {
+  /** Which command this is, for the `--resume` line a give-up names. */
+  subcommand: "create" | "improve";
   json: boolean;
   fail: (message: string, code?: CLIErrorCode) => never;
   /** "Generated" or "Updated", for human output. */
@@ -145,6 +195,7 @@ async function completeRequest(
     repositoryUrl: identity.repositoryUrl,
     orgId: identity.orgSubject,
     onProgress: (message: string) => console.error(message),
+    resumeCommand: `${getCliPrefix()} rule ${options.subcommand} --resume ${requestId}`,
   };
 
   let delivered: Delivered;
@@ -179,7 +230,12 @@ async function completeRequest(
         return 0;
       }
     }
-    delivered = await deliverRevisions(cwd, context, status.revisions);
+    delivered = await deliverRevisions(
+      cwd,
+      context,
+      requestId,
+      status.revisions
+    );
   } catch (error) {
     if (error instanceof CLIError && error.reported) throw error;
     options.fail(
@@ -228,7 +284,12 @@ const createCommand = defineCommand({
     from: {
       type: "string",
       description:
-        "Path to a JSON file containing the rule request (required). Example: --from .taskless/.tmp-rule-request.json",
+        "Path to a JSON file containing the rule request (required unless --resume). Example: --from .taskless/.tmp-rule-request.json",
+    },
+    resume: {
+      type: "string",
+      description:
+        "Keep waiting on a request a previous run submitted, by the request id it printed, instead of submitting a new one",
     },
     anonymous: {
       type: "boolean",
@@ -274,7 +335,32 @@ const createCommand = defineCommand({
     // Set to the number of rules written when generation succeeds; drives the
     // cli_rule_created event in the finally.
     let createdRuleCount: number | undefined;
+    /** Poll, then fetch, verify, and write each produced rule. */
+    async function complete(
+      identity: Identity,
+      requestId: string
+    ): Promise<void> {
+      const written = await completeRequest(cwd, identity, requestId, {
+        subcommand: "create",
+        json: args.json,
+        fail,
+        verb: "Generated",
+        failedPrefix: "Rule generation failed",
+        output: (result) =>
+          createOutputSchema.parse({ success: true, requestId, ...result }),
+      });
+      if (written > 0) createdRuleCount = written;
+    }
+
     try {
+      const resumed = resumeRequestId(args, "create", fail);
+      if (resumed !== undefined) {
+        const identity = await identityOrFail(cwd, fail);
+        console.error(`Resuming request ${resumed}. Waiting for generation...`);
+        await complete(identity, resumed);
+        return;
+      }
+
       // 1. Read and validate --from file
       if (!args.from) {
         fail(
@@ -314,16 +400,8 @@ const createCommand = defineCommand({
         );
       }
 
-      // 2. Resolve identity (orgId from JWT, repositoryUrl from git remote)
-      let identity;
-      try {
-        identity = await resolveIdentity(cwd);
-      } catch (error) {
-        // resolveIdentity throws a CLIError carrying its own code. Read the
-        // field; never re-derive the code from the message.
-        const message = error instanceof Error ? error.message : String(error);
-        fail(message, identityFailureCode(error));
-      }
+      // 2. Resolve identity
+      const identity = await identityOrFail(cwd, fail);
 
       // 3. Submit the request
       const submitted = await submitRequest(identity.token, {
@@ -341,15 +419,7 @@ const createCommand = defineCommand({
 
       // 4. Poll, then fetch, verify, and write each produced rule
       console.error(`Rule requested (${requestId}). Waiting for generation...`);
-      const written = await completeRequest(cwd, identity, requestId, {
-        json: args.json,
-        fail,
-        verb: "Generated",
-        failedPrefix: "Rule generation failed",
-        output: (result) =>
-          createOutputSchema.parse({ success: true, requestId, ...result }),
-      });
-      if (written > 0) createdRuleCount = written;
+      await complete(identity, requestId);
     } finally {
       // Concrete state event: a rule was actually generated and written.
       if (createdRuleCount !== undefined) {
@@ -379,7 +449,12 @@ const improveCommand = defineCommand({
     from: {
       type: "string",
       description:
-        "Path to a JSON file containing { ruleId, guidance, references? }. Example: --from .taskless/.tmp-iterate-request.json",
+        "Path to a JSON file containing { ruleId, guidance, references? } (required unless --resume). Example: --from .taskless/.tmp-iterate-request.json",
+    },
+    resume: {
+      type: "string",
+      description:
+        "Keep waiting on a request a previous run submitted, by the request id it printed, instead of submitting a new one",
     },
     anonymous: {
       type: "boolean",
@@ -420,7 +495,33 @@ const improveCommand = defineCommand({
     // Set to the number of rules written when iteration succeeds; drives the
     // cli_rule_improved event in the finally.
     let improvedRuleCount: number | undefined;
+
+    /** Poll, then fetch, verify, and write the new revision. */
+    async function complete(
+      identity: Identity,
+      requestId: string
+    ): Promise<void> {
+      const written = await completeRequest(cwd, identity, requestId, {
+        subcommand: "improve",
+        json: args.json,
+        fail,
+        verb: "Updated",
+        failedPrefix: "Rule iteration failed",
+        output: (result) =>
+          improveOutputSchema.parse({ success: true, requestId, ...result }),
+      });
+      if (written > 0) improvedRuleCount = written;
+    }
+
     try {
+      const resumed = resumeRequestId(args, "improve", fail);
+      if (resumed !== undefined) {
+        const identity = await identityOrFail(cwd, fail);
+        console.error(`Resuming request ${resumed}. Waiting for generation...`);
+        await complete(identity, resumed);
+        return;
+      }
+
       // 1. Read and validate --from file
       if (!args.from) {
         fail(
@@ -460,15 +561,8 @@ const improveCommand = defineCommand({
         );
       }
 
-      // 2. Resolve identity (orgId from JWT, repositoryUrl from git remote)
-      let identity;
-      try {
-        identity = await resolveIdentity(cwd);
-      } catch (error) {
-        // Same contract as `rule create`: the code travels on the error.
-        const message = error instanceof Error ? error.message : String(error);
-        fail(message, identityFailureCode(error));
-      }
+      // 2. Resolve identity
+      const identity = await identityOrFail(cwd, fail);
 
       // 3. Submit the iterate request, addressed by the rule's own id
       const submitted = await iterateRule(identity.token, request.ruleId, {
@@ -489,15 +583,7 @@ const improveCommand = defineCommand({
       console.error(
         `Iterate request submitted (${requestId}). Waiting for generation...`
       );
-      const written = await completeRequest(cwd, identity, requestId, {
-        json: args.json,
-        fail,
-        verb: "Updated",
-        failedPrefix: "Rule iteration failed",
-        output: (result) =>
-          improveOutputSchema.parse({ success: true, requestId, ...result }),
-      });
-      if (written > 0) improvedRuleCount = written;
+      await complete(identity, requestId);
     } finally {
       // Concrete state event: a rule was actually iterated and rewritten.
       if (improvedRuleCount !== undefined) {

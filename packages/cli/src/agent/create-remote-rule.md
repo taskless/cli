@@ -1,4 +1,4 @@
-# Topic: create-remote-rule     (CLI v%(CLI_VERSION)s / topic v4)
+# Topic: create-remote-rule     (CLI v%(CLI_VERSION)s / topic v5)
 
 ## You are here
 This is `create-remote-rule`. It helps you have the Taskless service
@@ -137,8 +137,9 @@ Two ways to legitimately be here:
    the id is the rule's directory name (for example
    `no-eval-3fa9c21b`). It is what `rule improve`, `rule restore`, and
    `rule rollback` take, and it is on disk, so nothing needs recording.
-   `requestId` names the generation request only; no command takes it
-   back, and passing it to `rule improve` fails with `RULE_NOT_FOUND`.
+   `requestId` names the generation request only. The one command that
+   takes it back is `rule create --resume <requestId>` (see Errors);
+   passing it to `rule improve` as a rule id fails with `RULE_NOT_FOUND`.
 
    **Read `notices` if it is present.** It is an optional array of
    advisory messages about a delivery that was written anyway. A rule
@@ -181,7 +182,7 @@ With `--json`, failures emit `{ ok: false, code, message }`:
 | `NO_ORIGIN_REMOTE`       | git repository, no `origin`     | route to a local recipe; `auth login` cannot fix it |
 | `UNSUPPORTED_REMOTE_HOST`| `origin` is not GitHub          | route to a local recipe; `auth login` cannot fix it |
 | `INVALID_INPUT`          | `--from` JSON failed validation | re-read the input schema, fix, retry         |
-| `NETWORK_ERROR`          | submit/poll failed              | report and suggest retry                     |
+| `NETWORK_ERROR`          | submit/poll failed              | the CLI already retried transient failures. If the message names a `--resume` command, run that to keep waiting on the same request; re-running with `--from` submits a NEW request, so confirm with the user first |
 | `RULE_GENERATION_FAILED` | the service failed to generate  | report the message; suggest enriching prompt |
 | `RULE_UNSUPPORTED`       | plan lacks this generation type | tell the user to enable it; do not retry     |
 

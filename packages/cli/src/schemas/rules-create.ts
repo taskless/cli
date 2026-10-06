@@ -23,7 +23,7 @@ export const outputSchema = z.object({
   requestId: z
     .string()
     .describe(
-      "The generation request's id. Not a rule id: nothing takes it back as one"
+      "The generation request's id. Not a rule id: only `rule create --resume` takes it back"
     ),
   rules: z
     .array(z.string())

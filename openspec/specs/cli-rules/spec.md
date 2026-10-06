@@ -155,6 +155,77 @@ capability requirements.
 - **WHEN** `taskless rule create` is waiting on the API
 - **THEN** the CLI SHALL report progress rather than appearing to hang
 
+### Requirement: Rule generation tolerates transient service failures
+
+While `taskless rule create` or `taskless rule improve` polls a submitted request, and while it
+fetches the rules that request produced, an `unavailable` outcome marked `retryable` (a network
+failure, `408`, `429`, or a `5xx`) SHALL NOT end the command. The CLI SHALL report the failure as
+progress and try again after the poll interval, and SHALL give up only after 8 such outcomes in a
+row. Any other answer SHALL reset that count. A non-retryable `unavailable` (an undocumented `4xx`
+or a malformed body), a documented `error`, a refusal, or a `401` SHALL still fail on the first
+occurrence. When the CLI gives up, the message SHALL name the request id, SHALL say the request
+was not cancelled and may still complete, and SHALL name the `--resume` command that picks it up
+again. All rules SHALL still be fetched before any is written, so a fetch that gives up writes
+nothing.
+
+#### Scenario: A transient run is ridden out
+
+- **WHEN** polling answers `503`, `429`, and a network failure before reaching `generated`
+- **THEN** the CLI SHALL keep polling and deliver the rules
+- **AND** SHALL have submitted exactly one request
+
+#### Scenario: Persistent failure gives up without implying a resubmit
+
+- **WHEN** polling answers a retryable failure 8 times in a row
+- **THEN** the CLI SHALL fail with `NETWORK_ERROR`
+- **AND** the message SHALL name the request id, say it may still complete, and name
+  `taskless rule <create|improve> --resume <requestId>`
+
+#### Scenario: An answer in between resets the count
+
+- **WHEN** polling answers 7 retryable failures, then `building`, then 7 more, then `generated`
+- **THEN** the CLI SHALL deliver the rules
+
+#### Scenario: A non-retryable failure fails at once
+
+- **WHEN** polling answers an undocumented `4xx`, or `401`
+- **THEN** the CLI SHALL fail on that answer without polling again
+
+#### Scenario: Fetching a generated rule is retried the same way
+
+- **WHEN** `GET /cli/api/v2/rule/{ruleId}` answers a retryable failure 8 times in a row
+- **THEN** the CLI SHALL fail with `NETWORK_ERROR`, write no rules, and name the `--resume` command
+
+### Requirement: Rules create and improve resume a submitted request
+
+`taskless rule create` and `taskless rule improve` SHALL accept `--resume <requestId>`, the request
+id a previous run of the same command printed. With it, the CLI SHALL NOT submit anything: it SHALL
+poll that request and fetch, verify, and write what it produced exactly as it would have after
+submitting it, and SHALL report the same output, with `requestId` set to the resumed id.
+`--resume` SHALL NOT be combined with `--from`, and its value SHALL be a UUID; either mistake SHALL
+fail with `INVALID_INPUT` before any service call.
+
+#### Scenario: A resumed request is not resubmitted
+
+- **WHEN** a user runs `taskless rule create --resume <requestId>` after a run that gave up on it
+- **THEN** the CLI SHALL poll `GET /cli/api/v2/request/{requestId}` and write the produced rules
+- **AND** SHALL NOT call `POST /cli/api/v2/request`
+
+#### Scenario: Improve resumes without iterating again
+
+- **WHEN** a user runs `taskless rule improve --resume <requestId>`
+- **THEN** the CLI SHALL NOT call `POST /cli/api/v2/rule/{ruleId}/iterate`
+
+#### Scenario: --resume with --from is refused
+
+- **WHEN** a user runs `taskless rule create --resume <requestId> --from req.json`
+- **THEN** the CLI SHALL fail with `INVALID_INPUT` without calling the service
+
+#### Scenario: A rule id is not a request id
+
+- **WHEN** a user runs `taskless rule improve --resume no-eval-3fa9c21b`
+- **THEN** the CLI SHALL fail with `INVALID_INPUT` without calling the service
+
 ### Requirement: Rules improve reads request from file
 
 `taskless rule improve` SHALL accept a `--from <file>` flag specifying a JSON file containing the
