@@ -197,16 +197,21 @@ When a nightly is published, the open pull request that carries the pending rele
 
 Every fact in that region SHALL be derived from the version the publish stamped, not determined independently. The version already encodes the build time and the commit, and a second determination reads a second clock.
 
-Each publish SHALL append the region at the end of the body it writes, SHALL replace any region a previous publish left rather than adding to it, and SHALL be restored if a human deletes it. It SHALL NOT modify any other managed region on that body.
+Each publish SHALL place the region at the top of the body's description, SHALL replace any region a previous publish left rather than adding to it, and SHALL be restored if a human deletes it. When the body opens with a stack-breadcrumb region, the build-info region SHALL be placed directly below that region rather than above it, which is where the stack-breadcrumb writer's own layout leaves it. It SHALL NOT modify any other managed region on that body.
 
-Placement is asserted of the write, not of the body for all time: other writers maintain their own regions on the same body and may re-lay it, moving this region out of last place. A publish SHALL return the region to the end rather than leave it where it was found. A publish SHALL NOT overwrite a region naming a build newer than its own.
+Placement is asserted of the write, not of the body for all time: other writers maintain their own regions on the same body and may re-lay it. A publish SHALL return the region to the top of the description rather than leave it where it was found. A publish SHALL NOT overwrite a region naming a build newer than its own.
 
 The annotation SHALL depend on the publish having succeeded, and SHALL be performed by a job that holds permission to write pull requests and holds no publishing credential — the ability to publish under the organization's scope and the ability to rewrite pull request text SHALL NOT be held by one job.
 
 #### Scenario: A publish annotates the open release pull request
 
 - **WHEN** a nightly is published and a pull request carrying the pending release metadata is open
-- **THEN** that pull request's body SHALL end with a build-info region naming the published package, version, commit, and build time
+- **THEN** that pull request's description SHALL begin with a build-info region naming the published package, version, commit, and build time
+
+#### Scenario: A stack breadcrumb stays first
+
+- **WHEN** the body opens with a stack-breadcrumb region
+- **THEN** the build-info region SHALL be placed directly below it, and the stack-breadcrumb region SHALL be left unchanged
 
 #### Scenario: Repeated publishes replace the region
 
@@ -215,8 +220,8 @@ The annotation SHALL depend on the publish having succeeded, and SHALL be perfor
 
 #### Scenario: Another writer moves the region
 
-- **WHEN** another writer re-lays the body and the region no longer sits at the end
-- **THEN** the next publish SHALL move it back to the end rather than leave it in place or write a second one
+- **WHEN** another writer re-lays the body and the region no longer sits at the top of the description
+- **THEN** the next publish SHALL move it back to the top rather than leave it in place or write a second one
 
 #### Scenario: An older build does not overwrite a newer one
 
