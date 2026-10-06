@@ -135,10 +135,30 @@
 # reads only the publish half would see `id-token: write` with no visible reason
 # for the `needs:` and drop it.
 #
-# NO CONCURRENCY GROUP, deliberately (design D6). Gate 2 is per-SHA, and two
-# runs for one SHA cannot both publish; the `npm view` guard immediately before
-# `npm publish` closes the remaining window between the gate job's answer and
-# the publish, the same way release-cli.yml and release-vale.yml do.
+# NO CONCURRENCY GROUP, deliberately (design D6). A group with
+# `cancel-in-progress` would also cancel a publish already running. Gate 2 is
+# per-SHA, and two runs for one SHA cannot both publish; the `npm view` guard
+# immediately before `npm publish` closes the remaining window between the gate
+# job's answer and the publish, the same way release-cli.yml and release-vale.yml
+# do.
+#
+# RUNS FOR DIFFERENT SHAs ARE ORDERED AT PUBLISH TIME INSTEAD (#474). Every
+# publish moves `latest`, so an older commit's run that reaches `npm publish`
+# after a newer commit's nightly would roll users back to older code. It
+# happens: a publish job sat 19 minutes in `waiting` on npm-autopublish (no
+# reviewer, nothing to approve, a GitHub-side stall) while a newer commit landed
+# and was due to publish behind it. So right before publishing, the run asks npm
+# whether a LATER stamp is already there, and if so skips — the newer nightly
+# contains this commit. The check cannot live in the gate job: the gate answers
+# before the environment wait, which is exactly when a newer commit arrives.
+#
+# That ordering only holds because the version is stamped from the COMMIT DATE,
+# not the clock. A wall-clock stamp is read after the wait, so the stalled run
+# would mint the newest timestamp on npm and pass the check it exists to fail.
+# `main` is rebase-merge only, so a committer date is when GitHub landed the
+# commit. See hasNewerNightly in nightly-pack.cjs. A stalled run still shows as
+# `waiting` until GitHub releases it; it then publishes nothing, so nobody has
+# to cancel it by hand.
 #
 # PUBLISHING IDENTITY: npm trusted publishing, a short-lived OIDC-minted token
 # bound to the `npm-autopublish` environment, with no stored NPM_TOKEN anywhere.
@@ -156,9 +176,9 @@
 # skill, command, and recipe the nightly ships, so an agent reading them calls
 # the package the user actually installed rather than the released
 # `@taskless/cli`. That means the version has to exist BEFORE the build, and the
-# build and the pack must use the same one — two `new Date()` calls a build
-# apart would ship instructions naming a version that was never published.
-# `nightly-pack.cjs --print-version` stamps it once; the build reads it from
+# build and the pack must use the same one — two stamps computed independently
+# could disagree and ship instructions naming a version that was never
+# published. `nightly-pack.cjs --print-version` stamps it once; the build reads it from
 # TASKLESS_NIGHTLY_VERSION and the pack takes it as `--version`, which is the
 # only version input pack mode accepts (it rejects `--status`/`--sha`, so it
 # cannot recompute one).
@@ -212,7 +232,8 @@
 #     pnpm install --frozen-lockfile
 #     pnpm exec changeset status --output=nightly-status.json
 #     VERSION=$(node .github/scripts/nightly-pack.cjs --print-version \
-#       --status nightly-status.json --sha "$(git rev-parse --short=7 HEAD)")
+#       --status nightly-status.json --sha "$(git rev-parse --short=7 HEAD)" \
+#       --date "$(git log -1 --format=%cI HEAD)")
 #     TASKLESS_NIGHTLY_VERSION="$VERSION" pnpm --filter @taskless/cli build:nightly
 #     node .github/scripts/nightly-pack.cjs --version "$VERSION"
 #     npm publish --access public --tag latest .nightly-dist/*.tgz
@@ -347,11 +368,13 @@ jobs:
           #
           # THE ANSWER IS THREE-WAY, NOT TWO. "Already built", "not built", and
           # "could not tell" are different, and the third must fail the job.
-          # A gate whose only job is suppression must not fail open: the version
-          # carries a timestamp, so a re-run after an unreadable registry
-          # response mints a DIFFERENT version for the SAME commit and publishes
-          # it successfully — two nightlies for one sha, with no error anywhere.
-          # An earlier `|| versions='[]'` did exactly that for any hiccup.
+          # A gate whose only job is suppression must not fail open. While the
+          # stamp was the wall clock, a re-run after an unreadable registry
+          # response minted a DIFFERENT version for the SAME commit and
+          # published it — an earlier `|| versions='[]'` did exactly that. The
+          # stamp is now the commit date, so the exact-version guard before
+          # `npm publish` would catch that one, but the rule stands: "could not
+          # tell" is never "nothing there".
           #
           # The npm exit status is captured and handed to the classifier rather
           # than being collapsed here, because ONE non-zero exit is legitimate:
@@ -411,8 +434,13 @@ jobs:
     # (see "ONE VERSION, TWO CONSUMERS" above) and passed on, never recomputed —
     # a second stamp would read a second clock and name a version that was
     # never published.
+    #
+    # `published` is false when the run was superseded by a newer commit's
+    # nightly and published nothing, so the breadcrumb never announces a
+    # version that is not on npm.
     outputs:
       version: ${{ steps.version.outputs.version }}
+      published: ${{ steps.publish.outputs.published }}
     # The scoping and audit boundary for the nightly, and where the npm trusted
     # publisher for @taskless/cli-nightly is bound. No required reviewer, by
     # design; its deployment branch policy restricts it to main.
@@ -538,20 +566,27 @@ jobs:
       - run: pnpm exec changeset status --output=nightly-status.json
 
       # THE VERSION IS STAMPED HERE, ONCE, and every later step is handed it.
-      # Both the build and the pack consume it; if each computed its own, they
-      # would read the clock a build apart and the skills inside the tarball
-      # would name a version that was never published. The sha comes from the
-      # gate job so the gates and the stamp describe the same commit at the same
-      # abbreviation length, and it is routed through `env:` rather than
-      # interpolated into the shell body.
+      # Both the build and the pack consume it; if each computed its own, the
+      # skills inside the tarball could name a version that was never
+      # published. The sha comes from the gate job so the gates and the stamp
+      # describe the same commit at the same abbreviation length, and it is
+      # routed through `env:` rather than interpolated into the shell body.
+      #
+      # The timestamp is the COMMIT DATE, never the clock: this step runs after
+      # the environment wait, and the publish step's superseded check is only
+      # sound if a stalled run cannot stamp itself newer than a commit that
+      # landed behind it (header, "RUNS FOR DIFFERENT SHAs"). `%cI` carries the
+      # committer's offset; the stamp normalizes it to UTC.
       - id: version
         env:
           SHORT_SHA: ${{ needs.gate.outputs.short_sha }}
         run: |
+          set -euo pipefail
           node .github/scripts/nightly-pack.cjs \
             --print-version \
             --status nightly-status.json \
-            --sha "$SHORT_SHA"
+            --sha "$SHORT_SHA" \
+            --date "$(git log -1 --format=%cI HEAD)"
 
       # `build:nightly` bakes `npx @taskless/cli-nightly@<version>` into every
       # skill, command, and recipe it emits, so an agent following a nightly's
@@ -566,7 +601,7 @@ jobs:
 
       # Rewrites packages/cli/package.json to the nightly name and the stamped
       # version, packs, and restores the manifest. Pack mode takes the version
-      # and cannot derive one: it rejects --status/--sha outright, so it is not
+      # and cannot derive one: it rejects --status/--sha/--date outright, so it is not
       # possible for this tarball's version to differ from the one built above.
       - id: pack
         env:
@@ -587,17 +622,62 @@ jobs:
       # between its answer and this line another run can publish for the same
       # commit; asking again at the moment it matters is idempotent rather than
       # merely ordered. release-cli.yml and release-vale.yml guard the same way.
-      - name: Publish (skipping a version already on npm)
+      #
+      # The superseded check runs first, here and not earlier, because this is
+      # the last moment before `latest` moves (header, "RUNS FOR DIFFERENT
+      # SHAs"). It reads the version list through the same three-way classifier
+      # as gate 2: an unreadable registry fails the step rather than reading as
+      # "nothing newer", which would publish over a newer nightly.
+      - id: publish
+        name: Publish (skipping a version already on npm, or a superseded one)
         env:
           NIGHTLY_VERSION: ${{ steps.version.outputs.version }}
           NIGHTLY_TARBALL: ${{ steps.pack.outputs.tarball }}
         run: |
           set -euo pipefail
+
+          set +e
+          versions=$(npm view @taskless/cli-nightly versions --json 2>/dev/null)
+          npm_status=$?
+          NPM_STATUS="$npm_status" node -e '
+            const { hasNewerNightly, parseVersionsResponse } = require("./.github/scripts/nightly-pack.cjs");
+            let raw = "";
+            process.stdin
+              .on("data", (chunk) => { raw += chunk; })
+              .on("end", () => {
+                try {
+                  const versions = parseVersionsResponse(raw, process.env.NPM_STATUS);
+                  process.exit(hasNewerNightly(versions, process.env.NIGHTLY_VERSION) ? 0 : 1);
+                } catch (error) {
+                  console.error(error.message);
+                  // 2, never 1: exit 1 is the "nothing newer" answer, and an
+                  // uncaught throw would be indistinguishable from it.
+                  process.exit(2);
+                }
+              });
+          ' <<< "$versions"
+          newer_status=$?
+          set -e
+
+          case "$newer_status" in
+            0)
+              echo "published=false" >> "$GITHUB_OUTPUT"
+              echo "A newer commit's nightly is already on npm, and it contains this commit — skipping ${NIGHTLY_VERSION} so \`latest\` does not move backwards."
+              exit 0
+              ;;
+            1) ;;
+            *)
+              echo "::error::Could not determine whether a newer nightly than ${NIGHTLY_VERSION} is published; refusing to publish over one."
+              exit 1
+              ;;
+          esac
+
           if npm view "@taskless/cli-nightly@${NIGHTLY_VERSION}" version >/dev/null 2>&1; then
             echo "@taskless/cli-nightly@${NIGHTLY_VERSION} is already published — nothing to do."
           else
             npm publish --provenance --access public --tag latest "$NIGHTLY_TARBALL"
           fi
+          echo "published=true" >> "$GITHUB_OUTPUT"
 
   # A THIRD JOB, AND IT HOLDS NO CREDENTIAL. Writing a pull request body needs
   # `pull-requests: write`, and adding that to `publish` would widen what a
@@ -611,7 +691,9 @@ jobs:
   #
   # `needs: publish` is the "block on a successful publish" requirement: a job
   # whose dependency was skipped does not run, so a suppressed nightly (either
-  # gate false) never reaches this, and neither does a failed publish.
+  # gate false) never reaches this, and neither does a failed publish. A
+  # SUPERSEDED publish succeeds without publishing, so it is excluded by the
+  # `published` output instead.
   #
   # NO OPEN VERSION PACKAGES PULL REQUEST IS NORMAL AND MUST SUCCEED QUIETLY.
   # `changeset-release/main` exists only while changesets are pending, and a
@@ -623,6 +705,7 @@ jobs:
   breadcrumb:
     name: Link the nightly on the Version Packages PR
     needs: publish
+    if: needs.publish.outputs.published == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: read # checkout only — the script lives in this repo

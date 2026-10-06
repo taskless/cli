@@ -12,6 +12,7 @@ const {
   applyNightlyIdentity,
   buildNightlyVersion,
   formatStampTimestamp,
+  hasNewerNightly,
   hasNightlyForSha,
   isValidVersion,
   parseArguments,
@@ -257,6 +258,16 @@ test("packing takes a version and cannot compute one", () => {
       parseArguments([
         "--version",
         "0.11.0-20260818123456x05b3c88",
+        "--date",
+        DATE,
+      ]),
+    /only for --print-version/
+  );
+  assert.throws(
+    () =>
+      parseArguments([
+        "--version",
+        "0.11.0-20260818123456x05b3c88",
         "--status",
         "nightly-status.json",
       ]),
@@ -271,25 +282,56 @@ test("packing takes a version and cannot compute one", () => {
   );
 });
 
-test("--print-version stamps from the status file and the sha", () => {
+test("--print-version stamps from the status file, the sha, and the commit date", () => {
   const options = parseArguments([
     "--print-version",
     "--status",
     "nightly-status.json",
     "--sha",
     "05b3c88",
+    "--date",
+    "2026-08-18T12:34:56+00:00",
   ]);
   assert.equal(options.printVersion, true);
   assert.equal(options.sha, "05b3c88");
+  assert.equal(options.date, "2026-08-18T12:34:56+00:00");
   assert.match(options.status, /nightly-status\.json$/);
 
   assert.throws(
-    () => parseArguments(["--print-version", "--sha", "05b3c88"]),
+    () =>
+      parseArguments(["--print-version", "--sha", "05b3c88", "--date", DATE]),
     /--status is required/
   );
   assert.throws(
-    () => parseArguments(["--print-version", "--status", "s.json"]),
+    () =>
+      parseArguments(["--print-version", "--status", "s.json", "--date", DATE]),
     /--sha is required/
+  );
+  // No clock fallback: a missing date is an error, because a stamp read after
+  // the environment wait is exactly what lets a stalled run outrank a newer one.
+  assert.throws(
+    () =>
+      parseArguments([
+        "--print-version",
+        "--status",
+        "s.json",
+        "--sha",
+        "05b3c88",
+      ]),
+    /--date is required/
+  );
+  assert.throws(
+    () =>
+      parseArguments([
+        "--print-version",
+        "--status",
+        "s.json",
+        "--sha",
+        "05b3c88",
+        "--date",
+        "yesterday-ish",
+      ]),
+    /not a usable date/
   );
   assert.throws(
     () =>
@@ -306,11 +348,62 @@ test("--print-version stamps from the status file and the sha", () => {
   );
 });
 
-// Gate 2 fails CLOSED. The three outcomes are distinct, and "could not tell"
-// is not "nothing published" — a re-run after an unreadable response would
-// stamp a new timestamp for the same commit and publish a second nightly for
-// it, successfully and silently, which is the one thing this gate exists to
-// prevent.
+// `git log --format=%cI` prints the committer's local offset, not UTC. The stamp
+// must normalize it, or two commits a few minutes apart from different
+// timezones would sort by wall-clock digits instead of by when they landed.
+test("formatStampTimestamp normalizes an offset commit date to UTC", () => {
+  assert.equal(
+    formatStampTimestamp("2026-10-06T11:23:45-07:00"),
+    "20261006182345"
+  );
+});
+
+// The superseded check (#474): a publish released late from an environment
+// wait must not take `latest` from a newer commit's nightly.
+test("hasNewerNightly is true only when a later commit already published", () => {
+  const older = "0.12.0-20261006182345xe8b2153";
+  const newer = "0.12.0-20261006183653xde43cf6";
+  assert.equal(hasNewerNightly([older, newer], older), true);
+  assert.equal(hasNewerNightly([older], newer), false);
+  assert.equal(hasNewerNightly([], older), false);
+  // `npm view --json` returns a bare string for a package with one version.
+  assert.equal(hasNewerNightly(newer, older), true);
+});
+
+test("hasNewerNightly orders by timestamp, never by base version", () => {
+  // A changeset was removed, so the newer commit proposes a LOWER base. Semver
+  // would rank it below the older nightly; the commit order says otherwise.
+  const olderMinor = "0.12.0-20261006182345xe8b2153";
+  const newerPatch = "0.11.1-20261006183653xde43cf6";
+  assert.equal(hasNewerNightly([newerPatch], olderMinor), true);
+  assert.equal(hasNewerNightly([olderMinor], newerPatch), false);
+});
+
+test("hasNewerNightly treats an equal stamp as not newer", () => {
+  // A re-run of the same commit — the exact-version guard handles that one.
+  const version = "0.12.0-20261006182345xe8b2153";
+  assert.equal(hasNewerNightly([version], version), false);
+  // Two commits landed in the same second: neither supersedes the other.
+  assert.equal(
+    hasNewerNightly(["0.12.0-20261006182345xabcdef0"], version),
+    false
+  );
+});
+
+test("hasNewerNightly refuses a version it cannot read", () => {
+  assert.throws(
+    () => hasNewerNightly(["0.12.0"], "0.12.0-20261006182345xe8b2153"),
+    /not a stamped nightly version/
+  );
+  assert.throws(
+    () => hasNewerNightly([], "0.12.0"),
+    /not a stamped nightly version/
+  );
+});
+
+// Fails CLOSED. The three outcomes are distinct, and "could not tell" is not
+// "nothing published" — read as empty, the superseded check would let an older
+// commit publish over a newer one and take `latest`, successfully and silently.
 test("parseVersionsResponse separates found, not-found, and unreadable", () => {
   // exit 0, a list — the ordinary case.
   assert.deepEqual(

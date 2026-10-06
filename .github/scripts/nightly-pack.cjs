@@ -22,12 +22,12 @@
  *
  * TWO MODES, AND THE VERSION IS COMPUTED IN EXACTLY ONE OF THEM.
  *
- *   node .github/scripts/nightly-pack.cjs --print-version --status <file> --sha <short-sha>
+ *   node .github/scripts/nightly-pack.cjs --print-version --status <file> --sha <short-sha> --date <iso-date>
  *   node .github/scripts/nightly-pack.cjs --version <version> [--out <dir>]
  *
- *   --print-version  stamp the version from the pending changesets, the current
- *                    UTC time, and the sha; print it and set the `version`
- *                    output. Packs nothing.
+ *   --print-version  stamp the version from the pending changesets, the
+ *                    commit's date, and the sha; print it and set the
+ *                    `version` output. Packs nothing.
  *   --status         the JSON file written by `changeset status --output=<path>`.
  *                    MUST be a repo-relative path when produced: `--output`
  *                    resolves against the process working directory with no
@@ -35,6 +35,9 @@
  *                    `--output=/tmp/status.json` means `<cwd>/tmp/status.json`
  *                    and fails with ENOENT from the repo root.
  *   --sha            the short commit hash to stamp into the version.
+ *   --date           the commit's committer date (`git log -1 --format=%cI`),
+ *                    which becomes the version's timestamp. NOT the clock: see
+ *                    hasNewerNightly for why the stamp must follow `main`.
  *   --version        the already-stamped version to pack under.
  *   --out            where to write the .tgz (default: .nightly-dist at the
  *                    repo root).
@@ -46,7 +49,7 @@
  * each place is computed from a different clock, so the shipped instructions
  * would name a version that was never published — an agent sent to a package
  * that 404s, or worse, silently to `@taskless/cli`. Pack mode therefore CANNOT
- * recompute: it takes `--version` and rejects `--status`/`--sha` outright,
+ * recompute: it takes `--version` and rejects `--status`/`--sha`/`--date` outright,
  * rather than merely happening not to look at the clock.
  *
  * Writes `version` (both modes) and `tarball` (pack mode) to $GITHUB_OUTPUT
@@ -222,7 +225,7 @@ function buildNightlyReadme(version) {
     "",
     "## What this is",
     "",
-    `This build is \`${version}\`. The version reads as \`<next release>-<UTC build time>x<commit>\`, so it names the release it anticipates, when it was built, and the commit it came from.`,
+    `This build is \`${version}\`. The version reads as \`<next release>-<UTC commit time>x<commit>\`, so it names the release it anticipates, when its commit landed on \`main\`, and the commit it came from.`,
     "",
     `It installs the same \`taskless\` executable as the release. **Do not install both globally** — they collide on that name, and that configuration is not supported.`,
     "",
@@ -235,14 +238,16 @@ function buildNightlyReadme(version) {
 
 /**
  * Turn what `npm view <pkg> versions --json` actually produced into a list of
- * versions — or throw, because gate 2 has no safe default.
+ * versions — or throw, because neither caller has a safe default.
  *
- * THREE OUTCOMES, NOT TWO. The gate's job is suppression, so "I could not tell"
- * must not collapse into "nothing published." It would not surface as a failed
- * publish either: the version carries a timestamp, so a re-run after a parse
- * failure mints a DIFFERENT version for the SAME commit and publishes it
- * successfully — two nightlies for one sha, no error anywhere. The blanket
- * `|| versions='[]'` this replaces did exactly that for any registry hiccup.
+ * THREE OUTCOMES, NOT TWO. Both callers suppress — gate 2 a duplicate, the
+ * publish step a superseded build (hasNewerNightly) — so "I could not tell"
+ * must not collapse into "nothing published." Neither would surface as a
+ * failure: read as empty, the superseded check waves an older commit through
+ * and it takes `latest`, successfully and with no error anywhere. While the
+ * stamp was the wall clock, the same fail-open in gate 2 minted a second
+ * version for one commit; the blanket `|| versions='[]'` this replaces did
+ * exactly that for any registry hiccup.
  *
  *   exit 0, JSON array or bare string → those versions. `--json` yields a bare
  *     STRING for a package with exactly one version, which the nightly package
@@ -295,6 +300,61 @@ function hasNightlyForSha(versions, shortSha) {
         ? versions
         : [];
   return list.some((version) => String(version).endsWith(`x${sha}`));
+}
+
+/**
+ * The stamped prerelease identifier, anchored to the end: `-<14 digits>x<sha>`.
+ * nightly-breadcrumb.cjs reads the same grammar with the same pattern.
+ */
+const STAMP_PATTERN = /-(\d{14})x([0-9a-f]{7,40})$/;
+
+function readStamp(version) {
+  const match = STAMP_PATTERN.exec(String(version ?? ""));
+  if (!match) {
+    throw new Error(
+      `not a stamped nightly version: ${JSON.stringify(version)} (expected <n.m.k>-<yyyymmddhhmmss>x<sha>)`
+    );
+  }
+  return match[1];
+}
+
+/**
+ * Has a LATER commit already published a nightly? The superseded check (#474),
+ * run immediately before `npm publish`.
+ *
+ * Every publish moves `latest`, so a run that reaches `npm publish` after a
+ * newer commit's nightly would roll `npm i @taskless/cli-nightly` back to older
+ * code. That is not hypothetical: a publish job sat 19 minutes in `waiting` on
+ * the npm-autopublish environment while a newer commit landed behind it. The
+ * answer is to skip, since the newer nightly already contains this commit.
+ *
+ * THIS IS ONLY SOUND BECAUSE THE STAMP IS THE COMMIT DATE. A wall-clock stamp
+ * is read AFTER the environment wait, so the stalled older run would mint the
+ * newest timestamp on npm and this check would wave it through — in exactly the
+ * case it exists for. `main` is rebase-merge only, so a committer date is when
+ * GitHub landed the commit, and the stamp follows the order of `main`.
+ *
+ * Compares the TIMESTAMP ALONE, not the full version. The base `n.m.k` comes
+ * from the pending changesets and can go DOWN — drop a minor changeset and the
+ * next commit proposes a patch — so a semver comparison would rank that newer
+ * commit's nightly below an older one. Strictly greater: an equal stamp is the
+ * same commit re-run (the exact-version guard after this handles it), or two
+ * commits landed in one second, where neither is known to supersede the other.
+ *
+ * A published version this cannot read throws rather than being skipped:
+ * everything under @taskless/cli-nightly came from this script, so an
+ * unreadable entry means the grammar changed, and guessing would let ordering
+ * fail silently.
+ */
+function hasNewerNightly(versions, candidate) {
+  const own = readStamp(candidate);
+  const list =
+    typeof versions === "string"
+      ? [versions]
+      : Array.isArray(versions)
+        ? versions
+        : [];
+  return list.some((version) => readStamp(version) > own);
 }
 
 /**
@@ -375,6 +435,9 @@ function parseArguments(argv) {
     } else if (argument === "--sha") {
       index += 1;
       options.sha = requireValue(argv, index, "--sha");
+    } else if (argument === "--date") {
+      index += 1;
+      options.date = requireValue(argv, index, "--date");
     } else if (argument === "--version") {
       index += 1;
       options.version = requireValue(argv, index, "--version");
@@ -396,6 +459,14 @@ function parseArguments(argv) {
     if (!options.sha) {
       throw new Error("--sha is required with --print-version");
     }
+    if (!options.date) {
+      throw new Error(
+        "--date is required with --print-version; pass the commit's date, never the clock"
+      );
+    }
+    // Fail here rather than after a build: an unparseable date is a broken
+    // input, and buildNightlyVersion would only reject it later.
+    formatStampTimestamp(options.date);
     return options;
   }
 
@@ -404,9 +475,9 @@ function parseArguments(argv) {
       "--version is required; stamp it once with --print-version and pass the same value to the build and to this pack"
     );
   }
-  if (options.status || options.sha) {
+  if (options.status || options.sha || options.date) {
     throw new Error(
-      "--status/--sha are only for --print-version; packing uses the version it was given and never recomputes one"
+      "--status/--sha/--date are only for --print-version; packing uses the version it was given and never recomputes one"
     );
   }
   if (!isValidVersion(options.version)) {
@@ -431,7 +502,7 @@ function main() {
     const status = JSON.parse(readFileSync(options.status, "utf8"));
     const version = buildNightlyVersion({
       baseVersion: selectProposedVersion(status),
-      date: new Date(),
+      date: options.date,
       shortSha: options.sha,
     });
     // Only the version on stdout, so `$(… --print-version …)` is usable.
@@ -495,6 +566,7 @@ module.exports = {
   buildNightlyVersion,
   formatStampTimestamp,
   buildNightlyReadme,
+  hasNewerNightly,
   hasNightlyForSha,
   isValidVersion,
   parseArguments,

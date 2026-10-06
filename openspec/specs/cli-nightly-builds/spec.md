@@ -53,15 +53,17 @@ When a nightly build is requested without a valid version, the build SHALL fail.
 
 ### Requirement: A nightly version names the release it anticipates, the time, and the commit
 
-A nightly version SHALL take the form `<n.m.k>-<yyyymmddhhmmss>x<sha>`, where `n.m.k` is the version the default branch's pending release metadata proposes, `yyyymmddhhmmss` is the build time, and `sha` is the short commit hash.
+A nightly version SHALL take the form `<n.m.k>-<yyyymmddhhmmss>x<sha>`, where `n.m.k` is the version the default branch's pending release metadata proposes, `yyyymmddhhmmss` is the commit's committer date in UTC, and `sha` is the short commit hash.
+
+The timestamp SHALL be the commit's date and SHALL NOT be read from the clock of the run that builds it. A run can be held between deciding to publish and publishing, and a clock read after the hold would stamp an older commit newer than one that landed during it. The default branch is merged by rebase only, so a commit's committer date is when it landed, and stamps follow the order of the default branch.
 
 The pending release metadata describes every package it releases, so `n.m.k` SHALL be selected by matching the CLI package's name, and SHALL NOT be taken by position. Position is correct only while the CLI is the sole package under release management, and a version taken from another package publishes successfully while naming a release that was never proposed.
 
-The timestamp SHALL precede the commit hash, so that lexical comparison of the prerelease identifier orders builds chronologically. The prerelease identifier SHALL contain a non-digit separator between the timestamp and the hash, so that the identifier is never all-digits — an all-digit prerelease identifier is compared numerically and may not begin with a zero, which a hash beginning with `0` would otherwise violate.
+The timestamp SHALL precede the commit hash, so that lexical comparison of the prerelease identifier orders builds by when their commits landed. The prerelease identifier SHALL contain a non-digit separator between the timestamp and the hash, so that the identifier is never all-digits — an all-digit prerelease identifier is compared numerically and may not begin with a zero, which a hash beginning with `0` would otherwise violate.
 
 #### Scenario: A nightly version is stamped
 
-- **WHEN** pending release metadata proposes `0.11.0`, the build time is `2026-08-18T12:34:56Z`, and the short commit hash is `05b3c88`
+- **WHEN** pending release metadata proposes `0.11.0`, the commit's committer date is `2026-08-18T12:34:56Z`, and the short commit hash is `05b3c88`
 - **THEN** the published version SHALL be `0.11.0-20260818123456x05b3c88`
 
 #### Scenario: A hash beginning with zero produces a valid version
@@ -77,7 +79,17 @@ The timestamp SHALL precede the commit hash, so that lexical comparison of the p
 #### Scenario: Nightlies sort chronologically
 
 - **WHEN** two nightlies of the same `n.m.k` are compared
-- **THEN** the one built later SHALL sort after the one built earlier
+- **THEN** the one whose commit landed later SHALL sort after the one whose commit landed earlier
+
+#### Scenario: A delayed build keeps its commit's time
+
+- **WHEN** a run for a commit is held for some time before it builds
+- **THEN** its version SHALL carry the commit's date, not the time the build ran
+
+#### Scenario: An offset commit date is stamped in UTC
+
+- **WHEN** the commit's committer date is `2026-10-06T11:23:45-07:00`
+- **THEN** the version's timestamp SHALL be `20261006182345`
 
 ### Requirement: A nightly is installable by default
 
@@ -130,7 +142,7 @@ First, whether any release metadata is pending. When none is pending, nothing is
 
 Second, whether this commit already has a nightly. Published versions SHALL be queried and tested for one whose prerelease identifier ends with the short commit hash; if one exists, no nightly SHALL be built.
 
-This second gate SHALL distinguish three outcomes: a nightly exists for the commit, no nightly exists for it, and the published versions could not be determined. The third SHALL fail the run rather than being treated as the second. Because each build stamps a fresh timestamp, treating an undeterminable answer as "none exists" publishes a second, differently-versioned nightly for the same commit and reports no error. A response indicating the package does not exist yet SHALL be treated as "no nightly exists", since it is the state before the first publish.
+This second gate SHALL distinguish three outcomes: a nightly exists for the commit, no nightly exists for it, and the published versions could not be determined. The third SHALL fail the run rather than being treated as the second: a gate whose only purpose is suppression SHALL NOT fail open. A response indicating the package does not exist yet SHALL be treated as "no nightly exists", since it is the state before the first publish.
 
 The proposed `n.m.k` SHALL be read from the release tool's structured output file rather than from its console output, which also carries unrelated diagnostics.
 
@@ -193,20 +205,20 @@ Nightly publishing SHALL authenticate with a short-lived credential minted for t
 
 ### Requirement: A published nightly is announced on the pending release pull request
 
-When a nightly is published, the open pull request that carries the pending release metadata SHALL be annotated with a delimited build-info region naming the published package, the version, the commit it was built from, and the time it was built — so the reviewers of that pull request can install and exercise the work it describes.
+When a nightly is published, the open pull request that carries the pending release metadata SHALL be annotated with a delimited build-info region naming the published package, the version, the commit it was built from, and the time that commit landed — so the reviewers of that pull request can install and exercise the work it describes.
 
-Every fact in that region SHALL be derived from the version the publish stamped, not determined independently. The version already encodes the build time and the commit, and a second determination reads a second clock.
+Every fact in that region SHALL be derived from the version the publish stamped, not determined independently. The version already encodes the commit's time and the commit, and a second determination could disagree with it.
 
 Each publish SHALL place the region at the top of the body's description, SHALL replace any region a previous publish left rather than adding to it, and SHALL be restored if a human deletes it. When the body opens with a stack-breadcrumb region, the build-info region SHALL be placed directly below that region rather than above it, which is where the stack-breadcrumb writer's own layout leaves it. It SHALL NOT modify any other managed region on that body.
 
 Placement is asserted of the write, not of the body for all time: other writers maintain their own regions on the same body and may re-lay it. A publish SHALL return the region to the top of the description rather than leave it where it was found. A publish SHALL NOT overwrite a region naming a build newer than its own.
 
-The annotation SHALL depend on the publish having succeeded, and SHALL be performed by a job that holds permission to write pull requests and holds no publishing credential — the ability to publish under the organization's scope and the ability to rewrite pull request text SHALL NOT be held by one job.
+The annotation SHALL depend on the publish having succeeded and having published, so a run skipped as superseded announces nothing, and SHALL be performed by a job that holds permission to write pull requests and holds no publishing credential — the ability to publish under the organization's scope and the ability to rewrite pull request text SHALL NOT be held by one job.
 
 #### Scenario: A publish annotates the open release pull request
 
 - **WHEN** a nightly is published and a pull request carrying the pending release metadata is open
-- **THEN** that pull request's description SHALL begin with a build-info region naming the published package, version, commit, and build time
+- **THEN** that pull request's description SHALL begin with a build-info region naming the published package, version, commit, and commit time
 
 #### Scenario: A stack breadcrumb stays first
 
@@ -240,7 +252,7 @@ The annotation SHALL depend on the publish having succeeded, and SHALL be perfor
 
 #### Scenario: A suppressed nightly annotates nothing
 
-- **WHEN** a push publishes no nightly
+- **WHEN** a push publishes no nightly, including a run skipped because a newer nightly was already published
 - **THEN** no job holding permission to write pull requests SHALL be instantiated for it
 
 ### Requirement: A nightly reports the version it is published as
@@ -287,3 +299,38 @@ A nightly build SHALL verify, before emitting, that the version it reports and t
 
 - **WHEN** a nightly build has run
 - **THEN** the CLI package manifest in version control SHALL still declare the released version
+
+### Requirement: A superseded nightly is not published
+
+Every publish assigns the default install tag, so a publish that lands after a newer commit's nightly would move installers back to older code. Immediately before publishing, the run SHALL query the published versions and SHALL NOT publish when any published nightly's timestamp is later than its own; the newer nightly already contains its commit. Such a run SHALL succeed, and SHALL report that it was superseded.
+
+The check SHALL be made at the moment of publishing and not only when the run decides to build, because a run can be held between the two, and a newer commit landing during that hold is the case the check exists for.
+
+Timestamps SHALL be compared alone, not whole versions. The anticipated `n.m.k` can decrease between commits when pending release metadata is removed, and a whole-version comparison would rank the newer commit's nightly below an older one. An equal timestamp SHALL NOT count as later.
+
+The check SHALL distinguish three outcomes: a later nightly exists, none exists, and the published versions could not be determined. The third SHALL fail the run rather than be treated as the second, since treating it as "none exists" publishes over a newer nightly and reports no error.
+
+The check SHALL NOT be implemented by cancelling runs: a mechanism that cancels a superseded run can also cancel a publish already in progress.
+
+#### Scenario: A run held past a newer commit's publish publishes nothing
+
+- **WHEN** a run for an older commit reaches publishing after a newer commit's nightly was published
+- **THEN** no nightly SHALL be published for the older commit
+- **AND** the default install tag SHALL still name the newer commit's nightly
+- **AND** the run SHALL succeed
+
+#### Scenario: A newer nightly with a lower anticipated version still supersedes
+
+- **WHEN** the published nightly with the later timestamp anticipates a lower `n.m.k` than the run's own version
+- **THEN** the run SHALL NOT publish
+
+#### Scenario: Nothing newer publishes normally
+
+- **WHEN** no published nightly has a later timestamp than the run's own version
+- **THEN** the nightly SHALL be published
+
+#### Scenario: An undeterminable list fails the superseded check
+
+- **WHEN** the published versions cannot be determined at the moment of publishing
+- **THEN** the run SHALL fail
+- **AND** no nightly SHALL be published

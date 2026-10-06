@@ -15,14 +15,14 @@
  *     `npx @taskless/cli-nightly@0.11.0-20260818123456x05b3c88`
  *
  *     **Built from:** 05b3c88
- *     **Built at:** 2026-08-18 12:34:56
+ *     **Committed at:** 2026-08-18 12:34:56
  *     <!-- /nightly -->
  *
  * EVERY FACT IN THAT REGION COMES FROM THE STAMPED VERSION, and there is no
  * second source for any of them. The version is stamped exactly once per run
  * (nightly-pack.cjs `--print-version`) because the build bakes it into the
- * skills the tarball ships; re-reading the clock here would print a "Built at"
- * that disagrees with the version printed one line above it, and re-reading
+ * skills the tarball ships; re-reading the clock or git here would print a
+ * "Committed at" that could disagree with the version printed one line above it, and re-reading
  * `git rev-parse` would print a sha the published package does not carry. The
  * version already encodes both — `<n.m.k>-<yyyymmddhhmmss>x<sha>` — so this
  * file parses them back out rather than being handed a second opinion.
@@ -136,7 +136,7 @@ const STAMP_PATTERN = /-(\d{14})x([0-9a-f]{7,40})$/;
  * Split a stamped nightly version back into the two facts it encodes.
  *
  * Throws rather than degrading: a version this cannot parse is not a nightly
- * version, and rendering "Built at: unknown" next to an install line would put
+ * version, and rendering "Committed at: unknown" next to an install line would put
  * a plausible-looking breadcrumb on a pull request describing a build nobody
  * can account for.
  */
@@ -148,32 +148,32 @@ function parseStampedVersion(version) {
     );
   }
   const [, stamp, sha] = match;
-  const builtAt = [
+  const committedAt = [
     `${stamp.slice(0, 4)}-${stamp.slice(4, 6)}-${stamp.slice(6, 8)}`,
     `${stamp.slice(8, 10)}:${stamp.slice(10, 12)}:${stamp.slice(12, 14)}`,
   ].join(" ");
   // The stamp is UTC by construction (formatStampTimestamp uses toISOString),
   // so this is a reformat, not a conversion — no clock and no timezone is
   // consulted anywhere in this file.
-  const parsed = new Date(`${builtAt.replace(" ", "T")}Z`);
+  const parsed = new Date(`${committedAt.replace(" ", "T")}Z`);
   if (Number.isNaN(parsed.getTime())) {
     throw new Error(`stamped version carries an impossible time: ${version}`);
   }
   // `stamp` is the raw 14 digits: fixed-width and UTC, so a lexical compare of
   // two of them orders the builds (see isNewerBuild).
-  return { builtAt, shortSha: sha, stamp };
+  return { committedAt, shortSha: sha, stamp };
 }
 
 /** Render the region for `version`, markers included, with no trailing newline. */
 function renderRegion(version) {
-  const { builtAt, shortSha } = parseStampedVersion(version);
+  const { committedAt, shortSha } = parseStampedVersion(version);
   return [
     REGION_OPEN,
     "### Build Info",
     `\`npx ${NIGHTLY_PACKAGE}@${version}\``,
     "",
     `**Built from:** ${shortSha}`,
-    `**Built at:** ${builtAt}`,
+    `**Committed at:** ${committedAt}`,
     REGION_CLOSE,
   ].join("\n");
 }
@@ -299,8 +299,9 @@ function readRegionVersion(body) {
  * A concurrency group would be the wrong instrument: it would also cancel
  * in-progress PUBLISHES, trading a cosmetic staleness for a lost package. The
  * comparison is on the 14-digit UTC stamp, which is fixed-width, so a lexical
- * compare orders builds chronologically for any base version (design D3 chose
- * that layout for exactly this).
+ * compare orders builds for any base version (design D3 chose that layout for
+ * exactly this). The stamp is the commit date, so that order is the order of
+ * `main` (#474), not the order the runs happened to finish in.
  */
 function isNewerBuild(candidate, existing) {
   if (existing === undefined) {
