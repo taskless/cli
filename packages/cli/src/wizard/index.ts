@@ -14,6 +14,7 @@ import { getReloadNotice } from "../install/reload-notice";
 import { computeInstallDiff, readInstallState } from "../install/state";
 import { getTelemetry } from "../telemetry";
 import { CLIError } from "../util/cli-error";
+import { getCliPrefix } from "../util/package-manager";
 
 import { WizardCancelled } from "./ask";
 import { getCliVersion, renderIntro } from "./intro";
@@ -64,7 +65,7 @@ export async function runWizard(
 
     const proceed = await renderSummaryAndConfirm(diff);
     if (!proceed) {
-      cancel("Install cancelled. Run `taskless init` to try again.");
+      cancel(`Install cancelled. Run \`${getCliPrefix()} init\` to try again.`);
       cancelledStep = "summary";
       return finish({ status: "cancelled" });
     }
@@ -98,7 +99,7 @@ export async function runWizard(
   } catch (error) {
     if (error instanceof WizardCancelled) {
       cancel(
-        `Wizard cancelled at step "${error.step}". Run \`taskless init\` to try again.`
+        `Wizard cancelled at step "${error.step}". Run \`${getCliPrefix()} init\` to try again.`
       );
       cancelledStep = error.step;
       return finish({ status: "cancelled" });

@@ -10,6 +10,7 @@ import type { RuntimeRule } from "./runtime/discover";
 import { runAstGrepScan } from "./scan";
 import { runVale } from "./vale/run";
 import { collectNotices } from "../util/notices";
+import { getCliPrefix } from "../util/package-manager";
 
 /**
  * Whether `.taskless/rules/vale/` holds anything to run.
@@ -286,7 +287,7 @@ function describeValeRefusal(refused: RefusedValeConfig): string {
   );
   return [
     `Vale did not run: the config of ${rules} was rejected by the config schema. ` +
-      `Run \`taskless verify\` for the constraint behind each line.`,
+      `Run \`${getCliPrefix()} verify\` for the constraint behind each line.`,
     ...lines,
   ].join("\n");
 }

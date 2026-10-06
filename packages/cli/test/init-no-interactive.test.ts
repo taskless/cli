@@ -188,7 +188,7 @@ describe("taskless init (the batch install)", () => {
 
     expect(stdout).toMatch(/Next:.*\/tskl onboard/);
     expect(stdout).toMatch(/Taskless skill/);
-    expect(stdout).toMatch(/`taskless onboard`/);
+    expect(stdout).toMatch(/`(?:npx|pnpm dlx) @taskless\/cli@latest onboard`/);
   });
 
   it("prints a skill-only trailer when no commands were installed", async () => {
@@ -203,7 +203,7 @@ describe("taskless init (the batch install)", () => {
 
     expect(stdout).not.toContain("/tskl onboard");
     expect(stdout).toMatch(/Taskless skill/);
-    expect(stdout).toMatch(/`taskless onboard`/);
+    expect(stdout).toMatch(/`(?:npx|pnpm dlx) @taskless\/cli@latest onboard`/);
   });
 
   it("prints an upgrade trailer naming the changed directories, before the onboarding trailer", async () => {

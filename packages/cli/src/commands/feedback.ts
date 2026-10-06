@@ -15,6 +15,7 @@ import {
 import { getTelemetry, isTelemetryEnabled } from "../telemetry";
 import { type CLIErrorCode, writeJsonError } from "../types/errors";
 import { CLIError } from "../util/cli-error";
+import { getCliPrefix } from "../util/package-manager";
 
 /**
  * What both verbs say under the telemetry opt-out. An agent should never
@@ -111,7 +112,7 @@ const sendCommand = defineCommand({
     // whether or not anything would be sent, and the agent should hear so.
     if (!args.from) {
       fail(
-        "--from is required. Provide a path to a JSON file.\n  Example: taskless feedback send --from .taskless/.tmp-feedback.json",
+        `--from is required. Provide a path to a JSON file.\n  Example: ${getCliPrefix()} feedback send --from .taskless/.tmp-feedback.json`,
         "INVALID_INPUT"
       );
     }

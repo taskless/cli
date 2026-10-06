@@ -19,6 +19,7 @@ import { withSurveyInvite } from "../survey/invite";
 import { applyCliInvocation } from "../util/invocation";
 import {
   detectCliInvocation,
+  getCliPrefix,
   processLauncherContext,
 } from "../util/package-manager";
 
@@ -162,8 +163,9 @@ export function createAgentCommand(subCommands: SubCommandsDef) {
           "\nAppend `--anonymous` to any rule/check command to skip the Taskless API"
         );
         console.log("and use local-only behavior.");
+        const prefix = getCliPrefix();
         console.log(
-          "\nRun `taskless agent <topic>` for the full recipe (e.g. `taskless agent create-sg-rule`)."
+          `\nRun \`${prefix} agent <topic>\` for the full recipe (e.g. \`${prefix} agent create-sg-rule\`).`
         );
         return;
       }
@@ -177,7 +179,7 @@ export function createAgentCommand(subCommands: SubCommandsDef) {
         telemetry.capture("cli_agent", { topic: positionals.join(" ") });
         console.error(`Too many arguments: ${positionals.join(" ")}`);
         console.error(
-          "A topic is a single token. Run `taskless agent` for the topic index."
+          `A topic is a single token. Run \`${getCliPrefix()} agent\` for the topic index.`
         );
         process.exitCode = 1;
         return;
@@ -238,7 +240,7 @@ export function createAgentCommand(subCommands: SubCommandsDef) {
         // cli_agent for an unknown topic — still the attempted topic string.
         telemetry.capture("cli_agent", { topic: key });
         console.error(`Unknown command: ${key}`);
-        console.error("Run `taskless agent` for available topics.");
+        console.error(`Run \`${getCliPrefix()} agent\` for available topics.`);
         process.exitCode = 1;
       }
     },

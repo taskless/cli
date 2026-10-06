@@ -12,6 +12,7 @@ import { getTelemetry } from "../telemetry";
 import { CLIError } from "../util/cli-error";
 import {
   detectCliInvocation,
+  getCliPrefix,
   processLauncherContext,
 } from "../util/package-manager";
 
@@ -31,9 +32,9 @@ export function getOnboardTrailer(args: {
   commandsInstalled: boolean;
 }): string {
   if (args.commandsInstalled) {
-    return "Next: in your AI tool, run /tskl onboard or ask it to use the Taskless skill (or run `taskless onboard` from your terminal) to discover rule candidates from your codebase.";
+    return `Next: in your AI tool, run /tskl onboard or ask it to use the Taskless skill (or run \`${getCliPrefix()} onboard\` from your terminal) to discover rule candidates from your codebase.`;
   }
-  return "Next: in your AI tool, ask it to use the Taskless skill (or run `taskless onboard` from your terminal) to discover rule candidates from your codebase.";
+  return `Next: in your AI tool, ask it to use the Taskless skill (or run \`${getCliPrefix()} onboard\` from your terminal) to discover rule candidates from your codebase.`;
 }
 
 export const onboardCommand = defineCommand({
@@ -97,7 +98,7 @@ export const onboardCommand = defineCommand({
     if (alreadyOnboarded && !args.force) {
       console.log("Taskless onboarding is already marked complete.");
       console.log(
-        "Run `taskless onboard --force` to re-run the discovery recipe."
+        `Run \`${getCliPrefix()} onboard --force\` to re-run the discovery recipe.`
       );
       return;
     }
