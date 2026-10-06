@@ -133,7 +133,7 @@ When the organization's plan is known not to include restoring rules,
 every notice above gives git steps where it would name `rule restore`:
 
 ```
-sg rule no-eval-3fa9c21b was edited since Taskless issued it (changed no-eval-3fa9c21b.yml), so it did not run and `check` fails. Restoring rules is not included in your organization's plan, so recover no-eval-3fa9c21b from git: `git log -- .taskless/rules/sg/no-eval-3fa9c21b/` lists the commits that changed it, and `git restore --source=<commit> -- .taskless/rules/sg/no-eval-3fa9c21b/` puts it back as of one of them.
+sg rule no-eval-3fa9c21b was edited since Taskless issued it (changed no-eval-3fa9c21b.yml), so it did not run and `check` fails. Restoring rules is not included in your organization's plan, so recover no-eval-3fa9c21b from git. If the change is not committed yet, `git restore --source=HEAD -- .taskless/rules/sg/no-eval-3fa9c21b/` puts it back. If it is, `git log -- .taskless/rules/sg/no-eval-3fa9c21b/` lists the commits that changed it, newest first, and `git restore --source=<commit>~1 -- .taskless/rules/sg/no-eval-3fa9c21b/` puts it back as it was before <commit>.
 ```
 
 Follow the git steps, then run `check` again. Do not run
@@ -141,10 +141,12 @@ Follow the git steps, then run `check` again. Do not run
 this plan and answers with the same git steps. `integrity` is the same
 on every plan.
 
-Choosing the commit: for an edited rule, restore from the commit just
-before the edit, or from `HEAD` when the edit is not committed yet. For
-a deleted rule, the newest commit is the one
-that deleted it, so restore from its parent (`<commit>~1`). A rule
+Choosing the commit: `<commit>` is the commit that made the change,
+and `~1` restores from its parent, the last commit that still held the
+rule as issued. Restoring from `<commit>` itself puts back nothing for a
+deleted rule, because the rule is not in that commit. When `git log`
+lists several edits since the rule was issued, use the oldest of them.
+For a change that is not committed yet, use the `HEAD` step. A rule
 whose engine is not known is given as a quoted pathspec,
 `'.taskless/rules/*/<ruleId>/*'`; pass it to git as written. For a
 rename, recover the source, then delete the copy, as above.

@@ -429,6 +429,27 @@ describe("migrations 0004 + 0005 — one directory per rule", () => {
       "not a directory\n"
     );
   });
+
+  it("tells the user to move loose rules by hand when 0005 finds them", async () => {
+    // Recorded at 4, so only 0005 onward runs. A loose rule under `rules/`
+    // is one 0004 never moved, and 0004 will not run again.
+    await writeFile(
+      join(tasklessDirectory, "taskless.json"),
+      JSON.stringify({ version: 4 }),
+      "utf8"
+    );
+    await writeTree(tasklessDirectory, {
+      "rules/no-eval.yml": CAPTURE_YML,
+      "sg/rules/.gitkeep": "",
+    });
+
+    const failure = ensureTasklessDirectory(temporaryDirectory);
+    await expect(failure).rejects.toThrow(
+      /Migration 5 failed: .*still contains no-eval\.yml .*Move it into \.taskless\/sg\/rules\/ by hand, then run `.* init` again\./
+    );
+    // The remedy must not send the user to a migration nothing can re-run.
+    await expect(failure).rejects.not.toThrow(/0004/);
+  });
 });
 
 describe("scaffold version gating", () => {

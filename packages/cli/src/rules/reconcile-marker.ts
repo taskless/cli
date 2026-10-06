@@ -5,6 +5,7 @@ import { AST_GREP_VERSION, VALE_VERSION } from "./capabilities";
 import { readManifest, writeManifest } from "../filesystem/manifest";
 import { TASKLESS_DIRECTORY } from "./vale/formats";
 import { CLIError } from "../util/cli-error";
+import { buildInvocation } from "../util/invocation";
 import { compareVersions } from "../util/version-compare";
 import { getCliVersion } from "../wizard/intro";
 
@@ -79,7 +80,7 @@ export async function recordReconciliation(
   // states this precondition; this is the code holding to it.
   if (!(await pathExists(tasklessDirectory))) {
     throw new CLIError(
-      `No \`${TASKLESS_DIRECTORY}/\` in this project, so there are no rules to reconcile. Run the CLI once to set it up before recording a reconciliation.`,
+      `No \`${TASKLESS_DIRECTORY}/\` in this project, so there are no rules to reconcile. Run \`${buildInvocation()} init\` to set it up before recording a reconciliation.`,
       "INVALID_INPUT"
     );
   }
