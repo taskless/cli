@@ -75,11 +75,11 @@ test("renderRegion names the package that is actually published", () => {
   assert.equal(NIGHTLY_PACKAGE, "@taskless/cli-nightly");
 });
 
-test("upsertRegion appends at the end when no region is present", () => {
+test("upsertRegion puts the region at the top when none is present", () => {
   const body = upsertRegion(DESCRIPTION, VERSION);
-  assert.ok(body.startsWith(DESCRIPTION));
-  assert.ok(body.endsWith("<!-- /nightly -->"));
-  assert.equal(body, `${DESCRIPTION}\n\n${renderRegion(VERSION)}`);
+  assert.ok(body.startsWith("<!-- nightly -->"));
+  assert.ok(body.endsWith(DESCRIPTION));
+  assert.equal(body, `${renderRegion(VERSION)}\n\n${DESCRIPTION}`);
 });
 
 test("upsertRegion writes into an empty body without leading blank lines", () => {
@@ -95,7 +95,7 @@ test("repeated publishes replace the region, never accumulate", () => {
   body = upsertRegion(body, NEXT_VERSION);
   assert.equal(body.match(/<!-- nightly -->/g).length, 1);
   assert.equal(body.match(/<!-- \/nightly -->/g).length, 1);
-  assert.equal(body, `${DESCRIPTION}\n\n${renderRegion(NEXT_VERSION)}`);
+  assert.equal(body, `${renderRegion(NEXT_VERSION)}\n\n${DESCRIPTION}`);
   assert.ok(!body.includes(VERSION));
 });
 
@@ -105,17 +105,18 @@ test("upsertRegion is idempotent for one version", () => {
   assert.equal(upsertRegion(upsertRegion(once, VERSION), VERSION), once);
 });
 
-test("a manually deleted region is re-attached at the end", () => {
+test("a manually deleted region is re-attached at the top", () => {
   const withRegion = upsertRegion(DESCRIPTION, VERSION);
   // What a human does: select the block, delete it, save.
-  const deleted = withRegion.replace(renderRegion(VERSION), "").trimEnd();
+  const deleted = withRegion.replace(renderRegion(VERSION), "").trimStart();
   assert.ok(!hasRegion(deleted));
   assert.equal(upsertRegion(deleted, VERSION), withRegion);
 });
 
 // stack-breadcrumb.yml maintains its own region on the same bodies. Neither
-// pattern may match the other's markers, and the region must land after
-// whatever else is there — always at the end.
+// pattern may match the other's markers, and the region must land directly
+// below a leading stack region — where stack-breadcrumb.cjs's canonicalizeBody
+// leaves it — so the two writers never move each other's work.
 test("the stack-breadcrumb region is left byte-for-byte alone", () => {
   const body = `${STACK_REGION}\n\n${DESCRIPTION}`;
   const annotated = upsertRegion(body, VERSION);
@@ -126,11 +127,43 @@ test("the stack-breadcrumb region is left byte-for-byte alone", () => {
     1
   );
   assert.equal(annotated.match(/<!-- \/stack -->/g).length, 1);
-  assert.equal(annotated, `${body}\n\n${renderRegion(VERSION)}`);
+  assert.equal(
+    annotated,
+    `${STACK_REGION}\n\n${renderRegion(VERSION)}\n\n${DESCRIPTION}`
+  );
 
   // And a second publish still only touches the nightly region.
   const republished = upsertRegion(annotated, NEXT_VERSION);
-  assert.equal(republished, `${body}\n\n${renderRegion(NEXT_VERSION)}`);
+  assert.equal(
+    republished,
+    `${STACK_REGION}\n\n${renderRegion(NEXT_VERSION)}\n\n${DESCRIPTION}`
+  );
+});
+
+test("a region above the stack region is moved below it", () => {
+  const body = `${renderRegion(VERSION)}\n\n${STACK_REGION}\n\n${DESCRIPTION}`;
+  assert.equal(
+    upsertRegion(body, NEXT_VERSION),
+    `${STACK_REGION}\n\n${renderRegion(NEXT_VERSION)}\n\n${DESCRIPTION}`
+  );
+});
+
+// The layout above is only stable if stack-breadcrumb.cjs re-lays the body to
+// the same string. If it did not, the two writers would move the region back
+// and forth on every run.
+test("stack-breadcrumb's canonicalizeBody keeps the region where it is", () => {
+  const { canonicalizeBody } = require("./stack-breadcrumb.cjs");
+  const annotated = upsertRegion(`${STACK_REGION}\n\n${DESCRIPTION}`, VERSION);
+  assert.equal(canonicalizeBody(annotated, STACK_REGION), annotated);
+  assert.equal(upsertRegion(annotated, VERSION), annotated);
+});
+
+test("a stack region that is not leading does not move the region", () => {
+  const body = `${DESCRIPTION}\n\n${STACK_REGION}`;
+  assert.equal(
+    upsertRegion(body, VERSION),
+    `${renderRegion(VERSION)}\n\n${body}`
+  );
 });
 
 test("a stack region containing the word nightly is not mistaken for one", () => {
@@ -146,11 +179,11 @@ test("a stack region containing the word nightly is not mistaken for one", () =>
 });
 
 // If a body's region is moved into the middle (a human editing around it), the
-// next publish must not leave it there — "always at the end" is the contract.
-test("a region sitting mid-body is moved to the end, not duplicated", () => {
-  const body = `${renderRegion(VERSION)}\n\n${DESCRIPTION}`;
+// next publish must not leave it there — "always at the top" is the contract.
+test("a region sitting mid-body is moved to the top, not duplicated", () => {
+  const body = `above\n\n${renderRegion(VERSION)}\n\nbelow`;
   const annotated = upsertRegion(body, NEXT_VERSION);
-  assert.equal(annotated, `${DESCRIPTION}\n\n${renderRegion(NEXT_VERSION)}`);
+  assert.equal(annotated, `${renderRegion(NEXT_VERSION)}\n\nabove\n\nbelow`);
   assert.equal(annotated.match(/<!-- nightly -->/g).length, 1);
 });
 
@@ -170,13 +203,13 @@ test("blank lines elsewhere in the description survive a republish", () => {
   ].join("\n");
 
   const once = upsertRegion(authored, VERSION);
-  assert.equal(once, `${authored}\n\n${renderRegion(VERSION)}`);
+  assert.equal(once, `${renderRegion(VERSION)}\n\n${authored}`);
 
   // The republish is the dangerous one: it strips the region it wrote last
   // time, which is when a body-wide collapse would fire.
   const twice = upsertRegion(once, NEXT_VERSION);
-  assert.equal(twice, `${authored}\n\n${renderRegion(NEXT_VERSION)}`);
-  assert.ok(twice.startsWith(authored));
+  assert.equal(twice, `${renderRegion(NEXT_VERSION)}\n\n${authored}`);
+  assert.ok(twice.endsWith(authored));
   assert.equal(stripRegion(twice), authored);
 });
 

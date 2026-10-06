@@ -27,30 +27,27 @@
  * version already encodes both — `<n.m.k>-<yyyymmddhhmmss>x<sha>` — so this
  * file parses them back out rather than being handed a second opinion.
  *
- * THE REGION IS REMOVED AND RE-APPENDED, never edited in place. Deleting it is
+ * THE REGION IS REMOVED AND RE-INSERTED, never edited in place. Deleting it is
  * a supported thing for a human to do, and the next nightly puts it back at the
- * END of the body — which is where it belongs regardless of where a previous
- * one sat, so a body someone has reordered converges instead of accumulating.
- * That also makes the upsert idempotent by construction: N publishes leave one
- * region, not N.
+ * TOP of the body — the first thing a reviewer sees, above the release notes
+ * changesets writes — regardless of where a previous one sat, so a body someone
+ * has reordered converges instead of accumulating. That also makes the upsert
+ * idempotent by construction: N publishes leave one region, not N.
  *
- * It coexists with `<!-- stack -->` … `<!-- /stack -->`, which
- * stack-breadcrumb.yml may be maintaining on the same body. The two are keyed
- * on different names and neither pattern can match the other's markers; this
- * one never rewrites a region it does not own.
+ * "The top" means the top of the DESCRIPTION. When the body opens with a
+ * `<!-- stack -->` … `<!-- /stack -->` region, which stack-breadcrumb.yml may
+ * be maintaining on the same body, this region goes directly below it rather
+ * than above it. That is exactly where stack-breadcrumb.cjs's
+ * `canonicalizeBody` leaves it: that file re-lays the body as breadcrumb →
+ * description → carried `<!-- PR:N -->` regions, and its `ownDescription`
+ * strips only the regions IT owns, so this one travels at the head of
+ * "description" and lands right under the breadcrumb. Both writers therefore
+ * agree on one layout, and neither undoes the other on its next pass. Putting
+ * the region above the stack instead would have each writer move it on every
+ * run.
  *
- * THE CONVERSE DOES NOT HOLD, AND CANNOT BE FIXED FROM HERE. If the Version
- * Packages pull request is ever part of a stack that carries `<!-- PR:N -->`
- * regions, stack-breadcrumb.cjs's `canonicalizeBody` re-lays the whole body as
- * breadcrumb → description → carried regions. Its `ownDescription` strips only
- * the regions IT owns, so this one travels inside "description" and lands
- * ABOVE the carried blocks — no longer at the end. Nothing here runs at that
- * moment, so "at the end" is a property of each write rather than of the body
- * for all time (the spec says so in those words). The next publish moves the
- * region back, which is the same self-healing the lost-update window relies on
- * — see the workflow header. Teaching the other canonicalizer about this
- * region would be the real fix, and it belongs in that file, on a change that
- * can test it there.
+ * The two regions are keyed on different names and neither pattern can match
+ * the other's markers; this file never rewrites a region it does not own.
  *
  * There is NO GitHub I/O here. The workflow fetches the pull request list with
  * `gh api` and applies the body with `gh api -X PATCH` (never `gh pr edit` —
@@ -118,6 +115,15 @@ const REGION_PATTERN = /<!-- nightly -->[\S\s]*?<!-- \/nightly -->/;
  * publish, silently rewriting text this file does not own.
  */
 const REGION_SEAM_PATTERN = new RegExp(`\\n*${REGION_PATTERN.source}\\n*`, "g");
+
+/**
+ * A stack-breadcrumb region at the very start of a body, which is where
+ * stack-breadcrumb.cjs's `canonicalizeBody` always puts it. Mirrors that file's
+ * `REGION_PATTERN`, anchored. Only a LEADING one matters: it is the one this
+ * region goes below, so both writers agree on the layout.
+ */
+const LEADING_STACK_REGION_PATTERN =
+  /^<!-- stack [^>]*-->[\S\s]*?<!-- \/stack -->/;
 
 /**
  * The stamped prerelease identifier, anchored to the end: `-<14 digits>x<sha>`.
@@ -206,18 +212,24 @@ function stripRegion(body) {
 }
 
 /**
- * Upsert the region for `version`: remove whatever region is present and append
- * the fresh one at the END of the body.
+ * Upsert the region for `version`: remove whatever region is present and put
+ * the fresh one at the TOP of the description — the start of the body, or
+ * directly below a leading stack-breadcrumb region when there is one.
  *
- * Remove-then-append rather than replace-in-place, so the region is at the end
+ * Remove-then-insert rather than replace-in-place, so the region is at the top
  * no matter where the previous one sat — a body a human has reordered, or one
  * whose region was manually deleted, converges to the same string. Idempotent:
  * running it twice with the same version returns the same body.
  */
 function upsertRegion(body, version) {
   const region = renderRegion(version);
-  const description = stripRegion(body);
-  return description.length === 0 ? region : `${description}\n\n${region}`;
+  const stripped = stripRegion(body);
+  const stack = LEADING_STACK_REGION_PATTERN.exec(stripped);
+  const head = stack ? stack[0] : "";
+  const description = stripped.slice(head.length).replace(/^\n+/, "");
+  return [head, region, description]
+    .filter((section) => section.length > 0)
+    .join("\n\n");
 }
 
 /**

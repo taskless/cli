@@ -168,7 +168,8 @@
 # pull request where that audience already is, is the changesets "Version
 # Packages" PR — the one that lists exactly those changesets. So after a
 # publish, a third job writes a `<!-- nightly -->` … `<!-- /nightly -->` region
-# at the END of that body. The region is REMOVED AND RE-APPENDED on every
+# at the TOP of that body, above the release notes (below a leading stack
+# breadcrumb, if one is there). The region is REMOVED AND RE-INSERTED on every
 # publish rather than edited in place: deleting it is a supported thing for a
 # human to do, and a body someone has reordered then converges instead of
 # accumulating one block per day.
@@ -671,7 +672,7 @@ jobs:
       #
       # It is accepted because all three writers are ADDITIVE AND SELF-HEALING,
       # so a lost update costs one cycle rather than data: if changesets wins,
-      # the next nightly re-appends its region; if this job wins, changesets
+      # the next nightly re-inserts its region; if this job wins, changesets
       # rewrites the release notes on the next push; the stack breadcrumb
       # reconciles on its own dispatch. Coordinating them — a lock, or routing
       # all three through one workflow — would buy consistency for a cosmetic
