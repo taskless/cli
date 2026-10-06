@@ -10,7 +10,13 @@ import {
   resolveIdentity,
   type Identity,
 } from "../auth/identity";
-import { iterateRule, submitRequest, type V2Outcome } from "../api/v2";
+import { describeRefusal } from "../api/refusal";
+import {
+  iterateRule,
+  retryAdvice,
+  submitRequest,
+  type V2Outcome,
+} from "../api/v2";
 import { readRuleMetaFile, deleteRuleFiles } from "../rules/files";
 import {
   awaitRequest,
@@ -58,12 +64,15 @@ function describeSubmitFailure(
     }
     case "unavailable": {
       return {
-        message: `Request submission failed: ${outcome.reason}.`,
+        message: `Request submission failed: ${outcome.reason}.${retryAdvice(outcome)}`,
         code: "NETWORK_ERROR",
       };
     }
     case "refused": {
-      return { message: outcome.refusal.message, code: "NETWORK_ERROR" };
+      return {
+        message: describeRefusal(outcome.refusal),
+        code: "NETWORK_ERROR",
+      };
     }
     case "error": {
       switch (outcome.code) {

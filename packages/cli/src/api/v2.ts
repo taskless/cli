@@ -60,13 +60,27 @@ export type ErrorCode<P extends keyof paths, M extends Method> = Exclude<
  *   same way (log in again) and it is never a verdict about the request.
  * - `unavailable`: anything the schema does not describe: a network failure, an
  *   undocumented status or code, or a body that is not what it says it is.
+ *   `retryable` marks the ones a later attempt may not repeat (a network
+ *   failure, `408`, `429`, or a `5xx`); a malformed body or an undocumented
+ *   `4xx` will be answered the same way next time.
  */
 export type V2Outcome<T, C extends string> =
   | { status: "ok"; data: T }
   | { status: "refused"; refusal: Refusal }
   | { status: "error"; code: C; httpStatus: number; details?: string[] }
   | { status: "unauthorized" }
-  | { status: "unavailable"; reason: string };
+  | { status: "unavailable"; reason: string; retryable: boolean };
+
+/**
+ * The sentence to append to a message about an `unavailable` outcome: advice
+ * to try again when the failure is one a later attempt may not repeat, and
+ * nothing otherwise. Retrying a malformed answer gets the same answer.
+ */
+export function retryAdvice(outcome: { retryable: boolean }): string {
+  return outcome.retryable
+    ? " This is usually temporary; try again in a few minutes."
+    : "";
+}
 
 /**
  * A list of an operation's error codes, checked for completeness at compile
@@ -96,6 +110,28 @@ export function createV2Client(token: string) {
 
 type Fetched = { data?: unknown; error?: unknown; response: Response };
 
+/** Whether an undocumented status is one a later attempt may not repeat. */
+function isTransientStatus(status: number): boolean {
+  return status === 408 || status === 429 || status >= 500;
+}
+
+/**
+ * Describe a thrown fetch by its cause.
+ *
+ * Node's fetch throws `TypeError("fetch failed")` for every transport failure
+ * and puts what actually happened (DNS, a refused connection, TLS) on `cause`.
+ * The outer message says nothing a user can act on, so the cause replaces it
+ * when there is one. A refused connection to a dual-stack host is an
+ * `AggregateError` with an empty message, which leaves only its `code`.
+ */
+function describeNetworkError(error: unknown): string {
+  if (!(error instanceof Error)) return String(error);
+  const { cause } = error;
+  if (cause instanceof Error && cause.message !== "") return cause.message;
+  if (isRecord(cause) && typeof cause.code === "string") return cause.code;
+  return error.message;
+}
+
 /**
  * Turn an `openapi-fetch` result into an outcome.
  *
@@ -112,8 +148,19 @@ async function settle<T, C extends string>(
   try {
     fetched = await call();
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    return { status: "unavailable", reason: `network error: ${message}` };
+    // A body that failed to parse is an answer, not a transport failure, and
+    // the same server will most likely give it again.
+    return error instanceof SyntaxError
+      ? {
+          status: "unavailable",
+          reason: "invalid response body",
+          retryable: false,
+        }
+      : {
+          status: "unavailable",
+          reason: `network error: ${describeNetworkError(error)}`,
+          retryable: true,
+        };
   }
 
   const { response } = fetched;
@@ -142,13 +189,18 @@ async function settle<T, C extends string>(
       typeof code === "string"
         ? `HTTP ${String(response.status)} (${code})`
         : `HTTP ${String(response.status)}`,
+    retryable: isTransientStatus(response.status),
   };
 }
 
 /** Accept any object body as the documented shape. */
 function acceptObject<T, C extends string>(data: unknown): V2Outcome<T, C> {
   if (!isRecord(data)) {
-    return { status: "unavailable", reason: "invalid response body" };
+    return {
+      status: "unavailable",
+      reason: "invalid response body",
+      retryable: false,
+    };
   }
   return { status: "ok", data: data as T };
 }
@@ -187,6 +239,7 @@ function acceptServed<C extends string>(
     return {
       status: "unavailable",
       reason: "the response carried neither a rule nor a refusal",
+      retryable: false,
     };
   }
   const { restoreRules: _marker, ...served } = data;
@@ -333,6 +386,7 @@ function acceptRevisions<C extends string>(
     return {
       status: "unavailable",
       reason: "the response was not a revision listing",
+      retryable: false,
     };
   }
   return { status: "ok", data: data as unknown as RevisionList };

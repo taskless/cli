@@ -678,6 +678,20 @@ describe("check: static vs runtime dispatch", () => {
     expect(output.notices?.join("\n")).toMatch(
       /verification could not be performed/
     );
+    expect(output.notices?.join("\n")).toMatch(/try again/);
+  });
+
+  it("reconcile validation_error: reported as a rejection, never as an outage", async () => {
+    const { stdout, exitCode } = await authedCheck(() => ({
+      statusCode: 400,
+      body: { error: "validation_error", details: ["rules: too many"] },
+    }));
+    const output = parseJson(stdout);
+    expect(exitCode).toBe(0);
+    const notices = output.notices?.join("\n") ?? "";
+    expect(notices).toMatch(/rejected the verification request/);
+    expect(notices).toContain("rules: too many");
+    expect(notices).not.toMatch(/unavailable|try again/);
   });
 
   it("--anonymous with a token: skips runtime and never calls reconcile", async () => {

@@ -1,11 +1,12 @@
 import {
   fetchRule,
   getRequestStatus,
+  retryAdvice,
   type RequestStatus,
   type ServedRule,
 } from "../api/v2";
 import { notRunOnPlanSentence, parseEntitlementV2 } from "../api/entitlement";
-import { stripControlCharacters } from "../api/refusal";
+import { describeRefusal, stripControlCharacters } from "../api/refusal";
 import { CLIError } from "../util/cli-error";
 import { getCliPrefix } from "../util/package-manager";
 import { writeServedRule } from "./files";
@@ -99,10 +100,15 @@ export async function awaitRequest(
           "NETWORK_ERROR"
         );
       }
-      case "refused":
+      case "refused": {
+        throw new CLIError(
+          "Polling failed: unexpected refusal.",
+          "NETWORK_ERROR"
+        );
+      }
       case "unavailable": {
         throw new CLIError(
-          `Polling failed: ${outcome.status === "unavailable" ? outcome.reason : "unexpected refusal"}.`,
+          `Polling failed: ${outcome.reason}.${retryAdvice(outcome)}`,
           "NETWORK_ERROR"
         );
       }
@@ -227,7 +233,7 @@ function servedOrThrow(
       // a revision the CLI did not ask for. Relay its message; it is the only
       // explanation available.
       throw new CLIError(
-        `Rule ${ruleId} was generated but could not be fetched: ${outcome.refusal.message}`,
+        `Rule ${ruleId} was generated but could not be fetched: ${describeRefusal(outcome.refusal)}`,
         "RULE_GENERATION_FAILED"
       );
     }
@@ -245,7 +251,7 @@ function servedOrThrow(
     }
     case "unavailable": {
       throw new CLIError(
-        `Rule ${ruleId} could not be fetched: ${outcome.reason}.`,
+        `Rule ${ruleId} could not be fetched: ${outcome.reason}.${retryAdvice(outcome)}`,
         "NETWORK_ERROR"
       );
     }
