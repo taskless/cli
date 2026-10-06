@@ -67,6 +67,7 @@ linter, the `create-legacy-rule` path needs nothing installed.
 | Check code against rules   | `%(TASKLESS_CLI)s agent check`        |
 | Log in, log out, or status | `%(TASKLESS_CLI)s agent auth`         |
 | Wire into CI               | `%(TASKLESS_CLI)s agent ci`           |
+| Run checks before commits  | `%(TASKLESS_CLI)s agent hooks`        |
 
 Two of those rows look alike and are not. Running `%(TASKLESS_CLI)s`
 migrates the `.taskless/` layout and refreshes the installed skills: that is

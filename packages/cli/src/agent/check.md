@@ -277,3 +277,4 @@ When `--json` is set, failures emit `{ ok: false, code, message }`:
 
 - `%(TASKLESS_CLI)s agent route`: add a rule if none exist
 - `%(TASKLESS_CLI)s agent ci`: wire `check` into a CI pipeline
+- `%(TASKLESS_CLI)s agent hooks`: run `check` on staged files before a commit

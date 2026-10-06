@@ -5,6 +5,7 @@ import { resolve } from "node:path";
 import { parse as parseToml } from "smol-toml";
 
 import { RULES_DIRECTORY } from "../rules/layout";
+import { detectAutomation, type DetectedAutomation } from "./automation";
 
 export interface DetectedLinter {
   name: string;
@@ -27,6 +28,10 @@ export interface DetectResult {
   linters: DetectedLinter[];
   languages: string[];
   ruleStyles: RuleStyle[];
+  /** CI systems configured at the scan root. */
+  ci: DetectedAutomation[];
+  /** Tools that run commands at commit time, configured at the scan root. */
+  hooks: DetectedAutomation[];
 }
 
 /**
@@ -501,7 +506,8 @@ function detectRuleStyles(
  * list + depth cap) finds manifests and configs anywhere in the tree, so a
  * linter configured in a sub-package is detected with its path as evidence. The
  * flow is languages → linters: a linter's dependency is looked up only in its
- * own language's manifests.
+ * own language's manifests. CI systems and commit-time tools are the exception
+ * to the walk, read at the root only (see `./automation`).
  */
 export async function detectRepository(cwd: string): Promise<DetectResult> {
   const root = resolve(cwd);
@@ -633,5 +639,6 @@ export async function detectRepository(cwd: string): Promise<DetectResult> {
     linters,
     languages: [...languages],
     ruleStyles: detectRuleStyles(root, nodeManifests),
+    ...(await detectAutomation(root)),
   };
 }

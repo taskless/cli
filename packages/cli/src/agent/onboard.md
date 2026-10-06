@@ -1,4 +1,4 @@
-# Topic: onboard     (CLI v%(CLI_VERSION)s / topic v4)
+# Topic: onboard     (CLI v%(CLI_VERSION)s / topic v5)
 
 ## Goal
 Help a user who has just installed Taskless go from zero rules to a
@@ -126,12 +126,34 @@ rules as a bullet list the user can choose to materialize via the
    bullet becomes the rule description input. Re-fetch it only if it
    has fallen out of context.
 
-8. **Ask before marking onboarding complete.** When the user signals
-   they're done (they've materialized everything they want, or
-   they've said "that's enough for now"), explicitly ask: "Do you
-   want me to mark Taskless as onboarded? You won't be re-asked to
-   onboard until you pass `--force`." On explicit yes, and only
-   on explicit yes, run:
+8. **Decide when the rules run.** Once the user has materialized
+   what they want, rules exist that nothing runs yet. Settle that
+   before anything else, as part of onboarding rather than after it.
+
+   Read the `ci` and `hooks` fields of the `detect --json` output you
+   already have, and tell the user what the repository has: which CI
+   systems are configured and which commit-hook tools, or that there
+   are none. Then offer the two ways the rules can run on their own:
+
+   - **In CI**, on pushes and pull requests: follow
+     `%(TASKLESS_CLI)s agent ci`.
+   - **Before each commit**, on the staged files: follow
+     `%(TASKLESS_CLI)s agent hooks`.
+
+   The user can pick either, both, or neither. Carry out what they
+   pick before moving on. If they pick neither, accept it and say in
+   one line that `%(TASKLESS_CLI)s check` then runs only when someone
+   invokes it.
+
+9. **Ask before marking onboarding complete.** When the user signals
+   they're done (they've materialized everything they want, decided
+   when the rules run, or said "that's enough for now"), explicitly
+   ask: "Do you want me to mark Taskless as onboarded? You won't be
+   re-asked to onboard until you pass `--force`." Ask it in a message
+   with no other question in it. A "yes" to a message that asks two
+   things is not consent to either, so never pair this question with
+   the previous step's offer. On explicit yes, and only on explicit
+   yes, run:
 
    ```
    %(TASKLESS_CLI)s onboard --mark-complete
@@ -154,4 +176,6 @@ rules as a bullet list the user can choose to materialize via the
 - `%(TASKLESS_CLI)s agent detect`: what this repository already lints
   and authors, which bounds what a candidate can be
 - `%(TASKLESS_CLI)s agent check`: validate newly created rules against the codebase
+- `%(TASKLESS_CLI)s agent ci`: run the rules in CI once they exist
+- `%(TASKLESS_CLI)s agent hooks`: run the rules on staged files before each commit
 - `%(TASKLESS_CLI)s agent info`: inspect the current `.taskless/taskless.json` state

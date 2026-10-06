@@ -11,7 +11,7 @@ export const detectCommand = defineCommand({
   meta: {
     name: "detect",
     description:
-      "Scan the repo for configured linters, languages, and existing rule styles (offline, deterministic)",
+      "Scan the repo for configured linters, languages, rule styles, CI, and commit hooks (offline, deterministic)",
   },
   args: {
     dir: {
@@ -72,6 +72,20 @@ export const detectCommand = defineCommand({
       console.log("\nExisting rule styles:");
       for (const style of result.ruleStyles) {
         console.log(`  ${style.source}: ${style.description}`);
+      }
+    }
+
+    for (const [label, found] of [
+      ["CI", result.ci],
+      ["Commit hooks", result.hooks],
+    ] as const) {
+      if (found.length === 0) {
+        console.log(`\n${label}: none detected`);
+        continue;
+      }
+      console.log(`\n${label}:`);
+      for (const entry of found) {
+        console.log(`  ${entry.name}: ${entry.evidence.join(", ")}`);
       }
     }
   },
