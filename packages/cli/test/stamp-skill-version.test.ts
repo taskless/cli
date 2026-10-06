@@ -31,8 +31,14 @@ describe("stampSkillVersion", () => {
     expect(stampSkillVersion(body, "0.12.0")).toBe(body);
   });
 
-  it("leaves frontmatter without a metadata.version alone", () => {
+  it("leaves frontmatter without a metadata block alone", () => {
     const content = "---\nname: example\n---\n\nbody\n";
+    expect(stampSkillVersion(content, "0.12.0")).toBe(content);
+  });
+
+  it("leaves a metadata block without a version alone", () => {
+    const content =
+      "---\nname: example\nmetadata:\n  author: taskless\n---\n\nmetadata:\n  version: 0.11.2\n";
     expect(stampSkillVersion(content, "0.12.0")).toBe(content);
   });
 });
