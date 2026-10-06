@@ -1,4 +1,4 @@
-# Topic: check     (CLI v%(CLI_VERSION)s / topic v6)
+# Topic: check     (CLI v%(CLI_VERSION)s / topic v7)
 
 ## Goal
 Run the applicable rules against the codebase and report matches. Two

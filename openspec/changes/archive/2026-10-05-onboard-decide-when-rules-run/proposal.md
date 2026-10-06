@@ -33,6 +33,6 @@ None. The `hooks` topic is registered under the existing `cli-agent` capability,
 - `packages/cli/src/detect/scan.ts` and the `detect` output schema: new `ci` and `hooks` arrays.
 - `packages/cli/src/prompts/index.ts`: `hooks` joins `INTERNAL_TOPICS`.
 - `skills/taskless/SKILL.md`: new topic row.
-- `check.md` (v5 → v6): See Also names `agent hooks`.
+- `check.md` (v6 → v7): See Also names `agent hooks`.
 - Tests: `detect.test.ts` and `onboard.test.ts`. The recipe cross-reference guard needs no new allowlist entry, because the hook's invocation is written as a marker rather than a literal command.
 - No API, auth, or network change. `detect` stays offline and deterministic.
