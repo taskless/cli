@@ -1,4 +1,4 @@
-# Topic: update     (CLI v%(CLI_VERSION)s / topic v14)
+# Topic: update     (CLI v%(CLI_VERSION)s / topic v15)
 
 ## You are here
 This is `update`. It tells you what an upgrade changed for the rules
@@ -67,13 +67,16 @@ that you finished.
 
    If the upgrade also migrated an existing `.taskless/` (`init` printed
    a migration, or `init --json` carried `migrated` with `from` above
-   `0`; if you did not see that output, assume it did), this is not
-   optional advice: a CLI that predates the new schema refuses the
-   project with `SCAFFOLD_VERSION_MISMATCH`, so CI breaks on the push
-   that carries the migrated files. The bump belongs in that same
-   commit. Without a
-   migration the pin still reads the layout, but checks rules against
-   engines this walk has moved past.
+   `0`), this is not optional advice: a CLI that predates the new
+   schema refuses the project with `SCAFFOLD_VERSION_MISMATCH`, so CI
+   breaks on the push that carries the migrated files. The bump belongs
+   in that same commit. Without a migration the pin still reads the
+   layout, but checks rules against engines this walk has moved past.
+
+   `info --json` does not say whether a migration ran. If you did not
+   see `init`'s output yourself, treat the bump as required, but say
+   that you cannot tell whether `.taskless/` was migrated; do not name
+   schema versions you have not read.
 
    Offer the user the bump to the installed version, along with
    reinstalling dependencies. Do not make it silently: a pin can be

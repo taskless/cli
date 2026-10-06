@@ -19,7 +19,7 @@
 
 ## 4. Recipes and changeset
 
-- [x] 4.1 `update` v14 reads pins from `info --json`; `info` v2; `init` v4.
+- [x] 4.1 `update` v15 reads pins from `info --json`; `info` v2; `init` v4.
 - [x] 4.2 Extend the `init-stale-cli-pins` changeset.
 
 ## 5. Tests
