@@ -94,7 +94,7 @@ const PACKAGE_MANAGER_DLX_MARKER = "<package-manager-dlx>";
  * asked to supply the answer — so asking is strictly better than guessing a
  * launcher the reader may not have.
  */
-const TASKLESS_CLI_MARKER = "<taskless-cli>";
+export const TASKLESS_CLI_MARKER = "<taskless-cli>";
 
 /**
  * One command-line tool a recipe can condition on, as the host measured it.
@@ -182,7 +182,10 @@ export interface RecipeOptions {
    * `@taskless/cli/prompts` passes nothing and gets the marker.
    *
    * Omitting it falls back to this build's own invocation when the build is
-   * not prod, and to the agent-fill marker otherwise.
+   * not prod, and to the agent-fill marker otherwise. That fallback is for the
+   * CLI's own commands, which ARE this build. `@taskless/cli/prompts` never
+   * reaches it: the export supplies the marker itself, because a host that
+   * imported this package did not launch it (taskless/cli#469).
    *
    * @default "<taskless-cli>"
    */
