@@ -246,9 +246,12 @@ describe("taskless agent <topic>", () => {
     expect(result.stderr).toContain("Unknown command");
   });
 
-  it("points an unknown topic at `taskless agent`, not the removed command", async () => {
+  it("points an unknown topic at `agent`, not the removed command", async () => {
     const result = await runCli(["agent", "totally-unknown", "-d", cwd]);
-    expect(result.stderr).toContain("Run `taskless agent` for available");
+    // Through the launcher, not a bare `taskless` that may not be on PATH.
+    expect(result.stderr).toMatch(
+      /Run `(?:npx|pnpm dlx) @taskless\/cli@latest agent` for available/
+    );
   });
 
   // A topic is one token. The old resolver joined positionals, so

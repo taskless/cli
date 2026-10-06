@@ -43,6 +43,7 @@ import {
 import { getTelemetry } from "../telemetry";
 import { CLIError } from "../util/cli-error";
 import { type CLIErrorCode, writeJsonError } from "../types/errors";
+import { getCliPrefix } from "../util/package-manager";
 
 /** Why submitting a request or an iteration failed, as a message and a code. */
 function describeSubmitFailure(
@@ -251,8 +252,7 @@ const createCommand = defineCommand({
       // `create-sg-rule`: authoring an ast-grep rule on-device with no service
       // call is exactly what anonymous mode asks for, so it is the destination
       // rather than an `--anonymous` variant of the service recipe.
-      const message =
-        "Anonymous rule generation runs in the agent. Run `taskless agent create-sg-rule` to fetch the local-only recipe.";
+      const message = `Anonymous rule generation runs in the agent. Run \`${getCliPrefix()} agent create-sg-rule\` to fetch the local-only recipe.`;
       if (args.json) {
         writeJsonError("INVALID_INPUT", message);
       } else {
@@ -269,7 +269,7 @@ const createCommand = defineCommand({
       // 1. Read and validate --from file
       if (!args.from) {
         fail(
-          "--from is required. Provide a path to a JSON file.\n  Example: taskless rule create --from request.json",
+          `--from is required. Provide a path to a JSON file.\n  Example: ${getCliPrefix()} rule create --from request.json`,
           "INVALID_INPUT"
         );
       }
@@ -398,8 +398,7 @@ const improveCommand = defineCommand({
     }
 
     if (args.anonymous) {
-      const message =
-        "Anonymous rule improvement runs in the agent. Run `taskless agent improve-rule --anonymous` to fetch the local-only recipe.";
+      const message = `Anonymous rule improvement runs in the agent. Run \`${getCliPrefix()} agent improve-rule --anonymous\` to fetch the local-only recipe.`;
       if (args.json) {
         writeJsonError("INVALID_INPUT", message);
       } else {
@@ -416,7 +415,7 @@ const improveCommand = defineCommand({
       // 1. Read and validate --from file
       if (!args.from) {
         fail(
-          "--from is required. Provide a path to a JSON file.\n  Example: taskless rule improve --from request.json",
+          `--from is required. Provide a path to a JSON file.\n  Example: ${getCliPrefix()} rule improve --from request.json`,
           "INVALID_INPUT"
         );
       }
@@ -558,7 +557,7 @@ const metaCommand = defineCommand({
           `the rule service does not return the metadata block that ` +
           `.taskless/rule-metadata/ is written from. This is not specific to "${args.id}". ` +
           `To iterate on a rule, pass its id (the rule's directory name under .taskless/rules/<engine>/) ` +
-          `to \`taskless rule improve --from <file>\`, or use the local-only improve flow.`,
+          `to \`${getCliPrefix()} rule improve --from <file>\`, or use the local-only improve flow.`,
         "RULE_META_UNAVAILABLE"
       );
     }

@@ -19,6 +19,7 @@ import { planCheck } from "../rules/plan-check";
 import { openRun } from "../rules/run-directory";
 import { fromProjectRoot } from "../rules/snapshot";
 import { markNotice } from "../util/notices";
+import { getCliPrefix } from "../util/package-manager";
 
 async function pathExists(absolutePath: string): Promise<boolean> {
   try {
@@ -334,7 +335,7 @@ export const checkCommand = defineCommand({
           );
         } else {
           console.log(
-            "No rules configured. Create one with `taskless rule create`."
+            `No rules configured. Create one with \`${getCliPrefix()} rule create --from <file>\`.`
           );
         }
         return;

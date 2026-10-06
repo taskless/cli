@@ -56,6 +56,11 @@ describe("check", () => {
     ]);
     expect(exitCode).toBe(0);
     expect(stdout).toContain("No rules configured");
+    // The remedy must run as printed: through the launcher, with the
+    // `--from` that `rule create` refuses to start without.
+    expect(stdout).toMatch(
+      /`(?:npx|pnpm dlx) @taskless\/cli@latest rule create --from <file>`/
+    );
   });
 
   it("does not scaffold .taskless/ in a project that has none", async () => {

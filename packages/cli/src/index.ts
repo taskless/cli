@@ -31,6 +31,7 @@ import {
 } from "./util/argv";
 import { shouldLaunchWizard } from "./util/interactive";
 import { showResolvedUsage } from "./util/help";
+import { getCliPrefix } from "./util/package-manager";
 import { CLIError } from "./util/cli-error";
 
 // `satisfies` against the name list (minus `agent`, which is constructed from
@@ -140,11 +141,12 @@ const main = defineCommand({
       return;
     }
 
+    const prefix = getCliPrefix();
     console.error(
       "Taskless CLI — non-interactive context detected.\n" +
         "  For interactive install, run from a terminal.\n" +
-        "  For scripted install, run `taskless init`.\n" +
-        "  For agent recipes, run `taskless agent` (no args) for the topic index.\n"
+        `  For scripted install, run \`${prefix} init\`.\n` +
+        `  For agent recipes, run \`${prefix} agent\` (no args) for the topic index.\n`
     );
     // Forward the parent's rawArgs (e.g. `-d <path>`) so the agent command
     // doesn't mis-parse them as positional topic names.

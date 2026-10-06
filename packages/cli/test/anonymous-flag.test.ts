@@ -95,7 +95,9 @@ describe("--anonymous flag (per-command behavior matrix)", () => {
       // file validation.
       const result = await runCli(["rule", "create", "--anonymous", "-d", cwd]);
       expect(result.exitCode).not.toBe(0);
-      expect(result.stderr).toContain("taskless agent create-sg-rule");
+      expect(result.stderr).toMatch(
+        /`(?:npx|pnpm dlx) @taskless\/cli@latest agent create-sg-rule`/
+      );
     });
 
     it("with --json, emits the standardized envelope", async () => {
@@ -124,8 +126,8 @@ describe("--anonymous flag (per-command behavior matrix)", () => {
         cwd,
       ]);
       expect(result.exitCode).not.toBe(0);
-      expect(result.stderr).toContain(
-        "taskless agent improve-rule --anonymous"
+      expect(result.stderr).toMatch(
+        /`(?:npx|pnpm dlx) @taskless\/cli@latest agent improve-rule --anonymous`/
       );
     });
   });

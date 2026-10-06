@@ -8,6 +8,7 @@ import { fetchWhoami } from "../auth/whoami";
 import { getTelemetry } from "../telemetry";
 import { type CLIErrorCode, writeJsonError } from "../types/errors";
 import { splitRawArguments } from "../util/argv";
+import { getCliPrefix } from "../util/package-manager";
 
 const loginCommand = defineCommand({
   meta: {
@@ -70,7 +71,9 @@ const loginCommand = defineCommand({
         case "already_logged_in": {
           if (!args.json) {
             console.log("You are already logged in.");
-            console.log("Run `taskless auth logout` first to re-authenticate.");
+            console.log(
+              `Run \`${getCliPrefix()} auth logout\` first to re-authenticate.`
+            );
           }
           return;
         }
@@ -174,7 +177,7 @@ export const authCommand = defineCommand({
     const token = await getToken(cwd);
     if (!token) {
       console.log("Not logged in.");
-      console.log("Run `taskless auth login` to authenticate.");
+      console.log(`Run \`${getCliPrefix()} auth login\` to authenticate.`);
       return;
     }
 
@@ -182,7 +185,7 @@ export const authCommand = defineCommand({
     if (!whoami) {
       console.log("Logged in, but unable to verify identity.");
       console.log(
-        "Your token may be invalid or expired. Run `taskless auth login` to re-authenticate."
+        `Your token may be invalid or expired. Run \`${getCliPrefix()} auth login\` to re-authenticate.`
       );
       return;
     }

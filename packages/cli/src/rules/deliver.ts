@@ -8,6 +8,7 @@ import {
 } from "./layout";
 import { ruleDirectory } from "./engines";
 import { isMissingDirectory } from "./errno";
+import { getCliPrefix } from "../util/package-manager";
 
 /** One file of a delivered rule, its path relative to the rule directory. */
 export interface DeliveredFile {
@@ -140,7 +141,7 @@ export function describeMissingFixtures(
   if (hasFixture) return undefined;
   return (
     `was delivered with no ${prefix} fixtures, so nothing exercises it: ` +
-    "`taskless test` reports a pass over zero cases, which is " +
+    `\`${getCliPrefix()} test\` reports a pass over zero cases, which is ` +
     "indistinguishable from a rule proven to work"
   );
 }
