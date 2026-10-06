@@ -204,6 +204,9 @@ poll that request and fetch, verify, and write what it produced exactly as it wo
 submitting it, and SHALL report the same output, with `requestId` set to the resumed id.
 `--resume` SHALL NOT be combined with `--from`, and its value SHALL be a UUID; either mistake SHALL
 fail with `INVALID_INPUT` before any service call.
+A `requestId` the service returns from submit or iterate SHALL also be a UUID, since the CLI prints
+it inside a `--resume` command an agent is told to run; any other value SHALL be treated as an
+invalid response body and SHALL NOT be printed.
 
 #### Scenario: A resumed request is not resubmitted
 
@@ -220,6 +223,12 @@ fail with `INVALID_INPUT` before any service call.
 
 - **WHEN** a user runs `taskless rule create --resume <requestId> --from req.json`
 - **THEN** the CLI SHALL fail with `INVALID_INPUT` without calling the service
+
+#### Scenario: A server-authored request id is never put on a command line
+
+- **WHEN** submit answers `200` with a `requestId` that is not a UUID, such as `x; rm -rf ~`
+- **THEN** the CLI SHALL fail with `NETWORK_ERROR` as an invalid response body
+- **AND** SHALL NOT print that value or poll it
 
 #### Scenario: A rule id is not a request id
 
