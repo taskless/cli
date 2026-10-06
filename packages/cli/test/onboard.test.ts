@@ -316,6 +316,71 @@ describe("onboard recipe establishes the routing surface first", () => {
   });
 });
 
+// #441: the recipe went from materializing rules straight to the
+// consent-gated mark-complete question, so a project could finish onboarding
+// with rules nothing runs. The agent that improvised the missing question put
+// it in the same message as mark-complete, and the user's "yes" could have
+// been read as an answer to either.
+describe("onboard recipe decides when the rules run", () => {
+  let cwd: string;
+
+  beforeEach(async () => {
+    cwd = await mkdtemp(join(tmpdir(), "taskless-onboard-when-"));
+  });
+
+  afterEach(async () => {
+    await rm(cwd, { recursive: true, force: true });
+  });
+
+  it("puts the step between materializing and marking complete", async () => {
+    const { stdout } = await runCli(["agent", "onboard", "-d", cwd], cwd);
+
+    const materialize = stdout.indexOf("Offer materialization per bullet");
+    const decide = stdout.indexOf("Decide when the rules run");
+    const markComplete = stdout.indexOf(
+      "Ask before marking onboarding complete"
+    );
+
+    expect(materialize).toBeGreaterThan(-1);
+    expect(decide).toBeGreaterThan(materialize);
+    expect(markComplete).toBeGreaterThan(decide);
+  });
+
+  it("offers CI and a hook from what detect reported", async () => {
+    const { stdout } = await runCli(["agent", "onboard", "-d", cwd], cwd);
+    const step = stdout.slice(
+      stdout.indexOf("Decide when the rules run"),
+      stdout.indexOf("Ask before marking onboarding complete")
+    );
+
+    expect(step).toContain("`ci` and `hooks` fields");
+    expect(step).toMatch(/agent ci`/);
+    expect(step).toMatch(/agent hooks`/);
+    // Declining both is an answer, not a stall.
+    expect(step).toContain("neither");
+  });
+
+  it("asks the mark-complete question on its own", async () => {
+    const { stdout } = await runCli(["agent", "onboard", "-d", cwd], cwd);
+    const step = stdout.slice(
+      stdout.indexOf("Ask before marking onboarding complete")
+    );
+
+    // Whitespace collapsed so a rewrap of the recipe does not fail the test.
+    expect(step.replaceAll(/\s+/g, " ")).toContain(
+      "Ask it in a message with no other question in it."
+    );
+  });
+
+  it("names both topics in See Also", async () => {
+    const { stdout } = await runCli(["agent", "onboard", "-d", cwd], cwd);
+    const seeAlso = stdout.slice(stdout.indexOf("## See Also"));
+
+    expect(seeAlso).toMatch(/agent ci`/);
+    expect(seeAlso).toMatch(/agent hooks`/);
+  });
+});
+
 // #393: the recipe now carries passages conditioned on what the host has on
 // `PATH` and on whether the repository is on GitHub. `onboard` is not a topic
 // `agent` dispatches to a shared detection step — each command detects for

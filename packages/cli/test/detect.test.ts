@@ -48,6 +48,8 @@ interface DetectJson {
   linters: { name: string; evidence: string[] }[];
   languages: string[];
   ruleStyles: { source: string; description: string }[];
+  ci: { name: string; evidence: string[] }[];
+  hooks: { name: string; evidence: string[] }[];
 }
 
 async function detect(cwd: string): Promise<DetectJson> {
@@ -268,7 +270,14 @@ describe("taskless detect", () => {
     await writeFile(join(cwd, ".eslintrc.json"), "{}", "utf8");
     const result = await detect(cwd);
     expect(Object.keys(result).toSorted()).toEqual(
-      ["languages", "linters", "ruleStyles", "success"].toSorted()
+      [
+        "ci",
+        "hooks",
+        "languages",
+        "linters",
+        "ruleStyles",
+        "success",
+      ].toSorted()
     );
     // A linter entry exposes only name + evidence, never a rule-name claim.
     for (const linter of result.linters) {
@@ -316,5 +325,107 @@ describe("taskless detect", () => {
     const result = await detect(cwd);
     expect(result.success).toBe(true);
     expect(result.linters).toEqual([]);
+  });
+
+  describe("CI systems and commit hooks", () => {
+    it("reports both as empty arrays on a bare repository", async () => {
+      const result = await detect(cwd);
+      expect(result.ci).toEqual([]);
+      expect(result.hooks).toEqual([]);
+    });
+
+    it("reports each GitHub Actions workflow file as evidence", async () => {
+      await mkdir(join(cwd, ".github", "workflows"), { recursive: true });
+      await writeFile(join(cwd, ".github/workflows/test.yml"), "", "utf8");
+      await writeFile(join(cwd, ".github/workflows/release.yaml"), "", "utf8");
+      const result = await detect(cwd);
+      expect(result.ci).toEqual([
+        {
+          name: "github-actions",
+          evidence: [
+            ".github/workflows/test.yml",
+            ".github/workflows/release.yaml",
+          ],
+        },
+      ]);
+    });
+
+    it.each([
+      ["gitlab-ci", ".gitlab-ci.yml"],
+      ["circleci", ".circleci/config.yml"],
+      ["jenkins", "Jenkinsfile"],
+      ["azure-pipelines", "azure-pipelines.yml"],
+      ["bitbucket-pipelines", "bitbucket-pipelines.yml"],
+      ["drone", ".drone.yml"],
+      ["travis-ci", ".travis.yml"],
+    ])("detects %s from %s", async (name, file) => {
+      await mkdir(join(cwd, file, ".."), { recursive: true });
+      await writeFile(join(cwd, file), "", "utf8");
+      const result = await detect(cwd);
+      expect(result.ci).toEqual([{ name, evidence: [file] }]);
+    });
+
+    it("detects buildkite from its directory", async () => {
+      await mkdir(join(cwd, ".buildkite"));
+      const result = await detect(cwd);
+      expect(result.ci).toEqual([
+        { name: "buildkite", evidence: [".buildkite/"] },
+      ]);
+    });
+
+    it("does not report a CI config below the scan root", async () => {
+      await mkdir(join(cwd, "packages", "api"), { recursive: true });
+      await writeFile(join(cwd, "packages/api/.gitlab-ci.yml"), "", "utf8");
+      const result = await detect(cwd);
+      expect(result.ci).toEqual([]);
+    });
+
+    it("detects husky and lint-staged from the root package.json", async () => {
+      await mkdir(join(cwd, ".husky"));
+      await writeFile(
+        join(cwd, "package.json"),
+        JSON.stringify({
+          devDependencies: { husky: "^9.0.0", "lint-staged": "^15.0.0" },
+          "lint-staged": { "*": "prettier --check" },
+        }),
+        "utf8"
+      );
+      const result = await detect(cwd);
+      expect(result.hooks).toEqual([
+        {
+          name: "husky",
+          evidence: [".husky/", "dependency husky (package.json)"],
+        },
+        {
+          name: "lint-staged",
+          evidence: [
+            "package.json (lint-staged)",
+            "dependency lint-staged (package.json)",
+          ],
+        },
+      ]);
+    });
+
+    it.each([
+      ["lefthook", "lefthook.yml"],
+      ["pre-commit", ".pre-commit-config.yaml"],
+      ["simple-git-hooks", ".simple-git-hooks.json"],
+      ["lint-staged", ".lintstagedrc.json"],
+    ])("detects %s from %s", async (name, file) => {
+      await writeFile(join(cwd, file), "", "utf8");
+      const result = await detect(cwd);
+      expect(result.hooks).toEqual([{ name, evidence: [file] }]);
+    });
+
+    it("does not report a hook tool named only by a sub-package", async () => {
+      await mkdir(join(cwd, "packages", "web"), { recursive: true });
+      await writeFile(
+        join(cwd, "packages/web/package.json"),
+        JSON.stringify({ devDependencies: { husky: "^9.0.0" } }),
+        "utf8"
+      );
+      const result = await detect(cwd);
+      expect(result.hooks).toEqual([]);
+    });
   });
 });

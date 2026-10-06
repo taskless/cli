@@ -94,6 +94,7 @@ export const INTERNAL_TOPICS = [
   "detect",
   "feedback",
   "feedback-invite",
+  "hooks",
   "improve-rule",
   "info",
   "init",

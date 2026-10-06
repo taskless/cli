@@ -20,6 +20,18 @@ const ruleStyleSchema = z.object({
     .describe("How the repo authors rules of this kind, for downstream reuse"),
 });
 
+/** A CI system or commit-time tool configured at the scan root */
+const detectedAutomationSchema = z.object({
+  name: z
+    .string()
+    .describe("Identifier, e.g. github-actions, gitlab-ci, husky, lint-staged"),
+  evidence: z
+    .array(z.string())
+    .describe(
+      "What matched: a path relative to the scan root, or a package.json key or dependency marker"
+    ),
+});
+
 /** Output schema for `taskless detect --json` on success */
 export const outputSchema = z.object({
   success: z.literal(true),
@@ -32,6 +44,14 @@ export const outputSchema = z.object({
   ruleStyles: z
     .array(ruleStyleSchema)
     .describe("Styles of the repo's own existing rules"),
+  ci: z
+    .array(detectedAutomationSchema)
+    .describe("CI systems configured at the scan root"),
+  hooks: z
+    .array(detectedAutomationSchema)
+    .describe(
+      "Tools that run commands at commit time (hook managers and lint-staged), configured at the scan root"
+    ),
 });
 
 // On the (internal-only) error path `detect` emits the standard

@@ -1,4 +1,4 @@
-# Topic: ci     (CLI v%(CLI_VERSION)s / topic v3)
+# Topic: ci     (CLI v%(CLI_VERSION)s / topic v4)
 
 ## Goal
 Wire `%(TASKLESS_CLI)s check` into the user's existing CI so rules run
@@ -23,7 +23,10 @@ you recognize one not on the list, apply the same patterns.
 
 ### 1. Discover the user's CI system
 
-Scan the repo root for CI config files. Hints (not exhaustive):
+Start from `%(TASKLESS_CLI)s detect --json`: its `ci` field names the CI
+systems configured at the repository root, with the files that matched.
+It recognizes the systems below. If it reports none, or you recognize a
+system it does not, look at the repo root yourself:
 
 | File / directory          | CI system           |
 |---------------------------|---------------------|
@@ -238,3 +241,4 @@ Show:
 
 - `%(TASKLESS_CLI)s agent check`: the command being wired into CI
 - `%(TASKLESS_CLI)s agent route`: required if no rules exist yet
+- `%(TASKLESS_CLI)s agent hooks`: run `check` on staged files before a commit, too
