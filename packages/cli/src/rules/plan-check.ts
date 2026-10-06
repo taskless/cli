@@ -1,8 +1,13 @@
 import { getToken } from "../auth/token";
 import { resolveActingOrg } from "../auth/org";
 import { reconcileRules, retryAdvice } from "../api/v2";
-import { resolveRepositoryUrl } from "../util/git-remote";
+import { CLIError } from "../util/cli-error";
+import {
+  resolveRepositoryPath,
+  resolveRepositoryUrl,
+} from "../util/git-remote";
 import { getCliPrefix } from "../util/package-manager";
+import { orgNotFoundRemedy } from "./generate";
 import { recoveryAdvice } from "./recovery-advice";
 import { reportRules } from "./report";
 import type { RunDirectory } from "./run-directory";
@@ -46,6 +51,17 @@ import {
 export interface SkippedRuntimeRule {
   rule: string;
   reason: string;
+}
+
+/** Why rules went unverified, and what would let them be verified. */
+interface Unverified {
+  /** A short clause, also used as each skipped runtime rule's reason. */
+  cause: string;
+  /**
+   * Sentences naming the fix, empty when there is none. They join the notice
+   * on one line: a `--json` notice never spans lines.
+   */
+  remedy: string[];
 }
 
 /** The plan outcome for an organization whose plan withholds runtime rules. */
@@ -96,6 +112,24 @@ export async function planCheck(
     integrity: [],
   };
 
+  /**
+   * A plan whose rules were not verified. It carries ONE notice, whether or
+   * not the project has runtime rules, because the static rules ran without
+   * the integrity check either way; the notice names what would make
+   * verification happen. Each skipped runtime rule carries the short cause.
+   */
+  const unverified = (rules: RuntimeRule[], why: Unverified): CheckPlan => {
+    log.write(`unverified run: ${why.cause}`);
+    return {
+      ...empty,
+      skipped: rules.map((rule) => ({
+        rule: rule.name,
+        reason: `${why.cause}, so it was not verified`,
+      })),
+      notices: [unverifiedNotice(why, rules.length)],
+    };
+  };
+
   if (options.dangerouslyRunScripts) {
     log.write(
       "--dangerously-run-scripts: no reconcile; every rule runs unverified"
@@ -103,33 +137,26 @@ export async function planCheck(
     return { ...empty, execute: discovered, notices: [RUN_SCRIPTS_WARNING] };
   }
 
-  const unverified = (reason: string, notice?: string): CheckPlan => {
-    log.write(`unverified run: ${reason}`);
-    return {
-      ...empty,
-      skipped: discovered.map((rule) => ({ rule: rule.name, reason })),
-      notices: notice === undefined ? [] : [notice],
-    };
-  };
-
   if (options.anonymous) {
-    return unverified(
-      "anonymous mode — runtime rules were not verified and did not run"
-    );
+    return unverified(discovered, {
+      cause: "`--anonymous` was set",
+      remedy: ["Run `check` without `--anonymous` to verify them."],
+    });
   }
   const token = await getToken(cwd, { silent: true });
   if (!token) {
-    return unverified(
-      "not authenticated — runtime rules were not verified and did not run"
-    );
+    return unverified(discovered, {
+      cause: "not authenticated",
+      remedy: [
+        `Run \`${getCliPrefix()} auth login\`, or set \`TASKLESS_TOKEN\` where \`check\` runs in CI.`,
+      ],
+    });
   }
   let repositoryUrl: string;
   try {
     repositoryUrl = await resolveRepositoryUrl(cwd);
-  } catch {
-    return unverified(
-      "no GitHub remote — runtime rules could not be verified and did not run"
-    );
+  } catch (error) {
+    return unverified(discovered, await remoteProblem(cwd, error));
   }
 
   const report = await reportRules(snapshot);
@@ -212,16 +239,11 @@ export async function planCheck(
         }`
   );
   if (outcome.status !== "ok") {
-    const cause = reconcileFailureCause(outcome);
-    const remaining = await discoverRuntimeRulesIn(runtimeRoot);
     return {
-      ...empty,
-      skipped: remaining.map((rule) => ({ rule: rule.name, reason: cause })),
-      notices: [
-        `Rule verification could not be performed: ${cause}. Static rules ran unverified and runtime rules did not run.${
-          outcome.status === "unavailable" ? retryAdvice(outcome) : ""
-        }`,
-      ],
+      ...unverified(
+        await discoverRuntimeRulesIn(runtimeRoot),
+        reconcileFailure(outcome)
+      ),
       failures,
       integrity,
     };
@@ -333,33 +355,104 @@ function withheldNotice(entitlement: PlanEntitlement): string {
 }
 
 /**
- * Why reconcile gave no verdicts, as a clause for the notice and each skipped
- * rule.
+ * Why reconcile gave no verdicts, and what would let it, for the notice and
+ * each skipped rule.
  *
  * "Unavailable" is kept for the service not answering. A documented code is an
  * answer, and calling it an outage sends the user to retry something that
  * will be rejected identically every time.
  */
-function reconcileFailureCause(
+function reconcileFailure(
   outcome: Exclude<Awaited<ReturnType<typeof reconcileRules>>, { status: "ok" }>
-): string {
+): Unverified {
   switch (outcome.status) {
     case "unauthorized": {
-      return `authentication was rejected — run \`${getCliPrefix()} auth login\` to re-authenticate`;
+      return {
+        cause: "authentication was rejected",
+        remedy: [
+          `Re-authenticate with \`${getCliPrefix()} auth login\`, or replace an expired \`TASKLESS_TOKEN\`.`,
+        ],
+      };
     }
     case "unavailable": {
-      return `the rule service was unavailable (${outcome.reason})`;
+      const retry = retryAdvice(outcome).trim();
+      return {
+        cause: `the rule service was unavailable (${outcome.reason})`,
+        remedy: retry ? [retry] : [],
+      };
     }
     case "refused": {
-      return "the rule service answered with an unexpected refusal";
+      return {
+        cause: "the rule service answered with an unexpected refusal",
+        remedy: [],
+      };
     }
     case "error": {
       if (outcome.code === "organization_not_found") {
-        return "the Taskless GitHub App installation does not cover this repository, or your login lost access to the organization";
+        return {
+          cause:
+            "the Taskless GitHub App installation does not cover this repository, or your login lost access to the organization",
+          remedy: orgNotFoundRemedy(),
+        };
       }
-      return `the rule service rejected the verification request (${outcome.code}${
-        outcome.details?.length ? `: ${outcome.details.join(", ")}` : ""
-      })`;
+      return {
+        cause: `the rule service rejected the verification request (${outcome.code}${
+          outcome.details?.length ? `: ${outcome.details.join(", ")}` : ""
+        })`,
+        remedy: [],
+      };
+    }
+  }
+}
+
+function unverifiedNotice(why: Unverified, runtimeRules: number): string {
+  const ran =
+    runtimeRules === 0
+      ? "Static rules ran without verification."
+      : `Static rules ran without verification, and ${String(runtimeRules)} runtime rule(s) did not run.`;
+  return [`Rules were not verified: ${why.cause}.`, ran, ...why.remedy].join(
+    " "
+  );
+}
+
+/**
+ * Name the specific reason no repository URL resolved, and its fix. The three
+ * codes are the populations `resolveRepositoryUrl` already tells apart; their
+ * own messages are about remote rule generation, so `check` words its own.
+ */
+async function remoteProblem(cwd: string, error: unknown): Promise<Unverified> {
+  const code = error instanceof CLIError ? error.code : undefined;
+  switch (code) {
+    case "NOT_A_GIT_REPOSITORY": {
+      return {
+        cause: "this directory is not a git repository",
+        remedy: [
+          "Verification identifies the project by its GitHub `origin` remote, so run `check` in a clone of the repository.",
+        ],
+      };
+    }
+    case "NO_ORIGIN_REMOTE": {
+      return {
+        cause: "this repository has no `origin` remote",
+        remedy: [
+          "Add the GitHub repository as `origin` with `git remote add origin https://github.com/<owner>/<repo>`.",
+        ],
+      };
+    }
+    case "UNSUPPORTED_REMOTE_HOST": {
+      const path = await resolveRepositoryPath(cwd);
+      return {
+        cause: `\`origin\` is not a GitHub remote${path ? ` (${path})` : ""}`,
+        remedy: [
+          "Verification supports GitHub repositories only. Point `origin` at the repository's GitHub URL.",
+        ],
+      };
+    }
+    default: {
+      return {
+        cause: "no GitHub `origin` remote could be resolved",
+        remedy: [],
+      };
     }
   }
 }

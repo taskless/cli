@@ -330,6 +330,97 @@ describe("check: static vs runtime dispatch", () => {
     expect(stdout).toContain("no-console");
   });
 
+  it("logged out: one notice says rules were not verified and names auth login", async () => {
+    const { stderr } = await runCli(["check", "-d", directory]);
+    expect(stderr.split("Rules were not verified")).toHaveLength(2);
+    expect(stderr).toContain(
+      "Notice: Rules were not verified: not authenticated."
+    );
+    expect(stderr).toContain("1 runtime rule(s) did not run");
+    expect(stderr).toMatch(
+      /did not run\. Run `.+ auth login`, or set `TASKLESS_TOKEN`/
+    );
+  });
+
+  it("logged out with no runtime rules: the notice still prints, and is in --json notices", async () => {
+    await rm(join(directory, ".taskless", "runtime"), {
+      recursive: true,
+      force: true,
+    });
+    const human = await runCli(["check", "-d", directory]);
+    expect(human.stderr).toContain(
+      "Notice: Rules were not verified: not authenticated. Static rules ran without verification."
+    );
+    expect(human.stderr).not.toContain("runtime rule");
+    expect(human.stderr).toContain("auth login");
+
+    const { stdout, exitCode } = await runCli([
+      "check",
+      "-d",
+      directory,
+      "--json",
+    ]);
+    const output = parseJson(stdout);
+    expect(exitCode).toBe(0);
+    expect(output.skipped).toBeUndefined();
+    expect(output.notices?.join("\n")).toMatch(
+      /Rules were not verified: not authenticated/
+    );
+  });
+
+  it("--anonymous: the notice names dropping --anonymous, not auth login", async () => {
+    const { stderr } = await runCli(["check", "-d", directory, "--anonymous"]);
+    expect(stderr).toContain("Rules were not verified: `--anonymous` was set.");
+    expect(stderr).toContain("without `--anonymous`");
+    expect(stderr).not.toContain("auth login");
+  });
+
+  it.each([
+    {
+      name: "no origin remote",
+      arrange: (cwd: string) =>
+        execFileAsync("git", ["remote", "remove", "origin"], { cwd }),
+      cause: "this repository has no `origin` remote",
+      remedy: "git remote add origin",
+    },
+    {
+      name: "a non-GitHub origin",
+      arrange: (cwd: string) =>
+        execFileAsync(
+          "git",
+          [
+            "remote",
+            "set-url",
+            "origin",
+            "https://gitlab.com/acme/widgets.git",
+          ],
+          { cwd }
+        ),
+      cause: "`origin` is not a GitHub remote (gitlab.com/acme/widgets)",
+      remedy: "supports GitHub repositories only",
+    },
+    {
+      name: "not a git repository",
+      arrange: (cwd: string) =>
+        rm(join(cwd, ".git"), { recursive: true, force: true }),
+      cause: "this directory is not a git repository",
+      remedy: "so run `check` in a clone of the repository",
+    },
+  ])(
+    "authenticated with $name: the notice names that remote problem",
+    async ({ arrange, cause, remedy }) => {
+      await arrange(directory);
+      const { stderr, exitCode } = await runCli(["check", "-d", directory], {
+        TASKLESS_TOKEN: "fake.token",
+        // Never reached: the remote is resolved before any network call.
+        TASKLESS_API_URL: "http://127.0.0.1:9/cli",
+      });
+      expect(exitCode).toBe(0);
+      expect(stderr).toContain(`Rules were not verified: ${cause}.`);
+      expect(stderr).toContain(remedy);
+    }
+  );
+
   /** Run \`check\` authenticated against a mock that answers with \`responder\`. */
   async function authedCheck(
     responder: Responder,
@@ -676,9 +767,26 @@ describe("check: static vs runtime dispatch", () => {
     expect(output.results.some((r) => r.ruleId === "no-console")).toBe(true);
     expect(output.skipped?.some((s) => s.rule === "demo")).toBe(true);
     expect(output.notices?.join("\n")).toMatch(
-      /verification could not be performed/
+      /Rules were not verified: the rule service was unavailable/
     );
     expect(output.notices?.join("\n")).toMatch(/try again/);
+  });
+
+  it("organization not found: the notice names the app installation and auth login", async () => {
+    const { stderr, exitCode } = await authedCheck(
+      () => ({ statusCode: 404, body: { error: "organization_not_found" } }),
+      []
+    );
+    expect(exitCode).toBe(0);
+    expect(stderr).toContain(
+      "Rules were not verified: the Taskless GitHub App installation does not cover this repository"
+    );
+    expect(stderr).toContain(
+      "Confirm the Taskless app is installed on this repository's owner"
+    );
+    expect(stderr).toMatch(
+      /If access recently changed, re-authenticate with `.+ auth login`/
+    );
   });
 
   it("reconcile validation_error: reported as a rejection, never as an outage", async () => {

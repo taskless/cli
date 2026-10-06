@@ -530,14 +530,18 @@ describe("an engine failure under --json", () => {
     expect(output.failures?.[0]).toContain("sg engine failed");
   });
 
-  it("omits both fields when nothing failed, as `skipped` does", async () => {
+  it("omits failures, and carries no engine notice, when nothing failed", async () => {
     const cwd = makeMixedProject({ valeRules: false });
     const { stdout } = await runCli(["check", "-d", cwd, "doc.md", "--json"]);
     const output = parseJson(stdout);
 
     expect(output.success).toBe(true);
     expect(output.failures).toBeUndefined();
-    expect(output.notices).toBeUndefined();
+    // The not-verified notice is the only one: a logged-out run always
+    // carries it, and nothing else had anything to say.
+    expect(output.notices).toEqual([
+      expect.stringMatching(/^Rules were not verified: not authenticated\./),
+    ]);
   });
 });
 

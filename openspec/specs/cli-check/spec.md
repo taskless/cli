@@ -236,7 +236,8 @@ The `taskless check` command SHALL accept the global `--anonymous` flag (per the
 capability). Because `check` reconciles against the Taskless API when authenticated,
 `--anonymous` SHALL force the logged-out path: it SHALL suppress the reconcile network call
 and run all local static rules. Aside from forcing the logged-out path, `--anonymous` SHALL NOT
-change scan behavior, output shape, or exit codes relative to an unauthenticated `check`.
+change scan behavior, output shape, or exit codes relative to an unauthenticated `check`. The
+not-verified notice SHALL name `--anonymous` as its cause rather than authentication.
 
 #### Scenario: check --anonymous skips reconciliation
 
@@ -247,8 +248,9 @@ change scan behavior, output shape, or exit codes relative to an unauthenticated
 #### Scenario: check --anonymous matches an unauthenticated check
 
 - **WHEN** a user runs `taskless check --anonymous`
-- **THEN** its scan behavior, output, and exit code SHALL match `taskless check` run with no
-  available token
+- **THEN** its scan behavior, output shape, and exit code SHALL match `taskless check` run with
+  no available token
+- **AND** only the cause and remedy named in the not-verified notice SHALL differ
 
 ### Requirement: Check error output uses standardized error envelope
 
@@ -268,8 +270,9 @@ reconcile **every** rule (ast-grep, Vale, and runtime) and apply the verdict pol
 `cli-rule-reconciliation` capability. When no token is available, when `--anonymous` is set, or
 when reconciliation cannot complete, the CLI SHALL run every static rule (ast-grep and Vale)
 unverified and SHALL skip runtime execution unless `--dangerously-run-scripts` is set. The
-unauthenticated path SHALL succeed with no network access and SHALL NOT emit a warning about
-missing authentication.
+unauthenticated path SHALL succeed with no network access. It SHALL report that the rules were
+not verified as an informational notice ("Check names the remedy when rules run unverified"),
+and SHALL NOT fail or change the exit code because no token is available.
 
 #### Scenario: Unauthenticated check runs static rules and skips runtime rules
 
@@ -277,7 +280,7 @@ missing authentication.
 - **THEN** the CLI SHALL scan all static rules
 - **AND** SHALL NOT call `POST /cli/api/v2/reconcile`
 - **AND** SHALL skip runtime rules
-- **AND** SHALL NOT emit a warning about missing authentication
+- **AND** SHALL emit the not-verified notice naming `auth login`, without changing the exit code
 
 #### Scenario: Authenticated check reconciles runtime rules
 
@@ -734,3 +737,52 @@ nothing to report.
 - **WHEN** reconciliation returns vale rule `bar-2` in `unknown` with `copyOf: { ruleId: "foo-1", revisionId: "r1", files: [{ path: ".vale.ini", expected, got }] }` and returns `foo-1` as `missing` with `revisionId` `r2`
 - **THEN** `integrity` SHALL include `{ ruleId: "bar-2", engine: "vale", verdict: "unknown", files: [{ path: ".vale.ini", expected, got }], copyOf: { ruleId: "foo-1", revisionId: "r1", sourceMissing: true } }`
 - **AND** SHALL include `{ ruleId: "foo-1", engine: "vale", verdict: "missing", revisionId: "r2" }`
+
+### Requirement: Check names the remedy when rules run unverified
+
+Whenever `taskless check` runs rules without verifying them, because `--anonymous` is set,
+no token is available, no GitHub repository URL resolves, or reconciliation cannot complete,
+it SHALL emit exactly one notice that says the rules were not verified, states the cause, and
+names what would let verification happen. The notice SHALL be emitted whether or not the
+project has runtime rules. It SHALL NOT change the exit code. It SHALL be a single line, cause
+and remedy together, so that under `--json` it is one entry in the `notices` array; in human
+output it SHALL be written to stderr marked as a notice. `--dangerously-run-scripts` is excluded: it carries its own warning.
+
+The remedy SHALL be specific to the cause:
+
+- `--anonymous`: run `check` without `--anonymous`.
+- No token: `taskless auth login`, or a `TASKLESS_TOKEN` where `check` runs in CI.
+- No repository URL: which of the three problems applies (not a git repository, no `origin`
+  remote, or an `origin` that is not GitHub) and the step for that problem.
+- A rejected token: re-authenticate with `taskless auth login`, or replace the token.
+- `404 organization_not_found`: the same steps `rule create` gives for that code, confirming
+  the Taskless GitHub App installation covers the repository and re-authenticating with
+  `taskless auth login`.
+
+#### Scenario: Logged out with no runtime rules still says so
+
+- **WHEN** a user runs `taskless check` with no available token in a project with no runtime rules
+- **THEN** the CLI SHALL emit one notice that the rules were not verified
+- **AND** the notice SHALL name `auth login`
+- **AND** the exit code SHALL NOT change because of the notice
+
+#### Scenario: Anonymous names the flag, not authentication
+
+- **WHEN** a user runs `taskless check --anonymous`
+- **THEN** the notice SHALL name `--anonymous` as the cause and running without it as the remedy
+
+#### Scenario: A missing origin is named as such
+
+- **WHEN** an authenticated `check` runs in a git repository with no `origin` remote
+- **THEN** the notice SHALL say the repository has no `origin` remote and how to add one
+
+#### Scenario: Organization not found carries the installation remedy
+
+- **WHEN** reconciliation returns `404 organization_not_found`
+- **THEN** the notice SHALL name confirming the Taskless GitHub App installation and re-authenticating with `auth login`
+
+#### Scenario: The notice is a notices entry under --json
+
+- **WHEN** `taskless check --json` runs unverified
+- **THEN** the `notices` array SHALL contain the notice
+- **AND** `success`, `results`, and `skipped` SHALL keep their existing meaning
