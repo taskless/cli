@@ -34,9 +34,9 @@ const STACK_REGION = [
 const DESCRIPTION =
   "# Releases\n\n## @taskless/cli@0.11.0\n\n### Minor Changes";
 
-test("parseStampedVersion reads the build time and sha back out of the version", () => {
+test("parseStampedVersion reads the commit time and sha back out of the version", () => {
   assert.deepEqual(parseStampedVersion(VERSION), {
-    builtAt: "2026-08-18 12:34:56",
+    committedAt: "2026-08-18 12:34:56",
     shortSha: "05b3c88",
     // The raw stamp is kept so builds can be ordered without re-parsing.
     stamp: "20260818123456",
@@ -64,7 +64,7 @@ test("renderRegion names the package that is actually published", () => {
       "`npx @taskless/cli-nightly@0.11.0-20260818123456x05b3c88`",
       "",
       "**Built from:** 05b3c88",
-      "**Built at:** 2026-08-18 12:34:56",
+      "**Committed at:** 2026-08-18 12:34:56",
       "<!-- /nightly -->",
     ].join("\n")
   );
