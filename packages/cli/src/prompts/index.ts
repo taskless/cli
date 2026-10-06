@@ -9,6 +9,7 @@ import {
   getRawRecipe,
   getRecipe,
   getRenderedRecipe,
+  TASKLESS_CLI_MARKER,
   type RecipeOptions,
   type RecipeText,
 } from "./recipes.js";
@@ -131,7 +132,7 @@ export type { HostTool } from "./recipes.js";
  * {@link TOPICS} and the recipe files have diverged.
  */
 export function getPrompt(topic: PromptTopic, options?: PromptOptions): string {
-  return required(getRecipe(topic, options), topic);
+  return required(getRecipe(topic, forHost(options)), topic);
 }
 
 /**
@@ -154,7 +155,7 @@ export function getInstructions(
   topic: PromptTopic,
   options?: PromptOptions
 ): Instructions {
-  return required(getRenderedRecipe(topic, options), topic);
+  return required(getRenderedRecipe(topic, forHost(options)), topic);
 }
 
 /**
@@ -173,6 +174,22 @@ export function getRawInstructions(
   options?: PromptOptions
 ): Instructions {
   return required(getRawRecipe(topic, options), topic);
+}
+
+/**
+ * Default the invocation to the agent-fill marker for a host that passed none.
+ *
+ * The shared render path falls back to THIS BUILD's invocation, which is right
+ * for `taskless agent <topic>` and wrong here. A host that imported this
+ * package never launched it, so a nightly's
+ * `npx @taskless/cli-nightly@<version>` names a command its reader does not
+ * have, and puts the version back into a `header: false` render whose whole
+ * point is a body that stays the same across CLI versions (taskless/cli#469).
+ * A release build already rendered the marker, which is why the defect only
+ * showed on a nightly.
+ */
+function forHost(options: PromptOptions = {}): PromptOptions {
+  return { ...options, invocation: options.invocation ?? TASKLESS_CLI_MARKER };
 }
 
 /**
