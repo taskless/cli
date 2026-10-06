@@ -75,17 +75,21 @@ export const detectCommand = defineCommand({
       }
     }
 
-    for (const [label, found] of [
-      ["CI", result.ci],
-      ["Commit hooks", result.hooks],
-    ] as const) {
-      if (found.length === 0) {
-        console.log(`\n${label}: none detected`);
-        continue;
+    if (result.ci.length === 0) {
+      console.log("\nCI: none detected");
+    } else {
+      console.log("\nCI:");
+      for (const system of result.ci) {
+        console.log(`  ${system.name}: ${system.evidence.join(", ")}`);
       }
-      console.log(`\n${label}:`);
-      for (const entry of found) {
-        console.log(`  ${entry.name}: ${entry.evidence.join(", ")}`);
+    }
+
+    if (result.hooks.length === 0) {
+      console.log("\nCommit hooks: none detected");
+    } else {
+      console.log("\nCommit hooks:");
+      for (const tool of result.hooks) {
+        console.log(`  ${tool.name}: ${tool.evidence.join(", ")}`);
       }
     }
   },

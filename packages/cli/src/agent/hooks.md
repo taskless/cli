@@ -117,6 +117,10 @@ FILES=$(git diff --cached --name-only --diff-filter=ACMR)
 <local-taskless> check $FILES
 ```
 
+`--diff-filter=ACMR` drops deleted files up front. `check` would skip
+them anyway; the filter keeps a commit that only deletes files from
+reaching `check` at all.
+
 `$FILES` splits on whitespace, so a staged path containing a space
 reaches `check` as two paths that do not exist, and is skipped. The
 `ci` recipe has the same limitation. If the repository has paths
