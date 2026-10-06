@@ -92,9 +92,6 @@ importers:
       openapi-fetch:
         specifier: ^0.17.0
         version: 0.17.0
-      picocolors:
-        specifier: ^1.1.1
-        version: 1.1.1
       posthog-node:
         specifier: ^5.28.11
         version: 5.28.11
