@@ -1,6 +1,7 @@
 import process from "node:process";
 
 import { defineCommand, runCommand, showUsage } from "citty";
+import { z } from "zod";
 
 import { createAgentCommand } from "./commands/agent";
 import { authCommand } from "./commands/auth";
@@ -33,6 +34,12 @@ import { shouldLaunchWizard } from "./util/interactive";
 import { showResolvedUsage } from "./util/help";
 import { getCliPrefix } from "./util/package-manager";
 import { CLIError } from "./util/cli-error";
+
+// zod registers its English messages as a side effect of importing "zod", but
+// its package.json declares `"sideEffects": false`, so the bundler drops that
+// registration from dist/. Every issue then reads a bare "Invalid input", with
+// no "expected string, received undefined" to say what was wrong.
+z.config(z.locales.en());
 
 // `satisfies` against the name list (minus `agent`, which is constructed from
 // this record below) is what keeps `SUBCOMMAND_NAMES` honest: adding a command
