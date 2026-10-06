@@ -1,4 +1,4 @@
-import { getToken } from "../auth/token";
+import { getToken, rejectedTokenRemedy } from "../auth/token";
 import { resolveActingOrg } from "../auth/org";
 import { reconcileRules, retryAdvice } from "../api/v2";
 import { CLIError } from "../util/cli-error";
@@ -401,9 +401,7 @@ function reconcileFailure(
     case "unauthorized": {
       return {
         cause: "authentication was rejected",
-        remedy: [
-          `Re-authenticate with \`${getCliPrefix()} auth login\`, or replace an expired \`TASKLESS_TOKEN\`.`,
-        ],
+        remedy: [rejectedTokenRemedy()],
       };
     }
     case "unavailable": {

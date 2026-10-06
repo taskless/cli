@@ -2,9 +2,14 @@ import { resolve } from "node:path";
 import process from "node:process";
 import { defineCommand } from "citty";
 
+import { whoami } from "../api/v2";
 import { loginInteractive } from "../auth/login-interactive";
-import { getToken, removeToken } from "../auth/token";
-import { fetchWhoami } from "../auth/whoami";
+import {
+  getToken,
+  isEnvironmentToken,
+  rejectedTokenRemedy,
+  removeToken,
+} from "../auth/token";
 import { getTelemetry } from "../telemetry";
 import { type CLIErrorCode, writeJsonError } from "../types/errors";
 import { splitRawArguments } from "../util/argv";
@@ -70,10 +75,19 @@ const loginCommand = defineCommand({
         }
         case "already_logged_in": {
           if (!args.json) {
-            console.log("You are already logged in.");
-            console.log(
-              `Run \`${getCliPrefix()} auth logout\` first to re-authenticate.`
-            );
+            if (result.source === "environment") {
+              console.log(
+                "You are already logged in with the TASKLESS_TOKEN environment variable."
+              );
+              console.log(
+                "A saved login would not be used while it is set. Unset TASKLESS_TOKEN first to log in here."
+              );
+            } else {
+              console.log("You are already logged in.");
+              console.log(
+                `Run \`${getCliPrefix()} auth logout\` first to re-authenticate.`
+              );
+            }
           }
           return;
         }
@@ -131,7 +145,22 @@ const logoutCommand = defineCommand({
     try {
       removed = await removeToken(cwd);
       if (!args.json) {
-        console.log(removed ? "Logged out." : "Not logged in.");
+        // logout only removes the saved token. Without saying so, a user
+        // whose token comes from the environment reads "Not logged in." and
+        // is still authenticated as before.
+        const environment = isEnvironmentToken();
+        console.log(
+          removed
+            ? "Logged out."
+            : environment
+              ? "No saved login to remove."
+              : "Not logged in."
+        );
+        if (environment) {
+          console.log(
+            "TASKLESS_TOKEN is set in the environment and is still used. Unset it to log out."
+          );
+        }
       }
     } finally {
       // Concrete state event: a saved token was actually removed.
@@ -181,17 +210,28 @@ export const authCommand = defineCommand({
       return;
     }
 
-    const whoami = await fetchWhoami(token);
-    if (!whoami) {
-      console.log("Logged in, but unable to verify identity.");
-      console.log(
-        `Your token may be invalid or expired. Run \`${getCliPrefix()} auth login\` to re-authenticate.`
-      );
-      return;
+    const source = isEnvironmentToken() ? " via TASKLESS_TOKEN" : "";
+    const outcome = await whoami(token);
+    switch (outcome.status) {
+      case "ok": {
+        const orgs = outcome.data.orgs.map((o) => o.name);
+        const orgSuffix = orgs.length > 0 ? ` (${orgs.join(", ")})` : "";
+        console.log(`Logged in as ${outcome.data.user}${orgSuffix}${source}.`);
+        return;
+      }
+      case "unauthorized": {
+        console.log(`Logged in${source}, but the token was rejected.`);
+        console.log(`It is invalid or expired. ${rejectedTokenRemedy()}`);
+        return;
+      }
+      default: {
+        console.log(`Logged in${source}, but unable to verify identity.`);
+        if (outcome.status === "unavailable") {
+          console.log(
+            `The Taskless service was unreachable (${outcome.reason}).`
+          );
+        }
+      }
     }
-
-    const orgs = whoami.orgs.map((o) => o.name);
-    const orgSuffix = orgs.length > 0 ? ` (${orgs.join(", ")})` : "";
-    console.log(`Logged in as ${whoami.user}${orgSuffix}.`);
   },
 });

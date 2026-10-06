@@ -1,4 +1,4 @@
-# Topic: auth     (CLI v%(CLI_VERSION)s / topic v1)
+# Topic: auth     (CLI v%(CLI_VERSION)s / topic v2)
 
 ## Goal
 Manage Taskless authentication. Three branches:
@@ -29,6 +29,15 @@ Pick the branch matching the user's intent.
    printed.
 4. Report success. Suggest `%(TASKLESS_CLI)s info` to verify identity.
 
+If a saved token is already present, `auth login` asks the service
+whether it is still accepted. A rejected token (revoked or expired)
+is replaced by a fresh login; an accepted one is kept and the CLI
+prints "You are already logged in." Neither is an error.
+
+If the token comes from the `TASKLESS_TOKEN` environment variable,
+`auth login` does nothing: a saved login would not be used while the
+variable is set. Tell the user to replace or unset `TASKLESS_TOKEN`.
+
 The `--anonymous` flag is rejected on `auth login`, it errors with
 "auth commands cannot be anonymous". Don't pass it.
 
@@ -39,7 +48,8 @@ The `--anonymous` flag is rejected on `auth login`, it errors with
    %(TASKLESS_CLI)s auth logout
    ```
 2. The CLI removes the saved token (or reports "Not logged in" if
-   none was present).
+   none was present). When `TASKLESS_TOKEN` is set it says the
+   variable is still used instead: logout cannot remove it.
 3. Report the outcome.
 
 ### Status (no subcommand)
@@ -50,9 +60,13 @@ The `--anonymous` flag is rejected on `auth login`, it errors with
    ```
 2. Output is one of:
    - "Not logged in." (with hint to run `auth login`)
-   - "Logged in as <user> (<orgs>)."
-   - "Logged in, but unable to verify identity." (token expired or
-     revoked, suggest re-login)
+   - "Logged in as <user> (<orgs>)." (with "via TASKLESS_TOKEN" when
+     the token comes from the environment)
+   - "Logged in, but the token was rejected." (revoked or expired;
+     the next line names the fix: `auth login` for a saved token,
+     replacing or unsetting `TASKLESS_TOKEN` otherwise)
+   - "Logged in, but unable to verify identity." (the service could
+     not be reached; retry later)
 3. Report to the user.
 
 ## Errors

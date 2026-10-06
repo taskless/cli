@@ -42,6 +42,26 @@ export async function getToken(
   return undefined;
 }
 
+/** Whether `getToken` answers from the `TASKLESS_TOKEN` environment variable. */
+export function isEnvironmentToken(): boolean {
+  return Boolean(process.env.TASKLESS_TOKEN);
+}
+
+/**
+ * What to do about a token the service rejected (a `401`), as a sentence that
+ * follows "Authentication was rejected." or stands as a remedy on its own.
+ *
+ * A token from `TASKLESS_TOKEN` is out of reach of `auth login` and
+ * `auth logout`, so the variable itself is the fix. A saved token is replaced
+ * by `auth login`, which re-authenticates when the service rejects the token
+ * it finds rather than refusing because one is present.
+ */
+export function rejectedTokenRemedy(): string {
+  return isEnvironmentToken()
+    ? "The token comes from the TASKLESS_TOKEN environment variable, so replace or unset it; `auth login` and `auth logout` do not change it."
+    : `Run \`${getCliPrefix()} auth login\` to replace the saved token.`;
+}
+
 /** Save token data to per-repo .taskless/.env.local.json */
 export async function saveToken(
   data: {

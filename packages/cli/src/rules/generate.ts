@@ -7,6 +7,7 @@ import {
 } from "../api/v2";
 import { notRunOnPlanSentence, parseEntitlementV2 } from "../api/entitlement";
 import { describeRefusal, stripControlCharacters } from "../api/refusal";
+import { rejectedTokenRemedy } from "../auth/token";
 import { CLIError } from "../util/cli-error";
 import { getCliPrefix } from "../util/package-manager";
 import { writeServedRule } from "./files";
@@ -62,7 +63,7 @@ export function orgNotFoundMessage(): string {
 export function orgNotFoundRemedy(): string[] {
   return [
     "Confirm the Taskless app is installed on this repository's owner and includes this repository.",
-    `If access recently changed, re-authenticate with \`${getCliPrefix()} auth login\`.`,
+    `If access recently changed, re-authenticate with \`${getCliPrefix()} auth logout\` then \`${getCliPrefix()} auth login\`.`,
   ];
 }
 
@@ -94,7 +95,7 @@ export async function awaitRequest(
       }
       case "unauthorized": {
         throw new CLIError(
-          "Polling failed: authentication was rejected. Log in again.",
+          `Polling failed: authentication was rejected. ${rejectedTokenRemedy()}`,
           "AUTH_REQUIRED"
         );
       }
@@ -256,7 +257,7 @@ function servedOrThrow(
     }
     case "unauthorized": {
       throw new CLIError(
-        `Rule ${ruleId} could not be fetched: authentication was rejected. Log in again.`,
+        `Rule ${ruleId} could not be fetched: authentication was rejected. ${rejectedTokenRemedy()}`,
         "AUTH_REQUIRED"
       );
     }

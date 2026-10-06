@@ -1,12 +1,13 @@
 import process from "node:process";
 
 import { deviceFlowProvider } from "./device-flow";
-import { getToken, saveToken } from "./token";
+import { getToken, isEnvironmentToken, saveToken } from "./token";
+import { whoami } from "../api/v2";
 import { resolveRepositoryUrl } from "../util/git-remote";
 
 export type LoginResult =
   | { status: "ok" }
-  | { status: "already_logged_in" }
+  | { status: "already_logged_in"; source: "environment" | "saved" }
   | {
       status: "cancelled";
       reason: "expired" | "denied" | "error";
@@ -42,7 +43,18 @@ export async function loginInteractive(
   // not to the login flow that is about to replace it.
   const existing = await getToken(cwd, { silent: true });
   if (existing) {
-    return { status: "already_logged_in" };
+    // A token from TASKLESS_TOKEN outranks anything this flow could save, so
+    // logging in would change nothing the next command reads.
+    if (isEnvironmentToken()) {
+      return { status: "already_logged_in", source: "environment" };
+    }
+    // A saved token the service rejects is the reason the user is here: every
+    // 401 message sends them to `auth login`. Only a definite rejection is
+    // replaced; an unreachable service says nothing about the token.
+    const verified = await whoami(existing);
+    if (verified.status !== "unauthorized") {
+      return { status: "already_logged_in", source: "saved" };
+    }
   }
 
   try {
