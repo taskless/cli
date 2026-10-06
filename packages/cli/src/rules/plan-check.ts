@@ -341,7 +341,6 @@ export async function planCheck(
   };
 }
 
-/** The one notice a withheld run prints, so the upgrade URL appears once. */
 /**
  * What a user does about a duplicate id: which rule to rename, and where the id
  * lives inside it.
@@ -373,6 +372,7 @@ function renameAdvice(ruleId: string, engines: readonly EngineName[]): string {
   );
 }
 
+/** The one notice a withheld run prints, so the upgrade URL appears once. */
 function withheldNotice(entitlement: PlanEntitlement): string {
   const count = entitlement.withheld.length;
   return (
