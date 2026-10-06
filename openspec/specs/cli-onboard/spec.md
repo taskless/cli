@@ -123,7 +123,8 @@ The `onboard.md` file SHALL follow the canonical recipe template defined in the 
 6. For each chosen source, scan and filter for high-signal candidates: repeated patterns across multiple PRs/files/comments, comments that cite a doc or style guide, and merge-blocking review feedback. Filter out one-off nits and pure formatting feedback.
 7. Synthesize a single bullet list where each bullet is a hypothetical rule expressed as `<kebab-case-name> [<destination>]: <one-line description of what it would enforce>`.
 8. For each bullet, offer to materialize it by following the `route` topic, with the accepted bullet as the rule description input.
-9. At the end, ask the user whether they consider onboarding complete; on explicit yes, run `taskless onboard --mark-complete`.
+9. Once the user has materialized what they want, decide with the user when the rules run. The recipe SHALL instruct the agent to report the CI systems and commit-hook tools `taskless detect --json` found, to offer wiring `check` into CI by following the `ci` topic and into a pre-commit hook by following the `hooks` topic, and to carry out whichever the user picks. Declining both SHALL be an accepted answer, and the agent SHALL say in one line that `check` then runs only when someone invokes it.
+10. Only after that, ask the user whether they consider onboarding complete; on explicit yes, run `taskless onboard --mark-complete`.
 
 The recipe SHALL describe a detected tool as present, never as verified. The CLI establishes presence by looking for a file on `PATH` and executes nothing, so the recipe SHALL say so — "`gh` is on your PATH; Taskless did not run it" — and SHALL NOT assert that a tool works, is a particular version, or is genuine.
 
@@ -134,6 +135,8 @@ When a source is not offered, the recipe SHALL say in one line why it is not off
 The recipe SHALL NOT restate the destination criterion itself. That comparison is defined once, in the `route` topic, and the recipe SHALL reference it rather than duplicate it.
 
 The recipe SHALL warn the agent against marking onboarding complete without explicit user confirmation.
+
+The recipe SHALL require the mark-complete question to be asked in a message that asks nothing else. A reply to a message carrying two questions cannot be read as explicit consent to either, and `--mark-complete` is consent-gated, so the recipe SHALL NOT let the question share a message with the step that decides when the rules run.
 
 #### Scenario: Recipe header includes CLI and topic version
 
@@ -196,6 +199,30 @@ The recipe SHALL warn the agent against marking onboarding complete without expl
 
 - **WHEN** the `## See Also` section is read
 - **THEN** it SHALL include a reference to `taskless agent route`
+
+#### Scenario: Recipe decides when the rules run before asking to mark complete
+
+- **WHEN** the recipe `## Steps` section is read
+- **THEN** a step that offers wiring `check` into CI via the `ci` topic and into a pre-commit hook via the `hooks` topic SHALL appear after the materialization step
+- **AND** it SHALL appear before the step that asks about `--mark-complete`
+- **AND** it SHALL direct the agent to the `ci` and `hooks` fields of `detect --json` for what the repository already has
+
+#### Scenario: Declining both is an accepted answer
+
+- **WHEN** the recipe's step that decides when the rules run is read
+- **THEN** it SHALL accept a user who wants neither CI nor a hook
+- **AND** SHALL instruct the agent to state that `check` then runs only when someone invokes it
+
+#### Scenario: The mark-complete question is asked alone
+
+- **WHEN** the recipe step that asks about `--mark-complete` is read
+- **THEN** it SHALL instruct the agent to ask that question in a message containing no other question
+
+#### Scenario: Recipe references the ci and hooks topics in See Also
+
+- **WHEN** the `## See Also` section is read
+- **THEN** it SHALL include a reference to `taskless agent ci`
+- **AND** it SHALL include a reference to `taskless agent hooks`
 
 ### Requirement: Onboard emits intent telemetry
 

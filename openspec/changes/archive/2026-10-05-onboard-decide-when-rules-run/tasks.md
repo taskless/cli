@@ -24,4 +24,4 @@
 
 - [x] 4.1 Add a patch changeset
 - [x] 4.2 Run `pnpm typecheck`, `pnpm lint`, and the CLI test suite
-- [ ] 4.3 Run the pre-archive scenario check, then archive the change
+- [x] 4.3 Run the pre-archive scenario check, then archive the change
