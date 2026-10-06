@@ -7,10 +7,18 @@ import type { ZodError, ZodType } from "zod";
  * is usually written by an agent, and "expected string, received undefined"
  * is only actionable once it says which field. Issues are joined with "; "
  * because zod's own messages already contain commas.
+ *
+ * zod opens its built-in messages with "Invalid input: ", which every caller
+ * already prints once as the line's lead, so it is dropped per issue. A custom
+ * message ("prompt must be a non-empty string") does not carry it and passes
+ * through unchanged.
  */
 export function formatZodIssues(error: ZodError): string {
   return error.issues
-    .map((issue) => `${issue.path.join(".") || "payload"}: ${issue.message}`)
+    .map(
+      (issue) =>
+        `${issue.path.join(".") || "payload"}: ${issue.message.replace(/^Invalid input: /, "")}`
+    )
     .join("; ");
 }
 

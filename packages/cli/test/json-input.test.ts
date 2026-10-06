@@ -43,7 +43,15 @@ describe("readJsonInput", () => {
     const filePath = join(temporaryDirectory, "request.json");
     await writeFile(filePath, JSON.stringify({ successCases: [1] }));
     await expect(readJsonInput(filePath, createInputSchema)).rejects.toThrow(
-      /^Invalid input: prompt: .+; successCases\.0: /
+      "Invalid input: prompt: expected string, received undefined; successCases.0: expected string, received number"
+    );
+  });
+
+  it("passes a custom message through unchanged", async () => {
+    const filePath = join(temporaryDirectory, "empty.json");
+    await writeFile(filePath, JSON.stringify({ prompt: " " }));
+    await expect(readJsonInput(filePath, createInputSchema)).rejects.toThrow(
+      "Invalid input: prompt: prompt must be a non-empty string"
     );
   });
 
