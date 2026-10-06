@@ -5,6 +5,7 @@ import { parse as parseYaml } from "yaml";
 
 import { isRecord } from "../util/is-record";
 import { compareSemver, compareVersions } from "../util/version-compare";
+import { renderNoticeBox } from "./notice-box";
 
 /**
  * Pins in `package.json` that would run a Taskless CLI older than the one that
@@ -372,7 +373,7 @@ function bumpTarget(cliVersion: string): { name: string; version: string } {
 }
 
 /**
- * One notice line: which manifest and field the pin is in, what it says, and
+ * One pin, unbulleted: which manifest and field the pin is in, what it says, and
  * what to change it to. The manifest is named even at the root, so a list
  * mixing the root with workspace packages reads the same way throughout.
  */
@@ -384,7 +385,7 @@ export function describePin(pin: PinnedCli, cliVersion: string): string {
     pin.name === target.name
       ? `${target.name}@${target.version}`
       : `${target.name}@${target.version}, replacing ${pin.name}`;
-  return `  - ${pin.manifest} ${pin.location}: ${pin.name} ${pin.spec}${installed} -> ${move}`;
+  return `${pin.manifest} ${pin.location}: ${pin.name} ${pin.spec}${installed} -> ${move}`;
 }
 
 /**
@@ -426,9 +427,9 @@ export function getPinnedCliNotice(
       : `This upgrade migrated .taskless/ from schema version ${String(upgraded.from)} to ${String(upgraded.to)}, and a CLI that predates that schema refuses the project (SCAFFOLD_VERSION_MISMATCH). ` +
         `CI, scripts, and git hooks that run these pins will break on the push that carries the migrated files. ` +
         `Offer to update them as shown and reinstall dependencies, in the same commit as .taskless/.`;
-  return [
+  return renderNoticeBox("UPDATE PINNED TASKLESS VERSIONS", [
     `package.json pins a Taskless CLI older than ${cliVersion}, the version that just ran here:`,
-    ...pins.map((pin) => describePin(pin, cliVersion)),
+    { items: pins.map((pin) => describePin(pin, cliVersion)) },
     consequence,
-  ].join("\n");
+  ]);
 }

@@ -103,6 +103,17 @@ describe("--help below the root", () => {
     expect(stdout).toContain("COMMANDS");
     expect(stdout).toContain("Manage authentication with taskless.io");
   });
+
+  it.each([[["--help"]], [["auth", "login", "--help"]]])(
+    "opens %j with the line telling an agent to run init",
+    async (arguments_) => {
+      const { stdout } = await execFileAsync("node", [binPath, ...arguments_]);
+
+      const [first] = stdout.split("\n");
+      expect(first).toMatch(/^If you're an agent .* init` first\./);
+      expect(stdout.indexOf("USAGE")).toBeGreaterThan(0);
+    }
+  );
 });
 
 describe("splitRawArguments", () => {

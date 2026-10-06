@@ -2,6 +2,7 @@ import { showUsage } from "citty";
 import type { ArgsDef, CommandDef, Resolvable } from "citty";
 
 import { splitRawArguments } from "./argv";
+import { getCliPrefix } from "./package-manager";
 
 /**
  * citty only implements `--help` inside `runMain`, and `runMain`'s help path
@@ -52,5 +53,23 @@ export async function showResolvedUsage<T extends ArgsDef = ArgsDef>(
     command = child;
   }
 
+  console.log(getAgentInstallLine());
+  console.log("");
   await showUsage(command, parent);
+}
+
+/**
+ * Printed above every usage block, because `--help` is where an agent that
+ * does not have the Taskless skill yet goes looking. Help written for a
+ * person sends it improvising commands; `init` installs the skill and
+ * recipes that make every later session behave the same way.
+ *
+ * It names this exact build, as every remedy does: whoever launched a pinned
+ * nightly chose that version, and `init` should install the same one.
+ */
+export function getAgentInstallLine(): string {
+  return (
+    `If you're an agent looking to install or update Taskless, run \`${getCliPrefix()} init\` first. ` +
+    "It may change how this help works, but it is how agents get a consistent Taskless experience."
+  );
 }

@@ -1,9 +1,4 @@
-import chalk from "chalk";
-
-// Sets `chalk.level` from the real terminal on import. This module renders
-// colour, so it establishes that itself rather than inheriting it from
-// whichever caller happened to load `wizard/intro.ts` first.
-import "../util/color";
+import { renderNoticeBox } from "./notice-box";
 
 /**
  * The banner an upgrade owes a session that is already running.
@@ -33,45 +28,6 @@ export interface ReloadNoticeInput {
   cliVersion: string;
 }
 
-/** Inner text is wrapped to this many columns before the box is sized. */
-const WRAP_COLUMNS = 62;
-
-/**
- * Orange, downsampled by chalk to whatever the terminal actually supports.
- *
- * Depth comes from `util/color`, imported above for that side effect. It used
- * to come from `wizard/intro.ts` by accident, because both callers of this
- * module import that file for `getCliVersion`. That held, and held for a reason
- * no reader of this file could see: a third caller that did not import the
- * wizard would have got a colourless box with no error and nothing to grep for.
- */
-const ACCENT = "#ff8c00";
-
-/**
- * Wrap on spaces, never mid-token.
- *
- * A nightly version is a single 30-character token, so a wrapper that split on
- * width would cut one in half and produce a string nobody can copy. An
- * over-long line is allowed to overflow instead, and the box is then sized
- * around it.
- */
-function wrap(text: string, columns: number): string[] {
-  const lines: string[] = [];
-  let line = "";
-  for (const word of text.split(" ")) {
-    if (line === "") {
-      line = word;
-    } else if (line.length + 1 + word.length <= columns) {
-      line = `${line} ${word}`;
-    } else {
-      lines.push(line);
-      line = word;
-    }
-  }
-  if (line !== "") lines.push(line);
-  return lines;
-}
-
 /**
  * Whether this run changed the version, which is the only thing that makes an
  * open session stale.
@@ -98,46 +54,11 @@ export function versionMoved(input: ReloadNoticeInput): boolean {
 export function getReloadNotice(input: ReloadNoticeInput): string | undefined {
   if (!versionMoved(input)) return undefined;
 
-  const body = [
-    ...wrap(
-      `Taskless changed from ${input.previousCliVersion ?? ""} to ${input.cliVersion}.`,
-      WRAP_COLUMNS
-    ),
-    "",
-    ...wrap(
-      "An AI session that is already open still holds the previous skills, " +
-        "because most tools read the skill list once, at startup.",
-      WRAP_COLUMNS
-    ),
-    "",
-    ...wrap(
-      "Reload skills in your AI tool, or start a new session, before asking " +
-        "it to use Taskless.",
-      WRAP_COLUMNS
-    ),
-  ];
-
-  const heading = "RESTART YOUR AGENTS";
-  // Sized to the content, so a long nightly version widens the box rather than
-  // breaking out of it. Padding is computed on the UNCOLORED text: measuring
-  // after chalk has run would count escape sequences as characters and leave
-  // every border ragged.
-  const inner =
-    Math.max(heading.length, ...body.map((line) => line.length)) + 4;
-
-  const edge = chalk.hex(ACCENT);
-  const top = edge(`┌${"─".repeat(inner)}┐`);
-  const bottom = edge(`└${"─".repeat(inner)}┘`);
-  const row = (text: string, render: (value: string) => string) =>
-    `${edge("│")}  ${render(text)}${" ".repeat(inner - text.length - 4)}  ${edge("│")}`;
-
-  return [
-    "",
-    top,
-    row(heading, (value) => edge.bold(value)),
-    row("", (value) => value),
-    ...body.map((line) => row(line, (value) => value)),
-    bottom,
-    "",
-  ].join("\n");
+  return renderNoticeBox("RESTART YOUR AGENTS", [
+    `Taskless changed from ${input.previousCliVersion ?? ""} to ${input.cliVersion}.`,
+    "An AI session that is already open still holds the previous skills, " +
+      "because most tools read the skill list once, at startup.",
+    "Reload skills in your AI tool, or start a new session, before asking " +
+      "it to use Taskless.",
+  ]);
 }

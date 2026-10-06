@@ -37,6 +37,18 @@ async function installAtVersion(cwd: string, version: string): Promise<void> {
   await writeFile(manifestPath, JSON.stringify(manifest, null, 2));
 }
 
+/**
+ * The text of every boxed notice in `stdout`, rows joined back into one line,
+ * so a phrase the box wrapped across two rows can be asserted on whole.
+ */
+function boxedText(stdout: string): string {
+  return stdout
+    .split("\n")
+    .filter((line) => line.startsWith("│"))
+    .map((line) => line.slice(1, -1).trim())
+    .join(" ");
+}
+
 describe("taskless init (the batch install)", () => {
   let cwd: string;
 
@@ -294,10 +306,12 @@ describe("taskless init (the batch install)", () => {
       cwd,
     ]);
 
-    expect(stdout).toContain("devDependencies: @taskless/cli 0.0.1");
-    expect(stdout).toContain("scripts.lint: @taskless/cli 0.0.1");
-    expect(stdout).toMatch(/-> @taskless\/cli@\S+/);
-    expect(stdout).toContain("Offer to update them as shown");
+    const notice = boxedText(stdout);
+    expect(notice).toContain("UPDATE PINNED TASKLESS VERSIONS");
+    expect(notice).toContain("devDependencies: @taskless/cli 0.0.1");
+    expect(notice).toContain("scripts.lint: @taskless/cli 0.0.1");
+    expect(notice).toMatch(/-> @taskless\/cli@\S+/);
+    expect(notice).toContain("Offer to update them as shown");
     expect(await readFile(join(cwd, "package.json"), "utf8")).toBe(packageJson);
 
     // After the upgrade trailer, which it follows from; the onboarding line
@@ -336,9 +350,9 @@ describe("taskless init (the batch install)", () => {
     expect(stdout).toContain(
       `from schema version 2 to ${String(LATEST_SCHEMA_VERSION)}`
     );
-    expect(stdout).toContain("SCAFFOLD_VERSION_MISMATCH");
-    expect(stdout).toContain("same commit as .taskless/");
-    expect(stdout).not.toContain("will likely fail");
+    expect(boxedText(stdout)).toContain("SCAFFOLD_VERSION_MISMATCH");
+    expect(boxedText(stdout)).toContain("same commit as .taskless/");
+    expect(boxedText(stdout)).not.toContain("will likely fail");
   });
 
   it("does not call a fresh install an upgrade", async () => {
@@ -357,8 +371,8 @@ describe("taskless init (the batch install)", () => {
     ]);
 
     expect(stdout).toContain("devDependencies: @taskless/cli 0.0.1");
-    expect(stdout).toContain("will likely fail");
-    expect(stdout).not.toContain("SCAFFOLD_VERSION_MISMATCH");
+    expect(boxedText(stdout)).toContain("will likely fail");
+    expect(boxedText(stdout)).not.toContain("SCAFFOLD_VERSION_MISMATCH");
     expect(stdout).not.toContain("This upgrade migrated");
   });
 
@@ -381,8 +395,8 @@ describe("taskless init (the batch install)", () => {
     expect(stdout).not.toContain("next commit");
     expect(stdout).toContain("devDependencies: @taskless/cli ^0.0.1");
     // Nothing migrated, so the layout the pin reads did not move.
-    expect(stdout).toContain("will likely fail");
-    expect(stdout).not.toContain("SCAFFOLD_VERSION_MISMATCH");
+    expect(boxedText(stdout)).toContain("will likely fail");
+    expect(boxedText(stdout)).not.toContain("SCAFFOLD_VERSION_MISMATCH");
   });
 
   it("carries stale pins on the --json envelope, as an empty list when there are none", async () => {

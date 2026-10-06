@@ -1,6 +1,7 @@
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import chalk from "chalk";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import {
@@ -375,6 +376,27 @@ describe("findStalePins", () => {
   });
 });
 
+// eslint-disable-next-line no-control-regex
+const ANSI = /\u001B\[[0-9;]*m/g;
+const plain = (value: string) => value.replaceAll(ANSI, "");
+
+/**
+ * The notice's text with the box taken off and the wrapping undone, so a
+ * sentence the box broke across two rows can still be asserted on whole.
+ */
+function pinnedNotice(
+  ...args: Parameters<typeof getPinnedCliNotice>
+): string | undefined {
+  const notice = getPinnedCliNotice(...args);
+  if (notice === undefined) return undefined;
+  return plain(notice)
+    .split("\n")
+    .filter((line) => line.startsWith("│"))
+    .map((line) => line.slice(1, -1).trim())
+    .filter((line) => line !== "")
+    .join(" ");
+}
+
 describe("getPinnedCliNotice", () => {
   const releasePin: PinnedCli = {
     manifest: "package.json",
@@ -388,8 +410,45 @@ describe("getPinnedCliNotice", () => {
     expect(getPinnedCliNotice([], "0.11.2")).toBeUndefined();
   });
 
+  it("draws a box whose every row is the same width, around a long nightly pin", () => {
+    // Coloured, so the width is measured on what a terminal shows rather than
+    // on escape sequences.
+    const level = chalk.level;
+    chalk.level = 3;
+    try {
+      const notice = getPinnedCliNotice(
+        [
+          {
+            ...releasePin,
+            manifest: "packages/some-long-workspace-name/package.json",
+            name: "@taskless/cli-nightly",
+            spec: "0.11.1-20260831132610x088fa7c",
+            installed: "0.11.1-20260831132610x088fa7c",
+          },
+        ],
+        "0.12.0-20261006162512x92b3715"
+      ) as string;
+      expect(notice).not.toBe(plain(notice));
+      const rows = plain(notice)
+        .split("\n")
+        .filter((line) => line !== "");
+      expect(rows[1]).toContain("UPDATE PINNED TASKLESS VERSIONS");
+      const widths = new Set(rows.map((line) => line.length));
+      expect(widths, `rows: ${[...widths].join(", ")}`).toHaveLength(1);
+      // Neither version is split across rows, so both can be copied.
+      for (const version of [
+        "0.11.1-20260831132610x088fa7c",
+        "0.12.0-20261006162512x92b3715",
+      ]) {
+        expect(rows.some((line) => line.includes(version))).toBe(true);
+      }
+    } finally {
+      chalk.level = level;
+    }
+  });
+
   it("names every pin with its target, and offers the bump rather than claiming it", () => {
-    const notice = getPinnedCliNotice(
+    const notice = pinnedNotice(
       [
         { ...releasePin, spec: "^0.11.0", installed: "0.11.0" },
         {
@@ -401,17 +460,17 @@ describe("getPinnedCliNotice", () => {
       "0.11.2"
     );
     expect(notice).toContain(
-      "  - package.json devDependencies: @taskless/cli ^0.11.0 (installed 0.11.0) -> @taskless/cli@0.11.2"
+      "- package.json devDependencies: @taskless/cli ^0.11.0 (installed 0.11.0) -> @taskless/cli@0.11.2"
     );
     expect(notice).toContain(
-      "  - packages/app/package.json scripts.lint: @taskless/cli 0.10.2 -> @taskless/cli@0.11.2"
+      "- packages/app/package.json scripts.lint: @taskless/cli 0.10.2 -> @taskless/cli@0.11.2"
     );
     expect(notice).toContain("Offer to update them as shown");
   });
 
   it("moves a nightly pin to the release package when a release is running", () => {
     // There is no @taskless/cli-nightly@0.11.2; nightlies always carry a stamp.
-    const notice = getPinnedCliNotice(
+    const notice = pinnedNotice(
       [{ ...releasePin, name: "@taskless/cli-nightly", spec: "0.11.2-2026x0" }],
       "0.11.2"
     );
@@ -421,17 +480,14 @@ describe("getPinnedCliNotice", () => {
   });
 
   it("moves a release pin to the nightly package when a nightly is running", () => {
-    const notice = getPinnedCliNotice(
-      [releasePin],
-      "0.12.0-20261002181147x023048f"
-    );
+    const notice = pinnedNotice([releasePin], "0.12.0-20261002181147x023048f");
     expect(notice).toContain(
       "-> @taskless/cli-nightly@0.12.0-20261002181147x023048f, replacing @taskless/cli"
     );
   });
 
   it("hedges without a migration: the layout the pin reads did not move", () => {
-    const notice = getPinnedCliNotice([releasePin], "0.11.2");
+    const notice = pinnedNotice([releasePin], "0.11.2");
     expect(notice).toContain("will likely fail");
     expect(notice).not.toContain("SCAFFOLD_VERSION_MISMATCH");
   });
@@ -439,7 +495,7 @@ describe("getPinnedCliNotice", () => {
   it("states the breakage as certain after a migration, and ties the bump to the commit", () => {
     // A CLI refuses a scaffold newer than its own highest migration, so the
     // pin fails on CI's first run against the migrated files.
-    const notice = getPinnedCliNotice([releasePin], "0.11.2", {
+    const notice = pinnedNotice([releasePin], "0.11.2", {
       migrated: { from: 5, to: 9 },
     });
     expect(notice).toContain("from schema version 5 to 9");
@@ -451,7 +507,7 @@ describe("getPinnedCliNotice", () => {
 
   it("does not call a fresh install an upgrade", () => {
     // A fresh `init` creates `.taskless/` by migrating from schema 0.
-    const notice = getPinnedCliNotice([releasePin], "0.11.2", {
+    const notice = pinnedNotice([releasePin], "0.11.2", {
       migrated: { from: 0, to: 9 },
     });
     expect(notice).not.toContain("upgrade");
