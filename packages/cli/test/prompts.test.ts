@@ -185,7 +185,9 @@ describe("the CLI invocation variable", () => {
       "DETECT_EVIDENCE",
       "HOST_TOOLS",
       "LOGIN_EVIDENCE",
+      "NAME_DESTINATION",
       "PACKAGE_MANAGER_DLX",
+      "RECIPE_FETCH",
       "SOURCE_PR_REVIEW",
       "TASKLESS_CLI",
       "VALE_COMMENT_FORMATS",
@@ -380,6 +382,31 @@ describe("host mechanics suppression", () => {
     expect(rendered).toContain(
       "```\n   and note `loggedIn` and `ghOwner`. Do this now, not later: they change\n   which destinations exist,"
     );
+  });
+
+  it("names the destination by topic rather than by command", () => {
+    // taskless/cli#469. Step 8, the failure fallback and See Also all named a
+    // recipe as a command to fetch, so a caller with no terminal still got
+    // invocations after asking for none. The citation reduces to the topic
+    // name, which is the answer the step asks for.
+    const rendered = getPrompt("route", { mechanics: false });
+    expect(rendered).toContain("**Name the destination.**");
+    expect(rendered).not.toContain("**Name the command.**");
+    expect(rendered).toMatch(/```\n {3}create-vale-rule\n {3}```/);
+    expect(rendered).toContain("- `create-sg-rule`: author a local ast-grep");
+    expect(rendered).toContain("On yes, fetch\n  `create-remote-rule`.");
+    expect(rendered).not.toContain("<taskless-cli>");
+    expect(rendered).not.toContain(" agent create-");
+  });
+
+  it("still renders every recipe citation as a command by default", () => {
+    const rendered = getPrompt("route", { invocation: "npx @taskless/cli" });
+    expect(rendered).toContain("**Name the command.**");
+    expect(rendered).toContain("   npx @taskless/cli agent create-vale-rule\n");
+    expect(rendered).toContain(
+      "- `npx @taskless/cli agent create-sg-rule`: author a local ast-grep"
+    );
+    expect(rendered).toContain("`npx @taskless/cli agent create-remote-rule`.");
   });
 
   it("keeps the evidence itself, since the criteria are stated in terms of it", () => {

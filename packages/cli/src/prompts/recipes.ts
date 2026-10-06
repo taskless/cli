@@ -191,10 +191,13 @@ export interface RecipeOptions {
    */
   invocation?: string;
   /**
-   * Render the steps that gather evidence by running this CLI.
+   * Render the steps that gather evidence by running this CLI, and the
+   * passages that name a recipe as a command to fetch.
    *
-   * `false` replaces them with a statement of what the caller must supply
-   * instead. It exists because `invocation` cannot do this job: that option
+   * `false` replaces the evidence steps with a statement of what the caller
+   * must supply instead, and reduces a recipe citation to its topic name: the
+   * route's final step names the destination rather than its fetch command,
+   * and `See Also` lists topics rather than invocations. It exists because `invocation` cannot do this job: that option
    * substitutes the BINARY NAME inside a command, so a consumer with no CLI
    * setting it to a phrase renders `Run: <no CLI available> detect --json` — a
    * malformed instruction rather than a clean absence, and worse than either
@@ -294,6 +297,33 @@ function runBlock(
   connective: string
 ): string {
   return `Run:\n   \`\`\`\n   ${invocation} ${command}\n   \`\`\`\n   ${connective}`;
+}
+
+/**
+ * The route recipe's final step, as a whole numbered step including its title.
+ *
+ * The title is inside the substitution for the reason {@link hostToolsStep}
+ * gives: "Name the command" is the part that is wrong for a caller with no
+ * terminal, where the answer is the destination's topic name and a command
+ * would be one more thing to strip back out (taskless/cli#469).
+ */
+function nameDestinationStep(invocation: string | undefined): string {
+  if (invocation === undefined) {
+    return `**Name the destination.** Finish with the topic name of the
+recipe that authors this rule:
+\`\`\`
+create-vale-rule
+\`\`\`
+A destination that is not one of the topic names above is a category,
+and a category is not an answer.`;
+  }
+  return `**Name the command.** Finish by telling the user, or running, the
+exact fetch for the destination you chose:
+\`\`\`
+${invocation} agent create-vale-rule
+\`\`\`
+A destination that is not a runnable command is a category, and a
+category is not an answer.`;
 }
 
 /**
@@ -493,6 +523,18 @@ export function buildVariables(
       options.mechanics === false
         ? SUPPLIED_LOGIN
         : runBlock(resolveInvocation(options), "info --json", "and note"),
+    // A recipe named as something to fetch. Written against the topic name in
+    // the source (`%(RECIPE_FETCH)screate-sg-rule`), so with mechanics off the
+    // citation reduces to the name itself rather than to a command whose
+    // binary the caller does not have.
+    RECIPE_FETCH:
+      options.mechanics === false ? "" : `${resolveInvocation(options)} agent `,
+    NAME_DESTINATION: indentBlock(
+      nameDestinationStep(
+        options.mechanics === false ? undefined : resolveInvocation(options)
+      ),
+      "   "
+    ),
     // Three steps, in descending order of how much the resolver actually
     // knows: the caller was told how the CLI was launched; the build is a
     // nightly/dev/self that knows what it is; nobody knows, so ask the agent.
