@@ -8,7 +8,11 @@ import {
 } from "../util/invocation";
 import { inputSchema as ruleCreateInputSchema } from "../schemas/rules-create";
 import { inputSchema as ruleImproveInputSchema } from "../schemas/rules-improve";
-import { ruleInputSchema } from "../schemas/feedback";
+import {
+  bugInputSchema,
+  generalInputSchema,
+  ruleInputSchema,
+} from "../schemas/feedback";
 import {
   AST_GREP_VERSION,
   VALE_VERSION,
@@ -80,7 +84,11 @@ export function canonicalRecipeTopics(): string[] {
 const TOPIC_INPUT_SCHEMAS: Record<string, z.ZodType> = {
   "create-remote-rule": ruleCreateInputSchema,
   "improve-rule": ruleImproveInputSchema,
-  feedback: ruleInputSchema,
+  // Each feedback recipe embeds only its own branch of the payload union, so
+  // an agent reading one never sees the keys of another survey.
+  "rule-feedback": ruleInputSchema,
+  feedback: generalInputSchema,
+  "bug-report": bugInputSchema,
 };
 
 /** Agent-fill marker used when the caller does not supply a real value. */

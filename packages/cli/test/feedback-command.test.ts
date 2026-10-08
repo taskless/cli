@@ -403,10 +403,17 @@ describe("feedback in the built CLI", () => {
   const execFileAsync = promisify(execFile);
   const binPath = builtCli();
 
-  it("is absent from the agent index", async () => {
+  it("lists the user-initiated recipes, and only them, in the agent index", async () => {
     const { stdout } = await execFileAsync("node", [binPath, "agent"]);
-    expect(stdout).toContain("Topics:");
-    expect(stdout).not.toMatch(/^\s*feedback\b/m);
+    const topics = stdout.slice(0, stdout.indexOf("Authoring recipes:"));
+    const feedback = stdout.slice(stdout.indexOf("Feedback recipes:"));
+    // The command is reached through a recipe, never listed as a command.
+    expect(topics).toContain("Topics:");
+    expect(topics).not.toMatch(/^\s*feedback\b/m);
+    expect(feedback).toMatch(/^\s*feedback\s/m);
+    expect(feedback).toMatch(/^\s*bug-report\s/m);
+    // The invited survey is reached through the invite alone.
+    expect(stdout).not.toContain("rule-feedback");
   });
 
   it("still serves --help with both verbs", async () => {

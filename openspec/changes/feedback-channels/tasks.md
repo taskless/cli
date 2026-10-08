@@ -12,13 +12,13 @@
 
 ## 3. Recipes and the agent index
 
-- [ ] 3.1 `git mv packages/cli/src/agent/feedback.md packages/cli/src/agent/rule-feedback.md`, update its header/topic name and its payload instructions to include `kind: "rule"`, and repoint `feedback-invite.md` at `agent rule-feedback`; verify `pnpm cli agent rule-feedback` (after `pnpm build`) opens with `# Topic: rule-feedback` and embeds the rule schema
-- [ ] 3.2 Write the new `packages/cli/src/agent/feedback.md` (general channel: user's words as `verbatim`, agent-drafted `context`, redaction, show-payload-and-wait-for-yes, telemetry-off relay with the issues URL); verify `pnpm cli agent feedback` embeds only the `general` schema
-- [ ] 3.3 Write `packages/cli/src/agent/bug-report.md` (agent drafts from the session, asks only for gaps, redaction, show-payload-and-wait-for-yes, no version-information ask, telemetry-off relay); verify `pnpm cli agent bug-report` embeds only the `bug` schema and contains no version key
-- [ ] 3.4 Wire `TOPIC_INPUT_SCHEMAS` in `prompts/recipes.ts` (`rule-feedback` → rule branch, `feedback` → general, `bug-report` → bug) and add `rule-feedback` and `bug-report` to `INTERNAL_TOPICS` in `prompts/index.ts`; verify `prompts.test.ts` and `feedback-recipes.test.ts` pass after updating them for the new topic names
-- [ ] 3.5 Add a `FEEDBACK_TOPICS` section to the `taskless agent` index in `commands/agent.ts` listing `feedback` and `bug-report`, keep the `feedback` command in `UNLISTED_COMMANDS` with its comment rewritten per design.md; verify a test that the index lists both and does not list `rule-feedback`
-- [ ] 3.6 Update the `feedback` command's `meta.description` and the comment above `feedbackCommand` to describe three channels; verify `pnpm cli feedback --help` reads correctly
-- [ ] 3.7 Run Vale over the three recipes and fix findings; verify `pnpm lint` reports no recipe prose errors
+- [x] 3.1 `git mv packages/cli/src/agent/feedback.md packages/cli/src/agent/rule-feedback.md`, update its header/topic name and its payload instructions to include `kind: "rule"`, and repoint `feedback-invite.md` at `agent rule-feedback`; verify `pnpm cli agent rule-feedback` (after `pnpm build`) opens with `# Topic: rule-feedback` and embeds the rule schema
+- [x] 3.2 Write the new `packages/cli/src/agent/feedback.md` (general channel: user's words as `verbatim`, agent-drafted `context`, redaction, show-payload-and-wait-for-yes, telemetry-off relay with the issues URL); verify `pnpm cli agent feedback` embeds only the `general` schema
+- [x] 3.3 Write `packages/cli/src/agent/bug-report.md` (agent drafts from the session, asks only for gaps, redaction, show-payload-and-wait-for-yes, no version-information ask, telemetry-off relay); verify `pnpm cli agent bug-report` embeds only the `bug` schema and contains no version key
+- [x] 3.4 Wire `TOPIC_INPUT_SCHEMAS` in `prompts/recipes.ts` (`rule-feedback` → rule branch, `feedback` → general, `bug-report` → bug) and add `rule-feedback` and `bug-report` to `INTERNAL_TOPICS` in `prompts/index.ts`; verify `prompts.test.ts` and `feedback-recipes.test.ts` pass after updating them for the new topic names
+- [x] 3.5 Add a `FEEDBACK_TOPICS` section to the `taskless agent` index in `commands/agent.ts` listing `feedback` and `bug-report`, keep the `feedback` command in `UNLISTED_COMMANDS` with its comment rewritten per design.md; verify a test that the index lists both and does not list `rule-feedback`
+- [x] 3.6 Update the `feedback` command's `meta.description` and the comment above `feedbackCommand` to describe three channels; verify `pnpm cli feedback --help` reads correctly
+- [x] 3.7 Run Vale over the three recipes and fix findings; verify `pnpm lint` reports no recipe prose errors
 
 ## 4. Skill, spec purpose, and changeset
 
