@@ -13,6 +13,8 @@ description: |
   - "taskless login/logout/status", "is taskless connected"
   - "add taskless to CI", "wire taskless into github actions"
   - "onboard with taskless", "set up taskless for this project"
+  - "send feedback to taskless", "tell the taskless team X"
+  - "report a taskless bug", "taskless is broken / did the wrong thing"
 
   Also trigger on any request to add/write/create a lint or code rule,
   including ones that name a specific tool (eslint, ruff, biome, stylelint,
@@ -67,6 +69,8 @@ linter, the `create-legacy-rule` path needs nothing installed.
 | Check code against rules   | `%(TASKLESS_CLI)s agent check`        |
 | Log in, log out, or status | `%(TASKLESS_CLI)s agent auth`         |
 | Wire into CI               | `%(TASKLESS_CLI)s agent ci`           |
+| Send Taskless feedback     | `%(TASKLESS_CLI)s agent feedback`     |
+| Report a Taskless bug      | `%(TASKLESS_CLI)s agent bug-report`   |
 | Run checks before commits  | `%(TASKLESS_CLI)s agent hooks`        |
 
 Two of those rows look alike and are not. Running `%(TASKLESS_CLI)s`

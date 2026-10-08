@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Collects qualitative feedback about rule authoring and onboarding through a PostHog survey the agent answers on the user's behalf: the CLI decides when to invite, the agent gathers the user's words and its own observation of the session, and the CLI validates and sends the response.
+Carries feedback from the user's agent to the Taskless team through PostHog surveys, over three channels: the rule-authoring and onboarding survey the CLI invites and the agent answers on the user's behalf, general feedback the user chooses to give, and bug reports that need no GitHub account. The CLI decides when to invite, the agent gathers the user's words and its own observation of the session, and the CLI validates each response and sends it to the survey its kind selects.
 
 ## Requirements
 
