@@ -22,9 +22,9 @@
 
 ## 4. Skill, spec purpose, and changeset
 
-- [ ] 4.1 Add "send feedback to Taskless" and "report a Taskless bug" triggers to the `description` in `skills/taskless/SKILL.md` and two rows to its Topics table (`agent feedback`, `agent bug-report`); verify any skill parity/render test passes
-- [ ] 4.2 Update the `## Purpose` of `openspec/specs/cli-feedback-survey/spec.md` to cover all three channels; verify `pnpm openspec validate feedback-channels --strict` passes
-- [ ] 4.3 Add one `patch` changeset describing the general and bug-report channels, the `rule-feedback` rename, and the required `kind`; verify `.changeset/` contains exactly one new file
+- [x] 4.1 Add "send feedback to Taskless" and "report a Taskless bug" triggers to the `description` in `skills/taskless/SKILL.md` and two rows to its Topics table (`agent feedback`, `agent bug-report`); verify any skill parity/render test passes
+- [x] 4.2 Update the `## Purpose` of `openspec/specs/cli-feedback-survey/spec.md` to cover all three channels; verify `pnpm openspec validate feedback-channels --strict` passes
+- [x] 4.3 Add one `patch` changeset describing the general and bug-report channels, the `rule-feedback` rename, and the required `kind`; verify `.changeset/` contains exactly one new file
 
 ## 5. Verification
 
