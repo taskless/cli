@@ -122,7 +122,7 @@ const sendCommand = defineCommand({
   meta: {
     name: "send",
     description:
-      "Send a completed feedback survey (use --from to specify the input file)",
+      "Send feedback, a bug report, or a rule survey response (use --from to specify the input file)",
   },
   args: {
     dir: {
@@ -197,15 +197,18 @@ const sendCommand = defineCommand({
 });
 
 /**
- * Reached only through the survey invite. Deliberately absent from the
- * `taskless agent` index (see `UNLISTED_COMMANDS` there): listing it would
- * invite an agent to run it unprompted. When a general feedback channel
- * exists, this surface folds into it.
+ * Three channels behind one command, chosen by the payload's `kind`: the
+ * invited rule-authoring survey (`agent rule-feedback`, the only one with
+ * `dismiss` and a cadence), general feedback (`agent feedback`), and bug
+ * reports (`agent bug-report`). The command itself stays out of the
+ * `taskless agent` index (see `UNLISTED_COMMANDS` there): the recipes are what
+ * an agent should reach, because they show the user the payload first.
  */
 export const feedbackCommand = defineCommand({
   meta: {
     name: "feedback",
-    description: "Send or dismiss the Taskless feedback survey",
+    description:
+      "Send Taskless feedback, a bug report, or the rule survey; or dismiss the survey",
   },
   subCommands: {
     dismiss: dismissCommand,

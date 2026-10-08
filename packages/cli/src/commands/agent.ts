@@ -35,6 +35,20 @@ const RECIPE_TOPICS: ReadonlyArray<[string, string]> = [
   ["create-remote-rule", "Generate a rule via the Taskless service (login)"],
 ];
 
+/**
+ * The feedback channels a user asks for, listed under their own heading:
+ * neither is an authoring recipe, and `bug-report` is not a command. The
+ * invited survey's `rule-feedback` is absent on purpose; see the note on
+ * `feedback` in `UNLISTED_COMMANDS`.
+ */
+const FEEDBACK_TOPICS: ReadonlyArray<[string, string]> = [
+  [
+    "feedback",
+    "Send the Taskless team feedback (user asks; no GitHub account)",
+  ],
+  ["bug-report", "Report a Taskless bug (user asks; no GitHub account)"],
+];
+
 async function unwrap<T>(resolvable: Resolvable<T>): Promise<T> {
   if (typeof resolvable === "function") {
     return (resolvable as () => T | Promise<T>)();
@@ -67,11 +81,13 @@ async function resolveDescription(
  *   verb gave it discoverability it does not want yet, and this is the cost of
  *   that choice, paid here.
  *
- * - `feedback` is reached only through the survey invite a served recipe
- *   carries. Listed, it would invite an agent to run it unprompted, and a
- *   `survey sent` with no invite behind it is noise in the funnel. When a
- *   general feedback channel exists this surface folds into it, and that is
- *   the point to reconsider listing.
+ * - `feedback` the COMMAND is reached through a recipe, never directly. The
+ *   index lists the `feedback` and `bug-report` recipes instead (see
+ *   `FEEDBACK_TOPICS`), because they are what show the user the payload and
+ *   wait for a yes; listing the command beside them would offer a path that
+ *   skips the consent. The invited survey's `rule-feedback` recipe is listed
+ *   nowhere: reached unprompted, it would put a `survey sent` with no invite
+ *   behind it into the funnel.
  *
  * Absence from this list is what puts a command in the index, so adding one is
  * a decision someone made rather than a step they forgot.
@@ -148,7 +164,8 @@ export function createAgentCommand(subCommands: SubCommandsDef) {
         // sections line up.
         const maxLength = Math.max(
           ...entries.map(([name]) => name.length),
-          ...RECIPE_TOPICS.map(([name]) => name.length)
+          ...RECIPE_TOPICS.map(([name]) => name.length),
+          ...FEEDBACK_TOPICS.map(([name]) => name.length)
         );
         for (const [name, description] of entries) {
           console.log(`  ${name.padEnd(maxLength + 2)}${description}`);
@@ -156,6 +173,11 @@ export function createAgentCommand(subCommands: SubCommandsDef) {
 
         console.log("\nAuthoring recipes:");
         for (const [name, description] of RECIPE_TOPICS) {
+          console.log(`  ${name.padEnd(maxLength + 2)}${description}`);
+        }
+
+        console.log("\nFeedback recipes:");
+        for (const [name, description] of FEEDBACK_TOPICS) {
           console.log(`  ${name.padEnd(maxLength + 2)}${description}`);
         }
 

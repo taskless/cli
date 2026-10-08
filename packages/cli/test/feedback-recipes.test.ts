@@ -4,7 +4,11 @@ import { promisify } from "node:util";
 import { describe, expect, it } from "vitest";
 
 import { getRecipe } from "../src/prompts/recipes";
-import { ruleInputSchema } from "../src/schemas/feedback";
+import {
+  bugInputSchema,
+  generalInputSchema,
+  ruleInputSchema,
+} from "../src/schemas/feedback";
 import { COMPLETED_CHOICES } from "../src/survey/constants";
 import { builtCli } from "./support/built-cli";
 
@@ -25,14 +29,14 @@ function unwrapQuote(text: string): string {
     .join(" ");
 }
 
-describe("the feedback recipe", () => {
+describe("the rule-feedback recipe", () => {
   it("opens with its header and embeds the payload schema", async () => {
     const { stdout } = await execFileAsync("node", [
       binPath,
       "agent",
-      "feedback",
+      "rule-feedback",
     ]);
-    expect(stdout.startsWith("# Topic: feedback ")).toBe(true);
+    expect(stdout.startsWith("# Topic: rule-feedback ")).toBe(true);
     // The schema is rendered from the Zod source, so the choices the agent
     // reads are the ones `feedback send` accepts.
     for (const choice of COMPLETED_CHOICES) {
@@ -44,7 +48,7 @@ describe("the feedback recipe", () => {
   });
 
   it("names the send and dismiss commands by the rendered invocation", () => {
-    const rendered = getRecipe("feedback", { invocation });
+    const rendered = getRecipe("rule-feedback", { invocation });
     expect(rendered).toContain(
       `${invocation} feedback send --from .taskless/.tmp-feedback.json --json`
     );
@@ -52,7 +56,7 @@ describe("the feedback recipe", () => {
   });
 
   it("tells the agent it is the respondent and hands the user's words through verbatim", () => {
-    const rendered = getRecipe("feedback", { invocation }) ?? "";
+    const rendered = getRecipe("rule-feedback", { invocation }) ?? "";
     expect(rendered).toContain("You are the respondent");
     expect(rendered).toContain(
       "Do not put the survey's questions to the user one by one"
@@ -61,7 +65,7 @@ describe("the feedback recipe", () => {
   });
 
   it("shows every answer before sending when the user asked for a review", () => {
-    const rendered = getRecipe("feedback", { invocation }) ?? "";
+    const rendered = getRecipe("rule-feedback", { invocation }) ?? "";
     const review = rendered.slice(
       rendered.indexOf("**Show it first, if the user asked for a `review`.**"),
       rendered.indexOf("**Send.** Run:")
@@ -107,7 +111,7 @@ describe("the feedback invite", () => {
         invocation,
         header: false,
       }) ?? "";
-    expect(fragment).toContain(`${invocation} agent feedback`);
+    expect(fragment).toContain(`${invocation} agent rule-feedback`);
     expect(fragment).toContain(`${invocation} feedback dismiss`);
   });
 
@@ -118,7 +122,7 @@ describe("the feedback invite", () => {
       fragment.indexOf("They said `review`"),
       fragment.indexOf("`skip`, said nothing, or replied about something else")
     );
-    expect(reviewDoor).toContain(`${invocation} agent feedback`);
+    expect(reviewDoor).toContain(`${invocation} agent rule-feedback`);
     expect(reviewDoor).toContain("review mode");
     expect(reviewDoor).not.toContain("feedback dismiss");
   });
@@ -141,7 +145,7 @@ describe("the feedback invite", () => {
       fragment.indexOf("`skip`, said nothing, or replied about something else"),
       fragment.indexOf("They asked you not to send anything")
     );
-    expect(skipDoor).toContain(`${invocation} agent feedback`);
+    expect(skipDoor).toContain(`${invocation} agent rule-feedback`);
     expect(skipDoor).toContain("no `verbatim`");
     expect(skipDoor).not.toContain("feedback dismiss");
   });
@@ -155,5 +159,73 @@ describe("the feedback invite", () => {
     expect(refusal).toContain(`${invocation} feedback dismiss`);
     expect(refusal).toContain("DO_NOT_TRACK=1");
     expect(refusal).toContain("TASKLESS_TELEMETRY_DISABLED=1");
+  });
+});
+
+/** Every key in a branch's JSON Schema, as the recipe embeds it. */
+function schemaKeys(schema: { shape: Record<string, unknown> }): string[] {
+  return Object.keys(schema.shape);
+}
+
+describe.each([
+  ["feedback", "general", generalInputSchema, ruleInputSchema],
+  ["bug-report", "bug", bugInputSchema, ruleInputSchema],
+] as const)("the %s recipe", (topic, kind, ownSchema, otherSchema) => {
+  it("opens with its header and embeds only its own payload schema", async () => {
+    const { stdout } = await execFileAsync("node", [binPath, "agent", topic]);
+    expect(stdout.startsWith(`# Topic: ${topic} `)).toBe(true);
+    for (const key of schemaKeys(ownSchema)) {
+      expect(stdout).toContain(`"${key}"`);
+    }
+    expect(stdout).toContain(`"const": "${kind}"`);
+    for (const key of schemaKeys(otherSchema)) {
+      if (key in ownSchema.shape) continue;
+      expect(stdout).not.toContain(`"${key}"`);
+    }
+  });
+
+  it("carries no survey invite, even with the gate open", async () => {
+    // The suite runs with telemetry off, which closes the gate; the topic
+    // is also not a surveyed one, which is the property that matters.
+    const { stdout } = await execFileAsync("node", [binPath, "agent", topic]);
+    expect(stdout).not.toContain("## Before you finish");
+  });
+
+  it("shows the payload and waits for a yes before sending", () => {
+    const rendered = getRecipe(topic, { invocation }) ?? "";
+    const show = rendered.indexOf("**Show it, and wait for a yes.**");
+    expect(show).toBeGreaterThan(-1);
+    expect(show).toBeLessThan(rendered.indexOf(`${invocation} feedback send`));
+    expect(rendered).toContain("Send only on the user's go-ahead");
+    expect(rendered).toContain(
+      "Do NOT send before the user has seen the payload and said yes"
+    );
+  });
+
+  it("keeps secrets and unshared code out of the payload", () => {
+    const rendered = getRecipe(topic, { invocation }) ?? "";
+    expect(rendered).toContain("**Keep it shareable.**");
+    expect(rendered).toContain("secrets, tokens, credentials, absolute paths");
+  });
+
+  it("relays the telemetry-off outcome with the issues page", () => {
+    const rendered = getRecipe(topic, { invocation }) ?? "";
+    expect(rendered).toMatch(/If it says telemetry is\s+disabled/);
+    expect(rendered).toContain("https://github.com/taskless/cli/issues");
+  });
+
+  it("never dismisses the invited survey", () => {
+    const rendered = getRecipe(topic, { invocation }) ?? "";
+    expect(rendered).toContain(
+      `Do NOT run \`${invocation} feedback dismiss\` here`
+    );
+  });
+});
+
+describe("the bug-report recipe's version information", () => {
+  it("leaves version information to the CLI", () => {
+    const rendered = getRecipe("bug-report", { invocation }) ?? "";
+    expect(rendered).toContain("**Leave version information out.**");
+    expect(Object.keys(bugInputSchema.shape)).not.toContain("version");
   });
 });
