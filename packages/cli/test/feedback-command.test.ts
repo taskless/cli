@@ -7,7 +7,7 @@ import { promisify } from "node:util";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { readNextAsk } from "../src/survey/cadence";
-import { ANSWERED_INTERVAL_MS, SURVEY_ID } from "../src/survey/constants";
+import { ANSWERED_INTERVAL_MS, RULE_SURVEY_ID } from "../src/survey/constants";
 import { CLIError } from "../src/util/cli-error";
 import { builtCli } from "./support/built-cli";
 
@@ -40,6 +40,7 @@ function verb(name: "dismiss" | "send"): RunnableCommand {
 }
 
 const VALID = {
+  kind: "rule",
   ruleKind: "ast-grep, forbid eval in TypeScript",
   verbatim: "The second rule took three tries but the verify loop caught it.",
   completed: "Yes",
@@ -83,14 +84,14 @@ describe("feedback command", () => {
       await verb("dismiss").run({ args: { dir: cwd }, rawArgs: [] });
       expect(capture).toHaveBeenCalledTimes(1);
       expect(capture).toHaveBeenCalledWith("survey dismissed", {
-        $survey_id: SURVEY_ID,
+        $survey_id: RULE_SURVEY_ID,
       });
     });
 
     it("holds the next invite off by the answered interval", async () => {
       const before = Date.now();
       await verb("dismiss").run({ args: { dir: cwd }, rawArgs: [] });
-      const nextAsk = await readNextAsk(SURVEY_ID);
+      const nextAsk = await readNextAsk(RULE_SURVEY_ID);
       expect(nextAsk).toBeGreaterThanOrEqual(before + ANSWERED_INTERVAL_MS);
       expect(nextAsk).toBeLessThanOrEqual(Date.now() + ANSWERED_INTERVAL_MS);
     });
@@ -99,7 +100,7 @@ describe("feedback command", () => {
       enabled = false;
       await verb("dismiss").run({ args: { dir: cwd }, rawArgs: [] });
       expect(capture).not.toHaveBeenCalled();
-      expect(await readNextAsk(SURVEY_ID)).toBeUndefined();
+      expect(await readNextAsk(RULE_SURVEY_ID)).toBeUndefined();
       expect(process.exitCode).toBeUndefined();
       expect(logSpy.mock.calls.flat().join("\n")).toMatch(/disabled/);
     });
@@ -115,7 +116,7 @@ describe("feedback command", () => {
 
       expect(capture).toHaveBeenCalledTimes(1);
       expect(capture).toHaveBeenCalledWith("survey sent", {
-        $survey_id: SURVEY_ID,
+        $survey_id: RULE_SURVEY_ID,
         "$survey_response_0874591f-c554-4ac3-8930-e11c436d859e": VALID.ruleKind,
         "$survey_response_2c3c80dc-dcda-4e29-b52e-a25ef58b5ca2": VALID.verbatim,
         "$survey_response_605e12a8-82b6-480f-93b2-ab8de0fa08bd": "Yes",
@@ -130,13 +131,16 @@ describe("feedback command", () => {
     it("sends the agent's account alone when the user gave no words", async () => {
       // A `skip` reply is not a dismissal: the payload omits `verbatim` and
       // the rest still goes, keyed to the survey's required question.
-      const from = await writePayload({ ruleKind: "none (onboarding)" });
+      const from = await writePayload({
+        kind: "rule",
+        ruleKind: "none (onboarding)",
+      });
       await verb("send").run({
         args: { dir: cwd, from, json: false },
         rawArgs: [],
       });
       expect(capture).toHaveBeenCalledWith("survey sent", {
-        $survey_id: SURVEY_ID,
+        $survey_id: RULE_SURVEY_ID,
         "$survey_response_0874591f-c554-4ac3-8930-e11c436d859e":
           "none (onboarding)",
       });
@@ -159,7 +163,7 @@ describe("feedback command", () => {
         args: { dir: cwd, from, json: false },
         rawArgs: [],
       });
-      expect(await readNextAsk(SURVEY_ID)).toBeGreaterThanOrEqual(
+      expect(await readNextAsk(RULE_SURVEY_ID)).toBeGreaterThanOrEqual(
         before + ANSWERED_INTERVAL_MS
       );
     });
@@ -174,7 +178,7 @@ describe("feedback command", () => {
       );
       expect(errorSpy.mock.calls.flat().join("\n")).toContain("completed");
       expect(capture).not.toHaveBeenCalled();
-      expect(await readNextAsk(SURVEY_ID)).toBeUndefined();
+      expect(await readNextAsk(RULE_SURVEY_ID)).toBeUndefined();
       expect(process.exitCode).toBe(1);
     });
 
@@ -217,7 +221,7 @@ describe("feedback command", () => {
         rawArgs: [],
       });
       expect(capture).not.toHaveBeenCalled();
-      expect(await readNextAsk(SURVEY_ID)).toBeUndefined();
+      expect(await readNextAsk(RULE_SURVEY_ID)).toBeUndefined();
       expect(process.exitCode).toBeUndefined();
     });
   });
@@ -225,17 +229,46 @@ describe("feedback command", () => {
   describe("buildSurveyResponse", () => {
     it("maps every answered key and no unanswered one", () => {
       const properties = buildSurveyResponse({
+        kind: "rule",
         ruleKind: "r",
         verbatim: "v",
         completed: "Unknown",
         agents: "Claude Code",
       });
       expect(properties).toEqual({
-        $survey_id: SURVEY_ID,
+        $survey_id: RULE_SURVEY_ID,
         "$survey_response_0874591f-c554-4ac3-8930-e11c436d859e": "r",
         "$survey_response_2c3c80dc-dcda-4e29-b52e-a25ef58b5ca2": "v",
         "$survey_response_605e12a8-82b6-480f-93b2-ab8de0fa08bd": "Unknown",
         "$survey_response_f85b22df-8e51-4c9c-8219-261b33b71c90": "Claude Code",
+      });
+    });
+
+    it("maps a general payload to the general survey", () => {
+      expect(
+        buildSurveyResponse({ kind: "general", verbatim: "v", context: "c" })
+      ).toEqual({
+        $survey_id: "01a11da4-3948-0000-4ae4-c9da9321801e",
+        "$survey_response_c71e52ee-f4c7-469f-815a-af50a9be6d37": "v",
+        "$survey_response_ab0ceb25-8084-44c8-9974-1d1a1c7371c2": "c",
+      });
+    });
+
+    it("maps a bug payload to the bug survey", () => {
+      expect(
+        buildSurveyResponse({
+          kind: "bug",
+          summary: "s",
+          trying: "t",
+          expected: "e",
+          actual: "a",
+        })
+      ).toEqual({
+        $survey_id: "01a11da7-27a2-0000-0f4e-6d3e1f89f385",
+        "$survey_response_2dd63cf3-dac2-4765-ace0-393bc4aa42fe": "s",
+        "$survey_response_e59a87e9-9ac7-4a59-a709-a282b16dbf37": "t",
+        "$survey_response_73415b80-7371-4536-8c50-09c2ecaa5d52": "e",
+        "$survey_response_daa98d8d-113e-4e3e-ac0f-595ecc1fc69f": "a",
       });
     });
   });

@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { getRecipe } from "../src/prompts/recipes";
 import { nextAskPath, readNextAsk, writeNextAsk } from "../src/survey/cadence";
-import { SHOWN_INTERVAL_MS, SURVEY_ID } from "../src/survey/constants";
+import { SHOWN_INTERVAL_MS, RULE_SURVEY_ID } from "../src/survey/constants";
 import { getTelemetry } from "../src/telemetry";
 
 // Spy on telemetry by mocking the module the gate imports, the same way
@@ -88,9 +88,9 @@ describe("the survey gate", () => {
     expect(served.match(/^# Topic:/gm)).toHaveLength(1);
     expect(capture).toHaveBeenCalledTimes(1);
     expect(capture).toHaveBeenCalledWith("survey shown", {
-      $survey_id: SURVEY_ID,
+      $survey_id: RULE_SURVEY_ID,
     });
-    expect(await readNextAsk(SURVEY_ID)).toBe(NOW + SHOWN_INTERVAL_MS);
+    expect(await readNextAsk(RULE_SURVEY_ID)).toBe(NOW + SHOWN_INTERVAL_MS);
   });
 
   it("claims the cadence window before the telemetry client is initialised", async () => {
@@ -98,7 +98,7 @@ describe("the survey gate", () => {
     // for it, so the assertion is about ordering, not the final state.
     let seenAtTelemetryInit: number | undefined;
     vi.mocked(getTelemetry).mockImplementationOnce(async () => {
-      seenAtTelemetryInit = await readNextAsk(SURVEY_ID);
+      seenAtTelemetryInit = await readNextAsk(RULE_SURVEY_ID);
       return { capture, shutdown: () => Promise.resolve() };
     });
 
@@ -117,17 +117,17 @@ describe("the survey gate", () => {
   });
 
   it("serves the bare recipe within the window, touching nothing", async () => {
-    await writeNextAsk(SURVEY_ID, NOW + 1);
+    await writeNextAsk(RULE_SURVEY_ID, NOW + 1);
     const recipe =
       getRecipe("create-vale-rule", { invocation, directive: true }) ?? "";
 
     expect(await serve("create-vale-rule")).toBe(recipe.trimEnd());
     expect(capture).not.toHaveBeenCalled();
-    expect(await readNextAsk(SURVEY_ID)).toBe(NOW + 1);
+    expect(await readNextAsk(RULE_SURVEY_ID)).toBe(NOW + 1);
   });
 
   it("opens the moment the window closes", async () => {
-    await writeNextAsk(SURVEY_ID, NOW);
+    await writeNextAsk(RULE_SURVEY_ID, NOW);
     expect(await surveyGateIsOpen({ topic: "onboard", now: () => NOW })).toBe(
       true
     );
@@ -136,37 +136,37 @@ describe("the survey gate", () => {
   it("serves the bare recipe under the telemetry opt-out, without reading the cadence", async () => {
     enabled = false;
     // A cadence that says "ask now" would open the gate if it were read.
-    await writeNextAsk(SURVEY_ID, 0);
+    await writeNextAsk(RULE_SURVEY_ID, 0);
     const recipe =
       getRecipe("create-sg-rule", { invocation, directive: true }) ?? "";
 
     expect(await serve("create-sg-rule")).toBe(recipe.trimEnd());
     expect(capture).not.toHaveBeenCalled();
-    expect(await readNextAsk(SURVEY_ID)).toBe(0);
+    expect(await readNextAsk(RULE_SURVEY_ID)).toBe(0);
   });
 
   it.each(["true", "1"])("serves the bare recipe in CI (CI=%s)", async (ci) => {
     const recipe = getRecipe("onboard", { invocation, directive: true }) ?? "";
     expect(await serve("onboard", { ci })).toBe(recipe.trimEnd());
     expect(capture).not.toHaveBeenCalled();
-    expect(await readNextAsk(SURVEY_ID)).toBeUndefined();
+    expect(await readNextAsk(RULE_SURVEY_ID)).toBeUndefined();
   });
 
   it("serves an unsurveyed topic bare and leaves the cadence alone", async () => {
     const recipe = getRecipe("check", { invocation, directive: true }) ?? "";
     expect(await serve("check")).toBe(recipe.trimEnd());
     expect(capture).not.toHaveBeenCalled();
-    expect(await readNextAsk(SURVEY_ID)).toBeUndefined();
+    expect(await readNextAsk(RULE_SURVEY_ID)).toBeUndefined();
   });
 
   it("repairs a corrupt cadence file by serving and rewriting", async () => {
-    const path = nextAskPath(SURVEY_ID);
+    const path = nextAskPath(RULE_SURVEY_ID);
     await mkdir(join(path, ".."), { recursive: true });
     await writeFile(path, "garbage", "utf8");
 
     const served = await serve("create-remote-rule");
     expect(served.endsWith(inviteFragment())).toBe(true);
-    expect(await readNextAsk(SURVEY_ID)).toBe(NOW + SHOWN_INTERVAL_MS);
+    expect(await readNextAsk(RULE_SURVEY_ID)).toBe(NOW + SHOWN_INTERVAL_MS);
   });
 
   /** Everything the command wrote to stdout, as one string. */
@@ -210,7 +210,7 @@ describe("the survey gate", () => {
       expect(printed()).toContain("# Topic: onboard");
       expect(printed()).toContain("## Before you finish");
       expect(capture).toHaveBeenCalledWith("survey shown", {
-        $survey_id: SURVEY_ID,
+        $survey_id: RULE_SURVEY_ID,
       });
     });
 

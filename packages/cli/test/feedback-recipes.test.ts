@@ -4,7 +4,7 @@ import { promisify } from "node:util";
 import { describe, expect, it } from "vitest";
 
 import { getRecipe } from "../src/prompts/recipes";
-import { inputSchema } from "../src/schemas/feedback";
+import { ruleInputSchema } from "../src/schemas/feedback";
 import { COMPLETED_CHOICES } from "../src/survey/constants";
 import { builtCli } from "./support/built-cli";
 
@@ -38,7 +38,7 @@ describe("the feedback recipe", () => {
     for (const choice of COMPLETED_CHOICES) {
       expect(stdout).toContain(`"${choice}"`);
     }
-    for (const key of Object.keys(inputSchema.shape)) {
+    for (const key of Object.keys(ruleInputSchema.shape)) {
       expect(stdout).toContain(`"${key}"`);
     }
   });
