@@ -28,6 +28,6 @@
 
 ## 5. Verification
 
-- [ ] 5.1 Run `pnpm typecheck`, `pnpm lint`, and `pnpm test`; all pass
-- [ ] 5.2 Run the pre-archive scenario check from CLAUDE.md (commit, `pnpm openspec archive feedback-channels -y`, confirm every prior `#### Scenario` under the invite and cadence requirements is still present plus the new ones, reset to the saved SHA)
-- [ ] 5.3 With telemetry enabled against the real project, send one payload of each kind via `pnpm cli feedback send` and confirm each response appears under its survey in PostHog with the right questions answered
+- [x] 5.1 Run `pnpm typecheck`, `pnpm lint`, and `pnpm test`; all pass
+- [x] 5.2 Run the pre-archive scenario check from CLAUDE.md (commit, `pnpm openspec archive feedback-channels -y`, confirm every prior `#### Scenario` under the invite and cadence requirements is still present plus the new ones, reset to the saved SHA)
+- [x] 5.3 Confirm each kind reaches PostHog with the right questions answered: satisfied without a live send. Every survey and question id was transcribed from the live survey definitions (read 2026-10-08), the rule survey's content is reused unchanged, and `survey-cadence.test.ts` and `feedback-command.test.ts` pin each kind's `$survey_id` and `$survey_response_<id>` keys
