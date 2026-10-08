@@ -1,8 +1,10 @@
-import { resolve } from "node:path";
+import { join, resolve } from "node:path";
 import process from "node:process";
 
 import { defineCommand } from "citty";
 
+import { readManifest } from "../filesystem/manifest";
+import { TASKLESS_DIRECTORY } from "../rules/vale/formats";
 import { inputSchema, type FeedbackInput } from "../schemas/feedback";
 import { writeNextAsk } from "../survey/cadence";
 import {
@@ -17,13 +19,53 @@ import { readJsonInput } from "../util/json-input";
 import { getCliPrefix } from "../util/package-manager";
 
 /**
- * What both verbs say under the telemetry opt-out. An agent should never
- * reach them in that state, because the invite is not served in it, so this
- * is a defensive line rather than a path the recipe describes. Exit zero: the
- * user asked for nothing to be sent, and nothing was.
+ * What `dismiss` says under the telemetry opt-out. An agent should never reach
+ * it in that state, because the invite is not served in it, so this is a
+ * defensive line rather than a path the recipe describes. Exit zero: the user
+ * asked for nothing to be sent, and nothing was.
  */
 const NOTHING_SENT =
   "Telemetry is disabled, so no feedback was sent. Nothing else to do.";
+
+/** Where to report instead when telemetry is off. */
+export const ISSUES_URL = "https://github.com/taskless/cli/issues";
+
+/**
+ * What `send` says under the telemetry opt-out. Unlike the invite, general
+ * feedback and bug reports are things the user asked to send, so the opt-out
+ * gets a way forward rather than a shrug. Exit zero all the same: the opt-out
+ * is honoured, not an error.
+ */
+const SEND_DISABLED = `Telemetry is disabled, so nothing was sent. To reach the Taskless team anyway, open an issue at ${ISSUES_URL}`;
+
+/**
+ * The bug survey's version-information answer, built by the CLI so the agent
+ * can neither get it wrong nor leave it out.
+ *
+ * Local state only, and nothing that identifies the user: no login, email,
+ * organization, repository URL, or path, and no network call. That rules out
+ * reusing `info`, which probes `whoami` and reports all of those. The event
+ * carries the usual telemetry identity regardless; this answer is the text a
+ * person reads in the responses view, and it says only what build and project
+ * layout the bug was seen on. A missing or unreadable `.taskless/` drops the
+ * project lines rather than failing the report.
+ */
+export async function bugVersionInformation(cwd: string): Promise<string> {
+  const manifest = await readManifest(join(cwd, TASKLESS_DIRECTORY)).then(
+    (read) => read.manifest,
+    () => null
+  );
+  const lines = [`cli: ${__VERSION__}`];
+  const installed = manifest?.install?.cliVersion;
+  if (installed) lines.push(`installed scaffold: ${installed}`);
+  const reconciledTo = manifest?.rules?.reconciledTo;
+  if (reconciledTo) lines.push(`rules reconciled to: ${reconciledTo}`);
+  lines.push(
+    `platform: ${process.platform} ${process.arch}`,
+    `node: ${process.version}`
+  );
+  return lines.join("\n");
+}
 
 /**
  * The `survey sent` properties for a validated payload.
@@ -32,10 +74,12 @@ const NOTHING_SENT =
  * selects, and one `$survey_response_<id>` per answered question. An optional
  * question left blank is absent rather than sent as an empty string, so the
  * responses view shows a gap and not an empty answer. A question with no
- * payload key is the CLI's to answer, and is skipped here.
+ * payload key is the CLI's to answer, from `cliAnswer`; the bug survey's
+ * version information is the only one.
  */
 export function buildSurveyResponse(
-  input: FeedbackInput
+  input: FeedbackInput,
+  cliAnswer?: string
 ): Record<string, string> {
   const survey = SURVEYS[input.kind];
   // The branches share no key type, so the payload is read as a plain record;
@@ -43,8 +87,7 @@ export function buildSurveyResponse(
   const answers = input as Readonly<Record<string, string | undefined>>;
   const properties: Record<string, string> = { $survey_id: survey.id };
   for (const { key, id } of survey.questions) {
-    if (key === undefined) continue;
-    const answer = answers[key];
+    const answer = key === undefined ? cliAnswer : answers[key];
     if (answer !== undefined) properties[`$survey_response_${id}`] = answer;
   }
   return properties;
@@ -133,13 +176,20 @@ const sendCommand = defineCommand({
     }
 
     if (!isTelemetryEnabled()) {
-      console.log(NOTHING_SENT);
+      console.log(SEND_DISABLED);
       return;
     }
 
+    const cliAnswer =
+      input.kind === "bug" ? await bugVersionInformation(cwd) : undefined;
     const telemetry = await getTelemetry(cwd);
-    telemetry.capture("survey sent", buildSurveyResponse(input));
-    await writeNextAsk(RULE_SURVEY_ID, Date.now() + ANSWERED_INTERVAL_MS);
+    telemetry.capture("survey sent", buildSurveyResponse(input, cliAnswer));
+    // Only the invited survey has a cadence. General feedback and bug reports
+    // are the user's own initiative, and answering one is not an answer to
+    // the invite: it neither earns nor costs the user a quiet spell.
+    if (input.kind === "rule") {
+      await writeNextAsk(RULE_SURVEY_ID, Date.now() + ANSWERED_INTERVAL_MS);
+    }
     // The input file is left where it is, like `rule create --from`; the
     // recipe's clean-up step deletes it, and `/.tmp-*` is ignored regardless.
     console.log("Feedback sent. Thank you.");

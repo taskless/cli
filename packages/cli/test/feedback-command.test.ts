@@ -1,13 +1,25 @@
 import { execFile } from "node:child_process";
-import { mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
+import {
+  mkdir,
+  mkdtemp,
+  readdir,
+  readFile,
+  rm,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { readNextAsk } from "../src/survey/cadence";
-import { ANSWERED_INTERVAL_MS, RULE_SURVEY_ID } from "../src/survey/constants";
+import { LATEST_SCHEMA_VERSION } from "../src/filesystem/migrate";
+import { readNextAsk, writeNextAsk } from "../src/survey/cadence";
+import {
+  ANSWERED_INTERVAL_MS,
+  RULE_SURVEY_ID,
+  SURVEYS,
+} from "../src/survey/constants";
 import { CLIError } from "../src/util/cli-error";
 import { builtCli } from "./support/built-cli";
 
@@ -24,7 +36,7 @@ vi.mock("../src/telemetry", () => ({
   shutdownTelemetry: () => Promise.resolve(),
 }));
 
-const { feedbackCommand, buildSurveyResponse } =
+const { feedbackCommand, buildSurveyResponse, ISSUES_URL } =
   await import("../src/commands/feedback");
 
 interface RunnableCommand {
@@ -77,6 +89,16 @@ describe("feedback command", () => {
     const path = join(cwd, ".tmp-feedback.json");
     await writeFile(path, JSON.stringify(payload), "utf8");
     return path;
+  }
+
+  async function send(payload: unknown): Promise<Record<string, string>> {
+    const from = await writePayload(payload);
+    await verb("send").run({
+      args: { dir: cwd, from, json: false },
+      rawArgs: [],
+    });
+    expect(capture).toHaveBeenCalledTimes(1);
+    return capture.mock.calls[0]![1] as Record<string, string>;
   }
 
   describe("dismiss", () => {
@@ -223,6 +245,109 @@ describe("feedback command", () => {
       expect(capture).not.toHaveBeenCalled();
       expect(await readNextAsk(RULE_SURVEY_ID)).toBeUndefined();
       expect(process.exitCode).toBeUndefined();
+    });
+  });
+
+  describe("send, by kind", () => {
+    const GENERAL = { kind: "general", verbatim: "The recipes are long." };
+    const BUG = {
+      kind: "bug",
+      summary: "check exits 0 when a rule file fails to parse",
+      trying: "Run taskless check after adding a rule",
+      expected: "A non-zero exit naming the broken rule",
+      actual: "Exit 0 with no findings",
+    };
+    const VERSION_QUESTION = `$survey_response_${
+      SURVEYS.bug.questions.find(({ key }) => key === undefined)!.id
+    }`;
+
+    it.each([
+      ["rule", VALID, "01a0c7b9-dfe4-0000-d05e-ce253e90a68c"],
+      ["general", GENERAL, "01a11da4-3948-0000-4ae4-c9da9321801e"],
+      ["bug", BUG, "01a11da7-27a2-0000-0f4e-6d3e1f89f385"],
+    ])("sends a %s payload to its own survey", async (_kind, payload, id) => {
+      const properties = await send(payload);
+      expect(properties.$survey_id).toBe(id);
+    });
+
+    it.each([
+      ["general", GENERAL],
+      ["bug", BUG],
+    ])("leaves the cadence alone for a %s payload", async (kind, payload) => {
+      await writeNextAsk(RULE_SURVEY_ID, 1234);
+      await send(payload);
+      expect(await readNextAsk(RULE_SURVEY_ID)).toBe(1234);
+      expect(
+        await readNextAsk(SURVEYS[kind as "general" | "bug"].id)
+      ).toBeUndefined();
+    });
+
+    it("answers a bug report's version information itself", async () => {
+      await mkdir(join(cwd, ".taskless"), { recursive: true });
+      await writeFile(
+        join(cwd, ".taskless", "taskless.json"),
+        JSON.stringify({
+          version: LATEST_SCHEMA_VERSION,
+          install: { cliVersion: "0.11.3" },
+          rules: { reconciledTo: "0.11.0" },
+        }),
+        "utf8"
+      );
+      const properties = await send(BUG);
+      const answer = properties[VERSION_QUESTION]!;
+      expect(answer).toMatch(/^cli: \S+/);
+      expect(answer).toContain("installed scaffold: 0.11.3");
+      expect(answer).toContain("rules reconciled to: 0.11.0");
+      expect(answer).toContain(`platform: ${process.platform} ${process.arch}`);
+      expect(answer).toContain(`node: ${process.version}`);
+    });
+
+    it("still answers it with no .taskless/, and says nothing identifying", async () => {
+      const properties = await send(BUG);
+      const answer = properties[VERSION_QUESTION]!;
+      // Every line is one of the four local facts and nothing else: no
+      // login, email, organization, repository URL, or path.
+      expect(
+        answer.split("\n").map((line) => line.slice(0, line.indexOf(":")))
+      ).toEqual(["cli", "platform", "node"]);
+      expect(answer).not.toContain(cwd);
+    });
+
+    it("gives no other kind a version-information answer", async () => {
+      const properties = await send(GENERAL);
+      expect(Object.keys(properties)).not.toContain(VERSION_QUESTION);
+    });
+
+    it.each([
+      ["rule", VALID],
+      ["general", GENERAL],
+      ["bug", BUG],
+    ])(
+      "under the opt-out sends no %s payload and names the issues page",
+      async (_kind, payload) => {
+        enabled = false;
+        const from = await writePayload(payload);
+        await verb("send").run({
+          args: { dir: cwd, from, json: false },
+          rawArgs: [],
+        });
+        expect(capture).not.toHaveBeenCalled();
+        expect(process.exitCode).toBeUndefined();
+        const printed = logSpy.mock.calls.flat().join("\n");
+        expect(printed).toMatch(/disabled/);
+        expect(printed).toContain(ISSUES_URL);
+        expect(ISSUES_URL).toBe("https://github.com/taskless/cli/issues");
+      }
+    );
+
+    it("rejects a payload with no kind, naming kind", async () => {
+      const { kind: _kind, ...rest } = VALID;
+      const from = await writePayload(rest);
+      await expect(
+        verb("send").run({ args: { dir: cwd, from, json: false }, rawArgs: [] })
+      ).rejects.toBeInstanceOf(CLIError);
+      expect(errorSpy.mock.calls.flat().join("\n")).toContain("kind");
+      expect(capture).not.toHaveBeenCalled();
     });
   });
 

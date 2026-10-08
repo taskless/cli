@@ -6,9 +6,9 @@
 
 ## 2. `feedback send` behavior
 
-- [ ] 2.1 Add the CLI-built bug version-information answer (CLI version, `install.cliVersion`, `rules.reconciledTo`, platform/arch, Node version; no network, no identity) and attach it to `bug` sends only; verify tests for an initialised project, a directory with no `.taskless/`, and a logged-in token whose login/email/org/repository URL do not appear in the answer
-- [ ] 2.2 Advance `next_ask` only for `kind: "rule"`; verify a test that sends `general` and `bug` payloads and asserts `next_ask` is unchanged and no cadence file exists for either survey
-- [ ] 2.3 Change the telemetry-off message for `feedback send` to say telemetry is disabled and name `https://github.com/taskless/cli/issues`, keeping validation first; verify tests under `DO_NOT_TRACK=1` for a valid payload of each kind (exit 0, URL printed, nothing captured) and an invalid one (exit 1, `INVALID_INPUT`)
+- [x] 2.1 Add the CLI-built bug version-information answer (CLI version, `install.cliVersion`, `rules.reconciledTo`, platform/arch, Node version; no network, no identity) and attach it to `bug` sends only; verify tests for an initialised project, a directory with no `.taskless/`, and a logged-in token whose login/email/org/repository URL do not appear in the answer
+- [x] 2.2 Advance `next_ask` only for `kind: "rule"`; verify a test that sends `general` and `bug` payloads and asserts `next_ask` is unchanged and no cadence file exists for either survey
+- [x] 2.3 Change the telemetry-off message for `feedback send` to say telemetry is disabled and name `https://github.com/taskless/cli/issues`, keeping validation first; verify tests under `DO_NOT_TRACK=1` for a valid payload of each kind (exit 0, URL printed, nothing captured) and an invalid one (exit 1, `INVALID_INPUT`)
 
 ## 3. Recipes and the agent index
 
