@@ -2,7 +2,11 @@ import { getRecipe } from "../prompts/recipes";
 import { getTelemetry, isTelemetryEnabled } from "../telemetry";
 import { isCiEnvironment } from "../util/interactive";
 import { readNextAsk, writeNextAsk } from "./cadence";
-import { SHOWN_INTERVAL_MS, SURVEY_ID, SURVEYED_TOPICS } from "./constants";
+import {
+  SHOWN_INTERVAL_MS,
+  RULE_SURVEY_ID,
+  SURVEYED_TOPICS,
+} from "./constants";
 
 /** The fragment appended to a surveyed recipe; see `src/agent/feedback-invite.md`. */
 const INVITE_TOPIC = "feedback-invite";
@@ -45,7 +49,7 @@ export async function surveyGateIsOpen(
   if (!isTelemetryEnabled()) return false;
   if (isCiEnvironment(context.ci)) return false;
   if (!SURVEYED_TOPICS.has(context.topic)) return false;
-  const nextAsk = await readNextAsk(SURVEY_ID);
+  const nextAsk = await readNextAsk(RULE_SURVEY_ID);
   const now = (context.now ?? Date.now)();
   return nextAsk === undefined || nextAsk <= now;
 }
@@ -85,7 +89,7 @@ export async function withSurveyInvite(
 
   // Claim the window first; see the note above on the read-then-write race.
   const now = (context.now ?? Date.now)();
-  await writeNextAsk(SURVEY_ID, now + SHOWN_INTERVAL_MS);
+  await writeNextAsk(RULE_SURVEY_ID, now + SHOWN_INTERVAL_MS);
 
   const invite = getRecipe(INVITE_TOPIC, {
     invocation: context.invocation,
@@ -98,7 +102,7 @@ export async function withSurveyInvite(
   if (invite === undefined) return recipe;
 
   const telemetry = await getTelemetry(context.cwd);
-  telemetry.capture("survey shown", { $survey_id: SURVEY_ID });
+  telemetry.capture("survey shown", { $survey_id: RULE_SURVEY_ID });
 
   return `${recipe}\n\n${invite.trimEnd()}`;
 }

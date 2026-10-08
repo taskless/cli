@@ -7,8 +7,8 @@ import { inputSchema, type FeedbackInput } from "../schemas/feedback";
 import { writeNextAsk } from "../survey/cadence";
 import {
   ANSWERED_INTERVAL_MS,
-  SURVEY_ID,
-  SURVEY_QUESTIONS,
+  RULE_SURVEY_ID,
+  SURVEYS,
 } from "../survey/constants";
 import { getTelemetry, isTelemetryEnabled } from "../telemetry";
 import { type CLIErrorCode, writeJsonError } from "../types/errors";
@@ -28,17 +28,23 @@ const NOTHING_SENT =
 /**
  * The `survey sent` properties for a validated payload.
  *
- * Exactly PostHog's contract: `$survey_id` and one `$survey_response_<id>`
- * per answered question. An optional question left blank is absent rather
- * than sent as an empty string, so the responses view shows a gap and not an
- * empty answer.
+ * Exactly PostHog's contract: `$survey_id` of the survey the payload's `kind`
+ * selects, and one `$survey_response_<id>` per answered question. An optional
+ * question left blank is absent rather than sent as an empty string, so the
+ * responses view shows a gap and not an empty answer. A question with no
+ * payload key is the CLI's to answer, and is skipped here.
  */
 export function buildSurveyResponse(
   input: FeedbackInput
 ): Record<string, string> {
-  const properties: Record<string, string> = { $survey_id: SURVEY_ID };
-  for (const { key, id } of SURVEY_QUESTIONS) {
-    const answer = input[key];
+  const survey = SURVEYS[input.kind];
+  // The branches share no key type, so the payload is read as a plain record;
+  // the schema has already decided which keys it may hold.
+  const answers = input as Readonly<Record<string, string | undefined>>;
+  const properties: Record<string, string> = { $survey_id: survey.id };
+  for (const { key, id } of survey.questions) {
+    if (key === undefined) continue;
+    const answer = answers[key];
     if (answer !== undefined) properties[`$survey_response_${id}`] = answer;
   }
   return properties;
@@ -63,8 +69,8 @@ const dismissCommand = defineCommand({
       return;
     }
     const telemetry = await getTelemetry(cwd);
-    telemetry.capture("survey dismissed", { $survey_id: SURVEY_ID });
-    await writeNextAsk(SURVEY_ID, Date.now() + ANSWERED_INTERVAL_MS);
+    telemetry.capture("survey dismissed", { $survey_id: RULE_SURVEY_ID });
+    await writeNextAsk(RULE_SURVEY_ID, Date.now() + ANSWERED_INTERVAL_MS);
     console.log("Thanks. Taskless will not ask again for a while.");
   },
 });
@@ -133,7 +139,7 @@ const sendCommand = defineCommand({
 
     const telemetry = await getTelemetry(cwd);
     telemetry.capture("survey sent", buildSurveyResponse(input));
-    await writeNextAsk(SURVEY_ID, Date.now() + ANSWERED_INTERVAL_MS);
+    await writeNextAsk(RULE_SURVEY_ID, Date.now() + ANSWERED_INTERVAL_MS);
     // The input file is left where it is, like `rule create --from`; the
     // recipe's clean-up step deletes it, and `/.tmp-*` is ignored regardless.
     console.log("Feedback sent. Thank you.");

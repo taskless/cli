@@ -9,18 +9,19 @@ import {
   ANSWERED_INTERVAL_MS,
   COMPLETED_CHOICES,
   SHOWN_INTERVAL_MS,
-  SURVEY_ID,
-  SURVEY_QUESTIONS,
+  RULE_SURVEY_ID,
   SURVEYED_TOPICS,
+  SURVEYS,
 } from "../src/survey/constants";
 
 describe("survey constants", () => {
   // The identifiers are PostHog's, transcribed once. A question's id changes
   // whenever the question does, which is exactly the kind of drift this pins:
-  // the values here are what the 0.12.0 survey holds as of 2026-09-21.
-  it("carries the live survey's question ids in question order", () => {
-    expect(SURVEY_ID).toBe("01a0c7b9-dfe4-0000-d05e-ce253e90a68c");
-    expect(SURVEY_QUESTIONS.map(({ key, id }) => [key, id])).toEqual([
+  // the values here are what each survey holds as of 2026-10-08.
+  it("carries the rule survey's question ids in question order", () => {
+    expect(RULE_SURVEY_ID).toBe("01a0c7b9-dfe4-0000-d05e-ce253e90a68c");
+    expect(SURVEYS.rule.id).toBe(RULE_SURVEY_ID);
+    expect(SURVEYS.rule.questions.map(({ key, id }) => [key, id])).toEqual([
       ["ruleKind", "0874591f-c554-4ac3-8930-e11c436d859e"],
       ["verbatim", "2c3c80dc-dcda-4e29-b52e-a25ef58b5ca2"],
       ["completed", "605e12a8-82b6-480f-93b2-ab8de0fa08bd"],
@@ -28,6 +29,26 @@ describe("survey constants", () => {
       ["needsImprovement", "a8cf706d-3ff7-4845-bea9-501013be958c"],
       ["agents", "f85b22df-8e51-4c9c-8219-261b33b71c90"],
       ["mostValuableRule", "4f8e938e-22f6-449c-9b8c-43c51d08e214"],
+    ]);
+  });
+
+  it("carries the general survey's question ids in question order", () => {
+    expect(SURVEYS.general.id).toBe("01a11da4-3948-0000-4ae4-c9da9321801e");
+    expect(SURVEYS.general.questions.map(({ key, id }) => [key, id])).toEqual([
+      ["verbatim", "c71e52ee-f4c7-469f-815a-af50a9be6d37"],
+      ["context", "ab0ceb25-8084-44c8-9974-1d1a1c7371c2"],
+    ]);
+  });
+
+  it("carries the bug survey's question ids, leaving version information to the CLI", () => {
+    expect(SURVEYS.bug.id).toBe("01a11da7-27a2-0000-0f4e-6d3e1f89f385");
+    expect(SURVEYS.bug.questions.map(({ key, id }) => [key, id])).toEqual([
+      ["summary", "2dd63cf3-dac2-4765-ace0-393bc4aa42fe"],
+      [undefined, "ba096b81-ae5c-45b5-b15a-707f97129839"],
+      ["trying", "e59a87e9-9ac7-4a59-a709-a282b16dbf37"],
+      ["expected", "73415b80-7371-4536-8c50-09c2ecaa5d52"],
+      ["actual", "daa98d8d-113e-4e3e-ac0f-595ecc1fc69f"],
+      ["context", "597381f5-52e9-4937-bf80-dc55739e7435"],
     ]);
   });
 
@@ -64,35 +85,37 @@ describe("survey cadence store", () => {
   });
 
   it("lives under the survey id in the XDG config directory", () => {
-    expect(nextAskPath(SURVEY_ID)).toBe(
-      join(configHome, "taskless", "surveys", SURVEY_ID, "next_ask")
+    expect(nextAskPath(RULE_SURVEY_ID)).toBe(
+      join(configHome, "taskless", "surveys", RULE_SURVEY_ID, "next_ask")
     );
   });
 
   it("reads absent as undefined", async () => {
-    expect(await readNextAsk(SURVEY_ID)).toBeUndefined();
+    expect(await readNextAsk(RULE_SURVEY_ID)).toBeUndefined();
   });
 
   it("round-trips an epoch, truncated to whole milliseconds", async () => {
     const at = Date.now() + SHOWN_INTERVAL_MS;
-    await writeNextAsk(SURVEY_ID, at + 0.75);
-    expect(await readNextAsk(SURVEY_ID)).toBe(at);
+    await writeNextAsk(RULE_SURVEY_ID, at + 0.75);
+    expect(await readNextAsk(RULE_SURVEY_ID)).toBe(at);
     // A bare decimal string, nothing else, so a human can read it.
-    expect(await readFile(nextAskPath(SURVEY_ID), "utf8")).toBe(String(at));
+    expect(await readFile(nextAskPath(RULE_SURVEY_ID), "utf8")).toBe(
+      String(at)
+    );
   });
 
   it("reads a corrupt file as undefined, and the next write repairs it", async () => {
-    const path = nextAskPath(SURVEY_ID);
+    const path = nextAskPath(RULE_SURVEY_ID);
     await mkdir(dirname(path), { recursive: true });
     await writeFile(path, "not a number\n", "utf8");
-    expect(await readNextAsk(SURVEY_ID)).toBeUndefined();
+    expect(await readNextAsk(RULE_SURVEY_ID)).toBeUndefined();
 
-    await writeNextAsk(SURVEY_ID, 1234);
-    expect(await readNextAsk(SURVEY_ID)).toBe(1234);
+    await writeNextAsk(RULE_SURVEY_ID, 1234);
+    expect(await readNextAsk(RULE_SURVEY_ID)).toBe(1234);
   });
 
   it("keeps a different survey's cadence in its own file", async () => {
-    await writeNextAsk(SURVEY_ID, 1000);
+    await writeNextAsk(RULE_SURVEY_ID, 1000);
     expect(await readNextAsk("00000000-0000-4000-8000-000000000000")).toBe(
       undefined
     );
