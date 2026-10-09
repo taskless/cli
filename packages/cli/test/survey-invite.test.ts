@@ -116,6 +116,16 @@ describe("the survey gate", () => {
     expect(await surveyGateIsOpen({ topic, now: () => NOW })).toBe(true);
   });
 
+  // Telemetry is on and the cadence is open here, so only the topic set
+  // decides: the opt-in channels and the survey's own recipe never carry
+  // the invite.
+  it.each(["feedback", "bug-report", "rule-feedback"])(
+    "does not survey %s, even with the gate otherwise open",
+    async (topic) => {
+      expect(await surveyGateIsOpen({ topic, now: () => NOW })).toBe(false);
+    }
+  );
+
   it("serves the bare recipe within the window, touching nothing", async () => {
     await writeNextAsk(RULE_SURVEY_ID, NOW + 1);
     const recipe =
