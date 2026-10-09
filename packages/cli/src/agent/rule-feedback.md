@@ -148,7 +148,8 @@ string.
   their look at it.
 - If telemetry is disabled in this environment the command says so and
   exits 0 with nothing sent. That is the expected outcome there, not an
-  error to retry.
+  error to retry. Tell the user nothing was sent, and that they can
+  still reach the team at https://github.com/taskless/cli/issues.
 
 ## Errors
 

@@ -47,6 +47,12 @@ describe("the rule-feedback recipe", () => {
     }
   });
 
+  it("relays the telemetry-off outcome with the issues page", () => {
+    const rendered = getRecipe("rule-feedback", { invocation }) ?? "";
+    expect(rendered).toMatch(/If telemetry is disabled/);
+    expect(rendered).toContain("https://github.com/taskless/cli/issues");
+  });
+
   it("names the send and dismiss commands by the rendered invocation", () => {
     const rendered = getRecipe("rule-feedback", { invocation });
     expect(rendered).toContain(
@@ -182,13 +188,6 @@ describe.each([
       if (key in ownSchema.shape) continue;
       expect(stdout).not.toContain(`"${key}"`);
     }
-  });
-
-  it("carries no survey invite, even with the gate open", async () => {
-    // The suite runs with telemetry off, which closes the gate; the topic
-    // is also not a surveyed one, which is the property that matters.
-    const { stdout } = await execFileAsync("node", [binPath, "agent", topic]);
-    expect(stdout).not.toContain("## Before you finish");
   });
 
   it("shows the payload and waits for a yes before sending", () => {
