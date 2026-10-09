@@ -1,5 +1,13 @@
 # @taskless/cli
 
+## 0.12.1
+
+[Compare with v0.12.0](https://github.com/taskless/cli/compare/v0.12.0...v0.12.1)
+
+### Patch Changes
+
+- eaa4061: An agent can now send the Taskless team general feedback (`taskless agent feedback`) or a bug report (`taskless agent bug-report`) on the user's behalf, without a GitHub account. Both show the user the exact payload and send only on their explicit yes, and both appear in the `taskless agent` index. A bug report's version information is filled in by the CLI from local state. The invited rule-authoring survey's recipe is renamed to `taskless agent rule-feedback`; its questions, invite, and cadence are unchanged. `feedback send` payloads now carry a required `kind` (`rule`, `general`, or `bug`). With telemetry disabled, nothing is sent and the CLI points to https://github.com/taskless/cli/issues instead.
+
 ## 0.12.0
 
 [Compare with v0.11.2](https://github.com/taskless/cli/compare/v0.11.2...v0.12.0)
