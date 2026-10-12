@@ -570,6 +570,7 @@ describe("create-sg-rule names the tree-sitter traps under Quirks", () => {
 
   it("says an awaited generic call hides its callee", async () => {
     const result = await runCli(["agent", "create-sg-rule", "-d", cwd]);
+    expect(result.exitCode).toBe(0);
     expect(result.stdout).toContain(
       "### An awaited generic call hides its callee"
     );

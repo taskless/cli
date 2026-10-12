@@ -372,28 +372,50 @@ const statusAt = (severity: string) =>
     })
   ).status;
 
-/** The call each finding matched, in file order — i.e. the arities accepted. */
-const arityMatches = (body: string): string[] =>
-  scan(project({ rules: { arity: arityRule(body) }, sources: aritySource }))
-    .stdout.split("\n")
-    .filter((line) => line !== "")
-    .map((line) => (JSON.parse(line) as { text: string }).text);
-
-/** Scan one TypeScript rule, `rule:` body verbatim, over one source file. */
-const typescriptFindings = (body: string, source: string) =>
+/**
+ * Scan one rule, `rule:` body verbatim, over one source file. `TypeScript`
+ * reads `src/a.ts` and `Tsx` reads `src/a.tsx`, since each parser claims only
+ * its own extension.
+ */
+const grammarFindings = (
+  body: string,
+  source: string,
+  language: "TypeScript" | "Tsx" = "TypeScript"
+) =>
   scan(
     project({
-      rules: { arity: arityRule(body) },
-      sources: { "src/a.ts": source },
+      rules: {
+        grammar: [
+          "id: grammar",
+          `language: ${language}`,
+          "severity: error",
+          "message: grammar",
+          "note: n",
+          "rule:",
+          body,
+          "",
+        ].join("\n"),
+      },
+      sources: {
+        [language === "Tsx" ? "src/a.tsx" : "src/a.ts"]: source,
+      },
     })
   );
 
-/** The text each TypeScript finding matched, in file order. */
-const typescriptMatches = (body: string, source: string): string[] =>
-  typescriptFindings(body, source)
+/** The text each finding matched, in file order. */
+const grammarMatches = (
+  body: string,
+  source: string,
+  language: "TypeScript" | "Tsx" = "TypeScript"
+): string[] =>
+  grammarFindings(body, source, language)
     .stdout.split("\n")
     .filter((line) => line !== "")
     .map((line) => (JSON.parse(line) as { text: string }).text);
+
+/** The call each finding matched, in file order — i.e. the arities accepted. */
+const arityMatches = (body: string): string[] =>
+  grammarMatches(body, aritySource["src/a.ts"]);
 
 /** A rule whose fixtures all pass. */
 const passingProject = () =>
@@ -1058,33 +1080,60 @@ withSg("ast-grep vendor contract", () => {
   });
 
   /**
-   * TWO TYPESCRIPT GRAMMAR TRAPS, ADDED AT 0.45.3.
+   * TWO TYPESCRIPT GRAMMAR TRAPS, MEASURED AT 0.45.3.
    *
-   * Both were hit while authoring rules on a real project, and
-   * `create-sg-rule.md` lists both under Quirks with a workaround each. These
-   * are the measurements behind that prose: if a grammar bump fixes either, the
-   * recipe is describing a parser that no longer exists, and this goes red.
+   * Long-standing grammar behavior, not something a bump introduced: both were
+   * first measured at 0.45.3, while authoring rules on a real project.
+   * `create-sg-rule.md` lists both under Quirks with a workaround each, and
+   * every claim that section makes about them is pinned here, workarounds
+   * included. If a grammar bump changes either, the recipe is describing a
+   * parser that no longer exists, and this goes red.
    */
   describe("TypeScript keywords and awaited generic calls", () => {
-    const parameterSource =
-      "class C { constructor(readonly x: number, y: number) {} }\n";
+    const parameterSource = [
+      "class A { constructor(readonly a: number) {} }",
+      "class B { constructor(private readonly b: number) {} }",
+      "class C { constructor(@Inject() readonly c: number) {} }",
+      "class D { constructor(readonly d?: number) {} }",
+      "class E { constructor(x: readonly string[]) {} }",
+      "class F { constructor(readonly: number) {} }",
+      "class G { constructor(public g: number) {} }",
+      "",
+    ].join("\n");
 
     it("rejects an anonymous keyword token as a kind", () => {
       // The CST dump prints `readonly` as a node, which is what invites this.
       // `kind:` takes named nodes only, so it is exit 8 and every other rule's
       // report goes with it.
-      const outcome = typescriptFindings("  kind: readonly", parameterSource);
+      const outcome = grammarFindings("  kind: readonly", parameterSource);
       expect(outcome.status).toBe(8);
       expect(outcome.stderr).toContain("Kind `readonly` is invalid");
     });
 
-    it("matches the keyword through its named parent's text", () => {
+    it("matches every readonly parameter shape the recipe names, and no other", () => {
+      // The recipe's workaround verbatim. An earlier `^readonly\b` over
+      // `required_parameter` alone matched only A: an accessibility modifier or
+      // a decorator comes first in the node's text, and `readonly d?` is an
+      // `optional_parameter`. E and F are the false positives the anchor keeps
+      // out.
+      const pattern = String.raw`^(?:@\\S+\\s+)*(?:(?:public|private|protected)\\s+)?readonly\\s`;
       expect(
-        typescriptMatches(
-          '  kind: required_parameter\n  regex: "^readonly\\\\b"',
+        grammarMatches(
+          [
+            "  any:",
+            "    - kind: required_parameter",
+            `      regex: "${pattern}"`,
+            "    - kind: optional_parameter",
+            `      regex: "${pattern}"`,
+          ].join("\n"),
           parameterSource
         )
-      ).toEqual(["readonly x: number"]);
+      ).toEqual([
+        "readonly a: number",
+        "private readonly b: number",
+        "@Inject() readonly c: number",
+        "readonly d?: number",
+      ]);
     });
 
     const awaitSource = [
@@ -1094,34 +1143,106 @@ withSg("ast-grep vendor contract", () => {
       "",
     ].join("\n");
 
+    const calleeRule = [
+      "  kind: call_expression",
+      '  has: { field: function, kind: identifier, regex: "^rpc$" }',
+    ].join("\n");
+
     it("parses `await f<T>()` as a call of the await expression", () => {
       // The silent one: the generic awaited call is simply absent from the
       // findings, exit 0.
+      expect(grammarMatches(calleeRule, awaitSource)).toEqual([
+        'rpc("y")',
+        'rpc<Foo>("z")',
+      ]);
+    });
+
+    it("parses it the same way under Tsx", () => {
+      expect(grammarMatches(calleeRule, awaitSource, "Tsx")).toEqual([
+        'rpc("y")',
+        'rpc<Foo>("z")',
+      ]);
+    });
+
+    it("hides the callee behind `!`, `void` and `typeof` too, but not `yield`", () => {
+      const source = [
+        "function* g() {",
+        '  !rpc<Foo>("a");',
+        '  void rpc<Foo>("b");',
+        '  typeof rpc<Foo>("c");',
+        '  yield rpc<Foo>("d");',
+        "}",
+        "",
+      ].join("\n");
+      expect(grammarMatches(calleeRule, source)).toEqual(['rpc<Foo>("d")']);
       expect(
-        typescriptMatches(
-          '  kind: call_expression\n  has: { field: function, regex: "^rpc$" }',
-          awaitSource
+        grammarMatches(
+          [
+            "  kind: call_expression",
+            "  has: { field: function, kind: unary_expression }",
+          ].join("\n"),
+          source
         )
-      ).toEqual(['rpc("y")', 'rpc<Foo>("z")']);
+      ).toEqual([
+        '!rpc<Foo>("a")',
+        'void rpc<Foo>("b")',
+        'typeof rpc<Foo>("c")',
+      ]);
     });
 
     it("recovers the awaited generic call with an await_expression branch", () => {
-      // The wrapped match spans the `await`, which the recipe warns a `fix:`
-      // will rewrite along with the call.
+      // The recipe's workaround verbatim. The wrapped match spans the `await`,
+      // which the recipe warns a `fix:` will rewrite along with the call.
       expect(
-        typescriptMatches(
+        grammarMatches(
           [
             "  kind: call_expression",
             "  has:",
             "    field: function",
             "    any:",
-            '      - regex: "^rpc$"',
+            "      - kind: identifier",
+            '        regex: "^rpc$"',
             "      - kind: await_expression",
             '        has: { kind: identifier, regex: "^rpc$" }',
           ].join("\n"),
           awaitSource
         )
       ).toEqual(['await rpc<Foo>("x")', 'rpc("y")', 'rpc<Foo>("z")']);
+    });
+
+    it("recovers an awaited generic method call with a member_expression branch", () => {
+      // The identifier branch alone finds none of these: under `await`, a
+      // method callee is a member_expression, and the recipe says so.
+      const property =
+        'has: { field: property, kind: property_identifier, regex: "^rpc$" }';
+      expect(
+        grammarMatches(
+          [
+            "  kind: call_expression",
+            "  has:",
+            "    field: function",
+            "    any:",
+            "      - kind: member_expression",
+            `        ${property}`,
+            "      - kind: await_expression",
+            "        has:",
+            "          kind: member_expression",
+            `          ${property}`,
+          ].join("\n"),
+          [
+            "async function f() {",
+            '  await this.rpc<Foo>("x");',
+            '  await client.rpc<Foo>("y");',
+            '  client.rpc("z");',
+            "}",
+            "",
+          ].join("\n")
+        )
+      ).toEqual([
+        'await this.rpc<Foo>("x")',
+        'await client.rpc<Foo>("y")',
+        'client.rpc("z")',
+      ]);
     });
   });
 

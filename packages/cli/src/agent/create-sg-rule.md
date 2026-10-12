@@ -1,4 +1,4 @@
-# Topic: create-sg-rule     (CLI v%(CLI_VERSION)s / topic v6)
+# Topic: create-sg-rule     (CLI v%(CLI_VERSION)s / topic v7)
 
 ## You are here
 This is `create-sg-rule`. It helps you write an ast-grep rule: a check
@@ -100,10 +100,11 @@ whole rule.
    inside a line.
 
 5. **Check the rule against Quirks.** Read the **Quirks** section below
-   against what you just wrote, before writing any tests. Every entry
-   there verifies clean and then either fails the whole scan or matches
-   less than it should, and a test file written from the same
-   assumption passes anyway. Look again at:
+   against what you just wrote, before writing any tests. Most entries
+   there get past `verify` and then either fail the whole scan or match
+   less than they should, and a test file written from the same
+   assumption passes anyway. The table says which ones `verify` does
+   catch. Look again at:
    - a `$$$` next to a comma (the separator trap),
    - any `kind:` you read off a `--debug-query=cst` dump,
    - a rule that keys on a call's callee, if callers write
@@ -193,18 +194,19 @@ fail in one of two ways:
 
 When a rule matches less than it should, check this list before
 doubting the rest of the rule. Each entry was measured against the
-ast-grep this CLI ships (v%(AST_GREP_VERSION)s).
+ast-grep this CLI ships (v%(AST_GREP_VERSION)s). The last column says
+whether `verify` reports it; where it says no, only you will notice.
 
-| quirk                                          | symptom                 |
-|------------------------------------------------|-------------------------|
-| `language:` copied from `detect --json`        | config error, or notice |
-| `TypeScript` declared over `.tsx` files        | silent                  |
-| an inline construct named in a `Markdown` rule | config error, or silent |
-| `$$$` next to a comma                          | silent                  |
-| a keyword named as a `kind`                    | config error            |
-| a callee rule over `await f<T>(...)`           | silent                  |
-| `follows` or `precedes` without `stopBy: end`  | silent                  |
-| a `not` containing a bare metavariable         | silent                  |
+| quirk                                          | symptom                 | `verify` reports it         |
+|------------------------------------------------|-------------------------|-----------------------------|
+| `language:` copied from `detect --json`        | config error, or notice | yes                         |
+| `TypeScript` declared over `.tsx` files        | silent                  | only if `files:` names .tsx |
+| an inline construct named in a `Markdown` rule | config error, or silent | no                          |
+| `$$$` next to a comma                          | silent                  | no                          |
+| a keyword named as a `kind`                    | config error            | no                          |
+| a callee rule over `await f<T>(...)`           | silent                  | no                          |
+| `follows` or `precedes` without `stopBy: end`  | silent                  | no                          |
+| a `not` containing a bare metavariable         | silent                  | no                          |
 
 ### `language:` copied from `detect --json`
 
@@ -217,7 +219,9 @@ Workaround: copy the spelling from the list in step 4.
 ### `Tsx` and `TypeScript` are two parsers, not aliases
 
 A rule that declares `TypeScript` does not read `.tsx` files at all,
-so over a `.tsx` tree it reports nothing and exits 0. Workaround:
+so over a `.tsx` tree it reports nothing and exits 0. `verify` catches
+it only when the rule's `files:` globs name `.tsx`; with no `files:`
+it cannot tell. Workaround:
 declare `Tsx` for `.tsx` files. A check that must cover both
 extensions is two rules, one per parser.
 
@@ -294,13 +298,24 @@ keyword, not only `readonly`.
 Workaround: read kinds off `--debug-query=ast` instead, which prints
 named nodes only. A name that appears there is a usable kind; one that
 appears only in the CST dump is not. To match on the keyword, match
-its named parent and test the parent's text:
+its named parent and test the parent's text. Cover every shape the
+keyword appears in: after a decorator or an accessibility modifier
+(`private readonly x`), and on an optional parameter (`readonly x?`),
+which is an `optional_parameter`, not a `required_parameter`:
 
 ```yaml
 rule:
-  kind: required_parameter
-  regex: "^readonly\\b"
+  any:
+    - kind: required_parameter
+      regex: "^(?:@\\S+\\s+)*(?:(?:public|private|protected)\\s+)?readonly\\s"
+    - kind: optional_parameter
+      regex: "^(?:@\\S+\\s+)*(?:(?:public|private|protected)\\s+)?readonly\\s"
 ```
+
+Anchoring at the start keeps a `readonly` type (`x: readonly string[]`)
+and a parameter named `readonly` out. A decorator whose arguments
+contain whitespace (`@Inject(A, B)`) defeats the `\S+`; add a fixture
+for it if your codebase has one.
 
 ### An awaited generic call hides its callee
 
@@ -314,7 +329,7 @@ With
 ```yaml
 rule:
   kind: call_expression
-  has: { field: function, regex: "^rpc$" }
+  has: { field: function, kind: identifier, regex: "^rpc$" }
 ```
 
 only the second call matches. The TypeScript grammar parses the first
@@ -333,7 +348,7 @@ So any rule keyed on the callee silently skips every awaited generic
 call. The same happens in `Tsx`, and with `!`, `void` and `typeof` in
 place of `await`, where the callee becomes a `unary_expression`.
 `yield` is not affected. Workaround: accept the wrapped form as a
-second branch.
+second branch, matching the same callee inside it.
 
 ```yaml
 rule:
@@ -341,14 +356,29 @@ rule:
   has:
     field: function
     any:
-      - regex: "^rpc$"
+      - kind: identifier
+        regex: "^rpc$"
       - kind: await_expression
         has: { kind: identifier, regex: "^rpc$" }
 ```
 
-Add a `unary_expression` branch the same way if those prefixes matter.
-The wrapped match spans the `await` too, so a `fix:` on this rule
-rewrites it along with the call.
+The inner branch has to repeat whatever the plain branch matches. For
+a method, `await client.rpc<Foo>()` wraps a `member_expression`, so
+both branches test that instead:
+
+```yaml
+    any:
+      - kind: member_expression
+        has: { field: property, kind: property_identifier, regex: "^rpc$" }
+      - kind: await_expression
+        has:
+          kind: member_expression
+          has: { field: property, kind: property_identifier, regex: "^rpc$" }
+```
+
+Add a `unary_expression` branch the same way if `!`, `void` or
+`typeof` matter. The wrapped match spans the `await` too, so a `fix:`
+on this rule rewrites it along with the call.
 
 ### `follows` and `precedes` need `stopBy: end` to cross punctuation
 
