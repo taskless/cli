@@ -533,11 +533,11 @@ The failure it prevents is not a local one: Vale reports this as `E201: has inva
 
 `validate` SHALL report, as a notice on the rule, each of the following shapes in an `sg` rule. These are the traps the `create-sg-rule` recipe lists as silent: the rule parses, runs and exits zero while missing what its author meant it to match.
 
-| Trap                                         | Reported when                                                                                                                                                          |
-| -------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `$$$` next to a comma                        | a pattern places a `$$$` metavariable directly beside a `,`, and that pattern is not an object pattern declaring `strictness: ast`                                     |
-| a sibling relation that stops at punctuation | a `follows` or `precedes` relation declares no `stopBy`                                                                                                                |
-| an awaited generic call hides its callee     | a rule whose `language:` is `TypeScript` or `Tsx` matches a callee by `regex` under `field: function`, and no alternative in that relation names an `await_expression` |
+| Trap                                         | Reported when                                                                                                                                                                                                                                                                            |
+| -------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `$$$` next to a comma                        | a pattern places a `$$$` metavariable directly beside a `,`, and that pattern is not an object pattern declaring `strictness: ast`                                                                                                                                                       |
+| a sibling relation that stops at punctuation | a `follows` or `precedes` relation declares no `stopBy`                                                                                                                                                                                                                                  |
+| an awaited generic call hides its callee     | a rule whose `language:` is `TypeScript` or `Tsx` keys a relation on the callee (`field: function`) with a `regex` anywhere beneath it, covering both a bare function (`identifier`) and a method (`member_expression`), and no alternative in that relation names an `await_expression` |
 
 A trap notice SHALL NOT fail the rule and SHALL NOT affect the exit code. Each shape has legitimate uses (a sibling relation that is meant to stop at the neighbour, a pattern meant to require at least one argument), so `validate` cannot know which one the author meant. A trap the author faces only as a notice is one they can decide about, and a trap that fails the rule is one they cannot write past.
 
@@ -564,9 +564,15 @@ A trap that ast-grep itself refuses (a keyword or Markdown inline construct name
 
 #### Scenario: A callee regex under TypeScript draws a notice
 
-- **WHEN** a `TypeScript` rule matches `kind: call_expression` with `has: { field: function, regex: "^rpc$" }`
+- **WHEN** a `TypeScript` rule matches `kind: call_expression` with `has: { field: function, kind: identifier, regex: "^rpc$" }`
 - **THEN** the rule SHALL carry a notice saying an awaited generic call is not matched, and naming the `await_expression` branch as the workaround
 - **AND** the same rule under a language other than `TypeScript` or `Tsx` SHALL carry none
+- **AND** the same rule with an `any` alternative naming `kind: await_expression` SHALL carry none
+
+#### Scenario: A method callee regex under TypeScript draws a notice
+
+- **WHEN** a `TypeScript` rule keys on `field: function` with `kind: member_expression` and a `regex` on its `property`
+- **THEN** the rule SHALL carry the awaited-generic-call notice
 
 #### Scenario: A trap notice does not fail verify
 
