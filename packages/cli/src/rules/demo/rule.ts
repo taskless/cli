@@ -14,10 +14,10 @@
  * precisely because its subject spans two. Its two-file passing example reached
  * the client with the second file deleted, at which point it matched the
  * single-file pattern it had been flattened into, and the rule failed
- * `taskless test` on arrival.
+ * `taskless verify` on arrival.
  *
  * A rule that ships cannot arrive mis-tiered, flattened, or with an id its body
- * does not match, because CI runs `taskless test` over these exact bytes.
+ * does not match, because CI runs `taskless verify` over these exact bytes.
  *
  * ## Why the imports are written out
  *

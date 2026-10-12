@@ -1,4 +1,4 @@
-# Topic: create-sg-rule     (CLI v%(CLI_VERSION)s / topic v7)
+# Topic: create-sg-rule     (CLI v%(CLI_VERSION)s / topic v8)
 
 ## You are here
 This is `create-sg-rule`. It helps you write an ast-grep rule: a check
@@ -10,8 +10,8 @@ and follow its decision rather than adapting this recipe.
 Produce a verified ast-grep rule and its test file, locally, without
 contacting the Taskless service. You derive the rule yourself, write it
 in the canonical on-disk shape, and check it with `validate` and
-`test` in a feedback loop. The files you produce match exactly what the
-service writes, so `check`, `improve-rule`, `validate`, and `test` treat
+`verify` in a feedback loop. The files you produce match exactly what the
+service writes, so `check`, `improve-rule`, `validate`, and `verify` treat
 them identically.
 
 ## Preconditions
@@ -119,7 +119,7 @@ whole rule.
    shape are the same ones the service writes; do not invent a different
    layout.
 
-   **Both arrays must be non-empty, and `test` fails the rule if either
+   **Both arrays must be non-empty, and `verify` fails the rule if either
    one is.** An empty `invalid:` is not a neutral starting point to fill
    in later: ast-grep reports `1 passed; 0 failed` and exits zero over
    no cases at all, so a rule that matches nothing anywhere looks
@@ -136,11 +136,11 @@ whole rule.
    directory as their argument:
    ```
    %(TASKLESS_CLI)s validate .taskless/rules/sg/<id> --json
-   %(TASKLESS_CLI)s test   .taskless/rules/sg/<id> --json
+   %(TASKLESS_CLI)s verify   .taskless/rules/sg/<id> --json
    ```
    `validate` asks whether the rule is well-formed: the YAML matches the
    ast-grep schema and every Taskless-required field is present. It
-   needs no test file, so run it the moment the rule exists. `test` runs
+   needs no test file, so run it the moment the rule exists. `verify` runs
    the cases, after running `validate` and stopping if that fails, so a
    malformed rule reports the malformation rather than a test complaint.
 
@@ -436,7 +436,7 @@ metavariable, it always finds it.
 ## See Also
 
 - `%(TASKLESS_CLI)s agent route`: re-decide the destination
-- `%(TASKLESS_CLI)s agent validate-rule`: the `validate` and `test` commands step 7 calls
+- `%(TASKLESS_CLI)s agent validate-rule`: the `validate` and `verify` commands step 7 calls
 - `%(TASKLESS_CLI)s agent improve-rule`: iterate on a rule that already exists
 - `%(TASKLESS_CLI)s agent create-remote-rule`: generate via the service (login)
 - `%(TASKLESS_CLI)s agent check`: validate the new rule against the codebase

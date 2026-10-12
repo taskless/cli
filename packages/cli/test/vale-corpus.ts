@@ -517,7 +517,7 @@ const DIVERGENCES: ValeCorpusEntry[] = [
   // same decision: what is between the parens is a CSS selector, and judging
   // it means parsing CSS against the document's element tree, which the
   // schema does not do and should not buy a dependency to do. Vale reports
-  // the bad selector itself, at load, as an E201 that `test` surfaces.
+  // the bad selector itself, at load, as an E201 that `verify` surfaces.
   //
   // A leaf element on its own was the silent one, inert from 3.21.0 through
   // 3.22.0. Vale 3.23.0 reads the leaf's own text, so the row now agrees with
@@ -541,7 +541,7 @@ const DIVERGENCES: ValeCorpusEntry[] = [
     divergence:
       "Vale compiles every selector at load and refuses this one with `E201 " +
       "invalid selector in 'doc(...)': expected identifier, found EOF`. The " +
-      "schema does not parse CSS, so it passes the term through and `test` " +
+      "schema does not parse CSS, so it passes the term through and `verify` " +
       "reports Vale's own message — the same path a malformed regex in " +
       "`tokens` takes.",
   },
@@ -550,7 +550,7 @@ const DIVERGENCES: ValeCorpusEntry[] = [
   // table, and every use of it fails at load until a View defines that scope.
   // Views live under `<StylesPath>/config/views/`, a directory the rule
   // layout has no home for, so through this CLI the field cannot be made to
-  // work. The schema keeps the vocabulary honest and `test` reports the E201.
+  // work. The schema keeps the vocabulary honest and `verify` reports the E201.
   {
     name: "field/conditional+in",
     construct: "in on a conditional check, with no View to name",

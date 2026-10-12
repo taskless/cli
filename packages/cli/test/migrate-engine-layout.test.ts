@@ -321,7 +321,7 @@ describe("migrations 0004 + 0005 — one directory per rule", () => {
   // Assembly names every rule's `.tests/` as a `testConfigs` entry, and
   // ast-grep 0.41.0 aborts the whole invocation on one it cannot read (exit 6,
   // `Cannot read rule directory ...`) — which `--filter` does not scope away.
-  // A migrated rule with no tests directory therefore failed `taskless test`
+  // A migrated rule with no tests directory therefore failed `taskless verify`
   // for every *other* rule in the project. The fixture above already produces
   // one: `no-eval`'s test file carries no timestamp, so 0005 cannot attribute
   // it and the rule arrives with nothing moved into it.

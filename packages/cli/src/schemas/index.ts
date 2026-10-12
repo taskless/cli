@@ -67,21 +67,21 @@
 // consumer on `moduleResolution: node16`/`nodenext`.
 export {
   /**
-   * `taskless validate --json` and `taskless test --json`.
+   * `taskless validate --json` and `taskless verify --json`.
    *
    * One envelope for both, because the commands share an implementation and
    * differ only in what they run against each rule.
    */
-  outputSchema as verifyTestOutputSchema,
-} from "./verify-test.js";
+  outputSchema as ruleCheckOutputSchema,
+} from "./rule-check.js";
 
 export {
   /**
    * The layered detail behind one ast-grep rule's verification — schema
    * validation, Taskless requirement checks, and `sg test`, kept separate
-   * rather than flattened into `verifyTestOutputSchema`'s single envelope.
+   * rather than flattened into `ruleCheckOutputSchema`'s single envelope.
    *
-   * Not what `taskless validate --json` or `taskless test --json` print. Both
+   * Not what `taskless validate --json` or `taskless verify --json` print. Both
    * commands compute this internally via `verifyRule()` and then flatten it
    * before printing anything, so there is no current CLI invocation that
    * emits this shape verbatim. A command that did — `taskless rule verify
@@ -97,7 +97,7 @@ export {
 
 export type {
   /**
-   * A constraint `validate` or `test` enforces beyond an engine's own schema.
+   * A constraint `validate` or `verify` enforces beyond an engine's own schema.
    *
    * The type of the entries in `@taskless/cli/reference.json`'s
    * `constraints[]`, so a consumer reading the corpus and a consumer reading a

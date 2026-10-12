@@ -770,8 +770,8 @@ describe("getSchemaPayload", () => {
  * refused rule "leaking" into `failed` is invisible unless something else in
  * the run is a genuine, non-refused failure to compare it against.
  *
- * These run `taskless test` (not `validate`) because `refused` is only ever set
- * by `testOneRule` on a runtime rule denied `--dangerously-run-scripts` — see
+ * These run `taskless verify` (not `validate`) because `refused` is only ever set
+ * by `verifyOneRule` on a runtime rule denied `--dangerously-run-scripts` — see
  * `packages/cli/src/rules/inspect.ts`. `validate` never produces a refusal, so
  * it cannot exercise this split at all.
  */
@@ -810,7 +810,7 @@ describe("test: the tested/failed/refused split on a mixed run (#284)", () => {
       })
     );
     // A "valid" fixture that actually fires the rule is what makes `ast-grep
-    // test` — and therefore `taskless test` — report this rule as failed
+    // test` — and therefore `taskless verify` — report this rule as failed
     // rather than refused or passed.
     const valid = options.passes
       ? ["const a = 1;"]
@@ -874,7 +874,7 @@ describe("test: the tested/failed/refused split on a mixed run (#284)", () => {
     await refusedRuntimeRule("rt-rule");
 
     const jsonResult = await runVerifyMixedRunCli([
-      "test",
+      "verify",
       "-d",
       cwd,
       "--json",
@@ -905,7 +905,7 @@ describe("test: the tested/failed/refused split on a mixed run (#284)", () => {
 
     // The human summary is the only place `tested` is rendered at all — it is
     // not in the `--json` envelope — so this is the only way to pin its value.
-    const humanResult = await runVerifyMixedRunCli(["test", "-d", cwd]);
+    const humanResult = await runVerifyMixedRunCli(["verify", "-d", cwd]);
     expect(humanResult.exitCode).not.toBe(0);
     expect(humanResult.stdout).toContain("1 of 2 rule(s) failed.");
     expect(humanResult.stdout).toContain("1 rule(s) did not run.");
@@ -919,7 +919,7 @@ describe("test: the tested/failed/refused split on a mixed run (#284)", () => {
     await refusedRuntimeRule("rt-rule");
 
     const jsonResult = await runVerifyMixedRunCli([
-      "test",
+      "verify",
       "-d",
       cwd,
       "--json",
@@ -928,9 +928,9 @@ describe("test: the tested/failed/refused split on a mixed run (#284)", () => {
     expect(report.ok).toBe(true);
     expect(jsonResult.exitCode).toBe(0);
 
-    const humanResult = await runVerifyMixedRunCli(["test", "-d", cwd]);
+    const humanResult = await runVerifyMixedRunCli(["verify", "-d", cwd]);
     expect(humanResult.exitCode).toBe(0);
-    expect(humanResult.stdout).toContain("1 rule(s) tested.");
+    expect(humanResult.stdout).toContain("1 rule(s) verified.");
     expect(humanResult.stdout).toContain("1 rule(s) did not run.");
     expect(humanResult.stdout).not.toContain("failed");
   });

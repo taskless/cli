@@ -1,4 +1,4 @@
-# Topic: hooks     (CLI v%(CLI_VERSION)s / topic v1)
+# Topic: hooks     (CLI v%(CLI_VERSION)s / topic v2)
 
 ## Goal
 Run `check` on the staged files before every commit, in the hook tool
@@ -148,7 +148,7 @@ and it can affect files that were not staged. In that case run the
 rule tests and a full, unscoped `check`:
 
 ```
-<local-taskless> test
+<local-taskless> verify
 <local-taskless> check
 ```
 
@@ -160,7 +160,7 @@ written, with no files appended:
 export default {
   "*": "<local-taskless> check",
   ".taskless/rules/**": () => [
-    "<local-taskless> test",
+    "<local-taskless> verify",
     "<local-taskless> check",
   ],
 };

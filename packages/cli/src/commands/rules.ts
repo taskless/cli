@@ -699,7 +699,7 @@ const deleteCommand = defineCommand({
         // Nothing was deleted, deliberately. Two engines hold this id, so
         // there is no single rule the caller can have meant, and picking one
         // deleted a rule they may not have wanted while reporting success.
-        // Naming both paths is the whole remedy: `validate` and `test` already
+        // Naming both paths is the whole remedy: `validate` and `verify` already
         // take a path, so the caller has somewhere to go.
         const message =
           `Rule "${id}" is held by ${result.engines.length} engines, ` +

@@ -1,4 +1,4 @@
-# Topic: create-runtime-rule     (CLI v%(CLI_VERSION)s / topic v3)
+# Topic: create-runtime-rule     (CLI v%(CLI_VERSION)s / topic v4)
 
 ## You are here
 This is `create-runtime-rule`. It helps you write a runtime rule: a
@@ -98,18 +98,18 @@ that plainly rather than letting them discover it from a silent check.
 
 ## Testing a rule you wrote yourself needs the flag
 
-`%(TASKLESS_CLI)s test` runs a runtime rule's fixtures by executing its
+`%(TASKLESS_CLI)s verify` runs a runtime rule's fixtures by executing its
 `check.ts` against each case directory. The flag is the whole gate, for
 every rule, always:
 
 ```
-%(TASKLESS_CLI)s test .taskless/rules/runtime/<name> --dangerously-run-scripts
+%(TASKLESS_CLI)s verify .taskless/rules/runtime/<name> --dangerously-run-scripts
 ```
 
-**`test` does not talk to the rule service at all**, and there is no
+**`verify` does not talk to the rule service at all**, and there is no
 blessed-signature path that runs fixtures without the flag. That makes
 it stricter than `check`, which will execute a blessed rule with no flag
-because it runs rules as a side effect of scanning a repository. `test`
+because it runs rules as a side effect of scanning a repository. `verify`
 runs them because you asked it to, so the verb is the consent and the
 flag is the confirmation; nothing is asked of a server in between.
 
@@ -126,7 +126,7 @@ wrote a minute ago are indistinguishable on disk, so an exemption for
 "my own rule" would be an exemption for any rule, and the warning the
 flag prints is accurate in both cases.
 
-Without the flag `test` prints `○` for the rule, says the fixtures did
+Without the flag `verify` prints `○` for the rule, says the fixtures did
 not run, names the flag, and exits 0. That is neither a pass nor a
 failure, and it is deliberately not a failure: nothing the holder of an
 unblessed rule can do would make a failure green.
@@ -164,10 +164,10 @@ capture did not match, which is a fact about the fixture.
 
 ## Important Notes
 
-- `--dangerously-run-scripts` makes `check` and `test` execute runtime
+- `--dangerously-run-scripts` makes `check` and `verify` execute runtime
   rules without server verification. It exists for local iteration on a
   rule you wrote yourself and just read, which includes running its
-  fixtures. On `test` it is the only mechanism there is. It is not a way
+  fixtures. On `verify` it is the only mechanism there is. It is not a way
   to ship a rule to a team, and suggesting it to work around a login
   turns a deliberate gate into an unreviewed code-execution path on
   someone else's machine.

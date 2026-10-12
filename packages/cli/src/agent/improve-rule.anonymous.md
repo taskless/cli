@@ -1,9 +1,9 @@
-# Topic: improve-rule (anonymous)     (CLI v%(CLI_VERSION)s / topic v2)
+# Topic: improve-rule (anonymous)     (CLI v%(CLI_VERSION)s / topic v3)
 
 ## Goal
 Iterate on an existing ast-grep rule **locally** without contacting
 the Taskless API. You (the agent) edit the rule YAML directly, then
-check it with `validate` and `test` in a feedback loop.
+check it with `validate` and `verify` in a feedback loop.
 
 ## Preconditions
 - `.taskless/` directory exists and contains the target rule.
@@ -42,7 +42,7 @@ check it with `validate` and `test` in a feedback loop.
 
 6. **Run the feedback loop.** Run:
    ```
-   %(TASKLESS_CLI)s test .taskless/rules/sg/<id> --json
+   %(TASKLESS_CLI)s verify .taskless/rules/sg/<id> --json
    ```
    - If `success: true`: report success.
    - If `success: false`: read the per-layer errors, fix, re-run.

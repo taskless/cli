@@ -56,7 +56,7 @@ export interface LayerResult {
  *
  * `notices` carries the non-fatal half of the `language:` check — an
  * accepted-but-off-list spelling, or a `files:` glob a valid language cannot
- * reach. Separate from `errors` for the same reason `RuleTestResult.notices`
+ * reach. Separate from `errors` for the same reason `RuleVerification.notices`
  * is: it must be sayable on a rule that passed, and it must not turn CI red.
  *
  * One notice per element, and the two above can both be true of one rule. They
@@ -110,13 +110,13 @@ export interface TestLayerResult extends LayerResult {
    * silently not counted", which is the whole of
    * `sg-fixture-id-matches-rule`. The two produce the same coverage and want
    * different advice, and only this can tell them apart — so the attribution
-   * `test` reports is decided here rather than guessed from a shortfall
+   * `verify` reports is decided here rather than guessed from a shortfall
    * message that both states produce.
    *
    * Necessary for that attribution but not sufficient for it. This is
    * rule-wide, while `fixtures` is the sum over every discovered file, so an
    * excluded file can sit beside a counted one and leave coverage at
-   * `valid-only` — a shortfall fixing the id would not repair. `test` requires
+   * `valid-only` — a shortfall fixing the id would not repair. `verify` requires
    * `fixtures === "none"` alongside this before naming the constraint.
    */
   fixturesExcludedById?: boolean;
@@ -372,12 +372,12 @@ async function validateRequirements(
 
   // The rule's own `id:` must be the directory it lives in.
   //
-  // The directory name IS the rule id: it is what `check` and `test` address,
+  // The directory name IS the rule id: it is what `check` and `verify` address,
   // what `--filter` is built from, and what a person types to delete a rule.
   // ast-grep registers a rule under the id in its BODY, so a mismatch splits
   // those two apart and both halves fail differently:
   //
-  //   `test` cannot run it at all — `sg test --filter ^<directory>$` selects
+  //   `verify` cannot run it at all — `sg test --filter ^<directory>$` selects
   //   nothing and reports `Rule not found`, which reads like a missing rule
   //   rather than a misnamed one.
   //

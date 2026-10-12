@@ -27,7 +27,7 @@ import type { EngineName } from "../layout";
 export interface DemoManifest {
   engine: EngineName;
   /**
-   * The rule's directory name, and the id `check` and `test` address it by.
+   * The rule's directory name, and the id `check` and `verify` address it by.
    *
    * Fixed, with no batch suffix. A generated rule carries one so a
    * regeneration does not collide with what is already there; these are

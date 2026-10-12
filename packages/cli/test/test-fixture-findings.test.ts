@@ -11,9 +11,9 @@ import { cliRejectionToResult } from "./support/spawn-cli";
 import { builtCli } from "./support/built-cli";
 
 /**
- * The findings `test` reports, per rule and per fixture bucket.
+ * The findings `verify` reports, per rule and per fixture bucket.
  *
- * The defect this file exists for: `test --json` reported a boolean per rule
+ * The defect this file exists for: `verify --json` reported a boolean per rule
  * and nothing else, while the findings that produced the boolean were in hand
  * and thrown away — Vale's reduced to a `Set` of file paths, runtime's to
  * `findings.length`. A rule whose message interpolates its captures can have
@@ -22,7 +22,7 @@ import { builtCli } from "./support/built-cli";
  * message is the only evidence otherwise, so the assertions on it below are the
  * point of the whole file and must not be relaxed to "some message".
  *
- * These spawn the built CLI rather than calling `testOneRule`, because the
+ * These spawn the built CLI rather than calling `verifyOneRule`, because the
  * always-present `findings` key and the human rendering are both properties of
  * what the command prints.
  */
@@ -143,7 +143,7 @@ async function writeValeRule(options: { passFires?: boolean } = {}) {
 
 async function testVale(...extra: string[]) {
   return runCli([
-    "test",
+    "verify",
     `.taskless/rules/vale/${VALE_RULE}`,
     "-d",
     cwd,
@@ -316,7 +316,7 @@ async function writeRuntimeRule(check: string = FLAGS_DYNAMIC_EVAL) {
 
 async function testRuntime(...extra: string[]) {
   return runCli([
-    "test",
+    "verify",
     `.taskless/rules/runtime/${RUNTIME_RULE}`,
     "-d",
     cwd,
@@ -379,7 +379,7 @@ describe("a runtime rule's fixture findings", () => {
     await writeRuntimeRule();
 
     const { stdout } = await runCli([
-      "test",
+      "verify",
       `.taskless/rules/runtime/${RUNTIME_RULE}`,
       "-d",
       cwd,
@@ -468,13 +468,19 @@ async function writeSwapRule(options: { validFires?: boolean } = {}) {
 const SG_TEST_FILE = `.taskless/rules/sg/${SG_RULE}/.tests/${SG_RULE}-test.yml`;
 
 async function testSg(...extra: string[]) {
-  return runCli(["test", `.taskless/rules/sg/${SG_RULE}`, "-d", cwd, ...extra]);
+  return runCli([
+    "verify",
+    `.taskless/rules/sg/${SG_RULE}`,
+    "-d",
+    cwd,
+    ...extra,
+  ]);
 }
 
 /** As {@link testSg}, but with the CLI's whole temp directory redirected. */
 async function testSgWithTemporary(temporary: string, ...extra: string[]) {
   return runCli(
-    ["test", `.taskless/rules/sg/${SG_RULE}`, "-d", cwd, ...extra],
+    ["verify", `.taskless/rules/sg/${SG_RULE}`, "-d", cwd, ...extra],
     {
       TMPDIR: temporary,
     }
@@ -712,7 +718,7 @@ describe("an ast-grep rule's fixture findings", () => {
     );
 
     const { stdout } = await runCli([
-      "test",
+      "verify",
       `.taskless/rules/sg/${numericId}`,
       "-d",
       cwd,
@@ -767,7 +773,7 @@ describe("the findings array is present on every rule result", () => {
     );
 
     const { stdout } = await runCli([
-      "test",
+      "verify",
       ".taskless/rules/sg/no-eval-sg",
       "-d",
       cwd,
@@ -794,7 +800,7 @@ describe("the findings array is present on every rule result", () => {
   });
 
   it("is empty rather than absent when verification failed before fixtures ran", async () => {
-    // No `.vale.ini`, so `validate` fails and `test` never reaches the fixtures.
+    // No `.vale.ini`, so `validate` fails and `verify` never reaches the fixtures.
     const directory = join(cwd, ".taskless", "rules", "vale", VALE_RULE);
     await mkdir(directory, { recursive: true });
     await writeFile(join(directory, `${VALE_RULE}.yml`), SUBSTITUTION_STYLE);

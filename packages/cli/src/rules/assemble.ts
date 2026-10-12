@@ -281,7 +281,7 @@ export async function assembleValeConfig(
  * version 5, so a project a nightly already stamped never re-runs the amended
  * migration, and a hand-made `mkdir .taskless/rules/sg/<id>/` reaches the same
  * state on any version. Nothing becomes a silent pass — `validate` still reports
- * "No test file found" and `test` still reports "Skipped: no test file found",
+ * "No test file found" and `verify` still reports "Skipped: no test file found",
  * both of which read the rule directory rather than this config.
  */
 export async function assembleSgConfig(

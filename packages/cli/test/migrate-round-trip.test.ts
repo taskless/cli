@@ -191,7 +191,7 @@ withVale("a version-4 project upgraded through 0005", () => {
   it("still runs the tests that moved with their rules", async () => {
     await seedVersion4Project();
 
-    const result = await runCli(["test", "-d", cwd, "--json"]);
+    const result = await runCli(["verify", "-d", cwd, "--json"]);
     expect(parseJson<RuleReport>(result.stdout).ok).toBe(true);
     expect(result.exitCode).toBe(0);
   });

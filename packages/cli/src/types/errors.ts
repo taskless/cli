@@ -13,7 +13,7 @@ export type CLIErrorCode =
   // project is in, because the remedies differ: `git init`, add a remote, or
   // "this host is not supported". They are a capability boundary on the
   // remote tier, never an auth failure and never a broken repository —
-  // local authoring, `validate`, `test` and `check` are unaffected by all
+  // local authoring, `validate`, `verify` and `check` are unaffected by all
   // three.
   //
   // `NO_GITHUB_REMOTE` predates them and is RETAINED: recipes and consumers
@@ -45,7 +45,7 @@ export type CLIErrorCode =
   // INVALID_INPUT, which says the id is malformed: this one is well-formed and
   // the project is the thing that is ambiguous. An agent reading this should
   // pick one of the named paths, never retry the same id. `delete` is the only
-  // id-addressed command left; `validate` and `test` take a path and cannot
+  // id-addressed command left; `validate` and `verify` take a path and cannot
   // produce this.
   | "RULE_ID_AMBIGUOUS"
   // The organization's plan does not include restoring or rolling back rules.

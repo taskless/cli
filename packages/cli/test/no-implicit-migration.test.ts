@@ -22,7 +22,7 @@ const binPath = builtCli();
 /**
  * A command that reports must not rewrite the repository.
  *
- * `check`, `validate` and `test` used to migrate `.taskless/` on their way to
+ * `check`, `validate` and `verify` used to migrate `.taskless/` on their way to
  * doing their real work. `0005` moves and deletes tracked files, so running a
  * read-only command changed the working tree, with nothing on the human path to
  * say so — the diff landed in whatever commit came next, and in CI it happened
@@ -96,7 +96,7 @@ describe("a reporting command never migrates", () => {
     await rm(directory, { recursive: true, force: true });
   });
 
-  it.each(["check", "validate", "test"] as const)(
+  it.each(["check", "validate", "verify"] as const)(
     "%s leaves the working tree exactly as it found it",
     async (command) => {
       // The whole point. Not "it warns" — it must not have MOVED anything.
@@ -115,7 +115,7 @@ describe("a reporting command never migrates", () => {
     }
   );
 
-  it.each(["check", "validate", "test"] as const)(
+  it.each(["check", "validate", "verify"] as const)(
     "%s names the command that fixes it",
     async (command) => {
       // A refusal that does not say what to run is just a wall.
@@ -126,7 +126,7 @@ describe("a reporting command never migrates", () => {
     }
   );
 
-  it.each(["check", "validate", "test"] as const)(
+  it.each(["check", "validate", "verify"] as const)(
     "%s --json carries the code an agent branches on",
     async (command) => {
       const { stdout } = await runCli([command, "--json", "-d", directory]);
@@ -141,7 +141,7 @@ describe("a reporting command never migrates", () => {
     }
   );
 
-  it.each(["check", "validate", "test"] as const)(
+  it.each(["check", "validate", "verify"] as const)(
     "%s still refuses a scaffold NEWER than the CLI",
     async (command) => {
       // The opposite direction, and a regression this change introduced once.
@@ -196,7 +196,7 @@ describe("a reporting command never migrates", () => {
 
   it.each([
     ["validate", true],
-    ["test", true],
+    ["verify", true],
   ])("%s --json keeps the scaffold migration off stderr", async (command) => {
     // The one path that still writes: scaffolding a brand-new project runs
     // every migration from 0, and its file-by-file summary is prose a
@@ -284,7 +284,7 @@ describe("a manifest that cannot be parsed", () => {
     await rm(directory, { recursive: true, force: true });
   });
 
-  it.each(["check", "validate", "test"] as const)(
+  it.each(["check", "validate", "verify"] as const)(
     "%s --json reports the file, not a version it guessed",
     async (command) => {
       const { stdout } = await runCli([command, "--json", "-d", directory]);

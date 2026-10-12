@@ -146,7 +146,7 @@ export async function runRuntimeFixtures(
 }
 
 /**
- * The report as the lines `test` prints under the rule.
+ * The report as the lines `verify` prints under the rule.
  *
  * Each line names the case, because the case is the file the author edits. The
  * `neverInvoked` line says the check did not run rather than "expected a

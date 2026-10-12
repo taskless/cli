@@ -2,20 +2,28 @@
 
 ## Goal
 Check that a rule is well-formed (`validate`), then run its tests
-(`test`). Both address rules **by path**, so one command works the same
+(`verify`). Both address rules **by path**, so one command works the same
 for every engine. Primary consumer is the create/improve feedback loop,
 but agents can call either directly.
 
+The names say which question each one answers. `validate` asks whether
+the rule is well-formed and decides it from the rule's files alone, so
+it is quick and deterministic: run it in a loop and in CI. `verify`
+asks whether the rule checks what its author wants, which only the
+fixtures can answer. Before CLI 0.13 these were called `verify` and
+`test`. A hook, script, or note that still says `test` needs `verify`,
+and one that says `verify` meaning the quick check needs `validate`.
+
 ## Preconditions
 - The rule exists at `.taskless/rules/<engine>/<id>/`.
-- Tests are optional for `validate` and are what `test` runs.
+- Tests are optional for `validate` and are what `verify` runs.
 - No auth required.
 
 ## The two commands
 
 ```
 %(TASKLESS_CLI)s validate <path> --json
-%(TASKLESS_CLI)s test     <path> --json
+%(TASKLESS_CLI)s verify   <path> --json
 ```
 
 `validate` asks whether the rule has the components its engine requires.
@@ -24,26 +32,26 @@ tests do not exist yet. That is the point of splitting the two: an
 agent part-way through authoring needs to know the rule itself is valid
 before it can write a meaningful test for it.
 
-`test` runs the rule's tests. **It runs `validate` first and stops on
+`verify` runs the rule's tests. **It runs `validate` first and stops on
 failure**, so a rule that is both malformed and under-fixtured reports
 the malformation. The fixture complaint is the less useful of the two
 and would otherwise bury the reason the rule could never have run.
 
 What each engine is checked for:
 
-| engine    | `validate` checks                                                                                                                    | `test` runs                                                |
+| engine    | `validate` checks                                                                                                                    | `verify` runs                                                |
 |-----------|--------------------------------------------------------------------------------------------------------------------------------------|------------------------------------------------------------|
 | `sg`      | ast-grep schema, plus `id`/`language`/`severity`/`message`/`rule`, and `regex` accompanied by `kind`                                 | the `valid`/`invalid` cases in `.tests/`                   |
 | `vale`    | style parses, `extends` and `message` present, `level` in vocabulary, and the rule's `.vale.ini` enables `<id>.<id>` under a matcher | the `.tests/pass/` and `.tests/fail/` buckets              |
 | `runtime` | `check.ts` present, at least one capture rule in `captures/`                                                                         | each directory under `.tests/pass/` and `.tests/fail/`, as the check's `root` |
 
 A runtime rule's fixtures execute its `check.ts`, so they run only when
-you pass `--dangerously-run-scripts`. Nothing else runs them: `test`
+you pass `--dangerously-run-scripts`. Nothing else runs them: `verify`
 makes no network request and does not reconcile, so a signature the
 service blessed does not count here. Without the flag, that rule prints `○` rather than a tick, names the reason
 and the flag, and is reported as `"ran": false` with a `refused` string
 saying why. It is counted under "did not run" rather than among the
-rules tested, and on its own it does not fail the command.
+rules verified, and on its own it does not fail the command.
 
 Read `ran` before `ok`. A runtime rule that did not run is not a rule
 that passed, and treating the two alike is the defect this reporting
@@ -81,7 +89,7 @@ Both commands answer in the same shape, one entry per rule:
 
 - `ok` at the top is true only when every rule passed.
 - `errors` is one string per problem, written to be read by a person.
-- `test` adds `ran`, which is false when `validate` failed and the tests
+- `verify` adds `ran`, which is false when `validate` failed and the tests
   never executed, and false for a runtime rule the execution policy
   refused. The second case also carries `refused` with the reason, and
   is the one where `ok` alone would mislead you.
@@ -92,9 +100,9 @@ Both commands answer in the same shape, one entry per rule:
   validates, Vale ignores it, and only this field says so. Read it
   before `ok`, the same as `ran`.
 
-A green Vale `test` also assumes Vale read every fixture. A fixture
+A green Vale `verify` also assumes Vale read every fixture. A fixture
 whose front matter Vale cannot parse is excluded from the run and
-reported as a `vale-parse-error` finding under `check`, but `test`
+reported as a `vale-parse-error` finding under `check`, but `verify`
 counts only findings from the rule under test. Measured: such a
 document under `fail/` reports `fail fixture did not fire`, which is
 loud; the same document under `pass/` stays green even when it holds a
@@ -115,7 +123,7 @@ rule with its errors indented beneath. `○` is a rule that did not run.
 ## In a feedback loop
 
 Run `validate` as soon as the rule file exists, fix what it names, then
-write tests and run `test`. Cap at 3 attempts and report to the user if
+write tests and run `verify`. Cap at 3 attempts and report to the user if
 it still fails.
 
 ## See Also

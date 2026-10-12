@@ -1,4 +1,4 @@
-# Topic: create-vale-rule     (CLI v%(CLI_VERSION)s / topic v15)
+# Topic: create-vale-rule     (CLI v%(CLI_VERSION)s / topic v16)
 
 ## You are here
 This is `create-vale-rule`. It helps you write a Vale rule: a check over
@@ -207,7 +207,7 @@ it.
 
    **The selector is Vale's to check, not `validate`'s.** A selector Vale
    cannot compile (`doc(h2[)`) fails the whole run at load with
-   `E201 invalid selector in 'doc(...)'`, which `test` reports. A selector
+   `E201 invalid selector in 'doc(...)'`, which `verify` reports. A selector
    that compiles and matches nothing is silent, like any scope with no
    construct to find. `validate` checks that the term is `doc(` … `)` with
    something between, and no more.
@@ -234,7 +234,7 @@ it.
    or `sentence` when the rule is about prose, `frontmatter.<key>` when
    it is about a field, and in either case a `pass/` fixture that
    carries the machine key, so the rule cannot regress onto it without
-   `test` saying so:
+   `verify` saying so:
 
    ```markdown
    ---
@@ -618,7 +618,7 @@ it.
        - ', '
      ```
 
-     The first rule validates, tests green if its `fail/` fixture is
+     The first rule validates, passes `verify` if its `fail/` fixture is
      missing the dash, and reports nothing forever. Any token whose
      pattern contains no `\w` (punctuation, an emoji, a bare symbol)
      needs `nonword: true`.
@@ -846,7 +846,7 @@ it.
 5. **Write the fixtures.** Two directories inside the rule, both flat.
    Vale lints the whole fixture tree, so a document nested a level
    deeper would be linted and never checked against either bucket, which
-   `test` rejects by name rather than skipping. Keep both one level
+   `verify` rejects by name rather than skipping. Keep both one level
    deep:
 
    ```
@@ -894,12 +894,12 @@ it.
    two, the answer is `scope: raw`. See step 2 for what that costs.
 
    **Fixtures run under a config that isolates this rule, so a green
-   `test` is not evidence the rule reaches any real file.** `test`
+   `verify` is not evidence the rule reaches any real file.** `verify`
    generates its own `.vale.ini` pointing at the fixture directory and
    enabling only `<id>.<id>`; your rule's own matcher globs are not
    consulted. So a glob of `packages/cli/src/**/*.ts` that matches
-   nothing in the repository still produces a rule that validates, tests
-   green, and reports forever. The only check for that is a real
+   nothing in the repository still produces a rule that validates, passes
+   `verify`, and reports forever. The only check for that is a real
    `check` over a real file:
 
    ```
@@ -944,7 +944,7 @@ it.
    ```
 
    There is no single command that runs one Vale rule over the project
-   and counts (taskless/cli#379 tracks one). `test` isolates the rule
+   and counts (taskless/cli#379 tracks one). `verify` isolates the rule
    but sees only its fixtures. The workable way is a whole-project
    `check` filtered afterwards by rule id:
 
@@ -958,12 +958,12 @@ it.
    `| length` to read the hits themselves, which is what tells you
    whether a hit is a false positive or a real one nobody had noticed.
 
-6. **Validate, then test.** Two commands, both taking the rule's
+6. **Validate, then verify.** Two commands, both taking the rule's
    directory as their argument, both run from the project root:
 
    ```
    %(TASKLESS_CLI)s validate .taskless/rules/vale/<id> --json
-   %(TASKLESS_CLI)s test   .taskless/rules/vale/<id> --json
+   %(TASKLESS_CLI)s verify   .taskless/rules/vale/<id> --json
    ```
 
    `validate` asks whether the rule is well-formed: the style file parses,
@@ -980,7 +980,7 @@ it.
    so letting either reach the binary would take every other Vale rule's
    findings down with it.
 
-   `test` runs the rule against both buckets. It runs `validate` first and
+   `verify` runs the rule against both buckets. It runs `validate` first and
    stops if that fails, so a malformed rule tells you what is malformed
    instead of complaining about fixtures.
 
@@ -999,10 +999,10 @@ it.
    reported one entry per rule. `.taskless/rules/vale` covers every Vale
    rule; no argument at all covers the project.
 
-   **`test` answers pass-or-fail and never shows you the finding**, so
+   **`verify` answers pass-or-fail and never shows you the finding**, so
    it cannot tell you that a `substitution` message renders its two
    `%%s` slots in the wrong order: the rule fires, the fixture is
-   satisfied, and `test` reports `ok`. To read the rendered message,
+   satisfied, and `verify` reports `ok`. To read the rendered message,
    the line numbers and the matched text, name the bucket to `check`:
 
    ```
@@ -1017,13 +1017,13 @@ it.
    the same rule's `fail/` bucket named explicitly returned its
    findings with the message text rendered.
 
-   **If that command returns `results: []` for a rule whose `test` is
+   **If that command returns `results: []` for a rule whose `verify` is
    green, suspect the rule's own config before the pattern.** A
    `[.taskless/**]` matcher setting `<id>.<id> = NO` turns the bucket
    off for exactly this invocation, which is the one shape that
-   reproduces "`test` says the fixture fired, `check` on the same
+   reproduces "`verify` says the fixture fired, `check` on the same
    fixture says nothing". Measured: adding that matcher to a working
-   rule left `test` at `ok: true` and emptied `results`. The tell is
+   rule left `verify` at `ok: true` and emptied `results`. The tell is
    in the same envelope, as a notice reading `matcher [.taskless/**]
    is unnecessary`. `validate` reports it too, as an advisory. Delete
    the matcher; step 4 explains why no rule needs one.
@@ -1031,7 +1031,7 @@ it.
    Read `results` there. Ignore `success` and the exit code: `success`
    says the run worked rather than that the fixture behaved, and the
    exit code follows severity, so a `level: error` rule exits 1 on
-   `fail/` while a `warning` rule exits 0 and both are correct. `test`
+   `fail/` while a `warning` rule exits 0 and both are correct. `verify`
    answers pass-or-fail; `check` shows you the finding.
 
    **An empty `results` is a clean pass only when nothing else in the
@@ -1054,7 +1054,7 @@ it.
      ```
 
      Every other file's findings are reported normally, and no rule of
-     yours ran over this one. If it is a fixture, `test` shows the same
+     yours ran over this one. If it is a fixture, `verify` shows the same
      gap from the other side: a `fail/` fixture Vale cannot parse
      reports as `fail fixture did not fire`, and a `pass/` fixture it
      cannot parse stays green, since a rule that never ran cannot fire.
@@ -1068,7 +1068,7 @@ it.
      `Vale reported while running:` and carries whatever Vale wrote to
      stderr on a run that still exited zero. The one to expect there is
      the `W101` warning about a rule assignment placed above any
-     matcher, the mistake step 4 warns of. `test` surfaces the same
+     matcher, the mistake step 4 warns of. `verify` surfaces the same
      text as a per-rule `notice`, printed even on a pass.
 
    A `failures` key is the third case and the loud one: the engine was
@@ -1078,7 +1078,7 @@ it.
    `notices` and no `failures` is the clean pass it looks like.
 
    **The binary that answers is the vendored one, and only that one
-   counts.** `validate`, `test` and `check` all run the Vale that ships
+   counts.** `validate`, `verify` and `check` all run the Vale that ships
    with this CLI, v%(VALE_VERSION)s, which is what every measurement in
    this recipe was taken on. A bare `vale` on your `PATH` proves nothing
    about what `check` will report: one first attempt validated a rule
@@ -1091,7 +1091,7 @@ it.
    to the invocation it was written for: a whole-project `check` skips
    `.taskless/` without its help, and on a fixture bucket you name it
    is the one thing acting, which is how it empties the `check` above
-   while `test` stays green. `validate` reports it as an advisory (step 4
+   while `verify` stays green. `validate` reports it as an advisory (step 4
    lists it). A rule needs the matchers for the files it is about and
    no more.
 
@@ -1116,7 +1116,7 @@ it.
    to. The scope is a decision the user should see rather than one
    buried in a config. Note that a whole-project `%(TASKLESS_CLI)s check` skips
    your fixtures: `.taskless/` is excluded from the project walk, by
-   design. `test` is what exercises them.
+   design. `verify` is what exercises them.
 
 ## Worked rules
 

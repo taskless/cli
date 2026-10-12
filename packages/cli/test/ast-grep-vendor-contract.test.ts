@@ -146,7 +146,7 @@ const run = (cwd: string, argv: string[]) =>
 const scan = (cwd: string, config = "sgconfig.yml") =>
   run(cwd, ["scan", "--config", config, "--json=stream"]);
 
-/** `test`, exactly as `runTests` invokes it. */
+/** `verify`, exactly as `runTests` invokes it. */
 const test = (cwd: string, ruleId: string) =>
   run(cwd, [
     "test",

@@ -97,16 +97,16 @@ jobs:
             echo "staged $engine/$ruleId"
           done < /tmp/manifests.txt
 
-      - name: Verify
-        run: node packages/cli/dist/index.js verify -d "$PROJECT"
+      - name: Validate
+        run: node packages/cli/dist/index.js validate -d "$PROJECT"
 
       # `--dangerously-run-scripts` is the whole point of this job: without it
-      # the fixtures do not run, and `test` says so rather than reporting a
+      # the fixtures do not run, and `verify` says so rather than reporting a
       # pass. A green run here means they executed.
       - name: Run every rule's fixtures
         run: |
           set -euo pipefail
-          node packages/cli/dist/index.js test --json --dangerously-run-scripts -d "$PROJECT" | tee /tmp/report.json
+          node packages/cli/dist/index.js verify --json --dangerously-run-scripts -d "$PROJECT" | tee /tmp/report.json
           node -e '
             const report = JSON.parse(require("fs").readFileSync("/tmp/report.json", "utf8"));
             const expected = require("fs").readFileSync("/tmp/manifests.txt", "utf8")

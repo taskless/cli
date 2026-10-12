@@ -134,7 +134,7 @@ export type DeleteRuleOutcome =
  * hold the same id, and this used to take the first hit in {@link ENGINES}
  * order, delete it, and return `true`: the caller asked to delete a rule, a
  * different rule than they may have meant was deleted, and the return value
- * said it went fine (#264). The path-addressed commands, `validate` and `test`,
+ * said it went fine (#264). The path-addressed commands, `validate` and `verify`,
  * removed this error case by not having an id to be ambiguous; `delete` still
  * takes an id, so it has to report the ambiguity instead of guessing at it.
  */

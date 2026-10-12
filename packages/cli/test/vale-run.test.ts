@@ -284,7 +284,7 @@ withVale("runVale against the real binary", () => {
     // NO ISSUE EVER FLAGGED THIS TEST. It was found while investigating
     // taskless/cli#262, which reports a different flake entirely — two
     // SUBPROCESS-SPAWNING tests in `error-envelope.test.ts` and
-    // `verify-test-commands.test.ts` — and does not name this one. #262 is
+    // `validate-verify-commands.test.ts` — and does not name this one. #262 is
     // where the search started, not what it found, and it remains open.
     //
     // Its sibling in `ValeRunOutcome.blocking` had the identical shape and was

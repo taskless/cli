@@ -12,7 +12,7 @@ import { buildPath, findSgBinary, sgWalkArgv } from "./scan";
  * Whether an ast-grep rule's `files:`/`ignores:` globs reach any file in the
  * project.
  *
- * `test` cannot answer this from the fixtures. An sg fixture is a `valid:` or
+ * `verify` cannot answer this from the fixtures. An sg fixture is a `valid:` or
  * `invalid:` snippet with no path, so the globs never apply to it, and a rule
  * whose `files:` names `lib/**` in a project that keeps its code in `src/`
  * passes every test and is then never run by `check` (#486). A typo in a glob

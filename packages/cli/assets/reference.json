@@ -38,7 +38,7 @@
       "engine": "sg",
       "enforcedBy": "validate",
       "summary": "A rule's `id:` must equal the directory it lives in.",
-      "rationale": "The directory name is the rule id: it is what `check` and `test` address, and what a person types to delete a rule. ast-grep registers the rule under the id in its body. With the two apart, `test` cannot find the rule at all, and `check` does run it but reports findings under a name no directory has, so nobody can locate what produced them."
+      "rationale": "The directory name is the rule id: it is what `check` and `verify` address, and what a person types to delete a rule. ast-grep registers the rule under the id in its body. With the two apart, `verify` cannot find the rule at all, and `check` does run it but reports findings under a name no directory has, so nobody can locate what produced them."
     },
     {
       "id": "sg-regex-needs-kind",
@@ -73,14 +73,14 @@
       "engine": "sg",
       "enforcedBy": "validate",
       "summary": "A rule must ship at least one test file under `.tests/`.",
-      "rationale": "A rule with no fixtures has shown neither that it fires nor that it stays quiet. `validate` requires the file; `test` requires the cases inside it to cover both."
+      "rationale": "A rule with no fixtures has shown neither that it fires nor that it stays quiet. `validate` requires the file; `verify` requires the cases inside it to cover both."
     },
     {
       "id": "sg-fixture-id-matches-rule",
       "engine": "sg",
-      "enforcedBy": "test",
+      "enforcedBy": "verify",
       "summary": "A test file's own `id:` must equal the rule id.",
-      "rationale": "Fixtures are attributed by the id inside the file, not by its name. A fixture carrying another rule's id is silently not counted, so a rule that ships one reads as a rule that shipped none. `validate` passes, because the FILE is there; `test` is where it bites."
+      "rationale": "Fixtures are attributed by the id inside the file, not by its name. A fixture carrying another rule's id is silently not counted, so a rule that ships one reads as a rule that shipped none. `validate` passes, because the FILE is there; `verify` is where it bites."
     },
     {
       "id": "vale-config-no-root-keys",

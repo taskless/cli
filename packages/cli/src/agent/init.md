@@ -1,9 +1,9 @@
-# Topic: init     (CLI v%(CLI_VERSION)s / topic v4)
+# Topic: init     (CLI v%(CLI_VERSION)s / topic v5)
 
 ## Goal
 Install or update the Taskless skill in this project, and migrate the
 `.taskless/` layout when the project is behind the CLI. You most often
-arrive here because `check`, `validate`, or `test` refused with
+arrive here because `check`, `validate`, or `verify` refused with
 `SCAFFOLD_MIGRATION_REQUIRED`: those commands only read, so the rewrite
 is left to `init`, which is the one command that migrates.
 

@@ -10,7 +10,7 @@ import { demoCommand } from "./commands/demo";
 import { detectCommand } from "./commands/detect";
 import { feedbackCommand } from "./commands/feedback";
 import { initCommand, updateCommand } from "./commands/init";
-import { testCommand, validateCommand } from "./commands/verify";
+import { validateCommand, verifyCommand } from "./commands/verify";
 import { infoCommand } from "./commands/info";
 import { type SubcommandName } from "./commands/names";
 import { onboardCommand } from "./commands/onboard";
@@ -59,7 +59,7 @@ const subCommands = {
   rule: ruleCommand,
   share: shareCommand,
   validate: validateCommand,
-  test: testCommand,
+  verify: verifyCommand,
 } satisfies Record<Exclude<SubcommandName, "agent">, unknown>;
 
 const agentCommand = createAgentCommand(subCommands);

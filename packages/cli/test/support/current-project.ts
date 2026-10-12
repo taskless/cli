@@ -7,7 +7,7 @@ import { ensureTasklessDirectory } from "../../src/filesystem/directory";
  * Bring a test fixture up to the current scaffold version before the CLI reads
  * it, the way a user now does.
  *
- * `check`, `validate` and `test` used to migrate on their way to doing their real
+ * `check`, `validate` and `verify` used to migrate on their way to doing their real
  * work, so a fixture written in the pre-`0004` layout was silently modernised
  * mid-command and every one of these suites depended on that without saying so.
  * Those commands refuse now, which is the point of the change: a command that
