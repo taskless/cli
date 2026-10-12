@@ -601,3 +601,102 @@ describe("a rejection names the constraint it violated", () => {
     );
   });
 });
+
+/**
+ * An sg rule with both fixture buckets populated, so `test` passes it, and
+ * `scope` written verbatim between `message:` and `rule:`.
+ */
+async function scopedSgRule(id: string, scope = "") {
+  const directory = join(cwd, ".taskless", "rules", "sg", id);
+  await mkdir(join(directory, ".tests"), { recursive: true });
+  await writeFile(
+    join(directory, `${id}.yml`),
+    `id: ${id}\nlanguage: TypeScript\nseverity: error\nmessage: no log\n` +
+      `${scope}rule:\n  pattern: console.log($$$)\n`
+  );
+  await writeFile(
+    join(directory, ".tests", `${id}-test.yml`),
+    `id: ${id}\nvalid:\n  - console.error(x);\ninvalid:\n  - console.log(x);\n`
+  );
+  return `.taskless/rules/sg/${id}`;
+}
+
+/** The notices `test --json` attached to the one rule, asserting it passed. */
+async function noticesFor(path: string): Promise<string[] | undefined> {
+  const result = await runCli(["test", path, "-d", cwd, "--json"]);
+  // A notice, never a failure: a narrow glob can be deliberate.
+  expect(result.exitCode).toBe(0);
+  const rule = (JSON.parse(result.stdout) as Report).rules[0];
+  expect(rule?.ok).toBe(true);
+  return rule?.notices;
+}
+
+// #486. An sg fixture has no path, so `files:` never applies to it, and a glob
+// that selects nothing passed `test` while `check` never ran the rule.
+//
+// Every case here is one a glob matcher of our own would get wrong in at least
+// one direction, which is why the scope is asked of ast-grep's walk instead.
+describe("test says when an sg rule's globs reach no file", () => {
+  beforeEach(async () => {
+    await mkdir(join(cwd, "src"), { recursive: true });
+    await writeFile(join(cwd, "src", "app.ts"), "console.log('hi');\n");
+  });
+
+  it("notices a files: glob that matches nothing", async () => {
+    const path = await scopedSgRule("no-log", `files:\n  - "lib/**/*.ts"\n`);
+    const notices = await noticesFor(path);
+    expect(notices).toHaveLength(1);
+    expect(notices?.[0]).toContain("no-log's files: globs match no file");
+  });
+
+  it("is silent when the glob reaches a file", async () => {
+    const path = await scopedSgRule("no-log", `files:\n  - "src/**/*.ts"\n`);
+    expect(await noticesFor(path)).toEqual([]);
+  });
+
+  // The glob matches a real file, but not one in the rule's language, so
+  // ast-grep never applies the rule to it. Matching the glob alone would call
+  // this in scope.
+  it("notices a glob that only reaches files in another language", async () => {
+    await writeFile(join(cwd, "src", "notes.md"), "console.log('hi')\n");
+    const path = await scopedSgRule("no-log", `files:\n  - "src/**/*.md"\n`);
+    expect(await noticesFor(path)).toHaveLength(1);
+  });
+
+  // An `ignores:` that swallows every file empties the scope as surely as a
+  // mistyped `files:`, and the notice has to name the key that did it.
+  it("notices an ignores: glob that excludes every file", async () => {
+    const path = await scopedSgRule("no-log", `ignores:\n  - "**/*.ts"\n`);
+    const notices = await noticesFor(path);
+    expect(notices).toHaveLength(1);
+    expect(notices?.[0]).toContain("no-log's ignores: globs match no file");
+  });
+
+  // `check` honours `.gitignore`, so a glob reaching only ignored files is a
+  // rule `check` never runs, however many files the glob matches on disk.
+  it("does not count a gitignored file as in scope", async () => {
+    await execFileAsync("git", ["init", "-q"], { cwd });
+    await mkdir(join(cwd, "dist"), { recursive: true });
+    await writeFile(join(cwd, "dist", "app.ts"), "console.log('hi');\n");
+    await writeFile(join(cwd, ".gitignore"), "dist/\n");
+    const path = await scopedSgRule("no-log", `files:\n  - "dist/**/*.ts"\n`);
+    expect(await noticesFor(path)).toHaveLength(1);
+  });
+
+  // `check` never walks into `.taskless/`, so a file there must not count
+  // either, even though the glob and the language both admit it.
+  it("does not count the CLI's own directory as in scope", async () => {
+    await rm(join(cwd, "src"), { recursive: true });
+    await writeFile(join(cwd, ".taskless", "probe.ts"), "console.log(1);\n");
+    const path = await scopedSgRule("no-log", `files:\n  - "**/*.ts"\n`);
+    expect(await noticesFor(path)).toHaveLength(1);
+  });
+
+  // No glob means the scope is the language alone, and a project with no code
+  // in it is honestly clean rather than mis-scoped.
+  it("is silent for a rule with no files: or ignores:", async () => {
+    await rm(join(cwd, "src"), { recursive: true });
+    const path = await scopedSgRule("no-log");
+    expect(await noticesFor(path)).toEqual([]);
+  });
+});
