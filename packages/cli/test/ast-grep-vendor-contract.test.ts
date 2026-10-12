@@ -379,6 +379,22 @@ const arityMatches = (body: string): string[] =>
     .filter((line) => line !== "")
     .map((line) => (JSON.parse(line) as { text: string }).text);
 
+/** Scan one TypeScript rule, `rule:` body verbatim, over one source file. */
+const typescriptFindings = (body: string, source: string) =>
+  scan(
+    project({
+      rules: { arity: arityRule(body) },
+      sources: { "src/a.ts": source },
+    })
+  );
+
+/** The text each TypeScript finding matched, in file order. */
+const typescriptMatches = (body: string, source: string): string[] =>
+  typescriptFindings(body, source)
+    .stdout.split("\n")
+    .filter((line) => line !== "")
+    .map((line) => (JSON.parse(line) as { text: string }).text);
+
 /** A rule whose fixtures all pass. */
 const passingProject = () =>
   project({
@@ -1038,6 +1054,74 @@ withSg("ast-grep vendor contract", () => {
       const outcome = scanMarkdown("  pattern: '[$T]($U)'");
       expect(outcome.status).toBe(0);
       expect(outcome.stdout.trim()).toBe("");
+    });
+  });
+
+  /**
+   * TWO TYPESCRIPT GRAMMAR TRAPS, ADDED AT 0.45.3.
+   *
+   * Both were hit while authoring rules on a real project, and
+   * `create-sg-rule.md` lists both under Quirks with a workaround each. These
+   * are the measurements behind that prose: if a grammar bump fixes either, the
+   * recipe is describing a parser that no longer exists, and this goes red.
+   */
+  describe("TypeScript keywords and awaited generic calls", () => {
+    const parameterSource =
+      "class C { constructor(readonly x: number, y: number) {} }\n";
+
+    it("rejects an anonymous keyword token as a kind", () => {
+      // The CST dump prints `readonly` as a node, which is what invites this.
+      // `kind:` takes named nodes only, so it is exit 8 and every other rule's
+      // report goes with it.
+      const outcome = typescriptFindings("  kind: readonly", parameterSource);
+      expect(outcome.status).toBe(8);
+      expect(outcome.stderr).toContain("Kind `readonly` is invalid");
+    });
+
+    it("matches the keyword through its named parent's text", () => {
+      expect(
+        typescriptMatches(
+          '  kind: required_parameter\n  regex: "^readonly\\\\b"',
+          parameterSource
+        )
+      ).toEqual(["readonly x: number"]);
+    });
+
+    const awaitSource = [
+      'const r = await rpc<Foo>("x");',
+      'const s = await rpc("y");',
+      'const t = rpc<Foo>("z");',
+      "",
+    ].join("\n");
+
+    it("parses `await f<T>()` as a call of the await expression", () => {
+      // The silent one: the generic awaited call is simply absent from the
+      // findings, exit 0.
+      expect(
+        typescriptMatches(
+          '  kind: call_expression\n  has: { field: function, regex: "^rpc$" }',
+          awaitSource
+        )
+      ).toEqual(['rpc("y")', 'rpc<Foo>("z")']);
+    });
+
+    it("recovers the awaited generic call with an await_expression branch", () => {
+      // The wrapped match spans the `await`, which the recipe warns a `fix:`
+      // will rewrite along with the call.
+      expect(
+        typescriptMatches(
+          [
+            "  kind: call_expression",
+            "  has:",
+            "    field: function",
+            "    any:",
+            '      - regex: "^rpc$"',
+            "      - kind: await_expression",
+            '        has: { kind: identifier, regex: "^rpc$" }',
+          ].join("\n"),
+          awaitSource
+        )
+      ).toEqual(['await rpc<Foo>("x")', 'rpc("y")', 'rpc<Foo>("z")']);
     });
   });
 

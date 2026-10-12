@@ -544,3 +544,35 @@ describe("create-sg-rule warns about silently inert relational rules", () => {
     expect(result.stdout).toContain("reads exactly like a clean codebase");
   });
 });
+
+/**
+ * Two TypeScript grammar traps hit during an onboarding run (#485). The
+ * vendor contract pins the binary's behavior; this pins that the recipe
+ * says it, with the workaround.
+ */
+describe("create-sg-rule names the tree-sitter traps under Quirks", () => {
+  let cwd: string;
+
+  beforeEach(async () => {
+    cwd = await mkdtemp(join(tmpdir(), "taskless-sg-quirks-"));
+  });
+
+  afterEach(async () => {
+    await rm(cwd, { recursive: true, force: true });
+  });
+
+  it("says a keyword is not a kind, and where to read real kinds", async () => {
+    const result = await runCli(["agent", "create-sg-rule", "-d", cwd]);
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain("### A keyword is not a valid `kind`");
+    expect(result.stdout).toContain("read kinds off `--debug-query=ast`");
+  });
+
+  it("says an awaited generic call hides its callee", async () => {
+    const result = await runCli(["agent", "create-sg-rule", "-d", cwd]);
+    expect(result.stdout).toContain(
+      "### An awaited generic call hides its callee"
+    );
+    expect(result.stdout).toContain("kind: await_expression");
+  });
+});

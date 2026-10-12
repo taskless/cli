@@ -1,4 +1,4 @@
-# Topic: create-sg-rule     (CLI v%(CLI_VERSION)s / topic v5)
+# Topic: create-sg-rule     (CLI v%(CLI_VERSION)s / topic v6)
 
 ## You are here
 This is `create-sg-rule`. It helps you write an ast-grep rule: a check
@@ -94,66 +94,21 @@ whole rule.
    recognizes but that names the wrong parser reports nothing and looks
    like a clean codebase.
 
-   Two specific traps:
-   - **Do not copy from `detect --json`.** It reports the
-     *repository's* languages in a different vocabulary. It says
-     `C++` where the list above says `Cpp`.
-   - **`Tsx` and `TypeScript` are two parsers, not aliases.** A rule
-     over `.tsx` files that declares `TypeScript` does not match JSX
-     syntax; it does not read those files at all.
-   - **`Markdown` sees blocks only.** tree-sitter-markdown splits
-     block and inline grammars and ast-grep exposes only the block
-     tree, so `atx_heading`, `setext_heading`, `fenced_code_block`,
-     `list_item`, `paragraph`, `section` and `document` are real kinds
-     and everything inside a line is one opaque `inline` node. There is
-     no `link`, `emphasis` or `strong_emphasis` kind; naming one is a
-     config error that exits 8 and takes the whole scan with it, and
-     writing it as a pattern (`[$T]($U)`) matches nothing forever with
-     no error at all. A rule about the words inside a line belongs to
-     Vale, not here. ast-grep also has no count and no absence
-     assertion, so "every doc has an h1" is not expressible as an `sg`
-     rule at any severity.
+   Three more `language:` mistakes have their own entries under
+   **Quirks** below: copying a spelling from `detect --json`, treating
+   `Tsx` as an alias of `TypeScript`, and expecting `Markdown` to see
+   inside a line.
 
-5. **Check any variadic pattern against the separator trap.** A `$$$`
-   next to a comma does not mean "zero or more". The `,` in the pattern
-   is itself an AST node, and under ast-grep's default `smart`
-   strictness every node in the pattern must match, so a call with no
-   comma cannot match a pattern that has one. Measured against the
-   ast-grep this CLI ships (v%(AST_GREP_VERSION)s), given the four calls
-   `foo()`, `foo(1)`, `foo(1,2)`, and `foo(1,2,3)`:
-
-| pattern            | what it matches                              |
-|--------------------|----------------------------------------------|
-| `foo($$$)`         | all four, `foo()` included                   |
-| `foo($A, $$$)`     | `foo(1,2)` and `foo(1,2,3)`, never `foo(1)` |
-| `foo($$$, $A)`     | `foo(1)` alone                               |
-| `foo($A, $$$, $B)` | `foo(1,2)` alone                             |
-
-   A standalone `$$$` needs none of this. It is the comma beside it
-   that narrows the pattern. The two remedies are not the same:
-
-   - **Trailing `$$$`**: write the pattern as an object with
-     `strictness: ast`, which compares named AST nodes and ignores the
-     separator. An object pattern also requires `context` and
-     `selector`:
-     ```yaml
-     rule:
-       pattern:
-         context: foo($A, $$$)
-         selector: call_expression
-         strictness: ast
-     ```
-     This moves the boundary from two arguments to one, **not to
-     zero**, `$A` still has to bind something, so `foo()` is still
-     unmatched. And `strictness` is valid only inside the pattern
-     object: at rule level ast-grep rejects it as an unknown field and
-     fails the whole scan.
-   - **Leading `$$$`**: `strictness: ast` does not rescue it. Use
-     `any` with one branch per arity you mean to cover.
-
-   This is upstream's intended behaviour (ast-grep/ast-grep#1365,
-   closed as working-as-intended), not a bug waiting on a release:
-   0.45.2 behaves identically, so there is no version to wait for.
+5. **Check the rule against Quirks.** Read the **Quirks** section below
+   against what you just wrote, before writing any tests. Every entry
+   there verifies clean and then either fails the whole scan or matches
+   less than it should, and a test file written from the same
+   assumption passes anyway. Look again at:
+   - a `$$$` next to a comma (the separator trap),
+   - any `kind:` you read off a `--debug-query=cst` dump,
+   - a rule that keys on a call's callee, if callers write
+     `await f<T>(...)`,
+   - a `follows` or `precedes`, or a `not` that reuses a metavariable.
 
 6. **Write the tests.** Write
    `.taskless/rules/sg/<id>/.tests/<id>-YYYYMMDD-test.yml` with the matching
@@ -170,10 +125,11 @@ whole rule.
    exactly like a rule that works. The `invalid:` bucket is the only
    thing that demonstrates the rule can fire.
 
-   Where the rule has an arity boundary (anything from step 5), put a
-   case on each side of it. A pattern that starts at two arguments when
-   it was meant to start at one passes a test suite whose fixtures all
-   have two.
+   Where the rule has an arity boundary (the separator trap under
+   Quirks), put a case on each side of it. A pattern that starts at two
+   arguments when it was meant to start at one passes a test suite whose
+   fixtures all have two. Where the rule keys on a callee, put an
+   awaited generic call among the `invalid:` cases.
 
 7. **Run the verify feedback loop.** Both commands take the rule's
    directory as their argument:
@@ -223,12 +179,179 @@ whole rule.
    - Only after the user confirms, fetch `%(TASKLESS_CLI)s agent
      create-remote-rule` and follow it. Do not call the service silently.
 
-## Two ways a relational rule matches nothing
+## Quirks
 
-Both of these parse, verify, run, and exit 0. Neither reports anything
-ever, which reads exactly like a clean codebase.
+Each of these comes from a grammar or from ast-grep itself, so a rule
+written carefully from the upstream reference still hits them. They
+fail in one of two ways:
 
-**`follows` and `precedes` need `stopBy: end` to cross punctuation.**
+- **Config error.** The scan exits 8 and names the problem. Loud, but
+  it aborts config parsing, so every other `sg` rule in the project
+  goes unreported until it is fixed.
+- **Silent.** The rule parses, verifies, runs, and exits 0. What it
+  misses goes unreported, which reads exactly like a clean codebase.
+
+When a rule matches less than it should, check this list before
+doubting the rest of the rule. Each entry was measured against the
+ast-grep this CLI ships (v%(AST_GREP_VERSION)s).
+
+| quirk                                          | symptom                 |
+|------------------------------------------------|-------------------------|
+| `language:` copied from `detect --json`        | config error, or notice |
+| `TypeScript` declared over `.tsx` files        | silent                  |
+| an inline construct named in a `Markdown` rule | config error, or silent |
+| `$$$` next to a comma                          | silent                  |
+| a keyword named as a `kind`                    | config error            |
+| a callee rule over `await f<T>(...)`           | silent                  |
+| `follows` or `precedes` without `stopBy: end`  | silent                  |
+| a `not` containing a bare metavariable         | silent                  |
+
+### `language:` copied from `detect --json`
+
+`detect --json` reports the *repository's* languages, in a different
+vocabulary. It says `C++` where ast-grep's list says `Cpp`. That one
+happens to resolve, and `verify` reports it as a notice, but a
+spelling ast-grep does not recognize at all is a config error.
+Workaround: copy the spelling from the list in step 4.
+
+### `Tsx` and `TypeScript` are two parsers, not aliases
+
+A rule that declares `TypeScript` does not read `.tsx` files at all,
+so over a `.tsx` tree it reports nothing and exits 0. Workaround:
+declare `Tsx` for `.tsx` files. A check that must cover both
+extensions is two rules, one per parser.
+
+### `Markdown` sees blocks only
+
+tree-sitter-markdown splits block and inline grammars and ast-grep
+exposes only the block tree, so `atx_heading`, `setext_heading`,
+`fenced_code_block`, `list_item`, `paragraph`, `section` and
+`document` are real kinds and everything inside a line is one opaque
+`inline` node. There is no `link`, `emphasis` or `strong_emphasis`
+kind; naming one is a config error, and writing it as a pattern
+(`[$T]($U)`) matches nothing forever with no error at all.
+Workaround: a rule about the words inside a line belongs to Vale, not
+here. ast-grep also has no count and no absence assertion, so "every
+doc has an h1" is not expressible as an `sg` rule at any severity.
+
+### `$$$` next to a comma (the separator trap)
+
+A `$$$` next to a comma does not mean "zero or more". The `,` in the
+pattern is itself an AST node, and under ast-grep's default `smart`
+strictness every node in the pattern must match, so a call with no
+comma cannot match a pattern that has one. Given the four calls
+`foo()`, `foo(1)`, `foo(1,2)`, and `foo(1,2,3)`:
+
+| pattern            | what it matches                              |
+|--------------------|----------------------------------------------|
+| `foo($$$)`         | all four, `foo()` included                   |
+| `foo($A, $$$)`     | `foo(1,2)` and `foo(1,2,3)`, never `foo(1)` |
+| `foo($$$, $A)`     | `foo(1)` alone                               |
+| `foo($A, $$$, $B)` | `foo(1,2)` alone                             |
+
+A standalone `$$$` needs none of this. It is the comma beside it that
+narrows the pattern. The two workarounds are not the same:
+
+- **Trailing `$$$`**: write the pattern as an object with
+  `strictness: ast`, which compares named AST nodes and ignores the
+  separator. An object pattern also requires `context` and `selector`:
+  ```yaml
+  rule:
+    pattern:
+      context: foo($A, $$$)
+      selector: call_expression
+      strictness: ast
+  ```
+  This moves the boundary from two arguments to one, **not to zero**,
+  `$A` still has to bind something, so `foo()` is still unmatched. And
+  `strictness` is valid only inside the pattern object: at rule level
+  ast-grep rejects it as an unknown field and fails the whole scan.
+- **Leading `$$$`**: `strictness: ast` does not rescue it. Use `any`
+  with one branch per arity you mean to cover.
+
+This is upstream's intended behaviour (ast-grep/ast-grep#1365, closed
+as working-as-intended), not a bug waiting on a release: 0.45.2
+behaves identically, so there is no version to wait for.
+
+### A keyword is not a valid `kind`
+
+`--debug-query=cst` prints keywords as nodes. For a constructor
+parameter `readonly x: number` in TypeScript:
+
+```
+required_parameter
+  readonly
+  pattern: identifier
+  type: type_annotation
+```
+
+but `kind: readonly` is a config error, ``Kind `readonly` is
+invalid``. `readonly` is an anonymous token, and `kind:` accepts only
+named nodes. The CST dump prints both the same way, so reading it
+cannot tell you which names are valid kinds. This holds for every
+keyword, not only `readonly`.
+
+Workaround: read kinds off `--debug-query=ast` instead, which prints
+named nodes only. A name that appears there is a usable kind; one that
+appears only in the CST dump is not. To match on the keyword, match
+its named parent and test the parent's text:
+
+```yaml
+rule:
+  kind: required_parameter
+  regex: "^readonly\\b"
+```
+
+### An awaited generic call hides its callee
+
+```ts
+const r = await rpc<Foo>("x");   // missed
+const s = await rpc("y");        // matched
+```
+
+With
+
+```yaml
+rule:
+  kind: call_expression
+  has: { field: function, regex: "^rpc$" }
+```
+
+only the second call matches. The TypeScript grammar parses the first
+as a call OF the await expression:
+
+```
+call_expression
+  function: await_expression     <- not `rpc`
+    await
+    identifier
+  type_arguments: <Foo>
+  arguments: ("x")
+```
+
+So any rule keyed on the callee silently skips every awaited generic
+call. The same happens in `Tsx`, and with `!`, `void` and `typeof` in
+place of `await`, where the callee becomes a `unary_expression`.
+`yield` is not affected. Workaround: accept the wrapped form as a
+second branch.
+
+```yaml
+rule:
+  kind: call_expression
+  has:
+    field: function
+    any:
+      - regex: "^rpc$"
+      - kind: await_expression
+        has: { kind: identifier, regex: "^rpc$" }
+```
+
+Add a `unary_expression` branch the same way if those prefixes matter.
+The wrapped match spans the `await` too, so a `fix:` on this rule
+rewrites it along with the call.
+
+### `follows` and `precedes` need `stopBy: end` to cross punctuation
+
 A sibling relation walks the immediate siblings, and in most grammars
 the separators are nodes too. Between two array elements sits a `,`, so
 the previous element is not the previous SIBLING. Measured on
@@ -244,8 +367,9 @@ matches nothing, and the same rule with `stopBy: end` inside `follows`
 matches. If a sibling relation reports zero on input you believe should
 match, add `stopBy: end` before doubting the rest of the rule.
 
-**A `not` containing a bare metavariable excludes everything.** Writing
-"the name is not used in the initializer" as
+### A `not` containing a bare metavariable excludes everything
+
+Writing "the name is not used in the initializer" as
 
 ```
 rule:
