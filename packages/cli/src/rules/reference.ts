@@ -39,10 +39,15 @@ export const REFERENCE_SIGNATURE = `1;h=sha-256;d=${"0".repeat(64)}`;
  * every path in this document is relative to. Both were facts a consumer could
  * previously only get by transcribing them out of this repository.
  *
+ * 3 — the commands were renamed (taskless/cli#489): `verify` became `validate`
+ * and `test` became `verify`. The shape is unchanged, but every `enforcedBy`
+ * value now names a different command than it did, so a consumer that maps
+ * `"verify"` to "decided from the files alone" would read the opposite.
+ *
  * A consumer that asserts this and stops is behaving correctly, which is what
  * makes the bump a sufficient signal on its own.
  */
-export const REFERENCE_VERSION = 2;
+export const REFERENCE_VERSION = 3;
 
 /**
  * The check this corpus exists to make possible, stated in the artifact itself.

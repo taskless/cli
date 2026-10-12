@@ -299,10 +299,10 @@ describe("the demo reference payload", () => {
 
   it("states a version a consumer can refuse on", async () => {
     const reference = await readReference();
-    // 2 is `tests` becoming an object and `layout` arriving. A consumer that
-    // asserts this and stops is behaving correctly, which is what makes the
-    // bump a sufficient signal on its own.
-    expect(reference.version).toBe(2);
+    // 3 is the command rename: `enforcedBy` values name different commands
+    // than they did at 2. A consumer that asserts this and stops is behaving
+    // correctly, which is what makes the bump a sufficient signal on its own.
+    expect(reference.version).toBe(3);
   });
 
   it("carries a structural fingerprint that moves with the corpus shape", async () => {
