@@ -10,6 +10,7 @@ import {
 } from "./engines";
 import { describeCoverageShortfall, type FixtureFinding } from "./fixtures";
 import { collectSgFixtureFindings } from "./sg-fixture-findings";
+import { describeEmptySgScope } from "./sg-scope";
 import { type EngineName } from "./layout";
 import {
   assessCaptureDirectory,
@@ -498,7 +499,13 @@ export async function testOneRule(
       errors,
       violations,
       ran: true,
-      notices: verification.notices,
+      // The fixtures above have no path, so nothing they proved says the
+      // rule's globs reach a real file. Asked here, on a rule that verified,
+      // and only ever as a notice; see `sg-scope.ts`.
+      notices: collectNotices([
+        ...verification.notices,
+        await describeEmptySgScope(cwd, ruleId),
+      ]),
       // `sg test` still decides the verdict above and still cannot produce a
       // finding — the vendored binary has no `--json` and no output-format
       // flag. So unlike the other two engines, these are not read back out of
