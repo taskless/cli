@@ -23,10 +23,10 @@ PR 1 is groups 1–4 (bottom of the stack, targets `main`). PR 2 is groups 5–8
 
 ## 4. PR 1 checks and opening
 
-- [ ] 4.1 Rebase onto the latest `origin/main`. Verify: `git rev-list --count HEAD..origin/main` is 0.
-- [ ] 4.2 Run `pnpm typecheck`, `pnpm lint` and `pnpm test`. Verify: all three pass.
-- [ ] 4.3 Sweep for stale meanings: `git grep -nE '\b(verif\w*|tested|test)\b' -- packages/cli/src/agent packages/cli/src/commands packages/cli/src/rules openspec/specs`, reading each hit, and record the pattern in the PR body. Verify: no hit means the old command.
-- [ ] 4.4 Run the archive check on a scratch copy of `openspec/`, comparing scenario titles per spec before and after. Verify: every prior scenario is present, and the only title changes are the two the REMOVED reason names.
+- [x] 4.1 Rebase onto the latest `origin/main`. Verify: `git rev-list --count HEAD..origin/main` is 0.
+- [x] 4.2 Run `pnpm typecheck`, `pnpm lint` and `pnpm test`. Verify: all three pass.
+- [x] 4.3 Sweep for stale meanings: `git grep -nE '\b(verif\w*|tested|test)\b' -- packages/cli/src/agent packages/cli/src/commands packages/cli/src/rules openspec/specs`, reading each hit, and record the pattern in the PR body. Verify: no hit means the old command.
+- [x] 4.4 Run the archive check on a scratch copy of `openspec/`, comparing scenario titles per spec before and after. Verify: every prior scenario is present, and the only title changes are the two the REMOVED reason names.
 - [ ] 4.5 Request the on-demand Claude review, address the findings, and confirm with the user before merging. Verify: review posted and findings resolved.
 
 ## 5. `validate`: the ast-grep engine parse
