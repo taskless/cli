@@ -52,7 +52,7 @@ const layerResultSchema = z.object({
  * Layer 1, which alone can also report things that are true but not failures.
  *
  * An sg rule spelled `language: typescript` reaches the right parser and
- * verifies clean, but `TypeScript` is how ast-grep spells it. That is worth
+ * validates clean, but `TypeScript` is how ast-grep spells it. That is worth
  * saying on a rule that passed, so it cannot ride in `errors`.
  *
  * A list, one notice per element, because a rule can be true of more than one

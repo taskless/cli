@@ -163,7 +163,7 @@ describe("validate refuses a rule id held by more than one engine", () => {
   });
 
   // The whole reason the check is per rule rather than only project-wide: an
-  // author verifying the rule they just wrote is the moment the collision is
+  // author validating the rule they just wrote is the moment the collision is
   // cheapest to fix, and a pass over the two id lists says nothing then.
   it("catches the collision when a single rule is validated", async () => {
     await valeRule("no-eval");
@@ -305,7 +305,7 @@ describe("migration 0009 renames a colliding project", () => {
     expect(await snapshot(runtimeDirectory)).toEqual(before);
     expect(await findRuleIdCollisions(cwd)).toEqual([]);
 
-    // Every surviving rule still verifies. The runtime one keeps the bare id
+    // Every surviving rule still validates. The runtime one keeps the bare id
     // and is no longer in collision with anything.
     for (const rule of [
       { engine: "vale", ruleId: "no-eval-vale" },
@@ -358,7 +358,7 @@ describe("migration 0009 renames a colliding project", () => {
   });
 
   // The rewritten Vale config has to still describe a rule Vale would enable:
-  // both segments of `<id>.<id>` moved, and a half-renamed assignment verifies
+  // both segments of `<id>.<id>` moved, and a half-renamed assignment validates
   // as a rule that is present and off.
   it("leaves the renamed Vale rule validating clean", async () => {
     await sgRule("no-eval");

@@ -822,7 +822,7 @@ describe("verify: the verified/failed/refused split on a mixed run (#284)", () =
   }
 
   /**
-   * A runtime rule that verifies cleanly but whose fixtures are always
+   * A runtime rule that validates cleanly but whose fixtures are always
    * REFUSED, because nothing here ever passes `--dangerously-run-scripts`.
    * Shape mirrors `runtime-check.test.ts`'s `RUNTIME_CAPTURE`/`RUNTIME_CHECK`.
    */

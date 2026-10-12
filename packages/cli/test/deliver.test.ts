@@ -124,7 +124,7 @@ describe("delivering a rule as a file set", () => {
     await expect(writeServedRule(cwd, rule)).rejects.toThrow(/path that/);
 
     // Refused as a unit: not one file of it exists, including the files that
-    // were themselves fine. A half-written rule verifies as a broken rule two
+    // were themselves fine. A half-written rule validates as a broken rule two
     // steps from the cause.
     expect(existsSync(ruleDirectory(cwd, "runtime", "logs-abc12345"))).toBe(
       false
@@ -154,7 +154,7 @@ describe("delivering a rule as a file set", () => {
   });
 
   it("refuses a Vale rule with no .vale.ini", async () => {
-    // Without it no matcher enables the rule: it would be written, verified,
+    // Without it no matcher enables the rule: it would be written, validated,
     // and never fire.
     await expect(
       writeServedRule(
@@ -409,7 +409,7 @@ describe("a delivered set defines what the rule directory contains", () => {
     const captures = await lstat(join(directory, "captures"));
     expect(captures.isSymbolicLink()).toBe(false);
     // And the capture landed inside the rule directory. Writing it through
-    // the link would have left the rule with no capture: it verifies as
+    // the link would have left the rule with no capture: it validates as
     // incomplete and never fires.
     await expect(
       readFile(join(directory, "captures", "logs.yml"), "utf8")

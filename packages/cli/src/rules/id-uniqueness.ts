@@ -37,7 +37,7 @@ function collisionFrom(
 /**
  * Whether this one id is held by more than one engine.
  *
- * Asked per rule rather than only over the whole tree, because verifying the
+ * Asked per rule rather than only over the whole tree, because validating the
  * rule an author just wrote is the moment a collision is cheapest to fix. A
  * whole-project pass that only diffs the engine id lists would say nothing at
  * exactly that moment.

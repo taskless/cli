@@ -23,7 +23,7 @@
  *
  * Two directions of error, and they are not symmetric:
  *
- * - **Too lax** — a rule the binary will not honor verifies clean. That is the
+ * - **Too lax** — a rule the binary will not honor validates clean. That is the
  *   gap this module exists to close.
  * - **Too strict** — a rule the binary accepts is rejected. That is worse: it
  *   blocks work that would have functioned. Where a measurement is ambiguous,
