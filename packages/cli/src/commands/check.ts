@@ -1,4 +1,11 @@
-import { resolve, isAbsolute, relative } from "node:path";
+import {
+  basename,
+  dirname,
+  isAbsolute,
+  join,
+  relative,
+  resolve,
+} from "node:path";
 import { realpath, stat } from "node:fs/promises";
 import process from "node:process";
 import { defineCommand } from "citty";
@@ -41,6 +48,30 @@ function relativeInside(root: string, target: string): string | undefined {
   return escapes ? undefined : relativePath;
 }
 
+/**
+ * `absolutePath` with its nearest existing ancestor directory replaced by that
+ * directory's real path.
+ *
+ * The ancestor rather than the path itself, for two reasons: a missing path
+ * (a file deleted in the diff, even its whole directory) still has a real
+ * spelling to compare, and a symlink inside the project pointing out of it is
+ * judged by where it sits, not by where it leads, exactly as it was before.
+ */
+async function realParentSpelling(absolutePath: string): Promise<string> {
+  let ancestor = dirname(absolutePath);
+  const rest = [basename(absolutePath)];
+  for (;;) {
+    try {
+      return join(await realpath(ancestor), ...rest);
+    } catch {
+      const parent = dirname(ancestor);
+      if (parent === ancestor) return absolutePath;
+      rest.unshift(basename(ancestor));
+      ancestor = parent;
+    }
+  }
+}
+
 interface ClassifiedPaths {
   /** In the project and on disk, relative to cwd so `sg scan` can use them. */
   kept: string[];
@@ -60,9 +91,10 @@ interface ClassifiedPaths {
  *
  * Containment is decided from the path as written, before asking whether it
  * exists, so `/no/such/file.py` is reported as outside rather than as missing.
- * It is checked against both cwd as given and its real path: on macOS `/tmp`
- * is `/private/tmp`, and a hook handing over absolute paths in one spelling
- * while cwd is in the other must not read as escaping the project.
+ * Both sides are compared as written AND through their real paths: on macOS
+ * `/tmp` is `/private/tmp`, and `process.cwd()` returns the real spelling, so
+ * a path handed over in either spelling must not read as escaping the project
+ * while cwd is in the other.
  */
 async function classifyPaths(
   cwd: string,
@@ -82,8 +114,11 @@ async function classifyPaths(
     const absolutePath = isAbsolute(rawPath)
       ? resolve(rawPath)
       : resolve(resolvedCwd, rawPath);
+    const spellings = [absolutePath, await realParentSpelling(absolutePath)];
     const relativePath = roots
-      .map((root) => relativeInside(root, absolutePath))
+      .flatMap((root) =>
+        spellings.map((spelling) => relativeInside(root, spelling))
+      )
       .find((candidate) => candidate !== undefined);
     if (relativePath === undefined) {
       classified.outside.push(rawPath);

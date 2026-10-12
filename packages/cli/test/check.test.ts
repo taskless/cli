@@ -608,6 +608,27 @@ describe("check", () => {
       });
     });
 
+    it("accepts an absolute path spelled through a symlink when cwd is the real path", async () => {
+      // The reverse of the case below, and the common one: process.cwd()
+      // returns the real path, while a caller may type the symlinked form.
+      await cp(fixturesDirectory, temporaryDirectory, { recursive: true });
+      const realDirectory = await realpath(temporaryDirectory);
+
+      const { stdout, exitCode } = await runCli([
+        "check",
+        "-d",
+        realDirectory,
+        "--json",
+        join(temporaryDirectory, "sample.js"),
+      ]);
+
+      expect(exitCode).toBe(1);
+      const parsed = JSON.parse(stdout.trim()) as {
+        results: Array<{ file: string }>;
+      };
+      expect(parsed.results.length).toBeGreaterThan(0);
+    });
+
     it("accepts an absolute path spelled through the project's real path", async () => {
       // On macOS tmpdir() is under /var, a symlink to /private/var. A hook
       // that hands over real paths must not read as escaping the project.
