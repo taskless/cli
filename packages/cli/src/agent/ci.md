@@ -1,4 +1,4 @@
-# Topic: ci     (CLI v%(CLI_VERSION)s / topic v4)
+# Topic: ci     (CLI v%(CLI_VERSION)s / topic v5)
 
 ## Goal
 Wire `%(TASKLESS_CLI)s check` into the user's existing CI so rules run
@@ -59,8 +59,10 @@ which CI they use. If multiple match, ask which should run Taskless.
 | Azure Pipelines     | `System.PullRequest.TargetBranch`             |
 | Bitbucket Pipelines | `BITBUCKET_PR_DESTINATION_BRANCH`             |
 
-  `%(TASKLESS_CLI)s check` silently filters paths that don't exist, so raw
-  `git diff --name-only` output can pipe in directly.
+  `%(TASKLESS_CLI)s check` skips paths that don't exist (naming them in a
+  notice), so raw `git diff --name-only` output can pipe in directly.
+  Run it from the repository root: `git diff` paths are relative to the
+  root, and a path outside the project is refused.
 
 **Recommended default:** diff scan on PRs, full scan on pushes to
 main.
