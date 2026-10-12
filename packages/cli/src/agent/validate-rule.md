@@ -1,4 +1,4 @@
-# Topic: validate-rule     (CLI v%(CLI_VERSION)s / topic v5)
+# Topic: validate-rule     (CLI v%(CLI_VERSION)s / topic v6)
 
 ## Goal
 Check that a rule is well-formed (`validate`), then run its tests
@@ -41,7 +41,7 @@ What each engine is checked for:
 
 | engine    | `validate` checks                                                                                                                    | `verify` runs                                                |
 |-----------|--------------------------------------------------------------------------------------------------------------------------------------|------------------------------------------------------------|
-| `sg`      | ast-grep schema, plus `id`/`language`/`severity`/`message`/`rule`, and `regex` accompanied by `kind`                                 | the `valid`/`invalid` cases in `.tests/`                   |
+| `sg`      | ast-grep schema, plus `id`/`language`/`severity`/`message`/`rule`, `regex` accompanied by `kind`, no top-level `strictness`, then ast-grep loads the rule on its own | the `valid`/`invalid` cases in `.tests/`                   |
 | `vale`    | style parses, `extends` and `message` present, `level` in vocabulary, and the rule's `.vale.ini` enables `<id>.<id>` under a matcher | the `.tests/pass/` and `.tests/fail/` buckets              |
 | `runtime` | `check.ts` present, at least one capture rule in `captures/`                                                                         | each directory under `.tests/pass/` and `.tests/fail/`, as the check's `root` |
 
@@ -97,7 +97,9 @@ Both commands answer in the same shape, one entry per rule:
   it is reported on a pass as well. For a Vale rule it carries what
   Vale wrote to stderr on a run that still exited zero, such as the
   `W101` warning about an assignment placed above any matcher: the rule
-  validates, Vale ignores it, and only this field says so. Read it
+  validates, Vale ignores it, and only this field says so. For an `sg`
+  rule it names the silent traps from `create-sg-rule`'s Quirks section
+  that the rule's shape matches, such as `$$$` beside a comma. Read it
   before `ok`, the same as `ran`.
 
 A green Vale `verify` also assumes Vale read every fixture. A fixture

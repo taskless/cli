@@ -1,4 +1,4 @@
-# Topic: create-sg-rule     (CLI v%(CLI_VERSION)s / topic v8)
+# Topic: create-sg-rule     (CLI v%(CLI_VERSION)s / topic v9)
 
 ## You are here
 This is `create-sg-rule`. It helps you write an ast-grep rule: a check
@@ -188,7 +188,8 @@ fail in one of two ways:
 
 - **Config error.** The scan exits 8 and names the problem. Loud, but
   it aborts config parsing, so every other `sg` rule in the project
-  goes unreported until it is fixed.
+  goes unreported until it is fixed. `validate` has ast-grep load each
+  rule on its own, so it names the rule that has the error.
 - **Silent.** The rule parses, validates, runs, and exits 0. What it
   misses goes unreported, which reads exactly like a clean codebase.
 
@@ -196,16 +197,18 @@ When a rule matches less than it should, check this list before
 doubting the rest of the rule. Each entry was measured against the
 ast-grep this CLI ships (v%(AST_GREP_VERSION)s). The last column says
 whether `validate` reports it; where it says no, only you will notice.
+A notice never fails the rule, because each of those shapes is
+sometimes what the author meant. Read it and decide.
 
-| quirk                                          | symptom                 | `validate` reports it         |
+| quirk                                          | symptom                 | `validate` reports it       |
 |------------------------------------------------|-------------------------|-----------------------------|
 | `language:` copied from `detect --json`        | config error, or notice | yes                         |
 | `TypeScript` declared over `.tsx` files        | silent                  | only if `files:` names .tsx |
-| an inline construct named in a `Markdown` rule | config error, or silent | no                          |
-| `$$$` next to a comma                          | silent                  | no                          |
-| a keyword named as a `kind`                    | config error            | no                          |
-| a callee rule over `await f<T>(...)`           | silent                  | no                          |
-| `follows` or `precedes` without `stopBy: end`  | silent                  | no                          |
+| an inline construct named in a `Markdown` rule | config error, or silent | the `kind:` form only       |
+| `$$$` next to a comma                          | silent                  | as a notice                 |
+| a keyword named as a `kind`                    | config error            | yes                         |
+| a callee rule over `await f<T>(...)`           | silent                  | as a notice                 |
+| `follows` or `precedes` without `stopBy: end`  | silent                  | as a notice                 |
 | a `not` containing a bare metavariable         | silent                  | no                          |
 
 ### `language:` copied from `detect --json`
