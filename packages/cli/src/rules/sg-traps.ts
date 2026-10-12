@@ -70,7 +70,10 @@ const TRAILING_ELLIPSIS = /,\s*\$\$\$/;
  *
  * The trailing form is rescued by an object pattern with `strictness: ast`, so
  * one that already declares it is left alone. The leading form is not rescued
- * by anything but alternatives, so it is reported either way.
+ * by anything but alternatives, so it is reported either way. One pattern can
+ * hold both (`foo($$$HEAD, $A, $$$TAIL)`), and they have different remedies,
+ * so each is reported on its own: an author who fixes one must still hear
+ * about the other.
  */
 function separatorTraps(node: Record<string, unknown>, path: string): string[] {
   const pattern = node.pattern;
@@ -89,17 +92,18 @@ function separatorTraps(node: Record<string, unknown>, path: string): string[] {
   }
   if (text === undefined) return [];
 
+  const notices: string[] = [];
   if (LEADING_ELLIPSIS.test(text)) {
-    return [
-      `${path}.pattern \`${text}\` puts \`$$$\` before a \`,\`, so it never matches a call where nothing precedes the last item: the comma is a node the target must also have. \`strictness: ast\` does not rescue this form. Match each arity as its own branch of an \`any\` instead.`,
-    ];
+    notices.push(
+      `${path}.pattern \`${text}\` puts \`$$$\` before a \`,\`, so it never matches a call where nothing precedes the last item: the comma is a node the target must also have. \`strictness: ast\` does not rescue this form. Match each arity as its own branch of an \`any\` instead.`
+    );
   }
   if (TRAILING_ELLIPSIS.test(text) && !astStrict) {
-    return [
-      `${path}.pattern \`${text}\` puts a \`,\` before \`$$$\`, so under the default \`smart\` strictness it never matches zero trailing items (\`foo($A, $$$)\` misses \`foo(1)\`). Write it as a pattern object with \`context\`, \`selector\` and \`strictness: ast\`, which ignores the separator.`,
-    ];
+    notices.push(
+      `${path}.pattern \`${text}\` puts a \`,\` before \`$$$\`, so under the default \`smart\` strictness it never matches zero trailing items (\`foo($A, $$$)\` misses \`foo(1)\`). Write it as a pattern object with \`context\`, \`selector\` and \`strictness: ast\`, which ignores the separator.`
+    );
   }
-  return [];
+  return notices;
 }
 
 /**
