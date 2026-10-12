@@ -44,7 +44,7 @@ function stylesPath(cwd: string): string {
  *   The line went because 3.22.0 gave an empty value a meaning, clearing a
  *   file's inherited settings, and the config schema refuses it in a rule's
  *   own `.vale.ini` for that reason; the isolating config should not write
- *   the shape `verify` refuses.
+ *   the shape `validate` refuses.
  * - Exactly one assignment of the key, in one matcher. Precedence here is
  *   positional in both directions (a later matcher wins, and since Vale
  *   3.21.0 so does a later repeat inside one matcher; through 3.20.0 the

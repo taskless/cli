@@ -387,7 +387,7 @@ async function validateRequirements(
   //   rule that produced it is looking for something that is not there.
   //
   // Checked here, in layer 2, because it needs no subprocess and because the
-  // failure it prevents is silent in exactly the direction `verify` is meant to
+  // failure it prevents is silent in exactly the direction `validate` is meant to
   // be trusted for. A generated rule whose delivery appends a batch suffix to
   // the filename and not to the body lands in precisely this state.
   const declaredId = ruleData.id;

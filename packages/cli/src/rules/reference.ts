@@ -52,10 +52,10 @@ export const REFERENCE_VERSION = 2;
  * other side's cases, because a rule graded only on the cases shipped beside it
  * is graded on nothing.
  *
- * The `verify` step is second rather than implied, and it is there because
+ * The `validate` step is second rather than implied, and it is there because
  * running this protocol found it. A hand-written alternate `sg` rule that
  * ast-grep executed CORRECTLY — matching `eval(payload)` and not
- * `JSON.parse(payload)` — was refused by `taskless verify` for using `regex`
+ * `JSON.parse(payload)` — was refused by `taskless validate` for using `regex`
  * without a sibling `kind`. That is a deliberate house constraint and not a
  * bug, but nothing in the prompt states it, so a generator cannot know it and
  * the failure reads as a disagreement about the subject when it is a
@@ -64,7 +64,7 @@ export const REFERENCE_VERSION = 2;
  */
 export const REFERENCE_PROTOCOL = [
   "Generate a rule from `prompt`, using your own pipeline.",
-  "Run `taskless verify` over what you generated. It enforces constraints beyond the engine's own schema, listed in `constraints` below, so a rule the engine executes correctly can still be refused. A rule that fails here is not deliverable however well it behaves, and every later step would be measuring the wrong thing. Check `enforcedBy` before concluding anything: some constraints are only decided once the fixtures run.",
+  "Run `taskless validate` over what you generated. It enforces constraints beyond the engine's own schema, listed in `constraints` below, so a rule the engine executes correctly can still be refused. A rule that fails here is not deliverable however well it behaves, and every later step would be measuring the wrong thing. Check `enforcedBy` before concluding anything: some constraints are only decided once the fixtures run.",
   "Run your generated rule against your own cases. It should pass; if it does not, the disagreement is inside your pipeline and nothing below will be informative.",
   "Run your generated rule against `tests` here. A failure means your rule and ours disagree about the subject, and `tests` is the arbiter.",
   "Run the rule in `rule` here against your cases. A failure means your cases and ours disagree, which is worth as much as the previous step and is the one nobody runs.",
@@ -172,7 +172,7 @@ export interface ReferenceEngineLayout {
  * The tree every path in this document is relative to.
  *
  * Published because the corpus is otherwise a set of paths with no stated root,
- * and a consumer materializing a rule — one of ours to run `taskless verify`
+ * and a consumer materializing a rule — one of ours to run `taskless validate`
  * against, or its own generated answer to the same prompt, which has to land
  * somewhere the CLI will look — would have to assume where that is.
  *
@@ -204,7 +204,7 @@ export interface Reference {
   protocol: string[];
   layout: ReferenceLayout;
   /**
-   * What `verify` and `test` enforce beyond the engine's own schema.
+   * What `validate` and `test` enforce beyond the engine's own schema.
    *
    * Published because a generator that never reads our recipes cannot know
    * them, and because without the list a refusal here is indistinguishable

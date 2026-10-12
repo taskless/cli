@@ -19,7 +19,7 @@ export interface ResolvedRule {
  *
  * A path may name a rule directory, an engine directory, the rules root, or the
  * project root, and each means "every rule at or beneath here". That is what
- * makes `verify .taskless/` the CI form and `verify <rule>` the authoring form
+ * makes `validate .taskless/` the CI form and `validate <rule>` the authoring form
  * without two argument shapes.
  *
  * An id would not do this job. The same id can exist under two engines, so an

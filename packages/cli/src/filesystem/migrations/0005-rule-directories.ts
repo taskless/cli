@@ -230,7 +230,7 @@ async function scaffoldEngineDirectories(directory: string): Promise<void> {
  * empty directories, so a `.tests/` created here and left empty would never
  * reach CI or a fresh clone, and the failure would come back there. It is
  * committed rather than ignored — `.taskless/.gitignore` carries only the two
- * generated configs — and never reads as a test: `verify` counts a test file
+ * generated configs — and never reads as a test: `validate` counts a test file
  * only when it matches `<id>-*-test.yml`, so such a rule still reports "No test
  * file found" rather than quietly passing.
  */

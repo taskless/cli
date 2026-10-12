@@ -19,7 +19,7 @@
  * `commands/check.ts` prints `Notice: ` and `commands/verify.ts` prints
  * `    notice: ` once per notice, so two advisories glued into one element read
  * as one notice with a stray tail. That is the defect `241e1c4` fixed in
- * `verify`, and it is why producers hand back elements rather than a
+ * `validate`, and it is why producers hand back elements rather than a
  * pre-joined string: presentation belongs to the renderer, and a producer that
  * picked its own separator would mis-render in the direction hardest to notice
  * — the notice still appears, just wrongly attributed.
@@ -60,7 +60,7 @@ export function collectNotices(
  * runtime repair notice embeds an `Error.message` from whatever failed. Mark
  * only the first line and the rest read as stray output rather than as
  * something the run is telling its author — the defect `241e1c4` fixed for
- * `verify`, which `check` then carried on its dispatched notices and, on the
+ * `validate`, which `check` then carried on its dispatched notices and, on the
  * runtime plan's notices, printed with no marker at all.
  *
  * Shared by both renderers so the two cannot drift apart again. They differ

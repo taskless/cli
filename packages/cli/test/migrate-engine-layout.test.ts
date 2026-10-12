@@ -356,7 +356,7 @@ describe("migrations 0004 + 0005 — one directory per rule", () => {
     expect(gitignore).not.toContain(".gitkeep");
   });
 
-  // A `.gitkeep` is not a test. `verify` counts a test file only when it
+  // A `.gitkeep` is not a test. `validate` counts a test file only when it
   // matches `<id>-*-test.yml`, so the repaired rule still reports honestly
   // rather than turning into a silent pass.
   it("does not gitkeep a tests directory that received a real test", async () => {

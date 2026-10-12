@@ -61,7 +61,7 @@ async function sha256(path: string): Promise<string> {
 }
 
 async function runCli(args: string[]) {
-  // The migration is EXPLICIT now. `check` and `verify` used to perform it on
+  // The migration is EXPLICIT now. `check` and `validate` used to perform it on
   // the way to reporting, which is what this file leaned on; they refuse
   // instead, so the upgrade happens here, where the subject of these tests
   // begins: a project that HAS been migrated still reports.
@@ -178,7 +178,7 @@ withVale("a version-4 project upgraded through 0005", () => {
   it("still verifies every migrated rule", async () => {
     await seedVersion4Project();
 
-    const result = await runCli(["verify", "-d", cwd, "--json"]);
+    const result = await runCli(["validate", "-d", cwd, "--json"]);
     const report = parseJson<RuleReport>(result.stdout);
     // Engine order follows the `ENGINES` declaration, not the alphabet.
     expect(report.rules.map((rule) => `${rule.engine}/${rule.ruleId}`)).toEqual(
@@ -334,7 +334,7 @@ describe("a current-layout project with no taskless.json", () => {
     );
     expect(result.exitCode).toBe(1);
 
-    const verified = await runCli(["verify", "-d", cwd, "--json"]);
+    const verified = await runCli(["validate", "-d", cwd, "--json"]);
     expect(
       parseJson<RuleReport>(verified.stdout)
         .rules.map((rule) => `${rule.engine}/${rule.ruleId}`)
@@ -352,7 +352,7 @@ describe("a current-layout project with no taskless.json", () => {
 
     await runCli(["check", "-d", cwd, "--json"]);
 
-    const verified = await runCli(["verify", "-d", cwd, "--json"]);
+    const verified = await runCli(["validate", "-d", cwd, "--json"]);
     const report = parseJson<RuleReport>(verified.stdout);
     expect(report.rules.map((rule) => `${rule.engine}/${rule.ruleId}`)).toEqual(
       ["sg/no-eval"]

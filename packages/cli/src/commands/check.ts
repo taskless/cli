@@ -262,7 +262,7 @@ export const checkCommand = defineCommand({
      * runtime repair notice embeds an `Error.message` it did not author — so
      * marking the first line alone leaves the rest reading as stray output
      * rather than as something the run is telling its author. That is the
-     * defect `241e1c4` fixed for `verify`; `check` had it on the dispatched
+     * defect `241e1c4` fixed for `validate`; `check` had it on the dispatched
      * notices, and printed the runtime plan's notices with no marker at all.
      *
      * Every notice `check` prints in text goes through here, so the three

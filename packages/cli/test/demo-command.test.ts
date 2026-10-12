@@ -83,7 +83,7 @@ describe.each(DEMO_RULES.map((rule) => [rule.engine, rule.ruleId] as const))(
       const written = await run(["demo", engine, "-d", project]);
       expect(written.exitCode).toBe(0);
 
-      const verified = await run(["verify", "-d", project]);
+      const verified = await run(["validate", "-d", project]);
       expect(verified.exitCode).toBe(0);
       expect(verified.stdout).toContain(`${engine}/${ruleId}`);
     });

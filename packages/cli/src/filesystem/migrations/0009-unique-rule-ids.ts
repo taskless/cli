@@ -26,14 +26,14 @@ import type { Migration } from "../types";
  *
  * `.taskless/rules/sg/no-eval/` and `.taskless/rules/vale/no-eval/` could both
  * exist, because `isValidRuleId` is `/^[a-z0-9][a-z0-9-]*$/` with no engine
- * component and no cross-engine check. `verify` now refuses that state per
+ * component and no cross-engine check. `validate` now refuses that state per
  * rule, which is the guard for a collision created after this runs — by hand,
  * or by a merge. This is what clears the ones that are already there.
  *
  * ## Why it renames rather than refuses
  *
  * A throwing migration walls `init`, and `init` is the command every other
- * refusal points at: `check` and `verify` send a stale scaffold there with
+ * refusal points at: `check` and `validate` send a stale scaffold there with
  * `SCAFFOLD_MIGRATION_REQUIRED`. Refusing therefore leaves the user in a state
  * where the CLI's own instruction is the thing that fails, and the way out is
  * a multi-file hand edit. Renaming resolves it at the one moment the CLI has
@@ -119,7 +119,7 @@ import type { Migration } from "../types";
  * Two windows remain, and neither leaves a tree a re-run cannot repair:
  *
  * - Between the first edit and the commit the directory name disagrees with
- *   the files inside it. `verify` reports that, and the next migration run
+ *   the files inside it. `validate` reports that, and the next migration run
  *   finishes it. The scaffold version is written only after every migration
  *   returns, so the next `taskless` command runs this again by itself.
  * - When a symmetric collision is interrupted between its two halves, the half
@@ -340,7 +340,7 @@ async function renameSgFixtures(
   try {
     entries = await readdir(testsPath);
   } catch {
-    // No fixtures. `verify` reports that as `sg-test-file-required`; it is not
+    // No fixtures. `validate` reports that as `sg-test-file-required`; it is not
     // this migration's business.
     return [];
   }
@@ -380,7 +380,7 @@ async function rewriteValeConfig(
   try {
     source = await readFile(configPath, "utf8");
   } catch {
-    // A rule with no config declares no scope. `verify` reports that; there is
+    // A rule with no config declares no scope. `validate` reports that; there is
     // nothing here to rewrite.
     return [];
   }
@@ -419,7 +419,7 @@ export function retargetValeConfig(
  * deletion, so every other byte survives: a rule file is the author's own
  * text, and a parse-and-re-serialize would reflow it. A file whose `id:` is
  * something else is left alone rather than corrected — that is the
- * `sg-id-matches-directory` defect, `verify` already names it, and quietly
+ * `sg-id-matches-directory` defect, `validate` already names it, and quietly
  * fixing it here would hide a rule that was never what its directory claimed.
  *
  * Returns whether anything changed, so the printed report does not claim an

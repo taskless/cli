@@ -782,7 +782,7 @@ describe("the findings array is present on every rule result", () => {
     await writeSgRule();
 
     const { stdout } = await runCli([
-      "verify",
+      "validate",
       ".taskless/rules/sg/no-eval-sg",
       "-d",
       cwd,
@@ -794,7 +794,7 @@ describe("the findings array is present on every rule result", () => {
   });
 
   it("is empty rather than absent when verification failed before fixtures ran", async () => {
-    // No `.vale.ini`, so `verify` fails and `test` never reaches the fixtures.
+    // No `.vale.ini`, so `validate` fails and `test` never reaches the fixtures.
     const directory = join(cwd, ".taskless", "rules", "vale", VALE_RULE);
     await mkdir(directory, { recursive: true });
     await writeFile(join(directory, `${VALE_RULE}.yml`), SUBSTITUTION_STYLE);

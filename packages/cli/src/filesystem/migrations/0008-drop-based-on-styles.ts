@@ -19,7 +19,7 @@ import type { Migration } from "../types";
  * `test/vale-vendor-contract.test.ts`.
  *
  * The config schema now refuses the key (`vale-config-no-based-on-styles`),
- * so a rule still carrying it fails `verify` and refuses the Vale run at
+ * so a rule still carrying it fails `validate` and refuses the Vale run at
  * `check`. This migration is what keeps an upgrade from turning every
  * existing project's `check` red: it deletes the line so the configs pass the
  * schema they passed before, with the behaviour they had before.
@@ -52,7 +52,7 @@ const migration: Migration = async (directory) => {
     try {
       source = await readFile(configPath, "utf8");
     } catch {
-      // A rule directory with no config declares no scope; `verify` reports
+      // A rule directory with no config declares no scope; `validate` reports
       // that, and there is nothing here to delete.
       continue;
     }

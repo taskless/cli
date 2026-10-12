@@ -60,7 +60,7 @@ async function scopingKeys(ruleFile: string): Promise<string[]> {
   try {
     rule = parse(await readFile(ruleFile, "utf8")) as unknown;
   } catch {
-    // An unreadable or malformed rule is `verify`'s to report.
+    // An unreadable or malformed rule is `validate`'s to report.
     return [];
   }
   if (typeof rule !== "object" || rule === null) return [];

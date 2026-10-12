@@ -92,11 +92,11 @@ async function sgRule(directoryName: string, declaredId: string) {
 
 const SCOPED = `[*.md]\ntskl) rule = no-simply\nno-simply.no-simply = YES\n`;
 
-describe("verify addresses rules by path", () => {
+describe("validate addresses rules by path", () => {
   it("resolves the engine from the path, not the file", async () => {
     await valeRule("no-simply", { config: SCOPED });
     const result = await runCli([
-      "verify",
+      "validate",
       ".taskless/rules/vale/no-simply",
       "-d",
       cwd,
@@ -120,7 +120,7 @@ describe("verify addresses rules by path", () => {
     );
 
     const valeResult = await runCli([
-      "verify",
+      "validate",
       ".taskless/rules/vale/shared",
       "-d",
       cwd,
@@ -130,7 +130,7 @@ describe("verify addresses rules by path", () => {
     expect(vale.rules).toHaveLength(1);
     expect(vale.rules[0]?.engine).toBe("vale");
 
-    const bothResult = await runCli(["verify", "-d", cwd, "--json"]);
+    const bothResult = await runCli(["validate", "-d", cwd, "--json"]);
     const both = JSON.parse(bothResult.stdout) as Report;
     expect(both.rules.map((rule) => rule.engine).toSorted()).toEqual([
       "sg",
@@ -139,24 +139,24 @@ describe("verify addresses rules by path", () => {
   });
 
   it("rejects a path outside the rules tree by name", async () => {
-    const result = await runCli(["verify", "src", "-d", cwd]);
+    const result = await runCli(["validate", "src", "-d", cwd]);
     expect(result.exitCode).not.toBe(0);
     expect(result.stderr).toContain("not inside .taskless/rules/");
   });
 
-  // A fresh install has no rules. Failing here would make `verify` unusable in
+  // A fresh install has no rules. Failing here would make `validate` unusable in
   // CI until someone writes the first one.
   it("succeeds with no rules present", async () => {
-    const result = await runCli(["verify", "-d", cwd, "--json"]);
+    const result = await runCli(["validate", "-d", cwd, "--json"]);
     expect(result.exitCode).toBe(0);
     expect((JSON.parse(result.stdout) as Report).rules).toEqual([]);
   });
 });
 
-describe("verify checks components without requiring tests", () => {
+describe("validate checks components without requiring tests", () => {
   it("passes a rule that has no fixtures yet", async () => {
     await valeRule("no-simply", { config: SCOPED });
-    const result = await runCli(["verify", "-d", cwd, "--json"]);
+    const result = await runCli(["validate", "-d", cwd, "--json"]);
     expect(result.exitCode).toBe(0);
   });
 
@@ -164,7 +164,7 @@ describe("verify checks components without requiring tests", () => {
   // reports nothing. That is the silent disable the layout exists to prevent.
   it("fails a Vale rule that nothing scopes", async () => {
     await valeRule("no-simply");
-    const result = await runCli(["verify", "-d", cwd, "--json"]);
+    const result = await runCli(["validate", "-d", cwd, "--json"]);
     expect(result.exitCode).not.toBe(0);
     const report = JSON.parse(result.stdout) as Report;
     expect(report.rules[0]?.errors.join(" ")).toContain("never run");
@@ -174,7 +174,7 @@ describe("verify checks components without requiring tests", () => {
     await valeRule("no-simply", {
       config: "[*.md]\ntskl) rule = no-simply\n",
     });
-    const result = await runCli(["verify", "-d", cwd, "--json"]);
+    const result = await runCli(["validate", "-d", cwd, "--json"]);
     expect(result.exitCode).not.toBe(0);
     const rule = (JSON.parse(result.stdout) as Report).rules[0];
     expect(rule?.errors.join(" ")).toContain("present but off");
@@ -185,13 +185,13 @@ describe("verify checks components without requiring tests", () => {
 
   // The config schema, through the real CLI. `vale-config-schema.test.ts`
   // holds every rejection and advisory to its fixture; this says the schema is
-  // wired into `verify`, and that a rejection reaches `--json` attributed to
+  // wired into `validate`, and that a rejection reaches `--json` attributed to
   // its constraint, the way an sg rejection already does.
   it("attributes a foreign key in a Vale config to its constraint", async () => {
     await valeRule("no-simply", {
       config: `${SCOPED}no-hedging.no-hedging = NO\n`,
     });
-    const result = await runCli(["verify", "-d", cwd, "--json"]);
+    const result = await runCli(["validate", "-d", cwd, "--json"]);
     expect(result.exitCode).not.toBe(0);
     const rule = (JSON.parse(result.stdout) as Report).rules[0];
     expect(rule?.violations).toHaveLength(1);
@@ -211,7 +211,7 @@ describe("verify checks components without requiring tests", () => {
         "[docs/**]\ntskl) rule = no-simply\nno-simply.no-simply = YES\n\n" +
         `${SCOPED}no-simply.no-simply = NO\n`,
     });
-    const result = await runCli(["verify", "-d", cwd, "--json"]);
+    const result = await runCli(["validate", "-d", cwd, "--json"]);
     expect(result.exitCode).toBe(0);
     const rule = (JSON.parse(result.stdout) as Report).rules[0];
     expect(rule?.ok).toBe(true);
@@ -223,7 +223,7 @@ describe("verify checks components without requiring tests", () => {
 
   // The style schema's own advisory, through the real CLI.
   // `vale-schema-contract.test.ts` holds the advisory to its rule; this says
-  // it reaches `notices` on `verify` output and `--json`, beside whatever the
+  // it reaches `notices` on `validate` output and `--json`, beside whatever the
   // config layer had to say, and that a one-entry list draws nothing.
   it("accepts a Vale rule whose raw has two entries, and says so on notices", async () => {
     await valeRule("no-twist", {
@@ -232,7 +232,7 @@ describe("verify checks components without requiring tests", () => {
         'extends: existence\nmessage: "Avoid the twist"\nlevel: warning\nraw:\n' +
         '  - "\\\\bstops being\\\\b"\n  - "\\\\band becomes\\\\b"\n',
     });
-    const json = await runCli(["verify", "-d", cwd, "--json"]);
+    const json = await runCli(["validate", "-d", cwd, "--json"]);
     expect(json.exitCode).toBe(0);
     const rule = (JSON.parse(json.stdout) as Report).rules[0];
     expect(rule?.ok).toBe(true);
@@ -241,7 +241,7 @@ describe("verify checks components without requiring tests", () => {
       "no-twist: raw has 2 entries; Vale joins them into one pattern with no separator, so the second never matches on its own. Write one entry with (a|b) unless the join is intended.",
     ]);
 
-    const text = await runCli(["verify", "-d", cwd]);
+    const text = await runCli(["validate", "-d", cwd]);
     expect(text.exitCode).toBe(0);
     expect(text.stdout).toContain("notice: no-twist: raw has 2 entries");
   });
@@ -253,13 +253,13 @@ describe("verify checks components without requiring tests", () => {
         'extends: existence\nmessage: "Avoid the twist"\nlevel: warning\nraw:\n' +
         '  - "(\\\\bstops being\\\\b|\\\\band becomes\\\\b)"\n',
     });
-    const json = await runCli(["verify", "-d", cwd, "--json"]);
+    const json = await runCli(["validate", "-d", cwd, "--json"]);
     expect(json.exitCode).toBe(0);
     const rule = (JSON.parse(json.stdout) as Report).rules[0];
     expect(rule?.ok).toBe(true);
     expect(rule?.notices).toEqual([]);
 
-    const text = await runCli(["verify", "-d", cwd]);
+    const text = await runCli(["validate", "-d", cwd]);
     expect(text.stdout).not.toContain("notice:");
   });
 
@@ -272,7 +272,7 @@ describe("verify checks components without requiring tests", () => {
         'extends: existence\nmessage: "Avoid the twist"\nlevel: warning\nraw:\n' +
         "  - a\n  - b\n",
     });
-    const result = await runCli(["verify", "-d", cwd, "--json"]);
+    const result = await runCli(["validate", "-d", cwd, "--json"]);
     expect(result.exitCode).toBe(0);
     const rule = (JSON.parse(result.stdout) as Report).rules[0];
     // Two elements, not one string a consumer has to split on a separator
@@ -288,7 +288,7 @@ describe("verify checks components without requiring tests", () => {
 
     // Text mode prefixes every line, so the second advisory is labelled too
     // rather than trailing the first as an unindented stray.
-    const text = await runCli(["verify", "-d", cwd]);
+    const text = await runCli(["validate", "-d", cwd]);
     const noticeLines = text.stdout
       .split("\n")
       .filter((line) => line.startsWith("    notice: "));
@@ -303,7 +303,7 @@ describe("verify checks components without requiring tests", () => {
     await valeRule("no-simply", {
       config: `${SCOPED}no-simply.no-simply = NO\n`,
     });
-    const result = await runCli(["verify", "-d", cwd, "--json"]);
+    const result = await runCli(["validate", "-d", cwd, "--json"]);
     expect(result.exitCode).not.toBe(0);
     const rule = (JSON.parse(result.stdout) as Report).rules[0];
     expect(rule?.violations.map((violation) => violation.constraintId)).toEqual(
@@ -324,7 +324,7 @@ describe("verify checks components without requiring tests", () => {
       config: SCOPED.replaceAll("no-simply", "ize-ise"),
       style: `extends: consistency\nmessage: "Use '%s' consistently"\nlevel: warning\nnonword: true\neither:\n  organize: organise\n`,
     });
-    const result = await runCli(["verify", "-d", cwd, "--json"]);
+    const result = await runCli(["validate", "-d", cwd, "--json"]);
     expect(result.exitCode).not.toBe(0);
     expect(
       (JSON.parse(result.stdout) as Report).rules[0]?.errors.join(" ")
@@ -333,7 +333,7 @@ describe("verify checks components without requiring tests", () => {
 
   it("accepts a hyphenated id on every other extension point", async () => {
     await valeRule("no-simply", { config: SCOPED });
-    const result = await runCli(["verify", "-d", cwd, "--json"]);
+    const result = await runCli(["validate", "-d", cwd, "--json"]);
     expect(result.exitCode).toBe(0);
   });
 
@@ -342,7 +342,7 @@ describe("verify checks components without requiring tests", () => {
       config: SCOPED,
       style: `extends: existence\nmessage: "x"\nlevel: catastrophic\ntokens:\n  - simply\n`,
     });
-    const result = await runCli(["verify", "-d", cwd, "--json"]);
+    const result = await runCli(["validate", "-d", cwd, "--json"]);
     expect(result.exitCode).not.toBe(0);
     expect(
       (JSON.parse(result.stdout) as Report).rules[0]?.errors.join(" ")
@@ -394,18 +394,18 @@ withVale("test runs verify first", () => {
  * The schema layer, through the real CLI.
  *
  * `vale-schema-contract.test.ts` holds the schema to the binary. These say the
- * layer is actually wired into `verify` — that an author running the command
+ * layer is actually wired into `validate` — that an author running the command
  * hears about the defect, and hears it in words that name the field.
  *
  * Every rule here is one Vale would have accepted into its config and then
  * failed to honor. Two of the three take the *whole run* down when they reach
- * the binary, so catching them at `verify` is not a convenience.
+ * the binary, so catching them at `validate` is not a convenience.
  */
 /** Verify one style file, assert it failed, and hand back what it said. */
 async function verifyErrors(style: string): Promise<string> {
   await valeRule("no-simply", { config: SCOPED, style });
   const result = await runCli([
-    "verify",
+    "validate",
     ".taskless/rules/vale/no-simply",
     "-d",
     cwd,
@@ -417,7 +417,7 @@ async function verifyErrors(style: string): Promise<string> {
   return report.rules[0]?.errors.join("\n") ?? "";
 }
 
-withVale("verify schema-checks a Vale rule", () => {
+withVale("validate schema-checks a Vale rule", () => {
   it("rejects an extends that is not a check type, naming the accepted set", async () => {
     const errors = await verifyErrors(
       `extends: nonsense\nmessage: "x"\nlevel: warning\ntokens:\n  - simply\n`
@@ -446,7 +446,7 @@ withVale("verify schema-checks a Vale rule", () => {
       style: `extends: existence\nmessage: "x"\nlevel: warning\nscope: text & ~code\ntokens:\n  - simply\n`,
     });
     const result = await runCli([
-      "verify",
+      "validate",
       ".taskless/rules/vale/no-simply",
       "-d",
       cwd,
@@ -468,11 +468,11 @@ withVale("verify schema-checks a Vale rule", () => {
   });
 
   it("still verifies a rule with no fixtures", async () => {
-    // The split between `verify` and `test` exists for the agent part-way
+    // The split between `validate` and `test` exists for the agent part-way
     // through authoring. Adding a schema layer must not quietly close it.
     await valeRule("no-simply", { config: SCOPED });
     const result = await runCli([
-      "verify",
+      "validate",
       ".taskless/rules/vale/no-simply",
       "-d",
       cwd,
@@ -504,7 +504,7 @@ withVale("verify schema-checks a Vale rule", () => {
     }
 
     const result = await runCli([
-      "verify",
+      "validate",
       ".taskless/rules/vale",
       "-d",
       cwd,
@@ -524,7 +524,7 @@ withVale("verify schema-checks a Vale rule", () => {
  *
  * A foreign field is `E201` and an unknown `extends` fails the config outright.
  * Vale reads one assembled config per run, so either one reaching the binary
- * takes down every Vale rule in the project. `verify` is a pure read of the
+ * takes down every Vale rule in the project. `validate` is a pure read of the
  * rule's own files, and `test` runs it first and stops — so neither defect can
  * get as far as a Vale invocation.
  */
@@ -570,10 +570,10 @@ withVale("a rule Vale would choke on never reaches Vale", () => {
 describe("a rejection names the constraint it violated", () => {
   it("carries the constraint id through --json, beside the message", async () => {
     // End to end through the built CLI, because the envelope is the contract
-    // another team consumes. A unit test over `verifyOneRule` would prove the
+    // another team consumes. A unit test over `validateOneRule` would prove the
     // field is produced and not that it is published.
     await sgRule("probe-rule", "mismatched");
-    const result = await runCli(["verify", "-d", cwd, "--json"]);
+    const result = await runCli(["validate", "-d", cwd, "--json"]);
 
     expect(result.exitCode).not.toBe(0);
     const rule = (JSON.parse(result.stdout) as Report).rules[0];
@@ -591,7 +591,7 @@ describe("a rejection names the constraint it violated", () => {
 
   it("reports an empty list on a rule that passed", async () => {
     await sgRule("probe-rule", "probe-rule");
-    const result = await runCli(["verify", "-d", cwd, "--json"]);
+    const result = await runCli(["validate", "-d", cwd, "--json"]);
 
     expect(result.exitCode).toBe(0);
     // Empty, never absent. A consumer must be able to tell "no constraint was

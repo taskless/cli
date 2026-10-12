@@ -256,7 +256,7 @@ describe("runWizard end-to-end", () => {
  * The wizard reads the manifest before it migrates anything: `promptLocations`
  * calls `readInstallState`, which is the first thing `runWizard` does inside
  * its frame. An unreadable manifest therefore throws between `intro()` and
- * `outro()`, and the refusal built for `check`, `verify` and
+ * `outro()`, and the refusal built for `check`, `validate` and
  * `init` has to reach a person here too rather than escaping
  * past a frame nothing closed.
  */

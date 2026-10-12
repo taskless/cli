@@ -11,7 +11,7 @@
  * from documentation. Where the binary and the documentation disagree, the
  * disagreement is in `vale-vocabulary-report.md` rather than dropped.
  *
- * `src/schemas/vale-rule.ts` turns these into the zod schema `verify` runs.
+ * `src/schemas/vale-rule.ts` turns these into the zod schema `validate` runs.
  */
 
 /** The binary this vocabulary was derived from. */
@@ -210,14 +210,14 @@ export const VALE_DIVERGENCES = [
     finding:
       "Vale 3.23.0 documents this operand and it never fired, on any fixture probed (.md).",
     consequence:
-      "It is omitted from the vocabulary, so `verify` rejects it. A rule written from the documentation would otherwise load, run, and match nothing, with no error reported anywhere.",
+      "It is omitted from the vocabulary, so `validate` rejects it. A rule written from the documentation would otherwise load, run, and match nothing, with no error reported anywhere.",
   },
   {
     subject: "scope: meta.class.title",
     finding:
       "Vale 3.23.0 documents this operand and it never fired, on any fixture probed (.md).",
     consequence:
-      "It is omitted from the vocabulary, so `verify` rejects it. A rule written from the documentation would otherwise load, run, and match nothing, with no error reported anywhere.",
+      "It is omitted from the vocabulary, so `validate` rejects it. A rule written from the documentation would otherwise load, run, and match nothing, with no error reported anywhere.",
   },
   {
     subject: "scope: frontmatter",

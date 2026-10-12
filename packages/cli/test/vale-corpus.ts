@@ -48,7 +48,7 @@
  * because Vale drops everything inside a `<figure>` element — so did a
  * `scope: text` control over the same document. Without the reach guard the
  * operand would have been dropped from the schema as one Vale ignores, and
- * every rule using it would then have failed `verify`.
+ * every rule using it would then have failed `validate`.
  *
  * ## Keep it a table
  *
@@ -683,7 +683,7 @@ const FIELDS: ValeCorpusEntry[] = [
   {
     // Read by `vale test`, announced in 3.23.0 and already accepted by
     // 3.22.0. Absent from the generator's candidates until 3.23.0, so
-    // `verify` rejected it as an E201 Vale never raised.
+    // `validate` rejected it as an E201 Vale never raised.
     name: "field/existence+tests",
     construct: "tests",
     rule: existence("tests:\n  - fixture.md\n"),
@@ -839,7 +839,7 @@ const ACTIONS: ValeCorpusEntry[] = [
  *
  * That is a wider blast radius than `E201`. An `E201` names a file and a line;
  * a panic names no rule at all, produces no findings for anything in the
- * project, and gives an author nothing to act on. `verify` is the last place
+ * project, and gives an author nothing to act on. `validate` is the last place
  * these can be caught.
  *
  * They are also a standing warning about how these measurements are taken. A

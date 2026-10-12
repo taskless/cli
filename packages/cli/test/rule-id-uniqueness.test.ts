@@ -9,14 +9,14 @@ import migration, {
   retargetValeConfig,
 } from "../src/filesystem/migrations/0009-unique-rule-ids";
 import { writeServedRule } from "../src/rules/files";
-import { verifyOneRule } from "../src/rules/inspect";
+import { validateOneRule } from "../src/rules/inspect";
 import { findRuleIdCollisions } from "../src/rules/id-uniqueness";
 import type { EngineName } from "../src/rules/layout";
 
 /**
  * A rule id is a directory name under `.taskless/rules/<engine>/`, and nothing
  * in the id contract makes it unique across the three sibling trees. These
- * cases pin the two places that now say so: `verify`, per rule, and migration
+ * cases pin the two places that now say so: `validate`, per rule, and migration
  * `0009`, once per project on upgrade.
  *
  * Every case uses `vale` and `runtime` rules. Both verify from the files alone,
@@ -147,13 +147,13 @@ afterEach(async () => {
   await rm(cwd, { recursive: true, force: true });
 });
 
-describe("verify refuses a rule id held by more than one engine", () => {
+describe("validate refuses a rule id held by more than one engine", () => {
   it("fails both rules of a colliding pair, naming both paths", async () => {
     const valePath = await valeRule("no-eval");
     const runtimePath = await runtimeRule("no-eval");
 
     for (const engine of ["vale", "runtime"] as const) {
-      const result = await verifyOneRule(cwd, { engine, ruleId: "no-eval" });
+      const result = await validateOneRule(cwd, { engine, ruleId: "no-eval" });
       expect(result.ok).toBe(false);
       const joined = result.errors.join(" ");
       expect(joined).toContain(valePath);
@@ -170,7 +170,7 @@ describe("verify refuses a rule id held by more than one engine", () => {
     await runtimeRule("no-eval");
     await valeRule("no-simply");
 
-    const result = await verifyOneRule(cwd, {
+    const result = await validateOneRule(cwd, {
       engine: "vale",
       ruleId: "no-eval",
     });
@@ -181,7 +181,7 @@ describe("verify refuses a rule id held by more than one engine", () => {
     await valeRule("no-simply");
     await runtimeRule("env-keys-declared");
 
-    const vale = await verifyOneRule(cwd, {
+    const vale = await validateOneRule(cwd, {
       engine: "vale",
       ruleId: "no-simply",
     });
@@ -197,7 +197,7 @@ describe("verify refuses a rule id held by more than one engine", () => {
     await valeRule("no-eval");
     await runtimeRule("no-eval");
 
-    const result = await verifyOneRule(cwd, {
+    const result = await validateOneRule(cwd, {
       engine: "vale",
       ruleId: "no-eval",
     });
@@ -283,7 +283,7 @@ describe("migration 0009 renames a colliding project", () => {
 
     expect(await exists(rulePath("runtime", "no-eval"))).toBe(true);
     expect(await exists(rulePath("vale", "no-eval-vale"))).toBe(true);
-    const verified = await verifyOneRule(cwd, {
+    const verified = await validateOneRule(cwd, {
       engine: "vale",
       ruleId: "no-eval-vale",
     });
@@ -311,7 +311,7 @@ describe("migration 0009 renames a colliding project", () => {
       { engine: "vale", ruleId: "no-eval-vale" },
       { engine: "runtime", ruleId: "no-eval" },
     ] as const) {
-      const result = await verifyOneRule(cwd, rule);
+      const result = await validateOneRule(cwd, rule);
       expect(
         result.errors.filter((error) => error.includes("is held by")),
         `${rule.engine}/${rule.ruleId}`
@@ -366,7 +366,7 @@ describe("migration 0009 renames a colliding project", () => {
 
     await migration(join(cwd, ".taskless"));
 
-    const result = await verifyOneRule(cwd, {
+    const result = await validateOneRule(cwd, {
       engine: "vale",
       ruleId: "no-eval-vale",
     });
@@ -453,7 +453,7 @@ describe("migration 0009 renames a colliding project", () => {
         await readFile(join(directory, "no-eval-sg.yml"), "utf8")
       ).toContain("id: no-eval-sg");
       // Directory, fixture filename and the `id:` inside it all agree, which
-      // is the state `verify` demands and a half-migrated tree never reaches.
+      // is the state `validate` demands and a half-migrated tree never reaches.
       expect(await readdir(join(directory, ".tests"))).toEqual([
         "no-eval-sg-20260101-test.yml",
       ]);
@@ -468,7 +468,7 @@ describe("migration 0009 renames a colliding project", () => {
       expect(
         await readFile(join(valeDirectory, ".vale.ini"), "utf8")
       ).toContain("no-eval-vale.no-eval-vale = YES");
-      const verified = await verifyOneRule(cwd, {
+      const verified = await validateOneRule(cwd, {
         engine: "vale",
         ruleId: "no-eval-vale",
       });

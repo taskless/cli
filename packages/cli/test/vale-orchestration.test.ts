@@ -624,7 +624,7 @@ function makeTwoAdvisoryProject(): string {
  * producer used to glue its advisories into ONE string with `"\n"`, and
  * `check` printed `Notice: ` once per element — so a run with two advisories
  * printed the first behind a marker and the second as a bare, unindented line
- * with nothing marking it as a notice. `verify` had the same bug and it was
+ * with nothing marking it as a notice. `validate` had the same bug and it was
  * fixed in `241e1c4`; `check` kept it.
  *
  * Driven through the built CLI over a real project rather than through

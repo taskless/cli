@@ -128,7 +128,7 @@ Two ways to legitimately be here:
 9. **Report.** The CLI writes each generated rule, fixtures included,
    to `.taskless/rules/<engine>/<id>/`, replacing anything already in
    that directory. These are the same paths and the same shape a
-   locally authored rule uses, so `check`, `improve-rule`, `verify`, and
+   locally authored rule uses, so `check`, `improve-rule`, `validate`, and
    `test` treat them identically. Nothing is written under
    `.taskless/rule-metadata/`. Show the user the paths and suggest
    `%(TASKLESS_CLI)s agent check`.

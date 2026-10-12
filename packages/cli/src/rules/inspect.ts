@@ -32,8 +32,8 @@ import { describeRuleIdCollision, findRuleIdCollision } from "./id-uniqueness";
 import { verifyValeRule } from "./vale/verify";
 import type { ResolvedRule } from "./resolve-path";
 
-/** What `verify` concluded about one rule. */
-export interface RuleVerification {
+/** What `validate` concluded about one rule. */
+export interface RuleValidation {
   engine: EngineName;
   ruleId: string;
   ok: boolean;
@@ -106,7 +106,7 @@ export interface RuleTestResult {
    * with no action available to its holder that makes it green. So it is
    * neither, and the renderer, the summary count and the exit code all read
    * this field rather than inferring the state from `ok` and `ran` together
-   * (which cannot distinguish it from a rule whose `verify` failed).
+   * (which cannot distinguish it from a rule whose `validate` failed).
    */
   refused?: string;
   /**
@@ -122,7 +122,7 @@ export interface RuleTestResult {
    * Every finding this rule's fixtures produced, tagged with its bucket.
    *
    * ALWAYS PRESENT, empty rather than absent. A rule that produced nothing, a
-   * rule whose `verify` failed before its fixtures ran, a refused runtime rule
+   * rule whose `validate` failed before its fixtures ran, a refused runtime rule
    * and an ast-grep rule all report `[]`, because a consumer must never have to
    * tell "this rule produced no findings" from "this command does not report
    * findings" — a key that is sometimes absent is one a reader learns to treat
@@ -168,21 +168,21 @@ async function readYaml(path: string): Promise<unknown> {
 }
 
 /**
- * ast-grep's verify verdict and the full layer result behind it, from **one**
+ * ast-grep's validate verdict and the full layer result behind it, from **one**
  * `verifyRule` call.
  *
- * `verify` and `test` want different halves of the same three-layer run:
- * `verify` reads Layers 1–2, `test` needs Layer 3 as well. Asking twice —
+ * `validate` and `test` want different halves of the same three-layer run:
+ * `validate` reads Layers 1–2, `test` needs Layer 3 as well. Asking twice —
  * once for the verdict, once for the tests — assembled the config and spawned
  * `sg test` twice for every rule, so `taskless test` paid two subprocesses per
  * rule to produce one answer. Returning both halves from a single call keeps
  * each caller's view unchanged and runs the layers once.
  */
-async function verifySgRule(
+async function validateSgRule(
   cwd: string,
   ruleId: string,
   options?: { runTests?: boolean }
-): Promise<{ verification: RuleVerification; result: VerifyResult }> {
+): Promise<{ validation: RuleValidation; result: VerifyResult }> {
   const result = await verifyRule(cwd, ruleId, options);
   // The ast-grep verifier already layers schema and required fields; only its
   // test layer is `test`'s business, so it is not part of the verdict here.
@@ -192,7 +192,7 @@ async function verifySgRule(
     ...(result.requirements.violations ?? []),
   ];
   return {
-    verification: {
+    validation: {
       engine: "sg",
       ruleId,
       ok: errors.length === 0,
@@ -210,16 +210,16 @@ async function verifySgRule(
  * Deliberately does **not** require tests. An agent part-way through authoring
  * has a rule and no fixtures yet, and needs to know the rule itself is valid
  * before it can write a meaningful test for it — which is the whole reason
- * `verify` and `test` are separate commands.
+ * `validate` and `test` are separate commands.
  */
-export async function verifyOneRule(
+export async function validateOneRule(
   cwd: string,
   rule: ResolvedRule
-): Promise<RuleVerification> {
+): Promise<RuleValidation> {
   return withIdCollision(
     cwd,
     rule.ruleId,
-    await verifyRuleComponents(cwd, rule)
+    await validateRuleComponents(cwd, rule)
   );
 }
 
@@ -245,34 +245,34 @@ export async function verifyOneRule(
 async function withIdCollision(
   cwd: string,
   ruleId: string,
-  verification: RuleVerification
-): Promise<RuleVerification> {
+  validation: RuleValidation
+): Promise<RuleValidation> {
   const collision = await findRuleIdCollision(cwd, ruleId);
-  if (collision === undefined) return verification;
+  if (collision === undefined) return validation;
   return {
-    ...verification,
+    ...validation,
     ok: false,
     errors: [
       `${describeRuleIdCollision(cwd, collision)} Rename one of them.`,
-      ...verification.errors,
+      ...validation.errors,
     ],
   };
 }
 
-/** {@link verifyOneRule} minus the cross-engine uniqueness check. */
-async function verifyRuleComponents(
+/** {@link validateOneRule} minus the cross-engine uniqueness check. */
+async function validateRuleComponents(
   cwd: string,
   { engine, ruleId }: ResolvedRule
-): Promise<RuleVerification> {
+): Promise<RuleValidation> {
   const errors: string[] = [];
 
   if (engine === "sg") {
     // Layers 1–2 only: running the tests here would spawn `sg test` for a
     // caller that never looks at the result.
-    const { verification } = await verifySgRule(cwd, ruleId, {
+    const { validation } = await validateSgRule(cwd, ruleId, {
       runTests: false,
     });
-    return verification;
+    return validation;
   }
 
   if (engine === "vale") {
@@ -317,7 +317,7 @@ async function verifyRuleComponents(
     }
 
     // The rule's own config, against the config schema. A Vale rule with no
-    // config declares no scope, so it is enabled nowhere — it would verify,
+    // config declares no scope, so it is enabled nowhere — it would validate,
     // run, and report nothing. That is the silent disable this engine's design
     // exists to prevent, so a missing file is an error, and so is a config
     // Vale would accept and read as something other than what its author
@@ -395,7 +395,7 @@ async function verifyRuleComponents(
     // the reason is named here, while the author is looking at one rule rather
     // than at an empty report.
     //
-    // The SAME enumeration and the SAME assessor discovery uses, so "verify
+    // The SAME enumeration and the SAME assessor discovery uses, so "validate
     // says it is fine" and "the run silently skipped it" cannot come apart —
     // neither about which files are candidates, nor about what each one is.
     for (const { fileName, assessment } of assessed) {
@@ -417,9 +417,9 @@ async function verifyRuleComponents(
 }
 
 /**
- * Run a rule's tests, after verifying it.
+ * Run a rule's tests, after validating it.
  *
- * `verify` runs first and stops on failure. Ordering is the point: when a rule
+ * `validate` runs first and stops on failure. Ordering is the point: when a rule
  * is both malformed and under-fixtured, the fixture complaint is the less
  * useful of the two errors and is the one that surfaces first if the checks run
  * the other way round — so the author is told their fixtures are incomplete
@@ -436,13 +436,13 @@ export async function testOneRule(
     // One call covers both halves. The verdict is still consulted first and
     // still short-circuits, so the ordering above is unchanged — the tests
     // simply already ran alongside the layers that decide it.
-    const { verification: verdict, result } = await verifySgRule(cwd, ruleId);
-    // `test` runs `verify` first, and the uniqueness check is part of `verify`.
-    // Reached through the same helper rather than by a second `verifySgRule`
+    const { validation: verdict, result } = await validateSgRule(cwd, ruleId);
+    // `test` runs `validate` first, and the uniqueness check is part of `validate`.
+    // Reached through the same helper rather than by a second `validateSgRule`
     // call, which would spawn `sg test` twice for one answer.
-    const verification = await withIdCollision(cwd, ruleId, verdict);
-    if (!verification.ok) {
-      return { ...verification, ran: false, findings: [] };
+    const validation = await withIdCollision(cwd, ruleId, verdict);
+    if (!validation.ok) {
+      return { ...validation, ran: false, findings: [] };
     }
     const errors = [...result.tests.errors];
     const violations: RuleViolation[] = [];
@@ -500,10 +500,10 @@ export async function testOneRule(
       violations,
       ran: true,
       // The fixtures above have no path, so nothing they proved says the
-      // rule's globs reach a real file. Asked here, on a rule that verified,
+      // rule's globs reach a real file. Asked here, on a rule that validated,
       // and only ever as a notice; see `sg-scope.ts`.
       notices: collectNotices([
-        ...verification.notices,
+        ...validation.notices,
         await describeEmptySgScope(cwd, ruleId),
       ]),
       // `sg test` still decides the verdict above and still cannot produce a
@@ -516,9 +516,9 @@ export async function testOneRule(
     };
   }
 
-  const verification = await verifyOneRule(cwd, rule);
-  if (!verification.ok) {
-    return { ...verification, ran: false, findings: [] };
+  const validation = await validateOneRule(cwd, rule);
+  if (!validation.ok) {
+    return { ...validation, ran: false, findings: [] };
   }
 
   if (engine === "vale") {
@@ -603,7 +603,7 @@ export async function testOneRule(
   // of testing a rule you are authoring. `discoverRuntimeRules` is the same
   // enumeration `check` plans over, so a rule it refuses — no loadable capture,
   // or an unsigned module beside `check.ts` — is refused here identically
-  // rather than by a second opinion. `verify` has already run and named the
+  // rather than by a second opinion. `validate` has already run and named the
   // real defect; this reports that nothing was run, not a verdict on the rule.
   const discovered = await discoverRuntimeRules(cwd);
   const runtimeRule = discovered.find((candidate) => candidate.name === ruleId);

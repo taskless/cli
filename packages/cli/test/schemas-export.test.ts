@@ -89,7 +89,7 @@ describe("the published schemas entry", () => {
 
     const { stdout } = await execFileAsync("node", [
       binPath,
-      "verify",
+      "validate",
       "-d",
       cwd,
       "--json",

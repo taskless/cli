@@ -171,7 +171,7 @@ boundary. No shape we tried reproduced a difference between 3.19.0 and
 from `["rule","id"]` to `["id","fix","rule"]`, so a `rewriters:` entry
 without a `fix:` is now rejected where it was accepted before.
 
-Run `%(TASKLESS_CLI)s verify` and it names the offending rewriter
+Run `%(TASKLESS_CLI)s validate` and it names the offending rewriter
 directly. It cannot be auto-fixed: `fix` is replacement text, which is
 authorial intent. A rewriter with no `fix` could never have done
 anything, so this surfaces a rule that was already dead rather than
@@ -299,7 +299,7 @@ this.
 died only when that rule fired, as an `E100` with no file and no line.
 3.21.0 refuses it when the rule loads, as an `E201` naming the file, so
 a rule that has been carrying a bad action without ever matching now
-fails every check, not just the ones where it matched. `verify` rejects
+fails every check, not just the ones where it matched. `validate` rejects
 a name outside `replace`, `remove`, `suggest`, `convert`, `edit`, so run
 it: the rule is named directly.
 
@@ -384,11 +384,11 @@ config was carried into the run verbatim; nothing checked that a
 matcher carried its breadcrumb, that an assignment named this rule and
 not another, or that the run-level keys stayed out. Each of those is a
 config Vale accepts and reads as something other than what its author
-wrote, with a zero exit and an empty report. Now `verify` rejects such
+wrote, with a zero exit and an empty report. Now `validate` rejects such
 a config, naming the line and the `vale-config-*` constraint, and
 `check` refuses the Vale engine over it: the failure names the rule and
 the line, the exit code is non-zero, and ast-grep still runs. Run
-`%(TASKLESS_CLI)s verify` to see every rejected line at once. The four
+`%(TASKLESS_CLI)s validate` to see every rejected line at once. The four
 most likely to trip an existing rule: an assignment above the first
 matcher (`StylesPath`, `MinAlertLevel`, or the rule's own key, which
 Vale was ignoring with a `W101`); a matcher with no `tskl) rule = <id>`
@@ -408,7 +408,7 @@ measured against the binaries on both sides of its step. The rest is
 additions a rule can now use.
 
 **`BasedOnStyles =` is deleted from every rule's `.vale.ini`, and
-`verify` rejects one that still carries it.** Every version of the
+`validate` rejects one that still carries it.** Every version of the
 `create-vale-rule` recipe before this one told you to write the line in
 every matcher. Through 3.21.0 it was inert: no bundled style loads
 unless a run-level `BasedOnStyles` names one, and the assembled header
@@ -422,10 +422,10 @@ beside another rule's `[*.{md,markdown}]` silenced the first on every
 byte-identical escaped, because Vale merges those into one section.
 Running `%(TASKLESS_CLI)s init` applies migration 0008, which deletes
 every `BasedOnStyles` line from `.taskless/rules/vale/*/.vale.ini` and
-touches nothing else in the file; `check` and `verify` refuse to run
+touches nothing else in the file; `check` and `validate` refuse to run
 until it has, naming `init`. Commit the rewritten configs. A config
 that still carries the key after that, from a hand edit or a rule
-copied in from elsewhere, fails `verify` under
+copied in from elsewhere, fails `validate` under
 `vale-config-no-based-on-styles` and refuses the Vale engine at
 `check`, so the failure names the line rather than silencing a
 neighbour. Nothing about a rule's scope changes once the line is gone;
@@ -478,7 +478,7 @@ way needs nothing. A rule that used the standalone form was inert
 until now and starts reporting.
 
 **A rule's `tests:` key is accepted.** It is read by `vale test`, not
-by `check`, and `verify` rejected it before this release while Vale
+by `check`, and `validate` rejected it before this release while Vale
 loaded it without complaint.
 
 ## Errors

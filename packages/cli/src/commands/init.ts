@@ -353,14 +353,14 @@ async function runNonInteractive(
   // the silent skip this feature exists to prevent.
   const wasNewProject = !(await pathExists(join(cwd, TASKLESS_DIRECTORY)));
   // `init` is now the ONLY command that migrates, so it is the only one that
-  // can report what a migration moved. `check`, `verify` and `test` used to
+  // can report what a migration moved. `check`, `validate` and `test` used to
   // carry this on their own envelopes and refuse rather than migrate now, so
   // the field followed the behaviour rather than being dropped.
   //
   // The migration notice is suppressed entirely under `--json`, rather than
   // moved to stderr like the per-target summary above: unlike that summary,
   // this information IS already on the envelope, as `migrated`, so printing
-  // it a second time would just be noise. This is the actual `verify`/`test`
+  // it a second time would just be noise. This is the actual `validate`/`test`
   // convention (`verify.ts`'s `onNotice: (message) => { if (!json)
   // console.error(message); }`), and the case `EnsureOptions.onNotice`'s own
   // doc comment describes: "callers that emit `--json` should pass a

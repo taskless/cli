@@ -4,7 +4,7 @@
  * Vale publishes no JSON Schema. Its repository has no `schemas/` directory,
  * and the machine-readable field knowledge exists only behind the hosted MCP
  * server at `api.vale.sh/mcp`, which is a paid product and unavailable to
- * `verify`. So unlike `ast-grep-rule.ts` — which runs `z.fromJSONSchema()` over
+ * `validate`. So unlike `ast-grep-rule.ts` — which runs `z.fromJSONSchema()` over
  * an upstream artifact fetched per tag — there is nothing here to fetch.
  *
  * There is, however, a binary that answers questions. Every vocabulary this
@@ -201,7 +201,7 @@ const SCOPE_PREFIXES: readonly string[] = VALE_SCOPE_PREFIXES;
 const DOC_PREFIX = "doc(";
 
 /**
- * Operands, for the message `verify` shows an author.
+ * Operands, for the message `validate` shows an author.
  *
  * The open families are spelled with a placeholder tail rather than omitted:
  * an author told only that `frontmatter.title` is wrong, with no mention of
@@ -554,7 +554,7 @@ const CHECK_FIELDS = VALE_CHECK_FIELDS;
  * Either is a wider blast radius than `E201`. An `E201` is at least a
  * diagnostic naming a file and a line; a panic is a stack trace with no rule
  * name in it, no findings for any rule, and nothing an author can act on. This
- * is the last place `verify` can say anything useful at all.
+ * is the last place `validate` can say anything useful at all.
  *
  * It is also the reason a probe must never be trusted to a grep. A panic
  * contains no `has invalid keys` string, so a probe looking for that phrase

@@ -58,7 +58,7 @@ describe("collectNotices", () => {
 /**
  * The renderers' half of the same contract.
  *
- * `check` and `verify` differ only in the marker, so they share this. The
+ * `check` and `validate` differ only in the marker, so they share this. The
  * multi-line case is the one worth pinning directly: no notice the CLI
  * produces today spans lines, but several embed text the CLI did not author —
  * Vale's stderr, and an `Error.message` inside a runtime repair notice — so it
@@ -82,7 +82,7 @@ describe("markNotice", () => {
   });
 
   it("carries the caller's marker, which is the only difference between the two renderers", () => {
-    // `verify` indents under the rule the notice belongs to; `check` marks at
+    // `validate` indents under the rule the notice belongs to; `check` marks at
     // the left margin. Presentation, not a second contract.
     expect(markNotice("a\nb", "    notice: ")).toEqual([
       "    notice: a",

@@ -23,7 +23,7 @@ export const SUBCOMMAND_NAMES = [
   "share",
   "test",
   "update",
-  "verify",
+  "validate",
 ] as const;
 
 export type SubcommandName = (typeof SUBCOMMAND_NAMES)[number];

@@ -704,7 +704,7 @@ withVale("Vale vendor contract", () => {
    * a second `raw` entry added to a working rule never fired, and its fail
    * fixture failed, with no error anywhere.
    *
-   * Depended on by: the `verify` advisory in `schemas/vale-rule.ts` that
+   * Depended on by: the `validate` advisory in `schemas/vale-rule.ts` that
    * warns on a multi-entry `raw`, and the recipe's guidance to write
    * alternation as one `(a|b)` entry. If Vale ever started treating the
    * entries as alternatives the advisory would be telling authors to fix a
@@ -1151,7 +1151,7 @@ withVale("Vale vendor contract", () => {
     describe("doc(...) selects elements by CSS selector", () => {
       // Depended on by: the `doc(` family in `src/schemas/vale-rule.ts` and
       // the recipe's guidance on scoping a rule to one section of a
-      // document. If any shape here stops firing, `verify` is accepting a
+      // document. If any shape here stops firing, `validate` is accepting a
       // scope that Vale silently ignores, which is the failure that module
       // exists to catch.
 
@@ -2308,9 +2308,9 @@ withVale("check types", () => {
 
   it("enumerates exactly the check types the schema encodes", () => {
     // Depended on by: VALE_CHECK_TYPES in src/schemas/vale-rule.ts. A value
-    // there that Vale does not list makes `verify` accept a rule that takes
+    // there that Vale does not list makes `validate` accept a rule that takes
     // the whole run down; a value Vale lists that is missing there makes
-    // `verify` reject a rule that works.
+    // `validate` reject a rule that works.
     expect(enumeratedCheckTypes()).toEqual([...VALE_CHECK_TYPES].toSorted());
   });
 
@@ -2382,7 +2382,7 @@ withVale(
      * files the glob names and nowhere else.
      *
      * Depended on by: `schemas/vale-config.ts`, whose `sections` is what
-     * assembly will report as the run's matcher patterns, and every `verify`
+     * assembly will report as the run's matcher patterns, and every `validate`
      * rejection that names a matcher. If the parser ever read a header
      * differently from Vale — a character class truncated at its `]`, a numeric
      * segment resolved to a number — a rejection would name a matcher that is

@@ -90,17 +90,17 @@ expect them to appear after the first run. Both are gitignored.
 `check` runs rules against your code. Two other commands run against the rules:
 
 ```
-$ npx @taskless/cli verify     # are these rules well-formed?
+$ npx @taskless/cli validate   # are these rules well-formed?
 $ npx @taskless/cli test       # do they fire where they should, and only there?
 ```
 
 Both take a path: a rule directory, an engine directory, or nothing at all for
-everything. `test` runs `verify` first and stops if it fails. That way a broken
+everything. `test` runs `validate` first and stops if it fails. That way a broken
 rule tells you what's broken.
 
 ## This example is tested
 
-`packages/cli/test/example-project.test.ts` runs `check`, `verify`, and `test`
+`packages/cli/test/example-project.test.ts` runs `check`, `validate`, and `test`
 against this directory and asserts on what comes back. A demo that's drifted
 from the layout it demonstrates is worse than no demo. If the layout changes
 and this stops being true, the build fails.

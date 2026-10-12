@@ -2,7 +2,7 @@
  * Public entry for `@taskless/cli/schemas`.
  *
  * The shapes this CLI's `--json` output is produced from, as data. A consumer
- * parsing `taskless verify --json` validates against the schema the CLI emits
+ * parsing `taskless validate --json` validates against the schema the CLI emits
  * from, rather than against an interface it hand-wrote by reading our output
  * once.
  *
@@ -12,13 +12,13 @@
  * contract. A hand-written interface is a copy that nothing checks: the CLI can
  * add a field, change what one means, or extend an enum, and the copy stays
  * confidently wrong until something downstream misbehaves. The Cloud eval team
- * is doing exactly that today against the `verify` envelope.
+ * is doing exactly that today against the `validate` envelope.
  *
  * ## What this is NOT
  *
- * Not an SDK. Nothing here performs verification, and no `verify()` or `test()`
+ * Not an SDK. Nothing here performs verification, and no `validate()` or `test()`
  * is exported. Both spawn a vendored platform binary — ast-grep or Vale — so
- * anywhere a function call could run them, `npx @taskless/cli verify --json`
+ * anywhere a function call could run them, `npx @taskless/cli validate --json`
  * runs too: the export would buy a call site, not a capability, while making
  * internal signatures public. The CLI stays the execution surface; this
  * describes what it says.
@@ -67,7 +67,7 @@
 // consumer on `moduleResolution: node16`/`nodenext`.
 export {
   /**
-   * `taskless verify --json` and `taskless test --json`.
+   * `taskless validate --json` and `taskless test --json`.
    *
    * One envelope for both, because the commands share an implementation and
    * differ only in what they run against each rule.
@@ -81,7 +81,7 @@ export {
    * validation, Taskless requirement checks, and `sg test`, kept separate
    * rather than flattened into `verifyTestOutputSchema`'s single envelope.
    *
-   * Not what `taskless verify --json` or `taskless test --json` print. Both
+   * Not what `taskless validate --json` or `taskless test --json` print. Both
    * commands compute this internally via `verifyRule()` and then flatten it
    * before printing anything, so there is no current CLI invocation that
    * emits this shape verbatim. A command that did — `taskless rule verify
@@ -97,7 +97,7 @@ export {
 
 export type {
   /**
-   * A constraint `verify` or `test` enforces beyond an engine's own schema.
+   * A constraint `validate` or `test` enforces beyond an engine's own schema.
    *
    * The type of the entries in `@taskless/cli/reference.json`'s
    * `constraints[]`, so a consumer reading the corpus and a consumer reading a

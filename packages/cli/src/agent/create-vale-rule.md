@@ -32,7 +32,7 @@ touched either way, so two agents authoring two rules never collide.
 
 The rule is **incomplete until the style and the config both exist**,
 and skipping the config fails silently rather than loudly: the rule
-parses, the check passes, and nothing is ever reported. `verify` exists
+parses, the check passes, and nothing is ever reported. `validate` exists
 to catch exactly that, so run it (step 6) before you believe a rule
 works.
 
@@ -103,7 +103,7 @@ it.
    facility for a rule that does not extend one of these twelve, and an
    `extends` outside the set is not a rule that misbehaves: Vale exits 2
    and **every** Vale rule in the project goes unreported for that run.
-   `verify` rejects it before Vale is invoked, and names the twelve.
+   `validate` rejects it before Vale is invoked, and names the twelve.
 
    **The other seven have a worked rule at the end of this recipe**,
    nine rules between them, each with the near-miss that fails and why.
@@ -118,7 +118,7 @@ it.
    **One exception: a `consistency` rule's id must be word characters
    only** (`izeise`, not `ize-ise`). That check compiles the id into its
    pattern as a regex group name, and a hyphen there fails the entire
-   Vale run. `verify` catches it. Kebab-case is correct for the other
+   Vale run. `validate` catches it. Kebab-case is correct for the other
    eleven.
 
    Every rule carries:
@@ -150,7 +150,7 @@ it.
    rejected by Vale: `scope: fenced` loads, runs, and matches nothing.
    It is the worst of the three failures on this page, because unlike a
    bad `extends` or a foreign field it does not even take the run down to
-   tell you. The rule is inert, forever. `verify` rejects a scope
+   tell you. The rule is inert, forever. `validate` rejects a scope
    outside the table below, which is the only layer that ever will.
 
    Every value below was measured against Vale v%(VALE_VERSION)s by
@@ -205,11 +205,11 @@ it.
    text you mean, and a rule written for Vale 3.22.0 or earlier, where
    the standalone form matched nothing, already uses it.
 
-   **The selector is Vale's to check, not `verify`'s.** A selector Vale
+   **The selector is Vale's to check, not `validate`'s.** A selector Vale
    cannot compile (`doc(h2[)`) fails the whole run at load with
    `E201 invalid selector in 'doc(...)'`, which `test` reports. A selector
    that compiles and matches nothing is silent, like any scope with no
-   construct to find. `verify` checks that the term is `doc(` … `)` with
+   construct to find. `validate` checks that the term is `doc(` … `)` with
    something between, and no more.
 
    **`raw` subsumes `code` and `text`.** Measured on one document holding
@@ -286,13 +286,13 @@ it.
    the link text, so a rule written this way now reports fewer findings.
    The release note spells these `text.raw` and `paragraph.link`; those
    dotted forms are not scopes on the binary, bare or negated, and
-   `verify` rejects them. Write the bare inline name.
+   `validate` rejects them. Write the bare inline name.
 
    **A negation over a scope Vale does not know is a silent no-op.**
    Measured: `~banana` and `text & ~banana` both fire on everything,
    because there is no such scope to subtract. A typo inside a `~` does
    not narrow the rule and does not widen it visibly. It removes the
-   exclusion you wrote the rule for. `verify` checks the operands inside
+   exclusion you wrote the rule for. `validate` checks the operands inside
    `~` and `&` as strictly as a bare one, for exactly this reason, the
    one place it is deliberately stricter than Vale itself.
 
@@ -384,7 +384,7 @@ it.
    `tokens` on an `occurrence` check gives
    `E201 … has invalid keys: 'tokens'`, exit 2, and, because Vale reads
    one assembled config per run. **no** Vale rule in the project reports
-   anything. `verify` rejects the rule before Vale is invoked, so this
+   anything. `validate` rejects the rule before Vale is invoked, so this
    cannot reach `check`.
 
    **Two checks are exempt, and that is not a licence.** Measured,
@@ -507,7 +507,7 @@ it.
        up pointing at Vale's wrapper (the group still being matched)
        and matches nothing. Measured silent, with nothing on
        stderr and the rule loading cleanly: `(\w+) \1`, `(the) \1`,
-       `the \1` and `(?:\w+) \1`. **`%(TASKLESS_CLI)s verify` rejects a
+       `the \1` and `(?:\w+) \1`. **`%(TASKLESS_CLI)s validate` rejects a
        `swap` key with a backreference**, because a rule that loads
        and never fires is indistinguishable from a clean project. A
        repeated-word check has to be an `existence` rule, where the
@@ -521,7 +521,7 @@ it.
          `color` for `colour`. Only the key loses its groups.
        - **`\1` inside a character class is fine**, because there it
          is an octal escape rather than a backreference. `[\1a]bc`
-         matches `abc` and `verify` accepts it.
+         matches `abc` and `validate` accepts it.
 
      - **A trailing lookahead in `tokens` or `swap` has to peek at a
        non-word character.** The implicit `\b` is appended after the
@@ -587,7 +587,7 @@ it.
      `raw` list changes nothing. Write the boundaries you want into the
      pattern, as above.
 
-     `verify` reports a `raw` list with more than one entry, on the
+     `validate` reports a `raw` list with more than one entry, on the
      rule's `notice` rather than in `errors`:
 
      ```
@@ -618,7 +618,7 @@ it.
        - ', '
      ```
 
-     The first rule verifies, tests green if its `fail/` fixture is
+     The first rule validates, tests green if its `fail/` fixture is
      missing the dash, and reports nothing forever. Any token whose
      pattern contains no `\w` (punctuation, an emoji, a bare symbol)
      needs `nonword: true`.
@@ -689,7 +689,7 @@ it.
    silences every alphabetically earlier rule under `docs/`, and
    `[*.md]` beside another rule's `[*.{md,markdown}]` silences the first
    on every `.md` file. Only two rules with byte-identical globs escape,
-   because Vale merges those into one section. `verify` rejects the key
+   because Vale merges those into one section. `validate` rejects the key
    in any matcher, and `%(TASKLESS_CLI)s init` deletes it from configs
    written by the older recipe.
 
@@ -711,7 +711,7 @@ it.
    no-simply.no-simply = NO
    ```
 
-   Write the breadcrumb in the second matcher too, or `verify` rejects
+   Write the breadcrumb in the second matcher too, or `validate` rejects
    the matcher as unattributed. Reversing the two blocks would silently
    re-enable the rule on the file you meant to exempt, so the schema
    rejects a `NO` matcher that precedes every `YES`: with no style
@@ -729,7 +729,7 @@ it.
    warning on stderr and leave the rule enabled nowhere, so the schema
    rejects it instead.
 
-   **The config is schema-checked.** `verify` parses `.vale.ini` into a
+   **The config is schema-checked.** `validate` parses `.vale.ini` into a
    structure and validates it against a schema keyed by the rule's
    directory name, naming the line and the `vale-config-*` constraint
    behind each rejection. `check` runs the same schema before assembling
@@ -839,7 +839,7 @@ it.
    finding count that moves without the rule changing. And the children
    carry the element's name as a class scope, exactly as MyST and
    Quarto directives do, so `scope: text.class.Aside` targets one
-   component's content. That is an open family: `verify` accepts any
+   component's content. That is an open family: `validate` accepts any
    `text.class.<name>` tail, because the set of component names is the
    author's, not Vale's.
 
@@ -898,7 +898,7 @@ it.
    generates its own `.vale.ini` pointing at the fixture directory and
    enabling only `<id>.<id>`; your rule's own matcher globs are not
    consulted. So a glob of `packages/cli/src/**/*.ts` that matches
-   nothing in the repository still produces a rule that verifies, tests
+   nothing in the repository still produces a rule that validates, tests
    green, and reports forever. The only check for that is a real
    `check` over a real file:
 
@@ -958,15 +958,15 @@ it.
    `| length` to read the hits themselves, which is what tells you
    whether a hit is a false positive or a real one nobody had noticed.
 
-6. **Verify, then test.** Two commands, both taking the rule's
+6. **Validate, then test.** Two commands, both taking the rule's
    directory as their argument, both run from the project root:
 
    ```
-   %(TASKLESS_CLI)s verify .taskless/rules/vale/<id> --json
+   %(TASKLESS_CLI)s validate .taskless/rules/vale/<id> --json
    %(TASKLESS_CLI)s test   .taskless/rules/vale/<id> --json
    ```
 
-   `verify` asks whether the rule is well-formed: the style file parses,
+   `validate` asks whether the rule is well-formed: the style file parses,
    `extends` names one of the twelve checks, `message` is present, `level`
    is one Vale accepts, every `scope` operand is one Vale honors, every
    field belongs to the check the rule extends, and the config declares a
@@ -980,7 +980,7 @@ it.
    so letting either reach the binary would take every other Vale rule's
    findings down with it.
 
-   `test` runs the rule against both buckets. It runs `verify` first and
+   `test` runs the rule against both buckets. It runs `validate` first and
    stops if that fails, so a malformed rule tells you what is malformed
    instead of complaining about fixtures.
 
@@ -1025,7 +1025,7 @@ it.
    fixture says nothing". Measured: adding that matcher to a working
    rule left `test` at `ok: true` and emptied `results`. The tell is
    in the same envelope, as a notice reading `matcher [.taskless/**]
-   is unnecessary`. `verify` reports it too, as an advisory. Delete
+   is unnecessary`. `validate` reports it too, as an advisory. Delete
    the matcher; step 4 explains why no rule needs one.
 
    Read `results` there. Ignore `success` and the exit code: `success`
@@ -1078,7 +1078,7 @@ it.
    `notices` and no `failures` is the clean pass it looks like.
 
    **The binary that answers is the vendored one, and only that one
-   counts.** `verify`, `test` and `check` all run the Vale that ships
+   counts.** `validate`, `test` and `check` all run the Vale that ships
    with this CLI, v%(VALE_VERSION)s, which is what every measurement in
    this recipe was taken on. A bare `vale` on your `PATH` proves nothing
    about what `check` will report: one first attempt validated a rule
@@ -1091,7 +1091,7 @@ it.
    to the invocation it was written for: a whole-project `check` skips
    `.taskless/` without its help, and on a fixture bucket you name it
    is the one thing acting, which is how it empties the `check` above
-   while `test` stays green. `verify` reports it as an advisory (step 4
+   while `test` stays green. `validate` reports it as an advisory (step 4
    lists it). A rule needs the matchers for the files it is about and
    no more.
 

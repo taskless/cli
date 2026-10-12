@@ -334,7 +334,7 @@ describe("check --rule", () => {
       // project can hold this state now. The migration clears the collisions
       // already on disk, and what remains is one created AFTER it ran — by
       // hand, or by a merge landing a same-id rule under another engine — which
-      // is exactly the case the per-rule check in `verify` exists to catch.
+      // is exactly the case the per-rule check in `validate` exists to catch.
       // `check` still has to measure both, and `rules/rule-filter.ts` says so.
       // Do not "simplify" this back into the `beforeEach`.
       await migrateFixture(["-d", project]);

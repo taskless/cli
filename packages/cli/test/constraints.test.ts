@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { stringify } from "yaml";
 
 import { RULE_CONSTRAINTS, type RuleViolation } from "../src/rules/constraints";
-import { testOneRule, verifyOneRule } from "../src/rules/inspect";
+import { testOneRule, validateOneRule } from "../src/rules/inspect";
 
 /**
  * Every documented constraint is a check that still fires.
@@ -14,10 +14,10 @@ import { testOneRule, verifyOneRule } from "../src/rules/inspect";
  * A hand-maintained description of what code does goes stale, and this list is
  * published for another team to build an eval against, so staleness here is
  * exported rather than merely internal. `create-sg-rule.md` claimed for months
- * that "`verify` never reads `language`" after that stopped being true, and
+ * that "`validate` never reads `language`" after that stopped being true, and
  * nothing failed, because prose has no test.
  *
- * Each case below writes a rule violating one constraint and asserts `verify`
+ * Each case below writes a rule violating one constraint and asserts `validate`
  * refuses it. The mapping is by constraint `id`, so a documented check that
  * stops firing fails here by name.
  *
@@ -67,13 +67,13 @@ async function verifyWritten(options: {
   directoryName?: string;
   rule?: Record<string, unknown>;
   fixture?: string | undefined;
-  layer?: "verify" | "test";
+  layer?: "validate" | "test";
 }): Promise<{ ok: boolean; errors: string[]; violations: RuleViolation[] }> {
   const ruleId = options.directoryName ?? "probe-rule";
   const directory = join(project, ".taskless/rules/sg", ruleId);
   await mkdir(join(directory, ".tests"), { recursive: true });
 
-  // Serialized by the same library `verify` parses with, rather than by hand.
+  // Serialized by the same library `validate` parses with, rather than by hand.
   // The hand-rolled version treated an array as a mapping and wrote
   // `files:\n  0: **/*.py`, which YAML reads as an unresolved alias: the rule
   // was refused as malformed, and the scenario that meant to probe a glob check
@@ -105,7 +105,7 @@ async function verifyWritten(options: {
       violations: result.violations,
     };
   }
-  const verification = await verifyOneRule(project, resolved);
+  const verification = await validateOneRule(project, resolved);
   return {
     ok: verification.ok,
     errors: verification.errors,
@@ -114,7 +114,7 @@ async function verifyWritten(options: {
 }
 
 /**
- * Write one Vale rule directory with the given `.vale.ini`, then run `verify`.
+ * Write one Vale rule directory with the given `.vale.ini`, then run `validate`.
  *
  * The style file is always valid, so the only thing that can refuse the rule
  * is its config, which is what every `vale-config-*` scenario probes.
@@ -130,7 +130,7 @@ async function verifyValeConfig(
     "extends: existence\nmessage: \"Avoid '%s'\"\nlevel: warning\ntokens:\n  - simply\n"
   );
   await writeFile(join(directory, ".vale.ini"), config);
-  const verification = await verifyOneRule(project, {
+  const verification = await validateOneRule(project, {
     engine: "vale",
     ruleId,
   });
@@ -339,7 +339,7 @@ describe("every documented constraint is a check that still fires", () => {
       VALID_FIXTURE
     );
 
-    const result = await verifyOneRule(project, { engine: "sg", ruleId });
+    const result = await validateOneRule(project, { engine: "sg", ruleId });
     expect(result.ok).toBe(false);
     expect(result.errors.join("\n")).toMatch(/Invalid YAML/);
     expect(result.violations).toEqual([]);
@@ -407,12 +407,12 @@ describe("every documented constraint is a check that still fires", () => {
 
   it("says which command enforces each, since that decides eval order", () => {
     for (const constraint of RULE_CONSTRAINTS) {
-      expect(["verify", "test"]).toContain(constraint.enforcedBy);
+      expect(["validate", "test"]).toContain(constraint.enforcedBy);
     }
   });
 
   it("accepts the rule every scenario is a mutation of", async () => {
-    // Without this the suite above could pass because `verify` rejects
+    // Without this the suite above could pass because `validate` rejects
     // everything, which would make each case prove nothing.
     const result = await verifyWritten({ fixture: VALID_FIXTURE });
     expect(result.ok, result.errors.join("; ")).toBe(true);

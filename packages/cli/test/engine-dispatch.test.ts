@@ -22,7 +22,7 @@ import {
 } from "../src/rules/engines";
 import type { EngineName } from "../src/rules/layout";
 import { deleteRuleFiles, writeServedRule } from "../src/rules/files";
-import { verifyOneRule } from "../src/rules/inspect";
+import { validateOneRule } from "../src/rules/inspect";
 import { discoverRuntimeRules } from "../src/rules/runtime/discover";
 import type { ServedFileSet } from "../src/api/v2";
 import { CLIError } from "../src/util/cli-error";
@@ -361,9 +361,9 @@ describe("engine dispatch by directory", () => {
     ]);
   });
 
-  it("verify names the unimplemented mode, so the skipped capture is explained", async () => {
+  it("validate names the unimplemented mode, so the skipped capture is explained", async () => {
     // Discovery refusing the capture is only half the fix. On its own the rule
-    // reports nothing, which reads as a pass; `verify` is where the author is
+    // reports nothing, which reads as a pass; `validate` is where the author is
     // told why, and it must name the file and the offending value.
     const rule = ruleDirectory(temporaryDirectory, "runtime", "logs-abc12345");
     await mkdir(join(rule, "captures"), { recursive: true });
@@ -374,10 +374,10 @@ describe("engine dispatch by directory", () => {
     );
     await writeFile(join(rule, "check.ts"), RUNTIME_CHECK, "utf8");
 
-    const result = await verifyOneRule(temporaryDirectory, {
+    const result = await validateOneRule(temporaryDirectory, {
       engine: "runtime",
       ruleId: "logs-abc12345",
-    } as Parameters<typeof verifyOneRule>[1]);
+    } as Parameters<typeof validateOneRule>[1]);
 
     expect(result.ok).toBe(false);
     const message = result.errors.join("\n");
@@ -430,7 +430,7 @@ describe("engine dispatch by directory", () => {
       // silently falling back would run the capture as a narrow, match a
       // fraction of what it was written for, and report the shortfall as a
       // clean pass. The `it.each` above already asserts the capture is
-      // dropped from discovery; this asserts `verify` explains why, which is
+      // dropped from discovery; this asserts `validate` explains why, which is
       // what REFUSALS exists to cover for every other reason.
       "unimplemented match mode",
       RUNTIME_CAPTURE.replace("match: anchor", "match: whole-repo"),
@@ -456,10 +456,10 @@ describe("engine dispatch by directory", () => {
 
       // ...and says so. Discovery refusing silently would just be a different
       // route to "reports nothing".
-      const result = await verifyOneRule(temporaryDirectory, {
+      const result = await validateOneRule(temporaryDirectory, {
         engine: "runtime",
         ruleId: "logs-abc12345",
-      } as Parameters<typeof verifyOneRule>[1]);
+      } as Parameters<typeof validateOneRule>[1]);
       expect(result.ok).toBe(false);
       expect(result.errors.join("\n")).toMatch(expected);
     }
@@ -505,10 +505,10 @@ describe("engine dispatch by directory", () => {
       // blessed entry point without being blessed itself.
       expect(await discoverRuntimeRules(temporaryDirectory)).toHaveLength(0);
 
-      const result = await verifyOneRule(temporaryDirectory, {
+      const result = await validateOneRule(temporaryDirectory, {
         engine: "runtime",
         ruleId: "logs-abc12345",
-      } as Parameters<typeof verifyOneRule>[1]);
+      } as Parameters<typeof validateOneRule>[1]);
       expect(result.ok).toBe(false);
       expect(result.errors.join("\n")).toContain(named);
     }
