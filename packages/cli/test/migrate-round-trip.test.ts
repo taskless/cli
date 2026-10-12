@@ -175,7 +175,7 @@ withVale("a version-4 project upgraded through 0005", () => {
     expect(config).toContain("tskl) rule = no-simply");
   });
 
-  it("still verifies every migrated rule", async () => {
+  it("still validates every migrated rule", async () => {
     await seedVersion4Project();
 
     const result = await runCli(["validate", "-d", cwd, "--json"]);

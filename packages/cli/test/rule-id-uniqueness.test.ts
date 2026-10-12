@@ -165,7 +165,7 @@ describe("validate refuses a rule id held by more than one engine", () => {
   // The whole reason the check is per rule rather than only project-wide: an
   // author verifying the rule they just wrote is the moment the collision is
   // cheapest to fix, and a pass over the two id lists says nothing then.
-  it("catches the collision when a single rule is verified", async () => {
+  it("catches the collision when a single rule is validated", async () => {
     await valeRule("no-eval");
     await runtimeRule("no-eval");
     await valeRule("no-simply");
@@ -360,7 +360,7 @@ describe("migration 0009 renames a colliding project", () => {
   // The rewritten Vale config has to still describe a rule Vale would enable:
   // both segments of `<id>.<id>` moved, and a half-renamed assignment verifies
   // as a rule that is present and off.
-  it("leaves the renamed Vale rule verifying clean", async () => {
+  it("leaves the renamed Vale rule validating clean", async () => {
     await sgRule("no-eval");
     await valeRule("no-eval");
 

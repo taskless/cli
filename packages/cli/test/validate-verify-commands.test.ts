@@ -350,7 +350,7 @@ describe("validate checks components without requiring tests", () => {
   });
 });
 
-withVale("test runs verify first", () => {
+withVale("verify runs validate first", () => {
   it("passes a rule that fires on fail/ and stays quiet on pass/", async () => {
     await valeRule("no-simply", { config: SCOPED, fixtures: true });
     const result = await runCli(["verify", "-d", cwd, "--json"]);
@@ -467,7 +467,7 @@ withVale("validate schema-checks a Vale rule", () => {
     expect(errors).toContain("E201");
   });
 
-  it("still verifies a rule with no fixtures", async () => {
+  it("still validates a rule with no fixtures", async () => {
     // The split between `validate` and `verify` exists for the agent part-way
     // through authoring. Adding a schema layer must not quietly close it.
     await valeRule("no-simply", { config: SCOPED });
@@ -482,7 +482,7 @@ withVale("validate schema-checks a Vale rule", () => {
     expect(result.exitCode).toBe(0);
   });
 
-  it("verifies the rule shapes the recipe teaches", async () => {
+  it("validates the rule shapes the recipe teaches", async () => {
     // The regression guard for "no rule that works today starts failing".
     // Each of these is a worked example from `create-vale-rule`.
     const recipeRules: Record<string, string> = {
@@ -529,7 +529,7 @@ withVale("validate schema-checks a Vale rule", () => {
  * get as far as a Vale invocation.
  */
 withVale("a rule Vale would choke on never reaches Vale", () => {
-  it("stops `verify` at verify for a foreign field, without running the fixtures", async () => {
+  it("stops `verify` at validate for a foreign field, without running the fixtures", async () => {
     await valeRule("no-simply", {
       config: SCOPED,
       fixtures: true,
@@ -550,7 +550,7 @@ withVale("a rule Vale would choke on never reaches Vale", () => {
     expect(rule?.errors.join(" ")).not.toContain("did not fire");
   });
 
-  it("stops `verify` at verify for an unknown extends", async () => {
+  it("stops `verify` at validate for an unknown extends", async () => {
     await valeRule("no-simply", {
       config: SCOPED,
       fixtures: true,
@@ -636,7 +636,7 @@ async function noticesFor(path: string): Promise<string[] | undefined> {
 //
 // Every case here is one a glob matcher of our own would get wrong in at least
 // one direction, which is why the scope is asked of ast-grep's walk instead.
-describe("test says when an sg rule's globs reach no file", () => {
+describe("verify says when an sg rule's globs reach no file", () => {
   beforeEach(async () => {
     await mkdir(join(cwd, "src"), { recursive: true });
     await writeFile(join(cwd, "src", "app.ts"), "console.log('hi');\n");

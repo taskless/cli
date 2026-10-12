@@ -79,7 +79,7 @@ afterEach(async () => {
 describe.each(DEMO_RULES.map((rule) => [rule.engine, rule.ruleId] as const))(
   "taskless demo %s",
   (engine, ruleId) => {
-    it("writes a rule that verifies", async () => {
+    it("writes a rule that validates", async () => {
       const written = await run(["demo", engine, "-d", project]);
       expect(written.exitCode).toBe(0);
 

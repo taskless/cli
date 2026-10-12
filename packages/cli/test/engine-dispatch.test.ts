@@ -439,7 +439,7 @@ describe("engine dispatch by directory", () => {
   ];
 
   it.each(REFUSALS)(
-    "refuses a capture that is %s, and verify says why",
+    "refuses a capture that is %s, and validate says why",
     async (_label, yaml, expected) => {
       const rule = ruleDirectory(
         temporaryDirectory,

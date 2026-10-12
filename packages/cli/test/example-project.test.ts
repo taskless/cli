@@ -89,7 +89,7 @@ withVale("the example project", () => {
     expect(result.exitCode).toBe(1);
   });
 
-  it("verifies every rule in the example", async () => {
+  it("validates every rule in the example", async () => {
     const result = await runCli(["validate", "-d", cwd, "--json"]);
     expect(result.exitCode).toBe(0);
     const report = parseJson<RuleReport>(result.stdout);
