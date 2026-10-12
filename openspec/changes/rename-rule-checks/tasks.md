@@ -42,7 +42,7 @@ PR 1 is groups 1–4 (bottom of the stack, targets `main`). PR 2 is groups 5–8
 
 - [ ] 7.1 Add the `$$$`-beside-a-comma detector over pattern strings and object-pattern `context`. Verify: tests for "A comma beside $$$ draws a notice" and "A pattern that already uses strictness ast draws no notice".
 - [ ] 7.2 Add the `follows`/`precedes`-without-`stopBy` detector. Verify: a test for "A sibling relation without stopBy draws a notice", including the `stopBy: end` silent case.
-- [ ] 7.3 Add the awaited-generic-callee detector for `TypeScript`/`Tsx`. Verify: a test for "A callee regex under TypeScript draws a notice", including the `await_expression` branch and other-language silent cases.
+- [ ] 7.3 Add the awaited-generic-callee detector for `TypeScript`/`Tsx`. Verify: a test for "A callee regex under TypeScript draws a notice", plus "A method callee regex under TypeScript draws a notice", including the `await_expression` branch and other-language silent cases. Use the recipe's own workaround YAML (topic v7 and later) as the silent fixture, so the detector can't flag the fix the recipe recommends.
 - [ ] 7.4 Point `create-sg-rule`'s Quirks section at the notices: say which quirks `validate` now reports, and that the keyword-`kind` and Markdown-inline config errors are now caught by `validate` under the rule's own name. Bump the topic version. Verify: `pnpm cli agent create-sg-rule` shows the change after `pnpm build`.
 - [ ] 7.5 Verify that a trap notice doesn't fail `verify`. Verify: a test for "A trap notice does not fail verify".
 
