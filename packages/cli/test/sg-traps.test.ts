@@ -50,6 +50,20 @@ describe("$$$ beside a comma", () => {
     expect(notices[0]).toContain("any");
   });
 
+  // Two traps with different remedies in one pattern. Returning after the
+  // first would leave an author who fixes the leading form with no word of the
+  // trailing one.
+  it("notices both forms when one pattern holds both", () => {
+    const notices = findSgTraps(
+      typescript({ pattern: "foo($$$HEAD, $A, $$$TAIL)" })
+    );
+    expect(notices).toHaveLength(2);
+    expect(notices.some((notice) => notice.includes("any"))).toBe(true);
+    expect(notices.some((notice) => notice.includes("strictness: ast"))).toBe(
+      true
+    );
+  });
+
   it("is silent for a standalone $$$", () => {
     expect(findSgTraps(typescript({ pattern: "foo($$$)" }))).toEqual([]);
   });
