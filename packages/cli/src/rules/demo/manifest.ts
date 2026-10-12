@@ -62,7 +62,7 @@ export interface DemoManifest {
    * Listed rather than globbed. Several are dot-paths — under `.tests/`, or
    * named `.env` — and glob helpers skip those by default, so a glob would
    * embed the rule file and silently omit every case. That produces a rule that
-   * writes, verifies, and has nothing to prove, which is the exact failure
+   * writes, validates, and has nothing to prove, which is the exact failure
    * these runners exist to catch.
    */
   testPaths: readonly string[];

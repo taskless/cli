@@ -118,7 +118,7 @@ describe("the demo reference payload", () => {
   it("names every dot-path explicitly, because a glob would drop them", () => {
     // The regression this replaces was specific: a switch to glob-based path
     // discovery embeds the rule file and silently omits every dot-path case,
-    // producing a rule that writes, verifies, and has nothing to prove. The
+    // producing a rule that writes, validates, and has nothing to prove. The
     // test that caught it asserted particular paths, so this one does too --
     // iterating whatever the manifest happens to hold would pass trivially
     // over a shrunken list, which is exactly the failure being guarded.

@@ -267,7 +267,7 @@ async function pruneEmpty(
  * its own style, so the same rule is now `<id>.<id>`.
  *
  * Carrying the old name across would leave a config Vale parses happily,
- * reports nothing for, and exits zero on — the rule verified, the check ran,
+ * reports nothing for, and exits zero on — the rule validated, the check ran,
  * and no finding ever appeared. Found by migrating a real project and noticing
  * the Vale rule stopped firing while ast-grep kept working.
  */

@@ -176,7 +176,7 @@ export interface ValeRuleVerification {
    * Carried on the verification rather than dropped at this seam because the
    * `W101 … isn't a core option` warning — what Vale says about an assignment
    * placed above the first `[…]` section — arrives on exactly this path: exit
-   * zero, empty findings, a rule that verifies clean while Vale ignores it.
+   * zero, empty findings, a rule that validates clean while Vale ignores it.
    * Empty when Vale was never run (a one-sided fixture set short-circuits) and
    * when it ran with nothing to say; the two are not worth distinguishing, and
    * empty-never-absent lets a caller concatenate without a fallback.

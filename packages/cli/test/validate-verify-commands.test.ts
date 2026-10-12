@@ -160,7 +160,7 @@ describe("validate checks components without requiring tests", () => {
     expect(result.exitCode).toBe(0);
   });
 
-  // A Vale rule with no config declares no scope: it verifies, runs, and
+  // A Vale rule with no config declares no scope: it validates, runs, and
   // reports nothing. That is the silent disable the layout exists to prevent.
   it("fails a Vale rule that nothing scopes", async () => {
     await valeRule("no-simply");

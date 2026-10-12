@@ -33,7 +33,7 @@ import {
  * Both directions of disagreement fail, and they are reported separately
  * because they mean different things:
  *
- * - **Schema too lax** — a rule the binary will not honor verifies clean. That
+ * - **Schema too lax** — a rule the binary will not honor validates clean. That
  *   is the gap this change exists to close.
  * - **Schema too strict** — a rule the binary accepts is rejected. Worse: it
  *   blocks work that would have functioned.

@@ -133,7 +133,7 @@ export const RULE_CONSTRAINTS = [
   // Every entry below is decided by `schemas/vale-config.ts` over the ini AST,
   // never over the file's text. The common thread is that Vale accepts each of
   // these configs and does something other than what the author wrote, with a
-  // zero exit and an empty report: the rule verifies, runs, and finds nothing.
+  // zero exit and an empty report: the rule validates, runs, and finds nothing.
   //
   // `enforcedBy` reads `validate` for all of them even though `check` runs the
   // same schema and refuses the Vale run on a rejection. The field answers a
@@ -148,7 +148,7 @@ export const RULE_CONSTRAINTS = [
     summary:
       "A rule's `.vale.ini` assigns nothing above its first matcher; `StylesPath` and `MinAlertLevel` belong to the run.",
     rationale:
-      "Vale reads a rule assignment placed above the first `[matcher]` as a run-level key, warns `W101` on stderr, ignores it, and exits zero. The rule verifies clean while enabled nowhere. `StylesPath` and `MinAlertLevel` are properties of the assembled run config, which sets both; a per-rule copy is either redundant or silently fights the header.",
+      "Vale reads a rule assignment placed above the first `[matcher]` as a run-level key, warns `W101` on stderr, ignores it, and exits zero. The rule validates clean while enabled nowhere. `StylesPath` and `MinAlertLevel` are properties of the assembled run config, which sets both; a per-rule copy is either redundant or silently fights the header.",
   },
   {
     id: "vale-config-breadcrumb-required",
@@ -198,7 +198,7 @@ export const RULE_CONSTRAINTS = [
     enforcedBy: "validate",
     summary: "Some matcher assigns `<id>.<id> = YES`.",
     rationale:
-      "No style is loaded, so a rule is off until a matcher turns it on. A config whose every matcher says `NO`, or none says anything, leaves the rule present but off: it verifies, it is assembled, and it reports nothing.",
+      "No style is loaded, so a rule is off until a matcher turns it on. A config whose every matcher says `NO`, or none says anything, leaves the rule present but off: it validates, it is assembled, and it reports nothing.",
   },
   {
     id: "vale-config-disable-after-enable",

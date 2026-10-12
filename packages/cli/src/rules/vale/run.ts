@@ -86,7 +86,7 @@ export const VALE_TIMEOUT_MS = 60_000;
  * still exiting zero. That combination is not noise. Vale reports a rule
  * assignment placed outside any section as `W101 … is ignoring it` — on stderr,
  * with exit 0 and a well-formed empty result on stdout — so discarding it
- * leaves an author with a rule that verifies, runs, and reports nothing.
+ * leaves an author with a rule that validates, runs, and reports nothing.
  * Surfacing it is what makes the section-less scaffold safe: the mistake it
  * invites becomes legible instead of silent.
  */

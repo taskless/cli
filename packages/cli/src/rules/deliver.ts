@@ -155,7 +155,7 @@ export type DeliveryAssessment =
  * Decide whether a whole file set may be written, BEFORE anything is written.
  *
  * Every check runs against the set as a unit and the first failure refuses all
- * of it. A partially written rule directory is worse than none: it verifies as
+ * of it. A partially written rule directory is worse than none: it validates as
  * a broken rule two steps from the cause, and the delivery that produced it has
  * already reported success.
  */
@@ -380,7 +380,7 @@ async function clearSymlinkedPath(
  * case-insensitive filesystem a delivered `captures/Logs.yml` written into an
  * existing `captures/logs.yml` keeps the on-disk spelling, so an exact compare
  * would find `captures/logs.yml` unmentioned and delete the file just written —
- * leaving a rule with no capture, which verifies as incomplete and never fires.
+ * leaving a rule with no capture, which validates as incomplete and never fires.
  * The cost is on a case-sensitive filesystem, where a stale sibling differing
  * only in case is spared. That is the right way round to be wrong: sparing a
  * stale file leaves the merge behavior this change narrows, while deleting a
@@ -521,7 +521,7 @@ export class PurgeIncompleteError extends Error {
  * - **Writes come first, deletions second.** Every delivered file is on disk
  *   before anything is unlinked, so an IO failure part-way leaves a directory
  *   that is a superset of the blessed rule — the merge behavior being narrowed,
- *   which is survivable — rather than a rule missing pieces, which verifies as
+ *   which is survivable — rather than a rule missing pieces, which validates as
  *   incomplete or silently never fires. That ordering is what makes a failed
  *   purge recoverable rather than dangerous: an entry that cannot be removed
  *   is reported by name and the rest of the pass still runs, so the worst case
