@@ -50,5 +50,5 @@ PR 1 is groups 1–4 (bottom of the stack, targets `main`). PR 2 is groups 5–8
 
 - [x] 8.1 Build a temporary one-rule `sgconfig.yml` for `runTests` and remove it afterwards. Verify: a test for "Another rule's config error does not fail this rule's fixtures", which reproduces gap 2 with a `kw` rule holding `kind: readonly`. Also check that no file is left behind.
 - [x] 8.2 Extend the changeset with the new `validate` checks. Verify: one changeset file, one release note.
-- [ ] 8.3 Run `pnpm typecheck`, `pnpm lint` and `pnpm test`, then archive the change with `pnpm openspec archive rename-rule-checks -y`. Verify: everything passes, and the archived specs keep every scenario (repeat the 4.4 comparison).
+- [x] 8.3 Run `pnpm typecheck`, `pnpm lint` and `pnpm test`, then archive the change with `pnpm openspec archive rename-rule-checks -y`. Verify: everything passes, and the archived specs keep every scenario (repeat the 4.4 comparison).
 - [ ] 8.4 Open PR 2 on top of PR 1, request the review, address the findings, and confirm with the user before merging. Verify: review posted and findings resolved.

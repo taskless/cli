@@ -144,13 +144,13 @@ The name is deliberate. "Matcher" denotes a Vale `[<glob>]` config section elsew
 - **THEN** it reads its capture rules from `captures/`
 - **AND** it reads `check.ts` from the rule directory root
 
-### Requirement: A rule's canonical location is what verify and test address
+### Requirement: A rule's canonical location is what validate and verify address
 
-Each engine SHALL have one canonical on-disk location per rule — the rule directory — and that location SHALL be what `verify` and `test` accept as a path. A directory above it SHALL mean every rule beneath.
+Each engine SHALL have one canonical on-disk location per rule — the rule directory — and that location SHALL be what `validate` and `verify` accept as a path. A directory above it SHALL mean every rule beneath.
 
 #### Scenario: One address per rule
 
-- **WHEN** `verify` or `test` is given `.taskless/rules/<engine>/<id>/`
+- **WHEN** `validate` or `verify` is given `.taskless/rules/<engine>/<id>/`
 - **THEN** it operates on exactly that rule
 - **AND** the engine is determined from the path without reading the rule
 

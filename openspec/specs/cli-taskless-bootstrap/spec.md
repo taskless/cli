@@ -245,7 +245,7 @@ Migration `7` SHALL add `/.tmp-*` to `.taskless/.gitignore` through the shared g
 
 Migration `8` SHALL delete every `BasedOnStyles` assignment line from each `.taskless/rules/vale/<id>/.vale.ini`, whatever the value, and SHALL change nothing else in the file: every other line, comment, blank line and line ending SHALL be preserved byte for byte, and a comment that mentions `BasedOnStyles` SHALL be left alone. A config without the line SHALL NOT be rewritten. A project with no `rules/vale/` tree SHALL be left as it is. It SHALL NOT modify any shipped migration.
 
-The migration exists because the `create-vale-rule` recipe wrote `BasedOnStyles =` into every matcher through the release before this one, the config schema now rejects the key, and `check` and `verify` refuse to run on a scaffold behind the current version. Without the rewrite every upgraded project's first `check` would refuse the Vale engine over a line the CLI itself wrote.
+The migration exists because the `create-vale-rule` recipe wrote `BasedOnStyles =` into every matcher through the release before this one, the config schema now rejects the key, and `check` and `validate` refuse to run on a scaffold behind the current version. Without the rewrite every upgraded project's first `check` would refuse the Vale engine over a line the CLI itself wrote.
 
 #### Scenario: An existing scaffold loses the line from every matcher
 
@@ -352,7 +352,7 @@ It SHALL write nothing when there is no collision. A project in that state SHALL
 #### Scenario: The renamed project verifies and checks clean
 
 - **WHEN** migration 9 has renamed a colliding project
-- **THEN** `verify` SHALL report no collision
+- **THEN** `validate` SHALL report no collision
 - **AND** each renamed rule SHALL still run and report findings under its new id
 
 #### Scenario: Migration 9 is idempotent

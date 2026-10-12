@@ -82,7 +82,7 @@ With each rule owning its config, a matcher's owner is given by the directory it
 
 When Vale exits zero and writes to stderr, the CLI SHALL surface that output as a notice on the check result. A notice SHALL NOT affect the exit code.
 
-This is the last line of defence, not the first. The case that motivated it — a rule assignment placed at the top level of the file, which Vale reports as ignoring with `W101` on stderr, a zero exit, and a well-formed empty result — is now rejected by the config schema at `verify` and at assembly, so Vale is never run over it. The requirement remains for every diagnostic the schema cannot foresee: Vale's own warnings about a style file, a format, or a config key that a future Vale adds. Discarding that output would leave the author with a rule that verifies, runs, and reports nothing, which is the silent-disable failure this engine's design exists to prevent.
+This is the last line of defence, not the first. The case that motivated it — a rule assignment placed at the top level of the file, which Vale reports as ignoring with `W101` on stderr, a zero exit, and a well-formed empty result — is now rejected by the config schema at `validate` and at assembly, so Vale is never run over it. The requirement remains for every diagnostic the schema cannot foresee: Vale's own warnings about a style file, a format, or a config key that a future Vale adds. Discarding that output would leave the author with a rule that validates, runs, and reports nothing, which is the silent-disable failure this engine's design exists to prevent.
 
 #### Scenario: An ignored rule assignment reaches the user
 
@@ -140,7 +140,7 @@ Precedence is **positional**, and the system SHALL order matchers accordingly ra
 
 A disable therefore SHALL be declared **after** the enable it narrows, within the rule's own config; the config schema rejects a `NO` matcher that precedes every `YES`. Because precedence is positional and the run config is assembled, **assembly SHALL be deterministic**: rules ordered by id, and each rule's own matcher order preserved verbatim. A non-deterministic assembly would make a rule's effective scope depend on directory iteration order.
 
-A rule SHALL NOT be able to override another rule's matchers. It cannot know its own position in the assembled file, and cross-rule overriding through a shared file is the coupling the per-rule layout removes. The config schema enforces this: an assignment key naming any rule but the config's own is a rejection, at `verify` and at assembly.
+A rule SHALL NOT be able to override another rule's matchers. It cannot know its own position in the assembled file, and cross-rule overriding through a shared file is the coupling the per-rule layout removes. The config schema enforces this: an assignment key naming any rule but the config's own is a rejection, at `validate` and at assembly.
 
 A rule's config SHALL NOT carry `BasedOnStyles`, with any value. Measured against Vale 3.22.0, an empty `BasedOnStyles` in a matcher clears every setting the file inherited from an earlier matcher, and in the assembled config "earlier" means every other rule whose glob reaches the file, so the line is a cross-rule override in the other direction: a rule writing it under `[docs/**]` silences every alphabetically earlier rule under `docs/`, and only two rules with byte-identical globs, which Vale merges into one section, escape. Through 3.21.0 the line was inert. A non-empty value loads a bundled style alongside every rule whose matchers overlap. Neither value has a job in a rule's config: Vale loads no bundled style unless a run-level `BasedOnStyles` names one, and the assembled header names none. The config schema rejects the key, and migration 8 deletes it from installed configs.
 
@@ -179,13 +179,13 @@ A rule's config SHALL NOT carry `BasedOnStyles`, with any value. Measured agains
 #### Scenario: A BasedOnStyles line is refused rather than assembled
 
 - **WHEN** a rule's config carries `BasedOnStyles =` in any matcher
-- **THEN** `verify` SHALL reject the rule under `vale-config-no-based-on-styles`, naming the line
+- **THEN** `validate` SHALL reject the rule under `vale-config-no-based-on-styles`, naming the line
 - **AND** the Vale run SHALL be refused rather than assembled with the line, which on the pinned Vale would silence every earlier rule under that matcher's files
 
 #### Scenario: A rule cannot assign another rule's key
 
 - **WHEN** `no-simply/.vale.ini` assigns `no-hedging.no-hedging = NO`
-- **THEN** `verify` SHALL reject `no-simply`, naming the foreign key
+- **THEN** `validate` SHALL reject `no-simply`, naming the foreign key
 - **AND** the Vale run SHALL be refused rather than assembled without that rule's config
 
 ### Requirement: A Vale rule is a self-contained directory
@@ -216,11 +216,11 @@ Scope SHALL NOT be expressed inside the style file. Measured: Vale rejects unkno
 
 ### Requirement: A rule's Vale config is validated against a schema before it is assembled
 
-The system SHALL parse each rule's `.vale.ini` into an ordered, lossless AST and validate that AST against a schema keyed by the rule's directory id, before the config is assembled into the run config and when the rule is verified. Validation SHALL be performed on the parsed structure, never by matching the file's text.
+The system SHALL parse each rule's `.vale.ini` into an ordered, lossless AST and validate that AST against a schema keyed by the rule's directory id, before the config is assembled into the run config and when the rule is validated. Validation SHALL be performed on the parsed structure, never by matching the file's text.
 
 The schema SHALL reject a config that:
 
-- assigns any property above its first matcher (`StylesPath`, `MinAlertLevel`, or anything else; Vale ignores such a line with a `W101` warning and the rule verifies clean while enabled nowhere)
+- assigns any property above its first matcher (`StylesPath`, `MinAlertLevel`, or anything else; Vale ignores such a line with a `W101` warning and the rule validates clean while enabled nowhere)
 - declares a matcher without a `tskl) rule = <id>` breadcrumb naming this rule
 - assigns a key other than `<id>.<id>` (a `<style>.<check>` key naming any other rule is a cross-rule override)
 - assigns a value other than `YES` or `NO`
@@ -249,46 +249,46 @@ Assembly SHALL write each accepted config's source verbatim. The parsed structur
 #### Scenario: A run-level key in a rule config is rejected
 
 - **WHEN** a rule's config places `StylesPath = .` above its first matcher
-- **THEN** `verify` SHALL reject the rule, naming the key and the line
+- **THEN** `validate` SHALL reject the rule, naming the key and the line
 - **AND** `check` SHALL refuse the Vale engine rather than strip the line
 
 #### Scenario: A matcher without a breadcrumb is rejected
 
 - **WHEN** a rule's config declares `[*.md]` with `<id>.<id> = YES` and no `tskl) rule` key
-- **THEN** `verify` SHALL reject the rule, naming the matcher
+- **THEN** `validate` SHALL reject the rule, naming the matcher
 
 #### Scenario: A disable that precedes every enable is rejected
 
 - **WHEN** a rule's config declares `[docs/legacy/**]` with `<id>.<id> = NO` and then `[docs/**]` with `<id>.<id> = YES`
-- **THEN** `verify` SHALL reject the rule, naming the `NO` matcher and the `YES` that re-enables it
+- **THEN** `validate` SHALL reject the rule, naming the `NO` matcher and the `YES` that re-enables it
 
 #### Scenario: A BasedOnStyles assignment is rejected
 
 - **WHEN** a rule's config sets `BasedOnStyles =` inside a matcher
-- **THEN** `verify` SHALL reject the rule under `vale-config-no-based-on-styles`, naming the line and saying that the line silences the other rules whose globs overlap
+- **THEN** `validate` SHALL reject the rule under `vale-config-no-based-on-styles`, naming the line and saying that the line silences the other rules whose globs overlap
 - **AND** a `BasedOnStyles` naming a style SHALL be rejected under the same constraint
 
 #### Scenario: A [formats] section is rejected as a matcher it cannot be
 
 - **WHEN** a rule's config declares a `[formats]` section
-- **THEN** `verify` SHALL reject it for the breadcrumb it lacks and the foreign key it assigns, so no rule config can move a file between parser tiers
+- **THEN** `validate` SHALL reject it for the breadcrumb it lacks and the foreign key it assigns, so no rule config can move a file between parser tiers
 
 #### Scenario: A repeated key is reported, not rejected
 
 - **WHEN** one matcher assigns `<id>.<id> = YES` and then `<id>.<id> = NO`, and an earlier matcher assigns `<id>.<id> = YES`
-- **THEN** `verify` SHALL accept the rule and report the repeat as a notice
+- **THEN** `validate` SHALL accept the rule and report the repeat as a notice
 - **AND** `check` SHALL run the Vale engine and carry the same text in its notices
 
 #### Scenario: A rule whose only enable is overridden is rejected
 
 - **WHEN** the only matcher assigning `<id>.<id> = YES` later assigns `<id>.<id> = NO`, in the same section or in a second section with the same glob
-- **THEN** `verify` SHALL reject the rule as present but off, under `vale-config-enabled-somewhere`
+- **THEN** `validate` SHALL reject the rule as present but off, under `vale-config-enabled-somewhere`
 - **AND** the repeat SHALL still be reported as a notice
 
 #### Scenario: A `.taskless/**` matcher is reported as unnecessary
 
 - **WHEN** a rule's config declares a matcher under `.taskless/**`
-- **THEN** `verify` SHALL accept the rule and report both halves: that the matcher is unnecessary on a whole-project check, which excludes `.taskless/` before Vale runs, AND that it silences the rule on a path named explicitly, such as the rule's own fixture bucket
+- **THEN** `validate` SHALL accept the rule and report both halves: that the matcher is unnecessary on a whole-project check, which excludes `.taskless/` before Vale runs, AND that it silences the rule on a path named explicitly, such as the rule's own fixture bucket
 - **AND** `check` SHALL carry the same text in its notices
 
 #### Scenario: An accepted config is assembled byte-for-byte

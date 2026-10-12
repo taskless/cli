@@ -178,7 +178,7 @@ The CLI SHALL provide a `create-sg-rule` help recipe that instructs the agent to
 local ast-grep rule on-device, without calling the Taskless service, and to
 verify it against the user's success and failure cases before reporting success.
 The recipe SHALL produce the canonical on-disk rule shape and paths used by remote
-generation so that `check`, `improve`, and `verify` see a single dialect.
+generation so that `check`, `improve`, and `validate` see a single dialect.
 
 The recipe SHALL be named for the artifact it produces rather than for a trust tier. "Static" describes when a rule runs, which is a different axis from which engine enforces it, and naming the ast-grep authoring path after the tier taught the conflation that engine selection exists to correct.
 

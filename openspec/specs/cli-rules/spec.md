@@ -8,7 +8,7 @@ Defines the `rules` subcommand group for the Taskless CLI, including `create`, `
 
 ### Requirement: Rules subcommand group exists
 
-The CLI SHALL expose the rule operations under the `rule` (singular) subcommand group. The user-facing surface SHALL be `taskless rule create`, `taskless rule improve`, `taskless rule delete`, and `taskless rule meta`. Rule validation is not part of this group — it is addressed by path through the top-level `verify` and `test` commands, specified by the `cli-rule-validation` capability. The internal source filename (`packages/cli/src/commands/rules.ts`) MAY remain plural — only the user-visible subcommand name changes.
+The CLI SHALL expose the rule operations under the `rule` (singular) subcommand group. The user-facing surface SHALL be `taskless rule create`, `taskless rule improve`, `taskless rule delete`, and `taskless rule meta`. Rule validation is not part of this group — it is addressed by path through the top-level `validate` and `verify` commands, specified by the `cli-rule-validation` capability. The internal source filename (`packages/cli/src/commands/rules.ts`) MAY remain plural — only the user-visible subcommand name changes.
 
 The previous plural form `taskless rules <subcommand>` SHALL NOT work in v0.7.0 — there is no compatibility alias.
 
@@ -389,7 +389,7 @@ The codegen script SHALL extract the ast-grep version from `packages/cli/package
 
 ### Requirement: The rule subcommand group no longer validates rules
 
-`taskless rule verify` SHALL NOT exist. Rule validation is addressed by path through the top-level `verify` and `test` commands, specified by the `cli-rule-validation` capability.
+`taskless rule verify` SHALL NOT exist. Rule validation is addressed by path through the top-level `validate` and `verify` commands, specified by the `cli-rule-validation` capability.
 
 #### Scenario: The removed subcommand does not resolve
 
@@ -403,7 +403,7 @@ The generated JSON Schema file SHALL be importable by the CLI bundle via Vite. T
 
 #### Scenario: Schema imported in verify command
 
-- **WHEN** the `verify` command needs the ast-grep schema
+- **WHEN** the `validate` command needs the ast-grep schema
 - **THEN** it SHALL import the schema from `../generated/ast-grep-rule-schema.json`
 - **AND** the schema object SHALL be available synchronously at runtime
 
@@ -437,7 +437,7 @@ When `taskless rule improve --anonymous` is invoked, the CLI SHALL execute the l
 
 1. NOT submit any request to the Taskless API iterate endpoint
 2. Update the rule file in place using local logic
-3. Support the verify feedback loop by exposing the top-level `verify` primitive that the agent invokes between edits
+3. Support the validate feedback loop by exposing the top-level `validate` primitive that the agent invokes between edits
 4. Return the same output format as the API-backed branch
 
 #### Scenario: rule improve --anonymous skips API

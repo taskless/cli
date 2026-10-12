@@ -10,7 +10,7 @@ The conformance corpus published as `@taskless/cli/reference.json`, so an extern
 
 The CLI SHALL publish `assets/reference.json` as the package export
 `@taskless/cli/reference.json`, carrying a `version`, the `protocol` the corpus
-exists to support, the `constraints` `verify` and `test` enforce beyond an
+exists to support, the `constraints` `validate` and `verify` enforce beyond an
 engine's own schema, and one entry per shipped demonstration rule.
 
 The corpus SHALL be built from the shipped rules rather than restating them, so
@@ -110,7 +110,7 @@ CLI, which is the failure this corpus exists to remove.
 - **THEN** the published layout SHALL agree with the CLI's own engine layout table
 - **AND** each entry's resolved directory SHALL be the directory the CLI resolves for that engine and id
 
-### Requirement: The corpus publishes what verify enforces beyond the engine
+### Requirement: The corpus publishes what validate and verify enforce beyond the engine
 
 The corpus SHALL carry every entry in `RULE_CONSTRAINTS`, each with a stable
 `id`, the `engine` it applies to, which command enforces it, a summary, and the
@@ -123,4 +123,10 @@ disagreement about the subject the rule addresses.
 #### Scenario: A constraint says which command enforces it
 
 - **WHEN** a consumer plans the order of an evaluation
-- **THEN** each constraint SHALL state whether `verify` or `test` refuses the rule
+- **THEN** each constraint SHALL state whether `validate` or `verify` refuses the rule
+
+#### Scenario: Renaming the enforcing commands bumps the corpus version
+
+- **WHEN** the commands an `enforcedBy` value names are renamed, so an existing value would mean a different command
+- **THEN** the corpus `version` SHALL be incremented
+- **AND** a consumer reading the new version SHALL find only the current command names among the `enforcedBy` values
