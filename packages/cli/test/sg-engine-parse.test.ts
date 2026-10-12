@@ -47,12 +47,12 @@ afterEach(async () => {
 });
 
 /** An sg rule with both fixture buckets, `body` written verbatim. */
-async function sgRule(id: string, body: string) {
+async function sgRule(id: string, body: string, language = "TypeScript") {
   const directory = join(cwd, ".taskless", "rules", "sg", id);
   await mkdir(join(directory, ".tests"), { recursive: true });
   await writeFile(
     join(directory, `${id}.yml`),
-    `id: ${id}\nlanguage: TypeScript\nseverity: error\nmessage: m\n${body}`
+    `id: ${id}\nlanguage: ${language}\nseverity: error\nmessage: m\n${body}`
   );
   await writeFile(
     join(directory, ".tests", `${id}-test.yml`),
@@ -77,6 +77,44 @@ describe("validate parses each sg rule with ast-grep, alone", () => {
     expect(rules[0]?.ok).toBe(false);
     expect(rules[0]?.errors.join("\n")).toContain("Kind `readonly` is invalid");
   });
+
+  // Each shape reaches a different part of the cause-chain parsing, and each
+  // was measured on 0.45.3. The specific cause has to survive: a reformat that
+  // dropped it would still fail the rule, but with the generic exit-code
+  // message, and only these assertions would notice.
+  it.each([
+    {
+      shape: "a Markdown inline kind",
+      body: "rule:\n  kind: link\n",
+      language: "Markdown",
+      expected: "Kind `link` is invalid",
+    },
+    {
+      // A one-link chain, with no context to put in parentheses.
+      shape: "a pattern with no AST kind",
+      body: 'rule:\n  pattern: "foo("\n',
+      language: "TypeScript",
+      expected: "Rule must specify a set of AST kinds to match",
+    },
+    {
+      // The specific part arrives on a later line, after the pattern and a
+      // caret, as `error: ...`; it is folded into the last link.
+      shape: "a regex that does not compile",
+      body: 'rule:\n  kind: identifier\n  regex: "(["\n',
+      language: "TypeScript",
+      expected: "regex parse error: unclosed character class",
+    },
+  ])(
+    "names the specific cause for $shape",
+    async ({ body, language, expected }) => {
+      await sgRule("refused", body, language);
+      const { rules } = await report("validate", ".taskless/rules/sg/refused");
+      const errors = rules[0]?.errors.join("\n") ?? "";
+      expect(rules[0]?.ok).toBe(false);
+      expect(errors).toContain(`ast-grep refuses this rule: ${expected}`);
+      expect(errors).not.toContain("(exit ");
+    }
+  );
 
   it("attaches no constraint id to the engine's refusal", async () => {
     await sgRule("kw", KEYWORD_KIND);
