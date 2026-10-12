@@ -11,7 +11,7 @@ Umbrella for rule operations. Fetch the topic for the action you want.
 | Improve a rule     | `%(TASKLESS_CLI)s agent improve-rule`                 |
 | Delete a rule      | `%(TASKLESS_CLI)s agent delete-rule`                  |
 | Restore or roll back a rule | `%(TASKLESS_CLI)s agent recover-rule`        |
-| Verify a rule      | `%(TASKLESS_CLI)s agent verify-rule` (agent-internal) |
+| Validate a rule    | `%(TASKLESS_CLI)s agent validate-rule` (agent-internal) |
 | Read rule metadata | `%(TASKLESS_CLI)s agent rule-meta`   (agent-internal) |
 
 `rule meta` reads a sidecar this CLI never writes, so it fails for every

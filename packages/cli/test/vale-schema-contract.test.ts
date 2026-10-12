@@ -47,7 +47,7 @@ import {
 const binary = findValeBinary().path;
 const withVale = binary === undefined ? describe.skip : describe;
 
-/** Where the corpus rule id lands, and therefore what `verify` would call it. */
+/** Where the corpus rule id lands, and therefore what `validate` would call it. */
 const RULE_ID = "corpus";
 
 /**
@@ -62,7 +62,7 @@ const RULE_ID = "corpus";
  * differs from `buildIsolatingConfig` the same way `probe()` does: it owns its
  * whole temp directory, so it has no absolute `StylesPath` to hand over, and
  * differs from `probe()` only in naming the style after {@link RULE_ID}, so
- * that a failure prints the id `verify` would use.
+ * that a failure prints the id `validate` would use.
  *
  * It stays separate because it answers a different question: `probe()` returns
  * a probe outcome the generator interprets as evidence about a *key*,
@@ -583,7 +583,7 @@ describe("a backreference in a swap key is rejected", () => {
 /**
  * The corpus stores rules as YAML text, because that is what Vale reads and
  * what an author writes. The schema takes the parsed value, exactly as
- * `verifyOneRule` hands it over.
+ * `validateOneRule` hands it over.
  */
 function parseYaml(source: string): unknown {
   return yamlParse(source) as unknown;

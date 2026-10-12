@@ -1,10 +1,10 @@
 import { z } from "zod";
 
 /**
- * One rule's verdict, as `verify` and `test` both report it.
+ * One rule's verdict, as `validate` and `test` both report it.
  *
  * The two commands share an implementation and differ only in what they run,
- * so they share one envelope. `ran` is `test`-only: `verify` never reaches a
+ * so they share one envelope. `ran` is `test`-only: `validate` never reaches a
  * test run, and `test` reports `false` when verification failed first.
  */
 /**
@@ -95,11 +95,11 @@ const ruleResultSchema = z.object({
     .array(fixtureFindingSchema)
     .default([])
     .describe(
-      "The findings this rule's fixtures produced, each tagged with its bucket. ALWAYS PRESENT, empty rather than absent — for a rule that produced nothing, for one whose verification failed before its fixtures ran, for a refused run, for `verify`, which runs no fixtures at all, and for an engine whose fixture findings are not surfaced yet. A key that is sometimes absent is one a reader learns to treat as optional, and reads absence as zero. The `fail` bucket is reported on a passing run too: it is the evidence that the rendered messages say what their author meant, and a payload carrying that only once the rule is already failing carries it at the one moment it is no longer needed"
+      "The findings this rule's fixtures produced, each tagged with its bucket. ALWAYS PRESENT, empty rather than absent — for a rule that produced nothing, for one whose verification failed before its fixtures ran, for a refused run, for `validate`, which runs no fixtures at all, and for an engine whose fixture findings are not surfaced yet. A key that is sometimes absent is one a reader learns to treat as optional, and reads absence as zero. The `fail` bucket is reported on a passing run too: it is the evidence that the rendered messages say what their author meant, and a payload carrying that only once the rule is already failing carries it at the one moment it is no longer needed"
     ),
 });
 
-/** Output schema for `taskless verify --json` and `taskless test --json`. */
+/** Output schema for `taskless validate --json` and `taskless test --json`. */
 export const outputSchema = z.object({
   ok: z.boolean(),
   rules: z.array(ruleResultSchema).describe("Per-rule results"),

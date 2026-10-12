@@ -288,7 +288,7 @@ describe("the demo reference payload", () => {
     for (const rule of reference.rules) {
       // Against the resolver the commands use, not against a second copy of
       // the pattern -- a template and a published path that agree with each
-      // other but not with `verify` would pass a weaker test.
+      // other but not with `validate` would pass a weaker test.
       expect(ruleDirectory("", rule.engine, rule.id).split(sep).join("/")).toBe(
         rule.directory
       );
@@ -399,14 +399,14 @@ describe("the demo reference payload", () => {
     // `enforcedBy` decides the order a consumer's eval has to run in, so it
     // travels with each entry rather than being implied by the protocol text.
     for (const constraint of reference.constraints) {
-      expect(["verify", "test"]).toContain(constraint.enforcedBy);
+      expect(["validate", "test"]).toContain(constraint.enforcedBy);
     }
   });
 
   it("states its own protocol, including the verify step", async () => {
     const reference = await readReference();
     expect(reference.protocol.length).toBeGreaterThanOrEqual(5);
-    expect(reference.protocol.join("\n")).toContain("taskless verify");
+    expect(reference.protocol.join("\n")).toContain("taskless validate");
   });
 });
 

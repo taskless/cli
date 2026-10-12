@@ -8,9 +8,9 @@ import { requireCurrentSchema } from "../filesystem/migrate";
 import type { FixtureFinding } from "../rules/fixtures";
 import {
   testOneRule,
-  verifyOneRule,
+  validateOneRule,
   type RuleTestResult,
-  type RuleVerification,
+  type RuleValidation,
 } from "../rules/inspect";
 import {
   PathOutsideRulesError,
@@ -26,13 +26,11 @@ import { markNotice } from "../util/notices";
 /**
  * The findings a result carries, or none.
  *
- * `verify` never runs fixtures, so its results have no `findings` at all, while
+ * `validate` never runs fixtures, so its results have no `findings` at all, while
  * `test`'s always do — a narrowing rather than an optional field, because the
  * two commands share this renderer and only one of them has anything to render.
  */
-function findingsOf(
-  result: RuleVerification | RuleTestResult
-): FixtureFinding[] {
+function findingsOf(result: RuleValidation | RuleTestResult): FixtureFinding[] {
   return "findings" in result ? result.findings : [];
 }
 
@@ -66,27 +64,27 @@ function printFindings(findings: FixtureFinding[]): void {
 }
 
 /**
- * The shared body of `verify` and `test`.
+ * The shared body of `validate` and `test`.
  *
  * Both take a path, resolve it to rules, and report per rule — they differ only
  * in what they run against each. Keeping one implementation means the two can
  * never disagree about what a path means, which is the property that makes
- * `verify <path>` and `test <path>` interchangeable in a recipe.
+ * `validate <path>` and `test <path>` interchangeable in a recipe.
  */
 async function runOverPath(options: {
   cwd: string;
   target: string;
   json: boolean;
   /** What the command is called, for messages. */
-  label: "verify" | "test";
+  label: "validate" | "test";
   run: (
     cwd: string,
     rule: { engine: "sg" | "vale" | "runtime"; ruleId: string }
-  ) => Promise<RuleVerification | RuleTestResult>;
+  ) => Promise<RuleValidation | RuleTestResult>;
 }): Promise<void> {
   const { cwd, target, json, label, run } = options;
 
-  // REFUSES rather than migrates, for both `verify` and `test`.
+  // REFUSES rather than migrates, for both `validate` and `test`.
   //
   // A current layout is still a precondition — a path means nothing against
   // the wrong tree — but establishing it by migrating made two reporting
@@ -148,7 +146,7 @@ async function runOverPath(options: {
 
   if (rules.length === 0) {
     // Not an error: an empty rules tree is the ordinary state of a project that
-    // has not written a rule yet, and failing here would make `verify` unusable
+    // has not written a rule yet, and failing here would make `validate` unusable
     // in CI on a fresh install.
     if (json) {
       console.log(
@@ -165,7 +163,7 @@ async function runOverPath(options: {
     return;
   }
 
-  const results: (RuleVerification | RuleTestResult)[] = [];
+  const results: (RuleValidation | RuleTestResult)[] = [];
   for (const rule of rules) {
     results.push(await run(cwd, rule));
   }
@@ -176,7 +174,7 @@ async function runOverPath(options: {
   // for every project holding a runtime rule. It is excluded from the failures
   // that set the exit code and from the count of rules tested, and gets its
   // own marker below.
-  const isRefused = (result: RuleVerification | RuleTestResult): boolean =>
+  const isRefused = (result: RuleValidation | RuleTestResult): boolean =>
     "refused" in result && result.refused !== undefined;
   const refused = results.filter((result) => isRefused(result));
   const failed = results.filter((result) => !result.ok && !isRefused(result));
@@ -231,7 +229,7 @@ async function runOverPath(options: {
         : ` ${String(refused.length)} rule(s) did not run.`;
     console.log(
       failed.length === 0
-        ? `\n${String(tested)} rule(s) ${label === "verify" ? "verified" : "tested"}.${notRun}`
+        ? `\n${String(tested)} rule(s) ${label === "validate" ? "validated" : "tested"}.${notRun}`
         : `\n${String(failed.length)} of ${String(tested)} rule(s) failed.${notRun}`
     );
   }
@@ -258,9 +256,9 @@ const ruleTargetArguments = {
   },
 } as const;
 
-export const verifyCommand = defineCommand({
+export const validateCommand = defineCommand({
   meta: {
-    name: "verify",
+    name: "validate",
     description: "Check that a rule has the components its engine requires",
   },
   args: ruleTargetArguments,
@@ -272,8 +270,8 @@ export const verifyCommand = defineCommand({
       // author means when they ask "is everything here valid".
       target: args.path ?? ".taskless/rules",
       json: args.json,
-      label: "verify",
-      run: verifyOneRule,
+      label: "validate",
+      run: validateOneRule,
     });
   },
 });
@@ -281,7 +279,7 @@ export const verifyCommand = defineCommand({
 export const testCommand = defineCommand({
   meta: {
     name: "test",
-    description: "Run a rule's tests, after verifying the rule itself",
+    description: "Run a rule's tests, after validating the rule itself",
   },
   args: {
     ...ruleTargetArguments,

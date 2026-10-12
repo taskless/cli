@@ -557,7 +557,7 @@ withSg("ast-grep vendor contract", () => {
       // `--min-severity` (ast-grep/ast-grep#2917) compares severities as an
       // ordered type, and `off` has to sort lowest for "off means no minimum"
       // to fall out of that comparison. Nothing of ours reads the order —
-      // `verify` validates against the schema's `const` values, not their
+      // `validate` validates against the schema's `const` values, not their
       // position — so the exact text is pinned to make the next reorder
       // visible, not because anything depends on it.
       const cwd = project({
@@ -771,7 +771,7 @@ withSg("ast-grep vendor contract", () => {
    *
    * Nothing of ours catches either one first: the vendored
    * `src/generated/ast-grep-rule-schema.json` types `$defs.Language` as a bare
-   * string with no enum, and `verify` never reads the field. So the binary's
+   * string with no enum, and `validate` never reads the field. So the binary's
    * response IS the contract, and a recipe telling an author what to expect is
    * quoting it. These live beside the recipe that makes the claim, so the claim
    * and its pin land in the same change.
@@ -825,9 +825,9 @@ withSg("ast-grep vendor contract", () => {
     });
 
     it("accepts every canonical name lowercased", () => {
-      // `verify` compares lowercased (see `resolveAstGrepLanguage`), which is
+      // `validate` compares lowercased (see `resolveAstGrepLanguage`), which is
       // only safe because the binary does too. If a bump ever made one name
-      // case-sensitive, `verify` would start passing a rule ast-grep refuses.
+      // case-sensitive, `validate` would start passing a rule ast-grep refuses.
       for (const language of AST_GREP_LANGUAGES) {
         expect(
           languageRecognized(language.toLowerCase()),
@@ -850,7 +850,7 @@ withSg("ast-grep vendor contract", () => {
 
     it("rejects the near-misses that are not aliases", () => {
       // The direction the table cannot self-check: a bump that ADDS an alias
-      // leaves `verify` failing a rule that now works. These are the spellings
+      // leaves `validate` failing a rule that now works. These are the spellings
       // an author is most likely to reach for — a header extension, a module
       // extension, a shell name, a Terraform name, a script suffix — and all
       // five were measured as rejected at 0.41.0.
@@ -1454,7 +1454,7 @@ withSg("ast-grep vendor contract", () => {
     // DEPRECATED AT 0.45.0. `AST_GREP_BINARY.binaryNames` puts `ast-grep`
     // first, but the resolver reverses that list at its link-based tiers, so
     // on a host where only `sg` got linked every run carries this banner.
-    // Both `runAstGrepScan` and `verify` decode ast-grep's stderr into
+    // Both `runAstGrepScan` and `validate` decode ast-grep's stderr into
     // user-facing text, which is what `stripSgDeprecationBanner` exists for.
     const alias =
       binary === undefined ? undefined : join(dirname(binary), "sg");
@@ -1546,7 +1546,7 @@ withSg("ast-grep vendor contract", () => {
  * enumerates this. Not derived from anything we generate: the vendored
  * `src/generated/ast-grep-rule-schema.json` types `$defs.Language` as a bare
  * string with no enum, so our own generated artifacts cannot answer the question.
- * `verify` does validate a rule's `language` — against `AST_GREP_LANGUAGES` and
+ * `validate` does validate a rule's `language` — against `AST_GREP_LANGUAGES` and
  * `AST_GREP_LANGUAGE_ALIASES`, which is exactly why both are pinned here.
  */
 function reportedLanguages(): string[] {

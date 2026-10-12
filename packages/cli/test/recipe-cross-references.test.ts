@@ -392,7 +392,7 @@ describe("recipes state engine reach from the pinned versions", () => {
   it("names ast-grep's languages in rendered create-sg-rule.md", async () => {
     // create-sg-rule.md is where a `language:` field is actually written, and
     // it is the one field nothing local validates — the vendored schema types
-    // it as a bare string and `verify` never reads it. So the spellings have to
+    // it as a bare string and `validate` never reads it. So the spellings have to
     // reach the recipe, or the first thing with an opinion is the binary.
     const recipe = await rendered("create-sg-rule.md");
     expect(recipe).toContain(astGrepLanguageList());

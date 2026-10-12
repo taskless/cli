@@ -30,13 +30,13 @@ the worse failure.
 
 Vale 3.23.0 documents this operand and it never fired, on any fixture probed (.md).
 
-**Consequence.** It is omitted from the vocabulary, so `verify` rejects it. A rule written from the documentation would otherwise load, run, and match nothing, with no error reported anywhere.
+**Consequence.** It is omitted from the vocabulary, so `validate` rejects it. A rule written from the documentation would otherwise load, run, and match nothing, with no error reported anywhere.
 
 ### `scope: meta.class.title`
 
 Vale 3.23.0 documents this operand and it never fired, on any fixture probed (.md).
 
-**Consequence.** It is omitted from the vocabulary, so `verify` rejects it. A rule written from the documentation would otherwise load, run, and match nothing, with no error reported anywhere.
+**Consequence.** It is omitted from the vocabulary, so `validate` rejects it. A rule written from the documentation would otherwise load, run, and match nothing, with no error reported anywhere.
 
 ### `scope: frontmatter`
 

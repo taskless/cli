@@ -108,7 +108,7 @@ export const INTERNAL_TOPICS = [
   "rule-feedback",
   "rule-meta",
   "update",
-  "verify-rule",
+  "validate-rule",
 ] as const;
 
 /** A topic name the package exports. Unknown names fail to type-check. */

@@ -90,7 +90,7 @@ withVale("the example project", () => {
   });
 
   it("verifies every rule in the example", async () => {
-    const result = await runCli(["verify", "-d", cwd, "--json"]);
+    const result = await runCli(["validate", "-d", cwd, "--json"]);
     expect(result.exitCode).toBe(0);
     const report = parseJson<RuleReport>(result.stdout);
     expect(report.rules.map((rule) => `${rule.engine}/${rule.ruleId}`)).toEqual(
@@ -108,7 +108,7 @@ withVale("the example project", () => {
   // use. Worth asserting separately from the no-argument form.
   it("accepts an engine directory as a path", async () => {
     const result = await runCli([
-      "verify",
+      "validate",
       ".taskless/rules/vale",
       "-d",
       cwd,
@@ -121,7 +121,7 @@ withVale("the example project", () => {
   // The two assembled configs are build output. Finding either committed here
   // would mean the example is teaching people to check in generated files.
   it("commits no assembled config", async () => {
-    const result = await runCli(["verify", "-d", cwd, "--json"]);
+    const result = await runCli(["validate", "-d", cwd, "--json"]);
     expect(result.exitCode).toBe(0);
 
     // The pathspec is relative to `cwd`, which is already `<repo>/example` —

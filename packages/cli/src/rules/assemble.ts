@@ -230,7 +230,7 @@ export async function assembleValeConfig(
     } catch {
       // A rule with no config of its own declares no scope, so it is enabled
       // nowhere. That is the author's omission to fix, not ours to guess at —
-      // `verify` reports it.
+      // `validate` reports it.
       continue;
     }
     const verdict = validateValeRuleConfig(ruleId, source);
@@ -280,7 +280,7 @@ export async function assembleValeConfig(
  * this check redundant: `runMigrations` short-circuits once the manifest reads
  * version 5, so a project a nightly already stamped never re-runs the amended
  * migration, and a hand-made `mkdir .taskless/rules/sg/<id>/` reaches the same
- * state on any version. Nothing becomes a silent pass — `verify` still reports
+ * state on any version. Nothing becomes a silent pass — `validate` still reports
  * "No test file found" and `test` still reports "Skipped: no test file found",
  * both of which read the rule directory rather than this config.
  */

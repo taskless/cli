@@ -9,9 +9,9 @@ and follow its decision rather than adapting this recipe.
 ## Goal
 Produce a verified ast-grep rule and its test file, locally, without
 contacting the Taskless service. You derive the rule yourself, write it
-in the canonical on-disk shape, and validate it with `verify` and
+in the canonical on-disk shape, and check it with `validate` and
 `test` in a feedback loop. The files you produce match exactly what the
-service writes, so `check`, `improve-rule`, `verify`, and `test` treat
+service writes, so `check`, `improve-rule`, `validate`, and `test` treat
 them identically.
 
 ## Preconditions
@@ -76,7 +76,7 @@ whole rule.
 
    **`language` is ast-grep's vocabulary.** The vendored rule schema
    types the field as a bare string with no enum, so the schema layer
-   accepts anything. `verify` checks it separately: an off-list spelling
+   accepts anything. `validate` checks it separately: an off-list spelling
    is an error naming the accepted list, and a spelling ast-grep resolves
    but does not itself use (`typescript` for `TypeScript`) is a notice.
    Get it right anyway rather than leaning on that check. An unrecognized
@@ -101,9 +101,9 @@ whole rule.
 
 5. **Check the rule against Quirks.** Read the **Quirks** section below
    against what you just wrote, before writing any tests. Most entries
-   there get past `verify` and then either fail the whole scan or match
+   there get past `validate` and then either fail the whole scan or match
    less than they should, and a test file written from the same
-   assumption passes anyway. The table says which ones `verify` does
+   assumption passes anyway. The table says which ones `validate` does
    catch. Look again at:
    - a `$$$` next to a comma (the separator trap),
    - any `kind:` you read off a `--debug-query=cst` dump,
@@ -132,16 +132,16 @@ whole rule.
    fixtures all have two. Where the rule keys on a callee, put an
    awaited generic call among the `invalid:` cases.
 
-7. **Run the verify feedback loop.** Both commands take the rule's
+7. **Run the feedback loop.** Both commands take the rule's
    directory as their argument:
    ```
-   %(TASKLESS_CLI)s verify .taskless/rules/sg/<id> --json
+   %(TASKLESS_CLI)s validate .taskless/rules/sg/<id> --json
    %(TASKLESS_CLI)s test   .taskless/rules/sg/<id> --json
    ```
-   `verify` asks whether the rule is well-formed: the YAML matches the
+   `validate` asks whether the rule is well-formed: the YAML matches the
    ast-grep schema and every Taskless-required field is present. It
    needs no test file, so run it the moment the rule exists. `test` runs
-   the cases, after running `verify` and stopping if that fails, so a
+   the cases, after running `validate` and stopping if that fails, so a
    malformed rule reports the malformation rather than a test complaint.
 
    Both answer in the same shape:
@@ -158,7 +158,7 @@ whole rule.
 | a Taskless-required field is missing | add `id`/`language`/`severity`/`message`/`rule` |
 | a case didn't behave as expected     | fix the rule pattern OR the test case           |
 
-   A `regex` without an accompanying `kind` fails verification, the two
+   A `regex` without an accompanying `kind` fails validation, the two
    always travel together.
 
    Pass a directory above a rule and every rule beneath it is checked,
@@ -189,15 +189,15 @@ fail in one of two ways:
 - **Config error.** The scan exits 8 and names the problem. Loud, but
   it aborts config parsing, so every other `sg` rule in the project
   goes unreported until it is fixed.
-- **Silent.** The rule parses, verifies, runs, and exits 0. What it
+- **Silent.** The rule parses, validates, runs, and exits 0. What it
   misses goes unreported, which reads exactly like a clean codebase.
 
 When a rule matches less than it should, check this list before
 doubting the rest of the rule. Each entry was measured against the
 ast-grep this CLI ships (v%(AST_GREP_VERSION)s). The last column says
-whether `verify` reports it; where it says no, only you will notice.
+whether `validate` reports it; where it says no, only you will notice.
 
-| quirk                                          | symptom                 | `verify` reports it         |
+| quirk                                          | symptom                 | `validate` reports it         |
 |------------------------------------------------|-------------------------|-----------------------------|
 | `language:` copied from `detect --json`        | config error, or notice | yes                         |
 | `TypeScript` declared over `.tsx` files        | silent                  | only if `files:` names .tsx |
@@ -212,14 +212,14 @@ whether `verify` reports it; where it says no, only you will notice.
 
 `detect --json` reports the *repository's* languages, in a different
 vocabulary. It says `C++` where ast-grep's list says `Cpp`. That one
-happens to resolve, and `verify` reports it as a notice, but a
+happens to resolve, and `validate` reports it as a notice, but a
 spelling ast-grep does not recognize at all is a config error.
 Workaround: copy the spelling from the list in step 4.
 
 ### `Tsx` and `TypeScript` are two parsers, not aliases
 
 A rule that declares `TypeScript` does not read `.tsx` files at all,
-so over a `.tsx` tree it reports nothing and exits 0. `verify` catches
+so over a `.tsx` tree it reports nothing and exits 0. `validate` catches
 it only when the rule's `files:` globs name `.tsx`; with no `files:`
 it cannot tell. Workaround:
 declare `Tsx` for `.tsx` files. A check that must cover both
@@ -430,13 +430,13 @@ metavariable, it always finds it.
 - Do NOT write to `.taskless/rule-metadata/`: no rule has a metadata
   sidecar, service-generated ones included, because the CLI never
   writes that directory. Locally authored rules iterate via file edits.
-- The verify loop is the quality gate. A clean failure is a legitimate
+- The feedback loop is the quality gate. A clean failure is a legitimate
   reason to escalate, but only with the user's confirmation (step 9).
 
 ## See Also
 
 - `%(TASKLESS_CLI)s agent route`: re-decide the destination
-- `%(TASKLESS_CLI)s agent verify-rule`: the `verify` and `test` commands step 7 calls
+- `%(TASKLESS_CLI)s agent validate-rule`: the `validate` and `test` commands step 7 calls
 - `%(TASKLESS_CLI)s agent improve-rule`: iterate on a rule that already exists
 - `%(TASKLESS_CLI)s agent create-remote-rule`: generate via the service (login)
 - `%(TASKLESS_CLI)s agent check`: validate the new rule against the codebase

@@ -15,7 +15,7 @@
  * - `src/generated/ast-grep-rule-schema.json` types `$defs.Language` as a bare
  *   string with no enum — its only hint is an `example` reading `"typescript"`,
  *   which is not even the canonical spelling — so the vendored schema cannot
- *   answer the question. `verify` answers it from the constants below instead
+ *   answer the question. `validate` answers it from the constants below instead
  *   (see `validateLanguage` in `verify.ts`).
  * - `detect --json` reports the *repository's* languages in a different
  *   vocabulary — `C++` where ast-grep says `Cpp` — and says nothing about what
@@ -55,7 +55,7 @@ export const AST_GREP_VERSION = "0.45.3";
  * name ast-grep does not know at all (`C#`), which aborts config parsing so
  * every rule goes unreported, and a valid name for the wrong parser
  * (`TypeScript` over `.tsx`), which reports nothing and reads as a clean
- * codebase. `verify` catches both; see `verify.ts`.
+ * codebase. `validate` catches both; see `verify.ts`.
  *
  * Pinned by set-equality against the binary in
  * `test/ast-grep-vendor-contract.test.ts`, so a version bump that adds or drops

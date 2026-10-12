@@ -3,7 +3,7 @@
 ## Goal
 Iterate on an existing ast-grep rule **locally** without contacting
 the Taskless API. You (the agent) edit the rule YAML directly, then
-validate with `verify` and `test` in a feedback loop.
+check it with `validate` and `test` in a feedback loop.
 
 ## Preconditions
 - `.taskless/` directory exists and contains the target rule.
@@ -40,7 +40,7 @@ validate with `verify` and `test` in a feedback loop.
    `valid:` list and the new false-negative examples to the
    `invalid:` list in `.taskless/rules/sg/<id>/.tests/<id>-*.yml`.
 
-6. **Run the verify feedback loop.** Run:
+6. **Run the feedback loop.** Run:
    ```
    %(TASKLESS_CLI)s test .taskless/rules/sg/<id> --json
    ```
@@ -74,7 +74,7 @@ validate with `verify` and `test` in a feedback loop.
 
 ## Errors
 
-The verify primitive returns structured errors per layer:
+The validate primitive returns structured errors per layer:
 
 | layer          | what failure means                 | fix                                   |
 |----------------|------------------------------------|---------------------------------------|

@@ -128,7 +128,7 @@ describe("recording a rules reconciliation", () => {
       expect(envelope.code).not.toBe("INTERNAL_ERROR");
       expect(envelope.message).toContain("no rules to reconcile");
       // Names the command that creates `.taskless/`. "Run the CLI once" did
-      // not: `check`, `verify` and `test` refuse a missing scaffold.
+      // not: `check`, `validate` and `test` refuse a missing scaffold.
       expect(envelope.message).toMatch(/ init` to set it up/);
     } finally {
       await rm(empty, { recursive: true, force: true });

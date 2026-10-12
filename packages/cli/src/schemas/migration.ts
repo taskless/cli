@@ -7,7 +7,7 @@ import { z } from "zod";
  * **Absent when nothing ran.** A caller distinguishes "the working tree was
  * rewritten underneath me" from "nothing happened" by the presence of the
  * field, never by reading empty arrays out of it. Migration remains automatic
- * because `check` and `verify` need a known layout to work at all; this is
+ * because `check` and `validate` need a known layout to work at all; this is
  * what makes it observable to something other than a person watching stderr.
  */
 export const migratedSchema = z.object({

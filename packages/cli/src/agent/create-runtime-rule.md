@@ -48,7 +48,7 @@ right for `sg` for one reason only: that file is handed to `sg test`
 verbatim. Nothing hands a runtime fixture to ast-grep, so borrowing the
 word here would make it mean two things.
 
-`verify` fails a runtime rule with no capture rule in `captures/`,
+`validate` fails a runtime rule with no capture rule in `captures/`,
 because `check.ts` would then never be invoked.
 
 The capture rules do the cheap work, if nothing matches, `check.ts` is

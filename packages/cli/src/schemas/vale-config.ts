@@ -3,7 +3,7 @@
  *
  * The counterpart of `vale-rule.ts` for the other file a Vale rule ships. The
  * style YAML has been validated since the engine landed; the config was carried
- * into the assembled run config as verbatim text, and `verify` asked two
+ * into the assembled run config as verbatim text, and `validate` asked two
  * questions of it by substring. Nothing checked that a matcher carried its
  * breadcrumb, that a value was `YES` or `NO`, that an assignment named this
  * rule and not a neighbour, or that the run-level keys stayed out. Each of
@@ -46,7 +46,7 @@
  *
  * A rejection is a config no author means. An advisory has a legitimate
  * reading, which is what separates the two lists. Every rejection is paired
- * with a `vale-config-*` entry in `RULE_CONSTRAINTS`, so `verify --json` can
+ * with a `vale-config-*` entry in `RULE_CONSTRAINTS`, so `validate --json` can
  * attribute it the way it already does for ast-grep.
  *
  * One measured limit, in the too-strict direction: Vale strips an inline

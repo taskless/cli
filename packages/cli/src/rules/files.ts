@@ -68,7 +68,7 @@ export async function writeServedRule(
  * A WARNING, never a refusal, and that is the whole design. `rule restore`
  * writes through here, so refusing would brick recovery for both colliding
  * rules — strictly worse than the silence it replaces. The failure belongs in
- * `verify` (and in `check`, which refuses a logged-in run over it), which is
+ * `validate` (and in `check`, which refuses a logged-in run over it), which is
  * what the message points at.
  *
  * After the write, like the fixtures warning above it: this is an observation
@@ -134,7 +134,7 @@ export type DeleteRuleOutcome =
  * hold the same id, and this used to take the first hit in {@link ENGINES}
  * order, delete it, and return `true`: the caller asked to delete a rule, a
  * different rule than they may have meant was deleted, and the return value
- * said it went fine (#264). The path-addressed commands, `verify` and `test`,
+ * said it went fine (#264). The path-addressed commands, `validate` and `test`,
  * removed this error case by not having an id to be ambiguous; `delete` still
  * takes an id, so it has to report the ambiguity instead of guessing at it.
  */

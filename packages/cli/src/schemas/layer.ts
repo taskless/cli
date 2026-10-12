@@ -1,7 +1,7 @@
 import type { z } from "zod";
 
 /**
- * The verdict of a schema layer, in the shape `verify` reports.
+ * The verdict of a schema layer, in the shape `validate` reports.
  *
  * Structurally identical to `LayerResult` in `rules/verify.ts`, and deliberately
  * declared here rather than imported from there: `rules/verify.ts` already
@@ -14,7 +14,7 @@ export interface SchemaLayerResult {
 }
 
 /**
- * How one issue becomes one line of `verify` output.
+ * How one issue becomes one line of `validate` output.
  *
  * The two engines want different things here, which is the whole reason this is
  * a parameter. ast-grep validates against an upstream JSON Schema whose messages
@@ -25,7 +25,7 @@ export interface SchemaLayerResult {
 export type IssueFormatter = (issue: z.core.$ZodIssue) => string;
 
 /**
- * A zod parse result, as one layer of `verify`.
+ * A zod parse result, as one layer of `validate`.
  *
  * Both engines' schema layers report through this, so a rule that fails
  * validation fails the same way whichever engine wrote it — which is the

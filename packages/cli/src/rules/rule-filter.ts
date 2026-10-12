@@ -39,7 +39,7 @@ export interface RuleSelection {
  * IS the rule id here (`rules/constraints.ts`, `rules/verify.ts` both state and
  * enforce it), so this is the same identity `test` and `rules delete` address a
  * rule by, and a rule whose file disagrees with its directory is already a
- * `verify` failure rather than something for this to guess at.
+ * `validate` failure rather than something for this to guess at.
  */
 export async function resolveRuleSelection(
   cwd: string,

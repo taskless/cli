@@ -770,9 +770,9 @@ describe("getSchemaPayload", () => {
  * refused rule "leaking" into `failed` is invisible unless something else in
  * the run is a genuine, non-refused failure to compare it against.
  *
- * These run `taskless test` (not `verify`) because `refused` is only ever set
+ * These run `taskless test` (not `validate`) because `refused` is only ever set
  * by `testOneRule` on a runtime rule denied `--dangerously-run-scripts` — see
- * `packages/cli/src/rules/inspect.ts`. `verify` never produces a refusal, so
+ * `packages/cli/src/rules/inspect.ts`. `validate` never produces a refusal, so
  * it cannot exercise this split at all.
  */
 const verifyMixedRunBinPath = builtCli();

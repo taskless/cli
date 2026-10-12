@@ -295,7 +295,7 @@ describe("check over a project with both engines", () => {
     // indistinguishable from a clean run.
     //
     // The config schema now turns that file away before Vale ever sees it, at
-    // `verify` (a rejection under `vale-config-no-root-keys`) and at `check`
+    // `validate` (a rejection under `vale-config-no-root-keys`) and at `check`
     // (the Vale engine's failure, which reaches the exit code). The run-time
     // W101 notice is still pinned, in `vale-run.test.ts`, for the diagnostics
     // the schema cannot foresee; this is the case it can.
@@ -303,13 +303,13 @@ describe("check over a project with both engines", () => {
       const rule = join(project, ".taskless", "rules", "vale", "no-simply");
       // The mistake: enabled, but above the `[…]` line, so it belongs to no
       // matcher. A matcher exists and the check is named, so the substring
-      // checks `verify` used to run passed this; the schema does not.
+      // checks `validate` used to run passed this; the schema does not.
       await writeFile(
         join(rule, ".vale.ini"),
         "no-simply.no-simply = YES\n[*.md]\ntskl) rule = no-simply\n"
       );
 
-      const verified = await runCli(["verify", "-d", project, "--json"]);
+      const verified = await runCli(["validate", "-d", project, "--json"]);
       expect(verified.exitCode).not.toBe(0);
       const report = JSON.parse(verified.stdout) as {
         rules: { ruleId: string; violations: { constraintId: string }[] }[];

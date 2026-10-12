@@ -33,10 +33,10 @@ export const schemaOutputSchema = z.object({
 //
 // The shape `verifyRule()` (ast-grep) and `verifyValeRule()` (Vale) return
 // internally: schema/requirements/tests kept as separate layers rather than
-// flattened. `verify`/`test`'s own implementation is the only caller of
+// flattened. `validate`/`test`'s own implementation is the only caller of
 // either function, and it flattens this into the single `errors`/
 // `violations` envelope `verifyTestOutputSchema` describes before printing
-// anything — so this layered shape is not what `taskless verify --json` or
+// anything — so this layered shape is not what `taskless validate --json` or
 // `taskless test --json` put on stdout today. It once was: `taskless rule
 // verify <id> --json` printed exactly this (`engine: "sg"` plus `verifyRule`'s
 // result), until rule addressing moved from id to path — an id can name a

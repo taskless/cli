@@ -185,7 +185,7 @@ describe("--anonymous flag (per-command behavior matrix)", () => {
  *
  * Remote generation needs a GitHub `origin`; local authoring does not, and
  * never did. `rule create --anonymous` returns before identity is resolved,
- * and `verify` and `test` never resolve it at all. That is easy to regress by
+ * and `validate` and `test` never resolve it at all. That is easy to regress by
  * hoisting an identity call, and the regression would be invisible to anyone
  * developing inside a GitHub checkout, so it is pinned here across all three
  * no-remote populations.
@@ -267,8 +267,8 @@ describe("local authoring needs no GitHub remote", () => {
         );
       });
 
-      it("verify runs to completion", async () => {
-        const result = await runCli(["verify", "-d", cwd], withToken);
+      it("validate runs to completion", async () => {
+        const result = await runCli(["validate", "-d", cwd], withToken);
         expect(result.stdout + result.stderr).not.toMatch(
           /NOT_A_GIT_REPOSITORY|NO_ORIGIN_REMOTE|UNSUPPORTED_REMOTE_HOST|NO_GITHUB_REMOTE/
         );

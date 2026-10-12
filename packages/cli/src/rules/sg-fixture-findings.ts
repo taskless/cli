@@ -288,7 +288,7 @@ export async function collectSgFixtureFindings(
     try {
       document = parseDocument(source);
     } catch {
-      // A malformed test file is `verify`'s finding to report, not this one's.
+      // A malformed test file is `validate`'s finding to report, not this one's.
       continue;
     }
 

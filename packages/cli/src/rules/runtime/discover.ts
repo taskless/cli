@@ -149,13 +149,13 @@ function asMatchMode(value: unknown): MatchMode | undefined {
  * What a parsed capture `*.yml` is: loadable, or refused with a reason.
  *
  * ONE FUNCTION, TWO CALLERS, ON PURPOSE. Discovery uses it to refuse a capture
- * it cannot run; `verify` uses it to tell the author why. Those answers have to
- * agree — a capture silently absent from a run while `verify` calls the rule
+ * it cannot run; `validate` uses it to tell the author why. Those answers have to
+ * agree — a capture silently absent from a run while `validate` calls the rule
  * valid is precisely the confusion this engine's design exists to prevent — and
  * the cheapest way to guarantee they agree is for there to be one answer.
  *
  * The reason is a sentence rather than a code because its only consumer is a
- * person reading `verify` output. Nothing branches on it.
+ * person reading `validate` output. Nothing branches on it.
  */
 export type CaptureAssessment =
   | { ok: true; rule: CaptureRule & { id: string }; match: MatchMode }
@@ -226,7 +226,7 @@ export function assessCaptureRule(value: unknown): CaptureAssessment {
 export interface AssessedCapture {
   /** Absolute path to the capture file. */
   file: string;
-  /** Basename, as `verify` reports it. */
+  /** Basename, as `validate` reports it. */
   fileName: string;
   assessment: CaptureAssessment;
 }
@@ -235,7 +235,7 @@ export interface AssessedCapture {
  * Enumerate a rule's `captures/` and assess every file in it.
  *
  * ONE ENUMERATION, TWO CALLERS, for the same reason there is one assessor:
- * discovery and `verify` must not disagree about which files are even
+ * discovery and `validate` must not disagree about which files are even
  * candidates. Sharing only the classifier left this loop duplicated, so a
  * change to what counts as a capture -- a new extension, an exclusion, the sort
  * order -- had two call sites to keep in step, and they could drift even though
@@ -297,7 +297,7 @@ async function loadCaptureRules(
   for (const { file, fileName, assessment } of await assessCaptureDirectory(
     directory
   )) {
-    // Refused, never coerced or guessed at. `verify` names the file and the
+    // Refused, never coerced or guessed at. `validate` names the file and the
     // reason (see `inspect.ts`, which walks the same assessments), so a capture
     // disappearing from the run is explained rather than left to look like a
     // rule that found nothing.
@@ -375,7 +375,7 @@ export async function discoverRuntimeRulesIn(
 
     // Fails closed, and refuses the WHOLE rule rather than the stray file:
     // the danger is what `check.ts` can reach, so removing the extra module
-    // from the listing would change nothing about what executes. `verify`
+    // from the listing would change nothing about what executes. `validate`
     // names the files (see `inspect.ts`, which calls the same helper).
     const stray = await strayModules(directory);
     if (stray.length > 0) continue;

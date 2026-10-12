@@ -59,7 +59,7 @@ function sortedMigrations(
  * What one migration run changed, in a form a caller can print or hand to a
  * machine consumer.
  *
- * The migration is a precondition of `check` and `verify` rather than a side
+ * The migration is a precondition of `check` and `validate` rather than a side
  * effect, so it will keep happening automatically. What this makes possible is
  * for the run that triggered it to *say so*: without a report, a caller reading
  * `{"success":true}` has no way to learn that the working tree was rewritten
@@ -200,7 +200,7 @@ export async function pendingMigration(
  * Refuse to read a project whose scaffold is behind this CLI, and say what to
  * run.
  *
- * `check` and `verify` used to migrate as a precondition, which made two
+ * `check` and `validate` used to migrate as a precondition, which made two
  * read-only commands rewrite the repository: `0005` moves and deletes tracked
  * files, and it did so with no output on the human path unless someone was
  * reading stderr closely. The change landed in whatever commit came next, and

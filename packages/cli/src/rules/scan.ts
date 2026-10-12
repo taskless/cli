@@ -44,7 +44,7 @@ export function buildPath(): string {
  * `binaryNames` lists `ast-grep` first, so the normal path never sees this.
  * The link-based resolver tiers reverse that list, so on a host where only
  * `sg` got linked every ast-grep invocation carries three extra lines that
- * `runAstGrepScan`, `verify` and the runtime `narrow` would otherwise surface
+ * `runAstGrepScan`, `validate` and the runtime `narrow` would otherwise surface
  * verbatim, as if an engine had reported them. Every site that turns ast-grep
  * stderr into user-facing text must strip it; keep this list in step with
  * them. Measured at 0.45.2, the banner is exactly:

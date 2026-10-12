@@ -1,7 +1,7 @@
 import type { EngineName } from "./layout";
 
 /**
- * What `verify` enforces beyond the engine's own schema.
+ * What `validate` enforces beyond the engine's own schema.
  *
  * ## Why this exists
  *
@@ -16,11 +16,11 @@ import type { EngineName } from "./layout";
  *
  * A hand-maintained list of what code does goes stale, and this is not
  * hypothetical: `create-sg-rule.md` told agents for months that
- * "`verify` never reads `language`", which stopped being true when
+ * "`validate` never reads `language`", which stopped being true when
  * `validateLanguage` landed. Nothing failed, because prose has no test.
  *
  * `test/constraints.test.ts` builds a rule that violates each entry and
- * asserts `verify` rejects it, keyed on `id`. An entry describing a check that
+ * asserts `validate` rejects it, keyed on `id`. An entry describing a check that
  * no longer fires fails the suite; a check with no entry is invisible to that
  * test and is the gap this list is trying to close, so add one when you add a
  * check.
@@ -32,18 +32,18 @@ export interface RuleConstraint {
   /**
    * Which command refuses the rule.
    *
-   * Load-bearing for a consumer's eval ORDER, not a detail. A `verify`
+   * Load-bearing for a consumer's eval ORDER, not a detail. A `validate`
    * constraint is decided from the files alone and can be checked before
    * anything runs; a `test` constraint needs the fixtures to execute. Running
-   * the cross-comparison before `verify` passes measures the wrong thing, and
-   * treating a `test`-time refusal as a `verify` gap sends someone to the wrong
+   * the cross-comparison before `validate` passes measures the wrong thing, and
+   * treating a `test`-time refusal as a `validate` gap sends someone to the wrong
    * layer.
    *
-   * The split is not always where it looks. `verify` requires that a test FILE
+   * The split is not always where it looks. `validate` requires that a test FILE
    * exists, by filename; whether that file is attributed to this rule is
    * decided later, from the `id:` inside it.
    */
-  enforcedBy: "verify" | "test";
+  enforcedBy: "validate" | "test";
   /** One line, for a report that lists several. */
   summary: string;
   /** Why it exists, so a reader can tell a house rule from a bug. */
@@ -72,7 +72,7 @@ export const RULE_CONSTRAINTS = [
   {
     id: "sg-id-matches-directory",
     engine: "sg",
-    enforcedBy: "verify",
+    enforcedBy: "validate",
     summary: "A rule's `id:` must equal the directory it lives in.",
     rationale:
       "The directory name is the rule id: it is what `check` and `test` address, and what a person types to delete a rule. ast-grep registers the rule under the id in its body. With the two apart, `test` cannot find the rule at all, and `check` does run it but reports findings under a name no directory has, so nobody can locate what produced them.",
@@ -80,7 +80,7 @@ export const RULE_CONSTRAINTS = [
   {
     id: "sg-regex-needs-kind",
     engine: "sg",
-    enforcedBy: "verify",
+    enforcedBy: "validate",
     summary:
       "A `regex` needs a sibling `kind`, in `rule`, `constraints` and `utils`.",
     rationale:
@@ -89,7 +89,7 @@ export const RULE_CONSTRAINTS = [
   {
     id: "sg-language-accepted",
     engine: "sg",
-    enforcedBy: "verify",
+    enforcedBy: "validate",
     summary:
       "`language:` must be a spelling ast-grep itself uses; a resolvable but non-canonical one is a notice.",
     rationale:
@@ -98,7 +98,7 @@ export const RULE_CONSTRAINTS = [
   {
     id: "sg-files-globs-parse",
     engine: "sg",
-    enforcedBy: "verify",
+    enforcedBy: "validate",
     summary:
       "`files:` globs must not name `.tsx` under TypeScript, or `.ts` under Tsx.",
     rationale:
@@ -107,7 +107,7 @@ export const RULE_CONSTRAINTS = [
   {
     id: "sg-required-fields",
     engine: "sg",
-    enforcedBy: "verify",
+    enforcedBy: "validate",
     summary: "`id`, `language`, `severity`, `message` and `rule` are required.",
     rationale:
       "ast-grep needs fewer of these than we do. The extras are what make a finding actionable and a rule addressable once it is on disk.",
@@ -115,10 +115,10 @@ export const RULE_CONSTRAINTS = [
   {
     id: "sg-test-file-required",
     engine: "sg",
-    enforcedBy: "verify",
+    enforcedBy: "validate",
     summary: "A rule must ship at least one test file under `.tests/`.",
     rationale:
-      "A rule with no fixtures has shown neither that it fires nor that it stays quiet. `verify` requires the file; `test` requires the cases inside it to cover both.",
+      "A rule with no fixtures has shown neither that it fires nor that it stays quiet. `validate` requires the file; `test` requires the cases inside it to cover both.",
   },
   {
     id: "sg-fixture-id-matches-rule",
@@ -126,7 +126,7 @@ export const RULE_CONSTRAINTS = [
     enforcedBy: "test",
     summary: "A test file's own `id:` must equal the rule id.",
     rationale:
-      "Fixtures are attributed by the id inside the file, not by its name. A fixture carrying another rule's id is silently not counted, so a rule that ships one reads as a rule that shipped none. `verify` passes, because the FILE is there; `test` is where it bites.",
+      "Fixtures are attributed by the id inside the file, not by its name. A fixture carrying another rule's id is silently not counted, so a rule that ships one reads as a rule that shipped none. `validate` passes, because the FILE is there; `test` is where it bites.",
   },
   // --- Vale: the rule's own `.vale.ini`, checked as a parsed structure -------
   //
@@ -135,16 +135,16 @@ export const RULE_CONSTRAINTS = [
   // these configs and does something other than what the author wrote, with a
   // zero exit and an empty report: the rule verifies, runs, and finds nothing.
   //
-  // `enforcedBy` reads `verify` for all of them even though `check` runs the
+  // `enforcedBy` reads `validate` for all of them even though `check` runs the
   // same schema and refuses the Vale run on a rejection. The field answers a
   // consumer's ordering question — can this be decided from the files alone,
-  // before anything executes? — and for every entry here it can. `verify` is
+  // before anything executes? — and for every entry here it can. `validate` is
   // where the author is told which line and which constraint; `check` only
-  // refuses, and points back at `verify`.
+  // refuses, and points back at `validate`.
   {
     id: "vale-config-no-root-keys",
     engine: "vale",
-    enforcedBy: "verify",
+    enforcedBy: "validate",
     summary:
       "A rule's `.vale.ini` assigns nothing above its first matcher; `StylesPath` and `MinAlertLevel` belong to the run.",
     rationale:
@@ -153,7 +153,7 @@ export const RULE_CONSTRAINTS = [
   {
     id: "vale-config-breadcrumb-required",
     engine: "vale",
-    enforcedBy: "verify",
+    enforcedBy: "validate",
     summary:
       "Every matcher carries a `tskl) rule = <id>` breadcrumb naming the rule whose config it is in.",
     rationale:
@@ -162,7 +162,7 @@ export const RULE_CONSTRAINTS = [
   {
     id: "vale-config-own-key-only",
     engine: "vale",
-    enforcedBy: "verify",
+    enforcedBy: "validate",
     summary:
       "Inside a matcher, the only assignments are the breadcrumb and `<id>.<id>`.",
     rationale:
@@ -171,7 +171,7 @@ export const RULE_CONSTRAINTS = [
   {
     id: "vale-config-value-yes-no",
     engine: "vale",
-    enforcedBy: "verify",
+    enforcedBy: "validate",
     summary: "`<id>.<id>` is assigned exactly `YES` or `NO`.",
     rationale:
       "Vale also accepts a level name here (`warning`, `error`) to override the style's own, which would make the rule's severity depend on its config rather than its style file, and it reads anything else as `NO` without saying so. A rule's scope is a yes-or-no question, and its level is answered once, in the style.",
@@ -179,7 +179,7 @@ export const RULE_CONSTRAINTS = [
   {
     id: "vale-config-no-based-on-styles",
     engine: "vale",
-    enforcedBy: "verify",
+    enforcedBy: "validate",
     summary: "No matcher sets `BasedOnStyles`, empty or otherwise.",
     rationale:
       "Measured on Vale 3.22.0, an empty `BasedOnStyles` clears every setting a file inherited from an earlier matcher (upstream c2d62437), and the assembled run config interleaves every rule's matchers in id order. A rule writing `BasedOnStyles =` under `[docs/**]` therefore silences every alphabetically earlier rule under `docs/`, and only byte-identical globs, which Vale merges into one section, escape it. Through 3.21.0 the line was inert. A non-empty value was always refused: `BasedOnStyles = Vale` loads a whole bundled style alongside the rule and reaches every rule whose matchers overlap. Neither value was ever needed. Vale loads no bundled style unless a run-level `BasedOnStyles` names one, and the assembled header names none, so a rule enables itself by name and the key has no job in a rule's config.",
@@ -187,7 +187,7 @@ export const RULE_CONSTRAINTS = [
   {
     id: "vale-config-matcher-required",
     engine: "vale",
-    enforcedBy: "verify",
+    enforcedBy: "validate",
     summary: "A rule's `.vale.ini` declares at least one `[matcher]`.",
     rationale:
       "A Vale rule is enabled only inside a matcher, so a config with none scopes the rule to nothing. Vale accepts the file and the rule never runs. That is the silent disable this engine's design exists to prevent.",
@@ -195,7 +195,7 @@ export const RULE_CONSTRAINTS = [
   {
     id: "vale-config-enabled-somewhere",
     engine: "vale",
-    enforcedBy: "verify",
+    enforcedBy: "validate",
     summary: "Some matcher assigns `<id>.<id> = YES`.",
     rationale:
       "No style is loaded, so a rule is off until a matcher turns it on. A config whose every matcher says `NO`, or none says anything, leaves the rule present but off: it verifies, it is assembled, and it reports nothing.",
@@ -203,7 +203,7 @@ export const RULE_CONSTRAINTS = [
   {
     id: "vale-config-disable-after-enable",
     engine: "vale",
-    enforcedBy: "verify",
+    enforcedBy: "validate",
     summary:
       "A `NO` matcher comes after the `YES` it narrows, never before every `YES`.",
     rationale:

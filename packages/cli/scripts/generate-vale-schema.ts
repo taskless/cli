@@ -82,7 +82,7 @@ const REPORT_PATH = resolve(
  * `findValeBinary` lives in `src/`, which this script can import directly: it
  * runs under `tsx`, not under the bundle. Using the shipped resolver rather
  * than a second copy of the platform-package naming means a packaging change
- * cannot leave the generator probing a different Vale than the one `verify`
+ * cannot leave the generator probing a different Vale than the one `validate`
  * will hand rules to.
  */
 const { findValeBinary } = await import("../src/rules/vale/binary.js");
@@ -346,7 +346,7 @@ function enumerateFromBinary(
  *
  * The difference is that one order carries meaning and the other does not. The
  * check types come out of the binary unordered, so sorting makes the list
- * `verify` prints to an author predictable. The levels come out in *severity*
+ * `validate` prints to an author predictable. The levels come out in *severity*
  * order — suggestion, warning, error — and alphabetising them would throw that
  * away for nothing.
  */
@@ -485,7 +485,7 @@ const FIELD_CANDIDATES: readonly string[] = [
   "in",
   // Documented in Vale 3.23.0's release notes ("a rule can carry its own
   // `tests:`"), read by `vale test`. Measured accepted on 3.22.0 as well, with
-  // any value, so it was a member before it was announced, and `verify` was
+  // any value, so it was a member before it was announced, and `validate` was
   // rejecting a key the binary runs, calling it an E201.
   "tests",
 ].toSorted();
@@ -1185,7 +1185,7 @@ for (const [operand, measurements] of byOperand) {
           .map(({ candidate }) => `.${candidate.ext}`)
           .join(", ")}).`,
       consequence:
-        "It is omitted from the vocabulary, so `verify` rejects it. A rule " +
+        "It is omitted from the vocabulary, so `validate` rejects it. A rule " +
         "written from the documentation would otherwise load, run, and match " +
         "nothing, with no error reported anywhere.",
     });
@@ -1217,7 +1217,7 @@ for (const [operand, measurements] of byOperand) {
         `on fixtures the reach probe confirmed were linted in both cases.`,
       consequence:
         "The operand stays in the vocabulary — it is real — but it is not " +
-        "portable across formats, and `verify` cannot tell an author which " +
+        "portable across formats, and `validate` cannot tell an author which " +
         "tier they are in.",
     });
   }

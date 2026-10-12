@@ -306,7 +306,7 @@ export async function planCheck(
       skipped.push({
         rule: disposition.ruleId,
         reason:
-          "verified by the server, but it is not a runnable runtime rule (run `verify` for why)",
+          "verified by the server, but it is not a runnable runtime rule (run `validate` for why)",
       });
     }
   }
