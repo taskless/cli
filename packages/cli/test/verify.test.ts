@@ -789,7 +789,7 @@ async function runVerifyMixedRunCli(args: string[]) {
   }
 }
 
-describe("test: the tested/failed/refused split on a mixed run (#284)", () => {
+describe("verify: the verified/failed/refused split on a mixed run (#284)", () => {
   let cwd: string;
 
   /** An sg rule whose own fixtures either all pass or one deliberately fails. */

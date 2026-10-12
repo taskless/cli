@@ -16,7 +16,7 @@
  *
  * ## What this is NOT
  *
- * Not an SDK. Nothing here performs verification, and no `validate()` or `test()`
+ * Not an SDK. Nothing here performs verification, and no `validate()` or `verify()`
  * is exported. Both spawn a vendored platform binary — ast-grep or Vale — so
  * anywhere a function call could run them, `npx @taskless/cli validate --json`
  * runs too: the export would buy a call site, not a capability, while making
