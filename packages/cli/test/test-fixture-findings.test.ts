@@ -784,7 +784,7 @@ describe("the findings array is present on every rule result", () => {
     expect(report.rules[0]?.findings).toEqual([]);
   });
 
-  it("is empty rather than absent for verify, which runs no fixtures", async () => {
+  it("is empty rather than absent for validate, which runs no fixtures", async () => {
     await writeSgRule();
 
     const { stdout } = await runCli([
@@ -799,7 +799,7 @@ describe("the findings array is present on every rule result", () => {
     expect(report.rules[0]?.findings).toEqual([]);
   });
 
-  it("is empty rather than absent when verification failed before fixtures ran", async () => {
+  it("is empty rather than absent when validation failed before fixtures ran", async () => {
     // No `.vale.ini`, so `validate` fails and `verify` never reaches the fixtures.
     const directory = join(cwd, ".taskless", "rules", "vale", VALE_RULE);
     await mkdir(directory, { recursive: true });
