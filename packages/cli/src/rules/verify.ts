@@ -1,5 +1,6 @@
-import { readFile, readdir } from "node:fs/promises";
-import { join } from "node:path";
+import { mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join, posix, sep } from "node:path";
 import { spawn } from "node:child_process";
 import process from "node:process";
 import { StringDecoder } from "node:string_decoder";
@@ -23,14 +24,15 @@ import {
   type AstGrepLanguage,
 } from "./capabilities";
 import { ensureTasklessDirectory } from "../filesystem/directory";
-import { assembleSgConfig } from "./assemble";
-import { ruleFilePath, ruleTestsDirectory } from "./engines";
+import { ruleDirectory, ruleFilePath, ruleTestsDirectory } from "./engines";
 import { RULE_TESTS_DIRECTORY, RULES_DIRECTORY } from "./layout";
 import { findSgBinary, buildPath, stripSgDeprecationBanner } from "./scan";
 import astGrepJsonSchema from "../generated/ast-grep-rule-schema.json";
 import { RULE_EXAMPLES } from "./verify-examples";
 import { violate, type RuleViolation } from "./constraints";
 import { isValidRuleId } from "./validate-id";
+import { parseSgRuleAlone } from "./sg-parse";
+import { findSgTraps } from "./sg-traps";
 import { escapeRegExp } from "../util/regex";
 
 // --- Types ---
@@ -370,6 +372,17 @@ async function validateRequirements(
     }
   }
 
+  // `strictness:` at the top level is accepted by ast-grep and ignored, so the
+  // pattern keeps narrowing exactly as before. Inside `rule:` the same key is a
+  // schema error; up here only this check can say so.
+  if ("strictness" in ruleData) {
+    violate(
+      collected,
+      "sg-no-top-level-strictness",
+      "strictness: at the top level of the rule file is ignored by ast-grep, so the pattern keeps its default `smart` strictness. Move it into the pattern object it is meant for (`pattern: { context: ..., selector: ..., strictness: ast }`)."
+    );
+  }
+
   // The rule's own `id:` must be the directory it lives in.
   //
   // The directory name IS the rule id: it is what `check` and `verify` address,
@@ -577,19 +590,43 @@ async function runTests(
   cwd: string,
   ruleId: string
 ): Promise<Omit<TestLayerResult, "fixtures">> {
-  // Assembly names every rule's `.tests/` as its own `testConfigs` entry, so
-  // the filter below selects a rule whose tests ast-grep already knows how to
-  // find.
-  const configPath = await assembleSgConfig(cwd);
-  if (configPath === undefined) {
-    return {
-      valid: false,
-      errors: ["No ast-grep rules are present, so no tests could be run."],
-      passed: 0,
-      failed: 0,
-    };
+  // A config naming this rule and nothing else, rather than the project-wide
+  // one `check` assembles. `--filter` narrows which TESTS run, not which rules
+  // ast-grep parses, so under the project config one rule ast-grep refuses
+  // fails every other rule's run, reported under the wrong rule's name.
+  //
+  // Written outside the project and removed afterwards, so a run leaves
+  // nothing behind that a later `check` could read. Absolute paths, because
+  // ast-grep resolves `ruleDirs` and `testDir` against the config's own
+  // directory, which is no longer the project's. Measured on 0.45.3: the
+  // rule's `.tests/` sits inside `ruleDirs` and is not parsed as a rule, the
+  // same as under the project config.
+  const scratch = await mkdtemp(join(tmpdir(), "taskless-sg-verify-"));
+  try {
+    const configPath = join(scratch, "sgconfig.yml");
+    await writeFile(
+      configPath,
+      [
+        "ruleDirs:",
+        `  - ${JSON.stringify(ruleDirectory(cwd, "sg", ruleId).split(sep).join(posix.sep))}`,
+        "testConfigs:",
+        `  - testDir: ${JSON.stringify(ruleTestsDirectory(cwd, "sg", ruleId).split(sep).join(posix.sep))}`,
+        "",
+      ].join("\n"),
+      "utf8"
+    );
+    return await runSgTest(cwd, configPath, ruleId);
+  } finally {
+    await rm(scratch, { recursive: true, force: true });
   }
+}
 
+/** `sg test` for one rule, under the given config. */
+async function runSgTest(
+  cwd: string,
+  configPath: string,
+  ruleId: string
+): Promise<Omit<TestLayerResult, "fixtures">> {
   const sgBinary = findSgBinary();
 
   return new Promise((resolve) => {
@@ -826,11 +863,21 @@ export async function verifyRule(
   // Layer 1, plus the `language:` field the vendored JSON Schema cannot type.
   const parsed = validateSchema(ruleData);
   const language = validateLanguage(ruleRecord);
+  const schemaErrors = [...parsed.errors, ...language.errors];
+  // Then the engine itself, over this rule alone, for what no schema can
+  // decide (a `kind` the grammar does not have). Only once the schema passes:
+  // a rule it already rejects would draw a second, vaguer message for the
+  // same defect. Unattributed, because the refusal is the engine's own rule
+  // and not one of ours.
+  if (schemaErrors.length === 0) {
+    const refusal = await parseSgRuleAlone(cwd, ruleId);
+    if (refusal !== undefined) schemaErrors.push(refusal);
+  }
   const schemaResult: SchemaLayerResult = {
-    valid: parsed.valid && language.errors.length === 0,
-    errors: [...parsed.errors, ...language.errors],
+    valid: schemaErrors.length === 0,
+    errors: schemaErrors,
     violations: language.violations,
-    notices: language.notices,
+    notices: [...language.notices, ...findSgTraps(ruleRecord)],
   };
 
   // Layer 2

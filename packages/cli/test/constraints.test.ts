@@ -200,6 +200,15 @@ const VIOLATIONS: Record<string, Scenario> = {
       }),
     names: /every glob names \.tsx, but language is TypeScript/,
   },
+  "sg-no-top-level-strictness": {
+    run: () =>
+      verifyWritten({
+        rule: { ...VALID_RULE, strictness: "ast" },
+        fixture: VALID_FIXTURE,
+      }),
+    names:
+      /strictness: at the top level of the rule file is ignored by ast-grep/,
+  },
   "sg-required-fields": {
     run: () =>
       verifyWritten({

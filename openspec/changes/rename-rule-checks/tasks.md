@@ -31,24 +31,24 @@ PR 1 is groups 1–4 (bottom of the stack, targets `main`). PR 2 is groups 5–8
 
 ## 5. `validate`: the ast-grep engine parse
 
-- [ ] 5.1 Measure against ast-grep 0.45.3 that `sg scan -r <file> --stdin` with empty input exits 8 with the message for an invalid `kind` (`readonly`, Markdown `link`) and an unknown `language:`, and exits 0 for a valid rule. Time it over this repository's rules. Record the measurements in the module's header comment. Verify: the comment states each case and its exit code.
-- [ ] 5.2 Add the parse as a layer in `validate`, run only after the schema layer passes, reporting ast-grep's message in `errors` with no violation. Verify: tests for "A kind the grammar does not have is rejected", "An engine config error is reported under the rule that has it", and "An engine refusal carries no constraint id".
+- [x] 5.1 Measure against ast-grep 0.45.3 that `sg scan -r <file> --stdin` with empty input exits 8 with the message for an invalid `kind` (`readonly`, Markdown `link`) and an unknown `language:`, and exits 0 for a valid rule. Time it over this repository's rules. Record the measurements in the module's header comment. Verify: the comment states each case and its exit code.
+- [x] 5.2 Add the parse as a layer in `validate`, run only after the schema layer passes, reporting ast-grep's message in `errors` with no violation. Verify: tests for "A kind the grammar does not have is rejected", "An engine config error is reported under the rule that has it", and "An engine refusal carries no constraint id".
 
 ## 6. `validate`: top-level `strictness`
 
-- [ ] 6.1 Add `sg-no-top-level-strictness` to `RULE_CONSTRAINTS` (`enforcedBy: "validate"`) and enforce it, with a message naming the pattern object as where the key belongs. Regenerate `assets/reference.json`. Verify: a test for "A top-level strictness is rejected", plus a passing `test/reference.test.ts`.
+- [x] 6.1 Add `sg-no-top-level-strictness` to `RULE_CONSTRAINTS` (`enforcedBy: "validate"`) and enforce it, with a message naming the pattern object as where the key belongs. Regenerate `assets/reference.json`. Verify: a test for "A top-level strictness is rejected", plus a passing `test/reference.test.ts`.
 
 ## 7. `validate`: trap notices
 
-- [ ] 7.1 Add the `$$$`-beside-a-comma detector over pattern strings and object-pattern `context`. Verify: tests for "A comma beside $$$ draws a notice" and "A pattern that already uses strictness ast draws no notice".
-- [ ] 7.2 Add the `follows`/`precedes`-without-`stopBy` detector. Verify: a test for "A sibling relation without stopBy draws a notice", including the `stopBy: end` silent case.
-- [ ] 7.3 Add the awaited-generic-callee detector for `TypeScript`/`Tsx`. Verify: a test for "A callee regex under TypeScript draws a notice", plus "A method callee regex under TypeScript draws a notice", including the `await_expression` branch and other-language silent cases. Use the recipe's own workaround YAML (topic v7 and later) as the silent fixture, so the detector can't flag the fix the recipe recommends.
-- [ ] 7.4 Point `create-sg-rule`'s Quirks section at the notices: say which quirks `validate` now reports, and that the keyword-`kind` and Markdown-inline config errors are now caught by `validate` under the rule's own name. Bump the topic version. Verify: `pnpm cli agent create-sg-rule` shows the change after `pnpm build`.
-- [ ] 7.5 Verify that a trap notice doesn't fail `verify`. Verify: a test for "A trap notice does not fail verify".
+- [x] 7.1 Add the `$$$`-beside-a-comma detector over pattern strings and object-pattern `context`. Verify: tests for "A comma beside $$$ draws a notice" and "A pattern that already uses strictness ast draws no notice".
+- [x] 7.2 Add the `follows`/`precedes`-without-`stopBy` detector. Verify: a test for "A sibling relation without stopBy draws a notice", including the `stopBy: end` silent case.
+- [x] 7.3 Add the awaited-generic-callee detector for `TypeScript`/`Tsx`. Verify: a test for "A callee regex under TypeScript draws a notice", plus "A method callee regex under TypeScript draws a notice", including the `await_expression` branch and other-language silent cases. Use the recipe's own workaround YAML (topic v7 and later) as the silent fixture, so the detector can't flag the fix the recipe recommends.
+- [x] 7.4 Point `create-sg-rule`'s Quirks section at the notices: say which quirks `validate` now reports, and that the keyword-`kind` and Markdown-inline config errors are now caught by `validate` under the rule's own name. Bump the topic version. Verify: `pnpm cli agent create-sg-rule` shows the change after `pnpm build`.
+- [x] 7.5 Verify that a trap notice doesn't fail `verify`. Verify: a test for "A trap notice does not fail verify".
 
 ## 8. `verify`: isolated fixture run, then PR 2
 
-- [ ] 8.1 Build a temporary one-rule `sgconfig.yml` for `runTests` and remove it afterwards. Verify: a test for "Another rule's config error does not fail this rule's fixtures", which reproduces gap 2 with a `kw` rule holding `kind: readonly`. Also check that no file is left behind.
-- [ ] 8.2 Extend the changeset with the new `validate` checks. Verify: one changeset file, one release note.
+- [x] 8.1 Build a temporary one-rule `sgconfig.yml` for `runTests` and remove it afterwards. Verify: a test for "Another rule's config error does not fail this rule's fixtures", which reproduces gap 2 with a `kw` rule holding `kind: readonly`. Also check that no file is left behind.
+- [x] 8.2 Extend the changeset with the new `validate` checks. Verify: one changeset file, one release note.
 - [ ] 8.3 Run `pnpm typecheck`, `pnpm lint` and `pnpm test`, then archive the change with `pnpm openspec archive rename-rule-checks -y`. Verify: everything passes, and the archived specs keep every scenario (repeat the 4.4 comparison).
 - [ ] 8.4 Open PR 2 on top of PR 1, request the review, address the findings, and confirm with the user before merging. Verify: review posted and findings resolved.

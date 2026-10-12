@@ -105,6 +105,15 @@ export const RULE_CONSTRAINTS = [
       "A glob naming an extension the language cannot parse matches nothing, so the rule reports a clean codebase rather than an error. Only the TypeScript/Tsx pair is checked, and deliberately so: they are separate parsers rather than aliases, which is the one language/extension mismatch decidable from the rule file alone. No other extension is compared against `language`, so this is narrower than it first reads.",
   },
   {
+    id: "sg-no-top-level-strictness",
+    engine: "sg",
+    enforcedBy: "validate",
+    summary:
+      "`strictness:` belongs inside a pattern object, never at the top level of the rule file.",
+    rationale:
+      "ast-grep accepts a top-level `strictness:` and ignores it, so the pattern keeps its default `smart` strictness and goes on narrowing exactly as it did before the author tried to widen it. Inside `rule:` the same key is a schema error, which is loud; at the top level it is silent, so only this check can say so.",
+  },
+  {
     id: "sg-required-fields",
     engine: "sg",
     enforcedBy: "validate",
