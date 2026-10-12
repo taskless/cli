@@ -273,13 +273,13 @@ is a network round trip whose answer is always "no".
 
 #### Scenario: Fixtures do not run without the flag
 
-- **WHEN** `test` runs against a runtime rule without `--dangerously-run-scripts`
+- **WHEN** `verify` runs against a runtime rule without `--dangerously-run-scripts`
 - **THEN** no fixture case SHALL be executed
 - **AND** this SHALL hold irrespective of authentication state or any signature the rule carries
 
 #### Scenario: The documented escape runs fixtures
 
-- **WHEN** `test` runs with `--dangerously-run-scripts`
+- **WHEN** `verify` runs with `--dangerously-run-scripts`
 - **THEN** fixture cases SHALL execute under that flag's existing warning
 - **AND** under no other mechanism
 

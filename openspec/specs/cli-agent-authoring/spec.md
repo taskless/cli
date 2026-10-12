@@ -32,11 +32,11 @@ The `create-vale-rule` recipe SHALL instruct the agent to produce three artifact
 
 The recipe SHALL state that scope is declared in the rule's own config, that no shared file is edited, and that the project-wide config is assembled rather than authored.
 
-It SHALL direct the agent to check its work by running `verify` and then `test` against the rule's directory path.
+It SHALL direct the agent to check its work by running `validate` and then `verify` against the rule's directory path.
 
 The previous version of this requirement taught the agent to add a matcher to a single project-wide `.vale.ini`. Executing that recipe against sandboxed agents found every one of its silent failures in that step and nowhere else — an assignment above the first matcher, a glob that missed the fixture extension, three names that had to agree with nothing reporting when they didn't. The layout change removes the step rather than documenting it further.
 
-The recipe SHALL additionally carry the guidance below. Each item is a failure observed while authoring rules against this repository, and each produced a rule that passed `verify` and `test` while reporting nothing:
+The recipe SHALL additionally carry the guidance below. Each item is a failure observed while authoring rules against this repository, and each produced a rule that passed `validate` and `verify` while reporting nothing:
 
 - **What each `scope` reaches**, as measured: `text` sees prose, `code` sees inline code spans, `[code, text]` sees both, and `raw` sees prose, inline code, and fenced blocks. `raw` subsumes the other two.
 - **That `scope` is per-rule.** Vale assembles one config per run, which invites the assumption that scopes interact. They do not.
@@ -61,13 +61,13 @@ The recipe SHALL additionally carry the guidance below. Each item is a failure o
 #### Scenario: The recipe names the commands that check the work
 
 - **WHEN** the agent has written the three artifacts
-- **THEN** the recipe SHALL direct it to run `verify` and `test` against the rule's path
+- **THEN** the recipe SHALL direct it to run `validate` and `verify` against the rule's path
 
 #### Scenario: An unscoped rule is not silently accepted
 
 - **WHEN** the agent writes a style file without a matcher enabling it in the rule's own config
 - **THEN** the recipe SHALL identify this as incomplete
-- **AND** `verify` SHALL report it
+- **AND** `validate` SHALL report it
 
 #### Scenario: A rule about a command reaches fenced blocks
 
@@ -147,7 +147,7 @@ The line SHALL orient, not classify: it states this recipe's own scope and SHALL
 
 An authoring recipe SHALL document the ways a rule of its engine can be well formed, enabled, green on its fixtures, and still report nothing.
 
-A malformed rule is caught by `verify` and needs no recipe. A rule that is merely _wrong_ is caught by nothing, ships green, and is discovered only when someone notices it has never fired — so the recipe is the only place that failure can be prevented.
+A malformed rule is caught by `validate` and needs no recipe. A rule that is merely _wrong_ is caught by nothing, ships green, and is discovered only when someone notices it has never fired — so the recipe is the only place that failure can be prevented.
 
 #### Scenario: The recipe names the silent failures for its engine
 
@@ -157,7 +157,7 @@ A malformed rule is caught by `verify` and needs no recipe. A rule that is merel
 
 #### Scenario: Passing fixtures are not presented as proof of reach
 
-- **WHEN** the recipe directs the agent to run `test`
+- **WHEN** the recipe directs the agent to run `verify`
 - **THEN** it SHALL state that fixtures run under an isolating config
 - **AND** that a clean `check` SHALL be confirmed against a real file before the rule is believed to be working
 
