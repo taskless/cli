@@ -2,7 +2,7 @@
 
 ## Purpose
 
-How `verify` and `test` judge a rule: addressed by path rather than by id, run against the engine's own fixtures, and naming the constraint that a rejection violated.
+How `validate` and `verify` judge a rule: addressed by path rather than by id, run against the engine's own fixtures, and naming the constraint that a rejection violated.
 
 ## Requirements
 

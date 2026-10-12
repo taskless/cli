@@ -1,5 +1,5 @@
 {
-  "version": 2,
+  "version": 3,
   "protocol": [
     "Generate a rule from `prompt`, using your own pipeline.",
     "Run `taskless validate` over what you generated. It enforces constraints beyond the engine's own schema, listed in `constraints` below, so a rule the engine executes correctly can still be refused. A rule that fails here is not deliverable however well it behaves, and every later step would be measuring the wrong thing. Check `enforcedBy` before concluding anything: some constraints are only decided once the fixtures run.",
