@@ -84,7 +84,7 @@ async function warnOnIdCollision(
   const collision = await findRuleIdCollision(cwd, ruleId);
   if (collision === undefined) return;
   onWarning(
-    `${describeRuleIdCollision(cwd, collision)} \`verify\` fails both until one is renamed.`
+    `${describeRuleIdCollision(cwd, collision)} \`validate\` fails both until one is renamed.`
   );
 }
 

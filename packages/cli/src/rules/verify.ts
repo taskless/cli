@@ -396,10 +396,10 @@ async function validateRequirements(
       collected,
       "sg-id-matches-directory",
       `id: "${declaredId}" does not match the rule's directory "${ruleId}". ` +
-        `The directory name is the rule id — it is what \`check\` and \`test\` ` +
+        `The directory name is the rule id — it is what \`check\` and \`verify\` ` +
         `address and what you would type to delete it — while ast-grep ` +
         `registers the rule under the id in this file. With the two apart, ` +
-        `\`test\` cannot find the rule at all and \`check\` reports findings ` +
+        `\`verify\` cannot find the rule at all and \`check\` reports findings ` +
         `under "${declaredId}", a name no directory has. Rename one to match ` +
         `the other.`
     );

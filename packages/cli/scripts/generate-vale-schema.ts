@@ -1282,7 +1282,7 @@ const artifact = `/**
  * from documentation. Where the binary and the documentation disagree, the
  * disagreement is in \`vale-vocabulary-report.md\` rather than dropped.
  *
- * \`src/schemas/vale-rule.ts\` turns these into the zod schema \`verify\` runs.
+ * \`src/schemas/vale-rule.ts\` turns these into the zod schema \`validate\` runs.
  */
 
 /** The binary this vocabulary was derived from. */

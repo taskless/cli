@@ -138,7 +138,7 @@ export function canonicalizeGitHubUrl(rawUrl: string): string {
   }
 
   throw new CLIError(
-    `Remote rule generation supports GitHub only, and this repository's \`origin\` is "${rawUrl}". Local rule authoring, \`verify\`, \`test\` and \`check\` work with any remote or none.`,
+    `Remote rule generation supports GitHub only, and this repository's \`origin\` is "${rawUrl}". Local rule authoring, \`validate\`, \`verify\` and \`check\` work with any remote or none.`,
     "UNSUPPORTED_REMOTE_HOST"
   );
 }
