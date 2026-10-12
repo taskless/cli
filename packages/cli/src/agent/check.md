@@ -1,4 +1,4 @@
-# Topic: check     (CLI v%(CLI_VERSION)s / topic v7)
+# Topic: check     (CLI v%(CLI_VERSION)s / topic v8)
 
 ## Goal
 Run the applicable rules against the codebase and report matches. Two
@@ -209,8 +209,15 @@ delete the rules to make `check` pass, and do not suggest
    ```
    %(TASKLESS_CLI)s check --json $(git diff --name-only main...HEAD)
    ```
-   Paths that don't exist on disk are silently filtered, so you can
-   pipe raw `git diff` output directly without pre-filtering.
+   Paths that don't exist on disk are skipped, so you can pipe raw
+   `git diff` output directly without pre-filtering. The skipped paths
+   are named in a notice (`notices` under `--json`), so a mistyped
+   path is visible rather than reading as clean.
+
+   Paths must be inside the project (the working directory, or
+   `--dir`). A path outside it, existing or not, is refused with
+   `INVALID_INPUT` and exit 1, and nothing is scanned. Run `check`
+   from the project that holds the files instead.
 
    When runtime rules were present but not run (e.g. logged out), the
    JSON also carries `"skipped": [{ "rule": "<name>", "reason": "…" }]`
@@ -253,7 +260,9 @@ delete the rules to make `check` pass, and do not suggest
    (exit code 1); `success: true` with a non-empty `results` array
    means there are only
    warning/info/hint findings (exit code 0); `success: true` with an
-   empty `results` array means the codebase is clean. Findings are
+   empty `results` array means the codebase is clean, unless a notice
+   says the supplied paths were skipped, in which case nothing was
+   scanned. Findings are
    never reported via the `{ ok: false, code, message }` envelope:
    the envelope only appears when the scan itself fails (e.g.
    `SCAN_FAILED`) and the normal results payload is absent.
@@ -261,19 +270,20 @@ delete the rules to make `check` pass, and do not suggest
 ## Exit codes
 
 - `0`: All checks passed, no rules configured, or all supplied
-  paths missing
+  paths missing (named in a notice)
 - `1`: Errors detected, scan failed, runtime rules withheld because
   the plan does not include them, an issued ast-grep or Vale rule was
-  edited or copied under a new id, a rule was unaccounted for, or two
-  engines share a rule id
+  edited or copied under a new id, a rule was unaccounted for, two
+  engines share a rule id, or a supplied path is outside the project
 
 ## Errors
 
 When `--json` is set, failures emit `{ ok: false, code, message }`:
 
-| code          | meaning               | fix                              |
-|---------------|-----------------------|----------------------------------|
-| `SCAN_FAILED` | ast-grep scan errored | Report; check rule YAML validity |
+| code            | meaning                       | fix                                       |
+|-----------------|-------------------------------|-------------------------------------------|
+| `SCAN_FAILED`   | ast-grep scan errored         | Report; check rule YAML validity          |
+| `INVALID_INPUT` | a path is outside the project | Run from the project that holds the files |
 
 ## See Also
 

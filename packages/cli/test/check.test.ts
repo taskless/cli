@@ -1,6 +1,14 @@
 import { execFile } from "node:child_process";
-import { mkdtemp, rm, mkdir, writeFile, cp, stat } from "node:fs/promises";
-import { resolve, join } from "node:path";
+import {
+  mkdtemp,
+  rm,
+  mkdir,
+  writeFile,
+  cp,
+  stat,
+  realpath,
+} from "node:fs/promises";
+import { resolve, join, relative } from "node:path";
 import { tmpdir } from "node:os";
 import { promisify } from "node:util";
 import { describe, expect, it, beforeEach, afterEach } from "vitest";
@@ -455,7 +463,7 @@ describe("check", () => {
       }
     });
 
-    it("silently filters paths that do not exist", async () => {
+    it("skips paths that do not exist, and names them in a notice", async () => {
       await cp(fixturesDirectory, temporaryDirectory, { recursive: true });
 
       const { stdout, exitCode } = await runCli([
@@ -471,11 +479,15 @@ describe("check", () => {
       expect(exitCode).toBe(1);
       const parsed = JSON.parse(stdout.trim()) as {
         results: Array<{ file: string }>;
+        notices?: string[];
       };
       expect(parsed.results.length).toBeGreaterThan(0);
       for (const result of parsed.results) {
         expect(result.file).toContain("sample.js");
       }
+      expect(parsed.notices).toContainEqual(
+        expect.stringContaining("deleted-in-diff.js")
+      );
     });
 
     it("exits 0 with empty results when every passed path is missing", async () => {
@@ -494,9 +506,127 @@ describe("check", () => {
       const parsed = JSON.parse(stdout.trim()) as {
         success: boolean;
         results: unknown[];
+        notices?: string[];
       };
       expect(parsed.success).toBe(true);
       expect(parsed.results).toEqual([]);
+      // Clean, but not silent: "nothing to scan" must read differently from
+      // "scanned and found nothing" (#475).
+      expect(parsed.notices).toEqual([
+        expect.stringMatching(/missing-a\.js.*missing-b\.js/),
+      ]);
+    });
+
+    it("names skipped missing paths on stderr in text mode", async () => {
+      await cp(fixturesDirectory, temporaryDirectory, { recursive: true });
+
+      const { stderr, exitCode } = await runCli([
+        "check",
+        "-d",
+        temporaryDirectory,
+        "missing-a.js",
+      ]);
+
+      expect(exitCode).toBe(0);
+      expect(stderr).toContain("missing-a.js");
+    });
+
+    describe("refuses a path outside the project", () => {
+      let outsideDirectory: string;
+
+      beforeEach(async () => {
+        await cp(fixturesDirectory, temporaryDirectory, { recursive: true });
+        outsideDirectory = await mkdtemp(join(tmpdir(), "taskless-outside-"));
+        await writeFile(join(outsideDirectory, "bug.js"), 'eval("outside");\n');
+      });
+
+      afterEach(async () => {
+        await rm(outsideDirectory, { recursive: true, force: true });
+      });
+
+      const cases: Array<[string, () => string]> = [
+        ["an absolute file", () => join(outsideDirectory, "bug.js")],
+        ["an absolute directory", () => outsideDirectory],
+        [
+          "a relative file",
+          () => relative(temporaryDirectory, join(outsideDirectory, "bug.js")),
+        ],
+        ["an absolute path that does not exist", () => "/no/such/file.js"],
+      ];
+
+      for (const [label, pathOf] of cases) {
+        it(`exits 1 with INVALID_INPUT for ${label}`, async () => {
+          const outsidePath = pathOf();
+          const { stdout, exitCode } = await runCli([
+            "check",
+            "-d",
+            temporaryDirectory,
+            "--json",
+            outsidePath,
+          ]);
+
+          expect(exitCode).toBe(1);
+          const parsed = JSON.parse(stdout.trim()) as {
+            ok: boolean;
+            code: string;
+            message: string;
+          };
+          expect(parsed.ok).toBe(false);
+          expect(parsed.code).toBe("INVALID_INPUT");
+          expect(parsed.message).toContain(outsidePath);
+        });
+      }
+
+      it("refuses even when another path is inside", async () => {
+        const outsidePath = join(outsideDirectory, "bug.js");
+        const { stdout, exitCode } = await runCli([
+          "check",
+          "-d",
+          temporaryDirectory,
+          "--json",
+          "sample.js",
+          outsidePath,
+        ]);
+
+        expect(exitCode).toBe(1);
+        const parsed = JSON.parse(stdout.trim()) as { code: string };
+        expect(parsed.code).toBe("INVALID_INPUT");
+      });
+
+      it("prints the error on stderr in text mode", async () => {
+        const outsidePath = join(outsideDirectory, "bug.js");
+        const { stderr, exitCode } = await runCli([
+          "check",
+          "-d",
+          temporaryDirectory,
+          outsidePath,
+        ]);
+
+        expect(exitCode).toBe(1);
+        expect(stderr).toContain(`Error: Path is outside the project`);
+        expect(stderr).toContain(outsidePath);
+      });
+    });
+
+    it("accepts an absolute path spelled through the project's real path", async () => {
+      // On macOS tmpdir() is under /var, a symlink to /private/var. A hook
+      // that hands over real paths must not read as escaping the project.
+      await cp(fixturesDirectory, temporaryDirectory, { recursive: true });
+      const realSample = join(await realpath(temporaryDirectory), "sample.js");
+
+      const { stdout, exitCode } = await runCli([
+        "check",
+        "-d",
+        temporaryDirectory,
+        "--json",
+        realSample,
+      ]);
+
+      expect(exitCode).toBe(1);
+      const parsed = JSON.parse(stdout.trim()) as {
+        results: Array<{ file: string }>;
+      };
+      expect(parsed.results.length).toBeGreaterThan(0);
     });
 
     it("zero paths keeps full-project scan behavior", async () => {

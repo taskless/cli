@@ -1,5 +1,5 @@
 import { resolve, isAbsolute, relative } from "node:path";
-import { stat } from "node:fs/promises";
+import { realpath, stat } from "node:fs/promises";
 import process from "node:process";
 import { defineCommand } from "citty";
 
@@ -30,34 +30,82 @@ async function pathExists(absolutePath: string): Promise<boolean> {
   }
 }
 
+/** `target` relative to `root`, or undefined when it lies outside `root`. */
+function relativeInside(root: string, target: string): string | undefined {
+  const relativePath = relative(root, target);
+  const escapes =
+    relativePath === ".." ||
+    relativePath.startsWith(`..${"/"}`) ||
+    relativePath.startsWith(`..${"\\"}`) ||
+    isAbsolute(relativePath);
+  return escapes ? undefined : relativePath;
+}
+
+interface ClassifiedPaths {
+  /** In the project and on disk, relative to cwd so `sg scan` can use them. */
+  kept: string[];
+  /** In the project and not on disk, as the caller wrote them. */
+  missing: string[];
+  /** Outside the project, as the caller wrote them. */
+  outside: string[];
+}
+
 /**
- * Resolve each positional path against cwd and filter out any that don't
- * exist on disk. Returns a list of paths relative to cwd so `sg scan` can
- * be spawned from cwd and use those paths directly.
+ * Sort each positional path into the three cases `check` answers differently.
+ *
+ * All three used to collapse into "drop it silently", so a path outside the
+ * project, or one that does not exist, produced `success: true` with nothing
+ * scanned and nothing said. That is a clean result for a check that did not
+ * look, and a caller cannot tell it from a clean codebase (#475).
+ *
+ * Containment is decided from the path as written, before asking whether it
+ * exists, so `/no/such/file.py` is reported as outside rather than as missing.
+ * It is checked against both cwd as given and its real path: on macOS `/tmp`
+ * is `/private/tmp`, and a hook handing over absolute paths in one spelling
+ * while cwd is in the other must not read as escaping the project.
  */
-async function filterExistingPaths(
+async function classifyPaths(
   cwd: string,
   rawPaths: string[]
-): Promise<string[]> {
+): Promise<ClassifiedPaths> {
   const resolvedCwd = resolve(cwd);
-  const kept: string[] = [];
+  const roots = [resolvedCwd];
+  try {
+    const realCwd = await realpath(resolvedCwd);
+    if (realCwd !== resolvedCwd) roots.push(realCwd);
+  } catch {
+    // cwd not existing is reported later by whatever reads the project.
+  }
+
+  const classified: ClassifiedPaths = { kept: [], missing: [], outside: [] };
   for (const rawPath of rawPaths) {
     const absolutePath = isAbsolute(rawPath)
       ? resolve(rawPath)
       : resolve(resolvedCwd, rawPath);
-    if (!(await pathExists(absolutePath))) continue;
-    const relativePath = relative(resolvedCwd, absolutePath);
-    // Reject paths that escape cwd (e.g. `../outside-project`) so `sg scan`
-    // never traverses outside the project directory.
-    const escapesCwd =
-      relativePath === ".." ||
-      relativePath.startsWith(`..${"/"}`) ||
-      relativePath.startsWith(`..${"\\"}`) ||
-      isAbsolute(relativePath);
-    if (escapesCwd) continue;
-    kept.push(relativePath === "" ? "." : relativePath);
+    const relativePath = roots
+      .map((root) => relativeInside(root, absolutePath))
+      .find((candidate) => candidate !== undefined);
+    if (relativePath === undefined) {
+      classified.outside.push(rawPath);
+    } else if (await pathExists(absolutePath)) {
+      classified.kept.push(relativePath === "" ? "." : relativePath);
+    } else {
+      classified.missing.push(rawPath);
+    }
   }
-  return kept;
+  return classified;
+}
+
+/**
+ * The notice for paths that were skipped because they do not exist.
+ *
+ * Skipped rather than refused: raw `git diff --name-only` output names
+ * deleted files, and the CI recipe pipes it straight in, so a missing path is
+ * an ordinary input. It is still named, so a mistyped path is visible.
+ */
+function missingPathsNotice(missing: string[]): string {
+  const noun = missing.length === 1 ? "path that does" : "paths that do";
+  return `Skipped ${missing.length} ${noun} not exist: ${missing.join(", ")}`;
 }
 
 /**
@@ -205,22 +253,49 @@ export const checkCommand = defineCommand({
     try {
       const positionalPaths = extractPositionalPaths(rawArgs);
       const hadExplicitPaths = positionalPaths.length > 0;
-      const existingPaths = hadExplicitPaths
-        ? await filterExistingPaths(cwd, positionalPaths)
-        : [];
+      const {
+        kept: existingPaths,
+        missing,
+        outside,
+      } = await classifyPaths(cwd, positionalPaths);
+
+      // Refused, not skipped. `check` only scans inside the project, and a
+      // path outside it is a caller pointing at the wrong place: reporting it
+      // clean is the false negative #475 describes.
+      if (outside.length > 0) {
+        const message = `${outside.length === 1 ? "Path is" : "Paths are"} outside the project (${resolve(cwd)}): ${outside.join(", ")}. \`check\` only scans inside the project; run it from that project, or pass \`--dir\`.`;
+        if (args.json) {
+          writeJsonError("INVALID_INPUT", message);
+        } else {
+          console.error(`Error: ${message}`);
+        }
+        process.exitCode = 1;
+        return;
+      }
+
+      const pathNotices =
+        missing.length > 0 ? [missingPathsNotice(missing)] : [];
 
       // If the user passed paths but none exist (e.g. all-deleted diff),
-      // exit cleanly with empty results rather than falling back to a full scan.
+      // exit cleanly with empty results rather than falling back to a full
+      // scan, saying which paths were skipped.
       if (hadExplicitPaths && existingPaths.length === 0) {
         if (args.json) {
           console.log(
             JSON.stringify(
-              checkOutputSchema.parse({ success: true, results: [] })
+              checkOutputSchema.parse({
+                success: true,
+                results: [],
+                ...(pathNotices.length > 0 ? { notices: pathNotices } : {}),
+              })
             )
           );
+        } else {
+          for (const notice of pathNotices) warnNotice(notice);
         }
         return;
       }
+      for (const notice of pathNotices) warnNotice(notice);
 
       // REFUSES rather than migrates. This used to call
       // `ensureTasklessDirectory`, so a command whose entire job is to report
@@ -330,6 +405,7 @@ export const checkCommand = defineCommand({
               checkOutputSchema.parse({
                 success: true,
                 results: [],
+                ...(pathNotices.length > 0 ? { notices: pathNotices } : {}),
               })
             )
           );
@@ -410,7 +486,11 @@ export const checkCommand = defineCommand({
         const results = dispatched.results;
 
         for (const notice of dispatched.notices) warnNotice(notice);
-        const runNotices = [...plan.notices, ...dispatched.notices];
+        const runNotices = [
+          ...pathNotices,
+          ...plan.notices,
+          ...dispatched.notices,
+        ];
         for (const failure of dispatched.failures) warn(`Error: ${failure}`);
 
         let errorCount = 0;
