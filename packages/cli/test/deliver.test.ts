@@ -288,7 +288,7 @@ describe("a delivered set defines what the rule directory contains", () => {
 
   it("removes .tests/ fixtures the set does not mention", async () => {
     // v2 serves a rule's fixtures in every file set, so a fixture the set does
-    // not name is stale. Left in place it would make `taskless test` judge
+    // not name is stale. Left in place it would make `taskless verify` judge
     // the rule against cases nobody issued.
     const directory = await writeComplete();
     await mkdir(join(directory, ".tests", "valid"), { recursive: true });
@@ -542,7 +542,7 @@ describe("a delivery that carries no fixtures", () => {
     );
 
     // The consequence is the reason this is worth printing: a fixture-less
-    // rule passes `test` over zero cases and reads as proven.
+    // rule passes `verify` over zero cases and reads as proven.
     expect(warnings[0]).toContain("nothing exercises it");
   });
 

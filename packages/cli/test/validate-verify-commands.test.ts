@@ -353,7 +353,7 @@ describe("validate checks components without requiring tests", () => {
 withVale("test runs verify first", () => {
   it("passes a rule that fires on fail/ and stays quiet on pass/", async () => {
     await valeRule("no-simply", { config: SCOPED, fixtures: true });
-    const result = await runCli(["test", "-d", cwd, "--json"]);
+    const result = await runCli(["verify", "-d", cwd, "--json"]);
     expect(result.exitCode).toBe(0);
   });
 
@@ -365,7 +365,7 @@ withVale("test runs verify first", () => {
       config: SCOPED,
       style: `extends: existence\nlevel: warning\ntokens:\n  - simply\n`,
     });
-    const result = await runCli(["test", "-d", cwd, "--json"]);
+    const result = await runCli(["verify", "-d", cwd, "--json"]);
     expect(result.exitCode).not.toBe(0);
     const errors =
       (JSON.parse(result.stdout) as Report).rules[0]?.errors.join(" ") ?? "";
@@ -382,7 +382,7 @@ withVale("test runs verify first", () => {
       recursive: true,
       force: true,
     });
-    const result = await runCli(["test", "-d", cwd, "--json"]);
+    const result = await runCli(["verify", "-d", cwd, "--json"]);
     expect(result.exitCode).not.toBe(0);
     expect(
       (JSON.parse(result.stdout) as Report).rules[0]?.errors.join(" ")
@@ -468,7 +468,7 @@ withVale("validate schema-checks a Vale rule", () => {
   });
 
   it("still verifies a rule with no fixtures", async () => {
-    // The split between `validate` and `test` exists for the agent part-way
+    // The split between `validate` and `verify` exists for the agent part-way
     // through authoring. Adding a schema layer must not quietly close it.
     await valeRule("no-simply", { config: SCOPED });
     const result = await runCli([
@@ -525,17 +525,17 @@ withVale("validate schema-checks a Vale rule", () => {
  * A foreign field is `E201` and an unknown `extends` fails the config outright.
  * Vale reads one assembled config per run, so either one reaching the binary
  * takes down every Vale rule in the project. `validate` is a pure read of the
- * rule's own files, and `test` runs it first and stops — so neither defect can
+ * rule's own files, and `verify` runs it first and stops — so neither defect can
  * get as far as a Vale invocation.
  */
 withVale("a rule Vale would choke on never reaches Vale", () => {
-  it("stops `test` at verify for a foreign field, without running the fixtures", async () => {
+  it("stops `verify` at verify for a foreign field, without running the fixtures", async () => {
     await valeRule("no-simply", {
       config: SCOPED,
       fixtures: true,
       style: `extends: occurrence\nmessage: "x"\nlevel: warning\nscope: sentence\ntoken: very\nmax: 1\ntokens:\n  - simply\n`,
     });
-    const result = await runCli(["test", "-d", cwd, "--json"]);
+    const result = await runCli(["verify", "-d", cwd, "--json"]);
     expect(result.exitCode).not.toBe(0);
     const rule = (
       JSON.parse(result.stdout) as {
@@ -550,13 +550,13 @@ withVale("a rule Vale would choke on never reaches Vale", () => {
     expect(rule?.errors.join(" ")).not.toContain("did not fire");
   });
 
-  it("stops `test` at verify for an unknown extends", async () => {
+  it("stops `verify` at verify for an unknown extends", async () => {
     await valeRule("no-simply", {
       config: SCOPED,
       fixtures: true,
       style: `extends: nonsense\nmessage: "x"\nlevel: warning\ntokens:\n  - simply\n`,
     });
-    const result = await runCli(["test", "-d", cwd, "--json"]);
+    const result = await runCli(["verify", "-d", cwd, "--json"]);
     const rule = (
       JSON.parse(result.stdout) as {
         rules: { ran: boolean; errors: string[] }[];
@@ -603,7 +603,7 @@ describe("a rejection names the constraint it violated", () => {
 });
 
 /**
- * An sg rule with both fixture buckets populated, so `test` passes it, and
+ * An sg rule with both fixture buckets populated, so `verify` passes it, and
  * `scope` written verbatim between `message:` and `rule:`.
  */
 async function scopedSgRule(id: string, scope = "") {
@@ -621,9 +621,9 @@ async function scopedSgRule(id: string, scope = "") {
   return `.taskless/rules/sg/${id}`;
 }
 
-/** The notices `test --json` attached to the one rule, asserting it passed. */
+/** The notices `verify --json` attached to the one rule, asserting it passed. */
 async function noticesFor(path: string): Promise<string[] | undefined> {
-  const result = await runCli(["test", path, "-d", cwd, "--json"]);
+  const result = await runCli(["verify", path, "-d", cwd, "--json"]);
   // A notice, never a failure: a narrow glob can be deliberate.
   expect(result.exitCode).toBe(0);
   const rule = (JSON.parse(result.stdout) as Report).rules[0];
@@ -632,7 +632,7 @@ async function noticesFor(path: string): Promise<string[] | undefined> {
 }
 
 // #486. An sg fixture has no path, so `files:` never applies to it, and a glob
-// that selects nothing passed `test` while `check` never ran the rule.
+// that selects nothing passed `verify` while `check` never ran the rule.
 //
 // Every case here is one a glob matcher of our own would get wrong in at least
 // one direction, which is why the scope is asked of ast-grep's walk instead.

@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { stringify } from "yaml";
 
 import { RULE_CONSTRAINTS, type RuleViolation } from "../src/rules/constraints";
-import { testOneRule, validateOneRule } from "../src/rules/inspect";
+import { verifyOneRule, validateOneRule } from "../src/rules/inspect";
 
 /**
  * Every documented constraint is a check that still fires.
@@ -67,7 +67,7 @@ async function verifyWritten(options: {
   directoryName?: string;
   rule?: Record<string, unknown>;
   fixture?: string | undefined;
-  layer?: "validate" | "test";
+  layer?: "validate" | "verify";
 }): Promise<{ ok: boolean; errors: string[]; violations: RuleViolation[] }> {
   const ruleId = options.directoryName ?? "probe-rule";
   const directory = join(project, ".taskless/rules/sg", ruleId);
@@ -92,13 +92,13 @@ async function verifyWritten(options: {
 
   // Through the command entry points a user actually runs, not through
   // `verifyRule` directly. The fixture-attribution rule is decided by the
-  // coverage classification that `testOneRule` composes on top of the raw
+  // coverage classification that `verifyOneRule` composes on top of the raw
   // layers, so asserting against `verifyRule.tests` reported `valid: true` for
   // a rule with no attributable cases: ast-grep found the rule, had nothing to
   // run for it, and exited 0. The layer boundary is not where it looks.
   const resolved = { engine: "sg" as const, ruleId };
-  if (options.layer === "test") {
-    const result = await testOneRule(project, resolved);
+  if (options.layer === "verify") {
+    const result = await verifyOneRule(project, resolved);
     return {
       ok: result.ok,
       errors: result.errors,
@@ -224,7 +224,7 @@ const VIOLATIONS: Record<string, Scenario> = {
   "sg-fixture-id-matches-rule": {
     run: () =>
       verifyWritten({
-        layer: "test",
+        layer: "verify",
         fixture:
           "id: some-other-rule\nvalid:\n  - const a = 1;\ninvalid:\n  - eval(x);\n",
       }),
@@ -346,11 +346,11 @@ describe("every documented constraint is a check that still fires", () => {
   });
 
   it("distinguishes an unwritten fixture from one excluded by its id", async () => {
-    // Both reach `test` as "no fixtures", and they want different advice: one
+    // Both reach `verify` as "no fixtures", and they want different advice: one
     // author has written nothing, the other has a file sitting right there
     // that is silently not counted. Only the second is this constraint.
     const excluded = await verifyWritten({
-      layer: "test",
+      layer: "verify",
       fixture:
         "id: some-other-rule\nvalid:\n  - const a = 1;\ninvalid:\n  - eval(x);\n",
     });
@@ -362,7 +362,7 @@ describe("every documented constraint is a check that still fires", () => {
     // NOT an id mismatch. Attributing it would send the author looking for a
     // wrong id in a file whose id is right.
     const empty = await verifyWritten({
-      layer: "test",
+      layer: "verify",
       fixture: "id: probe-rule\n",
     });
     expect(empty.ok).toBe(false);
@@ -396,7 +396,7 @@ describe("every documented constraint is a check that still fires", () => {
       "id: some-other-rule\nvalid:\n  - const b = 2;\n"
     );
 
-    const result = await testOneRule(project, { engine: "sg", ruleId });
+    const result = await verifyOneRule(project, { engine: "sg", ruleId });
     expect(result.ok, result.errors.join("; ")).toBe(false);
     expect(result.errors.join("\n")).toMatch(/only valid: fixtures/);
     expect(result.errors.join("\n")).toMatch(/half a claim/);
@@ -407,7 +407,7 @@ describe("every documented constraint is a check that still fires", () => {
 
   it("says which command enforces each, since that decides eval order", () => {
     for (const constraint of RULE_CONSTRAINTS) {
-      expect(["validate", "test"]).toContain(constraint.enforcedBy);
+      expect(["validate", "verify"]).toContain(constraint.enforcedBy);
     }
   });
 

@@ -221,7 +221,7 @@ async function scaffoldEngineDirectories(directory: string): Promise<void> {
  * `testConfigs` entry, and ast-grep 0.41.0 aborts the entire invocation when
  * one of them is missing (`Cannot read rule directory ...`, exit 6) — which
  * `--filter` does not scope away. One rule with no tests therefore failed
- * `taskless test` for every *other* rule in the project, with an error naming a
+ * `taskless verify` for every *other* rule in the project, with an error naming a
  * rule the author had never touched. Measured against 0.41.0: an empty
  * `.tests/`, and one holding only a `.gitkeep`, are both accepted by `sg test`
  * and `sg scan`.

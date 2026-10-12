@@ -9,14 +9,14 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { builtCli } from "./support/built-cli";
 
 /**
- * `taskless test` against a runtime rule.
+ * `taskless verify` against a runtime rule.
  *
- * The defect this file exists for: `test` printed `✓ runtime/<id>` and counted
+ * The defect this file exists for: `verify` printed `✓ runtime/<id>` and counted
  * the rule among those tested for a rule whose fixtures never ran. Every
  * assertion here is about the difference between running a rule and saying
  * one ran, so none of them may be relaxed into "does not crash".
  *
- * These spawn the built CLI rather than calling `testOneRule`, because the tick
+ * These spawn the built CLI rather than calling `verifyOneRule`, because the tick
  * and the summary line are half the defect and only the command prints them.
  */
 
@@ -161,7 +161,7 @@ async function writeCase(
 
 async function testRule(...extra: string[]) {
   return runCli([
-    "test",
+    "verify",
     `.taskless/rules/runtime/${RULE}`,
     "-d",
     cwd,
@@ -201,7 +201,7 @@ describe("a runtime rule whose fixtures did not run", () => {
     expect(stdout).not.toContain(`✓ runtime/${RULE}`);
     // A refusal by policy is not the rule's fault, so it must not fail either.
     expect(exitCode).toBe(0);
-    expect(stdout).not.toContain("1 rule(s) tested");
+    expect(stdout).not.toContain("1 rule(s) verified");
   });
 
   it("says the fixtures did not run, and names the flag that would run them", async () => {
@@ -216,7 +216,7 @@ describe("a runtime rule whose fixtures did not run", () => {
   });
 
   it("offers the flag as the only route, and never sends the author to auth", async () => {
-    // `test` does not reconcile, so authenticating changes nothing here and
+    // `verify` does not reconcile, so authenticating changes nothing here and
     // saying otherwise would send an author to a login that cannot help: a
     // locally authored rule has no signature and never will. The flag is the
     // whole gate, so it has to be the whole message.

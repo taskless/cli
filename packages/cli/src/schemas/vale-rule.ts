@@ -194,7 +194,7 @@ const SCOPE_PREFIXES: readonly string[] = VALE_SCOPE_PREFIXES;
  *
  * What is between the parens is NOT checked here. Vale compiles every
  * selector at load and reports a bad one as `E201 invalid selector in
- * 'doc(...)'`, so an author hears about it from `test`, the same way a
+ * 'doc(...)'`, so an author hears about it from `verify`, the same way a
  * malformed regex in `tokens` is reported. Parsing CSS here would buy a
  * dependency to duplicate a check the binary already makes loudly.
  */

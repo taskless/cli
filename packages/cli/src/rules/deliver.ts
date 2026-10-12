@@ -110,7 +110,7 @@ export function describeIncompleteSet(
  * **A WARNING, NOT A REFUSAL, AND THE ASYMMETRY IS THE POINT.** Everything
  * {@link describeIncompleteSet} names is a rule that cannot work: no rule file,
  * no config to scope it, no capture to invoke it. A rule with no fixtures works
- * fine. What it cannot do is demonstrate that it does — `taskless test` reports
+ * fine. What it cannot do is demonstrate that it does — `taskless verify` reports
  * a pass having executed nothing, which is indistinguishable from a rule that
  * was proven. That is worth saying out loud and not worth refusing a delivery
  * over, because refusing would leave the holder of a fixture-less rule with no
@@ -238,7 +238,7 @@ interface RuleDirectoryContents {
  * the v1 single-content envelope wrote fixtures locally that no later file set
  * would name. v2 serves a rule's fixtures in every file set (confirmed with the
  * rules team, 2026-09-29), so a fixture the set does not name is stale, and a
- * stale fixture makes `taskless test` judge the rule against cases nobody
+ * stale fixture makes `taskless verify` judge the rule against cases nobody
  * issued.
  *
  * Symlinks are listed as files rather than descended into. `readdir` does not

@@ -1,11 +1,11 @@
 import { z } from "zod";
 
 /**
- * One rule's verdict, as `validate` and `test` both report it.
+ * One rule's verdict, as `validate` and `verify` both report it.
  *
  * The two commands share an implementation and differ only in what they run,
- * so they share one envelope. `ran` is `test`-only: `validate` never reaches a
- * test run, and `test` reports `false` when verification failed first.
+ * so they share one envelope. `ran` is `verify`-only: `validate` never reaches a
+ * test run, and `verify` reports `false` when verification failed first.
  */
 /**
  * A position, zero-based in both axes, exactly as `check --json` reports one.
@@ -20,7 +20,7 @@ const positionSchema = z.object({
  *
  * The `CheckResult` shape `check --json` already prints, plus the `bucket` the
  * fixture that produced it lives in. Reused verbatim rather than narrowed to
- * what `test` "needs": a finding means the same thing whichever command
+ * what `verify` "needs": a finding means the same thing whichever command
  * surfaced it, and a second, smaller shape would be a second thing to keep in
  * step with the engines.
  *
@@ -78,13 +78,13 @@ const ruleResultSchema = z.object({
     .boolean()
     .optional()
     .describe(
-      "`test` only: whether the rule's tests actually ran. Branch on this, not on `ok` alone: `ok: true` with `ran: false` is not a rule that passed"
+      "`verify` only: whether the rule's tests actually ran. Branch on this, not on `ok` alone: `ok: true` with `ran: false` is not a rule that passed"
     ),
   refused: z
     .string()
     .optional()
     .describe(
-      "`test` only: the execution policy declined to run the rule's fixtures, and why. Neither a pass nor a failure, excluded from the rules tested, and never on its own a reason for a non-zero exit"
+      "`verify` only: the execution policy declined to run the rule's fixtures, and why. Neither a pass nor a failure, excluded from the rules verified, and never on its own a reason for a non-zero exit"
     ),
   notices: z
     .array(z.string())
@@ -99,7 +99,7 @@ const ruleResultSchema = z.object({
     ),
 });
 
-/** Output schema for `taskless validate --json` and `taskless test --json`. */
+/** Output schema for `taskless validate --json` and `taskless verify --json`. */
 export const outputSchema = z.object({
   ok: z.boolean(),
   rules: z.array(ruleResultSchema).describe("Per-rule results"),

@@ -58,7 +58,7 @@ export interface RuleValidation {
    * sg rule spelled `language: typescript` reaches the right parser and fails
    * nothing, but the canonical spelling is `TypeScript` — worth saying, not
    * worth failing. Surfaced even on a pass, for the same reason
-   * {@link RuleTestResult.notices} is.
+   * {@link RuleVerification.notices} is.
    *
    * A list rather than one joined string so the renderer owns presentation: it
    * prints one `    notice: ` marker per element. A producer that picked its own
@@ -68,8 +68,8 @@ export interface RuleValidation {
   notices: string[];
 }
 
-/** What `test` concluded about one rule. */
-export interface RuleTestResult {
+/** What `verify` concluded about one rule. */
+export interface RuleVerification {
   engine: EngineName;
   ruleId: string;
   ok: boolean;
@@ -92,7 +92,7 @@ export interface RuleTestResult {
   /**
    * Whether the rule's tests actually ran.
    *
-   * Load-bearing rather than advisory. `test` used to report a runtime rule as
+   * Load-bearing rather than advisory. `verify` used to report a runtime rule as
    * `ok: true, ran: false` and print a tick, so the one field that knew the
    * rule had not been tested was the one nothing read.
    */
@@ -102,7 +102,7 @@ export interface RuleTestResult {
    *
    * The third outcome, and the one `ok` cannot express. A rule that cannot run
    * because nothing blessed it is not a pass, and it is not a failure either:
-   * failing it would turn `test` red for every project holding a runtime rule,
+   * failing it would turn `verify` red for every project holding a runtime rule,
    * with no action available to its holder that makes it green. So it is
    * neither, and the renderer, the summary count and the exit code all read
    * this field rather than inferring the state from `ok` and `ran` together
@@ -135,15 +135,15 @@ export interface RuleTestResult {
   findings: FixtureFinding[];
 }
 
-/** What `test` needs beyond a rule, all of it about the runtime engine. */
-export interface TestOptions {
+/** What `verify` needs beyond a rule, all of it about the runtime engine. */
+export interface VerifyOptions {
   /**
    * Run a runtime rule's fixtures, which executes its `check.ts`.
    *
-   * The WHOLE gate for `test`, and deliberately not `check`'s gate. `check`
+   * The WHOLE gate for `verify`, and deliberately not `check`'s gate. `check`
    * reconciles because it executes rules as a side effect of scanning a
    * repository: the user asked for a scan, code ran, and the gate is what stops
-   * that happening silently. `test` runs fixtures because the user asked it to
+   * that happening silently. `verify` runs fixtures because the user asked it to
    * — the verb is the consent — so asking a server for permission to run your
    * own fixtures is overreach, and the flag alone decides.
    *
@@ -156,7 +156,7 @@ export interface TestOptions {
   /**
    * Called immediately before fixtures actually execute, never otherwise.
    *
-   * Lazy so `test --dangerously-run-scripts` over a tree of `sg` rules does not
+   * Lazy so `verify --dangerously-run-scripts` over a tree of `sg` rules does not
    * warn about code it never ran. Deduplication belongs to the caller, which
    * knows how many rules one command run covers.
    */
@@ -171,10 +171,10 @@ async function readYaml(path: string): Promise<unknown> {
  * ast-grep's validate verdict and the full layer result behind it, from **one**
  * `verifyRule` call.
  *
- * `validate` and `test` want different halves of the same three-layer run:
- * `validate` reads Layers 1–2, `test` needs Layer 3 as well. Asking twice —
+ * `validate` and `verify` want different halves of the same three-layer run:
+ * `validate` reads Layers 1–2, `verify` needs Layer 3 as well. Asking twice —
  * once for the verdict, once for the tests — assembled the config and spawned
- * `sg test` twice for every rule, so `taskless test` paid two subprocesses per
+ * `sg test` twice for every rule, so `taskless verify` paid two subprocesses per
  * rule to produce one answer. Returning both halves from a single call keeps
  * each caller's view unchanged and runs the layers once.
  */
@@ -185,7 +185,7 @@ async function validateSgRule(
 ): Promise<{ validation: RuleValidation; result: VerifyResult }> {
   const result = await verifyRule(cwd, ruleId, options);
   // The ast-grep verifier already layers schema and required fields; only its
-  // test layer is `test`'s business, so it is not part of the verdict here.
+  // test layer is `verify`'s business, so it is not part of the verdict here.
   const errors = [...result.schema.errors, ...result.requirements.errors];
   const violations = [
     ...(result.schema.violations ?? []),
@@ -210,7 +210,7 @@ async function validateSgRule(
  * Deliberately does **not** require tests. An agent part-way through authoring
  * has a rule and no fixtures yet, and needs to know the rule itself is valid
  * before it can write a meaningful test for it — which is the whole reason
- * `validate` and `test` are separate commands.
+ * `validate` and `verify` are separate commands.
  */
 export async function validateOneRule(
   cwd: string,
@@ -425,11 +425,11 @@ async function validateRuleComponents(
  * the other way round — so the author is told their fixtures are incomplete
  * while the reason the rule could never have run goes unmentioned.
  */
-export async function testOneRule(
+export async function verifyOneRule(
   cwd: string,
   rule: ResolvedRule,
-  options: TestOptions = {}
-): Promise<RuleTestResult> {
+  options: VerifyOptions = {}
+): Promise<RuleVerification> {
   const { engine, ruleId } = rule;
 
   if (engine === "sg") {
@@ -437,7 +437,7 @@ export async function testOneRule(
     // still short-circuits, so the ordering above is unchanged — the tests
     // simply already ran alongside the layers that decide it.
     const { validation: verdict, result } = await validateSgRule(cwd, ruleId);
-    // `test` runs `validate` first, and the uniqueness check is part of `validate`.
+    // `verify` runs `validate` first, and the uniqueness check is part of `validate`.
     // Reached through the same helper rather than by a second `validateSgRule`
     // call, which would spawn `sg test` twice for one answer.
     const validation = await withIdCollision(cwd, ruleId, verdict);
@@ -558,21 +558,21 @@ export async function testOneRule(
     };
   }
 
-  // Runtime rules execute code, so `test` runs their fixtures only behind
+  // Runtime rules execute code, so `verify` runs their fixtures only behind
   // `--dangerously-run-scripts`. It does NOT reconcile, and that is the whole
   // difference from `check`.
   //
   // `check` asks the server because it executes rules as a SIDE EFFECT of
   // scanning a repository — nobody asked for code to run, so a gate has to
-  // stand between the scan and the execution. `test` runs fixtures because the
-  // user typed `test`, and the verb is the consent; asking a server for
+  // stand between the scan and the execution. `verify` runs fixtures because the
+  // user typed `verify`, and the verb is the consent; asking a server for
   // permission to run your own fixtures is overreach.
   //
   // The only party a reconcile here would ever admit is someone testing an
   // already-blessed delivered rule, whose fixtures the service verified before
   // it delivered anything. A locally authored rule has no signature and never
   // will, because blessing is recording and nothing recorded it — so for the
-  // audience that actually runs `test` on a runtime rule, a reconcile is pure
+  // audience that actually runs `verify` on a runtime rule, a reconcile is pure
   // cost paid for an answer that is always "no".
   //
   // Dropping it is strictly more conservative: nothing runs that would not have

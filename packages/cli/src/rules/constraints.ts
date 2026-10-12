@@ -34,16 +34,16 @@ export interface RuleConstraint {
    *
    * Load-bearing for a consumer's eval ORDER, not a detail. A `validate`
    * constraint is decided from the files alone and can be checked before
-   * anything runs; a `test` constraint needs the fixtures to execute. Running
+   * anything runs; a `verify` constraint needs the fixtures to execute. Running
    * the cross-comparison before `validate` passes measures the wrong thing, and
-   * treating a `test`-time refusal as a `validate` gap sends someone to the wrong
+   * treating a `verify`-time refusal as a `validate` gap sends someone to the wrong
    * layer.
    *
    * The split is not always where it looks. `validate` requires that a test FILE
    * exists, by filename; whether that file is attributed to this rule is
    * decided later, from the `id:` inside it.
    */
-  enforcedBy: "validate" | "test";
+  enforcedBy: "validate" | "verify";
   /** One line, for a report that lists several. */
   summary: string;
   /** Why it exists, so a reader can tell a house rule from a bug. */
@@ -75,7 +75,7 @@ export const RULE_CONSTRAINTS = [
     enforcedBy: "validate",
     summary: "A rule's `id:` must equal the directory it lives in.",
     rationale:
-      "The directory name is the rule id: it is what `check` and `test` address, and what a person types to delete a rule. ast-grep registers the rule under the id in its body. With the two apart, `test` cannot find the rule at all, and `check` does run it but reports findings under a name no directory has, so nobody can locate what produced them.",
+      "The directory name is the rule id: it is what `check` and `verify` address, and what a person types to delete a rule. ast-grep registers the rule under the id in its body. With the two apart, `verify` cannot find the rule at all, and `check` does run it but reports findings under a name no directory has, so nobody can locate what produced them.",
   },
   {
     id: "sg-regex-needs-kind",
@@ -118,15 +118,15 @@ export const RULE_CONSTRAINTS = [
     enforcedBy: "validate",
     summary: "A rule must ship at least one test file under `.tests/`.",
     rationale:
-      "A rule with no fixtures has shown neither that it fires nor that it stays quiet. `validate` requires the file; `test` requires the cases inside it to cover both.",
+      "A rule with no fixtures has shown neither that it fires nor that it stays quiet. `validate` requires the file; `verify` requires the cases inside it to cover both.",
   },
   {
     id: "sg-fixture-id-matches-rule",
     engine: "sg",
-    enforcedBy: "test",
+    enforcedBy: "verify",
     summary: "A test file's own `id:` must equal the rule id.",
     rationale:
-      "Fixtures are attributed by the id inside the file, not by its name. A fixture carrying another rule's id is silently not counted, so a rule that ships one reads as a rule that shipped none. `validate` passes, because the FILE is there; `test` is where it bites.",
+      "Fixtures are attributed by the id inside the file, not by its name. A fixture carrying another rule's id is silently not counted, so a rule that ships one reads as a rule that shipped none. `validate` passes, because the FILE is there; `verify` is where it bites.",
   },
   // --- Vale: the rule's own `.vale.ini`, checked as a parsed structure -------
   //

@@ -89,7 +89,7 @@ export interface EngineLayout {
 /**
  * Everything defining a rule lives in one directory,
  * `.taskless/rules/<engine>/<id>/`, the same shape for every engine. A rule is
- * therefore one path — which is what lets `validate` and `test` take a path
+ * therefore one path — which is what lets `validate` and `verify` take a path
  * instead of an id, and what makes deleting a rule an `rm -rf` of one thing.
  */
 export const RULES_DIRECTORY = "rules";

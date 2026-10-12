@@ -37,7 +37,7 @@ export interface RuleSelection {
  *
  * Reads directory names, not the `id:` inside a rule file. The directory name
  * IS the rule id here (`rules/constraints.ts`, `rules/verify.ts` both state and
- * enforce it), so this is the same identity `test` and `rules delete` address a
+ * enforce it), so this is the same identity `verify` and `rules delete` address a
  * rule by, and a rule whose file disagrees with its directory is already a
  * `validate` failure rather than something for this to guess at.
  */
@@ -52,7 +52,7 @@ export async function resolveRuleSelection(
   const unique = [...new Set(requested)];
 
   // `findRuleEngines` is the one implementation of "which engines hold this
-  // id", shared with `rules delete` and `test`. A second copy here — listing
+  // id", shared with `rules delete` and `verify`. A second copy here — listing
   // every engine's directory and matching names — would be a second definition
   // of rule identity, and a later change to one (case-insensitive ids, a new
   // engine) would silently diverge from the other.

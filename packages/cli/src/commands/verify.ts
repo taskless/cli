@@ -7,9 +7,9 @@ import { ensureTasklessDirectory } from "../filesystem/directory";
 import { requireCurrentSchema } from "../filesystem/migrate";
 import type { FixtureFinding } from "../rules/fixtures";
 import {
-  testOneRule,
+  verifyOneRule,
   validateOneRule,
-  type RuleTestResult,
+  type RuleVerification,
   type RuleValidation,
 } from "../rules/inspect";
 import {
@@ -17,7 +17,7 @@ import {
   resolveRulePath,
   RuleNotFoundError,
 } from "../rules/resolve-path";
-import { outputSchema as verifyTestOutputSchema } from "../schemas/verify-test";
+import { outputSchema as ruleCheckOutputSchema } from "../schemas/rule-check";
 import { makeErrorEnvelope, writeJsonError } from "../types/errors";
 import { CLIError } from "../util/cli-error";
 import { formatText } from "../util/format";
@@ -27,10 +27,12 @@ import { markNotice } from "../util/notices";
  * The findings a result carries, or none.
  *
  * `validate` never runs fixtures, so its results have no `findings` at all, while
- * `test`'s always do — a narrowing rather than an optional field, because the
+ * `verify`'s always do — a narrowing rather than an optional field, because the
  * two commands share this renderer and only one of them has anything to render.
  */
-function findingsOf(result: RuleValidation | RuleTestResult): FixtureFinding[] {
+function findingsOf(
+  result: RuleValidation | RuleVerification
+): FixtureFinding[] {
   return "findings" in result ? result.findings : [];
 }
 
@@ -64,27 +66,27 @@ function printFindings(findings: FixtureFinding[]): void {
 }
 
 /**
- * The shared body of `validate` and `test`.
+ * The shared body of `validate` and `verify`.
  *
  * Both take a path, resolve it to rules, and report per rule — they differ only
  * in what they run against each. Keeping one implementation means the two can
  * never disagree about what a path means, which is the property that makes
- * `validate <path>` and `test <path>` interchangeable in a recipe.
+ * `validate <path>` and `verify <path>` interchangeable in a recipe.
  */
 async function runOverPath(options: {
   cwd: string;
   target: string;
   json: boolean;
   /** What the command is called, for messages. */
-  label: "validate" | "test";
+  label: "validate" | "verify";
   run: (
     cwd: string,
     rule: { engine: "sg" | "vale" | "runtime"; ruleId: string }
-  ) => Promise<RuleValidation | RuleTestResult>;
+  ) => Promise<RuleValidation | RuleVerification>;
 }): Promise<void> {
   const { cwd, target, json, label, run } = options;
 
-  // REFUSES rather than migrates, for both `validate` and `test`.
+  // REFUSES rather than migrates, for both `validate` and `verify`.
   //
   // A current layout is still a precondition — a path means nothing against
   // the wrong tree — but establishing it by migrating made two reporting
@@ -151,7 +153,7 @@ async function runOverPath(options: {
     if (json) {
       console.log(
         JSON.stringify(
-          verifyTestOutputSchema.parse({
+          ruleCheckOutputSchema.parse({
             ok: true,
             rules: [],
           })
@@ -163,27 +165,27 @@ async function runOverPath(options: {
     return;
   }
 
-  const results: (RuleValidation | RuleTestResult)[] = [];
+  const results: (RuleValidation | RuleVerification)[] = [];
   for (const rule of rules) {
     results.push(await run(cwd, rule));
   }
 
   // Three outcomes, not two. A run the execution policy refused is neither a
   // pass nor a failure: the rule is not defective, and no action available to
-  // its holder would make a failure green, so failing it would turn `test` red
+  // its holder would make a failure green, so failing it would turn `verify` red
   // for every project holding a runtime rule. It is excluded from the failures
-  // that set the exit code and from the count of rules tested, and gets its
+  // that set the exit code and from the count of rules verified, and gets its
   // own marker below.
-  const isRefused = (result: RuleValidation | RuleTestResult): boolean =>
+  const isRefused = (result: RuleValidation | RuleVerification): boolean =>
     "refused" in result && result.refused !== undefined;
   const refused = results.filter((result) => isRefused(result));
   const failed = results.filter((result) => !result.ok && !isRefused(result));
-  const tested = results.length - refused.length;
+  const judged = results.length - refused.length;
 
   if (json) {
     console.log(
       JSON.stringify(
-        verifyTestOutputSchema.parse({
+        ruleCheckOutputSchema.parse({
           ok: failed.length === 0,
           rules: results,
         })
@@ -191,7 +193,7 @@ async function runOverPath(options: {
     );
   } else {
     for (const result of results) {
-      // `○` is neither tick nor cross on purpose: the rule was not tested, and
+      // `○` is neither tick nor cross on purpose: the rule was not verified, and
       // a reader scanning the column has to be able to see that at a glance.
       // The reason prints below it, from `errors`, and names what would run it.
       const mark = isRefused(result) ? "○" : result.ok ? "✓" : "✗";
@@ -220,8 +222,8 @@ async function runOverPath(options: {
         printFindings(findingsOf(result));
       }
     }
-    // A rule that did not run is not among the rules tested. Counting it there
-    // is the summary half of the same defect as the tick: "1 rule(s) tested"
+    // A rule that did not run is not among the rules verified. Counting it there
+    // is the summary half of the same defect as the tick: "1 rule(s) verified"
     // about a rule nothing ran.
     const notRun =
       refused.length === 0
@@ -229,8 +231,8 @@ async function runOverPath(options: {
         : ` ${String(refused.length)} rule(s) did not run.`;
     console.log(
       failed.length === 0
-        ? `\n${String(tested)} rule(s) ${label === "validate" ? "validated" : "tested"}.${notRun}`
-        : `\n${String(failed.length)} of ${String(tested)} rule(s) failed.${notRun}`
+        ? `\n${String(judged)} rule(s) ${label === "validate" ? "validated" : "verified"}.${notRun}`
+        : `\n${String(failed.length)} of ${String(judged)} rule(s) failed.${notRun}`
     );
   }
 
@@ -276,19 +278,19 @@ export const validateCommand = defineCommand({
   },
 });
 
-export const testCommand = defineCommand({
+export const verifyCommand = defineCommand({
   meta: {
-    name: "test",
+    name: "verify",
     description: "Run a rule's tests, after validating the rule itself",
   },
   args: {
     ...ruleTargetArguments,
     // The same flag `check` carries, spelled the same way. Here it is the ONLY
-    // thing that runs a runtime rule's fixtures: `test` does not reconcile, so
+    // thing that runs a runtime rule's fixtures: `verify` does not reconcile, so
     // there is no blessed-signature path that runs them without it. That makes
     // this stricter than `check`, not looser — `check` will execute a blessed
     // rule with no flag at all, because it runs rules as a side effect of
-    // scanning, whereas nothing runs under `test` unless it is asked for twice.
+    // scanning, whereas nothing runs under `verify` unless it is asked for twice.
     "dangerously-run-scripts": {
       type: "boolean",
       description:
@@ -308,9 +310,9 @@ export const testCommand = defineCommand({
       cwd,
       target: args.path ?? ".taskless/rules",
       json: args.json,
-      label: "test",
+      label: "verify",
       run: async (ruleCwd, rule) =>
-        testOneRule(ruleCwd, rule, {
+        verifyOneRule(ruleCwd, rule, {
           dangerouslyRunScripts,
           onRuntimeWarning: (message: string) => {
             if (warned || args.json) return;

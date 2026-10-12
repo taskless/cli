@@ -83,8 +83,8 @@ const HARDCODED_INVOCATION = new RegExp(
 
 /**
  * The regex alone cannot tell an invocation from prose that happens to read
- * like one: `test` is a subcommand AND an ordinary English word, so "the
- * taskless test suite" would be reported as a hardcoded invocation and fail
+ * like one: `verify` is a subcommand AND an ordinary English word, so "the
+ * taskless verify suite" would be reported as a hardcoded invocation and fail
  * CI on a sentence nobody should have to reword.
  *
  * An invocation is always *code* — a fenced block or an inline code span — so
@@ -279,7 +279,7 @@ describe("recipes defer the CLI invocation to the renderer", () => {
   // The narrowing is only worth having if it still catches what it is for, so
   // this pins both halves: prose is ignored, code is not.
   it.each([
-    ["the taskless test suite is green", false, "prose naming a subcommand"],
+    ["the taskless verify suite is green", false, "prose naming a subcommand"],
     ["run the taskless check before pushing", false, "prose, unfenced"],
     ["`taskless check`", true, "inline code span"],
     ["`npx @taskless/cli check`", true, "hardcoded launcher, inline"],

@@ -80,7 +80,7 @@ export function classifyCoverage<
 }
 
 /**
- * What `test` says about coverage that is not `"both"`, or nothing when it is.
+ * What `verify` says about coverage that is not `"both"`, or nothing when it is.
  *
  * `suffix` is how that engine spells a bucket, and it genuinely differs rather
  * than having drifted: Vale's and runtime's buckets are directories, so they
@@ -105,7 +105,7 @@ export function describeCoverageShortfall(
  * directories.
  *
  * Declared here rather than beside either engine because a bucket is now part
- * of what `test` REPORTS, not only of how each engine reads its own tests: a
+ * of what `verify` REPORTS, not only of how each engine reads its own tests: a
  * consumer reading `findings[].bucket` is reading one vocabulary, and it should
  * not be one engine's copy of it that they happen to be reading. ast-grep's
  * buckets are the `valid:`/`invalid:` keys of its own test YAML and keep their

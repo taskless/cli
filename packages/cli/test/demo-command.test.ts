@@ -51,9 +51,9 @@ interface Verdict {
   errors: string[];
 }
 
-/** Every rule's verdict from one `taskless test --json` run. */
+/** Every rule's verdict from one `taskless verify --json` run. */
 async function verdicts(extra: string[] = []): Promise<Verdict[]> {
-  const { stdout } = await run(["test", "--json", ...extra, "-d", project]);
+  const { stdout } = await run(["verify", "--json", ...extra, "-d", project]);
   return (JSON.parse(stdout) as { rules: Verdict[] }).rules;
 }
 

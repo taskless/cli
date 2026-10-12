@@ -230,7 +230,7 @@ describe("who migrates, and who refuses", () => {
     expect(parseEnvelope(stdout)).not.toHaveProperty("migrated");
   });
 
-  it.each(["check", "validate", "test"] as const)(
+  it.each(["check", "validate", "verify"] as const)(
     "%s refuses a project behind the CLI rather than migrating it",
     async (command) => {
       // The behaviour this file used to assert, inverted. These commands

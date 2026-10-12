@@ -62,7 +62,7 @@ ignores:
   # rule is for, and it would do it silently. These two are the only files under
   # `schemas/` that name the package at all, so listing them costs nothing now
   # and makes the next one a decision rather than an inheritance.
-  - "packages/cli/src/schemas/verify-test.ts"
+  - "packages/cli/src/schemas/rule-check.ts"
   - "packages/cli/src/schemas/index.ts"
   # `share` prints the invocation for SOMEONE ELSE to run, beside a QR code
   # they scan. A nightly or local build advertising its own pinned launcher

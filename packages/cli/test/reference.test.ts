@@ -399,7 +399,7 @@ describe("the demo reference payload", () => {
     // `enforcedBy` decides the order a consumer's eval has to run in, so it
     // travels with each entry rather than being implied by the protocol text.
     for (const constraint of reference.constraints) {
-      expect(["validate", "test"]).toContain(constraint.enforcedBy);
+      expect(["validate", "verify"]).toContain(constraint.enforcedBy);
     }
   });
 
@@ -448,7 +448,7 @@ describe("the corpus refuses fixtures it cannot group", () => {
   it("rejects a bare file where a runtime case must be a directory", () => {
     // The generator held a weaker copy of the invariant `bucketCases` enforces
     // when it reads these buckets off disk. Without this, the corpus publishes
-    // a one-file "directory" case that `taskless test` throws on.
+    // a one-file "directory" case that `taskless verify` throws on.
     expect(() =>
       buildReference([refusalInput("runtime", [".tests/fail/oops.ts"])])
     ).toThrow(/has no root to be/);

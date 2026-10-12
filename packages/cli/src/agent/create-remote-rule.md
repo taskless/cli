@@ -1,4 +1,4 @@
-# Topic: create-remote-rule     (CLI v%(CLI_VERSION)s / topic v5)
+# Topic: create-remote-rule     (CLI v%(CLI_VERSION)s / topic v6)
 
 ## You are here
 This is `create-remote-rule`. It helps you have the Taskless service
@@ -129,7 +129,7 @@ Two ways to legitimately be here:
    to `.taskless/rules/<engine>/<id>/`, replacing anything already in
    that directory. These are the same paths and the same shape a
    locally authored rule uses, so `check`, `improve-rule`, `validate`, and
-   `test` treat them identically. Nothing is written under
+   `verify` treat them identically. Nothing is written under
    `.taskless/rule-metadata/`. Show the user the paths and suggest
    `%(TASKLESS_CLI)s agent check`.
 
@@ -144,7 +144,7 @@ Two ways to legitimately be here:
    **Read `notices` if it is present.** It is an optional array of
    advisory messages about a delivery that was written anyway. A rule
    arriving with no `.tests/` fixtures is the one to expect. That rule works, but
-   nothing exercises it: `test` reports a pass over zero cases, which
+   nothing exercises it: `verify` reports a pass over zero cases, which
    reads exactly like a rule proven to work. Surface any notice to the
    user rather than reporting an unqualified success. Under `--json`
    these do not go to stderr, so the envelope is the only place they

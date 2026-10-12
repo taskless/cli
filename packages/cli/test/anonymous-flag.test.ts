@@ -185,7 +185,7 @@ describe("--anonymous flag (per-command behavior matrix)", () => {
  *
  * Remote generation needs a GitHub `origin`; local authoring does not, and
  * never did. `rule create --anonymous` returns before identity is resolved,
- * and `validate` and `test` never resolve it at all. That is easy to regress by
+ * and `validate` and `verify` never resolve it at all. That is easy to regress by
  * hoisting an identity call, and the regression would be invisible to anyone
  * developing inside a GitHub checkout, so it is pinned here across all three
  * no-remote populations.

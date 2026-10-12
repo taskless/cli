@@ -44,7 +44,7 @@ async function importBuiltSchemas(): Promise<Record<string, unknown>> {
 const PUBLIC_EXPORTS = [
   "valeVerifyOutputSchema",
   "verifyOutputSchema",
-  "verifyTestOutputSchema",
+  "ruleCheckOutputSchema",
 ] as const;
 
 interface ParsedSchema {
@@ -96,7 +96,7 @@ describe("the published schemas entry", () => {
     ]);
 
     const built = await importBuiltSchemas();
-    const schema = built.verifyTestOutputSchema as ParsedSchema;
+    const schema = built.ruleCheckOutputSchema as ParsedSchema;
     const parsed = schema.parse(JSON.parse(stdout)) as {
       ok: boolean;
       rules: { ruleId: string; violations: unknown[] }[];
@@ -115,7 +115,7 @@ describe("the published schemas entry", () => {
     // and all; `parse()` returns only the declared fields, so a consumer
     // cannot come to depend on a field we never promised.
     const built = await importBuiltSchemas();
-    const schema = built.verifyTestOutputSchema as ParsedSchema;
+    const schema = built.ruleCheckOutputSchema as ParsedSchema;
     expect(schema.parse({ ok: true, rules: [], surprise: 1 })).toEqual({
       ok: true,
       rules: [],
@@ -127,7 +127,7 @@ describe("the published schemas entry", () => {
     // hand-written interface: a shape it does not cover is refused rather than
     // yielding a partially-typed value the consumer goes on to use.
     const built = await importBuiltSchemas();
-    const schema = built.verifyTestOutputSchema as ParsedSchema;
+    const schema = built.ruleCheckOutputSchema as ParsedSchema;
     expect(schema.safeParse({ ok: true }).success).toBe(false);
     expect(
       schema.safeParse({ ok: true, rules: [{ engine: "sg" }] }).success

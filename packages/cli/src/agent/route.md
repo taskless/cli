@@ -1,4 +1,4 @@
-# Topic: route     (CLI v%(CLI_VERSION)s / topic v5)
+# Topic: route     (CLI v%(CLI_VERSION)s / topic v6)
 
 ## Goal
 Turn "write me a rule that…" into one command to run. This is the front
@@ -229,7 +229,7 @@ answered together.
    This is **not fixed by `auth login`**. It is a property of the
    project, not the session, so do not send them there for it.
 
-   Everything else still works: local authoring, `validate`, `test` and
+   Everything else still works: local authoring, `validate`, `verify` and
    `check` need no remote of any kind.
 
 7. **Offer the service only where it is a genuine choice.** When the

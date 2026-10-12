@@ -99,7 +99,7 @@ withVale("the example project", () => {
   });
 
   it("passes the rules' own tests", async () => {
-    const result = await runCli(["test", "-d", cwd, "--json"]);
+    const result = await runCli(["verify", "-d", cwd, "--json"]);
     expect(result.exitCode).toBe(0);
     expect(parseJson<RuleReport>(result.stdout).ok).toBe(true);
   });

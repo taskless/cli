@@ -20,7 +20,7 @@ import { toCheckResult, type AstGrepMatch } from "../types/check";
  * The findings an ast-grep rule's own fixtures produce, with their rendered
  * messages.
  *
- * `test` could previously only say whether the `invalid:` cases fired and the
+ * `verify` could previously only say whether the `invalid:` cases fired and the
  * `valid:` ones stayed quiet. A rule whose `message` interpolates its
  * metavariables can have the slots in the wrong order, fire in exactly the
  * right places, and be reported as a rule that passed — the rendered message is
@@ -319,7 +319,7 @@ export async function collectSgFixtureFindings(
             ...result,
             // ast-grep writes `"note": null` for a rule without one, and
             // `toCheckResult` passes it through — harmless for `check`, which
-            // does not validate, but the `test` payload is parsed by a schema
+            // does not validate, but the `verify` payload is parsed by a schema
             // where `note` is an optional STRING. Normalised to absent here
             // rather than in `toCheckResult`, which would change the shape
             // `check --json` has been emitting.

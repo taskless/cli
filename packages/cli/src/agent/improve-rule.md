@@ -1,4 +1,4 @@
-# Topic: improve-rule     (CLI v%(CLI_VERSION)s / topic v7)
+# Topic: improve-rule     (CLI v%(CLI_VERSION)s / topic v8)
 
 ## Goal
 Iterate on an existing Taskless rule. The CLI submits the user's
@@ -93,12 +93,12 @@ If the user wants the local-only flow (no API call), fetch
     rather than reporting an unqualified success. Under `--json` these
     do not go to stderr, so the envelope is the only place they appear.
 
-    **Confirm both fixture buckets are still non-empty.** `test` fails
+    **Confirm both fixture buckets are still non-empty.** `verify` fails
     an ast-grep rule whose `valid:` or `invalid:` array is empty, and
     narrowing a pattern to kill a false positive is exactly how
     `invalid:` ends up with nothing the rule still matches. Run
     ```
-    %(TASKLESS_CLI)s test .taskless/rules/sg/<id> --json
+    %(TASKLESS_CLI)s verify .taskless/rules/sg/<id> --json
     ```
     on the returned files rather than trusting them, and add a fixture
     the new pattern does match if that bucket came back empty.

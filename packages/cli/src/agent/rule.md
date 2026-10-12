@@ -1,4 +1,4 @@
-# Topic: rule     (CLI v%(CLI_VERSION)s / topic v3)
+# Topic: rule     (CLI v%(CLI_VERSION)s / topic v4)
 
 ## Goal
 Umbrella for rule operations. Fetch the topic for the action you want.

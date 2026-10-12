@@ -204,7 +204,7 @@ export interface Reference {
   protocol: string[];
   layout: ReferenceLayout;
   /**
-   * What `validate` and `test` enforce beyond the engine's own schema.
+   * What `validate` and `verify` enforce beyond the engine's own schema.
    *
    * Published because a generator that never reads our recipes cannot know
    * them, and because without the list a refusal here is indistinguishable
@@ -328,7 +328,7 @@ function groupCases(
     // The opposite rejection, and it is the one `bucketCases` already makes
     // when the runner reads these buckets off disk. Publishing a bare file as
     // a one-file "case" would emit a corpus indistinguishable in shape from a
-    // valid `case-documents` one, that `taskless test` throws on.
+    // valid `case-documents` one, that `taskless verify` throws on.
     if (grouping === "case-directories" && rest.length === 1)
       throw new Error(
         `${ruleId}: ${file.path} is a bare file, but a ${engine} case is a ` +

@@ -14,7 +14,7 @@ import { CLIError } from "./cli-error";
  * is told.
  *
  * All three are a capability boundary on REMOTE rule generation, not a
- * verdict on the repository. Local authoring, `validate`, `test` and `check`
+ * verdict on the repository. Local authoring, `validate`, `verify` and `check`
  * work in every one of them, which is why each message names the local path
  * rather than only reporting the refusal.
  */
@@ -102,11 +102,11 @@ function getOriginUrl(cwd: string): Promise<string> {
             reject(
               inRepository
                 ? new CLIError(
-                    "Remote rule generation needs a GitHub `origin` remote, and this repository has none. Local rule authoring, `validate`, `test` and `check` work without one.",
+                    "Remote rule generation needs a GitHub `origin` remote, and this repository has none. Local rule authoring, `validate`, `verify` and `check` work without one.",
                     "NO_ORIGIN_REMOTE"
                   )
                 : new CLIError(
-                    "Remote rule generation needs a GitHub repository, and this directory is not a git repository. Local rule authoring, `validate`, `test` and `check` work without one.",
+                    "Remote rule generation needs a GitHub repository, and this directory is not a git repository. Local rule authoring, `validate`, `verify` and `check` work without one.",
                     "NOT_A_GIT_REPOSITORY"
                   )
             );
