@@ -75,11 +75,15 @@ linter, the `create-legacy-rule` path needs nothing installed.
 | Run checks before commits  | `%(TASKLESS_CLI)s agent hooks`        |
 
 Two of those rows look alike and are not. Running `%(TASKLESS_CLI)s`
-migrates the `.taskless/` DIRECTORY and refreshes the skills, automatically.
-`%(TASKLESS_CLI)s update` is about the RULES, which no migration can rewrite:
-a rule needing a `fix` or matching differently under a new engine is content,
-not layout. A successful migration does not finish an upgrade; `update` is
-how to find out whether the rules still need work.
+migrates the `.taskless/` layout and refreshes the installed skills: that is
+the DIRECTORY, and it is automatic. `%(TASKLESS_CLI)s update` is about the
+RULES already in the project, which no migration can rewrite for you, since a
+rewriter that now needs a `fix` or a rule whose matching semantics shifted
+under a new engine is a question about content rather than layout.
+
+An agent that has run a migration and watched it succeed will otherwise
+reasonably conclude the upgrade is finished. The directory is migrated; the
+rules may still need work, and `update` is how to find out.
 
 If the user's intent is ambiguous between two topics, run
 `%(TASKLESS_CLI)s agent` (no args) to see the disambiguation table, or ask
