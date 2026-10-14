@@ -169,9 +169,7 @@ export const initCommand = defineCommand({
       if (result.reloadNotice !== undefined) {
         console.log(result.reloadNotice);
       }
-      console.log(
-        getOnboardTrailer({ commandsInstalled: result.commandsInstalled })
-      );
+      console.log(getOnboardTrailer());
     }
     // Concrete state event: skills/commands were installed (non-interactive).
     telemetry.capture("cli_installed");
