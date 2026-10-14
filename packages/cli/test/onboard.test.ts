@@ -316,9 +316,11 @@ describe("onboard recipe establishes the routing surface first", () => {
   });
 });
 
-// Topic v6: onboarding asks one question, runs logged out, completes itself,
+// Topic v7: onboarding asks one question, runs logged out, completes itself,
 // publishes a report, and ends on the CI offer. Each of these is a behavior an
-// agent would otherwise improvise back toward the conversational v5 flow.
+// agent would otherwise improvise back toward the conversational v5 flow. v7
+// adds the surfaced-counting method to the scan step, since the report recipe
+// is only fetched after the mining it describes is over.
 describe("onboard recipe asks one question and finishes on its own", () => {
   let cwd: string;
   let stdout: string;
@@ -342,8 +344,16 @@ describe("onboard recipe asks one question and finishes on its own", () => {
       : stdout.slice(start, start + title.length + next);
   }
 
-  it("is topic v6", () => {
-    expect(stdout).toMatch(/^# Topic: onboard {5}\(CLI v.+ \/ topic v6\)/m);
+  it("is topic v7", () => {
+    expect(stdout).toMatch(/^# Topic: onboard {5}\(CLI v.+ \/ topic v7\)/m);
+  });
+
+  it("gives the method for counting surfaced while mining, not after", () => {
+    const scan = step("Scan with high-signal filtering");
+    expect(scan).toContain("merged in the");
+    expect(scan).toContain("Bot and author comments count too");
+    expect(scan).toContain("never by matching keywords");
+    expect(scan).not.toMatch(/\bfixed\b/);
   });
 
   it("asks the one question, set apart, through a question tool when there is one", () => {
