@@ -10,7 +10,7 @@ import { getCliPrefix } from "../util/package-manager";
 import { orgNotFoundRemedy } from "./generate";
 import type { EngineName } from "./layout";
 import { recoveryAdvice } from "./recovery-advice";
-import { reportRules } from "./report";
+import { reportRules } from "./check-summary";
 import type { RunDirectory } from "./run-directory";
 import { RUN_SCRIPTS_WARNING } from "./runtime/harness";
 import { discoverRuntimeRulesIn, type RuntimeRule } from "./runtime/discover";

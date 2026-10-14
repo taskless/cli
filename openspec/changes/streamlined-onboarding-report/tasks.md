@@ -9,8 +9,8 @@
 
 ## 2. Rename rules/report → rules/check-summary (PR 2)
 
-- [ ] 2.1 `git mv packages/cli/src/rules/report.ts packages/cli/src/rules/check-summary.ts` and update importers (`plan-check.ts`, `recover.ts`, `verdicts.ts`, `test/verdicts.test.ts`, `test/check-snapshot.test.ts`). Verify `grep -rn "rules/report" packages/cli` is empty and `pnpm --filter @taskless/cli test` passes.
-- [ ] 2.2 Run `pnpm typecheck` and `pnpm lint`; both pass.
+- [x] 2.1 `git mv packages/cli/src/rules/report.ts packages/cli/src/rules/check-summary.ts` and update importers (`plan-check.ts`, `recover.ts`, `verdicts.ts`, `test/verdicts.test.ts`, `test/check-snapshot.test.ts`). Verify `grep -rn "rules/report" packages/cli` is empty and `pnpm --filter @taskless/cli test` passes.
+- [x] 2.2 Run `pnpm typecheck` and `pnpm lint`; both pass.
 
 ## 3. taskless report (PR 3)
 

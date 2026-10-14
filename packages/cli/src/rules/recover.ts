@@ -20,7 +20,7 @@ import { ruleFilePath } from "./engines";
 import { writeServedRule } from "./files";
 import { orgNotFoundMessage } from "./generate";
 import { isKnownEngine, type EngineName } from "./layout";
-import { reportRules } from "./report";
+import { reportRules } from "./check-summary";
 import { openRun } from "./run-directory";
 import { takeSnapshot } from "./snapshot";
 import { verifyServedRule } from "./verify-delivery";

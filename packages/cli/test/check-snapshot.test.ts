@@ -15,7 +15,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { assembleEngineConfigs } from "../src/rules/assemble";
 import { runEngines } from "../src/rules/dispatch";
-import { reportRules } from "../src/rules/report";
+import { reportRules } from "../src/rules/check-summary";
 import { openRun, type RunDirectory } from "../src/rules/run-directory";
 import type { CheckResult } from "../src/types/check";
 import { canonicalHash } from "../src/rules/rule-hash";
