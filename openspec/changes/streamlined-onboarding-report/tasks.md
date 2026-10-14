@@ -1,11 +1,11 @@
 ## 1. Detect: ast-grep, Vale, glab, and agent hints (PR 1, bottom of the stack)
 
-- [ ] 1.1 Add the `.changeset/streamlined-onboarding-report.md` (`patch`) on this branch before cutting any child branch; it is grown by each later group. Verify `git diff --stat origin/main` shows it.
-- [ ] 1.2 Add `ast-grep` (`sgconfig.yml`, `.sgconfig.yml`) and `vale` (`.vale.ini`, `_vale.ini`) to the linter signals in `detect/scan.ts`, pruning `.taskless/` from their evidence. Verify with detect tests: a root `sgconfig.yml` reports `ast-grep`, a `.taskless/sgconfig.yml` alone reports nothing, and the same for Vale.
-- [ ] 1.3 Replace the per-tool logic in `host-tools.ts` with one table (name, applicability predicate, inapplicable reason, hint command, hint text) and add `glab`, applicable when `origin` is `gitlab.com` or a `gitlab.*` host. Verify unit tests cover `gh`/`glab` × GitHub/GitLab/no origin, and that nothing is executed.
-- [ ] 1.4 Add `hostTools` and `agent` to the detect output schema and `detect --json`; `agent` holds hints only for present and applicable tools, and the `glab` hint says to read the output, not the exit code. Verify a detect JSON test asserts both fields and the schema validation passes.
-- [ ] 1.5 Render the onboard recipe's host-tool passages from the same table, covering the review-comment source for `gh` and `glab`. Verify the existing `onboard`/`agent onboard` byte-parity tests pass in every host-tool state, including a GitLab origin.
-- [ ] 1.6 Run `pnpm typecheck` and `pnpm lint`; both pass.
+- [x] 1.1 Add the `.changeset/streamlined-onboarding-report.md` (`patch`) on this branch before cutting any child branch; it is grown by each later group. Verify `git diff --stat origin/main` shows it.
+- [x] 1.2 Add `ast-grep` (`sgconfig.yml`, `.sgconfig.yml`) and `vale` (`.vale.ini`, `_vale.ini`) to the linter signals in `detect/scan.ts`, pruning `.taskless/` from their evidence. Verify with detect tests: a root `sgconfig.yml` reports `ast-grep`, a `.taskless/sgconfig.yml` alone reports nothing, and the same for Vale.
+- [x] 1.3 Replace the per-tool logic in `host-tools.ts` with one table (name, applicability predicate, inapplicable reason, hint command, hint text) and add `glab`, applicable when `origin` is `gitlab.com` or a `gitlab.*` host. Verify unit tests cover `gh`/`glab` × GitHub/GitLab/no origin, and that nothing is executed.
+- [x] 1.4 Add `hostTools` and `agent` to the detect output schema and `detect --json`; `agent` holds hints only for present and applicable tools, and the `glab` hint says to read the output, not the exit code. Verify a detect JSON test asserts both fields and the schema validation passes.
+- [x] 1.5 Feed the onboard recipe's host-tool list from the same catalog, so `glab` and every inapplicable reason come from one row. The review-comment source for `glab` waits for v6 (4.1): rendering merge requests into v5 would contradict the live `cli-onboard` scenario for repositories with no GitHub origin. Verify the existing `onboard`/`agent onboard` byte-parity tests pass.
+- [x] 1.6 Run `pnpm typecheck` and `pnpm lint`; both pass.
 
 ## 2. Rename rules/report → rules/check-summary (PR 2)
 
@@ -30,7 +30,7 @@
 
 ## 4. Onboard v6, skill, and feedback (PR 4)
 
-- [ ] 4.1 Rewrite `agent/onboard.md` as topic v6 per the `cli-onboard` spec: the one question, logged out, mine everything, author local candidates without asking, record runtime candidates for the `cloud` tier, `--mark-complete` without asking, hand off to `report` and `rule-feedback` in parallel, close by showing the summary and then, last, offering CI integration via the `ci` topic with a strong case for it (checks keep agents from reintroducing what the rules catch), naming `hooks` in one line on a no. Verify recipe tests for each scenario in the spec delta, and the two-path byte-parity tests.
+- [ ] 4.1 Rewrite `agent/onboard.md` as topic v6 per the `cli-onboard` spec: the one question, logged out, mine everything, author local candidates without asking, record runtime candidates for the `cloud` tier, `--mark-complete` without asking, hand off to `report` and `rule-feedback` in parallel, close by showing the summary and then, last, offering CI integration via the `ci` topic with a strong case for it (checks keep agents from reintroducing what the rules catch), naming `hooks` in one line on a no. Verify recipe tests for each scenario in the spec delta, and the two-path byte-parity tests. Render the review-comment source from the host-tool catalog for both `gh` (pull requests) and `glab` (merge requests).
 - [ ] 4.2 Remove `onboard` from the surveyed topics in `survey/constants.ts`. Verify a survey test that onboarding serves no invite and leaves `next_ask` unchanged with the gate otherwise open.
 - [ ] 4.3 Add the "reached from onboarding" branch to `agent/rule-feedback.md`: no `verbatim`, `ruleKind: none (onboarding)`, no question, send. Verify the recipe test and that `feedback send` still refuses under `DO_NOT_TRACK=1`.
 - [ ] 4.4 Add the `report` row to the skill body and the `tskl` command body via `%(TASKLESS_CLI)s`. Verify the skill tests, including the 80-line cap.

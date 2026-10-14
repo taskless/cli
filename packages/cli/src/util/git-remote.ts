@@ -90,6 +90,38 @@ export async function resolveRepositoryContext(
   }
 }
 
+/**
+ * Whether `origin` is a GitLab remote: `gitlab.com`, or a self-hosted instance
+ * whose host name begins with `gitlab.`.
+ *
+ * Never rejects, for the reason {@link resolveRepositoryContext} does not: a
+ * caller reporting what a host can do wants a verdict, not an exception. A
+ * self-hosted GitLab under any other name reads as not GitLab, which costs a
+ * source rather than claiming one that is not there.
+ *
+ * GitHub is NOT decided here. That verdict belongs to
+ * {@link resolveRepositoryContext}, so remote generation, `info`, telemetry and
+ * host detection cannot disagree about it.
+ */
+export async function isGitLabOrigin(cwd: string): Promise<boolean> {
+  let rawUrl: string;
+  try {
+    rawUrl = await getOriginUrl(cwd);
+  } catch {
+    return false;
+  }
+  // `canonicalOwnerUrl` falls back to `github.com` for an input with no host,
+  // such as a local path remote. That default can only ever produce a
+  // non-GitLab answer, which is the correct one for a path.
+  let host: string;
+  try {
+    host = new URL(canonicalOwnerUrl(rawUrl)).hostname;
+  } catch {
+    return false;
+  }
+  return host === "gitlab.com" || host.startsWith("gitlab.");
+}
+
 function getOriginUrl(cwd: string): Promise<string> {
   return new Promise((resolve, reject) => {
     execFile(

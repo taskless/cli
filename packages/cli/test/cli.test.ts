@@ -41,6 +41,7 @@ describe("cli", () => {
         "gh",
         "git",
         "jq",
+        "glab",
       ]);
       // `git` is how this test suite got here, so it is a safe assertion
       // about a real host rather than about a fixture.

@@ -50,6 +50,14 @@ interface DetectJson {
   ruleStyles: { source: string; description: string }[];
   ci: { name: string; evidence: string[] }[];
   hooks: { name: string; evidence: string[] }[];
+  hostTools: {
+    name: string;
+    present: boolean;
+    path?: string;
+    applicable: boolean;
+    reason?: string;
+  }[];
+  agent: Record<string, string>;
 }
 
 async function detect(cwd: string): Promise<DetectJson> {
@@ -271,8 +279,10 @@ describe("taskless detect", () => {
     const result = await detect(cwd);
     expect(Object.keys(result).toSorted()).toEqual(
       [
+        "agent",
         "ci",
         "hooks",
+        "hostTools",
         "languages",
         "linters",
         "ruleStyles",
@@ -285,6 +295,62 @@ describe("taskless detect", () => {
         ["evidence", "name"].toSorted()
       );
     }
+  });
+
+  it("detects ast-grep from sgconfig.yml", async () => {
+    await writeFile(join(cwd, "sgconfig.yml"), "ruleDirs: []\n", "utf8");
+    const result = await detect(cwd);
+    expect(result.linters).toContainEqual({
+      name: "ast-grep",
+      evidence: ["sgconfig.yml"],
+    });
+    // Polyglot: it says nothing about what the repository is written in.
+    expect(result.languages).toEqual([]);
+  });
+
+  it("detects vale from .vale.ini", async () => {
+    await writeFile(join(cwd, ".vale.ini"), "StylesPath = styles\n", "utf8");
+    const result = await detect(cwd);
+    expect(result.linters).toContainEqual({
+      name: "vale",
+      evidence: [".vale.ini"],
+    });
+  });
+
+  // Taskless writes its own `sgconfig.yml` and `.vale.ini` under `.taskless/`.
+  // Reading those as the repository's linters would report every installed
+  // repository as already running both.
+  it("does not read Taskless's own configuration as the repository's linters", async () => {
+    await mkdir(join(cwd, ".taskless"), { recursive: true });
+    await writeFile(join(cwd, ".taskless", "sgconfig.yml"), "", "utf8");
+    await writeFile(join(cwd, ".taskless", ".vale.ini"), "", "utf8");
+    const result = await detect(cwd);
+    expect(linterNames(result)).not.toContain("ast-grep");
+    expect(linterNames(result)).not.toContain("vale");
+  });
+
+  it("reports host tools in a fixed order, and hints only for usable ones", async () => {
+    // Not a repository, so neither forge tool can apply here whatever is
+    // installed on the machine running the tests.
+    const result = await detect(cwd);
+    expect(result.hostTools.map((tool) => tool.name)).toEqual([
+      "gh",
+      "git",
+      "jq",
+      "glab",
+    ]);
+    expect(result.hostTools.find((tool) => tool.name === "gh")).toMatchObject({
+      applicable: false,
+      reason: "this repository has no GitHub origin",
+    });
+    expect(result.hostTools.find((tool) => tool.name === "glab")).toMatchObject(
+      {
+        applicable: false,
+        reason: "this repository has no GitLab origin",
+      }
+    );
+    expect(Object.keys(result.agent)).not.toContain("gh auth status");
+    expect(Object.keys(result.agent)).not.toContain("glab auth status");
   });
 
   it("does not false-positive a pyproject table on a similarly-prefixed sibling", async () => {
