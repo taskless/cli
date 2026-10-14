@@ -112,7 +112,10 @@ export const reportCommand = defineCommand({
         if (args.json) {
           console.log(JSON.stringify({ ok: true, deleted: published.url }));
         } else {
-          console.log(`Deleted the report at ${published.url}.`);
+          // Per tskl.es, caches may serve the page for up to a day after.
+          console.log(
+            `Deleted the report at ${published.url}. Cached copies may be served for up to a day.`
+          );
         }
       });
       return;

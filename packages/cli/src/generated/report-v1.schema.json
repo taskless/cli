@@ -636,6 +636,20 @@
           "description": "The report was valid but could not be rendered or stored. Nothing was published: retry. Retry only on this error, never after a timeout, which may still publish."
         }
       }
+    },
+    "delete": {
+      "method": "DELETE",
+      "url": "The `deleteUrl` from the publish response.",
+      "response": {
+        "status": 204,
+        "body": "None. The report, its JSON and its card are deleted; caches may keep serving them for up to a day."
+      },
+      "errors": {
+        "not_available": {
+          "status": 404,
+          "description": "No report answers to this key or delete token: it was never issued, was deleted, expired, or has not propagated yet. Not retryable."
+        }
+      }
     }
   }
 }

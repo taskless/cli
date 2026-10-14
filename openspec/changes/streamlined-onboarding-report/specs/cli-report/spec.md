@@ -191,13 +191,20 @@ On a 201 response the CLI SHALL write `.taskless/reports/<YYYY-MM-DD_HHMMSS>.jso
 
 ### Requirement: A published report can be deleted from its record
 
-`taskless report --delete <record>` SHALL read the named record under `.taskless/reports/`, delete the report by sending an HTTP `DELETE` to the recorded `deleteUrl`, the URL tskl.es returned for that purpose, and on success remove the record and print a one-line confirmation. A record that does not exist SHALL exit non-zero with `REPORT_NOT_FOUND`. A failed delete SHALL leave the record in place.
+`taskless report --delete <record>` SHALL read the named record under `.taskless/reports/`, delete the report by sending an HTTP `DELETE` to the recorded `deleteUrl`, the URL tskl.es returned for that purpose, and on a 204 remove the record and print a one-line confirmation that says cached copies may be served for up to a day, as the tskl.es delete contract states. A 404 (`not_available`: never issued, already deleted, expired, or not yet propagated) SHALL exit non-zero with `REPORT_NOT_AVAILABLE`, SHALL NOT be retried, and SHALL keep the record. A record that does not exist SHALL exit non-zero with `REPORT_NOT_FOUND`. A failed delete SHALL leave the record in place.
 
 #### Scenario: Deleting a report
 
 - **WHEN** a user runs `taskless report --delete 2026-10-13_142200.json` and the service confirms the deletion
 - **THEN** the record SHALL be removed
 - **AND** the command SHALL print a confirmation and exit 0
+
+#### Scenario: A report tskl.es no longer has
+
+- **WHEN** the service answers the delete with 404
+- **THEN** the command SHALL exit non-zero with `REPORT_NOT_AVAILABLE`
+- **AND** SHALL send no second request
+- **AND** the record SHALL remain on disk
 
 #### Scenario: A failed delete keeps the credential
 

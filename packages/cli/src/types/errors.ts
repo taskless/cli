@@ -104,6 +104,9 @@ export type CLIErrorCode =
   | "REPORT_PUBLISH_FAILED"
   | "REPORT_PUBLISH_UNKNOWN"
   | "REPORT_NOT_FOUND"
+  // tskl.es answered 404 `not_available` to a delete: no report answers to
+  // that URL. Distinct from DELETE_FAILED because retrying cannot help.
+  | "REPORT_NOT_AVAILABLE"
   | "REPORT_DELETE_FAILED"
   | "INTERNAL_ERROR";
 

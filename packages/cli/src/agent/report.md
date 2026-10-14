@@ -91,7 +91,8 @@ later and deletes one on request.
 
    `<record>` is the file name the summary named, under
    `.taskless/reports/`. The record is removed only once tskl.es
-   confirms the deletion.
+   confirms the deletion. Tell the user cached copies of the page may
+   be served for up to a day afterwards.
 
 ## Facts schema
 
@@ -113,6 +114,7 @@ The `--from` JSON file conforms to:
 | `REPORT_PUBLISH_FAILED`  | tskl.es could not store the report; nothing was published       | retry later                                                               |
 | `REPORT_PUBLISH_UNKNOWN` | publishing timed out; a report may exist                        | tell the user; do not retry on your own, since a retry may duplicate it  |
 | `REPORT_NOT_FOUND`       | no record by that name in `.taskless/reports/`                  | list the directory and use a file name from it                            |
+| `REPORT_NOT_AVAILABLE`   | tskl.es has no report for that delete URL                       | it was already deleted, expired, or has not propagated yet; do not retry  |
 | `REPORT_DELETE_FAILED`   | tskl.es did not delete the report                               | the record is kept; retry later                                           |
 
 ## See Also

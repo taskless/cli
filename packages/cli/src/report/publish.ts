@@ -129,7 +129,15 @@ export async function publishReport(body: string): Promise<PublishedReport> {
   }
 }
 
-/** Delete a published report through the URL tskl.es returned for it. */
+/**
+ * Delete a published report through the URL tskl.es returned for it.
+ *
+ * The contract is the schema's `x-taskless.delete`: a `DELETE` to that URL
+ * answers 204 on success, or 404 `not_available` when no report answers to it
+ * (never issued, already deleted, expired, or not yet propagated), which is
+ * not retryable. A 404 is its own code because its remedy differs from a
+ * failure's: retrying cannot help, and the record may simply be stale.
+ */
 export async function deletePublishedReport(deleteUrl: string): Promise<void> {
   let response: Response;
   try {
@@ -142,6 +150,12 @@ export async function deletePublishedReport(deleteUrl: string): Promise<void> {
     throw new CLIError(
       `Could not reach tskl.es to delete the report: ${reason}`,
       "NETWORK_ERROR"
+    );
+  }
+  if (response.status === 404) {
+    throw new CLIError(
+      "tskl.es has no report for this delete URL: it was already deleted, has expired, or was published moments ago and has not propagated yet. Retrying will not help; the record was kept, and can be removed by hand once you are sure the report is gone.",
+      "REPORT_NOT_AVAILABLE"
     );
   }
   if (!response.ok) {
