@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import type { ReportedRule } from "../src/rules/report";
+import type { ReportedRule } from "../src/rules/check-summary";
 import { recoveryAdvice } from "../src/rules/recovery-advice";
 import { applyVerdicts, NOT_IN_PLAN_REASON } from "../src/rules/verdicts";
 

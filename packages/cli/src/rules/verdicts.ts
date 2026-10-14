@@ -3,7 +3,7 @@ import { isRecord } from "../util/is-record";
 import type { EngineName } from "./layout";
 import { isKnownEngine } from "./layout";
 import type { Recovery } from "./recovery-advice";
-import type { ReportedRule } from "./report";
+import type { ReportedRule } from "./check-summary";
 
 /**
  * Turning a v2 reconcile answer into what `check` does with each rule.
