@@ -83,9 +83,6 @@ export async function runWizard(
       { migrated }
     );
     if (pinnedNotice !== undefined) console.log(pinnedNotice);
-    const commandsInstalled = plan.targets.some(
-      (t) => t.mode === "reference" && t.commands.length > 0
-    );
     // `previousState` was read before the plan was applied, so it still holds
     // the version this project was on when the session that is watching this
     // install started.
@@ -94,7 +91,7 @@ export async function runWizard(
       cliVersion,
     });
     if (reloadNotice !== undefined) console.log(reloadNotice);
-    console.log(getOnboardTrailer({ commandsInstalled }));
+    console.log(getOnboardTrailer());
     return finish({ status: "completed" });
   } catch (error) {
     if (error instanceof WizardCancelled) {

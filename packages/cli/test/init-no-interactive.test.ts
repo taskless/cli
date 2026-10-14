@@ -186,9 +186,9 @@ describe("taskless init (the batch install)", () => {
     expect(manifest.install).toBeDefined();
   });
 
-  it("prints a trailer mentioning /tskl onboard when commands were installed", async () => {
-    // Claude Code receives commands, so the trailer should mention the
-    // slash command form and the skill (both work) plus the bare CLI.
+  it("prints a skill-only trailer when commands were installed", async () => {
+    // Claude Code receives commands too, but the trailer points only at the
+    // skill: no slash command, no terminal fallback.
     await mkdir(join(cwd, ".claude"), { recursive: true });
 
     const { stdout } = await execFileAsync("node", [
@@ -198,14 +198,13 @@ describe("taskless init (the batch install)", () => {
       cwd,
     ]);
 
-    expect(stdout).toMatch(/Next:.*\/tskl onboard/);
-    expect(stdout).toMatch(/Taskless skill/);
-    expect(stdout).toMatch(/`(?:npx|pnpm dlx) @taskless\/cli@latest onboard`/);
+    expect(stdout).toMatch(/^In your AI tool, .*Taskless skill/m);
+    expect(stdout).not.toContain("/tskl onboard");
+    expect(stdout).not.toMatch(/@taskless\/cli@latest onboard/);
   });
 
-  it("prints a skill-only trailer when no commands were installed", async () => {
-    // .agents/ fallback receives no commands. The trailer should NOT mention
-    // /tskl onboard but SHOULD mention the skill and the bare CLI.
+  it("prints the same skill-only trailer when no commands were installed", async () => {
+    // .agents/ fallback receives no commands; the trailer is the same.
     const { stdout } = await execFileAsync("node", [
       binPath,
       "init",
@@ -213,9 +212,9 @@ describe("taskless init (the batch install)", () => {
       cwd,
     ]);
 
+    expect(stdout).toMatch(/^In your AI tool, .*Taskless skill/m);
     expect(stdout).not.toContain("/tskl onboard");
-    expect(stdout).toMatch(/Taskless skill/);
-    expect(stdout).toMatch(/`(?:npx|pnpm dlx) @taskless\/cli@latest onboard`/);
+    expect(stdout).not.toMatch(/@taskless\/cli@latest onboard/);
   });
 
   it("prints an upgrade trailer naming the changed directories, before the onboarding trailer", async () => {
@@ -248,7 +247,7 @@ describe("taskless init (the batch install)", () => {
     const reloadAt = lines.findIndex((line) => line.includes("Reload skills"));
     expect(trailerAt).toBeGreaterThan(-1);
     expect(reloadAt).toBeGreaterThan(trailerAt);
-    expect(lines.at(-1)).toMatch(/^Next:/);
+    expect(lines.at(-1)).toMatch(/^In your AI tool, /);
   });
 
   it("omits the update pointer when the version did not move", async () => {
@@ -324,7 +323,7 @@ describe("taskless init (the batch install)", () => {
     // trailer.
     expect(trailerAt).toBeGreaterThan(-1);
     expect(pinAt).toBeGreaterThan(trailerAt);
-    expect(lines.at(-1)).toMatch(/^Next:/);
+    expect(lines.at(-1)).toMatch(/^In your AI tool, /);
   });
 
   it("says CI will break when the same run migrated .taskless/", async () => {
@@ -446,7 +445,7 @@ describe("taskless init (the batch install)", () => {
       cwd,
     ]);
 
-    expect(stdout).not.toMatch(/Next:.*onboard/);
+    expect(stdout).not.toMatch(/ask to onboard with Taskless/);
     expect(stdout).not.toContain("/tskl onboard");
   });
 
@@ -471,7 +470,7 @@ describe("taskless init (the batch install)", () => {
       cwd,
     ]);
 
-    expect(stdout).toMatch(/Next:.*onboard/);
+    expect(stdout).toMatch(/ask to onboard with Taskless/);
 
     const manifest = JSON.parse(
       await readFile(join(cwd, ".taskless", "taskless.json"), "utf8")
