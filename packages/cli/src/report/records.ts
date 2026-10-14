@@ -1,5 +1,5 @@
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
-import { basename, isAbsolute, join, resolve } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 
 import { CLIError } from "../util/cli-error";
 import type { PublishedReport } from "./publish";
@@ -51,14 +51,24 @@ export async function writeRecord(
 }
 
 /**
- * A record named by file name (looked up under `.taskless/reports/`) or by a
- * path relative to the project.
+ * A record named by file name, or by a path, absolute or relative to the
+ * project, that lands directly in `.taskless/reports/`. Anything else is
+ * refused: a successful delete removes the file, and `--delete` has no
+ * business removing one outside the records directory.
  */
 function recordPath(cwd: string, record: string): string {
-  if (isAbsolute(record)) return record;
-  return record === basename(record)
-    ? join(reportsDirectory(cwd), record)
-    : resolve(cwd, record);
+  const directory = resolve(reportsDirectory(cwd));
+  const path =
+    record === basename(record)
+      ? join(directory, record)
+      : resolve(cwd, record);
+  if (dirname(path) !== directory || !path.endsWith(".json")) {
+    throw new CLIError(
+      `${record} is not a report record. Name a file in .taskless/reports/, e.g. 2026-10-13_142200.json.`,
+      "INVALID_INPUT"
+    );
+  }
+  return path;
 }
 
 export async function readRecord(
