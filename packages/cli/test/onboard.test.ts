@@ -349,8 +349,9 @@ describe("onboard recipe asks one question and finishes on its own", () => {
   it("asks the one question, set apart, through a question tool when there is one", () => {
     const ask = step("Ask the one question");
     expect(ask).toContain(
-      "\n\n   Do you want me to set up Taskless for you?\n\n"
+      "\n\n   I'd look through your repo, your agent files such as CLAUDE.md, any documentation, relevant PRs if I have access, and any additional bug tracking that might help us build a set of rules. From this, I'll create starter rules in `.taskless/` (all local, no login) and then generate a report.\n\n   Do you want me to set up Taskless for you?\n\n"
     );
+    expect(ask).toContain("Do not reword it, add to it");
     expect(ask).toContain("structured question tool");
     expect(ask.replaceAll(/\s+/g, " ")).toContain(
       "This is the only question you script."
