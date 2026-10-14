@@ -92,6 +92,19 @@ export type CLIErrorCode =
   // migrate.
   | "SCAFFOLD_MANIFEST_UNREADABLE"
   | "SCAFFOLD_CONFLICT"
+  // `taskless report`. INSUFFICIENT is the gate (fewer than three working
+  // Taskless rules) and is the one a recipe answers by asking the user;
+  // REDACTION names an agent-written field to rewrite; PUBLISH_UNKNOWN means a
+  // timeout, after which a report may exist and a retry may duplicate it.
+  | "REPORT_INSUFFICIENT"
+  | "REPORT_INVALID"
+  | "REPORT_REDACTION"
+  | "REPORT_TOO_LARGE"
+  | "REPORT_RATE_LIMITED"
+  | "REPORT_PUBLISH_FAILED"
+  | "REPORT_PUBLISH_UNKNOWN"
+  | "REPORT_NOT_FOUND"
+  | "REPORT_DELETE_FAILED"
   | "INTERNAL_ERROR";
 
 /**
