@@ -1,4 +1,4 @@
-# Topic: report     (CLI v%(CLI_VERSION)s / topic v1)
+# Topic: report     (CLI v%(CLI_VERSION)s / topic v2)
 
 ## Goal
 Publish a Taskless report: an unlisted page on tskl.es that shows what
@@ -31,6 +31,12 @@ later and deletes one on request.
    fixtures, and `missing`, the facts only you can supply. Read
    `missing`; it is the checklist for the next step.
 
+   The draft also carries what the rules find in the code today:
+   `violations` and `files` on each rule, and `findings` across all of
+   them, counted by the CLI's own scan. You cannot supply or change
+   these. When they are absent, `unmeasured` says why, and the report
+   publishes without them.
+
 2. **Supply what is missing.** Write
    `.taskless/.tmp-report.json` following the schema below. Every entry
    comes from this session or from sources you can reach now, never
@@ -42,13 +48,13 @@ later and deletes one on request.
      recurring review patterns were rule-shaped versus judgment calls.
      Zeros are honest when there was nothing to mine.
    - `rules`: one entry per rule the draft listed, with a title a
-     reader understands, how many review comments and pull requests
-     asked for what it enforces, and how often the pattern was fixed in
-     the window. Set `fixedBasis` to `measured` only when you counted.
+     reader understands and its `surfaced` counts, counted as described
+     under `## Counting surfaced`.
    - `legacy`: rules you wrote into the repository's own linter, which
      the CLI cannot see.
    - `cloud`: runtime-shaped candidates you judged better solved by a
-     runtime rule and did not author.
+     runtime rule and did not author. Count their `surfaced` the same
+     way.
    - `estimates`: `contextTokens` is how large this user's sessions
      typically run; `callsPerCatch` is how many extra agent turns a
      missed issue costs them before it is fixed. Estimate from what you
@@ -73,10 +79,17 @@ later and deletes one on request.
    asking.
 
 4. **Show the result.** On success the CLI prints a short summary: the
-   rules, the projection, the link, and when it expires. Show it to the
-   user exactly as printed. Then tell them, in one line, that the
-   report can be deleted after they have reviewed it, and that they
-   only need to ask.
+   rules, what they found in the code today, what review raised over
+   the window, the link, and when it expires. Show it to the user
+   exactly as printed. Then tell them, in one line, that the report can
+   be deleted after they have reviewed it, and that they only need to
+   ask.
+
+   If you restate any of the report's numbers in your own words, keep
+   the two kinds apart and label each: counts the CLI found **in the
+   code today**, and counts mined **from review over the window**. A
+   rule with 75 violations today that was raised in 23 pull requests
+   has two different numbers, and neither is the other.
 
 5. **Clean up.** Delete `.taskless/.tmp-report.json`. The CLI kept a
    record of the report in `.taskless/reports/`, which is gitignored
@@ -93,6 +106,26 @@ later and deletes one on request.
    `.taskless/reports/`. The record is removed only once tskl.es
    confirms the deletion. Tell the user cached copies of the page may
    be served for up to a day afterwards.
+
+## Counting surfaced
+
+Every agent counts `surfaced` the same way, so reports from different
+sessions compare:
+
+- **`surfaced.prs`**: pull or merge requests merged inside `window`
+  with at least one review comment asking for the change the rule
+  enforces.
+- **`surfaced.reviewComments`**: the review comments on those pull
+  requests that ask for that change. Count inline review comments and
+  review bodies.
+- **Every author counts.** A comment from a bot account or from the
+  pull request's own author counts the same as a reviewer's: each one
+  spent cycles, tokens, time, or money.
+- **Judge each comment by reading it.** A comment counts when a reader
+  would say it asks for the change the rule enforces. Do not match
+  keywords: "fixed" or "removed" in a reply says nothing about which
+  rule it concerns.
+- A comment that asks for two rules' changes counts once for each.
 
 ## Facts schema
 
