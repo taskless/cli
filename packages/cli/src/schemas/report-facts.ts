@@ -5,10 +5,10 @@ import { z } from "zod";
  * reads.
  *
  * NOT A REPORTV1. The CLI builds the report; the agent supplies only what its
- * session taught it. Every object is strict, so a field the CLI owns — most
- * pointedly `perMonth`, which the CLI computes — is refused rather than
- * quietly merged, and the agent hears that it tried to set something it does
- * not own.
+ * session taught it. Every object is strict, so a field someone else owns —
+ * the `violations` and `files` the CLI measures, the monthly rates tskl.es
+ * derives — is refused rather than quietly merged, and the agent hears that it
+ * tried to set something it does not own.
  *
  * Embedded into the `report` recipe as JSON Schema, so the recipe and this
  * file cannot describe two different shapes.
@@ -26,14 +26,17 @@ const ruleId = z
     "The rule's id: its directory name, or one you choose for a rule outside .taskless/"
   );
 
-const origin = z
+const surfaced = z
   .object({
-    reviewComments: count.describe(
-      "Review comments in the window that asked for what this rule enforces"
+    prs: count.describe(
+      "Pull or merge requests merged in the window with at least one review comment asking for what this rule enforces"
     ),
-    prs: count.describe("Pull or merge requests those comments were on"),
+    reviewComments: count.describe(
+      "Review comments on those pull requests that ask for what this rule enforces, judged by reading each one. Bot and author comments count"
+    ),
   })
-  .strict();
+  .strict()
+  .describe("How often review raised this rule's pattern over the window");
 
 const outcome = {
   title: z
@@ -43,13 +46,7 @@ const outcome = {
     .describe(
       "What the rule enforces, in a phrase a reader of the report understands"
     ),
-  origin,
-  fixed: count.describe(
-    "Times in the window the pattern was fixed after review: the catches this rule would have made"
-  ),
-  fixedBasis: z
-    .enum(["measured", "estimated"])
-    .describe("`measured` when counted from history, `estimated` otherwise"),
+  surfaced,
 };
 
 const fixture = z

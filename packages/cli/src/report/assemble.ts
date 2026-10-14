@@ -9,14 +9,13 @@ import {
 } from "./redact";
 import { REPORT_FIXTURE_MAX_LENGTH } from "./schema";
 import type {
-  PerTier,
+  Findings,
   RedactionKind,
   ReportRule,
   ReportScope,
   ReportTests,
   ReportV1,
   TestStatus,
-  Tier,
 } from "./types";
 
 /**
@@ -24,8 +23,8 @@ import type {
  *
  * The CLI's values win every conflict: the facts carry only what the agent
  * alone knows, and a fact about something the CLI measured (an engine, a test
- * status) never reaches the payload. The projection is computed here and
- * nowhere else.
+ * status) never reaches the payload. The monthly rates are not computed at
+ * all: tskl.es derives them from each rule's `surfaced` and the window.
  */
 
 /** How many Taskless rules a report needs before it is worth publishing. */
@@ -59,8 +58,28 @@ function invalid(message: string): CLIError {
   return new CLIError(message, "REPORT_INVALID");
 }
 
+/**
+ * The draft's measured counts, when they still cover every written rule.
+ *
+ * The draft decided what it could measure among the rules it can see. A
+ * legacy rule is the one written rule it cannot see: it lives in another
+ * linter the CLI does not run, so its arrival in the facts withdraws every
+ * count rather than leaving a total that silently skips it.
+ */
+function measuredFindings(
+  draft: ReportDraft,
+  facts: ReportFacts
+): Findings | undefined {
+  if (draft.findings === undefined || facts.legacy.length > 0) return undefined;
+  return draft.findings;
+}
+
 /** Pair each draft rule with its facts, and add the legacy and cloud rules. */
-function mergeRules(draft: ReportDraft, facts: ReportFacts): Candidate[] {
+function mergeRules(
+  draft: ReportDraft,
+  facts: ReportFacts,
+  measured: boolean
+): Candidate[] {
   const factsById = new Map(facts.rules.map((rule) => [rule.id, rule]));
   const localIds = new Set(draft.rules.map((rule) => rule.id));
 
@@ -91,9 +110,11 @@ function mergeRules(draft: ReportDraft, facts: ReportFacts): Candidate[] {
         tier: local.tier,
         engine: local.engine,
         language: local.language,
-        origin: ruleFacts.origin,
-        fixed: ruleFacts.fixed,
-        fixedBasis: ruleFacts.fixedBasis,
+        state: "written",
+        ...(measured && local.violations !== undefined
+          ? { violations: local.violations, files: local.files ?? 0 }
+          : {}),
+        surfaced: ruleFacts.surfaced,
         complexity: null,
       },
       status: local.tests.status,
@@ -110,9 +131,8 @@ function mergeRules(draft: ReportDraft, facts: ReportFacts): Candidate[] {
         tier: "legacy",
         tool: legacy.tool,
         language: legacy.language,
-        origin: legacy.origin,
-        fixed: legacy.fixed,
-        fixedBasis: legacy.fixedBasis,
+        state: "written",
+        surfaced: legacy.surfaced,
         complexity: null,
       },
       // The CLI cannot run another linter's rule, so it does not claim it
@@ -131,9 +151,10 @@ function mergeRules(draft: ReportDraft, facts: ReportFacts): Candidate[] {
         tier: "cloud",
         engine: "runtime",
         language: cloud.language,
-        origin: cloud.origin,
-        fixed: cloud.fixed,
-        fixedBasis: cloud.fixedBasis,
+        // Never counted: a candidate is a rule Cloud could write, not one
+        // that runs.
+        state: "candidate",
+        surfaced: cloud.surfaced,
         complexity: cloud.complexity,
       },
       status: "not-run",
@@ -249,32 +270,17 @@ function redactFixtures(
   });
 }
 
-/** Days in an inclusive window, at least one. */
-function windowDays(window: ReportFacts["window"]): number {
-  const from = Date.parse(`${window.from}T00:00:00Z`);
-  const to = Date.parse(`${window.to}T00:00:00Z`);
-  if (to < from) {
+/**
+ * Refuse a window that ends before it starts. tskl.es divides by its length to
+ * derive the monthly rates, so a reversed one is caught here, by field name,
+ * rather than as a service validation error.
+ */
+function checkWindow(window: ReportFacts["window"]): void {
+  if (Date.parse(window.to) < Date.parse(window.from)) {
     throw invalid(
       `window.to (${window.to}) is before window.from (${window.from})`
     );
   }
-  return Math.round((to - from) / 86_400_000) + 1;
-}
-
-/** Sum a per-rule figure by tier, normalized to a 30-day month. */
-function perMonth(
-  rules: ReportRule[],
-  days: number,
-  pick: (rule: ReportRule) => number
-): PerTier {
-  const totals: Record<Tier, number> = { cli: 0, cloud: 0, legacy: 0 };
-  for (const rule of rules) totals[rule.tier] += pick(rule);
-  const scale = (n: number) => Math.round((n * 30) / days);
-  return {
-    cli: scale(totals.cli),
-    cloud: scale(totals.cloud),
-    ...(totals.legacy > 0 ? { legacy: scale(totals.legacy) } : {}),
-  };
 }
 
 function buildScope(draft: ReportDraft, facts: ReportFacts): ReportScope {
@@ -309,7 +315,8 @@ export function assembleReport(
   facts: ReportFacts,
   now: Date = new Date()
 ): ReportV1 {
-  const candidates = mergeRules(draft, facts);
+  const findings = measuredFindings(draft, facts);
+  const candidates = mergeRules(draft, facts, findings !== undefined);
   enforceGate(candidates);
 
   const scope = buildScope(draft, facts);
@@ -324,7 +331,7 @@ export function assembleReport(
   }
   const rules = redactFixtures(candidates, facts, tally);
 
-  const days = windowDays(facts.window);
+  checkWindow(facts.window);
   return {
     schemaVersion: "1",
     // Seconds precision: the schema's date-time pattern allows fractions, but a
@@ -333,16 +340,9 @@ export function assembleReport(
     producer: draft.producer,
     scope,
     history: facts.history,
+    ...(findings === undefined ? {} : { findings }),
     rules,
     projection: {
-      perMonth: {
-        commentsPrevented: perMonth(
-          rules,
-          days,
-          (rule) => rule.origin?.reviewComments ?? 0
-        ),
-        agentCatches: perMonth(rules, days, (rule) => rule.fixed),
-      },
       inputs: {
         contextTokens: facts.estimates.contextTokens,
         callsPerCatch: facts.estimates.callsPerCatch,

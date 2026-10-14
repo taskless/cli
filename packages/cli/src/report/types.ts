@@ -19,6 +19,21 @@ export interface ReportTests {
   withheld: ("fail" | "pass")[];
 }
 
+/** `written`: the rule exists and runs. `candidate`: a Cloud rule not yet written. */
+export type RuleState = "written" | "candidate";
+
+/** What the rule's pattern cost reviewers over the window, from mined history. */
+export interface Surfaced {
+  prs: number;
+  reviewComments: number;
+}
+
+/** What `check` found for one rule, or across all of them, at publish. */
+export interface Findings {
+  violations: number;
+  files: number;
+}
+
 export interface ReportRule {
   id: string;
   title: string;
@@ -26,9 +41,11 @@ export interface ReportRule {
   engine?: "sg" | "vale" | "runtime";
   tool?: string;
   language: string;
-  origin?: { reviewComments: number; prs: number };
-  fixed: number;
-  fixedBasis: "measured" | "estimated";
+  state: RuleState;
+  /** Present on every written rule exactly when the report carries `findings`. */
+  violations?: number;
+  files?: number;
+  surfaced?: Surfaced;
   complexity: number | null;
   tests: ReportTests;
 }
@@ -48,12 +65,6 @@ export type ReportScope =
       window: ReportWindow;
     }
   | { provider: "none"; label: string; window: ReportWindow };
-
-export interface PerTier {
-  cli: number;
-  cloud: number;
-  legacy?: number;
-}
 
 export interface ProjectionInputs {
   contextTokens: number;
@@ -85,11 +96,11 @@ export interface ReportV1 {
     agentAssistedPrs: number;
     patterns: { ruleShaped: number; judgment: number };
   };
+  /** Present exactly when every written rule carries `violations` and `files`. */
+  findings?: Findings;
   rules: ReportRule[];
-  projection: {
-    perMonth: { commentsPrevented: PerTier; agentCatches: PerTier };
-    inputs: ProjectionInputs;
-  };
+  /** Inputs only: tskl.es derives the monthly rates from `surfaced` and the window. */
+  projection: { inputs: ProjectionInputs };
   redaction: {
     policyVersion: string;
     counts: Record<RedactionKind, number>;
