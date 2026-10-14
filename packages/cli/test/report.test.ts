@@ -27,7 +27,7 @@ import {
   reportFactsSchema,
   type ReportFacts,
 } from "../src/schemas/report-facts";
-import { publishReport } from "../src/report/publish";
+import { deletePublishedReport, publishReport } from "../src/report/publish";
 import { scanText } from "../src/report/redact";
 import { reportSchemaIssues } from "../src/report/schema";
 import { renderSummary } from "../src/report/summary";
@@ -104,6 +104,28 @@ describe("the vendored ReportV1 schema", () => {
     expect(
       reportSchemaIssues({ ...(example as object), surprise: true })
     ).not.toEqual([]);
+  });
+});
+
+describe("the vendored delete contract", () => {
+  // `deletePublishedReport` is written against this contract. A refresh that
+  // changes it must fail here rather than leave the client calling a method or
+  // reading a status tskl.es no longer uses.
+  it("is a DELETE to the deleteUrl: 204 on success, 404 when nothing answers", () => {
+    const contract = (
+      reportSchemaDocument as unknown as {
+        "x-taskless": {
+          delete: {
+            method: string;
+            response: { status: number };
+            errors: { not_available: { status: number } };
+          };
+        };
+      }
+    )["x-taskless"].delete;
+    expect(contract.method).toBe("DELETE");
+    expect(contract.response.status).toBe(204);
+    expect(contract.errors.not_available.status).toBe(404);
   });
 });
 
@@ -433,6 +455,34 @@ async function recordsIn(cwd: string): Promise<string[]> {
   const names = await readdir(join(cwd, ".taskless", "reports"));
   return names.filter((name) => name.endsWith(".json"));
 }
+
+describe("deletePublishedReport", () => {
+  let server: Server | undefined;
+
+  afterEach(async () => {
+    if (server) await new Promise((resolve) => server!.close(resolve));
+    server = undefined;
+  });
+
+  it("resolves on a 204", async () => {
+    const fake = await fakeTsklEs(scripted([{ status: 204 }]));
+    server = fake.server;
+    await expect(
+      deletePublishedReport(`${fake.url}/api/v1/reports/abc/key`)
+    ).resolves.toBeUndefined();
+    expect(fake.requests[0]).toMatchObject({ method: "DELETE" });
+  });
+
+  it("reports a 404 as not available, once", async () => {
+    const fake = await fakeTsklEs(scripted([{ status: 404 }, { status: 204 }]));
+    server = fake.server;
+    await expect(
+      deletePublishedReport(`${fake.url}/api/v1/reports/abc/key`)
+    ).rejects.toMatchObject({ code: "REPORT_NOT_AVAILABLE" });
+    // Not retryable, per the contract.
+    expect(fake.requests).toHaveLength(1);
+  });
+});
 
 /** End to end, through the built CLI, against a fake tskl.es. */
 describe("taskless report", () => {
