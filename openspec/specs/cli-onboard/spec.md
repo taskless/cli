@@ -172,7 +172,7 @@ The `onboard.md` file SHALL follow the canonical recipe template defined in the 
 The recipe SHALL instruct the agent to:
 
 1. Read `.taskless/taskless.json` and respect the `install.onboarded` field.
-2. Ask the user exactly one question, "Do you want me to set up Taskless for you?", set apart from surrounding text by blank lines, and through the host's structured question tool when the host has one. The recipe SHALL state that a yes covers mining the repository, writing rules, publishing the report, and sending onboarding feedback. On anything but a yes the agent SHALL stop.
+2. Ask the user exactly one question, "Do you want me to set up Taskless for you?", preceded by a scripted introduction the agent SHALL repeat word for word and SHALL NOT reword or extend, set apart from surrounding text by blank lines, and through the host's structured question tool when the host has one. The introduction SHALL name the sources in general terms (the repository, agent files, documentation, PRs, bug tracking), state that rules are written locally with no login, and state that a report is generated. The recipe SHALL state that a yes covers mining the repository, writing rules, publishing the report, and sending onboarding feedback. On anything but a yes the agent SHALL stop.
 3. Establish the routing surface before proposing any candidate, by fetching the `route` topic for the destination criterion and running `taskless detect --json` for the repository's linters, languages, rule styles, host tools, and `agent` hints.
 4. Mine every reachable source without asking which: codebase TODOs/FIXMEs, agent-memory files (CLAUDE.md, AGENTS.md, .cursorrules, and similar), review comments through whichever host tool `detect` reports present and applicable (pull requests through `gh`, merge requests through `glab`), and any MCP the agent has that reaches a bug tracker, an engineering-context tool, or architectural decisions. Whether to run a hinted command such as `gh auth status`, and which MCPs to use, SHALL be left to the agent.
 5. Filter for high-signal candidates: repeated patterns across multiple PRs/files/comments, comments that cite a doc or style guide, and merge-blocking review feedback; drop one-off nits and pure formatting feedback.
@@ -203,6 +203,7 @@ The recipe SHALL NOT restate the destination criterion itself; it SHALL referenc
 
 - **WHEN** the recipe `## Steps` section is read
 - **THEN** it SHALL contain the question "Do you want me to set up Taskless for you?"
+- **AND** SHALL precede it with the scripted introduction, and direct the agent not to reword or extend it
 - **AND** SHALL direct the agent to use the host's structured question tool when one exists
 - **AND** no other step SHALL direct the agent to ask the user a question, except the step handling a refused report gate and the closing CI offer
 

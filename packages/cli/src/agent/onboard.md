@@ -30,16 +30,22 @@ making the case for running them in CI.
    you; if you reached this recipe another way and it is true, stop and
    tell the user onboarding already ran.
 
-2. **Ask the one question.** Put exactly this to the user, set apart
-   from anything else you say by a blank line above and below:
+2. **Ask the one question.** Put exactly this to the user, word for
+   word, set apart from anything else you say by a blank line above
+   and below:
+
+   I'd look through your repo, your agent files such as CLAUDE.md, any documentation, relevant PRs if I have access, and any additional bug tracking that might help us build a set of rules. From this, I'll create starter rules in `.taskless/` (all local, no login) and then generate a report.
 
    Do you want me to set up Taskless for you?
 
-   If your host has a structured question tool, ask it through that
-   tool; otherwise ask it as plain text. A yes covers everything that
-   follows: mining the repository, writing rules, publishing an
-   unlisted report to tskl.es, and sending Taskless anonymous feedback
-   about how onboarding went. On anything other than a yes, stop.
+   Do not reword it, add to it, or describe the sources or steps in
+   your own words; this paragraph is the whole introduction. If your
+   host has a structured question tool, ask it through that tool, with
+   the paragraph before the question; otherwise ask it as plain text.
+   A yes covers everything that follows: mining the repository,
+   writing rules, publishing an unlisted report to tskl.es, and
+   sending Taskless anonymous feedback about how onboarding went. On
+   anything other than a yes, stop.
 
    This is the only question you script. Do not ask which sources to
    mine, whether to write each rule, or whether to mark onboarding
