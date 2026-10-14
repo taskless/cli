@@ -159,9 +159,12 @@ export const COMPLETED_CHOICES = ["Yes", "No", "Unknown"] as const;
 /**
  * The recipes that carry the invite. Used by the gate alone; the events do not
  * name the recipe, because the survey contract has no slot for it.
+ *
+ * `onboard` is not one. Its user agrees to onboarding feedback with the
+ * recipe's opening yes, and the recipe sends that feedback itself; an invite
+ * appended to it would ask a question that has already been answered.
  */
 export const SURVEYED_TOPICS: ReadonlySet<string> = new Set([
-  "onboard",
   "create-sg-rule",
   "create-vale-rule",
   "create-remote-rule",

@@ -186,17 +186,34 @@ describe("onboard recipe renders host-tool state", () => {
   it("omits PR review comments with a reason when gh is not on PATH", () => {
     const rendered = onboardWith({ present: false, applicable: true });
 
-    expect(rendered).toContain("**Recent PR review comments** are not on this");
+    expect(rendered).toContain(
+      "**Recent PR review comments** are not a source here"
+    );
     expect(rendered).toContain("not on your PATH");
-    expect(rendered).not.toContain("30 days of merged PRs");
+    expect(rendered).not.toContain("90 days of merged PRs");
   });
 
-  it("gives the unfixable reason first for a repository with no GitHub origin", () => {
+  it("gives the unfixable reason first for a repository on neither forge", () => {
     // Present AND inapplicable: the case the precedence rule exists for.
-    const rendered = onboardWith({ present: true, applicable: false });
+    const rendered = renderWith([
+      {
+        name: "gh",
+        present: true,
+        applicable: false,
+        reason: "this repository has no GitHub origin",
+      },
+      { name: "git", present: true, applicable: true },
+      { name: "jq", present: false, applicable: true },
+      {
+        name: "glab",
+        present: true,
+        applicable: false,
+        reason: "this repository has no GitLab origin",
+      },
+    ]);
 
-    expect(rendered).toContain("repository has no GitHub origin");
-    expect(rendered).toContain("Installing the GitHub CLI does not change");
+    expect(rendered).toContain("on neither GitHub nor GitLab");
+    expect(rendered).toContain("Installing a CLI does not change");
     // Telling this user to install `gh` is the failure mode, and it is worse
     // than silence because they can act on it and still get nowhere.
     expect(rendered).not.toContain("**Recent PR review comments**: `gh` is on");
@@ -352,10 +369,10 @@ describe("the prompts export renders the full menu with no options", () => {
     expect(rendered).toContain("**Codebase TODOs / FIXMEs**");
     expect(rendered).toContain("**Agent-memory files**");
     expect(rendered).toContain("**Recent PR review comments**");
-    expect(rendered).toContain("**Bug-tracker tickets**");
+    expect(rendered).toContain("**Trackers and engineering context**");
     // Nothing was measured, so nothing may be asserted either way.
     expect(rendered).not.toContain("on your PATH");
-    expect(rendered).not.toContain("are not on this menu");
+    expect(rendered).not.toContain("are not a source here");
     // And the probe instruction the CLI has not displaced here is still the
     // right one, because no answer has been supplied.
     expect(rendered).toContain("Confirm a tool exists before promising a scan");
@@ -363,10 +380,44 @@ describe("the prompts export renders the full menu with no options", () => {
 
   it("names no single bug tracker as the expected one", () => {
     const rendered = getRecipe("onboard") ?? "";
-    const tracker = rendered.slice(rendered.indexOf("**Bug-tracker tickets**"));
+    const tracker = rendered.slice(
+      rendered.indexOf("**Trackers and engineering context**")
+    );
 
     expect(tracker).toContain("examples of the class");
     expect(rendered).not.toContain("(Linear, Jira, GitHub issues via");
+  });
+});
+
+/** A GitLab repository's host tools, with `glab` as given. */
+function gitlab(glab: Partial<HostTool>): HostTool[] {
+  return [
+    {
+      name: "gh",
+      present: false,
+      applicable: false,
+      reason: "this repository has no GitHub origin",
+    },
+    { name: "git", present: true, applicable: true },
+    { name: "jq", present: true, applicable: true },
+    { name: "glab", present: true, applicable: true, ...glab },
+  ];
+}
+
+describe("the review-comment source covers GitLab", () => {
+  it("mines merge requests when glab is present on a GitLab origin", () => {
+    const rendered = renderWith(gitlab({}));
+    expect(rendered).toContain("**Recent MR review comments**: `glab` is on");
+    expect(rendered).toContain("did not run it");
+  });
+
+  it("says glab is missing on a GitLab origin without it", () => {
+    const rendered = renderWith(gitlab({ present: false }));
+    expect(rendered).toContain(
+      "**Recent MR review comments** are not a source here: `glab`"
+    );
+    // The GitHub reason is true but is not the one this user can act on.
+    expect(rendered).not.toContain("on neither GitHub nor GitLab");
   });
 });
 

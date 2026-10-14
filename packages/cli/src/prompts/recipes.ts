@@ -388,8 +388,8 @@ function toolState(tools: HostTool[] | undefined, name: string): ToolState {
 }
 
 /**
- * The PR-review entry in the onboard recipe's source menu, as a whole list
- * item.
+ * The review-comment entry in the onboard recipe's source list, as a whole
+ * list item: pull requests through `gh`, or merge requests through `glab`.
  *
  * A WHOLE ITEM, connective included, for the reason written above
  * {@link runBlock}: the bullet's own marker and label are part of what changes
@@ -397,36 +397,54 @@ function toolState(tools: HostTool[] | undefined, name: string): ToolState {
  * leave a bullet whose label contradicts its body. Every branch below is
  * valid markdown at the same nesting level.
  *
- * The `absent` and `not-applicable` branches SAY WHY rather than dropping the
- * bullet. `route.md` reached the same conclusion for the remote-generation
- * tier it declines to offer: a reader who is not told reads the omission as an
- * oversight and asks for it, which costs a turn and arrives back here.
+ * The unavailable branches SAY WHY rather than dropping the bullet. `route.md`
+ * reached the same conclusion for the remote-generation tier it declines to
+ * offer: a reader who is not told reads the omission as an oversight and asks
+ * for it, which costs a turn and arrives back here. Where both forges are
+ * ruled out, the reason no install can change comes first.
+ *
+ * A forge tool the caller did not mention is unmeasured, so anything short of
+ * both being ruled out renders the unconditioned default rather than a
+ * verdict read out of silence.
  */
-function prReviewSource(tools: HostTool[] | undefined): string {
-  switch (toolState(tools, "gh")) {
-    case "present": {
-      return `- **Recent PR review comments**: \`gh\` is on your PATH.
+function reviewCommentSource(tools: HostTool[] | undefined): string {
+  const gh = toolState(tools, "gh");
+  const glab = toolState(tools, "glab");
+
+  if (gh === "present") {
+    return `- **Recent PR review comments**: \`gh\` is on your PATH.
 Taskless looked for the file and did not run it, so treat that as
-presence rather than as a working install. Suggest scanning the last
-30 days of merged PRs for repeated reviewer feedback patterns.`;
-    }
-    case "absent": {
-      return `- **Recent PR review comments** are not on this menu: \`gh\` is
-not on your PATH. Say that rather than passing over the source in
-silence, and offer to pick it up if the user installs the GitHub CLI.`;
-    }
-    case "not-applicable": {
-      return `- **Recent PR review comments** are not on this menu: this
-repository has no GitHub origin, so there are no pull requests to
-mine. Installing the GitHub CLI does not change that. Say so rather
-than passing over the source in silence.`;
-    }
-    default: {
-      return `- **Recent PR review comments**: reading merged PRs needs the
-GitHub CLI (\`gh\`) or something equivalent. Suggest scanning the last
-30 days of merged PRs for repeated reviewer feedback patterns.`;
-    }
+presence rather than as a working install; \`detect --json\` names
+the command that checks sign-in under \`agent\`. Scan the last 90
+days of merged PRs for repeated reviewer feedback patterns.`;
   }
+  if (glab === "present") {
+    return `- **Recent MR review comments**: \`glab\` is on your PATH.
+Taskless looked for the file and did not run it, so treat that as
+presence rather than as a working install; \`detect --json\` names
+the command that checks sign-in under \`agent\`. Scan the last 90
+days of merged merge requests for repeated reviewer feedback patterns.`;
+  }
+  if (gh === "absent") {
+    return `- **Recent PR review comments** are not a source here: \`gh\` is
+not on your PATH. Say so in one line rather than passing over the
+source in silence.`;
+  }
+  if (glab === "absent") {
+    return `- **Recent MR review comments** are not a source here: \`glab\`
+is not on your PATH. Say so in one line rather than passing over the
+source in silence.`;
+  }
+  if (gh === "not-applicable" && glab === "not-applicable") {
+    return `- **Review comments** are not a source here: this repository's
+origin is on neither GitHub nor GitLab, so there are no pull or merge
+requests to mine. Installing a CLI does not change that. Say so in one
+line rather than passing over the source in silence.`;
+  }
+  return `- **Recent PR review comments**: reading merged PRs needs the
+GitHub CLI (\`gh\`), or the GitLab CLI (\`glab\`) for merge requests,
+or something equivalent. Scan the last 90 days of merged PRs for
+repeated reviewer feedback patterns.`;
 }
 
 /**
@@ -465,7 +483,7 @@ function toolLine(tool: HostTool): string {
  * exists to prevent: a verdict read out of silence.
  *
  * Without that line the two passages contradict each other on a partial array.
- * {@link prReviewSource} asks {@link toolState} about `gh` specifically and
+ * {@link reviewCommentSource} asks {@link toolState} about `gh` specifically and
  * renders the unmeasured default when the array does not mention it, while
  * this step would claim the enumeration was exhaustive.
  */
@@ -556,7 +574,10 @@ export function buildVariables(
     // title, connective and all — for the reason `runBlock` documents above,
     // and never post-stripped, which could not promise the default rendering
     // is byte-for-byte the text a consumer with no host receives.
-    SOURCE_PR_REVIEW: indentBlock(prReviewSource(options.hostTools), "     "),
+    SOURCE_PR_REVIEW: indentBlock(
+      reviewCommentSource(options.hostTools),
+      "     "
+    ),
     HOST_TOOLS: indentBlock(hostToolsStep(options.hostTools), "   "),
   };
   if (content.includes("%(INPUT_SCHEMA)s")) {

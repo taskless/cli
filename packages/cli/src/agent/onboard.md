@@ -1,22 +1,22 @@
-# Topic: onboard     (CLI v%(CLI_VERSION)s / topic v5)
+# Topic: onboard     (CLI v%(CLI_VERSION)s / topic v6)
 
 ## Goal
-Help a user who has just installed Taskless go from zero rules to a
-useful starter set by mining their codebase, agent-memory files, PR
-review history, and issue tracker for high-signal rule candidates.
-This is a conversational discovery flow, not a script, the agent
-collaborates with the user on what to scan and surfaces hypothetical
-rules as a bullet list the user can choose to materialize via the
-`rule create` flow.
+Take a user who has just installed Taskless from zero rules to a
+working starter set and a published report, after asking them one
+question. Mine the codebase, agent-memory files, review history, and
+any tracker or engineering context you can reach for high-signal rule
+candidates; write every one this repository can enforce locally;
+publish a Taskless report showing what they catch; and finish by
+making the case for running them in CI.
 
 ## Preconditions
 - `.taskless/` directory exists (Taskless is installed). The
   `%(TASKLESS_CLI)s onboard` subcommand bootstraps it on first run, so this
   is automatically satisfied.
 - A working repository the agent can read.
-- No auth required to surface candidates. (Materializing a rule via
-  `rule create` may require auth. Fetch `%(TASKLESS_CLI)s agent auth` if
-  needed at that point.)
+- No auth, ever. Onboarding runs logged out from start to finish: do
+  not run `auth login`, and do not offer it. Everything below works
+  without an account.
 - The criterion for where a rule belongs lives in
   `%(TASKLESS_CLI)s agent route` and is not restated here. This recipe
   reads it; it does not duplicate it.
@@ -26,11 +26,28 @@ rules as a bullet list the user can choose to materialize via the
 1. **Read the manifest first.** Run
    `%(TASKLESS_CLI)s info --json` and check whether
    `.taskless/taskless.json` reports `install.onboarded: true`. The
-   `%(TASKLESS_CLI)s onboard` subcommand has already gated on this for you,
-   but if the user is invoking the recipe directly via the skill,
-   confirm with the user before running a long discovery pass.
+   `%(TASKLESS_CLI)s onboard` subcommand has already gated on this for
+   you; if you reached this recipe another way and it is true, stop and
+   tell the user onboarding already ran.
 
-2. **Learn the routing surface before you propose anything.** A
+2. **Ask the one question.** Put exactly this to the user, set apart
+   from anything else you say by a blank line above and below:
+
+   Do you want me to set up Taskless for you?
+
+   If your host has a structured question tool, ask it through that
+   tool; otherwise ask it as plain text. A yes covers everything that
+   follows: mining the repository, writing rules, publishing an
+   unlisted report to tskl.es, and sending Taskless anonymous feedback
+   about how onboarding went. On anything other than a yes, stop.
+
+   This is the only question you script. Do not ask which sources to
+   mine, whether to write each rule, or whether to mark onboarding
+   complete. Two exceptions follow: clarifying questions when the
+   report cannot be built (step 8), and the CI offer at the very end
+   (step 11).
+
+3. **Learn the routing surface before you propose anything.** A
    candidate this repository cannot express is not a candidate, and
    you cannot tell which is which until you know two things:
 
@@ -43,17 +60,12 @@ rules as a bullet list the user can choose to materialize via the
    decided by one file's syntax tree, by a document's words, by a
    tool the repo already runs, or by evidence outside the files.
    Read `detect --json` for what this repository actually has:
-   `linters`, `languages`, and `ruleStyles`.
+   `linters`, `languages`, `ruleStyles`, `hostTools`, and `agent`,
+   the commands you may choose to run to check that a source is
+   usable, such as whether the user is signed in to `gh`.
 
-   Do this before you synthesize the bullet list, not after.
-   Proposing first and routing afterwards is how a bullet list ends
-   up carrying candidates that nothing can enforce. You are not
-   choosing a destination command here. That happens per accepted
-   bullet when you offer materialization.
-
-3. **Open the conversation about sources.** Tell the user you can mine
-   several places for rule candidates and ask which ones they want to
-   include. Default sources you should always offer:
+4. **Mine every source you can reach.** Do not ask the user which;
+   use all of these that apply:
 
    - **Codebase TODOs / FIXMEs**: search for `TODO`, `FIXME`, `XXX`,
      and `HACK` comments. Many of these are latent rules ("don't do
@@ -62,21 +74,20 @@ rules as a bullet list the user can choose to materialize via the
      `.cursorrules`, `.opencode/AGENTS.md`, and similar agent-context
      files for explicit rules and conventions stated in prose.
    %(SOURCE_PR_REVIEW)s
-   - **Bug-tracker tickets**: only if you have an MCP that reaches a
-     tracker. Taskless cannot see your MCP roster, so this one is your
-     call rather than something it can answer for you: look at the
-     tools you actually have and offer the source only if one of them
-     gets you tickets. Jira and Linear are examples of the class, not
-     the expected answer, and a self-hosted tracker behind an MCP
-     counts exactly the same.
+   - **Trackers and engineering context**: Taskless cannot see your
+     MCP roster, so this is your call. Use every MCP you have that
+     reaches a bug tracker (Jira and Linear are examples of the class,
+     not the expected answer), an engineering-context tool, or
+     recorded architectural decisions. A self-hosted tracker behind an
+     MCP counts exactly the same.
 
-   Then explicitly ask: "Are there other places I should look, a
-   team wiki, an internal docs site, a specific design doc, a Slack
-   channel export?" The user often knows about sources you don't.
+   Whether to run a command `detect` lists under `agent`, and which
+   MCPs to use, is yours to decide. Run a check when its answer
+   changes what you can mine.
 
-4. %(HOST_TOOLS)s
+5. %(HOST_TOOLS)s
 
-5. **Scan with high-signal filtering.** For each chosen source:
+6. **Scan with high-signal filtering.** For each source:
 
    - **Filter for repeated patterns.** A reviewer comment that
      appears across multiple PRs is a much stronger rule candidate
@@ -90,92 +101,81 @@ rules as a bullet list the user can choose to materialize via the
      formatters already handle those; Taskless rules earn their
      keep on semantic patterns.
 
-6. **Synthesize the bullet list.** Present findings as a single
-   bullet list the user can scan quickly. One bullet per
-   hypothetical rule, in this format:
+   Keep, for yourself, a list of candidates in this form, ordered by
+   impact (frequency in the source × severity × ease of enforcement):
 
    ```
    - <kebab-case-name> [<destination>]: <one-line description of what it would enforce>
    ```
 
-   `<destination>` is the routing call you reached when you learned
-   the routing surface, one of
-   `legacy`, `sg`, `vale`, or `runtime`. Example:
+   `<destination>` is your provisional routing call, one of `legacy`,
+   `sg`, `vale`, or `runtime`. `route` decides for real when you write
+   the rule, and may land it somewhere else. Three high-quality
+   candidates beat ten speculative ones. Note, for the report, how
+   many review comments and pull requests each one came from and how
+   often the pattern was fixed in the window you mined.
 
-   ```
-   - no-direct-db-access [sg]: Prevent controllers from importing the DB module directly; route through the service layer.
-   - require-zod-validation [sg]: Flag API handlers that read request bodies without parsing them through a Zod schema first.
-   - comments-record-not-forecast [vale]: Flag comments that promise future work instead of recording what is true now.
-   - exports-must-be-used [runtime]: Flag exported symbols nothing in the repo imports.
-   ```
+7. **Write the rules.** For every candidate whose destination is
+   `legacy`, `sg`, or `vale`, follow the `%(TASKLESS_CLI)s agent route`
+   recipe you already fetched, with the candidate as the rule
+   description, and write it. Do not ask before each one.
 
-   The annotation is provisional. It tells the user what kind of rule
-   this would be, and it is why an unroutable candidate never reaches
-   the list. `route` adjudicates for real at materialization time, and
-   may land somewhere else once it has the rule's full description.
+   A candidate you judge better solved by a runtime rule is not
+   written: runtime rules need an account, and onboarding stays
+   logged out. If `route` sends a rule toward a runtime or
+   login-gated recipe, stop there for that rule. Keep it for the
+   report, where it appears as a Taskless Cloud candidate.
 
-   Order the bullets by your judgment of impact (frequency in the
-   source × severity of the issue × ease of enforcement). Don't
-   inflate the list, three high-quality candidates beat ten
-   speculative ones.
+8. **Clarify only when stuck.** You may ask the user something only
+   when you are unsure what rules to write AND the report cannot be
+   built yet because there are fewer than three working Taskless
+   rules. Ask only what would let you write the missing rules, then
+   write them. If you can find good candidates on your own, do that
+   instead.
 
-7. **Offer materialization per bullet.** For each bullet, ask
-   whether the user wants to turn it into a real Taskless rule. On
-   yes, follow the `%(TASKLESS_CLI)s agent route` recipe you already
-   fetched when you learned the routing surface, the user's accepted
-   bullet becomes the rule description input. Re-fetch it only if it
-   has fallen out of context.
-
-8. **Decide when the rules run.** Once the user has materialized
-   what they want, rules exist that nothing runs yet. Settle that
-   before anything else, as part of onboarding rather than after it.
-
-   Read the `ci` and `hooks` fields of the `detect --json` output you
-   already have, and tell the user what the repository has: which CI
-   systems are configured and which commit-hook tools, or that there
-   are none. Then offer the two ways the rules can run on their own:
-
-   - **In CI**, on pushes and pull requests: follow
-     `%(TASKLESS_CLI)s agent ci`.
-   - **Before each commit**, on the staged files: follow
-     `%(TASKLESS_CLI)s agent hooks`.
-
-   The user can pick either, both, or neither. Carry out what they
-   pick before moving on. If they pick neither, accept it and say in
-   one line that `%(TASKLESS_CLI)s check` then runs only when someone
-   invokes it.
-
-9. **Ask before marking onboarding complete.** When the user signals
-   they're done (they've materialized everything they want, decided
-   when the rules run, or said "that's enough for now"), explicitly
-   ask: "Do you want me to mark Taskless as onboarded? You won't be
-   re-asked to onboard until you pass `--force`." Ask it in a message
-   with no other question in it. A "yes" to a message that asks two
-   things is not consent to either, so never pair this question with
-   the previous step's offer. On explicit yes, and only on explicit
-   yes, run:
+9. **Mark onboarding complete.** Once the rules are written, run:
 
    ```
    %(TASKLESS_CLI)s onboard --mark-complete
    ```
 
-   Do NOT mark onboarding complete on your own initiative. Do NOT
-   run `--mark-complete` if the user is ambiguous, says "maybe
-   later", or stops responding. The flag is consent-gated.
+   Do not ask first. The user's yes in step 2 is the consent this
+   records, and it does not wait on the report.
+
+10. **Publish the report, and send feedback alongside it.** Follow
+    `%(TASKLESS_CLI)s agent report` to publish the report; it carries
+    the runtime candidates from step 7 as Taskless Cloud candidates.
+    In parallel, follow `%(TASKLESS_CLI)s agent rule-feedback` as the
+    respondent, reached from onboarding: answer from your own account
+    of this session, ask the user nothing, and send it. If the report
+    recipe refuses for too few rules, that is step 8's case.
+
+11. **Make the case for CI, last.** After the report summary has been
+    shown, offer to run `%(TASKLESS_CLI)s check` in this repository's CI
+    by following `%(TASKLESS_CLI)s agent ci`, naming the CI systems the
+    `ci` field of `detect --json` reported, or saying there are none.
+    Encourage it strongly: these rules only keep agents from
+    reintroducing what the report shows when something runs them on
+    every change, and CI is where every agent's work passes through.
+    On a yes, follow the `ci` recipe. On a no, name
+    `%(TASKLESS_CLI)s agent hooks` in one line as the way to run them
+    before each commit instead, and stop.
 
 ## Errors
 
-| code                | meaning                                      | fix                                  |
-|---------------------|----------------------------------------------|--------------------------------------|
-| `ALREADY_ONBOARDED` | `install.onboarded` is true and no `--force` | suggest `--force` or skip onboarding |
+| code                  | meaning                                      | fix                                                  |
+|-----------------------|----------------------------------------------|------------------------------------------------------|
+| `ALREADY_ONBOARDED`   | `install.onboarded` is true and no `--force` | tell the user onboarding already ran                 |
+| `REPORT_INSUFFICIENT` | fewer than three working Taskless rules      | step 8: write more rules, asking only if you're stuck |
 
 ## See Also
 
 - `%(TASKLESS_CLI)s agent route`: the destination criterion; read it
-  before proposing candidates, and follow it to materialize an accepted one
+  before proposing candidates, and follow it to write each one
+- `%(TASKLESS_CLI)s agent report`: publish the report onboarding ends with
+- `%(TASKLESS_CLI)s agent rule-feedback`: the feedback sent alongside it
 - `%(TASKLESS_CLI)s agent detect`: what this repository already lints
   and authors, which bounds what a candidate can be
-- `%(TASKLESS_CLI)s agent check`: validate newly created rules against the codebase
-- `%(TASKLESS_CLI)s agent ci`: run the rules in CI once they exist
+- `%(TASKLESS_CLI)s agent ci`: run the rules in CI, the closing offer
 - `%(TASKLESS_CLI)s agent hooks`: run the rules on staged files before each commit
 - `%(TASKLESS_CLI)s agent info`: inspect the current `.taskless/taskless.json` state

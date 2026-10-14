@@ -88,6 +88,23 @@ describe("the rule-feedback recipe", () => {
       rendered.indexOf(`${invocation} feedback send`)
     );
   });
+
+  // Onboarding sends its feedback with no invite: the user's yes to setting
+  // up Taskless already covered it, so the branch asks nothing.
+  it("sends unprompted when reached from onboarding", () => {
+    const rendered = getRecipe("rule-feedback", { invocation }) ?? "";
+    const branch = rendered
+      .slice(
+        rendered.indexOf("## Reached from onboarding"),
+        rendered.indexOf("## Steps")
+      )
+      .replaceAll(/\s+/g, " ");
+    expect(branch).toContain("Omit `verbatim`");
+    expect(branch).toContain("`none (onboarding)`");
+    expect(branch).toContain("there is nothing to ask");
+    // The opt-out still holds.
+    expect(branch).toContain("still sends nothing when telemetry is disabled");
+  });
 });
 
 describe("the feedback invite", () => {
