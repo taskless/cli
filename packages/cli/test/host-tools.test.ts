@@ -1,11 +1,11 @@
 import { execFile } from "node:child_process";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { delimiter, join } from "node:path";
 import { promisify } from "node:util";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { detectHostTools } from "../src/detect/host-tools";
+import { detectAgentHints, detectHostTools } from "../src/detect/host-tools";
 import { getRecipe, type HostTool } from "../src/prompts/recipes";
 
 const execFileAsync = promisify(execFile);
@@ -47,7 +47,7 @@ describe("detectHostTools", () => {
 
     const tools = await detectHostTools(cwd);
 
-    expect(tools.map((tool) => tool.name)).toEqual(["gh", "git", "jq"]);
+    expect(tools.map((tool) => tool.name)).toEqual(["gh", "git", "jq", "glab"]);
     for (const tool of tools) {
       expect(tool.present).toBe(false);
       // No `path` key at all rather than an empty string: a consumer
@@ -66,6 +66,48 @@ describe("detectHostTools", () => {
     // `git` and `jq` do not care what the remote is.
     expect(tools.find((tool) => tool.name === "git")?.applicable).toBe(true);
     expect(tools.find((tool) => tool.name === "jq")?.applicable).toBe(true);
+  });
+
+  it("marks glab applicable on a GitLab origin and inapplicable elsewhere", async () => {
+    cwd = await makeRepository("git@gitlab.com:acme/widgets.git");
+    const onGitLab = await detectHostTools(cwd);
+    expect(onGitLab.find((tool) => tool.name === "glab")?.applicable).toBe(
+      true
+    );
+    expect(onGitLab.find((tool) => tool.name === "gh")?.applicable).toBe(false);
+    await rm(cwd, { recursive: true, force: true });
+
+    cwd = await makeRepository("https://github.com/acme/widgets.git");
+    const onGitHub = await detectHostTools(cwd);
+    expect(onGitHub.find((tool) => tool.name === "glab")).toMatchObject({
+      applicable: false,
+      reason: "this repository has no GitLab origin",
+    });
+  });
+
+  it("treats a self-hosted gitlab.* instance as GitLab", async () => {
+    cwd = await makeRepository("https://gitlab.example.com/acme/widgets.git");
+    const tools = await detectHostTools(cwd);
+    expect(tools.find((tool) => tool.name === "glab")?.applicable).toBe(true);
+  });
+
+  it("runs nothing it finds: a planted gh that would fail is still only present", async () => {
+    // A file named `gh` that exits non-zero if executed. Detection reporting it
+    // as present without erroring is the evidence it was looked at, not run.
+    cwd = await makeRepository("https://github.com/acme/widgets.git");
+    await writeFile(join(cwd, "gh"), "#!/bin/sh\nexit 7\n", {
+      encoding: "utf8",
+      mode: 0o755,
+    });
+    // Prepended, not replaced: `git` must stay reachable for the origin to
+    // resolve, and the planted file must be the `gh` found first.
+    process.env.PATH = `${cwd}${delimiter}${originalPath ?? ""}`;
+
+    const tools = await detectHostTools(cwd);
+    expect(tools.find((tool) => tool.name === "gh")).toMatchObject({
+      present: true,
+      applicable: true,
+    });
   });
 
   it("marks gh inapplicable in a directory that is not a repository", async () => {
@@ -325,5 +367,36 @@ describe("the prompts export renders the full menu with no options", () => {
 
     expect(tracker).toContain("examples of the class");
     expect(rendered).not.toContain("(Linear, Jira, GitHub issues via");
+  });
+});
+
+describe("detectAgentHints", () => {
+  it("hints only for tools that are present and applicable", () => {
+    const hints = detectAgentHints([
+      { name: "gh", present: true, applicable: true },
+      { name: "git", present: true, applicable: true },
+      { name: "jq", present: false, applicable: true },
+      {
+        name: "glab",
+        present: true,
+        applicable: false,
+        reason: "this repository has no GitLab origin",
+      },
+    ]);
+    expect(Object.keys(hints)).toEqual(["gh auth status"]);
+    expect(hints["gh auth status"]).toContain("signed in to GitHub");
+  });
+
+  it("tells the agent to read glab's output rather than its exit code", () => {
+    const hints = detectAgentHints([
+      { name: "glab", present: true, applicable: true },
+    ]);
+    expect(hints["glab auth status"]).toContain("not the exit code");
+  });
+
+  it("gives no hint for an absent tool", () => {
+    expect(
+      detectAgentHints([{ name: "gh", present: false, applicable: true }])
+    ).toEqual({});
   });
 });

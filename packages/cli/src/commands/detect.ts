@@ -3,6 +3,7 @@ import process from "node:process";
 
 import { defineCommand } from "citty";
 
+import { detectAgentHints, detectHostTools } from "../detect/host-tools";
 import { detectRepository } from "../detect/scan";
 import { outputSchema as detectOutputSchema } from "../schemas/detect";
 import { makeErrorEnvelope } from "../types/errors";
@@ -11,7 +12,7 @@ export const detectCommand = defineCommand({
   meta: {
     name: "detect",
     description:
-      "Scan the repo for configured linters, languages, rule styles, CI, and commit hooks (offline, deterministic)",
+      "Scan the repo for configured linters, languages, rule styles, CI, commit hooks, and host tools (offline, deterministic)",
   },
   args: {
     dir: {
@@ -31,9 +32,15 @@ export const detectCommand = defineCommand({
     // event — the per-invocation cli_run denominator (emitted by the runner)
     // covers it, consistent with info under the cli_ telemetry taxonomy.
 
+    const [repository, hostTools] = await Promise.all([
+      detectRepository(cwd),
+      detectHostTools(cwd),
+    ]);
     const result = {
       success: true as const,
-      ...(await detectRepository(cwd)),
+      ...repository,
+      hostTools,
+      agent: detectAgentHints(hostTools),
     };
 
     if (args.json) {
@@ -90,6 +97,25 @@ export const detectCommand = defineCommand({
       console.log("\nCommit hooks:");
       for (const tool of result.hooks) {
         console.log(`  ${tool.name}: ${tool.evidence.join(", ")}`);
+      }
+    }
+
+    // Presence, not verification: the file was found on PATH and not run.
+    console.log("\nHost tools (found on PATH, not run):");
+    for (const tool of result.hostTools) {
+      const state = tool.applicable
+        ? tool.present
+          ? `on PATH (${tool.path ?? "unknown path"})`
+          : "not on PATH"
+        : `not applicable${tool.reason === undefined ? "" : ` (${tool.reason})`}`;
+      console.log(`  ${tool.name}: ${state}`);
+    }
+
+    const hints = Object.entries(result.agent);
+    if (hints.length > 0) {
+      console.log("\nFor an agent, if it chooses to check:");
+      for (const [command, meaning] of hints) {
+        console.log(`  ${command}: ${meaning}`);
       }
     }
   },

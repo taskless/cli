@@ -65,6 +65,11 @@ const IGNORED_DIRECTORIES: ReadonlySet<string> = new Set([
   ".pytest_cache",
   ".tox",
   ".gradle",
+  // Taskless's own state. It holds an `sgconfig.yml` and a `.vale.ini` that
+  // Taskless writes for itself, which are not the repository's linters: an
+  // unpruned walk reports every installed repository as already running
+  // ast-grep and Vale.
+  ".taskless",
 ]);
 
 /**
@@ -244,6 +249,14 @@ const LINTER_SIGNALS: readonly LinterSignal[] = [
     configFiles: [".swiftlint.yml", ".swiftlint.yaml"],
   },
   { name: "checkstyle", languages: ["Java"], configFiles: ["checkstyle.xml"] },
+  // Polyglot and prose linters: neither says anything about which languages
+  // the repository is written in, so they contribute none.
+  {
+    name: "ast-grep",
+    languages: [],
+    configFiles: ["sgconfig.yml", ".sgconfig.yml"],
+  },
+  { name: "vale", languages: [], configFiles: [".vale.ini", "_vale.ini"] },
 ];
 
 /**

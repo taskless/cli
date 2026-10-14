@@ -32,6 +32,27 @@ const detectedAutomationSchema = z.object({
     ),
 });
 
+/**
+ * A command-line tool looked for on the host's `PATH`. Presence only: the file
+ * was found, nothing was run.
+ */
+const hostToolSchema = z.object({
+  name: z.string().describe("The command as typed, e.g. gh, glab, git, jq"),
+  present: z
+    .boolean()
+    .describe("A file of this name is on PATH; Taskless did not run it"),
+  path: z.string().optional().describe("Where it was found, when present"),
+  applicable: z
+    .boolean()
+    .describe(
+      "The tool could accomplish something in this repository (gh needs a GitHub origin, glab a GitLab one)"
+    ),
+  reason: z
+    .string()
+    .optional()
+    .describe("Why the tool is not applicable, when it is not"),
+});
+
 /** Output schema for `taskless detect --json` on success */
 export const outputSchema = z.object({
   success: z.literal(true),
@@ -51,6 +72,14 @@ export const outputSchema = z.object({
     .array(detectedAutomationSchema)
     .describe(
       "Tools that run commands at commit time (hook managers and lint-staged), configured at the scan root"
+    ),
+  hostTools: z
+    .array(hostToolSchema)
+    .describe("Command-line tools looked for on PATH, in a fixed order"),
+  agent: z
+    .record(z.string(), z.string())
+    .describe(
+      "Commands an agent may choose to run, keyed by command, each with what it tells the agent. Only present, applicable tools get one; detect runs none of them"
     ),
 });
 
