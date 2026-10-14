@@ -18,8 +18,8 @@
 
 ## 4. Recipes
 
-- [ ] 4.1 Rewrite `packages/cli/src/agent/report.md` step 2 to drop fix counting, state the single `surfaced` counting method (merged in window, read each comment, bots and the PR author count), note that the draft's `findings` are measured by the CLI and cannot be supplied, and require the agent's own recap to label "in the code today" apart from "raised in review over the window"; bump its topic version; verify `pnpm --filter @taskless/cli test prompts recipe` passes
-- [ ] 4.2 Update `packages/cli/src/agent/onboard.md` step 6 to note `surfaced` counts by the report recipe's method instead of how often a pattern was fixed; bump its topic version; verify the same prompt tests pass
+- [x] 4.1 Rewrite `packages/cli/src/agent/report.md` step 2 to drop fix counting, state the single `surfaced` counting method (merged in window, read each comment, bots and the PR author count), note that the draft's `findings` are measured by the CLI and cannot be supplied, and require the agent's own recap to label "in the code today" apart from "raised in review over the window"; bump its topic version; verify `pnpm --filter @taskless/cli test prompts recipe` passes
+- [x] 4.2 Update `packages/cli/src/agent/onboard.md` step 6 to note `surfaced` counts by the report recipe's method instead of how often a pattern was fixed; bump its topic version; verify the same prompt tests pass
 
 ## 5. Release and checks
 

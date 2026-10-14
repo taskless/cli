@@ -96,7 +96,7 @@ function mergeRules(
     .filter((id) => !factsById.has(id));
   if (uncovered.length > 0) {
     throw invalid(
-      `facts are missing for these rules: ${uncovered.join(", ")}. Every rule \`taskless report\` lists needs a "rules" entry with its title, origin, and fix count.`
+      `facts are missing for these rules: ${uncovered.join(", ")}. Every rule \`taskless report\` lists needs a "rules" entry with its title and surfaced counts.`
     );
   }
 

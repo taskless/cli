@@ -1,4 +1,4 @@
-# Topic: onboard     (CLI v%(CLI_VERSION)s / topic v6)
+# Topic: onboard     (CLI v%(CLI_VERSION)s / topic v7)
 
 ## Goal
 Take a user who has just installed Taskless from zero rules to a
@@ -118,8 +118,11 @@ making the case for running them in CI.
    `sg`, `vale`, or `runtime`. `route` decides for real when you write
    the rule, and may land it somewhere else. Three high-quality
    candidates beat ten speculative ones. Note, for the report, how
-   many review comments and pull requests each one came from and how
-   often the pattern was fixed in the window you mined.
+   many pull requests and review comments raised each one in the
+   window you mined: a pull request counts when it merged in the
+   window and a review comment on it asked for the change, and each
+   such comment counts. Bot and author comments count too. Judge each
+   comment by reading it, never by matching keywords.
 
 7. **Write the rules.** For every candidate whose destination is
    `legacy`, `sg`, or `vale`, follow the `%(TASKLESS_CLI)s agent route`
