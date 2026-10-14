@@ -178,10 +178,24 @@ function enforceGate(candidates: Candidate[]): void {
 function screenStrings(facts: ReportFacts, label: string | undefined): void {
   const fields: [string, string][] = [];
   if (label !== undefined) fields.push(["label", label]);
+  // Every agent-supplied string mergeRules copies onto a published rule. Ids
+  // count: the schema allows dots, so an id can be a host name.
   for (const group of ["rules", "legacy", "cloud"] as const) {
     for (const rule of facts[group]) {
-      fields.push([`${group}[${rule.id}].title`, rule.title]);
+      fields.push(
+        [`${group}[${rule.id}].id`, rule.id],
+        [`${group}[${rule.id}].title`, rule.title]
+      );
     }
+  }
+  for (const rule of facts.legacy) {
+    fields.push(
+      [`legacy[${rule.id}].tool`, rule.tool],
+      [`legacy[${rule.id}].language`, rule.language]
+    );
+  }
+  for (const rule of facts.cloud) {
+    fields.push([`cloud[${rule.id}].language`, rule.language]);
   }
   const flagged = fields
     .filter(([, text]) => hasHits(scanText(text)))
