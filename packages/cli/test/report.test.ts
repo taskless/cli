@@ -47,8 +47,12 @@ function localRule(id: string, overrides: Partial<LocalRule> = {}): LocalRule {
   };
 }
 
-function draftOf(rules: LocalRule[]): ReportDraft {
+function draftOf(
+  rules: LocalRule[],
+  measured: Partial<Pick<ReportDraft, "findings" | "unmeasured">> = {}
+): ReportDraft {
   return {
+    ...measured,
     producer: { kind: "cli", cliVersion: "0.12.0" },
     scope: {
       provider: "github",
@@ -77,9 +81,7 @@ function factsFor(
     rules: ids.map((id) => ({
       id,
       title: `Rule ${id}`,
-      origin: { reviewComments: 9, prs: 6 },
-      fixed: 10,
-      fixedBasis: "measured",
+      surfaced: { prs: 6, reviewComments: 9 },
     })),
     estimates: { contextTokens: 150_000, callsPerCatch: 20 },
     ...overrides,
@@ -144,18 +146,121 @@ describe("assembleReport", () => {
     });
   });
 
-  it("normalizes per-tier counts to a 30-day month over the window", () => {
-    // 2026-07-14 through 2026-10-11 inclusive is 90 days; three rules fixed
-    // 10 times each is 30, so 10 a month.
+  it("sends projection inputs and no rates", () => {
+    // tskl.es derives the monthly rates itself and refuses a payload that
+    // carries them.
     const report = assembleReport(
       draftOf(three.map((id) => localRule(id))),
       factsFor(three)
     );
-    expect(report.projection.perMonth.agentCatches.cli).toBe(10);
+    expect(Object.keys(report.projection)).toEqual(["inputs"]);
     expect(report.projection.inputs).toMatchObject({
       contextTokens: 150_000,
       callsPerCatch: 20,
     });
+  });
+
+  it("marks local rules written and carries their surfaced counts", () => {
+    const report = assembleReport(
+      draftOf(three.map((id) => localRule(id))),
+      factsFor(three)
+    );
+    expect(report.rules[0]).toMatchObject({
+      state: "written",
+      surfaced: { prs: 6, reviewComments: 9 },
+    });
+  });
+
+  it("carries the draft's measured findings on every written rule", () => {
+    const report = assembleReport(
+      draftOf(
+        [
+          localRule("a", { violations: 4, files: 2 }),
+          localRule("b", { violations: 0, files: 0 }),
+          localRule("c", { violations: 7, files: 3 }),
+        ],
+        { findings: { violations: 11, files: 4 } }
+      ),
+      factsFor(three)
+    );
+    expect(reportSchemaIssues(report)).toEqual([]);
+    expect(report.findings).toEqual({ violations: 11, files: 4 });
+    expect(report.rules.map((rule) => [rule.violations, rule.files])).toEqual([
+      [4, 2],
+      [0, 0],
+      [7, 3],
+    ]);
+  });
+
+  it("publishes no counts when the draft could not measure", () => {
+    const report = assembleReport(
+      draftOf(
+        three.map((id) => localRule(id)),
+        {
+          unmeasured: "the scan did not complete",
+        }
+      ),
+      factsFor(three)
+    );
+    expect(reportSchemaIssues(report)).toEqual([]);
+    expect(report.findings).toBeUndefined();
+    expect(report.rules.some((rule) => "violations" in rule)).toBe(false);
+  });
+
+  it("withdraws every count when the facts add a legacy rule", () => {
+    // The CLI cannot run another linter's rule, so a total over the rules it
+    // can see would silently skip one.
+    const report = assembleReport(
+      draftOf(
+        three.map((id) => localRule(id, { violations: 1, files: 1 })),
+        { findings: { violations: 3, files: 1 } }
+      ),
+      factsFor(three, {
+        legacy: [
+          {
+            id: "eslint-rule",
+            title: "No default exports",
+            surfaced: { prs: 1, reviewComments: 1 },
+            tool: "eslint",
+            language: "TypeScript",
+          },
+        ],
+      })
+    );
+    expect(reportSchemaIssues(report)).toEqual([]);
+    expect(report.findings).toBeUndefined();
+    expect(report.rules.some((rule) => "violations" in rule)).toBe(false);
+    expect(report.rules.find((rule) => rule.id === "eslint-rule")?.state).toBe(
+      "written"
+    );
+  });
+
+  it.each([
+    ["fixed", { fixed: 3 }],
+    ["fixedBasis", { fixedBasis: "measured" }],
+    ["origin", { origin: { reviewComments: 1, prs: 1 } }],
+    ["violations", { violations: 3 }],
+    ["files", { files: 1 }],
+    ["state", { state: "written" }],
+  ])("refuses a rule's %s in the facts", (_field, extra) => {
+    const facts = {
+      ...factsFor(three),
+      rules: three.map((id) => ({
+        id,
+        title: `Rule ${id}`,
+        surfaced: { prs: 1, reviewComments: 1 },
+        ...extra,
+      })),
+    };
+    expect(reportFactsSchema.safeParse(facts).success).toBe(false);
+  });
+
+  it("refuses findings in the facts", () => {
+    const facts = {
+      ...factsFor(three),
+      findings: { violations: 342, files: 118 },
+    };
+    expect(reportFactsSchema.safeParse(facts).success).toBe(false);
   });
 
   it("refuses with too few local rules, cloud candidates notwithstanding", () => {
@@ -163,9 +268,7 @@ describe("assembleReport", () => {
       cloud: ["x", "y", "z", "w"].map((id) => ({
         id,
         title: `Cloud ${id}`,
-        origin: { reviewComments: 1, prs: 1 },
-        fixed: 1,
-        fixedBasis: "estimated",
+        surfaced: { prs: 1, reviewComments: 1 },
         language: "TypeScript",
         complexity: 3,
       })),
@@ -185,9 +288,7 @@ describe("assembleReport", () => {
       legacy: ["l1", "l2"].map((id) => ({
         id,
         title: `Legacy ${id}`,
-        origin: { reviewComments: 1, prs: 1 },
-        fixed: 1,
-        fixedBasis: "measured",
+        surfaced: { prs: 1, reviewComments: 1 },
         tool: "eslint",
         language: "TypeScript",
       })),
@@ -227,9 +328,7 @@ describe("assembleReport", () => {
         {
           id: "tenant-check",
           title: "Routes call requireTenant()",
-          origin: { reviewComments: 4, prs: 3 },
-          fixed: 2,
-          fixedBasis: "estimated",
+          surfaced: { prs: 3, reviewComments: 4 },
           language: "TypeScript",
           complexity: 4,
           fail: "export const GET = route(() => db.all())",
@@ -245,6 +344,7 @@ describe("assembleReport", () => {
     ).toMatchObject({
       tier: "cloud",
       engine: "runtime",
+      state: "candidate",
       tests: { status: "not-run" },
     });
   });
@@ -298,18 +398,14 @@ describe("assembleReport", () => {
     const legacy = {
       id: "l1",
       title: "Legacy l1",
-      origin: { reviewComments: 1, prs: 1 },
-      fixed: 1,
-      fixedBasis: "measured" as const,
+      surfaced: { prs: 1, reviewComments: 1 },
       tool: "eslint",
       language: "TypeScript",
     };
     const cloud = {
       id: "c1",
       title: "Cloud c1",
-      origin: { reviewComments: 1, prs: 1 },
-      fixed: 1,
-      fixedBasis: "estimated" as const,
+      surfaced: { prs: 1, reviewComments: 1 },
       language: "TypeScript",
       complexity: 3,
     };
@@ -383,6 +479,16 @@ describe("scanText", () => {
   });
 });
 
+function summaryOf(draft: ReportDraft): string {
+  return renderSummary({
+    report: assembleReport(draft, factsFor(["a", "b", "c"])),
+    url: "https://tskl.es/r/abc",
+    expiresAt: "2026-11-12T00:00:00Z",
+    record: "2026-10-13_142200.json",
+    invocation: "npx @taskless/cli",
+  });
+}
+
 describe("renderSummary", () => {
   it("names each rule and the link, and never the delete URL", () => {
     const report = assembleReport(
@@ -400,6 +506,32 @@ describe("renderSummary", () => {
     expect(summary).toContain("https://tskl.es/r/abc");
     expect(summary).toContain("can be deleted after review");
     expect(summary).not.toContain("delete/");
+  });
+
+  it("leads with what the rules found today, apart from review history", () => {
+    const summary = summaryOf(
+      draftOf(
+        ["a", "b", "c"].map((id) =>
+          localRule(id, { violations: 114, files: 40 })
+        ),
+        { findings: { violations: 342, files: 118 } }
+      )
+    );
+    expect(summary).toContain(
+      "Found in the code today: 342 problems in 118 files."
+    );
+    expect(summary).toContain(
+      "Raised in review from 2026-07-14 to 2026-10-11: 27 comments across 18 pull requests."
+    );
+    expect(summary).not.toMatch(/month/i);
+  });
+
+  it("states no problem count it does not have", () => {
+    const summary = summaryOf(
+      draftOf(["a", "b", "c"].map((id) => localRule(id)))
+    );
+    expect(summary).not.toContain("Found in the code today");
+    expect(summary).toContain("Raised in review");
   });
 });
 
@@ -597,6 +729,10 @@ describe("taskless report", () => {
     cwd = await mkdtemp(join(tmpdir(), "tskl-report-"));
     await run(["init"]);
     for (const id of ["alpha", "beta", "gamma"]) await sgRule(id);
+    // Three matches across two files: alpha twice in one, beta once in each
+    // file, gamma nowhere.
+    await writeFile(join(cwd, "one.ts"), "alpha(1);\nalpha(2);\nbeta(3);\n");
+    await writeFile(join(cwd, "two.ts"), "beta(4);\n");
   });
 
   afterEach(async () => {
@@ -620,6 +756,14 @@ describe("taskless report", () => {
       true
     );
     expect(draft.scope.provider).toBe("none");
+    expect(draft.findings).toEqual({ violations: 4, files: 2 });
+    expect(
+      draft.rules.map((rule) => [rule.id, rule.violations, rule.files])
+    ).toEqual([
+      ["alpha", 2, 1],
+      ["beta", 2, 2],
+      ["gamma", 0, 0],
+    ]);
     expect(draft.missing).toContain("history");
     expect(draft.missing).toContain("rules[alpha]");
   });
@@ -656,6 +800,10 @@ describe("taskless report", () => {
 
     const sent = JSON.parse(fake.requests[0]!.body) as Record<string, unknown>;
     expect(reportSchemaIssues(sent)).toEqual([]);
+    expect(sent.findings).toEqual({ violations: 4, files: 2 });
+    expect(published.stdout).toContain(
+      "Found in the code today: 4 problems in 2 files."
+    );
 
     const records = await recordsIn(cwd);
     expect(records).toHaveLength(1);

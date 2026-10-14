@@ -5,16 +5,16 @@
 
 ## 2. Measure findings for the report
 
-- [ ] 2.1 Refresh `packages/cli/src/generated/report-v1.schema.json` with `pnpm --filter @taskless/cli generate:report-schema` and update `ReportV1` in `packages/cli/src/report/types.ts` (add `findings`, `state`, `violations`, `files`, `surfaced`; drop `fixed`, `fixedBasis`, `origin`, `perMonth`, `PerTier`); verify `pnpm typecheck` reports only the call sites groups 2 and 3 fix
-- [ ] 2.2 Add the all-or-nothing counting function in `packages/cli/src/report/` (per-rule `violations`/`files`, distinct `findings.files` by repo-relative path, omitted on legacy, local runtime, any plan or dispatch failure, or an unattributed `ruleId`); verify with unit tests covering every scenario under "The CLI measures what the rules find today"
-- [ ] 2.3 Run the scan from `buildDraft` and carry the counts on each local rule and as draft-level `findings`; verify a `report.test.ts` case over a fixture repo with known violations prints them in the draft
+- [x] 2.1 Refresh `packages/cli/src/generated/report-v1.schema.json` with `pnpm --filter @taskless/cli generate:report-schema` and update `ReportV1` in `packages/cli/src/report/types.ts` (add `findings`, `state`, `violations`, `files`, `surfaced`; drop `fixed`, `fixedBasis`, `origin`, `perMonth`, `PerTier`); verify `pnpm typecheck` reports only the call sites groups 2 and 3 fix
+- [x] 2.2 Add the all-or-nothing counting function in `packages/cli/src/report/` (per-rule `violations`/`files`, distinct `findings.files` by repo-relative path, omitted on legacy, local runtime, any plan or dispatch failure, or an unattributed `ruleId`); verify with unit tests covering every scenario under "The CLI measures what the rules find today"
+- [x] 2.3 Run the scan from `buildDraft` and carry the counts on each local rule and as draft-level `findings`; verify a `report.test.ts` case over a fixture repo with known violations prints them in the draft
 
 ## 3. Facts, assembly, and summary
 
-- [ ] 3.1 In `packages/cli/src/schemas/report-facts.ts`, drop `fixed` and `fixedBasis`, rename `origin` to `surfaced` with `{ prs, reviewComments }` and descriptions matching the recipe's counting method; verify a test that facts carrying `fixed`, `fixedBasis`, `origin`, `violations`, `findings`, or `perMonth` are refused with `REPORT_INVALID`
-- [ ] 3.2 In `packages/cli/src/report/assemble.ts`, set `state` per tier, carry `surfaced`, re-apply the counting function after merging facts (a `legacy` entry removes the counts), and send `projection: { inputs }` only; verify every assembled payload in `report.test.ts` passes `reportSchemaIssues` against the refreshed schema, including one with findings and one with a legacy rule and none
-- [ ] 3.3 Rewrite `packages/cli/src/report/summary.ts` to print the findings line when present and the raw `surfaced` totals over the window, with no monthly rate; verify summary tests for the with-findings and without-findings scenarios
-- [ ] 3.4 Update `report-telemetry.test.ts` and any other report test that built `fixed`/`origin`/`perMonth` fixtures; verify `pnpm --filter @taskless/cli test report` passes
+- [x] 3.1 In `packages/cli/src/schemas/report-facts.ts`, drop `fixed` and `fixedBasis`, rename `origin` to `surfaced` with `{ prs, reviewComments }` and descriptions matching the recipe's counting method; verify a test that facts carrying `fixed`, `fixedBasis`, `origin`, `violations`, `findings`, or `perMonth` are refused with `REPORT_INVALID`
+- [x] 3.2 In `packages/cli/src/report/assemble.ts`, set `state` per tier, carry `surfaced`, re-apply the counting function after merging facts (a `legacy` entry removes the counts), and send `projection: { inputs }` only; verify every assembled payload in `report.test.ts` passes `reportSchemaIssues` against the refreshed schema, including one with findings and one with a legacy rule and none
+- [x] 3.3 Rewrite `packages/cli/src/report/summary.ts` to print the findings line when present and the raw `surfaced` totals over the window, with no monthly rate; verify summary tests for the with-findings and without-findings scenarios
+- [x] 3.4 Update `report-telemetry.test.ts` and any other report test that built `fixed`/`origin`/`perMonth` fixtures; verify `pnpm --filter @taskless/cli test report` passes
 
 ## 4. Recipes
 

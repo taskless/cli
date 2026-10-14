@@ -108,9 +108,7 @@ describe("report telemetry", () => {
         rules: ["alpha", "beta", "gamma"].map((id) => ({
           id,
           title: TITLE,
-          origin: { reviewComments: 1, prs: 1 },
-          fixed: 1,
-          fixedBasis: "measured",
+          surfaced: { prs: 1, reviewComments: 1 },
         })),
         estimates: { contextTokens: 1000, callsPerCatch: 2 },
       }),

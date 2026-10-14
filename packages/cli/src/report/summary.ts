@@ -1,4 +1,4 @@
-import type { PerTier, ReportRule, ReportV1 } from "./types";
+import type { ReportRule, ReportV1 } from "./types";
 
 /**
  * The brief rule summary printed after a publish.
@@ -9,6 +9,11 @@ import type { PerTier, ReportRule, ReportV1 } from "./types";
  *
  * The delete URL is deliberately absent. The summary names the record the CLI
  * can delete from, never the credential in it.
+ *
+ * No monthly rate either. tskl.es derives those, and a second copy of its
+ * formula here is a number that drifts from the page without anyone noticing.
+ * The summary states the two kinds of count it has, labelled apart: what the
+ * CLI found in the code today, and what review raised over the window.
  */
 
 function tierLabel(rule: ReportRule): string {
@@ -25,8 +30,20 @@ function tierLabel(rule: ReportRule): string {
   }
 }
 
-function total(perTier: PerTier): number {
-  return perTier.cli + perTier.cloud + (perTier.legacy ?? 0);
+function plural(count: number, one: string, many: string): string {
+  return `${String(count)} ${count === 1 ? one : many}`;
+}
+
+/** What review raised over the window, summed across every rule. */
+function surfacedLine(report: ReportV1): string {
+  let prs = 0;
+  let comments = 0;
+  for (const rule of report.rules) {
+    prs += rule.surfaced?.prs ?? 0;
+    comments += rule.surfaced?.reviewComments ?? 0;
+  }
+  const { from, to } = report.scope.window;
+  return `Raised in review from ${from} to ${to}: ${plural(comments, "comment", "comments")} across ${plural(prs, "pull request", "pull requests")}.`;
 }
 
 export function renderSummary(options: {
@@ -37,14 +54,19 @@ export function renderSummary(options: {
   invocation: string;
 }): string {
   const { report, url, expiresAt, record, invocation } = options;
-  const { perMonth } = report.projection;
+  const { findings } = report;
   const lines = [
     "Taskless report published",
     "",
     `Rules (${String(report.rules.length)}):`,
     ...report.rules.map((rule) => `  - ${rule.title} (${tierLabel(rule)})`),
     "",
-    `Projected each month: ${String(total(perMonth.commentsPrevented))} review comments prevented, ${String(total(perMonth.agentCatches))} catches before review.`,
+    ...(findings === undefined
+      ? []
+      : [
+          `Found in the code today: ${plural(findings.violations, "problem", "problems")} in ${plural(findings.files, "file", "files")}.`,
+        ]),
+    surfacedLine(report),
     "",
     `View it: ${url}`,
     `Expires: ${expiresAt.slice(0, 10)}`,

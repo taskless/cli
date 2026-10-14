@@ -10,9 +10,11 @@ import {
 } from "../rules/engines";
 import { isMissingDirectory } from "../rules/errno";
 import { verifyOneRule } from "../rules/inspect";
+import { scanProject } from "../rules/scan-project";
 import { resolveRepositoryContext } from "../util/git-remote";
 import { CLI_VERSION } from "../version";
-import type { ProjectionInputs, TestStatus } from "./types";
+import { countFindings, type Measurement } from "./findings";
+import type { Findings, ProjectionInputs, TestStatus } from "./types";
 
 /**
  * Everything about a report the CLI can establish on its own, without the
@@ -36,6 +38,10 @@ export interface LocalRule {
     /** First fixture the rule accepts, or null when it has none. */
     pass: string | null;
   };
+  /** Matches in the code today, from the CLI's own scan; absent when unmeasured. */
+  violations?: number;
+  /** Files holding those matches. */
+  files?: number;
 }
 
 export interface DraftScope {
@@ -52,6 +58,12 @@ export interface ReportDraft {
   scope: DraftScope;
   rules: LocalRule[];
   inputs: Omit<ProjectionInputs, "contextTokens" | "callsPerCatch">;
+  /**
+   * What the rules find in the code today, across every rule, from the CLI's
+   * own scan. Absent when any rule could not be measured; `unmeasured` says why.
+   */
+  findings?: Findings;
+  unmeasured?: string;
   /** The facts the agent must still supply, by facts-file key. */
   missing: string[];
 }
@@ -225,16 +237,63 @@ function missingFacts(rules: LocalRule[]): string[] {
   ];
 }
 
+/**
+ * Scan the project as `check --anonymous` would and count each rule's matches.
+ *
+ * Anonymous keeps the draft offline: no reconcile, so no request. A scan that
+ * throws leaves the report unmeasured rather than failing the draft, since
+ * every other fact in it is still worth printing.
+ */
+async function measureLocalRules(
+  cwd: string,
+  rules: LocalRule[]
+): Promise<Measurement> {
+  const counted = rules.map(({ id, engine }) => ({ id, engine }));
+  // Nothing to scan, or a rule no anonymous scan runs: the count is decided
+  // without spending a scan on it.
+  if (rules.length === 0 || rules.some((rule) => rule.engine === "runtime")) {
+    return countFindings({ cwd, rules: counted, failures: [], results: [] });
+  }
+  try {
+    const { plan, dispatched } = await scanProject(cwd, {
+      paths: [],
+      anonymous: true,
+      dangerouslyRunScripts: false,
+    });
+    return countFindings({
+      cwd,
+      rules: counted,
+      failures: [...plan.failures, ...dispatched.failures],
+      results: dispatched.results,
+    });
+  } catch (error) {
+    return {
+      measured: false,
+      reason: `the scan failed: ${error instanceof Error ? error.message : String(error)}`,
+    };
+  }
+}
+
 export async function buildDraft(cwd: string): Promise<ReportDraft> {
-  const [scope, rules] = await Promise.all([
+  const [scope, collected] = await Promise.all([
     resolveDraftScope(cwd),
     collectLocalRules(cwd),
   ]);
+  const measurement = await measureLocalRules(cwd, collected);
+  const rules = measurement.measured
+    ? collected.map((rule) => ({
+        ...rule,
+        ...measurement.perRule.get(rule.id),
+      }))
+    : collected;
   return {
     producer: { kind: "cli", cliVersion: CLI_VERSION },
     scope,
     rules,
     inputs: DEFAULT_PROJECTION_INPUTS,
+    ...(measurement.measured
+      ? { findings: measurement.findings }
+      : { unmeasured: measurement.reason }),
     missing: missingFacts(rules),
   };
 }

@@ -4,28 +4,33 @@
   "properties": {
     "schemaVersion": {
       "type": "string",
-      "const": "1"
+      "const": "1",
+      "description": "Always `\"1\"`."
     },
     "generatedAt": {
       "type": "string",
       "format": "date-time",
-      "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$"
+      "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$",
+      "description": "When the report was produced. `violations`, `files` and `findings` are counted at this moment."
     },
     "producer": {
       "type": "object",
       "properties": {
         "kind": {
           "type": "string",
-          "const": "cli"
+          "const": "cli",
+          "description": "Always `cli`."
         },
         "cliVersion": {
           "type": "string",
           "minLength": 1,
-          "maxLength": 64
+          "maxLength": 64,
+          "description": "The Taskless CLI version that produced the report."
         }
       },
       "required": ["kind", "cliVersion"],
-      "additionalProperties": false
+      "additionalProperties": false,
+      "description": "What produced the report."
     },
     "scope": {
       "oneOf": [
@@ -34,26 +39,31 @@
           "properties": {
             "provider": {
               "type": "string",
-              "const": "github"
+              "const": "github",
+              "description": "The repository is on GitHub."
             },
             "owner": {
               "type": "string",
               "maxLength": 39,
-              "pattern": "^[\\dA-Za-z](?:[\\dA-Za-z]|-(?=[\\dA-Za-z]))*$"
+              "pattern": "^[\\dA-Za-z](?:[\\dA-Za-z]|-(?=[\\dA-Za-z]))*$",
+              "description": "The repository's GitHub owner."
             },
             "repo": {
               "type": "string",
               "maxLength": 100,
-              "pattern": "^(?!\\.{1,2}$)[\\w.-]+$"
+              "pattern": "^(?!\\.{1,2}$)[\\w.-]+$",
+              "description": "The repository's name on GitHub."
             },
             "url": {
               "type": "string",
               "maxLength": 200,
-              "pattern": "^https:\\/\\/github\\.com\\/[\\dA-Za-z-]+\\/[\\w.-]+$"
+              "pattern": "^https:\\/\\/github\\.com\\/[\\dA-Za-z-]+\\/[\\w.-]+$",
+              "description": "`https://github.com/<owner>/<repo>`, for this owner and repo."
             },
             "retention": {
               "type": "string",
-              "enum": ["public", "private"]
+              "enum": ["public", "private"],
+              "description": "Requested retention: `public` keeps the report 183 days and may name the repository in analytics; absent means `private`."
             },
             "window": {
               "type": "object",
@@ -61,16 +71,19 @@
                 "from": {
                   "type": "string",
                   "format": "date",
-                  "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
+                  "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$",
+                  "description": "First day of the window, inclusive."
                 },
                 "to": {
                   "type": "string",
                   "format": "date",
-                  "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
+                  "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$",
+                  "description": "Last day of the window, inclusive."
                 }
               },
               "required": ["from", "to"],
-              "additionalProperties": false
+              "additionalProperties": false,
+              "description": "The period the PR history was mined over."
             }
           },
           "required": ["provider", "owner", "repo", "url", "window"],
@@ -81,12 +94,14 @@
           "properties": {
             "provider": {
               "type": "string",
-              "const": "none"
+              "const": "none",
+              "description": "The repository has no GitHub remote."
             },
             "label": {
               "type": "string",
               "minLength": 1,
-              "maxLength": 100
+              "maxLength": 100,
+              "description": "A display name the user chose for the repository."
             },
             "window": {
               "type": "object",
@@ -94,22 +109,26 @@
                 "from": {
                   "type": "string",
                   "format": "date",
-                  "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
+                  "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$",
+                  "description": "First day of the window, inclusive."
                 },
                 "to": {
                   "type": "string",
                   "format": "date",
-                  "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
+                  "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$",
+                  "description": "Last day of the window, inclusive."
                 }
               },
               "required": ["from", "to"],
-              "additionalProperties": false
+              "additionalProperties": false,
+              "description": "The period the report covers."
             }
           },
           "required": ["provider", "window"],
           "additionalProperties": false
         }
-      ]
+      ],
+      "description": "The repository the report is about, and its window."
     },
     "history": {
       "type": "object",
@@ -117,17 +136,20 @@
         "mergedPrs": {
           "type": "integer",
           "minimum": 0,
-          "maximum": 1000000000
+          "maximum": 1000000000,
+          "description": "Merged PRs in `scope.window` that the agent mined."
         },
         "reviewComments": {
           "type": "integer",
           "minimum": 0,
-          "maximum": 1000000000
+          "maximum": 1000000000,
+          "description": "Total review comments on those PRs: every PR comment mined, whether or not it became a rule."
         },
         "agentAssistedPrs": {
           "type": "integer",
           "minimum": 0,
-          "maximum": 1000000000
+          "maximum": 1000000000,
+          "description": "Of `mergedPrs`, those an AI agent helped write."
         },
         "patterns": {
           "type": "object",
@@ -135,16 +157,19 @@
             "ruleShaped": {
               "type": "integer",
               "minimum": 0,
-              "maximum": 1000000000
+              "maximum": 1000000000,
+              "description": "Recurring review patterns a rule can enforce."
             },
             "judgment": {
               "type": "integer",
               "minimum": 0,
-              "maximum": 1000000000
+              "maximum": 1000000000,
+              "description": "Recurring review patterns that need human judgment, so no rule was proposed."
             }
           },
           "required": ["ruleShaped", "judgment"],
-          "additionalProperties": false
+          "additionalProperties": false,
+          "description": "Recurring patterns the agent found in the review comments."
         }
       },
       "required": [
@@ -153,7 +178,28 @@
         "agentAssistedPrs",
         "patterns"
       ],
-      "additionalProperties": false
+      "additionalProperties": false,
+      "description": "The PR history the agent mined from GitHub over `scope.window`. Absent when it could not mine GitHub."
+    },
+    "findings": {
+      "type": "object",
+      "properties": {
+        "violations": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1000000000,
+          "description": "Total `violations` across every written rule, at publish. Must equal the sum of the rules' `violations`."
+        },
+        "files": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1000000000,
+          "description": "Distinct files with at least one violation of any rule, at publish. A file breaking three rules counts once, so it lies between the largest rule's `files` and the sum of all rules' `files`."
+        }
+      },
+      "required": ["violations", "files"],
+      "additionalProperties": false,
+      "description": "What `taskless check` found in the repository's code at publish, across every written rule. Present exactly when every written rule carries `violations` and `files`."
     },
     "rules": {
       "minItems": 1,
@@ -165,57 +211,74 @@
           "id": {
             "type": "string",
             "maxLength": 128,
-            "pattern": "^[\\dA-Za-z][\\w.-]*$"
+            "pattern": "^[\\dA-Za-z][\\w.-]*$",
+            "description": "The rule's id, unique within the report."
           },
           "title": {
             "type": "string",
             "minLength": 1,
-            "maxLength": 200
+            "maxLength": 200,
+            "description": "What the rule enforces, in one line, scrubbed by the CLI."
           },
           "tier": {
             "type": "string",
-            "enum": ["cli", "cloud", "legacy"]
+            "enum": ["cli", "cloud", "legacy"],
+            "description": "Where the rule runs: `cli` on the Taskless CLI (sg, vale), `cloud` on Taskless Cloud (runtime), `legacy` in a quality tool the repository already ran, written by the agent during this work."
           },
           "engine": {
             "type": "string",
-            "enum": ["sg", "vale", "runtime"]
+            "enum": ["sg", "vale", "runtime"],
+            "description": "The Taskless engine the rule runs on. Required for `cli` (sg or vale) and `cloud` (runtime) rules; absent on `legacy` rules."
           },
           "tool": {
             "type": "string",
             "minLength": 1,
             "maxLength": 64,
-            "pattern": "^[\\w@./+-]+$"
+            "pattern": "^[\\w@./+-]+$",
+            "description": "The quality tool a `legacy` rule was written for (such as `eslint`), as an identifier. Only on `legacy` rules."
           },
           "language": {
             "type": "string",
             "minLength": 1,
-            "maxLength": 40
+            "maxLength": 40,
+            "description": "The language the rule checks, as display text (`TypeScript`)."
           },
-          "origin": {
+          "state": {
+            "type": "string",
+            "enum": ["written", "candidate"],
+            "description": "`written`: the rule exists in the repository and runs. `candidate`: a rule Taskless Cloud could write but has not; only in the `cloud` tier, and it carries no `violations` or `files`. A candidate is never counted as a rule."
+          },
+          "violations": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 1000000000,
+            "description": "Times this rule matched the repository's code when the report was published: the rule's hits from `taskless check` (or, for a legacy rule, from its tool), at publish. Not history. Present on every written rule exactly when the report has `findings`."
+          },
+          "files": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 1000000000,
+            "description": "Files with at least one of this rule's `violations`, at publish. A count, never paths. At most `violations`, and 0 exactly when `violations` is 0."
+          },
+          "surfaced": {
             "type": "object",
             "properties": {
-              "reviewComments": {
-                "type": "integer",
-                "minimum": 0,
-                "maximum": 1000000000
-              },
               "prs": {
                 "type": "integer",
                 "minimum": 0,
-                "maximum": 1000000000
+                "maximum": 1000000000,
+                "description": "Merged PRs in `scope.window` whose review raised this rule's pattern, from the mined PR history."
+              },
+              "reviewComments": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 1000000000,
+                "description": "Review comments in those PRs that asked for this rule's pattern, within `scope.window`, from the mined PR history."
               }
             },
-            "required": ["reviewComments", "prs"],
-            "additionalProperties": false
-          },
-          "fixed": {
-            "type": "integer",
-            "minimum": 0,
-            "maximum": 1000000000
-          },
-          "fixedBasis": {
-            "type": "string",
-            "enum": ["measured", "estimated"]
+            "required": ["prs", "reviewComments"],
+            "additionalProperties": false,
+            "description": "How often reviewers raised this rule's pattern in `scope.window`: what the rule saves reviewers. Requires `history`."
           },
           "complexity": {
             "anyOf": [
@@ -227,14 +290,16 @@
               {
                 "type": "null"
               }
-            ]
+            ],
+            "description": "A Cloud rule's cost multiplier, overriding `projection.inputs.cloudComplexity`; null for the default. Always null on `cli` and `legacy` rules."
           },
           "tests": {
             "type": "object",
             "properties": {
               "status": {
                 "type": "string",
-                "enum": ["pass", "fail", "refused", "not-run"]
+                "enum": ["pass", "fail", "refused", "not-run"],
+                "description": "The result of running the rule's tests at publish: `pass` (both examples behave), `fail`, `refused` (the engine would not run them), or `not-run`."
               },
               "fail": {
                 "anyOf": [
@@ -244,7 +309,8 @@
                       "code": {
                         "type": "string",
                         "minLength": 1,
-                        "maxLength": 4000
+                        "maxLength": 4000,
+                        "description": "The example's source code, scrubbed by the CLI."
                       }
                     },
                     "required": ["code"],
@@ -253,7 +319,8 @@
                   {
                     "type": "null"
                   }
-                ]
+                ],
+                "description": "An example the rule flags, or null when there is none or it was withheld (see `withheld`)."
               },
               "pass": {
                 "anyOf": [
@@ -263,7 +330,8 @@
                       "code": {
                         "type": "string",
                         "minLength": 1,
-                        "maxLength": 4000
+                        "maxLength": 4000,
+                        "description": "The example's source code, scrubbed by the CLI."
                       }
                     },
                     "required": ["code"],
@@ -272,7 +340,8 @@
                   {
                     "type": "null"
                   }
-                ]
+                ],
+                "description": "An example the rule accepts, or null when there is none or it was withheld (see `withheld`)."
               },
               "withheld": {
                 "maxItems": 2,
@@ -280,11 +349,13 @@
                 "items": {
                   "type": "string",
                   "enum": ["fail", "pass"]
-                }
+                },
+                "description": "Examples the CLI withheld because it could not scrub them; each listed example is null."
               }
             },
             "required": ["status", "fail", "pass", "withheld"],
-            "additionalProperties": false
+            "additionalProperties": false,
+            "description": "The rule's tests and their two examples."
           }
         },
         "required": [
@@ -292,100 +363,55 @@
           "title",
           "tier",
           "language",
-          "fixed",
-          "fixedBasis",
+          "state",
           "complexity",
           "tests"
         ],
         "additionalProperties": false
-      }
+      },
+      "description": "Every rule the report covers, written rules and candidates."
     },
     "projection": {
       "type": "object",
       "properties": {
-        "perMonth": {
-          "type": "object",
-          "properties": {
-            "commentsPrevented": {
-              "type": "object",
-              "properties": {
-                "cli": {
-                  "type": "integer",
-                  "minimum": 0,
-                  "maximum": 1000000000
-                },
-                "cloud": {
-                  "type": "integer",
-                  "minimum": 0,
-                  "maximum": 1000000000
-                },
-                "legacy": {
-                  "type": "integer",
-                  "minimum": 0,
-                  "maximum": 1000000000
-                }
-              },
-              "required": ["cli", "cloud"],
-              "additionalProperties": false
-            },
-            "agentCatches": {
-              "type": "object",
-              "properties": {
-                "cli": {
-                  "type": "integer",
-                  "minimum": 0,
-                  "maximum": 1000000000
-                },
-                "cloud": {
-                  "type": "integer",
-                  "minimum": 0,
-                  "maximum": 1000000000
-                },
-                "legacy": {
-                  "type": "integer",
-                  "minimum": 0,
-                  "maximum": 1000000000
-                }
-              },
-              "required": ["cli", "cloud"],
-              "additionalProperties": false
-            }
-          },
-          "required": ["agentCatches"],
-          "additionalProperties": false
-        },
         "inputs": {
           "type": "object",
           "properties": {
             "contextTokens": {
               "type": "integer",
               "exclusiveMinimum": 0,
-              "maximum": 10000000
+              "maximum": 10000000,
+              "description": "Context tokens an agent call uses."
             },
             "callsPerCatch": {
               "type": "number",
               "exclusiveMinimum": 0,
-              "maximum": 1000
+              "maximum": 1000,
+              "description": "Agent calls a catch saves."
             },
             "cloudComplexity": {
               "type": "number",
               "exclusiveMinimum": 0,
-              "maximum": 100
+              "maximum": 100,
+              "description": "The default cost multiplier for a Cloud rule's catches."
             },
             "pricePerMillionTokens": {
               "type": "number",
               "minimum": 0,
-              "maximum": 1000
+              "maximum": 1000,
+              "description": "Dollars per million tokens."
             },
             "minutesPerComment": {
               "type": "number",
               "minimum": 0,
-              "maximum": 600
+              "maximum": 600,
+              "description": "Reviewer minutes a review comment costs."
             },
             "reviewerHourlyUsd": {
               "type": "number",
               "minimum": 0,
-              "maximum": 10000
+              "maximum": 10000,
+              "description": "A reviewer's hourly cost in dollars."
             }
           },
           "required": [
@@ -396,11 +422,13 @@
             "minutesPerComment",
             "reviewerHourlyUsd"
           ],
-          "additionalProperties": false
+          "additionalProperties": false,
+          "description": "The assumptions behind the value estimates; the page's sliders start here."
         }
       },
-      "required": ["perMonth", "inputs"],
-      "additionalProperties": false
+      "required": ["inputs"],
+      "additionalProperties": false,
+      "description": "Assumptions for the estimated value a month. The service derives the monthly rates itself, from each rule's `surfaced` and the window."
     },
     "redaction": {
       "type": "object",
@@ -408,7 +436,8 @@
         "policyVersion": {
           "type": "string",
           "minLength": 1,
-          "maxLength": 16
+          "maxLength": 16,
+          "description": "The version of the CLI scrubbing policy applied."
         },
         "counts": {
           "type": "object",
@@ -416,42 +445,50 @@
             "secret": {
               "type": "integer",
               "minimum": 0,
-              "maximum": 1000000000
+              "maximum": 1000000000,
+              "description": "Secrets scrubbed."
             },
             "email": {
               "type": "integer",
               "minimum": 0,
-              "maximum": 1000000000
+              "maximum": 1000000000,
+              "description": "Email addresses scrubbed."
             },
             "person": {
               "type": "integer",
               "minimum": 0,
-              "maximum": 1000000000
+              "maximum": 1000000000,
+              "description": "People's names scrubbed."
             },
             "customer": {
               "type": "integer",
               "minimum": 0,
-              "maximum": 1000000000
+              "maximum": 1000000000,
+              "description": "Customer names scrubbed."
             },
             "host": {
               "type": "integer",
               "minimum": 0,
-              "maximum": 1000000000
+              "maximum": 1000000000,
+              "description": "Hostnames scrubbed."
             },
             "ip": {
               "type": "integer",
               "minimum": 0,
-              "maximum": 1000000000
+              "maximum": 1000000000,
+              "description": "IP addresses scrubbed."
             },
             "phone": {
               "type": "integer",
               "minimum": 0,
-              "maximum": 1000000000
+              "maximum": 1000000000,
+              "description": "Phone numbers scrubbed."
             },
             "text": {
               "type": "integer",
               "minimum": 0,
-              "maximum": 1000000000
+              "maximum": 1000000000,
+              "description": "Long strings scrubbed."
             }
           },
           "required": [
@@ -464,16 +501,19 @@
             "phone",
             "text"
           ],
-          "additionalProperties": false
+          "additionalProperties": false,
+          "description": "Values the CLI scrubbed from rule titles and examples, by kind."
         },
         "withheldFixtures": {
           "type": "integer",
           "minimum": 0,
-          "maximum": 1000000000
+          "maximum": 1000000000,
+          "description": "Examples withheld across all rules; equals the total of the rules' `tests.withheld`."
         }
       },
       "required": ["policyVersion", "counts", "withheldFixtures"],
-      "additionalProperties": false
+      "additionalProperties": false,
+      "description": "What the CLI scrubbed before the report left the machine."
     }
   },
   "required": [
@@ -517,6 +557,10 @@
           "judgment": 4
         }
       },
+      "findings": {
+        "violations": 64,
+        "files": 23
+      },
       "rules": [
         {
           "id": "use-api-client",
@@ -524,12 +568,13 @@
           "tier": "cli",
           "engine": "sg",
           "language": "TypeScript",
-          "origin": {
-            "reviewComments": 142,
-            "prs": 96
+          "state": "written",
+          "violations": 64,
+          "files": 23,
+          "surfaced": {
+            "prs": 96,
+            "reviewComments": 142
           },
-          "fixed": 31,
-          "fixedBasis": "measured",
           "complexity": null,
           "tests": {
             "status": "pass",
@@ -548,12 +593,11 @@
           "tier": "cloud",
           "engine": "runtime",
           "language": "TypeScript",
-          "origin": {
-            "reviewComments": 88,
-            "prs": 63
+          "state": "candidate",
+          "surfaced": {
+            "prs": 63,
+            "reviewComments": 88
           },
-          "fixed": 19,
-          "fixedBasis": "estimated",
           "complexity": 4,
           "tests": {
             "status": "not-run",
@@ -566,16 +610,6 @@
         }
       ],
       "projection": {
-        "perMonth": {
-          "commentsPrevented": {
-            "cli": 186,
-            "cloud": 105
-          },
-          "agentCatches": {
-            "cli": 116,
-            "cloud": 62
-          }
-        },
         "inputs": {
           "contextTokens": 150000,
           "callsPerCatch": 20,
