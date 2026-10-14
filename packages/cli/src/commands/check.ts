@@ -10,8 +10,7 @@ import { realpath, stat } from "node:fs/promises";
 import process from "node:process";
 import { defineCommand } from "citty";
 
-import { hasValeRules, runEngines } from "../rules/dispatch";
-import { assembleEngineConfigs } from "../rules/assemble";
+import { hasValeRules } from "../rules/dispatch";
 import { splitRawArguments } from "../util/argv";
 import { formatText } from "../util/format";
 import { listRuleIds, planEngineDispatch } from "../rules/engines";
@@ -22,9 +21,7 @@ import { CLIError } from "../util/cli-error";
 import { requireCurrentSchema } from "../filesystem/migrate";
 import { discoverRuntimeRules } from "../rules/runtime/discover";
 import { resolveRuleSelection, type RuleSelection } from "../rules/rule-filter";
-import { planCheck } from "../rules/plan-check";
-import { openRun } from "../rules/run-directory";
-import { fromProjectRoot } from "../rules/snapshot";
+import { scanProject } from "../rules/scan-project";
 import { markNotice } from "../util/notices";
 import { getCliPrefix } from "../util/package-manager";
 
@@ -452,71 +449,24 @@ export const checkCommand = defineCommand({
         return;
       }
 
-      // This run's own directory under `.taskless/.run/`: the snapshot, the
-      // assembled configs, and the logs. Removed when the run ends, however
-      // it ends, unless `--preserve-logs` keeps it for debugging.
       const preserve = Boolean(args["preserve-logs"]);
-      const run = await openRun(cwd, { preserve });
       try {
-        // Planned before dispatch, not during it: planning snapshots the rules
-        // tree and consults auth and reconcile state, which decides WHAT runs.
-        // Everything below reads the snapshot, never `.taskless/rules/`, so
-        // the bytes that run are the bytes that were judged.
-        const plan = await planCheck(cwd, run, {
+        const { plan, dispatched, runDirectory } = await scanProject(cwd, {
+          paths: existingPaths,
           anonymous: args.anonymous,
           dangerouslyRunScripts: Boolean(args["dangerously-run-scripts"]),
-        });
-        for (const notice of plan.notices) warnNotice(notice);
-        for (const failure of plan.failures) warn(`Error: ${failure}`);
-        for (const skipped of plan.skipped) {
-          warnNotice(
-            `runtime rule ${skipped.rule} was not run — ${skipped.reason}.`
-          );
-        }
-
-        // Assembled against the snapshot base, whose layout mirrors the
-        // project's, so both configs resolve their rules inside the snapshot.
-        // The engines still run from the project root; only the config path
-        // is relative to it.
-        const assembled = await assembleEngineConfigs(
-          plan.snapshot.base,
-          selection === undefined ? {} : { ruleIds: selection.vale }
-        );
-        const valeAssembly =
-          assembled.vale?.status === "ok"
-            ? {
-                ...assembled.vale,
-                path: fromProjectRoot(plan.snapshot, assembled.vale.path),
-              }
-            : assembled.vale;
-        const sgConfig =
-          assembled.sg === undefined
-            ? undefined
-            : fromProjectRoot(plan.snapshot, assembled.sg);
-        // `--rule` narrows WHAT runs; it does not widen what may run. A runtime
-        // rule named here is still subject to the plan.
-        const runtimeExecute =
-          selection === undefined
-            ? plan.execute
-            : plan.execute.filter((rule) =>
-                selection.runtime.includes(rule.name)
-              );
-        const dispatched = await runEngines({
-          cwd,
-          paths: existingPaths,
-          // An `sg` selection that is empty means no ast-grep rule was named,
-          // so the engine has nothing to do and is skipped rather than being
-          // handed a filter that matches nothing — which would still spawn
-          // ast-grep, load every rule, and walk the project to report none.
-          astGrepConfigPath:
-            selection !== undefined && selection.sg.length === 0
-              ? undefined
-              : sgConfig,
-          ...(selection === undefined ? {} : { astGrepRuleIds: selection.sg }),
-          vale: valeAssembly,
-          runtimeRules: runtimeExecute,
+          ...(selection === undefined ? {} : { selection }),
           runtimeTimeoutMs: parseTimeoutMs(args.timeout),
-          logs: run.logs,
+          preserve,
+          onPlan: (plan) => {
+            for (const notice of plan.notices) warnNotice(notice);
+            for (const failure of plan.failures) warn(`Error: ${failure}`);
+            for (const skipped of plan.skipped) {
+              warnNotice(
+                `runtime rule ${skipped.rule} was not run — ${skipped.reason}.`
+              );
+            }
+          },
         });
         const results = dispatched.results;
 
@@ -597,13 +547,13 @@ export const checkCommand = defineCommand({
               ? {}
               : { entitlement: plan.entitlement }),
             ...(plan.integrity.length > 0 ? { integrity: plan.integrity } : {}),
-            ...(preserve ? { runDirectory: run.relativePath } : {}),
+            ...(preserve ? { runDirectory } : {}),
           });
           console.log(JSON.stringify(output));
         } else {
           console.log(formatText(results));
           if (preserve) {
-            console.error(`Run directory kept: ${run.relativePath}`);
+            console.error(`Run directory kept: ${runDirectory}`);
           }
         }
 
@@ -627,8 +577,6 @@ export const checkCommand = defineCommand({
           console.error(message);
         }
         process.exitCode = 1;
-      } finally {
-        await run.close();
       }
     } finally {
       // Concrete state event: a scan completed; counts only, no matched code.
