@@ -12,9 +12,6 @@
  * is meant to read this table too.
  */
 
-/** The forge an `origin` remote lives on, as far as host tools care. */
-export type OriginForge = "github" | "gitlab" | "other" | "none";
-
 export interface HostToolEntry {
   /** The command as it would be typed, e.g. `gh`. */
   name: string;
