@@ -14,6 +14,7 @@ import { validateCommand, verifyCommand } from "./commands/verify";
 import { infoCommand } from "./commands/info";
 import { type SubcommandName } from "./commands/names";
 import { onboardCommand } from "./commands/onboard";
+import { reportCommand } from "./commands/report";
 import { ruleCommand } from "./commands/rules";
 import { shareCommand } from "./commands/share";
 import {
@@ -56,6 +57,7 @@ const subCommands = {
   feedback: feedbackCommand,
   auth: authCommand,
   onboard: onboardCommand,
+  report: reportCommand,
   rule: ruleCommand,
   share: shareCommand,
   validate: validateCommand,

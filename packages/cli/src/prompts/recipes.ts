@@ -13,6 +13,7 @@ import {
   generalInputSchema,
   ruleInputSchema,
 } from "../schemas/feedback";
+import { reportFactsSchema } from "../schemas/report-facts";
 import {
   AST_GREP_VERSION,
   VALE_VERSION,
@@ -89,6 +90,7 @@ const TOPIC_INPUT_SCHEMAS: Record<string, z.ZodType> = {
   "rule-feedback": ruleInputSchema,
   feedback: generalInputSchema,
   "bug-report": bugInputSchema,
+  report: reportFactsSchema,
 };
 
 /** Agent-fill marker used when the caller does not supply a real value. */

@@ -79,7 +79,7 @@ For validation, the decision is zod 4's `z.fromJSONSchema()` over the vendored d
 
 ### D8. The record and the delete credential
 
-`.taskless/reports/<UTC YYYY-MM-DD_HHMMSS>.json` holds `{ url, deleteUrl, expiresAt }` exactly as returned. The delete credential is the `deleteUrl` tskl.es returns once; the user's "delete key" is that value. It never reaches stdout or telemetry, and the directory is gitignored by migration 11. `report delete` reads the record and sends an HTTP `DELETE` to `deleteUrl`, the URL tskl.es returns for exactly that.
+`.taskless/reports/<UTC YYYY-MM-DD_HHMMSS>.json` holds `{ url, deleteUrl, expiresAt }` exactly as returned. The delete credential is the `deleteUrl` tskl.es returns once; the user's "delete key" is that value. It never reaches stdout or telemetry, and the directory is gitignored by migration 11. `report --delete` reads the record and sends an HTTP `DELETE` to `deleteUrl`, the URL tskl.es returns for exactly that.
 
 ### D9. Detect: one table for tools, presence, and hints
 

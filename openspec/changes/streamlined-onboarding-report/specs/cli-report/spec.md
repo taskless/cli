@@ -6,7 +6,7 @@ Defines `taskless report`: the command that turns a repository's Taskless rules,
 
 ### Requirement: Report subcommand exists with a draft mode, a publish mode, and delete
 
-The CLI SHALL provide a `taskless report` subcommand accepting the standard `--dir`/`-d` working-directory flag. Invoked with no mode flag it SHALL print a draft. Invoked with `--from <path>` it SHALL publish. `taskless report delete <record>` SHALL delete a previously published report. The subcommand SHALL require no authentication in any mode, and SHALL bootstrap `.taskless/` before reading or writing under it.
+The CLI SHALL provide a `taskless report` subcommand accepting the standard `--dir`/`-d` working-directory flag. Invoked with no mode flag it SHALL print a draft. Invoked with `--from <path>` it SHALL publish. `taskless report --delete <record>` SHALL delete a previously published report. `--from` and `--delete` SHALL be mutually exclusive; supplying both SHALL exit non-zero with `INVALID_INPUT`. The subcommand SHALL require no authentication in any mode, and SHALL bootstrap `.taskless/` before reading or writing under it.
 
 #### Scenario: Report is registered
 
@@ -51,10 +51,11 @@ The draft SHALL NOT perform any network call.
 
 The facts file SHALL be validated against a published facts schema before anything else happens. The `report` recipe SHALL embed that schema.
 
-#### Scenario: Facts override nothing the CLI knows
+#### Scenario: Facts cannot set what the CLI knows
 
-- **WHEN** the facts file names a rule id that exists under `.taskless/rules/` and gives it a different engine
-- **THEN** the published report SHALL carry the engine the CLI established
+- **WHEN** the facts file gives a rule under `.taskless/rules/` an engine, a language, or a test status
+- **THEN** the command SHALL refuse the field as unknown under `REPORT_INVALID`
+- **AND** a report that publishes SHALL carry the engine, language, and test status the CLI established
 
 #### Scenario: Malformed facts are refused before any other work
 
@@ -190,11 +191,11 @@ On a 201 response the CLI SHALL write `.taskless/reports/<YYYY-MM-DD_HHMMSS>.jso
 
 ### Requirement: A published report can be deleted from its record
 
-`taskless report delete <record>` SHALL read the named record under `.taskless/reports/`, delete the report by sending an HTTP `DELETE` to the recorded `deleteUrl`, the URL tskl.es returned for that purpose, and on success remove the record and print a one-line confirmation. A record that does not exist SHALL exit non-zero with `REPORT_NOT_FOUND`. A failed delete SHALL leave the record in place.
+`taskless report --delete <record>` SHALL read the named record under `.taskless/reports/`, delete the report by sending an HTTP `DELETE` to the recorded `deleteUrl`, the URL tskl.es returned for that purpose, and on success remove the record and print a one-line confirmation. A record that does not exist SHALL exit non-zero with `REPORT_NOT_FOUND`. A failed delete SHALL leave the record in place.
 
 #### Scenario: Deleting a report
 
-- **WHEN** a user runs `taskless report delete 2026-10-13_142200.json` and the service confirms the deletion
+- **WHEN** a user runs `taskless report --delete 2026-10-13_142200.json` and the service confirms the deletion
 - **THEN** the record SHALL be removed
 - **AND** the command SHALL print a confirmation and exit 0
 
@@ -206,7 +207,7 @@ On a 201 response the CLI SHALL write `.taskless/reports/<YYYY-MM-DD_HHMMSS>.jso
 
 ### Requirement: The report recipe drives the flow
 
-The CLI SHALL embed a `report` recipe following the canonical recipe template. It SHALL instruct the agent to: run `taskless report` and read `missing`; supply each missing fact from its session, writing the facts to `.taskless/.tmp-report.json`; estimate context tokens and calls per catch from how this user's sessions actually run; run `taskless report --from` that path; on `REPORT_INSUFFICIENT`, ask the user only what would let it author the rules or establish the facts the refusal names, then retry; on success, show the CLI's summary as printed and tell the user the report can be deleted after review if they ask; delete the facts file; and on a request to delete, run `taskless report delete` with the record. The recipe SHALL embed the facts schema and SHALL state that tskl.es does not redact, so anything the agent cannot vouch for is to be withheld.
+The CLI SHALL embed a `report` recipe following the canonical recipe template. It SHALL instruct the agent to: run `taskless report` and read `missing`; supply each missing fact from its session, writing the facts to `.taskless/.tmp-report.json`; estimate context tokens and calls per catch from how this user's sessions actually run; run `taskless report --from` that path; on `REPORT_INSUFFICIENT`, ask the user only what would let it author the rules or establish the facts the refusal names, then retry; on success, show the CLI's summary as printed and tell the user the report can be deleted after review if they ask; delete the facts file; and on a request to delete, run `taskless report --delete` with the record. The recipe SHALL embed the facts schema and SHALL state that tskl.es does not redact, so anything the agent cannot vouch for is to be withheld.
 
 #### Scenario: The recipe asks questions only on refusal
 

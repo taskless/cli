@@ -104,6 +104,7 @@ export const INTERNAL_TOPICS = [
   "init",
   "onboard",
   "recover-rule",
+  "report",
   "rule",
   "rule-feedback",
   "rule-meta",

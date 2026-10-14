@@ -631,6 +631,8 @@ describe("prompts entry carries no CLI runtime", () => {
     // `zod` and `src/survey/constants.ts`, which is pure data like
     // `../rules/capabilities` and imports nothing at all.
     "../schemas/feedback",
+    // The `report` recipe's facts schema. It imports `zod` and nothing else.
+    "../schemas/report-facts",
     "./recipes.js",
   ]);
 

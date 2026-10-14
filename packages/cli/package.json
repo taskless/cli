@@ -16,6 +16,7 @@
     "generate:api:schema": "tsx scripts/fetch-api-schema.ts",
     "generate:api:types": "openapi-typescript src/generated/api-v2.schema.json -o src/generated/api-v2.d.ts",
     "generate:ast-grep-schema": "tsx scripts/fetch-ast-grep-schema.ts",
+    "generate:report-schema": "tsx scripts/fetch-report-schema.ts",
     "generate:rule-hash-vectors": "tsx scripts/fetch-rule-hash-vectors.ts",
     "generate:vale-schema": "tsx scripts/generate-vale-schema.ts",
     "prebuild": "tsx scripts/fetch-rule-hash-vectors.ts",
