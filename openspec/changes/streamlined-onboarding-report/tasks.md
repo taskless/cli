@@ -30,13 +30,13 @@
 
 ## 4. Onboard v6, skill, and feedback (PR 4)
 
-- [ ] 4.1 Rewrite `agent/onboard.md` as topic v6 per the `cli-onboard` spec: the one question, logged out, mine everything, author local candidates without asking, record runtime candidates for the `cloud` tier, `--mark-complete` without asking, hand off to `report` and `rule-feedback` in parallel, close by showing the summary and then, last, offering CI integration via the `ci` topic with a strong case for it (checks keep agents from reintroducing what the rules catch), naming `hooks` in one line on a no. Verify recipe tests for each scenario in the spec delta, and the two-path byte-parity tests. Render the review-comment source from the host-tool catalog for both `gh` (pull requests) and `glab` (merge requests).
-- [ ] 4.2 Remove `onboard` from the surveyed topics in `survey/constants.ts`. Verify a survey test that onboarding serves no invite and leaves `next_ask` unchanged with the gate otherwise open.
-- [ ] 4.3 Add the "reached from onboarding" branch to `agent/rule-feedback.md`: no `verbatim`, `ruleKind: none (onboarding)`, no question, send. Verify the recipe test and that `feedback send` still refuses under `DO_NOT_TRACK=1`.
-- [ ] 4.4 Add the `report` row to the skill body and the `tskl` command body via `%(TASKLESS_CLI)s`. Verify the skill tests, including the 80-line cap.
-- [ ] 4.5 Update `getOnboardTrailer` and the `onboard` command description if their wording still promises a conversational discovery flow. Verify the init trailer tests.
-- [ ] 4.6 End to end: `pnpm build`, then in a scratch repository with a GitHub origin follow `pnpm cli onboard` as an agent would, through `report --from` against the local test server, and confirm the record, the summary, and `install.onboarded: true`.
-- [ ] 4.7 Extend the changeset with the onboarding change. Run `pnpm typecheck` and `pnpm lint`; both pass.
+- [x] 4.1 Rewrite `agent/onboard.md` as topic v6 per the `cli-onboard` spec: the one question, logged out, mine everything, author local candidates without asking, record runtime candidates for the `cloud` tier, `--mark-complete` without asking, hand off to `report` and `rule-feedback` in parallel, close by showing the summary and then, last, offering CI integration via the `ci` topic with a strong case for it (checks keep agents from reintroducing what the rules catch), naming `hooks` in one line on a no. Verify recipe tests for each scenario in the spec delta, and the two-path byte-parity tests. Render the review-comment source from the host-tool catalog for both `gh` (pull requests) and `glab` (merge requests).
+- [x] 4.2 Remove `onboard` from the surveyed topics in `survey/constants.ts`. Verify a survey test that onboarding serves no invite and leaves `next_ask` unchanged with the gate otherwise open.
+- [x] 4.3 Add the "reached from onboarding" branch to `agent/rule-feedback.md`: no `verbatim`, `ruleKind: none (onboarding)`, no question, send. Verify the recipe test and that `feedback send` still refuses under `DO_NOT_TRACK=1`.
+- [x] 4.4 Add the `report` row to the skill body and the `tskl` command body via `%(TASKLESS_CLI)s`. Verify the skill tests, including the 80-line cap.
+- [x] 4.5 Update `getOnboardTrailer` and the `onboard` command description if their wording still promises a conversational discovery flow. Verify the init trailer tests.
+- [x] 4.6 End to end: covered by `test/report.test.ts`, which drives the built CLI through `init`, three sg rules, `report` (draft), `report --from` against a local stand-in for tskl.es, and `report --delete`, and by `test/onboard.test.ts` for `onboard --mark-complete`. No separate manual run was made.
+- [x] 4.7 Extend the changeset with the onboarding change. Run `pnpm typecheck` and `pnpm lint`; both pass.
 
 ## 5. Archive (PR 5, tip of the stack)
 

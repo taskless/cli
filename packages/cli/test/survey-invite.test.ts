@@ -107,19 +107,18 @@ describe("the survey gate", () => {
     expect(seenAtTelemetryInit).toBe(NOW + SHOWN_INTERVAL_MS);
   });
 
-  it.each([
-    "onboard",
-    "create-sg-rule",
-    "create-vale-rule",
-    "create-remote-rule",
-  ])("surveys %s", async (topic) => {
-    expect(await surveyGateIsOpen({ topic, now: () => NOW })).toBe(true);
-  });
+  it.each(["create-sg-rule", "create-vale-rule", "create-remote-rule"])(
+    "surveys %s",
+    async (topic) => {
+      expect(await surveyGateIsOpen({ topic, now: () => NOW })).toBe(true);
+    }
+  );
 
   // Telemetry is on and the cadence is open here, so only the topic set
   // decides: the opt-in channels and the survey's own recipe never carry
   // the invite.
-  it.each(["feedback", "bug-report", "rule-feedback"])(
+  // `onboard` sends its feedback itself, under the user's opening yes.
+  it.each(["feedback", "bug-report", "rule-feedback", "onboard"])(
     "does not survey %s, even with the gate otherwise open",
     async (topic) => {
       expect(await surveyGateIsOpen({ topic, now: () => NOW })).toBe(false);
@@ -138,9 +137,9 @@ describe("the survey gate", () => {
 
   it("opens the moment the window closes", async () => {
     await writeNextAsk(RULE_SURVEY_ID, NOW);
-    expect(await surveyGateIsOpen({ topic: "onboard", now: () => NOW })).toBe(
-      true
-    );
+    expect(
+      await surveyGateIsOpen({ topic: "create-sg-rule", now: () => NOW })
+    ).toBe(true);
   });
 
   it("serves the bare recipe under the telemetry opt-out, without reading the cadence", async () => {
@@ -211,17 +210,18 @@ describe("the survey gate", () => {
       ]);
     });
 
-    it("taskless onboard carries the invite on the recipe path", async () => {
+    it("taskless onboard carries no invite on the recipe path", async () => {
       const command = onboardCommand as unknown as RunnableCommand;
       await command.run({
         args: { dir: cwd, force: false, "mark-complete": false },
         rawArgs: [],
       });
       expect(printed()).toContain("# Topic: onboard");
-      expect(printed()).toContain("## Before you finish");
-      expect(capture).toHaveBeenCalledWith("survey shown", {
+      expect(printed()).not.toContain("## Before you finish");
+      expect(capture).not.toHaveBeenCalledWith("survey shown", {
         $survey_id: RULE_SURVEY_ID,
       });
+      expect(await readNextAsk(RULE_SURVEY_ID)).toBeUndefined();
     });
 
     it("taskless onboard --mark-complete does not", async () => {

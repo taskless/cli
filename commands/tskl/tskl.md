@@ -41,6 +41,7 @@ Otherwise, follow the same flow as the `taskless` skill:
 | Check code against rules   | `%(TASKLESS_CLI)s agent check`        |
 | Log in, log out, or status | `%(TASKLESS_CLI)s agent auth`         |
 | Wire into CI               | `%(TASKLESS_CLI)s agent ci`           |
+| Make or delete a report    | `%(TASKLESS_CLI)s agent report`       |
 
 If unsure, run `%(TASKLESS_CLI)s agent` (no args) for the topic
 disambiguation table.

@@ -1,11 +1,12 @@
-# Topic: rule-feedback     (CLI v%(CLI_VERSION)s / topic v4)
+# Topic: rule-feedback     (CLI v%(CLI_VERSION)s / topic v5)
 
 ## You are here
 This is `rule-feedback`. It helps you turn what a user just said about
 Taskless into a survey response the CLI can send, and send it.
-You reach it from the invite at the end of an authoring or onboarding
-recipe, whether the user gave you their words, said `skip`, or said
-`review`.
+You reach it from the invite at the end of an authoring recipe,
+whether the user gave you their words, said `skip`, or said `review`,
+or directly from the onboarding recipe, which sends its feedback
+without an invite.
 If that is not why you are reading this, re-run `%(TASKLESS_CLI)s agent` and
 find the topic you meant. A user who asked, on their own, to send
 feedback wants `%(TASKLESS_CLI)s agent feedback`; one reporting a bug
@@ -21,7 +22,9 @@ before they are sent.
 
 ## Preconditions
 - The invite was put to the user and they replied, or did not. Their
-  words, if any, are the only input you take from them.
+  words, if any, are the only input you take from them. Or you came
+  from onboarding, where the user's yes to setting up Taskless already
+  covered sending this; see "Reached from onboarding" below.
 - The user did not ask you to send nothing. If they did, this is the
   wrong recipe: run `%(TASKLESS_CLI)s feedback dismiss` and continue with what
   they asked for.
@@ -37,6 +40,22 @@ of rule it was for, whether they got it, what went well, what did not,
 what you are running in, and which rule has earned its keep. You
 already know all of that.
 Do not put the survey's questions to the user one by one.
+
+## Reached from onboarding
+
+The onboarding recipe sends you here with no invite, in parallel with
+publishing the report. Its opening question already asked the user's
+permission, so there is nothing to ask:
+
+- Omit `verbatim`; the user has not written you any feedback.
+- Answer `ruleKind` with `none (onboarding)`, and every other key from
+  your own account of the onboarding session.
+- Skip step 4. There was no `review`.
+- Send, clean up, and return to the onboarding recipe without a
+  thank-you line, since the user was not asked for anything.
+
+`feedback send` still sends nothing when telemetry is disabled, and
+says so; that is the user's opt-out holding, not a failure.
 
 ## Steps
 

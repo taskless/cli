@@ -32,16 +32,16 @@ export function getOnboardTrailer(args: {
   commandsInstalled: boolean;
 }): string {
   if (args.commandsInstalled) {
-    return `Next: in your AI tool, run /tskl onboard or ask it to use the Taskless skill (or run \`${getCliPrefix()} onboard\` from your terminal) to discover rule candidates from your codebase.`;
+    return `Next: in your AI tool, run /tskl onboard or ask it to use the Taskless skill (or run \`${getCliPrefix()} onboard\` from your terminal) to set up starter rules from your codebase and see a report of what they catch.`;
   }
-  return `Next: in your AI tool, ask it to use the Taskless skill (or run \`${getCliPrefix()} onboard\` from your terminal) to discover rule candidates from your codebase.`;
+  return `Next: in your AI tool, ask it to use the Taskless skill (or run \`${getCliPrefix()} onboard\` from your terminal) to set up starter rules from your codebase and see a report of what they catch.`;
 }
 
 export const onboardCommand = defineCommand({
   meta: {
     name: "onboard",
     description:
-      "Discover rule candidates from your codebase and history (post-install flow)",
+      "Set up Taskless: discover and write starter rules from your codebase and history, then publish a report (post-install discovery flow)",
   },
   args: {
     dir: {

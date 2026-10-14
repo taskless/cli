@@ -63,7 +63,8 @@ linter, the `create-legacy-rule` path needs nothing installed.
 | First-time install         | tell user to run `%(TASKLESS_CLI)s`   |
 | Update an existing install | tell user to run `%(TASKLESS_CLI)s`   |
 | Fix rules after an upgrade | `%(TASKLESS_CLI)s update`             |
-| Discover candidate rules   | `%(TASKLESS_CLI)s agent onboard`      |
+| Set up / onboard Taskless  | `%(TASKLESS_CLI)s agent onboard`      |
+| Make or delete a report    | `%(TASKLESS_CLI)s agent report`       |
 | Improve an existing rule   | `%(TASKLESS_CLI)s agent improve-rule` |
 | Delete a rule              | `%(TASKLESS_CLI)s agent delete-rule`  |
 | Check code against rules   | `%(TASKLESS_CLI)s agent check`        |

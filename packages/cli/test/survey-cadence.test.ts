@@ -56,12 +56,13 @@ describe("survey constants", () => {
     expect(COMPLETED_CHOICES).toEqual(["Yes", "No", "Unknown"]);
   });
 
-  it("surveys the four authoring and onboarding recipes only", () => {
+  // `onboard` sends its own feedback under the user's opening yes, so an
+  // invite appended to it would ask a question already answered.
+  it("surveys the three authoring recipes only", () => {
     expect([...SURVEYED_TOPICS].toSorted()).toEqual([
       "create-remote-rule",
       "create-sg-rule",
       "create-vale-rule",
-      "onboard",
     ]);
   });
 

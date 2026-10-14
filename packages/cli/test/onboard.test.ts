@@ -280,18 +280,18 @@ describe("onboard recipe establishes the routing surface first", () => {
     expect(stdout).toMatch(/detect --json/);
   });
 
-  it("puts the routing step ahead of the bullet list, not after it", async () => {
+  it("puts the routing step ahead of writing rules, not after it", async () => {
     // The ordering is the whole fix. A recipe that mentions `route` somewhere
-    // is what shipped before; what matters is that it is read while the list
-    // is still being decided.
+    // is what shipped before; what matters is that it is read while the
+    // candidates are still being decided.
     const { stdout } = await runCli(["agent", "onboard", "-d", cwd], cwd);
 
     const routing = stdout.indexOf("Learn the routing surface");
-    const synthesis = stdout.indexOf("Synthesize the bullet list");
+    const writing = stdout.indexOf("Write the rules");
 
     expect(routing).toBeGreaterThan(-1);
-    expect(synthesis).toBeGreaterThan(-1);
-    expect(routing).toBeLessThan(synthesis);
+    expect(writing).toBeGreaterThan(-1);
+    expect(routing).toBeLessThan(writing);
   });
 
   it("carries the destination in the bullet format", async () => {
@@ -316,68 +316,100 @@ describe("onboard recipe establishes the routing surface first", () => {
   });
 });
 
-// #441: the recipe went from materializing rules straight to the
-// consent-gated mark-complete question, so a project could finish onboarding
-// with rules nothing runs. The agent that improvised the missing question put
-// it in the same message as mark-complete, and the user's "yes" could have
-// been read as an answer to either.
-describe("onboard recipe decides when the rules run", () => {
+// Topic v6: onboarding asks one question, runs logged out, completes itself,
+// publishes a report, and ends on the CI offer. Each of these is a behavior an
+// agent would otherwise improvise back toward the conversational v5 flow.
+describe("onboard recipe asks one question and finishes on its own", () => {
   let cwd: string;
+  let stdout: string;
 
   beforeEach(async () => {
-    cwd = await mkdtemp(join(tmpdir(), "taskless-onboard-when-"));
+    cwd = await mkdtemp(join(tmpdir(), "taskless-onboard-v6-"));
+    ({ stdout } = await runCli(["agent", "onboard", "-d", cwd], cwd));
   });
 
   afterEach(async () => {
     await rm(cwd, { recursive: true, force: true });
   });
 
-  it("puts the step between materializing and marking complete", async () => {
-    const { stdout } = await runCli(["agent", "onboard", "-d", cwd], cwd);
+  /** The text of one numbered step, from its title to the next title. */
+  function step(title: string): string {
+    const start = stdout.indexOf(title);
+    expect(start).toBeGreaterThan(-1);
+    const next = stdout.slice(start + title.length).search(/\n\d+\. \*\*/);
+    return next === -1
+      ? stdout.slice(start)
+      : stdout.slice(start, start + title.length + next);
+  }
 
-    const materialize = stdout.indexOf("Offer materialization per bullet");
-    const decide = stdout.indexOf("Decide when the rules run");
-    const markComplete = stdout.indexOf(
-      "Ask before marking onboarding complete"
-    );
-
-    expect(materialize).toBeGreaterThan(-1);
-    expect(decide).toBeGreaterThan(materialize);
-    expect(markComplete).toBeGreaterThan(decide);
+  it("is topic v6", () => {
+    expect(stdout).toMatch(/^# Topic: onboard {5}\(CLI v.+ \/ topic v6\)/m);
   });
 
-  it("offers CI and a hook from what detect reported", async () => {
-    const { stdout } = await runCli(["agent", "onboard", "-d", cwd], cwd);
-    const step = stdout.slice(
-      stdout.indexOf("Decide when the rules run"),
-      stdout.indexOf("Ask before marking onboarding complete")
+  it("asks the one question, set apart, through a question tool when there is one", () => {
+    const ask = step("Ask the one question");
+    expect(ask).toContain(
+      "\n\n   Do you want me to set up Taskless for you?\n\n"
     );
-
-    expect(step).toContain("`ci` and `hooks` fields");
-    expect(step).toMatch(/agent ci`/);
-    expect(step).toMatch(/agent hooks`/);
-    // Declining both is an answer, not a stall.
-    expect(step).toContain("neither");
-  });
-
-  it("asks the mark-complete question on its own", async () => {
-    const { stdout } = await runCli(["agent", "onboard", "-d", cwd], cwd);
-    const step = stdout.slice(
-      stdout.indexOf("Ask before marking onboarding complete")
-    );
-
-    // Whitespace collapsed so a rewrap of the recipe does not fail the test.
-    expect(step.replaceAll(/\s+/g, " ")).toContain(
-      "Ask it in a message with no other question in it."
+    expect(ask).toContain("structured question tool");
+    expect(ask.replaceAll(/\s+/g, " ")).toContain(
+      "This is the only question you script."
     );
   });
 
-  it("names both topics in See Also", async () => {
-    const { stdout } = await runCli(["agent", "onboard", "-d", cwd], cwd);
+  it("mines sources without asking which", () => {
+    const mine = step("Mine every source you can reach");
+    expect(mine).toContain("Do not ask the user which");
+    expect(stdout).not.toContain("Are there other places I should look");
+  });
+
+  it("stays logged out and keeps runtime candidates for the report", () => {
+    const flat = stdout.replaceAll(/\s+/g, " ");
+    expect(flat).toContain("Onboarding runs logged out from start to finish");
+    // Never an instruction to log in, only the one not to.
+    expect(flat).not.toMatch(/(?<!not )run `?[^`]*auth login/);
+    const write = step("Write the rules").replaceAll(/\s+/g, " ");
+    expect(write).toContain("is not written");
+    expect(write).toContain("Taskless Cloud candidate");
+  });
+
+  it("limits clarifying questions to a refused report", () => {
+    const clarify = step("Clarify only when stuck");
+    expect(clarify).toContain("fewer than three working Taskless");
+  });
+
+  it("marks onboarding complete without asking", () => {
+    const mark = step("Mark onboarding complete");
+    expect(mark).toMatch(/onboard --mark-complete/);
+    expect(mark).toContain("Do not ask first.");
+  });
+
+  it("publishes the report and sends feedback alongside it", () => {
+    const publish = step("Publish the report, and send feedback alongside it");
+    expect(publish).toMatch(/agent report`/);
+    expect(publish).toMatch(/agent rule-feedback`/);
+    expect(publish).toContain("ask the user nothing");
+    expect(stdout.indexOf("Mark onboarding complete")).toBeLessThan(
+      stdout.indexOf("Publish the report")
+    );
+  });
+
+  it("ends on a strongly encouraged CI offer, with hooks as the fallback", () => {
+    const ci = step("Make the case for CI, last");
+    expect(stdout.indexOf("Publish the report")).toBeLessThan(
+      stdout.indexOf("Make the case for CI")
+    );
+    expect(ci).toMatch(/agent ci`/);
+    expect(ci).toContain("`ci` field of `detect --json`");
+    expect(ci).toContain("Encourage it strongly");
+    expect(ci).toMatch(/agent hooks`/);
+  });
+
+  it("names its neighbors in See Also", () => {
     const seeAlso = stdout.slice(stdout.indexOf("## See Also"));
-
-    expect(seeAlso).toMatch(/agent ci`/);
-    expect(seeAlso).toMatch(/agent hooks`/);
+    for (const topic of ["route", "report", "rule-feedback", "ci", "hooks"]) {
+      expect(seeAlso).toMatch(new RegExp(`agent ${topic}\``));
+    }
   });
 });
 
