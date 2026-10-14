@@ -85,7 +85,7 @@ The CLI SHALL compute `projection.perMonth` itself from the merged facts and SHA
 
 ### Requirement: Publishing is gated on a meaningful report
 
-`taskless report --from` SHALL refuse to publish unless the merged report holds at least three Taskless rules. A Taskless rule is one in the `cli` tier, or one in the `legacy` tier that the agent authored into the repository's own linter, whose test status is neither `fail` nor `refused`. Rules in the `cloud` tier SHALL NOT count toward the three; they are carried in addition. The projection SHALL NOT gate publishing. A refusal SHALL exit non-zero with `REPORT_INSUFFICIENT`, SHALL state how many of the required three exist, and SHALL perform no network call.
+`taskless report --from` SHALL refuse to publish unless the merged report holds at least three Taskless rules. A Taskless rule is one in the `cli` tier, or one in the `legacy` tier that the agent authored into the repository's own linter; either way, its test status SHALL be neither `fail` nor `refused`. Rules in the `cloud` tier SHALL NOT count toward the three; they are carried in addition. The projection SHALL NOT gate publishing. A refusal SHALL exit non-zero with `REPORT_INSUFFICIENT`, SHALL state how many of the required three exist, and SHALL perform no network call.
 
 #### Scenario: Too few local rules
 

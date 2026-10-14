@@ -47,7 +47,7 @@ agentCatches[tier]      = round(Σ rule.fixed               × 30 / d)
 
 `contextTokens` and `callsPerCatch` are agent estimates from this user's session habits (how large their sessions run, how many extra turns a missed issue costs). tskl.es exposes them as sliders, so the published page lets a reader adjust them, and turns them into its token figures itself. The other inputs (`cloudComplexity`, `pricePerMillionTokens`, `minutesPerComment`, `reviewerHourlyUsd`) are CLI constants, matching the schema's example values until there is a reason to differ.
 
-The gate is `≥ 3` Taskless rules: `cli` tier, or `legacy` rules the agent wrote into the repository's own linter, with tests neither `fail` nor `refused`. Cloud candidates are carried in addition and never count. The projection does not gate: the page lets a reader adjust its inputs, so a threshold on it would gate on a number nobody sees. The gate lives in the CLI so it has one home.
+The gate is `≥ 3` Taskless rules: `cli` tier, or `legacy` rules the agent wrote into the repository's own linter, and in either tier only those whose tests are neither `fail` nor `refused`. Cloud candidates are carried in addition and never count. The projection does not gate: the page lets a reader adjust its inputs, so a threshold on it would gate on a number nobody sees. The gate lives in the CLI so it has one home.
 
 ### D4. Tiers and engines
 
