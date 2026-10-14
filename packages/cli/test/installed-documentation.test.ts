@@ -186,6 +186,20 @@ describe("this repository's own installed Taskless docs", () => {
     }
   });
 
+  it("keeps the skill body within its 80-line cap", async () => {
+    // The skill body is always loaded, so `skill-taskless` caps it at 80
+    // lines of markdown. Nothing measured that until the cap had already been
+    // exceeded: each new topics row is one line, and none looks like the one
+    // that crosses it. Counted the way a reader would, every line after the
+    // closing `---`, blank lines included.
+    const skill = await readFile(
+      resolve(repositoryRoot, "skills", "taskless", "SKILL.md"),
+      "utf8"
+    );
+    const body = skill.replace(/^---\n[\s\S]*?\n---\n/, "").trimEnd();
+    expect(body.split("\n").length).toBeLessThanOrEqual(80);
+  });
+
   it("keeps the skill's trigger text off the old layout too", async () => {
     // The skill description is what an agent reads before it opens anything, so
     // a stale directory name here sends it looking in a place that no longer
