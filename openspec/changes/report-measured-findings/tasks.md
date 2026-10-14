@@ -23,6 +23,6 @@
 
 ## 5. Release and checks
 
-- [ ] 5.1 Add a `patch` changeset for `@taskless/cli` describing the measured findings and the removed fix counts, noting the report fields were never released; verify the file exists under `.changeset/`
-- [ ] 5.2 Run `pnpm typecheck` and `pnpm lint` and verify both pass
-- [ ] 5.3 Build with `pnpm build:next`, run `pnpm cli report` in a scratch repo with known violations, and verify the draft's `findings` match `pnpm cli check --json --anonymous` for the same tree
+- [x] 5.1 Extend the pending `streamlined-onboarding-report` changeset, which introduces `taskless report` and has not been released, to describe the measured findings instead of projections; verify it no longer mentions projected catches
+- [x] 5.2 Run `pnpm typecheck` and `pnpm lint` and verify both pass
+- [x] 5.3 Build with `pnpm build:next`, run `pnpm cli report` in a scratch repo with known violations, and verify the draft's `findings` match `pnpm cli check --json --anonymous` for the same tree

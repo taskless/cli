@@ -33,4 +33,4 @@ None.
 - `packages/cli/src/agent/report.md` and `packages/cli/src/agent/onboard.md`.
 - Tests under `packages/cli/test/` for report and check.
 - No change to `taskless check`'s output or exit codes.
-- Ships in a nightly; a `patch` changeset, since the package is pre-1.0 and the report fields being changed have not been released.
+- Ships in a nightly. `taskless report` itself has not been released, so this extends its pending `patch` changeset rather than adding a second release note for a command no user has seen.
