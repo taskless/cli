@@ -294,6 +294,58 @@ describe("assembleReport", () => {
     ).toBe("REPORT_REDACTION");
   });
 
+  it("refuses a match in a legacy or cloud rule's other strings, naming the field", () => {
+    const legacy = {
+      id: "l1",
+      title: "Legacy l1",
+      origin: { reviewComments: 1, prs: 1 },
+      fixed: 1,
+      fixedBasis: "measured" as const,
+      tool: "eslint",
+      language: "TypeScript",
+    };
+    const cloud = {
+      id: "c1",
+      title: "Cloud c1",
+      origin: { reviewComments: 1, prs: 1 },
+      fixed: 1,
+      fixedBasis: "estimated" as const,
+      language: "TypeScript",
+      complexity: 3,
+    };
+    const cases: [string, Partial<ReportFacts>][] = [
+      [
+        "legacy[l1].tool",
+        { legacy: [{ ...legacy, tool: "jane@acme.io" }], cloud: [] },
+      ],
+      [
+        "legacy[l1].language",
+        { legacy: [{ ...legacy, language: "TS for api.acme.io" }], cloud: [] },
+      ],
+      [
+        "cloud[c1].language",
+        { legacy: [], cloud: [{ ...cloud, language: "jane@acme.io" }] },
+      ],
+      [
+        "cloud[api.acme.io].id",
+        { legacy: [], cloud: [{ ...cloud, id: "api.acme.io" }] },
+      ],
+    ];
+    for (const [field, extra] of cases) {
+      let refusal: unknown;
+      try {
+        assembleReport(
+          draftOf(three.map((id) => localRule(id))),
+          factsFor(three, extra)
+        );
+      } catch (error) {
+        refusal = error;
+      }
+      expect((refusal as CLIError).code, field).toBe("REPORT_REDACTION");
+      expect((refusal as Error).message, field).toContain(field);
+    }
+  });
+
   it("carries the agent's own redaction counts and withholdings", () => {
     const facts = factsFor(three, {
       redaction: {
@@ -642,6 +694,18 @@ describe("taskless report", () => {
     const { stderr, exitCode } = await run(["report", "--delete", "nope.json"]);
     expect(exitCode).not.toBe(0);
     expect(stderr).toContain("REPORT_NOT_FOUND");
+  });
+
+  it("refuses a record outside .taskless/reports/", async () => {
+    for (const record of [
+      "../outside.json",
+      "/tmp/outside.json",
+      "notes.txt",
+    ]) {
+      const { stderr, exitCode } = await run(["report", "--delete", record]);
+      expect(exitCode, record).not.toBe(0);
+      expect(stderr, record).toContain("INVALID_INPUT");
+    }
   });
 
   it("refuses --from and --delete together", async () => {
