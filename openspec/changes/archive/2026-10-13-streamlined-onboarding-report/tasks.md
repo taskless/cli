@@ -40,5 +40,5 @@
 
 ## 5. Archive (PR 5, tip of the stack)
 
-- [ ] 5.1 Run the pre-archive check from CLAUDE.md (commit, keep the SHA, `pnpm openspec archive streamlined-onboarding-report -y`, confirm every prior scenario of `cli-detect`, `cli-feedback-survey`, and `cli-taskless-bootstrap` survives, then reset to the SHA).
-- [ ] 5.2 Archive for real, then update `openspec/specs/cli-onboard/spec.md`'s Purpose, which still describes a conversational flow. Verify `pnpm openspec validate --strict` passes on the result.
+- [x] 5.1 Run the pre-archive check from CLAUDE.md (commit, keep the SHA, `pnpm openspec archive streamlined-onboarding-report -y`, confirm every prior scenario of `cli-detect`, `cli-feedback-survey`, and `cli-taskless-bootstrap` survives, then reset to the SHA).
+- [x] 5.2 Archive for real, then update `openspec/specs/cli-onboard/spec.md`'s Purpose, which still describes a conversational flow. Verify `pnpm openspec validate --strict` passes on the result.
