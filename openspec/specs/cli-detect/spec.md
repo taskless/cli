@@ -22,8 +22,9 @@ flag.
 
 The `detect` command SHALL emit only deterministic signals derived from files on
 disk: configured linters, detected languages, the styles of the repo's own
-existing rules, the CI systems configured for the repository, and the tools that
-run commands at commit time. It SHALL NOT perform any LLM inference and SHALL NOT match the
+existing rules, the CI systems configured for the repository, the tools that
+run commands at commit time, and the command-line tools present on the host's
+`PATH`. It SHALL NOT perform any LLM inference and SHALL NOT match the
 request against any catalog of known packaged linter rules.
 
 Detection follows a languages → linters flow: languages are inferred first, and
@@ -33,12 +34,24 @@ own language (a node dependency from `package.json`, a Python dependency from
 recognized linter config file on disk is honored regardless of the languages
 inferred.
 
+ast-grep and Vale are linters for this purpose. Anything under `.taskless/` is
+Taskless's own configuration, not the repository's, and SHALL NOT be evidence
+for any linter.
+
 CI systems and commit-hook tools are matched at the scan root only, never in a
 sub-package. A CI system reads its configuration from the repository root and git
 runs one set of hooks per repository, so a match further down the tree is a
 fixture or a vendored project rather than this repository's configuration. Each
 is reported as a `name` with the `evidence` that matched, in the same shape as a
 linter.
+
+Host tools (`gh`, `git`, `jq`, `glab`) SHALL be established by looking for a file
+of that name on `PATH`, and SHALL NOT be established by executing anything. Each
+SHALL be reported as present or absent, and as applicable or not where the
+tool's usefulness depends on the repository: `gh` is applicable only when
+`origin` is a GitHub remote, and `glab` only when `origin` is a GitLab remote
+(`gitlab.com`, or a host whose name begins with `gitlab.`). An inapplicable tool
+SHALL carry the reason.
 
 #### Scenario: Linter configs are detected from disk
 
@@ -123,6 +136,40 @@ linter.
 - **THEN** `detect --json` SHALL report `ci` and `hooks` as empty arrays rather
   than omitting them
 
+#### Scenario: ast-grep is detected from its config
+
+- **WHEN** the working directory contains `sgconfig.yml` or `.sgconfig.yml`
+  outside `.taskless/`
+- **THEN** `detect --json` SHALL report `ast-grep` as a linter with that path as
+  its evidence
+
+#### Scenario: Vale is detected from its config
+
+- **WHEN** the working directory contains `.vale.ini` or `_vale.ini` outside
+  `.taskless/`
+- **THEN** `detect --json` SHALL report `vale` as a linter with that path as its
+  evidence
+
+#### Scenario: Taskless's own configuration is not the repository's
+
+- **WHEN** the only `sgconfig.yml` or `.vale.ini` in the working directory is
+  under `.taskless/`
+- **THEN** `detect --json` SHALL NOT report `ast-grep` or `vale`
+
+#### Scenario: Host tools are reported by presence
+
+- **WHEN** `gh` is on `PATH` and `glab` is not, in a repository whose `origin`
+  is a GitHub remote
+- **THEN** `detect --json` SHALL report `gh` as present and applicable
+- **AND** SHALL report `glab` as absent
+- **AND** SHALL NOT have executed either
+
+#### Scenario: A host tool for the other forge is inapplicable
+
+- **WHEN** `glab` is on `PATH` in a repository whose `origin` is a GitHub remote
+- **THEN** `detect --json` SHALL report `glab` as present and not applicable,
+  with the reason that the repository has no GitLab origin
+
 ### Requirement: Detect runs offline with no network or auth
 
 The `detect` command SHALL complete without network access and without
@@ -142,9 +189,36 @@ printed, consistent with how other `--json` commands in the CLI (e.g. `info`,
 `check`) validate their output. The schema is an internal contract, not a
 published artifact, and `detect` does not expose a `--schema` mode.
 
+The object SHALL carry `hostTools`, one entry per host tool with its `name`,
+`present`, `applicable`, the `path` it was found at when present, and the
+`reason` when not applicable. It SHALL carry `agent`, an object whose keys are
+commands the agent may choose to run and whose values say in one sentence what
+each tells it. `agent` SHALL hold an entry only for a tool that is present and
+applicable, and an entry SHALL state any way the command's result is
+misleading (for example an exit code that does not reflect sign-in state).
+The hints and the onboard recipe's host-tool text SHALL be drawn from one
+source, so the two cannot describe a tool differently.
+
 #### Scenario: JSON output validates against the internal schema
 
 - **WHEN** `detect --json` succeeds
 - **THEN** stdout SHALL be a single JSON object that the command has validated
   against its internal output schema (linters, languages, existing rule styles,
-  CI systems, commit-hook tools)
+  CI systems, commit-hook tools, host tools, agent hints)
+
+#### Scenario: A usable tool carries a hint
+
+- **WHEN** `gh` is present and applicable
+- **THEN** `agent` SHALL contain a `gh auth status` key whose value says it
+  verifies whether the user is signed in and GitHub can be used as a source
+
+#### Scenario: An unusable tool carries no hint
+
+- **WHEN** `glab` is absent, or present but not applicable
+- **THEN** `agent` SHALL NOT contain a `glab` command
+
+#### Scenario: A misleading exit code is called out
+
+- **WHEN** `glab` is present and applicable
+- **THEN** its `agent` entry SHALL state that the output, not the exit code,
+  shows whether the user is signed in

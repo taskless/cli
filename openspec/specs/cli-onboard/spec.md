@@ -2,12 +2,12 @@
 
 ## Purpose
 
-Defines the `taskless onboard` subcommand: the post-install discovery flow that helps a fresh user go from zero rules to a useful starter set. Unlike `taskless init` (which is fast, deterministic, and gets the user _installed_), `onboard` delivers a conversational agent recipe that mines the codebase, agent-memory files, and (when available) PR review comments and issue tracker tickets for high-signal rule candidates, then surfaces them as a bullet list the user materializes via `taskless rule create`.
+Defines the `taskless onboard` subcommand: the post-install flow that takes a fresh user from zero rules to a working starter set and a published report. Unlike `taskless init` (which is fast, deterministic, and gets the user _installed_), `onboard` delivers an agent recipe that asks the user one question, "Do you want me to set up Taskless for you?", and on a yes mines the codebase, agent-memory files, review history, and any tracker or engineering context the agent can reach for high-signal rule candidates, writes every one the repository can enforce locally while logged out, publishes a Taskless report, and ends by strongly encouraging running the rules in CI.
 
 This capability covers:
 
 - **Subcommand surface**: three modes via flag combinations — default prints the recipe (refused when already complete), `--force` re-runs regardless of state, `--mark-complete` writes `install.onboarded: true`. `--force` and `--mark-complete` are mutually exclusive.
-- **Manifest gating and writes**: the optional 3-state `install.onboarded` field on `.taskless/taskless.json` (absent / `false` / `true`) is the single source of truth for whether onboarding is complete. Only this subcommand writes the field, and only via `--mark-complete`. The agent invokes `--mark-complete` only after explicit user confirmation per the recipe.
+- **Manifest gating and writes**: the optional 3-state `install.onboarded` field on `.taskless/taskless.json` (absent / `false` / `true`) is the single source of truth for whether onboarding is complete. Only this subcommand writes the field, and only via `--mark-complete`, which the agent runs once the rules are written, under the consent of the user's opening yes.
 - **Recipe embedding**: the recipe lives at `packages/cli/src/agent/onboard.md`, embedded into the CLI bundle at build time and rendered via the same sprintf-js path the `agent` command uses (`taskless agent onboard` returns the same content as `taskless onboard --force`).
 - **Telemetry**: emits `cli_onboard_recipe` (with a `forced` property), `cli_onboard_already_done`, and `cli_onboard_marked_complete` PostHog events on the appropriate code paths.
 
@@ -111,119 +111,6 @@ When invoked with `--mark-complete`, the `taskless onboard` subcommand SHALL wri
 - **AND** a user runs `taskless onboard --mark-complete`
 - **THEN** the unknown field SHALL still be present after the write
 
-### Requirement: Onboard recipe follows the canonical recipe template and is conversational
-
-The `onboard.md` file SHALL follow the canonical recipe template defined in the `cli-agent` capability (header with CLI version + topic version, `## Goal`, `## Preconditions`, `## Steps`, `## Errors`, `## See Also`). The `## Steps` section SHALL describe a conversational discovery flow rather than a fixed sequence. Specifically, the recipe SHALL instruct the agent to:
-
-1. Read `.taskless/taskless.json` and respect the `install.onboarded` field.
-2. Establish the routing surface before proposing any candidate, by fetching the `route` topic for the destination criterion and running `taskless detect --json` for the repository's linters, languages, and rule styles.
-3. Open the conversation with a short menu of known sources for rule candidates: codebase TODOs/FIXMEs (via ripgrep or built-in search), agent-memory files (CLAUDE.md, AGENTS.md, .cursorrules, etc.), recent PR review comments, and bug-tracker tickets.
-4. Encourage the user to suggest additional sources the agent may not know about.
-5. Report the command-line tools the CLI already found, rather than instruct the agent to probe for them. The recipe SHALL NOT instruct the agent to run `command -v` or any equivalent probe for a tool the CLI reports on.
-6. For each chosen source, scan and filter for high-signal candidates: repeated patterns across multiple PRs/files/comments, comments that cite a doc or style guide, and merge-blocking review feedback. Filter out one-off nits and pure formatting feedback.
-7. Synthesize a single bullet list where each bullet is a hypothetical rule expressed as `<kebab-case-name> [<destination>]: <one-line description of what it would enforce>`.
-8. For each bullet, offer to materialize it by following the `route` topic, with the accepted bullet as the rule description input.
-9. Once the user has materialized what they want, decide with the user when the rules run. The recipe SHALL instruct the agent to report the CI systems and commit-hook tools `taskless detect --json` found, to offer wiring `check` into CI by following the `ci` topic and into a pre-commit hook by following the `hooks` topic, and to carry out whichever the user picks. Declining both SHALL be an accepted answer, and the agent SHALL say in one line that `check` then runs only when someone invokes it.
-10. Only after that, ask the user whether they consider onboarding complete; on explicit yes, run `taskless onboard --mark-complete`.
-
-The recipe SHALL describe a detected tool as present, never as verified. The CLI establishes presence by looking for a file on `PATH` and executes nothing, so the recipe SHALL say so — "`gh` is on your PATH; Taskless did not run it" — and SHALL NOT assert that a tool works, is a particular version, or is genuine.
-
-The recipe SHALL NOT name one bug tracker as the expected one. It MAY name trackers such as Jira and Linear as examples of the class. Whether a tracker is reachable depends on the agent's MCP roster, which the CLI cannot see, so the recipe SHALL leave that judgement to the agent at runtime and SHALL condition the source on a relevant MCP being available rather than on any named vendor.
-
-When a source is not offered, the recipe SHALL say in one line why it is not offered. A reader who is not told reads the omission as an oversight and asks for it, which costs a turn and ends where the recipe already is. Where a source is unavailable for more than one reason, the reason that cannot be remedied SHALL be the one stated: a repository with no GitHub `origin` SHALL be told there are no pull requests to mine, not that `gh` is missing, and SHALL NOT be offered PR-comment mining even when `gh` is present.
-
-The recipe SHALL NOT restate the destination criterion itself. That comparison is defined once, in the `route` topic, and the recipe SHALL reference it rather than duplicate it.
-
-The recipe SHALL warn the agent against marking onboarding complete without explicit user confirmation.
-
-The recipe SHALL require the mark-complete question to be asked in a message that asks nothing else. A reply to a message carrying two questions cannot be read as explicit consent to either, and `--mark-complete` is consent-gated, so the recipe SHALL NOT let the question share a message with the step that decides when the rules run.
-
-#### Scenario: Recipe header includes CLI and topic version
-
-- **WHEN** `onboard.md` is read
-- **THEN** the first line SHALL match the canonical header format `# Topic: onboard     (CLI v<x.y.z> / topic v<n>)`
-
-#### Scenario: Recipe establishes the routing surface before proposing candidates
-
-- **WHEN** the recipe `## Steps` section is read
-- **THEN** a step instructing the agent to fetch the `route` topic and to run `detect --json` SHALL appear before the step that synthesizes the bullet list
-
-#### Scenario: Recipe does not duplicate the destination criterion
-
-- **WHEN** `onboard.md` is read
-- **THEN** it SHALL NOT contain a table or enumeration comparing the rule destinations against one another
-- **AND** it SHALL direct the agent to the `route` topic for that comparison
-
-#### Scenario: Recipe enumerates the known source menu
-
-- **WHEN** the recipe `## Steps` section is read with no host-tool state supplied
-- **THEN** it SHALL list at least: codebase TODOs/FIXMEs, agent-memory files, PR review comments, and bug-tracker tickets
-- **AND** it SHALL NOT instruct the agent to probe for `gh`
-
-#### Scenario: A present and applicable tool is offered as present
-
-- **WHEN** the recipe is rendered for a GitHub repository on a host where `gh` is on `PATH`
-- **THEN** the PR-review source SHALL be offered
-- **AND** the text SHALL state that `gh` is on the PATH and that Taskless did not run it
-
-#### Scenario: An absent tool is omitted with its reason
-
-- **WHEN** the recipe is rendered for a GitHub repository on a host where `gh` is not on `PATH`
-- **THEN** the PR-review source SHALL NOT be offered
-- **AND** the recipe SHALL state in one line that `gh` was not found on the PATH
-
-#### Scenario: A repository with no GitHub origin is told the source does not apply
-
-- **WHEN** the recipe is rendered for a repository whose `ghOwner` resolves to `[unknown]`, whether or not `gh` is on `PATH`
-- **THEN** the PR-review source SHALL NOT be offered
-- **AND** the stated reason SHALL be that the repository has no GitHub origin, not that `gh` is missing
-
-#### Scenario: Recipe encourages user-suggested sources
-
-- **WHEN** the recipe `## Steps` section is read
-- **THEN** it SHALL explicitly instruct the agent to ask the user whether other sources should be scanned
-
-#### Scenario: Recipe specifies the annotated bullet output shape
-
-- **WHEN** the recipe `## Steps` section is read
-- **THEN** it SHALL describe the rule-candidate output as a bullet list with `<kebab-case-name> [<destination>]: <description>` per item
-- **AND** SHALL state that the annotation is provisional and that the `route` topic decides the destination at materialization time
-
-#### Scenario: Recipe gates --mark-complete on user confirmation
-
-- **WHEN** the recipe `## Steps` section is read
-- **THEN** it SHALL instruct the agent to ask for explicit user confirmation before invoking `taskless onboard --mark-complete`
-- **AND** SHALL warn that the agent must NOT mark onboarding complete without that confirmation
-
-#### Scenario: Recipe references the rule-authoring route topic in See Also
-
-- **WHEN** the `## See Also` section is read
-- **THEN** it SHALL include a reference to `taskless agent route`
-
-#### Scenario: Recipe decides when the rules run before asking to mark complete
-
-- **WHEN** the recipe `## Steps` section is read
-- **THEN** a step that offers wiring `check` into CI via the `ci` topic and into a pre-commit hook via the `hooks` topic SHALL appear after the materialization step
-- **AND** it SHALL appear before the step that asks about `--mark-complete`
-- **AND** it SHALL direct the agent to the `ci` and `hooks` fields of `detect --json` for what the repository already has
-
-#### Scenario: Declining both is an accepted answer
-
-- **WHEN** the recipe's step that decides when the rules run is read
-- **THEN** it SHALL accept a user who wants neither CI nor a hook
-- **AND** SHALL instruct the agent to state that `check` then runs only when someone invokes it
-
-#### Scenario: The mark-complete question is asked alone
-
-- **WHEN** the recipe step that asks about `--mark-complete` is read
-- **THEN** it SHALL instruct the agent to ask that question in a message containing no other question
-
-#### Scenario: Recipe references the ci and hooks topics in See Also
-
-- **WHEN** the `## See Also` section is read
-- **THEN** it SHALL include a reference to `taskless agent ci`
-- **AND** it SHALL include a reference to `taskless agent hooks`
-
 ### Requirement: Onboard emits intent telemetry
 
 The `taskless onboard` subcommand SHALL emit PostHog events on every invocation:
@@ -277,3 +164,114 @@ Both serving paths SHALL resolve every render option identically, the detected h
 
 - **WHEN** `taskless onboard --force` and `taskless agent onboard` are run in the same working directory, on the same host
 - **THEN** the printed recipe content SHALL be identical, whichever tools are present and whether or not the repository has a GitHub `origin`
+
+### Requirement: Onboard recipe follows the canonical recipe template and asks one question
+
+The `onboard.md` file SHALL follow the canonical recipe template defined in the `cli-agent` capability (header with CLI version + topic version, `## Goal`, `## Preconditions`, `## Steps`, `## Errors`, `## See Also`). The topic version SHALL be 6.
+
+The recipe SHALL instruct the agent to:
+
+1. Read `.taskless/taskless.json` and respect the `install.onboarded` field.
+2. Ask the user exactly one question, "Do you want me to set up Taskless for you?", set apart from surrounding text by blank lines, and through the host's structured question tool when the host has one. The recipe SHALL state that a yes covers mining the repository, writing rules, publishing the report, and sending onboarding feedback. On anything but a yes the agent SHALL stop.
+3. Establish the routing surface before proposing any candidate, by fetching the `route` topic for the destination criterion and running `taskless detect --json` for the repository's linters, languages, rule styles, host tools, and `agent` hints.
+4. Mine every reachable source without asking which: codebase TODOs/FIXMEs, agent-memory files (CLAUDE.md, AGENTS.md, .cursorrules, and similar), review comments through whichever host tool `detect` reports present and applicable (pull requests through `gh`, merge requests through `glab`), and any MCP the agent has that reaches a bug tracker, an engineering-context tool, or architectural decisions. Whether to run a hinted command such as `gh auth status`, and which MCPs to use, SHALL be left to the agent.
+5. Filter for high-signal candidates: repeated patterns across multiple PRs/files/comments, comments that cite a doc or style guide, and merge-blocking review feedback; drop one-off nits and pure formatting feedback.
+6. Author every candidate the routing surface sends to a local destination (`legacy`, `sg`, or `vale`) by following the `route` topic, without asking per candidate.
+7. Record, and not author, every candidate the agent judges better solved by a runtime rule, for the report's `cloud` tier.
+8. Once the rules are written, run `taskless onboard --mark-complete` without asking.
+9. Hand off to the `report` topic to publish the report, and, in parallel, send onboarding feedback by following the `rule-feedback` topic as the respondent.
+10. Close by showing the report summary, then, as the last thing the agent does, offer to wire `taskless check` into the repository's CI by following the `ci` topic, and strongly encourage it: Taskless checks in CI are what keep agents from reintroducing the patterns these rules catch. The offer SHALL name the CI systems `detect --json` found. On a yes the agent SHALL follow the `ci` topic; on a no it SHALL name the `hooks` topic in one line as the local alternative and stop.
+
+The recipe SHALL operate logged out throughout. It SHALL NOT direct the agent to `auth login`, and SHALL NOT author a runtime rule.
+
+Beyond the opening question and the closing CI offer, the recipe SHALL permit a question only when the agent is unsure what rules to write AND the `report` topic's gate has refused for too few Taskless rules. It SHALL limit such a question to what would let the agent write the missing rules.
+
+The recipe SHALL describe a detected tool as present, never as verified, and SHALL NOT instruct the agent to run `command -v` or any equivalent probe for a tool `detect` reports on.
+
+The recipe SHALL NOT name one bug tracker as the expected one. It MAY name trackers such as Jira and Linear as examples of the class.
+
+When a review-comment source is unavailable, the recipe SHALL say in one line why, stating the reason that cannot be remedied first: a repository whose `origin` is on neither GitHub nor GitLab SHALL be told there are no pull or merge requests to mine, not that a CLI is missing.
+
+The recipe SHALL NOT restate the destination criterion itself; it SHALL reference the `route` topic.
+
+#### Scenario: Recipe header includes CLI and topic version
+
+- **WHEN** `onboard.md` is read
+- **THEN** the first line SHALL match the canonical header format `# Topic: onboard     (CLI v<x.y.z> / topic v6)`
+
+#### Scenario: The opening question is the only scripted question
+
+- **WHEN** the recipe `## Steps` section is read
+- **THEN** it SHALL contain the question "Do you want me to set up Taskless for you?"
+- **AND** SHALL direct the agent to use the host's structured question tool when one exists
+- **AND** no other step SHALL direct the agent to ask the user a question, except the step handling a refused report gate and the closing CI offer
+
+#### Scenario: Recipe establishes the routing surface before proposing candidates
+
+- **WHEN** the recipe `## Steps` section is read
+- **THEN** a step instructing the agent to fetch the `route` topic and to run `detect --json` SHALL appear before the step that authors rules
+
+#### Scenario: Recipe does not duplicate the destination criterion
+
+- **WHEN** `onboard.md` is read
+- **THEN** it SHALL NOT contain a table or enumeration comparing the rule destinations against one another
+- **AND** it SHALL direct the agent to the `route` topic for that comparison
+
+#### Scenario: Sources are mined without a menu
+
+- **WHEN** the recipe `## Steps` section is read
+- **THEN** it SHALL name codebase TODOs/FIXMEs, agent-memory files, review comments, and MCP-reachable trackers and engineering context as sources
+- **AND** SHALL NOT direct the agent to ask the user which sources to include
+
+#### Scenario: A present and applicable tool is offered as present
+
+- **WHEN** the recipe is rendered for a GitHub repository on a host where `gh` is on `PATH`
+- **THEN** the review-comment source SHALL be included
+- **AND** the text SHALL state that `gh` is on the PATH and that Taskless did not run it
+
+#### Scenario: An absent tool is omitted with its reason
+
+- **WHEN** the recipe is rendered for a GitHub repository on a host where `gh` is not on `PATH`
+- **THEN** the review-comment source SHALL NOT be included
+- **AND** the recipe SHALL state in one line that `gh` was not found on the PATH
+
+#### Scenario: A repository on neither host is told the source does not apply
+
+- **WHEN** the recipe is rendered for a repository whose `origin` is on neither GitHub nor GitLab, whatever tools are on `PATH`
+- **THEN** the review-comment source SHALL NOT be included
+- **AND** the stated reason SHALL be that there are no pull or merge requests to mine
+
+#### Scenario: Onboarding stays logged out
+
+- **WHEN** `onboard.md` is read
+- **THEN** it SHALL NOT direct the agent to `auth login`
+- **AND** SHALL direct runtime-shaped candidates to the report's `cloud` tier rather than to authoring
+
+#### Scenario: Onboarding completes without a confirmation question
+
+- **WHEN** the recipe `## Steps` section is read
+- **THEN** it SHALL direct the agent to run `taskless onboard --mark-complete` once the rules are written
+- **AND** SHALL NOT direct the agent to ask before doing so
+
+#### Scenario: Onboarding hands off to the report and sends feedback
+
+- **WHEN** the recipe `## Steps` section is read
+- **THEN** a step after mark-complete SHALL direct the agent to the `report` topic
+- **AND** SHALL direct it to follow the `rule-feedback` topic as the respondent
+
+#### Scenario: CI is offered last and strongly encouraged
+
+- **WHEN** the recipe's closing step is read
+- **THEN** it SHALL appear after the report summary is shown and be the last step
+- **AND** it SHALL direct the agent to offer wiring `check` into CI via the `ci` topic, naming the CI systems `detect --json` found
+- **AND** it SHALL direct the agent to strongly encourage a yes, stating that checks in CI keep agents from reintroducing what the rules catch
+
+#### Scenario: Declining CI points at hooks
+
+- **WHEN** the user declines the CI offer
+- **THEN** the recipe SHALL direct the agent to name the `hooks` topic in one line and stop
+
+#### Scenario: Recipe references its neighbors in See Also
+
+- **WHEN** the `## See Also` section is read
+- **THEN** it SHALL include references to `taskless agent route`, `taskless agent report`, `taskless agent rule-feedback`, `taskless agent ci`, and `taskless agent hooks`

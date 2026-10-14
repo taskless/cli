@@ -76,7 +76,7 @@ The consolidated skill body SHALL NOT contain step-by-step instructions for any 
 7. States that a recipe is resolved when it is fetched and is not reusable across tasks: the agent SHALL fetch the recipe at the start of every Taskless task, including a topic it already fetched earlier in the same session, and SHALL NOT act on an earlier copy. The `tskl` command body SHALL carry the same statement.
 8. Names the CLI through the `%(TASKLESS_CLI)s` placeholder everywhere it spells an invocation, never as the literal `npx @taskless/cli`. The install renders the placeholder to the build's invocation, so a nightly or path-form build serves a skill that names itself.
 
-The body SHALL be no more than 80 lines of markdown to keep the always-loaded surface small. (The previous 60-line cap is relaxed to accommodate the new quiet-suggestion section and the `onboard` row.)
+The body SHALL be no more than 150 lines of markdown. The cap guards against unbounded growth of a body loaded on every Taskless task; it SHALL NOT be met by compressing guidance the router needs. When the body needs more room to route correctly, the cap is raised instead. (Earlier caps of 60 and then 80 lines forced exactly that compression.)
 
 #### Scenario: Skill body warns against improvising
 
@@ -121,7 +121,7 @@ The body SHALL be no more than 80 lines of markdown to keep the always-loaded su
 #### Scenario: Skill body length cap
 
 - **WHEN** the skill body is measured
-- **THEN** it SHALL be no more than 80 lines of markdown
+- **THEN** it SHALL be no more than 150 lines of markdown
 
 ### Requirement: Skill maps to a single tskl command
 
@@ -168,3 +168,17 @@ defers all authoring judgment to the fetched recipes.
   locally
 - **THEN** the skill SHALL NOT direct the agent toward a login-gated authoring
   path
+
+### Requirement: Skill routes report requests to the report topic
+
+The skill body's topic table SHALL map a request to make, publish, regenerate, or delete a Taskless report to the `report` topic, invoked through the `%(TASKLESS_CLI)s` placeholder like every other row. The skill SHALL add no report steps of its own; the fetched recipe carries them.
+
+#### Scenario: A report request routes to the report topic
+
+- **WHEN** the skill body is read by an agent
+- **THEN** its topic table SHALL include a row mapping report requests to `%(TASKLESS_CLI)s agent report`
+
+#### Scenario: The skill carries no report steps
+
+- **WHEN** the skill body is read
+- **THEN** it SHALL NOT describe how to assemble, publish, or delete a report
