@@ -32,4 +32,4 @@ None.
 - `skills/taskless/SKILL.md`, `commands/tskl/tskl.md`: the preflight section. The skill body stays within its 150-line cap.
 - Tests for the topic output, the index row, telemetry, and the skill body.
 - A `patch` changeset (pre-1.0, additive).
-- Out of scope: writing harness permission settings from the installer. Whether a narrow `npx` allow rule survives Claude Code's auto mode is undocumented and is being tested by hand before anything depends on it.
+- Out of scope: writing harness permission settings from the installer. Whether a narrow `npx` allow rule survives Claude Code's auto mode is undocumented, and is a follow-up to test by hand before anything depends on it.
