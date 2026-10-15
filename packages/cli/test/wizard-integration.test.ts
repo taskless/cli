@@ -32,6 +32,9 @@ const clackResponses: {
 // Captures the message of the summary confirm prompt for assertions.
 let summaryConfirmMessage: string | undefined;
 
+// Everything the wizard showed through `log.message`, in order.
+const loggedMessages: string[] = [];
+
 vi.mock("@clack/prompts", () => ({
   intro: () => {},
   outro: () => {},
@@ -40,7 +43,9 @@ vi.mock("@clack/prompts", () => ({
   },
   log: {
     info: () => {},
-    message: () => {},
+    message: (message: string) => {
+      loggedMessages.push(message);
+    },
     error: () => {},
     warn: () => {},
   },
@@ -72,6 +77,7 @@ beforeEach(async () => {
   clackResponses.locations = undefined;
   clackResponses.summary = undefined;
   summaryConfirmMessage = undefined;
+  loggedMessages.length = 0;
   vi.stubEnv("TASKLESS_TOKEN", "stub-token");
 });
 
@@ -163,6 +169,40 @@ describe("runWizard end-to-end", () => {
     // on the event name across all calls so extra properties can't slip past.
     const events = captureSpy.mock.calls.map((call) => call[0] as string);
     expect(events).not.toContain("cli_installed");
+  });
+
+  it("shows the permission edit before writing, and asks", async () => {
+    clackResponses.locations = [".claude"];
+    clackResponses.summary = false;
+
+    const { runWizard } = await import("../src/wizard");
+    const result = await runWizard({ cwd });
+
+    // A fresh install removes nothing, so the confirm is there only because
+    // a settings file would be edited.
+    expect(summaryConfirmMessage).toBe(
+      "Write the agent permission rules above?"
+    );
+    const summary = loggedMessages.join("\n");
+    expect(summary).toContain(".claude/settings.json");
+    expect(summary).toMatch(/ALLOW: Bash\(npx @taskless\/cli@\S+ \*\)/);
+    expect(result.status).toBe("cancelled");
+    expect(await exists(join(cwd, ".claude", "settings.json"))).toBe(false);
+  });
+
+  it("writes the permission rule once confirmed", async () => {
+    clackResponses.locations = [".claude"];
+    clackResponses.summary = true;
+
+    const { runWizard } = await import("../src/wizard");
+    await runWizard({ cwd });
+
+    const settings = JSON.parse(
+      await readFile(join(cwd, ".claude", "settings.json"), "utf8")
+    ) as { permissions: { allow: string[] } };
+    expect(settings.permissions.allow).toEqual([
+      expect.stringMatching(/^Bash\(npx @taskless\/cli@\S+ \*\)$/),
+    ]);
   });
 
   it("cancelling the summary confirm writes nothing", async () => {

@@ -6,11 +6,16 @@ import chalk from "chalk";
 // whichever caller happened to load `wizard/intro.ts` first.
 import "../../util/color";
 
+import {
+  describePermissionEdits,
+  type PermissionEdit,
+} from "../../install/permissions";
 import type { InstallDiff } from "../../install/state";
 import { ask } from "../ask";
 
 export async function renderSummaryAndConfirm(
-  diff: InstallDiff
+  diff: InstallDiff,
+  permissions: readonly PermissionEdit[] = []
 ): Promise<boolean> {
   const lines: string[] = [];
 
@@ -46,10 +51,29 @@ export async function renderSummaryAndConfirm(
     lines.push("");
   }
 
+  if (permissions.length > 0) {
+    lines.push(
+      chalk.bold("Agent permissions"),
+      ...describePermissionEdits(permissions),
+      ""
+    );
+  }
+
   log.message(lines.join("\n") || "No changes.");
 
-  if (!diff.hasRemovals) {
+  // A settings file is the user's, so an edit to one is confirmed even when
+  // nothing is being removed.
+  const editsSettings = permissions.some((edit) => edit.skipped === null);
+  if (!diff.hasRemovals && !editsSettings) {
     return true;
+  }
+  if (!diff.hasRemovals) {
+    return ask("summary", () =>
+      confirm({
+        message: "Write the agent permission rules above?",
+        initialValue: true,
+      })
+    );
   }
 
   return ask("summary", () =>

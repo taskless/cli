@@ -99,6 +99,9 @@ importers:
       jose:
         specifier: ^6.2.2
         version: 6.2.2
+      jsonc-parser:
+        specifier: ^3.3.1
+        version: 3.3.1
       openapi-fetch:
         specifier: ^0.17.0
         version: 0.17.0
