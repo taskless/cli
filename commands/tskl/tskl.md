@@ -19,6 +19,15 @@ with Taskless before proceeding.
 
 Otherwise, follow the same flow as the `taskless` skill:
 
+0. Preflight, once per session, before any other Taskless command: run
+   `%(TASKLESS_CLI)s agent ok` and proceed once it prints its confirmation
+   line. If the harness or the user blocks it, or blocks any later Taskless
+   command, stop and do not try to get around the block. Tell the user the
+   exact command and that it downloads and runs a package from npm, then
+   offer: they approve that exact command in their reply, they run it
+   themselves as `! <exact command>`, or you add an allow rule for exactly
+   the invocation `%(TASKLESS_CLI)s`. Never propose a rule wider than that
+   invocation, such as a wildcard over the package name or its version.
 1. Identify the topic from `$ARGUMENTS` using the table below.
 2. Fetch the canonical recipe with `%(TASKLESS_CLI)s agent <topic>` (or
    `%(TASKLESS_CLI)s agent <topic> --anonymous` if the user is offline or

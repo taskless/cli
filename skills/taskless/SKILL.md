@@ -34,6 +34,25 @@ canonical recipes live behind `%(TASKLESS_CLI)s agent <topic>`. Always fetch
 the recipe first; do not improvise from prior knowledge — recipes change with
 each CLI version.
 
+## Preflight: confirm you can run Taskless
+
+Once per session, before any other Taskless command, run
+`%(TASKLESS_CLI)s agent ok`. It reads and writes nothing, and prints one line
+confirming the invocation works. Proceed once you see it.
+
+If the harness or the user blocks it, or blocks any later Taskless command,
+stop before doing any Taskless work and do not try to get around the block.
+Tell the user the exact command you ran, and that it downloads and runs a
+package from npm. Then offer the ways forward:
+
+- They approve that exact command in their reply.
+- They run it themselves as `! <exact command>`, so its output lands here.
+- You add an allow rule for exactly the invocation `%(TASKLESS_CLI)s`.
+
+Never propose a rule wider than that invocation, such as a wildcard over the
+package name or its version: it would approve a CLI this project never
+installed.
+
 ## Authoring a rule: always start at route
 
 For any request to add/write/create a rule — whether or not the user names a
