@@ -1,4 +1,4 @@
-# Topic: init     (CLI v%(CLI_VERSION)s / topic v8)
+# Topic: init     (CLI v%(CLI_VERSION)s / topic v9)
 
 ## Goal
 Install or update the Taskless skill in this project, and migrate the
@@ -133,7 +133,8 @@ first step, not the whole job.
 ## For a person at a terminal
 
 `%(TASKLESS_CLI)s` with no subcommand launches an interactive wizard. It
-detects the installed tools (Claude Code, OpenCode, Cursor, Codex), asks
+detects the installed tools (Claude Code, OpenCode, Cursor, and the
+`.agents` harnesses Codex, Gemini CLI, and Crush), asks
 which to enable, offers a login (skippable), shows a diff against the
 previous install, then writes the canonical `taskless` skill once to
 `.taskless/` and a thin stub into each selected tool directory. Stale

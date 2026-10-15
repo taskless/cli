@@ -38,37 +38,61 @@ describe("locationChoices", () => {
   it("offers every shim target and never the canonical .taskless store", async () => {
     const { locationChoices } = await import("../src/wizard/steps/locations");
     const values = locationChoices([]).options.map((o) => o.value);
-    expect(values).toEqual([
-      ".claude",
-      ".agents",
-      ".cursor",
-      ".opencode",
-      ".agents",
-    ]);
+    expect(values).toEqual([".claude", ".cursor", ".opencode", ".agents"]);
     expect(values).not.toContain(".taskless");
   });
 
-  it("names Codex in the picker, alongside the generic .agents/ entry", async () => {
+  it("names the detected .agents harnesses on the .agents/ row", async () => {
     const { locationChoices } = await import("../src/wizard/steps/locations");
-    const labels = locationChoices([]).options.map((o) => o.label);
-    // Both rows are offered on purpose: a Codex user scans for "Codex", and
-    // "Agent Skills" still serves harnesses the catalog does not enumerate.
-    expect(labels).toContain("Codex (.agents/)");
-    expect(labels).toContain("Agent Skills (.agents/)");
+    const { TOOLS } = await import("../src/install/install");
+    const named = (names: string[]) =>
+      locationChoices(TOOLS.filter((t) => names.includes(t.name))).options.find(
+        (o) => o.value === ".agents"
+      )?.label;
+
+    // Catalog order, whatever order they were detected in.
+    expect(named(["Codex", "OpenCode"])).toBe(
+      "OpenCode, Codex, and other .agents harnesses (.agents/)"
+    );
+    expect(named(["Crush"])).toBe(
+      "Crush, and other .agents harnesses (.agents/)"
+    );
   });
 
-  it("puts the generic hint on the catch-all row, not on Codex", async () => {
-    const { locationChoices } = await import("../src/wizard/steps/locations");
-    const byLabel = new Map(
-      locationChoices([]).options.map((o) => [o.label, o.hint])
+  // On a fresh machine nothing is detected, and a Codex user scanning for
+  // "Codex" still has to find it.
+  it("names every known .agents harness when none is detected", async () => {
+    const { agentsRowLabel } = await import("../src/wizard/steps/locations");
+    expect(agentsRowLabel([])).toBe(
+      "OpenCode, Codex, Gemini CLI, Crush, and other .agents harnesses"
     );
-    // Both rows write `.agents/`, so nothing about the DIRECTORY separates
-    // them. The hint has to follow the row's own `generic` flag. Deriving it
-    // from catalog order or from object identity against the deduped catalog
-    // put it on whichever row happened to win, which is Codex the moment the
-    // two rows are reordered.
-    expect(byLabel.get("Agent Skills (.agents/)")).toBe("generic agent skills");
-    expect(byLabel.get("Codex (.agents/)")).toBe("not detected");
+  });
+
+  // OpenCode reads `.agents/skills`, so it is named, but it already gets
+  // `.opencode/`; pre-checking both would give it the skill twice.
+  it("names OpenCode on the .agents/ row without pre-checking it", async () => {
+    const { locationChoices } = await import("../src/wizard/steps/locations");
+    const { TOOLS } = await import("../src/install/install");
+    const opencode = TOOLS.find((t) => t.name === "OpenCode")!;
+
+    const { options, initialValues } = locationChoices([opencode]);
+    const agents = options.find((o) => o.value === ".agents");
+    expect(agents?.label).toMatch(/^OpenCode, and other/);
+    expect(agents?.hint).toBe("not detected");
+    expect(initialValues).toEqual([".opencode"]);
+  });
+
+  it("pre-checks .agents/ for Gemini CLI and Crush", async () => {
+    const { locationChoices } = await import("../src/wizard/steps/locations");
+    const { TOOLS } = await import("../src/install/install");
+    for (const name of ["Gemini CLI", "Crush"]) {
+      const tool = TOOLS.find((t) => t.name === name)!;
+      const { options, initialValues } = locationChoices([tool]);
+      expect(initialValues, name).toEqual([".agents"]);
+      expect(options.find((o) => o.value === ".agents")?.hint, name).toBe(
+        "detected"
+      );
+    }
   });
 
   it("pre-checks .agents/ when no tools are detected", async () => {
@@ -134,12 +158,7 @@ describe("locationChoices", () => {
     // and the first-run .agents/ default applies.
     expect(initialValues).toEqual([".agents"]);
     expect(options.map((o) => o.value)).not.toContain(".taskless");
-    // Two rows share `.agents/`, so the hint is looked up by label: the
-    // generic hint belongs to the generic row, not to the Codex one.
-    expect(options.find((o) => o.label.startsWith("Agent Skills"))?.hint).toBe(
-      "generic agent skills"
-    );
-    expect(options.find((o) => o.label.startsWith("Codex"))?.hint).toBe(
+    expect(options.find((o) => o.value === ".agents")?.hint).toBe(
       "not detected"
     );
   });
@@ -149,8 +168,6 @@ describe("locationChoices", () => {
     const { TOOLS } = await import("../src/install/install");
     const codex = TOOLS.find((t) => t.name === "Codex")!;
 
-    // Codex and Agent Skills both offer `.agents/`; the pre-checked set is
-    // directories, so it must name that directory once.
     const { initialValues } = locationChoices([codex]);
     expect(initialValues).toEqual([".agents"]);
   });
