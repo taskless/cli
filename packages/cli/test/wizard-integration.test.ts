@@ -415,9 +415,9 @@ describe("the wizard's stale-pin notice", () => {
       const { runWizard } = await import("../src/wizard");
       await runWizard({ cwd });
       const printed = logSpy.mock.calls.map((call) => String(call[0]));
-      expect(printed.some((line) => line.includes("package.json pins"))).toBe(
-        false
-      );
+      expect(
+        printed.some((line) => line.includes("pins a Taskless CLI older"))
+      ).toBe(false);
     } finally {
       logSpy.mockRestore();
     }
