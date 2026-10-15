@@ -9,11 +9,16 @@ note: |
 
   See .conventions/posthog.md — Privacy.
 rule:
-  kind: pair
-  has:
-    field: key
-    kind: property_identifier
-    regex: '^(email|userEmail|displayName|fullName|firstName|lastName|username)$'
+  any:
+    - kind: pair
+      has:
+        field: key
+        kind: property_identifier
+        regex: '^(email|userEmail|displayName|fullName|firstName|lastName|username)$'
+    # Shorthand (`{ email }`) is its own node kind, not a `pair`. The telemetry
+    # call sites write most properties this way (`scaffoldVersion, ghOwner,`).
+    - kind: shorthand_property_identifier
+      regex: '^(email|userEmail|displayName|fullName|firstName|lastName|username)$'
   inside:
     stopBy: end
     any:
