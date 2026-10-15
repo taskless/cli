@@ -127,23 +127,26 @@ describe("detectSelectedDirectories", () => {
     expect(await detectSelectedDirectories(cwd)).toEqual([".agents"]);
   });
 
-  it("returns .agents once even though two catalog rows offer it", async () => {
-    // Codex and Agent Skills are separate rows in the picker pointing at the
-    // same directory. A duplicate here would flow into the install plan.
-    await mkdir(join(cwd, ".codex"), { recursive: true });
-    await mkdir(join(cwd, ".claude"), { recursive: true });
-    const directories = await detectSelectedDirectories(cwd);
-    expect(directories).toEqual([".claude", ".agents"]);
-    expect(new Set(directories).size).toBe(directories.length);
+  it.each([
+    ["Gemini CLI", ".gemini"],
+    ["Crush", ".crush"],
+  ])("maps %s detection to .agents", async (_name, directory) => {
+    await mkdir(join(cwd, directory), { recursive: true });
+    expect(await detectSelectedDirectories(cwd)).toEqual([".agents"]);
   });
 
-  it("keeps .agents last, after a tool declared later in the catalog", async () => {
-    // The discriminating case for dedupe ORDER, which the test above cannot
-    // see: `.claude` sorts first either way. `.cursor` is declared after the
-    // `Codex` row and before the `Agent Skills` row, so it lands between them
-    // only if the LAST row for a directory wins its position. Deduping with a
-    // bare `Map.set` keeps the FIRST occurrence's slot, which would put
-    // `.agents` second and report `[".agents", ".cursor"]`.
+  it("returns .agents once when several .agents harnesses are detected", async () => {
+    // Codex, Gemini CLI, and Crush all install into `.agents/`.
+    for (const directory of [".codex", ".gemini", ".crush", ".claude"]) {
+      await mkdir(join(cwd, directory), { recursive: true });
+    }
+    expect(await detectSelectedDirectories(cwd)).toEqual([
+      ".claude",
+      ".agents",
+    ]);
+  });
+
+  it("returns directories in catalog order", async () => {
     await mkdir(join(cwd, ".codex"), { recursive: true });
     await mkdir(join(cwd, ".cursor"), { recursive: true });
     expect(await detectSelectedDirectories(cwd)).toEqual([
@@ -153,13 +156,11 @@ describe("detectSelectedDirectories", () => {
   });
 });
 
-describe("buildInstallPlan and duplicate shim rows", () => {
+describe("buildInstallPlan with a repeated directory", () => {
   it("plans .agents exactly once when it is selected", () => {
     const plan = buildInstallPlan([".agents"], getEmbeddedSkills());
     const agentsTargets = plan.targets.filter((t) => t.dir === ".agents");
     expect(agentsTargets).toHaveLength(1);
-    // The generic row supplies the shared directory's label: the selection
-    // carries a directory, never which of the two rows the user ticked.
     expect(agentsTargets[0]!.label).toBe("Agent Skills");
   });
 
@@ -172,10 +173,7 @@ describe("buildInstallPlan and duplicate shim rows", () => {
     expect(plan.targets.filter((t) => t.dir === ".claude")).toHaveLength(1);
   });
 
-  it("writes .agents skill stubs once for a both-rows selection", async () => {
-    // What a user who ticks both `Codex` and `Agent Skills` gets: the
-    // multiselect collapses them onto one `.agents` value, and the plan must
-    // not turn that back into two targets writing the same files twice.
+  it("writes .agents skill stubs once", async () => {
     const plan = buildInstallPlan([".agents"], getEmbeddedSkills());
     const result = await applyInstallPlan(cwd, plan, { cliVersion: "0.7.0" });
 

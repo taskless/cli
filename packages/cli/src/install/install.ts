@@ -56,6 +56,12 @@ export interface ToolDescriptor {
   name: string;
   detect: DetectionSignal[];
   installDir: string;
+  /**
+   * Whether the harness reads skills from `.agents/skills`, per its own docs.
+   * The wizard names every detected one on the `.agents/` row, including one
+   * like OpenCode that also has a directory of its own.
+   */
+  readsAgentSkills?: boolean;
 }
 
 export interface EmbeddedSkill {
@@ -97,6 +103,8 @@ export const TOOLS: ToolDescriptor[] = [
       { type: "file", path: "opencode.json" },
     ],
     installDir: ".opencode",
+    // opencode.ai/docs/skills: "Project agent-compatible: `.agents/skills`".
+    readsAgentSkills: true,
   },
   {
     name: "Cursor",
@@ -113,93 +121,68 @@ export const TOOLS: ToolDescriptor[] = [
       { type: "file", path: ".codex/config.toml" },
     ],
     installDir: ".agents",
+    readsAgentSkills: true,
+  },
+  {
+    // gemini-cli docs/cli/skills.md: workspace skills live in `.gemini/skills/`
+    // "or the `.agents/skills/` alias", which takes precedence.
+    name: "Gemini CLI",
+    detect: [
+      { type: "directory", path: ".gemini" },
+      { type: "file", path: "GEMINI.md" },
+    ],
+    installDir: ".agents",
+    readsAgentSkills: true,
+  },
+  {
+    // charmbracelet/crush README: project skills include `.agents/skills`.
+    name: "Crush",
+    detect: [
+      { type: "directory", path: ".crush" },
+      { type: "file", path: ".crushrc" },
+      { type: "file", path: "crushrc" },
+      { type: "file", path: "crush.json" },
+      { type: "file", path: ".crush.json" },
+    ],
+    installDir: ".agents",
+    readsAgentSkills: true,
   },
 ];
 
 /**
  * A selectable stub destination. The wizard offers this fixed catalog as the
- * "which tools do you want to enable Taskless for?" multiselect; every entry
- * is a peer, no directory is special-cased or routed onto another.
- *
- * The catalog is a list of *rows the user reads*, not a list of directories:
- * more than one row may name the same `dir`. Anything downstream of the
- * picker works in directories and must therefore collapse the rows first,
- * which is what {@link uniqueShimTargets} is for.
+ * "which tools do you want to enable Taskless for?" multiselect, one row per
+ * directory; every entry is a peer, no directory is special-cased or routed
+ * onto another.
  */
 export interface ShimTarget {
   /** Directory the stub is written into, relative to the project root. */
   dir: string;
-  /** Human-readable label for prompts and summaries. */
+  /** Human-readable label for summaries; the picker may name more. */
   label: string;
   /**
-   * Marks the catch-all row: the one offered to anyone whose harness this
-   * catalog does not name. At most one row carries it.
-   *
-   * It is a declared field rather than something derived, because every way
-   * of inferring it is a coincidence. "The last row for the directory" is
-   * declaration order, and "the object `uniqueShimTargets` happened to keep"
-   * is reference identity, so reordering the catalog or making the dedupe
-   * return copies would silently move the hint to a named harness with no
-   * type error anywhere.
+   * Marks the catch-all row: the one serving every harness that reads
+   * `.agents/skills`, named and unnamed. At most one row carries it, and the
+   * picker labels it with the detected harnesses that read it.
    */
   generic?: boolean;
 }
 
 /**
- * Codex and Agent Skills deliberately share `.agents/`. Both rows stay.
- * People scan this list for the name of the tool they use, and a Codex user
- * who sees only "Agent Skills" concludes Taskless does not support their
- * harness, which is how we lost one. "Agent Skills" still serves anyone on a
- * harness this catalog does not enumerate. Do not merge the two rows into one
- * label: the duplicate directory is the point, not an oversight.
+ * One row per directory. `.agents/` used to have two rows, `Codex` and
+ * `Agent Skills`, because a Codex user who saw only "Agent Skills" concluded
+ * Taskless did not support their harness. The picker now labels the one
+ * `.agents/` row with the harnesses it detects that read `.agents/skills`
+ * (`OpenCode, Codex, and other .agents harnesses`), which names Codex when it
+ * is present and names Gemini CLI and Crush too, without a duplicate row per
+ * harness. See `agentsRowLabel` in `wizard/steps/locations.ts`.
  */
 export const SHIM_TARGETS: readonly ShimTarget[] = [
   { dir: ".claude", label: "Claude Code" },
-  { dir: ".agents", label: "Codex" },
   { dir: ".cursor", label: "Cursor" },
   { dir: ".opencode", label: "OpenCode" },
   { dir: ".agents", label: "Agent Skills", generic: true },
 ];
-
-/**
- * The catalog collapsed to one entry per directory, in catalog order.
- *
- * Every consumer that turns rows into directories or into install targets
- * goes through here. Without it, a single `.agents/` selection matches both
- * `.agents/` rows and the plan writes, reports, and records that directory
- * twice. Deduping on `dir` (rather than special-casing Codex) keeps that
- * one-entry-per-directory invariant true for any future pair of rows sharing
- * a destination.
- *
- * What it does NOT do is reconcile the rows: the surviving entry is one whole
- * row, so EVERY field comes from the last row for that directory, not just
- * `label`. Today the rows carry nothing else, so nothing is silently chosen.
- * A future field the pair disagreed on would be resolved by catalog order
- * rather than by anyone deciding, which is a reason to keep rows sharing a
- * directory identical apart from `label` and `generic`.
- *
- * The LAST row for a directory wins both its position and its value. The
- * catalog is ordered named-harness first, generic-fallback last, so `.agents/`
- * is summarised as "Agent Skills" and sorts last: the selection carries only a
- * directory, never which row was ticked, and the generic label is the one that
- * is accurate either way.
- *
- * The `delete` before the `set` is what buys the position half. `Map.set`
- * alone overwrites the value but keeps the FIRST insertion's position, which
- * would leave `.agents/` holding the `Codex` row's slot (second) while
- * displaying the `Agent Skills` label. That reorders writes and summary lines
- * in every multi-tool install, for a change that is only supposed to add a
- * label, and it quietly contradicts the generic-fallback-last ordering this
- * comment relies on.
- */
-export function uniqueShimTargets(): ShimTarget[] {
-  const byDirectory = new Map<string, ShimTarget>();
-  for (const shim of SHIM_TARGETS) {
-    byDirectory.delete(shim.dir);
-    byDirectory.set(shim.dir, shim);
-  }
-  return [...byDirectory.values()];
-}
 
 /** Directory selected by default when no tools are detected. */
 export const DEFAULT_SHIM_DIR = ".agents";
@@ -243,9 +226,7 @@ export async function detectSelectedDirectories(
   const tools = await detectTools(cwd);
   if (tools.length === 0) return [DEFAULT_SHIM_DIR];
   const directories = new Set(tools.map((t) => t.installDir));
-  return uniqueShimTargets()
-    .map((s) => s.dir)
-    .filter((d) => directories.has(d));
+  return SHIM_TARGETS.map((s) => s.dir).filter((d) => directories.has(d));
 }
 
 // --- Embedded Skills ---
@@ -340,10 +321,7 @@ export function buildInstallPlan(
     });
   }
 
-  // Iterate the deduplicated catalog: two rows share `.agents/`, and matching
-  // both would plan that directory twice, so it would be written twice and
-  // reported twice in the install summary.
-  for (const shim of uniqueShimTargets()) {
+  for (const shim of SHIM_TARGETS) {
     if (!selectedDirectories.includes(shim.dir)) continue;
     targets.push({
       dir: shim.dir,

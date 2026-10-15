@@ -371,30 +371,41 @@ The wizard SHALL begin by rendering an ASCII rendition of the Taskless wordmark 
 
 ### Requirement: Wizard prompts the user to choose install locations
 
-The wizard's location step SHALL be presented as a tool-selection step: "which tools do you want to enable Taskless for?". It SHALL offer a fixed catalog of rows: `Claude Code` (`.claude/`), `Codex` (`.agents/`), `Cursor` (`.cursor/`), `OpenCode` (`.opencode/`), and `Agent Skills` (`.agents/`). A row names a tool the user scans for, so more than one row MAY offer the same directory: Codex reads `.agents/`, and a user who arrived from Codex SHALL NOT have to know that before recognising their harness in the list. The generic `Agent Skills` row SHALL remain, since it serves harnesses this catalog does not enumerate.
+The wizard's location step SHALL be presented as a tool-selection step: "which tools do you want to enable Taskless for?". It SHALL offer one row per directory: `Claude Code` (`.claude/`), `Cursor` (`.cursor/`), `OpenCode` (`.opencode/`), and a row for `.agents/`. A user who arrived from a harness that reads `.agents/` SHALL NOT have to know that before recognising their harness in the list, so the `.agents/` row SHALL be labelled with harness names: the detected harnesses whose own documentation says they read `.agents/skills` (OpenCode, Codex, Gemini CLI, Crush), in catalog order, followed by `and other .agents harnesses`, for example `OpenCode, Codex, and other .agents harnesses (.agents/)`. When none of them is detected, the row SHALL name all of them, so a harness is still recognisable on a machine where nothing is detected.
 
-Every list of directories derived from the catalog SHALL name each directory at most once, however many rows offer it. The pre-checked set SHALL be the union of (a) every directory recorded as a target in the install manifest (`install.targets`) that matches an offered row, and (b) every detected tool's install directory, deduplicated by directory. When the manifest records no targets AND no tools are detected, `.agents/` SHALL be pre-checked as the first-run default. The canonical `.taskless/` store SHALL NOT appear as a selectable entry and SHALL NOT be pre-checked — it is always written and is never a manifest tool-directory target.
+Every list of directories derived from the catalog SHALL name each directory at most once, however many detected tools install into it. The pre-checked set SHALL be the union of (a) every directory recorded as a target in the install manifest (`install.targets`) that matches an offered row, and (b) every detected tool's install directory, deduplicated by directory. When the manifest records no targets AND no tools are detected, `.agents/` SHALL be pre-checked as the first-run default. The canonical `.taskless/` store SHALL NOT appear as a selectable entry and SHALL NOT be pre-checked — it is always written and is never a manifest tool-directory target.
 
-Each offered entry SHALL carry an origin hint: `installed` when the entry's directory is recorded in the install manifest; otherwise `detected` when the entry's tool is detected on the filesystem; otherwise `not detected`. The generic `Agent Skills` row MAY instead carry a hint describing it as the generic agent-skills location; a row naming a specific harness SHALL NOT carry that hint. The `installed` hint SHALL take precedence over `detected` when both apply.
+Each offered entry SHALL carry an origin hint: `installed` when the entry's directory is recorded in the install manifest; otherwise `detected` when a detected tool installs into the entry's directory; otherwise `not detected`. A harness named on the `.agents/` row only because it reads `.agents/skills`, such as OpenCode, whose own directory is `.opencode/`, SHALL NOT make that row `detected` or pre-check it, since installing into both directories would give that harness the skill twice. The `installed` hint SHALL take precedence over `detected` when both apply.
 
 Unchecking a pre-checked, manifest-recorded entry SHALL cause the resulting install plan to omit that target, so the existing manifest-diff removal path removes Taskless's reference stubs from that directory. The at-least-one-tool selection rule is unchanged: the wizard SHALL require at least one checked entry.
 
-Each selected directory SHALL produce exactly one `reference` stub target, even when several offered rows name it; the resulting install plan always contains the single `taskless` skill and no command. A directory offered by more than one row SHALL be reported in the install summary under a single label. The function that maps detected tools and manifest targets to multiselect choices SHALL be pure — it SHALL receive both the detected tools and the manifest target list as arguments and SHALL perform no filesystem access — so the mapping is unit-testable.
+Each selected directory SHALL produce exactly one `reference` stub target; the resulting install plan always contains the single `taskless` skill and no command. The `.agents/` target SHALL be reported in the install summary as `Agent Skills`. The function that maps detected tools and manifest targets to multiselect choices SHALL be pure — it SHALL receive both the detected tools and the manifest target list as arguments and SHALL perform no filesystem access — so the mapping is unit-testable.
 
 #### Scenario: Codex is named in the tool list
 
-- **WHEN** the wizard renders the tool-selection multiselect
-- **THEN** a `Codex` entry SHALL be offered for `.agents/`
-- **AND** a separate generic `Agent Skills` entry SHALL also be offered for `.agents/`
+- **WHEN** the wizard renders the tool-selection multiselect with Codex detected, or with no `.agents` harness detected
+- **THEN** the `.agents/` row's label SHALL name `Codex`
+- **AND** exactly one entry SHALL be offered for `.agents/`
+
+#### Scenario: Detected .agents harnesses are named in catalog order
+
+- **WHEN** Codex and OpenCode are detected
+- **THEN** the `.agents/` row SHALL be labelled `OpenCode, Codex, and other .agents harnesses (.agents/)`
+
+#### Scenario: OpenCode is named without pre-checking .agents
+
+- **WHEN** OpenCode is the only detected tool
+- **THEN** the `.agents/` row's label SHALL name OpenCode
+- **AND** `.agents/` SHALL NOT be pre-checked and SHALL carry the `not detected` hint
 
 #### Scenario: A directory offered by two rows is pre-checked once
 
-- **WHEN** the wizard reaches the tool-selection step and Codex is detected
+- **WHEN** the wizard reaches the tool-selection step and Codex, Gemini CLI, and Crush are all detected
 - **THEN** `.agents/` SHALL appear exactly once in the pre-checked set
 
 #### Scenario: A directory offered by two rows installs once
 
-- **WHEN** the user's selection includes `.agents/`, whichever of its rows was checked
+- **WHEN** the user's selection includes `.agents/`
 - **THEN** the install plan SHALL contain exactly one `.agents/` target
 - **AND** the `.agents/` skill stub SHALL be written once
 
@@ -1051,3 +1062,21 @@ The manifest SHALL record, under `install.permissions`, each file Taskless wrote
 
 - **WHEN** `.claude/settings.json` also holds `Bash(npx @taskless/cli@0.12.0 *)`, which the manifest does not record
 - **THEN** an upgrade SHALL leave that entry in place
+
+### Requirement: Gemini CLI and Crush detection signals
+
+Gemini CLI and Crush SHALL be detected as harnesses that read `.agents/skills`, from their own documentation: Gemini CLI reads workspace skills from `.gemini/skills/` "or the `.agents/skills/` alias", and Crush lists `.agents/skills` among its project skill directories. Each SHALL install into `.agents/`.
+
+Gemini CLI SHALL be detected when a `.gemini/` directory or a `GEMINI.md` file exists in the project root. Crush SHALL be detected when a `.crush/` directory, or a `.crushrc`, `crushrc`, `crush.json`, or `.crush.json` file, exists in the project root.
+
+#### Scenario: Gemini CLI detected by its directory
+
+- **WHEN** `.gemini/` exists in the project root
+- **THEN** Gemini CLI SHALL be detected
+- **AND** skills SHALL be installed to `.agents/skills/`
+
+#### Scenario: Crush detected by its directory
+
+- **WHEN** `.crush/` exists in the project root
+- **THEN** Crush SHALL be detected
+- **AND** skills SHALL be installed to `.agents/skills/`

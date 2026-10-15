@@ -4,8 +4,8 @@ import {
   CANONICAL_DIR,
   DEFAULT_SHIM_DIR,
   SHIM_TARGETS,
+  TOOLS,
   detectTools,
-  uniqueShimTargets,
   type ToolDescriptor,
 } from "../../install/install";
 import { readInstallState } from "../../install/state";
@@ -19,22 +19,39 @@ export interface LocationChoice {
 }
 
 /**
+ * The `.agents/` row's label: the detected harnesses that read
+ * `.agents/skills`, in catalog order, then "and other .agents harnesses",
+ * since many more read it than Taskless detects.
+ *
+ * With none detected it names every harness Taskless knows reads it, so a
+ * Codex or Gemini CLI user still finds their harness on a fresh machine.
+ */
+export function agentsRowLabel(detected: readonly ToolDescriptor[]): string {
+  const detectedNames = new Set(detected.map((tool) => tool.name));
+  const readers = TOOLS.filter((tool) => tool.readsAgentSkills === true);
+  const named = readers.filter((tool) => detectedNames.has(tool.name));
+  const names = (named.length > 0 ? named : readers).map((tool) => tool.name);
+  return `${names.join(", ")}, and other .agents harnesses`;
+}
+
+/**
  * Build the tool-selection multiselect options and the pre-checked set from
  * the detected tools and the install manifest's recorded targets. Pure — no
  * prompt, no TTY, no filesystem access — so the mapping is unit-testable.
  *
- * Every shim target row is always offered (a peer list); the canonical
- * `.taskless/` store is never an entry. Rows may share a directory (Codex and
- * Agent Skills both write `.agents/`), so options are one per row while the
- * pre-checked set is one per directory. The pre-checked set is the union of
- * manifest-recorded shim directories and detected tools' directories, so a
- * location Taskless already installed into shows checked and can be
- * unchecked. `.agents/` is pre-checked as the default only when nothing is
- * recorded and nothing is detected.
+ * One row per catalog directory; the canonical `.taskless/` store is never an
+ * entry. The pre-checked set is the union of manifest-recorded shim
+ * directories and detected tools' directories, so a location Taskless already
+ * installed into shows checked and can be unchecked. `.agents/` is
+ * pre-checked as the default only when nothing is recorded and nothing is
+ * detected.
  *
  * Each entry's hint reflects its origin: `installed` when recorded in the
- * manifest (takes precedence), otherwise `detected` when the tool is present,
- * otherwise `not detected` (the `.agents/` default keeps a descriptive hint).
+ * manifest (takes precedence), otherwise `detected` when a tool installing
+ * into that directory is present, otherwise `not detected`. OpenCode is named
+ * on the `.agents/` row when detected, since it reads `.agents/skills`, but it
+ * does not make that row `detected` or pre-check it: it already gets
+ * `.opencode/`, and both would give it the skill twice.
  *
  * @param manifestDirectories Shim directories recorded in the install
  *   manifest; the canonical `.taskless/` directory is ignored if present.
@@ -51,39 +68,20 @@ export function locationChoices(
     manifestDirectories.filter((d) => d !== CANONICAL_DIR)
   );
 
-  // Pre-checked entries are directories, not rows, so they come from the
-  // deduplicated catalog. Codex and Agent Skills both offer `.agents/`, and a
-  // pre-check list naming it twice would hand the multiselect a duplicate
-  // initial value and carry the duplicate into the install plan.
-  const preChecked = uniqueShimTargets()
-    .map((s) => s.dir)
-    .filter(
-      (directory) =>
-        installedDirectories.has(directory) ||
-        detectedDirectories.has(directory)
-    );
+  const preChecked = SHIM_TARGETS.map((shim) => shim.dir).filter(
+    (directory) =>
+      installedDirectories.has(directory) || detectedDirectories.has(directory)
+  );
   const initialValues = preChecked.length > 0 ? preChecked : [DEFAULT_SHIM_DIR];
 
-  // Options, by contrast, are one per row: the whole point of a second
-  // `.agents/` row is that a Codex user sees the word "Codex". Rows sharing a
-  // directory share a value, so ticking either one selects that directory
-  // once, and the picker renders both as checked.
-  //
-  // The catch-all row is identified by its own `generic` flag rather than by
-  // object identity against the deduped catalog. That comparison was correct
-  // only while `uniqueShimTargets()` returned the original references AND the
-  // catalog happened to declare "Agent Skills" after "Codex"; either changing
-  // would have moved the hint onto a named harness with nothing to catch it.
   const options = SHIM_TARGETS.map((shim) => ({
     value: shim.dir,
-    label: `${shim.label} (${shim.dir}/)`,
+    label: `${shim.generic === true ? agentsRowLabel(detected) : shim.label} (${shim.dir}/)`,
     hint: installedDirectories.has(shim.dir)
       ? "installed"
       : detectedDirectories.has(shim.dir)
         ? "detected"
-        : shim.generic === true
-          ? "generic agent skills"
-          : "not detected",
+        : "not detected",
   }));
 
   return { options, initialValues };
