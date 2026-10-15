@@ -4,8 +4,8 @@
 
 Every authoring recipe in which the agent writes or extends fixtures SHALL instruct the agent to:
 
-1. Take fixtures from real code in the repository, trimmed down to the case, before inventing any. An invented fixture is allowed only when the repository has no instance of the case, and the agent's report SHALL say which fixtures were invented.
-2. Read the repository's detected linters before writing fixtures. The agent reuses `detect --json` output already in hand, or runs it otherwise. It writes `pass`/`valid` fixtures that those linters, as configured, would accept.
+1. Take fixtures from real code in the repository, trimmed down to the case, before inventing any. Where the repository has no instance of a case, take the nearest real code and change only the construct the rule flags, borrowing names and values from elsewhere in the repository where needed. A fixture invented outright is allowed only when nothing nearby exists, and the agent's report SHALL say which fixtures were invented.
+2. Read the repository's detected linters before writing fixtures. The agent reuses `detect --json` output already in hand, or runs it otherwise. It writes fixtures in both buckets that those linters, as configured, would accept as source, including where their configuration ignores the rules directory. The agent reads the linters' configuration and SHALL NOT be directed to run a linter or formatter on a fixture.
 3. Keep every fixture, in both buckets, in the repository's idiom everywhere except the construct the rule checks. A fixture SHALL NOT use placeholder types, catch-all types, or nesting that the repository's own conventions would reject.
 
 A recipe through which the agent submits cases to the generator, instead of writing fixtures itself, SHALL apply the same three instructions to the cases and references it submits.
@@ -19,16 +19,27 @@ Enforcing this is the recipe's job. `verify` SHALL NOT lint fixtures and SHALL N
 - **WHEN** an agent follows an authoring recipe and the repository contains code exhibiting the case
 - **THEN** the recipe SHALL direct the agent to take that fixture from the repository rather than inventing one
 
+#### Scenario: A case with no real instance is adapted from nearby code
+
+- **WHEN** the repository contains no instance of a failing case, as is usual for a rule that forbids something
+- **THEN** the recipe SHALL direct the agent to take the nearest real code and change only the construct the rule flags
+
 #### Scenario: Invented fixtures are disclosed
 
 - **WHEN** the repository has no instance of a case and the agent invents a fixture for it
 - **THEN** the recipe SHALL direct the agent to name the invented fixtures in its report
 
-#### Scenario: Detected linters shape the passing bucket
+#### Scenario: Detected linters shape every case
 
 - **WHEN** `detect --json` reports one or more linters
 - **THEN** the recipe SHALL direct the agent to read each one's configuration before writing fixtures
-- **AND** to write `pass`/`valid` fixtures those linters would accept
+- **AND** to write fixtures in both buckets that those linters would accept
+
+#### Scenario: Linters are read, not run, against fixtures
+
+- **WHEN** the recipe directs the agent to respect the repository's linters
+- **THEN** it SHALL direct the agent to read their configuration
+- **AND** SHALL direct the agent not to run a linter or formatter on a fixture
 
 #### Scenario: Detection is not repeated when routing already ran it
 

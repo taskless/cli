@@ -33,17 +33,26 @@ The passage is a new `buildVariables` entry, rendered with `indentBlock` like `N
 - Alternative: copy the paragraph into four recipes. Rejected. Four copies pass the three-copy threshold for factoring out, and the copies would drift the first time one recipe's fixture step is revised.
 - Alternative: a separate `agent fixtures` topic that each recipe tells the agent to fetch. Rejected. It costs an extra fetch at exactly the step where an agent is most likely to skip it, and the guidance is short enough to carry inline.
 
-The block holds only what is engine-agnostic: the source order, the linter read, and the rule about varying only on the rule's axis. Each recipe keeps the word for its buckets (`valid`/`invalid` or `pass`/`fail`). For that reason the passage says "the passing bucket", not a key name.
+The block holds only what is engine-agnostic: the source order, the linter read, and the rule about varying only on the rule's axis. Each recipe keeps the word for its buckets (`valid`/`invalid` or `pass`/`fail`). For that reason the passage says "every case" or "the failing bucket", never a key name.
 
 ### Detection reuses `DETECT_EVIDENCE`'s two modes
 
 With mechanics on, the passage tells the agent to reuse `detect --json` output from routing if it has it, and otherwise to run it. With mechanics off, it uses the supplied-evidence wording, the same split `DETECT_EVIDENCE` makes, so a caller without the binary is never told to run it. Reusing earlier output matters because the common path is `route` → `create-*-rule` in one task, and running detection twice adds nothing.
 
-### "Would accept", with running the linter conditional
+### Linters are read, never run
 
-The passage asks the agent to read each detected linter's config and write passing fixtures the linter would accept. It asks for an actual linter run only when a fixture is a complete file the linter can check on its own, which covers runtime case directories and whole Vale documents.
+The passage asks the agent to read the configuration of each detected linter that covers the rule's language, and to write passing fixtures that linter would accept. It tells the agent not to run a linter or formatter on a fixture.
 
-- Alternative: always run the linter on every snippet. Rejected. An ast-grep `valid:` entry is usually a fragment. Linting a fragment produces unused-variable and unresolved-import errors that have nothing to do with style, and an agent fixing those would pad the fixture with scaffolding that hides the case. That is the readability problem this change is trying to fix.
+- Alternative: run the linter on every snippet. Rejected. A fixture is a fragment, and linting a fragment produces unused-variable and unresolved-import errors that have nothing to do with style. An agent fixing those pads the fixture with scaffolding that hides the case, which is the readability problem this change exists to fix.
+- Alternative: run linters only on fixtures that are complete files. This was in the first draft and is rejected after the 4.3 trial. A tool's output becomes something to satisfy, and satisfying it is an open-ended loop with no rule-level payoff. The trial also showed the run is unreliable in practice: this repository's ESLint config ignores `.taskless/` entirely, so a run returns an "ignored file" warning that reads like a pass.
+
+### Failing cases come from the nearest real code
+
+A rule usually exists because the repository should not contain what it flags, so the failing bucket often has no real instance to copy. The passage directs the agent to take the nearest real code and change only the construct the rule flags, and counts only a case built from nothing as invented. Without this, "copy before you invent" marks every failing case as invented, and the disclosure stops carrying information. The 4.3 trial showed the payoff: a copied call site, written in the repository's shorthand style (`{ email }`), exposed a form the rule did not match.
+
+### The awaited-generic case is conditional on the repository
+
+`create-sg-rule` step 6 asked for an awaited generic call among the `invalid:` cases whenever a rule keys on a callee. That conflicts with "every case is code the repository would accept" for a callee the repository never awaits. The step now asks for that form only for a callee the repository does await with a type argument.
 
 ### Submitting recipes get a short pointer, not the block
 
