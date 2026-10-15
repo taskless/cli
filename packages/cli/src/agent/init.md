@@ -1,4 +1,4 @@
-# Topic: init     (CLI v%(CLI_VERSION)s / topic v6)
+# Topic: init     (CLI v%(CLI_VERSION)s / topic v7)
 
 ## Goal
 Install or update the Taskless skill in this project, and migrate the
@@ -63,10 +63,12 @@ first step, not the whole job.
    - `pinnedCli` is always present. Each entry is a pin that runs a
      Taskless CLI older than `installed`: a dependency whose installed
      build (`installed`, `null` when nothing is installed) or range is
-     behind, or a script spelling out an older version. `manifest` is the
-     `package.json` it lives in, the root's or a workspace package's, and
-     `location` the field in it. It is reported even when `changed` is
-     `false`, because the pin and the project still disagree.
+     behind, or a script, CI file, or git hook spelling out an older
+     version. `manifest` is the file it lives in: the root's or a
+     workspace package's `package.json`, with `location` the field in it,
+     or a CI or hook file such as `.github/workflows/ci.yml`, with
+     `location` the line. It is reported even when `changed` is `false`,
+     because the pin and the project still disagree.
 
    Without `--json`, the same facts print as prose: a per-target summary,
    then a trailer naming the directories that changed and, after a
@@ -88,8 +90,9 @@ first step, not the whole job.
    is present with `from` above `0`, say plainly that CI breaks without
    it: a CLI that predates the new schema refuses the project with
    `SCAFFOLD_VERSION_MISMATCH`, so the bump belongs in the same commit as
-   the migrated files. Do not edit a `package.json` on your own; a pin
-   can be deliberate, and the bump changes the lockfile.
+   the migrated files. Do not edit a `package.json`, CI file, or hook on
+   your own; a pin can be deliberate, and a dependency bump changes the
+   lockfile.
 
 4. **After a version move, reconcile the rules.** When
    `cliVersion.previous` is non-null and differs from `installed`, run

@@ -1,26 +1,29 @@
 /**
- * The published CLI invocation baked into skill, command, and recipe source.
- * Build targets other than prod rewrite it: to a repo-root-relative path so a
- * locally built CLI can be dogfooded in this repo (`build:self`), and to
- * `npx @taskless/cli-nightly@<version>` for a nightly, whose shipped
- * instructions must name the package the reader actually installed rather than
- * the released one. There is no target that emits a path usable from outside
- * this checkout; a nightly covers that. See `scripts/build-target.ts`,
- * `vite.config.ts`, and the root `package.json` scripts.
+ * The unpinned published invocation: the literal some content was written
+ * with before invocations were pinned, and the rewrite anchor
+ * {@link applyCliInvocation} replaces with this build's own invocation.
+ *
+ * No build bakes this string any more. Prod bakes `npx @taskless/cli@<version>`,
+ * a nightly `npx @taskless/cli-nightly@<version>`, and `self` a repo-root
+ * path. See `scripts/build-target.ts`, `vite.config.ts`, and the root
+ * `package.json` scripts.
  */
 export const PROD_INVOCATION = "npx @taskless/cli";
 
 /**
- * Whether this build's invocation is the released one.
+ * Whether this is the released build.
  *
- * `false` means the build knows exactly what it is — a `nightly` pinned to its
- * published version, or a `self` path — and its instructions must say so
- * rather than naming `@taskless/cli`. `true` means the build is the released
- * package and has no idea how it was launched, which is a different situation
- * from knowing it was launched as `npx @taskless/cli`.
+ * Read from the build target rather than by comparing the invocation to
+ * {@link PROD_INVOCATION}: a release now bakes its own version, so the
+ * invocation no longer equals the unpinned string, and a comparison would
+ * quietly report every build as unreleased.
+ *
+ * `false` means a `nightly` or a `self` path. `true` means the released
+ * package, which knows its version but not how it was launched (`npx`,
+ * `pnpm dlx`, a `package.json` script).
  */
 export function isProductionInvocation(): boolean {
-  return __TASKLESS_CLI__ === PROD_INVOCATION;
+  return __TASKLESS_BUILD_TARGET__ === "prod";
 }
 
 /** This build's invocation, whatever the target. */
@@ -51,18 +54,15 @@ export function renderInvocationPlaceholder(content: string): string {
 }
 
 /**
- * Rewrite the canonical `npx @taskless/cli` invocation to the build-target
+ * Rewrite the unpinned `npx @taskless/cli` invocation to the build-target
  * invocation (`__TASKLESS_CLI__`).
  *
- * A no-op for prod builds, where the define equals {@link PROD_INVOCATION}, so
- * emitted content stays byte-identical to source. For `dev`/`self`/`nightly`
- * builds it swaps both the bare form and the `@latest`-pinned form (the
- * version-pinned form first, so the bare replacement can't leave a dangling
- * `@latest` — which for a nightly would read
- * `npx @taskless/cli-nightly@<version>@latest`).
+ * Every target rewrites, prod included, since every target now bakes a
+ * pinned invocation. It swaps both the bare form and the `@latest` form (the
+ * `@latest` form first, so the bare replacement can't leave a dangling
+ * `@latest`, which would read `npx @taskless/cli@<version>@latest`).
  */
 export function applyCliInvocation(content: string): string {
-  if (isProductionInvocation()) return content;
   return content
     .replaceAll(`${PROD_INVOCATION}@latest`, __TASKLESS_CLI__)
     .replaceAll(PROD_INVOCATION, __TASKLESS_CLI__);

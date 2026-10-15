@@ -25,13 +25,13 @@ describe("build target resolution", () => {
     expect(resolveBuildTarget({ TASKLESS_BUILD_TARGET: "nightlies" })).toBe(
       "prod"
     );
-    expect(resolveCliInvocation({})).toBe("npx @taskless/cli");
+    expect(resolveCliInvocation({}, "0.12.0")).toBe("npx @taskless/cli@0.12.0");
     expect(resolveCliNotice({})).toBe("");
   });
 
   it("keeps the self target pointed at its own output directory", () => {
     const self = { TASKLESS_BUILD_TARGET: "self" };
-    expect(resolveCliInvocation(self)).toBe(
+    expect(resolveCliInvocation(self, "0.12.0")).toBe(
       `node packages/cli/${OUT_DIRS.self}/index.js`
     );
     expect(resolveCliNotice(self)).toContain("pnpm build:self");
@@ -47,7 +47,9 @@ describe("build target resolution", () => {
     const removed = { TASKLESS_BUILD_TARGET: "dev" };
     expect(() => resolveBuildTarget(removed)).toThrow(/has been removed/);
     expect(() => resolveOutputDirectory(removed)).toThrow(/has been removed/);
-    expect(() => resolveCliInvocation(removed)).toThrow(/has been removed/);
+    expect(() => resolveCliInvocation(removed, "0.12.0")).toThrow(
+      /has been removed/
+    );
     expect(() => resolveCliNotice(removed)).toThrow(/has been removed/);
   });
 
@@ -139,14 +141,14 @@ describe("a build must agree with itself about its version", () => {
 
   // The exact shape of the shipped bug, named in the message so whoever hits
   // this next has the history rather than just the assertion.
-  it("names the issue and the env var both values derive from", () => {
+  it("names the issue", () => {
     expect(() =>
       assertVersionConsistency(
         nightlyEnvironment,
         "0.10.2",
         `npx @taskless/cli-nightly@${NIGHTLY_VERSION}`
       )
-    ).toThrow(new RegExp(String.raw`148[\s\S]*` + NIGHTLY_VERSION_ENV));
+    ).toThrow(/148/);
   });
 
   it("accepts a nightly whose two values agree", () => {
@@ -159,18 +161,30 @@ describe("a build must agree with itself about its version", () => {
     ).not.toThrow();
   });
 
-  // A version pin is meaningless for the other targets: prod names a floating
-  // package deliberately, and self names a filesystem path. Asserting there
-  // would fail every ordinary build.
+  // A release pins itself now, so it can disagree with itself the same way a
+  // nightly could, and an unpinned invocation is that disagreement.
   it.each([
-    ["prod", "npx @taskless/cli"],
-    ["self", "node packages/cli/dist-self/index.js"],
-  ])("does not constrain the %s target", (target, invocation) => {
+    ["an older version", "npx @taskless/cli@0.10.1"],
+    ["no version at all", "npx @taskless/cli"],
+  ])("refuses a release whose invocation names %s", (_label, invocation) => {
+    expect(() => assertVersionConsistency({}, "0.10.2", invocation)).toThrow(
+      /inconsistent with itself/
+    );
+  });
+
+  it("accepts a release whose two values agree", () => {
+    expect(() =>
+      assertVersionConsistency({}, "0.10.2", "npx @taskless/cli@0.10.2")
+    ).not.toThrow();
+  });
+
+  // self names a filesystem path, which carries no version to agree with.
+  it("does not constrain the self target", () => {
     expect(() =>
       assertVersionConsistency(
-        { TASKLESS_BUILD_TARGET: target },
+        { TASKLESS_BUILD_TARGET: "self" },
         "0.10.2",
-        invocation
+        "node packages/cli/dist-self/index.js"
       )
     ).not.toThrow();
   });
@@ -182,7 +196,7 @@ describe("the nightly target", () => {
   // version, `npx @taskless/cli-nightly` would float to whatever nightly is
   // newest — a different build from the one whose instructions are being read.
   it("names the nightly package pinned to the exact published version", () => {
-    expect(resolveCliInvocation(nightlyEnvironment)).toBe(
+    expect(resolveCliInvocation(nightlyEnvironment, NIGHTLY_VERSION)).toBe(
       `npx @taskless/cli-nightly@${NIGHTLY_VERSION}`
     );
   });
@@ -224,6 +238,8 @@ describe("the nightly target", () => {
   // The failure that matters. Falling back to `npx @taskless/cli` here would
   // reintroduce exactly the bug this target fixes, and would do it silently:
   // the build would succeed and ship instructions for the released package.
+  // The version is resolved before the invocation is built from it, so this
+  // is where a missing stamp stops the build.
   it("fails the build when the version is missing or malformed", () => {
     for (const environment of [
       { TASKLESS_BUILD_TARGET: "nightly" },
@@ -236,7 +252,7 @@ describe("the nightly target", () => {
       },
     ]) {
       expect(
-        () => resolveCliInvocation(environment),
+        () => resolveCliVersion(environment, "0.10.2"),
         `${JSON.stringify(environment[NIGHTLY_VERSION_ENV])} must fail the build, not fall back`
       ).toThrowError(new RegExp(NIGHTLY_VERSION_ENV));
     }

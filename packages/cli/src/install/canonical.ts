@@ -5,6 +5,7 @@ import { stringify } from "yaml";
 
 import {
   applyCliInvocation,
+  isProductionInvocation,
   PROD_INVOCATION,
   renderInvocationPlaceholder,
   withCliBuildNotice,
@@ -121,11 +122,15 @@ const PROD_RESTORE_COMMAND = `${PROD_INVOCATION} init`;
  * installs in both, falling back to a non-interactive install when there is
  * no TTY.
  *
- * Nothing here varies per release for a prod build, where
- * {@link applyCliInvocation} is a no-op, so the stub footprint outside
- * `.taskless` stays byte-stable (see {@link shimMetadata}).
+ * A prod build keeps the unpinned {@link PROD_RESTORE_COMMAND} here even
+ * though it pins everywhere else. A pinned version in the stub body would
+ * rewrite every reference stub outside `.taskless` on every release, and those
+ * stubs are committed in each tool directory (see {@link shimMetadata}). The
+ * canonical skill the stub points to carries the pinned invocation, so the
+ * only command left unpinned is the reinstall for when that file is missing.
  */
 function restoreCommand(): string {
+  if (isProductionInvocation()) return PROD_RESTORE_COMMAND;
   return applyCliInvocation(PROD_RESTORE_COMMAND);
 }
 

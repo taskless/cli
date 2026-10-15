@@ -250,7 +250,7 @@ describe("taskless agent <topic>", () => {
     const result = await runCli(["agent", "totally-unknown", "-d", cwd]);
     // Through the launcher, not a bare `taskless` that may not be on PATH.
     expect(result.stderr).toMatch(
-      /Run `(?:npx|pnpm dlx) @taskless\/cli@latest agent` for available/
+      /Run `(?:npx|pnpm dlx) @taskless\/cli@\d[^\s`]* agent` for available/
     );
   });
 

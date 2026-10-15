@@ -8,6 +8,12 @@
  * instead of silently emitting the released invocation.
  */
 
+/** The invocation a `self` build bakes: a path relative to the repo root. */
+const SELF_INVOCATION = "node packages/cli/dist-self/index.js";
+
+/** The npm package a release is published under. */
+const RELEASE_PACKAGE = "@taskless/cli";
+
 /** The npm package a nightly is published under (see `nightly-pack.cjs`). */
 const NIGHTLY_PACKAGE = "@taskless/cli-nightly";
 
@@ -194,7 +200,7 @@ export function resolveSelfVersion(
 }
 
 /**
- * Refuse to emit a nightly whose two version-bearing defines disagree.
+ * Refuse to emit a build whose two version-bearing defines disagree.
  *
  * A post-mortem guard, not a hypothetical one. #148 shipped because
  * `__VERSION__` and `__TASKLESS_CLI__` are *derived* from the same stamp but
@@ -221,15 +227,16 @@ export function assertVersionConsistency(
   version: string,
   invocation: string
 ): void {
-  if (resolveBuildTarget(environment) !== "nightly") return;
+  // `self` names a path, which carries no version to disagree with.
+  if (resolveBuildTarget(environment) === "self") return;
   if (invocation.endsWith(`@${version}`)) return;
   throw new Error(
-    `nightly build is inconsistent with itself: it reports version ` +
+    `build is inconsistent with itself: it reports version ` +
       `${JSON.stringify(version)} but its invocation is ` +
       `${JSON.stringify(invocation)}. These must name the same version — a ` +
       `build that announces one version and sends agents to another is ` +
-      `taskless/cli#148. Both derive from ${NIGHTLY_VERSION_ENV}; if they no ` +
-      `longer do, that is the bug.`
+      `taskless/cli#148. Both derive from the version this build resolves; if ` +
+      `they no longer do, that is the bug.`
   );
 }
 
@@ -237,28 +244,37 @@ export function assertVersionConsistency(
  * The CLI invocation baked into emitted skill/command/recipe content, chosen by
  * the TASKLESS_BUILD_TARGET env var (see package.json build:self/
  * build:nightly):
- *   - prod (default): the published `npx @taskless/cli`
+ *   - prod (default): `npx @taskless/cli@<version>`, the released package
+ *     pinned to the version being published
  *   - self: a repo-root-relative path, for dogfooding inside this repo
- *   - nightly: `npx @taskless/cli-nightly@<version>`, PINNED to the exact
- *     version being published — a floating `@taskless/cli-nightly` would send
- *     an agent to whatever nightly is newest, which is not the build whose
- *     skills it is reading.
+ *   - nightly: `npx @taskless/cli-nightly@<version>`, pinned the same way
+ *
+ * Both published forms are PINNED. A floating specifier sends an agent to
+ * whatever version npx resolves (a cached copy, or the newest publish), which
+ * is not the build whose skills it is reading, and a project permission rule
+ * can only allow a version it can name.
+ *
+ * `version` is the version this build reports, from {@link resolveCliVersion},
+ * so the invocation and `__VERSION__` cannot disagree.
  *
  * `self` is the only target whose invocation is a path, and it is relative to
  * the repo root, so it only resolves for a CLI run from inside this checkout.
  * That is the whole local story: nothing here emits an invocation usable from
  * another repository, and a published nightly is what serves that case.
  */
-export function resolveCliInvocation(environment: BuildEnvironment): string {
+export function resolveCliInvocation(
+  environment: BuildEnvironment,
+  version: string
+): string {
   switch (resolveBuildTarget(environment)) {
     case "self": {
-      return `node packages/cli/${OUT_DIRS.self}/index.js`;
+      return SELF_INVOCATION;
     }
     case "nightly": {
-      return `npx ${NIGHTLY_PACKAGE}@${resolveNightlyVersion(environment)}`;
+      return `npx ${NIGHTLY_PACKAGE}@${version}`;
     }
     default: {
-      return "npx @taskless/cli";
+      return `npx ${RELEASE_PACKAGE}@${version}`;
     }
   }
 }
@@ -281,7 +297,7 @@ export function resolveCliNotice(environment: BuildEnvironment): string {
   if (resolveBuildTarget(environment) !== "self") return "";
   return (
     `> **Local Taskless build.** The commands below call a locally built CLI ` +
-    `(\`${resolveCliInvocation(environment)}\`). If that ` +
+    `(\`${SELF_INVOCATION}\`). If that ` +
     `path does not exist yet, run \`pnpm build:self\` from the repo root first.`
   );
 }
