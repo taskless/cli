@@ -37,7 +37,7 @@ each CLI version.
 ## Preflight: confirm you can run Taskless
 
 Once per session, before any other Taskless command, run
-`%(TASKLESS_CLI)s agent ok`. It reads and writes nothing, and prints one line
+`%(TASKLESS_CLI)s agent ok`. It touches no project files, and prints one line
 confirming the invocation works. Proceed once you see it.
 
 If the harness or the user blocks it, or blocks any later Taskless command,
