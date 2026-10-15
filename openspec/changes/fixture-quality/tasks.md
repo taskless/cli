@@ -19,4 +19,12 @@
 
 - [x] 4.1 Add a `patch` changeset for `@taskless/cli` that describes the recipe change from a consumer's point of view. Verify that `.changeset/` holds exactly one new file.
 - [x] 4.2 Run prettier only on the changed `.ts` and changeset files, by explicit path. Never run it on `src/agent/*.md` or over `src/`, because it rewrites the recipe markdown. Then run `pnpm typecheck` and `pnpm lint`. Both must pass.
-- [ ] 4.3 Run `pnpm build`, then author one sg rule with `pnpm cli agent create-sg-rule` in a scratch repo that has an ESLint config. Confirm the fixtures come from real code, the passing cases pass ESLint, and the report names any invented fixture. Record the result in the PR body.
+- [x] 4.3 Run `pnpm build`, then author one sg rule with `pnpm cli agent create-sg-rule` in a scratch repo that has an ESLint config. Confirm the fixtures come from real code, the passing cases pass ESLint, and the report names any invented fixture. Record the result in the PR body.
+
+## 5. Revision after the 4.3 trial
+
+- [x] 5.1 Revise `FIXTURE_SOURCES`: failing cases with no real instance are adapted from the nearest real code, not counted as invented; linters are read and never run, and neither are formatters; only linters covering the rule's language apply; real code is justified by coverage as well as credibility. Verify the prompts tests pass.
+- [x] 5.2 Make `create-sg-rule` step 6's awaited-generic case conditional on a callee the repository actually awaits with a type argument. Verify the rendered recipe.
+- [x] 5.3 Re-run the 4.3 trial on `no-pii-in-telemetry`, restored from `origin/main`, with a fresh subagent and the revised recipe. Record the result in the PR body.
+- [x] 5.4 From the second trial: the linter bullet covers every case, not only the passing bucket; linters apply to fixtures as source even when their configuration ignores the rules directory; borrowing names and values from elsewhere in the repository is allowed when adapting a failing case. Verify the rendered recipe and prompts tests.
+- [x] 5.5 Commit the `no-pii-in-telemetry` shorthand fix and the trial's fixtures. Verify `verify` passes, the `origin/main` rule fails the new fixtures, and `check` finds no hits in the repository.

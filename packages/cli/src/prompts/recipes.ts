@@ -350,6 +350,10 @@ category is not an answer.`;
  * Detection is reused before it is re-run because the common path is `route`
  * then `create-*-rule` in one task, and `route` has already read the linters.
  * With mechanics off the caller supplied that evidence and no command is named.
+ *
+ * The linters are READ, never run. Running a linter or formatter over a
+ * fixture invites a loop of fixing what it reports about the fixture rather
+ * than about the rule, and a fragment can never come back clean.
  */
 function fixtureSourcesBlock(invocation: string | undefined): string {
   const detection =
@@ -359,20 +363,26 @@ function fixtureSourcesBlock(invocation: string | undefined): string {
   routing already ran it, otherwise run \`${invocation} detect --json\`.`;
   return `**Where the cases come from.** Readers take fixtures as examples of
 this repository's style, so a case the repository would reject in review
-costs the rule its credibility however correct the rule is.
+costs the rule its credibility however correct the rule is. Real code
+also finds what the rule misses: invented cases follow your idea of how
+the construct is written, real ones follow how it is actually written.
 
 - **Copy before you invent.** Take each case from real code or prose in
   the repository, trimmed to what the case needs, keeping its names.
-  Invent a case only when the repository has no instance of it, and name
-  the invented cases in your report.
-- **Write the passing bucket to the repository's linters.**
+  A rule usually exists because the repository should not contain what
+  it flags, so the failing bucket often has no real instance. Then take
+  the nearest real code and change only the construct the rule flags,
+  borrowing names and values from elsewhere in the repository where the
+  code has no place for it. Invent a case outright only when nothing
+  nearby exists, and name the invented cases in your report.
+- **Write every case to the repository's linters.**
   ${detection}
-  Read each linter's configuration from its \`evidence\` paths, and write
-  passing cases those linters would accept. When a case is a complete
-  file a linter can check on its own, run the linter on it. Do not lint
-  a fragment: the unresolved imports and unused names it reports are
-  about the fragment, and padding the case to silence them buries what
-  it tests.
+  For each linter that covers the rule's language, read its
+  configuration files among the \`evidence\` paths, and write cases it
+  would accept as source, even where its configuration ignores the rules
+  directory. Read them, do not run them: do not run a linter
+  or formatter on a fixture. Fixing what a tool reports about a fixture
+  is a loop that never ends and improves nothing about the rule.
 - **Vary only where the rule looks.** Outside the construct the rule
   checks, every case in both buckets is code the repository would
   accept: no placeholder or catch-all types such as

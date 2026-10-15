@@ -130,8 +130,11 @@ whole rule.
    Where the rule has an arity boundary (the separator trap under
    Quirks), put a case on each side of it. A pattern that starts at two
    arguments when it was meant to start at one passes a test suite whose
-   fixtures all have two. Where the rule keys on a callee, put an
-   awaited generic call among the `invalid:` cases.
+   fixtures all have two. Where the rule keys on a callee that the
+   repository awaits with a type argument (`await f<T>(...)`), put that
+   form among the `invalid:` cases. Write it only for such a callee: an
+   awaited generic call to a function the repository never awaits is
+   not code it would accept, and the case would teach the wrong shape.
 
 7. **Run the feedback loop.** Both commands take the rule's
    directory as their argument:
