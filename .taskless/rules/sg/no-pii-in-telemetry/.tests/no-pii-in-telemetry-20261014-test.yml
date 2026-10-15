@@ -1,0 +1,59 @@
+id: no-pii-in-telemetry
+valid:
+  - |
+    posthog.identify({
+      distinctId,
+      properties: {
+        cli: anonymousId,
+        cliVersion: CLI_VERSION,
+        scaffoldVersion,
+        ghOwner,
+        ...dimensions,
+      },
+    });
+  - |
+    telemetry.capture("cli_report_published", {
+      ...tierCounts(report),
+      withheldFixtures: report.redaction.withheldFixtures,
+    });
+  - |
+    posthog.groupIdentify({
+      groupType: "organization",
+      groupKey: String(orgSubject),
+    });
+  - |
+    auth = {
+      user: whoami.user,
+      email: whoami.email,
+      orgs: whoami.orgs.map((o) => o.name),
+    };
+invalid:
+  - |
+    posthog.identify({
+      distinctId,
+      properties: {
+        cli: anonymousId,
+        cliVersion: CLI_VERSION,
+        scaffoldVersion,
+        email,
+        ...dimensions,
+      },
+    });
+  - |
+    telemetry.capture("cli_authenticated", { email: whoami.email });
+  - |
+    ph.capture({
+      distinctId,
+      event,
+      properties: {
+        ...properties,
+        cli: anonymousId,
+        displayName: whoami.user,
+      },
+    });
+  - |
+    posthog.groupIdentify({
+      groupType: "organization",
+      groupKey: String(orgSubject),
+      properties: { email: whoami.email },
+    });
