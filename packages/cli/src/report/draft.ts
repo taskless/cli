@@ -77,8 +77,8 @@ export interface ReportDraft {
 export const DEFAULT_PROJECTION_INPUTS: ReportDraft["inputs"] = {
   cloudComplexity: 3,
   pricePerMillionTokens: 0.5,
-  minutesPerComment: 4,
-  reviewerHourlyUsd: 120,
+  minutesPerComment: 15,
+  reviewerHourlyUsd: 110,
 };
 
 /**
