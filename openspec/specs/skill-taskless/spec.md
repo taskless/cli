@@ -191,7 +191,7 @@ When the preflight is blocked by the harness or the user, the bodies SHALL instr
 
 1. Stop before doing any Taskless work, and not attempt to work around the block.
 2. Tell the user the exact command, and that it downloads and runs a package from npm.
-3. Offer the user ways forward: approve that exact command in their reply, run `! <exact command>` themselves, or have the agent add an allow rule for exactly the invocation the skill names.
+3. Offer the user three ways forward, and wait for their choice: the agent adds an allow rule for exactly the invocation the skill names to the agent's permission settings; the user approves it through their agent's permissions command, such as `/permissions` in Claude Code; or the user approves every Taskless command manually, in chat, as the agent runs it.
 4. Never propose an allow rule that widens the invocation, such as a wildcard over the package name or its version.
 
 #### Scenario: Skill body runs the preflight first
@@ -203,5 +203,6 @@ When the preflight is blocked by the harness or the user, the bodies SHALL instr
 
 - **WHEN** the skill body or the `tskl` command body is read from source
 - **THEN** it SHALL instruct the agent, on a blocked preflight, to stop and name the exact command to the user
-- **AND** SHALL offer both the `!` route and an allow rule for the exact invocation
+- **AND** SHALL offer an allow rule for the exact invocation, the agent's permissions command, and per-command approval in chat
+- **AND** SHALL NOT offer running the command with `!`, which unblocks only the preflight
 - **AND** SHALL forbid an allow rule that wildcards the package name or version

@@ -24,10 +24,13 @@ Otherwise, follow the same flow as the `taskless` skill:
    line. If the harness or the user blocks it, or blocks any later Taskless
    command, stop and do not try to get around the block. Tell the user the
    exact command and that it downloads and runs a package from npm, then
-   offer: they approve that exact command in their reply, they run it
-   themselves as `! <exact command>`, or you add an allow rule for exactly
-   the invocation `%(TASKLESS_CLI)s`. Never propose a rule wider than that
-   invocation, such as a wildcard over the package name or its version.
+   offer three ways forward and wait for their choice: you add an allow rule
+   for exactly the invocation `%(TASKLESS_CLI)s` to the agent's permission
+   settings, they approve it through their agent's permissions command
+   (such as `/permissions` in Claude Code), or they approve every Taskless
+   command manually, here in chat, as you run it. Never propose a rule wider
+   than that invocation, such as a wildcard over the package name or its
+   version.
 1. Identify the topic from `$ARGUMENTS` using the table below.
 2. Fetch the canonical recipe with `%(TASKLESS_CLI)s agent <topic>` (or
    `%(TASKLESS_CLI)s agent <topic> --anonymous` if the user is offline or
