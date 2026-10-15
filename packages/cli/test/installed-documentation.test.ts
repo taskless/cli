@@ -209,10 +209,15 @@ describe("this repository's own installed Taskless docs", () => {
       const prose = body.replaceAll(/\s+/g, " ");
       expect(prose, name).toContain("%(TASKLESS_CLI)s agent ok");
       expect(prose, name).toContain("before any other Taskless command");
-      expect(prose, name).toContain("! <exact command>");
       expect(prose, name).toContain(
         "allow rule for exactly the invocation `%(TASKLESS_CLI)s`"
       );
+      expect(prose, name).toContain("`/permissions`");
+      expect(prose, name).toContain(
+        "approve every Taskless command manually, here in chat"
+      );
+      // `!` runs the preflight once and leaves every later command blocked.
+      expect(prose, name).not.toContain("! <exact command>");
       expect(prose, name).toContain("wildcard over the package name");
     }
   });

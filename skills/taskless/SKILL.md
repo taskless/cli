@@ -43,11 +43,14 @@ confirming the invocation works. Proceed once you see it.
 If the harness or the user blocks it, or blocks any later Taskless command,
 stop before doing any Taskless work and do not try to get around the block.
 Tell the user the exact command you ran, and that it downloads and runs a
-package from npm. Then offer the ways forward:
+package from npm. Then offer these three ways forward, and wait for their
+choice:
 
-- They approve that exact command in their reply.
-- They run it themselves as `! <exact command>`, so its output lands here.
-- You add an allow rule for exactly the invocation `%(TASKLESS_CLI)s`.
+- You add an allow rule for exactly the invocation `%(TASKLESS_CLI)s` to the
+  agent's permission settings.
+- They approve it through their agent's permissions command, such as
+  `/permissions` in Claude Code.
+- They approve every Taskless command manually, here in chat, as you run it.
 
 Never propose a rule wider than that invocation, such as a wildcard over the
 package name or its version: it would approve a CLI this project never
