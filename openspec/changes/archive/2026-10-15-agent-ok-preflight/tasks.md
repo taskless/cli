@@ -14,4 +14,3 @@
 
 - [x] 3.1 Add a `patch` changeset
 - [x] 3.2 Run `pnpm typecheck` and `pnpm lint`
-- [ ] 3.3 Manual: in a scratch repo under Claude Code auto mode, check whether the preflight is blocked, whether an exact-command approval in chat clears it, and whether a pinned allow rule survives auto mode; record the results in the PR

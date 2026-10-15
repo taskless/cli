@@ -13,7 +13,7 @@ The session that hit the block had a vague request ("let's use taskless"), ran t
 
 **Non-Goals:**
 
-- Writing harness permission files (`.claude/settings.json` and others) from the installer. Whether a pinned `npx` allow rule survives auto mode is undocumented; that is tested by hand first.
+- Writing harness permission files (`.claude/settings.json` and others) from the installer. Whether a pinned `npx` allow rule survives auto mode is undocumented, and is a follow-up to test by hand before anything depends on it.
 - Changing onboard's own consent question.
 
 ## Decisions
@@ -31,5 +31,5 @@ The session that hit the block had a vague request ("let's use taskless"), ran t
 ## Risks / Trade-offs
 
 - [The classifier allows `agent ok` but blocks a later command] → An approval or classifier judgement can be per-action. The skill's blocked-command guidance is written for any Taskless command, not only the preflight, so a later block gets the same handling.
-- [The download block cannot be cleared by chat approval at all] → Then the `!` route and the allow rule remain. The manual auto-mode test decides whether the skill should lead with one of those instead.
+- [The download block cannot be cleared by chat approval at all] → Then the `!` route and the allow rule remain. A hand test under auto mode, run after this change and outside it, decides whether a follow-up should make the skill lead with one of those instead.
 - [One more command before every session's first task] → It is cached by npx after the first run and prints one line; the first-run latency note in the skill already covers the cold fetch.
