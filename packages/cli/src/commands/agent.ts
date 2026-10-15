@@ -49,6 +49,23 @@ const FEEDBACK_TOPICS: ReadonlyArray<[string, string]> = [
   ["bug-report", "Report a Taskless bug (user asks; no GitHub account)"],
 ];
 
+/**
+ * The preflight topic. Built into this command rather than kept as a recipe
+ * file, because it is a confirmation and not a recipe: the recipe template's
+ * sections and the fetch-time directive ("fetch again next task") would wrap
+ * one line in instructions that do not apply to it.
+ *
+ * Reaching it at all is the signal. A harness that refuses to run the CLI
+ * (a permission check that blocks download-and-run commands, say) refuses
+ * this first, before an agent has started any work, rather than halfway into
+ * a task whose consent question sits inside a recipe it never received. So it
+ * reads nothing and writes nothing, and is safe to run anywhere, first.
+ */
+const PREFLIGHT_TOPIC: [string, string] = [
+  "ok",
+  "Confirm you can run Taskless here (run once per session, first)",
+];
+
 async function unwrap<T>(resolvable: Resolvable<T>): Promise<T> {
   if (typeof resolvable === "function") {
     return (resolvable as () => T | Promise<T>)();
@@ -151,7 +168,6 @@ export function createAgentCommand(subCommands: SubCommandsDef) {
           )
         );
         console.log("then ask your coding agent to do the work.\n");
-        console.log("Topics:");
 
         const entries: Array<[string, string]> = [];
         for (const [name, cmd] of Object.entries(subCommands)) {
@@ -160,13 +176,21 @@ export function createAgentCommand(subCommands: SubCommandsDef) {
           entries.push([name, description]);
         }
 
-        // Pad commands and recipe topics against a shared width so the two
-        // sections line up.
+        // Pad the preflight, commands, and recipe topics against a shared
+        // width so the sections line up.
         const maxLength = Math.max(
+          PREFLIGHT_TOPIC[0].length,
           ...entries.map(([name]) => name.length),
           ...RECIPE_TOPICS.map(([name]) => name.length),
           ...FEEDBACK_TOPICS.map(([name]) => name.length)
         );
+        const [preflightName, preflightDescription] = PREFLIGHT_TOPIC;
+        console.log("Preflight:");
+        console.log(
+          `  ${preflightName.padEnd(maxLength + 2)}${preflightDescription}`
+        );
+
+        console.log("\nTopics:");
         for (const [name, description] of entries) {
           console.log(`  ${name.padEnd(maxLength + 2)}${description}`);
         }
@@ -208,6 +232,20 @@ export function createAgentCommand(subCommands: SubCommandsDef) {
       }
 
       const key = positionals[0]!;
+
+      if (key === PREFLIGHT_TOPIC[0]) {
+        telemetry.capture("cli_agent", { topic: key });
+        // The detected invocation, the same value recipes are rendered with,
+        // so the preflight and every later recipe spell the CLI alike. When
+        // the launcher is unknown, say so rather than fall back to `npx` as
+        // `getCliPrefix()` would: an agent copies this text, and a guessed
+        // launcher is worse than none.
+        const invocation = detectCliInvocation(processLauncherContext());
+        console.log(
+          `This message confirms you can run Taskless via ${invocation ?? "the command you just ran"}.`
+        );
+        return;
+      }
 
       // Anonymous variant lookup: prefer <topic>.anonymous.md when
       // --anonymous is set, fall back to the canonical recipe. The lookup and
