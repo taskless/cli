@@ -59,7 +59,9 @@ const FEEDBACK_TOPICS: ReadonlyArray<[string, string]> = [
  * (a permission check that blocks download-and-run commands, say) refuses
  * this first, before an agent has started any work, rather than halfway into
  * a task whose consent question sits inside a recipe it never received. So it
- * reads nothing and writes nothing, and is safe to run anywhere, first.
+ * touches no project state (no `.taskless/`, manifest, or auth) and is safe to
+ * run anywhere, first. Its one side effect is the intent event every topic
+ * captures, with telemetry's usual anonymous-id write.
  */
 const PREFLIGHT_TOPIC: [string, string] = [
   "ok",

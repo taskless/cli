@@ -8,7 +8,7 @@ Nothing tells an agent, before it starts a task, whether it is allowed to run Ta
 
 - Add `taskless agent ok`, a built-in topic that does nothing but print one line: `This message confirms you can run Taskless via <invocation>.` It reads no project state, needs no install, and exits 0. Reaching it at all is the signal.
 - The `taskless` skill and the `tskl` command run `agent ok` once per session, before any other Taskless command.
-- When the harness blocks that preflight, the skill tells the agent to stop before doing any work and ask the user, naming the exact command and that it downloads a package from npm. It offers two ways forward: the user runs `! <exact command>` themselves, or the agent adds an allow rule for exactly the invocation the skill names, never a wildcard over the package name or version.
+- When the harness blocks that preflight, the skill tells the agent to stop before doing any work and ask the user, naming the exact command and that it downloads a package from npm. It offers three ways forward: the user approves that exact command in their reply, the user runs `! <exact command>` themselves, or the agent adds an allow rule for exactly the invocation the skill names, never a wildcard over the package name or version.
 - `ok` appears in the `taskless agent` index.
 
 ## Delivery shape
