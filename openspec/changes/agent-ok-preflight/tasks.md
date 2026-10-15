@@ -6,9 +6,9 @@
 
 ## 2. Skill and command bodies
 
-- [ ] 2.1 Add the preflight section to `skills/taskless/SKILL.md`: run `%(TASKLESS_CLI)s agent ok` once per session first; on a block, stop, name the exact command, offer chat approval, `!`, or an exact-invocation allow rule, and forbid widening it. Keep the body within 150 lines
-- [ ] 2.2 Add the same step to `commands/tskl/tskl.md`
-- [ ] 2.3 Tests asserting both bodies carry the preflight and the blocked-preflight guidance
+- [x] 2.1 Add the preflight section to `skills/taskless/SKILL.md`: run `%(TASKLESS_CLI)s agent ok` once per session first; on a block, stop, name the exact command, offer chat approval, `!`, or an exact-invocation allow rule, and forbid widening it. Keep the body within 150 lines
+- [x] 2.2 Add the same step to `commands/tskl/tskl.md`
+- [x] 2.3 Tests asserting both bodies carry the preflight and the blocked-preflight guidance
 
 ## 3. Release
 

@@ -186,6 +186,37 @@ describe("this repository's own installed Taskless docs", () => {
     }
   });
 
+  it("preflights the CLI and scopes a blocked one to the exact invocation", async () => {
+    // A harness may refuse a download-and-run command. Without a preflight
+    // the refusal lands on the first command that does work, after any
+    // consent question that lives inside a recipe. And an agent left to pick
+    // its own remedy proposed `npx @taskless/cli-nightly:*`, approving every
+    // future nightly rather than the one installed. Both always-loaded
+    // surfaces carry the step, since a tool may install one without the other.
+    const skill = await readFile(
+      resolve(repositoryRoot, "skills", "taskless", "SKILL.md"),
+      "utf8"
+    );
+    const command = await readFile(
+      resolve(repositoryRoot, "commands", "tskl", "tskl.md"),
+      "utf8"
+    );
+    for (const [name, body] of [
+      ["SKILL.md", skill],
+      ["tskl.md", command],
+    ] as const) {
+      // Compared as prose, so where a line happens to wrap does not matter.
+      const prose = body.replaceAll(/\s+/g, " ");
+      expect(prose, name).toContain("%(TASKLESS_CLI)s agent ok");
+      expect(prose, name).toContain("before any other Taskless command");
+      expect(prose, name).toContain("! <exact command>");
+      expect(prose, name).toContain(
+        "allow rule for exactly the invocation `%(TASKLESS_CLI)s`"
+      );
+      expect(prose, name).toContain("wildcard over the package name");
+    }
+  });
+
   it("keeps the skill body within its 150-line cap", async () => {
     // `skill-taskless` caps the body at 150 lines of markdown. The cap guards
     // against unbounded growth, not against guidance the router needs: when
