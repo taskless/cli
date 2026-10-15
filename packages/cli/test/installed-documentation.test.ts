@@ -187,7 +187,10 @@ describe("this repository's own installed Taskless docs", () => {
     // user a command that made the change, and that worked.
     expect(prose).toContain("give the user the change to make themselves");
     expect(prose).toContain("`/permissions`");
-    expect(prose).toContain("`Bash(%(TASKLESS_CLI)s:*)`");
+    expect(prose).toContain("`Bash(%(TASKLESS_CLI)s *)`");
+    // A harness like Crush can only allow all of `bash`, far wider than one
+    // invocation.
+    expect(prose).toContain("offer only per-command approval");
     expect(prose).toContain(
       "approve every Taskless command manually, here in chat"
     );

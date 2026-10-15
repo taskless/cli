@@ -1,4 +1,4 @@
-# Topic: init     (CLI v%(CLI_VERSION)s / topic v7)
+# Topic: init     (CLI v%(CLI_VERSION)s / topic v8)
 
 ## Goal
 Install or update the Taskless skill in this project, and migrate the
@@ -45,6 +45,11 @@ first step, not the whole job.
        { "manifest": "packages/app/package.json",
          "location": "devDependencies", "name": "@taskless/cli",
          "spec": "^0.10.0", "installed": "0.10.2" }
+     ],
+     "permissions": [
+       { "file": ".claude/settings.json", "created": false,
+         "allowed": ["Bash(%(TASKLESS_CLI)s *)"],
+         "removed": [], "skipped": null }
      ]
    }
    ```
@@ -69,15 +74,24 @@ first step, not the whole job.
      or a CI or hook file such as `.github/workflows/ci.yml`, with
      `location` the line. It is reported even when `changed` is `false`,
      because the pin and the project still disagree.
+   - `permissions` is always present. Each entry is a harness settings
+     file this run created, edited, or left alone: the rule allowing
+     exactly this CLI version (`allowed`), the rule for the previous
+     version it replaced (`removed`), or, when `skipped` is set, why the
+     file was left as it was (it denies the command, or does not parse).
+     These files are the user's; name each one when you tell them what to
+     commit.
 
    Without `--json`, the same facts print as prose: a per-target summary,
-   then a trailer naming the directories that changed and, after a
+   each permission edit as `Edited <file>` with `ALLOW:` and `REMOVE:`
+   lines (or `SKIPPED:` with the reason), then a trailer naming the directories that changed and, after a
    version move, pointing at `update`, then a notice naming each stale
    pin and the version to move it to.
 
 2. **Tell the user what needs committing.** Every `targets[].dir` with
-   a non-empty list, plus `.taskless/` and any `migrated.files` entries,
-   now holds changes that belong in version control. Name those paths and
+   a non-empty list, plus `.taskless/`, any `migrated.files` entries, and
+   every `permissions[].file` without `skipped`, now holds changes that
+   belong in version control. Name those paths and
    say what Taskless rewrote and why (a CLI upgrade, a layout migration),
    so the user can include them in the commit they choose. Do not stage
    or commit on your own; the git operations are theirs.

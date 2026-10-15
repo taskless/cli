@@ -20,6 +20,11 @@ import {
   getPinnedCliNotice,
   type PinnedCli,
 } from "../install/pinned-cli";
+import {
+  describePermissionEdits,
+  syncPermissions,
+  type PermissionEdit,
+} from "../install/permissions";
 import { readInstallState } from "../install/state";
 import { getTelemetry } from "../telemetry";
 import { getCliVersion } from "../wizard/intro";
@@ -41,6 +46,7 @@ import { readManifest } from "../filesystem/manifest";
 import type { MigrationReport } from "../filesystem/migrate";
 import { TASKLESS_DIRECTORY } from "../rules/vale/formats";
 import { CLIError } from "../util/cli-error";
+import { buildInvocation } from "../util/invocation";
 import { makeErrorEnvelope } from "../types/errors";
 
 export const initCommand = defineCommand({
@@ -126,6 +132,9 @@ export const initCommand = defineCommand({
           // Always present, empty when nothing is stale, for the same reason
           // `cliVersion.previous` is `null` rather than absent.
           pinnedCli: result.pinnedCli,
+          // Every harness permission file this run created, edited, or left
+          // alone, with the exact rules. Always present, empty when none.
+          permissions: result.permissions,
           // Absent when nothing ran, so a caller distinguishes "the tree was
           // rewritten" from "nothing happened" by presence, never by reading
           // empty arrays out of it.
@@ -327,8 +336,10 @@ async function runNonInteractive(
   targets: TargetOutcome[];
   /** Whether a migration ran or any target wrote or removed anything. */
   changed: boolean;
-  /** `package.json` pins that cannot resolve to the CLI that ran this. */
+  /** Pins in `package.json`, CI, or hooks that run an older CLI than this. */
   pinnedCli: PinnedCli[];
+  /** Harness permission files this run created, edited, or left alone. */
+  permissions: PermissionEdit[];
 }> {
   // Under `--json`, stdout carries only the envelope printed by the caller.
   // This per-target summary is not on that envelope (it is finer-grained than
@@ -452,17 +463,29 @@ async function runNonInteractive(
     }
   }
 
+  const permissions = await syncPermissions(cwd, {
+    selected: plan.targets
+      .filter((target) => target.mode === "reference")
+      .map((target) => target.dir),
+    codexDetected: detected.some((tool) => tool.name === "Codex"),
+    invocation: buildInvocation(),
+    write: true,
+  });
+  for (const line of describePermissionEdits(permissions)) log(line);
+
   return {
     reloadNotice,
     migrated,
     previousCliVersion,
     cliVersion,
     targets,
+    permissions,
     // A version move rewrites `install.cliVersion` in the manifest, which is
     // a tracked file, so it is a change even when every skill byte matched.
     changed:
       migrated !== undefined ||
       targets.some((target) => targetChanged(target)) ||
+      permissions.some((edit) => edit.skipped === null) ||
       versionMoved({ previousCliVersion, cliVersion }),
     pinnedCli: await findStalePins(cwd, cliVersion),
   };

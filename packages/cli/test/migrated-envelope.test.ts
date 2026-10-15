@@ -173,6 +173,13 @@ describe("who migrates, and who refuses", () => {
       }>;
       changed: boolean;
       migrated?: unknown;
+      permissions: Array<{
+        file: string;
+        created: boolean;
+        allowed: string[];
+        removed: string[];
+        skipped: string | null;
+      }>;
     };
 
     // A seeded project has no recorded install, and "none" is a value.
@@ -187,6 +194,17 @@ describe("who migrates, and who refuses", () => {
 
     expect(envelope.migrated).toBeDefined();
     expect(envelope.changed).toBe(true);
+
+    // The settings edit is data on the envelope, not only prose on stderr.
+    expect(envelope.permissions).toEqual([
+      {
+        file: ".claude/settings.json",
+        created: true,
+        allowed: [`Bash(npx @taskless/cli@${envelope.cliVersion.installed} *)`],
+        removed: [],
+        skipped: null,
+      },
+    ]);
   });
 
   it("init --json reports changed:false, a recorded version, and empty lists on a no-op re-install", async () => {

@@ -5,14 +5,17 @@ import { ensureTasklessDirectory } from "../filesystem/directory";
 import {
   applyInstallPlan,
   buildInstallPlan,
+  detectTools,
   getEmbeddedSkills,
   planToStateTargets,
 } from "../install/install";
+import { syncPermissions } from "../install/permissions";
 import { findStalePins, getPinnedCliNotice } from "../install/pinned-cli";
 import { getReloadNotice } from "../install/reload-notice";
 import { computeInstallDiff, readInstallState } from "../install/state";
 import { getTelemetry } from "../telemetry";
 import { CLIError } from "../util/cli-error";
+import { buildInvocation } from "../util/invocation";
 import { getCliPrefix } from "../util/package-manager";
 
 import { WizardCancelled } from "./ask";
@@ -58,7 +61,22 @@ export async function runWizard(
       targets: planToStateTargets(plan),
     });
 
-    const proceed = await renderSummaryAndConfirm(diff);
+    // Previewed before anything is written, so every settings file the
+    // install will touch is on screen before the user confirms.
+    const detected = await detectTools(options.cwd);
+    const permissionOptions = {
+      selected: plan.targets
+        .filter((target) => target.mode === "reference")
+        .map((target) => target.dir),
+      codexDetected: detected.some((tool) => tool.name === "Codex"),
+      invocation: buildInvocation(),
+    };
+    const permissionPreview = await syncPermissions(options.cwd, {
+      ...permissionOptions,
+      write: false,
+    });
+
+    const proceed = await renderSummaryAndConfirm(diff, permissionPreview);
     if (!proceed) {
       cancel(`Install cancelled. Run \`${getCliPrefix()} init\` to try again.`);
       cancelledStep = "summary";
@@ -70,6 +88,7 @@ export async function runWizard(
     });
     const cliVersion = getCliVersion();
     await applyInstallPlan(options.cwd, plan, { cliVersion });
+    await syncPermissions(options.cwd, { ...permissionOptions, write: true });
 
     outro("Taskless is ready to go.");
     const pinnedNotice = getPinnedCliNotice(

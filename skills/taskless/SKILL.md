@@ -39,6 +39,8 @@ Once per session, before any other Taskless command, run
 `%(TASKLESS_CLI)s agent ok`. It touches no project files, and prints one line
 confirming the invocation works. Once you see it, go straight to the user's
 request: no survey of the install, and no menu of what Taskless can do.
+`init` writes an allow rule for this exact invocation into the permission
+settings of each harness it installs for, so the preflight usually passes.
 
 If the harness or the user blocks it, or blocks any later Taskless command,
 stop before doing any Taskless work and do not try to get around the block.
@@ -49,12 +51,13 @@ runs a package from npm, and offers three ways forward:
   agent's permission settings. If the harness blocks that edit too, give the
   user the change to make themselves, in whatever form your harness accepts.
 - They approve it through their agent's permissions command. In Claude Code
-  that is `/permissions`, and the rule is `Bash(%(TASKLESS_CLI)s:*)`.
+  that is `/permissions`, and the rule is `Bash(%(TASKLESS_CLI)s *)`.
 - They approve every Taskless command manually, here in chat, as you run it.
 
 Never propose a rule wider than that invocation, such as a wildcard over the
 package name or its version: it would approve a CLI this project never
-installed.
+installed. If your harness can only allow a whole tool, such as every shell
+command, offer only per-command approval.
 
 Do not ask what they want Taskless to do in that message. Their request
 stands: once they unblock the command, rerun `agent ok` and carry it out.

@@ -11,10 +11,10 @@
 
 - [x] 2.1 Hand test: under Claude Code auto mode, confirm `Bash(npx @taskless/cli-nightly@<pin> *)` in `.claude/settings.json` survives entry and lets `agent ok` run, in a trusted workspace
 - [x] 2.2 Hand test Codex: `codex execpolicy check --rules .codex/rules/taskless.rules -- <inv> check` allows, and `<inv>1 check` does not
-- [ ] 2.3 A writer per format: Claude Code, Cursor editor and CLI, OpenCode object (last) and array (first), JSONC-preserving, and Codex
-- [ ] 2.4 Deny detection and unparseable-file refusal per format
-- [ ] 2.5 `install.permissions` in the manifest; upgrade replacement; delete a Taskless-created file left empty
-- [ ] 2.6 Report every edit: `Created`/`Edited <file>` with green `ALLOW:`, red `REMOVE:`, yellow `SKIPPED:` lines via `util/color.ts`; preview in the wizard summary step before writing; print after writing in `--no-interactive`; stderr plus envelope data under `--json`
-- [ ] 2.7 Preflight wording: per-command approval only where a harness cannot scope a rule to one invocation
-- [ ] 2.8 Tests per format: merge, placement, no longer-version match, deny, malformed, upgrade, user-owned rule untouched
-- [ ] 2.9 Update the `init` recipe; changeset; run `pnpm typecheck` and `pnpm lint`
+- [x] 2.3 A writer per format: Claude Code, Cursor editor and CLI, OpenCode object (last) and array (first), JSONC-preserving, and Codex
+- [x] 2.4 Deny detection and unparseable-file refusal per format
+- [x] 2.5 `install.permissions` in the manifest; upgrade replacement; delete a Taskless-created file left empty
+- [x] 2.6 Report every edit: `Created`/`Edited <file>` with green `ALLOW:`, red `REMOVE:`, yellow `SKIPPED:` lines via `util/color.ts`; preview in the wizard summary step before writing; print after writing in `--no-interactive`; stderr plus envelope data under `--json`
+- [x] 2.7 Preflight wording: per-command approval only where a harness cannot scope a rule to one invocation
+- [x] 2.8 Tests per format: merge, placement, no longer-version match, deny, malformed, upgrade, user-owned rule untouched
+- [x] 2.9 Update the `init` recipe; changeset; run `pnpm typecheck` and `pnpm lint`
