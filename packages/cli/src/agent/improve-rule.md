@@ -1,4 +1,4 @@
-# Topic: improve-rule     (CLI v%(CLI_VERSION)s / topic v8)
+# Topic: improve-rule     (CLI v%(CLI_VERSION)s / topic v9)
 
 ## Goal
 Iterate on an existing Taskless rule. The CLI submits the user's
@@ -66,6 +66,12 @@ If the user wants the local-only flow (no API call), fetch
 
    Each reference is `{ filename: string, content: string }`. Multiple
    references are an array.
+
+   Prefer references copied from the repository over invented ones, and
+   name any you invented. Hold them to the repository's idiom outside
+   the construct the rule checks. A not-flagged reference should be
+   code the linters in `detect --json` would accept, with no placeholder
+   types and no nesting a reviewer would send back.
 
 6. **Confirm the request.** Summarize the rule, the guidance, and
    the references before submitting.

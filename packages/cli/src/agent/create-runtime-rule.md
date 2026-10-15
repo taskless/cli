@@ -1,4 +1,4 @@
-# Topic: create-runtime-rule     (CLI v%(CLI_VERSION)s / topic v4)
+# Topic: create-runtime-rule     (CLI v%(CLI_VERSION)s / topic v5)
 
 ## You are here
 This is `create-runtime-rule`. It helps you write a runtime rule: a
@@ -130,6 +130,8 @@ Without the flag `verify` prints `○` for the rule, says the fixtures did
 not run, names the flag, and exits 0. That is neither a pass nor a
 failure, and it is deliberately not a failure: nothing the holder of an
 unblessed rule can do would make a failure green.
+
+%(FIXTURE_SOURCES)s
 
 Both buckets have to be populated for the rule to pass, and every case
 has to match at least one capture. A case the captures do not match

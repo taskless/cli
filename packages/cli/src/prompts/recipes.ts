@@ -339,6 +339,49 @@ category is not an answer.`;
 }
 
 /**
+ * Where an authoring recipe's fixtures come from, shared by every recipe that
+ * has the agent write them.
+ *
+ * One block rather than a paragraph per recipe because four recipes write
+ * fixtures and the guidance is engine-agnostic; each recipe keeps its own
+ * engine-specific cases (Vale near-misses, sg arity) beside it. Bucket names
+ * stay out of it for the same reason: `valid` in sg, `pass/` everywhere else.
+ *
+ * Detection is reused before it is re-run because the common path is `route`
+ * then `create-*-rule` in one task, and `route` has already read the linters.
+ * With mechanics off the caller supplied that evidence and no command is named.
+ */
+function fixtureSourcesBlock(invocation: string | undefined): string {
+  const detection =
+    invocation === undefined
+      ? "Use the `linters` list in the detection evidence the caller supplies."
+      : `Use the \`linters\` list from \`detect --json\`: reuse the output if
+  routing already ran it, otherwise run \`${invocation} detect --json\`.`;
+  return `**Where the cases come from.** Readers take fixtures as examples of
+this repository's style, so a case the repository would reject in review
+costs the rule its credibility however correct the rule is.
+
+- **Copy before you invent.** Take each case from real code or prose in
+  the repository, trimmed to what the case needs, keeping its names.
+  Invent a case only when the repository has no instance of it, and name
+  the invented cases in your report.
+- **Write the passing bucket to the repository's linters.**
+  ${detection}
+  Read each linter's configuration from its \`evidence\` paths, and write
+  passing cases those linters would accept. When a case is a complete
+  file a linter can check on its own, run the linter on it. Do not lint
+  a fragment: the unresolved imports and unused names it reports are
+  about the fragment, and padding the case to silence them buries what
+  it tests.
+- **Vary only where the rule looks.** Outside the construct the rule
+  checks, every case in both buckets is code the repository would
+  accept: no placeholder or catch-all types such as
+  \`Record<string, never>\` or \`any\`, and no nesting a reviewer would
+  send back. A near-miss is still idiomatic. It differs from its failing
+  twin only on the rule's axis.`;
+}
+
+/**
  * Indent every line after the first, so a multi-line block substituted into an
  * indented `%(KEY)s` is still the markdown unit it replaces.
  *
@@ -561,6 +604,13 @@ export function buildVariables(
       options.mechanics === false ? "" : `${resolveInvocation(options)} agent `,
     NAME_DESTINATION: indentBlock(
       nameDestinationStep(
+        options.mechanics === false ? undefined : resolveInvocation(options)
+      ),
+      "   "
+    ),
+    // Substituted into a numbered fixture step, so indented to its body.
+    FIXTURE_SOURCES: indentBlock(
+      fixtureSourcesBlock(
         options.mechanics === false ? undefined : resolveInvocation(options)
       ),
       "   "

@@ -1,4 +1,4 @@
-# Topic: improve-rule (anonymous)     (CLI v%(CLI_VERSION)s / topic v3)
+# Topic: improve-rule (anonymous)     (CLI v%(CLI_VERSION)s / topic v4)
 
 ## Goal
 Iterate on an existing ast-grep rule **locally** without contacting
@@ -39,6 +39,8 @@ check it with `validate` and `verify` in a feedback loop.
 5. **Update test cases.** Add the new false-positive examples to the
    `valid:` list and the new false-negative examples to the
    `invalid:` list in `.taskless/rules/sg/<id>/.tests/<id>-*.yml`.
+
+   %(FIXTURE_SOURCES)s
 
 6. **Run the feedback loop.** Run:
    ```

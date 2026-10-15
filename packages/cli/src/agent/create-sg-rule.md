@@ -1,4 +1,4 @@
-# Topic: create-sg-rule     (CLI v%(CLI_VERSION)s / topic v9)
+# Topic: create-sg-rule     (CLI v%(CLI_VERSION)s / topic v10)
 
 ## You are here
 This is `create-sg-rule`. It helps you write an ast-grep rule: a check
@@ -113,11 +113,12 @@ whole rule.
 
 6. **Write the tests.** Write
    `.taskless/rules/sg/<id>/.tests/<id>-YYYYMMDD-test.yml` with the matching
-   `id` field plus `valid` and `invalid` arrays, at least two of each,
-   drawn from real code where you can. The `id` must match the rule's
-   `id` so ast-grep test filtering pairs them. These paths and this
-   shape are the same ones the service writes; do not invent a different
-   layout.
+   `id` field plus `valid` and `invalid` arrays, at least two of each.
+   The `id` must match the rule's `id` so ast-grep test filtering pairs
+   them. These paths and this shape are the same ones the service
+   writes; do not invent a different layout.
+
+   %(FIXTURE_SOURCES)s
 
    **Both arrays must be non-empty, and `verify` fails the rule if either
    one is.** An empty `invalid:` is not a neutral starting point to fill

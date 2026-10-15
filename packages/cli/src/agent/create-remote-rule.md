@@ -1,4 +1,4 @@
-# Topic: create-remote-rule     (CLI v%(CLI_VERSION)s / topic v6)
+# Topic: create-remote-rule     (CLI v%(CLI_VERSION)s / topic v7)
 
 ## You are here
 This is `create-remote-rule`. It helps you have the Taskless service
@@ -103,6 +103,12 @@ Two ways to legitimately be here:
    - Search the codebase for real instances and show the user what you
      found. Real matches beat invented ones.
    - Ask for further success and failure cases, especially near-misses.
+   - Hold every case to the bar a fixture meets, since the generator
+     works from what you send. Copy cases from the
+     repository rather than inventing them. Write success cases that the
+     linters in `detect --json` would accept. Outside the construct the
+     rule checks, keep each case in the repository's idiom, with no
+     placeholder types and no nesting a reviewer would send back.
    - Read `.gitignore`, the linter configs, and `tsconfig.json`'s
      `exclude` for exclusion patterns the repo already believes in.
      Present them as proposed defaults rather than applying them.
