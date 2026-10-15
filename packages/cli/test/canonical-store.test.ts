@@ -14,8 +14,8 @@ import {
 } from "../src/install/canonical";
 import { parseFrontmatter } from "../src/install/frontmatter";
 import {
-  buildInvocation,
   isProductionInvocation,
+  PROD_INVOCATION,
 } from "../src/util/invocation";
 
 const SENTINEL = "INLINED-CANONICAL-BODY-MARKER";
@@ -95,9 +95,10 @@ describe("buildSkillStub", () => {
     const stub = buildSkillStub({ name: "taskless", description: "d" });
     const { content } = parseFrontmatter(stub);
     expect(content).toContain("does not exist");
-    // The invocation is the build's own, so a dev/self build points at its own
-    // binary rather than sending the reader to the published package.
-    expect(content).toContain(`\`${buildInvocation()} init\``);
+    // A release keeps the unpinned form here, so the stub does not change on
+    // every release; a self or nightly build names its own invocation (see
+    // test/nightly/stub-recovery-invocation.test.ts).
+    expect(content).toContain(`\`${PROD_INVOCATION} init\``);
   });
 
   it("embeds nothing that varies per release", () => {
@@ -230,9 +231,9 @@ function withRecoveryInvocation(stub: string, invocation: string): string {
 describe("stubRecoveryInvocation / stubRecoveryInvocationStale", () => {
   const meta = { name: "taskless", description: "Use for any Taskless task." };
   // This project runs under a released define, so a stub written here carries
-  // the released invocation. The nightly side of the same behaviour lives in
-  // test/nightly/stub-recovery-invocation.test.ts.
-  const productionRestore = `${buildInvocation()} init`;
+  // the released restore command, which stays unpinned. The nightly side of
+  // the same behaviour lives in test/nightly/stub-recovery-invocation.test.ts.
+  const productionRestore = `${PROD_INVOCATION} init`;
 
   it("reads the invocation back out of a stub it wrote", () => {
     expect(stubRecoveryInvocation(buildSkillStub(meta))).toBe(

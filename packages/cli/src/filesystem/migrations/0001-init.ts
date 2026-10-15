@@ -11,7 +11,7 @@ import {
 import { addToGitignore } from "../gitignore";
 import type { Migration } from "../types";
 import { buildInvocation } from "../../util/invocation";
-import { pinnedSpecifier } from "../../util/package-manager";
+import { readmeSpecifier } from "../../util/package-manager";
 
 const MANIFEST_FILE = "taskless.json";
 
@@ -123,7 +123,7 @@ const migration: Migration = async (directory) => {
   // Always write README.md (overwrite stale content from older versions)
   await writeFile(
     join(directory, "README.md"),
-    buildReadmeContent(pinnedSpecifier()),
+    buildReadmeContent(readmeSpecifier()),
     "utf8"
   );
 

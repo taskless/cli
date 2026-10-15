@@ -1,7 +1,7 @@
 import { join } from "node:path";
 import { writeFile } from "node:fs/promises";
 
-import { pinnedSpecifier } from "../../util/package-manager";
+import { readmeSpecifier } from "../../util/package-manager";
 import { buildReadmeContent } from "./0001-init";
 import type { Migration } from "../types";
 
@@ -30,7 +30,7 @@ import type { Migration } from "../types";
 const migration: Migration = async (directory) => {
   await writeFile(
     join(directory, "README.md"),
-    buildReadmeContent(pinnedSpecifier()),
+    buildReadmeContent(readmeSpecifier()),
     "utf8"
   );
 };

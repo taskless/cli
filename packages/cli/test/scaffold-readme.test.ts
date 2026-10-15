@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { buildReadmeContent } from "../src/filesystem/migrations/0001-init";
 import { buildInvocation } from "../src/util/invocation";
-import { pinnedSpecifier } from "../src/util/package-manager";
+import { readmeSpecifier } from "../src/util/package-manager";
 
 /**
  * `.taskless/README.md` is persisted into the user's repository and rewritten
@@ -17,7 +17,7 @@ import { pinnedSpecifier } from "../src/util/package-manager";
 const NIGHTLY_SPECIFIER = "@taskless/cli-nightly@0.11.0-20260824213902xf26a7b0";
 const RELEASED_SPECIFIER = "@taskless/cli@latest";
 
-/** What `pinnedSpecifier()` returns for a path-form (`self`) build. */
+/** What `readmeSpecifier()` returns for a path-form (`self`) build. */
 const NO_SPECIFIER: string | undefined = undefined;
 
 describe("buildReadmeContent", () => {
@@ -55,9 +55,11 @@ describe("buildReadmeContent", () => {
     // Byte stability matters because many projects commit this file and the
     // migration overwrites it on every run. The specifier is the only input,
     // and it is a build-time constant, so nothing here can vary per launch.
-    expect(buildReadmeContent(pinnedSpecifier())).toBe(
-      buildReadmeContent(pinnedSpecifier())
+    expect(buildReadmeContent(readmeSpecifier())).toBe(
+      buildReadmeContent(readmeSpecifier())
     );
-    expect(pinnedSpecifier()).toBe(RELEASED_SPECIFIER);
+    // A release pins its own version everywhere else; the README, written
+    // once and read across upgrades, names @latest instead.
+    expect(readmeSpecifier()).toBe(RELEASED_SPECIFIER);
   });
 });

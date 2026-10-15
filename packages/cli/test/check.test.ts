@@ -67,7 +67,7 @@ describe("check", () => {
     // The remedy must run as printed: through the launcher, with the
     // `--from` that `rule create` refuses to start without.
     expect(stdout).toMatch(
-      /`(?:npx|pnpm dlx) @taskless\/cli@latest rule create --from <file>`/
+      /`(?:npx|pnpm dlx) @taskless\/cli@\d[^\s`]* rule create --from <file>`/
     );
   });
 

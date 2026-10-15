@@ -1,6 +1,6 @@
 import process from "node:process";
 
-import { buildInvocation } from "./invocation";
+import { buildInvocation, isProductionInvocation } from "./invocation";
 
 /**
  * How the CLI answers "what would the reader type to run me again?"
@@ -146,18 +146,31 @@ const NPX_PREFIX = "npx ";
  * or `undefined` when the build's invocation is a filesystem path.
  *
  * A `self` build names `node <path>`; no launcher applies to it and there is
- * nothing to pin. A nightly's specifier already carries its exact
- * version — deliberately, since a floating `@taskless/cli-nightly` resolves to
- * whatever nightly is newest rather than the one whose instructions are being
- * read. Only the released `@taskless/cli` needs `@latest` appended, because
- * `npx` and `pnpm dlx` otherwise prefer whatever is already in the cache.
+ * nothing to pin. Both published builds carry their exact version in the
+ * invocation: a release as `@taskless/cli@<version>`, a nightly as
+ * `@taskless/cli-nightly@<version>`. A floating specifier resolves to whatever
+ * npx has cached or whatever is newest, which is not the build whose
+ * instructions are being read, and no permission rule can allow it narrowly.
  */
 export function pinnedSpecifier(): string | undefined {
   const invocation = buildInvocation();
   if (!invocation.startsWith(NPX_PREFIX)) return undefined;
-  const specifier = invocation.slice(NPX_PREFIX.length);
-  // Scoped names open with `@`, so a version pin is an `@` anywhere after it.
-  return specifier.includes("@", 1) ? specifier : `${specifier}@latest`;
+  return invocation.slice(NPX_PREFIX.length);
+}
+
+/**
+ * The specifier `.taskless/README.md` names.
+ *
+ * The README is written by a migration and read long after, through any number
+ * of upgrades that do not rewrite it, so a release's version pinned there would
+ * be stale by the next release. A release's README therefore names
+ * `@taskless/cli@latest`. A nightly keeps its pin, since a reader of a nightly's
+ * README is exercising that nightly, and `@latest` would install the release
+ * over it.
+ */
+export function readmeSpecifier(): string | undefined {
+  if (isProductionInvocation()) return "@taskless/cli@latest";
+  return pinnedSpecifier();
 }
 
 /**

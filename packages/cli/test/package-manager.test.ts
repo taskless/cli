@@ -8,6 +8,7 @@ import {
   type Launcher,
   type LauncherContext,
 } from "../src/util/package-manager";
+import { CLI_VERSION } from "../src/version";
 
 /**
  * These tests replace a suite that asserted `npm_config_user_agent` alone
@@ -167,20 +168,20 @@ describe("detectLauncher", () => {
 
 describe("detectCliInvocation", () => {
   // The test suite runs against a prod build, so the specifier is the released
-  // package pinned to @latest.
+  // package pinned to its own version.
   it("composes the launcher with the pinned package specifier", () => {
     expect(
       detectCliInvocation(
         context("/Users/dev/.npm/_npx/a1b2c3/node_modules/.bin/taskless")
       )
-    ).toBe("npx @taskless/cli@latest");
+    ).toBe(`npx @taskless/cli@${CLI_VERSION}`);
     expect(
       detectCliInvocation(
         context("/Users/dev/Library/Caches/pnpm/dlx/9f8/node_modules/.bin/x", {
           npm_config_user_agent: PNPM_AGENT,
         })
       )
-    ).toBe("pnpm dlx @taskless/cli@latest");
+    ).toBe(`pnpm dlx @taskless/cli@${CLI_VERSION}`);
   });
 
   it("is undefined when the launcher is unknown", () => {
@@ -193,7 +194,9 @@ describe("detectCliInvocation", () => {
 describe("getCliPrefix", () => {
   it("prints npx when detection is unknown, because a human needs something runnable", () => {
     // Whatever launcher the test runner used, the printed command must resolve.
-    expect(getCliPrefix()).toMatch(/^(?:npx|pnpm dlx) @taskless\/cli@latest$/);
+    expect(getCliPrefix()).toMatch(
+      new RegExp(`^(?:npx|pnpm dlx) @taskless/cli@${CLI_VERSION}$`)
+    );
   });
 
   it("never suggests pnpm dlx from a pnpm script", () => {

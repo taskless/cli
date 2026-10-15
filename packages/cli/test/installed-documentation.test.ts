@@ -5,7 +5,7 @@ import { join, resolve } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { buildReadmeContent } from "../src/filesystem/migrations/0001-init";
-import { pinnedSpecifier } from "../src/util/package-manager";
+import { readmeSpecifier } from "../src/util/package-manager";
 import { ensureTasklessDirectory } from "../src/filesystem/directory";
 import { LATEST_SCHEMA_VERSION } from "../src/filesystem/migrate";
 import {
@@ -104,7 +104,7 @@ describe("this repository's own installed Taskless docs", () => {
     // Run `pnpm build && pnpm cli init` and commit the result;
     // do not edit `.taskless/README.md` by hand, since the next migration
     // overwrites it.
-    expect(onDisk).toBe(buildReadmeContent(pinnedSpecifier()));
+    expect(onDisk).toBe(buildReadmeContent(readmeSpecifier()));
   });
 
   it("describes no directory the layout migrations removed", async () => {

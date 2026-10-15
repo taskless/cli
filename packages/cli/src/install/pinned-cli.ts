@@ -3,6 +3,7 @@ import { basename, dirname, join, posix, sep } from "node:path";
 
 import { parse as parseYaml } from "yaml";
 
+import { automationFiles } from "../detect/automation";
 import { isRecord } from "../util/is-record";
 import { compareSemver, compareVersions } from "../util/version-compare";
 import { renderNoticeBox } from "./notice-box";
@@ -77,12 +78,16 @@ const BOUNDED_SPEC =
 /** One pin that would run a CLI older than the one that just ran. */
 export interface PinnedCli {
   /**
-   * The `package.json` holding the pin, relative to the directory searched
-   * and `/`-separated: `package.json` at the root, `packages/app/package.json`
-   * in a workspace package.
+   * The file holding the pin, relative to the directory searched and
+   * `/`-separated: `package.json` at the root, `packages/app/package.json` in a
+   * workspace package, or a CI or hook file such as
+   * `.github/workflows/ci.yml`.
    */
   manifest: string;
-  /** Where the pin lives in it: `devDependencies`, or `scripts.<name>`. */
+  /**
+   * Where the pin lives in it: `devDependencies` or `scripts.<name>` in a
+   * `package.json`, `line <n>` in a CI or hook file.
+   */
   location: string;
   /** The package the pin names. */
   name: string;
@@ -329,9 +334,53 @@ async function findPinsIn(
 }
 
 /**
- * Every stale pin in `<cwd>/package.json` and in each workspace package it
- * declares, root first and then workspace packages by path, each in file
- * order. An absent or unreadable `package.json` has no pins.
+ * Every stale pin spelled out in one CI or hook file, by line.
+ *
+ * Read as text with the same grammar as a `package.json` script, because that
+ * is what these files are: commands, wrapped in YAML or a shell script. Once
+ * every build pins its own version, the invocation the `ci` and `hooks`
+ * recipes write names that version, and an upgrade leaves it behind. Only a
+ * bounded spec is judged, as for scripts, and a pin repeated in one file is
+ * reported once, at its first line.
+ */
+async function findPinsInAutomationFile(
+  cwd: string,
+  file: string,
+  cliVersion: string
+): Promise<PinnedCli[]> {
+  let text: string;
+  try {
+    text = await readFile(join(cwd, file), "utf8");
+  } catch {
+    return [];
+  }
+  const pins: PinnedCli[] = [];
+  const seen = new Set<string>();
+  for (const [index, line] of text.split("\n").entries()) {
+    for (const match of line.matchAll(SCRIPT_PIN)) {
+      const [, suffix, spec] = match;
+      const name = `@taskless/${suffix ?? "cli"}`;
+      if (spec === undefined || seen.has(`${name}@${spec}`)) continue;
+      seen.add(`${name}@${spec}`);
+      if (isStale(spec, cliVersion)) {
+        pins.push({
+          manifest: file,
+          location: `line ${String(index + 1)}`,
+          name,
+          spec,
+          installed: null,
+        });
+      }
+    }
+  }
+  return pins;
+}
+
+/**
+ * Every stale pin in `<cwd>/package.json`, in each workspace package it
+ * declares, and in the project's CI and hook files: root first, then
+ * workspace packages by path, then CI and hook files by path, each in file
+ * order. An absent or unreadable file has no pins.
  *
  * Unreadable is not an error here. This is advice attached to a successful
  * command, and a malformed manifest is something the package manager will
@@ -353,6 +402,9 @@ export async function findStalePins(
         cliVersion
       ))
     );
+  }
+  for (const file of automationFiles(cwd)) {
+    pins.push(...(await findPinsInAutomationFile(cwd, file, cliVersion)));
   }
   return pins;
 }
@@ -393,7 +445,7 @@ export function describePin(pin: PinnedCli, cliVersion: string): string {
  * none.
  *
  * Worded as something to offer, not something done. The install never edits
- * `package.json`: a pin is often deliberate (a CI image, a reproducible
+ * `package.json`, a CI file, or a hook: a pin is often deliberate (a CI image, a reproducible
  * build), and bumping it changes a lockfile the person has not seen. What the
  * notice owes them is that the pin and the project now disagree, and which
  * version would agree.
@@ -428,7 +480,7 @@ export function getPinnedCliNotice(
         `CI, scripts, and git hooks that run these pins will break on the push that carries the migrated files. ` +
         `Offer to update them as shown and reinstall dependencies, in the same commit as .taskless/.`;
   return renderNoticeBox("UPDATE PINNED TASKLESS VERSIONS", [
-    `package.json pins a Taskless CLI older than ${cliVersion}, the version that just ran here:`,
+    `This project pins a Taskless CLI older than ${cliVersion}, the version that just ran here:`,
     { items: pins.map((pin) => describePin(pin, cliVersion)) },
     consequence,
   ]);

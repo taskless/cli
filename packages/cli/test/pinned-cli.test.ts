@@ -30,6 +30,11 @@ describe("findStalePins", () => {
     await writeFile(join(cwd, path, "package.json"), JSON.stringify(contents));
   }
 
+  async function writeFileAt(path: string, contents: string): Promise<void> {
+    await mkdir(join(cwd, path, ".."), { recursive: true });
+    await writeFile(join(cwd, path), contents);
+  }
+
   /** The manifest of every stale pin, in report order. */
   async function manifestsOf(cliVersion: string): Promise<string[]> {
     const pins = await findStalePins(cwd, cliVersion);
@@ -271,6 +276,67 @@ describe("findStalePins", () => {
     expect(await findStalePins(cwd, "0.11.2")).toHaveLength(1);
   });
 
+  describe("CI and hook files", () => {
+    // Every build pins its own version now, so the `ci` and `hooks` recipes
+    // write `npx @taskless/cli@<version>`, and the next upgrade leaves it behind.
+    it("names a stale pin in a workflow by file and line", async () => {
+      await writeFileAt(
+        ".github/workflows/taskless.yml",
+        "jobs:\n  check:\n    steps:\n      - run: npx @taskless/cli@0.11.0 check\n"
+      );
+      expect(await findStalePins(cwd, "0.12.0")).toEqual([
+        {
+          manifest: ".github/workflows/taskless.yml",
+          location: "line 4",
+          name: "@taskless/cli",
+          spec: "0.11.0",
+          installed: null,
+        },
+      ]);
+    });
+
+    it("reads hook files, including a directory of hook scripts", async () => {
+      await writeFileAt(
+        ".husky/pre-commit",
+        "npx @taskless/cli@0.11.0 check\n"
+      );
+      await writeFileAt(
+        "lefthook.yml",
+        "pre-commit:\n  commands:\n    taskless:\n      run: npx @taskless/cli-nightly@0.11.0-20260901000000xaaaaaaa check {staged_files}\n"
+      );
+      expect(await manifestsOf("0.12.0")).toEqual([
+        ".husky/pre-commit",
+        "lefthook.yml",
+      ]);
+    });
+
+    it("leaves a current or floating pin alone", async () => {
+      await writeFileAt(
+        ".gitlab-ci.yml",
+        "check:\n  script:\n    - npx @taskless/cli@0.12.0 check\n    - npx @taskless/cli@latest check\n"
+      );
+      expect(await findStalePins(cwd, "0.12.0")).toEqual([]);
+    });
+
+    it("reports a pin repeated in one file once, at its first line", async () => {
+      await writeFileAt(
+        ".github/workflows/ci.yml",
+        "- run: npx @taskless/cli@0.11.0 check\n- run: npx @taskless/cli@0.11.0 report\n"
+      );
+      const pins = await findStalePins(cwd, "0.12.0");
+      expect(pins.map((pin) => pin.location)).toEqual(["line 1"]);
+    });
+
+    it("comes after package.json pins", async () => {
+      await writePackage({ devDependencies: { "@taskless/cli": "0.11.0" } });
+      await writeFileAt(".gitlab-ci.yml", "- npx @taskless/cli@0.11.0 check\n");
+      expect(await manifestsOf("0.12.0")).toEqual([
+        "package.json",
+        ".gitlab-ci.yml",
+      ]);
+    });
+  });
+
   describe("workspace packages", () => {
     const stalePin = { devDependencies: { "@taskless/cli": "^0.10.2" } };
 
@@ -445,6 +511,23 @@ describe("getPinnedCliNotice", () => {
     } finally {
       chalk.level = level;
     }
+  });
+
+  it("names a CI pin by file and line", () => {
+    const pin: PinnedCli = {
+      manifest: ".github/workflows/ci.yml",
+      location: "line 12",
+      name: "@taskless/cli",
+      spec: "0.11.0",
+      installed: null,
+    };
+    const text = pinnedNotice([pin], "0.12.0");
+    expect(text).toContain(
+      ".github/workflows/ci.yml line 12: @taskless/cli 0.11.0 -> @taskless/cli@0.12.0"
+    );
+    expect(text).toContain(
+      "This project pins a Taskless CLI older than 0.12.0"
+    );
   });
 
   it("names every pin with its target, and offers the bump rather than claiming it", () => {

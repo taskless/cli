@@ -31,7 +31,8 @@ const pkg = JSON.parse(
 // binds those pure functions to this process.
 const buildTarget = resolveBuildTarget(process.env);
 const outDir = resolveOutputDirectory(process.env);
-const cliInvocation = resolveCliInvocation(process.env);
+const cliVersion = resolveCliVersion(process.env, pkg.version);
+const cliInvocation = resolveCliInvocation(process.env, cliVersion);
 const cliNotice = resolveCliNotice(process.env);
 
 // A nightly emits to `dist` — the same directory as prod, because that is what
@@ -455,10 +456,11 @@ const NIGHTLY_TEST_VERSION = resolveCliVersion(
   NIGHTLY_TEST_ENVIRONMENT,
   pkg.version
 );
-const NIGHTLY_TEST_INVOCATION = resolveCliInvocation(NIGHTLY_TEST_ENVIRONMENT);
+const NIGHTLY_TEST_INVOCATION = resolveCliInvocation(
+  NIGHTLY_TEST_ENVIRONMENT,
+  NIGHTLY_TEST_VERSION
+);
 const NIGHTLY_TEST_NOTICE = resolveCliNotice(NIGHTLY_TEST_ENVIRONMENT);
-
-const cliVersion = resolveCliVersion(process.env, pkg.version);
 
 // Fails the build rather than emitting an artifact whose version and
 // invocation disagree — the shape of taskless/cli#148.
@@ -469,6 +471,7 @@ export default defineConfig({
     __VERSION__: JSON.stringify(cliVersion),
     __TASKLESS_CLI__: JSON.stringify(cliInvocation),
     __TASKLESS_CLI_NOTICE__: JSON.stringify(cliNotice),
+    __TASKLESS_BUILD_TARGET__: JSON.stringify(buildTarget),
   },
   plugins: [
     tsconfigPaths(),
@@ -544,6 +547,7 @@ export default defineConfig({
           __VERSION__: JSON.stringify(NIGHTLY_TEST_VERSION),
           __TASKLESS_CLI__: JSON.stringify(NIGHTLY_TEST_INVOCATION),
           __TASKLESS_CLI_NOTICE__: JSON.stringify(NIGHTLY_TEST_NOTICE),
+          __TASKLESS_BUILD_TARGET__: JSON.stringify("nightly"),
         },
         test: { name: "nightly", include: ["test/nightly/**/*.test.ts"] },
       },

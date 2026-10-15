@@ -1,4 +1,4 @@
-import { existsSync, globSync } from "node:fs";
+import { existsSync, globSync, readdirSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 
@@ -167,6 +167,36 @@ function matchSignals(
     if (evidence.length > 0) detected.push({ name: signal.name, evidence });
   }
   return detected;
+}
+
+/**
+ * Every CI and commit-time config file at `root`, as sorted root-relative
+ * paths: the files the signals above match, with a directory signal expanded
+ * to the files directly inside it (`.husky/pre-commit`, `.buildkite/pipeline.yml`).
+ *
+ * This is what runs commands on the repository's behalf, so it is where a
+ * pinned Taskless invocation is left behind by an upgrade.
+ */
+export function automationFiles(root: string): string[] {
+  const files = new Set<string>();
+  for (const signal of [...CI_SIGNALS, ...HOOK_SIGNALS]) {
+    for (const pattern of signal.paths ?? []) {
+      if (!pattern.endsWith("/")) {
+        for (const path of globSync(pattern, { cwd: root })) files.add(path);
+        continue;
+      }
+      let entries;
+      try {
+        entries = readdirSync(resolve(root, pattern), { withFileTypes: true });
+      } catch {
+        continue;
+      }
+      for (const entry of entries) {
+        if (entry.isFile()) files.add(`${pattern}${entry.name}`);
+      }
+    }
+  }
+  return [...files].toSorted();
 }
 
 /**

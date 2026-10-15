@@ -96,7 +96,7 @@ describe("--anonymous flag (per-command behavior matrix)", () => {
       const result = await runCli(["rule", "create", "--anonymous", "-d", cwd]);
       expect(result.exitCode).not.toBe(0);
       expect(result.stderr).toMatch(
-        /`(?:npx|pnpm dlx) @taskless\/cli@latest agent create-sg-rule`/
+        /`(?:npx|pnpm dlx) @taskless\/cli@\d[^\s`]* agent create-sg-rule`/
       );
     });
 
@@ -127,7 +127,7 @@ describe("--anonymous flag (per-command behavior matrix)", () => {
       ]);
       expect(result.exitCode).not.toBe(0);
       expect(result.stderr).toMatch(
-        /`(?:npx|pnpm dlx) @taskless\/cli@latest agent improve-rule --anonymous`/
+        /`(?:npx|pnpm dlx) @taskless\/cli@\d[^\s`]* agent improve-rule --anonymous`/
       );
     });
   });
