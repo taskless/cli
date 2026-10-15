@@ -43,18 +43,20 @@ const pinnedCliSchema = z.object({
   manifest: z
     .string()
     .describe(
-      "The package.json holding the pin, relative to the working directory"
+      "The file holding the pin, relative to the working directory: a package.json, or a CI or git-hook file"
     ),
   location: z
     .string()
-    .describe("The field in it: `devDependencies`, or `scripts.<name>`"),
+    .describe(
+      "Where in it: `devDependencies` or `scripts.<name>` in a package.json, `line <n>` in a CI or hook file"
+    ),
   name: z.string().describe("The package the pin names"),
   spec: z.string().describe("The pin as written"),
   installed: z
     .string()
     .nullable()
     .describe(
-      "The installed version the pin runs, or null when nothing is installed or the pin is a script"
+      "The installed version the pin runs, or null when nothing is installed or the pin is in a script, CI file, or hook"
     ),
 });
 

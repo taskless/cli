@@ -317,7 +317,9 @@ describe("taskless init (the batch install)", () => {
     // stays last.
     const lines = stdout.trimEnd().split("\n");
     const trailerAt = lines.findIndex((line) => line.includes("next commit"));
-    const pinAt = lines.findIndex((line) => line.includes("package.json pins"));
+    const pinAt = lines.findIndex((line) =>
+      line.includes("pins a Taskless CLI older")
+    );
     // Both present first: `findIndex` is -1 for a missing line, and -1 sorts
     // before everything, so the ordering check alone passes on an absent
     // trailer.
