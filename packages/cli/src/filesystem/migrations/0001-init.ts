@@ -78,7 +78,6 @@ ${usageBlock(specifier)}
 - \`taskless.json\` - Version manifest / migration state
 - \`.env.local.json\` - Local authentication credentials (git-ignored)
 - \`skills/\` - Canonical Taskless skill content; tool directories hold thin stubs that delegate here (managed by Taskless)
-- \`commands/\` - Canonical Taskless command content (managed by Taskless)
 
 ${layoutBlock()}
 `;

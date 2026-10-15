@@ -1,12 +1,12 @@
 import { describe, expect, it } from "vitest";
 
-import { getEmbeddedCommands, getEmbeddedSkills } from "../src/install/install";
+import { getEmbeddedSkills } from "../src/install/install";
 
 /**
  * Regression coverage for taskless/cli#298.
  *
- * `getEmbeddedSkills`/`getEmbeddedCommands` read `name`/`description` straight
- * out of a skill or command's raw frontmatter — the exact text later copied
+ * `getEmbeddedSkills` reads `name`/`description` straight
+ * out of a skill's raw frontmatter — the exact text later copied
  * verbatim into a `.claude`/`.agents`/etc. reference stub's own frontmatter
  * (see `writeSkill`/`writeCommand` in `src/install/install.ts`, which pass
  * `skill.description`/`command.description` through unchanged as
@@ -48,15 +48,6 @@ describe("skill/command descriptions never name the CLI package", () => {
       expect(
         skill.description,
         `skill "${skill.name}" description names the CLI package`
-      ).not.toMatch(NAMES_THE_CLI_PACKAGE);
-    }
-  });
-
-  it("no embedded command's description carries a CLI invocation", () => {
-    for (const command of getEmbeddedCommands()) {
-      expect(
-        command.description,
-        `command "${command.filename}" description names the CLI package`
       ).not.toMatch(NAMES_THE_CLI_PACKAGE);
     }
   });

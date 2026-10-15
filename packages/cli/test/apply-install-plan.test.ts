@@ -15,7 +15,6 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   applyInstallPlan,
   buildInstallPlan,
-  getEmbeddedCommands,
   getEmbeddedSkills,
 } from "../src/install/install";
 import { renderInvocationPlaceholder } from "../src/util/invocation";
@@ -61,9 +60,7 @@ function tasklessSkill() {
 
 describe("applyInstallPlan", () => {
   it("writes canonical full content and a reference stub, recording modes", async () => {
-    const skills = [tasklessSkill()];
-    const commands = getEmbeddedCommands();
-    const plan = buildInstallPlan([".claude"], skills, commands);
+    const plan = buildInstallPlan([".claude"], [tasklessSkill()]);
 
     const result = await applyInstallPlan(cwd, plan, { cliVersion: "0.7.0" });
 
@@ -94,30 +91,64 @@ describe("applyInstallPlan", () => {
     expect(result.writtenSkills.length).toBeGreaterThan(0);
   });
 
-  it("writes a command stub only for command-capable targets", async () => {
-    const plan = buildInstallPlan(
-      [".claude", ".opencode"],
-      [tasklessSkill()],
-      getEmbeddedCommands()
-    );
+  it("writes no slash command into any target", async () => {
+    const plan = buildInstallPlan([".claude", ".cursor"], [tasklessSkill()]);
     await applyInstallPlan(cwd, plan, { cliVersion: "0.7.0" });
 
-    expect(
-      await exists(join(cwd, ".claude", "commands", "tskl", "tskl.md"))
-    ).toBe(true);
-    expect(await exists(join(cwd, ".opencode", "commands"))).toBe(false);
-    // .opencode still gets its skill stub.
-    expect(
-      await exists(join(cwd, ".opencode", "skills", "taskless", "SKILL.md"))
-    ).toBe(true);
+    for (const directory of [".taskless", ".claude", ".cursor"]) {
+      expect(await exists(join(cwd, directory, "commands"))).toBe(false);
+    }
+  });
+
+  it("removes the tskl command an older install recorded", async () => {
+    // Taskless used to ship `/tskl`: full content in the canonical store and
+    // a stub in each command-capable tool. An upgrade has to take both away.
+    const canonicalCommands = join(cwd, ".taskless", "commands", "tskl");
+    const claudeCommands = join(cwd, ".claude", "commands");
+    await mkdir(canonicalCommands, { recursive: true });
+    await writeFile(join(canonicalCommands, "tskl.md"), "old", "utf8");
+    await mkdir(join(claudeCommands, "tskl"), { recursive: true });
+    await writeFile(join(claudeCommands, "tskl", "tskl.md"), "old", "utf8");
+    // Someone else's command shares the tool's `commands/` directory.
+    await writeFile(join(claudeCommands, "theirs.md"), "keep", "utf8");
+    await writeInstallState(cwd, {
+      cliVersion: "0.12.0",
+      targets: {
+        ".taskless": {
+          skills: ["taskless"],
+          commands: ["tskl.md"],
+          mode: "canonical",
+        },
+        ".claude": {
+          skills: ["taskless"],
+          commands: ["tskl.md"],
+          mode: "reference",
+        },
+      },
+    });
+
+    const result = await applyInstallPlan(
+      cwd,
+      buildInstallPlan([".claude"], [tasklessSkill()]),
+      { cliVersion: "0.13.0" }
+    );
+
+    expect(result.removedCommands).toEqual([
+      { target: ".claude", command: "tskl.md" },
+      { target: ".taskless", command: "tskl.md" },
+    ]);
+    expect(await exists(join(cwd, ".taskless", "commands"))).toBe(false);
+    expect(await exists(join(claudeCommands, "tskl"))).toBe(false);
+    expect(await readFile(join(claudeCommands, "theirs.md"), "utf8")).toBe(
+      "keep"
+    );
+    const state = await readInstallState(cwd);
+    expect(state.targets[".claude"]?.commands).toEqual([]);
+    expect(state.targets[".taskless"]?.commands).toEqual([]);
   });
 
   it("reports neither an unchanged canonical file nor an unchanged reference stub", async () => {
-    const plan = buildInstallPlan(
-      [".claude"],
-      [tasklessSkill()],
-      getEmbeddedCommands()
-    );
+    const plan = buildInstallPlan([".claude"], [tasklessSkill()]);
     await applyInstallPlan(cwd, plan, { cliVersion: "0.7.0" });
     const second = await applyInstallPlan(cwd, plan, { cliVersion: "0.7.0" });
 
@@ -125,12 +156,11 @@ describe("applyInstallPlan", () => {
     // such, so a no-op re-install read as an upgrade. Identical bytes are
     // not a write, in either mode.
     expect(second.writtenSkills).toHaveLength(0);
-    expect(second.writtenCommands).toHaveLength(0);
     expect(second.removedSkills).toHaveLength(0);
   });
 
   it("reports the canonical file when its bytes changed", async () => {
-    const plan = buildInstallPlan([".claude"], [tasklessSkill()], []);
+    const plan = buildInstallPlan([".claude"], [tasklessSkill()]);
     await applyInstallPlan(cwd, plan, { cliVersion: "0.7.0" });
     await writeFile(
       join(cwd, ".taskless", "skills", "taskless", "SKILL.md"),
@@ -146,7 +176,7 @@ describe("applyInstallPlan", () => {
   });
 
   it("does not clobber an existing reference stub on re-run", async () => {
-    const plan = buildInstallPlan([".claude"], [tasklessSkill()], []);
+    const plan = buildInstallPlan([".claude"], [tasklessSkill()]);
     await applyInstallPlan(cwd, plan, { cliVersion: "0.7.0" });
 
     const stubPath = join(cwd, ".claude", "skills", "taskless", "SKILL.md");
@@ -174,7 +204,7 @@ describe("applyInstallPlan", () => {
       },
     });
 
-    const plan = buildInstallPlan([".claude"], [tasklessSkill()], []);
+    const plan = buildInstallPlan([".claude"], [tasklessSkill()]);
     await applyInstallPlan(cwd, plan, { cliVersion: "0.7.0" });
 
     // The obsolete .claude skill is gone; the canonical store is intact.
@@ -221,11 +251,7 @@ describe("applyInstallPlan", () => {
       },
     });
 
-    const plan = buildInstallPlan(
-      [".claude"],
-      [tasklessSkill()],
-      getEmbeddedCommands()
-    );
+    const plan = buildInstallPlan([".claude"], [tasklessSkill()]);
     const result = await applyInstallPlan(cwd, plan, { cliVersion: "0.7.0" });
 
     expect(result.removedSkills).toHaveLength(v6Skills.length);
@@ -241,7 +267,7 @@ describe("applyInstallPlan", () => {
   it("writes a stub whose bytes do not move with the CLI version", async () => {
     // The stub footprint outside `.taskless` is deliberately version-free, so
     // two installs of different CLI versions must produce identical bytes.
-    const plan = buildInstallPlan([".claude"], [tasklessSkill()], []);
+    const plan = buildInstallPlan([".claude"], [tasklessSkill()]);
     const stubPath = join(cwd, ".claude", "skills", "taskless", "SKILL.md");
 
     await applyInstallPlan(cwd, plan, { cliVersion: "0.7.0" });
@@ -279,7 +305,7 @@ describe("applyInstallPlan", () => {
     await mkdir(dirname(claudeSkill), { recursive: true });
     await writeFile(claudeSkill, legacy, "utf8");
 
-    await applyInstallPlan(cwd, buildInstallPlan([".claude"], [skill], []), {
+    await applyInstallPlan(cwd, buildInstallPlan([".claude"], [skill]), {
       cliVersion: "0.7.0",
     });
 
@@ -296,7 +322,7 @@ describe("applyInstallPlan", () => {
     // reaches for when the canonical file is already missing.
     const skill = tasklessSkill();
     const claudeSkill = join(cwd, ".claude", "skills", "taskless", "SKILL.md");
-    const plan = buildInstallPlan([".claude"], [skill], []);
+    const plan = buildInstallPlan([".claude"], [skill]);
 
     await applyInstallPlan(cwd, plan, { cliVersion: "0.7.0" });
     const written = await readFile(claudeSkill, "utf8");
@@ -326,7 +352,7 @@ describe("applyInstallPlan", () => {
     await writeFile(claudeSkill, skill.content, "utf8");
     expect(isShimStub(await readFile(claudeSkill, "utf8"))).toBe(false);
 
-    await applyInstallPlan(cwd, buildInstallPlan([".claude"], [skill], []), {
+    await applyInstallPlan(cwd, buildInstallPlan([".claude"], [skill]), {
       cliVersion: "0.7.0",
     });
 
@@ -345,7 +371,7 @@ describe("applyInstallPlan", () => {
     await mkdir(dirname(claudeSkill), { recursive: true });
     await symlink(linkTarget, claudeSkill);
 
-    await applyInstallPlan(cwd, buildInstallPlan([".claude"], [skill], []), {
+    await applyInstallPlan(cwd, buildInstallPlan([".claude"], [skill]), {
       cliVersion: "0.7.0",
     });
 
@@ -370,7 +396,7 @@ describe("applyInstallPlan", () => {
     await mkdir(dirname(claudeSkillDirectory), { recursive: true });
     await symlink(sourceDirectory, claudeSkillDirectory);
 
-    await applyInstallPlan(cwd, buildInstallPlan([".claude"], [skill], []), {
+    await applyInstallPlan(cwd, buildInstallPlan([".claude"], [skill]), {
       cliVersion: "0.7.0",
     });
 
@@ -385,37 +411,36 @@ describe("applyInstallPlan", () => {
     expect(await readFile(sourceSkill, "utf8")).toBe(skill.content);
   });
 
-  it("does not write through a symlinked command directory (no source clobber)", async () => {
-    // The command-namespace counterpart of the skill-directory case: a leftover
-    // `.claude/commands/tskl` symlink to source must not be written through.
-    const command = getEmbeddedCommands().find((c) => c.filename === "tskl.md");
-    if (!command) throw new Error("embedded tskl command missing");
+  it("removes a recorded command through a symlinked directory without touching source", async () => {
+    // A leftover `.claude/commands/tskl` symlink to source: deleting
+    // `tskl.md` through it would delete the source file.
     const sourceDirectory = join(cwd, "source", "tskl");
     await mkdir(sourceDirectory, { recursive: true });
     const sourceCommand = join(sourceDirectory, "tskl.md");
-    await writeFile(sourceCommand, command.content, "utf8");
+    await writeFile(sourceCommand, "source", "utf8");
 
     const claudeCommandDirectory = join(cwd, ".claude", "commands", "tskl");
     await mkdir(dirname(claudeCommandDirectory), { recursive: true });
     await symlink(sourceDirectory, claudeCommandDirectory);
+    await writeInstallState(cwd, {
+      cliVersion: "0.12.0",
+      targets: {
+        ".claude": {
+          skills: ["taskless"],
+          commands: ["tskl.md"],
+          mode: "reference",
+        },
+      },
+    });
 
     await applyInstallPlan(
       cwd,
-      buildInstallPlan([".claude"], [tasklessSkill()], [command]),
-      { cliVersion: "0.7.0" }
+      buildInstallPlan([".claude"], [tasklessSkill()]),
+      { cliVersion: "0.13.0" }
     );
 
-    // The symlinked directory was replaced by a real one holding a shim stub...
-    const directoryStats = await lstat(claudeCommandDirectory);
-    expect(directoryStats.isSymbolicLink()).toBe(false);
-    expect(directoryStats.isDirectory()).toBe(true);
-    expect(
-      isShimStub(
-        await readFile(join(claudeCommandDirectory, "tskl.md"), "utf8")
-      )
-    ).toBe(true);
-    // ...and the source file behind the former symlink is untouched.
-    expect(await readFile(sourceCommand, "utf8")).toBe(command.content);
+    expect(await exists(claudeCommandDirectory)).toBe(false);
+    expect(await readFile(sourceCommand, "utf8")).toBe("source");
   });
 
   it("does not touch unknown files in a skills directory", async () => {
@@ -425,7 +450,7 @@ describe("applyInstallPlan", () => {
     });
     await writeFile(userOwned, "# user skill", "utf8");
 
-    const plan = buildInstallPlan([".claude"], [tasklessSkill()], []);
+    const plan = buildInstallPlan([".claude"], [tasklessSkill()]);
     await applyInstallPlan(cwd, plan, { cliVersion: "0.7.0" });
 
     expect(await exists(userOwned)).toBe(true);

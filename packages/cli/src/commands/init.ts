@@ -9,7 +9,6 @@ import {
   DEFAULT_SHIM_DIR,
   detectSelectedDirectories,
   detectTools,
-  getEmbeddedCommands,
   getEmbeddedSkills,
 } from "../install/install";
 import { getMandatorySkillNames } from "../install/catalog";
@@ -111,7 +110,6 @@ export const initCommand = defineCommand({
       console.log(
         JSON.stringify({
           success: true,
-          commandsInstalled: result.commandsInstalled,
           // `null` rather than absent when nothing was recorded, so a consumer
           // reads "fresh project" as a value and never has to probe for a key.
           cliVersion: {
@@ -306,7 +304,6 @@ interface TargetOutcome {
   dir: string;
   mode: InstallMode;
   writtenSkills: string[];
-  writtenCommands: string[];
   removedSkills: string[];
   removedCommands: string[];
 }
@@ -314,7 +311,6 @@ interface TargetOutcome {
 function targetChanged(target: TargetOutcome): boolean {
   return (
     target.writtenSkills.length > 0 ||
-    target.writtenCommands.length > 0 ||
     target.removedSkills.length > 0 ||
     target.removedCommands.length > 0
   );
@@ -324,7 +320,6 @@ async function runNonInteractive(
   cwd: string,
   options: { json?: boolean } = {}
 ): Promise<{
-  commandsInstalled: boolean;
   reloadNotice: string | undefined;
   migrated: MigrationReport | undefined;
   previousCliVersion: string | undefined;
@@ -337,7 +332,7 @@ async function runNonInteractive(
 }> {
   // Under `--json`, stdout carries only the envelope printed by the caller.
   // This per-target summary is not on that envelope (it is finer-grained than
-  // `migrated`/`commandsInstalled`), so rather than drop it, it goes to
+  // `migrated`), so rather than drop it, it goes to
   // stderr — visible to a person watching the terminal, invisible to a
   // machine consumer parsing stdout.
   const log = options.json ? console.error : console.log;
@@ -381,14 +376,10 @@ async function runNonInteractive(
   const allSkills = getEmbeddedSkills();
   const mandatoryNames = new Set(getMandatorySkillNames());
   const skills = allSkills.filter((s) => mandatoryNames.has(s.name));
-  const commands = getEmbeddedCommands();
 
   const detected = await detectTools(cwd);
   const selectedDirectories = await detectSelectedDirectories(cwd);
-  const plan = buildInstallPlan(selectedDirectories, skills, commands);
-  const commandsInstalled = plan.targets.some(
-    (t) => t.mode === "reference" && t.commands.length > 0
-  );
+  const plan = buildInstallPlan(selectedDirectories, skills);
 
   // Read BEFORE applying: `applyInstallPlan` records the new version, so
   // afterwards there is nothing left to compare against.
@@ -408,12 +399,6 @@ async function runNonInteractive(
       value: entry.skill,
     }))
   );
-  const commandsByTarget = groupValuesByTarget(
-    result.writtenCommands.map((entry) => ({
-      target: entry.target,
-      value: entry.command,
-    }))
-  );
   const removedSkillsByTarget = groupValuesByTarget(
     result.removedSkills.map((entry) => ({
       target: entry.target,
@@ -430,7 +415,6 @@ async function runNonInteractive(
   const targets: TargetOutcome[] = [];
   for (const target of plan.targets) {
     const writtenSkills = skillsByTarget.get(target.dir) ?? [];
-    const writtenCommands = commandsByTarget.get(target.dir) ?? [];
     const removedSkills = removedSkillsByTarget.get(target.dir) ?? [];
     const removedCommands = removedCommandsByTarget.get(target.dir) ?? [];
     const noun = target.mode === "canonical" ? "canonical file" : "stub";
@@ -438,7 +422,6 @@ async function runNonInteractive(
       dir: target.dir,
       mode: target.mode,
       writtenSkills,
-      writtenCommands,
       removedSkills,
       removedCommands,
     };
@@ -455,9 +438,6 @@ async function runNonInteractive(
     for (const name of writtenSkills) {
       log(`  - ${name}`);
     }
-    if (writtenCommands.length > 0) {
-      log(`  + ${String(writtenCommands.length)} command ${noun}(s)`);
-    }
     if (removedSkills.length > 0) {
       log(`  removed ${String(removedSkills.length)} obsolete skill(s):`);
       for (const name of removedSkills) {
@@ -473,7 +453,6 @@ async function runNonInteractive(
   }
 
   return {
-    commandsInstalled,
     reloadNotice,
     migrated,
     previousCliVersion,

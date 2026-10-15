@@ -5,7 +5,6 @@ import { ensureTasklessDirectory } from "../filesystem/directory";
 import {
   applyInstallPlan,
   buildInstallPlan,
-  getEmbeddedCommands,
   getEmbeddedSkills,
   planToStateTargets,
 } from "../install/install";
@@ -51,11 +50,7 @@ export async function runWizard(
     locations = await promptLocations(options.cwd);
 
     // Catalog has one entry now (`taskless`); install all embedded skills.
-    const plan = buildInstallPlan(
-      locations,
-      getEmbeddedSkills(),
-      getEmbeddedCommands()
-    );
+    const plan = buildInstallPlan(locations, getEmbeddedSkills());
 
     const previousState = await readInstallState(options.cwd);
     const diff = computeInstallDiff(previousState, {
@@ -119,7 +114,7 @@ export async function runWizard(
   function finish(args: { status: "completed" | "cancelled" }): WizardResult {
     const durationMs = Date.now() - start;
     if (args.status === "completed") {
-      // Concrete state event: skills/commands were installed (interactive).
+      // Concrete state event: skills were installed (interactive).
       telemetry.capture("cli_installed");
     }
     return {

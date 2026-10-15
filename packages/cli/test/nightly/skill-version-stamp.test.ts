@@ -8,7 +8,6 @@ import {
   applyInstallPlan,
   buildInstallPlan,
   checkStaleness,
-  getEmbeddedCommands,
   getEmbeddedSkills,
 } from "../../src/install/install";
 import { CLI_VERSION } from "../../src/version";
@@ -41,11 +40,7 @@ describe("installing a nightly stamps the skill with the nightly's version", () 
   });
 
   async function install(): Promise<void> {
-    const plan = buildInstallPlan(
-      [".claude"],
-      getEmbeddedSkills(),
-      getEmbeddedCommands()
-    );
+    const plan = buildInstallPlan([".claude"], getEmbeddedSkills());
     await applyInstallPlan(cwd, plan, { cliVersion: CLI_VERSION });
   }
 

@@ -1,4 +1,4 @@
-# Topic: init     (CLI v%(CLI_VERSION)s / topic v5)
+# Topic: init     (CLI v%(CLI_VERSION)s / topic v6)
 
 ## Goal
 Install or update the Taskless skill in this project, and migrate the
@@ -29,15 +29,14 @@ first step, not the whole job.
    ```json
    {
      "success": true,
-     "commandsInstalled": true,
      "cliVersion": { "previous": "0.10.2", "installed": "0.11.1" },
      "targets": [
        { "dir": ".taskless", "mode": "canonical",
-         "writtenSkills": ["taskless"], "writtenCommands": [],
+         "writtenSkills": ["taskless"],
          "removedSkills": [], "removedCommands": [] },
        { "dir": ".claude", "mode": "reference",
-         "writtenSkills": ["taskless"], "writtenCommands": ["tskl.md"],
-         "removedSkills": [], "removedCommands": [] }
+         "writtenSkills": ["taskless"],
+         "removedSkills": [], "removedCommands": ["tskl.md"] }
      ],
      "changed": true,
      "migrated": { "from": 3, "to": 4, "applied": [4],
@@ -117,18 +116,18 @@ first step, not the whole job.
 `%(TASKLESS_CLI)s` with no subcommand launches an interactive wizard. It
 detects the installed tools (Claude Code, OpenCode, Cursor, Codex), asks
 which to enable, offers a login (skippable), shows a diff against the
-previous install, then writes the canonical `taskless` skill (and `tskl`
-command) once to `.taskless/` and a thin stub into each selected tool
-directory. Stale layouts from older installs converge to stubs
-automatically; v0.6-era per-task skills and commands are removed and the
-summary shows what went.
+previous install, then writes the canonical `taskless` skill once to
+`.taskless/` and a thin stub into each selected tool directory. Stale
+layouts from older installs converge to stubs automatically; the retired
+`tskl` slash command and v0.6-era per-task skills and commands are removed,
+and the summary shows what went.
 
 ## Errors
 
 - `SCAFFOLD_VERSION_MISMATCH`: the project's `.taskless/` is NEWER than
   this CLI. Upgrade the CLI; do not migrate downward.
-- No tools detected → the skill is written to `.agents/skills/` and no
-  slash command is installed. Not an error.
+- No tools detected → the skill is written to `.agents/skills/`. Not an
+  error.
 - Wizard cancelled (Ctrl-C) → no filesystem writes. Re-run when ready.
 
 ## See Also

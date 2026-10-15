@@ -168,7 +168,6 @@ describe("who migrates, and who refuses", () => {
         dir: string;
         mode: string;
         writtenSkills: string[];
-        writtenCommands: string[];
         removedSkills: string[];
         removedCommands: string[];
       }>;
@@ -184,7 +183,7 @@ describe("who migrates, and who refuses", () => {
     expect(byDirectory.get(".taskless")?.mode).toBe("canonical");
     expect(byDirectory.get(".taskless")?.writtenSkills).toContain("taskless");
     expect(byDirectory.get(".claude")?.mode).toBe("reference");
-    expect(byDirectory.get(".claude")?.writtenCommands).toContain("tskl.md");
+    expect(byDirectory.get(".claude")?.writtenSkills).toContain("taskless");
 
     expect(envelope.migrated).toBeDefined();
     expect(envelope.changed).toBe(true);

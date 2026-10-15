@@ -9,7 +9,6 @@ import {
   checkStaleness,
   detectSelectedDirectories,
   detectTools,
-  getEmbeddedCommands,
   getEmbeddedSkills,
 } from "../src/install/install";
 
@@ -156,24 +155,18 @@ describe("detectSelectedDirectories", () => {
 
 describe("buildInstallPlan and duplicate shim rows", () => {
   it("plans .agents exactly once when it is selected", () => {
-    const plan = buildInstallPlan(
-      [".agents"],
-      getEmbeddedSkills(),
-      getEmbeddedCommands()
-    );
+    const plan = buildInstallPlan([".agents"], getEmbeddedSkills());
     const agentsTargets = plan.targets.filter((t) => t.dir === ".agents");
     expect(agentsTargets).toHaveLength(1);
     // The generic row supplies the shared directory's label: the selection
     // carries a directory, never which of the two rows the user ticked.
     expect(agentsTargets[0]!.label).toBe("Agent Skills");
-    expect(agentsTargets[0]!.commands).toEqual([]);
   });
 
   it("plans .agents once when a caller passes it more than once", () => {
     const plan = buildInstallPlan(
       [".agents", ".agents", ".claude"],
-      getEmbeddedSkills(),
-      getEmbeddedCommands()
+      getEmbeddedSkills()
     );
     expect(plan.targets.filter((t) => t.dir === ".agents")).toHaveLength(1);
     expect(plan.targets.filter((t) => t.dir === ".claude")).toHaveLength(1);
@@ -183,7 +176,7 @@ describe("buildInstallPlan and duplicate shim rows", () => {
     // What a user who ticks both `Codex` and `Agent Skills` gets: the
     // multiselect collapses them onto one `.agents` value, and the plan must
     // not turn that back into two targets writing the same files twice.
-    const plan = buildInstallPlan([".agents"], getEmbeddedSkills(), []);
+    const plan = buildInstallPlan([".agents"], getEmbeddedSkills());
     const result = await applyInstallPlan(cwd, plan, { cliVersion: "0.7.0" });
 
     const agentsWrites = result.writtenSkills.filter(
@@ -198,11 +191,7 @@ describe("buildInstallPlan and duplicate shim rows", () => {
 describe("checkStaleness", () => {
   it("reports a detected tool as up to date after install", async () => {
     await mkdir(join(cwd, ".claude"), { recursive: true });
-    const plan = buildInstallPlan(
-      [".claude"],
-      getEmbeddedSkills(),
-      getEmbeddedCommands()
-    );
+    const plan = buildInstallPlan([".claude"], getEmbeddedSkills());
     await applyInstallPlan(cwd, plan, { cliVersion: "0.7.0" });
 
     const statuses = await checkStaleness(cwd);

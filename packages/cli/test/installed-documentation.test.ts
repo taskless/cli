@@ -11,7 +11,6 @@ import { LATEST_SCHEMA_VERSION } from "../src/filesystem/migrate";
 import {
   applyInstallPlan,
   buildInstallPlan,
-  getEmbeddedCommands,
   getEmbeddedSkills,
 } from "../src/install/install";
 import { buildInvocation } from "../src/util/invocation";
@@ -120,23 +119,19 @@ describe("this repository's own installed Taskless docs", () => {
     expect(onDisk).not.toContain("sg/rules/");
   });
 
-  it("spells the CLI as %(TASKLESS_CLI)s in the skill and command sources, never the literal", async () => {
+  it("spells the CLI as %(TASKLESS_CLI)s in the skill source, never the literal", async () => {
     // The canonical write used to find `npx @taskless/cli` in the prose and
     // rewrite it for nightly/dev builds. A literal is whitespace-sensitive: a
     // wrapped line or a doubled space escaped the rewrite silently, and a
     // nightly install then told its agent to run the release package. The
     // token either matches exactly or this test says it is missing.
-    for (const [name, path] of [
-      ["SKILL.md", resolve(repositoryRoot, "skills", "taskless", "SKILL.md")],
-      ["tskl.md", resolve(repositoryRoot, "commands", "tskl", "tskl.md")],
-    ] as const) {
-      const source = await readFile(path, "utf8");
-      const body = source.replace(/^---\n[\s\S]*?\n---\n/, "");
-      expect(body, `${name} names the CLI`).toContain("%(TASKLESS_CLI)s");
-      expect(body, `${name} carries the literal`).not.toContain(
-        "npx @taskless/cli"
-      );
-    }
+    const source = await readFile(
+      resolve(repositoryRoot, "skills", "taskless", "SKILL.md"),
+      "utf8"
+    );
+    const body = source.replace(/^---\n[\s\S]*?\n---\n/, "");
+    expect(body).toContain("%(TASKLESS_CLI)s");
+    expect(body).not.toContain("npx @taskless/cli");
   });
 
   it("renders the placeholder to this build's invocation at install, and nothing else", async () => {
@@ -144,16 +139,11 @@ describe("this repository's own installed Taskless docs", () => {
     try {
       await applyInstallPlan(
         cwd,
-        buildInstallPlan(
-          [".claude"],
-          getEmbeddedSkills(),
-          getEmbeddedCommands()
-        ),
+        buildInstallPlan([".claude"], getEmbeddedSkills()),
         { cliVersion: "0.0.0-test" }
       );
       for (const relative of [
         join(".taskless", "skills", "taskless", "SKILL.md"),
-        join(".taskless", "commands", "tskl", "tskl.md"),
       ]) {
         const installed = await readFile(join(cwd, relative), "utf8");
         expect(installed, relative).toContain(`${buildInvocation()} agent`);
@@ -164,26 +154,16 @@ describe("this repository's own installed Taskless docs", () => {
     }
   });
 
-  it("tells an agent a recipe is per-task, in the skill and the command", async () => {
+  it("tells an agent a recipe is per-task", async () => {
     // A recipe is resolved at fetch time. Without this an agent that fetched
     // `agent check` once reuses the text for every later task in the session,
-    // including after the upgrade that changed it. Both always-loaded surfaces
-    // carry it, since a tool may install one without the other.
+    // including after the upgrade that changed it.
     const skill = await readFile(
       resolve(repositoryRoot, "skills", "taskless", "SKILL.md"),
       "utf8"
     );
-    const command = await readFile(
-      resolve(repositoryRoot, "commands", "tskl", "tskl.md"),
-      "utf8"
-    );
-    for (const [name, body] of [
-      ["SKILL.md", skill],
-      ["tskl.md", command],
-    ] as const) {
-      expect(body, name).toContain("resolved when it is fetched");
-      expect(body, name).toContain("earlier in this session");
-    }
+    expect(skill).toContain("resolved when it is fetched");
+    expect(skill).toContain("earlier in this session");
   });
 
   it("preflights the CLI and scopes a blocked one to the exact invocation", async () => {
@@ -191,35 +171,36 @@ describe("this repository's own installed Taskless docs", () => {
     // the refusal lands on the first command that does work, after any
     // consent question that lives inside a recipe. And an agent left to pick
     // its own remedy proposed `npx @taskless/cli-nightly:*`, approving every
-    // future nightly rather than the one installed. Both always-loaded
-    // surfaces carry the step, since a tool may install one without the other.
+    // future nightly rather than the one installed.
     const skill = await readFile(
       resolve(repositoryRoot, "skills", "taskless", "SKILL.md"),
       "utf8"
     );
-    const command = await readFile(
-      resolve(repositoryRoot, "commands", "tskl", "tskl.md"),
-      "utf8"
+    // Compared as prose, so where a line happens to wrap does not matter.
+    const prose = skill.replaceAll(/\s+/g, " ");
+    expect(prose).toContain("%(TASKLESS_CLI)s agent ok");
+    expect(prose).toContain("before any other Taskless command");
+    expect(prose).toContain(
+      "allow rule for exactly the invocation `%(TASKLESS_CLI)s`"
     );
-    for (const [name, body] of [
-      ["SKILL.md", skill],
-      ["tskl.md", command],
-    ] as const) {
-      // Compared as prose, so where a line happens to wrap does not matter.
-      const prose = body.replaceAll(/\s+/g, " ");
-      expect(prose, name).toContain("%(TASKLESS_CLI)s agent ok");
-      expect(prose, name).toContain("before any other Taskless command");
-      expect(prose, name).toContain(
-        "allow rule for exactly the invocation `%(TASKLESS_CLI)s`"
-      );
-      expect(prose, name).toContain("`/permissions`");
-      expect(prose, name).toContain(
-        "approve every Taskless command manually, here in chat"
-      );
-      // `!` runs the preflight once and leaves every later command blocked.
-      expect(prose, name).not.toContain("! <exact command>");
-      expect(prose, name).toContain("wildcard over the package name");
-    }
+    // Auto mode refused the agent's own settings write; it then handed the
+    // user a command that made the change, and that worked.
+    expect(prose).toContain("give the user the change to make themselves");
+    expect(prose).toContain("`/permissions`");
+    expect(prose).toContain("`Bash(%(TASKLESS_CLI)s:*)`");
+    expect(prose).toContain(
+      "approve every Taskless command manually, here in chat"
+    );
+    // `!` runs the preflight once and leaves every later command blocked.
+    expect(prose).not.toContain("! <exact command>");
+    expect(prose).toContain("wildcard over the package name");
+    // Asking "what next?" while blocked, then again once unblocked, put two
+    // extra questions in front of onboarding's one.
+    expect(prose).toContain("Do not ask what they want Taskless to do");
+    expect(prose).toContain("no menu");
+    // "let's use taskless" names no task, and onboarding's question is the
+    // one that matters.
+    expect(prose).toContain("do not offer a menu of topics first");
   });
 
   it("keeps the skill body within its 150-line cap", async () => {

@@ -43,17 +43,6 @@ A `scripts/sync-skill-versions.ts` script SHALL read the version from `packages/
 - **WHEN** 5 SKILL.md files exist under `skills/`
 - **THEN** the script SHALL update all 5 files' `metadata.version` fields
 
-### Requirement: Slash command files are hand-authored
-
-The single `commands/tskl/tskl.md` slash command SHALL be hand-authored rather than generated from a `SKILL.md` body. Its body intentionally differs from the skill body (it is a `$ARGUMENTS`-aware router), so the prior "copy SKILL.md body to command" generation script SHALL NOT be reintroduced.
-
-#### Scenario: Single hand-authored command file exists
-
-- **WHEN** inspecting the repository
-- **THEN** `commands/tskl/tskl.md` SHALL exist as a hand-authored file
-- **AND** there SHALL be no `scripts/generate-commands.ts` script
-- **AND** the root `package.json` SHALL NOT reference `build:generate-commands`
-
 ### Requirement: Version sync runs as part of changeset version
 
 The root `package.json` SHALL define a `version` script that runs `changeset version` followed by `tsx scripts/sync-skill-versions.ts`. This ensures skill versions are updated in the same commit as the package version bump.

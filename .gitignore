@@ -23,7 +23,6 @@ node_modules/
 /.taskless/skills/
 /.taskless/commands/
 /.claude/skills/taskless/
-/.claude/commands/tskl/
 
 # Vale platform-package tarballs (npm pack output from vale-prepare.cjs)
 .vale-dist/
