@@ -183,6 +183,7 @@ describe("the CLI invocation variable", () => {
       "AST_GREP_VERSION",
       "CLI_VERSION",
       "DETECT_EVIDENCE",
+      "FIXTURE_SOURCES",
       "HOST_TOOLS",
       "LOGIN_EVIDENCE",
       "NAME_DESTINATION",
@@ -714,5 +715,42 @@ describe("Vale directives never reach a reader", () => {
         /^[ \t]*<!--\s*vale\b/m
       );
     }
+  });
+});
+
+describe("fixture sources", () => {
+  // The recipes in which the agent writes fixtures itself. A recipe that only
+  // submits cases to the generator carries its own sentence instead.
+  const FIXTURE_WRITERS = [
+    "create-sg-rule",
+    "create-vale-rule",
+    "create-runtime-rule",
+  ] as const;
+
+  it.each(FIXTURE_WRITERS)("%s carries the shared passage", (topic) => {
+    const rendered = getPrompt(topic);
+    expect(rendered).toContain("**Where the cases come from.**");
+    expect(rendered).toContain("**Copy before you invent.**");
+  });
+
+  it("the anonymous improve-rule carries it, since it adds cases itself", () => {
+    const rendered = getRecipe("improve-rule", { anonymous: true });
+    expect(rendered).toContain("(anonymous)");
+    expect(rendered).toContain("**Where the cases come from.**");
+  });
+
+  it("names the detect command when the CLI is available", () => {
+    const rendered = getPrompt("create-sg-rule", {
+      invocation: "pnpm dlx @taskless/cli@latest",
+    });
+    expect(rendered).toContain(
+      "otherwise run `pnpm dlx @taskless/cli@latest detect --json`"
+    );
+  });
+
+  it("names no command when the caller supplies the evidence", () => {
+    const rendered = getPrompt("create-sg-rule", { mechanics: false });
+    expect(rendered).toContain("detection evidence the caller supplies");
+    expect(rendered).not.toContain("otherwise run");
   });
 });

@@ -1,4 +1,4 @@
-# Topic: create-vale-rule     (CLI v%(CLI_VERSION)s / topic v16)
+# Topic: create-vale-rule     (CLI v%(CLI_VERSION)s / topic v17)
 
 ## You are here
 This is `create-vale-rule`. It helps you write a Vale rule: a check over
@@ -862,6 +862,8 @@ it.
    Give the fixtures an extension your matcher's glob matches. A `.txt`
    fixture under a `[*.md]` matcher is never linted, so the `fail/`
    document silently passes.
+
+   %(FIXTURE_SOURCES)s
 
    **The `pass/` bucket is not "correct prose".** Correct prose proves
    nothing. The rule was never going to fire on it. Fill it with the
