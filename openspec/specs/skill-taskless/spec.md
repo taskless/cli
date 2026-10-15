@@ -73,7 +73,7 @@ The consolidated skill body SHALL NOT contain step-by-step instructions for any 
    - If the user declines or ignores the offer, the agent SHALL proceed with whatever it would have done without the skill.
    - If the user declines, the agent SHALL NOT re-offer Taskless in the same conversation. No persistent decline state SHALL be written to disk.
    - If the user accepts, the skill router SHALL proceed normally to fetch `npx @taskless/cli help rule create`.
-7. States that a recipe is resolved when it is fetched and is not reusable across tasks: the agent SHALL fetch the recipe at the start of every Taskless task, including a topic it already fetched earlier in the same session, and SHALL NOT act on an earlier copy. The `tskl` command body SHALL carry the same statement.
+7. States that a recipe is resolved when it is fetched and is not reusable across tasks: the agent SHALL fetch the recipe at the start of every Taskless task, including a topic it already fetched earlier in the same session, and SHALL NOT act on an earlier copy.
 8. Names the CLI through the `%(TASKLESS_CLI)s` placeholder everywhere it spells an invocation, never as the literal `npx @taskless/cli`. The install renders the placeholder to the build's invocation, so a nightly or path-form build serves a skill that names itself.
 
 The body SHALL be no more than 150 lines of markdown. The cap guards against unbounded growth of a body loaded on every Taskless task; it SHALL NOT be met by compressing guidance the router needs. When the body needs more room to route correctly, the cap is raised instead. (Earlier caps of 60 and then 80 lines forced exactly that compression.)
@@ -85,19 +85,19 @@ The body SHALL be no more than 150 lines of markdown. The cap guards against unb
 
 #### Scenario: Skill body spells the invocation as a placeholder
 
-- **WHEN** the skill body or the `tskl` command body is read from source
+- **WHEN** the skill body is read from source
 - **THEN** every CLI invocation SHALL be written as `%(TASKLESS_CLI)s …`
 - **AND** the body SHALL NOT contain the literal `npx @taskless/cli`
 
 #### Scenario: Skill body forbids reusing a fetched recipe
 
-- **WHEN** the skill body or the `tskl` command body is read by an agent
+- **WHEN** the skill body is read by an agent
 - **THEN** it SHALL state that a recipe is resolved at fetch time and that each Taskless task fetches its recipe again, even for a topic fetched earlier in the session
 
 #### Scenario: Skill body lists available topics including onboard
 
 - **WHEN** the skill body is read by an agent
-- **THEN** it SHALL include a table or list mapping user intents to the corresponding `tskl agent <topic>` invocations
+- **THEN** it SHALL include a table or list mapping user intents to the corresponding `%(TASKLESS_CLI)s agent <topic>` invocations
 - **AND** the table SHALL include a row for `onboard` mapped to `npx @taskless/cli agent onboard` (or equivalent invocation of the onboard topic)
 
 #### Scenario: Skill body checks for .taskless directory
@@ -122,31 +122,6 @@ The body SHALL be no more than 150 lines of markdown. The cap guards against unb
 
 - **WHEN** the skill body is measured
 - **THEN** it SHALL be no more than 150 lines of markdown
-
-### Requirement: Skill maps to a single tskl command
-
-The consolidated skill's frontmatter SHALL include `metadata.commandName: tskl` so that command-installation plumbing maps the skill to the new single command file at `commands/tskl/tskl.md`. The command file SHALL be a thin doorway that accepts a free-form `$ARGUMENTS` ask, infers a topic if possible, and otherwise asks the user what they want to do.
-
-#### Scenario: Frontmatter declares the command mapping
-
-- **WHEN** the skill frontmatter is parsed
-- **THEN** `metadata.commandName` SHALL equal `tskl`
-
-#### Scenario: Old command files are removed
-
-- **WHEN** the v0.7.0 release is built
-- **THEN** none of `commands/tskl/check.md`, `commands/tskl/improve.md`, `commands/tskl/info.md`, `commands/tskl/login.md`, `commands/tskl/logout.md`, or `commands/tskl/rule.md` SHALL exist in the repository
-- **AND** exactly one file `commands/tskl/tskl.md` SHALL exist
-
-#### Scenario: Slash command accepts free-form arguments
-
-- **WHEN** a user invokes `/tskl` with arguments (e.g. `/tskl create a rule for no console.log`)
-- **THEN** the command body SHALL instruct the agent to infer the topic from `$ARGUMENTS`, fetch the recipe via `npx @taskless/cli help <topic>`, and proceed
-
-#### Scenario: Slash command without arguments asks the user
-
-- **WHEN** a user invokes `/tskl` with no arguments
-- **THEN** the command body SHALL instruct the agent to ask the user what they want to do with Taskless before proceeding
 
 ### Requirement: Skill routes authoring requests through the routing front door
 
@@ -185,24 +160,37 @@ The skill body's topic table SHALL map a request to make, publish, regenerate, o
 
 ### Requirement: Skill preflights the CLI before the first Taskless command
 
-The skill body and the `tskl` command body SHALL instruct the agent to run `%(TASKLESS_CLI)s agent ok` once per session, before any other Taskless command, and to proceed only once it prints its confirmation line.
+The skill body SHALL instruct the agent to run `%(TASKLESS_CLI)s agent ok` once per session, before any other Taskless command, and to proceed only once it prints its confirmation line. Once it does, the agent SHALL go straight to the user's request, without surveying the install or offering a menu of topics.
 
-When the preflight is blocked by the harness or the user, the bodies SHALL instruct the agent to:
+When the preflight is blocked by the harness or the user, the body SHALL instruct the agent to:
 
 1. Stop before doing any Taskless work, and not attempt to work around the block.
-2. Tell the user the exact command, and that it downloads and runs a package from npm.
-3. Offer the user three ways forward, and wait for their choice: the agent adds an allow rule for exactly the invocation the skill names to the agent's permission settings; the user approves it through their agent's permissions command, such as `/permissions` in Claude Code; or the user approves every Taskless command manually, in chat, as the agent runs it.
+2. Send one message that names the exact command, and says it downloads and runs a package from npm.
+3. Offer the user three ways forward: the agent adds an allow rule for exactly the invocation the skill names to the agent's permission settings, and if the harness blocks that edit too, gives the user the change to make themselves; the user approves it through their agent's permissions command (in Claude Code, `/permissions` with the rule `Bash(<invocation>:*)`); or the user approves every Taskless command manually, in chat, as the agent runs it.
 4. Never propose an allow rule that widens the invocation, such as a wildcard over the package name or its version.
+5. Not ask in that message what the user wants Taskless to do. Their request stands, and the agent carries it out once the command is unblocked.
 
 #### Scenario: Skill body runs the preflight first
 
-- **WHEN** the skill body or the `tskl` command body is read from source
+- **WHEN** the skill body is read from source
 - **THEN** it SHALL instruct the agent to run `%(TASKLESS_CLI)s agent ok` before any other Taskless command in the session
 
 #### Scenario: Skill body handles a blocked preflight
 
-- **WHEN** the skill body or the `tskl` command body is read from source
-- **THEN** it SHALL instruct the agent, on a blocked preflight, to stop and name the exact command to the user
-- **AND** SHALL offer an allow rule for the exact invocation, the agent's permissions command, and per-command approval in chat
+- **WHEN** the skill body is read from source
+- **THEN** it SHALL instruct the agent, on a blocked preflight, to stop and name the exact command to the user in one message
+- **AND** SHALL offer an allow rule for the exact invocation added by the agent, with the user making the change when the harness blocks the agent's edit
+- **AND** SHALL offer the agent's permissions command, and per-command approval in chat
 - **AND** SHALL NOT offer running the command with `!`, which unblocks only the preflight
 - **AND** SHALL forbid an allow rule that wildcards the package name or version
+- **AND** SHALL forbid asking what the user wants Taskless to do in that message
+
+### Requirement: A request that names no task routes to onboarding
+
+The skill body SHALL route a request to use, try, or set up Taskless that names no task to `%(TASKLESS_CLI)s agent onboard`, without first offering a menu of topics. The onboard recipe's question SHALL be the only question the agent asks before onboarding begins.
+
+#### Scenario: A generic request goes to onboard
+
+- **WHEN** the skill body is read from source
+- **THEN** it SHALL route a request that names no task to `agent onboard`
+- **AND** SHALL instruct the agent not to offer a menu of topics first

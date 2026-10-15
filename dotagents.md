@@ -51,9 +51,8 @@ repository carries a `.claude-plugin/plugin.json`, and `add` checks a source for
 plugins first: when it finds one, the source is plugin-only. So that command
 adds a plugin named `taskless` with `path = "."`, which vendors the entire
 repository (including `packages/`, `example/`, and the lockfile) into
-`.agents/plugins/taskless/`. What it ships is the Taskless skill and the `tskl`
-command, which is the right way to get those, and it is not a route to
-`iterate-pr`.
+`.agents/plugins/taskless/`. What it ships is the Taskless skill, which is the
+right way to get that, and it is not a route to `iterate-pr`.
 
 To take the development skills, declare them with an explicit `path`. One skill:
 

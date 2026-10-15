@@ -1,16 +1,21 @@
-import { lstat, mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
+import {
+  lstat,
+  mkdir,
+  readFile,
+  rm,
+  rmdir,
+  stat,
+  writeFile,
+} from "node:fs/promises";
 import { basename, dirname, join } from "node:path";
 
 import {
-  buildCommandStub,
   buildSkillStub,
   isShimStub,
   stubFrontmatterDrifted,
   stubPredatesRecovery,
   stubRecoveryInvocationStale,
-  writeCanonicalCommand,
   writeCanonicalSkill,
-  type CommandStubFrontmatter,
   type StubFrontmatter,
 } from "./canonical";
 import { CLI_VERSION } from "../version";
@@ -29,14 +34,8 @@ const skillFiles: Record<string, string> = import.meta.glob(
   { query: "?raw", import: "default", eager: true }
 );
 
-// Command files embedded at build time via Vite import.meta.glob
-const commandFiles: Record<string, string> = import.meta.glob(
-  "../../../../commands/tskl/**/*.md",
-  { query: "?raw", import: "default", eager: true }
-);
-
 /**
- * Taskless-owned namespace holding the canonical skill/command content. It is
+ * Taskless-owned namespace holding the canonical skill content. It is
  * never a tool target — no detection, install, or cleanup logic points here.
  */
 export const CANONICAL_DIR = ".taskless";
@@ -65,14 +64,6 @@ export interface EmbeddedSkill {
   content: string;
   body: string;
   metadata: Record<string, string>;
-}
-
-export interface EmbeddedCommand {
-  filename: string;
-  content: string;
-  name: string;
-  description: string;
-  argumentHint?: string;
 }
 
 export interface SkillStatus {
@@ -140,8 +131,6 @@ export interface ShimTarget {
   dir: string;
   /** Human-readable label for prompts and summaries. */
   label: string;
-  /** Whether this directory receives the `tskl` command stub. */
-  commands: boolean;
   /**
    * Marks the catch-all row: the one offered to anyone whose harness this
    * catalog does not name. At most one row carries it.
@@ -165,11 +154,11 @@ export interface ShimTarget {
  * label: the duplicate directory is the point, not an oversight.
  */
 export const SHIM_TARGETS: readonly ShimTarget[] = [
-  { dir: ".claude", label: "Claude Code", commands: true },
-  { dir: ".agents", label: "Codex", commands: false },
-  { dir: ".cursor", label: "Cursor", commands: true },
-  { dir: ".opencode", label: "OpenCode", commands: false },
-  { dir: ".agents", label: "Agent Skills", commands: false, generic: true },
+  { dir: ".claude", label: "Claude Code" },
+  { dir: ".agents", label: "Codex" },
+  { dir: ".cursor", label: "Cursor" },
+  { dir: ".opencode", label: "OpenCode" },
+  { dir: ".agents", label: "Agent Skills", generic: true },
 ];
 
 /**
@@ -184,10 +173,10 @@ export const SHIM_TARGETS: readonly ShimTarget[] = [
  *
  * What it does NOT do is reconcile the rows: the surviving entry is one whole
  * row, so EVERY field comes from the last row for that directory, not just
- * `label`. Today both `.agents/` rows agree on `commands`, so nothing is
- * silently chosen. A future pair that disagreed on it would be resolved by
- * catalog order rather than by anyone deciding, which is a reason to keep
- * rows sharing a directory identical apart from `label` and `generic`.
+ * `label`. Today the rows carry nothing else, so nothing is silently chosen.
+ * A future field the pair disagreed on would be resolved by catalog order
+ * rather than by anyone deciding, which is a reason to keep rows sharing a
+ * directory identical apart from `label` and `generic`.
  *
  * The LAST row for a directory wins both its position and its value. The
  * catalog is ordered named-harness first, generic-fallback last, so `.agents/`
@@ -314,27 +303,6 @@ export function getEmbeddedSkills(): EmbeddedSkill[] {
   });
 }
 
-// --- Embedded Commands ---
-
-export function getEmbeddedCommands(): EmbeddedCommand[] {
-  return Object.entries(commandFiles).map(([path, content]) => {
-    const parsed = parseFrontmatter(content);
-    const data = parsed.data as {
-      name?: string;
-      description?: string;
-      "argument-hint"?: string;
-    };
-    const filename = basename(path);
-    return {
-      filename,
-      content,
-      name: data.name ?? filename.replace(/\.md$/, ""),
-      description: data.description ?? "",
-      argumentHint: data["argument-hint"],
-    };
-  });
-}
-
 // --- Install Plan ---
 
 /**
@@ -346,7 +314,6 @@ export interface PlanTarget {
   label: string;
   mode: InstallMode;
   skills: EmbeddedSkill[];
-  commands: EmbeddedCommand[];
 }
 
 export interface InstallPlan {
@@ -356,22 +323,20 @@ export interface InstallPlan {
 /**
  * Build an install plan: the always-present canonical `.taskless/` target
  * plus one `reference` stub target per selected directory. The canonical
- * target is included whenever the plan carries any skill or command.
+ * target is included whenever the plan carries any skill.
  */
 export function buildInstallPlan(
   selectedDirectories: readonly string[],
-  skills: EmbeddedSkill[],
-  commands: EmbeddedCommand[]
+  skills: EmbeddedSkill[]
 ): InstallPlan {
   const targets: PlanTarget[] = [];
 
-  if (skills.length > 0 || commands.length > 0) {
+  if (skills.length > 0) {
     targets.push({
       dir: CANONICAL_DIR,
       label: "Taskless canonical store",
       mode: "canonical",
       skills,
-      commands,
     });
   }
 
@@ -385,7 +350,6 @@ export function buildInstallPlan(
       label: shim.label,
       mode: "reference",
       skills,
-      commands: shim.commands ? commands : [],
     });
   }
 
@@ -402,7 +366,9 @@ export function planToStateTargets(plan: InstallPlan): InstallState["targets"] {
   for (const target of plan.targets) {
     targets[target.dir] = {
       skills: target.skills.map((s) => s.name),
-      commands: target.commands.map((c) => c.filename),
+      // Taskless no longer ships a slash command. The field stays so the diff
+      // against an older manifest removes the `tskl` command it recorded.
+      commands: [],
       mode: target.mode,
     };
   }
@@ -418,7 +384,6 @@ export interface ApplyInstallOptions {
 export interface ApplyInstallResult {
   state: InstallState;
   writtenSkills: Array<{ target: string; skill: string }>;
-  writtenCommands: Array<{ target: string; command: string }>;
   removedSkills: Array<{ target: string; skill: string }>;
   removedCommands: Array<{ target: string; command: string }>;
 }
@@ -527,41 +492,6 @@ async function writeSkill(
 }
 
 /**
- * Write a command into a target. Mirrors {@link writeSkill}: full content for
- * a `canonical` target, a self-healing shim stub for a `reference` target.
- */
-async function writeCommand(
-  cwd: string,
-  target: PlanTarget,
-  command: EmbeddedCommand
-): Promise<boolean> {
-  if (target.mode === "canonical") {
-    const { changed } = await writeCanonicalCommand(
-      cwd,
-      command.filename,
-      command.content
-    );
-    return changed;
-  }
-
-  const path = commandFile(cwd, target.dir, command.filename);
-  // As in writeSkill: a symlinked command namespace directory would otherwise
-  // route the stub write back into source. Normalize it to a real directory.
-  await unlinkIfSymlink(dirname(path));
-  const meta: CommandStubFrontmatter = {
-    name: command.name,
-    description: command.description,
-    argumentHint: command.argumentHint,
-  };
-  if (!(await referenceNeedsRewrite(path, meta))) return false;
-
-  await unlinkIfSymlink(path);
-  await mkdir(dirname(path), { recursive: true });
-  await writeFile(path, buildCommandStub(meta, command.filename), "utf8");
-  return true;
-}
-
-/**
  * Apply an install plan. The previous manifest state drives surgical cleanup:
  * only skills/commands recorded for a target and no longer present are
  * removed, and each removal is scoped to that target's own directory — so no
@@ -596,23 +526,28 @@ export async function applyInstallPlan(
       removedSkills.push({ target: entry.target, skill: skillName });
     }
     for (const filename of entry.removals.commands) {
-      await rm(commandFile(cwd, entry.target, filename), { force: true });
+      const path = commandFile(cwd, entry.target, filename);
+      // A relic `tskl/` symlink points back at source; removing through it
+      // would delete the file it points at. Drop the link itself instead.
+      await unlinkIfSymlink(dirname(path));
+      await rm(path, { force: true });
+      // The `tskl/` namespace is ours; drop it once empty. A directory that
+      // still holds something is not, so the failure is the answer.
+      await rmdir(dirname(path)).catch(() => {});
+      // The canonical store's `commands/` holds nothing else of anyone's.
+      if (entry.target === CANONICAL_DIR) {
+        await rmdir(dirname(dirname(path))).catch(() => {});
+      }
       removedCommands.push({ target: entry.target, command: filename });
     }
   }
 
   const writtenSkills: Array<{ target: string; skill: string }> = [];
-  const writtenCommands: Array<{ target: string; command: string }> = [];
 
   for (const target of plan.targets) {
     for (const skill of target.skills) {
       if (await writeSkill(cwd, target, skill)) {
         writtenSkills.push({ target: target.dir, skill: skill.name });
-      }
-    }
-    for (const command of target.commands) {
-      if (await writeCommand(cwd, target, command)) {
-        writtenCommands.push({ target: target.dir, command: command.filename });
       }
     }
   }
@@ -622,7 +557,6 @@ export async function applyInstallPlan(
   return {
     state: nextState,
     writtenSkills,
-    writtenCommands,
     removedSkills,
     removedCommands,
   };

@@ -19,7 +19,6 @@ npx @taskless/cli@latest check
 - `taskless.json` - Version manifest / migration state
 - `.env.local.json` - Local authentication credentials (git-ignored)
 - `skills/` - Canonical Taskless skill content; tool directories hold thin stubs that delegate here (managed by Taskless)
-- `commands/` - Canonical Taskless command content (managed by Taskless)
 
 Every rule is one directory, `rules/<engine>/<id>/`, holding
 everything that defines it. Its test cases sit inside it as

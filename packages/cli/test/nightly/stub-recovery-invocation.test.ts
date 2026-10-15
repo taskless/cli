@@ -4,7 +4,6 @@ import { dirname, join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import {
-  buildCommandStub,
   buildSkillStub,
   stubRecoveryInvocation,
   stubRecoveryInvocationStale,
@@ -12,7 +11,6 @@ import {
 import {
   applyInstallPlan,
   buildInstallPlan,
-  getEmbeddedCommands,
   getEmbeddedSkills,
 } from "../../src/install/install";
 import {
@@ -52,16 +50,10 @@ describe("the nightly build's own stubs", () => {
 
   it("names its own pinned package in the recovery line", () => {
     expect(stubRecoveryInvocation(buildSkillStub(META))).toBe(NIGHTLY_RESTORE);
-    expect(stubRecoveryInvocation(buildCommandStub(META, "tskl.md"))).toBe(
-      NIGHTLY_RESTORE
-    );
   });
 
   it("does not consider a stub it just wrote stale", () => {
     expect(stubRecoveryInvocationStale(buildSkillStub(META))).toBe(false);
-    expect(stubRecoveryInvocationStale(buildCommandStub(META, "tskl.md"))).toBe(
-      false
-    );
   });
 });
 
@@ -108,7 +100,7 @@ describe("installing a nightly over an existing stub", () => {
 
   async function install(): Promise<void> {
     const skills = getEmbeddedSkills().filter((s) => s.name === "taskless");
-    const plan = buildInstallPlan([".claude"], skills, getEmbeddedCommands());
+    const plan = buildInstallPlan([".claude"], skills);
     await applyInstallPlan(cwd, plan, { cliVersion: "0.0.0-nightly.test" });
   }
 

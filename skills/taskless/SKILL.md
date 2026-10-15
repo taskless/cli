@@ -23,7 +23,6 @@ description: |
 metadata:
   author: taskless
   version: 0.12.0
-  commandName: tskl
 compatibility: Designed for Agents implementing the Agent Skills specification.
 ---
 
@@ -38,23 +37,34 @@ each CLI version.
 
 Once per session, before any other Taskless command, run
 `%(TASKLESS_CLI)s agent ok`. It touches no project files, and prints one line
-confirming the invocation works. Proceed once you see it.
+confirming the invocation works. Once you see it, go straight to the user's
+request: no survey of the install, and no menu of what Taskless can do.
 
 If the harness or the user blocks it, or blocks any later Taskless command,
 stop before doing any Taskless work and do not try to get around the block.
-Tell the user the exact command you ran, and that it downloads and runs a
-package from npm. Then offer these three ways forward, and wait for their
-choice:
+Send one message that names the exact command you ran, says it downloads and
+runs a package from npm, and offers three ways forward:
 
 - You add an allow rule for exactly the invocation `%(TASKLESS_CLI)s` to the
-  agent's permission settings.
-- They approve it through their agent's permissions command, such as
-  `/permissions` in Claude Code.
+  agent's permission settings. If the harness blocks that edit too, give the
+  user the change to make themselves, in whatever form your harness accepts.
+- They approve it through their agent's permissions command. In Claude Code
+  that is `/permissions`, and the rule is `Bash(%(TASKLESS_CLI)s:*)`.
 - They approve every Taskless command manually, here in chat, as you run it.
 
 Never propose a rule wider than that invocation, such as a wildcard over the
 package name or its version: it would approve a CLI this project never
 installed.
+
+Do not ask what they want Taskless to do in that message. Their request
+stands: once they unblock the command, rerun `agent ok` and carry it out.
+
+## A request that names no task
+
+When the user asks to use, try, or set up Taskless without naming a task,
+fetch `%(TASKLESS_CLI)s agent onboard` and follow it. Its one question is the
+only one to ask, so do not offer a menu of topics first. If onboarding
+already ran, the recipe says so, and then you ask what they want.
 
 ## Authoring a rule: always start at route
 

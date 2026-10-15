@@ -8,7 +8,6 @@ import { parseFrontmatter } from "../../src/install/frontmatter";
 import {
   applyInstallPlan,
   buildInstallPlan,
-  getEmbeddedCommands,
   getEmbeddedSkills,
 } from "../../src/install/install";
 import {
@@ -24,8 +23,8 @@ import {
  * this repo's default prod define.
  *
  * taskless/cli#298: a `.claude`/`.agents` stub's frontmatter `description` is
- * copied verbatim from the embedded skill/command source (see `writeSkill` /
- * `writeCommand` in `src/install/install.ts`) and is NEVER passed through
+ * copied verbatim from the embedded skill source (see `writeSkill` in
+ * `src/install/install.ts`) and is NEVER passed through
  * `applyCliInvocation` — only a canonical `.taskless/` file gets that rewrite.
  * Before the fix, a description that named the CLI invocation would freeze a
  * stale, unpinned `npx @taskless/cli` reference into every `.claude` stub
@@ -59,15 +58,12 @@ describe("installing a nightly writes a stub description that names no CLI packa
 
   const skillStubPath = () =>
     join(cwd, ".claude", "skills", "taskless", "SKILL.md");
-  const commandStubPath = () =>
-    join(cwd, ".claude", "commands", "tskl", "tskl.md");
   const canonicalSkillPath = () =>
     join(cwd, ".taskless", "skills", "taskless", "SKILL.md");
 
   async function install(): Promise<void> {
     const skills = getEmbeddedSkills();
-    const commands = getEmbeddedCommands();
-    const plan = buildInstallPlan([".claude"], skills, commands);
+    const plan = buildInstallPlan([".claude"], skills);
     await applyInstallPlan(cwd, plan, { cliVersion: "0.0.0-nightly.test" });
   }
 
@@ -77,15 +73,11 @@ describe("installing a nightly writes a stub description that names no CLI packa
     const skillDescription = parseFrontmatter(
       await readFile(skillStubPath(), "utf8")
     ).data.description as string;
-    const commandDescription = parseFrontmatter(
-      await readFile(commandStubPath(), "utf8")
-    ).data.description as string;
 
     // Not the released package, and not this build's own pinned nightly
     // either — the fix is that description names no package at all, so there
     // is nothing left to go stale on a later, differently-pinned install.
     expect(skillDescription).not.toMatch(/@taskless\/cli/);
-    expect(commandDescription).not.toMatch(/@taskless\/cli/);
   });
 
   it("still correctly pins the canonical file's own invocation", async () => {

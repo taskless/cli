@@ -12,9 +12,9 @@ import {
 import { parseFrontmatter } from "./frontmatter";
 
 /**
- * The Taskless-owned namespace that holds canonical skill and command
- * content. No tool target ever installs into or cleans up this directory,
- * which is what makes the canonical content safe from destructive cleanup.
+ * The Taskless-owned namespace that holds canonical skill content. No tool
+ * target ever installs into or cleans up this directory, which is what makes
+ * the canonical content safe from destructive cleanup.
  */
 const CANONICAL_DIR = ".taskless";
 
@@ -29,23 +29,9 @@ export interface StubFrontmatter {
   description: string;
 }
 
-/**
- * Command-stub frontmatter. Beyond `name`/`description`, the canonical
- * command's `argument-hint` is preserved so the slash command keeps its
- * editor argument hint.
- */
-export interface CommandStubFrontmatter extends StubFrontmatter {
-  argumentHint?: string;
-}
-
 /** Workspace-relative path of the canonical skill file for `name`. */
 export function canonicalSkillPath(name: string): string {
   return `${CANONICAL_DIR}/skills/${name}/SKILL.md`;
-}
-
-/** Workspace-relative path of the canonical command file for `filename`. */
-export function canonicalCommandPath(filename: string): string {
-  return `${CANONICAL_DIR}/commands/tskl/${filename}`;
 }
 
 /**
@@ -92,28 +78,6 @@ async function writeIfChanged(path: string, content: string): Promise<boolean> {
   }
   await writeFile(path, content, "utf8");
   return true;
-}
-
-/**
- * Write a command's full content to the canonical store at
- * `.taskless/commands/tskl/<filename>`. Emitted as-is for prod builds; for
- * `dev`/`self` builds the CLI invocation is rewritten and a build notice
- * prepended (see {@link renderInvocationPlaceholder} /
- * {@link withCliBuildNotice}).
- */
-export async function writeCanonicalCommand(
-  cwd: string,
-  filename: string,
-  content: string
-): Promise<CanonicalWrite> {
-  const directory = join(cwd, CANONICAL_DIR, "commands", "tskl");
-  await mkdir(directory, { recursive: true });
-  const path = join(directory, filename);
-  const changed = await writeIfChanged(
-    path,
-    withCliBuildNotice(renderInvocationPlaceholder(content))
-  );
-  return { path, changed };
 }
 
 /**
@@ -285,34 +249,6 @@ export function buildSkillStub(meta: StubFrontmatter): string {
     `This is a Taskless reference stub. The canonical skill is defined at ` +
     `\`${canonical}\`.\n\n` +
     `Read \`${canonical}\` and follow its instructions.\n\n` +
-    recoveryInstruction(canonical)
-  );
-}
-
-/**
- * Build a reference command stub: a real command file whose frontmatter
- * carries `name`/`description` and whose body passes `$ARGUMENTS` through and
- * delegates to the canonical command file.
- */
-export function buildCommandStub(
-  meta: CommandStubFrontmatter,
-  filename: string
-): string {
-  const canonical = canonicalCommandPath(filename);
-  const fields: Record<string, unknown> = {
-    name: meta.name,
-    description: meta.description,
-  };
-  if (meta.argumentHint) fields["argument-hint"] = meta.argumentHint;
-  fields.metadata = shimMetadata();
-  return (
-    frontmatterBlock(fields) +
-    "\n" +
-    `This command was invoked with: $ARGUMENTS\n\n` +
-    `This is a Taskless reference stub. The canonical command is defined at ` +
-    `\`${canonical}\`.\n\n` +
-    `Read \`${canonical}\` and follow its instructions, treating the text ` +
-    `above as the command arguments.\n\n` +
     recoveryInstruction(canonical)
   );
 }

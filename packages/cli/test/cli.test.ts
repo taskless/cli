@@ -1,4 +1,5 @@
 import { execFile } from "node:child_process";
+import { existsSync } from "node:fs";
 import { readFile, mkdtemp, rm, mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
@@ -150,11 +151,9 @@ describe("cli", () => {
       );
       expect(skillContent).toContain("name: taskless");
 
-      const commandContent = await readFile(
-        join(temporaryDirectory, ".claude", "commands", "tskl", "tskl.md"),
-        "utf8"
+      expect(existsSync(join(temporaryDirectory, ".claude", "commands"))).toBe(
+        false
       );
-      expect(commandContent).toContain("Taskless");
     });
 
     it("reports staleness via info after install", async () => {

@@ -4,14 +4,12 @@ import { tmpdir } from "node:os";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import {
-  buildCommandStub,
   buildSkillStub,
   isShimStub,
   stubFrontmatterDrifted,
   stubPredatesRecovery,
   stubRecoveryInvocation,
   stubRecoveryInvocationStale,
-  writeCanonicalCommand,
   writeCanonicalSkill,
 } from "../src/install/canonical";
 import { parseFrontmatter } from "../src/install/frontmatter";
@@ -32,7 +30,7 @@ description: Use for any Taskless task.
 ${SENTINEL} — full canonical skill instructions live here.
 `;
 
-describe("writeCanonicalSkill / writeCanonicalCommand", () => {
+describe("writeCanonicalSkill", () => {
   let temporaryDirectory: string;
 
   beforeEach(async () => {
@@ -54,20 +52,6 @@ describe("writeCanonicalSkill / writeCanonicalCommand", () => {
       join(temporaryDirectory, ".taskless", "skills", "taskless", "SKILL.md")
     );
     expect(await readFile(path, "utf8")).toBe(skillSource);
-  });
-
-  it("writes command content to .taskless/commands/tskl verbatim", async () => {
-    const commandSource = "---\nname: Taskless\n---\n\nbody\n";
-    const { path, changed } = await writeCanonicalCommand(
-      temporaryDirectory,
-      "tskl.md",
-      commandSource
-    );
-    expect(changed).toBe(true);
-    expect(path).toBe(
-      join(temporaryDirectory, ".taskless", "commands", "tskl", "tskl.md")
-    );
-    expect(await readFile(path, "utf8")).toBe(commandSource);
   });
 
   it("reports no change when the bytes on disk already match", async () => {
@@ -152,63 +136,10 @@ describe("buildSkillStub", () => {
   });
 });
 
-describe("buildCommandStub", () => {
-  it("passes $ARGUMENTS through and delegates to the canonical command", () => {
-    const stub = buildCommandStub(
-      { name: "Taskless", description: "Run any Taskless action." },
-      "tskl.md"
-    );
-    const { data, content } = parseFrontmatter(stub);
-    expect(data.name).toBe("Taskless");
-    expect(content).toContain("$ARGUMENTS");
-    expect(content).toContain(".taskless/commands/tskl/tskl.md");
-  });
-
-  it("carries the same recovery instruction as a skill stub", () => {
-    const stub = buildCommandStub(
-      { name: "Taskless", description: "Run any Taskless action." },
-      "tskl.md"
-    );
-    const { content } = parseFrontmatter(stub);
-    expect(content).toContain("does not exist");
-    expect(content).toContain(`\`${buildInvocation()} init\``);
-  });
-
-  it("preserves the canonical argument-hint when present", () => {
-    const stub = buildCommandStub(
-      {
-        name: "Taskless",
-        description: "Run any Taskless action.",
-        argumentHint: "<describe what you want to do>",
-      },
-      "tskl.md"
-    );
-    const { data } = parseFrontmatter(stub);
-    expect(data["argument-hint"]).toBe("<describe what you want to do>");
-  });
-
-  it("omits argument-hint when the canonical command has none", () => {
-    const stub = buildCommandStub(
-      { name: "Taskless", description: "Run any Taskless action." },
-      "tskl.md"
-    );
-    const { data } = parseFrontmatter(stub);
-    expect(data["argument-hint"]).toBeUndefined();
-  });
-});
-
 describe("isShimStub", () => {
   it("returns true for a generated skill stub", () => {
     expect(
       isShimStub(buildSkillStub({ name: "taskless", description: "d" }))
-    ).toBe(true);
-  });
-
-  it("returns true for a generated command stub", () => {
-    expect(
-      isShimStub(
-        buildCommandStub({ name: "Taskless", description: "d" }, "tskl.md")
-      )
     ).toBe(true);
   });
 
@@ -268,11 +199,6 @@ describe("stubPredatesRecovery", () => {
         buildSkillStub({ name: "taskless", description: "d" })
       )
     ).toBe(false);
-    expect(
-      stubPredatesRecovery(
-        buildCommandStub({ name: "Taskless", description: "d" }, "tskl.md")
-      )
-    ).toBe(false);
   });
 
   it("returns true for a stub written before the recovery instruction", () => {
@@ -312,9 +238,6 @@ describe("stubRecoveryInvocation / stubRecoveryInvocationStale", () => {
     expect(stubRecoveryInvocation(buildSkillStub(meta))).toBe(
       productionRestore
     );
-    expect(stubRecoveryInvocation(buildCommandStub(meta, "tskl.md"))).toBe(
-      productionRestore
-    );
   });
 
   it("returns undefined for a stub that predates the recovery instruction", () => {
@@ -325,9 +248,6 @@ describe("stubRecoveryInvocation / stubRecoveryInvocationStale", () => {
 
   it("leaves a stub written by this same build alone", () => {
     expect(stubRecoveryInvocationStale(buildSkillStub(meta))).toBe(false);
-    expect(stubRecoveryInvocationStale(buildCommandStub(meta, "tskl.md"))).toBe(
-      false
-    );
   });
 
   it("reclaims a stub frozen with a pinned nightly invocation", () => {
