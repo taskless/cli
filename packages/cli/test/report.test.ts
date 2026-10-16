@@ -856,6 +856,29 @@ describe("taskless report", () => {
     }
   });
 
+  // #520: a repository reviewed before its pull requests open publishes $0
+  // for every rule, and the recipe is what keeps that from reading as rules
+  // that catch nothing.
+  it("counts only review comments, and explains an all-zero estimate", async () => {
+    const { stdout, exitCode } = await run(["agent", "report"]);
+    expect(exitCode).toBe(0);
+    expect(stdout).toMatch(/^# Topic: report {5}\(CLI v.+ \/ topic v3\)/m);
+    const flat = stdout.replaceAll(/\s+/g, " ");
+    const counting = flat.slice(flat.indexOf("## Counting surfaced"));
+    expect(counting).toContain("**Only review comments count.**");
+    expect(counting).toContain(
+      "A fix-up commit, a `git blame` date, or a finding in the code today is not a review comment"
+    );
+    const show = flat.slice(
+      flat.indexOf("**Show the result.**"),
+      flat.indexOf("**Clean up.**")
+    );
+    expect(show).toContain(
+      "zero `surfaced` counts, the page prices them at $0"
+    );
+    expect(show).toContain("not the same as the rules catching nothing");
+  });
+
   it("refuses --from and --delete together", async () => {
     const { stderr, exitCode } = await run([
       "report",

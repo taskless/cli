@@ -1,4 +1,4 @@
-# Topic: report     (CLI v%(CLI_VERSION)s / topic v2)
+# Topic: report     (CLI v%(CLI_VERSION)s / topic v3)
 
 ## Goal
 Publish a Taskless report: an unlisted page on tskl.es that shows what
@@ -91,6 +91,13 @@ later and deletes one on request.
    rule with 75 violations today that was raised in 23 pull requests
    has two different numbers, and neither is the other.
 
+   If every rule, legacy rule, and cloud candidate has zero `surfaced`
+   counts, the page prices them at $0: tskl.es estimates value from
+   review alone. Say so in one line after the summary: review over the
+   window raised none of these patterns, so the estimate has nothing to
+   price, and that is not the same as the rules catching nothing. The
+   findings in the code today are what they catch.
+
 5. **Clean up.** Delete `.taskless/.tmp-report.json`. The CLI kept a
    record of the report in `.taskless/reports/`, which is gitignored
    because it holds the URL that deletes the page. Do not print or
@@ -126,6 +133,10 @@ sessions compare:
   keywords: "fixed" or "removed" in a reply says nothing about which
   rule it concerns.
 - A comment that asks for two rules' changes counts once for each.
+- **Only review comments count.** A fix-up commit, a `git blame`
+  date, or a finding in the code today is not a review comment,
+  however well it shows what the rule is worth. The facts have no
+  field for it; leave it out rather than count it as review.
 
 ## Facts schema
 
