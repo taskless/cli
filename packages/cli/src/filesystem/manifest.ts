@@ -39,6 +39,19 @@ export interface TasklessInstallManifest {
   cliVersion?: string;
   targets?: Record<string, TasklessInstallTarget>;
   onboarded?: boolean;
+  /**
+   * Harness permission rules Taskless wrote, keyed by root-relative file.
+   * Only these are ever removed again, so a rule the user wrote is never
+   * touched. Read defensively: a hand-edited manifest can hold anything.
+   */
+  permissions?: Record<string, TasklessPermissionRecord>;
+}
+
+/** What Taskless recorded writing to one harness permission file. */
+export interface TasklessPermissionRecord {
+  rules: string[];
+  /** Whether Taskless created the file, and so may delete it once empty. */
+  created: boolean;
 }
 
 /**

@@ -16,7 +16,12 @@ import {
 // colour, so it establishes that itself.
 import "../util/color";
 
-import { readManifest, writeManifest } from "../filesystem/manifest";
+import {
+  readManifest,
+  writeManifest,
+  type TasklessInstallManifest,
+  type TasklessPermissionRecord,
+} from "../filesystem/manifest";
 import { isRecord } from "../util/is-record";
 
 /**
@@ -54,14 +59,7 @@ export interface PermissionEdit {
   skipped: string | null;
 }
 
-/** What Taskless recorded writing to one file. */
-interface PermissionRecord {
-  rules: string[];
-  /** Whether Taskless created the file, and so may delete it once empty. */
-  created: boolean;
-}
-
-type Records = Record<string, PermissionRecord>;
+type Records = Record<string, TasklessPermissionRecord>;
 
 type EditResult =
   | { kind: "write"; text: string | undefined; added: string[] }
@@ -626,9 +624,8 @@ async function readText(path: string): Promise<string | undefined> {
 async function readRecords(cwd: string): Promise<Records> {
   try {
     const { manifest } = await readManifest(join(cwd, ".taskless"));
-    const permissions: unknown = (
-      manifest.install as Record<string, unknown> | undefined
-    )?.permissions;
+    // Typed, but read as unknown: the manifest is a hand-editable file.
+    const permissions: unknown = manifest.install?.permissions;
     if (!isRecord(permissions)) return {};
     const records: Records = {};
     for (const [file, record] of Object.entries(permissions)) {
@@ -647,7 +644,7 @@ async function readRecords(cwd: string): Promise<Records> {
 async function writeRecords(cwd: string, records: Records): Promise<void> {
   const directory = join(cwd, ".taskless");
   const { manifest, raw } = await readManifest(directory);
-  const install: Record<string, unknown> = { ...manifest.install };
+  const install: TasklessInstallManifest = { ...manifest.install };
   if (Object.keys(records).length === 0) {
     delete install.permissions;
   } else {
