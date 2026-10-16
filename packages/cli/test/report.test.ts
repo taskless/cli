@@ -890,6 +890,8 @@ describe("taskless report", () => {
       flat.indexOf("**Generate.**")
     );
     expect(supply).toContain("`estimatedViolations`");
+    expect(supply).toContain("`## Estimating violations`");
+    expect(supply).not.toContain("saw no instance");
     expect(supply).not.toContain("contextTokens");
     expect(supply).not.toContain("callsPerCatch");
     const show = flat.slice(
@@ -897,6 +899,27 @@ describe("taskless report", () => {
       flat.indexOf("**Clean up.**")
     );
     expect(show).toContain("which are **your estimate**");
+  });
+
+  // An agent grepped for the escape helper, found where escaping already
+  // happens, and published zero for a pattern fixed four times. Zero stays a
+  // valid answer, but only after a search for the problem itself.
+  it("asks for a searched estimate of a cloud candidate's violations", async () => {
+    const { stdout, exitCode } = await run(["agent", "report"]);
+    expect(exitCode).toBe(0);
+    const flat = stdout.replaceAll(/\s+/g, " ");
+    const estimating = flat.slice(
+      flat.indexOf("## Estimating violations"),
+      flat.indexOf("## Facts schema")
+    );
+    expect(estimating).toContain(
+      "Zero is a fine answer, but only after you have looked."
+    );
+    expect(estimating).toContain(
+      "**Search for the problem, not the protection.**"
+    );
+    expect(estimating).toContain("**Start from the real shape.**");
+    expect(estimating).toContain("**Write the low end of your range.**");
   });
 
   // "Show it exactly as printed" read as verbatim, so agents fenced the
