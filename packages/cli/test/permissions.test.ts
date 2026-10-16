@@ -12,6 +12,7 @@ import chalk from "chalk";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import {
+  commandOfRule,
   describePermissionEdits,
   syncPermissions,
   type SyncPermissionsOptions,
@@ -551,5 +552,20 @@ describe("describePermissionEdits", () => {
     } finally {
       chalk.level = level;
     }
+  });
+});
+
+describe("commandOfRule", () => {
+  it("reads every harness's spelling as the command it allows", () => {
+    expect(commandOfRule(`Bash(${V1} *)`)).toBe(V1);
+    expect(commandOfRule(`Bash(${V1}:*)`)).toBe(V1);
+    expect(commandOfRule("Shell(npx:@taskless/cli@0.13.0 *)")).toBe(V1);
+    expect(commandOfRule(`${V1} *`)).toBe(V1);
+    expect(commandOfRule(V1)).toBe(V1);
+    expect(
+      commandOfRule(
+        'prefix_rule(pattern = ["npx","@taskless/cli@0.13.0"], decision = "allow")'
+      )
+    ).toBe(V1);
   });
 });

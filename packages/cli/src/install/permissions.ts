@@ -441,6 +441,28 @@ function isTasklessCursorCliRule(rule: string): boolean {
   return match !== null && isTasklessCommand(`${match[1]} ${match[2]}`);
 }
 
+/**
+ * The command a rule allows, in any harness's spelling, for a person to read:
+ * `Bash(npx @taskless/cli@0.13.0 *)` and `Shell(npx:@taskless/cli@0.13.0)`
+ * both read `npx @taskless/cli@0.13.0`.
+ */
+export function commandOfRule(rule: string): string {
+  const bash = /^Bash\((.*)\)$/s.exec(rule)?.[1];
+  const shell = /^Shell\(([^:)]+):(.*)\)$/s.exec(rule);
+  const pattern =
+    /^prefix_rule\(pattern = (\[.*\]), decision = "allow"\)$/.exec(rule)?.[1];
+  let command = rule;
+  if (bash !== undefined) {
+    command = bash.replace(/:\*$/, "");
+  } else if (shell !== null) {
+    command = `${shell[1] ?? ""} ${shell[2] ?? ""}`;
+  } else if (pattern !== undefined) {
+    const words: unknown = parseJson(pattern);
+    if (Array.isArray(words)) command = words.join(" ");
+  }
+  return command.replace(/ \*$/, "");
+}
+
 // --- The harnesses ----------------------------------------------------------
 
 const CLAUDE_FILE = ".claude/settings.json";

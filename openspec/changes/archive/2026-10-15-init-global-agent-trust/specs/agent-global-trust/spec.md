@@ -51,7 +51,7 @@ The entry SHALL begin with the label `Taskless CLI:`. It SHALL name `@taskless/c
 
 ### Requirement: The global entry is offered only in the interactive wizard
 
-When the entry is absent, the wizard SHALL show the proposed edit in its summary step, after the project edits, under a heading that says the file is outside the project, naming the file and the entry with an `ALLOW:` line. It SHALL ask a separate confirmation for it, defaulting to yes, after the confirmation for the project edits. Declining SHALL leave the user file unchanged and SHALL NOT affect the rest of the install.
+When the entry is absent, the wizard SHALL show the proposed edit in its summary step, in the same group as the project permission edits and after them, as one line labelled `ALLOW (global):` that names the packages, says a call is covered only at an exact version, and names the file and key. Project and global edits SHALL be covered by the one confirmation the summary step asks, defaulting to yes; there SHALL be no separate question for the global entry. Declining that confirmation SHALL cancel the install and write nothing, inside or outside the project.
 
 `--no-interactive` and `--json` SHALL NEVER write a file outside the project.
 
@@ -62,14 +62,19 @@ Nothing about the entry SHALL be recorded in the project manifest, and a decline
 #### Scenario: The wizard offers the entry
 
 - **WHEN** the wizard installs for `.claude/` and `~/.claude/settings.json` has no `Taskless CLI:` entry
-- **THEN** the summary SHALL show `~/.claude/settings.json` with an `ALLOW:` line for the entry
-- **AND** SHALL ask to confirm that edit separately
+- **THEN** the summary SHALL show an `ALLOW (global):` line naming `~/.claude/settings.json` and `autoMode.allow`
+- **AND** the one confirmation SHALL be `Make these changes to your settings?` when nothing else is being removed
 
-#### Scenario: Declining writes nothing outside the project
+#### Scenario: Declining writes nothing anywhere
 
-- **WHEN** the user declines the global entry and confirms the rest
+- **WHEN** the user declines the summary's confirmation
 - **THEN** `~/.claude/settings.json` SHALL be byte-identical afterwards
-- **AND** the project install SHALL complete
+- **AND** no project permission file SHALL be written
+
+#### Scenario: The global entry alone is still asked
+
+- **WHEN** the project's permission files already hold the installed rule and the entry is absent
+- **THEN** the summary SHALL show only the `ALLOW (global):` line and ask the same confirmation
 
 #### Scenario: A declined offer is asked again
 
@@ -107,10 +112,10 @@ When a harness in the table is installed for and its entry is absent after `init
 - **THEN** the output SHALL include a warning naming `~/.claude/settings.json`, `autoMode.allow`, and the entry text
 - **AND** the warning SHALL name the installer invocation, run with no arguments in a terminal, as the way to be offered it
 
-#### Scenario: A declined offer warns
+#### Scenario: A skipped file warns after a wizard install
 
-- **WHEN** the user declines the global entry in the wizard
-- **THEN** the wizard SHALL print the same warning
+- **WHEN** the wizard completes an install for `.claude/` and `~/.claude/settings.json` does not parse
+- **THEN** the wizard SHALL print the same warning, with the reason the file was left alone
 
 #### Scenario: A present entry is silent
 

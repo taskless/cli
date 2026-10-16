@@ -208,23 +208,22 @@ function display(file: string, home: string): string {
 }
 
 /**
- * The proposed edit for each missing entry, for the wizard's summary. The
- * heading says the file is outside the project, since nothing else the
- * install touches is.
+ * The proposed edit for each missing entry, for the wizard's summary, beside
+ * the project's own `ALLOW (project):` lines. `global` marks it as the one
+ * edit outside the project.
  */
 export function describeGlobalTrust(
   outcomes: readonly GlobalTrustOutcome[],
   home: string = homedir()
 ): string[] {
-  const lines: string[] = [];
-  for (const outcome of outcomes) {
-    if (outcome.state !== "absent") continue;
-    lines.push(
-      `Edit ${display(outcome.file, home)} (your ${outcome.harness} settings, outside this project)`,
-      `  ${chalk.green(`ALLOW: ${outcome.key} += ${GLOBAL_TRUST_ENTRY}`)}`
+  return outcomes
+    .filter((outcome) => outcome.state === "absent")
+    .map((outcome) =>
+      chalk.green(
+        // ast-grep-ignore: no-unrouted-cli-invocation
+        `ALLOW (global): Calling @taskless/cli or @taskless/cli-nightly at an exact version, in ${display(outcome.file, home)} (${outcome.key})`
+      )
     );
-  }
-  return lines;
 }
 
 /**
