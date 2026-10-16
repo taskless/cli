@@ -13,10 +13,10 @@
 
 ## 3. Wizard and init
 
-- [ ] 3.1 Show the global edit in the wizard summary under its own heading naming the file as outside the project, with an `ALLOW:` line, and ask a separate confirm after the project confirm; verify with summary tests for offer, accept, and decline (decline leaves the file byte-identical and the install completes)
-- [ ] 3.2 Make `--no-interactive` and `--json` call `syncGlobalTrust` read-only only; verify with a test that the temporary home's settings file is byte-identical after `init --no-interactive`
-- [ ] 3.3 Print the missing-entry warning in both modes after the install, to stderr under `--json`, naming harness, file, key, and entry text; add the per-harness global trust outcome to the `init --json` envelope; verify with output and envelope tests, including silence when present
-- [ ] 3.4 Update `packages/cli/src/agent/init.md` with the envelope's new field; verify the prompt parity tests pass
+- [x] 3.1 Show the global edit in the wizard summary under its own heading naming the file as outside the project, with an `ALLOW:` line, and ask a separate confirm after the project confirm; verify with summary tests for offer, accept, and decline (decline leaves the file byte-identical and the install completes)
+- [x] 3.2 Make `--no-interactive` and `--json` call `syncGlobalTrust` read-only only; verify with a test that the temporary home's settings file is byte-identical after `init --no-interactive`
+- [x] 3.3 Print the missing-entry warning in both modes after the install, to stderr under `--json`, naming harness, file, key, and entry text; add the per-harness global trust outcome to the `init --json` envelope; verify with output and envelope tests, including silence when present
+- [x] 3.4 Update `packages/cli/src/agent/init.md` with the envelope's new field; verify the prompt parity tests pass
 
 ## 4. Skill fallback
 

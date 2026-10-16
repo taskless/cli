@@ -25,6 +25,11 @@ import {
   syncPermissions,
   type PermissionEdit,
 } from "../install/permissions";
+import {
+  globalTrustWarnings,
+  syncGlobalTrust,
+  type GlobalTrustOutcome,
+} from "../install/global-trust";
 import { readInstallState } from "../install/state";
 import { getTelemetry } from "../telemetry";
 import { getCliVersion } from "../wizard/intro";
@@ -135,6 +140,10 @@ export const initCommand = defineCommand({
           // Every harness permission file this run created, edited, or left
           // alone, with the exact rules. Always present, empty when none.
           permissions: result.permissions,
+          // Each harness whose classifier overrules a project rule, with
+          // whether its user-level entry is present. Read only: the batch
+          // install never writes outside the project. Empty when none apply.
+          globalTrust: result.globalTrust,
           // Absent when nothing ran, so a caller distinguishes "the tree was
           // rewritten" from "nothing happened" by presence, never by reading
           // empty arrays out of it.
@@ -340,6 +349,8 @@ async function runNonInteractive(
   pinnedCli: PinnedCli[];
   /** Harness permission files this run created, edited, or left alone. */
   permissions: PermissionEdit[];
+  /** User-level trust entries, read and never written. */
+  globalTrust: GlobalTrustOutcome[];
 }> {
   // Under `--json`, stdout carries only the envelope printed by the caller.
   // This per-target summary is not on that envelope (it is finer-grained than
@@ -463,15 +474,22 @@ async function runNonInteractive(
     }
   }
 
+  const selected = plan.targets
+    .filter((target) => target.mode === "reference")
+    .map((target) => target.dir);
   const permissions = await syncPermissions(cwd, {
-    selected: plan.targets
-      .filter((target) => target.mode === "reference")
-      .map((target) => target.dir),
+    selected,
     codexDetected: detected.some((tool) => tool.name === "Codex"),
     invocation: buildInvocation(),
     write: true,
   });
   for (const line of describePermissionEdits(permissions)) log(line);
+
+  // Only the wizard, with a person there to confirm it, writes outside the
+  // project. An agent or a script running `init` would otherwise be widening
+  // its own classifier's trust, which is the one thing it must not do.
+  const globalTrust = await syncGlobalTrust({ selected, write: false });
+  for (const warning of globalTrustWarnings(globalTrust)) log(warning);
 
   return {
     reloadNotice,
@@ -480,6 +498,7 @@ async function runNonInteractive(
     cliVersion,
     targets,
     permissions,
+    globalTrust,
     // A version move rewrites `install.cliVersion` in the manifest, which is
     // a tracked file, so it is a change even when every skill byte matched.
     changed:

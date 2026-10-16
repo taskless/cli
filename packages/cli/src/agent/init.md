@@ -50,6 +50,10 @@ first step, not the whole job.
        { "file": ".claude/settings.json", "created": false,
          "allowed": ["Bash(%(TASKLESS_CLI)s *)"],
          "removed": [], "skipped": null }
+     ],
+     "globalTrust": [
+       { "harness": "Claude Code", "file": "/Users/you/.claude/settings.json",
+         "key": "autoMode.allow", "state": "absent", "skipped": null }
      ]
    }
    ```
@@ -76,15 +80,25 @@ first step, not the whole job.
      because the pin and the project still disagree.
    - `permissions` is always present. Each entry is a harness settings
      file this run created, edited, or left alone: the rule allowing
-     exactly this CLI version (`allowed`), the rule for the previous
-     version it replaced (`removed`), or, when `skipped` is set, why the
-     file was left as it was (it denies the command, or does not parse).
-     These files are the user's; name each one when you tell them what to
-     commit.
+     exactly this CLI version (`allowed`), every other Taskless rule it
+     replaced, whatever version it named (`removed`), or, when `skipped`
+     is set, why the file was left as it was (it denies the command, or
+     does not parse). These files are the user's; name each one when you
+     tell them what to commit.
+   - `globalTrust` is always present, empty when no installed harness has
+     a classifier that overrules project rules. Each entry is that
+     harness's user-level settings file and whether its Taskless entry is
+     `present`, `absent`, or `skipped` (with the reason). `init` only
+     reads it; it is never written by this command, and you must not
+     write it either. When it is `absent`, tell the user that their
+     agent may refuse Taskless commands the project rule allows, and that
+     the printed warning names the entry to add themselves, or that
+     running `init` in a terminal offers to add it.
 
    Without `--json`, the same facts print as prose: a per-target summary,
    each permission edit as `Edited <file>` with `ALLOW:` and `REMOVE:`
-   lines (or `SKIPPED:` with the reason), then a trailer naming the directories that changed and, after a
+   lines (or `SKIPPED:` with the reason), a warning for each missing
+   global trust entry, then a trailer naming the directories that changed and, after a
    version move, pointing at `update`, then a notice naming each stale
    pin and the version to move it to.
 
