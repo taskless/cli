@@ -104,7 +104,7 @@ interface EditContext {
 const UNPARSEABLE = "does not parse, so it was left as it is";
 
 /** Parse JSON or JSONC, or `undefined` when it does not parse. */
-function parseJson(text: string): unknown {
+export function parseJson(text: string): unknown {
   const errors: ParseError[] = [];
   const value: unknown = parse(text, errors, { allowTrailingComma: true });
   return errors.length > 0 ? undefined : value;
@@ -237,7 +237,7 @@ function remove(text: string, path: (string | number)[]): string {
  * there is no neighbour to disturb, and as the fallback whenever a hand-placed
  * edit would not parse back to the value it was meant to write.
  */
-function set(
+export function set(
   text: string,
   path: (string | number)[],
   value: unknown,
@@ -263,7 +263,7 @@ function set(
   );
 }
 
-function valueAt(root: unknown, path: readonly string[]): unknown {
+export function valueAt(root: unknown, path: readonly string[]): unknown {
   let current = root;
   for (const key of path) {
     if (!isRecord(current)) return undefined;
