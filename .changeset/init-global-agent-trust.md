@@ -1,0 +1,5 @@
+---
+"@taskless/cli": patch
+---
+
+Claude Code's auto mode can refuse a Taskless command even when the project allows that exact version, because its classifier overrules project allow rules for downloaded code and reads its own exceptions only from your user settings. The setup wizard now offers, as a separate question after the project edits, to add one entry to the top-level `autoMode.allow` list in `~/.claude/settings.json` (or under `CLAUDE_CONFIG_DIR`). The entry starts `Taskless CLI:`, names no version, and covers a Taskless call only when it names an exact version; it is added once, after `"$defaults"` when `init` creates the list, and a later install that finds it leaves it alone. Only the interactive wizard writes it: the batch `init` never writes outside the project, and instead warns when the entry is missing, naming the file, the key, and the text to add. `init --json` reports it under `globalTrust`. When a classifier does refuse a Taskless command, the skill now tells the agent to stop without retrying and hand you that entry, rather than offering a project allow rule that cannot help.
