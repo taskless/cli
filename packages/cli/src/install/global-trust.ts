@@ -3,12 +3,6 @@ import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import process from "node:process";
 
-import chalk from "chalk";
-
-// Sets `chalk.level` from the real terminal on import. This module renders
-// colour, so it establishes that itself.
-import "../util/color";
-
 import { isRecord } from "../util/is-record";
 import { parseJson, set, valueAt } from "./permissions";
 
@@ -209,21 +203,20 @@ function display(file: string, home: string): string {
 
 /**
  * The proposed edit for each missing entry, for the wizard's summary, beside
- * the project's own `ALLOW (project):` lines. `global` marks it as the one
- * edit outside the project.
+ * the project's own lines: what it allows, and where it goes. `global` marks
+ * it as the one edit outside the project.
  */
 export function describeGlobalTrust(
   outcomes: readonly GlobalTrustOutcome[],
   home: string = homedir()
-): string[] {
+): { what: string; where: string }[] {
   return outcomes
     .filter((outcome) => outcome.state === "absent")
-    .map((outcome) =>
-      chalk.green(
-        // ast-grep-ignore: no-unrouted-cli-invocation
-        `ALLOW (global): Calling @taskless/cli or @taskless/cli-nightly at an exact version, in ${display(outcome.file, home)} (${outcome.key})`
-      )
-    );
+    .map((outcome) => ({
+      // ast-grep-ignore: no-unrouted-cli-invocation
+      what: "@taskless/cli or @taskless/cli-nightly at an exact version",
+      where: `in ${display(outcome.file, home)} (${outcome.key})`,
+    }));
 }
 
 /**

@@ -39,7 +39,7 @@ export type NoticeBlock = string | { items: readonly string[] };
  * over-long line is allowed to overflow instead, and the box is then sized
  * around it.
  */
-function wrap(text: string, columns: number): string[] {
+export function wrap(text: string, columns: number): string[] {
   const lines: string[] = [];
   let line = "";
   for (const word of text.split(" ")) {

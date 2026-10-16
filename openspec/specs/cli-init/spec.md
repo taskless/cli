@@ -986,7 +986,7 @@ Edited .claude/settings.json
 
 The first line SHALL say `Created` for a file Taskless created and `Edited` for one that existed. The labels SHALL carry the meaning on their own, so the output reads the same with color off (`NO_COLOR`, no TTY). Color SHALL come from the CLI's shared color setup, so it follows the real terminal.
 
-The wizard SHALL show each permission edit in its summary step, before anything is written, so the user sees it before confirming, as one line per command and file, grouped with any global trust edit under one heading: `ALLOW (project): Calling <command> in <file>`, `REMOVE (project): Calling <command> in <file>`, or `SKIPPED (project): <file> <reason>`, where `<command>` is the invocation the rule allows, so a harness whose rules come in two spellings reads as one line. One confirmation covers every settings edit: `Make these changes to your settings?`, or, when stubs are also being removed, the removal question extended with `, and make these changes to your settings?`. `--no-interactive` SHALL print the labelled lines above after writing. Under `--json` they SHALL go to stderr with the rest of the human summary, and the envelope SHALL carry the same information as data: per file, the path, whether it was created, the rules allowed and removed, and any skip reason.
+The wizard SHALL show each permission edit in its summary step, before anything is written, so the user sees it before confirming, as one statement per command and file, grouped with any global trust edit under one heading: `ALLOW (project):`, `REMOVE (project):`, or `SKIPPED (project):`, followed by the invocation the rule allows (so a harness whose rules come in two spellings reads as one statement) and, on the next line, `in <file>`; a skip names the file and then the reason. Labels SHALL be padded to the widest label in the group so every statement starts in the same column, and each statement SHALL wrap under itself, on spaces only, to keep lines within 76 columns, so a version token is never split. One confirmation covers every settings edit: `Make these changes to your settings?`, or, when stubs are also being removed, the removal question extended with `, and make these changes to your settings?`. `--no-interactive` SHALL print the labelled lines above after writing. Under `--json` they SHALL go to stderr with the rest of the human summary, and the envelope SHALL carry the same information as data: per file, the path, whether it was created, the rules allowed and removed, and any skip reason.
 
 #### Scenario: A first install names the edit
 
@@ -1007,7 +1007,7 @@ The wizard SHALL show each permission edit in its summary step, before anything 
 #### Scenario: The wizard previews before writing
 
 - **WHEN** the wizard reaches its summary step for an install that will edit `.cursor/cli.json`
-- **THEN** the summary SHALL show an `ALLOW (project): Calling <invocation> in .cursor/cli.json` line, once, before the user confirms
+- **THEN** the summary SHALL show one `ALLOW (project):` statement for the invocation, with `in .cursor/cli.json` beneath it, before the user confirms
 - **AND** nothing SHALL be written if the user cancels
 
 #### Scenario: Color off still reads
