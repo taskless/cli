@@ -1,4 +1,4 @@
-# Topic: onboard     (CLI v%(CLI_VERSION)s / topic v7)
+# Topic: onboard     (CLI v%(CLI_VERSION)s / topic v8)
 
 ## Goal
 Take a user who has just installed Taskless from zero rules to a
@@ -80,6 +80,13 @@ making the case for running them in CI.
      `.cursorrules`, `.opencode/AGENTS.md`, and similar agent-context
      files for explicit rules and conventions stated in prose.
    %(SOURCE_PR_REVIEW)s
+   - **Commit history**: read the commit messages over the same window
+     for fixes that recur: the same missing header added again, the
+     same call swapped out again, the same mistake reverted again. A
+     fix that keeps being made is as strong a candidate as a review
+     comment that keeps being written. In a repository reviewed before
+     its pull requests open, or written mostly by agents, it is often
+     the only one. `git` is all this needs.
    - **Trackers and engineering context**: Taskless cannot see your
      MCP roster, so this is your call. Use every MCP you have that
      reaches a bug tracker (Jira and Linear are examples of the class,
@@ -122,7 +129,9 @@ making the case for running them in CI.
    window you mined: a pull request counts when it merged in the
    window and a review comment on it asked for the change, and each
    such comment counts. Bot and author comments count too. Judge each
-   comment by reading it, never by matching keywords.
+   comment by reading it, never by matching keywords. Evidence from
+   commit history chooses candidates; it never counts toward these
+   numbers, which count review comments alone.
 
 7. **Write the rules.** For every candidate whose destination is
    `legacy`, `sg`, or `vale`, follow the `%(TASKLESS_CLI)s agent route`

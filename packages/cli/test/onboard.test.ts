@@ -320,7 +320,10 @@ describe("onboard recipe establishes the routing surface first", () => {
 // publishes a report, and ends on the CI offer. Each of these is a behavior an
 // agent would otherwise improvise back toward the conversational v5 flow. v7
 // adds the surfaced-counting method to the scan step, since the report recipe
-// is only fetched after the mining it describes is over.
+// is only fetched after the mining it describes is over. v8 mines commit
+// history for recurring fixes, which in a repository reviewed before its pull
+// requests open is the only signal there is (#520), and keeps that evidence
+// out of `surfaced`.
 describe("onboard recipe asks one question and finishes on its own", () => {
   let cwd: string;
   let stdout: string;
@@ -344,8 +347,8 @@ describe("onboard recipe asks one question and finishes on its own", () => {
       : stdout.slice(start, start + title.length + next);
   }
 
-  it("is topic v7", () => {
-    expect(stdout).toMatch(/^# Topic: onboard {5}\(CLI v.+ \/ topic v7\)/m);
+  it("is topic v8", () => {
+    expect(stdout).toMatch(/^# Topic: onboard {5}\(CLI v.+ \/ topic v8\)/m);
   });
 
   it("gives the method for counting surfaced while mining, not after", () => {
@@ -354,6 +357,21 @@ describe("onboard recipe asks one question and finishes on its own", () => {
     expect(scan).toContain("Bot and author comments count too");
     expect(scan).toContain("never by matching keywords");
     expect(scan).not.toMatch(/\bfixed\b/);
+  });
+
+  it("mines commit history for recurring fixes, but never counts it as surfaced", () => {
+    const mine = step("Mine every source you can reach");
+    expect(mine).toContain("**Commit history**");
+    expect(mine.replaceAll(/\s+/g, " ")).toContain(
+      "reviewed before its pull requests open"
+    );
+    const scan = step("Scan with high-signal filtering").replaceAll(
+      /\s+/g,
+      " "
+    );
+    expect(scan).toContain(
+      "Evidence from commit history chooses candidates; it never counts toward these numbers"
+    );
   });
 
   it("asks the one question, set apart, through a question tool when there is one", () => {
