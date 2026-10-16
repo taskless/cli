@@ -21,6 +21,7 @@ const {
   extractFeedbackItem,
   isInfoBot,
   isReviewBot,
+  isReviewComment,
   isReviewInProgress,
   main,
 } = require("./fetch_pr_feedback.cjs");
@@ -1071,4 +1072,107 @@ test("an explicit marker in a summary still reaches its priority bucket", () => 
   });
   assert.equal(output.summary.high, 1);
   assert.equal(output.summary.review_summaries, 0);
+});
+
+// claude-code-action posts as `github-actions` when a workflow hands it
+// `github_token`: `github-actions[bot]` over REST, `github-actions` over
+// GraphQL. Measured on taskless/marketing#73, where four unresolved findings
+// were filed as info-bot noise and the script reported needs_attention: 0.
+test("an inline thread from github-actions is review feedback, in both spellings", () => {
+  for (const login of ["github-actions", "github-actions[bot]"]) {
+    const output = build(
+      fakeClient({
+        threads: [
+          thread({
+            comments: {
+              nodes: [
+                { body: "This will break on empty input", author: { login } },
+              ],
+            },
+          }),
+        ],
+      }),
+      {}
+    );
+    assert.equal(output.summary.bot_comments, 0, login);
+    assert.equal(output.summary.high, 1, login);
+    assert.equal(output.summary.review_bot_feedback, 1, login);
+    assert.equal(output.feedback.high[0].review_bot, true, login);
+  }
+});
+
+test("a finished claude-code-action summary from github-actions is review feedback", () => {
+  for (const login of ["github-actions", "github-actions[bot]"]) {
+    const output = build(
+      fakeClient({
+        comments: [
+          {
+            id: 1,
+            body: `${LIVE_FINISHED}\n\nThis will break on empty input.`,
+            user: { login },
+          },
+        ],
+      }),
+      {}
+    );
+    assert.equal(output.summary.bot_comments, 0, login);
+    assert.equal(output.summary.high, 1, login);
+  }
+});
+
+// The wait loop must not exit while a review posted as github-actions is still
+// running: that is the silent-success shape `review_in_progress` exists for.
+test("a placeholder posted as github-actions is an unfinished review", () => {
+  for (const body of [LIVE_CREATED, LIVE_IN_PROGRESS]) {
+    const output = build(
+      fakeClient({
+        comments: [{ id: 1, body, user: { login: "github-actions[bot]" } }],
+      }),
+      {}
+    );
+    assert.equal(output.summary.review_in_progress, 1);
+    assert.equal(output.summary.bot_comments, 0);
+    assert.match(output.action_required, /still in progress/);
+  }
+});
+
+// The login is shared, so every OTHER top-level github-actions comment stays
+// informational: a deploy preview or a coverage table is not a finding.
+test("an ordinary top-level github-actions comment stays in bot", () => {
+  const output = build(
+    fakeClient({
+      comments: [
+        {
+          id: 1,
+          body: "Preview deployed. This will break nothing, see the logs.",
+          user: { login: "github-actions[bot]" },
+        },
+      ],
+    }),
+    {}
+  );
+  assert.equal(output.summary.bot_comments, 1);
+  assert.equal(output.summary.needs_attention, 0);
+});
+
+test("isReviewComment decides github-actions by signature, and only github-actions", () => {
+  assert.ok(isReviewComment("github-actions", LIVE_FINISHED));
+  assert.ok(
+    isReviewComment(
+      "github-actions[bot]",
+      "Done.\n\n[View job](https://github.com/o/r/actions/runs/123)"
+    )
+  );
+  assert.ok(!isReviewComment("github-actions[bot]", "Coverage dropped 2%"));
+  assert.ok(isReviewComment("github-actions", "anything", { inline: true }));
+  // Another info bot carrying the same signature is still not a reviewer.
+  assert.ok(!isReviewComment("codecov[bot]", LIVE_FINISHED));
+  assert.ok(!isReviewComment("codecov[bot]", "anything", { inline: true }));
+  assert.equal(
+    categorizeComment(
+      { user: { login: "github-actions[bot]" } },
+      `${LIVE_FINISHED}\n\nThis will break at runtime`
+    ),
+    "high"
+  );
 });

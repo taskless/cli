@@ -64,7 +64,9 @@ name: Claude Code Review (on demand)
 #   - that is NOT sufficient on its own. The action rewrites the origin remote
 #     URL to embed ITS token (`https://x-access-token:<token>@github.com/...`,
 #     logged as "Updated remote URL with authentication token") after checkout,
-#     whatever the checkout did. So `--disallowedTools` denies `Read(.git/**)`;
+#     whatever the checkout did, and a step just before the action writes
+#     the same URL early so private repos work (issue #512). So
+#     `--disallowedTools` denies `Read(.git/**)`;
 #   - the token also sits in the Claude process's environment, which is how
 #     `gh pr comment` authenticates, so `Read(//proc/**)` is denied as well.
 # Do not remove any of these without removing `Read`: they are safe together
@@ -230,6 +232,27 @@ jobs:
           # is here so a run that classified nothing can be told apart from a run
           # that had nothing to classify.
           echo "threads: $(jq '.data.repository.pullRequest.reviewThreads.nodes | length' "${GITHUB_WORKSPACE}/.prior-review.json")"
+
+      # The action fetches the PR branch BEFORE it authenticates origin.
+      # `track_progress: true` selects tag mode, whose `setupBranch` runs
+      # `git fetch origin <headRefName>` (or `pull/N/head` for a fork), and only
+      # then does `configureGitAuth` write the token into the origin URL. With
+      # `persist-credentials: false` that fetch is anonymous: fine on this
+      # public repo, `could not read Username` on a private one, which is how a
+      # vendored copy in taskless/marketing died (issue #512, checked against
+      # v1.0.221). This writes the value the action writes moments later, from
+      # the same token as `github_token`, so it exposes nothing new and
+      # `Read(.git/**)` already covers it.
+      #
+      # Do NOT fix this with `persist-credentials: true`. Checkout v7 keeps its
+      # credential in a `RUNNER_TEMP` file loaded through `includeIf.gitdir:*`;
+      # the action's `replaceCheckoutCredentials` only strips `include.path`
+      # entries, so that credential would survive, outside `.git/**`, where the
+      # `Read` deny rule does not reach.
+      - name: Authenticate origin for the action's PR-branch fetch
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: git remote set-url origin "https://x-access-token:${GH_TOKEN}@${GITHUB_SERVER_URL#https://}/${GITHUB_REPOSITORY}.git"
 
       # The 👀 on the triggering comment is not from this workflow or the
       # action. The Claude GitHub App adds it, as `claude[bot]`, to ANY comment
