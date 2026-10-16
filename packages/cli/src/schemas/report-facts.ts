@@ -82,7 +82,7 @@ const cloudCandidateFacts = z
     ...outcome,
     language: z.string().min(1).max(40),
     estimatedViolations: count.describe(
-      "How many instances of this pattern you estimate are in the code today, from what you saw while mining. An estimate, not a measurement: no rule has run"
+      "How many instances of this pattern you estimate are in the code today, from a quick search for the problem itself. An estimate, not a measurement: no rule has run. A zero means you searched and found none"
     ),
     fail: fixture.optional().describe("Code the rule would flag"),
     pass: fixture.optional().describe("Code the rule would accept"),
@@ -123,7 +123,7 @@ export const reportFactsSchema = z
       })
       .strict()
       .describe(
-        "What the window's history held. Zeros are honest when there was nothing to mine"
+        "What the window's history held. A zero is honest only for a source you read and found empty"
       ),
     rules: z
       .array(localRuleFacts)
