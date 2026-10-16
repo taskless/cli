@@ -218,6 +218,23 @@ describe("assembleReport", () => {
     expect(reportFactsSchema.safeParse(facts).success).toBe(false);
   });
 
+  it.each([
+    ["empty", ""],
+    ["blank", "   "],
+    ["over 200 characters", "x".repeat(201)],
+  ])("refuses a rule whose title is %s", (_case, title) => {
+    const facts = {
+      ...factsFor(three),
+      rules: three.map((id) => ({
+        id,
+        title,
+        explain: "Holding it keeps review on design instead of style.",
+        surfaced: { prs: 1, reviewComments: 1 },
+      })),
+    };
+    expect(reportFactsSchema.safeParse(facts).success).toBe(false);
+  });
+
   it("carries the draft's measured findings on every written rule", () => {
     const report = assembleReport(
       draftOf(
