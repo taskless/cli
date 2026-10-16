@@ -899,6 +899,25 @@ describe("taskless report", () => {
     expect(show).toContain("which are **your estimate**");
   });
 
+  // "Show it exactly as printed" read as verbatim, so agents fenced the
+  // summary and its link stopped being clickable. The summary already says it
+  // can be deleted, so the recipe no longer asks for that line again.
+  it("relays the summary as chat text, not a code block", async () => {
+    const { stdout, exitCode } = await run(["agent", "report"]);
+    expect(exitCode).toBe(0);
+    const flat = stdout.replaceAll(/\s+/g, " ");
+    const show = flat.slice(
+      flat.indexOf("**Show the result.**"),
+      flat.indexOf("**Clean up.**")
+    );
+    expect(show).toContain(
+      "Relay it to the user as ordinary chat text, NOT inside a code block or quote"
+    );
+    expect(show).toContain("Put the link on its own line");
+    expect(show).not.toContain("exactly as printed");
+    expect(show).toContain("so do not repeat it");
+  });
+
   it("refuses --from and --delete together", async () => {
     const { stderr, exitCode } = await run([
       "report",
