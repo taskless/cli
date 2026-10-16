@@ -177,7 +177,7 @@ The recipe SHALL instruct the agent to:
 4. Mine every reachable source without asking which: codebase TODOs/FIXMEs, agent-memory files (CLAUDE.md, AGENTS.md, .cursorrules, and similar), review comments through whichever host tool `detect` reports present and applicable (pull requests through `gh`, merge requests through `glab`), the commit history of the window being mined, read for fixes that recur, and any MCP the agent has that reaches a bug tracker, an engineering-context tool, or architectural decisions. Whether to run a hinted command such as `gh auth status`, and which MCPs to use, SHALL be left to the agent.
 5. Filter for high-signal candidates: repeated patterns across multiple PRs/files/comments, comments that cite a doc or style guide, and merge-blocking review feedback; drop one-off nits and pure formatting feedback. Commit-history evidence SHALL choose candidates only; the recipe SHALL state that it never counts toward a rule's `surfaced`, which counts review comments alone.
 6. Author every candidate the routing surface sends to a local destination (`legacy`, `sg`, or `vale`) by following the `route` topic, without asking per candidate.
-7. Record, and not author, every candidate the agent judges better solved by a runtime rule, for the report's `cloud` tier.
+7. Record, and not author, every candidate the agent judges better solved by a runtime rule, for the report's `cloud` tier, noting how many instances of its pattern the agent saw in the code, which the report takes as that candidate's estimate.
 8. Once the rules are written, run `taskless onboard --mark-complete` without asking.
 9. Hand off to the `report` topic to publish the report, and, in parallel, send onboarding feedback by following the `rule-feedback` topic as the respondent.
 10. Close by showing the report summary, then, as the last thing the agent does, offer to wire `taskless check` into the repository's CI by following the `ci` topic, and strongly encourage it: Taskless checks in CI are what keep agents from reintroducing the patterns these rules catch. The offer SHALL name the CI systems `detect --json` found. On a yes the agent SHALL follow the `ci` topic; on a no it SHALL name the `hooks` topic in one line as the local alternative and stop.
@@ -247,6 +247,7 @@ The recipe SHALL NOT restate the destination criterion itself; it SHALL referenc
 - **WHEN** `onboard.md` is read
 - **THEN** it SHALL NOT direct the agent to `auth login`
 - **AND** SHALL direct runtime-shaped candidates to the report's `cloud` tier rather than to authoring
+- **AND** SHALL direct the agent to note how many instances of each such candidate's pattern it saw, for the report's estimate
 
 #### Scenario: Onboarding completes without a confirmation question
 
