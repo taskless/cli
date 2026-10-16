@@ -1072,3 +1072,92 @@ test("an explicit marker in a summary still reaches its priority bucket", () => 
   assert.equal(output.summary.high, 1);
   assert.equal(output.summary.review_summaries, 0);
 });
+
+// Issue #514. The review workflow hands claude-code-action `github_token`, so
+// the Claude review posts as `github-actions[bot]`, not `claude[bot]`, and
+// every test above that uses `claude[bot]` passed while the real review was
+// filed as info-bot noise. These fixtures are the shapes measured on #510.
+const ACTIONS = "github-actions[bot]";
+
+test("a github-actions[bot] review placeholder is a review in progress", () => {
+  for (const body of [
+    '### Review in progress <img src="x" />\n\n- [ ] Read the diff',
+    'Claude Code is working… <img src="x" />',
+  ]) {
+    const output = build(
+      fakeClient({ comments: [{ id: 1, body, user: { login: ACTIONS } }] }),
+      {}
+    );
+    assert.equal(output.summary.review_in_progress, 1, body);
+    assert.equal(output.summary.bot_comments, 0, body);
+    assert.match(output.action_required, /still in progress/);
+  }
+});
+
+test("a finished github-actions[bot] review is review-bot feedback, not bot", () => {
+  const output = build(
+    fakeClient({
+      comments: [
+        {
+          id: 1,
+          body: "**Claude finished @someone's task in 6m 57s** —— [View job](https://example/runs/1)\n\n---\n### Review complete\n\nThis will break on empty input.",
+          user: { login: ACTIONS },
+        },
+      ],
+    }),
+    {}
+  );
+  assert.equal(output.summary.bot_comments, 0);
+  assert.equal(output.summary.review_bot_feedback, 1);
+  assert.equal(output.summary.high, 1);
+});
+
+// The findings themselves arrive as inline threads with no Claude marker at
+// all, so recognising the tracking comment alone would still lose them.
+test("a github-actions[bot] inline finding reaches needs_attention", () => {
+  const output = build(
+    fakeClient({
+      threads: [
+        thread({
+          comments: {
+            nodes: [
+              {
+                body: "[New] `manifest.install = install;` assigns a `Record<string, unknown>` to a property typed narrower.",
+                author: { login: ACTIONS },
+              },
+            ],
+          },
+        }),
+      ],
+    }),
+    {
+      reviews: [{ author: { login: ACTIONS }, state: "COMMENTED", body: "" }],
+    }
+  );
+  assert.equal(output.summary.bot_comments, 0);
+  assert.equal(output.summary.needs_attention, 1);
+  assert.equal(output.feedback.medium[0].review_bot, true);
+});
+
+// The login is shared by every workflow, so a status comment that is not the
+// Claude review must stay where it was.
+test("an ordinary github-actions[bot] status comment is still bot", () => {
+  const output = build(
+    fakeClient({
+      comments: [
+        {
+          id: 1,
+          body: "Preview deployed to https://example. The build will break if you rebase.",
+          user: { login: ACTIONS },
+        },
+      ],
+    }),
+    {}
+  );
+  assert.equal(output.summary.bot_comments, 1);
+  assert.equal(output.summary.needs_attention, 0);
+  assert.equal(
+    categorizeComment({ user: { login: ACTIONS } }, "Coverage dropped"),
+    "bot"
+  );
+});

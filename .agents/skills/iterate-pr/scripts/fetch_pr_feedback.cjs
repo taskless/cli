@@ -33,6 +33,11 @@
  *   with a `review_bot: true` flag — they are NOT placed in the `bot` bucket.
  * - Info bots (Codecov, Dependabot, Renovate, etc.) post status reports and are
  *   placed in the `bot` bucket for silent skipping.
+ * - `github-actions[bot]` is both: it is every workflow's identity, including
+ *   the Claude review when the action is handed `github_token`. It counts as a
+ *   review bot for a review summary, an inline review thread, or a top-level
+ *   comment opening with the action's own markers — see
+ *   `isReviewBotItem` below.
  *
  * Self-review feedback:
  * - You can't formally "Request changes" on your own PR, so a PR author's own
@@ -207,6 +212,48 @@ const isReviewInProgress = (body) => {
 };
 
 /**
+ * claude-code-action posts under whichever token it is handed. The review
+ * workflow hands it `github_token` on purpose (see the comment near
+ * `github_token:` in `claude-code-review-on-demand.yml`), so this repository's
+ * Claude review arrives as `github-actions[bot]`, never `claude[bot]`, and
+ * `/^claude/i` does not see it. Measured on #510: the tracking comment, the
+ * review shell, and the inline finding were all `github-actions[bot]`.
+ *
+ * The login alone cannot promote it, since every other workflow posts as the
+ * same identity. Two shapes can:
+ *
+ * - An item from the pull request REVIEW API, a review summary or an inline
+ *   thread. A workflow that files a review is reviewing; status reports arrive
+ *   as conversation comments. This one is not optional: the #510 finding opened
+ *   `[New] …` and carried no Claude marker at all, so a body check would have
+ *   skipped the one thing the review existed to say.
+ * - A conversation comment opening with the action's tracking-comment header:
+ *   one of the placeholders above while it runs, then `Claude finished` or
+ *   `Claude encountered an error`. The error header is filed too, so a crashed
+ *   review surfaces as feedback instead of vanishing into `bot`.
+ */
+const ACTIONS_LOGIN = /^github-actions/i;
+
+const CLAUDE_ACTION_MARKERS = [
+  ...IN_PROGRESS_MARKERS,
+  /^[*_]*\s*claude finished\b/i,
+  /^[*_]*\s*claude encountered an error\b/i,
+];
+
+/**
+ * Whether an item is a review bot's: by login, or, for `github-actions[bot]`,
+ * by where it came from and how it opens. `fromReview` is true for review
+ * summaries and inline review threads.
+ */
+const isReviewBotItem = (author, body, { fromReview = false } = {}) => {
+  if (isReviewBot(author)) return true;
+  if (!ACTIONS_LOGIN.test(author ?? "")) return false;
+  if (fromReview) return true;
+  const opening = (body ?? "").trimStart();
+  return CLAUDE_ACTION_MARKERS.some((marker) => marker.test(opening));
+};
+
+/**
  * Detect a LOGAF marker at the start of a comment body.
  *
  * - l: / [l] / low: → low priority (optional)
@@ -328,8 +375,19 @@ const matchesUnnegated = (patterns, body) =>
 const categorizeComment = (comment, body) => {
   const author = comment?.author?.login || comment?.user?.login || "";
 
-  if (isInfoBot(author) && !isReviewBot(author)) return "bot";
+  if (isInfoBot(author) && !isReviewBotItem(author, body)) return "bot";
 
+  return categorizeByContent(comment, body);
+};
+
+/**
+ * The content half of `categorizeComment`, with no author gate. `bucketByAuthor`
+ * has already settled who the author is by the time it asks, and settled it with
+ * more context than this can see: an inline `github-actions[bot]` finding is a
+ * review bot's only because it came from a review thread, so re-gating it here
+ * would send it straight back to `bot`.
+ */
+const categorizeByContent = (_comment, body) => {
   const logaf = detectLogaf(body);
   if (logaf) return logaf;
 
@@ -382,10 +440,12 @@ const categorizeReviewSummary = (_comment, body) =>
  * an info bot's noise (`bot`), or ordinary human feedback, from ANY of the
  * three sources.
  *
- * `categorize` defaults to the inline-comment classifier; the review-summary
- * call site passes `categorizeReviewSummary` instead, so the bot/info-bot
- * split and the in-progress check stay one rule in one place while what
- * happens to the *content* differs by source.
+ * `categorize` defaults to the content classifier; the review-summary call
+ * site passes `categorizeReviewSummary` instead, so the bot/info-bot split and
+ * the in-progress check stay one rule in one place while what happens to the
+ * *content* differs by source. `fromReview` marks the two sources that come
+ * from the review API, which is what makes a `github-actions[bot]` item a
+ * review bot's — see `isReviewBotItem`.
  */
 const bucketByAuthor = (
   feedback,
@@ -393,17 +453,19 @@ const bucketByAuthor = (
   comment,
   body,
   author,
-  categorize = categorizeComment
+  { categorize = categorizeByContent, fromReview = false } = {}
 ) => {
+  const reviewBot = isReviewBotItem(author, body, { fromReview });
+
   // The author gate is load-bearing, not belt and braces. A human writing
   // "Review in progress on my end, back by EOD" would otherwise be filed as an
   // unfinished review, vanish from `needs_attention`, and hang the wait loop
   // forever: a person's comment never gets edited into a finished form the way
   // the bot's placeholder does, so the count never drops. Only a review bot has
   // the lifecycle this bucket describes.
-  if (isReviewBot(author) && isReviewInProgress(body)) {
+  if (reviewBot && isReviewInProgress(body)) {
     feedback.review_in_progress.push(item);
-  } else if (isReviewBot(author)) {
+  } else if (reviewBot) {
     item.review_bot = true;
     feedback[categorize(comment, body)].push(item);
   } else if (isInfoBot(author)) {
@@ -628,14 +690,10 @@ const buildFeedback = (client, { owner, repo, prInfo }) => {
     ) {
       feedback.high.push(item);
     } else {
-      bucketByAuthor(
-        feedback,
-        item,
-        review,
-        body,
-        author,
-        categorizeReviewSummary
-      );
+      bucketByAuthor(feedback, item, review, body, author, {
+        categorize: categorizeReviewSummary,
+        fromReview: true,
+      });
     }
   }
 
@@ -671,7 +729,9 @@ const buildFeedback = (client, { owner, repo, prInfo }) => {
     if (isResolved) {
       feedback.resolved.push(item);
     } else {
-      bucketByAuthor(feedback, item, first, body, author);
+      bucketByAuthor(feedback, item, first, body, author, {
+        fromReview: true,
+      });
     }
   }
 
@@ -822,6 +882,7 @@ module.exports = {
   extractFeedbackItem,
   isInfoBot,
   isReviewBot,
+  isReviewBotItem,
   isReviewInProgress,
   main,
 };
