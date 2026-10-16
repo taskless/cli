@@ -1,4 +1,5 @@
 import { homedir } from "node:os";
+import process from "node:process";
 
 import { intro, outro, cancel, log } from "@clack/prompts";
 

@@ -1,6 +1,7 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
+import process from "node:process";
 
 import chalk from "chalk";
 
@@ -38,12 +39,18 @@ const LABEL = "Taskless CLI:";
 /**
  * The entry itself, identical in every version. The example version is fake on
  * purpose, so the text never ages.
+ *
+ * It names both packages, in every build, so it is not routed through
+ * `applyCliInvocation()`: a nightly rewriting it would hand the skill and the
+ * user settings two different texts.
  */
 export const GLOBAL_TRUST_ENTRY =
+  // ast-grep-ignore: no-unrouted-cli-invocation
   `${LABEL} The npm packages @taskless/cli and @taskless/cli-nightly are ` +
   "tooling published by Taskless via npm trusted publishing (OIDC), installed " +
   "by the user through the Taskless installer. Running either via npx or pnpm " +
   "dlx is allowed only when the call names an exact version (e.g. " +
+  // ast-grep-ignore: no-unrouted-cli-invocation
   "@taskless/cli@1.2.3). Dist-tags such as @latest or @nightly, version " +
   "ranges, and unversioned calls are not covered.";
 
