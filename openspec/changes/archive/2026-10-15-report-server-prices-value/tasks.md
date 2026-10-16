@@ -14,4 +14,4 @@
 - [x] 3.1 Update report, telemetry, and onboard tests
 - [x] 3.2 Extend the `report-without-review-history` changeset
 - [x] 3.3 Run `pnpm typecheck` and `pnpm lint`
-- [ ] 3.4 Archive this change
+- [x] 3.4 Archive this change
