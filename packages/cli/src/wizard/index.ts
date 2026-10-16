@@ -126,6 +126,7 @@ export async function runWizard(
     });
     for (const warning of globalTrustWarnings(
       globalTrust,
+      getCliPrefix(),
       globalTrustEnvironment.home
     )) {
       log.warn(warning);

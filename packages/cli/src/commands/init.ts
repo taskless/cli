@@ -489,7 +489,9 @@ async function runNonInteractive(
   // project. An agent or a script running `init` would otherwise be widening
   // its own classifier's trust, which is the one thing it must not do.
   const globalTrust = await syncGlobalTrust({ selected, write: false });
-  for (const warning of globalTrustWarnings(globalTrust)) log(warning);
+  for (const warning of globalTrustWarnings(globalTrust, getCliPrefix())) {
+    log(warning);
+  }
 
   return {
     reloadNotice,
