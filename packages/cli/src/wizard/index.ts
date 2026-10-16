@@ -1,3 +1,5 @@
+import { homedir } from "node:os";
+
 import { intro, outro, cancel, log } from "@clack/prompts";
 
 import { getOnboardTrailer } from "../commands/onboard";
@@ -9,6 +11,11 @@ import {
   getEmbeddedSkills,
   planToStateTargets,
 } from "../install/install";
+import {
+  globalTrustWarnings,
+  syncGlobalTrust,
+  type GlobalTrustEnvironment,
+} from "../install/global-trust";
 import { syncPermissions } from "../install/permissions";
 import { findStalePins, getPinnedCliNotice } from "../install/pinned-cli";
 import { getReloadNotice } from "../install/reload-notice";
@@ -21,10 +28,12 @@ import { getCliPrefix } from "../util/package-manager";
 import { WizardCancelled } from "./ask";
 import { getCliVersion, renderIntro } from "./intro";
 import { promptLocations } from "./steps/locations";
-import { renderSummaryAndConfirm } from "./steps/summary";
+import { confirmGlobalTrust, renderSummaryAndConfirm } from "./steps/summary";
 
 export interface RunWizardOptions {
   cwd: string;
+  /** Where user-level settings live. Defaults to the real home directory. */
+  globalTrustEnvironment?: GlobalTrustEnvironment;
 }
 
 export interface WizardResult {
@@ -76,7 +85,23 @@ export async function runWizard(
       write: false,
     });
 
-    const proceed = await renderSummaryAndConfirm(diff, permissionPreview);
+    const globalTrustEnvironment = options.globalTrustEnvironment ?? {
+      home: homedir(),
+      env: process.env,
+    };
+    const globalTrustOptions = {
+      selected: permissionOptions.selected,
+      environment: globalTrustEnvironment,
+    };
+    const globalTrustPreview = await syncGlobalTrust({
+      ...globalTrustOptions,
+      write: false,
+    });
+
+    const proceed = await renderSummaryAndConfirm(diff, permissionPreview, {
+      outcomes: globalTrustPreview,
+      home: globalTrustEnvironment.home,
+    });
     if (!proceed) {
       cancel(`Install cancelled. Run \`${getCliPrefix()} init\` to try again.`);
       cancelledStep = "summary";
@@ -89,6 +114,21 @@ export async function runWizard(
     const cliVersion = getCliVersion();
     await applyInstallPlan(options.cwd, plan, { cliVersion });
     await syncPermissions(options.cwd, { ...permissionOptions, write: true });
+    if (await confirmGlobalTrust(globalTrustPreview)) {
+      await syncGlobalTrust({ ...globalTrustOptions, write: true });
+    }
+    // Read again rather than inferred from the answer, so a declined offer, a
+    // skipped file, and a write that did not land all warn the same way.
+    const globalTrust = await syncGlobalTrust({
+      ...globalTrustOptions,
+      write: false,
+    });
+    for (const warning of globalTrustWarnings(
+      globalTrust,
+      globalTrustEnvironment.home
+    )) {
+      log.warn(warning);
+    }
 
     outro("Taskless is ready to go.");
     const pinnedNotice = getPinnedCliNotice(

@@ -7,6 +7,10 @@ import chalk from "chalk";
 import "../../util/color";
 
 import {
+  describeGlobalTrust,
+  type GlobalTrustOutcome,
+} from "../../install/global-trust";
+import {
   describePermissionEdits,
   type PermissionEdit,
 } from "../../install/permissions";
@@ -15,7 +19,8 @@ import { ask } from "../ask";
 
 export async function renderSummaryAndConfirm(
   diff: InstallDiff,
-  permissions: readonly PermissionEdit[] = []
+  permissions: readonly PermissionEdit[] = [],
+  globalTrust?: { outcomes: readonly GlobalTrustOutcome[]; home: string }
 ): Promise<boolean> {
   const lines: string[] = [];
 
@@ -57,6 +62,16 @@ export async function renderSummaryAndConfirm(
       ...describePermissionEdits(permissions),
       ""
     );
+  }
+
+  // Shown with everything else, but confirmed on its own afterwards (see
+  // `confirmGlobalTrust`), since it is the one edit outside the project.
+  const globalLines =
+    globalTrust === undefined
+      ? []
+      : describeGlobalTrust(globalTrust.outcomes, globalTrust.home);
+  if (globalLines.length > 0) {
+    lines.push(chalk.bold("Outside this project"), ...globalLines, "");
   }
 
   log.message(lines.join("\n") || "No changes.");
@@ -107,4 +122,23 @@ export function buildRemovalConfirmMessage(diff: InstallDiff): string {
     return "Some files recorded in the previous install will be removed. Proceed?";
   }
   return `Remove Taskless from ${clauses.join(", ")}?`;
+}
+
+/**
+ * Ask, separately from the project edits, whether to add each missing global
+ * trust entry. Declining leaves the user's settings alone and the install
+ * carries on; only the project's own files were ever a condition of it.
+ */
+export async function confirmGlobalTrust(
+  outcomes: readonly GlobalTrustOutcome[]
+): Promise<boolean> {
+  const missing = outcomes.filter((outcome) => outcome.state === "absent");
+  if (missing.length === 0) return false;
+  const harnesses = missing.map((outcome) => outcome.harness).join(" and ");
+  return ask("global-trust", () =>
+    confirm({
+      message: `Add the Taskless entry to your ${harnesses} settings, so its classifier lets Taskless commands run?`,
+      initialValue: true,
+    })
+  );
 }

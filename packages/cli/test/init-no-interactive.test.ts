@@ -489,6 +489,73 @@ describe("taskless init (the batch install)", () => {
    * swapped field leaves every unit test green while the user is told nothing
    * and their agent keeps serving the previous skills.
    */
+  describe("the global trust entry", () => {
+    let home: string;
+    // A home of its own, so the run never reads the real user settings.
+    const run = (...args: string[]) =>
+      execFileAsync("node", [binPath, "init", "-d", cwd, ...args], {
+        env: { ...process.env, HOME: home, CLAUDE_CONFIG_DIR: "" },
+      });
+    const userSettings = () => join(home, ".claude", "settings.json");
+
+    beforeEach(async () => {
+      home = await mkdtemp(join(tmpdir(), "taskless-init-home-"));
+      await mkdir(join(cwd, ".claude"), { recursive: true });
+    });
+
+    afterEach(async () => {
+      await rm(home, { recursive: true, force: true });
+    });
+
+    it("warns when it is missing and never writes it", async () => {
+      await mkdir(join(home, ".claude"), { recursive: true });
+      await writeFile(userSettings(), "{}\n");
+      const { stdout } = await run();
+
+      expect(stdout).toContain("autoMode.allow");
+      expect(stdout).toContain("~/.claude/settings.json");
+      expect(stdout).toContain("Taskless CLI:");
+      expect(await readFile(userSettings(), "utf8")).toBe("{}\n");
+    });
+
+    it("creates nothing in the home directory", async () => {
+      await run();
+
+      expect(await exists(join(home, ".claude"))).toBe(false);
+    });
+
+    it("is silent once the entry is present", async () => {
+      await mkdir(join(home, ".claude"), { recursive: true });
+      await writeFile(
+        userSettings(),
+        JSON.stringify({
+          autoMode: { allow: ["$defaults", "Taskless CLI: x"] },
+        })
+      );
+      const { stdout } = await run();
+
+      expect(stdout).not.toContain("autoMode.allow");
+    });
+
+    it("reports it on the --json envelope, with the warning on stderr", async () => {
+      const { stdout, stderr } = await run("--json");
+      const envelope = JSON.parse(stdout) as {
+        globalTrust: Array<{ harness: string; file: string; state: string }>;
+      };
+
+      expect(envelope.globalTrust).toEqual([
+        {
+          harness: "Claude Code",
+          file: userSettings(),
+          key: "autoMode.allow",
+          state: "absent",
+          skipped: null,
+        },
+      ]);
+      expect(stderr).toContain("autoMode.allow");
+    });
+  });
+
   describe("the restart-your-agents banner", () => {
     it("prints on a second install whose recorded version moved", async () => {
       // Planting an older version is what makes the next run an upgrade. The

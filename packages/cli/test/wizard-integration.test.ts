@@ -7,7 +7,7 @@ import {
   writeFile,
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const captureSpy = vi.fn();
@@ -27,13 +27,19 @@ const cancelSpy = vi.fn();
 const clackResponses: {
   locations?: string[] | symbol;
   summary?: boolean | symbol;
+  globalTrust?: boolean | symbol;
 } = {};
+
+// Every confirm the wizard asked, in order.
+const confirmMessages: string[] = [];
 
 // Captures the message of the summary confirm prompt for assertions.
 let summaryConfirmMessage: string | undefined;
 
 // Everything the wizard showed through `log.message`, in order.
 const loggedMessages: string[] = [];
+// Everything it warned through `log.warn`.
+const warnedMessages: string[] = [];
 
 vi.mock("@clack/prompts", () => ({
   intro: () => {},
@@ -47,12 +53,19 @@ vi.mock("@clack/prompts", () => ({
       loggedMessages.push(message);
     },
     error: () => {},
-    warn: () => {},
+    warn: (message: string) => {
+      warnedMessages.push(message);
+    },
   },
   note: () => {},
   isCancel: (value: unknown) => value === fakeCancelSymbol,
   multiselect: vi.fn(() => Promise.resolve(clackResponses.locations)),
   confirm: vi.fn(({ message }: { message: string }) => {
+    confirmMessages.push(message);
+    // The global trust offer is its own question, asked after the summary.
+    if (message.includes("Taskless entry")) {
+      return Promise.resolve(clackResponses.globalTrust ?? false);
+    }
     summaryConfirmMessage = message;
     return Promise.resolve(clackResponses.summary);
   }),
@@ -68,22 +81,37 @@ async function exists(path: string): Promise<boolean> {
 }
 
 let cwd: string;
+// A home of its own for every test, so no run reads or writes the real
+// `~/.claude/settings.json`.
+let globalTrustEnvironment: { home: string; env: Record<string, string> };
+
+function userSettings(): string {
+  return join(globalTrustEnvironment.home, ".claude", "settings.json");
+}
 
 beforeEach(async () => {
   cwd = await mkdtemp(join(tmpdir(), "taskless-wizard-e2e-"));
+  globalTrustEnvironment = {
+    home: await mkdtemp(join(tmpdir(), "taskless-wizard-home-")),
+    env: {},
+  };
   await mkdir(join(cwd, ".claude"), { recursive: true });
   captureSpy.mockClear();
   cancelSpy.mockClear();
   clackResponses.locations = undefined;
   clackResponses.summary = undefined;
+  clackResponses.globalTrust = undefined;
+  confirmMessages.length = 0;
   summaryConfirmMessage = undefined;
   loggedMessages.length = 0;
+  warnedMessages.length = 0;
   vi.stubEnv("TASKLESS_TOKEN", "stub-token");
 });
 
 afterEach(async () => {
   vi.unstubAllEnvs();
   await rm(cwd, { recursive: true, force: true });
+  await rm(globalTrustEnvironment.home, { recursive: true, force: true });
   vi.resetModules();
 });
 
@@ -93,7 +121,7 @@ describe("runWizard end-to-end", () => {
     clackResponses.summary = true;
 
     const { runWizard } = await import("../src/wizard");
-    const result = await runWizard({ cwd });
+    const result = await runWizard({ cwd, globalTrustEnvironment });
 
     expect(result.status).toBe("completed");
     expect(result.locations).toEqual([".claude"]);
@@ -124,7 +152,7 @@ describe("runWizard end-to-end", () => {
     confirmMock.mockClear();
 
     const { runWizard } = await import("../src/wizard");
-    const result = await runWizard({ cwd });
+    const result = await runWizard({ cwd, globalTrustEnvironment });
 
     expect(result.status).toBe("completed");
     const messages = confirmMock.mock.calls.map(([options]) =>
@@ -138,13 +166,13 @@ describe("runWizard end-to-end", () => {
     clackResponses.summary = true;
 
     const { runWizard } = await import("../src/wizard");
-    await runWizard({ cwd });
+    await runWizard({ cwd, globalTrustEnvironment });
     expect(
       await exists(join(cwd, ".claude", "skills", "taskless", "SKILL.md"))
     ).toBe(true);
 
     // Re-run with the same selection — no diff, should complete cleanly.
-    await runWizard({ cwd });
+    await runWizard({ cwd, globalTrustEnvironment });
     expect(
       await exists(join(cwd, ".claude", "skills", "taskless", "SKILL.md"))
     ).toBe(true);
@@ -154,7 +182,7 @@ describe("runWizard end-to-end", () => {
     clackResponses.locations = fakeCancelSymbol;
 
     const { runWizard } = await import("../src/wizard");
-    const result = await runWizard({ cwd });
+    const result = await runWizard({ cwd, globalTrustEnvironment });
 
     expect(result.status).toBe("cancelled");
     expect(result.cancelledStep).toBe("locations");
@@ -176,7 +204,7 @@ describe("runWizard end-to-end", () => {
     clackResponses.summary = false;
 
     const { runWizard } = await import("../src/wizard");
-    const result = await runWizard({ cwd });
+    const result = await runWizard({ cwd, globalTrustEnvironment });
 
     // A fresh install removes nothing, so the confirm is there only because
     // a settings file would be edited.
@@ -202,9 +230,84 @@ describe("runWizard end-to-end", () => {
     clackResponses.summary = false;
 
     const { runWizard } = await import("../src/wizard");
-    await runWizard({ cwd });
+    await runWizard({ cwd, globalTrustEnvironment });
 
     expect(loggedMessages.join("\n")).toContain(`REMOVE: ${stale}`);
+  });
+
+  describe("global trust", () => {
+    it("previews the entry outside the project and asks separately", async () => {
+      clackResponses.locations = [".claude"];
+      clackResponses.summary = true;
+      clackResponses.globalTrust = true;
+
+      const { runWizard } = await import("../src/wizard");
+      await runWizard({ cwd, globalTrustEnvironment });
+
+      const summary = loggedMessages.join("\n");
+      expect(summary).toContain("Outside this project");
+      expect(summary).toContain("~/.claude/settings.json");
+      expect(summary).toContain("ALLOW: autoMode.allow += Taskless CLI:");
+      // The project confirm first, then the global one on its own.
+      expect(confirmMessages).toEqual([
+        "Write the agent permission rules above?",
+        expect.stringContaining("Taskless entry"),
+      ]);
+      const settings = JSON.parse(await readFile(userSettings(), "utf8")) as {
+        autoMode: { allow: string[] };
+      };
+      expect(settings.autoMode.allow[0]).toBe("$defaults");
+      expect(settings.autoMode.allow[1]).toMatch(/^Taskless CLI:/);
+      expect(warnedMessages).toEqual([]);
+    });
+
+    it("declining leaves the user file alone and still installs", async () => {
+      clackResponses.locations = [".claude"];
+      clackResponses.summary = true;
+      clackResponses.globalTrust = false;
+
+      const { runWizard } = await import("../src/wizard");
+      const result = await runWizard({ cwd, globalTrustEnvironment });
+
+      expect(result.status).toBe("completed");
+      expect(await exists(userSettings())).toBe(false);
+      expect(warnedMessages).toEqual([
+        expect.stringContaining("autoMode.allow"),
+      ]);
+      expect(await exists(join(cwd, ".claude", "settings.json"))).toBe(true);
+    });
+
+    it("cancelling the project confirm never asks about global trust", async () => {
+      clackResponses.locations = [".claude"];
+      clackResponses.summary = false;
+
+      const { runWizard } = await import("../src/wizard");
+      await runWizard({ cwd, globalTrustEnvironment });
+
+      expect(confirmMessages).toEqual([
+        "Write the agent permission rules above?",
+      ]);
+      expect(await exists(userSettings())).toBe(false);
+    });
+
+    it("does not offer an entry that is already there", async () => {
+      await mkdir(dirname(userSettings()), { recursive: true });
+      const original = JSON.stringify({
+        autoMode: { allow: ["$defaults", "Taskless CLI: mine"] },
+      });
+      await writeFile(userSettings(), original);
+      clackResponses.locations = [".claude"];
+      clackResponses.summary = true;
+
+      const { runWizard } = await import("../src/wizard");
+      await runWizard({ cwd, globalTrustEnvironment });
+
+      expect(loggedMessages.join("\n")).not.toContain("Outside this project");
+      expect(confirmMessages).not.toContainEqual(
+        expect.stringContaining("Taskless entry")
+      );
+      expect(await readFile(userSettings(), "utf8")).toBe(original);
+    });
   });
 
   it("writes the permission rule once confirmed", async () => {
@@ -212,7 +315,7 @@ describe("runWizard end-to-end", () => {
     clackResponses.summary = true;
 
     const { runWizard } = await import("../src/wizard");
-    await runWizard({ cwd });
+    await runWizard({ cwd, globalTrustEnvironment });
 
     const settings = JSON.parse(
       await readFile(join(cwd, ".claude", "settings.json"), "utf8")
@@ -245,7 +348,7 @@ describe("runWizard end-to-end", () => {
     });
 
     const { runWizard } = await import("../src/wizard");
-    const result = await runWizard({ cwd });
+    const result = await runWizard({ cwd, globalTrustEnvironment });
     expect(result.status).toBe("cancelled");
     expect(result.cancelledStep).toBe("summary");
   });
@@ -256,7 +359,7 @@ describe("runWizard end-to-end", () => {
     // First run: install Taskless into both .claude/ and .agents/.
     clackResponses.locations = [".claude", ".agents"];
     clackResponses.summary = true;
-    await runWizard({ cwd });
+    await runWizard({ cwd, globalTrustEnvironment });
 
     const claudeSkill = join(cwd, ".claude", "skills", "taskless", "SKILL.md");
     const agentsSkill = join(cwd, ".agents", "skills", "taskless", "SKILL.md");
@@ -267,7 +370,7 @@ describe("runWizard end-to-end", () => {
     summaryConfirmMessage = undefined;
     clackResponses.locations = [".agents"];
     clackResponses.summary = true;
-    const result = await runWizard({ cwd });
+    const result = await runWizard({ cwd, globalTrustEnvironment });
 
     expect(result.status).toBe("completed");
     // The .claude/ stub is removed; the .agents/ stub is retained.
@@ -293,7 +396,7 @@ describe("runWizard end-to-end", () => {
 
     clackResponses.locations = [".claude", ".agents"];
     clackResponses.summary = true;
-    await runWizard({ cwd });
+    await runWizard({ cwd, globalTrustEnvironment });
 
     const claudeSkill = join(cwd, ".claude", "skills", "taskless", "SKILL.md");
     expect(await exists(claudeSkill)).toBe(true);
@@ -301,7 +404,7 @@ describe("runWizard end-to-end", () => {
     // Uncheck .claude/ but decline the removal confirm — nothing is removed.
     clackResponses.locations = [".agents"];
     clackResponses.summary = false;
-    const result = await runWizard({ cwd });
+    const result = await runWizard({ cwd, globalTrustEnvironment });
 
     expect(result.status).toBe("cancelled");
     expect(result.cancelledStep).toBe("summary");
@@ -329,7 +432,9 @@ describe("runWizard with an unreadable manifest", () => {
     await writeFile(manifest, CORRUPT, "utf8");
 
     const { runWizard } = await import("../src/wizard");
-    await expect(runWizard({ cwd })).rejects.toThrow(/could not be read/);
+    await expect(runWizard({ cwd, globalTrustEnvironment })).rejects.toThrow(
+      /could not be read/
+    );
 
     // Closed through `cancel`, so the repair-or-delete remedy lands inside the
     // frame `intro()` opened instead of after it.
@@ -357,7 +462,7 @@ describe("the wizard's restart-your-agents banner", () => {
     clackResponses.summary = true;
 
     const { runWizard } = await import("../src/wizard");
-    await runWizard({ cwd });
+    await runWizard({ cwd, globalTrustEnvironment });
 
     // Plant an older recorded version, the same way
     // `init-no-interactive.test.ts` stages an upgrade: the build under test
@@ -372,7 +477,7 @@ describe("the wizard's restart-your-agents banner", () => {
 
     const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
     try {
-      const result = await runWizard({ cwd });
+      const result = await runWizard({ cwd, globalTrustEnvironment });
       expect(result.status).toBe("completed");
 
       const printed = logSpy.mock.calls.map((call) => String(call[0]));
@@ -394,7 +499,7 @@ describe("the wizard's restart-your-agents banner", () => {
     const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
     try {
       const { runWizard } = await import("../src/wizard");
-      const result = await runWizard({ cwd });
+      const result = await runWizard({ cwd, globalTrustEnvironment });
       expect(result.status).toBe("completed");
 
       const printed = logSpy.mock.calls.map((call) => String(call[0]));
@@ -411,11 +516,11 @@ describe("the wizard's restart-your-agents banner", () => {
     clackResponses.summary = true;
 
     const { runWizard } = await import("../src/wizard");
-    await runWizard({ cwd });
+    await runWizard({ cwd, globalTrustEnvironment });
 
     const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
     try {
-      const result = await runWizard({ cwd });
+      const result = await runWizard({ cwd, globalTrustEnvironment });
       expect(result.status).toBe("completed");
 
       const printed = logSpy.mock.calls.map((call) => String(call[0]));
@@ -445,7 +550,7 @@ describe("the wizard's stale-pin notice", () => {
     const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
     try {
       const { runWizard } = await import("../src/wizard");
-      const result = await runWizard({ cwd });
+      const result = await runWizard({ cwd, globalTrustEnvironment });
       expect(result.status).toBe("completed");
 
       const printed = logSpy.mock.calls.map((call) => String(call[0]));
@@ -470,7 +575,7 @@ describe("the wizard's stale-pin notice", () => {
     const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
     try {
       const { runWizard } = await import("../src/wizard");
-      await runWizard({ cwd });
+      await runWizard({ cwd, globalTrustEnvironment });
       const printed = logSpy.mock.calls.map((call) => String(call[0]));
       expect(
         printed.some((line) => line.includes("pins a Taskless CLI older"))

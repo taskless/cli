@@ -69,8 +69,16 @@ const claudeCode: GlobalTrust = {
   harness: "Claude Code",
   selectedBy: ".claude",
   // Claude Code moves its whole configuration directory with this variable.
-  path: ({ home, env }) =>
-    join(env.CLAUDE_CONFIG_DIR ?? join(home, ".claude"), "settings.json"),
+  // Set but empty is unset, or the path would resolve against the cwd.
+  path: ({ home, env }) => {
+    const directory = env.CLAUDE_CONFIG_DIR;
+    return join(
+      directory === undefined || directory === ""
+        ? join(home, ".claude")
+        : directory,
+      "settings.json"
+    );
+  },
   key: ["autoMode", "allow"],
   // `$defaults` splices in the shipped exceptions. A new list without it
   // would replace them, and the user would lose every one.
