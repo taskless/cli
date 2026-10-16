@@ -190,6 +190,23 @@ describe("runWizard end-to-end", () => {
     expect(await exists(join(cwd, ".claude", "settings.json"))).toBe(false);
   });
 
+  it("previews removing a Taskless rule it never recorded", async () => {
+    // The stale nightly rule an agent added through the skill's fallback.
+    const stale =
+      "Bash(npx @taskless/cli-nightly@0.13.0-20261015220659xbf27a23 *)";
+    await writeFile(
+      join(cwd, ".claude", "settings.json"),
+      JSON.stringify({ permissions: { allow: [stale] } })
+    );
+    clackResponses.locations = [".claude"];
+    clackResponses.summary = false;
+
+    const { runWizard } = await import("../src/wizard");
+    await runWizard({ cwd });
+
+    expect(loggedMessages.join("\n")).toContain(`REMOVE: ${stale}`);
+  });
+
   it("writes the permission rule once confirmed", async () => {
     clackResponses.locations = [".claude"];
     clackResponses.summary = true;

@@ -144,22 +144,94 @@ describe("upgrades", () => {
     ).toEqual([`Bash(${V2} *)`]);
   });
 
-  it("never removes a rule Taskless did not record", async () => {
-    // The user allowed an older Taskless themselves.
+  it("replaces a Taskless rule it did not record", async () => {
+    // Added by hand, or by an agent through the skill's fallback: either way
+    // it pins a version that is no longer installed.
     await put(
       ".claude/settings.json",
       JSON.stringify({
         permissions: { allow: ["Bash(npx @taskless/cli@0.12.0 *)"] },
       })
     );
-    await sync({ selected: [".claude"], invocation: V1 });
-    await sync({ selected: [".claude"], invocation: V2 });
+    const edits = await sync({ selected: [".claude"], invocation: V1 });
 
+    expect(edits[0]).toMatchObject({
+      allowed: [`Bash(${V1} *)`],
+      removed: ["Bash(npx @taskless/cli@0.12.0 *)"],
+    });
+    expect(await json(".claude/settings.json")).toEqual({
+      permissions: { allow: [`Bash(${V1} *)`] },
+    });
+  });
+
+  it("replaces the colon form the skill used to propose", async () => {
+    const stale =
+      "Bash(npx @taskless/cli-nightly@0.13.0-20261015220659xbf27a23:*)";
+    await put(
+      ".claude/settings.json",
+      JSON.stringify({ permissions: { allow: [stale] } })
+    );
+    const edits = await sync({ selected: [".claude"], invocation: V1 });
+
+    expect(edits[0]?.removed).toEqual([stale]);
+    expect(await json(".claude/settings.json")).toEqual({
+      permissions: { allow: [`Bash(${V1} *)`] },
+    });
+  });
+
+  it("removes an unversioned Taskless rule too", async () => {
+    await put(
+      ".claude/settings.json",
+      JSON.stringify({
+        permissions: { allow: ["Bash(pnpm dlx @taskless/cli *)"] },
+      })
+    );
+    const edits = await sync({ selected: [".claude"], invocation: V1 });
+
+    expect(edits[0]?.removed).toEqual(["Bash(pnpm dlx @taskless/cli *)"]);
+  });
+
+  it("leaves deny rules and other packages alone", async () => {
+    const others = [
+      "Bash(npx prettier *)",
+      "Bash(npx @taskless/cli-foo@1.0.0 *)",
+      "Bash(npx -y @taskless/cli@0.12.0 *)",
+    ];
+    await put(
+      ".claude/settings.json",
+      JSON.stringify({
+        permissions: {
+          allow: others,
+          deny: ["Bash(npx @taskless/cli@0.11.0 *)"],
+        },
+      })
+    );
+    const edits = await sync({ selected: [".claude"], invocation: V1 });
+
+    expect(edits[0]?.removed).toEqual([]);
     expect(await json(".claude/settings.json")).toEqual({
       permissions: {
-        allow: ["Bash(npx @taskless/cli@0.12.0 *)", `Bash(${V2} *)`],
+        allow: [...others, `Bash(${V1} *)`],
+        deny: ["Bash(npx @taskless/cli@0.11.0 *)"],
       },
     });
+  });
+
+  it("is a no-op once the file holds only the current rule", async () => {
+    await sync({ selected: [".claude"], invocation: V1 });
+    const edits = await sync({ selected: [".claude"], invocation: V1 });
+
+    expect(edits).toEqual([]);
+  });
+
+  it("leaves an unrecorded file alone for a harness it does not install", async () => {
+    const contents = JSON.stringify({
+      permissions: { allow: ["Bash(npx @taskless/cli@0.12.0 *)"] },
+    });
+    await put(".claude/settings.json", contents);
+    await sync({ selected: [".cursor"], invocation: V1 });
+
+    expect(await text(".claude/settings.json")).toBe(contents);
   });
 
   it("removes only its own line from a multi-line list", async () => {
@@ -224,6 +296,50 @@ describe("Cursor", () => {
   });
 });
 
+describe("Cursor replacing a stale rule", () => {
+  it("replaces stale editor and CLI rules, leaving other entries", async () => {
+    await put(
+      ".cursor/permissions.json",
+      JSON.stringify({
+        terminalAllowlist: [
+          "npx @taskless/cli@0.12.0",
+          "npx @taskless/cli-foo",
+        ],
+      })
+    );
+    await put(
+      ".cursor/cli.json",
+      JSON.stringify({
+        permissions: {
+          allow: [
+            "Shell(npx:@taskless/cli@0.12.0)",
+            "Shell(npx:@taskless/cli@0.12.0 *)",
+            "Shell(git)",
+          ],
+        },
+      })
+    );
+    const edits = await sync({ selected: [".cursor"] });
+
+    expect(edits.map((edit) => edit.removed)).toEqual([
+      ["Shell(npx:@taskless/cli@0.12.0)", "Shell(npx:@taskless/cli@0.12.0 *)"],
+      ["npx @taskless/cli@0.12.0"],
+    ]);
+    expect(await json(".cursor/permissions.json")).toEqual({
+      terminalAllowlist: ["npx @taskless/cli-foo", V1],
+    });
+    expect(await json(".cursor/cli.json")).toEqual({
+      permissions: {
+        allow: [
+          "Shell(git)",
+          "Shell(npx:@taskless/cli@0.13.0)",
+          "Shell(npx:@taskless/cli@0.13.0 *)",
+        ],
+      },
+    });
+  });
+});
+
 describe("OpenCode", () => {
   // The object form applies the LAST matching rule.
   it("puts the rule after a catch-all in the object form, keeping comments", async () => {
@@ -273,6 +389,59 @@ describe("OpenCode", () => {
   });
 });
 
+describe("OpenCode replacing a stale rule", () => {
+  it("replaces a stale object-form rule but keeps a Taskless deny", async () => {
+    await put(
+      "opencode.json",
+      JSON.stringify({
+        permission: {
+          bash: {
+            "npx @taskless/cli@0.12.0 *": "allow",
+            "npx @taskless/cli@0.11.0 *": "deny",
+          },
+        },
+      })
+    );
+    const edits = await sync({ selected: [".opencode"] });
+
+    // The deny on 0.11.0 does not cover 0.13.0, so the rule is still written.
+    expect(edits[0]?.removed).toEqual(["npx @taskless/cli@0.12.0 *"]);
+    expect(await json("opencode.json")).toEqual({
+      permission: {
+        bash: {
+          "npx @taskless/cli@0.11.0 *": "deny",
+          [`${V1} *`]: "allow",
+        },
+      },
+    });
+  });
+
+  it("replaces a stale array-form rule", async () => {
+    await put(
+      "opencode.json",
+      JSON.stringify({
+        permissions: [
+          {
+            action: "shell",
+            resource: "npx @taskless/cli@0.12.0 *",
+            effect: "allow",
+          },
+          { action: "shell", resource: "rm *", effect: "ask" },
+        ],
+      })
+    );
+    const edits = await sync({ selected: [".opencode"] });
+
+    expect(edits[0]?.removed).toEqual(["npx @taskless/cli@0.12.0 *"]);
+    expect(await json("opencode.json")).toEqual({
+      permissions: [
+        { action: "shell", resource: `${V1} *`, effect: "allow" },
+        { action: "shell", resource: "rm *", effect: "ask" },
+      ],
+    });
+  });
+});
+
 describe("Codex", () => {
   it("writes its own rules file when Codex is detected", async () => {
     await sync({ selected: [".agents"], codexDetected: true });
@@ -285,6 +454,22 @@ describe("Codex", () => {
   it("writes nothing for .agents/ without Codex", async () => {
     expect(await sync({ selected: [".agents"] })).toEqual([]);
     expect(await exists(".codex")).toBe(false);
+  });
+
+  it("replaces a stale rule in a file Taskless headed but did not record", async () => {
+    await put(
+      ".codex/rules/taskless.rules",
+      "# Written by Taskless: allows exactly the installed Taskless CLI.\n" +
+        'prefix_rule(pattern = ["npx","@taskless/cli@0.12.0"], decision = "allow")\n'
+    );
+    const edits = await sync({ selected: [".agents"], codexDetected: true });
+
+    expect(edits[0]?.removed).toEqual([
+      'prefix_rule(pattern = ["npx","@taskless/cli@0.12.0"], decision = "allow")',
+    ]);
+    const rules = await text(".codex/rules/taskless.rules");
+    expect(rules).toContain("@taskless/cli@0.13.0");
+    expect(rules).not.toContain("@taskless/cli@0.12.0");
   });
 
   it("leaves a rules file at its path that Taskless did not write", async () => {

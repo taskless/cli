@@ -1,9 +1,9 @@
 ## 1. One Taskless rule per project file
 
-- [ ] 1.1 Add `isTaskless(entry)` to each harness in `install/permissions.ts` (Claude both `*` and `:*` forms, Cursor editor, Cursor CLI, OpenCode object and array, Codex), matching only allow entries; verify with per-harness tests covering a pinned rule, an unversioned rule, a near-miss package (`@taskless/cli-foo`), another package, and a deny entry
-- [ ] 1.2 Change `syncPermissions` to remove every Taskless entry present in a managed file that is not a wanted rule, keeping the record only for `created`; verify the "unrecorded Taskless rule is replaced", "colon form", "other entries are untouched" and "pre-existing file is never deleted" scenarios as tests in `permissions.test.ts`
-- [ ] 1.3 Update the module comment and the `PermissionEdit.removed` doc comment, which still say unrecorded rules are never touched; verify by reading the diff
-- [ ] 1.4 Confirm the wizard preview and `--no-interactive` output list each unrecorded removal as `REMOVE:`; verify with a wizard summary test and an `init --no-interactive` test
+- [x] 1.1 Add `isTaskless(entry)` to each harness in `install/permissions.ts` (Claude both `*` and `:*` forms, Cursor editor, Cursor CLI, OpenCode object and array, Codex), matching only allow entries; verify with per-harness tests covering a pinned rule, an unversioned rule, a near-miss package (`@taskless/cli-foo`), another package, and a deny entry
+- [x] 1.2 Change `syncPermissions` to remove every Taskless entry present in a managed file that is not a wanted rule, keeping the record only for `created`; verify the "unrecorded Taskless rule is replaced", "colon form", "other entries are untouched" and "pre-existing file is never deleted" scenarios as tests in `permissions.test.ts`
+- [x] 1.3 Update the module comment and the `PermissionEdit.removed` doc comment, which still say unrecorded rules are never touched; verify by reading the diff
+- [x] 1.4 Confirm the wizard preview and `--no-interactive` output list each unrecorded removal as `REMOVE:`; verify with a wizard summary test and an `init --no-interactive` test
 
 ## 2. Global trust entry
 
