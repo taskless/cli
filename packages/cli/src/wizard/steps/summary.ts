@@ -11,6 +11,7 @@ import {
   type GlobalTrustOutcome,
 } from "../../install/global-trust";
 import { commandOfRule, type PermissionEdit } from "../../install/permissions";
+import { wrap } from "../../install/notice-box";
 import type { InstallDiff } from "../../install/state";
 import { ask } from "../ask";
 
@@ -55,12 +56,15 @@ export async function renderSummaryAndConfirm(
 
   // Every settings edit, project and global, in one group under one
   // question: each is a line a person can read, with where it goes.
-  const settingsLines = [
+  const settingsLines = layoutSettings([
     ...describeProjectEdits(permissions),
     ...(globalTrust === undefined
       ? []
-      : describeGlobalTrust(globalTrust.outcomes, globalTrust.home)),
-  ];
+      : describeGlobalTrust(globalTrust.outcomes, globalTrust.home).map(
+          (line) =>
+            ({ label: "ALLOW (global):", tone: "allow", ...line }) as const
+        )),
+  ]);
   if (settingsLines.length > 0) {
     lines.push(chalk.bold("Agent settings"), ...settingsLines, "");
   }
@@ -88,32 +92,73 @@ export async function renderSummaryAndConfirm(
 
 const SETTINGS_QUESTION = "Make these changes to your settings?";
 
+/** One settings edit: what it allows or removes, and where. */
+interface SettingsLine {
+  label: string;
+  tone: "allow" | "remove" | "skip";
+  what: string;
+  where: string;
+}
+
 /**
- * Each project permission edit as one line per command and file. A harness
- * whose rules come in two spellings (Cursor's CLI writes the command bare and
- * with arguments) reads as one line, since both allow the same command.
+ * Lines inside clack's gutter stay within this many columns, so the summary
+ * fits an 80-column terminal.
  */
-function describeProjectEdits(edits: readonly PermissionEdit[]): string[] {
+const SUMMARY_COLUMNS = 76;
+
+const TONE = { allow: chalk.green, remove: chalk.red, skip: chalk.yellow };
+
+/**
+ * Labels padded to the widest one, so every statement starts in one column,
+ * and each statement wrapped under itself, never mid-token: a nightly version
+ * is one long token and must stay copyable.
+ */
+function layoutSettings(entries: readonly SettingsLine[]): string[] {
+  const width = Math.max(0, ...entries.map((entry) => entry.label.length)) + 1;
+  const indent = " ".repeat(width);
   const lines: string[] = [];
-  for (const edit of edits) {
-    if (edit.skipped !== null) {
-      lines.push(
-        chalk.yellow(`SKIPPED (project): ${edit.file} ${edit.skipped}`)
-      );
-      continue;
-    }
-    for (const command of new Set(edit.allowed.map((r) => commandOfRule(r)))) {
-      lines.push(
-        chalk.green(`ALLOW (project): Calling ${command} in ${edit.file}`)
-      );
-    }
-    for (const command of new Set(edit.removed.map((r) => commandOfRule(r)))) {
-      lines.push(
-        chalk.red(`REMOVE (project): Calling ${command} in ${edit.file}`)
-      );
-    }
+  for (const entry of entries) {
+    const body = [
+      ...wrap(entry.what, SUMMARY_COLUMNS - width),
+      ...wrap(entry.where, SUMMARY_COLUMNS - width),
+    ];
+    const [first = "", ...rest] = body;
+    lines.push(
+      `${TONE[entry.tone](entry.label)}${" ".repeat(width - entry.label.length)}${first}`,
+      ...rest.map((line) => `${indent}${line}`)
+    );
   }
   return lines;
+}
+
+/**
+ * Each project permission edit as one entry per command and file. A harness
+ * whose rules come in two spellings (Cursor's CLI writes the command bare and
+ * with arguments) reads as one entry, since both allow the same command.
+ */
+function describeProjectEdits(
+  edits: readonly PermissionEdit[]
+): SettingsLine[] {
+  const entries: SettingsLine[] = [];
+  for (const edit of edits) {
+    if (edit.skipped !== null) {
+      entries.push({
+        label: "SKIPPED (project):",
+        tone: "skip",
+        what: edit.file,
+        where: edit.skipped,
+      });
+      continue;
+    }
+    const where = `in ${edit.file}`;
+    for (const what of new Set(edit.allowed.map((r) => commandOfRule(r)))) {
+      entries.push({ label: "ALLOW (project):", tone: "allow", what, where });
+    }
+    for (const what of new Set(edit.removed.map((r) => commandOfRule(r)))) {
+      entries.push({ label: "REMOVE (project):", tone: "remove", what, where });
+    }
+  }
+  return entries;
 }
 
 /**

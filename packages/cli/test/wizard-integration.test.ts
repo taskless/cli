@@ -205,7 +205,7 @@ describe("runWizard end-to-end", () => {
     expect(summaryConfirmMessage).toBe("Make these changes to your settings?");
     const summary = loggedMessages.join("\n");
     expect(summary).toMatch(
-      /ALLOW \(project\): Calling npx @taskless\/cli@\S+ in \.claude\/settings\.json/
+      /ALLOW \(project\): npx @taskless\/cli@\S+\n {17}in \.claude\/settings\.json/
     );
     expect(result.status).toBe("cancelled");
     expect(await exists(join(cwd, ".claude", "settings.json"))).toBe(false);
@@ -225,9 +225,17 @@ describe("runWizard end-to-end", () => {
     const { runWizard } = await import("../src/wizard");
     await runWizard({ cwd, globalTrustEnvironment });
 
-    expect(loggedMessages.join("\n")).toContain(
-      "REMOVE (project): Calling npx @taskless/cli-nightly@0.13.0-20261015220659xbf27a23 in .claude/settings.json"
+    const summary = loggedMessages.join("\n");
+    // REMOVE is the widest label, so ALLOW pads to meet it.
+    expect(summary).toContain(
+      "REMOVE (project): npx @taskless/cli-nightly@0.13.0-20261015220659xbf27a23\n" +
+        "                  in .claude/settings.json"
     );
+    expect(summary).toMatch(/ALLOW \(project\): {2}npx @taskless\/cli@/);
+    const settings = summary.slice(summary.indexOf("Agent settings"));
+    for (const line of settings.split("\n")) {
+      expect(line.length).toBeLessThanOrEqual(76);
+    }
   });
 
   describe("global trust", () => {
@@ -239,11 +247,14 @@ describe("runWizard end-to-end", () => {
       await runWizard({ cwd, globalTrustEnvironment });
 
       const summary = loggedMessages.join("\n");
+      // Labels padded to the widest, statements in one column, the file on
+      // its own line beneath, and nothing past 76 columns.
       expect(summary).toMatch(
-        /ALLOW \(project\): Calling npx @taskless\/cli@\S+ in \.claude\/settings\.json/
+        /ALLOW \(project\): npx @taskless\/cli@\S+\n {17}in \.claude\/settings\.json/
       );
       expect(summary).toContain(
-        "ALLOW (global): Calling @taskless/cli or @taskless/cli-nightly at an exact version, in ~/.claude/settings.json (autoMode.allow)"
+        "ALLOW (global):  @taskless/cli or @taskless/cli-nightly at an exact version\n" +
+          "                 in ~/.claude/settings.json (autoMode.allow)"
       );
       expect(confirmMessages).toEqual(["Make these changes to your settings?"]);
       const settings = JSON.parse(await readFile(userSettings(), "utf8")) as {

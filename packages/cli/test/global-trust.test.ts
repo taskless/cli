@@ -181,11 +181,12 @@ describe("syncGlobalTrust", () => {
 describe("rendering", () => {
   it("describes a missing entry as a global edit", async () => {
     const outcomes = await sync(false);
-    const lines = describeGlobalTrust(outcomes, home).join("\n");
-
-    expect(lines).toBe(
-      "ALLOW (global): Calling @taskless/cli or @taskless/cli-nightly at an exact version, in ~/.claude/settings.json (autoMode.allow)"
-    );
+    expect(describeGlobalTrust(outcomes, home)).toEqual([
+      {
+        what: "@taskless/cli or @taskless/cli-nightly at an exact version",
+        where: "in ~/.claude/settings.json (autoMode.allow)",
+      },
+    ]);
   });
 
   it("warns with the file, key, and entry", async () => {
