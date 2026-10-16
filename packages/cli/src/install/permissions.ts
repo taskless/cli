@@ -36,8 +36,12 @@ import { isRecord } from "../util/is-record";
  *
  * - The rule is never wider than the invocation. Each uses that harness's
  *   word-bounded form, so `@0.13.0` cannot match `@0.13.01`.
- * - Only rules Taskless recorded in the manifest are ever removed, so a rule
- *   the user wrote, even one for Taskless, is never touched.
+ * - A file holds exactly one Taskless rule set: the installed invocation's.
+ *   Every other allow rule for a Taskless invocation is removed, however it
+ *   got there, since a pinned rule for a version that is no longer installed
+ *   allows nothing anyone wants. Deny rules, and rules for anything else, are
+ *   never touched. The manifest record decides only whether a file Taskless
+ *   created may be deleted once it is empty.
  * - A file that denies the invocation, or does not parse, is left alone.
  *
  * The list is closed. A harness joins by becoming an install target with a
@@ -53,7 +57,7 @@ export interface PermissionEdit {
   created: boolean;
   /** Rules added, as written in the file. */
   allowed: string[];
-  /** Rules Taskless recorded earlier and removed. */
+  /** Taskless rules for another invocation, removed. */
   removed: string[];
   /** Why the file was left alone, or `null` when it was not. */
   skipped: string | null;
@@ -72,6 +76,11 @@ interface Harness {
   owns(file: string): boolean;
   /** The rules that allow exactly `invocation`. */
   rules(invocation: string): string[];
+  /**
+   * Every allow rule in `text` for a Taskless invocation, at any version,
+   * written the way {@link Harness.edit} takes it in `remove`.
+   */
+  found(text: string | undefined): string[];
   /**
    * Remove `remove` and add `add` to `text` (absent when the file does not
    * exist). `undefined` text in the result deletes the file.
@@ -391,12 +400,55 @@ function cursorCliDenies(root: unknown, invocation: string): boolean {
   });
 }
 
+// --- Recognizing a Taskless rule --------------------------------------------
+
+/**
+ * A command that runs the Taskless CLI through a launcher, at any version or
+ * none: `npx @taskless/cli@0.13.0`, `pnpm dlx @taskless/cli-nightly`. The
+ * package name must end there, so `@taskless/cli-foo` is not Taskless.
+ */
+const TASKLESS_COMMAND =
+  /^(?:npx|pnpm dlx) @taskless\/cli(?:-nightly)?(?:@[^\s]+)?$/;
+
+/** Whether `command`, less a trailing ` *` glob, runs the Taskless CLI. */
+function isTasklessCommand(command: string): boolean {
+  return TASKLESS_COMMAND.test(command.replace(/ \*$/, ""));
+}
+
+/** The strings in the list at `path` that `isTaskless` accepts. */
+function foundInList(
+  text: string | undefined,
+  path: readonly string[],
+  isTaskless: (entry: string) => boolean
+): string[] {
+  if (text === undefined) return [];
+  const list = valueAt(parseJson(text), path);
+  if (!Array.isArray(list)) return [];
+  return list.filter(
+    (entry): entry is string => typeof entry === "string" && isTaskless(entry)
+  );
+}
+
+/** Claude Code: `Bash(<cmd> *)`, `Bash(<cmd>:*)`, or `Bash(<cmd>)`. */
+function isTasklessClaudeRule(rule: string): boolean {
+  const inner = /^Bash\((.*)\)$/s.exec(rule)?.[1];
+  return inner !== undefined && isTasklessCommand(inner.replace(/:\*$/, ""));
+}
+
+/** Cursor CLI: `Shell(<base>:<args>)`, with or without a trailing ` *`. */
+function isTasklessCursorCliRule(rule: string): boolean {
+  const match = /^Shell\(([^:)]+):(.*)\)$/s.exec(rule);
+  return match !== null && isTasklessCommand(`${match[1]} ${match[2]}`);
+}
+
 // --- The harnesses ----------------------------------------------------------
 
 const CLAUDE_FILE = ".claude/settings.json";
 const CURSOR_EDITOR_FILE = ".cursor/permissions.json";
 const CURSOR_CLI_FILE = ".cursor/cli.json";
 const CODEX_FILE = ".codex/rules/taskless.rules";
+const CODEX_HEADER =
+  "# Written by Taskless: allows exactly the installed Taskless CLI.\n";
 const OPENCODE_FILES = [
   "opencode.json",
   "opencode.jsonc",
@@ -416,6 +468,8 @@ function fixed(file: string): Pick<Harness, "locate" | "owns"> {
 const claudeCode: Harness = {
   ...fixed(CLAUDE_FILE),
   rules: (invocation) => [`Bash(${invocation} *)`],
+  found: (text) =>
+    foundInList(text, ["permissions", "allow"], isTasklessClaudeRule),
   edit: (text, add, remove, context) =>
     editStringList(text, ["permissions", "allow"], add, remove, context, (r) =>
       claudeDenies(r, context.invocation)
@@ -425,6 +479,7 @@ const claudeCode: Harness = {
 const cursorEditor: Harness = {
   ...fixed(CURSOR_EDITOR_FILE),
   rules: (invocation) => [invocation],
+  found: (text) => foundInList(text, ["terminalAllowlist"], isTasklessCommand),
   edit: (text, add, remove, context) =>
     editStringList(text, ["terminalAllowlist"], add, remove, context),
 };
@@ -436,6 +491,8 @@ const cursorCli: Harness = {
     const args = rest.join(" ");
     return [`Shell(${base ?? ""}:${args})`, `Shell(${base ?? ""}:${args} *)`];
   },
+  found: (text) =>
+    foundInList(text, ["permissions", "allow"], isTasklessCursorCliRule),
   edit: (text, add, remove, context) =>
     editStringList(text, ["permissions", "allow"], add, remove, context, (r) =>
       cursorCliDenies(r, context.invocation)
@@ -460,6 +517,27 @@ const openCode: Harness = {
   },
   owns: (path) => OPENCODE_FILES.includes(path),
   rules: (invocation) => [`${invocation} *`],
+  found(text) {
+    if (text === undefined) return [];
+    const root = parseJson(text);
+    if (!isRecord(root)) return [];
+    if (Array.isArray(root.permissions)) {
+      return root.permissions.flatMap((entry) =>
+        isRecord(entry) &&
+        entry.action === "shell" &&
+        entry.effect === "allow" &&
+        typeof entry.resource === "string" &&
+        isTasklessCommand(entry.resource)
+          ? [entry.resource]
+          : []
+      );
+    }
+    const bash = valueAt(root, ["permission", "bash"]);
+    if (!isRecord(bash)) return [];
+    return Object.entries(bash)
+      .filter(([glob, action]) => action === "allow" && isTasklessCommand(glob))
+      .map(([glob]) => glob);
+  },
   edit(text, add, remove, context) {
     let current = text ?? "{}\n";
     let root = parseJson(current);
@@ -555,8 +633,8 @@ const openCode: Harness = {
 
 /**
  * Codex, in a rules file Taskless owns outright, so the whole file is
- * rewritten rather than edited. A file at that path Taskless did not record is
- * someone else's and is left alone. Codex applies the strictest matching rule
+ * rewritten rather than edited. A file at that path that Taskless neither
+ * recorded nor headed with its own comment is someone else's and is left alone. Codex applies the strictest matching rule
  * (forbidden over prompt over allow), so a deny elsewhere still wins without
  * this file needing to look for it.
  */
@@ -565,8 +643,30 @@ const codex: Harness = {
   rules: (invocation) => [
     `prefix_rule(pattern = ${JSON.stringify(invocation.split(" "))}, decision = "allow")`,
   ],
+  // Only a file Taskless wrote is read: one someone else put at this path is
+  // theirs, whatever it allows.
+  found(text) {
+    if (text?.startsWith(CODEX_HEADER) !== true) return [];
+    return text.split("\n").filter((line) => {
+      const pattern =
+        /^prefix_rule\(pattern = (\[.*\]), decision = "allow"\)$/.exec(
+          line
+        )?.[1];
+      if (pattern === undefined) return false;
+      const words: unknown = parseJson(pattern);
+      return (
+        Array.isArray(words) &&
+        words.every((word) => typeof word === "string") &&
+        isTasklessCommand(words.join(" "))
+      );
+    });
+  },
   edit(text, add, remove, context) {
-    if (text !== undefined && !context.created && remove.length === 0) {
+    if (
+      text !== undefined &&
+      !context.created &&
+      !text.startsWith(CODEX_HEADER)
+    ) {
       return {
         kind: "skip",
         reason: "already exists and was not written by Taskless",
@@ -582,7 +682,7 @@ const codex: Harness = {
     return {
       kind: "write",
       text:
-        "# Written by Taskless: allows exactly the installed Taskless CLI.\n" +
+        CODEX_HEADER +
         "# `taskless init` rewrites this file on every upgrade.\n" +
         rules.join("\n") +
         "\n",
@@ -667,8 +767,9 @@ export interface SyncPermissionsOptions {
 
 /**
  * Bring every harness permission file in line with this install: add the rule
- * for the invocation, remove rules Taskless recorded for any other version or
- * for a harness no longer selected, and record what it wrote.
+ * for the invocation, remove every other Taskless rule in the file, and every
+ * Taskless rule from a recorded file whose harness is no longer selected, and
+ * record what it wrote.
  *
  * With `write: false` it reads the same files and reports the same edits
  * without touching anything, which is what the wizard previews.
@@ -697,17 +798,17 @@ export async function syncPermissions(
       if (recorded !== undefined) next[file] = recorded;
       continue;
     }
+    const path = join(cwd, file);
+    const text = await readText(path);
     const want = desired.get(file)?.rules ?? [];
     const had = recorded?.rules ?? [];
-    const remove = had.filter((rule) => !want.includes(rule));
+    const remove = harness.found(text).filter((rule) => !want.includes(rule));
     const add = want.filter((rule) => !had.includes(rule));
     if (add.length === 0 && remove.length === 0) {
       if (recorded !== undefined) next[file] = recorded;
       continue;
     }
 
-    const path = join(cwd, file);
-    const text = await readText(path);
     const created = recorded?.created ?? text === undefined;
     const result = harness.edit(text, add, remove, {
       invocation: options.invocation,
@@ -727,7 +828,7 @@ export async function syncPermissions(
 
     const removed = remove;
     const rules = [
-      ...had.filter((rule) => !remove.includes(rule)),
+      ...had.filter((rule) => want.includes(rule)),
       ...result.added,
     ];
     if (rules.length > 0) next[file] = { rules, created };
