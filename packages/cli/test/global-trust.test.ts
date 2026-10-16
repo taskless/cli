@@ -179,13 +179,13 @@ describe("syncGlobalTrust", () => {
 });
 
 describe("rendering", () => {
-  it("describes a missing entry as an edit outside the project", async () => {
+  it("describes a missing entry as a global edit", async () => {
     const outcomes = await sync(false);
     const lines = describeGlobalTrust(outcomes, home).join("\n");
 
-    expect(lines).toContain("~/.claude/settings.json");
-    expect(lines).toContain("outside this project");
-    expect(lines).toContain(`ALLOW: autoMode.allow += ${GLOBAL_TRUST_ENTRY}`);
+    expect(lines).toBe(
+      "ALLOW (global): Calling @taskless/cli or @taskless/cli-nightly at an exact version, in ~/.claude/settings.json (autoMode.allow)"
+    );
   });
 
   it("warns with the file, key, and entry", async () => {

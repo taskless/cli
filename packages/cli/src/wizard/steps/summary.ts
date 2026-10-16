@@ -10,10 +10,7 @@ import {
   describeGlobalTrust,
   type GlobalTrustOutcome,
 } from "../../install/global-trust";
-import {
-  describePermissionEdits,
-  type PermissionEdit,
-} from "../../install/permissions";
+import { commandOfRule, type PermissionEdit } from "../../install/permissions";
 import type { InstallDiff } from "../../install/state";
 import { ask } from "../ask";
 
@@ -56,47 +53,67 @@ export async function renderSummaryAndConfirm(
     lines.push("");
   }
 
-  if (permissions.length > 0) {
-    lines.push(
-      chalk.bold("Agent permissions"),
-      ...describePermissionEdits(permissions),
-      ""
-    );
-  }
-
-  // Shown with everything else, but confirmed on its own afterwards (see
-  // `confirmGlobalTrust`), since it is the one edit outside the project.
-  const globalLines =
-    globalTrust === undefined
+  // Every settings edit, project and global, in one group under one
+  // question: each is a line a person can read, with where it goes.
+  const settingsLines = [
+    ...describeProjectEdits(permissions),
+    ...(globalTrust === undefined
       ? []
-      : describeGlobalTrust(globalTrust.outcomes, globalTrust.home);
-  if (globalLines.length > 0) {
-    lines.push(chalk.bold("Outside this project"), ...globalLines, "");
+      : describeGlobalTrust(globalTrust.outcomes, globalTrust.home)),
+  ];
+  if (settingsLines.length > 0) {
+    lines.push(chalk.bold("Agent settings"), ...settingsLines, "");
   }
 
   log.message(lines.join("\n") || "No changes.");
 
   // A settings file is the user's, so an edit to one is confirmed even when
   // nothing is being removed.
-  const editsSettings = permissions.some((edit) => edit.skipped === null);
+  const editsSettings =
+    permissions.some((edit) => edit.skipped === null) ||
+    (globalTrust?.outcomes.some((outcome) => outcome.state === "absent") ??
+      false);
   if (!diff.hasRemovals && !editsSettings) {
     return true;
   }
-  if (!diff.hasRemovals) {
-    return ask("summary", () =>
-      confirm({
-        message: "Write the agent permission rules above?",
-        initialValue: true,
-      })
-    );
-  }
-
   return ask("summary", () =>
     confirm({
-      message: buildRemovalConfirmMessage(diff),
+      message: diff.hasRemovals
+        ? buildRemovalConfirmMessage(diff, { editsSettings })
+        : SETTINGS_QUESTION,
       initialValue: true,
     })
   );
+}
+
+const SETTINGS_QUESTION = "Make these changes to your settings?";
+
+/**
+ * Each project permission edit as one line per command and file. A harness
+ * whose rules come in two spellings (Cursor's CLI writes the command bare and
+ * with arguments) reads as one line, since both allow the same command.
+ */
+function describeProjectEdits(edits: readonly PermissionEdit[]): string[] {
+  const lines: string[] = [];
+  for (const edit of edits) {
+    if (edit.skipped !== null) {
+      lines.push(
+        chalk.yellow(`SKIPPED (project): ${edit.file} ${edit.skipped}`)
+      );
+      continue;
+    }
+    for (const command of new Set(edit.allowed.map((r) => commandOfRule(r)))) {
+      lines.push(
+        chalk.green(`ALLOW (project): Calling ${command} in ${edit.file}`)
+      );
+    }
+    for (const command of new Set(edit.removed.map((r) => commandOfRule(r)))) {
+      lines.push(
+        chalk.red(`REMOVE (project): Calling ${command} in ${edit.file}`)
+      );
+    }
+  }
+  return lines;
 }
 
 /**
@@ -108,7 +125,10 @@ export async function renderSummaryAndConfirm(
  * to a generic prompt. Only meaningful when {@link InstallDiff.hasRemovals}
  * is true.
  */
-export function buildRemovalConfirmMessage(diff: InstallDiff): string {
+export function buildRemovalConfirmMessage(
+  diff: InstallDiff,
+  options: { editsSettings?: boolean } = {}
+): string {
   const clauses: string[] = [];
   for (const entry of diff.entries) {
     if (entry.mode === "canonical") continue;
@@ -119,26 +139,11 @@ export function buildRemovalConfirmMessage(diff: InstallDiff): string {
     );
   }
   if (clauses.length === 0) {
-    return "Some files recorded in the previous install will be removed. Proceed?";
+    return options.editsSettings === true
+      ? "Some files recorded in the previous install will be removed. Proceed, and make these changes to your settings?"
+      : "Some files recorded in the previous install will be removed. Proceed?";
   }
-  return `Remove Taskless from ${clauses.join(", ")}?`;
-}
-
-/**
- * Ask, separately from the project edits, whether to add each missing global
- * trust entry. Declining leaves the user's settings alone and the install
- * carries on; only the project's own files were ever a condition of it.
- */
-export async function confirmGlobalTrust(
-  outcomes: readonly GlobalTrustOutcome[]
-): Promise<boolean> {
-  const missing = outcomes.filter((outcome) => outcome.state === "absent");
-  if (missing.length === 0) return false;
-  const harnesses = missing.map((outcome) => outcome.harness).join(" and ");
-  return ask("global-trust", () =>
-    confirm({
-      message: `Add the Taskless entry to your ${harnesses} settings, so its classifier lets Taskless commands run?`,
-      initialValue: true,
-    })
-  );
+  return options.editsSettings === true
+    ? `Remove Taskless from ${clauses.join(", ")}, and make these changes to your settings?`
+    : `Remove Taskless from ${clauses.join(", ")}?`;
 }

@@ -27,7 +27,6 @@ const cancelSpy = vi.fn();
 const clackResponses: {
   locations?: string[] | symbol;
   summary?: boolean | symbol;
-  globalTrust?: boolean | symbol;
 } = {};
 
 // Every confirm the wizard asked, in order.
@@ -62,10 +61,6 @@ vi.mock("@clack/prompts", () => ({
   multiselect: vi.fn(() => Promise.resolve(clackResponses.locations)),
   confirm: vi.fn(({ message }: { message: string }) => {
     confirmMessages.push(message);
-    // The global trust offer is its own question, asked after the summary.
-    if (message.includes("Taskless entry")) {
-      return Promise.resolve(clackResponses.globalTrust ?? false);
-    }
     summaryConfirmMessage = message;
     return Promise.resolve(clackResponses.summary);
   }),
@@ -100,7 +95,6 @@ beforeEach(async () => {
   cancelSpy.mockClear();
   clackResponses.locations = undefined;
   clackResponses.summary = undefined;
-  clackResponses.globalTrust = undefined;
   confirmMessages.length = 0;
   summaryConfirmMessage = undefined;
   loggedMessages.length = 0;
@@ -208,12 +202,11 @@ describe("runWizard end-to-end", () => {
 
     // A fresh install removes nothing, so the confirm is there only because
     // a settings file would be edited.
-    expect(summaryConfirmMessage).toBe(
-      "Write the agent permission rules above?"
-    );
+    expect(summaryConfirmMessage).toBe("Make these changes to your settings?");
     const summary = loggedMessages.join("\n");
-    expect(summary).toContain(".claude/settings.json");
-    expect(summary).toMatch(/ALLOW: Bash\(npx @taskless\/cli@\S+ \*\)/);
+    expect(summary).toMatch(
+      /ALLOW \(project\): Calling npx @taskless\/cli@\S+ in \.claude\/settings\.json/
+    );
     expect(result.status).toBe("cancelled");
     expect(await exists(join(cwd, ".claude", "settings.json"))).toBe(false);
   });
@@ -232,27 +225,27 @@ describe("runWizard end-to-end", () => {
     const { runWizard } = await import("../src/wizard");
     await runWizard({ cwd, globalTrustEnvironment });
 
-    expect(loggedMessages.join("\n")).toContain(`REMOVE: ${stale}`);
+    expect(loggedMessages.join("\n")).toContain(
+      "REMOVE (project): Calling npx @taskless/cli-nightly@0.13.0-20261015220659xbf27a23 in .claude/settings.json"
+    );
   });
 
   describe("global trust", () => {
-    it("previews the entry outside the project and asks separately", async () => {
+    it("lists project and global edits together under one question", async () => {
       clackResponses.locations = [".claude"];
       clackResponses.summary = true;
-      clackResponses.globalTrust = true;
 
       const { runWizard } = await import("../src/wizard");
       await runWizard({ cwd, globalTrustEnvironment });
 
       const summary = loggedMessages.join("\n");
-      expect(summary).toContain("Outside this project");
-      expect(summary).toContain("~/.claude/settings.json");
-      expect(summary).toContain("ALLOW: autoMode.allow += Taskless CLI:");
-      // The project confirm first, then the global one on its own.
-      expect(confirmMessages).toEqual([
-        "Write the agent permission rules above?",
-        expect.stringContaining("Taskless entry"),
-      ]);
+      expect(summary).toMatch(
+        /ALLOW \(project\): Calling npx @taskless\/cli@\S+ in \.claude\/settings\.json/
+      );
+      expect(summary).toContain(
+        "ALLOW (global): Calling @taskless/cli or @taskless/cli-nightly at an exact version, in ~/.claude/settings.json (autoMode.allow)"
+      );
+      expect(confirmMessages).toEqual(["Make these changes to your settings?"]);
       const settings = JSON.parse(await readFile(userSettings(), "utf8")) as {
         autoMode: { allow: string[] };
       };
@@ -261,48 +254,48 @@ describe("runWizard end-to-end", () => {
       expect(warnedMessages).toEqual([]);
     });
 
-    it("declining leaves the user file alone and still installs", async () => {
+    it("declining writes neither the project nor the global settings", async () => {
       clackResponses.locations = [".claude"];
-      clackResponses.summary = true;
-      clackResponses.globalTrust = false;
+      clackResponses.summary = false;
 
       const { runWizard } = await import("../src/wizard");
       const result = await runWizard({ cwd, globalTrustEnvironment });
 
-      expect(result.status).toBe("completed");
+      expect(result.status).toBe("cancelled");
       expect(await exists(userSettings())).toBe(false);
-      expect(warnedMessages).toEqual([
-        expect.stringContaining("autoMode.allow"),
-      ]);
-      expect(await exists(join(cwd, ".claude", "settings.json"))).toBe(true);
+      expect(await exists(join(cwd, ".claude", "settings.json"))).toBe(false);
     });
 
     it("asks again on the next run after a decline", async () => {
       // Nothing records the answer: an absent entry is offered every time.
       clackResponses.locations = [".claude"];
-      clackResponses.summary = true;
-      clackResponses.globalTrust = false;
+      clackResponses.summary = false;
 
       const { runWizard } = await import("../src/wizard");
       await runWizard({ cwd, globalTrustEnvironment });
       await runWizard({ cwd, globalTrustEnvironment });
 
       expect(
-        confirmMessages.filter((message) => message.includes("Taskless entry"))
+        loggedMessages.filter((message) => message.includes("ALLOW (global)"))
       ).toHaveLength(2);
     });
 
-    it("cancelling the project confirm never asks about global trust", async () => {
+    it("asks about the global entry alone when the project is current", async () => {
       clackResponses.locations = [".claude"];
-      clackResponses.summary = false;
-
+      clackResponses.summary = true;
       const { runWizard } = await import("../src/wizard");
+      // A first run with no home settings writes both; remove the global one.
+      await runWizard({ cwd, globalTrustEnvironment });
+      await rm(userSettings());
+      confirmMessages.length = 0;
+      loggedMessages.length = 0;
+
       await runWizard({ cwd, globalTrustEnvironment });
 
-      expect(confirmMessages).toEqual([
-        "Write the agent permission rules above?",
-      ]);
-      expect(await exists(userSettings())).toBe(false);
+      const summary = loggedMessages.join("\n");
+      expect(summary).not.toContain("ALLOW (project)");
+      expect(summary).toContain("ALLOW (global)");
+      expect(confirmMessages).toEqual(["Make these changes to your settings?"]);
     });
 
     it("does not offer an entry that is already there", async () => {
@@ -317,10 +310,7 @@ describe("runWizard end-to-end", () => {
       const { runWizard } = await import("../src/wizard");
       await runWizard({ cwd, globalTrustEnvironment });
 
-      expect(loggedMessages.join("\n")).not.toContain("Outside this project");
-      expect(confirmMessages).not.toContainEqual(
-        expect.stringContaining("Taskless entry")
-      );
+      expect(loggedMessages.join("\n")).not.toContain("ALLOW (global)");
       expect(await readFile(userSettings(), "utf8")).toBe(original);
     });
   });

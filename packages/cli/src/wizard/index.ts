@@ -29,7 +29,7 @@ import { getCliPrefix } from "../util/package-manager";
 import { WizardCancelled } from "./ask";
 import { getCliVersion, renderIntro } from "./intro";
 import { promptLocations } from "./steps/locations";
-import { confirmGlobalTrust, renderSummaryAndConfirm } from "./steps/summary";
+import { renderSummaryAndConfirm } from "./steps/summary";
 
 export interface RunWizardOptions {
   cwd: string;
@@ -115,11 +115,12 @@ export async function runWizard(
     const cliVersion = getCliVersion();
     await applyInstallPlan(options.cwd, plan, { cliVersion });
     await syncPermissions(options.cwd, { ...permissionOptions, write: true });
-    if (await confirmGlobalTrust(globalTrustPreview)) {
+    // Confirmed with the project edits, in the summary's one question.
+    if (globalTrustPreview.some((outcome) => outcome.state === "absent")) {
       await syncGlobalTrust({ ...globalTrustOptions, write: true });
     }
-    // Read again rather than inferred from the answer, so a declined offer, a
-    // skipped file, and a write that did not land all warn the same way.
+    // Read again rather than assumed, so a skipped file, and a write that did
+    // not land, still warn.
     const globalTrust = await syncGlobalTrust({
       ...globalTrustOptions,
       write: false,

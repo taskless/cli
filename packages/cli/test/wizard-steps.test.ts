@@ -211,6 +211,22 @@ describe("buildRemovalConfirmMessage", () => {
     );
   });
 
+  it("folds the settings changes into the same question", async () => {
+    const { buildRemovalConfirmMessage } =
+      await import("../src/wizard/steps/summary");
+    const message = buildRemovalConfirmMessage(
+      {
+        entries: [diffEntry(".claude", ["taskless"])],
+        hasAdditions: false,
+        hasRemovals: true,
+      },
+      { editsSettings: true }
+    );
+    expect(message).toBe(
+      "Remove Taskless from .claude/ (1 stub), and make these changes to your settings?"
+    );
+  });
+
   it("skips targets with no removals", async () => {
     const { buildRemovalConfirmMessage } =
       await import("../src/wizard/steps/summary");
