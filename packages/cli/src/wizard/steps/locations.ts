@@ -23,15 +23,21 @@ export interface LocationChoice {
  * `.agents/skills`, in catalog order, then "and other .agents harnesses",
  * since many more read it than Taskless detects.
  *
- * With none detected it names every harness Taskless knows reads it, so a
- * Codex or Gemini CLI user still finds their harness on a fresh machine.
+ * Only detected harnesses are named. Listing every harness that reads
+ * `.agents/skills` grows with the catalog and buries the row, so with none
+ * detected the row keeps its catalog label, `fallback`.
  */
-export function agentsRowLabel(detected: readonly ToolDescriptor[]): string {
+export function agentsRowLabel(
+  detected: readonly ToolDescriptor[],
+  fallback: string
+): string {
   const detectedNames = new Set(detected.map((tool) => tool.name));
-  const readers = TOOLS.filter((tool) => tool.readsAgentSkills === true);
-  const named = readers.filter((tool) => detectedNames.has(tool.name));
-  const names = (named.length > 0 ? named : readers).map((tool) => tool.name);
-  return `${names.join(", ")}, and other .agents harnesses`;
+  const names = TOOLS.filter(
+    (tool) => tool.readsAgentSkills === true && detectedNames.has(tool.name)
+  ).map((tool) => tool.name);
+  if (names.length === 0) return fallback;
+  const list = names.length === 1 ? `${names[0]} ` : `${names.join(", ")}, `;
+  return `${list}and other .agents harnesses`;
 }
 
 /**
@@ -76,7 +82,7 @@ export function locationChoices(
 
   const options = SHIM_TARGETS.map((shim) => ({
     value: shim.dir,
-    label: `${shim.generic === true ? agentsRowLabel(detected) : shim.label} (${shim.dir}/)`,
+    label: `${shim.generic === true ? agentsRowLabel(detected, shim.label) : shim.label} (${shim.dir}/)`,
     hint: installedDirectories.has(shim.dir)
       ? "installed"
       : detectedDirectories.has(shim.dir)

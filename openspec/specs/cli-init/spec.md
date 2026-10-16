@@ -371,7 +371,7 @@ The wizard SHALL begin by rendering an ASCII rendition of the Taskless wordmark 
 
 ### Requirement: Wizard prompts the user to choose install locations
 
-The wizard's location step SHALL be presented as a tool-selection step: "which tools do you want to enable Taskless for?". It SHALL offer one row per directory: `Claude Code` (`.claude/`), `Cursor` (`.cursor/`), `OpenCode` (`.opencode/`), and a row for `.agents/`. A user who arrived from a harness that reads `.agents/` SHALL NOT have to know that before recognising their harness in the list, so the `.agents/` row SHALL be labelled with harness names: the detected harnesses whose own documentation says they read `.agents/skills` (OpenCode, Codex, Gemini CLI, Crush), in catalog order, followed by `and other .agents harnesses`, for example `OpenCode, Codex, and other .agents harnesses (.agents/)`. When none of them is detected, the row SHALL name all of them, so a harness is still recognisable on a machine where nothing is detected.
+The wizard's location step SHALL be presented as a tool-selection step: "which tools do you want to enable Taskless for?". It SHALL offer one row per directory: `Claude Code` (`.claude/`), `Cursor` (`.cursor/`), `OpenCode` (`.opencode/`), and a row for `.agents/`. A user who arrived from a harness that reads `.agents/` SHALL NOT have to know that before recognising their harness in the list, so the `.agents/` row SHALL be labelled with harness names: the detected harnesses whose own documentation says they read `.agents/skills` (OpenCode, Codex, Gemini CLI, Crush), in catalog order, followed by `and other .agents harnesses`, for example `OpenCode, Codex, and other .agents harnesses (.agents/)`. The row SHALL name only detected harnesses: an undetected harness SHALL NOT be named, since the harnesses that read `.agents/skills` outnumber what fits on one row. When none of them is detected, the row SHALL be labelled `Agent Skills (.agents/)`.
 
 Every list of directories derived from the catalog SHALL name each directory at most once, however many detected tools install into it. The pre-checked set SHALL be the union of (a) every directory recorded as a target in the install manifest (`install.targets`) that matches an offered row, and (b) every detected tool's install directory, deduplicated by directory. When the manifest records no targets AND no tools are detected, `.agents/` SHALL be pre-checked as the first-run default. The canonical `.taskless/` store SHALL NOT appear as a selectable entry and SHALL NOT be pre-checked — it is always written and is never a manifest tool-directory target.
 
@@ -383,9 +383,15 @@ Each selected directory SHALL produce exactly one `reference` stub target; the r
 
 #### Scenario: Codex is named in the tool list
 
-- **WHEN** the wizard renders the tool-selection multiselect with Codex detected, or with no `.agents` harness detected
+- **WHEN** the wizard renders the tool-selection multiselect with Codex detected
 - **THEN** the `.agents/` row's label SHALL name `Codex`
 - **AND** exactly one entry SHALL be offered for `.agents/`
+
+#### Scenario: Undetected .agents harnesses are not named
+
+- **WHEN** the wizard renders the tool-selection multiselect with no `.agents` harness detected
+- **THEN** the `.agents/` row SHALL be labelled `Agent Skills (.agents/)`
+- **AND** the label SHALL NOT name OpenCode, Codex, Gemini CLI, or Crush
 
 #### Scenario: Detected .agents harnesses are named in catalog order
 
