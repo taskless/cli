@@ -7,8 +7,8 @@ import { LATEST_SCHEMA_VERSION } from "../src/filesystem/migrate";
  * This repository's own `.taskless/` is on the scaffold version this CLI
  * ships.
  *
- * Migrations run on `init`, `demo`, `onboard`, and rule delivery, and on
- * nothing the development loop invokes: `pnpm lint` builds and runs `check`,
+ * Migrations run on `init`, `onboard`, and rule delivery, and on nothing the
+ * development loop invokes: `pnpm lint` builds and runs `check`,
  * which refuses a stale scaffold rather than migrating it. So a pull request
  * that adds a migration can pass every other check while leaving the dogfood
  * tree behind, and the gap only shows when someone's `check` hits the wall.

@@ -10,26 +10,21 @@ import {
   type ReferenceInput,
 } from "../src/rules/reference";
 import { RULE_CONSTRAINTS } from "../src/rules/constraints";
-import { DEMO_MANIFESTS, writtenPaths } from "../src/rules/demo/manifest";
+import {
+  DEMO_MANIFESTS,
+  readReferenceInputs,
+  writtenPaths,
+} from "../src/rules/demo/manifest";
 import { ENGINE_LAYOUTS, ENGINES, type EngineName } from "../src/rules/layout";
 import { ruleDirectory } from "../src/rules/engines";
-import { DEMO_RULES } from "../src/rules/demo/rule";
 
 /**
- * The reference payload other teams consume, and the rules we ship, describe
- * the same thing.
- *
- * Two lists exist because `?raw` only resolves under a vite transform, so the
- * generator script reads the assets off disk while the bundle embeds them.
- * Nothing stops those from drifting except this file.
+ * The reference payload other teams consume, and the asset trees it is built
+ * from, describe the same thing.
  */
 
-const referencePath = join(
-  import.meta.dirname,
-  "..",
-  "assets",
-  "reference.json"
-);
+const assetsRoot = join(import.meta.dirname, "..", "assets");
+const referencePath = join(assetsRoot, "reference.json");
 
 async function readReference(): Promise<Reference> {
   return JSON.parse(await readFile(referencePath, "utf8")) as Reference;
@@ -100,19 +95,9 @@ function shapePaths(value: unknown): string[] {
 
 describe("the demo reference payload", () => {
   it("is current — regenerate with `pnpm --filter @taskless/cli reference`", async () => {
-    expect(await readReference()).toEqual(buildReference(DEMO_RULES));
-  });
-
-  it("embeds exactly the files each manifest lists", () => {
-    for (const manifest of DEMO_MANIFESTS) {
-      const rule = DEMO_RULES.find((entry) => entry.engine === manifest.engine);
-      expect(rule?.ruleFiles.map((file) => file.path)).toEqual([
-        ...manifest.rulePaths,
-      ]);
-      expect(rule?.testFiles.map((file) => file.path)).toEqual([
-        ...manifest.testPaths,
-      ]);
-    }
+    expect(await readReference()).toEqual(
+      buildReference(await readReferenceInputs(assetsRoot))
+    );
   });
 
   it("names every dot-path explicitly, because a glob would drop them", () => {

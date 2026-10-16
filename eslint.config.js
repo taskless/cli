@@ -17,8 +17,8 @@ export default tseslint.config(
       "openspec/",
       "**/test/fixtures/",
       // The demonstration rule ships as DATA, not as source. Its `check.ts`
-      // is bytes the CLI writes into a user's project, where it runs under
-      // `tsx` against a structural contract and imports nothing from this
+      // is a rule in the published conformance corpus, run under `tsx`
+      // against a structural contract and importing nothing from this
       // repository — so it is deliberately outside every tsconfig, and
       // type-aware linting has no project to resolve it against.
       "packages/cli/assets/demo-runtime/",

@@ -1,16 +1,14 @@
 /**
- * The demonstration rules' identities and file lists, with no imports at all.
+ * The demonstration rules behind the conformance corpus: their identities,
+ * their file lists, and the one reader that loads them off disk.
  *
- * Separate from `rule.ts` because that module embeds the file CONTENTS through
- * vite's `?raw`, which only resolves under a vite transform. A plain Node
- * script — the reference-payload generator — cannot import it, and neither can
- * anything else outside the bundle.
- *
- * The paths therefore live here, stated once. `rule.ts` embeds exactly these
- * lists, the generator reads exactly these lists off disk, and
- * `test/reference.test.ts` asserts the two agree — so the rules the CLI
- * writes and the payload handed to other teams cannot come to describe
- * different things.
+ * Nothing in the bundle imports this. The rules used to be written into a
+ * project by `taskless demo`; that command is gone, and what remains is the
+ * corpus published as `@taskless/cli/reference.json`. The generator script and
+ * `test/reference.test.ts` both build that payload through
+ * {@link readReferenceInputs}, so "the committed file is current" is a
+ * comparison against a fresh regeneration rather than against a second copy of
+ * the lists.
  *
  * ## Why there are three
  *
@@ -21,7 +19,11 @@
  * cannot: why there are three tiers at all.
  */
 
+import { readFile } from "node:fs/promises";
+import { join } from "node:path";
+
 import type { EngineName } from "../layout";
+import type { ReferenceInput } from "../reference";
 
 /** One shipped demonstration rule. */
 export interface DemoManifest {
@@ -31,12 +33,12 @@ export interface DemoManifest {
    *
    * Fixed, with no batch suffix. A generated rule carries one so a
    * regeneration does not collide with what is already there; these are
-   * written from constant bytes, so writing one twice would be the same rule.
+   * constant bytes, so there is nothing to collide with.
    */
   ruleId: string;
   /**
    * The generation request this rule is the answer to, as a caller would phrase
-   * it. Lives beside the rule but is NEVER written into a project.
+   * it. Lives beside the rule but is never part of the staged rule tree.
    *
    * Published so another team can generate from the same input and compare.
    * Without it a reference payload shows what we produced and not what we were
@@ -104,7 +106,32 @@ export const DEMO_MANIFESTS: readonly DemoManifest[] = [
   },
 ];
 
-/** Every file written into a project: the rule and its cases, never the prompt. */
+/** Every file of the staged rule tree: the rule and its cases, never the prompt. */
 export function writtenPaths(manifest: DemoManifest): readonly string[] {
   return [...manifest.rulePaths, ...manifest.testPaths];
+}
+
+/** Every manifest's prompt, rule and cases, read from `assetsRoot`. */
+export async function readReferenceInputs(
+  assetsRoot: string
+): Promise<ReferenceInput[]> {
+  const read = (assetDirectory: string, path: string) =>
+    readFile(join(assetsRoot, assetDirectory, path), "utf8");
+  const readAll = (assetDirectory: string, paths: readonly string[]) =>
+    Promise.all(
+      paths.map(async (path) => ({
+        path,
+        content: await read(assetDirectory, path),
+      }))
+    );
+
+  return Promise.all(
+    DEMO_MANIFESTS.map(async (manifest) => ({
+      engine: manifest.engine,
+      ruleId: manifest.ruleId,
+      prompt: await read(manifest.assetDirectory, manifest.promptPath),
+      ruleFiles: await readAll(manifest.assetDirectory, manifest.rulePaths),
+      testFiles: await readAll(manifest.assetDirectory, manifest.testPaths),
+    }))
+  );
 }

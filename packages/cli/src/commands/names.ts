@@ -13,7 +13,6 @@ export const SUBCOMMAND_NAMES = [
   "agent",
   "auth",
   "check",
-  "demo",
   "detect",
   "feedback",
   "info",

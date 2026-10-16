@@ -6,10 +6,10 @@
  * where a fourth sample would be added to the manifest and silently not staged.
  *
  * The trailing paths are {@link writtenPaths}, not the asset directory's
- * contents, so a staging loop copies exactly what `taskless demo` writes. A
- * whole-directory copy would additionally land `prompt.md`, which the command
- * never writes, and the job would then be attributing results to a tree no
- * user ever has.
+ * contents, so a staging loop copies exactly the rule and its cases. A
+ * whole-directory copy would additionally land `prompt.md`, which is the
+ * generation request rather than part of any rule tree, and the job would then
+ * be judging a tree a generator is never asked to produce.
  *
  * Takes an output PATH rather than printing to stdout. Capturing stdout meant
  * capturing whatever the runner wrapped around it: `pnpm --filter ... > file`
