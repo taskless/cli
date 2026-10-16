@@ -981,7 +981,7 @@ Edited .claude/settings.json
 ```
 
 - `ALLOW: <rule>` for a rule added, rendered in green.
-- `REMOVE: <rule>` for a recorded rule taken out on upgrade, rendered in red.
+- `REMOVE: <rule>` for a Taskless rule taken out because it is not the installed invocation's rule, whether or not the manifest recorded it, rendered in red.
 - `SKIPPED: <file>` with the reason, for a file left alone because it denies the invocation or does not parse, rendered in yellow.
 
 The first line SHALL say `Created` for a file Taskless created and `Edited` for one that existed. The labels SHALL carry the meaning on their own, so the output reads the same with color off (`NO_COLOR`, no TTY). Color SHALL come from the CLI's shared color setup, so it follows the real terminal.
@@ -998,6 +998,11 @@ The wizard SHALL show the same lines in its summary step, before anything is wri
 
 - **WHEN** `init` replaces a recorded `0.13.0` rule with the `0.13.1` rule
 - **THEN** the output SHALL list `ALLOW:` for the `0.13.1` rule and `REMOVE:` for the `0.13.0` rule under the file's name
+
+#### Scenario: An unrecorded Taskless rule is reported when removed
+
+- **WHEN** `init` removes `Bash(npx @taskless/cli-nightly@0.13.0-20261015220659xbf27a23 *)`, which the manifest did not record
+- **THEN** the output SHALL list `REMOVE:` for that rule under the file's name
 
 #### Scenario: The wizard previews before writing
 
@@ -1030,21 +1035,6 @@ The wizard SHALL show the same lines in its summary step, before anything is wri
 - **WHEN** `.cursor/cli.json` does not parse
 - **THEN** `init` SHALL leave it byte-identical and report it
 
-### Requirement: The manifest records permission rules, and an upgrade replaces only those
-
-The manifest SHALL record, under `install.permissions`, each file Taskless wrote a rule to, the exact rule entries it added, and whether Taskless created the file. On a later `init` the installer SHALL remove exactly the recorded entries and write the current ones. It SHALL NOT remove or edit any entry it did not record, including a rule for Taskless the user wrote. A file Taskless created SHALL be deleted when removing its entries leaves it holding nothing else; a file that existed before SHALL never be deleted.
-
-#### Scenario: An upgrade swaps the version
-
-- **WHEN** the manifest records `Bash(npx @taskless/cli@0.13.0 *)` in `.claude/settings.json` and `init` runs at `0.13.1`
-- **THEN** the file SHALL contain `Bash(npx @taskless/cli@0.13.1 *)` and not the `0.13.0` rule
-- **AND** the manifest SHALL record only the `0.13.1` rule
-
-#### Scenario: A user's own rule survives an upgrade
-
-- **WHEN** `.claude/settings.json` also holds `Bash(npx @taskless/cli@0.12.0 *)`, which the manifest does not record
-- **THEN** an upgrade SHALL leave that entry in place
-
 ### Requirement: Gemini CLI and Crush detection signals
 
 Gemini CLI and Crush SHALL be detected as harnesses that read `.agents/skills`, from their own documentation: Gemini CLI reads workspace skills from `.gemini/skills/` "or the `.agents/skills/` alias", and Crush lists `.agents/skills` among its project skill directories. Each SHALL install into `.agents/`.
@@ -1062,3 +1052,36 @@ Gemini CLI SHALL be detected when a `.gemini/` directory or a `GEMINI.md` file e
 - **WHEN** `.crush/` exists in the project root
 - **THEN** Crush SHALL be detected
 - **AND** skills SHALL be installed to `.agents/skills/`
+
+### Requirement: Each permission file holds exactly one Taskless rule
+
+Each harness permission file `init` manages SHALL hold exactly one Taskless rule set afterwards: the rules for the installed invocation, from the table in the requirement that init allows the installed CLI. A Taskless rule is an allow entry, in that harness's format, whose command is an invocation of `@taskless/cli` or `@taskless/cli-nightly` through `npx` or `pnpm dlx`, at any version, with or without a version. For Claude Code this includes both the `Bash(<invocation> *)` form and the `Bash(<invocation>:*)` form. On every `init` the installer SHALL remove each Taskless rule that is not one of the installed invocation's rules, whether or not the manifest recorded it, and write the current ones. It SHALL NOT remove or edit a deny entry, or any entry that is not a Taskless rule.
+
+The manifest SHALL record, under `install.permissions`, each file Taskless wrote a rule to, the exact rule entries it added, and whether Taskless created the file. The record decides only whether a file may be deleted: a file Taskless created SHALL be deleted when removing its entries leaves it holding nothing else; a file that existed before SHALL never be deleted. A recorded file for a harness no longer selected SHALL have its Taskless rules removed.
+
+#### Scenario: An upgrade swaps the version
+
+- **WHEN** the manifest records `Bash(npx @taskless/cli@0.13.0 *)` in `.claude/settings.json` and `init` runs at `0.13.1`
+- **THEN** the file SHALL contain `Bash(npx @taskless/cli@0.13.1 *)` and not the `0.13.0` rule
+- **AND** the manifest SHALL record only the `0.13.1` rule
+
+#### Scenario: An unrecorded Taskless rule is replaced
+
+- **WHEN** `.claude/settings.json` also holds `Bash(npx @taskless/cli@0.12.0 *)`, which the manifest does not record
+- **THEN** an upgrade SHALL remove that entry
+- **AND** the file SHALL hold exactly one Taskless rule, for the installed invocation
+
+#### Scenario: The colon form the skill proposed is replaced
+
+- **WHEN** `.claude/settings.json` holds `Bash(npx @taskless/cli-nightly@0.13.0-20261015220659xbf27a23:*)`
+- **THEN** `init` SHALL remove it and write the installed invocation's rule
+
+#### Scenario: Other entries are untouched
+
+- **WHEN** `.claude/settings.json` holds `Bash(npx prettier *)` and a deny entry `Bash(npx @taskless/cli@0.11.0 *)`
+- **THEN** `init` SHALL leave both entries in place
+
+#### Scenario: A pre-existing file is never deleted
+
+- **WHEN** removing Taskless rules from a `.claude/settings.json` that Taskless did not create leaves its `permissions.allow` empty
+- **THEN** the file SHALL remain
