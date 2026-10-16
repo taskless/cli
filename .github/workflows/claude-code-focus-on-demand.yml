@@ -129,6 +129,15 @@ jobs:
 
           echo "threads: $(jq '.data.repository.pullRequest.reviewThreads.nodes | length' "${GITHUB_WORKSPACE}/.prior-review.json")"
 
+      # The action's tag mode fetches the PR branch before it authenticates
+      # origin, which fails on a private repo. See the review workflow's step
+      # of the same name (issue #512) for why, and why not
+      # `persist-credentials: true`.
+      - name: Authenticate origin for the action's PR-branch fetch
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: git remote set-url origin "https://x-access-token:${GH_TOKEN}@${GITHUB_SERVER_URL#https://}/${GITHUB_REPOSITORY}.git"
+
       - name: Run Claude Code Focus
         id: focus
         uses: anthropics/claude-code-action@0a8d3c9443bbff909ab973b6a17a340b913f229f # v1.0.221
