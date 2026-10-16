@@ -7,9 +7,9 @@
 
 ## 2. Global trust entry
 
-- [ ] 2.1 Add the `GlobalTrust` interface, the `GLOBAL_TRUST` list with the Claude Code entry and its fixed text, and `syncGlobalTrust(home, selected, { write })`; verify with tests using a temporary home for: absent file, no `autoMode`, existing list with and without `$defaults`, a reworded `Taskless CLI:` entry treated as present, an unparseable file skipped, and comments preserved
-- [ ] 2.2 Assert that the entry text contains no digit sequence shaped like a real version except the fixed example, and begins with `Taskless CLI:`; verify with a unit test
-- [ ] 2.3 Ensure only selected harnesses in the table are read: verify a `.cursor/`-only install never touches the temporary home
+- [x] 2.1 Add the `GlobalTrust` interface, the `GLOBAL_TRUST` list with the Claude Code entry and its fixed text, and `syncGlobalTrust(home, selected, { write })`; verify with tests using a temporary home for: absent file, no `autoMode`, existing list with and without `$defaults`, a reworded `Taskless CLI:` entry treated as present, an unparseable file skipped, and comments preserved
+- [x] 2.2 Assert that the entry text contains no digit sequence shaped like a real version except the fixed example, and begins with `Taskless CLI:`; verify with a unit test
+- [x] 2.3 Ensure only selected harnesses in the table are read: verify a `.cursor/`-only install never touches the temporary home
 
 ## 3. Wizard and init
 
