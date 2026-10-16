@@ -400,6 +400,7 @@ describe("onboard recipe asks one question and finishes on its own", () => {
     const write = step("Write the rules").replaceAll(/\s+/g, " ");
     expect(write).toContain("is not written");
     expect(write).toContain("Taskless Cloud candidate");
+    expect(write).toContain("the report asks for that estimate");
   });
 
   it("limits clarifying questions to a refused report", () => {

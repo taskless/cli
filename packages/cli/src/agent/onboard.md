@@ -142,7 +142,9 @@ making the case for running them in CI.
    written: runtime rules need an account, and onboarding stays
    logged out. If `route` sends a rule toward a runtime or
    login-gated recipe, stop there for that rule. Keep it for the
-   report, where it appears as a Taskless Cloud candidate.
+   report, where it appears as a Taskless Cloud candidate, and note how
+   many instances of its pattern you saw in the code: the report asks
+   for that estimate.
 
 8. **Clarify only when stuck.** You may ask the user something only
    when you are unsure what rules to write AND the report cannot be

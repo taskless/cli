@@ -110,7 +110,6 @@ describe("report telemetry", () => {
           title: TITLE,
           surfaced: { prs: 1, reviewComments: 1 },
         })),
-        estimates: { contextTokens: 1000, callsPerCatch: 2 },
       }),
       "utf8"
     );

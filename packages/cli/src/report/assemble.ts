@@ -23,8 +23,9 @@ import type {
  *
  * The CLI's values win every conflict: the facts carry only what the agent
  * alone knows, and a fact about something the CLI measured (an engine, a test
- * status) never reaches the payload. The monthly rates are not computed at
- * all: tskl.es derives them from each rule's `surfaced` and the window.
+ * status) never reaches the payload. No value is computed or estimated here:
+ * tskl.es prices reviewer time, agent tokens, and dollars itself, from the
+ * findings, each rule's `surfaced`, and each candidate's estimate.
  */
 
 /** How many Taskless rules a report needs before it is worth publishing. */
@@ -115,7 +116,6 @@ function mergeRules(
           ? { violations: local.violations, files: local.files ?? 0 }
           : {}),
         surfaced: ruleFacts.surfaced,
-        complexity: null,
       },
       status: local.tests.status,
       fail: local.tests.fail,
@@ -133,7 +133,6 @@ function mergeRules(
         language: legacy.language,
         state: "written",
         surfaced: legacy.surfaced,
-        complexity: null,
       },
       // The CLI cannot run another linter's rule, so it does not claim it
       // passed. Agent-written legacy rules still count toward the gate.
@@ -154,8 +153,8 @@ function mergeRules(
         // Never counted: a candidate is a rule Cloud could write, not one
         // that runs.
         state: "candidate",
+        estimatedViolations: cloud.estimatedViolations,
         surfaced: cloud.surfaced,
-        complexity: cloud.complexity,
       },
       status: "not-run",
       fail: cloud.fail ?? null,
@@ -342,13 +341,6 @@ export function assembleReport(
     history: facts.history,
     ...(findings === undefined ? {} : { findings }),
     rules,
-    projection: {
-      inputs: {
-        contextTokens: facts.estimates.contextTokens,
-        callsPerCatch: facts.estimates.callsPerCatch,
-        ...draft.inputs,
-      },
-    },
     redaction: {
       policyVersion: REDACTION_POLICY_VERSION,
       counts: tally.counts,

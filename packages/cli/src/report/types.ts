@@ -45,8 +45,13 @@ export interface ReportRule {
   /** Present on every written rule exactly when the report carries `findings`. */
   violations?: number;
   files?: number;
+  /**
+   * A candidate's instances in the code today, as the agent that proposed it
+   * estimates them. Required on every candidate and absent on written rules,
+   * which carry the measured `violations` instead.
+   */
+  estimatedViolations?: number;
   surfaced?: Surfaced;
-  complexity: number | null;
   tests: ReportTests;
 }
 
@@ -65,15 +70,6 @@ export type ReportScope =
       window: ReportWindow;
     }
   | { provider: "none"; label: string; window: ReportWindow };
-
-export interface ProjectionInputs {
-  contextTokens: number;
-  callsPerCatch: number;
-  cloudComplexity: number;
-  pricePerMillionTokens: number;
-  minutesPerComment: number;
-  reviewerHourlyUsd: number;
-}
 
 export type RedactionKind =
   | "secret"
@@ -99,8 +95,6 @@ export interface ReportV1 {
   /** Present exactly when every written rule carries `violations` and `files`. */
   findings?: Findings;
   rules: ReportRule[];
-  /** Inputs only: tskl.es derives the monthly rates from `surfaced` and the window. */
-  projection: { inputs: ProjectionInputs };
   redaction: {
     policyVersion: string;
     counts: Record<RedactionKind, number>;
