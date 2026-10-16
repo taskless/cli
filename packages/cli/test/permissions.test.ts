@@ -473,6 +473,18 @@ describe("Codex", () => {
     expect(rules).not.toContain("@taskless/cli@0.12.0");
   });
 
+  it("recognises its own file by the mark even when the header is reworded", async () => {
+    await put(
+      ".codex/rules/taskless.rules",
+      "# Written by Taskless, in some older wording.\n" +
+        'prefix_rule(pattern = ["npx","@taskless/cli@0.12.0"], decision = "allow")\n'
+    );
+    const edits = await sync({ selected: [".agents"], codexDetected: true });
+
+    expect(edits[0]?.skipped).toBeNull();
+    expect(await text(".codex/rules/taskless.rules")).not.toContain("0.12.0");
+  });
+
   it("leaves a rules file at its path that Taskless did not write", async () => {
     await put(".codex/rules/taskless.rules", "# theirs\n");
     const edits = await sync({ selected: [".agents"], codexDetected: true });

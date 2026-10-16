@@ -469,8 +469,15 @@ const CLAUDE_FILE = ".claude/settings.json";
 const CURSOR_EDITOR_FILE = ".cursor/permissions.json";
 const CURSOR_CLI_FILE = ".cursor/cli.json";
 const CODEX_FILE = ".codex/rules/taskless.rules";
-const CODEX_HEADER =
-  "# Written by Taskless: allows exactly the installed Taskless CLI.\n";
+/**
+ * How a Codex rules file Taskless wrote is recognised, even when the manifest
+ * record is gone. Matched as a prefix so the rest of the header can be
+ * reworded freely, but this mark itself must never change: every file written
+ * before the change would stop being recognised, and be skipped from then on
+ * as someone else's.
+ */
+const CODEX_MARK = "# Written by Taskless";
+const CODEX_HEADER = `${CODEX_MARK}: allows exactly the installed Taskless CLI.\n`;
 const OPENCODE_FILES = [
   "opencode.json",
   "opencode.jsonc",
@@ -656,9 +663,10 @@ const openCode: Harness = {
 /**
  * Codex, in a rules file Taskless owns outright, so the whole file is
  * rewritten rather than edited. A file at that path that Taskless neither
- * recorded nor headed with its own comment is someone else's and is left alone. Codex applies the strictest matching rule
- * (forbidden over prompt over allow), so a deny elsewhere still wins without
- * this file needing to look for it.
+ * recorded nor marked with {@link CODEX_MARK} is someone else's and is left
+ * alone. Codex applies the strictest matching rule (forbidden over prompt over
+ * allow), so a deny elsewhere still wins without this file needing to look
+ * for it.
  */
 const codex: Harness = {
   ...fixed(CODEX_FILE),
@@ -668,7 +676,7 @@ const codex: Harness = {
   // Only a file Taskless wrote is read: one someone else put at this path is
   // theirs, whatever it allows.
   found(text) {
-    if (text?.startsWith(CODEX_HEADER) !== true) return [];
+    if (text?.startsWith(CODEX_MARK) !== true) return [];
     return text.split("\n").filter((line) => {
       const pattern =
         /^prefix_rule\(pattern = (\[.*\]), decision = "allow"\)$/.exec(
@@ -687,7 +695,7 @@ const codex: Harness = {
     if (
       text !== undefined &&
       !context.created &&
-      !text.startsWith(CODEX_HEADER)
+      !text.startsWith(CODEX_MARK)
     ) {
       return {
         kind: "skip",
