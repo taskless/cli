@@ -14,6 +14,7 @@ import {
   getEmbeddedSkills,
 } from "../src/install/install";
 import { buildInvocation } from "../src/util/invocation";
+import { GLOBAL_TRUST_ENTRY } from "../src/install/global-trust";
 import {
   ENGINES,
   RULES_DIRECTORY,
@@ -204,6 +205,37 @@ describe("this repository's own installed Taskless docs", () => {
     // "let's use taskless" names no task, and onboarding's question is the
     // one that matters.
     expect(prose).toContain("do not offer a menu of topics first");
+  });
+
+  it("hands over the global trust entry when a classifier refuses", async () => {
+    // Auto mode refused a pinned invocation that the project allowed, as
+    // "Code from External". No project rule clears that, and a recipe
+    // explaining what to do would be fetched through the same refused npx,
+    // so the remedy lives in the body itself.
+    const skill = await readFile(
+      resolve(repositoryRoot, "skills", "taskless", "SKILL.md"),
+      "utf8"
+    );
+    const prose = skill.replaceAll(/\s+/g, " ");
+    expect(prose).toContain("Do not retry the command");
+    expect(prose).toContain("by the Claude Code auto mode classifier");
+    expect(prose).toContain("no allow rule can clear it");
+    expect(prose).toContain("`autoMode.allow`");
+    expect(prose).toContain("`~/.claude/settings.json`");
+    expect(prose).toContain('after `"$defaults"`');
+    expect(prose).toContain("Never write that entry yourself");
+    // The project-rule remedies are for any OTHER block.
+    expect(prose).toContain("For any other block, offer three ways forward");
+  });
+
+  it("carries the same global trust entry init writes", async () => {
+    // One text in two places: if they drift, the skill hands over an entry
+    // init would not recognise, or the reverse.
+    const skill = await readFile(
+      resolve(repositoryRoot, "skills", "taskless", "SKILL.md"),
+      "utf8"
+    );
+    expect(skill).toContain(`\n${GLOBAL_TRUST_ENTRY}\n`);
   });
 
   it("keeps the skill body within its 150-line cap", async () => {

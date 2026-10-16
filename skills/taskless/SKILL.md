@@ -43,9 +43,27 @@ request: no survey of the install, and no menu of what Taskless can do.
 settings of each harness it installs for, so the preflight usually passes.
 
 If the harness or the user blocks it, or blocks any later Taskless command,
-stop before doing any Taskless work and do not try to get around the block.
-Send one message that names the exact command you ran, says it downloads and
-runs a package from npm, and offers three ways forward:
+stop before doing any Taskless work. Do not retry the command or try to get
+around the block. Send one message that names the exact command you ran and
+says it downloads and runs a package from npm. The rest of that message
+depends on what refused it.
+
+If your own safety classifier refused it, not a missing permission (in Claude
+Code, a denial "by the Claude Code auto mode classifier"), no allow rule can
+clear it: the classifier overrules project rules. Give the user this entry, to
+add themselves to the top-level `autoMode.allow` list in
+`~/.claude/settings.json`, after `"$defaults"`:
+
+```text
+Taskless CLI: The npm packages @taskless/cli and @taskless/cli-nightly are tooling published by Taskless via npm trusted publishing (OIDC), installed by the user through the Taskless installer. Running either via npx or pnpm dlx is allowed only when the call names an exact version (e.g. @taskless/cli@1.2.3). Dist-tags such as @latest or @nightly, version ranges, and unversioned calls are not covered.
+```
+
+Never write that entry yourself: an agent widening its own classifier's trust
+is exactly what the classifier refuses. Running `init` in a terminal also
+offers to add it. Until then, they can approve the exact command in chat,
+which the classifier weighs but may still refuse, or leave auto mode.
+
+For any other block, offer three ways forward:
 
 - You add an allow rule for exactly the invocation `%(TASKLESS_CLI)s` to the
   agent's permission settings. If the harness blocks that edit too, give the

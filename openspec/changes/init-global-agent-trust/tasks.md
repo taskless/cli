@@ -20,8 +20,8 @@
 
 ## 4. Skill fallback
 
-- [ ] 4.1 Rewrite the preflight section of `skills/taskless/SKILL.md` per the modified `skill-taskless` requirement: classifier refusal branch with the entry inline and the file and key named, no project rule offered for it, the agent never writing the entry, and no `agent <topic>` lookup; verify with new assertions in `installed-documentation.test.ts` and the 150-line cap test
-- [ ] 4.2 Assert the skill body's entry text equals the `GLOBAL_TRUST` entry text, so the two cannot drift; verify with a test that imports both
+- [x] 4.1 Rewrite the preflight section of `skills/taskless/SKILL.md` per the modified `skill-taskless` requirement: classifier refusal branch with the entry inline and the file and key named, no project rule offered for it, the agent never writing the entry, and no `agent <topic>` lookup; verify with new assertions in `installed-documentation.test.ts` and the 150-line cap test
+- [x] 4.2 Assert the skill body's entry text equals the `GLOBAL_TRUST` entry text, so the two cannot drift; verify with a test that imports both
 
 ## 5. Checks and release note
 
