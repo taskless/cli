@@ -1,4 +1,4 @@
-# Topic: report     (CLI v%(CLI_VERSION)s / topic v3)
+# Topic: report     (CLI v%(CLI_VERSION)s / topic v4)
 
 ## Goal
 Publish a Taskless report: an unlisted page on tskl.es that shows what
@@ -79,10 +79,14 @@ later and deletes one on request.
 
 4. **Show the result.** On success the CLI prints a short summary: the
    rules, what they found in the code today, what review raised over
-   the window, the link, and when it expires. Show it to the user
-   exactly as printed. Then tell them, in one line, that the report can
-   be deleted after they have reviewed it, and that they only need to
-   ask.
+   the window, the link, and when it expires. Relay it to the user as
+   ordinary chat text, NOT inside a code block or quote: a fenced block
+   makes the link unclickable and buries the report the whole session
+   led up to. Keep its content and order; do not add, drop, or reword
+   facts. Put the link on its own line as a plain URL or a Markdown
+   link, so the user can open it directly, and render the rules as a
+   list. The summary already says the report can be deleted on
+   request, so do not repeat it.
 
    If you restate any of the report's numbers in your own words, keep
    the kinds apart and label each: counts the CLI found **in the code
