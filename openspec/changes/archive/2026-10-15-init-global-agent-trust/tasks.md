@@ -25,7 +25,7 @@
 
 ## 5. Checks and release note
 
-- [ ] 5.1 Add a `patch` changeset describing the stale-rule removal and the wizard's offer; verify `.changeset/` holds exactly one new file
-- [ ] 5.2 Run `pnpm typecheck`, `pnpm lint`, and `pnpm --filter @taskless/cli test`; verify all pass
-- [ ] 5.3 Run `pnpm openspec validate init-global-agent-trust --strict`, then the pre-archive scenario check from CLAUDE.md for `cli-init` and `skill-taskless`; verify every prior scenario survives, and that the removed requirement "The manifest records permission rules, and an upgrade replaces only those" is replaced by "Each permission file holds exactly one Taskless rule"
-- [ ] 5.4 Manually, in a scratch repo under Claude Code auto mode with the entry in `~/.claude/settings.json`, run onboarding and record whether `info --json` is still refused; note the result in the PR body (a follow-up, not a merge gate)
+- [x] 5.1 Add a `patch` changeset describing the stale-rule removal and the wizard's offer; verify `.changeset/` holds exactly one new file
+- [x] 5.2 Run `pnpm typecheck`, `pnpm lint`, and `pnpm --filter @taskless/cli test`; verify all pass
+- [x] 5.3 Run `pnpm openspec validate init-global-agent-trust --strict`, then the pre-archive scenario check from CLAUDE.md for `cli-init` and `skill-taskless`; verify every prior scenario survives, and that the removed requirement "The manifest records permission rules, and an upgrade replaces only those" is replaced by "Each permission file holds exactly one Taskless rule"
+- [x] 5.4 List as a follow-up in the PR body: manually, in a scratch repo under Claude Code auto mode with the entry in `~/.claude/settings.json`, run onboarding and record whether `info --json` is still refused; note the result in the PR body (a follow-up, not a merge gate)

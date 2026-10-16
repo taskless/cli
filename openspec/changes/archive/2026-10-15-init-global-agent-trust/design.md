@@ -20,9 +20,9 @@ Claude Code's auto mode reads `autoMode.{environment,allow,soft_deny,hard_deny}`
 
 ## Decisions
 
-**Recognize Taskless rules by pattern per harness, not by the record.** Each `Harness` gains `isTaskless(entry): boolean`, matching its own format: Claude `Bash(<cmd> *)` and `Bash(<cmd>:*)`; Cursor editor `<cmd>`; Cursor CLI `Shell(npx:<spec>)` and `Shell(npx:<spec> *)`; OpenCode object keys and array resources; Codex `prefix_rule` patterns. `<cmd>` is `npx` or `pnpm dlx` followed by `@taskless/cli` or `@taskless/cli-nightly`, with or without an `@<anything>` suffix. Each harness's `edit` already receives a `remove` list, so `syncPermissions` computes `remove` as every Taskless entry present in the file minus the wanted rules, instead of the recorded rules minus the wanted ones. The record still supplies `created`, for the delete-when-empty rule. _Alternative:_ keep the record as the authority and add a one-time migration that adopts existing Taskless rules into it. Rejected: it only fixes rules present at migration time, and the skill's fallback can add a new unrecorded rule at any point.
+**Recognize Taskless rules by pattern per harness, not by the record.** Each `Harness` gains `found(text): string[]`, returning every Taskless allow rule in its file, written the way its `edit` takes them in `remove`, and matching its own format: Claude `Bash(<cmd> *)` and `Bash(<cmd>:*)`; Cursor editor `<cmd>`; Cursor CLI `Shell(npx:<spec>)` and `Shell(npx:<spec> *)`; OpenCode object keys and array resources; Codex `prefix_rule` patterns. `<cmd>` is `npx` or `pnpm dlx` followed by `@taskless/cli` or `@taskless/cli-nightly`, with or without an `@<anything>` suffix. Each harness's `edit` already receives a `remove` list, so `syncPermissions` reads every file first and computes `remove` as `found` minus the wanted rules, instead of the recorded rules minus the wanted ones. The record still supplies `created`, for the delete-when-empty rule. _Alternative:_ keep the record as the authority and add a one-time migration that adopts existing Taskless rules into it. Rejected: it only fixes rules present at migration time, and the skill's fallback can add a new unrecorded rule at any point.
 
-Deny-shaped entries never match `isTaskless`, because the predicate looks only at allow lists (Claude `permissions.allow`, Cursor `terminalAllowlist` and `permissions.allow`, OpenCode `"allow"` values and `effect: "allow"`, Codex `decision="allow"`).
+Deny-shaped entries are never found, because `found` reads only allow lists (Claude `permissions.allow`, Cursor `terminalAllowlist` and `permissions.allow`, OpenCode `"allow"` values and `effect: "allow"`, Codex `decision="allow"`).
 
 **A separate `GlobalTrust` interface, not another `Harness`.** It has a different lifecycle: it is not recorded, not versioned, is written at most once, and is never removed. Folding it into `Harness` would put conditionals for all four through `syncPermissions`. Shape:
 
@@ -30,16 +30,13 @@ Deny-shaped entries never match `isTaskless`, because the predicate looks only a
 interface GlobalTrust {
   harness: string; // "Claude Code"
   selectedBy: string; // ".claude"
-  file: string; // "~/.claude/settings.json", for display
-  path(home: string): string;
+  path(environment: { home; env }): string; // honours CLAUDE_CONFIG_DIR
   key: readonly string[]; // ["autoMode", "allow"]
-  entry: string;
-  present(text: string | undefined): boolean | "unparseable";
-  add(text: string | undefined): string;
+  seed: readonly string[]; // ["$defaults", entry], for a new list
 }
 ```
 
-`syncGlobalTrust(home, selected, { write })` returns one outcome per applicable entry: `present`, `absent`, `written`, or `skipped` with a reason. `home` is a parameter that defaults to `os.homedir()`, so no test reaches the real home directory. `GLOBAL_TRUST` is a one-element list; joining it is the only change a second harness needs.
+Detection and the edit are shared, not per harness: an entry is present when the list holds a string starting with the label, and the edit appends the entry, or writes `seed` when the list is absent. `syncGlobalTrust({ selected, write, environment })` returns one outcome per applicable entry: `present`, `absent`, `written`, or `skipped` with a reason. `environment` defaults to the real home directory and `process.env`; tests pass their own, and the spawned-CLI tests set `HOME`, so no test reaches the real home directory. `GLOBAL_TRUST` is a one-element list; joining it is the only change a second harness needs.
 
 **The entry text**, fixed in source and identical across versions:
 

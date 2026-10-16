@@ -162,13 +162,16 @@ The skill body's topic table SHALL map a request to make, publish, regenerate, o
 
 The skill body SHALL instruct the agent to run `%(TASKLESS_CLI)s agent ok` once per session, before any other Taskless command, and to proceed only once it prints its confirmation line. Once it does, the agent SHALL go straight to the user's request, without surveying the install or offering a menu of topics. On an install whose harness permission rule is in place the preflight passes without a prompt; the guidance below is the fallback for when it does not.
 
-When the preflight is blocked by the harness or the user, the body SHALL instruct the agent to:
+When the preflight, or any later Taskless command, is blocked by the harness or the user, the body SHALL instruct the agent to:
 
-1. Stop before doing any Taskless work, and not attempt to work around the block.
+1. Stop before doing any further Taskless work, and not retry the command or attempt to work around the block.
 2. Send one message that names the exact command, and says it downloads and runs a package from npm.
-3. Offer the user three ways forward: the agent adds an allow rule for exactly the invocation the skill names to the agent's permission settings, and if the harness blocks that edit too, gives the user the change to make themselves; the user approves it through their agent's permissions command (in Claude Code, `/permissions` with the rule `Bash(<invocation>:*)`); or the user approves every Taskless command manually, in chat, as the agent runs it.
-4. Never propose an allow rule that widens the invocation, such as a wildcard over the package name or its version. Where the harness's allowlist cannot scope to the one invocation, for example one that only allows a whole tool, offer per-command approval in chat instead of a rule.
-5. Not ask in that message what the user wants Taskless to do. Their request stands, and the agent carries it out once the command is unblocked.
+3. When the refusal came from the agent's own safety classifier rather than a missing permission (in Claude Code, a denial by the auto mode classifier), say that an allow rule cannot clear it, and give the user the global trust entry, inline, with the file and key to add it under (in Claude Code, top-level `autoMode.allow` in `~/.claude/settings.json`, after `"$defaults"`). The agent SHALL NOT write that entry itself. It SHALL also offer per-command approval in chat, and leaving the classifier's mode, as the alternatives.
+4. Otherwise, offer the user three ways forward: the agent adds an allow rule for exactly the invocation the skill names to the agent's permission settings, and if the harness blocks that edit too, gives the user the change to make themselves; the user approves it through their agent's permissions command (in Claude Code, `/permissions` with the rule `Bash(<invocation>:*)`); or the user approves every Taskless command manually, in chat, as the agent runs it.
+5. Never propose an allow rule that widens the invocation, such as a wildcard over the package name or its version. Where the harness's allowlist cannot scope to the one invocation, for example one that only allows a whole tool, offer per-command approval in chat instead of a rule.
+6. Not ask in that message what the user wants Taskless to do. Their request stands, and the agent carries it out once the command is unblocked.
+
+The global trust entry and these instructions SHALL be written in the skill body itself, not fetched from an `agent <topic>` recipe, because a recipe is fetched through the same command that is blocked.
 
 #### Scenario: Skill body runs the preflight first
 
@@ -185,6 +188,20 @@ When the preflight is blocked by the harness or the user, the body SHALL instruc
 - **AND** SHALL forbid an allow rule that wildcards the package name or version
 - **AND** SHALL offer only per-command approval where the harness cannot allow the one invocation without allowing a whole tool
 - **AND** SHALL forbid asking what the user wants Taskless to do in that message
+
+#### Scenario: Skill body handles a classifier refusal
+
+- **WHEN** the skill body is read from source
+- **THEN** it SHALL instruct the agent, when a Taskless command is refused by the agent's safety classifier, to stop without retrying
+- **AND** SHALL contain the global trust entry text inline, beginning `Taskless CLI:`
+- **AND** SHALL name `~/.claude/settings.json` and `autoMode.allow` for Claude Code
+- **AND** SHALL NOT offer a project allow rule for that refusal
+- **AND** SHALL forbid the agent from writing the entry itself
+
+#### Scenario: The fallback does not depend on a recipe
+
+- **WHEN** the skill body is read from source
+- **THEN** its blocked-command guidance SHALL NOT instruct the agent to run an `agent <topic>` command to learn how to unblock
 
 ### Requirement: A request that names no task routes to onboarding
 
