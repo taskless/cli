@@ -55,17 +55,18 @@ describe("locationChoices", () => {
       "OpenCode, Codex, and other .agents harnesses (.agents/)"
     );
     expect(named(["Crush"])).toBe(
-      "Crush, and other .agents harnesses (.agents/)"
+      "Crush and other .agents harnesses (.agents/)"
     );
   });
 
-  // On a fresh machine nothing is detected, and a Codex user scanning for
-  // "Codex" still has to find it.
-  it("names every known .agents harness when none is detected", async () => {
-    const { agentsRowLabel } = await import("../src/wizard/steps/locations");
-    expect(agentsRowLabel([])).toBe(
-      "OpenCode, Codex, Gemini CLI, Crush, and other .agents harnesses"
-    );
+  // Naming every harness that reads `.agents/skills` grows with the catalog,
+  // so an undetected harness is never named.
+  it("names no harness on the .agents/ row when none is detected", async () => {
+    const { locationChoices } = await import("../src/wizard/steps/locations");
+    const label = locationChoices([]).options.find(
+      (o) => o.value === ".agents"
+    )?.label;
+    expect(label).toBe("Agent Skills (.agents/)");
   });
 
   // OpenCode reads `.agents/skills`, so it is named, but it already gets
@@ -77,7 +78,7 @@ describe("locationChoices", () => {
 
     const { options, initialValues } = locationChoices([opencode]);
     const agents = options.find((o) => o.value === ".agents");
-    expect(agents?.label).toMatch(/^OpenCode, and other/);
+    expect(agents?.label).toMatch(/^OpenCode and other/);
     expect(agents?.hint).toBe("not detected");
     expect(initialValues).toEqual([".opencode"]);
   });
