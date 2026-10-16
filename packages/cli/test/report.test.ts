@@ -76,6 +76,7 @@ function factsFor(
     rules: ids.map((id) => ({
       id,
       title: `Rule ${id}`,
+      explain: "Holding it keeps review on design instead of style.",
       surfaced: { prs: 6, reviewComments: 9 },
     })),
     ...overrides,
@@ -168,6 +169,55 @@ describe("assembleReport", () => {
     });
   });
 
+  it("carries every rule's explanation, on every tier", () => {
+    const facts = factsFor(["a"], {
+      legacy: ["l1", "l2"].map((id) => ({
+        id,
+        title: `Legacy ${id}`,
+        explain: `Why ${id} matters.`,
+        surfaced: { prs: 1, reviewComments: 1 },
+        tool: "eslint",
+        language: "TypeScript",
+      })),
+      cloud: [
+        {
+          id: "c1",
+          title: "Cloud c1",
+          explain: "Why c1 matters.",
+          surfaced: { prs: 1, reviewComments: 1 },
+          language: "TypeScript",
+          estimatedViolations: 2,
+        },
+      ],
+    });
+    const report = assembleReport(draftOf([localRule("a")]), facts);
+    expect(report.rules.map((rule) => [rule.id, rule.explain])).toEqual([
+      ["a", "Holding it keeps review on design instead of style."],
+      ["l1", "Why l1 matters."],
+      ["l2", "Why l2 matters."],
+      ["c1", "Why c1 matters."],
+    ]);
+    expect(reportSchemaIssues(report)).toEqual([]);
+  });
+
+  it.each([
+    ["missing", undefined],
+    ["empty", ""],
+    ["blank", "   "],
+    ["over 1000 characters", "x".repeat(1001)],
+  ])("refuses a rule whose explanation is %s", (_case, explain) => {
+    const facts = {
+      ...factsFor(three),
+      rules: three.map((id) => ({
+        id,
+        title: `Rule ${id}`,
+        ...(explain === undefined ? {} : { explain }),
+        surfaced: { prs: 1, reviewComments: 1 },
+      })),
+    };
+    expect(reportFactsSchema.safeParse(facts).success).toBe(false);
+  });
+
   it("carries the draft's measured findings on every written rule", () => {
     const report = assembleReport(
       draftOf(
@@ -217,6 +267,7 @@ describe("assembleReport", () => {
           {
             id: "eslint-rule",
             title: "No default exports",
+            explain: "Holding it keeps review on design instead of style.",
             surfaced: { prs: 1, reviewComments: 1 },
             tool: "eslint",
             language: "TypeScript",
@@ -245,6 +296,7 @@ describe("assembleReport", () => {
       rules: three.map((id) => ({
         id,
         title: `Rule ${id}`,
+        explain: "Holding it keeps review on design instead of style.",
         surfaced: { prs: 1, reviewComments: 1 },
         ...extra,
       })),
@@ -265,6 +317,7 @@ describe("assembleReport", () => {
       cloud: ["x", "y", "z", "w"].map((id) => ({
         id,
         title: `Cloud ${id}`,
+        explain: "Holding it keeps review on design instead of style.",
         surfaced: { prs: 1, reviewComments: 1 },
         language: "TypeScript",
         estimatedViolations: 5,
@@ -285,6 +338,7 @@ describe("assembleReport", () => {
       legacy: ["l1", "l2"].map((id) => ({
         id,
         title: `Legacy ${id}`,
+        explain: "Holding it keeps review on design instead of style.",
         surfaced: { prs: 1, reviewComments: 1 },
         tool: "eslint",
         language: "TypeScript",
@@ -314,6 +368,7 @@ describe("assembleReport", () => {
     const candidate = {
       id: "tenant-check",
       title: "Routes call requireTenant()",
+      explain: "Holding it keeps review on design instead of style.",
       surfaced: { prs: 0, reviewComments: 0 },
       language: "TypeScript",
     };
@@ -335,6 +390,7 @@ describe("assembleReport", () => {
         {
           id: "tenant-check",
           title: "Routes call requireTenant()",
+          explain: "Holding it keeps review on design instead of style.",
           surfaced: { prs: 3, reviewComments: 4 },
           language: "TypeScript",
           estimatedViolations: 12,
@@ -414,6 +470,7 @@ describe("assembleReport", () => {
     const legacy = {
       id: "l1",
       title: "Legacy l1",
+      explain: "Holding it keeps review on design instead of style.",
       surfaced: { prs: 1, reviewComments: 1 },
       tool: "eslint",
       language: "TypeScript",
@@ -421,6 +478,7 @@ describe("assembleReport", () => {
     const cloud = {
       id: "c1",
       title: "Cloud c1",
+      explain: "Holding it keeps review on design instead of style.",
       surfaced: { prs: 1, reviewComments: 1 },
       language: "TypeScript",
       estimatedViolations: 3,
@@ -437,6 +495,20 @@ describe("assembleReport", () => {
       [
         "cloud[c1].language",
         { legacy: [], cloud: [{ ...cloud, language: "jane@acme.io" }] },
+      ],
+      [
+        "legacy[l1].explain",
+        {
+          legacy: [{ ...legacy, explain: "Ask jane@acme.io why it matters." }],
+          cloud: [],
+        },
+      ],
+      [
+        "cloud[c1].explain",
+        {
+          legacy: [],
+          cloud: [{ ...cloud, explain: "It broke api.acme.io last spring." }],
+        },
       ],
       [
         "cloud[api.acme.io].id",
@@ -878,7 +950,7 @@ describe("taskless report", () => {
   it("counts only review comments, and asks for a candidate estimate, not pricing", async () => {
     const { stdout, exitCode } = await run(["agent", "report"]);
     expect(exitCode).toBe(0);
-    expect(stdout).toMatch(/^# Topic: report {5}\(CLI v.+ \/ topic v5\)/m);
+    expect(stdout).toMatch(/^# Topic: report {5}\(CLI v.+ \/ topic v6\)/m);
     const flat = stdout.replaceAll(/\s+/g, " ");
     const counting = flat.slice(flat.indexOf("## Counting surfaced"));
     expect(counting).toContain("**Only review comments count.**");

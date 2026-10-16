@@ -218,7 +218,15 @@
             "type": "string",
             "minLength": 1,
             "maxLength": 200,
+            "pattern": "\\S",
             "description": "What the rule enforces, in one line, scrubbed by the CLI."
+          },
+          "explain": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 1000,
+            "pattern": "\\S",
+            "description": "Optional plain prose from the agent on how the rule improves this codebase: what goes wrong without it, and what holding it buys. Scrubbed by the CLI, like `title`."
           },
           "tier": {
             "type": "string",
@@ -428,7 +436,7 @@
             "text"
           ],
           "additionalProperties": false,
-          "description": "Values the CLI scrubbed from rule titles and examples, by kind."
+          "description": "Values the CLI scrubbed from rule titles, explanations and examples, by kind."
         },
         "withheldFixtures": {
           "type": "integer",
@@ -490,6 +498,7 @@
         {
           "id": "use-api-client",
           "title": "Call the API through the shared apiClient",
+          "explain": "Direct fetch calls skip the retry, auth refresh and error mapping the client adds, so each one fails differently when the session expires.",
           "tier": "cli",
           "engine": "sg",
           "language": "TypeScript",

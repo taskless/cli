@@ -1,4 +1,4 @@
-# Topic: report     (CLI v%(CLI_VERSION)s / topic v5)
+# Topic: report     (CLI v%(CLI_VERSION)s / topic v6)
 
 ## Goal
 Publish a Taskless report: an unlisted page on tskl.es that shows what
@@ -49,15 +49,17 @@ later and deletes one on request.
      A zero is honest only for a source you read and found empty, not
      for one you did not read.
    - `rules`: one entry per rule the draft listed, with a title a
-     reader understands and its `surfaced` counts, counted as described
-     under `## Counting surfaced`.
+     reader understands, an `explain` written as described under
+     `## Explaining a rule`, and its `surfaced` counts, counted as
+     described under `## Counting surfaced`.
    - `legacy`: rules you wrote into the repository's own linter, which
-     the CLI cannot see.
+     the CLI cannot see. Each one needs an `explain` too.
    - `cloud`: runtime-shaped candidates you judged better solved by a
      runtime rule and did not author. Count their `surfaced` the same
-     way. Give each one `estimatedViolations`: how many instances of
-     its pattern you estimate are in the code today, made as described
-     under `## Estimating violations`. No rule has run, so this is an
+     way, and give each one an `explain`. Give each one
+     `estimatedViolations`: how many instances of its pattern you
+     estimate are in the code today, made as described under
+     `## Estimating violations`. No rule has run, so this is an
      estimate, and it is published as one.
    - `redaction`: what you removed yourself, by kind, and any fixture
      you choose not to publish. Names of people and customers are
@@ -110,6 +112,25 @@ later and deletes one on request.
    `.taskless/reports/`. The record is removed only once tskl.es
    confirms the deletion. Tell the user cached copies of the page may
    be served for up to a day afterwards.
+
+## Explaining a rule
+
+Every rule in the facts, written or candidate, carries an `explain`:
+your take on why the rule is worth holding in **this** codebase, in
+one or two sentences. It is published beside the title, so a reader
+who never saw the session understands what the rule protects.
+
+- Say what goes wrong without the rule, and what holding it buys.
+  "Direct fetch calls skip the retry and auth refresh the API client
+  adds, so each one fails differently when a session expires." says
+  both.
+- Ground it in what you saw: the review comments, the code, the bug
+  the pattern caused. Do not restate the title.
+- No counts. The report already carries `violations`, `surfaced` and
+  `estimatedViolations`, labelled apart; a number in prose is a third
+  copy that can contradict them.
+- No names, hosts, or contact details. The CLI screens `explain` like
+  `title` and refuses the publish if its patterns match.
 
 ## Counting surfaced
 
@@ -175,7 +196,7 @@ The `--from` JSON file conforms to:
 |--------------------------|-----------------------------------------------------------------|---------------------------------------------------------------------------|
 | `REPORT_INSUFFICIENT`    | fewer than three working Taskless rules                         | write the missing rules (step 3), then retry                              |
 | `REPORT_INVALID`         | the facts file, or the assembled report, failed validation      | the message names each field; fix the facts file and retry                |
-| `REPORT_REDACTION`       | a title or label you wrote looks like it holds a secret or contact detail | rewrite the field the message names without it                    |
+| `REPORT_REDACTION`       | a title, explanation, or label you wrote looks like it holds a secret or contact detail | rewrite the field the message names without it      |
 | `REPORT_TOO_LARGE`       | the report is over tskl.es's size limit                         | withhold long fixtures or drop cloud candidates, then retry               |
 | `REPORT_RATE_LIMITED`    | tskl.es is limiting publishes from this address                 | wait a minute, then retry                                                 |
 | `REPORT_PUBLISH_FAILED`  | tskl.es could not store the report; nothing was published       | retry later                                                               |

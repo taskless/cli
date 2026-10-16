@@ -108,6 +108,7 @@ describe("report telemetry", () => {
         rules: ["alpha", "beta", "gamma"].map((id) => ({
           id,
           title: TITLE,
+          explain: "Holding it keeps review on design instead of style.",
           surfaced: { prs: 1, reviewComments: 1 },
         })),
       }),

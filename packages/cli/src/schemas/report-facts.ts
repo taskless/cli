@@ -43,8 +43,19 @@ const outcome = {
     .string()
     .min(1)
     .max(200)
+    .regex(/\S/)
     .describe(
       "What the rule enforces, in a phrase a reader of the report understands"
+    ),
+  // Optional in ReportV1, required here: a report whose rules do not say why
+  // they matter is a list of titles.
+  explain: z
+    .string()
+    .min(1)
+    .max(1000)
+    .regex(/\S/)
+    .describe(
+      "Why this rule is worth holding in this codebase, in one or two sentences: what goes wrong without it, and what holding it buys"
     ),
   surfaced,
 };
