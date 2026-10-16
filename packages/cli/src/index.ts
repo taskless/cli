@@ -6,7 +6,6 @@ import { z } from "zod";
 import { createAgentCommand } from "./commands/agent";
 import { authCommand } from "./commands/auth";
 import { checkCommand } from "./commands/check";
-import { demoCommand } from "./commands/demo";
 import { detectCommand } from "./commands/detect";
 import { feedbackCommand } from "./commands/feedback";
 import { initCommand, updateCommand } from "./commands/init";
@@ -53,7 +52,6 @@ const subCommands = {
   info: infoCommand,
   detect: detectCommand,
   check: checkCommand,
-  demo: demoCommand,
   feedback: feedbackCommand,
   auth: authCommand,
   onboard: onboardCommand,

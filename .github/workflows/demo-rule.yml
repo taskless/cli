@@ -14,13 +14,13 @@
 # this check to the protection rule. That is the same reason the house-style
 # scan lives inside `validate.yml` rather than beside it.
 #
-# **It is not the only place `check.ts` runs in CI.** `test/demo-command.test.ts`
-# executes it too, under `Validate`. What this job adds is a different
-# assertion: it copies the bytes `taskless demo` would write — the manifest's
-# own written-path list, read straight off `assets/demo-*/` — into one bare
-# project, and runs the engines over them with no command and no bundle in the
-# way. So a break in a shipped asset tree is attributed to that tree, rather
-# than to the command that writes it or the imports that embed it.
+# **It is the one place these rules' fixtures run.** The rules are the
+# conformance corpus published as `@taskless/cli/reference.json`, and
+# `test/reference.test.ts` only proves that payload matches the asset trees.
+# This job proves the trees themselves hold: it copies the manifest's own
+# written-path list, read straight off `assets/demo-*/`, into one bare project
+# and runs the engines over it. A corpus rule that fails its own cases would
+# hand another team a broken oracle.
 name: Demo rules
 
 on:
@@ -84,9 +84,9 @@ jobs:
           pnpm --filter @taskless/cli demo:manifests /tmp/manifests.txt
           cat /tmp/manifests.txt
           # The trailing field is the manifest's own written-path list, so this
-          # stages exactly what `taskless demo` writes. A `cp -R` of the asset
-          # directory would also land `prompt.md`, which the command never
-          # writes, and this job would be judging a tree no user ever has.
+          # stages exactly the rule and its cases. A `cp -R` of the asset
+          # directory would also land `prompt.md`, the generation request, and
+          # this job would be judging a tree no generator is asked to produce.
           while read -r engine ruleId assetDir paths; do
             [ -z "$engine" ] && continue
             RULE="$PROJECT/.taskless/rules/$engine/$ruleId"

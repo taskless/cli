@@ -5,50 +5,24 @@
  * itself, and the held-out cases — separately, so another team can run their
  * rule against our cases and ours against theirs.
  *
- * Reads the asset files directly rather than importing `rule.ts`, whose `?raw`
- * specifiers only resolve under a vite transform. Both read `DEMO_MANIFESTS`,
- * and `test/reference.test.ts` asserts they agree.
+ * `test/reference.test.ts` builds the payload through the same reader and
+ * asserts the committed file matches it.
  *
  * Run: pnpm --filter @taskless/cli reference
  */
 
-import { readFile, writeFile } from "node:fs/promises";
+import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
 import { buildReference } from "../src/rules/reference";
-import { DEMO_MANIFESTS } from "../src/rules/demo/manifest";
+import { readReferenceInputs } from "../src/rules/demo/manifest";
 
-const packageRoot = join(import.meta.dirname, "..");
+const assetsRoot = join(import.meta.dirname, "..", "assets");
 
-async function readAll(assetDirectory: string, paths: readonly string[]) {
-  return Promise.all(
-    paths.map(async (path) => ({
-      path,
-      content: await readFile(
-        join(packageRoot, "assets", assetDirectory, path),
-        "utf8"
-      ),
-    }))
-  );
-}
-
-const rules = await Promise.all(
-  DEMO_MANIFESTS.map(async (manifest) => ({
-    engine: manifest.engine,
-    ruleId: manifest.ruleId,
-    prompt: await readFile(
-      join(packageRoot, "assets", manifest.assetDirectory, manifest.promptPath),
-      "utf8"
-    ),
-    ruleFiles: await readAll(manifest.assetDirectory, manifest.rulePaths),
-    testFiles: await readAll(manifest.assetDirectory, manifest.testPaths),
-  }))
-);
-
-const target = join(packageRoot, "assets", "reference.json");
+const target = join(assetsRoot, "reference.json");
 await writeFile(
   target,
-  `${JSON.stringify(buildReference(rules), undefined, 2)}\n`,
+  `${JSON.stringify(buildReference(await readReferenceInputs(assetsRoot)), undefined, 2)}\n`,
   "utf8"
 );
 console.log(`Wrote ${target}`);
