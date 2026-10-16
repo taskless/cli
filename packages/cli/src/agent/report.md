@@ -46,7 +46,8 @@ later and deletes one on request.
    - `history`: what that window held. Merged pull or merge requests,
      review comments, the ones an agent helped write, and how many
      recurring review patterns were rule-shaped versus judgment calls.
-     Zeros are honest when there was nothing to mine.
+     A zero is honest only for a source you read and found empty, not
+     for one you did not read.
    - `rules`: one entry per rule the draft listed, with a title a
      reader understands and its `surfaced` counts, counted as described
      under `## Counting surfaced`.
@@ -55,10 +56,9 @@ later and deletes one on request.
    - `cloud`: runtime-shaped candidates you judged better solved by a
      runtime rule and did not author. Count their `surfaced` the same
      way. Give each one `estimatedViolations`: how many instances of
-     its pattern you estimate are in the code today, from what you saw
-     while mining. No rule has run, so this is an estimate, and it is
-     published as one. Zero is honest if you proposed the candidate
-     from review alone and saw no instance in the code.
+     its pattern you estimate are in the code today, made as described
+     under `## Estimating violations`. No rule has run, so this is an
+     estimate, and it is published as one.
    - `redaction`: what you removed yourself, by kind, and any fixture
      you choose not to publish. Names of people and customers are
      yours to judge; the CLI's patterns cannot see them.
@@ -134,6 +134,32 @@ sessions compare:
   date, or a finding in the code today is not a review comment,
   however well it shows what the rule is worth. The facts have no
   field for it; leave it out rather than count it as review.
+
+## Estimating violations
+
+A cloud candidate's `estimatedViolations` answers one question: how
+likely is this pattern happening in the code now? Zero is a fine
+answer, but only after you have looked. Not having searched is not
+evidence that the code is clean. Make the estimate in good faith, and
+quickly:
+
+- **Spend a handful of searches, not an audit.** Do not read whole
+  files or start other agents for it.
+- **Start from the real shape.** If a commit fixed the pattern, look
+  at what it changed and search for that, not for a form you guessed.
+  A pattern fixed more than once is likely to remain somewhere.
+- **Search for the problem, not the protection.** A search for the
+  helper that escapes, or the guard that checks, finds the places
+  already right and says nothing about the places still missing it.
+- **Know which kind of pattern it is.** A syntactic one (a call, an
+  import, a setting) can be searched for directly, and the count is
+  close to exact. A data-flow one (input reaching an output
+  unprotected) cannot: find where the data comes out, then the places
+  that lack the protection. Those are suspects, not confirmed
+  instances.
+- **Check two or three hits by hand,** and scale the count by how
+  many held up.
+- **Write the low end of your range.**
 
 ## Facts schema
 
