@@ -12,4 +12,4 @@
 
 - [x] 3.1 Add the `report-without-review-history` changeset
 - [x] 3.2 Run `pnpm typecheck` and `pnpm lint`
-- [ ] 3.3 Archive this change
+- [x] 3.3 Archive this change
