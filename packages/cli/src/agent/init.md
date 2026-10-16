@@ -83,8 +83,10 @@ first step, not the whole job.
    or commit on your own; the git operations are theirs.
 
 3. **Offer to bump every stale pin.** For each `pinnedCli` entry, offer
-   the user the update to the installed CLI, along with reinstalling
-   dependencies. When the installed CLI is a nightly and the pin names
+   the user the update to the installed CLI. A pin in a `package.json`
+   dependency field also needs dependencies reinstalled; a script, CI, or
+   hook pin is a launcher line, and editing it is the whole fix. When the
+   installed CLI is a nightly and the pin names
    `@taskless/cli`, or the reverse, the move switches package, since a
    nightly version only exists on the nightly package. When `migrated`
    is present with `from` above `0`, say plainly that CI breaks without

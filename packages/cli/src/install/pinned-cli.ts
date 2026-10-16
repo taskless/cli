@@ -472,13 +472,22 @@ export function getPinnedCliNotice(
     options.migrated !== undefined && options.migrated.from > 0
       ? options.migrated
       : undefined;
+  // Only a dependency pin has anything to reinstall. A script, CI, or hook pin
+  // is a launcher line, and editing it is the whole fix.
+  const reinstall = pins.some((pin) =>
+    (DEPENDENCY_FIELDS as readonly string[]).includes(pin.location)
+  );
   const consequence =
     upgraded === undefined
       ? `Anything that runs these pins (a script, CI, a git hook) runs a CLI older than this project expects and will likely fail. ` +
-        `Offer to update them as shown as part of this change, then reinstall dependencies.`
+        (reinstall
+          ? `Offer to update them as shown as part of this change, then reinstall dependencies.`
+          : `Offer to update them as shown as part of this change.`)
       : `This upgrade migrated .taskless/ from schema version ${String(upgraded.from)} to ${String(upgraded.to)}, and a CLI that predates that schema refuses the project (SCAFFOLD_VERSION_MISMATCH). ` +
         `CI, scripts, and git hooks that run these pins will break on the push that carries the migrated files. ` +
-        `Offer to update them as shown and reinstall dependencies, in the same commit as .taskless/.`;
+        (reinstall
+          ? `Offer to update them as shown and reinstall dependencies, in the same commit as .taskless/.`
+          : `Offer to update them as shown, in the same commit as .taskless/.`);
   return renderNoticeBox("UPDATE PINNED TASKLESS VERSIONS", [
     `This project pins a Taskless CLI older than ${cliVersion}, the version that just ran here:`,
     { items: pins.map((pin) => describePin(pin, cliVersion)) },

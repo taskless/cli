@@ -588,6 +588,24 @@ describe("getPinnedCliNotice", () => {
     expect(notice).not.toContain("likely");
   });
 
+  it("asks for a reinstall only when a dependency pin moves", () => {
+    expect(pinnedNotice([releasePin], "0.11.2")).toContain(
+      "reinstall dependencies"
+    );
+    // A CI or hook pin is a launcher line: there is nothing to reinstall.
+    const ciPin: PinnedCli = {
+      manifest: ".github/workflows/ci.yml",
+      location: "line 12",
+      name: "@taskless/cli",
+      spec: "0.10.2",
+      installed: null,
+    };
+    expect(pinnedNotice([ciPin], "0.11.2")).not.toContain("reinstall");
+    expect(
+      pinnedNotice([ciPin], "0.11.2", { migrated: { from: 5, to: 9 } })
+    ).not.toContain("reinstall");
+  });
+
   it("does not call a fresh install an upgrade", () => {
     // A fresh `init` creates `.taskless/` by migrating from schema 0.
     const notice = pinnedNotice([releasePin], "0.11.2", {
