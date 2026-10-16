@@ -190,9 +190,17 @@ describe("rendering", () => {
 
   it("warns with the file, key, and entry", async () => {
     const outcomes = await sync(false);
-    const [warning] = globalTrustWarnings(outcomes, home);
+    const [warning] = globalTrustWarnings(
+      outcomes,
+      "npx @taskless/cli@1.2.3",
+      home
+    );
 
     expect(warning).toContain("~/.claude/settings.json");
+    // `init` never asks; the bare invocation is what opens the wizard.
+    expect(warning).toContain(
+      "run `npx @taskless/cli@1.2.3` with no arguments in a terminal"
+    );
     expect(warning).toContain("autoMode.allow");
     expect(warning).toContain(GLOBAL_TRUST_ENTRY);
   });
@@ -202,6 +210,8 @@ describe("rendering", () => {
     const outcomes = await sync(false);
 
     expect(describeGlobalTrust(outcomes, home)).toEqual([]);
-    expect(globalTrustWarnings(outcomes, home)).toEqual([]);
+    expect(globalTrustWarnings(outcomes, "npx @taskless/cli", home)).toEqual(
+      []
+    );
   });
 });

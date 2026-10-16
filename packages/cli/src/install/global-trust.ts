@@ -227,9 +227,13 @@ export function describeGlobalTrust(
   return lines;
 }
 
-/** A warning for each harness still missing its entry. */
+/**
+ * A warning for each harness still missing its entry. `installer` is the
+ * command a person runs, with no arguments, to get the wizard that offers it.
+ */
 export function globalTrustWarnings(
   outcomes: readonly GlobalTrustOutcome[],
+  installer: string,
   home: string = homedir()
 ): string[] {
   return outcomes
@@ -243,6 +247,6 @@ export function globalTrustWarnings(
         (outcome.state === "skipped"
           ? ` (left alone: ${outcome.skipped})`
           : "") +
-        `, after "$defaults":\n  ${GLOBAL_TRUST_ENTRY}`
+        `, after "$defaults", or run \`${installer}\` with no arguments in a terminal, which offers to add it:\n  ${GLOBAL_TRUST_ENTRY}`
     );
 }

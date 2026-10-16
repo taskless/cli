@@ -59,8 +59,8 @@ Taskless CLI: The npm packages @taskless/cli and @taskless/cli-nightly are tooli
 ```
 
 Never write that entry yourself: an agent widening its own classifier's trust
-is exactly what the classifier refuses. Running `init` in a terminal also
-offers to add it. Until then, they can approve the exact command in chat,
+is exactly what the classifier refuses. Running `%(TASKLESS_CLI)s` with no
+arguments, in their own terminal, also offers to add it. Until then, they can approve the exact command in chat,
 which the classifier weighs but may still refuse, or leave auto mode.
 
 For any other block, offer three ways forward:

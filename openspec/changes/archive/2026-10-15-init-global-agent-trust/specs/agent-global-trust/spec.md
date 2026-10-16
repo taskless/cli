@@ -57,7 +57,7 @@ When the entry is absent, the wizard SHALL show the proposed edit in its summary
 
 When written, the edit SHALL add the entry to the list, keeping every other key and entry in the file. When the file or the `allow` list does not exist, the written list SHALL be `["$defaults", <entry>]`, so the harness's shipped exceptions stay in force. When the list exists without `"$defaults"`, `init` SHALL NOT add it, since the user chose to replace the defaults. When the file does not parse, `init` SHALL leave it unchanged and report it as skipped.
 
-Nothing about the entry SHALL be recorded in the project manifest.
+Nothing about the entry SHALL be recorded in the project manifest, and a declined offer SHALL NOT be remembered anywhere: every wizard run that does not find the entry SHALL offer it again.
 
 #### Scenario: The wizard offers the entry
 
@@ -70,6 +70,11 @@ Nothing about the entry SHALL be recorded in the project manifest.
 - **WHEN** the user declines the global entry and confirms the rest
 - **THEN** `~/.claude/settings.json` SHALL be byte-identical afterwards
 - **AND** the project install SHALL complete
+
+#### Scenario: A declined offer is asked again
+
+- **WHEN** the user declined the entry on an earlier wizard run and it is still absent
+- **THEN** the next wizard run SHALL show and ask for it again
 
 #### Scenario: A new list keeps the defaults
 
@@ -94,12 +99,13 @@ Nothing about the entry SHALL be recorded in the project manifest.
 
 ### Requirement: A missing global entry is warned about
 
-When a harness in the table is installed for and its entry is absent after `init` finishes, `init` SHALL print a warning, in both modes, naming the harness, the file, the top-level key, and the exact entry to add, and saying that without it the harness's classifier may refuse Taskless commands that the project rule allows. Under `--json` the warning SHALL go to stderr, and the envelope SHALL report, per harness in the table, the file and whether the entry is present, was written, or was skipped with a reason.
+When a harness in the table is installed for and its entry is absent after `init` finishes, `init` SHALL print a warning, in both modes, naming the harness, the file, the top-level key, and the exact entry to add, saying that without it the harness's classifier may refuse Taskless commands that the project rule allows, and naming the CLI invocation, run with no arguments in a terminal, as the way to be offered it, since `init` itself never asks. Under `--json` the warning SHALL go to stderr, and the envelope SHALL report, per harness in the table, the file and whether the entry is present, was written, or was skipped with a reason.
 
 #### Scenario: Non-interactive warns
 
 - **WHEN** `init --no-interactive` runs for `.claude/` and the entry is absent
 - **THEN** the output SHALL include a warning naming `~/.claude/settings.json`, `autoMode.allow`, and the entry text
+- **AND** the warning SHALL name the installer invocation, run with no arguments in a terminal, as the way to be offered it
 
 #### Scenario: A declined offer warns
 

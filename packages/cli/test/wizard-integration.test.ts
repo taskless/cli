@@ -277,6 +277,21 @@ describe("runWizard end-to-end", () => {
       expect(await exists(join(cwd, ".claude", "settings.json"))).toBe(true);
     });
 
+    it("asks again on the next run after a decline", async () => {
+      // Nothing records the answer: an absent entry is offered every time.
+      clackResponses.locations = [".claude"];
+      clackResponses.summary = true;
+      clackResponses.globalTrust = false;
+
+      const { runWizard } = await import("../src/wizard");
+      await runWizard({ cwd, globalTrustEnvironment });
+      await runWizard({ cwd, globalTrustEnvironment });
+
+      expect(
+        confirmMessages.filter((message) => message.includes("Taskless entry"))
+      ).toHaveLength(2);
+    });
+
     it("cancelling the project confirm never asks about global trust", async () => {
       clackResponses.locations = [".claude"];
       clackResponses.summary = false;

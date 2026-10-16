@@ -93,7 +93,8 @@ first step, not the whole job.
      write it either. When it is `absent`, tell the user that their
      agent may refuse Taskless commands the project rule allows, and that
      the printed warning names the entry to add themselves, or that
-     running `init` in a terminal offers to add it.
+     running `%(TASKLESS_CLI)s` with no arguments, in their own
+     terminal, offers to add it (`init` itself never asks).
 
    Without `--json`, the same facts print as prose: a per-target summary,
    each permission edit as `Edited <file>` with `ALLOW:` and `REMOVE:`
