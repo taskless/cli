@@ -14,7 +14,7 @@ import { scanProject } from "../rules/scan-project";
 import { resolveRepositoryContext } from "../util/git-remote";
 import { CLI_VERSION } from "../version";
 import { countFindings, type Measurement } from "./findings";
-import type { Findings, ProjectionInputs, TestStatus } from "./types";
+import type { Findings, TestStatus } from "./types";
 
 /**
  * Everything about a report the CLI can establish on its own, without the
@@ -57,7 +57,6 @@ export interface ReportDraft {
   producer: { kind: "cli"; cliVersion: string };
   scope: DraftScope;
   rules: LocalRule[];
-  inputs: Omit<ProjectionInputs, "contextTokens" | "callsPerCatch">;
   /**
    * What the rules find in the code today, across every rule, from the CLI's
    * own scan. Absent when any rule could not be measured; `unmeasured` says why.
@@ -67,19 +66,6 @@ export interface ReportDraft {
   /** The facts the agent must still supply, by facts-file key. */
   missing: string[];
 }
-
-/**
- * The projection inputs the agent does not estimate.
- *
- * The values tskl.es's own example uses. The page exposes every input as a
- * slider, so these are starting points a reader adjusts, not claims.
- */
-export const DEFAULT_PROJECTION_INPUTS: ReportDraft["inputs"] = {
-  cloudComplexity: 3,
-  pricePerMillionTokens: 0.5,
-  minutesPerComment: 15,
-  reviewerHourlyUsd: 110,
-};
 
 /**
  * What a Vale rule's language is reported as. Vale lints prose, not a
@@ -229,12 +215,7 @@ export async function resolveDraftScope(cwd: string): Promise<DraftScope> {
 
 /** The facts-file keys the agent must supply for this draft. */
 function missingFacts(rules: LocalRule[]): string[] {
-  return [
-    "window",
-    "history",
-    "estimates",
-    ...rules.map((rule) => `rules[${rule.id}]`),
-  ];
+  return ["window", "history", ...rules.map((rule) => `rules[${rule.id}]`)];
 }
 
 /**
@@ -290,7 +271,6 @@ export async function buildDraft(cwd: string): Promise<ReportDraft> {
     producer: { kind: "cli", cliVersion: CLI_VERSION },
     scope,
     rules,
-    inputs: DEFAULT_PROJECTION_INPUTS,
     ...(measurement.measured
       ? { findings: measurement.findings }
       : { unmeasured: measurement.reason }),

@@ -6,8 +6,8 @@ import { z } from "zod";
  *
  * NOT A REPORTV1. The CLI builds the report; the agent supplies only what its
  * session taught it. Every object is strict, so a field someone else owns —
- * the `violations` and `files` the CLI measures, the monthly rates tskl.es
- * derives — is refused rather than quietly merged, and the agent hears that it
+ * the `violations` and `files` the CLI measures, the value tskl.es estimates —
+ * is refused rather than quietly merged, and the agent hears that it
  * tried to set something it does not own.
  *
  * Embedded into the `report` recipe as JSON Schema, so the recipe and this
@@ -81,12 +81,9 @@ const cloudCandidateFacts = z
     id: ruleId,
     ...outcome,
     language: z.string().min(1).max(40),
-    complexity: z
-      .number()
-      .gt(0)
-      .max(100)
-      .nullable()
-      .describe("Rough calls per check for a runtime rule, or null if unknown"),
+    estimatedViolations: count.describe(
+      "How many instances of this pattern you estimate are in the code today, from what you saw while mining. An estimate, not a measurement: no rule has run"
+    ),
     fail: fixture.optional().describe("Code the rule would flag"),
     pass: fixture.optional().describe("Code the rule would accept"),
   })
@@ -139,25 +136,6 @@ export const reportFactsSchema = z
       .array(cloudCandidateFacts)
       .default([])
       .describe("Runtime-shaped candidates you did not author"),
-    estimates: z
-      .object({
-        contextTokens: z
-          .number()
-          .int()
-          .gt(0)
-          .max(10_000_000)
-          .describe(
-            "Tokens in a typical session of this user's, from what you have seen"
-          ),
-        callsPerCatch: z
-          .number()
-          .gt(0)
-          .max(1000)
-          .describe(
-            "Extra agent turns a missed issue costs this user before it is fixed"
-          ),
-      })
-      .strict(),
     redaction: z
       .object({
         counts: z

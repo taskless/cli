@@ -246,7 +246,7 @@
           "state": {
             "type": "string",
             "enum": ["written", "candidate"],
-            "description": "`written`: the rule exists in the repository and runs. `candidate`: a rule Taskless Cloud could write but has not; only in the `cloud` tier, and it carries no `violations` or `files`. A candidate is never counted as a rule."
+            "description": "`written`: the rule exists in the repository and runs. `candidate`: a rule Taskless Cloud could write but has not; only in the `cloud` tier, and it carries `estimatedViolations` in place of `violations` and `files`. A candidate is never counted as a rule."
           },
           "violations": {
             "type": "integer",
@@ -259,6 +259,12 @@
             "minimum": 0,
             "maximum": 1000000000,
             "description": "Files with at least one of this rule's `violations`, at publish. A count, never paths. At most `violations`, and 0 exactly when `violations` is 0."
+          },
+          "estimatedViolations": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 1000000000,
+            "description": "A Cloud candidate's estimate of how many instances of its pattern are in the repository's code at publish, made by the agent that proposed it. An estimate, not a measurement: no rule has run. Required on every candidate and absent on written rules, which carry the measured `violations` instead."
           },
           "surfaced": {
             "type": "object",
@@ -279,19 +285,6 @@
             "required": ["prs", "reviewComments"],
             "additionalProperties": false,
             "description": "How often reviewers raised this rule's pattern in `scope.window`: what the rule saves reviewers. Requires `history`."
-          },
-          "complexity": {
-            "anyOf": [
-              {
-                "type": "number",
-                "exclusiveMinimum": 0,
-                "maximum": 100
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "A Cloud rule's cost multiplier, overriding `projection.inputs.cloudComplexity`; null for the default. Always null on `cli` and `legacy` rules."
           },
           "tests": {
             "type": "object",
@@ -358,77 +351,10 @@
             "description": "The rule's tests and their two examples."
           }
         },
-        "required": [
-          "id",
-          "title",
-          "tier",
-          "language",
-          "state",
-          "complexity",
-          "tests"
-        ],
+        "required": ["id", "title", "tier", "language", "state", "tests"],
         "additionalProperties": false
       },
       "description": "Every rule the report covers, written rules and candidates."
-    },
-    "projection": {
-      "type": "object",
-      "properties": {
-        "inputs": {
-          "type": "object",
-          "properties": {
-            "contextTokens": {
-              "type": "integer",
-              "exclusiveMinimum": 0,
-              "maximum": 10000000,
-              "description": "Context tokens an agent call uses."
-            },
-            "callsPerCatch": {
-              "type": "number",
-              "exclusiveMinimum": 0,
-              "maximum": 1000,
-              "description": "Agent calls a catch saves."
-            },
-            "cloudComplexity": {
-              "type": "number",
-              "exclusiveMinimum": 0,
-              "maximum": 100,
-              "description": "The default cost multiplier for a Cloud rule's catches."
-            },
-            "pricePerMillionTokens": {
-              "type": "number",
-              "minimum": 0,
-              "maximum": 1000,
-              "description": "Dollars per million tokens."
-            },
-            "minutesPerComment": {
-              "type": "number",
-              "minimum": 0,
-              "maximum": 600,
-              "description": "Reviewer minutes a review comment costs."
-            },
-            "reviewerHourlyUsd": {
-              "type": "number",
-              "minimum": 0,
-              "maximum": 10000,
-              "description": "A reviewer's hourly cost in dollars."
-            }
-          },
-          "required": [
-            "contextTokens",
-            "callsPerCatch",
-            "cloudComplexity",
-            "pricePerMillionTokens",
-            "minutesPerComment",
-            "reviewerHourlyUsd"
-          ],
-          "additionalProperties": false,
-          "description": "The assumptions behind the value estimates; the page's sliders start here."
-        }
-      },
-      "required": ["inputs"],
-      "additionalProperties": false,
-      "description": "Assumptions for the estimated value a month. The service derives the monthly rates itself, from each rule's `surfaced` and the window."
     },
     "redaction": {
       "type": "object",
@@ -522,7 +448,6 @@
     "producer",
     "scope",
     "rules",
-    "projection",
     "redaction"
   ],
   "additionalProperties": false,
@@ -575,7 +500,6 @@
             "prs": 96,
             "reviewComments": 142
           },
-          "complexity": null,
           "tests": {
             "status": "pass",
             "fail": {
@@ -594,11 +518,11 @@
           "engine": "runtime",
           "language": "TypeScript",
           "state": "candidate",
+          "estimatedViolations": 40,
           "surfaced": {
             "prs": 63,
             "reviewComments": 88
           },
-          "complexity": 4,
           "tests": {
             "status": "not-run",
             "fail": {
@@ -609,16 +533,6 @@
           }
         }
       ],
-      "projection": {
-        "inputs": {
-          "contextTokens": 150000,
-          "callsPerCatch": 20,
-          "cloudComplexity": 3,
-          "pricePerMillionTokens": 0.5,
-          "minutesPerComment": 4,
-          "reviewerHourlyUsd": 120
-        }
-      },
       "redaction": {
         "policyVersion": "1",
         "counts": {

@@ -54,12 +54,11 @@ later and deletes one on request.
      the CLI cannot see.
    - `cloud`: runtime-shaped candidates you judged better solved by a
      runtime rule and did not author. Count their `surfaced` the same
-     way.
-   - `estimates`: `contextTokens` is how large this user's sessions
-     typically run; `callsPerCatch` is how many extra agent turns a
-     missed issue costs them before it is fixed. Estimate from what you
-     have actually seen of how this user works, not from a best case.
-     The page lets a reader adjust both.
+     way. Give each one `estimatedViolations`: how many instances of
+     its pattern you estimate are in the code today, from what you saw
+     while mining. No rule has run, so this is an estimate, and it is
+     published as one. Zero is honest if you proposed the candidate
+     from review alone and saw no instance in the code.
    - `redaction`: what you removed yourself, by kind, and any fixture
      you choose not to publish. Names of people and customers are
      yours to judge; the CLI's patterns cannot see them.
@@ -86,17 +85,11 @@ later and deletes one on request.
    ask.
 
    If you restate any of the report's numbers in your own words, keep
-   the two kinds apart and label each: counts the CLI found **in the
-   code today**, and counts mined **from review over the window**. A
-   rule with 75 violations today that was raised in 23 pull requests
-   has two different numbers, and neither is the other.
-
-   If every rule, legacy rule, and cloud candidate has zero `surfaced`
-   counts, the page prices them at $0: tskl.es estimates value from
-   review alone. Say so in one line after the summary: review over the
-   window raised none of these patterns, so the estimate has nothing to
-   price, and that is not the same as the rules catching nothing. The
-   findings in the code today are what they catch.
+   the kinds apart and label each: counts the CLI found **in the code
+   today**, counts mined **from review over the window**, and a cloud
+   candidate's instances, which are **your estimate**. A rule with 75
+   violations today that was raised in 23 pull requests has two
+   different numbers, and neither is the other.
 
 5. **Clean up.** Delete `.taskless/.tmp-report.json`. The CLI kept a
    record of the report in `.taskless/reports/`, which is gitignored

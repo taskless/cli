@@ -18,11 +18,7 @@ import { stringify } from "yaml";
 
 import reportSchemaDocument from "../src/generated/report-v1.schema.json";
 import { assembleReport } from "../src/report/assemble";
-import {
-  DEFAULT_PROJECTION_INPUTS,
-  type LocalRule,
-  type ReportDraft,
-} from "../src/report/draft";
+import type { LocalRule, ReportDraft } from "../src/report/draft";
 import {
   reportFactsSchema,
   type ReportFacts,
@@ -61,7 +57,6 @@ function draftOf(
       url: "https://github.com/acme/widgets",
     },
     rules,
-    inputs: DEFAULT_PROJECTION_INPUTS,
     missing: [],
   };
 }
@@ -83,7 +78,6 @@ function factsFor(
       title: `Rule ${id}`,
       surfaced: { prs: 6, reviewComments: 9 },
     })),
-    estimates: { contextTokens: 150_000, callsPerCatch: 20 },
     ...overrides,
   });
 }
@@ -146,18 +140,21 @@ describe("assembleReport", () => {
     });
   });
 
-  it("sends projection inputs and no rates", () => {
-    // tskl.es derives the monthly rates itself and refuses a payload that
-    // carries them.
+  it("sends no value inputs, and the facts cannot supply them", () => {
+    // tskl.es prices reviewer time, agent tokens, and dollars itself, and its
+    // schema refuses a payload that carries a projection.
     const report = assembleReport(
       draftOf(three.map((id) => localRule(id))),
       factsFor(three)
     );
-    expect(Object.keys(report.projection)).toEqual(["inputs"]);
-    expect(report.projection.inputs).toMatchObject({
-      contextTokens: 150_000,
-      callsPerCatch: 20,
-    });
+    expect(report).not.toHaveProperty("projection");
+    expect(reportSchemaIssues(report)).toEqual([]);
+    expect(
+      reportFactsSchema.safeParse({
+        ...factsFor(three),
+        estimates: { contextTokens: 150_000, callsPerCatch: 20 },
+      }).success
+    ).toBe(false);
   });
 
   it("marks local rules written and carries their surfaced counts", () => {
@@ -270,7 +267,7 @@ describe("assembleReport", () => {
         title: `Cloud ${id}`,
         surfaced: { prs: 1, reviewComments: 1 },
         language: "TypeScript",
-        complexity: 3,
+        estimatedViolations: 5,
       })),
     });
     let message = "";
@@ -313,13 +310,23 @@ describe("assembleReport", () => {
     );
   });
 
-  it("does not gate on a small projection", () => {
-    const facts = factsFor(three, {
-      estimates: { contextTokens: 1, callsPerCatch: 0.1 },
-    });
-    expect(() =>
-      assembleReport(draftOf(three.map((id) => localRule(id))), facts)
-    ).not.toThrow();
+  it("requires an estimate on every cloud candidate", () => {
+    const candidate = {
+      id: "tenant-check",
+      title: "Routes call requireTenant()",
+      surfaced: { prs: 0, reviewComments: 0 },
+      language: "TypeScript",
+    };
+    expect(
+      reportFactsSchema.safeParse({ ...factsFor(three), cloud: [candidate] })
+        .success
+    ).toBe(false);
+    expect(
+      reportFactsSchema.safeParse({
+        ...factsFor(three),
+        cloud: [{ ...candidate, estimatedViolations: 0 }],
+      }).success
+    ).toBe(true);
   });
 
   it("publishes cloud candidates as runtime, untested", () => {
@@ -330,7 +337,7 @@ describe("assembleReport", () => {
           title: "Routes call requireTenant()",
           surfaced: { prs: 3, reviewComments: 4 },
           language: "TypeScript",
-          complexity: 4,
+          estimatedViolations: 12,
           fail: "export const GET = route(() => db.all())",
         },
       ],
@@ -345,8 +352,17 @@ describe("assembleReport", () => {
       tier: "cloud",
       engine: "runtime",
       state: "candidate",
+      estimatedViolations: 12,
       tests: { status: "not-run" },
     });
+    // The estimate belongs to the candidate alone; written rules carry the
+    // measured `violations` instead.
+    for (const rule of report.rules.filter(
+      (rule) => rule.state === "written"
+    )) {
+      expect(rule).not.toHaveProperty("estimatedViolations");
+    }
+    expect(reportSchemaIssues(report)).toEqual([]);
   });
 
   it("refuses facts for a rule the CLI does not have", () => {
@@ -407,7 +423,7 @@ describe("assembleReport", () => {
       title: "Cloud c1",
       surfaced: { prs: 1, reviewComments: 1 },
       language: "TypeScript",
-      complexity: 3,
+      estimatedViolations: 3,
     };
     const cases: [string, Partial<ReportFacts>][] = [
       [
@@ -856,10 +872,10 @@ describe("taskless report", () => {
     }
   });
 
-  // #520: a repository reviewed before its pull requests open publishes $0
-  // for every rule, and the recipe is what keeps that from reading as rules
-  // that catch nothing.
-  it("counts only review comments, and explains an all-zero estimate", async () => {
+  // #520: review comments are the only thing `surfaced` counts, and value is
+  // tskl.es's to estimate. The agent supplies a candidate's instances and no
+  // pricing input at all.
+  it("counts only review comments, and asks for a candidate estimate, not pricing", async () => {
     const { stdout, exitCode } = await run(["agent", "report"]);
     expect(exitCode).toBe(0);
     expect(stdout).toMatch(/^# Topic: report {5}\(CLI v.+ \/ topic v3\)/m);
@@ -869,14 +885,18 @@ describe("taskless report", () => {
     expect(counting).toContain(
       "A fix-up commit, a `git blame` date, or a finding in the code today is not a review comment"
     );
+    const supply = flat.slice(
+      flat.indexOf("**Supply what is missing.**"),
+      flat.indexOf("**Generate.**")
+    );
+    expect(supply).toContain("`estimatedViolations`");
+    expect(supply).not.toContain("contextTokens");
+    expect(supply).not.toContain("callsPerCatch");
     const show = flat.slice(
       flat.indexOf("**Show the result.**"),
       flat.indexOf("**Clean up.**")
     );
-    expect(show).toContain(
-      "zero `surfaced` counts, the page prices them at $0"
-    );
-    expect(show).toContain("not the same as the rules catching nothing");
+    expect(show).toContain("which are **your estimate**");
   });
 
   it("refuses --from and --delete together", async () => {
