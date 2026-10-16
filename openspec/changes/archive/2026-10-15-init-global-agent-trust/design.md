@@ -46,9 +46,9 @@ It follows the shipped entries' `Name: description` form, which is also what mak
 
 **`$defaults` only when creating the list.** An existing list without it is a choice the user made, to replace the defaults; adding it back would widen what their classifier allows. Edits go through the same `jsonc-parser` edit path as the project files, so formatting and comments survive.
 
-**Two confirmations in the wizard.** The project confirm already exists. The global one comes after it, as its own `confirm`, so a user who wants the repo set up but not their home directory touched can say so without abandoning the install. Its default is yes, matching the project confirm.
+**One confirmation in the wizard, covering every settings edit.** The summary groups the project and global edits under one heading, as aligned `ALLOW (project):`, `REMOVE (project):`, and `ALLOW (global):` statements, and asks `Make these changes to your settings?`, defaulting to yes. Declining cancels the install and writes nothing, the same meaning the project confirm already had. _Alternative:_ a separate global confirm after the project one, so a user could set up the repo without touching their home directory. Rejected for the friction: two questions for one install, and the second asked on every run until the entry exists, since a decline is never recorded.
 
-**The warning is computed after writing.** Both modes call `syncGlobalTrust` read-only after the install and warn for each `absent` outcome, which covers non-interactive, declined, and skipped alike with one code path.
+**The warning is computed after writing.** Both modes call `syncGlobalTrust` read-only after the install and warn for each `absent` outcome, which covers the batch install, and a wizard install whose user file was skipped, with one code path.
 
 ## Risks / Trade-offs
 
