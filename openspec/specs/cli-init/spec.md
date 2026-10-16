@@ -208,30 +208,6 @@ Skills SHALL be installed to `.agents/skills/<name>/SKILL.md` (Codex's documente
 - **WHEN** Codex is detected and the install plan is built
 - **THEN** no command files SHALL be written for Codex
 
-### Requirement: Codex install destination overrides the fallback for the same directory
-
-When Codex is detected, the install plan SHALL treat `.agents/` as the Codex target rather than the generic agents fallback. The state-based cleanup helper that resolves a tool descriptor by `installDir` SHALL prefer registered tool entries (including Codex) over the `AGENTS_FALLBACK` descriptor when both share the same `installDir` value. The user-facing install summary SHALL name "Codex" as the target for `.agents/skills/` writes when `.codex/` is present, instead of the generic fallback labeling.
-
-#### Scenario: Codex detection labels the .agents/ install as Codex
-
-- **WHEN** `.codex/` is present and `taskless init` runs
-- **THEN** the install summary SHALL identify the `.agents/skills/` writes as belonging to Codex
-- **AND** SHALL NOT use the "no tools detected, installing fallback" wording
-
-#### Scenario: Lookup by installDir resolves to Codex over fallback
-
-- **WHEN** the state-based cleanup helper looks up a tool descriptor by `installDir = ".agents"`
-- **AND** Codex is registered in the tool array
-- **THEN** the lookup SHALL return the Codex descriptor, not `AGENTS_FALLBACK`
-
-#### Scenario: Fallback still resolvable for legacy state without Codex detection
-
-- **WHEN** a previous install state recorded `.agents/` as the target
-- **AND** `.codex/` does not exist in the working directory
-- **AND** no other tools are detected
-- **THEN** the install SHALL proceed using the fallback path
-- **AND** files SHALL still be written to `.agents/skills/`
-
 ### Requirement: Agents fallback install
 
 `.agents/` is an ordinary selectable tool target, a peer of `.claude/`, `.cursor/`, and `.opencode/`. When `.agents/` is selected, a reference skill stub SHALL be installed to `.agents/skills/<name>/SKILL.md`. The `.agents/` target SHALL NOT receive commands. When no tools are detected, `.agents/` SHALL be the default selected target so a `taskless init` with zero detected tools still produces a usable install.
