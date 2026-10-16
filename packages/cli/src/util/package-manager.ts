@@ -6,8 +6,10 @@ import { buildInvocation, isProductionInvocation } from "./invocation";
  * How the CLI answers "what would the reader type to run me again?"
  *
  * The answer has two halves that come from different places. The **package
- * specifier** (`@taskless/cli@latest`, `@taskless/cli-nightly@0.11.0-…`) is a
- * build-time fact, baked in by `scripts/build-target.ts`. The **launcher**
+ * specifier** (`@taskless/cli@0.11.2`, `@taskless/cli-nightly@0.11.0-…`) is a
+ * build-time fact, baked in by `scripts/build-target.ts`: every published
+ * build pins its own version, and `@latest` survives only in
+ * `readmeSpecifier()`. The **launcher**
  * (`npx`, `pnpm dlx`) is a runtime fact, and the only honest source for it is
  * the path this process was launched from.
  *
