@@ -97,7 +97,7 @@ function mergeRules(
     .filter((id) => !factsById.has(id));
   if (uncovered.length > 0) {
     throw invalid(
-      `facts are missing for these rules: ${uncovered.join(", ")}. Every rule \`taskless report\` lists needs a "rules" entry with its title and surfaced counts.`
+      `facts are missing for these rules: ${uncovered.join(", ")}. Every rule \`taskless report\` lists needs a "rules" entry with its title, explain, and surfaced counts.`
     );
   }
 
@@ -108,6 +108,7 @@ function mergeRules(
       rule: {
         id: local.id,
         title: ruleFacts.title,
+        explain: ruleFacts.explain,
         tier: local.tier,
         engine: local.engine,
         language: local.language,
@@ -128,6 +129,7 @@ function mergeRules(
       rule: {
         id: legacy.id,
         title: legacy.title,
+        explain: legacy.explain,
         tier: "legacy",
         tool: legacy.tool,
         language: legacy.language,
@@ -147,6 +149,7 @@ function mergeRules(
       rule: {
         id: cloud.id,
         title: cloud.title,
+        explain: cloud.explain,
         tier: "cloud",
         engine: "runtime",
         language: cloud.language,
@@ -204,7 +207,8 @@ function screenStrings(facts: ReportFacts, label: string | undefined): void {
     for (const rule of facts[group]) {
       fields.push(
         [`${group}[${rule.id}].id`, rule.id],
-        [`${group}[${rule.id}].title`, rule.title]
+        [`${group}[${rule.id}].title`, rule.title],
+        [`${group}[${rule.id}].explain`, rule.explain]
       );
     }
   }

@@ -37,6 +37,7 @@ export interface Findings {
 export interface ReportRule {
   id: string;
   title: string;
+  explain?: string;
   tier: Tier;
   engine?: "sg" | "vale" | "runtime";
   tool?: string;

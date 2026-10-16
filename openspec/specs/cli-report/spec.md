@@ -51,7 +51,7 @@ The draft SHALL NOT perform any network call.
 
 ### Requirement: The agent supplies session facts, not a report
 
-`taskless report --from <path>` SHALL read a facts file, not a ReportV1. The facts file SHALL carry only what the agent knows from its session: the history counts and the window they were mined over, per-rule titles and `surfaced` counts (the merged pull requests in the window whose review raised the rule's pattern, and the review comments that asked for it), rules authored into an existing linter (`legacy` tier), runtime-shaped candidates the agent did not author (`cloud` tier) each with `estimatedViolations`, the agent's estimate of how many instances of the candidate's pattern are in the code today, the agent's own redaction counts, and the fixtures it elects to withhold. The facts file SHALL NOT accept any value input: no token, call, price, time, or rate estimate. The CLI SHALL merge the facts with what it establishes itself, and SHALL treat its own values as authoritative for every field it can establish.
+`taskless report --from <path>` SHALL read a facts file, not a ReportV1. The facts file SHALL carry only what the agent knows from its session: the history counts and the window they were mined over, per-rule titles, an `explain` for every rule (the agent's take, in one or two sentences, on why the rule is worth holding in this codebase), and `surfaced` counts (the merged pull requests in the window whose review raised the rule's pattern, and the review comments that asked for it), rules authored into an existing linter (`legacy` tier), runtime-shaped candidates the agent did not author (`cloud` tier) each with `estimatedViolations`, the agent's estimate of how many instances of the candidate's pattern are in the code today, the agent's own redaction counts, and the fixtures it elects to withhold. The facts file SHALL NOT accept any value input: no token, call, price, time, or rate estimate. The CLI SHALL merge the facts with what it establishes itself, and SHALL treat its own values as authoritative for every field it can establish.
 
 Every published rule SHALL carry a `state`. Rules under `.taskless/rules/` and `legacy` rules SHALL be `written`; `cloud` candidates from the facts file SHALL be `candidate`.
 
@@ -79,6 +79,16 @@ The facts file SHALL be validated against a published facts schema before anythi
 #### Scenario: A candidate without an estimate is refused
 
 - **WHEN** the facts file lists a `cloud` candidate with no `estimatedViolations`
+- **THEN** the command SHALL exit non-zero with `REPORT_INVALID`
+
+#### Scenario: Every rule carries the agent's explanation
+
+- **WHEN** the facts give a local rule, a `legacy` rule, and a `cloud` candidate each an `explain`
+- **THEN** the published report SHALL carry each one's `explain` on that rule
+
+#### Scenario: A rule without an explanation is refused
+
+- **WHEN** the facts give any rule, in `rules`, `legacy`, or `cloud`, no `explain`, or one that is blank or longer than 1000 characters
 - **THEN** the command SHALL exit non-zero with `REPORT_INVALID`
 
 #### Scenario: Value inputs are not accepted
@@ -112,7 +122,7 @@ tskl.es performs no redaction of its own. Before publishing, the CLI SHALL scan 
 
 #### Scenario: Every agent-supplied rule string is screened
 
-- **WHEN** the facts give a legacy rule a `tool` or `language`, or a cloud candidate a `language` or `id`, containing an email address or a host name
+- **WHEN** the facts give any rule an `explain`, a legacy rule a `tool` or `language`, or a cloud candidate a `language` or `id`, containing an email address or a host name
 - **THEN** the command SHALL exit non-zero with `REPORT_REDACTION` naming that field
 
 #### Scenario: The agent's counts are carried
@@ -307,7 +317,7 @@ The counts SHALL be all-or-nothing. The CLI SHALL record them only when every wr
 
 ### Requirement: The report recipe drives publishing and deletion
 
-The CLI SHALL embed a `report` recipe following the canonical recipe template. It SHALL instruct the agent to: run `taskless report` and read `missing`; supply each missing fact from its session, writing the facts to `.taskless/.tmp-report.json`; count each rule's `surfaced` by the method the recipe states; give each cloud candidate an `estimatedViolations` from what it saw while mining; run `taskless report --from` that path; on `REPORT_INSUFFICIENT`, ask the user only what would let it author the rules or establish the facts the refusal names, then retry; on success, show the CLI's summary as printed and tell the user the report can be deleted after review if they ask; delete the facts file; and on a request to delete, run `taskless report --delete` with the record. The recipe SHALL embed the facts schema and SHALL state that tskl.es does not redact, so anything the agent cannot vouch for is to be withheld.
+The CLI SHALL embed a `report` recipe following the canonical recipe template. It SHALL instruct the agent to: run `taskless report` and read `missing`; supply each missing fact from its session, writing the facts to `.taskless/.tmp-report.json`; give every rule an `explain` of one or two sentences saying what goes wrong without the rule and what holding it buys, grounded in what the session saw and carrying no counts; count each rule's `surfaced` by the method the recipe states; give each cloud candidate an `estimatedViolations` from what it saw while mining; run `taskless report --from` that path; on `REPORT_INSUFFICIENT`, ask the user only what would let it author the rules or establish the facts the refusal names, then retry; on success, show the CLI's summary as printed and tell the user the report can be deleted after review if they ask; delete the facts file; and on a request to delete, run `taskless report --delete` with the record. The recipe SHALL embed the facts schema and SHALL state that tskl.es does not redact, so anything the agent cannot vouch for is to be withheld.
 
 The counting method SHALL be a single procedure: a pull request counts toward a rule's `surfaced.prs` when it merged inside the window and at least one review comment on it asked for the change the rule enforces; a comment counts toward `surfaced.reviewComments` when a reader of that comment would say it asks for that change. Only review comments count: the recipe SHALL state that a fix-up commit, a `git blame` date, or a finding in the code today is not a review comment and SHALL NOT be counted toward either field, since the facts have no field that would label it honestly. Every author counts: a comment from a bot account or from the pull request's own author SHALL count the same as a reviewer's, since each one spends cycles, tokens, time, or money. The recipe SHALL direct the agent to judge each comment by reading it, not by matching keywords.
 
@@ -335,6 +345,12 @@ The recipe SHALL NOT ask the agent for any value input: tskl.es estimates review
 
 - **WHEN** an agent runs `taskless agent report`
 - **THEN** the `## Counting surfaced` section SHALL state that a fix-up commit, a `git blame` date, and a finding in the code today are not review comments and do not count
+
+#### Scenario: The recipe asks for an explanation of every rule
+
+- **WHEN** an agent runs `taskless agent report`
+- **THEN** stdout SHALL contain an `## Explaining a rule` section asking for one or two sentences on why each rule, written or candidate, is worth holding in this codebase
+- **AND** that section SHALL tell the agent to leave counts out of `explain`
 
 #### Scenario: The recipe asks for a candidate estimate and no value input
 
