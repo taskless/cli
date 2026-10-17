@@ -164,9 +164,9 @@ The skill body SHALL instruct the agent to run `%(TASKLESS_CLI)s agent ok` once 
 
 When the preflight, or any later Taskless command, is blocked by the harness or the user, the body SHALL instruct the agent to:
 
-1. Stop before doing any further Taskless work, and not retry the command or attempt to work around the block.
+1. Stop before doing any further Taskless work, and not retry the command or attempt to work around the block. The one exception is a command that was refused while combined with other commands on its line: the agent SHALL rerun it once, on its own, before treating it as blocked.
 2. Send one message that names the exact command, and says it downloads and runs a package from npm.
-3. When the refusal came from the agent's own safety classifier rather than a missing permission (in Claude Code, a denial by the auto mode classifier), say that an allow rule cannot clear it, and give the user the global trust entry, inline, with the file and key to add it under (in Claude Code, top-level `autoMode.allow` in `~/.claude/settings.json`, after `"$defaults"`). The agent SHALL NOT write that entry itself. It SHALL also offer per-command approval in chat, and leaving the classifier's mode, as the alternatives.
+3. When the refusal came from the agent's own safety classifier rather than a missing permission (in Claude Code, a denial by the auto mode classifier), say that an allow rule cannot clear it. When the user's settings (in Claude Code, top-level `autoMode.allow` in `~/.claude/settings.json`) already hold an entry beginning `Taskless CLI:` that matches the global trust entry, the agent SHALL say the entry is present and SHALL NOT tell the user to add it. When the entry is absent, or carries the label with different text, the agent SHALL give the user the global trust entry, inline, with the file and key to add it under, after `"$defaults"`, replacing an older `Taskless CLI:` entry. The agent SHALL NOT write that entry itself. In every case it SHALL also offer running the CLI with no arguments in a terminal, which offers to add or refresh the entry, per-command approval in chat, and leaving the classifier's mode, as the alternatives.
 4. Otherwise, offer the user three ways forward: the agent adds an allow rule for exactly the invocation the skill names to the agent's permission settings, and if the harness blocks that edit too, gives the user the change to make themselves; the user approves it through their agent's permissions command (in Claude Code, `/permissions` with the rule `Bash(<invocation>:*)`); or the user approves every Taskless command manually, in chat, as the agent runs it.
 5. Never propose an allow rule that widens the invocation, such as a wildcard over the package name or its version. Where the harness's allowlist cannot scope to the one invocation, for example one that only allows a whole tool, offer per-command approval in chat instead of a rule.
 6. Not ask in that message what the user wants Taskless to do. Their request stands, and the agent carries it out once the command is unblocked.
@@ -198,6 +198,16 @@ The global trust entry and these instructions SHALL be written in the skill body
 - **AND** SHALL NOT offer a project allow rule for that refusal
 - **AND** SHALL forbid the agent from writing the entry itself
 
+#### Scenario: A present entry is not asked for again
+
+- **WHEN** the skill body is read from source
+- **THEN** it SHALL instruct the agent, when the classifier refuses a Taskless command and the current entry is already in the user's settings, to say so and not tell the user to add it
+
+#### Scenario: A combined command is rerun on its own once
+
+- **WHEN** the skill body is read from source
+- **THEN** it SHALL instruct the agent, when a refused Taskless command was combined with other commands on its line, to rerun it once on its own before treating it as blocked
+
 #### Scenario: The fallback does not depend on a recipe
 
 - **WHEN** the skill body is read from source
@@ -212,3 +222,18 @@ The skill body SHALL route a request to use, try, or set up Taskless that names 
 - **WHEN** the skill body is read from source
 - **THEN** it SHALL route a request that names no task to `agent onboard`
 - **AND** SHALL instruct the agent not to offer a menu of topics first
+
+### Requirement: Taskless commands run on their own
+
+The skill body SHALL instruct the agent to run every Taskless command as a command line of its own that begins with the pinned invocation, with nothing before or after it: no variable assignment, `cd`, `mkdir`, `&&`, `;`, pipe, or output redirect. The body SHALL say why: a permission rule and a classifier exception both recognise the pinned call, and a line that starts with anything else, or hands the call's output to another command, is judged as something else. The agent SHALL read the call's output from its result, and SHALL write a file a recipe asks for with its own file tools rather than through a redirect.
+
+#### Scenario: Skill body requires standalone commands
+
+- **WHEN** the skill body is read from source
+- **THEN** it SHALL instruct the agent to run each Taskless command on its own line, beginning with `%(TASKLESS_CLI)s`
+- **AND** SHALL name variable assignments, `cd`, `mkdir`, `&&`, pipes, and redirects as things not to combine with it
+
+#### Scenario: Files go through the agent's file tools
+
+- **WHEN** the skill body is read from source
+- **THEN** it SHALL instruct the agent to write a file a recipe asks for with its file tools, not by redirecting a Taskless command's output
