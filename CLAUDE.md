@@ -86,8 +86,9 @@ Both flags can be passed in one call. See also **Stacked PRs → Other gotchas**
 
 **Use the `worktrees-pnpm` skill** whenever creating a worktree or delegating to a background agent with worktree isolation. It covers the full procedure, the pnpm specifics, cleanup, and recovery.
 
-The two rules that cause the most damage when missed:
+The three rules that cause the most damage when missed:
 
+- **A worktree starts from the latest `origin/main`, checked before any work begins.** Run `git fetch origin`, then `git rev-list --count HEAD..origin/main`. Anything above `0` means the worktree is behind: rebase onto `origin/main` (`git rebase origin/main`) before reading code, making changes, or running `pnpm install` (a rebase can change the lockfile), unless the work was explicitly asked to start from another branch or commit. The `WorktreeCreate` hook already branches from a freshly fetched `origin/main`, but a worktree made any other way (by hand, by another tool, or by a session board) is cut from whatever the main checkout was last pulled to. One started 68 commits behind `main`, and nothing flagged it: stale code reads exactly like current code.
 - **A worktree gets its own empty `node_modules`.** `git worktree add` is not finished until `pnpm install` has run inside it. Without that, `git commit` fails in `lint-staged` (no `prettier`/`eslint`), and every `pnpm` script fails. A missing `prettier` here once cost an agent an hour of dead-end workarounds. There is no `pnpm worktree` command; `git worktree` is the tool.
 - **NEVER point an agent at the main repo path** (e.g. `/Users/<you>/code/taskless/skills`). It will `cd` there and run git commands and edits in the **main** checkout, defeating isolation. It can create and check out a branch in your working tree, silently switching your session off its own branch. Tell the agent to work in **its assigned worktree** (`$PWD`) and pass only relative paths plus GitHub identifiers (`owner/repo`).
 
