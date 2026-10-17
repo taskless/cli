@@ -88,13 +88,15 @@ first step, not the whole job.
    - `globalTrust` is always present, empty when no installed harness has
      a classifier that overrules project rules. Each entry is that
      harness's user-level settings file and whether its Taskless entry is
-     `present`, `absent`, or `skipped` (with the reason). `init` only
-     reads it; it is never written by this command, and you must not
-     write it either. When it is `absent`, tell the user that their
-     agent may refuse Taskless commands the project rule allows, and that
-     the printed warning names the entry to add themselves, or that
-     running `%(TASKLESS_CLI)s` with no arguments, in their own
-     terminal, offers to add it (`init` itself never asks).
+     `present`, `absent`, `stale` (a `Taskless CLI:` entry with older
+     text), or `skipped` (with the reason). `init` only reads it; it is
+     never written by this command, and you must not write it either.
+     When it is `absent` or `stale`, tell the user that their agent may
+     refuse Taskless commands the project rule allows, and that the
+     printed warning names the entry to add, or to replace the old one
+     with, themselves, or that running `%(TASKLESS_CLI)s` with no
+     arguments, in their own terminal, offers to do it (`init` itself
+     never asks).
 
    Without `--json`, the same facts print as prose: a per-target summary,
    each permission edit as `Edited <file>` with `ALLOW:` and `REMOVE:`

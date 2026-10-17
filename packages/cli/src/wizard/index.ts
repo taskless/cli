@@ -14,6 +14,7 @@ import {
 } from "../install/install";
 import {
   globalTrustWarnings,
+  needsWrite,
   syncGlobalTrust,
   type GlobalTrustEnvironment,
 } from "../install/global-trust";
@@ -116,7 +117,7 @@ export async function runWizard(
     await applyInstallPlan(options.cwd, plan, { cliVersion });
     await syncPermissions(options.cwd, { ...permissionOptions, write: true });
     // Confirmed with the project edits, in the summary's one question.
-    if (globalTrustPreview.some((outcome) => outcome.state === "absent")) {
+    if (globalTrustPreview.some((outcome) => needsWrite(outcome))) {
       await syncGlobalTrust({ ...globalTrustOptions, write: true });
     }
     // Read again rather than assumed, so a skipped file, and a write that did
