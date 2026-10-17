@@ -20,6 +20,8 @@ import {
 
 const V1 = "npx @taskless/cli@0.13.0";
 const V2 = "npx @taskless/cli@0.13.1";
+const N1 = "npx @taskless/cli-nightly@0.13.2-20261016000000xaaaaaaa";
+const N2 = "npx @taskless/cli-nightly@0.13.2-20261017000000xbbbbbbb";
 
 let cwd: string;
 
@@ -172,11 +174,11 @@ describe("upgrades", () => {
       ".claude/settings.json",
       JSON.stringify({ permissions: { allow: [stale] } })
     );
-    const edits = await sync({ selected: [".claude"], invocation: V1 });
+    const edits = await sync({ selected: [".claude"], invocation: N1 });
 
     expect(edits[0]?.removed).toEqual([stale]);
     expect(await json(".claude/settings.json")).toEqual({
-      permissions: { allow: [`Bash(${V1} *)`] },
+      permissions: { allow: [`Bash(${N1} *)`] },
     });
   });
 
@@ -265,6 +267,76 @@ describe("upgrades", () => {
     await sync({ selected: [] });
 
     expect(await exists(".claude/settings.json")).toBe(true);
+  });
+});
+
+describe("the release and the nightly side by side", () => {
+  it("keeps each other's rules", async () => {
+    await sync({ selected: [".claude"], invocation: V1 });
+    const edits = await sync({ selected: [".claude"], invocation: N1 });
+
+    expect(edits[0]).toMatchObject({
+      allowed: [`Bash(${N1} *)`],
+      removed: [],
+    });
+    expect(await sync({ selected: [".claude"], invocation: V1 })).toEqual([]);
+    expect(await sync({ selected: [".claude"], invocation: N1 })).toEqual([]);
+    expect(await json(".claude/settings.json")).toEqual({
+      permissions: { allow: [`Bash(${V1} *)`, `Bash(${N1} *)`] },
+    });
+  });
+
+  it("upgrades only its own package's rule", async () => {
+    await sync({ selected: [".claude"], invocation: V1 });
+    await sync({ selected: [".claude"], invocation: N1 });
+    const edits = await sync({ selected: [".claude"], invocation: N2 });
+
+    expect(edits[0]).toMatchObject({
+      allowed: [`Bash(${N2} *)`],
+      removed: [`Bash(${N1} *)`],
+    });
+    expect(await json(".claude/settings.json")).toEqual({
+      permissions: { allow: [`Bash(${V1} *)`, `Bash(${N2} *)`] },
+    });
+  });
+
+  it("leaves an unrecorded rule for the other package alone", async () => {
+    const nightly =
+      "Bash(npx @taskless/cli-nightly@0.13.0-20261015220659xbf27a23:*)";
+    await put(
+      ".claude/settings.json",
+      JSON.stringify({ permissions: { allow: [nightly] } })
+    );
+    const edits = await sync({ selected: [".claude"], invocation: V1 });
+
+    expect(edits[0]?.removed).toEqual([]);
+    expect(await json(".claude/settings.json")).toEqual({
+      permissions: { allow: [nightly, `Bash(${V1} *)`] },
+    });
+  });
+
+  it("keeps the other package's record, so a created file is still deleted", async () => {
+    await sync({ selected: [".claude"], invocation: V1 });
+    await sync({ selected: [".claude"], invocation: N1 });
+
+    await sync({ selected: [], invocation: V1 });
+    expect(await json(".claude/settings.json")).toEqual({
+      permissions: { allow: [`Bash(${N1} *)`] },
+    });
+
+    await sync({ selected: [], invocation: N1 });
+    expect(await exists(".claude/settings.json")).toBe(false);
+  });
+
+  it("removes no package rules for an invocation that names neither", async () => {
+    await sync({ selected: [".claude"], invocation: V1 });
+    await sync({ selected: [".claude"], invocation: N1 });
+    const edits = await sync({
+      selected: [".claude"],
+      invocation: "node ./packages/cli/dist/index.js",
+    });
+
+    expect(edits[0]?.removed).toEqual([]);
   });
 });
 

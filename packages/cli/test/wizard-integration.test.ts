@@ -212,9 +212,8 @@ describe("runWizard end-to-end", () => {
   });
 
   it("previews removing a Taskless rule it never recorded", async () => {
-    // The stale nightly rule an agent added through the skill's fallback.
-    const stale =
-      "Bash(npx @taskless/cli-nightly@0.13.0-20261015220659xbf27a23 *)";
+    // A stale rule an agent added through the skill's fallback.
+    const stale = "Bash(npx @taskless/cli@0.12.0 *)";
     await writeFile(
       join(cwd, ".claude", "settings.json"),
       JSON.stringify({ permissions: { allow: [stale] } })
@@ -228,7 +227,7 @@ describe("runWizard end-to-end", () => {
     const summary = loggedMessages.join("\n");
     // REMOVE is the widest label, so ALLOW pads to meet it.
     expect(summary).toContain(
-      "REMOVE (project): npx @taskless/cli-nightly@0.13.0-20261015220659xbf27a23\n" +
+      "REMOVE (project): npx @taskless/cli@0.12.0\n" +
         "                  in .claude/settings.json"
     );
     expect(summary).toMatch(/ALLOW \(project\): {2}npx @taskless\/cli@/);
@@ -253,7 +252,7 @@ describe("runWizard end-to-end", () => {
         /ALLOW \(project\): npx @taskless\/cli@\S+\n {17}in \.claude\/settings\.json/
       );
       expect(summary).toContain(
-        "ALLOW (global):  @taskless/cli or @taskless/cli-nightly at an exact version\n" +
+        "ALLOW (global):  @taskless/cli at an exact version\n" +
           "                 in ~/.claude/settings.json (autoMode.allow)"
       );
       expect(confirmMessages).toEqual(["Make these changes to your settings?"]);
@@ -350,7 +349,7 @@ describe("runWizard end-to-end", () => {
       await runWizard({ cwd, globalTrustEnvironment });
 
       expect(loggedMessages.join("\n")).toContain(
-        "REPLACE (global): @taskless/cli or @taskless/cli-nightly at an exact version\n" +
+        "REPLACE (global): @taskless/cli at an exact version\n" +
           "                  in ~/.claude/settings.json (autoMode.allow)"
       );
       expect(confirmMessages).toEqual(["Make these changes to your settings?"]);

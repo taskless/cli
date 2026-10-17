@@ -17,6 +17,7 @@ import {
   buildInstallPlan,
   getEmbeddedSkills,
 } from "../src/install/install";
+import { renderTrustPlaceholders } from "../src/install/global-trust";
 import { renderInvocationPlaceholder } from "../src/util/invocation";
 import { isShimStub, stubRecoveryInvocation } from "../src/install/canonical";
 import { parseFrontmatter } from "../src/install/frontmatter";
@@ -65,13 +66,16 @@ describe("applyInstallPlan", () => {
     const result = await applyInstallPlan(cwd, plan, { cliVersion: "0.7.0" });
 
     // Canonical store holds the source with `%(TASKLESS_CLI)s` rendered to
-    // this build's invocation, which is the only substitution it makes.
+    // this build's invocation, and the trust placeholders to this build's
+    // entry, which are the only substitutions it makes.
     const canonical = await readFile(
       join(cwd, ".taskless", "skills", "taskless", "SKILL.md"),
       "utf8"
     );
     expect(canonical).toBe(
-      renderInvocationPlaceholder(tasklessSkill().content)
+      renderTrustPlaceholders(
+        renderInvocationPlaceholder(tasklessSkill().content)
+      )
     );
 
     // The .claude target holds a delegating stub, not the full content.

@@ -63,10 +63,10 @@ clear it: the classifier overrules project rules. Read the top-level
 `autoMode.allow` list in `~/.claude/settings.json`. If it already holds the
 entry below, word for word, tell the user it is present and do not ask them to
 add it. Otherwise give them this entry, to add themselves after `"$defaults"`,
-in place of any older entry that begins `Taskless CLI:`:
+in place of any older entry that begins `%(TASKLESS_TRUST_LABEL)s`:
 
 ```text
-Taskless CLI: The npm packages @taskless/cli and @taskless/cli-nightly are tooling published by Taskless via npm trusted publishing (OIDC), installed by the user through the Taskless installer. Running either via npx or pnpm dlx is allowed only when the call names an exact version (e.g. @taskless/cli@1.2.3). The call stays covered when the same command line also sets a variable, changes or creates a directory, or redirects the call's output to a file; every other command on the line is judged on its own. Dist-tags such as @latest or @nightly, version ranges, and unversioned calls are not covered.
+%(TASKLESS_TRUST_ENTRY)s
 ```
 
 Never write that entry yourself: an agent widening its own classifier's trust

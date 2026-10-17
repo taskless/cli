@@ -3,6 +3,7 @@ import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import process from "node:process";
 
+import { isProductionInvocation } from "../util/invocation";
 import { isRecord } from "../util/is-record";
 import { parseJson, set, valueAt } from "./permissions";
 
@@ -23,34 +24,93 @@ import { parseJson, set, valueAt } from "./permissions";
  * not the current one is stale, and the wizard replaces it, since we know
  * which text works and a hand-copied or older one may not.
  *
+ * Each package has its own entry and label, so the release and a nightly
+ * installed on the same machine never read each other's entry as stale. With
+ * one shared label, whichever build was reworded last would offer to replace
+ * the other's text on every run, and the other would offer to put it back.
+ *
  * The list is closed. A harness joins once it is verified that its classifier
  * can refuse what its project file allows, and that its user settings accept
  * a written exception.
  */
 
-/** The label every entry begins with, and how a present one is found. */
-const LABEL = "Taskless CLI:";
+/** One package's entry, and the label it begins with and is found by. */
+export interface GlobalTrustText {
+  /** The package the entry covers. */
+  packageName: string;
+  label: string;
+  entry: string;
+}
 
 /**
- * The entry itself, identical in every version. The example version is fake on
- * purpose, so the text never ages.
+ * The entry for one package. The example version is fake on purpose, so the
+ * text never ages.
  *
- * It names both packages, in every build, so it is not routed through
- * `applyCliInvocation()`: a nightly rewriting it would hand the skill and the
- * user settings two different texts.
+ * The package names are written here, not routed through
+ * `applyCliInvocation()`: each entry names its own package in every build,
+ * which is what lets a release and a nightly each recognise their own.
  */
-export const GLOBAL_TRUST_ENTRY =
+function trustText(
+  packageName: string,
+  label: string,
+  exampleVersion: string
+): GlobalTrustText {
+  return {
+    packageName,
+    label,
+    entry:
+      `${label} The npm package ${packageName} is tooling published by ` +
+      "Taskless via npm trusted publishing (OIDC), installed by the user " +
+      "through the Taskless installer. Running it via npx or pnpm dlx is " +
+      "allowed only when the call names an exact version (e.g. " +
+      `${packageName}@${exampleVersion}). The call stays covered when the ` +
+      "same command line also sets a variable, changes or creates a " +
+      "directory, or redirects the call's output to a file; every other " +
+      "command on the line is judged on its own. Dist-tags such as @latest " +
+      "or @nightly, version ranges, and unversioned calls are not covered.",
+  };
+}
+
+export const RELEASE_TRUST = trustText(
   // ast-grep-ignore: no-unrouted-cli-invocation
-  `${LABEL} The npm packages @taskless/cli and @taskless/cli-nightly are ` +
-  "tooling published by Taskless via npm trusted publishing (OIDC), installed " +
-  "by the user through the Taskless installer. Running either via npx or pnpm " +
-  "dlx is allowed only when the call names an exact version (e.g. " +
+  "@taskless/cli",
+  "Taskless CLI:",
+  "1.2.3"
+);
+
+export const NIGHTLY_TRUST = trustText(
   // ast-grep-ignore: no-unrouted-cli-invocation
-  "@taskless/cli@1.2.3). The call stays covered when the same command line " +
-  "also sets a variable, changes or creates a directory, or redirects the " +
-  "call's output to a file; every other command on the line is judged on " +
-  "its own. Dist-tags such as @latest or @nightly, version ranges, and " +
-  "unversioned calls are not covered.";
+  "@taskless/cli-nightly",
+  "Taskless CLI nightly:",
+  "1.2.3-20260101000000xabcdef0"
+);
+
+/**
+ * This build's entry: the release's for the released package, the nightly's
+ * otherwise. A `self` build runs from a path and needs no entry of its own,
+ * and is a step toward a nightly, so it offers that one.
+ */
+export const BUILD_TRUST: GlobalTrustText = isProductionInvocation()
+  ? RELEASE_TRUST
+  : NIGHTLY_TRUST;
+
+/** This build's entry text. */
+export const GLOBAL_TRUST_ENTRY = BUILD_TRUST.entry;
+
+/** The skill source's spelling of this build's label and entry. */
+const LABEL_PLACEHOLDER = "%(TASKLESS_TRUST_LABEL)s";
+const ENTRY_PLACEHOLDER = "%(TASKLESS_TRUST_ENTRY)s";
+
+/**
+ * Render this build's label and entry into an installed skill body, so the
+ * fallback an agent reads names the entry this build's wizard writes.
+ * Substituted as exact tokens, as the invocation placeholder is.
+ */
+export function renderTrustPlaceholders(content: string): string {
+  return content
+    .replaceAll(ENTRY_PLACEHOLDER, BUILD_TRUST.entry)
+    .replaceAll(LABEL_PLACEHOLDER, BUILD_TRUST.label);
+}
 
 /** Where a harness's user settings live, from the environment. */
 export interface GlobalTrustEnvironment {
@@ -157,7 +217,7 @@ function inspect(trust: GlobalTrust, current = "{}\n"): Inspection {
     return { kind: "skip", reason: `${trust.key.join(".")} is not a list` };
   }
   const index = list.findIndex(
-    (item) => typeof item === "string" && item.startsWith(LABEL)
+    (item) => typeof item === "string" && item.startsWith(BUILD_TRUST.label)
   );
   if (index !== -1) {
     if (list[index] === GLOBAL_TRUST_ENTRY) return { kind: "present" };
@@ -234,8 +294,7 @@ export function describeGlobalTrust(
     .filter((outcome) => needsWrite(outcome))
     .map((outcome) => ({
       replace: outcome.state === "stale",
-      // ast-grep-ignore: no-unrouted-cli-invocation
-      what: "@taskless/cli or @taskless/cli-nightly at an exact version",
+      what: `${BUILD_TRUST.packageName} at an exact version`,
       where: `in ${display(outcome.file, home)} (${outcome.key})`,
     }));
 }
@@ -257,7 +316,7 @@ export function globalTrustWarnings(
       const wizard = `run \`${installer}\` with no arguments in a terminal`;
       const fix =
         outcome.state === "stale"
-          ? `The \`Taskless CLI:\` entry in ${list} is out of date. Replace it with this one, or ${wizard}, which offers to replace it`
+          ? `The \`${BUILD_TRUST.label}\` entry in ${list} is out of date. Replace it with this one, or ${wizard}, which offers to replace it`
           : `To trust Taskless, add this entry to ${list}` +
             (outcome.state === "skipped"
               ? ` (left alone: ${outcome.skipped})`

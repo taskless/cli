@@ -28,14 +28,20 @@ A harness SHALL be considered only when `init` installs the skill for it, by the
 
 ### Requirement: The global entry names no version and requires one
 
-The entry SHALL begin with the label `Taskless CLI:`. It SHALL name `@taskless/cli` and `@taskless/cli-nightly`, state that running either through `npx` or `pnpm dlx` is allowed only when the call names an exact version, and state that dist-tags such as `@latest` or `@nightly`, version ranges, and unversioned calls are not covered. It SHALL NOT name a version, so an upgrade never makes it stale.
+Each package SHALL have its own entry: the release's begins with the label `Taskless CLI:` and names only `@taskless/cli`; the nightly's begins with the label `Taskless CLI nightly:` and names only `@taskless/cli-nightly`. Neither label SHALL be a prefix of the other's entry. The released build SHALL use the release's entry, and every other build (nightly, `self`) the nightly's. Each entry SHALL state that running its package through `npx` or `pnpm dlx` is allowed only when the call names an exact version, and state that dist-tags such as `@latest` or `@nightly`, version ranges, and unversioned calls are not covered. It SHALL NOT name a version, so an upgrade never makes it stale.
 
-The entry SHALL also state that the call stays covered when the same command line sets a variable, changes or creates a directory, or redirects the call's output to a file, and that every other command on that line is judged on its own. It SHALL NOT extend coverage to any command other than the pinned Taskless call.
+Each entry SHALL also state that the call stays covered when the same command line sets a variable, changes or creates a directory, or redirects the call's output to a file, and that every other command on that line is judged on its own. It SHALL NOT extend coverage to any command other than the pinned Taskless call.
 
 #### Scenario: The entry carries no version
 
-- **WHEN** the entry is written by any version of the CLI
-- **THEN** its text SHALL be identical, and SHALL contain no version number
+- **WHEN** a package's entry is written by any version of that package
+- **THEN** its text SHALL be identical, and SHALL contain no version number other than the fixed example
+
+#### Scenario: Each entry names only its own package
+
+- **WHEN** the release's and the nightly's entries are read
+- **THEN** the release's SHALL begin `Taskless CLI:` and SHALL NOT name `@taskless/cli-nightly`
+- **AND** the nightly's SHALL begin `Taskless CLI nightly:` and name `@taskless/cli-nightly`
 
 #### Scenario: The entry states the pin requirement
 
@@ -51,7 +57,7 @@ The entry SHALL also state that the call stays covered when the same command lin
 
 ### Requirement: The global entry is detected by its label
 
-`init` SHALL find the entry by the label `Taskless CLI:`: a string in the harness's list beginning with it is Taskless's entry, whatever follows. An entry whose whole text equals the current entry SHALL be `present` and SHALL never be rewritten. An entry that carries the label with any other text SHALL be `stale`. A string without the label SHALL never be read as Taskless's, edited, or removed.
+`init` SHALL find the entry by this build's label: a string in the harness's list beginning with it is this build's entry, whatever follows. A string beginning with the other package's label SHALL never be read, edited, or removed, so a release and a nightly used on one machine never replace each other's entry. An entry whose whole text equals the current entry SHALL be `present` and SHALL never be rewritten. An entry that carries the label with any other text SHALL be `stale`. A string without this build's label SHALL never be read as this build's entry, edited, or removed.
 
 A stale entry SHALL be replaced only in place, by the current entry, and only where the wizard writes it. When the list holds more than one string carrying the label, the first SHALL be replaced and the rest left as they are.
 
@@ -73,9 +79,15 @@ A stale entry SHALL be replaced only in place, by the current entry, and only wh
 - **THEN** `init` SHALL report the entry as absent
 - **AND** SHALL NOT treat `"Internal Registry: ..."` as stale
 
+#### Scenario: The other package's entry is left alone
+
+- **WHEN** the released build runs and `autoMode.allow` is `["$defaults", <nightly entry>]`
+- **THEN** `init` SHALL report the release's entry as absent, not stale
+- **AND** writing it SHALL give `["$defaults", <nightly entry>, <release entry>]`
+
 ### Requirement: The global entry is offered only in the interactive wizard
 
-When the entry is absent or stale, the wizard SHALL show the proposed edit in its summary step, in the same group as the project permission edits and after them, as one line: `ALLOW (global):` for an absent entry, `REPLACE (global):` for a stale one. The line SHALL name the packages, say a call is covered only at an exact version, and name the file and key. Project and global edits SHALL be covered by the one confirmation the summary step asks, defaulting to yes; there SHALL be no separate question for the global entry. Declining that confirmation SHALL cancel the install and write nothing, inside or outside the project.
+When the entry is absent or stale, the wizard SHALL show the proposed edit in its summary step, in the same group as the project permission edits and after them, as one line: `ALLOW (global):` for an absent entry, `REPLACE (global):` for a stale one. The line SHALL name this build's package, say a call is covered only at an exact version, and name the file and key. Project and global edits SHALL be covered by the one confirmation the summary step asks, defaulting to yes; there SHALL be no separate question for the global entry. Declining that confirmation SHALL cancel the install and write nothing, inside or outside the project.
 
 `--no-interactive` and `--json` SHALL NEVER write a file outside the project.
 
@@ -85,7 +97,7 @@ Nothing about the entry SHALL be recorded in the project manifest, and a decline
 
 #### Scenario: The wizard offers the entry
 
-- **WHEN** the wizard installs for `.claude/` and `~/.claude/settings.json` has no `Taskless CLI:` entry
+- **WHEN** the wizard installs for `.claude/` and `~/.claude/settings.json` has no entry under this build's label
 - **THEN** the summary SHALL show an `ALLOW (global):` line naming `~/.claude/settings.json` and `autoMode.allow`
 - **AND** the one confirmation SHALL be `Make these changes to your settings?` when nothing else is being removed
 
@@ -134,7 +146,7 @@ Nothing about the entry SHALL be recorded in the project manifest, and a decline
 
 ### Requirement: A missing global entry is warned about
 
-When a harness in the table is installed for and its entry is absent or stale after `init` finishes, `init` SHALL print a warning, in both modes, naming the harness, the file, the top-level key, and the exact entry to add, saying that without it the harness's classifier may refuse Taskless commands that the project rule allows, and naming the CLI invocation, run with no arguments in a terminal, as the way to be offered it, since `init` itself never asks. For a stale entry the warning SHALL say the existing `Taskless CLI:` entry is out of date and is to be replaced by the one shown. Under `--json` the warning SHALL go to stderr, and the envelope SHALL report, per harness in the table, the file and whether the entry is present, absent, stale, was written, or was skipped with a reason.
+When a harness in the table is installed for and its entry is absent or stale after `init` finishes, `init` SHALL print a warning, in both modes, naming the harness, the file, the top-level key, and the exact entry to add, saying that without it the harness's classifier may refuse Taskless commands that the project rule allows, and naming the CLI invocation, run with no arguments in a terminal, as the way to be offered it, since `init` itself never asks. For a stale entry the warning SHALL say the existing entry under this build's label is out of date and is to be replaced by the one shown. Under `--json` the warning SHALL go to stderr, and the envelope SHALL report, per harness in the table, the file and whether the entry is present, absent, stale, was written, or was skipped with a reason.
 
 #### Scenario: Non-interactive warns
 
@@ -145,7 +157,7 @@ When a harness in the table is installed for and its entry is absent or stale af
 #### Scenario: Non-interactive warns about a stale entry
 
 - **WHEN** `init --no-interactive` runs for `.claude/` and the entry is stale
-- **THEN** the output SHALL include a warning saying the existing `Taskless CLI:` entry is out of date, with the current entry text
+- **THEN** the output SHALL include a warning saying the existing entry under this build's label is out of date, with the current entry text
 
 #### Scenario: A skipped file warns after a wizard install
 

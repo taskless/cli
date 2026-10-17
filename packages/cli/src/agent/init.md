@@ -88,8 +88,9 @@ first step, not the whole job.
    - `globalTrust` is always present, empty when no installed harness has
      a classifier that overrules project rules. Each entry is that
      harness's user-level settings file and whether its Taskless entry is
-     `present`, `absent`, `stale` (a `Taskless CLI:` entry with older
-     text), or `skipped` (with the reason). `init` only reads it; it is
+     `present`, `absent`, `stale` (an entry under this CLI's label, such
+     as `Taskless CLI:` for the release, with older text), or `skipped`
+     (with the reason). `init` only reads it; it is
      never written by this command, and you must not write it either.
      When it is `absent` or `stale`, tell the user that their agent may
      refuse Taskless commands the project rule allows, and that the
