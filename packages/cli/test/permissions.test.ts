@@ -338,6 +338,52 @@ describe("the release and the nightly side by side", () => {
 
     expect(edits[0]?.removed).toEqual([]);
   });
+
+  // The scoping lives in `syncPermissions()`, but each harness finds and
+  // edits its own format, and Codex rewrites its whole file.
+  it.each([
+    {
+      harness: "Cursor",
+      selected: [".cursor"],
+      files: [".cursor/permissions.json", ".cursor/cli.json"],
+    },
+    {
+      harness: "OpenCode, object form",
+      selected: [".opencode"],
+      files: [".opencode/opencode.json"],
+    },
+    {
+      harness: "OpenCode, array form",
+      selected: [".opencode"],
+      files: ["opencode.json"],
+      seed: '{ "permissions": [] }\n',
+    },
+    {
+      harness: "Codex",
+      selected: [".agents"],
+      codexDetected: true,
+      files: [".codex/rules/taskless.rules"],
+    },
+  ])(
+    "keeps each other's rules in $harness",
+    async ({ selected, codexDetected = false, files, seed }) => {
+      if (seed !== undefined) await put(files[0] ?? "", seed);
+      const run = (invocation: string) =>
+        sync({ selected, codexDetected, invocation });
+      await run(V1);
+      await run(N1);
+      await run(N2);
+
+      expect(await run(V1)).toEqual([]);
+      expect(await run(N2)).toEqual([]);
+      for (const file of files) {
+        const contents = await text(file);
+        expect(contents).toContain("@taskless/cli@0.13.0");
+        expect(contents).toContain("0.13.2-20261017000000xbbbbbbb");
+        expect(contents).not.toContain("0.13.2-20261016000000xaaaaaaa");
+      }
+    }
+  );
 });
 
 describe("Cursor", () => {
