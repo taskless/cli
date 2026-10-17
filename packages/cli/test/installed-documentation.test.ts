@@ -167,6 +167,20 @@ describe("this repository's own installed Taskless docs", () => {
     expect(skill).toContain("earlier in this session");
   });
 
+  it("tells an agent to run each Taskless command on its own", async () => {
+    // An agent chained `agent route; echo ======; detect --json`. zsh read
+    // `======` as equals expansion and dropped the rest of the line, so
+    // `detect` never ran and nothing said so. Losing this guidance in a
+    // rewrite fails just as quietly, so it is pinned.
+    const skill = await readFile(
+      resolve(repositoryRoot, "skills", "taskless", "SKILL.md"),
+      "utf8"
+    );
+    expect(skill).toContain("as its own shell call");
+    expect(skill).toContain("Do not chain it with other commands");
+    expect(skill).toContain("nothing says so");
+  });
+
   it("preflights the CLI and scopes a blocked one to the exact invocation", async () => {
     // A harness may refuse a download-and-run command. Without a preflight
     // the refusal lands on the first command that does work, after any
