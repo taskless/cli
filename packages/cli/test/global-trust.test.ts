@@ -52,6 +52,15 @@ describe("the entry", () => {
     expect(GLOBAL_TRUST_ENTRY).toContain("@latest");
     expect(GLOBAL_TRUST_ENTRY).toContain("not covered");
   });
+
+  it("covers the call inside shell plumbing, and only the call", () => {
+    expect(GLOBAL_TRUST_ENTRY).toContain(
+      "sets a variable, changes or creates a directory, or redirects the call's output to a file"
+    );
+    expect(GLOBAL_TRUST_ENTRY).toContain(
+      "every other command on the line is judged on its own"
+    );
+  });
 });
 
 describe("syncGlobalTrust", () => {
@@ -107,17 +116,72 @@ describe("syncGlobalTrust", () => {
     });
   });
 
-  it("treats a reworded entry as present and leaves the file alone", async () => {
+  it("leaves the current entry alone", async () => {
     const original = JSON.stringify({
-      autoMode: {
-        allow: ["$defaults", "Taskless CLI: allowed with a pinned version"],
-      },
+      autoMode: { allow: ["$defaults", GLOBAL_TRUST_ENTRY] },
     });
     await put(original);
     const outcomes = await sync(true);
 
     expect(outcomes[0]?.state).toBe("present");
     expect(await read()).toBe(original);
+  });
+
+  it("reports a reworded entry as stale without writing", async () => {
+    const original = JSON.stringify({
+      autoMode: {
+        allow: ["$defaults", "Taskless CLI: allowed with a pinned version"],
+      },
+    });
+    await put(original);
+    const outcomes = await sync(false);
+
+    expect(outcomes[0]?.state).toBe("stale");
+    expect(await read()).toBe(original);
+  });
+
+  it("replaces a stale entry where it sits", async () => {
+    await put(
+      JSON.stringify({
+        autoMode: {
+          allow: [
+            "$defaults",
+            "Taskless CLI: allowed with a pinned version",
+            "Internal Registry: ours",
+          ],
+        },
+      })
+    );
+    const outcomes = await sync(true);
+
+    expect(outcomes[0]?.state).toBe("written");
+    expect(JSON.parse(await read())).toEqual({
+      autoMode: {
+        allow: ["$defaults", GLOBAL_TRUST_ENTRY, "Internal Registry: ours"],
+      },
+    });
+  });
+
+  it("replaces only the first labelled entry", async () => {
+    await put(
+      JSON.stringify({
+        autoMode: { allow: ["Taskless CLI: one", "Taskless CLI: two"] },
+      })
+    );
+    await sync(true);
+
+    expect(JSON.parse(await read())).toEqual({
+      autoMode: { allow: [GLOBAL_TRUST_ENTRY, "Taskless CLI: two"] },
+    });
+  });
+
+  it("never reads an unlabelled entry as ours", async () => {
+    await put(
+      JSON.stringify({ autoMode: { allow: ["Internal Registry: Taskless"] } })
+    );
+    const outcomes = await sync(false);
+
+    expect(outcomes[0]?.state).toBe("absent");
   });
 
   it("only reports when not writing", async () => {
@@ -183,6 +247,7 @@ describe("rendering", () => {
     const outcomes = await sync(false);
     expect(describeGlobalTrust(outcomes, home)).toEqual([
       {
+        replace: false,
         what: "@taskless/cli or @taskless/cli-nightly at an exact version",
         where: "in ~/.claude/settings.json (autoMode.allow)",
       },
@@ -203,6 +268,19 @@ describe("rendering", () => {
       "run `npx @taskless/cli@1.2.3` with no arguments in a terminal"
     );
     expect(warning).toContain("autoMode.allow");
+    expect(warning).toContain(GLOBAL_TRUST_ENTRY);
+  });
+
+  it("describes a stale entry as a replacement, and warns that it is out of date", async () => {
+    await put(JSON.stringify({ autoMode: { allow: ["Taskless CLI: old"] } }));
+    const outcomes = await sync(false);
+
+    expect(describeGlobalTrust(outcomes, home)).toEqual([
+      expect.objectContaining({ replace: true }),
+    ]);
+    const [warning] = globalTrustWarnings(outcomes, "npx @taskless/cli", home);
+    expect(warning).toContain("is out of date");
+    expect(warning).toContain("which offers to replace it");
     expect(warning).toContain(GLOBAL_TRUST_ENTRY);
   });
 
