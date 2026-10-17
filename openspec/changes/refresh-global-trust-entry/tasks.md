@@ -11,8 +11,8 @@
 
 ## 3. Skill body
 
-- [ ] 3.1 Add the standalone-command rule to `skills/taskless/SKILL.md`, and rewrite the classifier fallback for a present entry, the rerun-once-on-its-own exception, and replacing an older labelled entry, with the new entry text inline; verify `installed-documentation.test.ts` (entry text parity) and the skill body cap test pass
-- [ ] 3.2 Add skill-body tests for the new scenarios (standalone rule, present entry not asked for again, combined command rerun once); verify they pass
+- [x] 3.1 Add the standalone-command rule to `skills/taskless/SKILL.md`, and rewrite the classifier fallback for a present entry, the rerun-once-on-its-own exception, and replacing an older labelled entry, with the new entry text inline; verify `installed-documentation.test.ts` (entry text parity) and the skill body cap test pass
+- [x] 3.2 Add skill-body tests for the new scenarios (standalone rule, present entry not asked for again, combined command rerun once); verify they pass
 
 ## 4. Release
 

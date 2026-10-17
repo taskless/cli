@@ -242,6 +242,42 @@ describe("this repository's own installed Taskless docs", () => {
     expect(prose).toContain("For any other block, offer three ways forward");
   });
 
+  it("runs each Taskless command on its own line", async () => {
+    // An onboarding agent ran `S=<scratchpad> && mkdir -p $S && npx …` and
+    // auto mode refused it as Untrusted Code Integration, entry or no entry:
+    // a line that starts with something else is judged as something else.
+    const skill = await readFile(
+      resolve(repositoryRoot, "skills", "taskless", "SKILL.md"),
+      "utf8"
+    );
+    const prose = skill.replaceAll(/\s+/g, " ");
+    expect(prose).toContain(
+      "Run every Taskless command on a line of its own that begins with `%(TASKLESS_CLI)s`"
+    );
+    expect(prose).toContain(
+      "no variable assignment, `cd`, `mkdir`, `&&`, `;`, pipe, or redirect"
+    );
+    expect(prose).toContain(
+      "write any file a recipe asks for with your file tools"
+    );
+    expect(prose).toContain("rerun it once on its own first");
+  });
+
+  it("does not ask for an entry the user already has", async () => {
+    // The same agent then told a user with the entry to go and add it.
+    const skill = await readFile(
+      resolve(repositoryRoot, "skills", "taskless", "SKILL.md"),
+      "utf8"
+    );
+    const prose = skill.replaceAll(/\s+/g, " ");
+    expect(prose).toContain(
+      "tell the user it is present and do not ask them to add it"
+    );
+    expect(prose).toContain(
+      "in place of any older entry that begins `Taskless CLI:`"
+    );
+  });
+
   it("carries the same global trust entry init writes", async () => {
     // One text in two places: if they drift, the skill hands over an entry
     // init would not recognise, or the reverse.

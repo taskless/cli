@@ -42,17 +42,28 @@ request: no survey of the install, and no menu of what Taskless can do.
 `init` writes an allow rule for this exact invocation into the permission
 settings of each harness it installs for, so the preflight usually passes.
 
+Run every Taskless command on a line of its own that begins with
+`%(TASKLESS_CLI)s`, with nothing around it: no variable assignment, `cd`,
+`mkdir`, `&&`, `;`, pipe, or redirect. Permission rules and classifier
+exceptions recognise the pinned call; a line that starts with anything else,
+or hands its output to another command, is judged as something else. Read the
+output from the call's result, and write any file a recipe asks for with your
+file tools.
+
 If the harness or the user blocks it, or blocks any later Taskless command,
 stop before doing any Taskless work. Do not retry the command or try to get
-around the block. Send one message that names the exact command you ran and
+around the block, with one exception: if the refused line combined the call
+with anything else, rerun it once on its own first. Send one message that names the exact command you ran and
 says it downloads and runs a package from npm. The rest of that message
 depends on what refused it.
 
 If your own safety classifier refused it, not a missing permission (in Claude
 Code, a denial "by the Claude Code auto mode classifier"), no allow rule can
-clear it: the classifier overrules project rules. Give the user this entry, to
-add themselves to the top-level `autoMode.allow` list in
-`~/.claude/settings.json`, after `"$defaults"`:
+clear it: the classifier overrules project rules. Read the top-level
+`autoMode.allow` list in `~/.claude/settings.json`. If it already holds the
+entry below, word for word, tell the user it is present and do not ask them to
+add it. Otherwise give them this entry, to add themselves after `"$defaults"`,
+in place of any older entry that begins `Taskless CLI:`:
 
 ```text
 Taskless CLI: The npm packages @taskless/cli and @taskless/cli-nightly are tooling published by Taskless via npm trusted publishing (OIDC), installed by the user through the Taskless installer. Running either via npx or pnpm dlx is allowed only when the call names an exact version (e.g. @taskless/cli@1.2.3). The call stays covered when the same command line also sets a variable, changes or creates a directory, or redirects the call's output to a file; every other command on the line is judged on its own. Dist-tags such as @latest or @nightly, version ranges, and unversioned calls are not covered.
@@ -60,8 +71,9 @@ Taskless CLI: The npm packages @taskless/cli and @taskless/cli-nightly are tooli
 
 Never write that entry yourself: an agent widening its own classifier's trust
 is exactly what the classifier refuses. Running `%(TASKLESS_CLI)s` with no
-arguments, in their own terminal, also offers to add it. Until then, they can approve the exact command in chat,
-which the classifier weighs but may still refuse, or leave auto mode.
+arguments, in their own terminal, also offers to add or refresh it. Until
+then, they can approve the exact command in chat, which the classifier weighs
+but may still refuse, or leave auto mode.
 
 For any other block, offer three ways forward:
 
