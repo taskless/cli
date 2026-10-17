@@ -967,7 +967,7 @@ describe("taskless report", () => {
   it("counts only review comments, and asks for a candidate estimate, not pricing", async () => {
     const { stdout, exitCode } = await run(["agent", "report"]);
     expect(exitCode).toBe(0);
-    expect(stdout).toMatch(/^# Topic: report {5}\(CLI v.+ \/ topic v6\)/m);
+    expect(stdout).toMatch(/^# Topic: report {5}\(CLI v.+ \/ topic v7\)/m);
     const flat = stdout.replaceAll(/\s+/g, " ");
     const counting = flat.slice(flat.indexOf("## Counting surfaced"));
     expect(counting).toContain("**Only review comments count.**");

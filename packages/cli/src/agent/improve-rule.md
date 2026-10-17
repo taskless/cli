@@ -1,4 +1,6 @@
-# Topic: improve-rule     (CLI v%(CLI_VERSION)s / topic v9)
+# Topic: improve-rule     (CLI v%(CLI_VERSION)s / topic v10)
+
+%(ONE_COMMAND_PER_CALL)s
 
 ## Goal
 Iterate on an existing Taskless rule. The CLI submits the user's

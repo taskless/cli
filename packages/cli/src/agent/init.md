@@ -1,4 +1,6 @@
-# Topic: init     (CLI v%(CLI_VERSION)s / topic v9)
+# Topic: init     (CLI v%(CLI_VERSION)s / topic v10)
+
+%(ONE_COMMAND_PER_CALL)s
 
 ## Goal
 Install or update the Taskless skill in this project, and migrate the

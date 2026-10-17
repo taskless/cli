@@ -1,4 +1,6 @@
-# Topic: update     (CLI v%(CLI_VERSION)s / topic v16)
+# Topic: update     (CLI v%(CLI_VERSION)s / topic v17)
+
+%(ONE_COMMAND_PER_CALL)s
 
 ## You are here
 This is `update`. It tells you what an upgrade changed for the rules

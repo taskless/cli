@@ -1,4 +1,6 @@
-# Topic: info     (CLI v%(CLI_VERSION)s / topic v2)
+# Topic: info     (CLI v%(CLI_VERSION)s / topic v3)
+
+%(ONE_COMMAND_PER_CALL)s
 
 ## Goal
 Report local Taskless state: CLI version, installed skill versions

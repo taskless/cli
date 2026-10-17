@@ -564,6 +564,31 @@ cannot see your MCP roster, so whether a bug tracker is reachable
 stays your judgement.`;
 }
 
+/**
+ * The paragraph every recipe carries beneath its header, identical for every
+ * topic except the invocation.
+ *
+ * The skill states this rule too, but an agent deep in a recipe copies the
+ * recipe's own examples, and that is where chaining crept back in: zsh reads
+ * an `echo ======` separator as equals expansion and drops the rest of the
+ * line, and auto mode refuses a line that wraps the download-and-run command
+ * in glue it cannot scope (taskless/cli#532). One template, so the wording
+ * cannot drift between 27 files.
+ *
+ * With no invocation (`mechanics: false`) the rule still holds for whatever
+ * runs the CLI, but names no command, for the reason `nameDestinationStep`
+ * gives: a caller that asked for no invocations gets none.
+ */
+export function oneCommandPerCall(invocation?: string): string {
+  const start =
+    invocation === undefined ? "the Taskless invocation" : `\`${invocation}\``;
+  return (
+    `Run each Taskless command as its own shell call. Start the line with ${start} ` +
+    `and chain nothing to it: no variable assignment, \`cd\`, \`mkdir\`, \`&&\`, \`;\`, pipe, redirect, or \`$(…)\`. ` +
+    `Read its output from the call's result, and write any file this recipe asks for with your file tools.`
+  );
+}
+
 /** The invocation a render should use, resolved the same way `TASKLESS_CLI` is. */
 function resolveInvocation(options: RecipeOptions): string {
   return (
@@ -629,6 +654,9 @@ export function buildVariables(
     // knows: the caller was told how the CLI was launched; the build is a
     // nightly/dev/self that knows what it is; nobody knows, so ask the agent.
     TASKLESS_CLI: resolveInvocation(options),
+    ONE_COMMAND_PER_CALL: oneCommandPerCall(
+      options.mechanics === false ? undefined : resolveInvocation(options)
+    ),
     // Conditional blocks: one of a fixed set of whole passages, chosen by
     // state the CALLER measured. Substituted whole — bullet marker, step
     // title, connective and all — for the reason `runBlock` documents above,
