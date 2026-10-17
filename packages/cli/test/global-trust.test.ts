@@ -7,6 +7,8 @@ import {
   describeGlobalTrust,
   GLOBAL_TRUST_ENTRY,
   globalTrustWarnings,
+  NIGHTLY_TRUST,
+  RELEASE_TRUST,
   syncGlobalTrust,
   type GlobalTrustEnvironment,
 } from "../src/install/global-trust";
@@ -51,6 +53,23 @@ describe("the entry", () => {
     );
     expect(GLOBAL_TRUST_ENTRY).toContain("@latest");
     expect(GLOBAL_TRUST_ENTRY).toContain("not covered");
+  });
+
+  it("is the release's entry in the released build", () => {
+    expect(GLOBAL_TRUST_ENTRY).toBe(RELEASE_TRUST.entry);
+  });
+
+  it("names one package per entry, under labels that never match each other", () => {
+    expect(RELEASE_TRUST.entry.startsWith("Taskless CLI:")).toBe(true);
+    expect(RELEASE_TRUST.entry).toContain("@taskless/cli is");
+    expect(RELEASE_TRUST.entry).not.toContain("cli-nightly");
+
+    expect(NIGHTLY_TRUST.entry.startsWith("Taskless CLI nightly:")).toBe(true);
+    expect(NIGHTLY_TRUST.entry).toContain("@taskless/cli-nightly is");
+    expect(NIGHTLY_TRUST.entry.match(/\d+\.\d+\.\d+/g)).toEqual(["1.2.3"]);
+
+    expect(NIGHTLY_TRUST.entry.startsWith(RELEASE_TRUST.label)).toBe(false);
+    expect(RELEASE_TRUST.entry.startsWith(NIGHTLY_TRUST.label)).toBe(false);
   });
 
   it("covers the call inside shell plumbing, and only the call", () => {
@@ -175,6 +194,22 @@ describe("syncGlobalTrust", () => {
     });
   });
 
+  it("leaves the nightly's entry alone", async () => {
+    await put(
+      JSON.stringify({
+        autoMode: { allow: ["$defaults", NIGHTLY_TRUST.entry] },
+      })
+    );
+    const outcomes = await sync(true);
+
+    expect(outcomes[0]?.state).toBe("written");
+    expect(JSON.parse(await read())).toEqual({
+      autoMode: {
+        allow: ["$defaults", NIGHTLY_TRUST.entry, GLOBAL_TRUST_ENTRY],
+      },
+    });
+  });
+
   it("never reads an unlabelled entry as ours", async () => {
     await put(
       JSON.stringify({ autoMode: { allow: ["Internal Registry: Taskless"] } })
@@ -248,7 +283,7 @@ describe("rendering", () => {
     expect(describeGlobalTrust(outcomes, home)).toEqual([
       {
         replace: false,
-        what: "@taskless/cli or @taskless/cli-nightly at an exact version",
+        what: "@taskless/cli at an exact version",
         where: "in ~/.claude/settings.json (autoMode.allow)",
       },
     ]);

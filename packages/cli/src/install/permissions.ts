@@ -36,10 +36,12 @@ import { isRecord } from "../util/is-record";
  *
  * - The rule is never wider than the invocation. Each uses that harness's
  *   word-bounded form, so `@0.13.0` cannot match `@0.13.01`.
- * - A file holds exactly one Taskless rule set: the installed invocation's.
- *   Every other allow rule for a Taskless invocation is removed, however it
- *   got there, since a pinned rule for a version that is no longer installed
- *   allows nothing anyone wants. Deny rules, and rules for anything else, are
+ * - A file holds exactly one Taskless rule set per package: the installed
+ *   invocation's. Every other allow rule for the same package is removed,
+ *   however it got there, since a pinned rule for a version that is no longer
+ *   installed allows nothing anyone wants. The other package's rules are left
+ *   to the other package, so a nightly and the release installed side by side
+ *   do not undo each other. Deny rules, and rules for anything else, are
  *   never touched. The manifest record decides only whether a file Taskless
  *   created may be deleted once it is empty.
  * - A file that denies the invocation, or does not parse, is left alone.
@@ -408,11 +410,19 @@ function cursorCliDenies(root: unknown, invocation: string): boolean {
  * package name must end there, so `@taskless/cli-foo` is not Taskless.
  */
 const TASKLESS_COMMAND =
-  /^(?:npx|pnpm dlx) @taskless\/cli(?:-nightly)?(?:@[^\s]+)?$/;
+  /^(?:npx|pnpm dlx) (@taskless\/cli(?:-nightly)?)(?:@[^\s]+)?$/;
+
+/**
+ * The Taskless package `command` runs, less a trailing ` *` glob, or
+ * `undefined` when it does not run the Taskless CLI.
+ */
+function tasklessPackage(command: string): string | undefined {
+  return TASKLESS_COMMAND.exec(command.replace(/ \*$/, ""))?.[1];
+}
 
 /** Whether `command`, less a trailing ` *` glob, runs the Taskless CLI. */
 function isTasklessCommand(command: string): boolean {
-  return TASKLESS_COMMAND.test(command.replace(/ \*$/, ""));
+  return tasklessPackage(command) !== undefined;
 }
 
 /** The strings in the list at `path` that `isTaskless` accepts. */
@@ -797,9 +807,14 @@ export interface SyncPermissionsOptions {
 
 /**
  * Bring every harness permission file in line with this install: add the rule
- * for the invocation, remove every other Taskless rule in the file, and every
- * Taskless rule from a recorded file whose harness is no longer selected, and
- * record what it wrote.
+ * for the invocation, remove every other rule in the file for the invocation's
+ * package, and every such rule from a recorded file whose harness is no longer
+ * selected, and record what it wrote.
+ *
+ * Rules for the other package are neither removed nor dropped from the
+ * record: they belong to the other build, which keeps them current on its own
+ * runs. An invocation that names neither package (a `self` build's path)
+ * removes no package rules at all.
  *
  * With `write: false` it reads the same files and reports the same edits
  * without touching anything, which is what the wizard previews.
@@ -809,6 +824,13 @@ export async function syncPermissions(
   options: SyncPermissionsOptions
 ): Promise<PermissionEdit[]> {
   const previous = await readRecords(cwd);
+  const own = tasklessPackage(options.invocation);
+  const packageOf = (rule: string) => tasklessPackage(commandOfRule(rule));
+  const isOwn = (rule: string) => own !== undefined && packageOf(rule) === own;
+  const isOther = (rule: string) => {
+    const name = packageOf(rule);
+    return name !== undefined && name !== own;
+  };
   const desired = new Map<string, { harness: Harness; rules: string[] }>();
   for (const harness of harnessesFor(options.selected, options.codexDetected)) {
     desired.set(await harness.locate(cwd), {
@@ -832,7 +854,9 @@ export async function syncPermissions(
     const text = await readText(path);
     const want = desired.get(file)?.rules ?? [];
     const had = recorded?.rules ?? [];
-    const remove = harness.found(text).filter((rule) => !want.includes(rule));
+    const remove = harness
+      .found(text)
+      .filter((rule) => isOwn(rule) && !want.includes(rule));
     const add = want.filter((rule) => !had.includes(rule));
     if (add.length === 0 && remove.length === 0) {
       if (recorded !== undefined) next[file] = recorded;
@@ -858,7 +882,7 @@ export async function syncPermissions(
 
     const removed = remove;
     const rules = [
-      ...had.filter((rule) => want.includes(rule)),
+      ...had.filter((rule) => want.includes(rule) || isOther(rule)),
       ...result.added,
     ];
     if (rules.length > 0) next[file] = { rules, created };

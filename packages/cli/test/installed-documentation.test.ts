@@ -274,18 +274,36 @@ describe("this repository's own installed Taskless docs", () => {
       "tell the user it is present and do not ask them to add it"
     );
     expect(prose).toContain(
-      "in place of any older entry that begins `Taskless CLI:`"
+      "in place of any older entry that begins `%(TASKLESS_TRUST_LABEL)s`"
     );
   });
 
   it("carries the same global trust entry init writes", async () => {
     // One text in two places: if they drift, the skill hands over an entry
-    // init would not recognise, or the reverse.
-    const skill = await readFile(
+    // init would not recognise, or the reverse. The source spells it as a
+    // placeholder so each build installs its own package's entry.
+    const source = await readFile(
       resolve(repositoryRoot, "skills", "taskless", "SKILL.md"),
       "utf8"
     );
-    expect(skill).toContain(`\n${GLOBAL_TRUST_ENTRY}\n`);
+    expect(source).toContain("\n%(TASKLESS_TRUST_ENTRY)s\n");
+
+    const cwd = await mkdtemp(join(tmpdir(), "taskless-trust-entry-"));
+    try {
+      await applyInstallPlan(
+        cwd,
+        buildInstallPlan([".claude"], getEmbeddedSkills()),
+        { cliVersion: "0.0.0" }
+      );
+      const installed = await readFile(
+        join(cwd, ".taskless", "skills", "taskless", "SKILL.md"),
+        "utf8"
+      );
+      expect(installed).toContain(`\n${GLOBAL_TRUST_ENTRY}\n`);
+      expect(installed).not.toContain("%(TASKLESS_TRUST");
+    } finally {
+      await rm(cwd, { recursive: true, force: true });
+    }
   });
 
   it("keeps the skill body within its 200-line cap", async () => {

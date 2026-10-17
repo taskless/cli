@@ -166,12 +166,12 @@ When the preflight, or any later Taskless command, is blocked by the harness or 
 
 1. Stop before doing any further Taskless work, and not retry the command or attempt to work around the block. The one exception is a command that was refused while combined with other commands on its line: the agent SHALL rerun it once, on its own, before treating it as blocked.
 2. Send one message that names the exact command, and says it downloads and runs a package from npm.
-3. When the refusal came from the agent's own safety classifier rather than a missing permission (in Claude Code, a denial by the auto mode classifier), say that an allow rule cannot clear it. When the user's settings (in Claude Code, top-level `autoMode.allow` in `~/.claude/settings.json`) already hold an entry beginning `Taskless CLI:` that matches the global trust entry, the agent SHALL say the entry is present and SHALL NOT tell the user to add it. When the entry is absent, or carries the label with different text, the agent SHALL give the user the global trust entry, inline, with the file and key to add it under, after `"$defaults"`, replacing an older `Taskless CLI:` entry. The agent SHALL NOT write that entry itself. In every case it SHALL also offer running the CLI with no arguments in a terminal, which offers to add or refresh the entry, per-command approval in chat, and leaving the classifier's mode, as the alternatives.
+3. When the refusal came from the agent's own safety classifier rather than a missing permission (in Claude Code, a denial by the auto mode classifier), say that an allow rule cannot clear it. When the user's settings (in Claude Code, top-level `autoMode.allow` in `~/.claude/settings.json`) already hold an entry that matches this build's global trust entry, the agent SHALL say the entry is present and SHALL NOT tell the user to add it. When the entry is absent, or carries the label with different text, the agent SHALL give the user the global trust entry, inline, with the file and key to add it under, after `"$defaults"`, replacing an older entry under this build's label. The agent SHALL NOT write that entry itself. In every case it SHALL also offer running the CLI with no arguments in a terminal, which offers to add or refresh the entry, per-command approval in chat, and leaving the classifier's mode, as the alternatives.
 4. Otherwise, offer the user three ways forward: the agent adds an allow rule for exactly the invocation the skill names to the agent's permission settings, and if the harness blocks that edit too, gives the user the change to make themselves; the user approves it through their agent's permissions command (in Claude Code, `/permissions` with the rule `Bash(<invocation>:*)`); or the user approves every Taskless command manually, in chat, as the agent runs it.
 5. Never propose an allow rule that widens the invocation, such as a wildcard over the package name or its version. Where the harness's allowlist cannot scope to the one invocation, for example one that only allows a whole tool, offer per-command approval in chat instead of a rule.
 6. Not ask in that message what the user wants Taskless to do. Their request stands, and the agent carries it out once the command is unblocked.
 
-The global trust entry and these instructions SHALL be written in the skill body itself, not fetched from an `agent <topic>` recipe, because a recipe is fetched through the same command that is blocked.
+The global trust entry and these instructions SHALL be written in the skill body itself, the entry and its label as placeholders that install renders to the installing build's entry and label, not fetched from an `agent <topic>` recipe, because a recipe is fetched through the same command that is blocked.
 
 #### Scenario: Skill body runs the preflight first
 
@@ -193,7 +193,7 @@ The global trust entry and these instructions SHALL be written in the skill body
 
 - **WHEN** the skill body is read from source
 - **THEN** it SHALL instruct the agent, when a Taskless command is refused by the agent's safety classifier, to stop without retrying
-- **AND** SHALL contain the global trust entry text inline, beginning `Taskless CLI:`
+- **AND** SHALL contain this build's global trust entry inline once installed: the release's, beginning `Taskless CLI:`, from the released build, and the nightly's, beginning `Taskless CLI nightly:`, from a nightly
 - **AND** SHALL name `~/.claude/settings.json` and `autoMode.allow` for Claude Code
 - **AND** SHALL NOT offer a project allow rule for that refusal
 - **AND** SHALL forbid the agent from writing the entry itself
