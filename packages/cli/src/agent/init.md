@@ -100,8 +100,9 @@ first step, not the whole job.
 
    Without `--json`, the same facts print as prose: a per-target summary,
    each permission edit as `Edited <file>` with `ALLOW:` and `REMOVE:`
-   lines (or `SKIPPED:` with the reason), a warning for each missing
-   global trust entry, then a trailer naming the directories that changed and, after a
+   lines (or `SKIPPED:` with the reason), a warning for each missing or
+   stale global trust entry, then a trailer naming the directories that
+   changed and, after a
    version move, pointing at `update`, then a notice naming each stale
    pin and the version to move it to.
 
