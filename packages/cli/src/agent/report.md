@@ -1,4 +1,6 @@
-# Topic: report     (CLI v%(CLI_VERSION)s / topic v6)
+# Topic: report     (CLI v%(CLI_VERSION)s / topic v7)
+
+%(ONE_COMMAND_PER_CALL)s
 
 ## Goal
 Publish a Taskless report: an unlisted page on tskl.es that shows what

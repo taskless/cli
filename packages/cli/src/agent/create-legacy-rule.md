@@ -1,4 +1,6 @@
-# Topic: create-legacy-rule     (CLI v%(CLI_VERSION)s / topic v1)
+# Topic: create-legacy-rule     (CLI v%(CLI_VERSION)s / topic v2)
+
+%(ONE_COMMAND_PER_CALL)s
 
 ## You are here
 This is `create-legacy-rule`. It helps you write a rule for a linter the

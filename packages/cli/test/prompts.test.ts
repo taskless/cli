@@ -20,6 +20,7 @@ import {
   buildVariables,
   canonicalRecipeTopics,
   getRawRecipe,
+  oneCommandPerCall,
   stripValeDirectives,
   getRecipe,
   getRenderedRecipe,
@@ -187,6 +188,7 @@ describe("the CLI invocation variable", () => {
       "HOST_TOOLS",
       "LOGIN_EVIDENCE",
       "NAME_DESTINATION",
+      "ONE_COMMAND_PER_CALL",
       "PACKAGE_MANAGER_DLX",
       "RECIPE_FETCH",
       "SOURCE_PR_REVIEW",
@@ -464,6 +466,58 @@ describe("header suppression", () => {
       getPrompt("create-sg-rule", { header: true })
     );
     expect(getPrompt("create-sg-rule")).toBe(getPrompt("create-sg-rule", {}));
+  });
+});
+
+describe("one command per call", () => {
+  // The skill states this rule, but an agent deep in a recipe copies the
+  // recipe's own examples, and chaining crept back in there (taskless/cli#532).
+  // Asserted over every topic and both variants, with and without the header,
+  // since `header: false` must not take the rule with it.
+  //
+  // Except the feedback invite, which is never served alone: the survey gate
+  // appends it, header-less, under a recipe that has already stated the rule.
+  const FRAGMENT_TOPIC = "feedback-invite";
+
+  it("states the rule beneath every recipe's header", () => {
+    const invocation = "npx @taskless/cli@1.2.3";
+    const rule = oneCommandPerCall(invocation);
+    const variants = canonicalRecipeTopics()
+      .filter((topic) => topic !== FRAGMENT_TOPIC)
+      .flatMap((topic) => [
+        { topic, anonymous: false },
+        { topic, anonymous: true },
+      ]);
+    for (const { topic, anonymous } of variants) {
+      const served = getRecipe(topic, { anonymous, invocation });
+      expect(served, `${topic} has no recipe`).toBeDefined();
+      expect(served!.split("\n").slice(0, 3), topic).toEqual([
+        expect.stringMatching(/^# Topic: /),
+        "",
+        rule,
+      ]);
+      const withoutHeader = getRecipe(topic, {
+        anonymous,
+        invocation,
+        header: false,
+      });
+      expect(
+        withoutHeader?.startsWith(`${rule}\n`),
+        `${topic} lost the rule with its header`
+      ).toBe(true);
+    }
+  });
+
+  it("names no invocation for a caller with no CLI", () => {
+    // `mechanics: false` must leave no invocation behind (taskless/cli#469),
+    // so the rule is stated against "the Taskless invocation" instead.
+    const rule = oneCommandPerCall();
+    expect(rule).not.toContain("<taskless-cli>");
+    for (const topic of canonicalRecipeTopics()) {
+      if (topic === FRAGMENT_TOPIC) continue;
+      const rendered = getRecipe(topic, { mechanics: false })!;
+      expect(rendered.split("\n")[2], topic).toBe(rule);
+    }
   });
 });
 

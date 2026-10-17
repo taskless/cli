@@ -1,4 +1,6 @@
-# Topic: onboard     (CLI v%(CLI_VERSION)s / topic v8)
+# Topic: onboard     (CLI v%(CLI_VERSION)s / topic v9)
+
+%(ONE_COMMAND_PER_CALL)s
 
 ## Goal
 Take a user who has just installed Taskless from zero rules to a

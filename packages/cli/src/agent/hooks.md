@@ -1,4 +1,6 @@
-# Topic: hooks     (CLI v%(CLI_VERSION)s / topic v2)
+# Topic: hooks     (CLI v%(CLI_VERSION)s / topic v3)
+
+%(ONE_COMMAND_PER_CALL)s
 
 ## Goal
 Run `check` on the staged files before every commit, in the hook tool

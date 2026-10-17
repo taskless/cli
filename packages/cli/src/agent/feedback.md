@@ -1,4 +1,6 @@
-# Topic: feedback     (CLI v%(CLI_VERSION)s / topic v1)
+# Topic: feedback     (CLI v%(CLI_VERSION)s / topic v2)
+
+%(ONE_COMMAND_PER_CALL)s
 
 ## You are here
 This is `feedback`. It helps you send the Taskless team feedback the user

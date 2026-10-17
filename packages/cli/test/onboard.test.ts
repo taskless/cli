@@ -347,8 +347,8 @@ describe("onboard recipe asks one question and finishes on its own", () => {
       : stdout.slice(start, start + title.length + next);
   }
 
-  it("is topic v8", () => {
-    expect(stdout).toMatch(/^# Topic: onboard {5}\(CLI v.+ \/ topic v8\)/m);
+  it("is topic v9", () => {
+    expect(stdout).toMatch(/^# Topic: onboard {5}\(CLI v.+ \/ topic v9\)/m);
   });
 
   it("gives the method for counting surfaced while mining, not after", () => {

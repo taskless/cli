@@ -1,4 +1,6 @@
-# Topic: recover-rule     (CLI v%(CLI_VERSION)s / topic v3)
+# Topic: recover-rule     (CLI v%(CLI_VERSION)s / topic v4)
+
+%(ONE_COMMAND_PER_CALL)s
 
 ## Goal
 Put an issued rule back the way Taskless issued it, after `check`

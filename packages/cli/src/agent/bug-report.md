@@ -1,4 +1,6 @@
-# Topic: bug-report     (CLI v%(CLI_VERSION)s / topic v1)
+# Topic: bug-report     (CLI v%(CLI_VERSION)s / topic v2)
+
+%(ONE_COMMAND_PER_CALL)s
 
 ## You are here
 This is `bug-report`. It helps you report a bug in Taskless to the
