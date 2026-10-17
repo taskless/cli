@@ -16,5 +16,5 @@
 
 ## 4. Release
 
-- [ ] 4.1 Add a `patch` changeset describing the entry refresh and the standalone rule; run `pnpm typecheck`, `pnpm lint`, and `pnpm --filter @taskless/cli test`, all passing
+- [x] 4.1 Add a `patch` changeset describing the entry refresh and the standalone rule; run `pnpm typecheck`, `pnpm lint`, and `pnpm --filter @taskless/cli test`, all passing
 - [ ] 4.2 Run the pre-archive scenario check from CLAUDE.md, then archive the change on the PR
