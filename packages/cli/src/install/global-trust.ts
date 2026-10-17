@@ -18,9 +18,10 @@ import { parseJson, set, valueAt } from "./permissions";
  * only moment a human is there to make it is the interactive install.
  *
  * Unlike a project rule, the entry is personal state: it is never recorded in
- * the project manifest, never names a version, is written at most once, and
- * is never removed. A present entry is found by its label, so rewording the
- * text later never touches an entry a user already has.
+ * the project manifest, never names a version, and is never removed. It is
+ * found by its label, and the label is ours: an entry under it whose text is
+ * not the current one is stale, and the wizard replaces it, since we know
+ * which text works and a hand-copied or older one may not.
  *
  * The list is closed. A harness joins once it is verified that its classifier
  * can refuse what its project file allows, and that its user settings accept
@@ -45,8 +46,11 @@ export const GLOBAL_TRUST_ENTRY =
   "by the user through the Taskless installer. Running either via npx or pnpm " +
   "dlx is allowed only when the call names an exact version (e.g. " +
   // ast-grep-ignore: no-unrouted-cli-invocation
-  "@taskless/cli@1.2.3). Dist-tags such as @latest or @nightly, version " +
-  "ranges, and unversioned calls are not covered.";
+  "@taskless/cli@1.2.3). The call stays covered when the same command line " +
+  "also sets a variable, changes or creates a directory, or redirects the " +
+  "call's output to a file; every other command on the line is judged on " +
+  "its own. Dist-tags such as @latest or @nightly, version ranges, and " +
+  "unversioned calls are not covered.";
 
 /** Where a harness's user settings live, from the environment. */
 export interface GlobalTrustEnvironment {
@@ -96,10 +100,11 @@ export interface GlobalTrustOutcome {
   /** The list the entry belongs in, dotted: `autoMode.allow`. */
   key: string;
   /**
-   * `present`: already there, untouched. `absent`: missing, nothing written.
-   * `written`: added by this run. `skipped`: left alone, see `skipped`.
+   * `present`: the current text, untouched. `absent`: missing, nothing
+   * written. `stale`: labelled with other text, nothing written. `written`:
+   * added or replaced by this run. `skipped`: left alone, see `skipped`.
    */
-  state: "present" | "absent" | "written" | "skipped";
+  state: "present" | "absent" | "stale" | "written" | "skipped";
   /** Why the file was left alone, or `null` when it was not. */
   skipped: string | null;
 }
@@ -107,7 +112,7 @@ export interface GlobalTrustOutcome {
 export interface SyncGlobalTrustOptions {
   /** Tool directories the skill is installed into. */
   selected: readonly string[];
-  /** `true` adds a missing entry; `false` only reports. */
+  /** `true` adds a missing entry or replaces a stale one; `false` only reports. */
   write: boolean;
   /** Defaults to the real home directory and environment. */
   environment?: GlobalTrustEnvironment;
@@ -123,7 +128,7 @@ async function readText(path: string): Promise<string | undefined> {
 
 type Inspection =
   | { kind: "present" }
-  | { kind: "absent"; text: string }
+  | { kind: "absent" | "stale"; text: string }
   | { kind: "skip"; reason: string };
 
 /** Whether the file holds the entry, and the edited text when it does not. */
@@ -151,8 +156,18 @@ function inspect(trust: GlobalTrust, current = "{}\n"): Inspection {
   if (!Array.isArray(list)) {
     return { kind: "skip", reason: `${trust.key.join(".")} is not a list` };
   }
-  if (list.some((item) => typeof item === "string" && item.startsWith(LABEL))) {
-    return { kind: "present" };
+  const index = list.findIndex(
+    (item) => typeof item === "string" && item.startsWith(LABEL)
+  );
+  if (index !== -1) {
+    if (list[index] === GLOBAL_TRUST_ENTRY) return { kind: "present" };
+    // Replaced where it sits, so the user's ordering survives. A second
+    // labelled string is left alone: deleting from a user's list is more
+    // than the one line the summary shows.
+    return {
+      kind: "stale",
+      text: set(current, [...trust.key, index], GLOBAL_TRUST_ENTRY),
+    };
   }
   // An existing list without `$defaults` is the user replacing the defaults on
   // purpose, so it is appended to as it stands.
@@ -165,8 +180,8 @@ function inspect(trust: GlobalTrust, current = "{}\n"): Inspection {
 }
 
 /**
- * Report, and with `write` add, the global trust entry for each selected
- * harness that has one. A present entry is never rewritten.
+ * Report, and with `write` add or refresh, the global trust entry for each
+ * selected harness that has one. A present entry is never rewritten.
  */
 export async function syncGlobalTrust(
   options: SyncGlobalTrustOptions
@@ -196,23 +211,29 @@ export async function syncGlobalTrust(
   return outcomes;
 }
 
+/** Whether the wizard has an edit to offer for this outcome. */
+export function needsWrite(outcome: GlobalTrustOutcome): boolean {
+  return outcome.state === "absent" || outcome.state === "stale";
+}
+
 /** `~/…` for a path under the home directory, so the summary reads short. */
 function display(file: string, home: string): string {
   return file.startsWith(`${home}/`) ? `~${file.slice(home.length)}` : file;
 }
 
 /**
- * The proposed edit for each missing entry, for the wizard's summary, beside
- * the project's own lines: what it allows, and where it goes. `global` marks
- * it as the one edit outside the project.
+ * The proposed edit for each missing or stale entry, for the wizard's
+ * summary, beside the project's own lines: what it allows, and where it goes.
+ * `replace` marks a stale entry, which is swapped rather than added.
  */
 export function describeGlobalTrust(
   outcomes: readonly GlobalTrustOutcome[],
   home: string = homedir()
-): { what: string; where: string }[] {
+): { replace: boolean; what: string; where: string }[] {
   return outcomes
-    .filter((outcome) => outcome.state === "absent")
+    .filter((outcome) => needsWrite(outcome))
     .map((outcome) => ({
+      replace: outcome.state === "stale",
       // ast-grep-ignore: no-unrouted-cli-invocation
       what: "@taskless/cli or @taskless/cli-nightly at an exact version",
       where: `in ${display(outcome.file, home)} (${outcome.key})`,
@@ -220,8 +241,9 @@ export function describeGlobalTrust(
 }
 
 /**
- * A warning for each harness still missing its entry. `installer` is the
- * command a person runs, with no arguments, to get the wizard that offers it.
+ * A warning for each harness still missing its entry, or holding a stale one.
+ * `installer` is the command a person runs, with no arguments, to get the
+ * wizard that offers it.
  */
 export function globalTrustWarnings(
   outcomes: readonly GlobalTrustOutcome[],
@@ -229,16 +251,21 @@ export function globalTrustWarnings(
   home: string = homedir()
 ): string[] {
   return outcomes
-    .filter(
-      (outcome) => outcome.state === "absent" || outcome.state === "skipped"
-    )
-    .map(
-      (outcome) =>
+    .filter((outcome) => needsWrite(outcome) || outcome.state === "skipped")
+    .map((outcome) => {
+      const list = `the top-level \`${outcome.key}\` list in ${display(outcome.file, home)}`;
+      const wizard = `run \`${installer}\` with no arguments in a terminal`;
+      const fix =
+        outcome.state === "stale"
+          ? `The \`Taskless CLI:\` entry in ${list} is out of date. Replace it with this one, or ${wizard}, which offers to replace it`
+          : `To trust Taskless, add this entry to ${list}` +
+            (outcome.state === "skipped"
+              ? ` (left alone: ${outcome.skipped})`
+              : "") +
+            `, after "$defaults", or ${wizard}, which offers to add it`;
+      return (
         `${outcome.harness} may refuse Taskless commands that the project rule allows: its safety classifier overrules project allow rules. ` +
-        `To trust Taskless, add this entry to the top-level \`${outcome.key}\` list in ${display(outcome.file, home)}` +
-        (outcome.state === "skipped"
-          ? ` (left alone: ${outcome.skipped})`
-          : "") +
-        `, after "$defaults", or run \`${installer}\` with no arguments in a terminal, which offers to add it:\n  ${GLOBAL_TRUST_ENTRY}`
-    );
+        `${fix}:\n  ${GLOBAL_TRUST_ENTRY}`
+      );
+    });
 }
