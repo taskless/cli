@@ -288,8 +288,8 @@ describe("this repository's own installed Taskless docs", () => {
     expect(skill).toContain(`\n${GLOBAL_TRUST_ENTRY}\n`);
   });
 
-  it("keeps the skill body within its 150-line cap", async () => {
-    // `skill-taskless` caps the body at 150 lines of markdown. The cap guards
+  it("keeps the skill body within its 200-line cap", async () => {
+    // `skill-taskless` caps the body at 200 lines of markdown. The cap guards
     // against unbounded growth, not against guidance the router needs: when
     // the body needs the room, raise the cap rather than compress the text.
     // Counted the way a reader would, every line after the closing `---`,
@@ -299,7 +299,7 @@ describe("this repository's own installed Taskless docs", () => {
       "utf8"
     );
     const body = skill.replace(/^---\n[\s\S]*?\n---\n/, "").trimEnd();
-    expect(body.split("\n").length).toBeLessThanOrEqual(150);
+    expect(body.split("\n").length).toBeLessThanOrEqual(200);
   });
 
   it("keeps the skill's trigger text off the old layout too", async () => {
