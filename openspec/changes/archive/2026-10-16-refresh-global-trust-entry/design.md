@@ -30,4 +30,4 @@
 ## Risks / Trade-offs
 
 - [The classifier may still refuse plumbing despite the sentence] → The skill's standalone rule means the plumbing should not occur; the rerun-once-on-its-own instruction recovers when it does.
-- [Skill body growth against its 150-line cap] → The fallback is reworded rather than appended to; if it still does not fit, the cap is raised per the skill spec rather than compressing the guidance.
+- [Skill body growth against its line cap] → The new guidance brought the body to exactly 150 lines, the cap at the time, so the cap is raised to 200 per the skill spec rather than compressing guidance an agent acts on.

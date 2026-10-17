@@ -76,7 +76,7 @@ The consolidated skill body SHALL NOT contain step-by-step instructions for any 
 7. States that a recipe is resolved when it is fetched and is not reusable across tasks: the agent SHALL fetch the recipe at the start of every Taskless task, including a topic it already fetched earlier in the same session, and SHALL NOT act on an earlier copy.
 8. Names the CLI through the `%(TASKLESS_CLI)s` placeholder everywhere it spells an invocation, never as the literal `npx @taskless/cli`. The install renders the placeholder to the build's invocation, so a nightly or path-form build serves a skill that names itself.
 
-The body SHALL be no more than 150 lines of markdown. The cap guards against unbounded growth of a body loaded on every Taskless task; it SHALL NOT be met by compressing guidance the router needs. When the body needs more room to route correctly, the cap is raised instead. (Earlier caps of 60 and then 80 lines forced exactly that compression.)
+The body SHALL be no more than 200 lines of markdown. The cap guards against unbounded growth of a body loaded on every Taskless task; it SHALL NOT be met by compressing guidance the router needs. When the body needs more room to route correctly, the cap is raised instead. (Earlier caps of 60 and then 80 lines forced exactly that compression; 150 was reached exactly by the standalone-command rule and the present-entry fallback.)
 
 #### Scenario: Skill body warns against improvising
 
@@ -121,7 +121,7 @@ The body SHALL be no more than 150 lines of markdown. The cap guards against unb
 #### Scenario: Skill body length cap
 
 - **WHEN** the skill body is measured
-- **THEN** it SHALL be no more than 150 lines of markdown
+- **THEN** it SHALL be no more than 200 lines of markdown
 
 ### Requirement: Skill routes authoring requests through the routing front door
 
