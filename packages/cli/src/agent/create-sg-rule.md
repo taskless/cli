@@ -1,4 +1,6 @@
-# Topic: create-sg-rule     (CLI v%(CLI_VERSION)s / topic v10)
+# Topic: create-sg-rule     (CLI v%(CLI_VERSION)s / topic v11)
+
+%(ONE_COMMAND_PER_CALL)s
 
 ## You are here
 This is `create-sg-rule`. It helps you write an ast-grep rule: a check

@@ -1,4 +1,6 @@
-# Topic: validate-rule     (CLI v%(CLI_VERSION)s / topic v6)
+# Topic: validate-rule     (CLI v%(CLI_VERSION)s / topic v7)
+
+%(ONE_COMMAND_PER_CALL)s
 
 ## Goal
 Check that a rule is well-formed (`validate`), then run its tests

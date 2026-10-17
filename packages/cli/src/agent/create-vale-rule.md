@@ -1,4 +1,6 @@
-# Topic: create-vale-rule     (CLI v%(CLI_VERSION)s / topic v17)
+# Topic: create-vale-rule     (CLI v%(CLI_VERSION)s / topic v18)
+
+%(ONE_COMMAND_PER_CALL)s
 
 ## You are here
 This is `create-vale-rule`. It helps you write a Vale rule: a check over
@@ -945,20 +947,19 @@ it.
    # of the four were written by the assistant, never by the human author.
    ```
 
-   There is no single command that runs one Vale rule over the project
-   and counts (taskless/cli#379 tracks one). `verify` isolates the rule
-   but sees only its fixtures. The workable way is a whole-project
-   `check` filtered afterwards by rule id:
+   `verify` isolates the rule but sees only its fixtures. To measure it
+   over the whole project, run `check` with only that rule:
 
    ```
-   %(TASKLESS_CLI)s check --json | jq '[.results[] | select(.ruleId == "<id>")] | length'
+   %(TASKLESS_CLI)s check --json --rule <id>
    ```
 
-   A finding carries no record of which alternative matched, so to
-   count one branch, run the rule with that branch as its only `raw`
-   entry, note the number, then fold it back into the alternation. Drop
-   `| length` to read the hits themselves, which is what tells you
-   whether a hit is a false positive or a real one nobody had noticed.
+   Count the entries in `results`. A finding carries no record of which
+   alternative matched, so to count one branch, run the rule with that
+   branch as its only `raw` entry, note the number, then fold it back
+   into the alternation. Read the hits themselves too: that is what
+   tells you whether a hit is a false positive or a real one nobody had
+   noticed.
 
 6. **Validate, then verify.** Two commands, both taking the rule's
    directory as their argument, both run from the project root:

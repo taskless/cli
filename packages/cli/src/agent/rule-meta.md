@@ -1,4 +1,6 @@
-# Topic: rule-meta     (CLI v%(CLI_VERSION)s / topic v4)
+# Topic: rule-meta     (CLI v%(CLI_VERSION)s / topic v5)
+
+%(ONE_COMMAND_PER_CALL)s
 
 ## Goal
 Report what `%(TASKLESS_CLI)s rule meta` does today, so no recipe and no

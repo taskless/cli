@@ -1,4 +1,6 @@
-# Topic: detect     (CLI v%(CLI_VERSION)s / topic v2)
+# Topic: detect     (CLI v%(CLI_VERSION)s / topic v3)
+
+%(ONE_COMMAND_PER_CALL)s
 
 ## Goal
 Scan the working directory for the linters it configures, the

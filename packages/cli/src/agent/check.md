@@ -1,4 +1,6 @@
-# Topic: check     (CLI v%(CLI_VERSION)s / topic v8)
+# Topic: check     (CLI v%(CLI_VERSION)s / topic v9)
+
+%(ONE_COMMAND_PER_CALL)s
 
 ## Goal
 Run the applicable rules against the codebase and report matches. Two
@@ -205,12 +207,13 @@ delete the rules to make `check` pass, and do not suggest
    ```
    %(TASKLESS_CLI)s check --json src/foo.ts src/bar.ts
    ```
-   or, against a git diff:
+   or, against a git diff: run `git diff --name-only main...HEAD` as
+   its own call, then pass the paths it printed:
    ```
-   %(TASKLESS_CLI)s check --json $(git diff --name-only main...HEAD)
+   %(TASKLESS_CLI)s check --json src/foo.ts src/deleted.ts
    ```
-   Paths that don't exist on disk are skipped, so you can pipe raw
-   `git diff` output directly without pre-filtering. The skipped paths
+   Paths that don't exist on disk are skipped, so you can pass every
+   path `git diff` printed without pre-filtering. The skipped paths
    are named in a notice (`notices` under `--json`), so a mistyped
    path is visible rather than reading as clean.
 

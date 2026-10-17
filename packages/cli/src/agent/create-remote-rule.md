@@ -1,4 +1,6 @@
-# Topic: create-remote-rule     (CLI v%(CLI_VERSION)s / topic v7)
+# Topic: create-remote-rule     (CLI v%(CLI_VERSION)s / topic v8)
+
+%(ONE_COMMAND_PER_CALL)s
 
 ## You are here
 This is `create-remote-rule`. It helps you have the Taskless service

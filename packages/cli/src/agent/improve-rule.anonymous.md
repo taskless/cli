@@ -1,4 +1,6 @@
-# Topic: improve-rule (anonymous)     (CLI v%(CLI_VERSION)s / topic v4)
+# Topic: improve-rule (anonymous)     (CLI v%(CLI_VERSION)s / topic v5)
+
+%(ONE_COMMAND_PER_CALL)s
 
 ## Goal
 Iterate on an existing ast-grep rule **locally** without contacting

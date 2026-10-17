@@ -1,4 +1,6 @@
-# Topic: rule-feedback     (CLI v%(CLI_VERSION)s / topic v5)
+# Topic: rule-feedback     (CLI v%(CLI_VERSION)s / topic v6)
+
+%(ONE_COMMAND_PER_CALL)s
 
 ## You are here
 This is `rule-feedback`. It helps you turn what a user just said about

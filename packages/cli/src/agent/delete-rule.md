@@ -1,4 +1,6 @@
-# Topic: delete-rule     (CLI v%(CLI_VERSION)s / topic v4)
+# Topic: delete-rule     (CLI v%(CLI_VERSION)s / topic v5)
+
+%(ONE_COMMAND_PER_CALL)s
 
 ## Goal
 Remove a rule and its associated test files from `.taskless/`. Does not

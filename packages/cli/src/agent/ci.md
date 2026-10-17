@@ -1,4 +1,6 @@
-# Topic: ci     (CLI v%(CLI_VERSION)s / topic v5)
+# Topic: ci     (CLI v%(CLI_VERSION)s / topic v6)
+
+%(ONE_COMMAND_PER_CALL)s
 
 ## Goal
 Wire `%(TASKLESS_CLI)s check` into the user's existing CI so rules run

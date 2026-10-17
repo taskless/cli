@@ -1,4 +1,6 @@
-# Topic: create-runtime-rule     (CLI v%(CLI_VERSION)s / topic v5)
+# Topic: create-runtime-rule     (CLI v%(CLI_VERSION)s / topic v6)
+
+%(ONE_COMMAND_PER_CALL)s
 
 ## You are here
 This is `create-runtime-rule`. It helps you write a runtime rule: a
