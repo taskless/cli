@@ -310,9 +310,11 @@ describe("runWizard end-to-end", () => {
     });
 
     it("does not offer an entry that is already there", async () => {
+      const { GLOBAL_TRUST_ENTRY } =
+        await import("../src/install/global-trust");
       await mkdir(dirname(userSettings()), { recursive: true });
       const original = JSON.stringify({
-        autoMode: { allow: ["$defaults", "Taskless CLI: mine"] },
+        autoMode: { allow: ["$defaults", GLOBAL_TRUST_ENTRY] },
       });
       await writeFile(userSettings(), original);
       clackResponses.locations = [".claude"];
@@ -321,7 +323,60 @@ describe("runWizard end-to-end", () => {
       const { runWizard } = await import("../src/wizard");
       await runWizard({ cwd, globalTrustEnvironment });
 
-      expect(loggedMessages.join("\n")).not.toContain("ALLOW (global)");
+      expect(loggedMessages.join("\n")).not.toContain("(global)");
+      expect(await readFile(userSettings(), "utf8")).toBe(original);
+    });
+
+    it("replaces a stale entry where it sits once confirmed", async () => {
+      const { GLOBAL_TRUST_ENTRY } =
+        await import("../src/install/global-trust");
+      await mkdir(dirname(userSettings()), { recursive: true });
+      await writeFile(
+        userSettings(),
+        JSON.stringify({
+          autoMode: {
+            allow: [
+              "$defaults",
+              "Taskless CLI: mine",
+              "Internal Registry: ours",
+            ],
+          },
+        })
+      );
+      clackResponses.locations = [".claude"];
+      clackResponses.summary = true;
+
+      const { runWizard } = await import("../src/wizard");
+      await runWizard({ cwd, globalTrustEnvironment });
+
+      expect(loggedMessages.join("\n")).toContain(
+        "REPLACE (global): @taskless/cli or @taskless/cli-nightly at an exact version\n" +
+          "                  in ~/.claude/settings.json (autoMode.allow)"
+      );
+      expect(confirmMessages).toEqual(["Make these changes to your settings?"]);
+      const settings = JSON.parse(await readFile(userSettings(), "utf8")) as {
+        autoMode: { allow: string[] };
+      };
+      expect(settings.autoMode.allow).toEqual([
+        "$defaults",
+        GLOBAL_TRUST_ENTRY,
+        "Internal Registry: ours",
+      ]);
+      expect(warnedMessages).toEqual([]);
+    });
+
+    it("declining leaves a stale entry byte-identical", async () => {
+      await mkdir(dirname(userSettings()), { recursive: true });
+      const original = JSON.stringify({
+        autoMode: { allow: ["$defaults", "Taskless CLI: mine"] },
+      });
+      await writeFile(userSettings(), original);
+      clackResponses.locations = [".claude"];
+      clackResponses.summary = false;
+
+      const { runWizard } = await import("../src/wizard");
+      await runWizard({ cwd, globalTrustEnvironment });
+
       expect(await readFile(userSettings(), "utf8")).toBe(original);
     });
   });

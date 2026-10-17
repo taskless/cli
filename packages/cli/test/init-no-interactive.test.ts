@@ -12,6 +12,7 @@ import { join } from "node:path";
 import { promisify } from "node:util";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { LATEST_SCHEMA_VERSION } from "../src/filesystem/migrate";
+import { GLOBAL_TRUST_ENTRY } from "../src/install/global-trust";
 import { builtCli } from "./support/built-cli";
 
 const execFileAsync = promisify(execFile);
@@ -529,12 +530,29 @@ describe("taskless init (the batch install)", () => {
       await writeFile(
         userSettings(),
         JSON.stringify({
-          autoMode: { allow: ["$defaults", "Taskless CLI: x"] },
+          autoMode: { allow: ["$defaults", GLOBAL_TRUST_ENTRY] },
         })
       );
       const { stdout } = await run();
 
       expect(stdout).not.toContain("autoMode.allow");
+    });
+
+    it("warns about a stale entry, reports it, and never replaces it", async () => {
+      await mkdir(join(home, ".claude"), { recursive: true });
+      const original = JSON.stringify({
+        autoMode: { allow: ["$defaults", "Taskless CLI: x"] },
+      });
+      await writeFile(userSettings(), original);
+      const { stdout, stderr } = await run("--json");
+      const envelope = JSON.parse(stdout) as {
+        globalTrust: Array<{ state: string }>;
+      };
+
+      expect(envelope.globalTrust[0]?.state).toBe("stale");
+      expect(stderr).toContain("is out of date");
+      expect(stderr).toContain(GLOBAL_TRUST_ENTRY);
+      expect(await readFile(userSettings(), "utf8")).toBe(original);
     });
 
     it("reports it on the --json envelope, with the warning on stderr", async () => {

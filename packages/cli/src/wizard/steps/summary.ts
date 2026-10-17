@@ -8,6 +8,7 @@ import "../../util/color";
 
 import {
   describeGlobalTrust,
+  needsWrite,
   type GlobalTrustOutcome,
 } from "../../install/global-trust";
 import { commandOfRule, type PermissionEdit } from "../../install/permissions";
@@ -61,8 +62,12 @@ export async function renderSummaryAndConfirm(
     ...(globalTrust === undefined
       ? []
       : describeGlobalTrust(globalTrust.outcomes, globalTrust.home).map(
-          (line) =>
-            ({ label: "ALLOW (global):", tone: "allow", ...line }) as const
+          ({ replace, what, where }): SettingsLine => ({
+            label: replace ? "REPLACE (global):" : "ALLOW (global):",
+            tone: "allow",
+            what,
+            where,
+          })
         )),
   ]);
   if (settingsLines.length > 0) {
@@ -75,8 +80,7 @@ export async function renderSummaryAndConfirm(
   // nothing is being removed.
   const editsSettings =
     permissions.some((edit) => edit.skipped === null) ||
-    (globalTrust?.outcomes.some((outcome) => outcome.state === "absent") ??
-      false);
+    (globalTrust?.outcomes.some((outcome) => needsWrite(outcome)) ?? false);
   if (!diff.hasRemovals && !editsSettings) {
     return true;
   }

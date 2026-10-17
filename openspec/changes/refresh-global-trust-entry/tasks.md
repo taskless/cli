@@ -6,8 +6,8 @@
 
 ## 2. Wizard and init
 
-- [ ] 2.1 Summary shows `REPLACE (global):` for a stale entry and counts it as a settings edit; the wizard writes on confirm for `absent` or `stale`; verify `wizard-integration.test.ts` covers replace-on-confirm and byte-identical on decline
-- [ ] 2.2 `init` reports `stale` in `--json` and warns, never writing; update `packages/cli/src/agent/init.md` state list; verify `init-no-interactive.test.ts` asserts the stale state and an unchanged user file
+- [x] 2.1 Summary shows `REPLACE (global):` for a stale entry and counts it as a settings edit; the wizard writes on confirm for `absent` or `stale`; verify `wizard-integration.test.ts` covers replace-on-confirm and byte-identical on decline
+- [x] 2.2 `init` reports `stale` in `--json` and warns, never writing; update `packages/cli/src/agent/init.md` state list; verify `init-no-interactive.test.ts` asserts the stale state and an unchanged user file
 
 ## 3. Skill body
 
