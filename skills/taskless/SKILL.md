@@ -150,6 +150,16 @@ earlier in this session is not a substitute for fetching it again, even for
 the same topic. Start each Taskless task with `%(TASKLESS_CLI)s agent <topic>`
 and follow the copy it returns.
 
+## Run each Taskless command on its own
+
+Run every `%(TASKLESS_CLI)s` command as its own shell call, exactly as
+written. Do not chain it with other commands, and add no separators, pipes,
+or redirections around it. The commands Taskless hands you run the same in
+bash, zsh, and fish; the glue around them does not. An `echo ======` between
+two commands is an error in zsh, which drops the rest of the line, so the
+second command never runs and nothing says so. A chain also reports only its
+last command's exit code, and `check` uses its exit code to report results.
+
 ## --anonymous
 
 Any rule/check command accepts `--anonymous` to skip the Taskless API and
