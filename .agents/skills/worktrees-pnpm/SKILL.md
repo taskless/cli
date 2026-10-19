@@ -14,14 +14,17 @@ problem in this repo.
 **`git worktree add` is not finished until `pnpm install` has run inside the new worktree.**
 
 ```bash
-git worktree add worktrees/<name> <branch>   # or -b <branch> for a new one
-cd worktrees/<name>
+git fetch origin main
+git worktree add -b <branch> .agents/.worktrees/<name> origin/main   # or an existing <branch>, without -b
+cd .agents/.worktrees/<name>
 pnpm install            # ← not optional
 ```
 
-Worktrees go in **`worktrees/` at the repo root**, gitignored. Agent worktrees land there too: the `WorktreeCreate` / `WorktreeRemove` hooks configured in `.claude/settings.json` (scripts in this skill's `scripts/` directory) replace the default placement, which would otherwise nest them at `.claude/worktrees/<id>`. `ls worktrees/` answers "what worktrees do I have?" at a glance.
+Worktrees go in **`.agents/.worktrees/`**, gitignored except for a tracked `.gitkeep`, so the directory exists in every clone. This is the location every agent harness shares, not a Claude Code one, so a worktree made by hand, by Claude Code, or by another tool lands in the same place. In Claude Code, the `WorktreeCreate` / `WorktreeRemove` hooks configured in `.claude/settings.json` (scripts in this skill's `scripts/` directory) do the placement, which would otherwise nest worktrees at `.claude/worktrees/<id>`. A harness without those hooks follows the manual steps above, and the result is identical. `ls .agents/.worktrees/` answers "what worktrees do I have?" at a glance.
 
-A sibling directory (`../<repo>-worktrees/`) is the obvious alternative and was tried first. It is genuinely better on one axis — nothing inside the repo, so no tool can walk into it — but its path depends on what the clone directory is _named_, which committed config cannot know. A teammate whose checkout is not named the same thing gets permission prompts for every file operation, silently and per person. `worktrees/` is the same path in every clone; the price is the ignore entries in the next section, which are three lines you control.
+**Two older locations are still ignored, and new worktrees never go there.** `worktrees/` at the repo root was the previous standard, and `.claude/worktrees/` is Claude Code's default. Both keep their ignore entries so that worktrees already living there do not surface as untracked files or get linted, until their work is done.
+
+A sibling directory (`../<repo>-worktrees/`) is the obvious alternative and was tried first. It is genuinely better on one axis — nothing inside the repo, so no tool can walk into it — but its path depends on what the clone directory is _named_, which committed config cannot know. A teammate whose checkout is not named the same thing gets permission prompts for every file operation, silently and per person. `.agents/.worktrees/` is the same path in every clone; the price is the ignore entries in the next section, which are a few lines you control.
 
 A branch can only be checked out in one worktree at a time. If the branch you want is checked out in the primary tree, move that tree to another branch first.
 
@@ -114,18 +117,18 @@ Verify without waiting for an agent, by feeding a hook its payload directly:
 ```bash
 printf '{"hook_event_name":"WorktreeCreate","cwd":"%s","worktree_id":"probe"}' "$PWD" \
   | .agents/skills/worktrees-pnpm/scripts/worktree-create.sh
-# expect: <repo>/worktrees/probe on stdout, git chatter on stderr, exit 0,
-# and `git -C worktrees/probe rev-parse HEAD` equal to `origin/main` just fetched
+# expect: <repo>/.agents/.worktrees/probe on stdout, git chatter on stderr, exit 0,
+# and `git -C .agents/.worktrees/probe rev-parse HEAD` equal to `origin/main` just fetched
 
 # The id field is not stable across callers, so .worktreeId and .name are read
 # too — `.name` is what a background agent's payload actually carries.
 printf '{"hook_event_name":"WorktreeCreate","cwd":"%s","name":"probe-name"}' "$PWD" \
   | .agents/skills/worktrees-pnpm/scripts/worktree-create.sh
-# expect: <repo>/worktrees/probe-name
+# expect: <repo>/.agents/.worktrees/probe-name
 
-printf '{"hook_event_name":"WorktreeRemove","worktree_path":"%s"}' "$PWD/worktrees/probe" \
+printf '{"hook_event_name":"WorktreeRemove","worktree_path":"%s"}' "$PWD/.agents/.worktrees/probe" \
   | .agents/skills/worktrees-pnpm/scripts/worktree-remove.sh
-# ...and the same for worktrees/probe-name
+# ...and the same for .agents/.worktrees/probe-name
 ```
 
 **2. Add the ignores** described in the next section. Skipping this is the single most common way
@@ -142,46 +145,53 @@ Placing worktrees outside the repo avoids this, but the path then depends on wha
 directory is named, so committed config cannot reference it portably. In-repo plus ignores is the
 trade: three one-line entries you control, instead of a path that silently differs per teammate.
 
-**Add `worktrees/` to every tool that walks the tree from the root.** In this repo that is:
+**Add the worktrees directory to every tool that walks the tree from the root.** In this repo that is the current location plus the two older ones:
 
 ```gitignore
 # .gitignore
+.agents/.worktrees/*
+!.agents/.worktrees/.gitkeep
 worktrees/
+.claude/worktrees/
 ```
 
 ```gitignore
 # .prettierignore
+.agents/.worktrees/
 worktrees/
+.claude/worktrees/
 ```
 
 ```js
 // eslint.config.js (flat config)
-export default [{ ignores: ["worktrees/", ".claude/worktrees/"] }];
+export default [
+  { ignores: [".agents/.worktrees/", "worktrees/", ".claude/worktrees/"] },
+];
 ```
 
 Other ecosystems, same idea:
 
 ```json
 // .eslintrc.json (legacy)
-{ "ignorePatterns": ["worktrees/"] }
+{ "ignorePatterns": [".agents/.worktrees/"] }
 ```
 
 ```jsonc
 // biome.json
-{ "files": { "ignore": ["worktrees/"] } }
+{ "files": { "ignore": [".agents/.worktrees/"] } }
 ```
 
 ```toml
 # pyproject.toml — ruff / black
 [tool.ruff]
-exclude = ["worktrees"]
+exclude = [".agents/.worktrees"]
 [tool.black]
-extend-exclude = "worktrees"
+extend-exclude = "\\.agents/\\.worktrees"
 ```
 
 ```json
 // tsconfig.json — only if the root config globs sources itself
-{ "exclude": ["worktrees"] }
+{ "exclude": [".agents/.worktrees"] }
 ```
 
 Also check anything else that globs from the root: test runners (`vitest`/`jest` `exclude`),
@@ -190,21 +200,23 @@ bundlers, coverage tools, `.dockerignore`, and workspace globs in `pnpm-workspac
 
 **Do not assume which tools are affected — measure.** In this repo, `pnpm` workspaces and `tsc`
 turned out _not_ to need an entry (the workspace glob is root-anchored, and typecheck runs
-per-package through turbo), while `prettier` did — and it was invisible until worktrees moved out
-of a dot-directory, because its globs skip dotfiles. Your repo's answer will differ.
+per-package through turbo), while `prettier` did. That was invisible until worktrees moved out
+of a dot-directory, because prettier's globs skip dotfiles. They are back in one now, and the
+entry stays anyway: being skipped by luck of a leading dot is not the same as being excluded.
+Your repo's answer will differ.
 
 The check that settles it, run with a worktree actually present:
 
 ```bash
-git worktree add worktrees/probe -b throwaway-probe
-touch worktrees/probe/UNFORMATTED.md
+git worktree add .agents/.worktrees/probe -b throwaway-probe
+touch .agents/.worktrees/probe/UNFORMATTED.md
 
-git status --porcelain | grep -c '^?? worktrees'          # expect 0
-npx prettier --list-different "**/*.md" | grep -c worktrees  # expect 0
-npx eslint --debug . 2>&1 | grep -c worktrees/probe       # expect 0
+git status --porcelain | grep -c '^?? .agents'                     # expect 0
+pnpm exec prettier --list-different . | grep -c .worktrees/probe   # expect 0
+pnpm exec eslint --debug . 2>&1 | grep -c .worktrees/probe         # expect 0
 # ...and the same shape for every other root-level tool
 
-git worktree remove worktrees/probe && git branch -D throwaway-probe
+git worktree remove .agents/.worktrees/probe && git branch -D throwaway-probe
 ```
 
 Any non-zero count is a tool that still needs an ignore entry.
@@ -246,11 +258,11 @@ Worth knowing, because misdiagnosing these wastes real time:
 
 - **`--force-with-lease` fails with `stale info` on every branch.** That is a shallow or
   single-branch clone, not a worktree issue — there is no remote-tracking ref to lease against.
-  See the shallow-clone entry in `CLAUDE.md`. The same cause breaks `git push -u` and makes
+  See the shallow-clone entry in `AGENTS.md`. The same cause breaks `git push -u` and makes
   `gh pr create` demand an explicit `--head`.
 - **Several branches suddenly need rebasing and force-pushing at once.** That is `main` moving
   under an open stack, which happens whenever a PR merges. It is a stacking-cadence concern; see
-  the stacked-PR guidance in `CLAUDE.md`.
+  the stacked-PR guidance in `AGENTS.md`.
 - **A `git push` is rejected as non-fast-forward.** Check whether the remote branch was rebased
   independently (for example by GitHub's _Update branch_) before assuming your local history is
   wrong. If the remote already contains your commits under new SHAs, replay only what is missing
@@ -274,7 +286,7 @@ Worth knowing, because misdiagnosing these wastes real time:
 ## Cleaning up
 
 ```bash
-git worktree remove worktrees/<name>   # add --force if it has uncommitted changes
+git worktree remove .agents/.worktrees/<name>   # add --force if it has uncommitted changes
 git worktree list                                 # confirm
 ```
 

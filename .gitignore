@@ -43,5 +43,11 @@ agents.lock
 __pycache__/
 *.pyc
 
-# Agent and manual git worktrees (full second checkouts; see worktrees-pnpm skill)
+# Git worktrees (full second checkouts; see worktrees-pnpm skill). New ones go
+# in .agents/.worktrees/, the cross-harness location. Its .gitkeep is tracked
+# so the directory exists in every clone, for harnesses that do not create it.
+# worktrees/ and .claude/worktrees/ are earlier locations, kept ignored so
+# worktrees still living there never show up as untracked.
+.agents/.worktrees/*
+!.agents/.worktrees/.gitkeep
 worktrees/

@@ -36,7 +36,7 @@
 #     Vale packages are stamped by their own pipeline and reach a consumer only
 #     when a pin is bumped; THIS is that bump, and it changes which ast-grep a
 #     `@taskless/cli` user runs. `patch`, because the package is pre-1.0 — see
-#     the bump guidance in CLAUDE.md before reaching for `minor`.
+#     the bump guidance in AGENTS.md before reaching for `minor`.
 #
 # THE BOT COMMIT IS SELF-CONSISTENT, AND CHECKED BEFORE IT IS PUSHED.
 # `AST_GREP_VERSION` in packages/cli/src/rules/capabilities.ts is maintained by
@@ -193,7 +193,7 @@ jobs:
           # the Vale manifest, whose packages are stamped by their own pipeline
           # and reach nobody until a pin like this one moves. `patch` is correct
           # while @taskless/cli is pre-1.0 even though the diff adds no surface
-          # of our own; see the bump guidance in CLAUDE.md before reaching for
+          # of our own; see the bump guidance in AGENTS.md before reaching for
           # `minor`. The filename carries the version so that two different
           # bumps never share a release note. Accumulation is not what stops
           # here — `vendor-pr.cjs` rebuilds the branch from `main` every run,

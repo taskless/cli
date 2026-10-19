@@ -83,7 +83,7 @@ jobs:
 
       # House style, enforced rather than documented. The rules live in
       # `.taskless/` and are scoped to the documents people and agents actually
-      # read: every README, CLAUDE.md, `.conventions/*.md`, this directory's
+      # read: every README, AGENTS.md, `.conventions/*.md`, this directory's
       # workflows, and comments under `packages/cli/src/`.
       #
       # A step here, not a standalone `taskless.yml`. The canonical recipe

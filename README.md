@@ -59,7 +59,7 @@ step, so local dogfooding always matches a true install.)
 
 The root `package.json` defines a `cli` script pointing at
 `./packages/cli/dist/index.js`. That script runs the CLI built from this working
-tree instead of a published release, which is what `CLAUDE.md` points
+tree instead of a published release, which is what `AGENTS.md` points
 contributors and agents at while they are working in this repo. Nothing rebuilds
 `dist/` for you, so run `pnpm build` first when you want current behavior.
 

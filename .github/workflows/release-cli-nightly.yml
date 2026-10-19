@@ -94,7 +94,7 @@
 # all jobs skipped. That Actions-tab noise is accepted: a `branches:` filter on
 # the trigger would hide it, but it matches `head_branch`, which a fork controls,
 # so putting it there would dress a filter up as the security boundary it cannot
-# be. Let the workflow run and decide inside it (CLAUDE.md).
+# be. Let the workflow run and decide inside it (AGENTS.md).
 #
 # TWO GATES, IN THIS ORDER (design D4):
 #
@@ -798,7 +798,7 @@ jobs:
 
       # `gh api -X PATCH`, never `gh pr edit`: the GraphQL path `gh pr edit`
       # takes is broken by GitHub's Projects (classic) deprecation (see
-      # CLAUDE.md, "Editing an existing PR").
+      # AGENTS.md, "Editing an existing PR").
       - if: steps.breadcrumb.outputs.changed == 'true'
         env:
           GH_TOKEN: ${{ github.token }}

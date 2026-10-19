@@ -127,7 +127,7 @@ only path that reflects uncommitted work.
 
 ## Pull requests
 
-Read `CLAUDE.md` for the repository's working agreements. The parts that most
+Read `AGENTS.md` for the repository's working agreements. The parts that most
 often trip people up:
 
 - **Commits are GPG-signed.** `git commit -S`. Note that `main` itself shows
@@ -143,7 +143,7 @@ often trip people up:
 ## Code style
 
 `.conventions/STYLEGUIDE-CODE.md` and `.conventions/STYLEGUIDE-UI.md` are
-enforced, and `CLAUDE.md` points every agent at them. The house rules with the
+enforced, and `AGENTS.md` points every agent at them. The house rules with the
 sharpest edges are direct imports over barrel files, library types over
 hand-written duplicates, and verifying build output in the build rather than by
 parsing it afterwards.

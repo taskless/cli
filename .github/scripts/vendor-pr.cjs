@@ -218,7 +218,7 @@ async function main({
   // push is REJECTED and the run fails loudly, which is a report rather than a
   // loss. The SHA is explicit rather than implied by a remote-tracking ref,
   // which also sidesteps the `stale info` failure a shallow clone produces
-  // (see the shallow-clone note in CLAUDE.md) — `actions/checkout` clones at
+  // (see the shallow-clone note in AGENTS.md) — `actions/checkout` clones at
   // depth 1, so there may be no tracking ref to lease against.
   //
   // A branch that does not exist yet has nothing to lease and nothing to

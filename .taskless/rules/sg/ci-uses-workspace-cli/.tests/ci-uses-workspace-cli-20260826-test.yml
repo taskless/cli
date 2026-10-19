@@ -43,7 +43,7 @@ invalid:
           npx @taskless/cli check
   - |
     steps:
-      - name: The invocation CLAUDE.md names by name
+      - name: The invocation AGENTS.md names by name
         run: pnpm dlx @taskless/cli@latest check
   - |
     steps:

@@ -8,8 +8,11 @@ __generated__
 *.sh
 *.cfg
 
-# Worktrees are second checkouts; formatting them would touch other branches
+# Worktrees are second checkouts; formatting them would touch other branches.
+# .agents/.worktrees/ is current; the other two are earlier locations.
+.agents/.worktrees/
 worktrees/
+.claude/worktrees/
 
 # The demo project: deliberately-wrong source and prose fixtures.
 example/
