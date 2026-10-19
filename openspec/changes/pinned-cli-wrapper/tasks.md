@@ -8,12 +8,12 @@
 
 ## 2. Install
 
-- [ ] 2.1 Add `install.launchers` to the manifest type and install state, keeping the other package's entry on write
-- [ ] 2.2 Write this build's launcher (mode 0755) in the step that writes the canonical skill; skip for `self` builds
-- [ ] 2.3 Rewrite a launcher whose bytes differ and name it as restored in the human summary and the `--json` envelope
-- [ ] 2.4 Render the skill's `%(TASKLESS_CLI)s` to the launcher path; keep stub recovery commands on the pinned invocation
-- [ ] 2.5 Add the project-root guidance to `skills/taskless/SKILL.md`: run from the directory containing `.taskless/`, change directory in its own call, and read "No such file or directory" from the launcher as a wrong directory, not a reason to call npx
-- [ ] 2.6 Tests: release and nightly installs side by side, upgrade leaves launcher and skill bytes unchanged, edited launcher restored, `self` writes none
+- [x] 2.1 Add `install.launchers` to the manifest type and install state, keeping the other package's entry on write
+- [x] 2.2 Write this build's launcher (mode 0755) in the step that writes the canonical skill; skip for `self` builds
+- [x] 2.3 Rewrite a launcher whose bytes differ and name it as restored in the human summary and the `--json` envelope
+- [x] 2.4 Render the skill's `%(TASKLESS_CLI)s` to the launcher path; keep stub recovery commands on the pinned invocation
+- [x] 2.5 Add the project-root guidance to `skills/taskless/SKILL.md`: run from the directory containing `.taskless/`, change directory in its own call, and read "No such file or directory" from the launcher as a wrong directory, not a reason to call npx
+- [x] 2.6 Tests: release and nightly installs side by side, upgrade leaves launcher and skill bytes unchanged, edited launcher restored, `self` writes none
 
 ## 3. Permissions
 

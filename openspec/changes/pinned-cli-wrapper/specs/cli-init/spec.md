@@ -64,7 +64,7 @@ The CLI SHALL install skill content using a canonical-store-plus-stub model rath
 
 The skill source SHALL name the CLI through the `%(TASKLESS_CLI)s` placeholder, the same token the recipes use, and SHALL NOT contain the literal `npx @taskless/cli` in its body. The canonical write renders the placeholder to this build's launcher, `./.taskless/bin/cli.mjs` for a release build and `./.taskless/bin/cli-nightly.mjs` for a nightly, so the rendered skill does not change between versions of one package. A `self` build, which installs no launcher, renders its path-form invocation. Rendering is an exact-token substitution, not a search for the literal invocation in prose: a literal is whitespace-sensitive, so a wrapped line or a doubled space silently escaped the rewrite and reached a nightly install naming the release package.
 
-A reference stub's recovery command is not rendered to the launcher. It SHALL keep naming the build's pinned invocation, since it exists for when the canonical store, and the launcher with it, is missing.
+A reference stub's recovery command is not rendered to the launcher. It SHALL keep the npx form it has today (unpinned `npx @taskless/cli init` for a release build), since it exists for when the canonical store, and the launcher with it, is missing.
 
 #### Scenario: Canonical skill content matches source
 
@@ -77,10 +77,11 @@ A reference stub's recovery command is not rendered to the launcher. It SHALL ke
 - **WHEN** the release's `init` runs at `0.13.0` and then at `0.13.1`, and the skill source did not change between them
 - **THEN** the canonical `SKILL.md` SHALL be byte-identical after both
 
-#### Scenario: A stub's recovery command keeps the pinned invocation
+#### Scenario: A stub's recovery command keeps the npx form
 
 - **WHEN** the release's `init` at `0.13.0` writes a reference stub
-- **THEN** the stub's recovery command SHALL name `npx @taskless/cli@0.13.0`
+- **THEN** the stub's recovery command SHALL be `npx @taskless/cli init`
+- **AND** SHALL NOT name `./.taskless/bin/cli.mjs`
 
 #### Scenario: The sources carry the placeholder, not the literal
 

@@ -45,6 +45,12 @@ export interface TasklessInstallManifest {
    * touched. Read defensively: a hand-edited manifest can hold anything.
    */
   permissions?: Record<string, TasklessPermissionRecord>;
+  /**
+   * The version each package's `.taskless/bin/` launcher runs, keyed by
+   * package name. Separate from `cliVersion`, which is whichever build
+   * installed last, so a nightly install never moves the release's launcher.
+   */
+  launchers?: Record<string, string>;
 }
 
 /** What Taskless recorded writing to one harness permission file. */

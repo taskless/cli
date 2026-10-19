@@ -36,7 +36,8 @@ export const INVOCATION_PLACEHOLDER = "%(TASKLESS_CLI)s";
 
 /**
  * Render {@link INVOCATION_PLACEHOLDER} in an installed skill or command body
- * to this build's invocation.
+ * to `invocation`, this build's own by default. The canonical skill passes the
+ * project launcher instead, for a build that has one.
  *
  * The same token the recipes use, so a reader of either source sees one
  * spelling. It is substituted as an exact token rather than rendered through
@@ -49,8 +50,11 @@ export const INVOCATION_PLACEHOLDER = "%(TASKLESS_CLI)s";
  * carried a skill telling its agent to run the release package. A token
  * either matches exactly or a test on the source notices it is missing.
  */
-export function renderInvocationPlaceholder(content: string): string {
-  return content.replaceAll(INVOCATION_PLACEHOLDER, __TASKLESS_CLI__);
+export function renderInvocationPlaceholder(
+  content: string,
+  invocation: string = __TASKLESS_CLI__
+): string {
+  return content.replaceAll(INVOCATION_PLACEHOLDER, invocation);
 }
 
 /**

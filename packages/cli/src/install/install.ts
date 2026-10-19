@@ -27,6 +27,11 @@ import {
   type InstallMode,
   type InstallState,
 } from "./state";
+import {
+  buildLauncherPackage,
+  writeLauncher,
+  type LauncherWrite,
+} from "./launcher";
 
 // Skill files embedded at build time via Vite import.meta.glob
 const skillFiles: Record<string, string> = import.meta.glob(
@@ -361,6 +366,8 @@ export interface ApplyInstallOptions {
 
 export interface ApplyInstallResult {
   state: InstallState;
+  /** This build's launcher, or `null` for a build that has none. */
+  launcher: LauncherWrite | null;
   writtenSkills: Array<{ target: string; skill: string }>;
   removedSkills: Array<{ target: string; skill: string }>;
   removedCommands: Array<{ target: string; command: string }>;
@@ -482,8 +489,16 @@ export async function applyInstallPlan(
 ): Promise<ApplyInstallResult> {
   const previousState = await readInstallState(cwd);
 
+  // Each package records only its own launcher's version and keeps the
+  // other's, so the release and a nightly never move each other.
+  const launcherPackage = buildLauncherPackage();
+  const launchers = { ...previousState.launchers };
+  if (launcherPackage !== undefined) {
+    launchers[launcherPackage] = options.cliVersion;
+  }
   const nextState: InstallState = {
     cliVersion: options.cliVersion,
+    ...(Object.keys(launchers).length > 0 ? { launchers } : {}),
     targets: planToStateTargets(plan),
   };
 
@@ -530,10 +545,16 @@ export async function applyInstallPlan(
     }
   }
 
+  const launcher =
+    launcherPackage === undefined
+      ? null
+      : await writeLauncher(cwd, launcherPackage);
+
   await writeInstallState(cwd, nextState);
 
   return {
     state: nextState,
+    launcher,
     writtenSkills,
     removedSkills,
     removedCommands,

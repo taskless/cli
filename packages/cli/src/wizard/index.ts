@@ -12,6 +12,7 @@ import {
   getEmbeddedSkills,
   planToStateTargets,
 } from "../install/install";
+import { describeLauncherWrite } from "../install/launcher";
 import {
   globalTrustWarnings,
   needsWrite,
@@ -114,7 +115,14 @@ export async function runWizard(
       onNotice: (message) => log.info(message),
     });
     const cliVersion = getCliVersion();
-    await applyInstallPlan(options.cwd, plan, { cliVersion });
+    const { launcher } = await applyInstallPlan(options.cwd, plan, {
+      cliVersion,
+    });
+    if (launcher !== null && launcher.state !== "unchanged") {
+      (launcher.state === "restored" ? log.warn : log.info)(
+        describeLauncherWrite(launcher)
+      );
+    }
     await syncPermissions(options.cwd, { ...permissionOptions, write: true });
     // Confirmed with the project edits, in the summary's one question.
     if (globalTrustPreview.some((outcome) => needsWrite(outcome))) {

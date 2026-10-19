@@ -164,6 +164,12 @@ and follow the copy it returns.
 
 ## Run each Taskless command on its own
 
+Run them from the project root, the directory that contains `.taskless/`
+(in a monorepo, the nearest one above the files you are working on). If your
+shell is elsewhere, `cd` there in a separate call first. "No such file or
+directory" from `%(TASKLESS_CLI)s` means the shell is in the wrong directory:
+change directory and rerun it, and do not call `npx` or `node` instead.
+
 Run every `%(TASKLESS_CLI)s` command as its own shell call, exactly as
 written. Do not chain it with other commands, and add no separators, pipes,
 or redirections around it. The commands Taskless hands you run the same in

@@ -80,14 +80,15 @@ describe("installing a nightly writes a stub description that names no CLI packa
     expect(skillDescription).not.toMatch(/@taskless\/cli/);
   });
 
-  it("still correctly pins the canonical file's own invocation", async () => {
+  it("still names the nightly's own launcher in the canonical file", async () => {
     await install();
 
-    // Contrast case: the canonical `.taskless/` copy IS rewritten per build,
+    // Contrast case: the canonical `.taskless/` copy IS rendered per build,
     // which is what makes the stub's staleness invisible without this test —
-    // the canonical file looks completely correct.
+    // the canonical file looks completely correct. It names the nightly's
+    // launcher, which runs the pinned nightly recorded for it.
     const canonical = await readFile(canonicalSkillPath(), "utf8");
-    expect(canonical).toContain(buildInvocation());
+    expect(canonical).toContain("./.taskless/bin/cli-nightly.mjs agent");
     expect(canonical).not.toContain("npx @taskless/cli agent");
   });
 
