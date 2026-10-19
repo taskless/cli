@@ -22,6 +22,11 @@ export default tseslint.config(
       // repository — so it is deliberately outside every tsconfig, and
       // type-aware linting has no project to resolve it against.
       "packages/cli/assets/reference-runtime/",
+      // The project launcher template, for the same reason: it ships as DATA,
+      // written into a user's `.taskless/bin/` as plain JavaScript run by any
+      // Node they have, and no tsconfig covers it. `launcher.test.ts` runs the
+      // rendered file, which is what keeps it honest.
+      "packages/cli/assets/launcher/",
       "tmp/",
       // Worktrees are full checkouts nested inside the repo. Without this, a
       // root `eslint .` lints every worktree's copy of the tree — slow, and it
