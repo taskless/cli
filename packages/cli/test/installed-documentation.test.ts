@@ -135,7 +135,7 @@ describe("this repository's own installed Taskless docs", () => {
     expect(body).not.toContain("npx @taskless/cli");
   });
 
-  it("renders the placeholder to this build's invocation at install, and nothing else", async () => {
+  it("renders the placeholder to this build's launcher at install, and nothing else", async () => {
     const cwd = await mkdtemp(join(tmpdir(), "taskless-placeholder-"));
     try {
       await applyInstallPlan(
@@ -147,7 +147,8 @@ describe("this repository's own installed Taskless docs", () => {
         join(".taskless", "skills", "taskless", "SKILL.md"),
       ]) {
         const installed = await readFile(join(cwd, relative), "utf8");
-        expect(installed, relative).toContain(`${buildInvocation()} agent`);
+        expect(installed, relative).toContain("./.taskless/bin/cli.mjs agent");
+        expect(installed, relative).not.toContain(buildInvocation());
         expect(installed, relative).not.toContain("%(");
       }
     } finally {

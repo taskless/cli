@@ -12,6 +12,7 @@ import {
 } from "../util/invocation";
 import { parseFrontmatter } from "./frontmatter";
 import { renderTrustPlaceholders } from "./global-trust";
+import { skillInvocation } from "./launcher";
 
 /**
  * The Taskless-owned namespace that holds canonical skill content. No tool
@@ -40,7 +41,7 @@ export function canonicalSkillPath(name: string): string {
  * Write a skill's full content to the canonical store at
  * `.taskless/skills/<name>/SKILL.md`. The canonical store is the single source
  * of truth. The source spells the CLI as `%(TASKLESS_CLI)s`, rendered here to
- * this build's invocation, and its global trust entry and label likewise (see
+ * this build's launcher, `./.taskless/bin/cli.mjs` (see {@link skillInvocation}), and its global trust entry and label likewise (see
  * {@link renderTrustPlaceholders}); for `dev`/`self`/nightly builds a build
  * notice is also prepended (see {@link renderInvocationPlaceholder} /
  * {@link withCliBuildNotice}).
@@ -56,7 +57,9 @@ export async function writeCanonicalSkill(
   const changed = await writeIfChanged(
     path,
     withCliBuildNotice(
-      renderTrustPlaceholders(renderInvocationPlaceholder(content))
+      renderTrustPlaceholders(
+        renderInvocationPlaceholder(content, skillInvocation())
+      )
     )
   );
   return { path, changed };

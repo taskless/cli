@@ -28,6 +28,8 @@ export interface InstallTargetRecord {
 
 export interface InstallState {
   cliVersion?: string;
+  /** The version each package's launcher runs, keyed by package name. */
+  launchers?: Record<string, string>;
   targets: Record<string, InstallTargetRecord>;
 }
 
@@ -65,8 +67,15 @@ function toInstallState(
       };
     }
   }
+  // Read defensively: a hand-edited manifest can hold anything here, and the
+  // launcher itself refuses a value that is not a version.
+  const launchers: Record<string, string> = {};
+  for (const [name, version] of Object.entries(install?.launchers ?? {})) {
+    if (typeof version === "string") launchers[name] = version;
+  }
   return {
     cliVersion: install?.cliVersion,
+    ...(Object.keys(launchers).length > 0 ? { launchers } : {}),
     targets,
   };
 }
@@ -82,6 +91,9 @@ function toInstallManifest(state: InstallState): TasklessInstallManifest {
   }
   const manifest: TasklessInstallManifest = { targets };
   if (state.cliVersion) manifest.cliVersion = state.cliVersion;
+  if (state.launchers && Object.keys(state.launchers).length > 0) {
+    manifest.launchers = { ...state.launchers };
+  }
   return manifest;
 }
 

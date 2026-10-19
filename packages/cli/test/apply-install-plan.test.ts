@@ -18,6 +18,7 @@ import {
   getEmbeddedSkills,
 } from "../src/install/install";
 import { renderTrustPlaceholders } from "../src/install/global-trust";
+import { skillInvocation } from "../src/install/launcher";
 import { renderInvocationPlaceholder } from "../src/util/invocation";
 import { isShimStub, stubRecoveryInvocation } from "../src/install/canonical";
 import { parseFrontmatter } from "../src/install/frontmatter";
@@ -66,7 +67,7 @@ describe("applyInstallPlan", () => {
     const result = await applyInstallPlan(cwd, plan, { cliVersion: "0.7.0" });
 
     // Canonical store holds the source with `%(TASKLESS_CLI)s` rendered to
-    // this build's invocation, and the trust placeholders to this build's
+    // this build's launcher, and the trust placeholders to this build's
     // entry, which are the only substitutions it makes.
     const canonical = await readFile(
       join(cwd, ".taskless", "skills", "taskless", "SKILL.md"),
@@ -74,7 +75,7 @@ describe("applyInstallPlan", () => {
     );
     expect(canonical).toBe(
       renderTrustPlaceholders(
-        renderInvocationPlaceholder(tasklessSkill().content)
+        renderInvocationPlaceholder(tasklessSkill().content, skillInvocation())
       )
     );
 

@@ -12,7 +12,8 @@ import {
   getEmbeddedSkills,
 } from "../install/install";
 import { getMandatorySkillNames } from "../install/catalog";
-import type { InstallMode } from "../install/state";
+import type { InstallMode, InstallState } from "../install/state";
+import { describeLauncherWrite, type LauncherWrite } from "../install/launcher";
 import { getReloadNotice, versionMoved } from "../install/reload-notice";
 import { getUpgradeTrailer } from "../install/upgrade-trailer";
 import {
@@ -144,6 +145,9 @@ export const initCommand = defineCommand({
           // whether its user-level entry is present. Read only: the batch
           // install never writes outside the project. Empty when none apply.
           globalTrust: result.globalTrust,
+          // This build's launcher and what the run did to it; `null` for a
+          // build that installs none.
+          launcher: result.launcher,
           // Absent when nothing ran, so a caller distinguishes "the tree was
           // rewritten" from "nothing happened" by presence, never by reading
           // empty arrays out of it.
@@ -345,6 +349,8 @@ async function runNonInteractive(
   targets: TargetOutcome[];
   /** Whether a migration ran or any target wrote or removed anything. */
   changed: boolean;
+  /** This build's launcher, or `null` for a build that has none. */
+  launcher: LauncherWrite | null;
   /** Pins in `package.json`, CI, or hooks that run an older CLI than this. */
   pinnedCli: PinnedCli[];
   /** Harness permission files this run created, edited, or left alone. */
@@ -474,6 +480,11 @@ async function runNonInteractive(
     }
   }
 
+  const { launcher } = result;
+  if (launcher !== null && launcher.state !== "unchanged") {
+    log(describeLauncherWrite(launcher));
+  }
+
   const selected = plan.targets
     .filter((target) => target.mode === "reference")
     .map((target) => target.dir);
@@ -501,12 +512,15 @@ async function runNonInteractive(
     targets,
     permissions,
     globalTrust,
+    launcher,
     // A version move rewrites `install.cliVersion` in the manifest, which is
     // a tracked file, so it is a change even when every skill byte matched.
     changed:
       migrated !== undefined ||
       targets.some((target) => targetChanged(target)) ||
       permissions.some((edit) => edit.skipped === null) ||
+      (launcher !== null && launcher.state !== "unchanged") ||
+      launcherVersionMoved(previousState, result.state) ||
       versionMoved({ previousCliVersion, cliVersion }),
     pinnedCli: await findStalePins(cwd, cliVersion),
   };
@@ -522,4 +536,19 @@ function groupValuesByTarget(
     map.set(target, list);
   }
   return map;
+}
+
+/**
+ * Whether this run moved a launcher's recorded version. It lives in the
+ * tracked manifest, so it is a change even when no file bytes moved.
+ */
+function launcherVersionMoved(
+  previous: InstallState,
+  next: InstallState
+): boolean {
+  const before = previous.launchers ?? {};
+  const after = next.launchers ?? {};
+  return Object.entries(after).some(
+    ([name, version]) => before[name] !== version
+  );
 }
