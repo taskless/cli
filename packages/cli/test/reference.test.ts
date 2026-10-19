@@ -11,10 +11,10 @@ import {
 } from "../src/rules/reference";
 import { RULE_CONSTRAINTS } from "../src/rules/constraints";
 import {
-  DEMO_MANIFESTS,
+  CORPUS_MANIFESTS,
   readReferenceInputs,
   writtenPaths,
-} from "../src/rules/demo/manifest";
+} from "../src/rules/corpus/manifest";
 import { ENGINE_LAYOUTS, ENGINES, type EngineName } from "../src/rules/layout";
 import { ruleDirectory } from "../src/rules/engines";
 
@@ -93,7 +93,7 @@ function shapePaths(value: unknown): string[] {
   return [...paths].toSorted();
 }
 
-describe("the demo reference payload", () => {
+describe("the reference corpus payload", () => {
   it("is current — regenerate with `pnpm --filter @taskless/cli reference`", async () => {
     expect(await readReference()).toEqual(
       buildReference(await readReferenceInputs(assetsRoot))
@@ -117,10 +117,10 @@ describe("the demo reference payload", () => {
     // the point: whoever adds it states which of its files are dot-paths,
     // rather than inheriting a guard that silently covers nothing.
     expect(
-      DEMO_MANIFESTS.map((manifest) => manifest.engine).toSorted()
+      CORPUS_MANIFESTS.map((manifest) => manifest.engine).toSorted()
     ).toEqual(Object.keys(required).toSorted());
 
-    for (const manifest of DEMO_MANIFESTS) {
+    for (const manifest of CORPUS_MANIFESTS) {
       const written = writtenPaths(manifest);
       for (const path of required[manifest.engine] ?? []) {
         expect(written, `${manifest.engine} no longer lists ${path}`).toContain(
@@ -414,7 +414,7 @@ describe("the reference payload is reachable by another team", () => {
 /**
  * One rule's worth of input, with only the fixture paths varying.
  *
- * Hand-built rather than mutated out of `DEMO_MANIFESTS`, so a test that
+ * Hand-built rather than mutated out of `CORPUS_MANIFESTS`, so a test that
  * asserts a refusal cannot also alter what the real corpus publishes.
  */
 function refusalInput(engine: EngineName, testPaths: string[]): ReferenceInput {

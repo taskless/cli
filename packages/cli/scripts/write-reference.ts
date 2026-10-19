@@ -1,7 +1,7 @@
 /**
  * Regenerate `assets/reference.json` from the shipped rules.
  *
- * The corpus is every demonstration rule with the prompt it answers, the rule
+ * The corpus is every reference rule with the prompt it answers, the rule
  * itself, and the held-out cases — separately, so another team can run their
  * rule against our cases and ours against theirs.
  *
@@ -15,7 +15,7 @@ import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
 import { buildReference } from "../src/rules/reference";
-import { readReferenceInputs } from "../src/rules/demo/manifest";
+import { readReferenceInputs } from "../src/rules/corpus/manifest";
 
 const assetsRoot = join(import.meta.dirname, "..", "assets");
 
