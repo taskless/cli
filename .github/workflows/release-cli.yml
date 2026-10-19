@@ -197,7 +197,7 @@ jobs:
       # Lightweight, and therefore unsigned: a tag created through the API
       # points at a commit and carries no signature. That is accepted here —
       # these are pointers, and `main`'s own commits are already rewritten and
-      # unsigned by rebase-and-merge (see CLAUDE.md), so a signed tag over them
+      # unsigned by rebase-and-merge (see AGENTS.md), so a signed tag over them
       # would attest to nothing the commit does not already say.
       #
       # Idempotent for the same reason the publish step re-checks npm: a re-run

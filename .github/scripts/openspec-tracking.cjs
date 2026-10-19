@@ -164,7 +164,7 @@ function issueBody(change, sha) {
     `pnpm openspec archive ${change}`,
     "```",
     "",
-    "Before archiving, read the pre-archive check in `CLAUDE.md`. A",
+    "Before archiving, read the pre-archive check in `AGENTS.md`. A",
     "`## MODIFIED Requirements` block replaces a standing requirement wholesale and",
     "silently deletes any scenario it leaves out.",
     "",

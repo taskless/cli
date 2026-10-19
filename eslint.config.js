@@ -25,10 +25,13 @@ export default tseslint.config(
       "tmp/",
       // Worktrees are full checkouts nested inside the repo. Without this, a
       // root `eslint .` lints every worktree's copy of the tree — slow, and it
-      // fails on whatever an agent has mid-edit. `.claude/worktrees/` is the
-      // harness default and stays listed as a backstop for anything that
-      // bypasses the WorktreeCreate hook; both are scoped to `worktrees` rather
-      // than all of `.claude/` so anything else we put there is still checked.
+      // fails on whatever an agent has mid-edit. `.agents/.worktrees/` is where
+      // new worktrees go. `worktrees/` is the previous location and
+      // `.claude/worktrees/` the Claude Code default; both stay listed for
+      // worktrees still living there and anything that bypasses the hook. All
+      // are scoped to the worktree directory rather than all of `.agents/` or
+      // `.claude/`, so anything else we put there is still checked.
+      ".agents/.worktrees/",
       "worktrees/",
       ".claude/worktrees/",
       // Zero-dependency CommonJS workflow scripts (covered by their own

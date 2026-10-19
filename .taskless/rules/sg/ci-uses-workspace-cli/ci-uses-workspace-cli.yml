@@ -19,7 +19,7 @@ note: |
 
   Matched on the FETCH VERBS, not on `npx` alone and not on the package
   name alone. `npx` is one of several ways to reach a published build:
-  `pnpm dlx @taskless/cli@latest` is the invocation CLAUDE.md names by
+  `pnpm dlx @taskless/cli@latest` is the invocation AGENTS.md names by
   name, `yarn dlx` is the same thing, and `npm i -g` reaches it in two
   steps whose install line still names the package. Anchoring to `npx`
   let every one of those through, including the exact string this

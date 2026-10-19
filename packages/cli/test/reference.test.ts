@@ -75,7 +75,7 @@ function shapeOf(value: unknown, path: string, into: Set<string>): void {
  * shape and cannot silently rot the way a hand-maintained field list would.
  *
  * This is the check the `v1 -> v2` episode (see `REFERENCE_VERSION`'s own
- * comment, and CLAUDE.md's account of it) needed and did not have: `tests`
+ * comment, and AGENTS.md's account of it) needed and did not have: `tests`
  * went from an array to `{ grouping, files, cases? }` and nothing forced
  * `REFERENCE_VERSION` to move with it. A change of that kind now fails here,
  * and the fix is to bump `REFERENCE_VERSION`, update the list below, and say

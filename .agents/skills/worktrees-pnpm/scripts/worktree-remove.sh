@@ -42,7 +42,3 @@ git -C "$repo_root" worktree remove "$worktree_path" >&2 || {
 # notice and any refusal go to stderr for debug logs, and neither is fatal.
 branch="worktree-$(basename "$worktree_path")"
 git -C "$repo_root" branch -d "$branch" >&2 || true
-
-# Remove the parent directory only when it is empty, so the sibling directory
-# does not linger once the last worktree is gone.
-rmdir "$(dirname "$worktree_path")" 2>/dev/null || true

@@ -1,9 +1,11 @@
 #!/usr/bin/env bash
 #
-# WorktreeCreate hook — place worktrees at <repo>/worktrees/<id>.
+# WorktreeCreate hook — place worktrees at <repo>/.agents/.worktrees/<id>.
 #
 # Default Claude Code behavior uses <repo>/.claude/worktrees/<id>; this moves them
-# to a top-level `worktrees/` directory instead.
+# to `.agents/.worktrees/`, the location every agent harness in this repo shares,
+# so a worktree made by hand or by another tool lands in the same place.
+# Earlier worktrees lived in a top-level `worktrees/`, which stays ignored.
 #
 # A sibling directory (<repo>-worktrees/) was tried first and rejected: its path
 # depends on what the clone directory is named, so committed settings.json cannot
@@ -12,10 +14,10 @@
 #
 # In-repo costs three ignore surfaces, because a worktree is a complete second
 # checkout that root-level tooling walks into: .gitignore, .prettierignore, and
-# eslint.config.js all exclude `worktrees/`. Verified as NOT needing one: pnpm
+# eslint.config.js all exclude `.agents/.worktrees/`. Verified as NOT needing one: pnpm
 # workspaces (`packages/*` is root-anchored) and tsc (per-package via turbo).
 #
-# Layout: /path/to/<repo>  ->  /path/to/<repo>/worktrees/<worktree_id>
+# Layout: /path/to/<repo>  ->  /path/to/<repo>/.agents/.worktrees/<worktree_id>
 #
 # Contract (docs: code.claude.com/docs/en/hooks):
 #   stdin  - JSON identifying the worktree, plus .base_path, .cwd, .session_id, ...
@@ -42,7 +44,7 @@ if [ -z "$worktree_id" ]; then
 fi
 
 # The id reaches both a filesystem path and a git ref, so constrain it rather
-# than trusting its origin: `..` would escape the sibling directory, a leading
+# than trusting its origin: `..` would escape the worktrees directory, a leading
 # `-` could be read as a flag, and ref-invalid characters would fail the
 # `worktree add` further down with a much less obvious error. The harness only
 # ever sends simple slugs; this makes that assumption explicit and cheap to keep.
@@ -54,7 +56,7 @@ fi
 # Resolve against the repo this hook was invoked for, not $PWD.
 cwd=$(printf '%s' "$payload" | jq -r '.cwd // empty')
 repo_root=$(git -C "${cwd:-$PWD}" rev-parse --show-toplevel)
-worktree_dir="$repo_root/worktrees/$worktree_id"
+worktree_dir="$repo_root/.agents/.worktrees/$worktree_id"
 
 # Idempotent, but only for a real worktree. A bare directory test would hand back
 # a path that git knows nothing about — left by a partial cleanup, an interrupted

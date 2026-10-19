@@ -21,7 +21,7 @@ note: |
 
   A `branches:` filter under `push:` is unaffected and correct.
 
-  See CLAUDE.md — "branches: filters do not tell you where a workflow runs".
+  See AGENTS.md — "branches: filters do not tell you where a workflow runs".
 files:
   - ".github/workflows/*.yml"
   - ".github/workflows/*.yaml"

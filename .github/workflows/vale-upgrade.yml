@@ -280,7 +280,7 @@ jobs:
           # A changeset, because this is the bump a consumer experiences — the
           # republish that produced the package did not change anyone's install.
           # `patch` is correct while @taskless/cli is pre-1.0 even for a new Vale
-          # minor; see the bump guidance in CLAUDE.md before reaching for
+          # minor; see the bump guidance in AGENTS.md before reaching for
           # `minor`. Named for the BASE version, not the stamped one: a
           # republish mints a fresh timestamp for the same upstream Vale, so a
           # stamped filename would churn on every republish while the release

@@ -4,7 +4,7 @@ When creating or modifying files, you **MUST** follow these conventions:
 
 - Code Style Guide @.conventions/STYLEGUIDE-CODE.md
 - UI Conventions @.conventions/STYLEGUIDE-UI.md
-- When a user asks about what you can do, you _should_ suggest actions from this CLAUDE.md file.
+- When a user asks about what you can do, you _should_ suggest actions from this AGENTS.md file.
 - **NEVER** read a `.dev.vars` or `.env` or `.secrets` file
 
 ## Code Quality Checks
@@ -85,6 +85,16 @@ Both flags can be passed in one call. See also **Stacked PRs → Other gotchas**
 ## Background Agents and Worktrees
 
 **Use the `worktrees-pnpm` skill** whenever creating a worktree or delegating to a background agent with worktree isolation. It covers the full procedure, the pnpm specifics, cleanup, and recovery.
+
+**New worktrees go in `.agents/.worktrees/<name>`.** This is a standard shared by every agent harness, not just Claude Code. Git ignores everything in it except a tracked `.gitkeep`, so the directory exists in every clone. Two earlier locations, `worktrees/` and `.claude/worktrees/`, are still ignored so that worktrees already living there keep working until their work is done. Do not create new worktrees in either one.
+
+**Use the hooks and skills that are available, and do not depend on them.** In Claude Code, the `WorktreeCreate`/`WorktreeRemove` hooks in `.claude/settings.json` do the placement, and `.agents/skills/` (which `.claude/skills` links to) holds the skills, `worktrees-pnpm` among them. Another harness may have neither. If no hook places the worktree for you, do it by hand. The result must be the same: a fresh branch cut from `origin`'s default branch as just fetched, never from the main checkout's `HEAD`:
+
+```bash
+git fetch origin main
+git worktree add -b <branch> .agents/.worktrees/<name> origin/main
+cd .agents/.worktrees/<name> && pnpm install
+```
 
 The three rules that cause the most damage when missed:
 

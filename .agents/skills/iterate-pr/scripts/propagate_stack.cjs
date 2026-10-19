@@ -82,7 +82,7 @@ const {
  * WHAT TIER 3 ACTUALLY COSTS, measured rather than reasoned about, because an
  * earlier version of this comment had it wrong. `--fork-point` reads the
  * PARENT'S LOCAL REFLOG, and a WORKTREE SHARES REFS AND REFLOGS WITH ITS CLONE.
- * So the pattern CLAUDE.md recommends for background agents — several agents in
+ * So the pattern AGENTS.md recommends for background agents — several agents in
  * worktrees of one repository — keeps tier 2 working: one worktree amends the
  * parent, another reads the pre-amend tip out of the shared reflog and replays
  * the child from exactly the right place. Verified end to end.
