@@ -2,7 +2,7 @@
 
 ### Requirement: Recipes fetched through a launcher name the launcher
 
-When the CLI was started by a project launcher, as the launcher's environment variable reports, every `%(TASKLESS_CLI)s` in a rendered recipe and in the run-each-command guidance SHALL render to that launcher's path relative to the project root, `./.taskless/bin/cli.mjs` or `./.taskless/bin/cli-nightly.mjs`, rather than to the detected `npx` or `pnpm dlx` invocation. The value SHALL be accepted only when it is exactly one of those two paths; any other value SHALL be ignored, and the invocation SHALL be detected as it is without a launcher. A recipe fetched without a launcher SHALL render as it does today.
+When the CLI was started by a project launcher, as the launcher's environment variable reports, every `%(TASKLESS_CLI)s` in a rendered recipe and in the run-each-command guidance SHALL render to that launcher's path relative to the project root, `./.taskless/bin/cli.mjs` or `./.taskless/bin/cli-nightly.mjs`, rather than to the detected `npx` or `pnpm dlx` invocation. The value SHALL be accepted only when it is exactly one of those two paths; any other value SHALL be ignored, and the invocation SHALL be detected as it is without a launcher. A recipe fetched without a launcher SHALL render as it does today. When the invocation is a launcher, the run-each-command guidance SHALL also say to run it from the directory that contains `.taskless/`, changing directory in a separate shell call first when the shell is elsewhere.
 
 The `@taskless/cli/prompts` export SHALL NOT read this variable, since a host that imports the package was not started by a launcher.
 
@@ -11,6 +11,11 @@ The `@taskless/cli/prompts` export SHALL NOT read this variable, since a host th
 - **WHEN** `./.taskless/bin/cli.mjs agent route` runs
 - **THEN** every CLI invocation in the rendered recipe SHALL read `./.taskless/bin/cli.mjs`
 - **AND** none SHALL read `npx @taskless/cli`
+
+#### Scenario: The guidance names the project root
+
+- **WHEN** `./.taskless/bin/cli.mjs agent check` runs
+- **THEN** the run-each-command guidance SHALL say to run Taskless commands from the directory that contains `.taskless/`
 
 #### Scenario: A recipe fetched through npx
 
