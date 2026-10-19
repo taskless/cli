@@ -1,5 +1,5 @@
 /**
- * The demonstration rules behind the conformance corpus: their identities,
+ * The rules behind the conformance corpus: their identities,
  * their file lists, and the one reader that loads them off disk.
  *
  * Nothing in the bundle imports this. The rules used to be written into a
@@ -25,8 +25,8 @@ import { join } from "node:path";
 import type { EngineName } from "../layout";
 import type { ReferenceInput } from "../reference";
 
-/** One shipped demonstration rule. */
-export interface DemoManifest {
+/** One rule in the conformance corpus. */
+export interface CorpusManifest {
   engine: EngineName;
   /**
    * The rule's directory name, and the id `check` and `verify` address it by.
@@ -72,11 +72,11 @@ export interface DemoManifest {
   assetDirectory: string;
 }
 
-export const DEMO_MANIFESTS: readonly DemoManifest[] = [
+export const CORPUS_MANIFESTS: readonly CorpusManifest[] = [
   {
     engine: "sg",
     ruleId: "no-eval-call",
-    assetDirectory: "demo-sg",
+    assetDirectory: "reference-sg",
     promptPath: "prompt.md",
     rulePaths: ["no-eval-call.yml"],
     testPaths: [".tests/no-eval-call-test.yml"],
@@ -84,7 +84,7 @@ export const DEMO_MANIFESTS: readonly DemoManifest[] = [
   {
     engine: "vale",
     ruleId: "prefer-use-over-utilize",
-    assetDirectory: "demo-vale",
+    assetDirectory: "reference-vale",
     promptPath: "prompt.md",
     // `.vale.ini` is the rule's own engine config, so it is part of what a
     // generator must produce rather than part of the oracle.
@@ -94,7 +94,7 @@ export const DEMO_MANIFESTS: readonly DemoManifest[] = [
   {
     engine: "runtime",
     ruleId: "env-keys-declared",
-    assetDirectory: "demo-runtime",
+    assetDirectory: "reference-runtime",
     promptPath: "prompt.md",
     rulePaths: ["check.ts", "captures/env-read.yml"],
     testPaths: [
@@ -107,7 +107,7 @@ export const DEMO_MANIFESTS: readonly DemoManifest[] = [
 ];
 
 /** Every file of the staged rule tree: the rule and its cases, never the prompt. */
-export function writtenPaths(manifest: DemoManifest): readonly string[] {
+export function writtenPaths(manifest: CorpusManifest): readonly string[] {
   return [...manifest.rulePaths, ...manifest.testPaths];
 }
 
@@ -126,7 +126,7 @@ export async function readReferenceInputs(
     );
 
   return Promise.all(
-    DEMO_MANIFESTS.map(async (manifest) => ({
+    CORPUS_MANIFESTS.map(async (manifest) => ({
       engine: manifest.engine,
       ruleId: manifest.ruleId,
       prompt: await read(manifest.assetDirectory, manifest.promptPath),

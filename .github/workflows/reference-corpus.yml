@@ -1,4 +1,4 @@
-# Runs every shipped demonstration rule's own fixtures.
+# Runs every conformance corpus rule's own fixtures, as a smoke test.
 #
 # ## Why this is its own workflow
 #
@@ -18,10 +18,10 @@
 # conformance corpus published as `@taskless/cli/reference.json`, and
 # `test/reference.test.ts` only proves that payload matches the asset trees.
 # This job proves the trees themselves hold: it copies the manifest's own
-# written-path list, read straight off `assets/demo-*/`, into one bare project
+# written-path list, read straight off `assets/reference-*/`, into one bare project
 # and runs the engines over it. A corpus rule that fails its own cases would
 # hand another team a broken oracle.
-name: Demo rules
+name: Reference corpus
 
 on:
   push:
@@ -43,8 +43,8 @@ env:
   TASKLESS_TELEMETRY_DISABLED: "1"
 
 jobs:
-  demo-rules:
-    name: Demo rules
+  reference-corpus:
+    name: Reference corpus
     runs-on: ubuntu-latest
 
     steps:
@@ -81,7 +81,7 @@ jobs:
           # The script writes the file itself. Redirecting its stdout here
           # captured pnpm's platform warnings alongside the manifest, and the
           # loop below then tried to stage a rule named "WARN".
-          pnpm --filter @taskless/cli demo:manifests /tmp/manifests.txt
+          pnpm --filter @taskless/cli corpus:manifests /tmp/manifests.txt
           cat /tmp/manifests.txt
           # The trailing field is the manifest's own written-path list, so this
           # stages exactly the rule and its cases. A `cp -R` of the asset
@@ -119,5 +119,5 @@ jobs:
               if (rule.ran !== true) throw new Error(id + " fixtures did not run: " + JSON.stringify(rule));
               if (rule.ok !== true) throw new Error(id + " fixtures failed: " + JSON.stringify(rule.errors));
             }
-            console.log("all " + expected.length + " demo rules ran and passed");
+            console.log("all " + expected.length + " reference rules ran and passed");
           '

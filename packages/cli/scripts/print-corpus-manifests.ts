@@ -1,5 +1,5 @@
 /**
- * Write each shipped demo rule as
+ * Write each conformance corpus rule as
  * `<engine> <ruleId> <assetDirectory> <path>...`.
  *
  * Exists so CI can stage every sample without restating the list in YAML,
@@ -17,19 +17,19 @@
  * reading it then tried to stage a rule called `WARN`. A file the script writes
  * itself cannot pick up a caller's noise.
  *
- * Run: pnpm --filter @taskless/cli demo:manifests <path>
+ * Run: pnpm --filter @taskless/cli corpus:manifests <path>
  */
 
 import { writeFile } from "node:fs/promises";
 
-import { DEMO_MANIFESTS, writtenPaths } from "../src/rules/demo/manifest";
+import { CORPUS_MANIFESTS, writtenPaths } from "../src/rules/corpus/manifest";
 
 const target = process.argv[2];
 if (target === undefined) {
-  throw new Error("usage: print-demo-manifests <output-path>");
+  throw new Error("usage: print-corpus-manifests <output-path>");
 }
 
-const lines = DEMO_MANIFESTS.map(
+const lines = CORPUS_MANIFESTS.map(
   (manifest) =>
     `${manifest.engine} ${manifest.ruleId} ${manifest.assetDirectory} ${writtenPaths(manifest).join(" ")}`
 );

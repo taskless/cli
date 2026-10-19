@@ -11,7 +11,7 @@
     "build": "vite build && tsc -p tsconfig.public.json",
     "build:nightly": "TASKLESS_BUILD_TARGET=nightly vite build && tsc -p tsconfig.public.json",
     "build:self": "TASKLESS_BUILD_TARGET=self vite build",
-    "demo:manifests": "tsx scripts/print-demo-manifests.ts",
+    "corpus:manifests": "tsx scripts/print-corpus-manifests.ts",
     "generate:api": "pnpm generate:api:schema && pnpm generate:api:types",
     "generate:api:schema": "tsx scripts/fetch-api-schema.ts",
     "generate:api:types": "openapi-typescript src/generated/api-v2.schema.json -o src/generated/api-v2.d.ts",
