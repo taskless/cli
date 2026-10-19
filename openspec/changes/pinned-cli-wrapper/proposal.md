@@ -9,6 +9,7 @@ Every Taskless command an agent or CI runs is spelled `npx @taskless/cli@<versio
 - **The skill names the launcher.** `%(TASKLESS_CLI)s` in the installed skill renders to `./.taskless/bin/cli.mjs` (or `cli-nightly.mjs`) instead of a pinned npx call. The rendered skill no longer changes on every release. Reference stubs' recovery commands keep the npx spelling, since they exist for when `.taskless/` is gone.
 - **Recipes fetched through a launcher name the launcher.** The launcher tells the CLI it was the one that started it, and `agent <topic>` renders `%(TASKLESS_CLI)s` as the launcher, so a recipe never sends an agent back to the npx spelling the classifier refuses.
 - **Permissions cover the launcher.** Each harness's project rule set gains a rule for the installed package's launcher. Each package's global auto-mode entry also covers running its launcher from the project root. **BREAKING** for the current entry text: existing entries read as stale once, and the wizard offers to replace them.
+- **Settings edits are reported as migrations with one color model.** `ALLOW` green, `REMOVE` in the default color, `REPLACE` yellow, and `SKIPPED` red, meaning the user has to make the edit by hand; the non-interactive global warning becomes a red `SKIPPED (global):` line. Today `REMOVE` is red and `SKIPPED` yellow.
 - **Every install and upgrade folds duplicate global entries into one.** Today, when `autoMode.allow` holds more than one string under this build's label, the wizard replaces the first and leaves the rest, so a hand-pasted copy beside a wizard-written one stays forever. The wizard now leaves exactly one, inside the confirmation it already asks. `--no-interactive` still writes nothing outside the project and says how many duplicates the wizard would fold.
 - **The `ci` recipe runs the launcher with `node`.** Generated CI calls `node .taskless/bin/cli.mjs check`, which needs Node on the runner but no `package.json`. The recipe tells the Taskless job to bring its own Node (a setup step, or a Node image), so a Python or Go repository can run it from a separate job.
 
@@ -22,6 +23,7 @@ Every Taskless command an agent or CI runs is spelled `npx @taskless/cli@<versio
 
 - `cli-init`: installs the launcher, records per-package launcher versions, renders the skill's invocation to the launcher, and adds launcher rules to the project permission files; the definition of a Taskless rule widens to include the launcher.
 - `agent-global-trust`: each package's entry also covers its launcher, and duplicate strings under a label read as stale and are folded into one on every install and upgrade.
+- `skill-taskless`: the skill says to run Taskless commands from the directory containing `.taskless/`, changing directory in a separate call, and to read a missing launcher as a wrong directory.
 - `cli-agent`: recipes fetched through a launcher name it, and the `ci` recipe generates a launcher call with Node supplied by the job.
 
 ## Impact
