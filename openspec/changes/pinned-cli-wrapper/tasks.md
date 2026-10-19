@@ -1,10 +1,10 @@
 ## 1. Launcher
 
-- [ ] 1.1 Add the launcher template (one source, parameterized by package name only) that reads `install.launchers` with the `install.cliVersion` fallback, runs `npx --yes <package>@<version>` with arguments passed through, sets `TASKLESS_LAUNCHER`, and passes the exit status and signals back
-- [ ] 1.2 Quote arguments for cmd on win32, where the spawn uses a shell
-- [ ] 1.3 Fail with one stderr line naming `.taskless/taskless.json` and the installer command when no version is found
-- [ ] 1.4 Tests: run the built launcher against a fake `npx` on `PATH` to assert the argv, working directory, environment, exit-status passthrough, fallback, and missing-version failure
-- [ ] 1.5 Test that the launcher's comments name its version source and contain none of "bypass", "classifier", "auto mode"
+- [x] 1.1 Add the launcher template (one source, parameterized by package name only) that reads `install.launchers` with the `install.cliVersion` fallback, runs `npx --yes <package>@<version>` with arguments passed through, sets `TASKLESS_LAUNCHER`, and passes the exit status and signals back
+- [x] 1.2 Quote arguments for cmd on win32, where the spawn uses a shell
+- [x] 1.3 Fail with one stderr line naming `.taskless/taskless.json` and the installer command when no version is found
+- [x] 1.4 Tests: run the built launcher against a fake `npx` on `PATH` to assert the argv, working directory, environment, exit-status passthrough, fallback, and missing-version failure
+- [x] 1.5 Test that the launcher's comments name its version source and contain none of "bypass", "classifier", "auto mode"
 
 ## 2. Install
 
