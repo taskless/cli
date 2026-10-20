@@ -3,6 +3,7 @@ import { chmod, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { delimiter, join } from "node:path";
 import process from "node:process";
+import { pathToFileURL } from "node:url";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import {
@@ -86,6 +87,11 @@ function reported(stdout: string): {
     cwd: string;
     launcher: string;
   };
+}
+
+/** One argument as the launcher quotes it for a batch file such as npx.cmd. */
+function quoted(inner: string): string {
+  return `^^^"${inner}^^^"`;
 }
 
 describe.skipIf(process.platform === "win32")("project launcher", () => {
@@ -173,6 +179,53 @@ describe.skipIf(process.platform === "win32")("project launcher", () => {
       env: { FAKE_NPX_SIGNAL: "SIGTERM" },
     });
     expect(result.signal).toBe("SIGTERM");
+  });
+
+  it("quotes every argument for cmd.exe when it runs npx.cmd on Windows", async () => {
+    const path = await install("@taskless/cli", {
+      install: { launchers: { "@taskless/cli": "0.13.0" } },
+    });
+    // Pretend to be Windows, and stand in for cmd.exe with a script that
+    // reports the command line it was handed, so the quoting runs anywhere.
+    const preload = join(root, "as-windows.mjs");
+    await writeFile(
+      preload,
+      'Object.defineProperty(process, "platform", { value: "win32" });\n'
+    );
+    const comspec = join(fakeBin, "cmd");
+    await writeFile(comspec, FAKE_NPX);
+    await chmod(comspec, 0o755);
+
+    const result = spawnSync(
+      process.execPath,
+      [
+        "--import",
+        pathToFileURL(preload).href,
+        path,
+        "check",
+        "src/a file.ts",
+        'say "hi" & calc',
+        "C:\\dir\\",
+      ],
+      { cwd: root, encoding: "utf8", env: { ...process.env, comspec } }
+    );
+    expect(result.status).toBe(0);
+    // Each argument is quoted, then every metacharacter is escaped twice:
+    // once for cmd.exe and once for the batch file's own parse.
+    expect(reported(result.stdout).argv).toEqual([
+      "/d",
+      "/s",
+      "/c",
+      `"${[
+        "npx",
+        quoted("--yes"),
+        quoted("@taskless/cli@0.13.0"),
+        quoted("check"),
+        quoted("src/a^^^ file.ts"),
+        quoted(String.raw`say^^^ \^^^"hi\^^^"^^^ ^^^&^^^ calc`),
+        quoted("C:\\dir\\\\"),
+      ].join(" ")}"`,
+    ]);
   });
 
   it.each([
