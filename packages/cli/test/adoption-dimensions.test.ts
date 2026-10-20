@@ -73,7 +73,7 @@ describe("workspaceId identifies the workspace, not the directory", () => {
 
 describe("repositoryId is host-agnostic", () => {
   it("resolves a non-GitHub remote", async () => {
-    const root = makeRepository("git@gitlab.com:acme/widgets.git");
+    const root = makeRepository("git@gitlab.com:__taskless_test__/widgets.git");
 
     // The case a GitHub-shaped implementation silently gets wrong: a GitLab
     // repository is a codebase like any other and must be counted.
@@ -116,18 +116,20 @@ describe("canonicalRepositoryPath", () => {
   });
 
   it("keeps non-GitHub hosts distinct", () => {
-    expect(canonicalRepositoryPath("git@gitlab.com:acme/widgets.git")).toBe(
-      "gitlab.com/acme/widgets"
-    );
-    expect(canonicalRepositoryPath("https://git.internal/acme/widgets")).toBe(
-      "git.internal/acme/widgets"
-    );
+    expect(
+      canonicalRepositoryPath("git@gitlab.com:__taskless_test__/widgets.git")
+    ).toBe("gitlab.com/__taskless_test__/widgets");
+    expect(
+      canonicalRepositoryPath("https://git.internal/__taskless_test__/widgets")
+    ).toBe("git.internal/__taskless_test__/widgets");
   });
 
   it("keeps the whole nested group path", () => {
     expect(
-      canonicalRepositoryPath("git@gitlab.com:acme/team/sub/widgets.git")
-    ).toBe("gitlab.com/acme/team/sub/widgets");
+      canonicalRepositoryPath(
+        "git@gitlab.com:__taskless_test__/team/sub/widgets.git"
+      )
+    ).toBe("gitlab.com/__taskless_test__/team/sub/widgets");
   });
 
   it("does not collapse two repositories that share an owner and a leaf name", () => {
@@ -136,8 +138,10 @@ describe("canonicalRepositoryPath", () => {
     // undercounting distinct codebases in exactly the nested-group case this
     // parser exists to serve.
     expect(
-      canonicalRepositoryPath("git@gitlab.com:acme/team1/api.git")
-    ).not.toBe(canonicalRepositoryPath("git@gitlab.com:acme/team2/api.git"));
+      canonicalRepositoryPath("git@gitlab.com:__taskless_test__/team1/api.git")
+    ).not.toBe(
+      canonicalRepositoryPath("git@gitlab.com:__taskless_test__/team2/api.git")
+    );
   });
 
   it("returns null when there is no owner/repo pair", () => {

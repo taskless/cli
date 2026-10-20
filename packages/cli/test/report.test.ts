@@ -52,9 +52,12 @@ function draftOf(
     producer: { kind: "cli", cliVersion: "0.12.0" },
     scope: {
       provider: "github",
-      owner: "acme",
+      // The ReportV1 schema only admits a valid GitHub login, so the
+      // unresolvable `__taskless_test__` fixture cannot be used here. The
+      // account we own is the next best thing to one nobody owns.
+      owner: "taskless",
       repo: "widgets",
-      url: "https://github.com/acme/widgets",
+      url: "https://github.com/taskless/widgets",
     },
     rules,
     missing: [],

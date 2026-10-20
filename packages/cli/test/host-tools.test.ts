@@ -30,7 +30,9 @@ describe("detectHostTools", () => {
   });
 
   it("reports a tool on PATH as present, with where it was found", async () => {
-    cwd = await makeRepository("https://github.com/acme/widgets.git");
+    cwd = await makeRepository(
+      "https://github.com/__taskless_test__/widgets.git"
+    );
 
     const tools = await detectHostTools(cwd);
     const git = tools.find((tool) => tool.name === "git");
@@ -42,7 +44,9 @@ describe("detectHostTools", () => {
   });
 
   it("reports every tool absent when PATH holds nothing", async () => {
-    cwd = await makeRepository("https://github.com/acme/widgets.git");
+    cwd = await makeRepository(
+      "https://github.com/__taskless_test__/widgets.git"
+    );
     process.env.PATH = "";
 
     const tools = await detectHostTools(cwd);
@@ -58,7 +62,9 @@ describe("detectHostTools", () => {
   });
 
   it("marks gh inapplicable outside a GitHub repository, and says nothing about the others", async () => {
-    cwd = await makeRepository("https://gitlab.com/acme/widgets.git");
+    cwd = await makeRepository(
+      "https://gitlab.com/__taskless_test__/widgets.git"
+    );
 
     const tools = await detectHostTools(cwd);
 
@@ -69,7 +75,7 @@ describe("detectHostTools", () => {
   });
 
   it("marks glab applicable on a GitLab origin and inapplicable elsewhere", async () => {
-    cwd = await makeRepository("git@gitlab.com:acme/widgets.git");
+    cwd = await makeRepository("git@gitlab.com:__taskless_test__/widgets.git");
     const onGitLab = await detectHostTools(cwd);
     expect(onGitLab.find((tool) => tool.name === "glab")?.applicable).toBe(
       true
@@ -77,7 +83,9 @@ describe("detectHostTools", () => {
     expect(onGitLab.find((tool) => tool.name === "gh")?.applicable).toBe(false);
     await rm(cwd, { recursive: true, force: true });
 
-    cwd = await makeRepository("https://github.com/acme/widgets.git");
+    cwd = await makeRepository(
+      "https://github.com/__taskless_test__/widgets.git"
+    );
     const onGitHub = await detectHostTools(cwd);
     expect(onGitHub.find((tool) => tool.name === "glab")).toMatchObject({
       applicable: false,
@@ -86,7 +94,9 @@ describe("detectHostTools", () => {
   });
 
   it("treats a self-hosted gitlab.* instance as GitLab", async () => {
-    cwd = await makeRepository("https://gitlab.example.com/acme/widgets.git");
+    cwd = await makeRepository(
+      "https://gitlab.example.com/__taskless_test__/widgets.git"
+    );
     const tools = await detectHostTools(cwd);
     expect(tools.find((tool) => tool.name === "glab")?.applicable).toBe(true);
   });
@@ -94,7 +104,9 @@ describe("detectHostTools", () => {
   it("runs nothing it finds: a planted gh that would fail is still only present", async () => {
     // A file named `gh` that exits non-zero if executed. Detection reporting it
     // as present without erroring is the evidence it was looked at, not run.
-    cwd = await makeRepository("https://github.com/acme/widgets.git");
+    cwd = await makeRepository(
+      "https://github.com/__taskless_test__/widgets.git"
+    );
     await writeFile(join(cwd, "gh"), "#!/bin/sh\nexit 7\n", {
       encoding: "utf8",
       mode: 0o755,
@@ -149,7 +161,9 @@ describe("detectHostTools", () => {
   // into "missing". Flattening is what produces the one instruction that
   // cannot help this user — "install gh".
   it("keeps present and applicable independent", async () => {
-    cwd = await makeRepository("https://gitlab.com/acme/widgets.git");
+    cwd = await makeRepository(
+      "https://gitlab.com/__taskless_test__/widgets.git"
+    );
 
     const tools = await detectHostTools(cwd);
     const gh = tools.find((tool) => tool.name === "gh");
@@ -289,7 +303,9 @@ describe("an inapplicable tool renders its own reason", () => {
   });
 
   it("still carries gh's reason, which the detector supplies", async () => {
-    cwd = await makeRepository("https://gitlab.com/acme/widgets.git");
+    cwd = await makeRepository(
+      "https://gitlab.com/__taskless_test__/widgets.git"
+    );
     const tools = await detectHostTools(cwd);
     const gh = tools.find((tool) => tool.name === "gh");
 
@@ -302,7 +318,9 @@ describe("an inapplicable tool renders its own reason", () => {
   // An applicable tool has nothing to explain, so the detector attaches
   // nothing rather than an empty string a consumer would have to test for.
   it("attaches no reason to an applicable tool", async () => {
-    cwd = await makeRepository("https://github.com/acme/widgets.git");
+    cwd = await makeRepository(
+      "https://github.com/__taskless_test__/widgets.git"
+    );
 
     for (const tool of await detectHostTools(cwd)) {
       if (tool.applicable) expect(tool.reason).toBeUndefined();

@@ -229,7 +229,12 @@ describe("local authoring needs no GitHub remote", () => {
         await execFileAsync("git", ["init"], { cwd });
         await execFileAsync(
           "git",
-          ["remote", "add", "origin", "https://gitlab.com/acme/widgets.git"],
+          [
+            "remote",
+            "add",
+            "origin",
+            "https://gitlab.com/__taskless_test__/widgets.git",
+          ],
           { cwd }
         );
       },
@@ -319,12 +324,19 @@ describe("info reports the repository context", () => {
     await execFileAsync("git", ["init"], { cwd });
     await execFileAsync(
       "git",
-      ["remote", "add", "origin", "git@github.com:acme/widgets.git"],
+      [
+        "remote",
+        "add",
+        "origin",
+        "git@github.com:__taskless_test__/widgets.git",
+      ],
       { cwd }
     );
     const info = await readInfo();
-    expect(info.repositoryUrl).toBe("https://github.com/acme/widgets");
-    expect(info.ghOwner).toBe("acme");
+    expect(info.repositoryUrl).toBe(
+      "https://github.com/__taskless_test__/widgets"
+    );
+    expect(info.ghOwner).toBe("__taskless_test__");
   });
 
   it("reports null and [unknown] when the directory is not a git repository", async () => {
@@ -344,7 +356,12 @@ describe("info reports the repository context", () => {
     await execFileAsync("git", ["init"], { cwd });
     await execFileAsync(
       "git",
-      ["remote", "add", "origin", "https://gitlab.com/acme/widgets.git"],
+      [
+        "remote",
+        "add",
+        "origin",
+        "https://gitlab.com/__taskless_test__/widgets.git",
+      ],
       { cwd }
     );
     const info = await readInfo();
@@ -358,7 +375,12 @@ describe("info reports the repository context", () => {
     await execFileAsync("git", ["init"], { cwd });
     await execFileAsync(
       "git",
-      ["remote", "add", "origin", "https://github.com/acme/widgets.git"],
+      [
+        "remote",
+        "add",
+        "origin",
+        "https://github.com/__taskless_test__/widgets.git",
+      ],
       { cwd }
     );
     const result = await runCli(["info", "--anonymous", "--json", "-d", cwd]);
@@ -368,7 +390,7 @@ describe("info reports the repository context", () => {
       ghOwner: string;
     };
     expect(info.loggedIn).toBe(false);
-    expect(info.ghOwner).toBe("acme");
+    expect(info.ghOwner).toBe("__taskless_test__");
   });
 });
 

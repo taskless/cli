@@ -117,7 +117,8 @@ type Answer =
   | { unsafe: { path: string; expected?: string; got?: string }[] }
   | { copyOf: { ruleId: string; revisionId: string; files: unknown[] } };
 
-const UPGRADE_URL = "https://app.taskless.io/o/acme/upgrade?from=reconcile";
+const UPGRADE_URL =
+  "https://app.taskless.io/o/__taskless_test__/upgrade?from=reconcile";
 
 /**
  * A v2 reconcile answer: each reported rule gets the verdict \`answers\` names,
@@ -298,7 +299,12 @@ describe("check: static vs runtime dispatch", () => {
     await execFileAsync("git", ["init"], { cwd: directory });
     await execFileAsync(
       "git",
-      ["remote", "add", "origin", "https://github.com/acme/widgets.git"],
+      [
+        "remote",
+        "add",
+        "origin",
+        "https://github.com/__taskless_test__/widgets.git",
+      ],
       { cwd: directory }
     );
   });
@@ -392,11 +398,12 @@ describe("check: static vs runtime dispatch", () => {
             "remote",
             "set-url",
             "origin",
-            "https://gitlab.com/acme/widgets.git",
+            "https://gitlab.com/__taskless_test__/widgets.git",
           ],
           { cwd }
         ),
-      cause: "`origin` is not a GitHub remote (gitlab.com/acme/widgets)",
+      cause:
+        "`origin` is not a GitHub remote (gitlab.com/__taskless_test__/widgets)",
       remedy: "supports GitHub repositories only",
     },
     {
@@ -603,10 +610,10 @@ describe("check: static vs runtime dispatch", () => {
       user: "Ada",
       orgs: [
         {
-          id: "uuid-acme",
-          name: "acme",
+          id: "uuid-__taskless_test__",
+          name: "__taskless_test__",
           source: "github",
-          url: "https://github.com/acme",
+          url: "https://github.com/__taskless_test__",
           entitlements: {
             remoteGeneration: true,
             runtimeSignatures: true,
@@ -638,7 +645,7 @@ describe("check: static vs runtime dispatch", () => {
     );
     const notices = parseJson(stdout).notices?.join("\n") ?? "";
     // The acting org came from the same whoami call that carried the plan.
-    expect(server.requests[0]?.orgId).toBe("uuid-acme");
+    expect(server.requests[0]?.orgId).toBe("uuid-__taskless_test__");
     expect(notices).toContain("git log -- .taskless/rules/runtime/demo/");
     expect(notices).toContain("git log -- .taskless/rules/vale/gone-3fa9c21b/");
     expect(notices).not.toContain("rule restore");
