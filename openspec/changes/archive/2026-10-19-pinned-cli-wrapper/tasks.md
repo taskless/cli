@@ -45,6 +45,6 @@
 
 - [x] 7.1 Confirm `./.taskless/bin/cli.mjs` runs from Claude Code's Git Bash on Windows (confirmed 2026-10-19)
 - [ ] 7.2 Run the nightly's launcher once in an auto-mode session with the new global entry, as a smoke test
-- [ ] 7.3 Add a `patch` changeset describing the launcher and the one-time global entry replacement
-- [ ] 7.4 Run `pnpm typecheck` and `pnpm lint`
-- [ ] 7.5 Archive the change on the PR
+- [x] 7.3 Add a `patch` changeset describing the launcher and the one-time global entry replacement
+- [x] 7.4 Run `pnpm typecheck` and `pnpm lint`
+- [x] 7.5 Archive the change on the PR
