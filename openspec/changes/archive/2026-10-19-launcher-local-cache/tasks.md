@@ -29,5 +29,5 @@
 - [x] 5.2 Private registry: a project `.npmrc` pointing at an unreachable registry fails the first install with npm's error and leaves no `.npmrc` or temporary directory
 - [x] 5.3 Extend `.changeset/pinned-cli-wrapper.md` (no second changeset); update #538 with the shrinkwrap measurements and point it at this change
 - [x] 5.4 Run `pnpm typecheck`, `pnpm lint` and the test suite
-- [ ] 5.5 Archive and check scenario counts for `cli-project-launcher`, `cli-init` and `cli-agent` against the main specs
+- [x] 5.5 Archive and check scenario counts for `cli-project-launcher`, `cli-init` and `cli-agent` against the main specs
 - [ ] 5.6 Follow-up, not blocking: a Windows run of a first install and a later run
