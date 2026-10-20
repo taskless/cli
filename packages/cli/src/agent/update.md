@@ -1,4 +1,4 @@
-# Topic: update     (CLI v%(CLI_VERSION)s / topic v17)
+# Topic: update     (CLI v%(CLI_VERSION)s / topic v18)
 
 %(ONE_COMMAND_PER_CALL)s
 
@@ -8,8 +8,10 @@ ALREADY IN THIS PROJECT, and what to do about them.
 
 It is not about installing. Running `%(TASKLESS_CLI)s` migrates the
 `.taskless/` layout and refreshes the installed skills on its own. That
-handles the DIRECTORY. This recipe handles the RULES, which no migration
-can rewrite for you: a rewriter that now needs a `fix`, a rule whose
+handles the DIRECTORY. This recipe handles the RULES. A purely
+mechanical rewrite, such as a kind an engine renamed, is applied by
+`update --rules` when you record the walk. The rest needs judgment no
+migration can supply: a rewriter that now needs a `fix`, a rule whose
 matching semantics shifted under a new engine, a rule that could now be
 expressed better with a newly supported language.
 
@@ -102,6 +104,16 @@ that you finished.
 
    This also records the engine versions the rules are now valid
    against, which is what lets a later upgrade say what moved.
+
+   Before it records them, it applies every mechanical rewrite between
+   the engine versions the rules were last reconciled against and the
+   bundled ones, and names each file it changed (`migrated` with
+   `--json`). `ruleMigrations` in `update --json` lists them in advance.
+   A section below that says `update --rules` does something needs
+   nothing from you beyond this step. Read the rewritten files in the
+   diff, run `%(TASKLESS_CLI)s validate`, and commit them with the
+   marker. If the project's `.taskless/` layout is behind, this refuses
+   with `SCAFFOLD_MIGRATION_REQUIRED`; run `%(TASKLESS_CLI)s init` first.
 
 ## The ledger
 
@@ -483,6 +495,37 @@ until now and starts reporting.
 by `check`, and `validate` rejected it before this release while Vale
 loaded it without complaint.
 
+### Migrating to 0.13.3
+
+The vendored ast-grep moves from 0.45.3 to 0.51.0. Nothing here needs
+work by hand.
+
+**A Haskell type synonym is `type_synonym` now, not `type_synomym`, and
+`update --rules` renames it for you.** ast-grep's Haskell grammar moved
+from tree-sitter-haskell 0.23.1 to 0.24.1, which fixed the typo in that
+kind's name. Diffed across both grammars, it is the only kind or field
+that changed. A rule still naming the old kind is a HARD CONFIG ERROR:
+exit 8, ``Kind `type_synomym` is invalid``, and since `check` loads
+every sg rule into one config it reports no sg findings at all until
+the rule is fixed.
+
+Do not rename it by hand. Step 5 rewrites every `kind: type_synomym` in
+a rule whose `language` is Haskell, leaves everything else in the file
+as it was, and names each file it changed. No rule Taskless issued uses
+the old kind, so the rewrite never touches a signed rule.
+
+**A rule file ending in a stray `---` no longer breaks `check`.** On
+0.45.3 ast-grep read the empty document after it as a second rule with
+no `language`, exited 8, and `check` reported no sg findings at all.
+It now loads. If `check` was failing on that, findings come back and
+are real. `validate` still rejects the file as multi-document YAML, so
+delete the trailing `---` when you next touch the rule.
+
+**`Zig` is a language.** `language: Zig` parses, so a rule over `.zig`
+files that was routed to the runtime tier, or not written because
+ast-grep could not parse Zig, can now be an sg rule. No existing rule
+changes.
+
 ## Errors
 
 With `--json`, `--rules` failures emit `{ ok: false, code, message }`:
@@ -490,6 +533,7 @@ With `--json`, `--rules` failures emit `{ ok: false, code, message }`:
 | code            | meaning                                        | fix                                        |
 |-----------------|------------------------------------------------|--------------------------------------------|
 | `INVALID_INPUT` | no `.taskless/`, or an older CLI would rewind the marker | set the project up, or upgrade first |
+| `SCAFFOLD_MIGRATION_REQUIRED` | the `.taskless/` layout is behind this CLI, so rule rewrites have nowhere safe to write | run `%(TASKLESS_CLI)s init`, then `update --rules` again |
 
 ## See Also
 
