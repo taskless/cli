@@ -23,11 +23,11 @@
 
 ## 4. Global trust entry
 
-- [ ] 4.1 Extend each package's entry text to cover its own launcher from the project root
-- [ ] 4.2 Read more than one string under this build's label as stale, even when one is current
-- [ ] 4.3 Fold duplicates in the wizard's write: replace the first in place, remove later ones, keep the other label's and unlabelled strings in order; one `REPLACE (global):` line
-- [ ] 4.4 Say in the non-interactive `SKIPPED (global):` output how many strings carry the label and that the wizard folds them
-- [ ] 4.5 Update the entry tests and the installed-skill snapshot; confirm an old entry reads as stale; cover duplicates, a duplicated current entry, decline, and `--no-interactive` leaving the file byte-identical
+- [x] 4.1 Extend each package's entry text to cover its own launcher from the project root
+- [x] 4.2 Read more than one string under this build's label as stale, even when one is current
+- [x] 4.3 Fold duplicates in the wizard's write: replace the first in place, remove later ones, keep the other label's and unlabelled strings in order; one `REPLACE (global):` line
+- [x] 4.4 Say in the non-interactive `SKIPPED (global):` output how many strings carry the label and that the wizard folds them
+- [x] 4.5 Update the entry tests and the installed-skill snapshot; confirm an old entry reads as stale; cover duplicates, a duplicated current entry, decline, and `--no-interactive` leaving the file byte-identical
 
 ## 5. Settings report colors
 
