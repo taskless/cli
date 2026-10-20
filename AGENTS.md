@@ -345,4 +345,7 @@ Every scenario present before must still be present, plus whatever you added. Tw
 
 ## OpenSpec Apply
 
-When implementing changes via `/opsx:apply`, **pause after each task group** for user review before continuing. Commit between groups and wait for confirmation.
+When implementing changes via `/opsx:apply`, **work through every task group without pausing for review**, and report once, after the whole stack is done: every group implemented, the checks passing, the change archived, and each PR in the stack open.
+
+- **Commit after each task group**, one signed commit per group, so a reviewer can read the change a group at a time. Running `/opsx:apply` is the confirmation for these commits; the general rule to wait before committing does not apply to them.
+- **Stop early only for a real blocker:** a task the artifacts leave ambiguous, an implementation finding that changes the spec or the design, or a failure you cannot resolve. Then say what you found and what you need. A finding you can resolve yourself, such as a bug the end-to-end check catches, is fixed, recorded in the artifacts, and reported with everything else at the end.
