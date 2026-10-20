@@ -42,6 +42,17 @@ describe("buildReadmeContent", () => {
     expect(readme).not.toContain("@taskless/cli@");
   });
 
+  it("lists each package's own launcher first", () => {
+    const released = buildReadmeContent(RELEASED_SPECIFIER);
+    expect(released).toContain("./.taskless/bin/cli.mjs check");
+    expect(released.indexOf("./.taskless/bin/cli.mjs")).toBeLessThan(
+      released.indexOf("pnpm dlx")
+    );
+    const nightly = buildReadmeContent(NIGHTLY_SPECIFIER);
+    expect(nightly).toContain("./.taskless/bin/cli-nightly.mjs check");
+    expect(nightly).not.toContain("./.taskless/bin/cli.mjs");
+  });
+
   it("names its one invocation for a path-form build", () => {
     // A `self` build's invocation is `node <path>`, which no launcher fronts.
     // `pnpm dlx node packages/cli/dist-self/index.js` is not a command, so the

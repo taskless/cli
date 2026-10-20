@@ -2,7 +2,7 @@ import { join } from "node:path";
 import process from "node:process";
 
 import { CLIError } from "../util/cli-error";
-import { buildInvocation } from "../util/invocation";
+import { getCliPrefix } from "../util/package-manager";
 import { pathExists } from "../rules/reconcile-marker";
 import { readRawManifest, writeRawManifest } from "./manifest";
 import type { Migrations } from "./types";
@@ -240,7 +240,7 @@ export async function requireCurrentSchema(cwd: string): Promise<void> {
     `This project's .taskless/ is at schema version ${String(pending.from)}, and this ` +
       `CLI expects ${String(pending.to)}. Migrating moves and deletes files, so it is ` +
       `not done as a side effect of a command that only reads.\n\n` +
-      `Run \`${buildInvocation()} init\` to migrate, then run this again.`,
+      `Run \`${getCliPrefix()} init\` to migrate, then run this again.`,
     "SCAFFOLD_MIGRATION_REQUIRED"
   );
 }
