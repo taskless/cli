@@ -64,7 +64,6 @@ function installLockfile(target: string, version: string): string | null {
     readFileSync(resolve(import.meta.dirname, "../../pnpm-lock.yaml"), "utf8")
   ) as PnpmLockfile;
   const lockfile = buildInstallLockfile(lock, "packages/cli", {
-    // ast-grep-ignore: no-unrouted-cli-invocation
     name: target === "nightly" ? "@taskless/cli-nightly" : "@taskless/cli",
     version,
     license: pkg.license,

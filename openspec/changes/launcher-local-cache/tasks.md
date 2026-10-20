@@ -27,7 +27,7 @@
 
 - [x] 5.1 End to end from a built release-target CLI in a scratch project: `init` writes launcher and lockfile; `./.taskless/bin/cli.mjs check` runs an ast-grep and a Vale rule, and a runtime rule if available; the second run starts no `npm`; `git status` shows the lockfile and not the cache. Since the version under test is unpublished, serve it from a local scoped registry as in the design's measurements
 - [x] 5.2 Private registry: a project `.npmrc` pointing at an unreachable registry fails the first install with npm's error and leaves no `.npmrc` or temporary directory
-- [ ] 5.3 Extend `.changeset/pinned-cli-wrapper.md` (no second changeset); update #538 with the shrinkwrap measurements and point it at this change
-- [ ] 5.4 Run `pnpm typecheck`, `pnpm lint` and the test suite
+- [x] 5.3 Extend `.changeset/pinned-cli-wrapper.md` (no second changeset); update #538 with the shrinkwrap measurements and point it at this change
+- [x] 5.4 Run `pnpm typecheck`, `pnpm lint` and the test suite
 - [ ] 5.5 Archive and check scenario counts for `cli-project-launcher`, `cli-init` and `cli-agent` against the main specs
 - [ ] 5.6 Follow-up, not blocking: a Windows run of a first install and a later run
