@@ -20,8 +20,8 @@ type WhoamiData = WhoamiResult;
  * - `installationId` is intentionally dropped — the CLI never uses it and it
  *   should not be sent to us.
  *
- * `url` is the canonical OWNER url (e.g. `https://github.com/acme`) matched
- * against the repo's remotes.
+ * `url` is the canonical OWNER url (e.g.
+ * `https://github.com/__taskless_test__`) matched against the repo's remotes.
  */
 export type WhoamiOrg = Omit<
   WhoamiData["orgs"][number],

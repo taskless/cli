@@ -2,7 +2,8 @@ import { describe, expect, it } from "vitest";
 
 import { parseEntitlementV2 } from "../src/api/entitlement";
 
-const UPGRADE = "https://app.taskless.io/o/acme/upgrade?from=reconcile";
+const UPGRADE =
+  "https://app.taskless.io/o/__taskless_test__/upgrade?from=reconcile";
 
 describe("parseEntitlementV2", () => {
   it("keeps every withheld rule, which the v1 parser dropped (#403)", () => {
@@ -58,7 +59,7 @@ describe("parseEntitlementV2", () => {
 
   it("keeps an upgrade URL only when it is absolute https", () => {
     for (const upgradeUrl of [
-      "/o/acme/upgrade",
+      "/o/__taskless_test__/upgrade",
       "http://app.taskless.io/x",
       "nope",
     ]) {

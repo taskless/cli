@@ -423,7 +423,9 @@ describe("resolveIdentity failure codes (--json)", () => {
 
   describe("origin 3: origin remote is not GitHub", () => {
     it("emits UNSUPPORTED_REMOTE_HOST from rule create", async () => {
-      await initRepoWithOrigin("https://gitlab.com/acme/widgets.git");
+      await initRepoWithOrigin(
+        "https://gitlab.com/__taskless_test__/widgets.git"
+      );
       const from = await writeCreateInput();
       const result = await runCli(
         ["rule", "create", "--from", from, "--json", "-d", cwd],
@@ -434,7 +436,9 @@ describe("resolveIdentity failure codes (--json)", () => {
     });
 
     it("emits UNSUPPORTED_REMOTE_HOST from rule improve", async () => {
-      await initRepoWithOrigin("git@gitea.example.com:acme/widgets.git");
+      await initRepoWithOrigin(
+        "git@gitea.example.com:__taskless_test__/widgets.git"
+      );
       const from = await writeImproveInput();
       const result = await runCli(
         ["rule", "improve", "--from", from, "--json", "-d", cwd],
@@ -479,7 +483,12 @@ describe("resolveIdentity failure codes (--json)", () => {
 
     await execFileAsync(
       "git",
-      ["remote", "add", "origin", "https://gitlab.com/acme/widgets.git"],
+      [
+        "remote",
+        "add",
+        "origin",
+        "https://gitlab.com/__taskless_test__/widgets.git",
+      ],
       { cwd }
     );
     const notGitHubRun = await runCli(args, withToken);

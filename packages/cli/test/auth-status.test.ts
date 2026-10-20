@@ -9,9 +9,9 @@ const identity: WhoamiResult = {
     {
       orgId: 1,
       id: "00000000-0000-0000-0000-000000000001",
-      name: "acme",
+      name: "__taskless_test__",
       source: "github",
-      url: "https://github.com/acme",
+      url: "https://github.com/__taskless_test__",
     },
   ],
 };
@@ -34,7 +34,7 @@ afterEach(() => {
 describe("describeAuthStatus", () => {
   it("names the user and orgs for an accepted saved token", () => {
     expect(describeAuthStatus({ status: "ok", data: identity })).toEqual([
-      "Logged in as someone (acme).",
+      "Logged in as someone (__taskless_test__).",
     ]);
   });
 
@@ -42,7 +42,7 @@ describe("describeAuthStatus", () => {
     process.env.TASKLESS_TOKEN = "env-token";
 
     expect(describeAuthStatus({ status: "ok", data: identity })).toEqual([
-      "Logged in as someone (acme) via TASKLESS_TOKEN.",
+      "Logged in as someone (__taskless_test__) via TASKLESS_TOKEN.",
     ]);
   });
 

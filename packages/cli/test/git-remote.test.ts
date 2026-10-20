@@ -70,26 +70,28 @@ describe("canonicalOwnerUrl", () => {
   // two are compared with `===`, so every form here MUST reduce identically —
   // including the ssh://, git://, and port forms the old regex version threw on.
   it.each([
-    "git@github.com:Acme/Widgets.git", // scp-like SSH
-    "https://github.com/acme/widgets", // https
-    "https://github.com/ACME/widgets.git", // .git suffix
-    "https://www.github.com/acme/widgets/", // www. + trailing slash
-    "git@github.com:acme/widgets", // scp-like, no .git
-    "ssh://git@github.com/acme/widgets.git", // ssh:// URL form
-    "git://github.com/acme/widgets.git", // git:// URL form
-    "https://github.com:443/acme/widgets", // explicit port
-    "https://x-access-token@GitHub.com/Acme/Widgets", // userinfo + mixed case
-    "acme", // bare owner login (the form the server canonicalizes)
+    "git@github.com:__Taskless_Test__/Widgets.git", // scp-like SSH
+    "https://github.com/__taskless_test__/widgets", // https
+    "https://github.com/__TASKLESS_TEST__/widgets.git", // .git suffix
+    "https://www.github.com/__taskless_test__/widgets/", // www. + trailing slash
+    "git@github.com:__taskless_test__/widgets", // scp-like, no .git
+    "ssh://git@github.com/__taskless_test__/widgets.git", // ssh:// URL form
+    "git://github.com/__taskless_test__/widgets.git", // git:// URL form
+    "https://github.com:443/__taskless_test__/widgets", // explicit port
+    "https://x-access-token@GitHub.com/__Taskless_Test__/Widgets", // userinfo + mixed case
+    "__taskless_test__", // bare owner login (the form the server canonicalizes)
   ])("reduces %s to the canonical owner url", (input) => {
-    expect(canonicalOwnerUrl(input)).toBe("https://github.com/acme");
+    expect(canonicalOwnerUrl(input)).toBe(
+      "https://github.com/__taskless_test__"
+    );
   });
 
   it("keeps the host for non-GitHub remotes (dropped later by listRemoteOwnerUrls)", () => {
     // Mirrors the server: host-agnostic and never throws. A gitlab owner url
     // just won't match a github-sourced org.
-    expect(canonicalOwnerUrl("git@gitlab.com:acme/widgets.git")).toBe(
-      "https://gitlab.com/acme"
-    );
+    expect(
+      canonicalOwnerUrl("git@gitlab.com:__taskless_test__/widgets.git")
+    ).toBe("https://gitlab.com/__taskless_test__");
   });
 });
 
@@ -111,7 +113,12 @@ describe("listRemoteOwnerUrls", () => {
     );
     await execFileAsync(
       "git",
-      ["remote", "add", "upstream", "https://github.com/acme/widgets.git"],
+      [
+        "remote",
+        "add",
+        "upstream",
+        "https://github.com/__taskless_test__/widgets.git",
+      ],
       { cwd: directory }
     );
     await execFileAsync(
@@ -121,7 +128,7 @@ describe("listRemoteOwnerUrls", () => {
     );
     expect(await listRemoteOwnerUrls(directory)).toEqual([
       "https://github.com/origin-org",
-      "https://github.com/acme",
+      "https://github.com/__taskless_test__",
       "https://github.com/me",
     ]);
   });
@@ -130,7 +137,12 @@ describe("listRemoteOwnerUrls", () => {
     expect(await listRemoteOwnerUrls(directory)).toEqual([]);
     await execFileAsync(
       "git",
-      ["remote", "add", "origin", "git@gitlab.com:acme/widgets.git"],
+      [
+        "remote",
+        "add",
+        "origin",
+        "git@gitlab.com:__taskless_test__/widgets.git",
+      ],
       { cwd: directory }
     );
     expect(await listRemoteOwnerUrls(directory)).toEqual([]);
@@ -166,11 +178,16 @@ describe("listRemoteOwnerUrls", () => {
     // this repo would have resolved to no current-org context.
     await execFileAsync(
       "git",
-      ["remote", "add", "origin", "ssh://git@github.com/Acme/Widgets.git"],
+      [
+        "remote",
+        "add",
+        "origin",
+        "ssh://git@github.com/__Taskless_Test__/Widgets.git",
+      ],
       { cwd: directory }
     );
     expect(await listRemoteOwnerUrls(directory)).toEqual([
-      "https://github.com/acme",
+      "https://github.com/__taskless_test__",
     ]);
   });
 });

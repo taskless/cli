@@ -71,12 +71,14 @@ describe("resolveRepositoryContext never throws", () => {
     // cases above are not passing merely because nothing works under mock.
     mockedExecFile.mockImplementation(((..._arguments: unknown[]): unknown => {
       const callback = _arguments.at(-1) as ExecFileCallback;
-      callback(null, "git@github.com:acme/widgets.git\n", "");
+      callback(null, "git@github.com:__taskless_test__/widgets.git\n", "");
       return undefined;
     }) as unknown as typeof execFile);
 
     const context = await resolveRepositoryContext("/any/path");
-    expect(context.repositoryUrl).toBe("https://github.com/acme/widgets");
-    expect(context.ghOwner).toBe("acme");
+    expect(context.repositoryUrl).toBe(
+      "https://github.com/__taskless_test__/widgets"
+    );
+    expect(context.ghOwner).toBe("__taskless_test__");
   });
 });

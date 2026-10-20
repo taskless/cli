@@ -13,7 +13,7 @@ import {
 } from "../src/api/v2";
 import { CLI_VERSION, CLI_VERSION_HEADER } from "../src/version";
 
-const REPO = "https://github.com/acme/app";
+const REPO = "https://github.com/__taskless_test__/app";
 
 const SERVED = {
   ruleId: "no-eval-3fa9c21b",

@@ -30,7 +30,8 @@ import {
  * reach the `--json` envelope an unattended author reads.
  */
 
-const UPGRADE = "https://app.taskless.io/o/acme/upgrade?from=delivery";
+const UPGRADE =
+  "https://app.taskless.io/o/__taskless_test__/upgrade?from=delivery";
 
 const CAPTURE = [
   "id: logs-abc12345",

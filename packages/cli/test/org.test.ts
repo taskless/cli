@@ -40,7 +40,7 @@ const org = (id: string, url: string, source = "github"): WhoamiOrg =>
   }) as WhoamiOrg;
 
 const entitled = (restoreRules: boolean): WhoamiOrg => ({
-  ...org("uuid-acme", "https://github.com/acme"),
+  ...org("uuid-__taskless_test__", "https://github.com/__taskless_test__"),
   entitlements: {
     remoteGeneration: true,
     runtimeSignatures: true,
@@ -50,15 +50,15 @@ const entitled = (restoreRules: boolean): WhoamiOrg => ({
 
 describe("selectOrgForOwners", () => {
   const orgs = [
-    org("uuid-acme", "https://github.com/acme"),
+    org("uuid-__taskless_test__", "https://github.com/__taskless_test__"),
     org("uuid-me", "https://github.com/me"),
   ];
 
   it("returns the first owner (origin precedence) that matches an org", () => {
-    // origin=me, upstream=acme → me wins (it comes first in the owner list).
+    // origin=me, upstream=__taskless_test__ → me wins (it comes first in the owner list).
     expect(
       selectOrgForOwners(
-        ["https://github.com/me", "https://github.com/acme"],
+        ["https://github.com/me", "https://github.com/__taskless_test__"],
         orgs
       )?.id
     ).toBe("uuid-me");
@@ -67,10 +67,10 @@ describe("selectOrgForOwners", () => {
   it("falls through to a later remote when the first has no matching org", () => {
     expect(
       selectOrgForOwners(
-        ["https://github.com/stranger", "https://github.com/acme"],
+        ["https://github.com/stranger", "https://github.com/__taskless_test__"],
         orgs
       )?.id
-    ).toBe("uuid-acme");
+    ).toBe("uuid-__taskless_test__");
   });
 
   it("returns undefined when no owner matches", () => {
@@ -80,9 +80,11 @@ describe("selectOrgForOwners", () => {
   });
 
   it("ignores non-github-sourced orgs", () => {
-    const gitlab = [org("uuid-x", "https://github.com/acme", "gitlab")];
+    const gitlab = [
+      org("uuid-x", "https://github.com/__taskless_test__", "gitlab"),
+    ];
     expect(
-      selectOrgForOwners(["https://github.com/acme"], gitlab)
+      selectOrgForOwners(["https://github.com/__taskless_test__"], gitlab)
     ).toBeUndefined();
   });
 });
@@ -96,7 +98,12 @@ describe("resolveActingOrg", () => {
     await execFileAsync("git", ["init"], { cwd: directory });
     await execFileAsync(
       "git",
-      ["remote", "add", "origin", "git@github.com:acme/widgets.git"],
+      [
+        "remote",
+        "add",
+        "origin",
+        "git@github.com:__taskless_test__/widgets.git",
+      ],
       { cwd: directory }
     );
     mockedFetchWhoami.mockReset();
@@ -107,10 +114,12 @@ describe("resolveActingOrg", () => {
 
   it("prefers the matched org's UUID when a remote matches a whoami org", async () => {
     mockedFetchWhoami.mockResolvedValue(
-      whoamiWith([org("uuid-acme", "https://github.com/acme")])
+      whoamiWith([
+        org("uuid-__taskless_test__", "https://github.com/__taskless_test__"),
+      ])
     );
     await expect(resolveActingOrg(directory, token)).resolves.toMatchObject({
-      subject: "uuid-acme",
+      subject: "uuid-__taskless_test__",
     });
   });
 
@@ -144,7 +153,7 @@ describe("resolveActingOrg", () => {
     async (restoreRules) => {
       mockedFetchWhoami.mockResolvedValue(whoamiWith([entitled(restoreRules)]));
       expect(await resolveActingOrg(directory, token)).toEqual({
-        subject: "uuid-acme",
+        subject: "uuid-__taskless_test__",
         restoreRules,
       });
       expect(mockedFetchWhoami).toHaveBeenCalledTimes(1);
@@ -153,10 +162,12 @@ describe("resolveActingOrg", () => {
 
   it("leaves restoreRules unknown when the matched org has no entitlements", async () => {
     mockedFetchWhoami.mockResolvedValue(
-      whoamiWith([org("uuid-acme", "https://github.com/acme")])
+      whoamiWith([
+        org("uuid-__taskless_test__", "https://github.com/__taskless_test__"),
+      ])
     );
     expect(await resolveActingOrg(directory, token)).toEqual({
-      subject: "uuid-acme",
+      subject: "uuid-__taskless_test__",
     });
   });
 
@@ -164,13 +175,16 @@ describe("resolveActingOrg", () => {
     mockedFetchWhoami.mockResolvedValue(
       whoamiWith([
         {
-          ...org("uuid-acme", "https://github.com/acme"),
+          ...org(
+            "uuid-__taskless_test__",
+            "https://github.com/__taskless_test__"
+          ),
           entitlements: { remoteGeneration: true } as WhoamiOrg["entitlements"],
         },
       ])
     );
     expect(await resolveActingOrg(directory, token)).toEqual({
-      subject: "uuid-acme",
+      subject: "uuid-__taskless_test__",
     });
   });
 

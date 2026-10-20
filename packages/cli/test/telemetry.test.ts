@@ -397,15 +397,20 @@ describe("ghOwner", () => {
       await execFileAsync("git", ["init"], { cwd });
       await execFileAsync(
         "git",
-        ["remote", "add", "origin", "git@github.com:acme/widgets.git"],
+        [
+          "remote",
+          "add",
+          "origin",
+          "git@github.com:__taskless_test__/widgets.git",
+        ],
         { cwd }
       );
 
       const telemetry = await getTelemetry(cwd);
       telemetry.capture("cli_run");
 
-      expect(lastGhOwner(mockIdentify)).toBe("acme");
-      expect(lastGhOwner(mockCapture)).toBe("acme");
+      expect(lastGhOwner(mockIdentify)).toBe("__taskless_test__");
+      expect(lastGhOwner(mockCapture)).toBe("__taskless_test__");
     } finally {
       await rm(cwd, { recursive: true, force: true });
     }
@@ -456,7 +461,12 @@ describe("ghOwner", () => {
       await execFileAsync("git", ["init"], { cwd });
       await execFileAsync(
         "git",
-        ["remote", "add", "origin", "https://gitlab.com/acme/widgets.git"],
+        [
+          "remote",
+          "add",
+          "origin",
+          "https://gitlab.com/__taskless_test__/widgets.git",
+        ],
         { cwd }
       );
 
@@ -541,7 +551,12 @@ describe("adoption dimensions are attached to events", () => {
       await execFileAsync("git", ["init"], { cwd });
       await execFileAsync(
         "git",
-        ["remote", "add", "origin", "git@github.com:acme/widgets.git"],
+        [
+          "remote",
+          "add",
+          "origin",
+          "git@github.com:__taskless_test__/widgets.git",
+        ],
         { cwd }
       );
       await writeFile(join(cwd, "package.json"), "{}");

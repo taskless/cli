@@ -344,13 +344,14 @@ export function canonicalRepositoryPath(remote: string): string | null {
   // self-hosted GitLab serves repositories under nested subgroups, and
   // collapsing them looked attractive because a renamed group would then not
   // change the identity. It trades the wrong way: dropping the middle makes
-  // `acme/team1/api` and `acme/team2/api` — two unrelated repositories that
-  // happen to share an owner and a leaf name — one identity, silently
-  // undercounting in exactly the nested-group case this parser exists to
-  // serve. A rename is the milder failure and the visible one: it starts a
-  // new id on a date someone can find, where a collision is never visible at
-  // all. It is also the same class of event as a GitHub transfer, which
-  // already changes the identity here and is accepted.
+  // `__taskless_test__/team1/api` and `__taskless_test__/team2/api` — two
+  // unrelated repositories that happen to share an owner and a leaf name —
+  // one identity, silently undercounting in exactly the nested-group case
+  // this parser exists to serve. A rename is the milder failure and the
+  // visible one: it starts a new id on a date someone can find, where a
+  // collision is never visible at all. It is also the same class of event as
+  // a GitHub transfer, which already changes the identity here and is
+  // accepted.
   const cleaned = segments.map((segment) => segment.toLowerCase());
   cleaned[cleaned.length - 1] = cleaned.at(-1)!.replace(/\.git$/i, "");
   if (cleaned.some((segment) => segment.length === 0)) return null;

@@ -487,7 +487,9 @@ describe("the two serving paths agree in every host-tool state", () => {
   }
 
   it("agrees, and offers the PR source, in a GitHub repository", async () => {
-    cwd = await repositoryWith("https://github.com/acme/widgets.git");
+    cwd = await repositoryWith(
+      "https://github.com/__taskless_test__/widgets.git"
+    );
 
     const [viaOnboard, viaAgent] = await bothPaths();
 
@@ -496,7 +498,9 @@ describe("the two serving paths agree in every host-tool state", () => {
   });
 
   it("agrees, and drops the PR source, outside GitHub", async () => {
-    cwd = await repositoryWith("https://gitlab.com/acme/widgets.git");
+    cwd = await repositoryWith(
+      "https://gitlab.com/__taskless_test__/widgets.git"
+    );
 
     const [viaOnboard, viaAgent] = await bothPaths();
 
@@ -506,7 +510,9 @@ describe("the two serving paths agree in every host-tool state", () => {
   });
 
   it("agrees when PATH holds nothing at all", async () => {
-    cwd = await repositoryWith("https://github.com/acme/widgets.git");
+    cwd = await repositoryWith(
+      "https://github.com/__taskless_test__/widgets.git"
+    );
 
     const [viaOnboard, viaAgent] = await bothPaths({ PATH: "" });
 
