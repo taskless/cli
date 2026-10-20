@@ -29,7 +29,9 @@ import {
 } from "./state";
 import {
   buildLauncherPackage,
+  pruneLauncherCache,
   writeLauncher,
+  writeLauncherLockfile,
   type LauncherWrite,
 } from "./launcher";
 
@@ -368,6 +370,8 @@ export interface ApplyInstallResult {
   state: InstallState;
   /** This build's launcher, or `null` for a build that has none. */
   launcher: LauncherWrite | null;
+  /** The lockfile beside it, or `null` for a build that has no launcher. */
+  lockfile: LauncherWrite | null;
   writtenSkills: Array<{ target: string; skill: string }>;
   removedSkills: Array<{ target: string; skill: string }>;
   removedCommands: Array<{ target: string; command: string }>;
@@ -549,12 +553,24 @@ export async function applyInstallPlan(
     launcherPackage === undefined
       ? null
       : await writeLauncher(cwd, launcherPackage);
+  const lockfile =
+    launcherPackage === undefined || __TASKLESS_INSTALL_LOCK__ === null
+      ? null
+      : await writeLauncherLockfile(
+          cwd,
+          launcherPackage,
+          __TASKLESS_INSTALL_LOCK__
+        );
 
   await writeInstallState(cwd, nextState);
+  // Installed versions nothing records any more. The launcher installs the
+  // new one on its first run; init never downloads.
+  await pruneLauncherCache(cwd, nextState.launchers, nextState.cliVersion);
 
   return {
     state: nextState,
     launcher,
+    lockfile,
     writtenSkills,
     removedSkills,
     removedCommands,

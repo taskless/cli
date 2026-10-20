@@ -2,8 +2,10 @@ import {
   mkdir,
   mkdtemp,
   readFile,
+  readdir,
   rm,
   stat,
+  utimes,
   writeFile,
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -37,6 +39,8 @@ function install(cliVersion: string) {
 }
 
 const LAUNCHER = join(".taskless", "bin", "cli.mjs");
+const LOCKFILE = join(".taskless", "bin", "cli.lock.json");
+const CACHE = join(".taskless", ".cache");
 const SKILL = join(".taskless", "skills", "taskless", "SKILL.md");
 
 describe("the release's install writes its launcher", () => {
@@ -111,5 +115,96 @@ describe("the release's install writes its launcher", () => {
     const skill = await readFile(join(cwd, SKILL), "utf8");
     expect(skill).toContain("./.taskless/bin/cli.mjs agent");
     expect(skill).toContain("the directory that contains `.taskless/`");
+  });
+});
+
+describe("the release's install writes its lockfile", () => {
+  it("writes this build's lockfile beside cli.mjs", async () => {
+    const result = await install("0.13.0");
+
+    expect(result.lockfile).toEqual({
+      path: ".taskless/bin/cli.lock.json",
+      state: "created",
+    });
+    const lockfile = JSON.parse(
+      await readFile(join(cwd, LOCKFILE), "utf8")
+    ) as {
+      packages: Record<string, { version?: string; integrity?: string }>;
+    };
+    expect(lockfile.packages[""]).toEqual({
+      dependencies: { "@taskless/cli": __VERSION__ },
+    });
+    expect(lockfile.packages["node_modules/tsx"]?.integrity).toMatch(
+      /^sha512-/
+    );
+    await expect(
+      stat(join(cwd, ".taskless", "bin", "cli-nightly.lock.json"))
+    ).rejects.toThrow();
+  });
+
+  it("restores an edited lockfile and says so", async () => {
+    await install("0.13.0");
+    await writeFile(join(cwd, LOCKFILE), "{}\n");
+
+    const result = await install("0.13.0");
+
+    expect(result.lockfile?.state).toBe("restored");
+    expect(await readFile(join(cwd, LOCKFILE), "utf8")).toBe(
+      __TASKLESS_INSTALL_LOCK__
+    );
+  });
+});
+
+async function cacheEntry(...segments: string[]) {
+  const path = join(cwd, CACHE, ...segments);
+  await mkdir(path, { recursive: true });
+  return path;
+}
+
+async function listing(path: string) {
+  const entries = await readdir(path);
+  return entries.toSorted();
+}
+
+describe("an install prunes the launcher cache", () => {
+  it("drops the release's previous version and keeps the nightly's", async () => {
+    await mkdir(join(cwd, ".taskless"));
+    await writeInstallState(cwd, {
+      cliVersion: "0.13.0",
+      launchers: {
+        "@taskless/cli": "0.13.0",
+        "@taskless/cli-nightly": "0.14.0-20261020120000xabc1234",
+      },
+      targets: {},
+    });
+    await cacheEntry("@taskless", "cli@0.13.0");
+    await cacheEntry("@taskless", "cli-nightly@0.14.0-20261020120000xabc1234");
+    await cacheEntry("@taskless", "cli-nightly@0.13.9-20261001000000xdeadbee");
+
+    await install("0.13.1");
+
+    expect(await listing(join(cwd, CACHE, "@taskless"))).toEqual([
+      "cli-nightly@0.14.0-20261020120000xabc1234",
+    ]);
+  });
+
+  it("removes stale temporary installs and keeps fresh ones", async () => {
+    const stale = await cacheEntry(".tmp-1-stale");
+    const old = new Date(Date.now() - 2 * 60 * 60 * 1000);
+    await utimes(stale, old, old);
+    await cacheEntry(".tmp-2-fresh");
+    await writeFile(join(cwd, CACHE, ".gitignore"), "*\n");
+
+    await install("0.13.1");
+
+    expect(await listing(join(cwd, CACHE))).toEqual([
+      ".gitignore",
+      ".tmp-2-fresh",
+    ]);
+  });
+
+  it("downloads nothing", async () => {
+    await install("0.13.1");
+    await expect(stat(join(cwd, CACHE))).rejects.toThrow();
   });
 });

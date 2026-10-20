@@ -119,13 +119,15 @@ export async function runWizard(
       onNotice: (message) => log.info(message),
     });
     const cliVersion = getCliVersion();
-    const { launcher } = await applyInstallPlan(options.cwd, plan, {
+    const { launcher, lockfile } = await applyInstallPlan(options.cwd, plan, {
       cliVersion,
     });
-    if (launcher !== null && launcher.state !== "unchanged") {
-      (launcher.state === "restored" ? log.warn : log.info)(
-        describeLauncherWrite(launcher)
-      );
+    for (const write of [launcher, lockfile]) {
+      if (write !== null && write.state !== "unchanged") {
+        (write.state === "restored" ? log.warn : log.info)(
+          describeLauncherWrite(write)
+        );
+      }
     }
     await syncPermissions(options.cwd, { ...permissionOptions, write: true });
     // Confirmed with the project edits, in the summary's one question.

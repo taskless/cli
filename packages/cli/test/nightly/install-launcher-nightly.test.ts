@@ -37,6 +37,8 @@ afterEach(async () => {
 
 const RELEASE_LAUNCHER = join(".taskless", "bin", "cli.mjs");
 const NIGHTLY_LAUNCHER = join(".taskless", "bin", "cli-nightly.mjs");
+const RELEASE_LOCKFILE = join(".taskless", "bin", "cli.lock.json");
+const NIGHTLY_LOCKFILE = join(".taskless", "bin", "cli-nightly.lock.json");
 
 describe("a nightly install beside the release", () => {
   it("writes only cli-nightly.mjs and keeps the release's launcher and version", async () => {
@@ -87,5 +89,32 @@ describe("a nightly install beside the release", () => {
     );
     expect(skill).toContain("./.taskless/bin/cli-nightly.mjs agent");
     expect(skill).not.toContain("./.taskless/bin/cli.mjs");
+  });
+});
+
+describe("a nightly install's lockfile", () => {
+  it("writes cli-nightly.lock.json and leaves the release's lockfile alone", async () => {
+    await mkdir(join(cwd, ".taskless", "bin"), { recursive: true });
+    await writeFile(join(cwd, RELEASE_LOCKFILE), "release lockfile\n");
+
+    const result = await applyInstallPlan(
+      cwd,
+      buildInstallPlan([".claude"], getEmbeddedSkills()),
+      { cliVersion: getCliVersion() }
+    );
+
+    expect(result.lockfile).toEqual({
+      path: ".taskless/bin/cli-nightly.lock.json",
+      state: "created",
+    });
+    const lockfile = JSON.parse(
+      await readFile(join(cwd, NIGHTLY_LOCKFILE), "utf8")
+    ) as { packages: Record<string, { resolved?: string }> };
+    expect(
+      lockfile.packages["node_modules/@taskless/cli-nightly"]?.resolved
+    ).toContain("/@taskless/cli-nightly/-/cli-nightly-");
+    expect(await readFile(join(cwd, RELEASE_LOCKFILE), "utf8")).toBe(
+      "release lockfile\n"
+    );
   });
 });
