@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { cp, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { cp, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { promisify } from "node:util";
@@ -70,6 +70,10 @@ describe("recording a rules reconciliation", () => {
     await rm(cwd, { recursive: true, force: true });
   });
 
+  function rulePath(): string {
+    return join(cwd, ".taskless", "rules", "sg", "syn", "syn.yml");
+  }
+
   async function readRules(): Promise<Record<string, unknown> | undefined> {
     const raw = await readFile(join(cwd, ".taskless", "taskless.json"), "utf8");
     return (JSON.parse(raw) as { rules?: Record<string, unknown> }).rules;
@@ -108,6 +112,95 @@ describe("recording a rules reconciliation", () => {
       rules: { reconciledTo: string | null };
     };
     expect(parsed.rules.reconciledTo).toBe(version);
+  });
+
+  describe("rule migrations", () => {
+    beforeEach(async () => {
+      await mkdir(join(cwd, ".taskless", "rules", "sg", "syn"), {
+        recursive: true,
+      });
+      await writeFile(
+        rulePath(),
+        "id: syn\nlanguage: Haskell\nseverity: error\nmessage: m\nrule:\n  kind: type_synomym\n"
+      );
+      const manifestPath = join(cwd, ".taskless", "taskless.json");
+      const manifest = JSON.parse(
+        await readFile(manifestPath, "utf8")
+      ) as Record<string, unknown>;
+      manifest["rules"] = {
+        reconciledTo: "0.11.0",
+        engines: { sg: "0.45.3", vale: VALE_VERSION },
+      };
+      await writeFile(manifestPath, JSON.stringify(manifest, undefined, 2));
+    });
+
+    it("lists what --rules will rewrite before it runs", async () => {
+      const result = await runCli(["update", "--json", "-d", cwd]);
+      const payload = JSON.parse(result.stdout) as {
+        ruleMigrations: { engine: string; engineVersion: string }[];
+      };
+      expect(payload.ruleMigrations).toContainEqual(
+        expect.objectContaining({ engine: "sg", engineVersion: "0.50.0" })
+      );
+    });
+
+    it("rewrites the rules for the engines it crosses, then stamps", async () => {
+      const result = await runCli(["update", "--rules", "--json", "-d", cwd]);
+      expect(result.exitCode).toBe(0);
+      const payload = JSON.parse(result.stdout) as {
+        migrated: { engineVersion: string; files: string[] }[];
+      };
+      expect(payload.migrated).toContainEqual(
+        expect.objectContaining({
+          engineVersion: "0.50.0",
+          files: [join(".taskless", "rules", "sg", "syn", "syn.yml")],
+        })
+      );
+      expect(await readFile(rulePath(), "utf8")).toContain(
+        "kind: type_synonym"
+      );
+      const rules = await readRules();
+      expect(rules?.engines).toEqual({
+        sg: AST_GREP_VERSION,
+        vale: VALE_VERSION,
+      });
+
+      // Stamped, so the next run has nothing left to apply.
+      const again = await runCli(["update", "--rules", "--json", "-d", cwd]);
+      expect(
+        (JSON.parse(again.stdout) as { migrated: unknown[] }).migrated
+      ).toEqual([]);
+    });
+
+    it("names the rewritten files on the human path", async () => {
+      const result = await runCli(["update", "--rules", "-d", cwd]);
+      expect(result.stdout).toContain("`type_synonym`");
+      expect(result.stdout).toContain(join("sg", "syn", "syn.yml"));
+    });
+
+    it("refuses a scaffold that is behind, and rewrites nothing", async () => {
+      // Rule migrations write where the CURRENT layout keeps rules.
+      const manifestPath = join(cwd, ".taskless", "taskless.json");
+      const manifest = JSON.parse(
+        await readFile(manifestPath, "utf8")
+      ) as Record<string, unknown>;
+      manifest["version"] = 1;
+      await writeFile(manifestPath, JSON.stringify(manifest, undefined, 2));
+
+      const result = await runCli(["update", "--rules", "--json", "-d", cwd]);
+      expect(result.exitCode).not.toBe(0);
+      expect((JSON.parse(result.stdout) as { code: string }).code).toBe(
+        "SCAFFOLD_MIGRATION_REQUIRED"
+      );
+      expect(await readFile(rulePath(), "utf8")).toContain(
+        "kind: type_synomym"
+      );
+      const rules = await readRules();
+      expect(rules?.engines).toEqual({
+        sg: "0.45.3",
+        vale: VALE_VERSION,
+      });
+    });
   });
 
   it("refuses when there is no .taskless/ to reconcile", async () => {
@@ -288,6 +381,16 @@ describe("taskless update with no flags", () => {
     expect(result.stdout).toContain("`metric` rule's `scope` is honored");
     expect(result.stdout).toContain("Notebooks are read cell by cell");
     expect(result.stdout).toContain("`action` name fails the run at load");
+  });
+
+  it("carries the 0.13.3 ledger entry", async () => {
+    const result = await runCli(["update"]);
+    expect(result.stdout).toContain("Migrating to 0.13.3");
+    // The rename is mechanical, so the entry hands it to `update --rules`
+    // rather than to the agent.
+    expect(result.stdout).toContain("`type_synonym` now, not `type_synomym`");
+    expect(result.stdout).toContain("`update --rules` renames it for you");
+    expect(result.stdout).toContain("Do not rename it by hand");
   });
 
   it("warns that kind: link is loud, not a silent zero-match", async () => {

@@ -91,6 +91,7 @@ export const AST_GREP_LANGUAGES = [
   "Tsx",
   "TypeScript",
   "Yaml",
+  "Zig",
 ] as const;
 
 /** One of the spellings {@link AST_GREP_LANGUAGES} lists, canonically cased. */

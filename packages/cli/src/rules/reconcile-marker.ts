@@ -2,6 +2,7 @@ import { access } from "node:fs/promises";
 import { join } from "node:path";
 
 import { AST_GREP_VERSION, VALE_VERSION } from "./capabilities";
+import { applyRuleMigrations, type AppliedRuleMigration } from "./rule-migrate";
 import { readManifest, writeManifest } from "../filesystem/manifest";
 import { TASKLESS_DIRECTORY } from "./vale/formats";
 import { CLIError } from "../util/cli-error";
@@ -27,6 +28,8 @@ export interface ReconcileResult {
   engines: { sg: string; vale: string };
   /** The value replaced, or `undefined` on a project that had never recorded one. */
   previous: string | undefined;
+  /** Rule rewrites applied for the engine versions this stamp crosses. */
+  migrated: AppliedRuleMigration[];
 }
 
 /**
@@ -98,6 +101,15 @@ export async function recordReconciliation(
     );
   }
 
+  // Before the stamp, never after: the stamp records these engines, and a
+  // marker naming an engine whose rewrites did not run would excuse the next
+  // walk from them. A failure part-way leaves the marker where it was, and
+  // every migration is idempotent, so the rerun finishes the job.
+  const migrated = await applyRuleMigrations(
+    tasklessDirectory,
+    manifest.rules?.engines
+  );
+
   const rules = {
     ...manifest.rules,
     reconciledTo,
@@ -108,7 +120,7 @@ export async function recordReconciliation(
 
   await writeManifest(tasklessDirectory, { ...manifest, rules }, raw);
 
-  return { reconciledTo, engines: rules.engines, previous };
+  return { reconciledTo, engines: rules.engines, previous, migrated };
 }
 
 /**
