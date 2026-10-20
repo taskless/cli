@@ -1,5 +1,21 @@
 # @taskless/cli
 
+## 0.13.2
+
+[Compare with v0.13.1](https://github.com/taskless/cli/compare/v0.13.1...v0.13.2)
+
+### Patch Changes
+
+- 9c88f49: The release and a nightly no longer undo each other's permissions. `init` now replaces stale project allow rules only for the package it is installing (`@taskless/cli` or `@taskless/cli-nightly`), and leaves the other package's rules in place. Each package also gets its own Claude Code `autoMode.allow` entry: the release keeps the `Taskless CLI:` label, and a nightly uses `Taskless CLI nightly:`. Neither build reads the other's entry as stale. One time only, the wizard offers to replace an existing `Taskless CLI:` entry that names both packages with the release-only text.
+- b222841: `init` now installs a project launcher, `.taskless/bin/cli.mjs` (`cli-nightly.mjs` for a nightly), that runs the CLI version recorded for it in `.taskless/taskless.json`. The installed skill and recipes fetched through the launcher name it instead of a pinned `npx` call, so the skill no longer changes on every release, and every harness's permission file gets a version-free rule for it. The `ci` recipe now generates `node .taskless/bin/cli.mjs check`, with Node supplied by the job, so a repository without a `package.json` can run Taskless in CI. The `hooks` recipe runs the launcher too, instead of adding `@taskless/cli` as a dev dependency. When the launcher started the CLI, the commands it prints for you to run next name the launcher, and `.taskless/README.md` lists it first.
+
+  Each package's Claude Code `autoMode.allow` entry now also covers its own launcher, so one time only, the wizard offers to replace the existing entry. More than one string under a package's label now counts as stale, and the wizard folds them into one. Settings edits are colored as migrations: `ALLOW` green, `REMOVE` uncolored, `REPLACE` yellow, and `SKIPPED` red, which marks an edit you have to make yourself. A missing or stale global entry after `init` prints as a red `SKIPPED (global):` line.
+
+  The launcher no longer runs the CLI through `npx`. The first run of a recorded version installs it into `.taskless/.cache/` with `npm ci`, from a lockfile `init` writes beside the launcher (`.taskless/bin/cli.lock.json`, or `cli-nightly.lock.json`). Later runs start it from there without the network. Each release derives that lockfile from the dependency tree its CI tested, so every machine installs the same versions, `tsx` and `esbuild` included, where a fresh `npx` install resolves whatever their ranges allow that day. Commit the lockfile with the launcher; the cache ignores itself in git, and `init` and the launcher remove versions nothing records any more. The install uses the nearest `.npmrc` at or above the project, so a private registry keeps working. The `ci` recipe now caches `.taskless/.cache` between runs.
+
+- cb82a6e: Every `taskless agent <topic>` recipe now opens with the rule the installed skill already states: run each Taskless command as its own shell call, with nothing chained to it, and write files with your file tools. Agents copy a recipe's own examples, so two that chained a command were rewritten: `check` now runs `git diff --name-only` separately instead of substituting it, and `create-vale-rule` measures one rule with `check --json --rule <id>` instead of piping into `jq`. Every topic version is bumped, so a cached recipe is refetched.
+- 4c865ad: Interrupting `taskless check` with Ctrl-C or SIGTERM now reliably removes the run's `.taskless/.run/` directory. Before this fix, a log entry that was still being written could recreate its file mid-removal, and the directory was left behind until a later run swept it.
+
 ## 0.13.1
 
 [Compare with v0.13.0](https://github.com/taskless/cli/compare/v0.13.0...v0.13.1)
