@@ -124,18 +124,7 @@ function codeFragments(source: string): { line: number; text: string }[] {
  * is the intended outcome: a reworded exception deserves to be re-justified,
  * not silently carried forward.
  */
-const ALLOWED_HARDCODED: { file: string; snippet: string; why: string }[] = [
-  {
-    file: "ci.md",
-    snippet: "npx @taskless/cli",
-    why: "Enumerates what %(PACKAGE_MANAGER_DLX)s expands to. Naming the four complete invocations IS the documentation; substituting the variable here would define the placeholder in terms of itself.",
-  },
-  {
-    file: "ci.md",
-    snippet: "pnpm taskless check",
-    why: "That `taskless` is the binary pnpm resolves from the WIRED REPO's node_modules/.bin when @taskless/cli is their dev dependency — a foreign binary, not this CLI's invocation. %(TASKLESS_CLI)s would render `pnpm npx @taskless/cli check`.",
-  },
-];
+const ALLOWED_HARDCODED: { file: string; snippet: string; why: string }[] = [];
 
 function isAllowed(file: string, line: string): boolean {
   return ALLOWED_HARDCODED.some(

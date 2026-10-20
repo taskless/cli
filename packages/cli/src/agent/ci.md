@@ -1,4 +1,4 @@
-# Topic: ci     (CLI v%(CLI_VERSION)s / topic v6)
+# Topic: ci     (CLI v%(CLI_VERSION)s / topic v7)
 
 %(ONE_COMMAND_PER_CALL)s
 
@@ -18,6 +18,15 @@ you recognize one not on the list, apply the same patterns.
   produces an always-green check that gives false confidence.)
 - A local `%(TASKLESS_CLI)s check` succeeds (or fails with real findings the
   user is OK with seeing in CI's first run).
+- `.taskless/bin/cli.mjs` exists and is committed. It is the project
+  launcher `init` writes, and it runs the CLI version recorded in
+  `.taskless/taskless.json`, so CI runs the same version the project
+  was installed with and an upgrade reaches CI in the same commit that
+  updates `.taskless/`. If it is missing, the project was installed by
+  an older CLI: tell the user to run `%(TASKLESS_CLI)s init` and commit
+  the result first. If only `.taskless/bin/cli-nightly.mjs` exists, the
+  project runs a nightly; ask whether CI should run that nightly, and if
+  so use `cli-nightly.mjs` wherever this recipe says `cli.mjs`.
 - No auth required for CI: `check` is unauthenticated by default.
   (Optionally tokenized as a server-enforced backstop; see step 7.)
 
@@ -113,14 +122,12 @@ Canonical paths:
 The reference template, translate the same shape (checkout with
 full history, set up Node, conditional check) for other CIs.
 
-Substitute `%(PACKAGE_MANAGER_DLX)s` with the CI runner's own complete
-invocation, `npx @taskless/cli`, `pnpm dlx @taskless/cli`,
-`yarn dlx @taskless/cli`, or `bunx @taskless/cli`, picking the launcher
-from `pnpm-lock.yaml`/`yarn.lock`/`bun.lockb`. It is a whole command on
-its own, exactly as the template uses it; never combine it with
-`%(TASKLESS_CLI)s`. Which launcher the repository you are wiring up should
-run is a different question from how this recipe was fetched, which is why
-it stays a separate placeholder.
+CI runs the launcher as `node .taskless/bin/cli.mjs`, from the
+repository root, and never through `npx`, `pnpm dlx`, `yarn dlx`, or
+`bunx`. `node <path>` rather than `./<path>`: a CI checkout can lose the
+executable bit, and a Windows runner does not honour the launcher's
+shebang. This is a different spelling from the one you run locally, on
+purpose; do not copy it into your own commands.
 
 ```yaml
 name: Taskless
@@ -143,7 +150,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
 
       - name: Taskless check
         run: |
@@ -154,26 +161,31 @@ jobs:
               echo "No changed files."
               exit 0
             fi
-            %(PACKAGE_MANAGER_DLX)s check $FILES
+            node .taskless/bin/cli.mjs check $FILES
           else
-            %(PACKAGE_MANAGER_DLX)s check
+            node .taskless/bin/cli.mjs check
           fi
 ```
 
 Simplifications:
-- Full-scan only → drop the `if`, just run `%(PACKAGE_MANAGER_DLX)s check`.
+- Full-scan only → drop the `if`, just run `node .taskless/bin/cli.mjs check`.
 - Diff-scan only → remove the `push:` trigger.
 
 ### 6. Translate to other CIs
 
 The six universal steps:
-1. Set up Node (v20 default; match the user's existing CI version).
+1. Make Node available to the job (v22 or later; match the user's
+   existing CI version when it is newer): the CI system's Node setup
+   step, or a Node container image such as `node:22`. The Taskless job
+   needs nothing else from the project's own toolchain, and no
+   `package.json`, so in a Python, Go, or other non-Node repository it
+   still runs as its own job with its own image.
 2. Fetch with full depth (or enough to reach the target branch).
 3. Fetch the target branch.
 4. Compute changed files with `git diff --name-only "origin/<target>...HEAD"`.
 5. Exit early if the diff is empty.
-6. Call `%(PACKAGE_MANAGER_DLX)s check $FILES` for PR builds, or
-   `%(PACKAGE_MANAGER_DLX)s check` for main-branch builds.
+6. Call `node .taskless/bin/cli.mjs check $FILES` for PR builds, or
+   `node .taskless/bin/cli.mjs check` for main-branch builds.
 
 YAML for GitHub/GitLab/Azure/Bitbucket; Groovy for Jenkins;
 different structure for CircleCI. The six steps stay the same.
@@ -211,15 +223,14 @@ unauthenticated default remains fully supported. Also mention auth if
 the user explicitly asks to run authenticated commands (e.g.
 `rule create`/`rule improve`) in CI, uncommon.
 
-### 8. Package manager caveats
+### 8. Repositories that are not Node projects
 
-- **pnpm**: `pnpm dlx` works but has slow cold starts. If the user's
-  pipeline already sets up pnpm, suggest adding `@taskless/cli` as a
-  dev dep and calling it via `pnpm taskless check`. That `taskless` is the
-  binary pnpm resolves from the wired repo's own `node_modules/.bin`, not
-  this CLI's invocation, so it is not `%(TASKLESS_CLI)s`.
-- **Yarn v1 (classic)**: doesn't support `yarn dlx`. Use `npx`.
-- **Bun**: `bunx` works.
+The job needs Node and nothing else. When the repository's main
+pipeline runs in an image without Node (a `python:3.12` image, for
+example), keep Taskless in its own job with a Node image or setup step,
+rather than installing Node into the main job. Do not add a
+`package.json`, and do not add `@taskless/cli` as a dependency: the
+launcher already pins the version through `.taskless/taskless.json`.
 
 ### 9. Report back
 

@@ -133,13 +133,24 @@ describe("prompt rendering", () => {
   });
 
   it("renders the package-manager marker by default and honors an override", () => {
-    const withDefault = getRecipe("ci") ?? "";
-    expect(withDefault).toContain("<package-manager-dlx>");
+    // No shipped recipe uses the placeholder since `ci` moved to the project
+    // launcher, but it stays part of the prompts API, so the table still
+    // carries it.
+    expect(buildVariables("", "any-topic").PACKAGE_MANAGER_DLX).toBe(
+      "<package-manager-dlx>"
+    );
+    expect(
+      buildVariables("", "any-topic", { packageManagerDlx: "pnpm dlx" })
+        .PACKAGE_MANAGER_DLX
+    ).toBe("pnpm dlx");
+  });
 
-    const withOverride =
-      getRecipe("ci", { packageManagerDlx: "pnpm dlx" }) ?? "";
-    expect(withOverride).toContain("pnpm dlx");
-    expect(withOverride).not.toContain("<package-manager-dlx>");
+  it("wires CI through the project launcher with Node from the job", () => {
+    const ci = getRecipe("ci") ?? "";
+    expect(ci).toContain("node .taskless/bin/cli.mjs check");
+    expect(ci).toContain("uses: actions/setup-node@v4");
+    expect(ci).not.toContain("<package-manager-dlx>");
+    expect(ci).not.toMatch(/\b(?:pnpm dlx|yarn dlx|bunx) @taskless/);
   });
 
   it("returns undefined for an unknown topic", () => {

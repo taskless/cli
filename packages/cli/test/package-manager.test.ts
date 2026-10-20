@@ -184,6 +184,28 @@ describe("detectCliInvocation", () => {
     ).toBe(`pnpm dlx @taskless/cli@${CLI_VERSION}`);
   });
 
+  it("prefers the project launcher that started it", () => {
+    expect(
+      detectCliInvocation(
+        context("/Users/dev/.npm/_npx/a1b2c3/node_modules/.bin/taskless", {
+          TASKLESS_LAUNCHER: "./.taskless/bin/cli.mjs",
+        })
+      )
+    ).toBe("./.taskless/bin/cli.mjs");
+  });
+
+  it("ignores a launcher variable that is not one of the two paths", () => {
+    for (const value of ["./.taskless/bin/other.mjs", "rm -rf /", ""]) {
+      expect(
+        detectCliInvocation(
+          context("/Users/dev/.npm/_npx/a1b2c3/node_modules/.bin/taskless", {
+            TASKLESS_LAUNCHER: value,
+          })
+        )
+      ).toBe(`npx @taskless/cli@${CLI_VERSION}`);
+    }
+  });
+
   it("is undefined when the launcher is unknown", () => {
     // The renderer turns this into its agent-fill marker rather than naming a
     // launcher the reader may not have.
