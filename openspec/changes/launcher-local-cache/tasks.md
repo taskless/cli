@@ -13,7 +13,7 @@
 
 - [x] 3.1 Run from the cache: resolve `.taskless/.cache/<package>@<version>/`, read the bin from the installed `package.json`, run it with `process.execPath` and no shell; verify a pre-populated entry runs and no `npm` process starts
 - [x] 3.2 Refuse without a matching lockfile: missing, or naming another version; verify each with a test (no `npm` started, message names the lockfile and the installer command)
-- [x] 3.3 Install: temporary directory, one-line `package.json` plus the lockfile, `npm prefix` and the project `.npmrc` copy, `npm ci --ignore-scripts --no-audit --no-fund --loglevel=error` with output on standard error, remove the `.npmrc`, check the bin resolves, rename (discarding ours on a lost race); `cmd.exe` quoting only for the npm calls; verify first run, second run, lost race and clean `--json` output with a stub `npm` on `PATH`
+- [x] 3.3 Install: temporary directory, one-line `package.json` plus the lockfile, the nearest `.npmrc` at or above the project root copied in (not `npm prefix`, whose output masks UUID-like path segments), `npm ci --ignore-scripts --no-audit --no-fund --loglevel=error` with output on standard error, remove the `.npmrc`, check the bin resolves, rename (discarding ours on a lost race); `cmd.exe` quoting only for the npm calls; verify first run, second run, lost race and clean `--json` output with a stub `npm` on `PATH`
 - [x] 3.4 Failure paths: npm missing, npm exiting non-zero, bin missing; each removes the temporary directory and exits non-zero naming `<package>@<version>`; verify with tests
 - [x] 3.5 Write `.taskless/.cache/.gitignore` (`*`); verify with a test and `git status` in a scratch repository
 - [x] 3.6 Prune after a new install by the shared rule, ignoring removal errors; verify with tests for an upgrade and for keeping the other package's entry
@@ -25,8 +25,8 @@
 
 ## 5. Verification and release
 
-- [ ] 5.1 End to end from a built release-target CLI in a scratch project: `init` writes launcher and lockfile; `./.taskless/bin/cli.mjs check` runs an ast-grep and a Vale rule, and a runtime rule if available; the second run starts no `npm`; `git status` shows the lockfile and not the cache. Since the version under test is unpublished, serve it from a local scoped registry as in the design's measurements
-- [ ] 5.2 Private registry: a project `.npmrc` pointing at an unreachable registry fails the first install with npm's error and leaves no `.npmrc` or temporary directory
+- [x] 5.1 End to end from a built release-target CLI in a scratch project: `init` writes launcher and lockfile; `./.taskless/bin/cli.mjs check` runs an ast-grep and a Vale rule, and a runtime rule if available; the second run starts no `npm`; `git status` shows the lockfile and not the cache. Since the version under test is unpublished, serve it from a local scoped registry as in the design's measurements
+- [x] 5.2 Private registry: a project `.npmrc` pointing at an unreachable registry fails the first install with npm's error and leaves no `.npmrc` or temporary directory
 - [ ] 5.3 Extend `.changeset/pinned-cli-wrapper.md` (no second changeset); update #538 with the shrinkwrap measurements and point it at this change
 - [ ] 5.4 Run `pnpm typecheck`, `pnpm lint` and the test suite
 - [ ] 5.5 Archive and check scenario counts for `cli-project-launcher`, `cli-init` and `cli-agent` against the main specs

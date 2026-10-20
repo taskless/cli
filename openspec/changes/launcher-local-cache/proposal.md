@@ -11,7 +11,7 @@ Installing the recorded version once into a git-ignored `.taskless/.cache/`, fro
 - Each nightly and release build derives an npm lockfile for its own package from `pnpm-lock.yaml`, offline, and embeds it. The CLI's `package.json` keeps its ranges; development stays loose. A build whose dependency tree cannot be laid out as one flat npm tree fails rather than shipping a partial lockfile.
 - `init` writes that lockfile beside the package's launcher, `.taskless/bin/cli.lock.json` for the release and `.taskless/bin/cli-nightly.lock.json` for the nightly. A nightly install leaves the release's pair alone, as it already leaves the release's launcher.
 - The launcher installs into `.taskless/.cache/<package>@<version>/` with `npm ci --ignore-scripts` from its lockfile, into a temporary directory renamed into place once complete, then runs the installed bin with the same `node`. It no longer calls `npx`. A missing lockfile, or one that does not name the recorded version, stops the launcher with a message to rerun `init`.
-- The install uses the project's `.npmrc`, the one `npx` would have read, so private registries keep working.
+- The install uses the nearest `.npmrc` at or above the project root, so private registries keep working. `npm install --prefix` alone ignores that file.
 - The cache ignores itself (`.taskless/.cache/.gitignore` containing `*`). No scaffold migration.
 - Cached versions neither package records are removed, by `init` and by the launcher after it installs a new version.
 - The `ci` recipe caches `.taskless/.cache`, keyed on the runner OS and the hash of the package's lockfile.

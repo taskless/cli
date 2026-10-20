@@ -61,7 +61,7 @@ On a cache miss the launcher:
 
 1. Reads its lockfile. If it is missing, or its `node_modules/<package>` version is not the recorded version, it stops and says to rerun the installer. It never installs without the lockfile.
 2. Creates `.taskless/.cache/.tmp-<pid>-<random>/`, writes `package.json` (`{ "private": true, "dependencies": { <package>: <version> } }`) and copies the lockfile in as `package-lock.json`.
-3. Runs `npm prefix` from the project root and, if `<that prefix>/.npmrc` exists, copies it into the temporary directory.
+3. Copies the nearest `.npmrc` at or above the project root into the temporary directory, if there is one. The walk stops short of the home directory, whose `.npmrc` npm already reads as user config. npm reads project settings only from the directory it installs into (measured in the table above), so without the copy a private registry would be ignored. The launcher finds the file itself rather than asking `npm prefix`: npm masks anything in its output that looks like a token, a UUID path segment included, so under such a path `npm prefix` printed `…/***/…`, and on 2026-10-20 the launcher then found no `.npmrc` and installed from the public registry without a word. The nearest-file rule also covers a monorepo package whose `.npmrc` sits at the repository root.
 4. Runs `npm ci --ignore-scripts --no-audit --no-fund --loglevel=error` there, with npm's output on standard error so a first run's `--json` output stays clean.
 5. Deletes the copied `.npmrc`, checks the package's `bin` entry resolves, and renames the directory to `.taskless/.cache/<package>@<version>/`. If that already exists, another process won: it deletes its own directory and uses the existing one.
 
