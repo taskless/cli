@@ -206,15 +206,12 @@ describe("taskless agent <topic>", () => {
     expect(result.stdout).toContain('"successCases"');
   });
 
-  it("renders %(PACKAGE_MANAGER_DLX)s as the agent-fill marker", async () => {
+  it("serves the ci recipe with the launcher command and no placeholders", async () => {
     const result = await runCli(["agent", "ci", "-d", cwd]);
     expect(result.exitCode).toBe(0);
-    // Sprintf substitutes the placeholder; the agent-fill marker should
-    // appear in its rendered <package-manager-dlx> form, never as the
-    // raw sprintf placeholder.
-    expect(result.stdout).not.toContain("%(PACKAGE_MANAGER_DLX)s");
-    expect(result.stdout).not.toContain("{{PACKAGE_MANAGER_DLX}}");
-    expect(result.stdout).toContain("<package-manager-dlx>");
+    expect(result.stdout).not.toContain("%(");
+    expect(result.stdout).not.toContain("<package-manager-dlx>");
+    expect(result.stdout).toContain("node .taskless/bin/cli.mjs check");
   });
 
   it("exits 1 for an unknown topic", async () => {

@@ -37,9 +37,9 @@
 
 ## 6. Recipes
 
-- [ ] 6.1 Prefer an exact-match `TASKLESS_LAUNCHER` in `detectCliInvocation`; leave `@taskless/cli/prompts` untouched; add the project-root sentence to the run-each-command guidance when the invocation is a launcher
-- [ ] 6.2 Rewrite the `ci` recipe to `node .taskless/bin/cli.mjs`, drop `%(PACKAGE_MANAGER_DLX)s`, require the job to supply Node, and bump the topic version
-- [ ] 6.3 Tests: recipe through the launcher, through npx, and with an unexpected variable value; the `ci` recipe snapshot
+- [x] 6.1 Prefer an exact-match `TASKLESS_LAUNCHER` in `detectCliInvocation`; leave `@taskless/cli/prompts` untouched; add the project-root sentence to the run-each-command guidance when the invocation is a launcher
+- [x] 6.2 Rewrite the `ci` recipe to `node .taskless/bin/cli.mjs`, drop `%(PACKAGE_MANAGER_DLX)s`, require the job to supply Node, and bump the topic version
+- [x] 6.3 Tests: recipe through the launcher, through npx, and with an unexpected variable value; the `ci` recipe snapshot
 
 ## 7. Verification and release
 

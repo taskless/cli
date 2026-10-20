@@ -187,12 +187,34 @@ export function readmeSpecifier(): string | undefined {
 export function detectCliInvocation(
   context: LauncherContext
 ): string | undefined {
+  // A project launcher started this process and named itself. Its spelling is
+  // what the reader should run next, since it is what the harness allows.
+  const launcher = projectLauncher(context);
+  if (launcher !== undefined) return launcher;
   const specifier = pinnedSpecifier();
   // A path-form build is authoritative and complete on its own.
   if (specifier === undefined) return buildInvocation();
-  const launcher = detectLauncher(context);
-  if (launcher === undefined) return undefined;
-  return `${LAUNCHER_COMMANDS[launcher]} ${specifier}`;
+  const detected = detectLauncher(context);
+  if (detected === undefined) return undefined;
+  return `${LAUNCHER_COMMANDS[detected]} ${specifier}`;
+}
+
+/**
+ * The spellings a project launcher names itself with in `TASKLESS_LAUNCHER`.
+ * Only these are believed: the variable becomes text in a recipe an agent
+ * runs, so any other value is ignored rather than passed along.
+ */
+const PROJECT_LAUNCHERS = new Set([
+  "./.taskless/bin/cli.mjs",
+  "./.taskless/bin/cli-nightly.mjs",
+]);
+
+/** The project launcher that started this process, if one did. */
+function projectLauncher(context: LauncherContext): string | undefined {
+  const named = context.env.TASKLESS_LAUNCHER;
+  return named !== undefined && PROJECT_LAUNCHERS.has(named)
+    ? named
+    : undefined;
 }
 
 /**

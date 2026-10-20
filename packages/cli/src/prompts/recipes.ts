@@ -582,9 +582,16 @@ stays your judgement.`;
 export function oneCommandPerCall(invocation?: string): string {
   const start =
     invocation === undefined ? "the Taskless invocation" : `\`${invocation}\``;
+  // A project launcher is a path relative to the project root, so it only
+  // resolves from there, and the `cd` that would get there cannot share its
+  // line.
+  const root =
+    invocation?.startsWith("./.taskless/bin/") === true
+      ? ` Run it from the directory that contains \`.taskless/\`; if your shell is elsewhere, \`cd\` there in a separate call first.`
+      : "";
   return (
     `Run each Taskless command as its own shell call. Start the line with ${start} ` +
-    `and chain nothing to it: no variable assignment, \`cd\`, \`mkdir\`, \`&&\`, \`;\`, pipe, redirect, or \`$(…)\`. ` +
+    `and chain nothing to it: no variable assignment, \`cd\`, \`mkdir\`, \`&&\`, \`;\`, pipe, redirect, or \`$(…)\`.${root} ` +
     `Read its output from the call's result, and write any file this recipe asks for with your file tools.`
   );
 }
