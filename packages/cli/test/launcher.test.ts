@@ -7,6 +7,7 @@ import {
   readdir,
   rm,
   stat,
+  symlink,
   writeFile,
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -351,6 +352,14 @@ describe.skipIf(process.platform === "win32")("project launcher", () => {
       "cli-nightly@0.14.0-20261020120000xabc1234",
       "cli@0.13.0",
     ]);
+  });
+
+  it("still drops old versions when a temporary install cannot be read", async () => {
+    await mkdir(join(CACHE(), "@taskless", "cli@0.12.0"), { recursive: true });
+    await symlink(join(root, "missing"), join(CACHE(), ".tmp-dangling"));
+    const path = await install("@taskless/cli", RELEASE, "0.13.0");
+    expect(launch(path, []).status).toBe(0);
+    expect(await listing(join(CACHE(), "@taskless"))).toEqual(["cli@0.13.0"]);
   });
 
   it.each([
