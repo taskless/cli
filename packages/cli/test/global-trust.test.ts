@@ -93,6 +93,7 @@ describe("syncGlobalTrust", () => {
         key: "autoMode.allow",
         state: "written",
         skipped: null,
+        labelled: 0,
       },
     ]);
     expect(JSON.parse(await read())).toEqual({
@@ -181,17 +182,74 @@ describe("syncGlobalTrust", () => {
     });
   });
 
-  it("replaces only the first labelled entry", async () => {
+  it("folds every labelled entry into one, at the first one's place", async () => {
     await put(
       JSON.stringify({
-        autoMode: { allow: ["Taskless CLI: one", "Taskless CLI: two"] },
+        autoMode: {
+          allow: [
+            "$defaults",
+            GLOBAL_TRUST_ENTRY,
+            "Internal Registry: ...",
+            "Taskless CLI: pasted by hand",
+            NIGHTLY_TRUST.entry,
+          ],
+        },
       })
     );
+    const [before] = await sync(false);
+    expect(before).toMatchObject({
+      state: "stale",
+      labelled: 2,
+    });
     await sync(true);
 
     expect(JSON.parse(await read())).toEqual({
-      autoMode: { allow: [GLOBAL_TRUST_ENTRY, "Taskless CLI: two"] },
+      autoMode: {
+        allow: [
+          "$defaults",
+          GLOBAL_TRUST_ENTRY,
+          "Internal Registry: ...",
+          NIGHTLY_TRUST.entry,
+        ],
+      },
     });
+  });
+
+  it("reads a duplicated current entry as stale and leaves one copy", async () => {
+    await put(
+      JSON.stringify({
+        autoMode: {
+          allow: ["Taskless CLI: old", GLOBAL_TRUST_ENTRY, GLOBAL_TRUST_ENTRY],
+        },
+      })
+    );
+    const [before] = await sync(false);
+    expect(before?.state).toBe("stale");
+    await sync(true);
+
+    expect(JSON.parse(await read())).toEqual({
+      autoMode: { allow: [GLOBAL_TRUST_ENTRY] },
+    });
+    const [after] = await sync(false);
+    expect(after).toMatchObject({
+      state: "present",
+      labelled: 1,
+    });
+  });
+
+  it("leaves duplicates in place when not writing", async () => {
+    const before = JSON.stringify({
+      autoMode: { allow: [GLOBAL_TRUST_ENTRY, GLOBAL_TRUST_ENTRY] },
+    });
+    await put(before);
+    await sync(false);
+    expect(await read()).toBe(before);
+  });
+
+  it("covers its own launcher and not the nightly's", () => {
+    expect(GLOBAL_TRUST_ENTRY).toContain("./.taskless/bin/cli.mjs");
+    expect(GLOBAL_TRUST_ENTRY).not.toContain("cli-nightly.mjs");
+    expect(NIGHTLY_TRUST.entry).toContain("./.taskless/bin/cli-nightly.mjs");
   });
 
   it("leaves the nightly's entry alone", async () => {
@@ -317,6 +375,21 @@ describe("rendering", () => {
     expect(warning).toContain("is out of date");
     expect(warning).toContain("which offers to replace it");
     expect(warning).toContain(GLOBAL_TRUST_ENTRY);
+  });
+
+  it("says how many strings carry the label when there are duplicates", async () => {
+    await put(
+      JSON.stringify({
+        autoMode: { allow: [GLOBAL_TRUST_ENTRY, "Taskless CLI: pasted"] },
+      })
+    );
+    const [warning] = globalTrustWarnings(
+      await sync(false),
+      "npx @taskless/cli",
+      home
+    );
+    expect(warning).toContain("2 strings");
+    expect(warning).toContain("folds them into one");
   });
 
   it("is silent once the entry is present", async () => {

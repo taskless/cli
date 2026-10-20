@@ -568,6 +568,7 @@ describe("taskless init (the batch install)", () => {
           key: "autoMode.allow",
           state: "absent",
           skipped: null,
+          labelled: 0,
         },
       ]);
       expect(stderr).toContain("autoMode.allow");

@@ -53,7 +53,8 @@ export interface GlobalTrustText {
 function trustText(
   packageName: string,
   label: string,
-  exampleVersion: string
+  exampleVersion: string,
+  launcher: string
 ): GlobalTrustText {
   return {
     packageName,
@@ -67,7 +68,11 @@ function trustText(
       "same command line also sets a variable, changes or creates a " +
       "directory, or redirects the call's output to a file; every other " +
       "command on the line is judged on its own. Dist-tags such as @latest " +
-      "or @nightly, version ranges, and unversioned calls are not covered.",
+      "or @nightly, version ranges, and unversioned calls are not covered. " +
+      `Running ${launcher} from the project root, the directory that ` +
+      "contains .taskless/, is allowed with any arguments: it is the " +
+      "project's launcher for this package, and runs the exact version of " +
+      `${packageName} the project recorded in .taskless/taskless.json.`,
   };
 }
 
@@ -75,14 +80,16 @@ export const RELEASE_TRUST = trustText(
   // ast-grep-ignore: no-unrouted-cli-invocation
   "@taskless/cli",
   "Taskless CLI:",
-  "1.2.3"
+  "1.2.3",
+  "./.taskless/bin/cli.mjs"
 );
 
 export const NIGHTLY_TRUST = trustText(
   // ast-grep-ignore: no-unrouted-cli-invocation
   "@taskless/cli-nightly",
   "Taskless CLI nightly:",
-  "1.2.3-20260101000000xabcdef0"
+  "1.2.3-20260101000000xabcdef0",
+  "./.taskless/bin/cli-nightly.mjs"
 );
 
 /**
@@ -167,6 +174,12 @@ export interface GlobalTrustOutcome {
   state: "present" | "absent" | "stale" | "written" | "skipped";
   /** Why the file was left alone, or `null` when it was not. */
   skipped: string | null;
+  /**
+   * How many strings in the list carry this build's label, read before any
+   * write. More than one is stale even when one is current, and the wizard
+   * folds them into one.
+   */
+  labelled: number;
 }
 
 export interface SyncGlobalTrustOptions {
@@ -187,8 +200,8 @@ async function readText(path: string): Promise<string | undefined> {
 }
 
 type Inspection =
-  | { kind: "present" }
-  | { kind: "absent" | "stale"; text: string }
+  | { kind: "present"; labelled: number }
+  | { kind: "absent" | "stale"; text: string; labelled: number }
   | { kind: "skip"; reason: string };
 
 /** Whether the file holds the entry, and the edited text when it does not. */
@@ -211,23 +224,31 @@ function inspect(trust: GlobalTrust, current = "{}\n"): Inspection {
     return {
       kind: "absent",
       text: set(current, [...trust.key], [...trust.seed]),
+      labelled: 0,
     };
   }
   if (!Array.isArray(list)) {
     return { kind: "skip", reason: `${trust.key.join(".")} is not a list` };
   }
-  const index = list.findIndex(
-    (item) => typeof item === "string" && item.startsWith(BUILD_TRUST.label)
+  const indexes = list.flatMap((item, index) =>
+    typeof item === "string" && item.startsWith(BUILD_TRUST.label)
+      ? [index]
+      : []
   );
-  if (index !== -1) {
-    if (list[index] === GLOBAL_TRUST_ENTRY) return { kind: "present" };
-    // Replaced where it sits, so the user's ordering survives. A second
-    // labelled string is left alone: deleting from a user's list is more
-    // than the one line the summary shows.
-    return {
-      kind: "stale",
-      text: set(current, [...trust.key, index], GLOBAL_TRUST_ENTRY),
-    };
+  const [first, ...later] = indexes;
+  if (first !== undefined) {
+    if (later.length === 0 && list[first] === GLOBAL_TRUST_ENTRY) {
+      return { kind: "present", labelled: 1 };
+    }
+    // Every string under this label folds into one: the first is replaced
+    // where it sits, so the user's ordering survives, and the rest are
+    // removed, last first so the earlier indexes still point where they did.
+    // The label is ours, so nothing under it is anyone else's to keep.
+    let text = set(current, [...trust.key, first], GLOBAL_TRUST_ENTRY);
+    for (const index of later.toReversed()) {
+      text = set(text, [...trust.key, index], undefined);
+    }
+    return { kind: "stale", text, labelled: indexes.length };
   }
   // An existing list without `$defaults` is the user replacing the defaults on
   // purpose, so it is appended to as it stands.
@@ -236,6 +257,7 @@ function inspect(trust: GlobalTrust, current = "{}\n"): Inspection {
     text: set(current, [...trust.key, list.length], GLOBAL_TRUST_ENTRY, {
       isArrayInsertion: true,
     }),
+    labelled: 0,
   };
 }
 
@@ -257,16 +279,22 @@ export async function syncGlobalTrust(
     const base = { harness: trust.harness, file, key: trust.key.join(".") };
     const result = inspect(trust, await readText(file));
     if (result.kind === "skip") {
-      outcomes.push({ ...base, state: "skipped", skipped: result.reason });
+      outcomes.push({
+        ...base,
+        state: "skipped",
+        skipped: result.reason,
+        labelled: 0,
+      });
       continue;
     }
+    const { labelled } = result;
     if (result.kind === "present" || !options.write) {
-      outcomes.push({ ...base, state: result.kind, skipped: null });
+      outcomes.push({ ...base, state: result.kind, skipped: null, labelled });
       continue;
     }
     await mkdir(dirname(file), { recursive: true });
     await writeFile(file, result.text, "utf8");
-    outcomes.push({ ...base, state: "written", skipped: null });
+    outcomes.push({ ...base, state: "written", skipped: null, labelled });
   }
   return outcomes;
 }
@@ -315,13 +343,15 @@ export function globalTrustWarnings(
       const list = `the top-level \`${outcome.key}\` list in ${display(outcome.file, home)}`;
       const wizard = `run \`${installer}\` with no arguments in a terminal`;
       const fix =
-        outcome.state === "stale"
-          ? `The \`${BUILD_TRUST.label}\` entry in ${list} is out of date. Replace it with this one, or ${wizard}, which offers to replace it`
-          : `To trust Taskless, add this entry to ${list}` +
-            (outcome.state === "skipped"
-              ? ` (left alone: ${outcome.skipped})`
-              : "") +
-            `, after "$defaults", or ${wizard}, which offers to add it`;
+        outcome.state === "stale" && outcome.labelled > 1
+          ? `${String(outcome.labelled)} strings in ${list} begin \`${BUILD_TRUST.label}\`. Replace them with this one entry, or ${wizard}, which folds them into one`
+          : outcome.state === "stale"
+            ? `The \`${BUILD_TRUST.label}\` entry in ${list} is out of date. Replace it with this one, or ${wizard}, which offers to replace it`
+            : `To trust Taskless, add this entry to ${list}` +
+              (outcome.state === "skipped"
+                ? ` (left alone: ${outcome.skipped})`
+                : "") +
+              `, after "$defaults", or ${wizard}, which offers to add it`;
       return (
         `${outcome.harness} may refuse Taskless commands that the project rule allows: its safety classifier overrules project allow rules. ` +
         `${fix}:\n  ${GLOBAL_TRUST_ENTRY}`
