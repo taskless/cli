@@ -73,6 +73,18 @@ const rule = (id: string, severity = "error") =>
     "",
   ].join("\n");
 
+/** A Haskell rule that matches on `kind` alone. */
+const haskellKindRule = (kind: string) =>
+  [
+    "id: synonym",
+    "language: Haskell",
+    "severity: error",
+    "message: m",
+    "rule:",
+    `  kind: ${kind}`,
+    "",
+  ].join("\n");
+
 /** Valid test YAML, and invalid *rule* YAML — it carries no `language`. */
 const testFile = (id: string, invalid: string[], valid: string[] = []) =>
   [
@@ -560,13 +572,19 @@ withSg("ast-grep vendor contract", () => {
       // `validate` validates against the schema's `const` values, not their
       // position — so the exact text is pinned to make the next reorder
       // visible, not because anything depends on it.
+      //
+      // WORDING CHANGED AT 0.51.0, vocabulary and order unchanged. ast-grep
+      // replaced serde_yaml with serde-saphyr (ast-grep/ast-grep#2999), which
+      // drops the backticks around each variant and the `severity:` prefix.
+      // `validate` rejects this severity against the schema before ast-grep
+      // sees it, so no user reads this text through Taskless.
       const cwd = project({
         rules: { "no-eval": rule("no-eval", "catastrophe") },
         sources: evalSource,
       });
       const result = scan(cwd);
       expect(result.stderr).toContain(
-        "unknown variant `catastrophe`, expected one of `off`, `hint`, `info`, `warning`, `error`"
+        "unknown variant `catastrophe`, expected one of off, hint, info, warning, error"
       );
     });
 
@@ -617,6 +635,29 @@ withSg("ast-grep vendor contract", () => {
       );
       expect(unparseable.status).toBeGreaterThan(1);
       expect(unparseable.status).toBe(8);
+    });
+
+    it("loads a rule file that ends in an empty document", () => {
+      // RELAXED AT 0.51.0 by the serde-saphyr parser (ast-grep/ast-grep#2999).
+      // Measured on 0.45.3, a trailing `---` read as a second rule with no
+      // `language`, exited 8, and took every other rule in the config down
+      // with it. `validate` still rejects the file as multi-document YAML,
+      // but `check` hands rules to ast-grep as they are on disk, so this is
+      // the difference between a project's findings and none at all.
+      const cwd = project({
+        rules: {
+          "no-eval": `${rule("no-eval")}---\n`,
+          other: rule("other"),
+        },
+        sources: evalSource,
+      });
+      const result = scan(cwd);
+      expect(result.status).toBe(1);
+      const ruleIds = result.stdout
+        .split("\n")
+        .filter((line) => line !== "")
+        .map((line) => (JSON.parse(line) as { ruleId: string }).ruleId);
+      expect(ruleIds.toSorted()).toEqual(["no-eval", "other"]);
     });
   });
 
@@ -1256,6 +1297,38 @@ withSg("ast-grep vendor contract", () => {
    * same features showed no difference at all, because neither bug fires
    * unless a metavariable is bound in the specific position the fix changed.
    */
+  describe("Haskell names a type synonym `type_synonym`", () => {
+    // RENAMED AT 0.51.0, which moved tree-sitter-haskell from 0.23.1 to
+    // 0.24.1. Upstream fixed a typo in the kind (`fix!: typo: 'synomym' ->
+    // 'synonym'`). Diffed against both grammars' node-types.json, this is the
+    // only named kind and the only field that changed. A rule still on the
+    // old spelling exits 8, which takes every other sg rule in `check` down
+    // with it; `validate` names the bad kind.
+    const sources = { "src/a.hs": "type Name = String\n" };
+
+    it("matches `type_synonym`", () => {
+      const result = scan(
+        project({
+          rules: { synonym: haskellKindRule("type_synonym") },
+          sources,
+        })
+      );
+      expect(result.status).toBe(1);
+      expect(result.stdout).toContain('"ruleId":"synonym"');
+    });
+
+    it("refuses the old `type_synomym` spelling", () => {
+      const result = scan(
+        project({
+          rules: { synonym: haskellKindRule("type_synomym") },
+          sources,
+        })
+      );
+      expect(result.status).toBe(8);
+      expect(result.stderr).toContain("Kind `type_synomym` is invalid");
+    });
+  });
+
   describe("metavariable bindings do not leak", () => {
     it("counts nthChild positions from 1, not from 0", () => {
       // Pinned because the vendored schema says otherwise. `NthChildSimple`

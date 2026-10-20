@@ -53,7 +53,11 @@ import {
   stampNewProjectRules,
 } from "../rules/reconcile-marker";
 import { readManifest } from "../filesystem/manifest";
-import type { MigrationReport } from "../filesystem/migrate";
+import {
+  requireCurrentSchema,
+  type MigrationReport,
+} from "../filesystem/migrate";
+import { pendingRuleMigrations } from "../rules/rule-migrate";
 import { TASKLESS_DIRECTORY } from "../rules/vale/formats";
 import { CLIError } from "../util/cli-error";
 import { buildInvocation } from "../util/invocation";
@@ -291,6 +295,19 @@ export const updateCommand = defineCommand({
             // never recorded a reconciliation, which is not the same as being
             // behind, or it is already current.
             walk: walk ?? null,
+            // The rewrites `update --rules` will apply before it stamps, so
+            // the walk can tell its reader what it does not need to do by
+            // hand. Empty without a project, which has nothing to rewrite.
+            ruleMigrations:
+              manifest === undefined
+                ? []
+                : pendingRuleMigrations(manifest.rules?.engines).map(
+                    ({ engine, engineVersion, summary }) => ({
+                      engine,
+                      engineVersion,
+                      summary,
+                    })
+                  ),
             recipe,
           })
         );
@@ -303,6 +320,10 @@ export const updateCommand = defineCommand({
 
     const telemetry = await getTelemetry(cwd);
     try {
+      // Rule migrations rewrite files where the CURRENT layout puts them, so
+      // a scaffold that is behind has to be migrated first. Checked here and
+      // not in `recordReconciliation`, because `migrate` imports the marker.
+      await requireCurrentSchema(cwd);
       const result = await recordReconciliation(cwd);
       if (args.json) {
         console.log(JSON.stringify({ ok: true, ...result }));
@@ -312,6 +333,14 @@ export const updateCommand = defineCommand({
             ? `Rules reconciled to ${result.reconciledTo} (ast-grep ${result.engines.sg}, Vale ${result.engines.vale}).`
             : `Rules reconciled to ${result.reconciledTo}, was ${result.previous} (ast-grep ${result.engines.sg}, Vale ${result.engines.vale}).`
         );
+        for (const migration of result.migrated) {
+          console.log(
+            `${migration.summary} (${migration.engine} ${migration.engineVersion}): ` +
+              (migration.files.length === 0
+                ? "no rule needed it."
+                : `rewrote ${migration.files.join(", ")}.`)
+          );
+        }
       }
       telemetry.capture("cli_rules_reconciled");
     } catch (error) {
