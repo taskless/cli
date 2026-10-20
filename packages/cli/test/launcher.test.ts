@@ -13,6 +13,7 @@ import {
 import { tmpdir } from "node:os";
 import { delimiter, join } from "node:path";
 import process from "node:process";
+import { pathToFileURL } from "node:url";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import {
@@ -191,6 +192,23 @@ async function listing(directory: string): Promise<string[]> {
 }
 const RELEASE = { install: { launchers: { "@taskless/cli": "0.13.0" } } };
 
+/** One argument as the launcher quotes it for a batch file such as npm.cmd. */
+function quoted(inner: string): string {
+  return `^^^"${inner}^^^"`;
+}
+
+/**
+ * A stand-in for cmd.exe: it logs the arguments it was handed, then does what
+ * the real one would, which is to run npm, here the fake one.
+ */
+const FAKE_CMD = String.raw`#!/usr/bin/env node
+const fs = require("node:fs");
+const { spawnSync } = require("node:child_process");
+fs.appendFileSync(process.env.FAKE_CMD_LOG, JSON.stringify(process.argv.slice(2)) + "\n");
+const npm = spawnSync(process.execPath, [process.env.FAKE_NPM_PATH, "ci"], { stdio: "inherit" });
+process.exit(npm.status ?? 1);
+`;
+
 describe.skipIf(process.platform === "win32")("project launcher", () => {
   it("installs the recorded version once, then runs it with every argument", async () => {
     const path = await install("@taskless/cli", RELEASE, "0.13.0");
@@ -270,6 +288,70 @@ describe.skipIf(process.platform === "win32")("project launcher", () => {
     expect(
       launch(path, ["check"], { env: { FAKE_CLI_EXIT: "1" } }).status
     ).toBe(1);
+  });
+
+  it("quotes npm's arguments for cmd.exe on Windows, and passes the CLI's untouched", async () => {
+    const path = await install("@taskless/cli", RELEASE, "0.13.0");
+    // Pretend to be Windows, and stand in for cmd.exe, so the quoting runs
+    // anywhere. npm.cmd is a batch file and goes through cmd.exe; the CLI is
+    // started with node directly, so its arguments are never quoted.
+    const preload = join(root, "as-windows.mjs");
+    await writeFile(
+      preload,
+      'Object.defineProperty(process, "platform", { value: "win32" });\n'
+    );
+    const comspec = join(fakeBin, "cmd");
+    await writeFile(comspec, FAKE_CMD);
+    await chmod(comspec, 0o755);
+    const cmdLog = join(root, "cmd.log");
+
+    const result = spawnSync(
+      process.execPath,
+      [
+        "--import",
+        pathToFileURL(preload).href,
+        path,
+        "check",
+        "src/a file.ts",
+        'say "hi" & calc',
+        "C:\\dir\\",
+      ],
+      {
+        cwd: root,
+        encoding: "utf8",
+        env: {
+          ...process.env,
+          comspec,
+          FAKE_CMD_LOG: cmdLog,
+          FAKE_NPM_PATH: join(fakeBin, "npm"),
+          FAKE_NPM_LOG: npmLog,
+          FAKE_CLI_SOURCE: FAKE_CLI,
+        },
+      }
+    );
+    expect(result.status).toBe(0);
+    const calls = await readFile(cmdLog, "utf8");
+    // Each argument is quoted, then every metacharacter is escaped twice:
+    // once for cmd.exe and once for the batch file's own parse.
+    expect(JSON.parse(calls.trim())).toEqual([
+      "/d",
+      "/s",
+      "/c",
+      `"${[
+        "npm",
+        quoted("ci"),
+        quoted("--ignore-scripts"),
+        quoted("--no-audit"),
+        quoted("--no-fund"),
+        quoted("--loglevel=error"),
+      ].join(" ")}"`,
+    ]);
+    expect(reported(result.stdout).argv).toEqual([
+      "check",
+      "src/a file.ts",
+      'say "hi" & calc',
+      "C:\\dir\\",
+    ]);
   });
 
   it("ends by the same signal that ended the CLI", async () => {
