@@ -124,7 +124,14 @@ function npm(args, options) {
  * path segments that look like tokens, such as a UUID.
  */
 function projectNpmrc() {
-  const home = homedir();
+  let home;
+  try {
+    home = homedir();
+  } catch {
+    // No HOME and no passwd entry, as in a rootless container: walk to the
+    // filesystem root instead.
+    home = undefined;
+  }
   let directory = projectRoot;
   while (directory !== home) {
     const path = join(directory, ".npmrc");
@@ -243,27 +250,34 @@ function prune(install) {
       // Left for the next prune.
     }
   };
-  try {
-    for (const name of readdirSync(cache)) {
-      const path = join(cache, name);
-      if (
-        name.startsWith(".tmp-") &&
-        Date.now() - statSync(path).mtimeMs > STALE_INSTALL_MS
-      ) {
-        remove(path);
-      }
+  // Pruning never decides whether the CLI runs, and one unreadable entry
+  // never stops the rest: each step contains its own failure, as
+  // pruneLauncherCache does.
+  const list = (directory) => {
+    try {
+      return readdirSync(directory);
+    } catch {
+      return [];
     }
-    for (const scope of new Set(PACKAGES.map((name) => name.split("/")[0]))) {
-      const directory = join(cache, scope);
-      if (!existsSync(directory)) continue;
-      for (const name of readdirSync(directory)) {
-        const entry = `${scope}/${name}`;
-        const ours = PACKAGES.some((pkg) => entry.startsWith(`${pkg}@`));
-        if (ours && !keep.has(entry)) remove(join(directory, name));
-      }
+  };
+  for (const name of list(cache)) {
+    if (!name.startsWith(".tmp-")) continue;
+    const path = join(cache, name);
+    let modified;
+    try {
+      modified = statSync(path).mtimeMs;
+    } catch {
+      continue;
     }
-  } catch {
-    // Pruning never decides whether the CLI runs.
+    if (Date.now() - modified > STALE_INSTALL_MS) remove(path);
+  }
+  for (const scope of new Set(PACKAGES.map((name) => name.split("/")[0]))) {
+    const directory = join(cache, scope);
+    for (const name of list(directory)) {
+      const entry = `${scope}/${name}`;
+      const ours = PACKAGES.some((pkg) => entry.startsWith(`${pkg}@`));
+      if (ours && !keep.has(entry)) remove(join(directory, name));
+    }
   }
 }
 
