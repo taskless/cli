@@ -225,12 +225,18 @@ function projectLauncher(context: LauncherContext): string | undefined {
  * staring at an error needs something runnable, and `npx` resolves on every
  * machine. That display default is why the two functions are separate; a
  * marker would be useless here and a guessed launcher is useless in a recipe.
+ *
+ * When a project launcher started this process, it is what the person just
+ * ran, so it is what they are told to run next.
  */
 export function getCliPrefix(): string {
+  const context = processLauncherContext();
+  const launcher = projectLauncher(context);
+  if (launcher !== undefined) return launcher;
   const specifier = pinnedSpecifier();
   // A path-form build has no launcher to choose, so there is nothing to
   // default to — the same reason `detectCliInvocation` returns early on it.
   if (specifier === undefined) return buildInvocation();
-  const launcher = detectLauncher(processLauncherContext());
-  return `${LAUNCHER_COMMANDS[launcher ?? "npx"]} ${specifier}`;
+  const detected = detectLauncher(context);
+  return `${LAUNCHER_COMMANDS[detected ?? "npx"]} ${specifier}`;
 }

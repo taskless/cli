@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   detectCliInvocation,
@@ -214,6 +214,22 @@ describe("detectCliInvocation", () => {
 });
 
 describe("getCliPrefix", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it("names the project launcher that started this process", () => {
+    vi.stubEnv("TASKLESS_LAUNCHER", "./.taskless/bin/cli.mjs");
+    expect(getCliPrefix()).toBe("./.taskless/bin/cli.mjs");
+  });
+
+  it("ignores a launcher variable that is not one of the two paths", () => {
+    vi.stubEnv("TASKLESS_LAUNCHER", "./evil.sh");
+    expect(getCliPrefix()).toMatch(
+      new RegExp(`^(?:npx|pnpm dlx) @taskless/cli@${CLI_VERSION}$`)
+    );
+  });
+
   it("prints npx when detection is unknown, because a human needs something runnable", () => {
     // Whatever launcher the test runner used, the printed command must resolve.
     expect(getCliPrefix()).toMatch(

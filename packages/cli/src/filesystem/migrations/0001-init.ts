@@ -10,6 +10,7 @@ import {
 
 import { addToGitignore } from "../gitignore";
 import type { Migration } from "../types";
+import { LAUNCHER_PACKAGES, launcherInvocation } from "../../install/launcher";
 import { buildInvocation } from "../../util/invocation";
 import { readmeSpecifier } from "../../util/package-manager";
 
@@ -43,7 +44,18 @@ function usageBlock(specifier: string | undefined): string {
   if (specifier === undefined) {
     return `${buildInvocation()} check`;
   }
+  // The project launcher `init` writes beside this file, named for the
+  // package the specifier names. Listed first: it is what the installed skill
+  // and CI run, and it needs no package manager at all. The launchers below
+  // are for a checkout where it is not there yet.
+  const [release, nightly] = LAUNCHER_PACKAGES;
+  const launcher = launcherInvocation(
+    specifier.startsWith(`${nightly}@`) ? nightly : release
+  );
   return [
+    "# the project launcher, from the repository root",
+    `${launcher} check`,
+    "",
     "# npm / pnpm",
     `pnpm dlx ${specifier} check`,
     "",

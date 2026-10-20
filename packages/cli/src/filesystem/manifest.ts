@@ -2,7 +2,7 @@ import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
 import { CLIError } from "../util/cli-error";
-import { buildInvocation } from "../util/invocation";
+import { getCliPrefix } from "../util/package-manager";
 import { isRecord } from "../util/is-record";
 
 /**
@@ -112,7 +112,7 @@ function unreadableManifest(path: string, reason: string): CLIError {
   return new CLIError(
     `${path} could not be read: ${reason}.\n\n` +
       `This is not a schema version mismatch, so migrating will not help: ` +
-      `\`${buildInvocation()} init\` refuses here too, rather than rewriting the file ` +
+      `\`${getCliPrefix()} init\` refuses here too, rather than rewriting the file ` +
       `with only the part it can parse. A leftover merge conflict, a truncated write ` +
       `or a partial editor save are the usual causes.\n\n` +
       `Repair the JSON by hand, or delete the file to rebuild the scaffold from scratch.`,

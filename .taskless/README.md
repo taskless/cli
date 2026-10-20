@@ -7,6 +7,9 @@ This directory contains [Taskless](https://taskless.io) configuration and rules 
 Run the Taskless scanner from your repository root:
 
 ```sh
+# the project launcher, from the repository root
+./.taskless/bin/cli.mjs check
+
 # npm / pnpm
 pnpm dlx @taskless/cli@latest check
 
