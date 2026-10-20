@@ -160,6 +160,14 @@ describe("prompt rendering", () => {
     expect(ci).not.toMatch(/\b(?:pnpm dlx|yarn dlx|bunx) @taskless/);
   });
 
+  it("caches the launcher's installs between CI runs, per platform and lockfile", () => {
+    const ci = getRecipe("ci") ?? "";
+    expect(ci).toContain("path: .taskless/.cache");
+    expect(ci).toContain(
+      "key: taskless-${{ runner.os }}-${{ hashFiles('.taskless/bin/cli.lock.json') }}"
+    );
+  });
+
   it("returns undefined for an unknown topic", () => {
     expect(getRecipe("no-such-topic")).toBeUndefined();
   });
