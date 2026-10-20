@@ -55,9 +55,12 @@ const migration: RuleMigration = {
     let ruleDirectories;
     try {
       ruleDirectories = await readdir(engineDirectory, { withFileTypes: true });
-    } catch {
-      // No sg rules tree: nothing to rewrite.
-      return [];
+    } catch (error) {
+      // No sg rules tree: nothing to rewrite. Anything else has to fail, not
+      // read as "nothing to do": the stamp that follows would record this
+      // migration as applied, and no later run would retry it.
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") return [];
+      throw error;
     }
     const written: string[] = [];
     for (const ruleDirectory of ruleDirectories) {

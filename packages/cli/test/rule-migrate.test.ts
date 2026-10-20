@@ -170,6 +170,17 @@ describe("applying the Haskell rename to a project", () => {
     expect(await haskellTypeSynonym.apply(sg())).toEqual([]);
   });
 
+  it("fails, rather than reporting nothing to do, when the tree is unreadable", async () => {
+    // A file where the directory should be: ENOTDIR, not ENOENT. Read as
+    // "nothing to do", the stamp would record the rename as applied.
+    await mkdir(tasklessDirectory, { recursive: true });
+    await mkdir(join(tasklessDirectory, "rules"));
+    await writeFile(sg(), "");
+    await expect(haskellTypeSynonym.apply(sg())).rejects.toMatchObject({
+      code: "ENOTDIR",
+    });
+  });
+
   it("does not run once the recorded engine has crossed it", async () => {
     await rule("syn", haskell("Haskell"));
     expect(
