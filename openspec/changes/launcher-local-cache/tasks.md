@@ -1,8 +1,8 @@
 ## 1. Build-time lockfile
 
-- [ ] 1.1 Add a build step for nightly and release targets that walks the CLI importer's production dependencies through `pnpm-lock.yaml` (`yaml` is already a dev dependency) and emits a version 3 npm lockfile: root, the CLI entry without `integrity`, and every dependency flat with `resolved`, `integrity`, `os`, `cpu`, `optional` and `dependencies`; embed it in the bundle; emit none for `self`; verify with a unit test over a fixture lockfile
-- [ ] 1.2 Fail the build when a name appears at two versions in the walk, or a package has no integrity; verify with fixture tests that each failure names the package
-- [ ] 1.3 Verify against the real tree: build the release target, write the lockfile into a scratch directory with its one-line `package.json`, run `npm ci --ignore-scripts`, and confirm `tsx`/`esbuild` match `pnpm-lock.yaml` and only this platform's binaries are installed
+- [x] 1.1 Add a build step for nightly and release targets that walks the CLI importer's production dependencies through `pnpm-lock.yaml` (`yaml` is already a dev dependency) and emits a version 3 npm lockfile: root, the CLI entry without `integrity`, and every dependency flat with `resolved`, `integrity`, `os`, `cpu`, `optional` and `dependencies`; embed it in the bundle; emit none for `self`; verify with a unit test over a fixture lockfile
+- [x] 1.2 Fail the build when a name appears at two versions in the walk, or a package has no integrity; verify with fixture tests that each failure names the package
+- [x] 1.3 Verify against the real tree: build the release target, write the lockfile into a scratch directory with its one-line `package.json`, run `npm ci --ignore-scripts`, and confirm `tsx`/`esbuild` match `pnpm-lock.yaml` and only this platform's binaries are installed
 
 ## 2. Init
 

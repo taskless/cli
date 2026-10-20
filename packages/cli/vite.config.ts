@@ -16,6 +16,8 @@ import {
   resolveCliVersion,
   resolveOutputDirectory,
 } from "./scripts/build-target";
+import type { PnpmLockfile } from "./scripts/install-lockfile";
+import { buildInstallLockfile } from "./scripts/install-lockfile";
 
 const pkg = JSON.parse(
   readFileSync(resolve(import.meta.dirname, "package.json"), "utf8")
@@ -24,6 +26,11 @@ const pkg = JSON.parse(
   /** A conditions object for a built entry, or a bare path for a data asset. */
   exports: Record<string, { import?: string } | string>;
   files: string[];
+  license?: string;
+  bin?: Record<string, string>;
+  engines?: Record<string, string>;
+  dependencies?: Record<string, string>;
+  optionalDependencies?: Record<string, string>;
 };
 
 // Target resolution lives in ./scripts/build-target.ts so it can be unit-tested
@@ -43,6 +50,30 @@ if (buildTarget === "nightly") {
     `[taskless] nightly build (${cliInvocation}) — emitting to ${OUT_DIRS.nightly}/, ` +
       `overwriting any prod build there. Run "pnpm --filter @taskless/cli build" to restore it.`
   );
+}
+
+/**
+ * The npm lockfile a published build's launcher installs from, as text, or
+ * `null` for a `self` build, which installs no launcher. Derived from
+ * `pnpm-lock.yaml` (see ./scripts/install-lockfile.ts); a tree it cannot
+ * express fails the build here.
+ */
+function installLockfile(target: string, version: string): string | null {
+  if (target === "self") return null;
+  const lock = parse(
+    readFileSync(resolve(import.meta.dirname, "../../pnpm-lock.yaml"), "utf8")
+  ) as PnpmLockfile;
+  const lockfile = buildInstallLockfile(lock, "packages/cli", {
+    // ast-grep-ignore: no-unrouted-cli-invocation
+    name: target === "nightly" ? "@taskless/cli-nightly" : "@taskless/cli",
+    version,
+    license: pkg.license,
+    bin: pkg.bin,
+    engines: pkg.engines,
+    dependencies: pkg.dependencies,
+    optionalDependencies: pkg.optionalDependencies,
+  });
+  return JSON.stringify(lockfile, null, 2) + "\n";
 }
 
 const FRONTMATTER_REGEX = /^---\n([\s\S]*?)\n---\n([\s\S]*)$/;
@@ -472,6 +503,9 @@ export default defineConfig({
     __TASKLESS_CLI__: JSON.stringify(cliInvocation),
     __TASKLESS_CLI_NOTICE__: JSON.stringify(cliNotice),
     __TASKLESS_BUILD_TARGET__: JSON.stringify(buildTarget),
+    __TASKLESS_INSTALL_LOCK__: JSON.stringify(
+      installLockfile(buildTarget, cliVersion)
+    ),
   },
   plugins: [
     tsconfigPaths(),
@@ -548,6 +582,9 @@ export default defineConfig({
           __TASKLESS_CLI__: JSON.stringify(NIGHTLY_TEST_INVOCATION),
           __TASKLESS_CLI_NOTICE__: JSON.stringify(NIGHTLY_TEST_NOTICE),
           __TASKLESS_BUILD_TARGET__: JSON.stringify("nightly"),
+          __TASKLESS_INSTALL_LOCK__: JSON.stringify(
+            installLockfile("nightly", NIGHTLY_TEST_VERSION)
+          ),
         },
         test: { name: "nightly", include: ["test/nightly/**/*.test.ts"] },
       },
