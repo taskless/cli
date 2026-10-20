@@ -363,8 +363,17 @@ export async function openRun(
       return;
     }
     if (!preserve) {
+      // A queued append may be mid-flight on a worker thread, and can
+      // recreate its log between the unlinks and the final rmdir, which
+      // then fails ENOTEMPTY. Retrying removes the late file; the worker
+      // finishes while this thread waits. Bounded at 150ms.
       try {
-        rmSync(path, { recursive: true, force: true });
+        rmSync(path, {
+          recursive: true,
+          force: true,
+          maxRetries: 5,
+          retryDelay: 10,
+        });
       } catch {
         // The next run's sweep removes it.
       }
