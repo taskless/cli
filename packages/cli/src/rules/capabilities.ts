@@ -569,30 +569,34 @@ export const VALE_CONVERTER_DEPENDENT: readonly ValeConverterFormat[] =
   groupByConverter();
 
 /**
- * Vale's checker tag per converter-dependent extension, from the `E100` text.
+ * The format Vale names per converter-dependent extension, from the `E100` text.
  *
- * This is the host-independent half of the failure. The prose after the tag is
- * not: `.xml` reports `xsltproc not found` where the program is absent and
- * `no XSLT transform provided` where it is present, and the two are split by
- * platform — macOS ships `/usr/bin/xsltproc`, the Linux CI image does not. A
- * contract test that matched on the program name therefore passed locally and
- * failed in CI, which is how this list came to exist.
+ * Since 3.24.0 the error reads `asciidoctor not found; it's needed to read
+ * AsciiDoc`, and the format at the end is the host-independent half. Through
+ * 3.23.0 that half was a checker tag, `E100 [lintAdoc] Runtime error`, which
+ * 3.24.0's typed errors dropped. The program name is not host-independent:
+ * `.xml` reports `xsltproc not found` where the program is absent and `no XSLT
+ * transform provided` where it is present, and the two are split by platform —
+ * macOS ships `/usr/bin/xsltproc`, the Linux CI image does not. A contract
+ * test that matched on the program name therefore passed locally and failed in
+ * CI, which is how this list came to exist.
  *
  * `.xml` is also the one entry whose converter is not sufficient on its own. An
  * XSLT transform is document-specific, so there is no default to ship and
  * installing `xsltproc` does not make `.xml` lintable — unlike `asciidoctor`,
  * which genuinely fixes `.adoc`. That is why its `converter` names the
- * stylesheet as well as the program.
+ * stylesheet as well as the program, and why the stylesheet message, which
+ * names no format, is the one case the contract test accepts in its place.
  */
-export const VALE_CONVERTER_CHECKERS: Readonly<Record<string, string>> = {
-  ".rst": "lintRST",
-  ".rest": "lintRST",
-  ".adoc": "lintAdoc",
-  ".asciidoc": "lintAdoc",
-  ".asc": "lintAdoc",
-  ".xml": "lintXML",
-  ".dita": "lintDITA",
-  ".typ": "lintTypst",
+export const VALE_CONVERTER_READERS: Readonly<Record<string, string>> = {
+  ".rst": "reStructuredText",
+  ".rest": "reStructuredText",
+  ".adoc": "AsciiDoc",
+  ".asciidoc": "AsciiDoc",
+  ".asc": "AsciiDoc",
+  ".xml": "XML",
+  ".dita": "DITA",
+  ".typ": "Typst",
 };
 
 /** Every converter-dependent extension, flattened. */

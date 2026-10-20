@@ -820,6 +820,36 @@ function actionMessages(
 }
 
 /**
+ * A rule's own `tests:` cases, refused as policy rather than as vocabulary.
+ *
+ * Vale reads the key: it is a common field of every check, measured accepted
+ * since 3.22.0 and announced with `vale test` in 3.24.0, and the generated
+ * vocabulary records it as one. Taskless refuses it anyway. `verify` judges a
+ * Vale rule by the documents under `.tests/pass` and `.tests/fail`, which are
+ * whole files in any format the rule reaches, and it never runs `vale test`. A
+ * rule carrying cases there would read as tested while nothing ran them, and
+ * a second place to write a rule's cases is a second place for them to drift.
+ *
+ * `test/vale-corpus.ts` carries this as a counted divergence, so the
+ * disagreement with the binary stays visible.
+ */
+function testsMessages(
+  rule: Record<string, unknown>
+): { path: PropertyKey[]; message: string }[] {
+  if (!("tests" in rule)) return [];
+  return [
+    {
+      path: ["tests"],
+      message:
+        "'tests' holds cases for `vale test`, which Taskless never runs. " +
+        "A Vale rule is verified by its fixtures: write each case as a " +
+        "document under .tests/pass (the rule must stay quiet) or " +
+        ".tests/fail (the rule must fire), then delete the key.",
+    },
+  ];
+}
+
+/**
  * The union's members, spelled out, and the guard that keeps them honest.
  *
  * They are spelled out rather than mapped over {@link CHECK_FIELDS} because
@@ -924,6 +954,7 @@ const valeBodySchema = z
       ...fatalShapeMessages(rule),
       ...swapBackreferenceMessages(rule),
       ...actionMessages(rule),
+      ...testsMessages(rule),
     ]) {
       context.issues.push({ code: "custom", input: rule, path, message });
     }

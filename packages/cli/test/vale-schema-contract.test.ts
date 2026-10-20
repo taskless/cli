@@ -272,6 +272,21 @@ withVale("Vale schema contract", () => {
   });
 
   describe("errors an author can act on", () => {
+    it("points a rule's tests: cases at the .tests fixtures", () => {
+      // Every check takes the key, so the refusal cannot live in one field
+      // table: a permissive check would let it through.
+      for (const check of ["existence", "spelling"]) {
+        const { valid, errors } = validateValeRule(
+          "demo",
+          parseYaml(
+            `extends: ${check}\nmessage: "x"\nlevel: warning\ntests:\n  - name: a\n    input: x\n    want: ""\n`
+          )
+        );
+        expect(valid, check).toBe(false);
+        expect(errors.join("\n")).toContain(".tests/fail");
+      }
+    });
+
     it("names the field and the accepted values for an unknown extends", () => {
       const { errors } = validateValeRule(
         "demo",

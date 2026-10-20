@@ -492,7 +492,7 @@ const REJECTED_DOC_SCOPES: ValeCorpusEntry[] = [
 ];
 
 /**
- * The one place the schema deliberately disagrees with the binary.
+ * Where the schema deliberately disagrees with the binary, each row saying why.
  *
  * `~fenced` does not fail — it fires on everything, because there is no
  * `fenced` to subtract. The binary "accepts" it in the only sense an exit code
@@ -564,6 +564,20 @@ const DIVERGENCES: ValeCorpusEntry[] = [
       "named 'body'`. The schema accepts `in` because the binary measured it " +
       "as a field of `conditional`; whether a View exists is a property of " +
       "the run's config, not of the rule, and this CLI's layout defines none.",
+  },
+  {
+    // Read by `vale test`, announced with it in 3.24.0 and already accepted
+    // by 3.22.0. The vocabulary records it, because the binary reads it.
+    name: "field/existence+tests",
+    construct: "tests",
+    rule: existence("tests:\n  - fixture.md\n"),
+    control: PROSE,
+    expected: "accepted",
+    divergence:
+      "Vale loads the key and runs the rule. The schema refuses it as " +
+      "policy: `verify` judges a Vale rule by its .tests/pass and " +
+      ".tests/fail documents and never runs `vale test`, so cases written " +
+      "here would read as coverage while nothing ran them.",
   },
 ];
 
@@ -677,16 +691,6 @@ const FIELDS: ValeCorpusEntry[] = [
     name: "field/existence+limit",
     construct: "limit",
     rule: existence("limit: 1\n"),
-    control: PROSE,
-    expected: "accepted",
-  },
-  {
-    // Read by `vale test`, announced in 3.23.0 and already accepted by
-    // 3.22.0. Absent from the generator's candidates until 3.23.0, so
-    // `validate` rejected it as an E201 Vale never raised.
-    name: "field/existence+tests",
-    construct: "tests",
-    rule: existence("tests:\n  - fixture.md\n"),
     control: PROSE,
     expected: "accepted",
   },
