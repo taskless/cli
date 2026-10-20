@@ -6,8 +6,8 @@
 
 ## 2. Init
 
-- [ ] 2.1 Write `.taskless/bin/cli.lock.json` or `cli-nightly.lock.json` with the launcher, unchanged/created/restored like the launcher, never touching the other package's; verify with tests for a release install, a nightly beside a release, and an edited lockfile
-- [ ] 2.2 Prune `.taskless/.cache/` after recording versions (shared rule in `src/install/launcher.ts`; the template keeps its own copy since it ships standalone); verify with tests that an upgrade drops the old release and a nightly install keeps it
+- [x] 2.1 Write `.taskless/bin/cli.lock.json` or `cli-nightly.lock.json` with the launcher, unchanged/created/restored like the launcher, never touching the other package's; verify with tests for a release install, a nightly beside a release, and an edited lockfile
+- [x] 2.2 Prune `.taskless/.cache/` after recording versions (shared rule in `src/install/launcher.ts`; the template keeps its own copy since it ships standalone); verify with tests that an upgrade drops the old release and a nightly install keeps it
 
 ## 3. Launcher
 

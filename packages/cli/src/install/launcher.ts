@@ -1,4 +1,12 @@
-import { chmod, mkdir, readFile, writeFile } from "node:fs/promises";
+import {
+  chmod,
+  mkdir,
+  readFile,
+  readdir,
+  rm,
+  stat,
+  writeFile,
+} from "node:fs/promises";
 import { dirname, join } from "node:path";
 
 import template from "../../assets/launcher/launcher.mjs?raw";
@@ -56,6 +64,29 @@ export function launcherInvocation(packageName: LauncherPackage): string {
   return `./${launcherPath(packageName)}`;
 }
 
+/**
+ * The lockfile a package's launcher installs from, relative to the project
+ * root: `.taskless/bin/cli.lock.json` beside `cli.mjs`. One per package, like
+ * the launcher, and written only by that package's builds.
+ */
+export function lockfilePath(packageName: LauncherPackage): string {
+  return launcherPath(packageName).replace(/\.mjs$/, ".lock.json");
+}
+
+/** Where launchers keep installed versions, relative to the project root. */
+export const LAUNCHER_CACHE = ".taskless/.cache";
+
+/**
+ * A package version's directory in the cache, relative to the project root:
+ * `.taskless/.cache/@taskless/cli@0.13.1`.
+ */
+export function cacheEntryPath(
+  packageName: LauncherPackage,
+  version: string
+): string {
+  return `${LAUNCHER_CACHE}/${packageName}@${version}`;
+}
+
 /** The launcher's full content for a package. */
 export function renderLauncher(packageName: LauncherPackage): string {
   return template.replaceAll(PACKAGE_PLACEHOLDER, packageName);
@@ -99,9 +130,22 @@ export async function writeLauncher(
   cwd: string,
   packageName: LauncherPackage
 ): Promise<LauncherWrite> {
-  const path = launcherPath(packageName);
+  const write = await writeInstallFile(
+    cwd,
+    launcherPath(packageName),
+    renderLauncher(packageName)
+  );
+  await chmod(join(cwd, write.path), 0o755);
+  return write;
+}
+
+/** Write `content` to `path` under `cwd` only when the bytes differ. */
+async function writeInstallFile(
+  cwd: string,
+  path: string,
+  content: string
+): Promise<LauncherWrite> {
   const absolute = join(cwd, path);
-  const content = renderLauncher(packageName);
   let existing: string | undefined;
   try {
     existing = await readFile(absolute, "utf8");
@@ -112,7 +156,6 @@ export async function writeLauncher(
     await mkdir(dirname(absolute), { recursive: true });
     await writeFile(absolute, content, "utf8");
   }
-  await chmod(absolute, 0o755);
   return {
     path,
     state:
@@ -122,6 +165,106 @@ export async function writeLauncher(
           ? "unchanged"
           : "restored",
   };
+}
+
+/**
+ * Write this build's lockfile beside its package's launcher, only when its
+ * bytes differ. An edited lockfile is put back and reported like an edited
+ * launcher: it decides what the launcher installs.
+ */
+export function writeLauncherLockfile(
+  cwd: string,
+  packageName: LauncherPackage,
+  content: string
+): Promise<LauncherWrite> {
+  return writeInstallFile(cwd, lockfilePath(packageName), content);
+}
+
+/** Remove a path, leaving it for the next prune when that fails. */
+async function removeQuietly(path: string): Promise<void> {
+  await rm(path, { recursive: true, force: true }).catch(() => {});
+}
+
+/** How old a temporary install directory must be before a prune removes it. */
+const STALE_INSTALL_MS = 60 * 60 * 1000;
+
+/**
+ * The version a package's launcher would run: its `install.launchers` entry,
+ * or `install.cliVersion` when that belongs to the package (a nightly version
+ * always has a prerelease part, a release's never does). The template applies
+ * the same rule when it runs.
+ */
+export function recordedLauncherVersion(
+  packageName: LauncherPackage,
+  launchers: Record<string, string> | undefined,
+  cliVersion: string | undefined
+): string | undefined {
+  const recorded = launchers?.[packageName];
+  if (recorded !== undefined) return recorded;
+  if (
+    cliVersion !== undefined &&
+    cliVersion.includes("-") === packageName.endsWith("-nightly")
+  ) {
+    return cliVersion;
+  }
+  return undefined;
+}
+
+/**
+ * Remove cache entries no package records, and temporary install directories
+ * old enough that no install can still be writing them. Best effort: anything
+ * that cannot be removed now, such as a file Windows holds open, is left for
+ * the next prune. The launcher template carries its own copy of this rule,
+ * since it runs without the CLI.
+ */
+export async function pruneLauncherCache(
+  cwd: string,
+  launchers: Record<string, string> | undefined,
+  cliVersion: string | undefined,
+  now: number = Date.now()
+): Promise<void> {
+  const keep = new Set<string>();
+  for (const packageName of LAUNCHER_PACKAGES) {
+    const version = recordedLauncherVersion(packageName, launchers, cliVersion);
+    if (version !== undefined) keep.add(cacheEntryPath(packageName, version));
+  }
+  const cache = join(cwd, LAUNCHER_CACHE);
+
+  let top: string[];
+  try {
+    top = await readdir(cache);
+  } catch {
+    return;
+  }
+  for (const name of top) {
+    if (!name.startsWith(".tmp-")) continue;
+    const path = join(cache, name);
+    const modified = await stat(path).then(
+      (info) => info.mtimeMs,
+      () => now
+    );
+    if (now - modified > STALE_INSTALL_MS) await removeQuietly(path);
+  }
+
+  const scopes = new Set(
+    LAUNCHER_PACKAGES.map((packageName) => packageName.split("/")[0] ?? "")
+  );
+  for (const scope of scopes) {
+    let entries: string[];
+    try {
+      entries = await readdir(join(cache, scope));
+    } catch {
+      continue;
+    }
+    for (const entry of entries) {
+      const relative = `${LAUNCHER_CACHE}/${scope}/${entry}`;
+      const ours = LAUNCHER_PACKAGES.some((packageName) =>
+        relative.startsWith(`${LAUNCHER_CACHE}/${packageName}@`)
+      );
+      if (ours && !keep.has(relative))
+        await removeQuietly(join(cache, scope, entry));
+    }
+  }
 }
 
 /**

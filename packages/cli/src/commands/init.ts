@@ -152,6 +152,9 @@ export const initCommand = defineCommand({
           // This build's launcher and what the run did to it; `null` for a
           // build that installs none.
           launcher: result.launcher,
+          // The lockfile beside the launcher, which decides what it installs;
+          // `null` for a build that installs no launcher.
+          lockfile: result.lockfile,
           // Absent when nothing ran, so a caller distinguishes "the tree was
           // rewritten" from "nothing happened" by presence, never by reading
           // empty arrays out of it.
@@ -355,6 +358,8 @@ async function runNonInteractive(
   changed: boolean;
   /** This build's launcher, or `null` for a build that has none. */
   launcher: LauncherWrite | null;
+  /** The lockfile beside the launcher, or `null` when there is none. */
+  lockfile: LauncherWrite | null;
   /** Pins in `package.json`, CI, or hooks that run an older CLI than this. */
   pinnedCli: PinnedCli[];
   /** Harness permission files this run created, edited, or left alone. */
@@ -484,9 +489,11 @@ async function runNonInteractive(
     }
   }
 
-  const { launcher } = result;
-  if (launcher !== null && launcher.state !== "unchanged") {
-    log(describeLauncherWrite(launcher));
+  const { launcher, lockfile } = result;
+  for (const write of [launcher, lockfile]) {
+    if (write !== null && write.state !== "unchanged") {
+      log(describeLauncherWrite(write));
+    }
   }
 
   const selected = plan.targets
@@ -518,13 +525,16 @@ async function runNonInteractive(
     permissions,
     globalTrust,
     launcher,
+    lockfile,
     // A version move rewrites `install.cliVersion` in the manifest, which is
     // a tracked file, so it is a change even when every skill byte matched.
     changed:
       migrated !== undefined ||
       targets.some((target) => targetChanged(target)) ||
       permissions.some((edit) => edit.skipped === null) ||
-      (launcher !== null && launcher.state !== "unchanged") ||
+      [launcher, lockfile].some(
+        (write) => write !== null && write.state !== "unchanged"
+      ) ||
       launcherVersionMoved(previousState, result.state) ||
       versionMoved({ previousCliVersion, cliVersion }),
     pinnedCli: await findStalePins(cwd, cliVersion),
