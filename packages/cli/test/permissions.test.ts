@@ -699,3 +699,113 @@ describe("commandOfRule", () => {
     ).toBe(V1);
   });
 });
+
+describe("launcher rules", () => {
+  const RL = "./.taskless/bin/cli.mjs";
+  const NL = "./.taskless/bin/cli-nightly.mjs";
+
+  it("allows the launcher beside the invocation in Claude Code", async () => {
+    const edits = await sync({ selected: [".claude"], launcher: RL });
+    expect(edits[0]?.allowed).toEqual([`Bash(${V1} *)`, `Bash(${RL} *)`]);
+    expect(await json(".claude/settings.json")).toEqual({
+      permissions: { allow: [`Bash(${V1} *)`, `Bash(${RL} *)`] },
+    });
+  });
+
+  it("writes each harness's launcher form", async () => {
+    await sync({
+      selected: [".cursor", ".opencode", ".agents"],
+      codexDetected: true,
+      launcher: RL,
+    });
+    expect(await json(".cursor/permissions.json")).toEqual({
+      terminalAllowlist: [V1, RL],
+    });
+    expect(
+      (await json(".cursor/cli.json")) as { permissions: { allow: string[] } }
+    ).toEqual({
+      permissions: {
+        allow: [
+          "Shell(npx:@taskless/cli@0.13.0)",
+          "Shell(npx:@taskless/cli@0.13.0 *)",
+          `Shell(${RL})`,
+        ],
+      },
+    });
+    expect(await json(".opencode/opencode.json")).toEqual({
+      permission: { bash: { [`${V1} *`]: "allow", [`${RL} *`]: "allow" } },
+    });
+    expect(await text(".codex/rules/taskless.rules")).toContain(
+      `prefix_rule(pattern = ["${RL}"], decision = "allow")`
+    );
+  });
+
+  it("is not an edit on an upgrade", async () => {
+    await sync({ selected: [".claude"], launcher: RL });
+    const edits = await sync({
+      selected: [".claude"],
+      invocation: V2,
+      launcher: RL,
+    });
+    expect(edits).toEqual([
+      {
+        file: ".claude/settings.json",
+        created: false,
+        allowed: [`Bash(${V2} *)`],
+        removed: [`Bash(${V1} *)`],
+        skipped: null,
+      },
+    ]);
+  });
+
+  it("keeps the other package's launcher rule", async () => {
+    await sync({ selected: [".claude"], launcher: RL });
+    await sync({ selected: [".claude"], invocation: N1, launcher: NL });
+    expect(await json(".claude/settings.json")).toEqual({
+      permissions: {
+        allow: [
+          `Bash(${V1} *)`,
+          `Bash(${RL} *)`,
+          `Bash(${N1} *)`,
+          `Bash(${NL} *)`,
+        ],
+      },
+    });
+  });
+
+  it("removes the launcher rule with its package when the harness is deselected", async () => {
+    await sync({ selected: [".claude"], launcher: RL });
+    await sync({ selected: [".claude"], invocation: N1, launcher: NL });
+    const edits = await sync({ selected: [], launcher: RL });
+    expect(edits[0]?.removed).toEqual([`Bash(${V1} *)`, `Bash(${RL} *)`]);
+    expect(await json(".claude/settings.json")).toEqual({
+      permissions: { allow: [`Bash(${N1} *)`, `Bash(${NL} *)`] },
+    });
+  });
+
+  it("replaces a hand-added colon form of its launcher", async () => {
+    await put(
+      ".claude/settings.json",
+      JSON.stringify({ permissions: { allow: [`Bash(${RL}:*)`] } })
+    );
+    const edits = await sync({ selected: [".claude"], launcher: RL });
+    expect(edits[0]?.removed).toEqual([`Bash(${RL}:*)`]);
+    expect(await json(".claude/settings.json")).toEqual({
+      permissions: { allow: [`Bash(${V1} *)`, `Bash(${RL} *)`] },
+    });
+  });
+
+  it("leaves a file that denies the launcher alone", async () => {
+    await put(
+      ".claude/settings.json",
+      JSON.stringify({ permissions: { deny: [`Bash(${RL} *)`] } })
+    );
+    const edits = await sync({ selected: [".claude"], launcher: RL });
+    expect(edits[0]?.skipped).toBe("denies this command");
+  });
+
+  it("reads a launcher rule as the command it allows", () => {
+    expect(commandOfRule(`Shell(${RL})`)).toBe(RL);
+    expect(commandOfRule(`Bash(${RL} *)`)).toBe(RL);
+  });
+});

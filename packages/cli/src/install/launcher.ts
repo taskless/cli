@@ -131,9 +131,14 @@ export async function writeLauncher(
  * invocation, as before.
  */
 export function skillInvocation(): string {
+  return buildLauncherInvocation() ?? buildInvocation();
+}
+
+/** This build's launcher invocation, or `undefined` when it installs none. */
+export function buildLauncherInvocation(): string | undefined {
   const packageName = buildLauncherPackage();
   return packageName === undefined
-    ? buildInvocation()
+    ? undefined
     : launcherInvocation(packageName);
 }
 

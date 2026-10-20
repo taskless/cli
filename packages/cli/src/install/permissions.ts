@@ -97,6 +97,8 @@ interface Harness {
 
 interface EditContext {
   invocation: string;
+  /** This build's launcher, allowed beside the invocation, when it has one. */
+  launcher?: string;
   /** Whether Taskless created this file, so may delete it once it is empty. */
   created: boolean;
 }
@@ -359,18 +361,28 @@ function globToRegExp(glob: string): RegExp {
   return new RegExp(`^${source}${trailing ? "( .*)?" : ""}$`, "s");
 }
 
-/** Commands a deny covering Taskless would match. */
-function sampleCommands(invocation: string): string[] {
-  return [invocation, `${invocation} agent ok`];
+/** The commands this install allows: the invocation and its launcher. */
+function allowedCommands(context: EditContext): string[] {
+  return context.launcher === undefined
+    ? [context.invocation]
+    : [context.invocation, context.launcher];
 }
 
-function coversAny(glob: string, invocation: string): boolean {
+/** Commands a deny covering Taskless would match. */
+function sampleCommands(context: EditContext): string[] {
+  return allowedCommands(context).flatMap((command) => [
+    command,
+    `${command} agent ok`,
+  ]);
+}
+
+function coversAny(glob: string, context: EditContext): boolean {
   const pattern = globToRegExp(glob);
-  return sampleCommands(invocation).some((command) => pattern.test(command));
+  return sampleCommands(context).some((command) => pattern.test(command));
 }
 
 /** Claude Code: `Bash`, `Bash(*)`, `Bash(npx *)`, `Bash(npx:*)`, … */
-function claudeDenies(root: unknown, invocation: string): boolean {
+function claudeDenies(root: unknown, context: EditContext): boolean {
   const deny = valueAt(root, ["permissions", "deny"]);
   if (!Array.isArray(deny)) return false;
   return deny.some((rule) => {
@@ -381,24 +393,26 @@ function claudeDenies(root: unknown, invocation: string): boolean {
     const glob = match[1].endsWith(":*")
       ? `${match[1].slice(0, -2)} *`
       : match[1];
-    return coversAny(glob, invocation);
+    return coversAny(glob, context);
   });
 }
 
 /** Cursor CLI: `Shell(base)` or `Shell(base:argsGlob)`. */
-function cursorCliDenies(root: unknown, invocation: string): boolean {
+function cursorCliDenies(root: unknown, context: EditContext): boolean {
   const deny = valueAt(root, ["permissions", "deny"]);
   if (!Array.isArray(deny)) return false;
-  const [base, ...rest] = invocation.split(" ");
-  return deny.some((rule) => {
-    if (typeof rule !== "string") return false;
-    const match = /^Shell\(([^:)]*)(?::(.*))?\)$/s.exec(rule);
-    if (match === null || match[1] !== base) return false;
-    if (match[2] === undefined) return true;
-    const args = globToRegExp(match[2]);
-    return [rest.join(" "), `${rest.join(" ")} agent ok`].some((a) =>
-      args.test(a)
-    );
+  return allowedCommands(context).some((command) => {
+    const [base, ...rest] = command.split(" ");
+    return deny.some((rule) => {
+      if (typeof rule !== "string") return false;
+      const match = /^Shell\(([^:)]*)(?::(.*))?\)$/s.exec(rule);
+      if (match === null || match[1] !== base) return false;
+      if (match[2] === undefined) return true;
+      const args = globToRegExp(match[2]);
+      return [rest.join(" "), `${rest.join(" ")} agent ok`].some((a) =>
+        args.test(a)
+      );
+    });
   });
 }
 
@@ -413,11 +427,20 @@ const TASKLESS_COMMAND =
   /^(?:npx|pnpm dlx) (@taskless\/cli(?:-nightly)?)(?:@[^\s]+)?$/;
 
 /**
+ * A package's project launcher, spelled from the project root. The rule for
+ * it names no version, and it belongs to the package whose launcher it is.
+ */
+const LAUNCHER_COMMAND = /^\.\/\.taskless\/bin\/(cli|cli-nightly)\.mjs$/;
+
+/**
  * The Taskless package `command` runs, less a trailing ` *` glob, or
  * `undefined` when it does not run the Taskless CLI.
  */
 function tasklessPackage(command: string): string | undefined {
-  return TASKLESS_COMMAND.exec(command.replace(/ \*$/, ""))?.[1];
+  const bare = command.replace(/ \*$/, "");
+  const launcher = LAUNCHER_COMMAND.exec(bare)?.[1];
+  if (launcher !== undefined) return `@taskless/${launcher}`;
+  return TASKLESS_COMMAND.exec(bare)?.[1];
 }
 
 /** Whether `command`, less a trailing ` *` glob, runs the Taskless CLI. */
@@ -445,10 +468,16 @@ function isTasklessClaudeRule(rule: string): boolean {
   return inner !== undefined && isTasklessCommand(inner.replace(/:\*$/, ""));
 }
 
-/** Cursor CLI: `Shell(<base>:<args>)`, with or without a trailing ` *`. */
+/**
+ * Cursor CLI: `Shell(<base>:<args>)`, with or without a trailing ` *`, or a
+ * bare `Shell(<base>)`, which is how a launcher with no arguments is allowed.
+ */
 function isTasklessCursorCliRule(rule: string): boolean {
-  const match = /^Shell\(([^:)]+):(.*)\)$/s.exec(rule);
-  return match !== null && isTasklessCommand(`${match[1]} ${match[2]}`);
+  const match = /^Shell\(([^:)]+)(?::(.*))?\)$/s.exec(rule);
+  if (match === null) return false;
+  return isTasklessCommand(
+    match[2] === undefined ? (match[1] ?? "") : `${match[1]} ${match[2]}`
+  );
 }
 
 /**
@@ -458,14 +487,17 @@ function isTasklessCursorCliRule(rule: string): boolean {
  */
 export function commandOfRule(rule: string): string {
   const bash = /^Bash\((.*)\)$/s.exec(rule)?.[1];
-  const shell = /^Shell\(([^:)]+):(.*)\)$/s.exec(rule);
+  const shell = /^Shell\(([^:)]+)(?::(.*))?\)$/s.exec(rule);
   const pattern =
     /^prefix_rule\(pattern = (\[.*\]), decision = "allow"\)$/.exec(rule)?.[1];
   let command = rule;
   if (bash !== undefined) {
     command = bash.replace(/:\*$/, "");
   } else if (shell !== null) {
-    command = `${shell[1] ?? ""} ${shell[2] ?? ""}`;
+    command =
+      shell[2] === undefined
+        ? (shell[1] ?? "")
+        : `${shell[1] ?? ""} ${shell[2]}`;
   } else if (pattern !== undefined) {
     const words: unknown = parseJson(pattern);
     if (Array.isArray(words)) command = words.join(" ");
@@ -511,7 +543,7 @@ const claudeCode: Harness = {
     foundInList(text, ["permissions", "allow"], isTasklessClaudeRule),
   edit: (text, add, remove, context) =>
     editStringList(text, ["permissions", "allow"], add, remove, context, (r) =>
-      claudeDenies(r, context.invocation)
+      claudeDenies(r, context)
     ),
 };
 
@@ -527,6 +559,9 @@ const cursorCli: Harness = {
   ...fixed(CURSOR_CLI_FILE),
   rules: (invocation) => {
     const [base, ...rest] = invocation.split(" ");
+    // A bare base allows the command with any arguments, which is the whole
+    // rule for a launcher: it takes no fixed arguments of its own.
+    if (rest.length === 0) return [`Shell(${base ?? ""})`];
     const args = rest.join(" ");
     return [`Shell(${base ?? ""}:${args})`, `Shell(${base ?? ""}:${args} *)`];
   },
@@ -534,7 +569,7 @@ const cursorCli: Harness = {
     foundInList(text, ["permissions", "allow"], isTasklessCursorCliRule),
   edit: (text, add, remove, context) =>
     editStringList(text, ["permissions", "allow"], add, remove, context, (r) =>
-      cursorCliDenies(r, context.invocation)
+      cursorCliDenies(r, context)
     ),
 };
 
@@ -596,7 +631,7 @@ const openCode: Harness = {
             entry.effect === "deny" &&
             (entry.action === "shell" || entry.action === "*") &&
             typeof entry.resource === "string" &&
-            coversAny(entry.resource, context.invocation)
+            coversAny(entry.resource, context)
         )
       ) {
         return { kind: "skip", reason: "denies this command" };
@@ -646,8 +681,7 @@ const openCode: Harness = {
       add.length > 0 &&
       isRecord(bash) &&
       Object.entries(bash).some(
-        ([glob, action]) =>
-          action === "deny" && coversAny(glob, context.invocation)
+        ([glob, action]) => action === "deny" && coversAny(glob, context)
       )
     ) {
       return { kind: "skip", reason: "denies this command" };
@@ -801,6 +835,11 @@ export interface SyncPermissionsOptions {
   codexDetected: boolean;
   /** The invocation to allow: this build's pinned CLI. */
   invocation: string;
+  /**
+   * This build's launcher, `./.taskless/bin/cli.mjs`, allowed beside the
+   * invocation. Absent for a build that installs none.
+   */
+  launcher?: string;
   /** `false` reports what would change and writes nothing. */
   write: boolean;
 }
@@ -835,7 +874,12 @@ export async function syncPermissions(
   for (const harness of harnessesFor(options.selected, options.codexDetected)) {
     desired.set(await harness.locate(cwd), {
       harness,
-      rules: harness.rules(options.invocation),
+      rules: [
+        ...harness.rules(options.invocation),
+        ...(options.launcher === undefined
+          ? []
+          : harness.rules(options.launcher)),
+      ],
     });
   }
 
@@ -866,6 +910,7 @@ export async function syncPermissions(
     const created = recorded?.created ?? text === undefined;
     const result = harness.edit(text, add, remove, {
       invocation: options.invocation,
+      ...(options.launcher === undefined ? {} : { launcher: options.launcher }),
       created,
     });
     if (result.kind === "skip") {

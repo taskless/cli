@@ -17,9 +17,9 @@
 
 ## 3. Permissions
 
-- [ ] 3.1 Confirm with a local run what the docs leave open: that Cursor CLI compares a path-valued `Shell(./.taskless/bin/cli.mjs)` base literally rather than by basename, and that neither Cursor surface normalizes `./`. Codex is settled from source (literal, whole-token, `./` required); drop any harness that fails and update the spec table
-- [ ] 3.2 Add the launcher rule per harness beside the invocation rules, and map `cli.mjs` / `cli-nightly.mjs` to their packages when classifying Taskless rules
-- [ ] 3.3 Tests: launcher rule written, not reported as an edit on upgrade, removed with its package when a harness is deselected, other package's launcher rule kept
+- [ ] 3.1 Confirm with a local run what the docs leave open: that Cursor CLI compares a path-valued `Shell(./.taskless/bin/cli.mjs)` base literally rather than by basename, and that neither Cursor surface normalizes `./`. Codex is settled from source and confirmed locally with `codex execpolicy check` on 2026-10-19 (matches `./.taskless/bin/cli.mjs` with and without arguments; not `cli.mjsx`, not `.taskless/bin/cli.mjs`, not the nightly's launcher); drop any harness that fails and update the spec table
+- [x] 3.2 Add the launcher rule per harness beside the invocation rules, and map `cli.mjs` / `cli-nightly.mjs` to their packages when classifying Taskless rules
+- [x] 3.3 Tests: launcher rule written, not reported as an edit on upgrade, removed with its package when a harness is deselected, other package's launcher rule kept
 
 ## 4. Global trust entry
 

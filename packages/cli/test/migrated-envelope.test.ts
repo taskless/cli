@@ -200,7 +200,10 @@ describe("who migrates, and who refuses", () => {
       {
         file: ".claude/settings.json",
         created: true,
-        allowed: [`Bash(npx @taskless/cli@${envelope.cliVersion.installed} *)`],
+        allowed: [
+          `Bash(npx @taskless/cli@${envelope.cliVersion.installed} *)`,
+          "Bash(./.taskless/bin/cli.mjs *)",
+        ],
         removed: [],
         skipped: null,
       },
