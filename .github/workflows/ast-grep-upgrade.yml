@@ -151,11 +151,21 @@ jobs:
         if: steps.detect.outputs.update == 'true'
         run: pnpm --filter @taskless/cli generate:ast-grep-schema
 
+      # The test itself imports source, but the `cli` vitest project it runs in
+      # does not: its globalSetup (test/support/distribution-snapshot.ts)
+      # snapshots `dist/` for every run and throws when there is none, before
+      # selecting a single test file. That setup landed 2026-10-01 and every
+      # run that found an update failed here from then on, proposing nothing,
+      # because this job had never needed to build. Built after the
+      # regeneration above so the bundle carries the new schema.
+      - name: Build the CLI
+        if: steps.detect.outputs.update == 'true'
+        run: pnpm --filter @taskless/cli build
+
       # The consistency check Validate would run, before anything is pushed. It
-      # imports source directly and needs no build: it holds the constant to
-      # the pins and spawns the pinned binary to confirm it reports that
-      # version. A failure here is a bookkeeping defect in this job's own
-      # output, so the run fails and proposes nothing.
+      # holds the constant to the pins and spawns the pinned binary to confirm
+      # it reports that version. A failure here is a bookkeeping defect in this
+      # job's own output, so the run fails and proposes nothing.
       #
       # Deliberately ONLY that test. ast-grep-vendor-contract.test.ts holds the
       # language list and a set of measured behaviours to the binary, and a new
