@@ -19,6 +19,7 @@ import {
   statSync,
   writeFileSync,
 } from "node:fs";
+import { homedir } from "node:os";
 import { basename, dirname, join } from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
@@ -116,16 +117,23 @@ function npm(args, options) {
   );
 }
 
-/** The `.npmrc` npx would read when run from the project root, if any. */
+/**
+ * The project's `.npmrc`: the nearest one at or above the project root,
+ * short of the home directory, whose `.npmrc` npm already reads as user
+ * config. Found here rather than asked of `npm prefix`, whose output masks
+ * path segments that look like tokens, such as a UUID.
+ */
 function projectNpmrc() {
-  const result = npm(["prefix"], {
-    cwd: projectRoot,
-    encoding: "utf8",
-    stdio: ["ignore", "pipe", "ignore"],
-  });
-  if (result.status !== 0) return undefined;
-  const path = join(result.stdout.trim(), ".npmrc");
-  return existsSync(path) ? path : undefined;
+  const home = homedir();
+  let directory = projectRoot;
+  while (directory !== home) {
+    const path = join(directory, ".npmrc");
+    if (existsSync(path)) return path;
+    const parent = dirname(directory);
+    if (parent === directory) return undefined;
+    directory = parent;
+  }
+  return undefined;
 }
 
 /** Install `version` into `target` from the lockfile; returns its entry point. */

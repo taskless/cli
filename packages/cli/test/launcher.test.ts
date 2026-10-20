@@ -40,8 +40,7 @@ process.exit(Number(process.env.FAKE_CLI_EXIT ?? 0));
 
 /**
  * A stand-in for `npm`, found on `PATH` exactly as the real one would be. It
- * logs each call, answers `npm prefix` with its working directory, and for
- * `npm ci` checks the lockfile against package.json as npm does, then
+ * logs each call, and for `npm ci` checks the lockfile against package.json as npm does, then
  * installs the fake CLI. It prints to standard output, as npm does, so a test
  * can check the launcher keeps that off the CLI's standard output.
  */
@@ -54,10 +53,6 @@ fs.appendFileSync(process.env.FAKE_NPM_LOG, JSON.stringify({
   cwd: process.cwd(),
   npmrc: fs.existsSync(".npmrc") ? fs.readFileSync(".npmrc", "utf8") : null,
 }) + "\n");
-if (command === "prefix") {
-  process.stdout.write(process.cwd() + "\n");
-  process.exit(0);
-}
 if (process.env.FAKE_NPM_FAIL) {
   process.stderr.write("npm error fake failure\n");
   process.exit(1);
@@ -205,12 +200,12 @@ describe.skipIf(process.platform === "win32")("project launcher", () => {
       argv: ["check", "src/a file.ts", "--json"],
       version: "0.13.0",
     });
-    expect(await npmCommands()).toEqual(["prefix", "ci"]);
+    expect(await npmCommands()).toEqual(["ci"]);
     await stat(join(CACHE(), "@taskless", "cli@0.13.0"));
 
     const second = launch(path, ["check"]);
     expect(second.status).toBe(0);
-    expect(await npmCommands()).toHaveLength(2);
+    expect(await npmCommands()).toHaveLength(1);
   });
 
   it("keeps npm's output off standard output", async () => {
@@ -290,7 +285,7 @@ describe.skipIf(process.platform === "win32")("project launcher", () => {
     expect(await readFile(join(CACHE(), ".gitignore"), "utf8")).toBe("*\n");
   });
 
-  it("installs with the project's .npmrc and does not keep it", async () => {
+  it("installs with the nearest .npmrc above the project and does not keep it", async () => {
     await writeFile(join(root, ".npmrc"), "registry=http://127.0.0.1:9/\n");
     const path = await install("@taskless/cli", RELEASE, "0.13.0");
     launch(path, []);
@@ -300,6 +295,27 @@ describe.skipIf(process.platform === "win32")("project launcher", () => {
     await expect(
       stat(join(CACHE(), "@taskless", "cli@0.13.0", ".npmrc"))
     ).rejects.toThrow();
+  });
+
+  it("finds the .npmrc in a directory above the project", async () => {
+    const project = join(root, "packages", "app");
+    await mkdir(join(project, ".taskless", "bin"), { recursive: true });
+    await writeFile(join(root, ".npmrc"), "registry=http://127.0.0.1:9/\n");
+    await writeFile(
+      join(project, ".taskless", "taskless.json"),
+      JSON.stringify(RELEASE)
+    );
+    await writeFile(
+      join(project, lockfilePath("@taskless/cli")),
+      lockfileFor("@taskless/cli", "0.13.0")
+    );
+    const path = join(project, ".taskless", "bin", "cli.mjs");
+    await writeFile(path, renderLauncher("@taskless/cli"));
+    launch(path, [], { cwd: project });
+    const calls = await npmCalls();
+    expect(calls.find((call) => call.command === "ci")?.npmrc).toBe(
+      "registry=http://127.0.0.1:9/\n"
+    );
   });
 
   it("uses another run's install when it finished first", async () => {

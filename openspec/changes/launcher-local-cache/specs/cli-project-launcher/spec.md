@@ -70,7 +70,7 @@ When `.taskless/.cache/<package>@<version>/` does not exist, the launcher SHALL 
 
 The launcher SHALL NOT install without its lockfile, and SHALL NOT install when the lockfile does not name the recorded version; in both cases it SHALL print one message to standard error naming the lockfile and the installer command that rewrites it, and exit with a non-zero status.
 
-The install SHALL use the `.npmrc` of the directory npm treats as the project when run from the project root, when one exists, and that file SHALL NOT remain in the cache afterwards. npm's output SHALL go to standard error, never standard output.
+The install SHALL use the nearest `.npmrc` at or above the project root, short of the user's home directory (whose `.npmrc` npm already reads as user configuration), when one exists, so a registry configured there applies, and that file SHALL NOT remain in the cache afterwards. npm's output SHALL go to standard error, never standard output.
 
 #### Scenario: First run installs the tested tree, later runs do not install
 
@@ -89,6 +89,11 @@ The install SHALL use the `.npmrc` of the directory npm treats as the project wh
 
 - **WHEN** `install.launchers` records `@taskless/cli` at `0.13.1` and `.taskless/bin/cli.lock.json` pins `@taskless/cli` at `0.13.0`
 - **THEN** the launcher SHALL NOT install or run anything, and SHALL exit non-zero naming the lockfile
+
+#### Scenario: A registry configured above a monorepo package is used
+
+- **WHEN** `.taskless/` is in `packages/app/` and the repository root has an `.npmrc` setting `registry=`
+- **THEN** the launcher's install SHALL use that `.npmrc`
 
 #### Scenario: A project registry is used
 
