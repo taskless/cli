@@ -13,7 +13,11 @@ import {
 } from "../install/install";
 import { getMandatorySkillNames } from "../install/catalog";
 import type { InstallMode, InstallState } from "../install/state";
-import { describeLauncherWrite, type LauncherWrite } from "../install/launcher";
+import {
+  buildLauncherInvocation,
+  describeLauncherWrite,
+  type LauncherWrite,
+} from "../install/launcher";
 import { getReloadNotice, versionMoved } from "../install/reload-notice";
 import { getUpgradeTrailer } from "../install/upgrade-trailer";
 import {
@@ -492,6 +496,7 @@ async function runNonInteractive(
     selected,
     codexDetected: detected.some((tool) => tool.name === "Codex"),
     invocation: buildInvocation(),
+    launcher: buildLauncherInvocation(),
     write: true,
   });
   for (const line of describePermissionEdits(permissions)) log(line);

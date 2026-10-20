@@ -12,7 +12,10 @@ import {
   getEmbeddedSkills,
   planToStateTargets,
 } from "../install/install";
-import { describeLauncherWrite } from "../install/launcher";
+import {
+  buildLauncherInvocation,
+  describeLauncherWrite,
+} from "../install/launcher";
 import {
   globalTrustWarnings,
   needsWrite,
@@ -82,6 +85,7 @@ export async function runWizard(
         .map((target) => target.dir),
       codexDetected: detected.some((tool) => tool.name === "Codex"),
       invocation: buildInvocation(),
+      launcher: buildLauncherInvocation(),
     };
     const permissionPreview = await syncPermissions(options.cwd, {
       ...permissionOptions,

@@ -392,6 +392,7 @@ describe("runWizard end-to-end", () => {
     ) as { permissions: { allow: string[] } };
     expect(settings.permissions.allow).toEqual([
       expect.stringMatching(/^Bash\(npx @taskless\/cli@\S+ \*\)$/),
+      "Bash(./.taskless/bin/cli.mjs *)",
     ]);
   });
 
