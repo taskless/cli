@@ -503,6 +503,18 @@ export interface ValeRuleConfigVerdict {
   advisories: string[];
   /** Every matcher's pattern, in source order, exactly as the header spells it. */
   sections: string[];
+  /**
+   * The 1-based line of every breadcrumb that could be located, in source
+   * order, so assembly can hide them from Vale without re-reading the text.
+   *
+   * Since Vale 3.24.0 a key Vale does not recognise inside a matcher is said
+   * aloud, `W101 'tskl) rule' isn't a section option`, once per matcher on
+   * every run. The breadcrumb is ours and Vale never needed it, so the file
+   * Vale reads carries it as a comment instead. A breadcrumb whose line could
+   * not be located is left as written: Vale then warns about it, which is
+   * noise, and the alternative of guessing a line is a wrong edit.
+   */
+  breadcrumbLines: number[];
 }
 
 /**
@@ -545,5 +557,12 @@ export function validateValeRuleConfig(
     sections: ast.sections
       .map((section) => section.name)
       .filter((name): name is string => name !== undefined),
+    breadcrumbLines: ast.sections.flatMap((section) =>
+      properties(section).flatMap((property) =>
+        property.key === VALE_BREADCRUMB_KEY && property.line !== undefined
+          ? [property.line]
+          : []
+      )
+    ),
   };
 }

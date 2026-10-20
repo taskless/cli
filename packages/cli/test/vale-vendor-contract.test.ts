@@ -9,7 +9,7 @@ import { findValeBinary } from "../src/rules/vale/binary";
 import { asValeConfigError } from "../src/rules/vale/map";
 import {
   VALE_COMMENT_EXTENSIONS,
-  VALE_CONVERTER_CHECKERS,
+  VALE_CONVERTER_READERS,
   VALE_CONVERTER_DEPENDENT,
   VALE_CONVERTER_DEPENDENT_EXTENSIONS,
   VALE_FORMAT_TIERS,
@@ -1816,6 +1816,113 @@ withVale("Vale vendor contract", () => {
       expect(lines(existence("simply"), document, "a.py").lines).toEqual([2]);
     });
   });
+
+  describe("Vale 3.24.0", () => {
+    // Each case below was run against 3.22.0 and 3.24.0 on the same fixture.
+    // The first three are what assembly and `runVale` rest on, the next two
+    // change which findings a rule reports, and the last is a narrowing that
+    // `formats.ts` does not take advantage of yet.
+
+    it("warns W101 about a key it does not recognise inside a matcher", () => {
+      // Upstream's `validateLevel` now says what it ignores. Through 3.23.0
+      // an unknown key in a matcher was read as a rule switched off, in
+      // silence, which is what made `tskl) rule = <id>` a safe breadcrumb.
+      // Now it costs one W101 per matcher on every run, and that line ahead
+      // of a fatal error's JSON broke the #300 narrowing. Assembly comments
+      // the breadcrumb out for that reason (`valeRuleBlock` in assemble.ts).
+      // If this ever becomes an error, the breadcrumb must leave the file
+      // Vale reads before the next bump.
+      const cwd = project(
+        `${header}\n[*.md]\ntskl) rule = no-simply\nrules.no-simply = YES\n`,
+        { "no-simply": existence("simply") },
+        { "doc.md": "Just simply do it.\n" }
+      );
+      const result = runRaw(cwd, ["doc.md"], ["--no-exit"]);
+      expect(result.status).toBe(0);
+      expect(result.stderr.trim()).toBe(
+        "W101 'tskl) rule' isn't a section option; Vale is ignoring it."
+      );
+      const parsed = JSON.parse(result.stdout) as Record<string, unknown[]>;
+      expect(parsed["doc.md"]).toHaveLength(1);
+    });
+
+    it("says nothing about a commented breadcrumb", () => {
+      // The other half of the assembly fix: the commented form is silent.
+      const cwd = project(
+        `${header}\n[*.md]\n# tskl) rule = no-simply\nrules.no-simply = YES\n`,
+        { "no-simply": existence("simply") },
+        { "doc.md": "Just simply do it.\n" }
+      );
+      const result = runRaw(cwd, ["doc.md"], ["--no-exit"]);
+      expect(result.status).toBe(0);
+      expect(result.stderr).toBe("");
+    });
+
+    it("writes its warnings first, one per line, then a fatal error's JSON", () => {
+      // The order `splitValeWarnings` in run.ts rests on. A misspelled level
+      // is new in 3.24.0 too: read as off, as before, but now said.
+      const cwd = project(
+        `${header}\n[*.md]\nstray key = x\nrules.no-simply = YES\nrules.other = maybe\n`,
+        { "no-simply": existence("simply") },
+        {
+          "doc.md": "Just simply do it.\n",
+          "bad.md": "---\nd: a: b\n---\n\nsimply\n",
+        }
+      );
+      const result = runRaw(cwd, ["doc.md", "bad.md"], ["--no-exit"]);
+      expect(result.status).toBe(2);
+      const [first, second, ...rest] = result.stderr.split("\n");
+      expect(first).toBe(
+        "W101 'stray key' isn't a section option; Vale is ignoring it."
+      );
+      expect(second).toBe(
+        "W101 'rules.other = maybe' isn't YES, NO, UNSET, or a level; Vale is switching the rule off."
+      );
+      const error = JSON.parse(rest.join("\n")) as Record<string, unknown>;
+      expect(error).toMatchObject({ Code: "E201", Path: "bad.md" });
+    });
+
+    it("drops a C# ReSharper or NOSONAR comment", () => {
+      // Upstream 8cbda873 gave C# its own grammar; 3.23.0 read `.cs` with the
+      // C one, which is why the tier did not move. What moved is the 3.23.0
+      // directive masking reaching C#: both lines below were linted as prose.
+      // The plain comment is the control.
+      expect(
+        lines(
+          existence("simply"),
+          "// ReSharper disable simply\n// NOSONAR simply\n// simply here\nint x = 1;\n",
+          "a.cs"
+        ).lines
+      ).toEqual([3]);
+    });
+
+    it("keeps a non-breaking space after a link as a word break", () => {
+      // Upstream 84deb6c3. Through 3.23.0 the U+00A0 after inline markup was
+      // dropped, fusing `there` and `simply` into one word, so a token after
+      // a link went unmatched. It now fires.
+      expect(
+        lines(existence("simply"), "Go [there](x)\u00A0simply now.\n").lines
+      ).toEqual([1]);
+    });
+
+    it("does not parse a file no rule runs on, converter or not", () => {
+      // Upstream bc8b91d8. Through 3.23.0 a file was parsed whenever any
+      // matcher named a rule for it, even to switch it off, so an `.adoc`
+      // under `[*.adoc] rule = NO` still aborted the run. Now it is skipped
+      // unparsed. `formats.ts` still excludes every converter-dependent file
+      // by extension, which stays correct: a rule that IS on still crashes.
+      const cwd = project(
+        `${header}\n[*]\nrules.no-simply = YES\n\n[*.adoc]\nrules.no-simply = NO\n`,
+        { "no-simply": existence("simply") },
+        { "doc.md": "Just simply do it.\n", "doc.adoc": "We simply do it.\n" }
+      );
+      const result = runRaw(cwd, ["doc.md", "doc.adoc"], ["--no-exit"]);
+      expect(result.status, result.stderr).toBe(0);
+      const parsed = JSON.parse(result.stdout) as Record<string, unknown[]>;
+      expect(parsed["doc.md"]).toHaveLength(1);
+      expect(parsed["doc.adoc"]).toBeUndefined();
+    });
+  });
 });
 
 /**
@@ -2138,8 +2245,8 @@ withVale("Vale engine capabilities", () => {
     expect(result.status, `${extension} no longer fails`).not.toBe(0);
     const output = `${result.stdout}${result.stderr}`;
     expect(output).toContain("E100");
-    // Assert the checker tag, not the prose after it. The tag is the same
-    // everywhere; the prose is not — `.xml` says `xsltproc not found` where
+    // Assert the format Vale names, not the program. The format is the same
+    // everywhere; the program is not — `.xml` says `xsltproc not found` where
     // the program is absent and `no XSLT transform provided` where it is
     // present, and macOS ships `/usr/bin/xsltproc` while the Linux CI image
     // does not. Deriving the expectation from our own `converter` string
@@ -2147,7 +2254,17 @@ withVale("Vale engine capabilities", () => {
     // in CI on exactly that split — a host-dependent assertion dressed up as a
     // vendor contract. `converter` is still asserted, one level up, against
     // our own data where no binary is involved.
-    expect(output).toContain(`[${VALE_CONVERTER_CHECKERS[extension]!}]`);
+    //
+    // Through 3.23.0 this asserted the checker tag, `[lintAdoc]`. 3.24.0's
+    // typed errors dropped it and name the format in the sentence instead;
+    // the run still dies the same way, which is the half that matters.
+    const stylesheetMissing =
+      extension === ".xml" && output.includes("no XSLT transform provided");
+    if (!stylesheetMissing) {
+      expect(output).toContain(
+        `it's needed to read ${VALE_CONVERTER_READERS[extension]!}`
+      );
+    }
   });
 
   it("routes to a converter by EXACT-case extension", () => {
@@ -2172,10 +2289,10 @@ withVale("Vale engine capabilities", () => {
     }
   });
 
-  it("names a checker for every converter-dependent extension", () => {
+  it("names a format for every converter-dependent extension", () => {
     // Set-equality, so an extension added to one and not the other fails here
-    // rather than throwing on an undefined tag inside the probe above.
-    expect(Object.keys(VALE_CONVERTER_CHECKERS).toSorted()).toEqual(
+    // rather than asserting on `undefined` inside the probe above.
+    expect(Object.keys(VALE_CONVERTER_READERS).toSorted()).toEqual(
       [...VALE_CONVERTER_DEPENDENT_EXTENSIONS].toSorted()
     );
   });

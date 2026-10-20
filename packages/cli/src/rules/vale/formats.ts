@@ -24,9 +24,9 @@ export const TASKLESS_DIRECTORY = ".taskless";
  * program to convert the source into something it can lint, and the
  * `@taskless/vale-*` platform packages ship the Vale binary as pure payload
  * with none of those programs alongside it. On a host without the converter the
- * conversion fails, and Vale does not degrade: it prints one
- * `E100 [lintAdoc] Runtime error` object on stderr, writes **nothing** to
- * stdout, and exits 2. The abort is Vale's, not ours, and it is not scoped to
+ * conversion fails, and Vale does not degrade: it prints one `E100` object
+ * (`asciidoctor not found; it's needed to read AsciiDoc`) on stderr, writes
+ * **nothing** to stdout, and exits 2. The abort is Vale's, not ours, and it is not scoped to
  * the offending file — every finding from every other file in the same run is
  * lost inside Vale before it is ever serialized.
  *
@@ -108,8 +108,8 @@ export const CONVERTER_DEPENDENT_EXTENSIONS: readonly string[] = [
  * The converter Vale would need for `path`, or `undefined` if it needs none.
  *
  * Extension comparison is **case-sensitive, because Vale's own routing is**.
- * Measured against the pinned binary: `docs/guide.adoc` exits 2 with
- * `E100 [lintAdoc]`, while `docs/guide.ADOC` and `docs/guide.AdOc` are read as
+ * Measured against the pinned binary: `docs/guide.adoc` exits 2 with an
+ * `E100`, while `docs/guide.ADOC` and `docs/guide.AdOc` are read as
  * plain text and exit 0 with findings — including when the uppercase spelling
  * names a lowercase file on a case-insensitive filesystem, since Vale routes on
  * the path string it was handed, not on the name the disk holds.

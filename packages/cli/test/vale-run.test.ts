@@ -259,6 +259,27 @@ withVale("runVale against the real binary", () => {
     expect(outcome.notices[0]).toContain("rules.no-simply");
   });
 
+  it("carries each warning as its own notice", async () => {
+    // Vale writes one `W101` line per thing it ignores, and 3.24.0 ignores
+    // more of them aloud: an unknown key in a matcher, a level that is not
+    // one. Two lines are two notices; glued, a consumer renders one marker
+    // and a stray line.
+    const cwd = makeProject(
+      `${header}\n[*.md]\nno-simply.no-simply = YES\nfirst stray = x\nsecond stray = y\n`,
+      { "no-simply": existenceRule("simply", "Avoid 'simply'") },
+      { "doc.md": "Just simply do it.\n" }
+    );
+
+    const outcome = await runVale({ cwd, paths: ["doc.md"] });
+    expect(outcome.status).toBe("ok");
+    if (outcome.status !== "ok") return;
+    expect(outcome.results).toHaveLength(1);
+    expect(outcome.notices).toHaveLength(2);
+    expect(outcome.notices[0]).toContain("'first stray'");
+    expect(outcome.notices[1]).toContain("'second stray'");
+    for (const notice of outcome.notices) expect(notice).not.toContain("\n");
+  });
+
   it("reports no notices when Vale writes nothing to stderr", async () => {
     const cwd = makeProject(
       `${header}\n[*.md]\nrules.no-simply = YES\n`,
@@ -402,6 +423,30 @@ withVale("runVale against the real binary", () => {
       });
       expect(byFile.get("bad.md")?.message).toContain("E201");
       expect(outcome.results).toHaveLength(3);
+    });
+
+    it("still narrows when Vale warns before the error", async () => {
+      // Since 3.24.0 Vale says aloud what it ignores in a matcher, as `W101`
+      // lines on stderr ahead of the error's JSON. Parsing the stream whole
+      // lost the error's `Path`, and with it this narrowing: the run failed
+      // with every finding gone, the #300 failure by another route.
+      const cwd = makeProject(
+        `${header}\n[*.md]\nno-simply.no-simply = YES\nstray key = here\n`,
+        { "no-simply": existenceRule("simply", "Avoid 'simply'") },
+        { "good.md": "Just simply do it.\n", "bad.md": badFrontMatter }
+      );
+
+      const outcome = await runVale({ cwd, paths: ["good.md", "bad.md"] });
+
+      expect(outcome.status).toBe("ok");
+      if (outcome.status !== "ok") return;
+      const byFile = new Map(outcome.results.map((r) => [r.file, r]));
+      expect(byFile.get("good.md")).toMatchObject({ ruleId: "no-simply" });
+      expect(byFile.get("bad.md")).toMatchObject({
+        ruleId: "vale-parse-error",
+      });
+      expect(outcome.notices).toHaveLength(1);
+      expect(outcome.notices[0]).toContain("'stray key'");
     });
 
     it("distinguishes a run that found nothing from a run that could not read anything", async () => {

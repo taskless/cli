@@ -201,15 +201,20 @@ describe("Vale config assembly", () => {
 
   // The config is the generator's structured input and is never re-serialized:
   // the schema reads it as an AST, Vale reads the author's own bytes.
-  it("writes an accepted config verbatim under its breadcrumb", async () => {
+  // Verbatim except the breadcrumbs, which are commented out in place: Vale
+  // 3.24.0 warns W101 about an unknown key in a matcher, once per matcher on
+  // every run. In place, so every other line keeps its number.
+  it("writes an accepted config verbatim under its breadcrumb, breadcrumbs commented", async () => {
     const source =
-      "# scope\n[docs/**]\ntskl) rule = no-simply\n\nno-simply.no-simply = YES   \n";
+      "# scope\n[docs/**]\ntskl) rule = no-simply\n\nno-simply.no-simply = YES   \n\n[*.md]\n  tskl) rule = no-simply\r\nno-simply.no-simply = NO\n";
     await valeRule("no-simply", source);
     const assembled = await assembleValeConfig(cwd);
     expect(assembled?.status).toBe("ok");
     if (assembled?.status !== "ok") return;
     const contents = await readFile(join(cwd, assembled.path), "utf8");
-    expect(contents).toContain(`# tskl) rule = no-simply\n${source}`);
+    expect(contents).toContain(
+      "# tskl) rule = no-simply\n# scope\n[docs/**]\n# tskl) rule = no-simply\n\nno-simply.no-simply = YES   \n\n[*.md]\n#   tskl) rule = no-simply\r\nno-simply.no-simply = NO\n"
+    );
   });
 
   // What the schema notes without refusing rides on the result, so `check` can
