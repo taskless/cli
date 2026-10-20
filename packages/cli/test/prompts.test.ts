@@ -145,6 +145,13 @@ describe("prompt rendering", () => {
     ).toBe("pnpm dlx");
   });
 
+  it("runs the pre-commit hook through the project launcher", () => {
+    const hooks = getRecipe("hooks") ?? "";
+    expect(hooks).toContain("node .taskless/bin/cli.mjs check");
+    expect(hooks).not.toContain("<local-taskless>");
+    expect(hooks).not.toMatch(/pnpm exec taskless|npx --no taskless/);
+  });
+
   it("wires CI through the project launcher with Node from the job", () => {
     const ci = getRecipe("ci") ?? "";
     expect(ci).toContain("node .taskless/bin/cli.mjs check");
