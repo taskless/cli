@@ -1,4 +1,4 @@
-# Topic: hooks     (CLI v%(CLI_VERSION)s / topic v3)
+# Topic: hooks     (CLI v%(CLI_VERSION)s / topic v4)
 
 %(ONE_COMMAND_PER_CALL)s
 
@@ -18,6 +18,10 @@ deciding when rules run. `%(TASKLESS_CLI)s agent ci` is the other half.
   very next commit.
 - The user has agreed to a hook. A hook runs on every developer's
   commits, so it is a team decision, not a setup detail.
+- `.taskless/bin/cli.mjs` exists and is committed. It is the project
+  launcher `init` writes; the hook runs it. If it is missing, the
+  project was installed by an older CLI: tell the user to run
+  `%(TASKLESS_CLI)s init` and commit the result first.
 
 ## Steps
 
@@ -45,31 +49,24 @@ not install one on your own initiative. A script placed directly in
 `.git/hooks/` is not committed, so it runs only on the machine that
 wrote it. Say so if the user asks for one.
 
-### 2. Pin the CLI as a dev dependency
+### 2. Run the project launcher
 
-The hook runs the version the repository pins, so the hook, CI and
-every developer agree on what `check` means. A download-and-run
-launcher fetches whatever is newest at commit time instead.
+The hook runs `node .taskless/bin/cli.mjs`, the project launcher. It
+runs the CLI version recorded in `.taskless/taskless.json`, so the
+hook, CI, and every developer run the same version, and an upgrade
+reaches the hook in the same commit that updates `.taskless/`. Do not
+add `@taskless/cli` as a dev dependency for the hook, and do not call
+`npx`, `pnpm dlx`, `yarn dlx`, or `bunx` from it: a second pin is a
+second version to keep in step.
 
-If `@taskless/cli` is not already in `devDependencies`, offer to add
-it with the repository's package manager (read the lockfile:
-`pnpm-lock.yaml`, `yarn.lock`, `bun.lockb`, or `package-lock.json`).
-
-The examples below write `<local-taskless>` for that pinned binary.
-Substitute the form that resolves it from the repository's own
-`node_modules/.bin`:
-
-- pnpm: `pnpm exec taskless`
-- npm: `npx --no taskless`
-- yarn: `yarn taskless`
-- bun: `bun run taskless`
-
-The npm form keeps `--no` on purpose: without it, npx downloads an
-unrelated package named `taskless` when the dev dependency is missing,
-rather than failing.
-
-Inside a lint-staged task a bare `taskless` also resolves, because
-lint-staged puts `node_modules/.bin` on the `PATH` for its tasks.
+`node <path>` rather than `./<path>`: a checkout can lose the
+launcher's executable bit, and `node` runs it the same way on every
+platform. Git runs hooks from the repository root, which is where the
+path resolves. If `.taskless/` is not at the repository root (a
+package inside a monorepo), run the command from that package's
+directory, using the hook tool's own option for it, or ask the user how
+their hooks reach that package. The first run downloads the recorded
+version, so the first commit after an upgrade is slower than the rest.
 
 ### 3. Write the pre-commit command
 
@@ -83,7 +80,7 @@ glob to the command:
 
 ```json
 {
-  "*": "<local-taskless> check"
+  "*": "node .taskless/bin/cli.mjs check"
 }
 ```
 
@@ -94,7 +91,7 @@ lefthook skips the command when it is empty:
 pre-commit:
   commands:
     taskless:
-      run: <local-taskless> check {staged_files}
+      run: node .taskless/bin/cli.mjs check {staged_files}
 ```
 
 **pre-commit.** pre-commit passes the staged filenames to `entry`:
@@ -105,7 +102,7 @@ repos:
     hooks:
       - id: taskless
         name: Taskless
-        entry: <local-taskless> check
+        entry: node .taskless/bin/cli.mjs check
         language: system
         pass_filenames: true
 ```
@@ -116,7 +113,7 @@ with git:
 ```sh
 FILES=$(git diff --cached --name-only --diff-filter=ACMR)
 [ -z "$FILES" ] && exit 0
-<local-taskless> check $FILES
+node .taskless/bin/cli.mjs check $FILES
 ```
 
 `--diff-filter=ACMR` drops deleted files up front. `check` would skip
@@ -150,8 +147,8 @@ and it can affect files that were not staged. In that case run the
 rule tests and a full, unscoped `check`:
 
 ```
-<local-taskless> verify
-<local-taskless> check
+node .taskless/bin/cli.mjs verify
+node .taskless/bin/cli.mjs check
 ```
 
 lint-staged can express that in a JavaScript config, where a function
@@ -160,10 +157,10 @@ written, with no files appended:
 
 ```js
 export default {
-  "*": "<local-taskless> check",
+  "*": "node .taskless/bin/cli.mjs check",
   ".taskless/rules/**": () => [
-    "<local-taskless> verify",
-    "<local-taskless> check",
+    "node .taskless/bin/cli.mjs verify",
+    "node .taskless/bin/cli.mjs check",
   ],
 };
 ```
@@ -203,8 +200,7 @@ is staged.
 
 ### 7. Report back
 
-Show the file you changed and the lines you added, any dev dependency
-you added, and `git status`. Do not commit on the user's behalf.
+Show the file you changed and the lines you added, and `git status`. Do not commit on the user's behalf.
 
 ## Errors
 
