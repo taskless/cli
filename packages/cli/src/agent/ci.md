@@ -1,4 +1,4 @@
-# Topic: ci     (CLI v%(CLI_VERSION)s / topic v7)
+# Topic: ci     (CLI v%(CLI_VERSION)s / topic v8)
 
 %(ONE_COMMAND_PER_CALL)s
 
@@ -129,6 +129,13 @@ executable bit, and a Windows runner does not honour the launcher's
 shebang. This is a different spelling from the one you run locally, on
 purpose; do not copy it into your own commands.
 
+The launcher's first run of a version installs it into
+`.taskless/.cache/` with npm, from the lockfile beside it,
+`.taskless/bin/cli.lock.json`. Cache that directory between runs, keyed
+on the runner's operating system and that lockfile's hash: the key
+changes exactly when an upgrade does, and a cache never crosses
+platforms, since the install holds platform-specific binaries.
+
 ```yaml
 name: Taskless
 
@@ -151,6 +158,11 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+
+      - uses: actions/cache@v4
+        with:
+          path: .taskless/.cache
+          key: taskless-${{ runner.os }}-${{ hashFiles('.taskless/bin/cli.lock.json') }}
 
       - name: Taskless check
         run: |
@@ -181,6 +193,9 @@ The six universal steps:
    `package.json`, so in a Python, Go, or other non-Node repository it
    still runs as its own job with its own image.
 2. Fetch with full depth (or enough to reach the target branch).
+   Where the CI system has a cache, cache `.taskless/.cache` with a
+   key built from the runner's operating system and the hash of
+   `.taskless/bin/cli.lock.json`.
 3. Fetch the target branch.
 4. Compute changed files with `git diff --name-only "origin/<target>...HEAD"`.
 5. Exit early if the diff is empty.

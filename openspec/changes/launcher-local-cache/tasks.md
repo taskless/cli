@@ -20,8 +20,8 @@
 
 ## 4. Recipes and skill
 
-- [ ] 4.1 `ci` recipe: `actions/cache` for `.taskless/.cache` keyed on `runner.os` and `hashFiles('.taskless/bin/cli.lock.json')`, the same advice in the other-CI guidance, topic version bump; verify with the recipe tests
-- [ ] 4.2 `hooks` recipe and `skills/taskless/SKILL.md`: the first run of a version installs it into `.taskless/.cache/`, later runs are local; the lockfile is committed with the launcher; verify the parity tests (no prettier over `src/agent/*.md`)
+- [x] 4.1 `ci` recipe: `actions/cache` for `.taskless/.cache` keyed on `runner.os` and `hashFiles('.taskless/bin/cli.lock.json')`, the same advice in the other-CI guidance, topic version bump; verify with the recipe tests
+- [x] 4.2 `hooks` recipe and `skills/taskless/SKILL.md`: the first run of a version installs it into `.taskless/.cache/`, later runs are local; the lockfile is committed with the launcher; verify the parity tests (no prettier over `src/agent/*.md`)
 
 ## 5. Verification and release
 

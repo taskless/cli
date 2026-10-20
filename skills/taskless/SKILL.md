@@ -188,6 +188,8 @@ flow (when one exists for that topic).
 
 ## First-run latency
 
-The first invocation of `%(TASKLESS_CLI)s` on a machine pays an npm
-cold-fetch (~5–15 seconds). This is normal — do not report it as a timeout
-or failure. Subsequent invocations are cached and fast.
+The first invocation of `%(TASKLESS_CLI)s` for a version installs that
+version into `.taskless/.cache/` with npm (~5–15 seconds), and prints an
+`installing` line to standard error. This is normal — do not report it as a
+timeout or failure. Later invocations start from the cache without the
+network.

@@ -1,4 +1,4 @@
-# Topic: hooks     (CLI v%(CLI_VERSION)s / topic v4)
+# Topic: hooks     (CLI v%(CLI_VERSION)s / topic v5)
 
 %(ONE_COMMAND_PER_CALL)s
 
@@ -18,8 +18,9 @@ deciding when rules run. `%(TASKLESS_CLI)s agent ci` is the other half.
   very next commit.
 - The user has agreed to a hook. A hook runs on every developer's
   commits, so it is a team decision, not a setup detail.
-- `.taskless/bin/cli.mjs` exists and is committed. It is the project
-  launcher `init` writes; the hook runs it. If it is missing, the
+- `.taskless/bin/cli.mjs` and `.taskless/bin/cli.lock.json` exist and
+  are committed. They are the project launcher `init` writes and the
+  lockfile it installs from; the hook runs the launcher. If it is missing, the
   project was installed by an older CLI: tell the user to run
   `%(TASKLESS_CLI)s init` and commit the result first.
 
@@ -65,8 +66,11 @@ platform. Git runs hooks from the repository root, which is where the
 path resolves. If `.taskless/` is not at the repository root (a
 package inside a monorepo), run the command from that package's
 directory, using the hook tool's own option for it, or ask the user how
-their hooks reach that package. The first run downloads the recorded
-version, so the first commit after an upgrade is slower than the rest.
+their hooks reach that package. The first run of a recorded version
+installs it into `.taskless/.cache/` from the lockfile beside the
+launcher, `.taskless/bin/cli.lock.json`, so the first commit after an
+upgrade is slower than the rest; later runs start it from there
+without the network.
 
 ### 3. Write the pre-commit command
 

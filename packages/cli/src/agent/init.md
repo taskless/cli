@@ -1,4 +1,4 @@
-# Topic: init     (CLI v%(CLI_VERSION)s / topic v11)
+# Topic: init     (CLI v%(CLI_VERSION)s / topic v12)
 
 %(ONE_COMMAND_PER_CALL)s
 
@@ -58,7 +58,8 @@ first step, not the whole job.
          "key": "autoMode.allow", "state": "absent", "skipped": null,
          "labelled": 0 }
      ],
-     "launcher": { "path": ".taskless/bin/cli.mjs", "state": "unchanged" }
+     "launcher": { "path": ".taskless/bin/cli.mjs", "state": "unchanged" },
+     "lockfile": { "path": ".taskless/bin/cli.lock.json", "state": "unchanged" }
    }
    ```
    - `cliVersion.previous` is `null` on a project with no recorded
@@ -67,7 +68,7 @@ first step, not the whole job.
      removed there, by name. `mode: "canonical"` is the `.taskless/`
      store; `reference` is a tool directory holding stubs.
    - `changed` is `true` when a migration ran, any target list is
-     non-empty, the launcher was created or restored, or `cliVersion` or a
+     non-empty, the launcher or its lockfile was created or restored, or `cliVersion` or a
      launcher's recorded version moved (both rewrite
      `.taskless/taskless.json`). When it is `false` AND `pinnedCli` is
      empty, stop here: nothing to commit, nothing to reconcile, nothing
@@ -119,6 +120,13 @@ first step, not the whole job.
      `restored` (it had been edited, and was put back), or `unchanged`.
      It is `null` for a build that installs none. The launcher is a file
      to commit with the rest of `.taskless/`.
+   - `lockfile` is the npm lockfile beside the launcher,
+     `.taskless/bin/cli.lock.json` (`cli-nightly.lock.json` for a
+     nightly), with the same `state` values. It pins every package the
+     launcher installs, so it is committed with the launcher. The
+     launcher's first run of a version installs it into
+     `.taskless/.cache/`, which ignores itself in git; `init` downloads
+     nothing.
 
 2. **Tell the user what needs committing.** Every `targets[].dir` with
    a non-empty list, plus `.taskless/`, any `migrated.files` entries, and
