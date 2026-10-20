@@ -11,12 +11,12 @@
 
 ## 3. Launcher
 
-- [ ] 3.1 Run from the cache: resolve `.taskless/.cache/<package>@<version>/`, read the bin from the installed `package.json`, run it with `process.execPath` and no shell; verify a pre-populated entry runs and no `npm` process starts
-- [ ] 3.2 Refuse without a matching lockfile: missing, or naming another version; verify each with a test (no `npm` started, message names the lockfile and the installer command)
-- [ ] 3.3 Install: temporary directory, one-line `package.json` plus the lockfile, `npm prefix` and the project `.npmrc` copy, `npm ci --ignore-scripts --no-audit --no-fund --loglevel=error` with output on standard error, remove the `.npmrc`, check the bin resolves, rename (discarding ours on a lost race); `cmd.exe` quoting only for the npm calls; verify first run, second run, lost race and clean `--json` output with a stub `npm` on `PATH`
-- [ ] 3.4 Failure paths: npm missing, npm exiting non-zero, bin missing; each removes the temporary directory and exits non-zero naming `<package>@<version>`; verify with tests
-- [ ] 3.5 Write `.taskless/.cache/.gitignore` (`*`); verify with a test and `git status` in a scratch repository
-- [ ] 3.6 Prune after a new install by the shared rule, ignoring removal errors; verify with tests for an upgrade and for keeping the other package's entry
+- [x] 3.1 Run from the cache: resolve `.taskless/.cache/<package>@<version>/`, read the bin from the installed `package.json`, run it with `process.execPath` and no shell; verify a pre-populated entry runs and no `npm` process starts
+- [x] 3.2 Refuse without a matching lockfile: missing, or naming another version; verify each with a test (no `npm` started, message names the lockfile and the installer command)
+- [x] 3.3 Install: temporary directory, one-line `package.json` plus the lockfile, `npm prefix` and the project `.npmrc` copy, `npm ci --ignore-scripts --no-audit --no-fund --loglevel=error` with output on standard error, remove the `.npmrc`, check the bin resolves, rename (discarding ours on a lost race); `cmd.exe` quoting only for the npm calls; verify first run, second run, lost race and clean `--json` output with a stub `npm` on `PATH`
+- [x] 3.4 Failure paths: npm missing, npm exiting non-zero, bin missing; each removes the temporary directory and exits non-zero naming `<package>@<version>`; verify with tests
+- [x] 3.5 Write `.taskless/.cache/.gitignore` (`*`); verify with a test and `git status` in a scratch repository
+- [x] 3.6 Prune after a new install by the shared rule, ignoring removal errors; verify with tests for an upgrade and for keeping the other package's entry
 
 ## 4. Recipes and skill
 
