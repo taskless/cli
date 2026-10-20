@@ -683,6 +683,35 @@ describe("describePermissionEdits", () => {
       chalk.level = level;
     }
   });
+
+  it("leaves REMOVE uncoloured and colours SKIPPED red", () => {
+    const level = chalk.level;
+    chalk.level = 1;
+    try {
+      const [, remove, skipped] = describePermissionEdits([
+        {
+          file: ".claude/settings.json",
+          created: false,
+          allowed: [],
+          removed: [`Bash(${V1} *)`],
+          skipped: null,
+        },
+        {
+          file: ".cursor/cli.json",
+          created: false,
+          allowed: [],
+          removed: [],
+          skipped: "denies this command",
+        },
+      ]);
+      expect(remove).toBe(`  REMOVE: Bash(${V1} *)`);
+      expect(skipped).toBe(
+        chalk.red("SKIPPED: .cursor/cli.json denies this command")
+      );
+    } finally {
+      chalk.level = level;
+    }
+  });
 });
 
 describe("commandOfRule", () => {

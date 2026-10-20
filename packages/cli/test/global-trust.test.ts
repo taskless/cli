@@ -1,6 +1,7 @@
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
+import chalk from "chalk";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import {
@@ -390,6 +391,23 @@ describe("rendering", () => {
     );
     expect(warning).toContain("2 strings");
     expect(warning).toContain("folds them into one");
+  });
+
+  it("leads with a red SKIPPED (global) line", async () => {
+    const level = chalk.level;
+    chalk.level = 1;
+    try {
+      const [warning] = globalTrustWarnings(
+        await sync(false),
+        "npx @taskless/cli",
+        home
+      );
+      expect(warning?.split("\n")[0]).toBe(
+        `${chalk.red("SKIPPED (global):")} ~/.claude/settings.json (autoMode.allow)`
+      );
+    } finally {
+      chalk.level = level;
+    }
   });
 
   it("is silent once the entry is present", async () => {

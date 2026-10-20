@@ -13,6 +13,7 @@ import {
 } from "../../install/global-trust";
 import { commandOfRule, type PermissionEdit } from "../../install/permissions";
 import { wrap } from "../../install/notice-box";
+import { SETTINGS_TONE, type SettingsTone } from "../../install/settings-tone";
 import type { InstallDiff } from "../../install/state";
 import { ask } from "../ask";
 
@@ -64,7 +65,7 @@ export async function renderSummaryAndConfirm(
       : describeGlobalTrust(globalTrust.outcomes, globalTrust.home).map(
           ({ replace, what, where }): SettingsLine => ({
             label: replace ? "REPLACE (global):" : "ALLOW (global):",
-            tone: "allow",
+            tone: replace ? "replace" : "allow",
             what,
             where,
           })
@@ -99,7 +100,7 @@ const SETTINGS_QUESTION = "Make these changes to your settings?";
 /** One settings edit: what it allows or removes, and where. */
 interface SettingsLine {
   label: string;
-  tone: "allow" | "remove" | "skip";
+  tone: SettingsTone;
   what: string;
   where: string;
 }
@@ -109,8 +110,6 @@ interface SettingsLine {
  * fits an 80-column terminal.
  */
 const SUMMARY_COLUMNS = 76;
-
-const TONE = { allow: chalk.green, remove: chalk.red, skip: chalk.yellow };
 
 /**
  * Labels padded to the widest one, so every statement starts in one column,
@@ -128,7 +127,7 @@ function layoutSettings(entries: readonly SettingsLine[]): string[] {
     ];
     const [first = "", ...rest] = body;
     lines.push(
-      `${TONE[entry.tone](entry.label)}${" ".repeat(width - entry.label.length)}${first}`,
+      `${SETTINGS_TONE[entry.tone](entry.label)}${" ".repeat(width - entry.label.length)}${first}`,
       ...rest.map((line) => `${indent}${line}`)
     );
   }

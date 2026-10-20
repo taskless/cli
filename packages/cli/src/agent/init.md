@@ -1,4 +1,4 @@
-# Topic: init     (CLI v%(CLI_VERSION)s / topic v10)
+# Topic: init     (CLI v%(CLI_VERSION)s / topic v11)
 
 %(ONE_COMMAND_PER_CALL)s
 
@@ -55,8 +55,10 @@ first step, not the whole job.
      ],
      "globalTrust": [
        { "harness": "Claude Code", "file": "/Users/you/.claude/settings.json",
-         "key": "autoMode.allow", "state": "absent", "skipped": null }
-     ]
+         "key": "autoMode.allow", "state": "absent", "skipped": null,
+         "labelled": 0 }
+     ],
+     "launcher": { "path": ".taskless/bin/cli.mjs", "state": "unchanged" }
    }
    ```
    - `cliVersion.previous` is `null` on a project with no recorded
@@ -65,7 +67,8 @@ first step, not the whole job.
      removed there, by name. `mode: "canonical"` is the `.taskless/`
      store; `reference` is a tool directory holding stubs.
    - `changed` is `true` when a migration ran, any target list is
-     non-empty, or `cliVersion` moved (that rewrites
+     non-empty, the launcher was created or restored, or `cliVersion` or a
+     launcher's recorded version moved (both rewrite
      `.taskless/taskless.json`). When it is `false` AND `pinnedCli` is
      empty, stop here: nothing to commit, nothing to reconcile, nothing
      to bump.
@@ -91,23 +94,31 @@ first step, not the whole job.
      a classifier that overrules project rules. Each entry is that
      harness's user-level settings file and whether its Taskless entry is
      `present`, `absent`, `stale` (an entry under this CLI's label, such
-     as `Taskless CLI:` for the release, with older text), or `skipped`
+     as `Taskless CLI:` for the release, with older text, or more than one
+     string under that label: `labelled` says how many), or `skipped`
      (with the reason). `init` only reads it; it is
      never written by this command, and you must not write it either.
      When it is `absent` or `stale`, tell the user that their agent may
      refuse Taskless commands the project rule allows, and that the
-     printed warning names the entry to add, or to replace the old one
-     with, themselves, or that running `%(TASKLESS_CLI)s` with no
+     printed `SKIPPED (global):` line names the entry to add, or to
+     replace the old ones with, themselves, or that running `%(TASKLESS_CLI)s` with no
      arguments, in their own terminal, offers to do it (`init` itself
      never asks).
 
    Without `--json`, the same facts print as prose: a per-target summary,
    each permission edit as `Edited <file>` with `ALLOW:` and `REMOVE:`
-   lines (or `SKIPPED:` with the reason), a warning for each missing or
-   stale global trust entry, then a trailer naming the directories that
+   lines (or `SKIPPED:` with the reason), a `SKIPPED (global):` line for
+   each missing or stale global trust entry, then a trailer naming the directories that
    changed and, after a
    version move, pointing at `update`, then a notice naming each stale
    pin and the version to move it to.
+
+   - `launcher` is this CLI's project launcher, `.taskless/bin/cli.mjs`
+     (`cli-nightly.mjs` for a nightly), which runs the version recorded
+     for it in `.taskless/taskless.json`. `state` is `created`,
+     `restored` (it had been edited, and was put back), or `unchanged`.
+     It is `null` for a build that installs none. The launcher is a file
+     to commit with the rest of `.taskless/`.
 
 2. **Tell the user what needs committing.** Every `targets[].dir` with
    a non-empty list, plus `.taskless/`, any `migrated.files` entries, and
