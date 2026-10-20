@@ -6,6 +6,7 @@ import process from "node:process";
 import { isProductionInvocation } from "../util/invocation";
 import { isRecord } from "../util/is-record";
 import { parseJson, set, valueAt } from "./permissions";
+import { SETTINGS_TONE } from "./settings-tone";
 
 /**
  * User-level trust for harnesses whose safety classifier overrules a project
@@ -328,7 +329,8 @@ export function describeGlobalTrust(
 }
 
 /**
- * A warning for each harness still missing its entry, or holding a stale one.
+ * A `SKIPPED (global):` report for each harness still missing its entry, or
+ * holding a stale one, after `init` finishes.
  * `installer` is the command a person runs, with no arguments, to get the
  * wizard that offers it.
  */
@@ -352,7 +354,10 @@ export function globalTrustWarnings(
                 ? ` (left alone: ${outcome.skipped})`
                 : "") +
               `, after "$defaults", or ${wizard}, which offers to add it`;
+      // A skip: an edit only the user can make, which is why it is red. The
+      // label leads, so it reads the same way as every other settings edit.
       return (
+        `${SETTINGS_TONE.skip("SKIPPED (global):")} ${display(outcome.file, home)} (${outcome.key})\n` +
         `${outcome.harness} may refuse Taskless commands that the project rule allows: its safety classifier overrules project allow rules. ` +
         `${fix}:\n  ${GLOBAL_TRUST_ENTRY}`
       );

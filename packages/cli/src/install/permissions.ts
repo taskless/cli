@@ -1,7 +1,6 @@
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 
-import chalk from "chalk";
 import {
   applyEdits,
   findNodeAtLocation,
@@ -12,10 +11,7 @@ import {
   type ParseError,
 } from "jsonc-parser";
 
-// Sets `chalk.level` from the real terminal on import. This module renders
-// colour, so it establishes that itself.
-import "../util/color";
-
+import { SETTINGS_TONE } from "./settings-tone";
 import {
   readManifest,
   writeManifest,
@@ -963,15 +959,15 @@ export function describePermissionEdits(
   const lines: string[] = [];
   for (const edit of edits) {
     if (edit.skipped !== null) {
-      lines.push(chalk.yellow(`SKIPPED: ${edit.file} ${edit.skipped}`));
+      lines.push(SETTINGS_TONE.skip(`SKIPPED: ${edit.file} ${edit.skipped}`));
       continue;
     }
     lines.push(`${edit.created ? "Created" : "Edited"} ${edit.file}`);
     for (const rule of edit.allowed) {
-      lines.push(`  ${chalk.green(`ALLOW: ${rule}`)}`);
+      lines.push(`  ${SETTINGS_TONE.allow(`ALLOW: ${rule}`)}`);
     }
     for (const rule of edit.removed) {
-      lines.push(`  ${chalk.red(`REMOVE: ${rule}`)}`);
+      lines.push(`  ${SETTINGS_TONE.remove(`REMOVE: ${rule}`)}`);
     }
   }
   return lines;

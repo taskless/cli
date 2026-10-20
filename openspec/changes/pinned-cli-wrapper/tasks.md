@@ -31,9 +31,9 @@
 
 ## 5. Settings report colors
 
-- [ ] 5.1 Recolor the shared tones: `ALLOW` green, `REMOVE` default, `REPLACE` yellow, `SKIPPED` red, in the wizard summary and in printed output
-- [ ] 5.2 Print the non-interactive global outcome as a red `SKIPPED (global):` line with the entry and the installer command, replacing the warning
-- [ ] 5.3 Update the summary, permission-report, and global-trust tests and snapshots
+- [x] 5.1 Recolor the shared tones: `ALLOW` green, `REMOVE` default, `REPLACE` yellow, `SKIPPED` red, in the wizard summary and in printed output
+- [x] 5.2 Print the non-interactive global outcome as a red `SKIPPED (global):` line with the entry and the installer command, replacing the warning
+- [x] 5.3 Update the summary, permission-report, and global-trust tests and snapshots
 
 ## 6. Recipes
 
