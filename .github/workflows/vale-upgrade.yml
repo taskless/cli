@@ -363,8 +363,8 @@ jobs:
 
           node .github/scripts/vendor-pr.cjs \
             --branch vendor/vale/upgrade \
-            --title "chore(vale): upgrade to Vale ${BASE_VERSION}" \
-            --message "chore(vale): upgrade to Vale ${BASE_VERSION}" \
+            --title "Release Vale ${BASE_VERSION}" \
+            --message "chore(vale): release Vale ${BASE_VERSION}" \
             --body-file "$body" \
             -- packages/cli/package.json pnpm-lock.yaml "$changeset" \
                packages/cli/src/rules/capabilities.ts \
