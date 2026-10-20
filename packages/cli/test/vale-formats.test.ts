@@ -100,7 +100,7 @@ describe("the format tier table", () => {
   });
 
   it("reads the extension case-sensitively, exactly as Vale routes it", () => {
-    // Measured, not assumed: `doc.adoc` exits 2 with `E100 [lintAdoc]` while
+    // Measured, not assumed: `doc.adoc` exits 2 with an `E100` while
     // `doc.ADOC` is read as plain text and exits 0 with findings — even when
     // the uppercase spelling names a lowercase file on a case-insensitive
     // filesystem, because Vale routes on the path string it was handed. This

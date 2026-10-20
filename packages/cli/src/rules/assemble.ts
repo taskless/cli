@@ -83,15 +83,26 @@ function valeHeader(): string {
 }
 
 /**
- * A rule's assembled block: its breadcrumb comment, then its config verbatim.
+ * A rule's assembled block: its breadcrumb comment, then its config verbatim
+ * except that each breadcrumb is commented out.
  *
  * The config is the generator's structured input and is never re-serialized.
  * The schema has already read it as an AST, for validation and for the matcher
  * list; what Vale reads is the file's own bytes, so matcher order, comments and
  * spacing survive exactly as the author wrote them. Matcher order inside a rule
  * is the author's expression of precedence, so anything short of verbatim
- * would be a semantic edit. The only addition is a newline after a source that
+ * would be a semantic edit. The one addition is a newline after a source that
  * lacks one, so the next rule's breadcrumb starts its own line.
+ *
+ * The one edit is `# ` in front of each `tskl) rule` line, at the lines the
+ * schema located (`breadcrumbLines`), so nothing here searches the text for
+ * it. That is not a semantic edit: Vale read the key as a rule named
+ * `tskl) rule` switched off, which is nothing. What changed in 3.24.0 is that
+ * it says so, `W101 'tskl) rule' isn't a section option`, once per matcher on
+ * every run, and that line on stderr in front of a real error's JSON is what
+ * kept a file Vale cannot parse from being narrowed out of the run
+ * (taskless/cli#300). Commenting rather than deleting keeps every line where
+ * the author put it, so a line number Vale reports is still the author's.
  *
  * This is also why the schema, not this module, turns away a copied-in
  * `StylesPath` or `MinAlertLevel`. Assembly used to strip those two by
@@ -100,8 +111,17 @@ function valeHeader(): string {
  * key above the first matcher is now a rejection, so there is nothing left to
  * strip.
  */
-function valeRuleBlock(ruleId: string, source: string): string {
-  const terminated = source.endsWith("\n") ? source : `${source}\n`;
+function valeRuleBlock(
+  ruleId: string,
+  source: string,
+  breadcrumbLines: readonly number[]
+): string {
+  const lines = source.split("\n");
+  for (const line of breadcrumbLines) {
+    lines[line - 1] = `# ${lines[line - 1] ?? ""}`;
+  }
+  const commented = lines.join("\n");
+  const terminated = commented.endsWith("\n") ? commented : `${commented}\n`;
   return `# tskl) rule = ${ruleId}\n${terminated}`;
 }
 
@@ -243,7 +263,7 @@ export async function assembleValeConfig(
     if (selected !== undefined && !selected.has(ruleId)) continue;
     for (const pattern of verdict.sections) sections.add(pattern);
     advisories.push(...verdict.advisories);
-    blocks.push(valeRuleBlock(ruleId, source));
+    blocks.push(valeRuleBlock(ruleId, source, verdict.breadcrumbLines));
   }
 
   if (refusals.length > 0) return { status: "refused", refusals };

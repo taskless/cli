@@ -497,8 +497,9 @@ loaded it without complaint.
 
 ### Migrating to 0.13.3
 
-The vendored ast-grep moves from 0.45.3 to 0.51.0. Nothing here needs
-work by hand.
+The vendored ast-grep moves from 0.45.3 to 0.51.0, and Vale from 3.23.0
+to 3.24.0. Nothing here needs work by hand except a Vale rule carrying
+a `tests:` key, described at the end.
 
 **A Haskell type synonym is `type_synonym` now, not `type_synomym`, and
 `update --rules` renames it for you.** ast-grep's Haskell grammar moved
@@ -525,6 +526,44 @@ delete the trailing `---` when you next touch the rule.
 files that was routed to the runtime tier, or not written because
 ast-grep could not parse Zig, can now be an sg rule. No existing rule
 changes.
+
+Two things in Vale 3.24.0 change which findings an existing rule
+reports, each measured against both binaries on the same fixture.
+
+**A C# tool directive is no longer read.** A `// ReSharper disable`,
+`// ReSharper restore` or `// NOSONAR` line in a `.cs` file was linted
+as an ordinary comment, so a rule over comments fired on a suppression
+list. It is now skipped, as 3.23.0 already did for `//nolint`, `# noqa`
+and `eslint-disable`. Findings disappear; none appear.
+
+**A word after a link and a non-breaking space is matched.** Through
+3.23.0 a U+00A0 or U+202F after inline markup was dropped, fusing the
+link text and the next word, so a token there went unreported. It is
+now a word break, and a rule over that word starts reporting.
+
+What the CLI absorbed, so you do not have to: Vale 3.24.0 warns `W101`
+about every key it does not recognise inside a matcher, which includes
+the `tskl) rule` breadcrumb every rule config carries. Keep writing the
+breadcrumb; the CLI comments it out of the file it hands Vale, so no
+notice appears. A file no rule runs on is no longer parsed, which
+`check` already approximated by setting converter-dependent files
+aside, so nothing changes there.
+
+Additions a rule config can use: a matcher may carry a condition,
+`[*.md if .Meta.draft]`, which applies it only to the matched files
+whose front matter satisfies it. `validate` accepts it.
+
+**A rule's `tests:` key is refused.** Vale 3.24.0 ships `vale test`,
+which runs cases written in a rule's `tests:` list. Taskless never runs
+it: `verify` judges a Vale rule by the documents under `.tests/pass`
+and `.tests/fail`. So `validate` and `verify` now reject the key, which
+0.12.0 had started accepting, rather than let a rule look tested by
+cases nothing runs. `check` still runs such a rule. Search
+`.taskless/rules/vale/*/*.yml` for a top-level `tests:`; for each case,
+write its `input` as a document under `.tests/fail` if the case expects
+the rule to fire, or `.tests/pass` if it expects no alert, named with
+the case's `format` as its extension (`.md` when it has none). Then
+delete the key and run `verify` on the rule.
 
 ## Errors
 

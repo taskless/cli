@@ -129,6 +129,39 @@ function parseValeConfigError(stderr: string): ValeConfigError | undefined {
   }
 }
 
+/** A line Vale's `core.Warn` wrote: its code, a space, then the message. */
+const VALE_WARNING_LINE = /^W\d{3} /;
+
+/**
+ * Vale's stderr, split into the warnings it opens with and what follows.
+ *
+ * Vale writes each warning as its own `W101 <message>` line as it meets it,
+ * and a fatal error as one JSON object after them, so a run can produce both:
+ * since 3.24.0 a misspelled level (`<id>.<id> = maybe`) warns and the run then
+ * dies on a document it cannot parse. Parsing the whole stream as JSON failed
+ * on the warning, which threw away the error's `Path` and with it the
+ * narrowing that keeps one unparseable file from taking every other file's
+ * findings down (taskless/cli#300).
+ *
+ * Only the leading run of warning lines is peeled off. Anything after the
+ * first line that is not one is returned whole as `rest`, so a JSON object
+ * whose `Text` happens to contain such a line is never split.
+ */
+function splitValeWarnings(stderr: string): {
+  warnings: string[];
+  rest: string;
+} {
+  const lines = stderr.split("\n");
+  const firstOther = lines.findIndex(
+    (line) => !VALE_WARNING_LINE.test(line.trim())
+  );
+  const count = firstOther === -1 ? lines.length : firstOther;
+  return {
+    warnings: lines.slice(0, count).map((line) => line.trim()),
+    rest: lines.slice(count).join("\n").trim(),
+  };
+}
+
 /**
  * Vale's stderr, rendered as a sentence instead of a JSON blob.
  *
@@ -390,13 +423,20 @@ async function spawnVale(
 
       // With --no-exit, a non-zero code is Vale failing, not Vale finding.
       if (code !== null && code !== 0) {
-        const stderr = stderrChunks.join("").trim();
-        const configError = parseValeConfigError(stderr);
+        const { warnings, rest } = splitValeWarnings(
+          stderrChunks.join("").trim()
+        );
+        const configError = parseValeConfigError(rest);
+        // The error first, because it is why the run stopped; the warnings
+        // after it, because one may be the reason (a rule switched off by a
+        // misspelled level).
+        const said = [
+          ...(rest === "" ? [] : [describeValeStderr(rest, configError)]),
+          ...warnings,
+        ].join(" ");
         settle({
           status: "failed",
-          message: `Vale exited ${String(code)}${
-            stderr === "" ? "" : `: ${describeValeStderr(stderr, configError)}`
-          }`,
+          message: `Vale exited ${String(code)}${said === "" ? "" : `: ${said}`}`,
           ...(configError === undefined ? {} : { configError }),
         });
         return;
@@ -406,16 +446,20 @@ async function spawnVale(
       // otherwise succeeded — the `W101` ignored-assignment warning above all.
       // Attached to every `ok` path so a diagnostic cannot be dropped by which
       // branch happened to produce the (empty) results.
-      const diagnostic = stderrChunks.join("").trim();
-      // Both advisories ride the same field as separate elements, rather than
+      const { warnings, rest } = splitValeWarnings(
+        stderrChunks.join("").trim()
+      );
+      // Every advisory rides the same field as its own element, rather than
       // one overwriting the other: a project can perfectly well have a
       // section-less rule assignment *and* an AsciiDoc file, and dropping
       // either message would be a silent skip wearing the other's clothes.
+      // One element per warning for the same reason: each `W101` line is its
+      // own message, and Vale since 3.24.0 writes one per misread key.
       const notices = collectNotices([
         skipped,
-        diagnostic === ""
-          ? undefined
-          : `Vale reported while running: ${diagnostic}`,
+        ...[...warnings, rest]
+          .filter((said) => said !== "")
+          .map((said) => `Vale reported while running: ${said}`),
       ]);
 
       const stdout = stdoutChunks.join("").trim();
