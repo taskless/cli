@@ -193,8 +193,9 @@ first step, not the whole job.
 ## For a person at a terminal
 
 `%(TASKLESS_CLI)s` with no subcommand launches an interactive wizard. It
-detects the installed tools (Claude Code, OpenCode, Cursor, and the
-`.agents` harnesses Codex, Gemini CLI, and Crush), asks
+offers a row per harness (Claude Code, OpenCode, Cursor, Codex, Gemini
+CLI, Crush, Devin, and other `.agents` harnesses), listing the ones found in
+the project first, pre-checked, then the ones found on this machine, asks
 which to enable, offers a login (skippable), shows a diff against the
 previous install, then writes the canonical `taskless` skill once to
 `.taskless/` and a thin stub into each selected tool directory. Stale

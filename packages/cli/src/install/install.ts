@@ -20,6 +20,7 @@ import {
 } from "./canonical";
 import { CLI_VERSION } from "../version";
 import { parseFrontmatter } from "./frontmatter";
+import type { GlobalTrustEnvironment } from "./global-trust";
 import {
   computeInstallDiff,
   readInstallState,
@@ -55,18 +56,27 @@ export interface DetectionSignal {
 }
 
 /**
- * A detectable AI tool. Used only for detection — the install destination is
- * `installDir`, which is matched against the fixed {@link SHIM_TARGETS}
- * catalog to decide which directories to pre-check in the wizard.
+ * A harness the wizard offers a row for. `detect` finds it in the project,
+ * `machine` on this machine; the skill goes into `installDir`, one of the
+ * {@link SHIM_TARGETS} directories.
  */
 export interface ToolDescriptor {
   name: string;
   detect: DetectionSignal[];
+  /**
+   * The directories whose presence means the harness is used on this
+   * machine, honouring the override its docs name. Only decides which section
+   * of the picker the harness is listed in: nothing is written there.
+   */
+  machine: (environment: GlobalTrustEnvironment) => string[];
   installDir: string;
   /**
+   * The harness's own directory, used instead of `installDir` when the
+   * harness is detected in the project. Taskless never creates it.
+   */
+  ownDir?: string;
+  /**
    * Whether the harness reads skills from `.agents/skills`, per its own docs.
-   * The wizard names every detected one on the `.agents/` row, including one
-   * like OpenCode that also has a directory of its own.
    */
   readsAgentSkills?: boolean;
 }
@@ -91,7 +101,20 @@ export interface ToolStatus {
   skills: SkillStatus[];
 }
 
-// --- Tool Registry (detection only) ---
+// --- Tool Registry ---
+
+/**
+ * `env[name]` when it is set, else `fallback`. Set but empty counts as unset,
+ * or the path would resolve against the cwd.
+ */
+function override(
+  env: GlobalTrustEnvironment["env"],
+  name: string,
+  fallback: string
+): string {
+  const value = env[name];
+  return value === undefined || value === "" ? fallback : value;
+}
 
 export const TOOLS: ToolDescriptor[] = [
   {
@@ -100,6 +123,14 @@ export const TOOLS: ToolDescriptor[] = [
       { type: "directory", path: ".claude" },
       { type: "file", path: "CLAUDE.md" },
     ],
+    // code.claude.com/docs/en/env-vars: `CLAUDE_CONFIG_DIR` "Override the
+    // configuration directory (default: `~/.claude`)".
+    machine: ({ home, env }) => [
+      override(env, "CLAUDE_CONFIG_DIR", join(home, ".claude")),
+    ],
+    // Claude Code never reads `.agents/` (code.claude.com/docs/en/memory:
+    // "Not read: ... anything under a `.agents/` directory"), so it always
+    // gets `.claude/`, even in a project with no Claude files yet.
     installDir: ".claude",
   },
   {
@@ -108,6 +139,10 @@ export const TOOLS: ToolDescriptor[] = [
       { type: "directory", path: ".opencode" },
       { type: "file", path: "opencode.jsonc" },
       { type: "file", path: "opencode.json" },
+    ],
+    // opencode.ai/docs/config: global config in `~/.config/opencode/`.
+    machine: ({ home, env }) => [
+      override(env, "OPENCODE_CONFIG_DIR", join(home, ".config", "opencode")),
     ],
     installDir: ".opencode",
     // opencode.ai/docs/skills: "Project agent-compatible: `.agents/skills`".
@@ -119,6 +154,11 @@ export const TOOLS: ToolDescriptor[] = [
       { type: "directory", path: ".cursor" },
       { type: "file", path: ".cursorrules" },
     ],
+    // cursor.com/docs/cli/reference/configuration: `~/.cursor/cli-config.json`,
+    // relocated by `CURSOR_CONFIG_DIR`.
+    machine: ({ home, env }) => [
+      override(env, "CURSOR_CONFIG_DIR", join(home, ".cursor")),
+    ],
     installDir: ".cursor",
   },
   {
@@ -126,6 +166,10 @@ export const TOOLS: ToolDescriptor[] = [
     detect: [
       { type: "directory", path: ".codex" },
       { type: "file", path: ".codex/config.toml" },
+    ],
+    // Codex docs, environment variables: `CODEX_HOME` defaults to `~/.codex`.
+    machine: ({ home, env }) => [
+      override(env, "CODEX_HOME", join(home, ".codex")),
     ],
     installDir: ".agents",
     readsAgentSkills: true,
@@ -137,6 +181,11 @@ export const TOOLS: ToolDescriptor[] = [
     detect: [
       { type: "directory", path: ".gemini" },
       { type: "file", path: "GEMINI.md" },
+    ],
+    // gemini-cli docs/reference/configuration.md: `GEMINI_CLI_HOME` names the
+    // directory "The CLI will create a `.gemini` folder inside".
+    machine: ({ home, env }) => [
+      join(override(env, "GEMINI_CLI_HOME", home), ".gemini"),
     ],
     installDir: ".agents",
     readsAgentSkills: true,
@@ -151,44 +200,60 @@ export const TOOLS: ToolDescriptor[] = [
       { type: "file", path: "crush.json" },
       { type: "file", path: ".crush.json" },
     ],
+    // charmbracelet/crush README: config in `~/.config/crush/`, state in
+    // `~/.local/share/crush/`, moved by `CRUSH_GLOBAL_CONFIG` and
+    // `CRUSH_GLOBAL_DATA`.
+    machine: ({ home, env }) => [
+      override(env, "CRUSH_GLOBAL_CONFIG", join(home, ".config", "crush")),
+      override(
+        env,
+        "CRUSH_GLOBAL_DATA",
+        join(home, ".local", "share", "crush")
+      ),
+    ],
     installDir: ".agents",
+    readsAgentSkills: true,
+  },
+  {
+    // docs.devin.ai/cli/reference/configuration/global-vs-local: user config
+    // in `~/.config/devin/`, project config in `.devin/`. Its skills page
+    // places project skills in `.devin/skills/` and also reads
+    // `.agents/skills/`, so a project that already has `.devin/` gets the
+    // skill there and any other gets `.agents/`.
+    name: "Devin",
+    detect: [{ type: "directory", path: ".devin" }],
+    machine: ({ home }) => [join(home, ".config", "devin")],
+    installDir: ".agents",
+    ownDir: ".devin",
     readsAgentSkills: true,
   },
 ];
 
 /**
- * A selectable stub destination. The wizard offers this fixed catalog as the
- * "which tools do you want to enable Taskless for?" multiselect, one row per
- * directory; every entry is a peer, no directory is special-cased or routed
- * onto another.
+ * A stub destination: the install plan, the manifest and the summary are
+ * keyed by directory, however many harnesses share one.
  */
 export interface ShimTarget {
   /** Directory the stub is written into, relative to the project root. */
   dir: string;
-  /** Human-readable label for summaries; the picker may name more. */
+  /** Human-readable label for summaries. */
   label: string;
-  /**
-   * Marks the catch-all row: the one serving every harness that reads
-   * `.agents/skills`, named and unnamed. At most one row carries it, and the
-   * picker labels it with the detected harnesses that read it.
-   */
-  generic?: boolean;
 }
 
 /**
- * One row per directory. `.agents/` used to have two rows, `Codex` and
- * `Agent Skills`, because a Codex user who saw only "Agent Skills" concluded
- * Taskless did not support their harness. The picker now labels the one
- * `.agents/` row with the harnesses it detects that read `.agents/skills`
- * (`OpenCode, Codex, and other .agents harnesses`), which names Codex when it
- * is present and names Gemini CLI and Crush too, without a duplicate row per
- * harness. See `agentsRowLabel` in `wizard/steps/locations.ts`.
+ * The directories, in plan order. The picker does not offer these: it offers
+ * a row per harness in {@link TOOLS}, several of which install into
+ * `.agents/`. Users know which harness they run, not which skill directory it
+ * reads, so a harness without a row of its own is a harness they conclude
+ * Taskless does not support. A single `.agents/` row labelled "Agent Skills"
+ * cost exactly that: a Codex user did not find Codex (#553).
  */
 export const SHIM_TARGETS: readonly ShimTarget[] = [
   { dir: ".claude", label: "Claude Code" },
   { dir: ".cursor", label: "Cursor" },
   { dir: ".opencode", label: "OpenCode" },
-  { dir: ".agents", label: "Agent Skills", generic: true },
+  { dir: ".devin", label: "Devin" },
+  { dir: ".agents", label: "Agent Skills" },
 ];
 
 /** Directory selected by default when no tools are detected. */
@@ -223,6 +288,38 @@ export async function detectTools(cwd: string): Promise<ToolDescriptor[]> {
   return results.filter((t): t is ToolDescriptor => t !== undefined);
 }
 
+/** The harnesses used on this machine, by their home-directory locations. */
+export async function detectMachineTools(
+  environment: GlobalTrustEnvironment
+): Promise<ToolDescriptor[]> {
+  const results = await Promise.all(
+    TOOLS.map(async (tool) => {
+      const found = await Promise.all(
+        tool.machine(environment).map((path) =>
+          stat(path)
+            .then((s) => s.isDirectory())
+            .catch(() => false)
+        )
+      );
+      return found.some(Boolean) ? tool : undefined;
+    })
+  );
+  return results.filter((t): t is ToolDescriptor => t !== undefined);
+}
+
+/**
+ * Where `tool` installs: its own directory when it is detected in the
+ * project and has one, else its `installDir`.
+ */
+export function installDirectoryFor(
+  tool: ToolDescriptor,
+  projectDetected: boolean
+): string {
+  return projectDetected && tool.ownDir !== undefined
+    ? tool.ownDir
+    : tool.installDir;
+}
+
 /**
  * The shim directories to pre-select for a project: the install directories
  * of every detected tool, or `.agents/` when nothing is detected.
@@ -232,7 +329,7 @@ export async function detectSelectedDirectories(
 ): Promise<string[]> {
   const tools = await detectTools(cwd);
   if (tools.length === 0) return [DEFAULT_SHIM_DIR];
-  const directories = new Set(tools.map((t) => t.installDir));
+  const directories = new Set(tools.map((t) => installDirectoryFor(t, true)));
   return SHIM_TARGETS.map((s) => s.dir).filter((d) => directories.has(d));
 }
 

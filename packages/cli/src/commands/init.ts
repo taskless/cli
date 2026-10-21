@@ -549,7 +549,7 @@ async function runNonInteractive(
     .map((target) => target.dir);
   const permissions = await syncPermissions(cwd, {
     selected,
-    codexDetected: detected.some((tool) => tool.name === "Codex"),
+    codex: detected.some((tool) => tool.name === "Codex"),
     invocation: buildInvocation(),
     launcher: buildLauncherInvocation(),
     write: true,

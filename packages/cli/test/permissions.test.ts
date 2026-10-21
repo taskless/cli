@@ -64,7 +64,7 @@ function sync(
   options: Partial<SyncPermissionsOptions> & { selected: string[] }
 ): ReturnType<typeof syncPermissions> {
   return syncPermissions(cwd, {
-    codexDetected: false,
+    codex: false,
     invocation: V1,
     write: true,
     ...options,
@@ -361,15 +361,14 @@ describe("the release and the nightly side by side", () => {
     {
       harness: "Codex",
       selected: [".agents"],
-      codexDetected: true,
+      codex: true,
       files: [".codex/rules/taskless.rules"],
     },
   ])(
     "keeps each other's rules in $harness",
-    async ({ selected, codexDetected = false, files, seed }) => {
+    async ({ selected, codex = false, files, seed }) => {
       if (seed !== undefined) await put(files[0] ?? "", seed);
-      const run = (invocation: string) =>
-        sync({ selected, codexDetected, invocation });
+      const run = (invocation: string) => sync({ selected, codex, invocation });
       await run(V1);
       await run(N1);
       await run(N2);
@@ -562,8 +561,9 @@ describe("OpenCode replacing a stale rule", () => {
 });
 
 describe("Codex", () => {
-  it("writes its own rules file when Codex is detected", async () => {
-    await sync({ selected: [".agents"], codexDetected: true });
+  it("writes its own rules file when Codex is chosen", async () => {
+    // No `.codex/` in the project: checking the Codex row is enough.
+    await sync({ selected: [".agents"], codex: true });
 
     expect(await text(".codex/rules/taskless.rules")).toContain(
       'prefix_rule(pattern = ["npx","@taskless/cli@0.13.0"], decision = "allow")'
@@ -581,7 +581,7 @@ describe("Codex", () => {
       "# Written by Taskless: allows exactly the installed Taskless CLI.\n" +
         'prefix_rule(pattern = ["npx","@taskless/cli@0.12.0"], decision = "allow")\n'
     );
-    const edits = await sync({ selected: [".agents"], codexDetected: true });
+    const edits = await sync({ selected: [".agents"], codex: true });
 
     expect(edits[0]?.removed).toEqual([
       'prefix_rule(pattern = ["npx","@taskless/cli@0.12.0"], decision = "allow")',
@@ -597,7 +597,7 @@ describe("Codex", () => {
       "# Written by Taskless, in some older wording.\n" +
         'prefix_rule(pattern = ["npx","@taskless/cli@0.12.0"], decision = "allow")\n'
     );
-    const edits = await sync({ selected: [".agents"], codexDetected: true });
+    const edits = await sync({ selected: [".agents"], codex: true });
 
     expect(edits[0]?.skipped).toBeNull();
     expect(await text(".codex/rules/taskless.rules")).not.toContain("0.12.0");
@@ -605,7 +605,7 @@ describe("Codex", () => {
 
   it("leaves a rules file at its path that Taskless did not write", async () => {
     await put(".codex/rules/taskless.rules", "# theirs\n");
-    const edits = await sync({ selected: [".agents"], codexDetected: true });
+    const edits = await sync({ selected: [".agents"], codex: true });
 
     expect(edits[0]?.skipped).toMatch(/not written by Taskless/);
     expect(await text(".codex/rules/taskless.rules")).toBe("# theirs\n");
@@ -744,7 +744,7 @@ describe("launcher rules", () => {
   it("writes each harness's launcher form", async () => {
     await sync({
       selected: [".cursor", ".opencode", ".agents"],
-      codexDetected: true,
+      codex: true,
       launcher: RL,
     });
     expect(await json(".cursor/permissions.json")).toEqual({

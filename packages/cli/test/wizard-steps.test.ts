@@ -34,148 +34,183 @@ describe("ask wrapper", () => {
   });
 });
 
+/** The locations step, and catalog harnesses by name. */
+async function load() {
+  const steps = await import("../src/wizard/steps/locations");
+  const { TOOLS } = await import("../src/install/install");
+  const tools = (...names: string[]) =>
+    TOOLS.filter((tool) => names.includes(tool.name));
+  return { ...steps, tools };
+}
+
 describe("locationChoices", () => {
-  it("offers every shim target and never the canonical .taskless store", async () => {
-    const { locationChoices } = await import("../src/wizard/steps/locations");
-    const values = locationChoices([]).options.map((o) => o.value);
-    expect(values).toEqual([".claude", ".cursor", ".opencode", ".agents"]);
-    expect(values).not.toContain(".taskless");
+  it("offers a row for every harness with nothing detected", async () => {
+    const { locationChoices, OTHER_SECTION } = await load();
+    const { groups } = locationChoices([]);
+    expect(Object.keys(groups)).toEqual([OTHER_SECTION]);
+    expect(groups[OTHER_SECTION]!.map((row) => row.label)).toEqual([
+      "Claude Code (.claude/)",
+      "OpenCode (.opencode/)",
+      "Cursor (.cursor/)",
+      "Codex (.agents/)",
+      "Gemini CLI (.agents/)",
+      "Crush (.agents/)",
+      "Devin (.agents/)",
+      "Other Agent Skills harnesses (.agents/)",
+    ]);
   });
 
-  it("names the detected .agents harnesses on the .agents/ row", async () => {
-    const { locationChoices } = await import("../src/wizard/steps/locations");
-    const { TOOLS } = await import("../src/install/install");
-    const named = (names: string[]) =>
-      locationChoices(TOOLS.filter((t) => names.includes(t.name))).options.find(
-        (o) => o.value === ".agents"
-      )?.label;
-
-    // Catalog order, whatever order they were detected in.
-    expect(named(["Codex", "OpenCode"])).toBe(
-      "OpenCode, Codex, and other .agents harnesses (.agents/)"
+  it("pre-checks project-detected harnesses in their own section", async () => {
+    const { locationChoices, tools, PROJECT_SECTION } = await load();
+    const { groups, initialValues } = locationChoices(
+      tools("Claude Code", "Codex")
     );
-    expect(named(["Crush"])).toBe(
-      "Crush and other .agents harnesses (.agents/)"
+    expect(groups[PROJECT_SECTION]!.map((row) => row.value)).toEqual([
+      "Claude Code",
+      "Codex",
+    ]);
+    expect(initialValues).toEqual(["Claude Code", "Codex"]);
+  });
+
+  it("lists machine-detected harnesses unchecked", async () => {
+    const { locationChoices, tools, MACHINE_SECTION } = await load();
+    const { groups, initialValues } = locationChoices(
+      tools("Claude Code"),
+      tools("Gemini CLI")
+    );
+    expect(groups[MACHINE_SECTION]!.map((row) => row.value)).toEqual([
+      "Gemini CLI",
+    ]);
+    expect(initialValues).toEqual(["Claude Code"]);
+  });
+
+  it("lists a harness found in both places once, in the project section", async () => {
+    const { locationChoices, tools, PROJECT_SECTION } = await load();
+    const { groups } = locationChoices(
+      tools("Claude Code"),
+      tools("Claude Code")
+    );
+    const rows = Object.values(groups)
+      .flat()
+      .filter((row) => row.value === "Claude Code");
+    expect(rows).toHaveLength(1);
+    expect(groups[PROJECT_SECTION]).toEqual(rows);
+  });
+
+  it("orders the sections project, machine, other", async () => {
+    const {
+      locationChoices,
+      tools,
+      PROJECT_SECTION,
+      MACHINE_SECTION,
+      OTHER_SECTION,
+    } = await load();
+    // Claude Code, first in the catalog, fills the machine section before
+    // Codex fills the project one; the sections still come out in order.
+    const { groups } = locationChoices(tools("Codex"), tools("Claude Code"));
+    expect(Object.keys(groups)).toEqual([
+      PROJECT_SECTION,
+      MACHINE_SECTION,
+      OTHER_SECTION,
+    ]);
+  });
+
+  it("pre-checks only the generic row with nothing detected or installed", async () => {
+    const { locationChoices, tools, GENERIC_ROW } = await load();
+    expect(locationChoices([], tools("Codex")).initialValues).toEqual([
+      GENERIC_ROW,
+    ]);
+  });
+
+  it("pre-checks the generic row for a recorded .agents/ no detected harness covers", async () => {
+    const { locationChoices, tools, GENERIC_ROW } = await load();
+    const { groups, initialValues } = locationChoices(
+      tools("Claude Code"),
+      [],
+      [".agents"]
+    );
+    expect(initialValues).toEqual(["Claude Code", GENERIC_ROW]);
+    const generic = Object.values(groups)
+      .flat()
+      .find((row) => row.value === GENERIC_ROW);
+    expect(generic?.hint).toBe("installed");
+  });
+
+  it("does not add the generic row when a detected harness covers .agents/", async () => {
+    const { locationChoices, tools } = await load();
+    const { groups, initialValues } = locationChoices(
+      tools("Codex"),
+      [],
+      [".agents"]
+    );
+    expect(initialValues).toEqual(["Codex"]);
+    const codex = Object.values(groups)
+      .flat()
+      .find((row) => row.value === "Codex");
+    expect(codex?.hint).toBe("installed");
+  });
+
+  it("hints only installed rows", async () => {
+    const { locationChoices, tools } = await load();
+    const { groups } = locationChoices(tools("Claude Code"), tools("Codex"));
+    expect(
+      Object.values(groups)
+        .flat()
+        .filter((row) => row.hint !== undefined)
+    ).toEqual([]);
+  });
+
+  it("ignores a recorded .taskless/", async () => {
+    const { locationChoices, GENERIC_ROW } = await load();
+    const { groups, initialValues } = locationChoices([], [], [".taskless"]);
+    expect(initialValues).toEqual([GENERIC_ROW]);
+    expect(
+      Object.values(groups)
+        .flat()
+        .some((row) => row.label.includes(".taskless"))
+    ).toBe(false);
+  });
+
+  it("labels Devin with .devin/ when the project has it", async () => {
+    const { locationChoices, tools, PROJECT_SECTION } = await load();
+    const { groups } = locationChoices(tools("Devin"));
+    expect(groups[PROJECT_SECTION]!.map((row) => row.label)).toEqual([
+      "Devin (.devin/)",
+    ]);
+  });
+});
+
+describe("resolveSelection", () => {
+  it("installs two rows sharing .agents/ once", async () => {
+    const { resolveSelection } = await load();
+    expect(resolveSelection(["Codex", "Gemini CLI"], []).directories).toEqual([
+      ".agents",
+    ]);
+  });
+
+  it("returns directories in plan order and harnesses without the generic row", async () => {
+    const { resolveSelection, GENERIC_ROW } = await load();
+    expect(resolveSelection([GENERIC_ROW, "Codex", "Claude Code"], [])).toEqual(
+      {
+        directories: [".claude", ".agents"],
+        harnesses: ["Claude Code", "Codex"],
+      }
     );
   });
 
-  // Naming every harness that reads `.agents/skills` grows with the catalog,
-  // so an undetected harness is never named.
-  it("names no harness on the .agents/ row when none is detected", async () => {
-    const { locationChoices } = await import("../src/wizard/steps/locations");
-    const label = locationChoices([]).options.find(
-      (o) => o.value === ".agents"
-    )?.label;
-    expect(label).toBe("Agent Skills (.agents/)");
+  it("installs a machine-only Claude Code into .claude/", async () => {
+    const { resolveSelection } = await load();
+    expect(resolveSelection(["Claude Code"], []).directories).toEqual([
+      ".claude",
+    ]);
   });
 
-  // OpenCode reads `.agents/skills`, so it is named, but it already gets
-  // `.opencode/`; pre-checking both would give it the skill twice.
-  it("names OpenCode on the .agents/ row without pre-checking it", async () => {
-    const { locationChoices } = await import("../src/wizard/steps/locations");
-    const { TOOLS } = await import("../src/install/install");
-    const opencode = TOOLS.find((t) => t.name === "OpenCode")!;
-
-    const { options, initialValues } = locationChoices([opencode]);
-    const agents = options.find((o) => o.value === ".agents");
-    expect(agents?.label).toMatch(/^OpenCode and other/);
-    expect(agents?.hint).toBe("not detected");
-    expect(initialValues).toEqual([".opencode"]);
-  });
-
-  it("pre-checks .agents/ for Gemini CLI and Crush", async () => {
-    const { locationChoices } = await import("../src/wizard/steps/locations");
-    const { TOOLS } = await import("../src/install/install");
-    for (const name of ["Gemini CLI", "Crush"]) {
-      const tool = TOOLS.find((t) => t.name === name)!;
-      const { options, initialValues } = locationChoices([tool]);
-      expect(initialValues, name).toEqual([".agents"]);
-      expect(options.find((o) => o.value === ".agents")?.hint, name).toBe(
-        "detected"
-      );
-    }
-  });
-
-  it("pre-checks .agents/ when no tools are detected", async () => {
-    const { locationChoices } = await import("../src/wizard/steps/locations");
-    expect(locationChoices([]).initialValues).toEqual([".agents"]);
-  });
-
-  it("pre-checks a detected tool and hints it as detected", async () => {
-    const { locationChoices } = await import("../src/wizard/steps/locations");
-    const { TOOLS } = await import("../src/install/install");
-    const claude = TOOLS.find((t) => t.name === "Claude Code")!;
-
-    const { options, initialValues } = locationChoices([claude]);
-    expect(initialValues).toEqual([".claude"]);
-    expect(options.find((o) => o.value === ".claude")?.hint).toBe("detected");
-    expect(options.find((o) => o.value === ".cursor")?.hint).toBe(
-      "not detected"
-    );
-  });
-
-  it("pre-checks every detected tool's directory", async () => {
-    const { locationChoices } = await import("../src/wizard/steps/locations");
-    const { TOOLS } = await import("../src/install/install");
-    const claude = TOOLS.find((t) => t.name === "Claude Code")!;
-    const codex = TOOLS.find((t) => t.name === "Codex")!;
-
-    const { initialValues } = locationChoices([claude, codex]);
-    expect(initialValues).toContain(".claude");
-    expect(initialValues).toContain(".agents");
-  });
-
-  it("pre-checks a manifest-recorded location with no detected tool", async () => {
-    const { locationChoices } = await import("../src/wizard/steps/locations");
-    const { options, initialValues } = locationChoices([], [".agents"]);
-    expect(initialValues).toEqual([".agents"]);
-    expect(options.find((o) => o.value === ".agents")?.hint).toBe("installed");
-  });
-
-  it("pre-checks the union of manifest and detected directories", async () => {
-    const { locationChoices } = await import("../src/wizard/steps/locations");
-    const { TOOLS } = await import("../src/install/install");
-    const claude = TOOLS.find((t) => t.name === "Claude Code")!;
-
-    const { options, initialValues } = locationChoices([claude], [".agents"]);
-    expect(initialValues).toEqual([".claude", ".agents"]);
-    expect(options.find((o) => o.value === ".claude")?.hint).toBe("detected");
-    expect(options.find((o) => o.value === ".agents")?.hint).toBe("installed");
-  });
-
-  it("hints a location as installed even when its tool is also detected", async () => {
-    const { locationChoices } = await import("../src/wizard/steps/locations");
-    const { TOOLS } = await import("../src/install/install");
-    const claude = TOOLS.find((t) => t.name === "Claude Code")!;
-
-    const { options } = locationChoices([claude], [".claude"]);
-    expect(options.find((o) => o.value === ".claude")?.hint).toBe("installed");
-  });
-
-  it("ignores the canonical .taskless store recorded in the manifest", async () => {
-    const { locationChoices } = await import("../src/wizard/steps/locations");
-    const { options, initialValues } = locationChoices([], [".taskless"]);
-    // .taskless is filtered out, so nothing is pre-checked from the manifest
-    // and the first-run .agents/ default applies.
-    expect(initialValues).toEqual([".agents"]);
-    expect(options.map((o) => o.value)).not.toContain(".taskless");
-    expect(options.find((o) => o.value === ".agents")?.hint).toBe(
-      "not detected"
-    );
-  });
-
-  it("pre-checks .agents/ exactly once when Codex is detected", async () => {
-    const { locationChoices } = await import("../src/wizard/steps/locations");
-    const { TOOLS } = await import("../src/install/install");
-    const codex = TOOLS.find((t) => t.name === "Codex")!;
-
-    const { initialValues } = locationChoices([codex]);
-    expect(initialValues).toEqual([".agents"]);
-  });
-
-  it("falls back to .agents/ when neither manifest nor detection has entries", async () => {
-    const { locationChoices } = await import("../src/wizard/steps/locations");
-    expect(locationChoices([], []).initialValues).toEqual([".agents"]);
+  it("installs Devin into .devin/ only when the project has it", async () => {
+    const { resolveSelection, tools } = await load();
+    expect(resolveSelection(["Devin"], []).directories).toEqual([".agents"]);
+    expect(resolveSelection(["Devin"], tools("Devin")).directories).toEqual([
+      ".devin",
+    ]);
   });
 });
 

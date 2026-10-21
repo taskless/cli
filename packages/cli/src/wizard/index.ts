@@ -8,7 +8,6 @@ import { ensureTasklessDirectory } from "../filesystem/directory";
 import {
   applyInstallPlan,
   buildInstallPlan,
-  detectTools,
   getEmbeddedSkills,
   planToStateTargets,
 } from "../install/install";
@@ -70,8 +69,17 @@ export async function runWizard(
   console.error(renderIntro());
   intro(" Taskless setup ");
 
+  const globalTrustEnvironment = options.globalTrustEnvironment ?? {
+    home: homedir(),
+    env: process.env,
+  };
+
   try {
-    locations = await promptLocations(options.cwd);
+    const selection = await promptLocations(
+      options.cwd,
+      globalTrustEnvironment
+    );
+    locations = selection.directories;
 
     // Catalog has one entry now (`taskless`); install all embedded skills.
     const plan = buildInstallPlan(locations, getEmbeddedSkills());
@@ -84,12 +92,11 @@ export async function runWizard(
 
     // Previewed before anything is written, so every settings file the
     // install will touch is on screen before the user confirms.
-    const detected = await detectTools(options.cwd);
     const permissionOptions = {
       selected: plan.targets
         .filter((target) => target.mode === "reference")
         .map((target) => target.dir),
-      codexDetected: detected.some((tool) => tool.name === "Codex"),
+      codex: selection.harnesses.includes("Codex"),
       invocation: buildInvocation(),
       launcher: buildLauncherInvocation(),
     };
@@ -98,10 +105,6 @@ export async function runWizard(
       write: false,
     });
 
-    const globalTrustEnvironment = options.globalTrustEnvironment ?? {
-      home: homedir(),
-      env: process.env,
-    };
     const globalTrustOptions = {
       selected: permissionOptions.selected,
       environment: globalTrustEnvironment,
