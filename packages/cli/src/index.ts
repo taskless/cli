@@ -1,3 +1,5 @@
+import { existsSync } from "node:fs";
+import { join } from "node:path";
 import process from "node:process";
 
 import { defineCommand, runCommand, showUsage } from "citty";
@@ -34,6 +36,7 @@ import { shouldLaunchWizard } from "./util/interactive";
 import { showResolvedUsage } from "./util/help";
 import { getCliPrefix } from "./util/package-manager";
 import { CLIError } from "./util/cli-error";
+import { buildLauncherInvocation } from "./install/launcher";
 import { requireRecordedVersion } from "./install/version-gate";
 import { writeJsonError } from "./types/errors";
 
@@ -151,11 +154,18 @@ const main = defineCommand({
     }
 
     const prefix = getCliPrefix();
+    // Recipes come from the version the project records, so a project with a
+    // launcher is sent to it. Only the install goes through npx.
+    const launcher = buildLauncherInvocation();
+    const recipes =
+      launcher !== undefined && existsSync(join(resolveCwd(rawArgs), launcher))
+        ? launcher
+        : prefix;
     console.error(
       "Taskless CLI — non-interactive context detected.\n" +
         "  For interactive install, run from a terminal.\n" +
         `  For scripted install, run \`${prefix} init\`.\n` +
-        `  For agent recipes, run \`${prefix} agent\` (no args) for the topic index.\n`
+        `  For agent recipes, run \`${recipes} agent\` (no args) for the topic index.\n`
     );
     // Forward the parent's rawArgs (e.g. `-d <path>`) so the agent command
     // doesn't mis-parse them as positional topic names.

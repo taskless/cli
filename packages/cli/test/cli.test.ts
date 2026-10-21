@@ -1,6 +1,6 @@
 import { execFile } from "node:child_process";
 import { existsSync } from "node:fs";
-import { readFile, mkdtemp, rm, mkdir } from "node:fs/promises";
+import { readFile, mkdtemp, rm, mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { promisify } from "node:util";
@@ -110,6 +110,23 @@ describe("cli", () => {
         expect(stderr).toContain("non-interactive context detected");
       }
     );
+
+    it("sends recipes to the project launcher when the project has one", async () => {
+      await mkdir(join(temporaryDirectory, ".taskless", "bin"), {
+        recursive: true,
+      });
+      await writeFile(
+        join(temporaryDirectory, ".taskless", "bin", "cli.mjs"),
+        ""
+      );
+      const { stderr } = await execFileAsync("node", [
+        binPath,
+        "-d",
+        temporaryDirectory,
+      ]);
+      expect(stderr).toContain("run `./.taskless/bin/cli.mjs agent`");
+      expect(stderr).not.toMatch(/run `(?:npx|pnpm dlx|yarn dlx) \S+ agent`/);
+    });
   });
 
   describe("init", () => {
