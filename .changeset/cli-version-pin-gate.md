@@ -1,0 +1,10 @@
+---
+"@taskless/cli": patch
+---
+
+The CLI now runs only as the version a project records, and only on rules reconciled for its engines.
+
+- **A CLI that is not the version `.taskless/taskless.json` records refuses every command except `init`, `info`, `auth`, and `feedback`**, with `CLI_VERSION_MISMATCH`. That covers npx, `pnpm dlx`, a `devDependencies` install, and any other way of starting it. Run commands through the project launcher, `./.taskless/bin/cli.mjs`, which runs the recorded version, and upgrade by running `init` with the newer CLI. If CI runs a pinned CLI, move the pin in the same commit as the upgrade.
+- **`check` and `verify` refuse rules reconciled against a different ast-grep or Vale**, with `RULES_ENGINE_MISMATCH`, when `rules.engines` names an engine version this CLI does not bundle and the project has rules for that engine. Until now they ran the new engine against rules nobody had migrated. A rule still using a renamed kind could leave `check` reporting no ast-grep findings at all. When the rules are behind, run `update` and then `update --rules`, which applies the rule rewrites and records the bundled engines. A project that never recorded its engines is not affected.
+- `--allow-version-mismatches` skips both refusals, and `TASKLESS_ALLOW_VERSION_MISMATCHES=1` does the same from the environment.
+- The `.taskless/README.md` written for new projects runs `check` through the launcher and names `init` for npx and `pnpm dlx`.

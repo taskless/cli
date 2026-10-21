@@ -19,6 +19,7 @@ import { outputSchema as checkOutputSchema } from "../schemas/check";
 import { makeErrorEnvelope, writeJsonError } from "../types/errors";
 import { CLIError } from "../util/cli-error";
 import { requireCurrentSchema } from "../filesystem/migrate";
+import { requireReconciledEngines } from "../rules/engine-gate";
 import { discoverRuntimeRules } from "../rules/runtime/discover";
 import { resolveRuleSelection, type RuleSelection } from "../rules/rule-filter";
 import { scanProject } from "../rules/scan-project";
@@ -341,6 +342,9 @@ export const checkCommand = defineCommand({
       // one check that would catch it.
       try {
         await requireCurrentSchema(cwd);
+        // And the rules must have been reconciled for the engines this CLI
+        // bundles; `check` refuses rather than running the rewrites itself.
+        await requireReconciledEngines(cwd);
       } catch (error) {
         // Handled here rather than left to the outer handler, which prints
         // prose: `--json` callers branch on the code, and this refusal asks

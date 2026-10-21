@@ -91,6 +91,17 @@ export type CLIErrorCode =
   // `rules`. An agent reading this should repair or delete the file, never
   // migrate.
   | "SCAFFOLD_MANIFEST_UNREADABLE"
+  // The running CLI is not the version `.taskless/taskless.json` records for
+  // its package. Not a scaffold code: the layout may be identical. The remedy
+  // is to run the version the project records (its launcher), or `init` with
+  // this CLI to move the project to it.
+  | "CLI_VERSION_MISMATCH"
+  // `rules.engines` names an ast-grep or Vale version other than the one this
+  // CLI bundles, for an engine the project has rules for. Behind asks for the
+  // `update` walk and `update --rules`; ahead asks for the CLI the project
+  // recorded. Distinct from the code above because a matching CLI can still
+  // hold rules nobody reconciled after an upgrade.
+  | "RULES_ENGINE_MISMATCH"
   | "SCAFFOLD_CONFLICT"
   // `taskless report`. INSUFFICIENT is the gate (fewer than three working
   // Taskless rules) and is the one a recipe answers by asking the user;

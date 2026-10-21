@@ -63,6 +63,12 @@ describe("recording a rules reconciliation", () => {
       unknown
     >;
     delete manifest["rules"];
+    // The same leak through `install`: this repository pins whichever release
+    // last installed its skills, which is not the built CLI, so the
+    // version-pin gate would refuse every command here.
+    const install = manifest["install"] as Record<string, unknown>;
+    delete install["cliVersion"];
+    delete install["launchers"];
     await writeFile(manifestPath, JSON.stringify(manifest, undefined, 2));
   });
 
@@ -132,6 +138,39 @@ describe("recording a rules reconciliation", () => {
         engines: { sg: "0.45.3", vale: VALE_VERSION },
       };
       await writeFile(manifestPath, JSON.stringify(manifest, undefined, 2));
+    });
+
+    it("check refuses rules behind the bundled engine until --rules runs", async () => {
+      const refused = await runCli(["check", "--json", "-d", cwd]);
+      expect(refused.exitCode).not.toBe(0);
+      const envelope = JSON.parse(refused.stdout) as {
+        ok: boolean;
+        code: string;
+        message: string;
+      };
+      expect(envelope).toMatchObject({
+        ok: false,
+        code: "RULES_ENGINE_MISMATCH",
+      });
+      expect(envelope.message).toContain(
+        `ast-grep 0.45.3 (this CLI bundles ${AST_GREP_VERSION})`
+      );
+      expect(envelope.message).toContain("update --rules");
+
+      // The override runs it anyway, which is what the dev loop relies on.
+      const overridden = await runCli([
+        "check",
+        "--json",
+        "--allow-version-mismatches",
+        "-d",
+        cwd,
+      ]);
+      expect(overridden.stdout).not.toContain("RULES_ENGINE_MISMATCH");
+
+      const reconciled = await runCli(["update", "--rules", "-d", cwd]);
+      expect(reconciled.exitCode).toBe(0);
+      const after = await runCli(["check", "--json", "-d", cwd]);
+      expect(after.stdout).not.toContain("RULES_ENGINE_MISMATCH");
     });
 
     it("lists what --rules will rewrite before it runs", async () => {

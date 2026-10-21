@@ -37,15 +37,30 @@ const migrations: Migrations = {
 export const ALLOW_VERSION_MISMATCHES_FLAG = "--allow-version-mismatches";
 
 /**
- * Whether the invocation opted out of scaffold-version enforcement. Read from
- * raw argv rather than a parsed command, because every command reaches the
- * migration runner through {@link ensureTasklessDirectory} and none of them
- * thread their own options down to it.
+ * The environment form of {@link ALLOW_VERSION_MISMATCHES_FLAG}, for a script
+ * that runs a deliberately unpinned build (this repository's `pnpm cli`) and
+ * would otherwise have to thread the flag past citty's subcommand resolution.
+ */
+export const ALLOW_VERSION_MISMATCHES_ENV = "TASKLESS_ALLOW_VERSION_MISMATCHES";
+
+/**
+ * Whether the invocation opted out of version enforcement: the scaffold
+ * version, the CLI version the project records, and the engine versions its
+ * rules were reconciled against. Read from raw argv rather than a parsed
+ * command, because every command reaches the migration runner through
+ * {@link ensureTasklessDirectory} and none of them thread their own options
+ * down to it.
  */
 export function hasVersionMismatchOverride(
-  rawArguments: string[] = process.argv.slice(2)
+  rawArguments: string[] = process.argv.slice(2),
+  env: NodeJS.ProcessEnv = process.env
 ): boolean {
-  return rawArguments.includes(ALLOW_VERSION_MISMATCHES_FLAG);
+  const value = env[ALLOW_VERSION_MISMATCHES_ENV]?.toLowerCase();
+  return (
+    rawArguments.includes(ALLOW_VERSION_MISMATCHES_FLAG) ||
+    value === "1" ||
+    value === "true"
+  );
 }
 
 /** Sort migration keys numerically and return [version, migration] pairs */

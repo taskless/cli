@@ -26,6 +26,14 @@ npx @taskless/cli init
 New to Taskless? Run `npx @taskless/cli onboard` after installing. It walks your
 agent through your codebase and suggests a starter set of rules.
 
+`init` records its version in `.taskless/taskless.json` and writes a launcher,
+`./.taskless/bin/cli.mjs`, that runs exactly that version. Any other version of
+the CLI refuses every command except `init`, `info`, `auth`, and `feedback`
+with `CLI_VERSION_MISMATCH`, because a project's rules are reconciled against
+the CLI it records. So once a project is installed, run commands through the
+launcher, and upgrade by running `init` with the newer CLI. The `npx` examples
+on this page assume npx resolves the version the project records.
+
 ## How to Use via Agents
 
 Installing adds one skill (`taskless`). The skill body is a small router: your

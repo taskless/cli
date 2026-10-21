@@ -45,9 +45,10 @@ function usageBlock(specifier: string | undefined): string {
     return `${buildInvocation()} check`;
   }
   // The project launcher `init` writes beside this file, named for the
-  // package the specifier names. Listed first: it is what the installed skill
-  // and CI run, and it needs no package manager at all. The launchers below
-  // are for a checkout where it is not there yet.
+  // package the specifier names. It is the way to run `check`: it runs the
+  // version the project records, and any other version refuses everything
+  // but `init`. So the package-manager lines run `init`, which writes the
+  // launcher in a checkout without one and moves the project to a newer CLI.
   const [release, nightly] = LAUNCHER_PACKAGES;
   const launcher = launcherInvocation(
     specifier.startsWith(`${nightly}@`) ? nightly : release
@@ -56,11 +57,11 @@ function usageBlock(specifier: string | undefined): string {
     "# the project launcher, from the repository root",
     `${launcher} check`,
     "",
-    "# npm / pnpm",
-    `pnpm dlx ${specifier} check`,
+    "# install the launcher, or upgrade the project (npm / pnpm)",
+    `pnpm dlx ${specifier} init`,
     "",
-    "# npx",
-    `npx ${specifier} check`,
+    "# the same, with npx",
+    `npx ${specifier} init`,
   ].join("\n");
 }
 
