@@ -196,7 +196,14 @@ making the case for running them in CI.
     every change, and CI is where every agent's work passes through.
     On a yes, follow the `ci` recipe. On a no, name
     `%(TASKLESS_CLI)s agent hooks` in one line as the way to run them
-    before each commit instead, and stop.
+    before each commit instead.
+
+    Either way, end your final message with the report link, on its
+    own line as a plain URL or a Markdown link, NOT inside a code
+    block. The CI offer pushed the summary out of view, and the user
+    should not have to scroll back for the report. Use the link the
+    summary showed, never the record in `.taskless/reports/`, which
+    holds the URL that deletes the page. Then stop.
 
 ## Errors
 
