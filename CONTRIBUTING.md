@@ -3,9 +3,9 @@
 Thanks for working on Taskless.
 
 This file sits outside every Vale scope in `.taskless/rules/vale/`, which is
-deliberate. The `docs-npx-cli` rule rewrites `pnpm cli` and
-`pnpm dlx @taskless/cli` to the published `npx @taskless/cli` form, at error
-level, with a `raw` scope that reaches inside fenced code blocks and cannot be
+deliberate. The `docs-npx-cli` rule refuses `pnpm cli`, and any npx or
+`pnpm dlx` run of the CLI other than an install or an upgrade, at error level,
+with a `raw` scope that reaches inside fenced code blocks and cannot be
 suppressed with an in-file directive. That rule is right for a README, which is
 read by people who do not have this repository checked out. It makes a
 contributor guide impossible to write, because a contributor guide has to name
