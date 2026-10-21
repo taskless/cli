@@ -51,7 +51,7 @@ They're build output.
 ## What `check` reports
 
 ```
-$ npx @taskless/cli check
+$ ./.taskless/bin/cli.mjs check
 
   example.cjs:7:10
   error[no-eval] Avoid eval. It executes whatever string it's handed.
@@ -72,8 +72,10 @@ severity, so this run exits 1 on the `error`.
 
 ## Running it yourself, in this repo
 
-`npx @taskless/cli` fetches the published CLI. To run the one in this
-checkout, build it first and then call it from here:
+The commands on this page run `./.taskless/bin/cli.mjs`, the launcher `init`
+writes into a real install, which runs the CLI version the project records.
+This example ships without one. To run the CLI in this checkout, build it first
+and then call it from here:
 
 ```
 pnpm --filter @taskless/cli build     # from the repo root
@@ -81,7 +83,7 @@ cd example
 ../packages/cli/dist/index.js check
 ```
 
-Substitute that path for `npx @taskless/cli` in every command below.
+Substitute that path for `./.taskless/bin/cli.mjs` in every command on this page.
 Note that `check` writes the two assembled configs into `.taskless/`, so
 expect them to appear after the first run. Both are gitignored.
 
@@ -90,8 +92,8 @@ expect them to appear after the first run. Both are gitignored.
 `check` runs rules against your code. Two other commands run against the rules:
 
 ```
-$ npx @taskless/cli validate   # are these rules well-formed?
-$ npx @taskless/cli verify     # do they fire where they should, and only there?
+$ ./.taskless/bin/cli.mjs validate   # are these rules well-formed?
+$ ./.taskless/bin/cli.mjs verify     # do they fire where they should, and only there?
 ```
 
 Both take a path: a rule directory, an engine directory, or nothing at all for

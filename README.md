@@ -18,16 +18,22 @@ scripts/
 
 ## Skill
 
-Taskless ships a **single consolidated skill** (`taskless`). The skill body is a small router; per-task instructions live behind `npx @taskless/cli agent <topic>` and are fetched on demand. It handles any Taskless action (create rule, improve, delete, check, auth, CI) by fetching the canonical recipe for the user's intent and following it.
+Taskless ships a **single consolidated skill** (`taskless`). The skill body is a small router; per-task instructions live behind `./.taskless/bin/cli.mjs agent <topic>` (the project launcher `init` writes) and are fetched on demand. It handles any Taskless action (create rule, improve, delete, check, auth, CI) by fetching the canonical recipe for the user's intent and following it.
 
 Available `taskless agent` topics: `route`, `create-sg-rule`, `create-vale-rule`, `create-runtime-rule`, `create-remote-rule`, `improve-rule`, `delete-rule`, `check`, `auth`, `ci`, `info`, `init`, `update`. Run `taskless agent` with no topic for the index. Append `--anonymous` for the local-only flow on improve.
 
 ## CLI
 
-The `@taskless/cli` package provides a CLI agent for Taskless workflows. It's recommended to always call the `latest` tag unless you know you need a specific version:
+The `@taskless/cli` package provides a CLI agent for Taskless workflows. Install or upgrade a project with the `latest` tag:
 
 ```bash
-npx @taskless/cli@latest info
+npx @taskless/cli@latest init
+```
+
+That records the CLI version in `.taskless/taskless.json` and writes a launcher that runs exactly that version. Every other command goes through the launcher, since any other version of the CLI refuses to run in the project:
+
+```bash
+./.taskless/bin/cli.mjs info
 ```
 
 ## Local development
@@ -64,8 +70,10 @@ contributors and agents at while they are working in this repo. Nothing rebuilds
 `dist/` for you, so run `pnpm build` first when you want current behavior.
 
 This section names the script rather than spelling out its shell invocation, because
-the `docs-npx-cli` rule holds every command in a README to the published
-`npx @taskless/cli` form for readers who do not have this repo checked out.
+the `docs-npx-cli` rule keeps the local script out of every README, which is read
+by people who do not have this repo checked out. The same rule allows npx and
+`pnpm dlx` only to install or upgrade, and sends every other command through the
+project launcher.
 
 ## Releasing taskless/cli
 

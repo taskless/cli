@@ -1,8 +1,11 @@
-extends: substitution
-message: "Use '%s' instead of '%s' — docs use the normalized invocation for external consumers"
+extends: existence
+message: "Run '%s' through the project launcher, ./.taskless/bin/cli.mjs. npx and pnpm dlx only install or upgrade: bare, or with init"
 level: error
 ignorecase: false
+nonword: true
 scope: [raw, code, text]
-swap:
-  'pnpm dlx @taskless/cli': npx @taskless/cli
-  'pnpm cli': npx @taskless/cli
+tokens:
+  # Every subcommand but `init`, listed rather than matched as "any word that
+  # is not init", so prose such as "run npx @taskless/cli to install" passes.
+  - '\b(?:npx|pnpm dlx|yarn dlx|bunx) @taskless/cli(?:-nightly)?(?:@[\w.-]+)? +(?:agent|auth|check|demo|detect|feedback|help|info|onboard|report|rule|share|test|update|validate|verify)\b'
+  - '\bpnpm cli\b'

@@ -2,10 +2,13 @@
 
 Run npx @taskless/cli to install Taskless into this project.
 
-The inline form `npx @taskless/cli@latest info` is correct.
+For a scripted install or upgrade, `npx @taskless/cli@latest init` runs the
+same install without prompts, and so does `pnpm dlx @taskless/cli init`.
 
 ```bash
-npx @taskless/cli@latest check
+./.taskless/bin/cli.mjs check
+node .taskless/bin/cli.mjs check --json
+npx @taskless/cli-nightly@latest --version
 ```
 
 Other package managers are fine for unrelated work, such as pnpm install

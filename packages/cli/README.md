@@ -23,16 +23,16 @@ without prompts, in a terminal or not:
 npx @taskless/cli init
 ```
 
-New to Taskless? Run `npx @taskless/cli onboard` after installing. It walks your
-agent through your codebase and suggests a starter set of rules.
-
 `init` records its version in `.taskless/taskless.json` and writes a launcher,
 `./.taskless/bin/cli.mjs`, that runs exactly that version. Any other version of
 the CLI refuses every command except `init`, `info`, `auth`, and `feedback`
 with `CLI_VERSION_MISMATCH`, because a project's rules are reconciled against
-the CLI it records. So once a project is installed, run commands through the
-launcher, and upgrade by running `init` with the newer CLI. The `npx` examples
-on this page assume npx resolves the version the project records.
+the CLI it records. So npx is only for installing and upgrading: once a project
+is installed, run every command through the launcher, and upgrade by running
+`init` with the newer CLI.
+
+New to Taskless? Run `./.taskless/bin/cli.mjs onboard` after installing. It
+walks your agent through your codebase and suggests a starter set of rules.
 
 ## How to Use via Agents
 
@@ -41,8 +41,8 @@ agent fetches the canonical recipe for whatever you asked for, then follows it.
 Ask in plain language: "write a taskless rule that bans console.log", "add
 taskless to CI", "run taskless check". You rarely need to run the CLI yourself.
 
-To see what the agent sees, run `npx @taskless/cli agent` for the topic index, or
-`npx @taskless/cli agent <topic>` for a full recipe.
+To see what the agent sees, run `./.taskless/bin/cli.mjs agent` for the topic
+index, or `./.taskless/bin/cli.mjs agent <topic>` for a full recipe.
 
 ## Taskless Check (CI and Constraints)
 
@@ -51,9 +51,9 @@ error-severity matched and `1` when something did, so it drops straight into a
 pipeline:
 
 ```bash
-npx @taskless/cli check                                   # scan everything
-npx @taskless/cli check $(git diff --name-only main...HEAD)  # PR-only scan
-npx @taskless/cli check --json                            # machine-readable
+./.taskless/bin/cli.mjs check                                   # scan everything
+./.taskless/bin/cli.mjs check $(git diff --name-only main...HEAD)  # PR-only scan
+./.taskless/bin/cli.mjs check --json                            # machine-readable
 ```
 
 Paths that no longer exist are dropped silently, so raw `git diff` output can be
