@@ -5,9 +5,9 @@
 
 ## 2. Stepped login
 
-- [ ] 2.1 Implement the stepped flow against `DeviceFlowProvider`: start (request, save, return pending), continue (poll ≤45s honouring `interval`/`slow_down`, then authenticated / pending / denied / expired), silent restart on a code found expired; unit-test every branch with a fake provider and an injected clock
-- [ ] 2.2 Route `auth login --json` through it and print the success envelopes (`pending`, `authenticated`, `already_logged_in` with `source`); keep the interactive path unchanged; tests assert each envelope and exit code
-- [ ] 2.3 Clear a pending code on `auth logout` and on a successful interactive login; tests cover both
+- [x] 2.1 Implement the stepped flow against `DeviceFlowProvider`: start (request, save, return pending), continue (poll ≤45s honouring `interval`/`slow_down`, then authenticated / pending / denied / expired), silent restart on a code found expired; unit-test every branch with a fake provider and an injected clock
+- [x] 2.2 Route `auth login --json` through it and print the success envelopes (`pending`, `authenticated`, `already_logged_in` with `source`); keep the interactive path unchanged; tests assert each envelope and exit code
+- [x] 2.3 Clear a pending code on `auth logout` and on a successful interactive login; tests cover both
 
 ## 3. Recipe
 

@@ -4,6 +4,8 @@ import { defineCommand } from "citty";
 
 import { whoami } from "../api/v2";
 import { loginInteractive } from "../auth/login-interactive";
+import { loginStep } from "../auth/login-step";
+import { clearPendingLogin } from "../auth/pending-login";
 import { describeAuthStatus } from "../auth/status";
 import { getToken, isEnvironmentToken, removeToken } from "../auth/token";
 import { getTelemetry } from "../telemetry";
@@ -30,7 +32,7 @@ const loginCommand = defineCommand({
     json: {
       type: "boolean",
       description:
-        "On error, write the standardized { ok:false, code, message } envelope to stdout instead of human text on stderr",
+        "Run one bounded step for an agent: start a login or wait up to 45s on the pending one, then print { ok, status } (pending carries the URL and code). Repeat until status is not pending.",
       default: false,
     },
   },
@@ -57,12 +59,59 @@ const loginCommand = defineCommand({
     // cli_authenticated event in the finally.
     let authenticated = false;
     try {
-      // In --json mode the user is an agent / pipe; suppress the device-flow
-      // chatter and only emit a single structured line on error.
-      const noop = (): void => {};
-      const result = await loginInteractive(
-        args.json ? { cwd, out: noop, err: noop } : { cwd }
-      );
+      // An agent sees a command's output only once it exits, so under
+      // --json a login is a step it repeats rather than one blocking call
+      // that holds back the URL its user needs.
+      if (args.json) {
+        const step = await loginStep({ cwd });
+        switch (step.status) {
+          case "already_logged_in": {
+            console.log(
+              JSON.stringify({
+                ok: true,
+                status: step.status,
+                source: step.source,
+              })
+            );
+            return;
+          }
+          case "authenticated": {
+            authenticated = true;
+            console.log(JSON.stringify({ ok: true, status: step.status }));
+            return;
+          }
+          case "pending": {
+            console.log(
+              JSON.stringify({
+                ok: true,
+                status: step.status,
+                verificationUrl: step.verificationUrl,
+                userCode: step.userCode,
+                expiresAt: new Date(step.expiresAt).toISOString(),
+              })
+            );
+            return;
+          }
+          case "failed": {
+            const code: CLIErrorCode =
+              step.reason === "denied"
+                ? "AUTH_REQUIRED"
+                : step.reason === "expired"
+                  ? "AUTH_EXPIRED"
+                  : "NETWORK_ERROR";
+            fail(
+              code,
+              step.message ??
+                (step.reason === "denied"
+                  ? "Authorization denied."
+                  : "The login code expired before it was approved. Run `auth login --json` again for a new one.")
+            );
+            return;
+          }
+        }
+      }
+
+      const result = await loginInteractive({ cwd });
 
       switch (result.status) {
         case "ok": {
@@ -70,20 +119,18 @@ const loginCommand = defineCommand({
           return;
         }
         case "already_logged_in": {
-          if (!args.json) {
-            if (result.source === "environment") {
-              console.log(
-                "You are already logged in with the TASKLESS_TOKEN environment variable."
-              );
-              console.log(
-                "A saved login would not be used while it is set. Unset TASKLESS_TOKEN first to log in here."
-              );
-            } else {
-              console.log("You are already logged in.");
-              console.log(
-                `Run \`${getCliPrefix()} auth logout\` first to re-authenticate.`
-              );
-            }
+          if (result.source === "environment") {
+            console.log(
+              "You are already logged in with the TASKLESS_TOKEN environment variable."
+            );
+            console.log(
+              "A saved login would not be used while it is set. Unset TASKLESS_TOKEN first to log in here."
+            );
+          } else {
+            console.log("You are already logged in.");
+            console.log(
+              `Run \`${getCliPrefix()} auth logout\` first to re-authenticate.`
+            );
           }
           return;
         }
@@ -140,6 +187,9 @@ const logoutCommand = defineCommand({
     let removed = false;
     try {
       removed = await removeToken(cwd);
+      // A login still waiting on approval would otherwise sign this
+      // repository back in after the user asked to be logged out.
+      await clearPendingLogin(cwd);
       if (!args.json) {
         // logout only removes the saved token. Without saying so, a user
         // whose token comes from the environment reads "Not logged in." and
