@@ -36,7 +36,11 @@ import {
   type GlobalTrustOutcome,
 } from "../install/global-trust";
 import { readInstallState } from "../install/state";
-import { getTelemetry } from "../telemetry";
+import {
+  getTelemetry,
+  isTelemetryEnabled,
+  TELEMETRY_NOTICE,
+} from "../telemetry";
 import { getCliVersion } from "../wizard/intro";
 
 import { getOnboardTrailer } from "./onboard";
@@ -126,6 +130,7 @@ export const initCommand = defineCommand({
         }
       );
     }
+    const telemetryEnabled = await isTelemetryEnabled(cwd);
     if (args.json) {
       console.log(
         JSON.stringify({
@@ -159,6 +164,9 @@ export const initCommand = defineCommand({
           // The lockfile beside the launcher, which decides what it installs;
           // `null` for a build that installs no launcher.
           lockfile: result.lockfile,
+          // Always present, so the agent can tell the user telemetry is on
+          // and how to turn it off; the human path prints the notice instead.
+          telemetry: { enabled: telemetryEnabled },
           // Absent when nothing ran, so a caller distinguishes "the tree was
           // rewritten" from "nothing happened" by presence, never by reading
           // empty arrays out of it.
@@ -199,6 +207,9 @@ export const initCommand = defineCommand({
       }
       if (result.reloadNotice !== undefined) {
         console.log(result.reloadNotice);
+      }
+      if (telemetryEnabled) {
+        console.log(TELEMETRY_NOTICE);
       }
       console.log(getOnboardTrailer());
     }

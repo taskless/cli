@@ -1,4 +1,4 @@
-# Topic: init     (CLI v%(CLI_VERSION)s / topic v12)
+# Topic: init     (CLI v%(CLI_VERSION)s / topic v13)
 
 %(ONE_COMMAND_PER_CALL)s
 
@@ -59,7 +59,8 @@ first step, not the whole job.
          "labelled": 0 }
      ],
      "launcher": { "path": ".taskless/bin/cli.mjs", "state": "unchanged" },
-     "lockfile": { "path": ".taskless/bin/cli.lock.json", "state": "unchanged" }
+     "lockfile": { "path": ".taskless/bin/cli.lock.json", "state": "unchanged" },
+     "telemetry": { "enabled": true }
    }
    ```
    - `cliVersion.previous` is `null` on a project with no recorded
@@ -106,13 +107,18 @@ first step, not the whole job.
      arguments, in their own terminal, offers to do it (`init` itself
      never asks).
 
+   - `telemetry` is always present. `enabled` is `false` when either
+     `TASKLESS_TELEMETRY_DISABLED=1` or `DO_NOT_TRACK=1` is set, or
+     `.taskless/taskless.json` has `"telemetry": false`.
+
    Without `--json`, the same facts print as prose: a per-target summary,
    each permission edit as `Edited <file>` with `ALLOW:` and `REMOVE:`
    lines (or `SKIPPED:` with the reason), a `SKIPPED (global):` line for
    each missing or stale global trust entry, then a trailer naming the directories that
    changed and, after a
    version move, pointing at `update`, then a notice naming each stale
-   pin and the version to move it to.
+   pin and the version to move it to, and, when telemetry is on, a
+   notice naming its opt-outs.
 
    - `launcher` is this CLI's project launcher, `.taskless/bin/cli.mjs`
      (`cli-nightly.mjs` for a nightly), which runs the version recorded
@@ -150,7 +156,21 @@ first step, not the whole job.
    your own; a pin can be deliberate, and a dependency bump changes the
    lockfile.
 
-4. **After a version move, reconcile the rules.** When
+4. **Tell the user about telemetry.** When `telemetry.enabled` is
+   `true`, tell the user that Taskless collects anonymous telemetry
+   (which command ran, whether it succeeded, how long it took, and counts
+   of findings, never rule content, prompts, or source) and that they can
+   opt out. Offer the project-wide switch: a top-level
+   `"telemetry": false` in `.taskless/taskless.json`, beside the fields
+   already there. That file is committed, so the setting turns telemetry
+   off for everyone working in the repository, CI included; say so. For
+   one person or one machine instead, setting
+   `TASKLESS_TELEMETRY_DISABLED=1` or `DO_NOT_TRACK=1` in their
+   environment does the same. Make the manifest edit only when the user
+   asks for it, and leave every other field as it is. When `enabled` is
+   `false`, say nothing about telemetry.
+
+5. **After a version move, reconcile the rules.** When
    `cliVersion.previous` is non-null and differs from `installed`, run
    ```
    %(TASKLESS_CLI)s update
@@ -161,14 +181,14 @@ first step, not the whole job.
    engine). `update` is how to find out, and the only way to record that
    the walk was done.
 
-5. **Treat your own session as stale.** A tool loads its skill list once,
+6. **Treat your own session as stale.** A tool loads its skill list once,
    at startup. If Taskless was installed or upgraded during this session,
    the skill text in your context is the previous version. Tell the user
    the skills changed and that a new session, or a skill reload, picks
    them up. Recipes are unaffected: every `agent <topic>` fetch reads the
    installed CLI.
 
-6. **Return to what sent you here.** Re-run the command that refused.
+7. **Return to what sent you here.** Re-run the command that refused.
 
 ## For a person at a terminal
 

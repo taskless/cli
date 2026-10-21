@@ -94,6 +94,13 @@ export interface TasklessManifest {
   version: number;
   install?: TasklessInstallManifest;
   rules?: TasklessRulesManifest;
+  /**
+   * `false` turns telemetry off for everyone working in the repository, since
+   * the file is checked in. Read by `telemetry.ts` directly, never written by
+   * the CLI; it is on the type so the key is documented with its siblings, and
+   * it survives every write through `raw` like any other user-set field.
+   */
+  telemetry?: boolean;
 }
 
 const MANIFEST_FILE = "taskless.json";

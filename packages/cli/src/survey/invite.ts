@@ -31,24 +31,26 @@ export interface InviteContext {
  *
  * Every condition is a reason NOT to ask, checked cheapest first:
  *
- * - Telemetry off. The invite has nowhere to send an answer, so serving it
- *   would ask the user for words the CLI then throws away. This is also what
- *   keeps the byte-parity test between `agent <topic>` and the prompts export
- *   honest: the suite runs with the opt-out set.
  * - CI. Telemetry is NOT off in CI (`cli_check_completed` from a runner is
  *   real signal), but a survey there has no one to answer it.
  * - An unsurveyed topic. The set is the authoring and onboarding recipes,
  *   which are where an agent-driven session most often goes wrong.
+ * - Telemetry off, by environment or by the project's manifest. The invite
+ *   has nowhere to send an answer, so serving it would ask the user for words
+ *   the CLI then throws away. This is also what keeps the byte-parity test
+ *   between `agent <topic>` and the prompts export honest: the suite runs with
+ *   the opt-out set. After the two above because the manifest is a file read.
  * - The cadence. `next_ask` is the earliest time the next invite may be
  *   served; absent or unparseable reads as "now", and the write that follows
  *   repairs a corrupt file.
  */
 export async function surveyGateIsOpen(
-  context: Pick<InviteContext, "topic" | "ci" | "now">
+  context: Pick<InviteContext, "topic" | "ci" | "now"> &
+    Partial<Pick<InviteContext, "cwd">>
 ): Promise<boolean> {
-  if (!isTelemetryEnabled()) return false;
   if (isCiEnvironment(context.ci)) return false;
   if (!SURVEYED_TOPICS.has(context.topic)) return false;
+  if (!(await isTelemetryEnabled(context.cwd))) return false;
   const nextAsk = await readNextAsk(RULE_SURVEY_ID);
   const now = (context.now ?? Date.now)();
   return nextAsk === undefined || nextAsk <= now;

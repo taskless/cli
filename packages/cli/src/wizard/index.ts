@@ -26,7 +26,11 @@ import { syncPermissions } from "../install/permissions";
 import { findStalePins, getPinnedCliNotice } from "../install/pinned-cli";
 import { getReloadNotice } from "../install/reload-notice";
 import { computeInstallDiff, readInstallState } from "../install/state";
-import { getTelemetry } from "../telemetry";
+import {
+  getTelemetry,
+  isTelemetryEnabled,
+  TELEMETRY_NOTICE,
+} from "../telemetry";
 import { CLIError } from "../util/cli-error";
 import { buildInvocation } from "../util/invocation";
 import { getCliPrefix } from "../util/package-manager";
@@ -148,6 +152,9 @@ export async function runWizard(
       log.warn(warning);
     }
 
+    if (await isTelemetryEnabled(options.cwd)) {
+      log.info(TELEMETRY_NOTICE);
+    }
     outro("Taskless is ready to go.");
     const pinnedNotice = getPinnedCliNotice(
       await findStalePins(options.cwd, cliVersion),

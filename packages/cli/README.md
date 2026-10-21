@@ -81,7 +81,7 @@ system you already use rather than replacing it.
 ### Telemetry
 
 The CLI reports anonymous usage (which command ran, whether it succeeded, how
-long it took, and counts of findings. It never sends rule content, prompts, or
+long it took, and counts of findings). It never sends rule content, prompts, or
 matched source. Disable it by setting either environment variable:
 
 ```bash
@@ -90,7 +90,12 @@ export TASKLESS_TELEMETRY_DISABLED=1
 export DO_NOT_TRACK=1
 ```
 
-With either set, no client is created and no network request is made.
+Or turn it off for the whole project by adding a top-level `"telemetry": false`
+to `.taskless/taskless.json`, beside the fields already there. The file is
+checked in, so this disables telemetry for everyone working in the repository,
+CI included.
+
+With any of these set, no client is created and no network request is made.
 
 </details>
 

@@ -14,11 +14,12 @@ import { getTelemetry } from "../src/telemetry";
 // is exercised without touching the environment the real client reads.
 const capture = vi.fn();
 let enabled = true;
+const isTelemetryEnabled = vi.hoisted(() => vi.fn<(cwd?: string) => boolean>());
 vi.mock("../src/telemetry", () => ({
   getTelemetry: vi.fn(() =>
     Promise.resolve({ capture, shutdown: () => Promise.resolve() })
   ),
-  isTelemetryEnabled: () => enabled,
+  isTelemetryEnabled,
   shutdownTelemetry: () => Promise.resolve(),
 }));
 
@@ -56,6 +57,8 @@ describe("the survey gate", () => {
     vi.stubEnv("CI", "");
     enabled = true;
     capture.mockClear();
+    isTelemetryEnabled.mockReset();
+    isTelemetryEnabled.mockImplementation(() => enabled);
     logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
   });
 
@@ -91,6 +94,11 @@ describe("the survey gate", () => {
       $survey_id: RULE_SURVEY_ID,
     });
     expect(await readNextAsk(RULE_SURVEY_ID)).toBe(NOW + SHOWN_INTERVAL_MS);
+  });
+
+  it("asks about the opt-out for the project being served, so its manifest is read", async () => {
+    await serve("create-sg-rule");
+    expect(isTelemetryEnabled).toHaveBeenCalledWith(cwd);
   });
 
   it("claims the cadence window before the telemetry client is initialised", async () => {

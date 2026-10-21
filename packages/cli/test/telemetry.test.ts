@@ -13,10 +13,14 @@ const mockIdentify = vi.fn();
 const mockGroupIdentify = vi.fn();
 const mockShutdown = vi.fn<() => Promise<void>>();
 mockShutdown.mockResolvedValue();
+const mockConstruct = vi.fn();
 
 vi.mock("posthog-node", () => {
   return {
     PostHog: class {
+      constructor(...args: unknown[]) {
+        mockConstruct(...args);
+      }
       capture = mockCapture;
       identify = mockIdentify;
       groupIdentify = mockGroupIdentify;
@@ -51,6 +55,7 @@ let getTelemetry: (cwd?: string) => Promise<{
   capture: (event: string, properties?: Record<string, unknown>) => void;
   shutdown: () => Promise<void>;
 }>;
+let isTelemetryEnabled: (cwd?: string) => Promise<boolean>;
 let configDirectory: string;
 
 beforeEach(async () => {
@@ -58,12 +63,14 @@ beforeEach(async () => {
   vi.resetModules();
   const telemetryModule = await import("../src/telemetry");
   getTelemetry = telemetryModule.getTelemetry;
+  isTelemetryEnabled = telemetryModule.isTelemetryEnabled;
 
   // Reset mocks
   mockCapture.mockClear();
   mockIdentify.mockClear();
   mockGroupIdentify.mockClear();
   mockShutdown.mockClear();
+  mockConstruct.mockClear();
 
   // Create a temp XDG config directory
   configDirectory = await mkdtemp(join(tmpdir(), "taskless-telemetry-test-"));
@@ -101,6 +108,77 @@ describe("telemetry disabled", () => {
     await telemetry.shutdown();
 
     expect(mockCapture).not.toHaveBeenCalled();
+  });
+});
+
+describe("telemetry disabled by the project manifest", () => {
+  let cwd: string;
+
+  beforeEach(async () => {
+    cwd = await mkdtemp(join(tmpdir(), "taskless-telemetry-manifest-"));
+    await mkdir(join(cwd, ".taskless"), { recursive: true });
+  });
+
+  afterEach(async () => {
+    await rm(cwd, { recursive: true, force: true });
+  });
+
+  async function writeManifest(manifest: Record<string, unknown>) {
+    await writeFile(
+      join(cwd, ".taskless", "taskless.json"),
+      JSON.stringify(manifest),
+      "utf8"
+    );
+  }
+
+  it('returns no-op stub, with no client and no network, for "telemetry": false', async () => {
+    await writeManifest({ version: 11, telemetry: false });
+    const telemetry = await getTelemetry(cwd);
+
+    telemetry.capture("cli_run");
+    await telemetry.shutdown();
+
+    // No client is constructed, so nothing can reach the network.
+    expect(mockConstruct).not.toHaveBeenCalled();
+    expect(mockCapture).not.toHaveBeenCalled();
+    expect(mockIdentify).not.toHaveBeenCalled();
+    expect(mockShutdown).not.toHaveBeenCalled();
+    expect(await isTelemetryEnabled(cwd)).toBe(false);
+  });
+
+  it("skips the work, not only the send: no anonymous ID is written", async () => {
+    await writeManifest({ version: 11, telemetry: false });
+    await getTelemetry(cwd);
+
+    await expect(
+      readFile(join(configDirectory, "taskless", "anonymous_id"), "utf8")
+    ).rejects.toThrow();
+  });
+
+  it.each([true, "false", 0, null])(
+    "stays on for telemetry: %j, since only false opts out",
+    async (value) => {
+      await writeManifest({ version: 11, telemetry: value });
+      const telemetry = await getTelemetry(cwd);
+      telemetry.capture("cli_run");
+
+      expect(mockConstruct).toHaveBeenCalledTimes(1);
+      expect(mockCapture).toHaveBeenCalledTimes(1);
+      expect(await isTelemetryEnabled(cwd)).toBe(true);
+    }
+  );
+
+  it("names every opt-out in the install notice", async () => {
+    const { TELEMETRY_NOTICE } = await import("../src/telemetry");
+    expect(TELEMETRY_NOTICE).toContain("TASKLESS_TELEMETRY_DISABLED=1");
+    expect(TELEMETRY_NOTICE).toContain("DO_NOT_TRACK=1");
+    expect(TELEMETRY_NOTICE).toContain('"telemetry": false');
+    expect(TELEMETRY_NOTICE).toContain(".taskless/taskless.json");
+  });
+
+  it("stays on when the manifest is unreadable", async () => {
+    await writeFile(join(cwd, ".taskless", "taskless.json"), "{", "utf8");
+    expect(await isTelemetryEnabled(cwd)).toBe(true);
   });
 });
 
