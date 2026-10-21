@@ -180,7 +180,7 @@ The recipe SHALL instruct the agent to:
 7. Record, and not author, every candidate the agent judges better solved by a runtime rule, for the report's `cloud` tier, noting how many instances of its pattern the agent saw in the code, which the report takes as that candidate's estimate.
 8. Once the rules are written, run `taskless onboard --mark-complete` without asking.
 9. Hand off to the `report` topic to publish the report, and, in parallel, send onboarding feedback by following the `rule-feedback` topic as the respondent.
-10. Close by showing the report summary, then, as the last thing the agent does, offer to wire `taskless check` into the repository's CI by following the `ci` topic, and strongly encourage it: Taskless checks in CI are what keep agents from reintroducing the patterns these rules catch. The offer SHALL name the CI systems `detect --json` found. On a yes the agent SHALL follow the `ci` topic; on a no it SHALL name the `hooks` topic in one line as the local alternative and stop.
+10. Close by showing the report summary, then, as the last thing the agent does, offer to wire `taskless check` into the repository's CI by following the `ci` topic, and strongly encourage it: Taskless checks in CI are what keep agents from reintroducing the patterns these rules catch. The offer SHALL name the CI systems `detect --json` found. On a yes the agent SHALL follow the `ci` topic; on a no it SHALL name the `hooks` topic in one line as the local alternative. Either way, the agent's final message SHALL end with the report link on its own line, as a plain URL or a Markdown link and not inside a code block, and the agent SHALL then stop. The link SHALL be the one the report summary showed, never the contents of the record in `.taskless/reports/`.
 
 The recipe SHALL operate logged out throughout. It SHALL NOT direct the agent to `auth login`, and SHALL NOT author a runtime rule.
 
@@ -271,7 +271,14 @@ The recipe SHALL NOT restate the destination criterion itself; it SHALL referenc
 #### Scenario: Declining CI points at hooks
 
 - **WHEN** the user declines the CI offer
-- **THEN** the recipe SHALL direct the agent to name the `hooks` topic in one line and stop
+- **THEN** the recipe SHALL direct the agent to name the `hooks` topic in one line, end with the report link, and stop
+
+#### Scenario: The final message ends with the report link
+
+- **WHEN** the recipe's closing step is read
+- **THEN** it SHALL direct the agent to end its final message with the report link on its own line, whether the user accepted or declined CI
+- **AND** SHALL direct that the link be a plain URL or a Markdown link, not inside a code block
+- **AND** SHALL direct the agent not to print the record in `.taskless/reports/`, which holds the delete URL
 
 #### Scenario: Recipe references its neighbors in See Also
 

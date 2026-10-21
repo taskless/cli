@@ -454,6 +454,20 @@ describe("onboard recipe asks one question and finishes on its own", () => {
     expect(ci).toMatch(/agent hooks`/);
   });
 
+  // #555: the report summary scrolls away under the CI pitch, so the last
+  // thing the user reads must be the link, not the offer.
+  it("ends the final message with the report link, not the delete record", () => {
+    const ci = step("Make the case for CI, last").replaceAll(/\s+/g, " ");
+    expect(ci).toContain(
+      "Either way, end your final message with the report link"
+    );
+    expect(ci).toContain("NOT inside a code block");
+    expect(ci).toContain("never the record in `.taskless/reports/`");
+    expect(ci.indexOf("Then stop.")).toBeGreaterThan(
+      ci.indexOf("end your final message")
+    );
+  });
+
   it("names its neighbors in See Also", () => {
     const seeAlso = stdout.slice(stdout.indexOf("## See Also"));
     for (const topic of ["route", "report", "rule-feedback", "ci", "hooks"]) {
