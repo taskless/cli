@@ -2,6 +2,7 @@ import { join } from "node:path";
 
 import { AST_GREP_VERSION, VALE_VERSION } from "./capabilities";
 import haskellTypeSynonym from "./rule-migrations/sg-0-50-0-haskell-type-synonym";
+import valeTestsToFixtures from "./rule-migrations/vale-3-24-0-tests-to-fixtures";
 import { compareVersions } from "../util/version-compare";
 
 /**
@@ -60,7 +61,10 @@ export interface AppliedRuleMigration {
   files: string[];
 }
 
-const RULE_MIGRATIONS: readonly RuleMigration[] = [haskellTypeSynonym];
+const RULE_MIGRATIONS: readonly RuleMigration[] = [
+  haskellTypeSynonym,
+  valeTestsToFixtures,
+];
 
 const BUNDLED: Record<RuleEngine, string> = {
   sg: AST_GREP_VERSION,

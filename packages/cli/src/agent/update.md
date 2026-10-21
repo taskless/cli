@@ -498,8 +498,7 @@ loaded it without complaint.
 ### Migrating to 0.13.3
 
 The vendored ast-grep moves from 0.45.3 to 0.51.0, and Vale from 3.23.0
-to 3.24.0. Nothing here needs work by hand except a Vale rule carrying
-a `tests:` key, described at the end.
+to 3.24.0. Nothing here needs work by hand.
 
 **A Haskell type synonym is `type_synonym` now, not `type_synomym`, and
 `update --rules` renames it for you.** ast-grep's Haskell grammar moved
@@ -553,17 +552,24 @@ Additions a rule config can use: a matcher may carry a condition,
 `[*.md if .Meta.draft]`, which applies it only to the matched files
 whose front matter satisfies it. `validate` accepts it.
 
-**A rule's `tests:` key is refused.** Vale 3.24.0 ships `vale test`,
-which runs cases written in a rule's `tests:` list. Taskless never runs
-it: `verify` judges a Vale rule by the documents under `.tests/pass`
-and `.tests/fail`. So `validate` and `verify` now reject the key, which
+**A Vale rule's `tests:` cases move into its fixtures, and
+`update --rules` moves them for you.** Vale 3.24.0 ships `vale test`, which runs
+cases written in a rule's `tests:` list. Taskless never runs it:
+`verify` judges a Vale rule by the documents under `.tests/pass` and
+`.tests/fail`. So `validate` and `verify` now reject the key, which
 0.12.0 had started accepting, rather than let a rule look tested by
-cases nothing runs. `check` still runs such a rule. Search
-`.taskless/rules/vale/*/*.yml` for a top-level `tests:`; for each case,
-write its `input` as a document under `.tests/fail` if the case expects
-the rule to fire, or `.tests/pass` if it expects no alert, named with
-the case's `format` as its extension (`.md` when it has none). Then
-delete the key and run `verify` on the rule.
+cases nothing runs. `check` still runs such a rule.
+
+Do not move them by hand. Step 5 writes each case's `input` as a
+document named for the case, under `.tests/fail` when the case expects
+an alert and `.tests/pass` when it expects none, with the case's
+`format` as its extension. It then deletes the `tests:` block, leaves
+everything else in the rule as it was, never overwrites a fixture, and
+names each file it wrote. No rule Taskless issued carries `tests:`, so
+it never touches a signed rule. A rule with a case that reads through a
+`view`, or names another rule file in `rule:`, is left as it is, and
+`validate` keeps naming it; move that rule's cases by hand the same
+way.
 
 ## Errors
 
