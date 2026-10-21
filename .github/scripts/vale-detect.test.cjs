@@ -148,9 +148,8 @@ test("detect: an upstream tag behind the pin is also a no-op", async () => {
 });
 
 test("detect: --json reports the comparison without fetching checksums", async () => {
-  // What update-badges.cjs consumes. It takes the RETURN value rather than the
-  // printed line, but both are asserted here: the printed line is the contract
-  // for anything calling the script from a shell.
+  // Both the RETURN value and the printed line are asserted here: the printed
+  // line is the contract for anything calling the script from a shell.
   const lines = [];
   const original = console.log;
   console.log = (line) => lines.push(line);
@@ -172,7 +171,7 @@ test("detect: --json reports the comparison without fetching checksums", async (
   });
   assert.equal(lines.length, 1);
   assert.deepEqual(JSON.parse(lines[0]), result.comparison);
-  // The badge needs the comparison, not the digests, so the ahead path stops
+  // --json needs the comparison, not the digests, so the ahead path stops
   // before the download the manifest proposal would need.
   assert.deepEqual(result.fetched, []);
   assert.equal(result.outputs.update, "true");

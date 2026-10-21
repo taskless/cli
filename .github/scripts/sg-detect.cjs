@@ -11,8 +11,7 @@
  * WHY THIS EXISTS AT ALL. Vale has had `vale-detect.cjs` since the platform
  * packages were built, so a Vale release is noticed by a machine. ast-grep had
  * nothing: the eight `@ast-grep/cli*` pins sat wherever someone last put them
- * and nobody compared them to upstream. The `sg` badge therefore reports a
- * number that had no watcher, which is the whole reason it is worth rendering.
+ * and nobody compared them to upstream.
  *
  * WHERE IT DIVERGES FROM vale-detect.cjs, and why the divergence is not
  * carelessness:
@@ -32,13 +31,13 @@
  *     ast-grep publishes something unexpected — an error message that lies
  *     about which dependency is in trouble. Fifteen lines of comparator is a
  *     better trade than a wrong error and a coupling that makes a Vale-specific
- *     edit able to break this badge.
+ *     edit able to break the ast-grep comparison.
  *
  * Usage:
  *   node .github/scripts/sg-detect.cjs [--json] [--write] [--notes-out <path>]
  *
  *   --json   print `{ pinned, upstream, ahead }` and nothing else, writing
- *            nothing. This is what update-badges.cjs calls.
+ *            nothing. For a caller that wants the comparison as data.
  *
  *   --write  rewrite every `@ast-grep/cli*` pin in packages/cli/package.json to
  *            the upstream version, and `AST_GREP_VERSION` in
@@ -148,8 +147,8 @@ function setOutput(key, value) {
  * Parse `major.minor.patch`, rejecting anything else — including a range
  * (`^0.41.0`) and a prerelease. Both are real states this can meet and neither
  * has a defensible answer: a range means the pin is not a pin, and a
- * prerelease on `latest` means upstream is doing something the badge should not
- * quietly average over.
+ * prerelease on `latest` means upstream is doing something the comparison should
+ * not quietly average over.
  */
 function parseVersion(text, what) {
   const match = VERSION_PATTERN.exec(String(text ?? "").trim());
@@ -177,11 +176,11 @@ function isAhead(pinned, upstream) {
  * The one version every `@ast-grep/cli*` dependency is pinned to.
  *
  * Disagreement among them is an error rather than a "pick the highest",
- * because there is no version the badge could honestly show for a repository
- * that pins two. That state is also a real bug — the platform packages are
+ * because there is no single version to compare for a repository that pins
+ * two. That state is also a real bug — the platform packages are
  * selected by optional dependency, so a straggler at an older version is a
- * different ast-grep on one platform than on the others — and a badge that
- * smoothed it over would hide exactly the drift it was added to expose.
+ * different ast-grep on one platform than on the others — and a comparison
+ * that smoothed it over would hide exactly the drift it exists to expose.
  */
 function collectPins(packageJson) {
   const pins = new Map();
@@ -268,7 +267,7 @@ async function main({
   const json = argv.includes("--json");
   const write = argv.includes("--write");
   const notesOut = readNotesOut(argv);
-  // --json is what the badge run calls, and a badge run proposes nothing.
+  // --json reports the comparison, and a comparison proposes nothing.
   if (json && (notesOut || write)) {
     throw new Error(
       "--json prints the comparison and nothing else; it cannot be combined with --notes-out or --write"
@@ -357,8 +356,8 @@ async function main({
   return comparison;
 }
 
-// main() both prints and RETURNS the comparison, so update-badges.cjs can call
-// it in-process and read the answer as data. Nothing should ever parse the
+// main() both prints and RETURNS the comparison, so a caller can run it
+// in-process and read the answer as data. Nothing should ever parse the
 // human line above to recover a version that this return value already holds.
 module.exports = { collectPinnedVersion, collectPins, isAhead, main };
 

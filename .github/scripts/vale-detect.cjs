@@ -29,12 +29,12 @@
  *            "what would this do?" run wants.
  *
  *   --json   print `{ pinned, upstream, ahead }` and nothing else, then stop
- *            before the checksums download. update-badges.cjs needs the
- *            comparison and nothing else, and the alternative — scraping the
+ *            before the checksums download. For a caller that needs the
+ *            comparison and nothing else, the alternative — scraping the
  *            "pinned: X   upstream latest: vY" line this script prints for a
  *            human — would rebuild, with a regex, a fact this script already
  *            holds as data. Implies read-only: --json never writes the
- *            manifest, because the badge run is not the run that proposes a
+ *            manifest, because a comparison is not a run that proposes a
  *            pin, and skipping the checksums fetch is not a shortcut but the
  *            point (nothing is being verified here).
  *
@@ -141,7 +141,7 @@ async function main({
 
   // The structured answer, which is all a --json caller wanted. Reported here
   // rather than after the checksums fetch below: that download exists to
-  // propose a manifest, and a badge run proposes nothing.
+  // propose a manifest, and a --json run proposes nothing.
   const comparison = {
     pinned: manifest.valeVersion,
     upstream: upstreamVersion,
