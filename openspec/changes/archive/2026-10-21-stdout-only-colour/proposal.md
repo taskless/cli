@@ -5,8 +5,8 @@ The CLI decides colour once, in `util/color.ts`, and turned it on when EITHER st
 ## What Changes
 
 - `detectColorLevel()` checks stdout alone. A redirected stdout prints plain even when stderr is still a terminal; a terminal stdout keeps colour when only stderr is redirected. `NO_COLOR` and `FORCE_COLOR` keep their precedence.
-- Every coloured surface writes to stdout (the wizard banner, notice boxes, `share`, the settings summary, the onboarding trailer), so each now follows the stream it actually writes to.
-- Trade-off: chalk holds one level for both streams, so coloured text sent to stderr (the global-trust warning `init --json` prints there) loses colour when stdout is redirected. That costs a highlight on a terminal, where the old rule corrupted a file.
+- Most coloured output writes to stdout (notice boxes, `share`, the settings summary, the onboarding trailer), so it now follows the stream it actually writes to.
+- Trade-off: chalk holds one level for both streams, so coloured text sent to stderr follows stdout instead. That covers the global-trust warning and the permission summary `init --json` prints to stderr, which lose colour when stdout is redirected: a highlight lost on a terminal, where the old rule corrupted a file. It also covers the wizard banner, which the `cli-init` spec sends to stderr. The wizard only starts when stdout is a terminal, so the banner keeps its colour whenever it prints, and `taskless 2> err.log` still writes its escapes into the log, as it did before this change.
 
 ## Capabilities
 
