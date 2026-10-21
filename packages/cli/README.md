@@ -27,9 +27,10 @@ npx @taskless/cli init
 `./.taskless/bin/cli.mjs`, that runs exactly that version. Any other version of
 the CLI refuses every command except `init`, `info`, `auth`, and `feedback`
 with `CLI_VERSION_MISMATCH`, because a project's rules are reconciled against
-the CLI it records. So npx is only for installing and upgrading: once a project
-is installed, run every command through the launcher, and upgrade by running
-`init` with the newer CLI.
+the CLI it records. So npx is only for installing, upgrading, and logging in
+(`auth login` works from any version): once a project is installed, run every
+other command through the launcher, and upgrade by running `init` with the
+newer CLI.
 
 New to Taskless? Run `./.taskless/bin/cli.mjs onboard` after installing. It
 walks your agent through your codebase and suggests a starter set of rules.
