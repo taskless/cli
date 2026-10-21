@@ -50,6 +50,23 @@ function boxedText(stdout: string): string {
     .join(" ");
 }
 
+/** Run git in `cwd` with an identity and no signing, as a test needs. */
+function git(cwd: string, ...args: string[]) {
+  return execFileAsync(
+    "git",
+    [
+      "-c",
+      "user.name=Taskless Test",
+      "-c",
+      "user.email=test@example.com",
+      "-c",
+      "commit.gpgsign=false",
+      ...args,
+    ],
+    { cwd }
+  );
+}
+
 describe("taskless init (the batch install)", () => {
   let cwd: string;
 
@@ -619,6 +636,91 @@ describe("taskless init (the batch install)", () => {
       ]);
 
       expect(stdout).not.toContain("RESTART YOUR AGENTS");
+    });
+  });
+
+  // #554: a worktree is built from commits, and `init` commits nothing, so an
+  // agent that opens one straight after `init` gets no Taskless at all.
+  describe("the commit-before-your-agent banner", () => {
+    it("says a commit is owed, above the onboarding trailer, without listing files", async () => {
+      await git(cwd, "init", "-q");
+      await mkdir(join(cwd, ".claude"), { recursive: true });
+
+      const { stdout } = await execFileAsync("node", [
+        binPath,
+        "init",
+        "-d",
+        cwd,
+      ]);
+
+      expect(stdout).toContain("COMMIT BEFORE YOU START YOUR AGENT");
+      const boxed = boxedText(stdout);
+      expect(boxed).toContain(
+        "agents that work in worktrees won't see uncommitted files."
+      );
+      expect(boxed).not.toContain(".claude/skills/taskless");
+      expect(stdout.indexOf("COMMIT BEFORE YOU START YOUR AGENT")).toBeLessThan(
+        stdout.indexOf("ask to onboard with Taskless")
+      );
+    });
+
+    it("prints again when init edits a file that was committed", async () => {
+      await git(cwd, "init", "-q");
+      await execFileAsync("node", [binPath, "init", "-d", cwd]);
+      await git(cwd, "add", "-A");
+      await git(cwd, "commit", "-q", "-m", "install");
+      await installAtVersion(cwd, "0.0.1-planted");
+      await git(cwd, "commit", "-q", "-am", "plant");
+
+      const { stdout } = await execFileAsync("node", [
+        binPath,
+        "init",
+        "-d",
+        cwd,
+      ]);
+
+      expect(stdout).toContain("COMMIT BEFORE YOU START YOUR AGENT");
+    });
+
+    it("stays quiet once everything init wrote is committed", async () => {
+      await git(cwd, "init", "-q");
+      await execFileAsync("node", [binPath, "init", "-d", cwd]);
+      await git(cwd, "add", "-A");
+      await git(cwd, "commit", "-q", "-m", "install");
+
+      const { stdout } = await execFileAsync("node", [
+        binPath,
+        "init",
+        "-d",
+        cwd,
+      ]);
+
+      expect(stdout).not.toContain("COMMIT BEFORE YOU START YOUR AGENT");
+    });
+
+    it("stays quiet outside a git repository", async () => {
+      const { stdout } = await execFileAsync("node", [
+        binPath,
+        "init",
+        "-d",
+        cwd,
+      ]);
+
+      expect(stdout).not.toContain("COMMIT BEFORE YOU START YOUR AGENT");
+    });
+
+    it("leaves the --json envelope as the only thing on stdout", async () => {
+      await git(cwd, "init", "-q");
+
+      const { stdout } = await execFileAsync("node", [
+        binPath,
+        "init",
+        "-d",
+        cwd,
+        "--json",
+      ]);
+
+      expect(() => JSON.parse(stdout) as unknown).not.toThrow();
     });
   });
 });

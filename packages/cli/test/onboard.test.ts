@@ -347,8 +347,27 @@ describe("onboard recipe asks one question and finishes on its own", () => {
       : stdout.slice(start, start + title.length + next);
   }
 
-  it("is topic v9", () => {
-    expect(stdout).toMatch(/^# Topic: onboard {5}\(CLI v.+ \/ topic v9\)/m);
+  it("is topic v10", () => {
+    expect(stdout).toMatch(/^# Topic: onboard {5}\(CLI v.+ \/ topic v10\)/m);
+  });
+
+  // v10 (#554): a worktree holds only commits, and `init` commits nothing, so
+  // an agent in a fresh worktree finds no Taskless. `onboard` bootstraps an
+  // empty `.taskless/` before serving this, so the test is "tracked", never
+  // "present".
+  it("first checks a worktree has Taskless committed, before anything else", () => {
+    const check = step("Check that this checkout has Taskless committed");
+    expect(
+      stdout.indexOf("Check that this checkout has Taskless")
+    ).toBeLessThan(stdout.indexOf("Read the manifest first"));
+    expect(check).toContain(
+      "git rev-parse --path-format=absolute --git-dir --git-common-dir"
+    );
+    expect(check).toContain("git ls-files .taskless/taskless.json");
+    const flat = check.replaceAll(/\s+/g, " ");
+    expect(flat).toContain("uncommitted in their main checkout");
+    expect(flat).toContain("start a new worktree");
+    expect(flat).toContain("`init` ran in this worktree; go on");
   });
 
   it("gives the method for counting surfaced while mining, not after", () => {
