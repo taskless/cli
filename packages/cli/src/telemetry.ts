@@ -81,9 +81,12 @@ export async function isTelemetryEnabled(cwd?: string): Promise<boolean> {
  * and naming the switches would read as though it were still on.
  */
 export const TELEMETRY_NOTICE =
-  "Taskless collects anonymous telemetry to help us learn how the CLI is being used. " +
-  "You can opt out with `TASKLESS_TELEMETRY_DISABLED=1` / `DO_NOT_TRACK=1`, " +
+  "Taskless collects anonymous telemetry to help us learn how the CLI is being used.\n" +
+  "You can opt out with `TASKLESS_TELEMETRY_DISABLED=1`\n" +
   'or by setting `"telemetry": false` in `.taskless/taskless.json`.';
+
+/** The heading the wizard shows {@link TELEMETRY_NOTICE} under. */
+export const TELEMETRY_NOTICE_TITLE = "Telemetry Information";
 
 const noopClient: TelemetryClient = {
   capture() {},

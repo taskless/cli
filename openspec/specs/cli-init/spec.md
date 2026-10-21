@@ -1166,7 +1166,7 @@ After `init` records versions under `install.launchers`, it SHALL remove every e
 
 Both install paths SHALL disclose telemetry once per run, and only when telemetry is enabled for the project.
 
-A completed wizard run, and a human-readable `init` run, SHALL print one notice that Taskless collects anonymous telemetry, naming the `TASKLESS_TELEMETRY_DISABLED=1` and `DO_NOT_TRACK=1` environment variables and the `"telemetry": false` setting in `.taskless/taskless.json`. In `init` the notice SHALL come before the onboarding trailer, which stays the final line. When telemetry is disabled for the project, by environment or by manifest, neither path SHALL print it.
+A completed wizard run, and a human-readable `init` run, SHALL print one notice that Taskless collects anonymous telemetry, naming the `TASKLESS_TELEMETRY_DISABLED=1` environment variable and the `"telemetry": false` setting in `.taskless/taskless.json`. In `init` the notice SHALL come before the onboarding trailer, which stays the final line. When telemetry is disabled for the project, by environment or by manifest, neither path SHALL print it.
 
 `init --json` SHALL NOT print the notice. Its envelope SHALL instead always carry `telemetry: { enabled: boolean }`, so the agent reading it can relay the notice.
 

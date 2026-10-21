@@ -180,8 +180,8 @@ describe("the feedback invite", () => {
       fragment.indexOf("They asked you not to send anything")
     );
     expect(refusal).toContain(`${invocation} feedback dismiss`);
-    expect(refusal).toContain("DO_NOT_TRACK=1");
     expect(refusal).toContain("TASKLESS_TELEMETRY_DISABLED=1");
+    expect(refusal).not.toContain("DO_NOT_TRACK");
   });
 });
 

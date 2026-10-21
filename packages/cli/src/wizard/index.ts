@@ -30,6 +30,7 @@ import {
   getTelemetry,
   isTelemetryEnabled,
   TELEMETRY_NOTICE,
+  TELEMETRY_NOTICE_TITLE,
 } from "../telemetry";
 import { CLIError } from "../util/cli-error";
 import { buildInvocation } from "../util/invocation";
@@ -124,20 +125,34 @@ export async function runWizard(
       return finish({ status: "cancelled" });
     }
 
+    // The migration's start opens a step; its summary, and the launcher
+    // lines below, continue under it rather than each opening one of their
+    // own, so one install reads as one block.
+    let migrationStarted = false;
     const migrated = await ensureTasklessDirectory(options.cwd, {
-      onNotice: (message) => log.info(message),
+      onNotice: (message) => {
+        if (migrationStarted) {
+          log.message(message, { spacing: 0 });
+        } else {
+          log.info(message);
+          migrationStarted = true;
+        }
+      },
     });
     const cliVersion = getCliVersion();
     const { launcher, lockfile } = await applyInstallPlan(options.cwd, plan, {
       cliVersion,
     });
+    const created: string[] = [];
     for (const write of [launcher, lockfile]) {
-      if (write !== null && write.state !== "unchanged") {
-        (write.state === "restored" ? log.warn : log.info)(
-          describeLauncherWrite(write)
-        );
+      if (write === null || write.state === "unchanged") continue;
+      if (write.state === "restored") {
+        log.warn(describeLauncherWrite(write));
+      } else {
+        created.push(describeLauncherWrite(write));
       }
     }
+    if (created.length > 0) log.message(created.join("\n"));
     await syncPermissions(options.cwd, { ...permissionOptions, write: true });
     // Confirmed with the project edits, in the summary's one question.
     if (globalTrustPreview.some((outcome) => needsWrite(outcome))) {
@@ -158,19 +173,31 @@ export async function runWizard(
     }
 
     if (await isTelemetryEnabled(options.cwd)) {
-      log.info(TELEMETRY_NOTICE);
+      log.info(`${TELEMETRY_NOTICE_TITLE}\n${TELEMETRY_NOTICE}`);
     }
 
     // Inside the frame, after every write: the commit has to carry the
     // settings edits above as well as the skills. Before the outro, because
     // the onboarding line that follows sends the person to their agent.
-    const uncommitted = await findUncommitted(
-      options.cwd,
-      await installedPaths(options.cwd, plan)
-    );
-    if (uncommitted.length > 0) await promptCommit(options.cwd, uncommitted);
+    const owned = await installedPaths(options.cwd, plan);
+    const uncommitted = await findUncommitted(options.cwd, owned);
+    // Asked again after the prompt rather than inferred from its answer: a
+    // cancel, a skip, and a commit git refused all leave the files on disk and
+    // out of history, and the outro is the one line that has to say so. A
+    // cancel here used to close on "ready to go", which read as though the
+    // commit had happened.
+    let leftUncommitted = false;
+    if (uncommitted.length > 0) {
+      await promptCommit(options.cwd, uncommitted);
+      const remaining = await findUncommitted(options.cwd, owned);
+      leftUncommitted = remaining.length > 0;
+    }
 
-    outro("Taskless is ready to go.");
+    outro(
+      leftUncommitted
+        ? "Taskless is installed, but its files are not committed yet."
+        : "Taskless is ready to go."
+    );
     const pinnedNotice = getPinnedCliNotice(
       await findStalePins(options.cwd, cliVersion),
       cliVersion,

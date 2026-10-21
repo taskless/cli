@@ -175,7 +175,7 @@ The CLI SHALL embed a `feedback-invite` recipe carrying the text appended to sur
 
 - **WHEN** the user replies to the invite asking that nothing be sent
 - **THEN** the invite SHALL direct the agent to `feedback dismiss`
-- **AND** SHALL direct it to name `DO_NOT_TRACK=1` or `TASKLESS_TELEMETRY_DISABLED=1` as the switch for the rest of telemetry
+- **AND** SHALL direct it to name `TASKLESS_TELEMETRY_DISABLED=1` as the switch for the rest of telemetry
 
 #### Scenario: A skip still sends
 

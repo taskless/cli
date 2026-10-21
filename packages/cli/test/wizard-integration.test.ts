@@ -21,6 +21,7 @@ vi.mock("../src/telemetry", () => ({
   isTelemetryEnabled: () => Promise.resolve(telemetryEnabled),
   // The wording is asserted in telemetry.test.ts; here only that it is shown.
   TELEMETRY_NOTICE: "<telemetry notice>",
+  TELEMETRY_NOTICE_TITLE: "<telemetry title>",
   shutdownTelemetry: () => Promise.resolve(),
 }));
 
@@ -29,6 +30,8 @@ const fakeCancelSymbol = Symbol("cancel");
 // Records what closed the clack frame, so a test can tell "the message was
 // shown inside the frame" from "it escaped past a frame nothing closed".
 const cancelSpy = vi.fn();
+// Records how the frame closed on a run that finished.
+const outroSpy = vi.fn();
 
 // Clack mock responses are set per-test via these mutable refs.
 const clackResponses: {
@@ -57,7 +60,9 @@ const infoMessages: string[] = [];
 
 vi.mock("@clack/prompts", () => ({
   intro: () => {},
-  outro: () => {},
+  outro: (message?: string) => {
+    outroSpy(message);
+  },
   cancel: (message?: string) => {
     cancelSpy(message);
   },
@@ -116,6 +121,7 @@ beforeEach(async () => {
   await mkdir(join(cwd, ".claude"), { recursive: true });
   captureSpy.mockClear();
   cancelSpy.mockClear();
+  outroSpy.mockClear();
   clackResponses.locations = undefined;
   clackResponses.summary = undefined;
   clackResponses.commit = undefined;
@@ -190,9 +196,9 @@ describe("runWizard end-to-end", () => {
     const { runWizard } = await import("../src/wizard");
     await runWizard({ cwd, globalTrustEnvironment });
 
-    expect(infoMessages.filter((m) => m === "<telemetry notice>")).toHaveLength(
-      1
-    );
+    expect(
+      infoMessages.filter((m) => m === "<telemetry title>\n<telemetry notice>")
+    ).toHaveLength(1);
   });
 
   it("says nothing about telemetry when it is already off", async () => {
@@ -203,7 +209,7 @@ describe("runWizard end-to-end", () => {
     const { runWizard } = await import("../src/wizard");
     await runWizard({ cwd, globalTrustEnvironment });
 
-    expect(infoMessages).not.toContain("<telemetry notice>");
+    expect(infoMessages.join("\n")).not.toContain("<telemetry notice>");
   });
 
   it("re-running with the same location is idempotent", async () => {
@@ -704,6 +710,7 @@ describe("the wizard's offer to commit the install", () => {
     expect(git(cwd, "log", "-1", "--format=%s").trim()).toBe(
       "chore: Installs Taskless and sets up coding agent support"
     );
+    expect(outroSpy).toHaveBeenCalledWith("Taskless is ready to go.");
     const committed = git(cwd, "show", "--name-only", "--format=", "HEAD");
     expect(committed).toContain(".taskless/taskless.json");
     expect(committed).toContain(".claude/skills/taskless/SKILL.md");
@@ -772,6 +779,10 @@ describe("the wizard's offer to commit the install", () => {
     expect(result.status).toBe("completed");
     expect(cancelSpy).not.toHaveBeenCalled();
     expect(git(cwd, "status", "--porcelain")).toContain("?? .taskless/");
+    // Closes on what is true of the tree, not on "ready to go".
+    expect(outroSpy).toHaveBeenCalledWith(
+      "Taskless is installed, but its files are not committed yet."
+    );
   });
 
   it("does not ask once everything is committed", async () => {

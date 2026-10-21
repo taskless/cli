@@ -168,10 +168,11 @@ describe("telemetry disabled by the project manifest", () => {
     }
   );
 
-  it("names every opt-out in the install notice", async () => {
+  it("names Taskless's own opt-outs in the install notice", async () => {
     const { TELEMETRY_NOTICE } = await import("../src/telemetry");
     expect(TELEMETRY_NOTICE).toContain("TASKLESS_TELEMETRY_DISABLED=1");
-    expect(TELEMETRY_NOTICE).toContain("DO_NOT_TRACK=1");
+    // Honored, but a cross-tool setting, so not Taskless's to advertise.
+    expect(TELEMETRY_NOTICE).not.toContain("DO_NOT_TRACK");
     expect(TELEMETRY_NOTICE).toContain('"telemetry": false');
     expect(TELEMETRY_NOTICE).toContain(".taskless/taskless.json");
   });
