@@ -1,6 +1,7 @@
 import process from "node:process";
 
 import { deviceFlowProvider } from "./device-flow";
+import { clearPendingLogin } from "./pending-login";
 import { getToken, isEnvironmentToken, saveToken } from "./token";
 import { whoami } from "../api/v2";
 import { resolveRepositoryUrl } from "../util/git-remote";
@@ -23,6 +24,28 @@ export interface LoginInteractiveOptions {
 }
 
 /**
+ * Where the token that makes a new login unnecessary comes from, or
+ * `undefined` when there is none to keep.
+ */
+export async function existingLoginSource(
+  cwd: string
+): Promise<"environment" | "saved" | undefined> {
+  // Silent: this is only an "already logged in?" probe. Stderr warnings from
+  // legacy/tracked-token checks belong to the commands that use the token,
+  // not to the login flow that is about to replace it.
+  const existing = await getToken(cwd, { silent: true });
+  if (!existing) return undefined;
+  // A token from TASKLESS_TOKEN outranks anything this flow could save, so
+  // logging in would change nothing the next command reads.
+  if (isEnvironmentToken()) return "environment";
+  // A saved token the service rejects is the reason the user is here: every
+  // 401 message sends them to `auth login`. Only a definite rejection is
+  // replaced; an unreachable service says nothing about the token.
+  const verified = await whoami(existing);
+  return verified.status === "unauthorized" ? undefined : "saved";
+}
+
+/**
  * Run the device-code login flow interactively. Writes the user prompt,
  * polls the Taskless auth endpoint, persists the token on success, and
  * returns a tagged result the caller can surface however it wants.
@@ -38,24 +61,8 @@ export async function loginInteractive(
   const out = options.out ?? ((line) => console.log(line));
   const error_ = options.err ?? ((line) => console.error(line));
 
-  // Silent: this is only an "already logged in?" probe. Stderr warnings from
-  // legacy/tracked-token checks belong to the commands that use the token,
-  // not to the login flow that is about to replace it.
-  const existing = await getToken(cwd, { silent: true });
-  if (existing) {
-    // A token from TASKLESS_TOKEN outranks anything this flow could save, so
-    // logging in would change nothing the next command reads.
-    if (isEnvironmentToken()) {
-      return { status: "already_logged_in", source: "environment" };
-    }
-    // A saved token the service rejects is the reason the user is here: every
-    // 401 message sends them to `auth login`. Only a definite rejection is
-    // replaced; an unreachable service says nothing about the token.
-    const verified = await whoami(existing);
-    if (verified.status !== "unauthorized") {
-      return { status: "already_logged_in", source: "saved" };
-    }
-  }
+  const source = await existingLoginSource(cwd);
+  if (source !== undefined) return { status: "already_logged_in", source };
 
   try {
     let repositoryUrl: string | undefined;
@@ -93,6 +100,8 @@ export async function loginInteractive(
       switch (result.status) {
         case "success": {
           await saveToken(result.token, cwd);
+          // A login started under `--json` and finished here is finished.
+          await clearPendingLogin(cwd);
           out("Logged in successfully.");
           return { status: "ok" };
         }

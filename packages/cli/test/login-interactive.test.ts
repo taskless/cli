@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { whoami } from "../src/api/v2";
 import { loginInteractive } from "../src/auth/login-interactive";
+import { readPendingLogin, savePendingLogin } from "../src/auth/pending-login";
 import { rejectedTokenRemedy } from "../src/auth/token";
 
 const { mockedRequestDeviceCode, mockedPollForToken } = vi.hoisted(() => ({
@@ -138,6 +139,31 @@ describe("loginInteractive", () => {
     expect(result).toEqual({ status: "ok" });
     expect(await readSavedToken()).toBe("fresh-token");
     expect(sinks.logs).toContain("Logged in successfully.");
+  });
+  it("finishes a login started under --json, so it cannot complete twice", async () => {
+    await savePendingLogin(cwd, {
+      deviceCode: "stale-device",
+      userCode: "OLDC-0DE0",
+      verificationUrl: "https://example.test/device",
+      interval: 5,
+      expiresAt: Date.now() + 600_000,
+    });
+    mockedRequestDeviceCode.mockResolvedValue({
+      device_code: "device",
+      user_code: "ABCD-EFGH",
+      verification_uri: "https://example.test/device",
+      expires_in: 600,
+      interval: 0,
+    });
+    mockedPollForToken.mockResolvedValue({
+      status: "success",
+      token: { access_token: "fresh-token", token_type: "Bearer" },
+    });
+
+    expect(await loginInteractive({ cwd, ...quiet() })).toEqual({
+      status: "ok",
+    });
+    expect(await readPendingLogin(cwd)).toBeUndefined();
   });
 });
 
