@@ -1,4 +1,4 @@
-# Topic: init     (CLI v%(CLI_VERSION)s / topic v14)
+# Topic: init     (CLI v%(CLI_VERSION)s / topic v15)
 
 %(ONE_COMMAND_PER_CALL)s
 
@@ -46,7 +46,8 @@ first step, not the whole job.
      "pinnedCli": [
        { "manifest": "packages/app/package.json",
          "location": "devDependencies", "name": "@taskless/cli",
-         "spec": "^0.10.0", "installed": "0.10.2" }
+         "spec": "^0.10.0", "installed": "0.10.2",
+         "reason": "dependency" }
      ],
      "permissions": [
        { "file": ".claude/settings.json", "created": false,
@@ -60,6 +61,7 @@ first step, not the whole job.
      ],
      "launcher": { "path": ".taskless/bin/cli.mjs", "state": "unchanged" },
      "lockfile": { "path": ".taskless/bin/cli.lock.json", "state": "unchanged" },
+     "retired": [],
      "telemetry": { "enabled": true }
    }
    ```
@@ -69,22 +71,26 @@ first step, not the whole job.
      removed there, by name. `mode: "canonical"` is the `.taskless/`
      store; `reference` is a tool directory holding stubs.
    - `changed` is `true` when a migration ran, any target list is
-     non-empty, the launcher or its lockfile was created or restored, or `cliVersion` or a
+     non-empty, the launcher or its lockfile was created or restored, a
+     nightly launcher was retired, or `cliVersion` or a
      launcher's recorded version moved (both rewrite
      `.taskless/taskless.json`). When it is `false` AND `pinnedCli` is
      empty, stop here: nothing to commit, nothing to reconcile, nothing
      to bump.
    - `migrated` is present only when a migration ran, with the paths it
      added, rewrote, or deleted.
-   - `pinnedCli` is always present. Each entry is a pin that runs a
-     Taskless CLI older than `installed`: a dependency whose installed
-     build (`installed`, `null` when nothing is installed) or range is
-     behind, or a script, CI file, or git hook spelling out an older
-     version. `manifest` is the file it lives in: the root's or a
-     workspace package's `package.json`, with `location` the field in it,
-     or a CI or hook file such as `.github/workflows/ci.yml`, with
-     `location` the line. It is reported even when `changed` is `false`,
-     because the pin and the project still disagree.
+   - `pinnedCli` is always present. Each entry names the Taskless CLI
+     somewhere the project runs it. `manifest` is the file it lives in:
+     the root's or a workspace package's `package.json`, with `location`
+     the field in it, or a CI or hook file such as
+     `.github/workflows/ci.yml`, with `location` the line. `reason` says
+     what to do with it: `dependency` is any `package.json` dependency on
+     the CLI, whatever its version (`installed` is the build it runs,
+     `null` when nothing is installed); `stale` is a script, CI, or hook
+     line naming an older version; `nightly` is a nightly left in one of
+     those after a release install; `unreleased` is a release pin after a
+     nightly migrated `.taskless/`. It is reported even when `changed` is
+     `false`, because the entry and the project still disagree.
    - `permissions` is always present. Each entry is a harness settings
      file this run created, edited, or left alone: the rule allowing
      exactly this CLI version (`allowed`), every other Taskless rule it
@@ -116,8 +122,8 @@ first step, not the whole job.
    lines (or `SKIPPED:` with the reason), a `SKIPPED (global):` line for
    each missing or stale global trust entry, then a trailer naming the directories that
    changed and, after a
-   version move, pointing at `update`, then a notice naming each stale
-   pin and the version to move it to, and, when telemetry is on, a
+   version move, pointing at `update`, then a notice naming each
+   `pinnedCli` entry and what to do with it, and, when telemetry is on, a
    notice naming its opt-outs.
 
    - `launcher` is this CLI's project launcher, `.taskless/bin/cli.mjs`
@@ -133,6 +139,14 @@ first step, not the whole job.
      launcher's first run of a version installs it into
      `.taskless/.cache/`, which ignores itself in git; `init` downloads
      nothing.
+   - `retired` is always present, empty when nothing was removed. A
+     nightly installs beside the release and never touches the release's
+     launcher, lockfile, recorded version, or permission rules. A release
+     install is the move back to mainline: it removes
+     `.taskless/bin/cli-nightly.mjs` and `cli-nightly.lock.json`, listed
+     here, along with the nightly's recorded version (its cached build is
+     pruned) and its rules in `permissions[].removed`. The deletions are
+     changes to commit.
 
 2. **Tell the user what needs committing.** Every `targets[].dir` with
    a non-empty list, plus `.taskless/`, any `migrated.files` entries, and
@@ -142,19 +156,28 @@ first step, not the whole job.
    so the user can include them in the commit they choose. Do not stage
    or commit on your own; the git operations are theirs.
 
-3. **Offer to bump every stale pin.** For each `pinnedCli` entry, offer
-   the user the update to the installed CLI. A pin in a `package.json`
-   dependency field also needs dependencies reinstalled; a script, CI, or
-   hook pin is a launcher line, and editing it is the whole fix. When the
-   installed CLI is a nightly and the pin names
-   `@taskless/cli`, or the reverse, the move switches package, since a
-   nightly version only exists on the nightly package. When `migrated`
-   is present with `from` above `0`, say plainly that CI breaks without
-   it: a CLI that predates the new schema refuses the project with
-   `SCAFFOLD_VERSION_MISMATCH`, so the bump belongs in the same commit as
-   the migrated files. Do not edit a `package.json`, CI file, or hook on
-   your own; a pin can be deliberate, and a dependency bump changes the
-   lockfile.
+3. **Offer the `pinnedCli` changes.** Go by each entry's `reason`:
+   - `dependency`: Taskless runs through the project launcher, not as a
+     project dependency. Offer to remove the dependency, point anything
+     that calls its `taskless` binary at `node .taskless/bin/cli.mjs`,
+     and reinstall dependencies.
+   - `stale`: offer to move the line to the installed version, or to the
+     launcher. Editing the line is the whole fix.
+   - `nightly`: offer to move the line back to `@taskless/cli`. A release
+     install is the move back to mainline, so this is raised even when
+     the nightly is newer by version.
+   - `unreleased`: change nothing. A nightly installs beside the release,
+     so never move a `@taskless/cli` pin onto the nightly. But the
+     nightly migrated `.taskless/`, and a release that predates the new
+     schema refuses the project with `SCAFFOLD_VERSION_MISMATCH`. Tell
+     the user before they commit `.taskless/`, so they can hold the
+     migration until a release that reads it ships.
+
+   When `migrated` is present with `from` above `0`, say plainly that CI
+   on an older CLI breaks: a `dependency` or `stale` change belongs in the
+   same commit as the migrated files. Do not edit a `package.json`, CI
+   file, or hook on your own; a pin can be deliberate, and removing a
+   dependency changes the lockfile.
 
 4. **Tell the user about telemetry.** When `telemetry.enabled` is
    `true`, tell the user that Taskless collects anonymous telemetry

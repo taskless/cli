@@ -35,7 +35,8 @@ const hostToolSchema = z.object({
 });
 
 /**
- * A `package.json` pin that would run a CLI older than this one. The same
+ * A pin of the Taskless CLI an install raises, with the reason it is raised
+ * (see `PinReason` in `install/pinned-cli.ts`). The same
  * shape `init --json` carries as `pinnedCli`, so an agent reading either one
  * reads the same thing.
  */
@@ -57,6 +58,11 @@ const pinnedCliSchema = z.object({
     .nullable()
     .describe(
       "The installed version the pin runs, or null when nothing is installed or the pin is in a script, CI file, or hook"
+    ),
+  reason: z
+    .enum(["dependency", "stale", "nightly", "unreleased"])
+    .describe(
+      "Why it is raised, and so what to do: `dependency` a package.json dependency on the CLI, to remove in favour of the project launcher; `stale` a version older than this one, to move to it; `nightly` a nightly left over after a release install, to move to the release; `unreleased` a release pin a nightly migration left behind, to leave as is while telling the user (install only)"
     ),
 });
 
@@ -126,7 +132,7 @@ export const outputSchema = z.object({
   pinnedCli: z
     .array(pinnedCliSchema)
     .describe(
-      "Pins of the Taskless CLI, release or nightly, in package.json and its workspace packages, that would run a CLI older than this one. Empty when nothing is stale"
+      "Pins of the Taskless CLI in package.json, its workspace packages, and CI and hook files that need a look: every dependency on the CLI, and spelled-out versions that are wrong for this project. Empty when there are none"
     ),
 });
 

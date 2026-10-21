@@ -19,6 +19,7 @@ import {
   type TasklessPermissionRecord,
 } from "../filesystem/manifest";
 import { isRecord } from "../util/is-record";
+import { LAUNCHER_PACKAGES, retiredLauncherPackage } from "./launcher";
 
 /**
  * Harness permission rules that allow exactly the installed Taskless CLI.
@@ -36,8 +37,9 @@ import { isRecord } from "../util/is-record";
  *   invocation's. Every other allow rule for the same package is removed,
  *   however it got there, since a pinned rule for a version that is no longer
  *   installed allows nothing anyone wants. The other package's rules are left
- *   to the other package, so a nightly and the release installed side by side
- *   do not undo each other. Deny rules, and rules for anything else, are
+ *   to the other package, so a nightly installed beside the release does not
+ *   undo it. The one exception runs the other way: a release install is the
+ *   move back to mainline, so it removes the nightly's rules too. Deny rules, and rules for anything else, are
  *   never touched. The manifest record decides only whether a file Taskless
  *   created may be deleted once it is empty.
  * - A file that denies the invocation, or does not parse, is left alone.
@@ -852,7 +854,8 @@ export interface SyncPermissionsOptions {
  *
  * Rules for the other package are neither removed nor dropped from the
  * record: they belong to the other build, which keeps them current on its own
- * runs. An invocation that names neither package (a `self` build's path)
+ * runs. A release install is the exception: it retires the nightly (see
+ * `retiredLauncherPackage`), so it removes the nightly's rules as well. An invocation that names neither package (a `self` build's path)
  * removes no package rules at all.
  *
  * With `write: false` it reads the same files and reports the same edits
@@ -866,9 +869,14 @@ export async function syncPermissions(
   const own = tasklessPackage(options.invocation);
   const packageOf = (rule: string) => tasklessPackage(commandOfRule(rule));
   const isOwn = (rule: string) => own !== undefined && packageOf(rule) === own;
+  const retired = retiredLauncherPackage(
+    LAUNCHER_PACKAGES.find((name) => name === own)
+  );
+  const isRetired = (rule: string) =>
+    retired !== undefined && packageOf(rule) === retired;
   const isOther = (rule: string) => {
     const name = packageOf(rule);
-    return name !== undefined && name !== own;
+    return name !== undefined && name !== own && name !== retired;
   };
   const desired = new Map<string, { harness: Harness; rules: string[] }>();
   for (const harness of harnessesFor(options.selected, options.codex)) {
@@ -900,7 +908,9 @@ export async function syncPermissions(
     const had = recorded?.rules ?? [];
     const remove = harness
       .found(text)
-      .filter((rule) => isOwn(rule) && !want.includes(rule));
+      .filter(
+        (rule) => (isOwn(rule) && !want.includes(rule)) || isRetired(rule)
+      );
     const add = want.filter((rule) => !had.includes(rule));
     if (add.length === 0 && remove.length === 0) {
       if (recorded !== undefined) next[file] = recorded;

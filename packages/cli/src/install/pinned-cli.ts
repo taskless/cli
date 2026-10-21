@@ -9,35 +9,33 @@ import { compareSemver, compareVersions } from "../util/version-compare";
 import { renderNoticeBox } from "./notice-box";
 
 /**
- * Pins in `package.json` that would run a Taskless CLI older than the one that
- * just upgraded this project.
+ * Entries in `package.json`, and in the project's CI and hook files, that name
+ * the Taskless CLI and that this install should raise, each with the reason it
+ * is raised (see {@link PinReason}).
  *
- * An upgrade is usually run through a launcher (`npx @taskless/cli@latest
- * init`), which leaves the project's own pins alone: a `devDependencies` entry,
- * or a script that spells out `@taskless/cli@0.10.2`. Those are what CI, a git
- * hook, and `pnpm lint` actually run, so after the upgrade they run a CLI that
- * predates the `.taskless/` layout it now finds. An older CLI refuses a layout
- * newer than it understands, or, where the layout did not move, runs rules
- * against engines the ledger has since moved past. Nothing about the upgrade
- * itself fails, so the first sign is a red CI run on the next push.
+ * The Taskless CLI is meant to run through the project launcher
+ * (`.taskless/bin/cli.mjs`), which runs the version `.taskless/taskless.json`
+ * records, not as a project dependency. A dependency is what CI, a git hook,
+ * and `pnpm lint` then run, and it stays on whatever the lockfile resolved
+ * while every upgrade moves `.taskless/` forward. An older CLI refuses a
+ * layout newer than it understands, or, where the layout did not move, runs
+ * rules against engines the ledger has since moved past. Nothing about the
+ * upgrade itself fails, so the first sign is a red CI run on the next push.
+ * So every dependency entry is raised, whatever its version.
  *
- * A dependency is judged twice, because the range and what runs can
- * disagree. `pnpm add -D @taskless/cli` writes `^0.11.0` and locks 0.11.0;
- * the range admits 0.11.2, but CI installs from the lockfile and runs 0.11.0.
- * So the version installed under `node_modules/` is read first, and is stale
- * when it is older than the running CLI. The range is the fallback for a
- * checkout with nothing installed, and is stale only when it cannot reach the
- * running version at all.
+ * A script, CI, or hook line that spells out a version (`npx
+ * @taskless/cli@0.10.2 check`) names one build, so it is raised only when that
+ * version is wrong for this project:
+ * older than the running CLI, or a nightly left over after a release install.
  *
- * In a monorepo the pin usually lives in a workspace package rather than at
+ * In a monorepo the entry usually lives in a workspace package rather than at
  * the root, and that package's CI job is the one that breaks, so the
  * workspace packages the root declares are read too. See
  * `listWorkspaceManifests()` for what counts as declared.
  *
- * Otherwise detection is deliberately narrow. A spec this module cannot bound
- * (`latest`, `*`, `>=`, a `workspace:` or URL spec) is not reported, because
- * "this might be old" is a guess, and a notice that guesses is one an agent
- * learns to skip.
+ * Otherwise script detection is deliberately narrow. A spec this module cannot
+ * bound (`latest`, `*`, `>=`) is not reported, because "this might be old" is
+ * a guess, and a notice that guesses is one an agent learns to skip.
  */
 
 /**
@@ -49,6 +47,32 @@ import { renderNoticeBox } from "./notice-box";
  */
 // ast-grep-ignore: no-unrouted-cli-invocation
 const PACKAGE_NAMES = ["@taskless/cli", "@taskless/cli-nightly"] as const;
+
+/**
+ * Whether `version` is a nightly. A nightly is always `<base>-<stamp>x<sha>`
+ * and a release never has a prerelease, so the version alone says which.
+ */
+function isNightly(version: string): boolean {
+  return version.includes("-");
+}
+
+/**
+ * Whether a script pin of `name` belongs in the report at all, before its
+ * version is looked at: `true` to report it whatever its version, `false` to
+ * leave it out whatever its version, `undefined` to judge it by staleness.
+ *
+ * The two channels are deliberately not symmetric. A nightly is installed
+ * ALONGSIDE the release, to try a build before it ships, so a nightly run
+ * never offers to move a release pin onto the nightly: CI, scripts, and git
+ * hooks keep running the release they chose. A release install is the move
+ * back to mainline, so it offers to clean up every nightly pin, including one
+ * newer than the release by version, which staleness alone would never name.
+ */
+function channelVerdict(name: string, cliVersion: string): boolean | undefined {
+  const [release, nightly] = PACKAGE_NAMES;
+  if (isNightly(cliVersion)) return name === release ? false : undefined;
+  return name === nightly ? true : undefined;
+}
 
 /** The `package.json` fields a dependency pin may live in. */
 const DEPENDENCY_FIELDS = [
@@ -75,7 +99,23 @@ const SCRIPT_PIN =
 const BOUNDED_SPEC =
   /^([\^~=])?\s*v?(\d+)\.(\d+)\.(\d+)(-[\w.-]+)?(\+[\w.-]+)?$/;
 
-/** One pin that would run a CLI older than the one that just ran. */
+/**
+ * Why an entry is raised, which is also what to do about it:
+ *
+ * - `dependency`: the CLI is a project dependency. Remove it, and point what
+ *   called its binary at the launcher.
+ * - `stale`: a script names an older build. Move it to the running version.
+ * - `nightly`: a script still names the nightly after a release install. Move
+ *   it back to the release.
+ * - `unreleased`: a nightly migrated an existing `.taskless/`, and a script
+ *   names a release. A nightly installs alongside the release, so the pin is
+ *   left as it is, but a release that predates the new schema refuses the
+ *   project. Nothing to change in `package.json`; the person decides whether
+ *   to commit the migration before a release that reads it ships.
+ */
+export type PinReason = "dependency" | "stale" | "nightly" | "unreleased";
+
+/** One `package.json` entry naming the Taskless CLI that an install raises. */
 export interface PinnedCli {
   /**
    * The file holding the pin, relative to the directory searched and
@@ -95,10 +135,28 @@ export interface PinnedCli {
   spec: string;
   /**
    * The version installed under `node_modules/`, for a dependency pin whose
-   * package is installed; `null` otherwise. When present it is what was
-   * judged, since it is what runs.
+   * package is installed; `null` otherwise. It is what runs.
    */
   installed: string | null;
+  /** Why the entry is raised, and so what to do about it. */
+  reason: PinReason;
+}
+
+/** The migration an install ran, as `getPinnedCliNotice` reads it. */
+export interface PinMigration {
+  from: number;
+  to: number;
+}
+
+/**
+ * The migration that moved an EXISTING scaffold, or `undefined`. A migration
+ * from schema 0 is how a fresh `init` creates `.taskless/`, so there was no
+ * layout any pin used to read, and calling it an upgrade would be false.
+ */
+function upgradeOf(
+  migrated: PinMigration | undefined
+): PinMigration | undefined {
+  return migrated !== undefined && migrated.from > 0 ? migrated : undefined;
 }
 
 /**
@@ -269,12 +327,42 @@ async function readInstalledVersion(
   }
 }
 
-/** Every stale pin in one parsed manifest: dependency fields, then scripts. */
+/**
+ * Why a version spelled out in a command (a `package.json` script, a CI or hook
+ * line) is raised, or `undefined` when it is not. Judged by channel first; see
+ * {@link channelVerdict}.
+ */
+function scriptPinReason(
+  name: string,
+  spec: string,
+  cliVersion: string,
+  upgraded: PinMigration | undefined
+): PinReason | undefined {
+  const [release] = PACKAGE_NAMES;
+  switch (channelVerdict(name, cliVersion)) {
+    case true: {
+      return "nightly";
+    }
+    case false: {
+      // Left alone, and raised only when the nightly moved the layout out
+      // from under it.
+      return upgraded !== undefined && name === release
+        ? "unreleased"
+        : undefined;
+    }
+    case undefined: {
+      return isStale(spec, cliVersion) ? "stale" : undefined;
+    }
+  }
+}
+
+/** Every raised entry in one parsed manifest: dependency fields, then scripts. */
 async function findPinsIn(
   cwd: string,
   manifest: string,
   parsed: unknown,
-  cliVersion: string
+  cliVersion: string,
+  upgraded: PinMigration | undefined
 ): Promise<PinnedCli[]> {
   if (!isRecord(parsed)) return [];
   const directory = join(cwd, dirname(manifest));
@@ -287,21 +375,14 @@ async function findPinsIn(
       const spec = dependencies[name];
       if (typeof spec !== "string") continue;
       const installed = await readInstalledVersion(cwd, directory, name);
-      // Either one is a real failure: an installed build older than this one
-      // is what runs today, and a range that cannot reach this version is
-      // what a fresh install will resolve.
-      const stale =
-        (installed !== undefined && compareSemver(installed, cliVersion) < 0) ||
-        isStale(spec, cliVersion);
-      if (stale) {
-        pins.push({
-          manifest,
-          location: field,
-          name,
-          spec,
-          installed: installed ?? null,
-        });
-      }
+      pins.push({
+        manifest,
+        location: field,
+        name,
+        spec,
+        installed: installed ?? null,
+        reason: "dependency",
+      });
     }
   }
 
@@ -317,13 +398,15 @@ async function findPinsIn(
         // is one pin to change, not two.
         if (spec === undefined || seen.has(`${name}@${spec}`)) continue;
         seen.add(`${name}@${spec}`);
-        if (isStale(spec, cliVersion)) {
+        const reason = scriptPinReason(name, spec, cliVersion, upgraded);
+        if (reason !== undefined) {
           pins.push({
             manifest,
             location: `scripts.${script}`,
             name,
             spec,
             installed: null,
+            reason,
           });
         }
       }
@@ -334,19 +417,18 @@ async function findPinsIn(
 }
 
 /**
- * Every stale pin spelled out in one CI or hook file, by line.
+ * Every raised pin spelled out in one CI or hook file, by line.
  *
  * Read as text with the same grammar as a `package.json` script, because that
- * is what these files are: commands, wrapped in YAML or a shell script. Once
- * every build pins its own version, the invocation the `ci` and `hooks`
- * recipes write names that version, and an upgrade leaves it behind. Only a
- * bounded spec is judged, as for scripts, and a pin repeated in one file is
- * reported once, at its first line.
+ * is what these files are: commands, wrapped in YAML or a shell script. A pin
+ * is judged as a script pin is, and a pin repeated in one file is reported
+ * once, at its first line.
  */
 async function findPinsInAutomationFile(
   cwd: string,
   file: string,
-  cliVersion: string
+  cliVersion: string,
+  upgraded: PinMigration | undefined
 ): Promise<PinnedCli[]> {
   let text: string;
   try {
@@ -362,13 +444,15 @@ async function findPinsInAutomationFile(
       const name = `@taskless/${suffix ?? "cli"}`;
       if (spec === undefined || seen.has(`${name}@${spec}`)) continue;
       seen.add(`${name}@${spec}`);
-      if (isStale(spec, cliVersion)) {
+      const reason = scriptPinReason(name, spec, cliVersion, upgraded);
+      if (reason !== undefined) {
         pins.push({
           manifest: file,
           location: `line ${String(index + 1)}`,
           name,
           spec,
           installed: null,
+          reason,
         });
       }
     }
@@ -377,120 +461,160 @@ async function findPinsInAutomationFile(
 }
 
 /**
- * Every stale pin in `<cwd>/package.json`, in each workspace package it
+ * Every raised entry in `<cwd>/package.json`, in each workspace package it
  * declares, and in the project's CI and hook files: root first, then
  * workspace packages by path, then CI and hook files by path, each in file
- * order. An absent or unreadable file has no pins.
+ * order. An absent or unreadable file has none.
+ *
+ * `migrated` is the migration this run applied, when there was one. Only an
+ * install knows it, so `info` passes nothing and never sees `unreleased`.
  *
  * Unreadable is not an error here. This is advice attached to a successful
  * command, and a malformed manifest is something the package manager will
  * report on its own terms; failing an install over it would be the wrong
  * tool refusing.
  */
-export async function findStalePins(
+export async function findCliPins(
   cwd: string,
-  cliVersion: string
+  cliVersion: string,
+  options: { migrated?: PinMigration } = {}
 ): Promise<PinnedCli[]> {
+  const upgraded = upgradeOf(options.migrated);
   const root = await readJson(join(cwd, "package.json"));
-  const pins = await findPinsIn(cwd, "package.json", root, cliVersion);
+  const pins = await findPinsIn(
+    cwd,
+    "package.json",
+    root,
+    cliVersion,
+    upgraded
+  );
   for (const manifest of await listWorkspaceManifests(cwd, root)) {
     pins.push(
       ...(await findPinsIn(
         cwd,
         manifest,
         await readJson(join(cwd, manifest)),
-        cliVersion
+        cliVersion,
+        upgraded
       ))
     );
   }
   for (const file of automationFiles(cwd)) {
-    pins.push(...(await findPinsInAutomationFile(cwd, file, cliVersion)));
+    pins.push(
+      ...(await findPinsInAutomationFile(cwd, file, cliVersion, upgraded))
+    );
   }
   return pins;
 }
 
 /**
  * The package and version to move a pin to: the package that actually carries
- * `cliVersion`. A nightly is always `<base>-<stamp>x<sha>` and a release never
- * has a prerelease, so the version alone says which one it is, and a pin on
- * the other package has to switch names rather than name a version its own
- * package never published.
+ * `cliVersion`. A pin on the other package has to switch names rather than
+ * name a version its own package never published. Only a release run reports
+ * a pin on the other package (see {@link channelVerdict}), so in practice the
+ * switch is always a nightly pin moving back to the release.
  */
 function bumpTarget(cliVersion: string): { name: string; version: string } {
   const [release, nightly] = PACKAGE_NAMES;
   return {
-    name: cliVersion.includes("-") ? nightly : release,
+    name: isNightly(cliVersion) ? nightly : release,
     version: cliVersion,
   };
 }
 
-/**
- * One pin, unbulleted: which manifest and field the pin is in, what it says, and
- * what to change it to. The manifest is named even at the root, so a list
- * mixing the root with workspace packages reads the same way throughout.
- */
-export function describePin(pin: PinnedCli, cliVersion: string): string {
-  const target = bumpTarget(cliVersion);
-  const installed =
-    pin.installed === null ? "" : ` (installed ${pin.installed})`;
-  const move =
-    pin.name === target.name
-      ? `${target.name}@${target.version}`
-      : `${target.name}@${target.version}, replacing ${pin.name}`;
-  return `${pin.manifest} ${pin.location}: ${pin.name} ${pin.spec}${installed} -> ${move}`;
+/** What to do with one raised entry, as the arrow side of its line. */
+function pinAction(pin: PinnedCli, cliVersion: string): string {
+  switch (pin.reason) {
+    case "dependency": {
+      return "remove the dependency";
+    }
+    case "unreleased": {
+      return "leave as is";
+    }
+    case "stale":
+    case "nightly": {
+      const target = bumpTarget(cliVersion);
+      return pin.name === target.name
+        ? `${target.name}@${target.version}`
+        : `${target.name}@${target.version}, replacing ${pin.name}`;
+    }
+  }
 }
 
 /**
- * The notice an install prints for stale pins, or `undefined` when there are
- * none.
+ * One entry, unbulleted: which manifest and field it is in, what it says, and
+ * what to do with it. The manifest is named even at the root, so a list
+ * mixing the root with workspace packages reads the same way throughout.
+ */
+export function describePin(pin: PinnedCli, cliVersion: string): string {
+  const installed =
+    pin.installed === null ? "" : ` (installed ${pin.installed})`;
+  return `${pin.manifest} ${pin.location}: ${pin.name} ${pin.spec}${installed} -> ${pinAction(pin, cliVersion)}`;
+}
+
+/**
+ * The notice an install prints for raised entries, or `undefined` when there
+ * are none. One paragraph per reason present, after the list.
  *
  * Worded as something to offer, not something done. The install never edits
  * `package.json`, a CI file, or a hook: a pin is often deliberate (a CI image, a reproducible
- * build), and bumping it changes a lockfile the person has not seen. What the
- * notice owes them is that the pin and the project now disagree, and which
- * version would agree.
+ * build), and changing it changes a lockfile the person has not seen.
  *
- * A migration of an EXISTING scaffold changes how sure that disagreement is.
- * Every CLI refuses a scaffold newer than its own highest migration
+ * A migration of an EXISTING scaffold changes how sure the breakage is. Every
+ * CLI refuses a scaffold newer than its own highest migration
  * (`SCAFFOLD_VERSION_MISMATCH`), so once this run has moved the project to
- * schema `to`, a pin that predates that schema fails on its first run. That
- * run is CI on the push that carries the migrated files, so the bump has to
- * ride in the same commit, not a later one.
- *
- * A migration from schema 0 is not that. It is how a fresh `init` creates
- * `.taskless/`, so there was no upgrade and no layout the pin used to read;
- * calling it one would be false on the face of it. That case, like a run with
- * no migration, says the failure is likely rather than certain.
+ * schema `to`, anything that predates that schema fails on its first run.
+ * That run is CI on the push that carries the migrated files, so the change
+ * has to ride in the same commit, not a later one. A fresh install (a
+ * migration from schema 0) is not that; see {@link upgradeOf}.
  */
 export function getPinnedCliNotice(
   pins: readonly PinnedCli[],
   cliVersion: string,
-  options: { migrated?: { from: number; to: number } } = {}
+  options: { migrated?: PinMigration } = {}
 ): string | undefined {
   if (pins.length === 0) return undefined;
-  const upgraded =
-    options.migrated !== undefined && options.migrated.from > 0
-      ? options.migrated
-      : undefined;
-  // Only a dependency pin has anything to reinstall. A script, CI, or hook pin
-  // is a launcher line, and editing it is the whole fix.
-  const reinstall = pins.some((pin) =>
-    (DEPENDENCY_FIELDS as readonly string[]).includes(pin.location)
-  );
-  const consequence =
+  const upgraded = upgradeOf(options.migrated);
+  const has = (reason: PinReason): boolean =>
+    pins.some((pin) => pin.reason === reason);
+  const migration =
     upgraded === undefined
-      ? `Anything that runs these pins (a script, CI, a git hook) runs a CLI older than this project expects and will likely fail. ` +
-        (reinstall
-          ? `Offer to update them as shown as part of this change, then reinstall dependencies.`
-          : `Offer to update them as shown as part of this change.`)
-      : `This upgrade migrated .taskless/ from schema version ${String(upgraded.from)} to ${String(upgraded.to)}, and a CLI that predates that schema refuses the project (SCAFFOLD_VERSION_MISMATCH). ` +
-        `CI, scripts, and git hooks that run these pins will break on the push that carries the migrated files. ` +
-        (reinstall
-          ? `Offer to update them as shown and reinstall dependencies, in the same commit as .taskless/.`
-          : `Offer to update them as shown, in the same commit as .taskless/.`);
-  return renderNoticeBox("UPDATE PINNED TASKLESS VERSIONS", [
-    `This project pins a Taskless CLI older than ${cliVersion}, the version that just ran here:`,
+      ? undefined
+      : `migrated .taskless/ from schema version ${String(upgraded.from)} to ${String(upgraded.to)}, and a CLI that predates that schema refuses the project (SCAFFOLD_VERSION_MISMATCH)`;
+  const breakage =
+    migration === undefined
+      ? `Anything that runs them (a script, CI, a git hook) runs a CLI older than this project expects and will likely fail.`
+      : `This upgrade ${migration}, so CI, scripts, and git hooks that run them break on the push that carries the migrated files. Make the change in the same commit as .taskless/.`;
+
+  const paragraphs: string[] = [];
+  if (has("dependency")) {
+    paragraphs.push(
+      `Taskless runs through the project launcher, node .taskless/bin/cli.mjs, which runs the version .taskless/taskless.json records, not as a project dependency. ` +
+        `A dependency stays on the build the lockfile resolved while upgrades move .taskless/ forward, and that build is what scripts, CI, and git hooks run. ` +
+        `Offer to remove it, point anything that calls its \`taskless\` binary at the launcher, then reinstall dependencies.`
+    );
+  }
+  if (has("nightly")) {
+    paragraphs.push(
+      `A nightly pin keeps a script, CI, or a git hook on a prerelease build after this project moved back to the release. Offer to replace it as shown.`
+    );
+  }
+  if (has("stale") || (has("dependency") && migration !== undefined)) {
+    paragraphs.push(
+      `${has("stale") ? "Offer to update the older pins as shown. " : ""}${breakage}`
+    );
+  }
+  if (has("unreleased") && migration !== undefined) {
+    paragraphs.push(
+      `This nightly ${migration}. A nightly installs alongside the release, so the release pins marked "leave as is" stay as they are, ` +
+        `but one that predates schema version ${String(upgraded?.to)} fails on the push that carries the migrated files. ` +
+        `Tell the user before they commit .taskless/, so they can hold the migration until a release that reads it ships.`
+    );
+  }
+
+  return renderNoticeBox("TASKLESS CLI PINS", [
+    `This project names the Taskless CLI in ways that need a look after ${cliVersion} ran here:`,
     { items: pins.map((pin) => describePin(pin, cliVersion)) },
-    consequence,
+    ...paragraphs,
   ]);
 }

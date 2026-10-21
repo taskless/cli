@@ -1,4 +1,4 @@
-# Topic: update     (CLI v%(CLI_VERSION)s / topic v19)
+# Topic: update     (CLI v%(CLI_VERSION)s / topic v20)
 
 %(ONE_COMMAND_PER_CALL)s
 
@@ -66,16 +66,18 @@ that you finished.
    applied yet at that point, so a rule a later section says step 5
    rewrites can still fail to load.
 
-4. **Offer to bump a pinned CLI.** Read `pinnedCli` from the same
-   `info --json` payload as step 1. Each entry is a pin of
-   `@taskless/cli` or `@taskless/cli-nightly` behind the installed CLI:
-   a dependency entry, or a script spelling out
-   `@taskless/cli@<version>`, in the root `package.json` or a workspace
-   package's (`manifest` names which, `location` the field). An empty
-   list means there is nothing to bump. Those pins are what scripts, CI,
-   and git hooks run. Move each to the installed version on the package
-   that publishes it: a nightly version exists only on
-   `@taskless/cli-nightly`, a release only on `@taskless/cli`.
+4. **Offer the `pinnedCli` changes.** Read `pinnedCli` from the same
+   `info --json` payload as step 1. Each entry names the Taskless CLI in
+   a `package.json`, CI file, or hook (`manifest` names which,
+   `location` where in it), and `reason` says what to do. An empty list
+   means there is nothing to change. A `dependency` is any dependency on
+   the CLI: Taskless runs through the project launcher, so offer to
+   remove it and point what called its `taskless` binary at
+   `node .taskless/bin/cli.mjs`. A `stale` line names an older build:
+   offer to move it to the installed version. A `nightly` line is left
+   over after a release install: offer to move it back to
+   `@taskless/cli`. Never move a `@taskless/cli` pin onto the nightly; a
+   nightly installs beside the release.
 
    This is not optional advice. A CLI that is not the version
    `.taskless/taskless.json` records refuses every command but `init`,
@@ -83,9 +85,9 @@ that you finished.
    pin left behind breaks CI on the push that carries `init`'s changes.
    The bump belongs in that same commit.
 
-   Offer the user the bump to the installed version, along with
-   reinstalling dependencies. Do not make it silently: a pin can be
-   deliberate, and the bump changes the lockfile. The walk does not
+   Offer each change to the user, with reinstalling dependencies when a
+   dependency is removed. Do not make it silently: a pin can be
+   deliberate, and removing a dependency changes the lockfile. The walk does not
    depend on the answer, so record it either way, but if they decline,
    tell them plainly that whatever runs that pin will fail.
 

@@ -30,7 +30,11 @@ import {
 } from "./state";
 import {
   buildLauncherPackage,
+  LAUNCHER_PACKAGES,
   pruneLauncherCache,
+  recordedLauncherVersion,
+  retiredLauncherPackage,
+  retireLauncher,
   writeLauncher,
   writeLauncherLockfile,
   type LauncherWrite,
@@ -459,6 +463,11 @@ export interface ApplyInstallResult {
   launcher: LauncherWrite | null;
   /** The lockfile beside it, or `null` for a build that has no launcher. */
   lockfile: LauncherWrite | null;
+  /**
+   * Another package's launcher files this install removed: a release install
+   * retires the nightly's. Empty when there were none.
+   */
+  retired: string[];
   writtenSkills: Array<{ target: string; skill: string }>;
   removedSkills: Array<{ target: string; skill: string }>;
   removedCommands: Array<{ target: string; command: string }>;
@@ -581,11 +590,28 @@ export async function applyInstallPlan(
   const previousState = await readInstallState(cwd);
 
   // Each package records only its own launcher's version and keeps the
-  // other's, so the release and a nightly never move each other.
+  // other's, so a nightly never moves the release. The other's version is
+  // carried even when it was only ever implied by `cliVersion`, as it is in a
+  // manifest written before `launchers` existed: this run is about to
+  // overwrite `cliVersion`, and the other launcher would lose its version.
   const launcherPackage = buildLauncherPackage();
+  const retiredPackage = retiredLauncherPackage(launcherPackage);
   const launchers = { ...previousState.launchers };
+  for (const packageName of LAUNCHER_PACKAGES) {
+    const version = recordedLauncherVersion(
+      packageName,
+      previousState.launchers,
+      previousState.cliVersion
+    );
+    if (version !== undefined) launchers[packageName] = version;
+  }
   if (launcherPackage !== undefined) {
     launchers[launcherPackage] = options.cliVersion;
+  }
+  // A release install is the move back to mainline, so it drops the
+  // nightly's record; the prune below then removes its cached build.
+  if (retiredPackage !== undefined) {
+    Reflect.deleteProperty(launchers, retiredPackage);
   }
   const nextState: InstallState = {
     cliVersion: options.cliVersion,
@@ -649,6 +675,11 @@ export async function applyInstallPlan(
           __TASKLESS_INSTALL_LOCK__
         );
 
+  const retired =
+    retiredPackage === undefined
+      ? []
+      : await retireLauncher(cwd, retiredPackage);
+
   await writeInstallState(cwd, nextState);
   // Installed versions nothing records any more. The launcher installs the
   // new one on its first run; init never downloads.
@@ -658,6 +689,7 @@ export async function applyInstallPlan(
     state: nextState,
     launcher,
     lockfile,
+    retired,
     writtenSkills,
     removedSkills,
     removedCommands,

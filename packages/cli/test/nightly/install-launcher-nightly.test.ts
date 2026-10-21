@@ -77,6 +77,32 @@ describe("a nightly install beside the release", () => {
     expect(state.cliVersion).toBe(version);
   });
 
+  it("keeps a release version only cliVersion implied, and retires nothing", async () => {
+    // A manifest written before `launchers` existed records the release only
+    // as `cliVersion`, which this install overwrites.
+    await mkdir(join(cwd, ".taskless", "bin"), { recursive: true });
+    await writeFile(
+      join(cwd, RELEASE_LAUNCHER),
+      renderLauncher("@taskless/cli")
+    );
+    await writeInstallState(cwd, { cliVersion: "0.13.0", targets: {} });
+
+    const version = getCliVersion();
+    const result = await applyInstallPlan(
+      cwd,
+      buildInstallPlan([".claude"], getEmbeddedSkills()),
+      { cliVersion: version }
+    );
+
+    expect(result.retired).toEqual([]);
+    await stat(join(cwd, RELEASE_LAUNCHER));
+    const state = await readInstallState(cwd);
+    expect(state.launchers).toEqual({
+      "@taskless/cli": "0.13.0",
+      "@taskless/cli-nightly": version,
+    });
+  });
+
   it("names its own launcher in the installed skill", async () => {
     await applyInstallPlan(
       cwd,

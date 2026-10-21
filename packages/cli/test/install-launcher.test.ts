@@ -93,21 +93,36 @@ describe("the release's install writes its launcher", () => {
     );
   });
 
-  it("keeps the nightly's recorded version", async () => {
-    await mkdir(join(cwd, ".taskless"));
+  it("retires the nightly: its record, launcher, and lockfile", async () => {
+    // Installing the release is the move back to mainline.
+    await mkdir(join(cwd, ".taskless", "bin"), { recursive: true });
     await writeInstallState(cwd, {
       cliVersion: "0.14.0-20261020120000xabc1234",
       launchers: { "@taskless/cli-nightly": "0.14.0-20261020120000xabc1234" },
       targets: {},
     });
+    await writeFile(join(cwd, ".taskless", "bin", "cli-nightly.mjs"), "");
+    await writeFile(join(cwd, ".taskless", "bin", "cli-nightly.lock.json"), "");
 
-    await install("0.13.0");
+    const result = await install("0.13.0");
 
+    expect(result.retired).toEqual([
+      ".taskless/bin/cli-nightly.mjs",
+      ".taskless/bin/cli-nightly.lock.json",
+    ]);
+    await expect(
+      stat(join(cwd, ".taskless", "bin", "cli-nightly.mjs"))
+    ).rejects.toThrow();
+    await expect(
+      stat(join(cwd, ".taskless", "bin", "cli-nightly.lock.json"))
+    ).rejects.toThrow();
     const { launchers } = await readInstallState(cwd);
-    expect(launchers).toEqual({
-      "@taskless/cli-nightly": "0.14.0-20261020120000xabc1234",
-      "@taskless/cli": "0.13.0",
-    });
+    expect(launchers).toEqual({ "@taskless/cli": "0.13.0" });
+  });
+
+  it("retires nothing when there is no nightly", async () => {
+    const result = await install("0.13.0");
+    expect(result.retired).toEqual([]);
   });
 
   it("names the launcher in the installed skill", async () => {
@@ -167,7 +182,7 @@ async function listing(path: string) {
 }
 
 describe("an install prunes the launcher cache", () => {
-  it("drops the release's previous version and keeps the nightly's", async () => {
+  it("drops the release's previous version and the retired nightly's", async () => {
     await mkdir(join(cwd, ".taskless"));
     await writeInstallState(cwd, {
       cliVersion: "0.13.0",
@@ -183,9 +198,7 @@ describe("an install prunes the launcher cache", () => {
 
     await install("0.13.1");
 
-    expect(await listing(join(cwd, CACHE, "@taskless"))).toEqual([
-      "cli-nightly@0.14.0-20261020120000xabc1234",
-    ]);
+    expect(await listing(join(cwd, CACHE, "@taskless"))).toEqual([]);
   });
 
   it("removes stale temporary installs and keeps fresh ones", async () => {

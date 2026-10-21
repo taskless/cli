@@ -18,7 +18,9 @@ import { buildInvocation } from "../util/invocation";
  *
  * Each package has its own file and is the only build that writes it, so a
  * nightly installed beside the release never changes what the release's
- * launcher runs, and the reverse. The version is read from
+ * launcher runs. The reverse holds only until the release is installed again:
+ * that is the move back to mainline, and it retires the nightly's launcher
+ * (see {@link retiredLauncherPackage}). The version is read from
  * `.taskless/taskless.json` when the launcher runs rather than written into
  * it, so the file's bytes are the same for every version of its package and an
  * upgrade only moves a line of JSON.
@@ -180,6 +182,40 @@ export function writeLauncherLockfile(
   return writeInstallFile(cwd, lockfilePath(packageName), content);
 }
 
+/**
+ * The package a build retires when it installs, or `undefined`. A release
+ * install is the move back to mainline, so it removes the nightly. A nightly
+ * installs alongside the release and retires nothing.
+ */
+export function retiredLauncherPackage(
+  packageName: LauncherPackage | undefined
+): LauncherPackage | undefined {
+  const [release, nightly] = LAUNCHER_PACKAGES;
+  return packageName === release ? nightly : undefined;
+}
+
+/**
+ * Remove a package's launcher and its lockfile from `cwd`, returning the paths
+ * that were there. Its cache entry goes with the next prune, once nothing
+ * records its version.
+ */
+export async function retireLauncher(
+  cwd: string,
+  packageName: LauncherPackage
+): Promise<string[]> {
+  const removed: string[] = [];
+  for (const path of [launcherPath(packageName), lockfilePath(packageName)]) {
+    const present = await stat(join(cwd, path)).then(
+      () => true,
+      () => false
+    );
+    if (!present) continue;
+    await rm(join(cwd, path), { force: true });
+    removed.push(path);
+  }
+  return removed;
+}
+
 /** Remove a path, leaving it for the next prune when that fails. */
 async function removeQuietly(path: string): Promise<void> {
   await rm(path, { recursive: true, force: true }).catch(() => {});
@@ -283,6 +319,11 @@ export function buildLauncherInvocation(): string | undefined {
   return packageName === undefined
     ? undefined
     : launcherInvocation(packageName);
+}
+
+/** The line an install prints for a launcher file it retired. */
+export function describeRetired(path: string): string {
+  return `Removed ${path} (this release replaces the nightly)`;
 }
 
 /**
