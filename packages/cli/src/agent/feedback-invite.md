@@ -1,4 +1,4 @@
-# Topic: feedback-invite     (CLI v%(CLI_VERSION)s / topic v4)
+# Topic: feedback-invite     (CLI v%(CLI_VERSION)s / topic v5)
 
 ## Before you finish: one question for the user
 
@@ -31,7 +31,7 @@ Then act on the reply:
   %(TASKLESS_CLI)s feedback dismiss
   ```
   and tell them in one line that the CLI's other telemetry is switched
-  off with `DO_NOT_TRACK=1` or `TASKLESS_TELEMETRY_DISABLED=1`. Then
+  off with `TASKLESS_TELEMETRY_DISABLED=1`. Then
   carry on with whatever they asked for.
 
 Ask once. Do not repeat the question later in this session, do not ask

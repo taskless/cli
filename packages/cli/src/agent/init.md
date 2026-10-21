@@ -1,4 +1,4 @@
-# Topic: init     (CLI v%(CLI_VERSION)s / topic v13)
+# Topic: init     (CLI v%(CLI_VERSION)s / topic v14)
 
 %(ONE_COMMAND_PER_CALL)s
 
@@ -165,8 +165,8 @@ first step, not the whole job.
    already there. That file is committed, so the setting turns telemetry
    off for everyone working in the repository, CI included; say so. For
    one person or one machine instead, setting
-   `TASKLESS_TELEMETRY_DISABLED=1` or `DO_NOT_TRACK=1` in their
-   environment does the same. Make the manifest edit only when the user
+   `TASKLESS_TELEMETRY_DISABLED=1` in their environment does the
+   same. Make the manifest edit only when the user
    asks for it, and leave every other field as it is. When `enabled` is
    `false`, say nothing about telemetry.
 

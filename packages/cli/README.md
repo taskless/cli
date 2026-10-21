@@ -91,12 +91,10 @@ system you already use rather than replacing it.
 
 The CLI reports anonymous usage (which command ran, whether it succeeded, how
 long it took, and counts of findings). It never sends rule content, prompts, or
-matched source. Disable it by setting either environment variable:
+matched source. Disable it by setting an environment variable:
 
 ```bash
 export TASKLESS_TELEMETRY_DISABLED=1
-# or the cross-tool convention
-export DO_NOT_TRACK=1
 ```
 
 Or turn it off for the whole project by adding a top-level `"telemetry": false`
