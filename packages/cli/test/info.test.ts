@@ -186,12 +186,13 @@ describe("taskless info --json", () => {
         name: "@taskless/cli",
         spec: "0.0.1",
         installed: null,
+        reason: "dependency",
       },
     ]);
 
     const { stdout } = await runCli(["info", "--anonymous", "-d", cwd], cwd);
     expect(stdout).toContain(
-      "packages/app/package.json devDependencies: @taskless/cli 0.0.1 ->"
+      "packages/app/package.json devDependencies: @taskless/cli 0.0.1 -> remove the dependency"
     );
   });
 });

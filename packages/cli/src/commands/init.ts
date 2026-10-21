@@ -16,12 +16,13 @@ import type { InstallMode, InstallState } from "../install/state";
 import {
   buildLauncherInvocation,
   describeLauncherWrite,
+  describeRetired,
   type LauncherWrite,
 } from "../install/launcher";
 import { getReloadNotice, versionMoved } from "../install/reload-notice";
 import { getUpgradeTrailer } from "../install/upgrade-trailer";
 import {
-  findStalePins,
+  findCliPins,
   getPinnedCliNotice,
   type PinnedCli,
 } from "../install/pinned-cli";
@@ -165,6 +166,9 @@ export const initCommand = defineCommand({
           // The lockfile beside the launcher, which decides what it installs;
           // `null` for a build that installs no launcher.
           lockfile: result.lockfile,
+          // Another package's launcher files this run removed: a release
+          // install retires the nightly's. Always present, empty when none.
+          retired: result.retired,
           // Always present, so the agent can tell the user telemetry is on
           // and how to turn it off; the human path prints the notice instead.
           telemetry: { enabled: telemetryEnabled },
@@ -409,6 +413,8 @@ async function runNonInteractive(
   launcher: LauncherWrite | null;
   /** The lockfile beside the launcher, or `null` when there is none. */
   lockfile: LauncherWrite | null;
+  /** Another package's launcher files this run removed. */
+  retired: string[];
   /** Pins in `package.json`, CI, or hooks that run an older CLI than this. */
   pinnedCli: PinnedCli[];
   /** Harness permission files this run created, edited, or left alone. */
@@ -538,12 +544,13 @@ async function runNonInteractive(
     }
   }
 
-  const { launcher, lockfile } = result;
+  const { launcher, lockfile, retired } = result;
   for (const write of [launcher, lockfile]) {
     if (write !== null && write.state !== "unchanged") {
       log(describeLauncherWrite(write));
     }
   }
+  for (const path of retired) log(describeRetired(path));
 
   const selected = plan.targets
     .filter((target) => target.mode === "reference")
@@ -577,6 +584,7 @@ async function runNonInteractive(
     globalTrust,
     launcher,
     lockfile,
+    retired,
     // A version move rewrites `install.cliVersion` in the manifest, which is
     // a tracked file, so it is a change even when every skill byte matched.
     changed:
@@ -586,9 +594,10 @@ async function runNonInteractive(
       [launcher, lockfile].some(
         (write) => write !== null && write.state !== "unchanged"
       ) ||
+      retired.length > 0 ||
       launcherVersionMoved(previousState, result.state) ||
       versionMoved({ previousCliVersion, cliVersion }),
-    pinnedCli: await findStalePins(cwd, cliVersion),
+    pinnedCli: await findCliPins(cwd, cliVersion, { migrated }),
   };
 }
 

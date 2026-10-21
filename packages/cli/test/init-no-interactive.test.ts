@@ -311,7 +311,7 @@ describe("taskless init (the batch install)", () => {
     expect(stdout).not.toContain("moved from");
   });
 
-  it("names a package.json pin older than the running CLI, and leaves the pin alone", async () => {
+  it("names package.json entries for the CLI, and leaves them alone", async () => {
     // The pin is what CI and `pnpm lint` run after an upgrade made through a
     // launcher. Offered, not applied: the install never edits package.json.
     const packageJson = JSON.stringify({
@@ -329,11 +329,13 @@ describe("taskless init (the batch install)", () => {
     ]);
 
     const notice = boxedText(stdout);
-    expect(notice).toContain("UPDATE PINNED TASKLESS VERSIONS");
-    expect(notice).toContain("devDependencies: @taskless/cli 0.0.1");
+    expect(notice).toContain("TASKLESS CLI PINS");
+    expect(notice).toContain(
+      "devDependencies: @taskless/cli 0.0.1 -> remove the dependency"
+    );
     expect(notice).toContain("scripts.lint: @taskless/cli 0.0.1");
     expect(notice).toMatch(/-> @taskless\/cli@\S+/);
-    expect(notice).toContain("Offer to update them as shown");
+    expect(notice).toContain("Offer to update the older pins as shown");
     expect(await readFile(join(cwd, "package.json"), "utf8")).toBe(packageJson);
 
     // After the upgrade trailer, which it follows from; the onboarding line
@@ -341,7 +343,7 @@ describe("taskless init (the batch install)", () => {
     const lines = stdout.trimEnd().split("\n");
     const trailerAt = lines.findIndex((line) => line.includes("next commit"));
     const pinAt = lines.findIndex((line) =>
-      line.includes("pins a Taskless CLI older")
+      line.includes("names the Taskless CLI")
     );
     // Both present first: `findIndex` is -1 for a missing line, and -1 sorts
     // before everything, so the ordering check alone passes on an absent
@@ -384,7 +386,7 @@ describe("taskless init (the batch install)", () => {
     // was upgraded, and no layout the pin used to read has moved.
     await writeFile(
       join(cwd, "package.json"),
-      JSON.stringify({ devDependencies: { "@taskless/cli": "0.0.1" } })
+      JSON.stringify({ scripts: { lint: "npx @taskless/cli@0.0.1 check" } })
     );
 
     const { stdout } = await execFileAsync("node", [
@@ -394,7 +396,7 @@ describe("taskless init (the batch install)", () => {
       cwd,
     ]);
 
-    expect(stdout).toContain("devDependencies: @taskless/cli 0.0.1");
+    expect(stdout).toContain("scripts.lint: @taskless/cli 0.0.1");
     expect(boxedText(stdout)).toContain("will likely fail");
     expect(boxedText(stdout)).not.toContain("SCAFFOLD_VERSION_MISMATCH");
     expect(stdout).not.toContain("This upgrade migrated");
@@ -405,7 +407,7 @@ describe("taskless init (the batch install)", () => {
     // project still disagree.
     await writeFile(
       join(cwd, "package.json"),
-      JSON.stringify({ devDependencies: { "@taskless/cli": "^0.0.1" } })
+      JSON.stringify({ scripts: { lint: "npx @taskless/cli@^0.0.1 check" } })
     );
     await execFileAsync("node", [binPath, "init", "-d", cwd]);
 
@@ -417,7 +419,7 @@ describe("taskless init (the batch install)", () => {
     ]);
 
     expect(stdout).not.toContain("next commit");
-    expect(stdout).toContain("devDependencies: @taskless/cli ^0.0.1");
+    expect(stdout).toContain("scripts.lint: @taskless/cli ^0.0.1");
     // Nothing migrated, so the layout the pin reads did not move.
     expect(boxedText(stdout)).toContain("will likely fail");
     expect(boxedText(stdout)).not.toContain("SCAFFOLD_VERSION_MISMATCH");
@@ -455,6 +457,7 @@ describe("taskless init (the batch install)", () => {
         name: "@taskless/cli",
         spec: "0.0.1",
         installed: null,
+        reason: "dependency",
       },
     ]);
   });

@@ -4,7 +4,7 @@ import { defineCommand } from "citty";
 
 import { detectHostTools } from "../detect/host-tools";
 import { checkStaleness } from "../install/install";
-import { describePin, findStalePins } from "../install/pinned-cli";
+import { describePin, findCliPins } from "../install/pinned-cli";
 import { getToken } from "../auth/token";
 import { fetchWhoami } from "../auth/whoami";
 import { outputSchema as infoOutputSchema } from "../schemas/info";
@@ -61,7 +61,7 @@ export const infoCommand = defineCommand({
         // Read here as well as on `init`: the `update` recipe reaches this
         // after a version move, possibly in a later session that never saw
         // `init`'s output, and `info` is the read-only command it runs.
-        findStalePins(cwd, __VERSION__),
+        findCliPins(cwd, __VERSION__),
       ]);
 
     let auth: { user: string; email?: string; orgs: string[] } | undefined;
@@ -181,7 +181,7 @@ export const infoCommand = defineCommand({
 
     if (pinnedCli.length > 0) {
       console.log("");
-      console.log(`Pinned CLI older than v${__VERSION__}:`);
+      console.log(`Taskless CLI pins (running v${__VERSION__}):`);
       for (const pin of pinnedCli)
         console.log(`  - ${describePin(pin, __VERSION__)}`);
     }

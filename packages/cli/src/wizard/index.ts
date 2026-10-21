@@ -14,6 +14,7 @@ import {
 import {
   buildLauncherInvocation,
   describeLauncherWrite,
+  describeRetired,
 } from "../install/launcher";
 import {
   globalTrustWarnings,
@@ -22,7 +23,7 @@ import {
   type GlobalTrustEnvironment,
 } from "../install/global-trust";
 import { syncPermissions } from "../install/permissions";
-import { findStalePins, getPinnedCliNotice } from "../install/pinned-cli";
+import { findCliPins, getPinnedCliNotice } from "../install/pinned-cli";
 import { getReloadNotice } from "../install/reload-notice";
 import { computeInstallDiff, readInstallState } from "../install/state";
 import { findUncommitted, installedPaths } from "../install/uncommitted";
@@ -140,9 +141,11 @@ export async function runWizard(
       },
     });
     const cliVersion = getCliVersion();
-    const { launcher, lockfile } = await applyInstallPlan(options.cwd, plan, {
-      cliVersion,
-    });
+    const { launcher, lockfile, retired } = await applyInstallPlan(
+      options.cwd,
+      plan,
+      { cliVersion }
+    );
     const created: string[] = [];
     for (const write of [launcher, lockfile]) {
       if (write === null || write.state === "unchanged") continue;
@@ -152,6 +155,7 @@ export async function runWizard(
         created.push(describeLauncherWrite(write));
       }
     }
+    created.push(...retired.map((path) => describeRetired(path)));
     if (created.length > 0) log.message(created.join("\n"));
     await syncPermissions(options.cwd, { ...permissionOptions, write: true });
     // Confirmed with the project edits, in the summary's one question.
@@ -199,7 +203,7 @@ export async function runWizard(
         : "Taskless is ready to go."
     );
     const pinnedNotice = getPinnedCliNotice(
-      await findStalePins(options.cwd, cliVersion),
+      await findCliPins(options.cwd, cliVersion, { migrated }),
       cliVersion,
       { migrated }
     );

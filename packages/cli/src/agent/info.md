@@ -1,4 +1,4 @@
-# Topic: info     (CLI v%(CLI_VERSION)s / topic v3)
+# Topic: info     (CLI v%(CLI_VERSION)s / topic v4)
 
 %(ONE_COMMAND_PER_CALL)s
 
@@ -49,7 +49,8 @@ which version of the CLI/skills the agent is talking to.
      "pinnedCli": [
        { "manifest": "packages/app/package.json",
          "location": "devDependencies", "name": "@taskless/cli",
-         "spec": "^0.6.0", "installed": "0.6.3" }
+         "spec": "^0.6.0", "installed": "0.6.3",
+         "reason": "dependency" }
      ]
    }
    ```
@@ -71,14 +72,16 @@ which version of the CLI/skills the agent is talking to.
    suggest `%(TASKLESS_CLI)s` to reinstall and pull the latest
    bundle.
 
-5. **Name stale CLI pins.** `pinnedCli` lists every pin of
-   `@taskless/cli` or `@taskless/cli-nightly` that runs a CLI older
-   than `version`, in the root `package.json` or a workspace package's
-   (`manifest`), with the field it is in (`location`). `installed` is
-   the version that pin actually runs, or `null` when nothing is
-   installed or the pin is a script. Scripts, CI, and git hooks run
-   these pins, so report them and offer the bump to `version`. Do not
-   edit a `package.json` on your own; a pin can be deliberate.
+5. **Name CLI pins.** `pinnedCli` lists every place the project names
+   the Taskless CLI that needs a look: the file (`manifest`), where in
+   it (`location`), and why (`reason`). A `dependency` is any
+   `package.json` dependency on the CLI, whatever its version, since
+   Taskless runs through the project launcher; offer to remove it.
+   `installed` is the version it runs, or `null`. A `stale` script, CI,
+   or hook line names a version older than `version`; offer to move it.
+   A `nightly` one is left over after a release install; offer to move
+   it back to `@taskless/cli`. Do not edit any of these files on your
+   own; a pin can be deliberate.
 
 ## Errors
 
