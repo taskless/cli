@@ -26,6 +26,7 @@ import { syncPermissions } from "../install/permissions";
 import { findStalePins, getPinnedCliNotice } from "../install/pinned-cli";
 import { getReloadNotice } from "../install/reload-notice";
 import { computeInstallDiff, readInstallState } from "../install/state";
+import { findUncommitted, installedPaths } from "../install/uncommitted";
 import {
   getTelemetry,
   isTelemetryEnabled,
@@ -37,6 +38,7 @@ import { getCliPrefix } from "../util/package-manager";
 
 import { WizardCancelled } from "./ask";
 import { getCliVersion, renderIntro } from "./intro";
+import { promptCommit } from "./steps/commit";
 import { promptLocations } from "./steps/locations";
 import { renderSummaryAndConfirm } from "./steps/summary";
 
@@ -155,6 +157,16 @@ export async function runWizard(
     if (await isTelemetryEnabled(options.cwd)) {
       log.info(TELEMETRY_NOTICE);
     }
+
+    // Inside the frame, after every write: the commit has to carry the
+    // settings edits above as well as the skills. Before the outro, because
+    // the onboarding line that follows sends the person to their agent.
+    const uncommitted = await findUncommitted(
+      options.cwd,
+      await installedPaths(options.cwd, plan)
+    );
+    if (uncommitted.length > 0) await promptCommit(options.cwd, uncommitted);
+
     outro("Taskless is ready to go.");
     const pinnedNotice = getPinnedCliNotice(
       await findStalePins(options.cwd, cliVersion),

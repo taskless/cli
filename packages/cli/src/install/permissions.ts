@@ -811,6 +811,11 @@ async function readRecords(cwd: string): Promise<Records> {
   }
 }
 
+/** Every permission file the manifest records a Taskless rule in. */
+export async function permissionFiles(cwd: string): Promise<string[]> {
+  return Object.keys(await readRecords(cwd));
+}
+
 async function writeRecords(cwd: string, records: Records): Promise<void> {
   const directory = join(cwd, ".taskless");
   const { manifest, raw } = await readManifest(directory);

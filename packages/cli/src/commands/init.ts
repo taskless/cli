@@ -36,6 +36,7 @@ import {
   type GlobalTrustOutcome,
 } from "../install/global-trust";
 import { readInstallState } from "../install/state";
+import { getUncommittedInstallNotice } from "../install/uncommitted";
 import {
   getTelemetry,
   isTelemetryEnabled,
@@ -210,6 +211,11 @@ export const initCommand = defineCommand({
       }
       if (telemetryEnabled) {
         console.log(TELEMETRY_NOTICE);
+      }
+      // Directly above the onboarding line, which is what sends a person to
+      // their agent: the commit has to happen before that, not after.
+      if (result.uncommittedNotice !== undefined) {
+        console.log(result.uncommittedNotice);
       }
       console.log(getOnboardTrailer());
     }
@@ -390,6 +396,8 @@ async function runNonInteractive(
   options: { json?: boolean } = {}
 ): Promise<{
   reloadNotice: string | undefined;
+  /** What a commit has to carry before a worktree can see this install. */
+  uncommittedNotice: string | undefined;
   migrated: MigrationReport | undefined;
   previousCliVersion: string | undefined;
   cliVersion: string;
@@ -558,6 +566,8 @@ async function runNonInteractive(
 
   return {
     reloadNotice,
+    // Read after every write above, so it lists what this run left behind.
+    uncommittedNotice: await getUncommittedInstallNotice(cwd, plan),
     migrated,
     previousCliVersion,
     cliVersion,

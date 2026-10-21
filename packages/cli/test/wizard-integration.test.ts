@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 import {
   mkdir,
   mkdtemp,
@@ -32,7 +33,12 @@ const cancelSpy = vi.fn();
 const clackResponses: {
   locations?: string[] | symbol;
   summary?: boolean | symbol;
+  commit?: string | symbol;
+  commitMessage?: string | symbol;
 } = {};
+
+// Every select the wizard asked, in order.
+const selectMessages: string[] = [];
 
 // Every confirm the wizard asked, in order.
 const confirmMessages: string[] = [];
@@ -64,10 +70,16 @@ vi.mock("@clack/prompts", () => ({
     warn: (message: string) => {
       warnedMessages.push(message);
     },
+    success: () => {},
   },
   note: () => {},
   isCancel: (value: unknown) => value === fakeCancelSymbol,
   multiselect: vi.fn(() => Promise.resolve(clackResponses.locations)),
+  select: vi.fn(({ message }: { message: string }) => {
+    selectMessages.push(message);
+    return Promise.resolve(clackResponses.commit);
+  }),
+  text: vi.fn(() => Promise.resolve(clackResponses.commitMessage)),
   confirm: vi.fn(({ message }: { message: string }) => {
     confirmMessages.push(message);
     summaryConfirmMessage = message;
@@ -104,6 +116,9 @@ beforeEach(async () => {
   cancelSpy.mockClear();
   clackResponses.locations = undefined;
   clackResponses.summary = undefined;
+  clackResponses.commit = undefined;
+  clackResponses.commitMessage = undefined;
+  selectMessages.length = 0;
   confirmMessages.length = 0;
   summaryConfirmMessage = undefined;
   loggedMessages.length = 0;
@@ -635,6 +650,132 @@ describe("the wizard's restart-your-agents banner", () => {
     } finally {
       logSpy.mockRestore();
     }
+  });
+});
+
+/** Run git in `directory` with an identity and no signing, as a test needs. */
+function git(directory: string, ...args: string[]): string {
+  return execFileSync(
+    "git",
+    [
+      "-c",
+      "user.name=Taskless Test",
+      "-c",
+      "user.email=test@example.com",
+      "-c",
+      "commit.gpgsign=false",
+      ...args,
+    ],
+    { cwd: directory, encoding: "utf8" }
+  );
+}
+
+/**
+ * #554: a worktree is built from commits, and the install commits nothing, so
+ * the wizard offers to make the commit itself. The tests run git with no
+ * signing through the environment, which `commitInstall` inherits.
+ */
+describe("the wizard's offer to commit the install", () => {
+  beforeEach(() => {
+    git(cwd, "init", "-q");
+    vi.stubEnv("GIT_AUTHOR_NAME", "Taskless Test");
+    vi.stubEnv("GIT_AUTHOR_EMAIL", "test@example.com");
+    vi.stubEnv("GIT_COMMITTER_NAME", "Taskless Test");
+    vi.stubEnv("GIT_COMMITTER_EMAIL", "test@example.com");
+    vi.stubEnv("GIT_CONFIG_COUNT", "1");
+    vi.stubEnv("GIT_CONFIG_KEY_0", "commit.gpgsign");
+    vi.stubEnv("GIT_CONFIG_VALUE_0", "false");
+    clackResponses.locations = [".claude"];
+    clackResponses.summary = true;
+  });
+
+  it("commits only the install, with the offered message", async () => {
+    await writeFile(join(cwd, "unrelated.txt"), "mine\n");
+    git(cwd, "add", "unrelated.txt");
+    clackResponses.commit = "default";
+
+    const { runWizard } = await import("../src/wizard");
+    const result = await runWizard({ cwd, globalTrustEnvironment });
+
+    expect(result.status).toBe("completed");
+    expect(selectMessages).toHaveLength(1);
+    expect(git(cwd, "log", "-1", "--format=%s").trim()).toBe(
+      "chore: Installs Taskless and sets up coding agent support"
+    );
+    const committed = git(cwd, "show", "--name-only", "--format=", "HEAD");
+    expect(committed).toContain(".taskless/taskless.json");
+    expect(committed).toContain(".claude/skills/taskless/SKILL.md");
+    expect(committed).toContain(".claude/settings.json");
+    expect(committed).not.toContain("unrelated.txt");
+    // Still staged, exactly as the person left it.
+    expect(git(cwd, "status", "--porcelain")).toBe("A  unrelated.txt\n");
+  });
+
+  it("commits with the person's own message", async () => {
+    clackResponses.commit = "custom";
+    clackResponses.commitMessage = "  build: add taskless  ";
+
+    const { runWizard } = await import("../src/wizard");
+    await runWizard({ cwd, globalTrustEnvironment });
+
+    expect(git(cwd, "log", "-1", "--format=%s").trim()).toBe(
+      "build: add taskless"
+    );
+  });
+
+  it("commits from a subdirectory of the repository", async () => {
+    const project = join(cwd, "app");
+    await mkdir(join(project, ".claude"), { recursive: true });
+    clackResponses.commit = "default";
+
+    const { runWizard } = await import("../src/wizard");
+    await runWizard({ cwd: project, globalTrustEnvironment });
+
+    expect(git(cwd, "status", "--porcelain")).toBe("");
+  });
+
+  it("leaves everything uncommitted when the person will do it", async () => {
+    clackResponses.commit = "skip";
+
+    const { runWizard } = await import("../src/wizard");
+    await runWizard({ cwd, globalTrustEnvironment });
+
+    expect(git(cwd, "status", "--porcelain")).toContain("?? .taskless/");
+  });
+
+  it("reads a cancel as don't commit, and still completes", async () => {
+    clackResponses.commit = fakeCancelSymbol;
+
+    const { runWizard } = await import("../src/wizard");
+    const result = await runWizard({ cwd, globalTrustEnvironment });
+
+    expect(result.status).toBe("completed");
+    expect(cancelSpy).not.toHaveBeenCalled();
+    expect(git(cwd, "status", "--porcelain")).toContain("?? .taskless/");
+  });
+
+  it("does not ask once everything is committed", async () => {
+    clackResponses.commit = "default";
+    const { runWizard } = await import("../src/wizard");
+    await runWizard({ cwd, globalTrustEnvironment });
+    selectMessages.length = 0;
+
+    await runWizard({ cwd, globalTrustEnvironment });
+
+    expect(selectMessages).toHaveLength(0);
+  });
+});
+
+describe("the wizard outside a git repository", () => {
+  it("does not offer to commit", async () => {
+    clackResponses.locations = [".claude"];
+    clackResponses.summary = true;
+
+    const { runWizard } = await import("../src/wizard");
+    const result = await runWizard({ cwd, globalTrustEnvironment });
+
+    expect(result.status).toBe("completed");
+    expect(selectMessages).toHaveLength(0);
   });
 });
 

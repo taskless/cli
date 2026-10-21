@@ -1,4 +1,4 @@
-# Topic: onboard     (CLI v%(CLI_VERSION)s / topic v9)
+# Topic: onboard     (CLI v%(CLI_VERSION)s / topic v10)
 
 %(ONE_COMMAND_PER_CALL)s
 
@@ -25,14 +25,29 @@ making the case for running them in CI.
 
 ## Steps
 
-1. **Read the manifest first.** Run
+1. **Check that this checkout has Taskless committed.** Run
+   `git rev-parse --path-format=absolute --git-dir --git-common-dir`.
+   If this is not a git repository, or the two lines match, go on.
+   If they differ, you are in a linked worktree, and a worktree holds
+   only what was committed. Run `git ls-files .taskless/taskless.json`:
+   if it prints a path, go on. If it prints nothing, `.taskless/` was
+   never committed, even if it exists here, since the
+   `%(TASKLESS_CLI)s onboard` subcommand bootstraps an empty one. Check
+   the main checkout, the directory that holds the `--git-common-dir`
+   path: if it has a `.taskless/` too, stop. Tell the user that
+   `init`'s files are most likely uncommitted in their main checkout
+   at that path, to commit `.taskless/` and the skill directories there,
+   then start a new worktree and ask to onboard again. If it has none,
+   `init` ran in this worktree; go on.
+
+2. **Read the manifest first.** Run
    `%(TASKLESS_CLI)s info --json` and check whether
    `.taskless/taskless.json` reports `install.onboarded: true`. The
    `%(TASKLESS_CLI)s onboard` subcommand has already gated on this for
    you; if you reached this recipe another way and it is true, stop and
    tell the user onboarding already ran.
 
-2. **Ask the one question.** Put exactly this to the user, word for
+3. **Ask the one question.** Put exactly this to the user, word for
    word, set apart from anything else you say by a blank line above
    and below:
 
@@ -52,10 +67,10 @@ making the case for running them in CI.
    This is the only question you script. Do not ask which sources to
    mine, whether to write each rule, or whether to mark onboarding
    complete. Two exceptions follow: clarifying questions when the
-   report cannot be built (step 8), and the CI offer at the very end
-   (step 11).
+   report cannot be built (step 9), and the CI offer at the very end
+   (step 12).
 
-3. **Learn the routing surface before you propose anything.** A
+4. **Learn the routing surface before you propose anything.** A
    candidate this repository cannot express is not a candidate, and
    you cannot tell which is which until you know two things:
 
@@ -72,7 +87,7 @@ making the case for running them in CI.
    the commands you may choose to run to check that a source is
    usable, such as whether the user is signed in to `gh`.
 
-4. **Mine every source you can reach.** Do not ask the user which;
+5. **Mine every source you can reach.** Do not ask the user which;
    use all of these that apply:
 
    - **Codebase TODOs / FIXMEs**: search for `TODO`, `FIXME`, `XXX`,
@@ -100,9 +115,9 @@ making the case for running them in CI.
    MCPs to use, is yours to decide. Run a check when its answer
    changes what you can mine.
 
-5. %(HOST_TOOLS)s
+6. %(HOST_TOOLS)s
 
-6. **Scan with high-signal filtering.** For each source:
+7. **Scan with high-signal filtering.** For each source:
 
    - **Filter for repeated patterns.** A reviewer comment that
      appears across multiple PRs is a much stronger rule candidate
@@ -135,7 +150,7 @@ making the case for running them in CI.
    commit history chooses candidates; it never counts toward these
    numbers, which count review comments alone.
 
-7. **Write the rules.** For every candidate whose destination is
+8. **Write the rules.** For every candidate whose destination is
    `legacy`, `sg`, or `vale`, follow the `%(TASKLESS_CLI)s agent route`
    recipe you already fetched, with the candidate as the rule
    description, and write it. Do not ask before each one.
@@ -148,31 +163,31 @@ making the case for running them in CI.
    many instances of its pattern you saw in the code: the report asks
    for that estimate.
 
-8. **Clarify only when stuck.** You may ask the user something only
+9. **Clarify only when stuck.** You may ask the user something only
    when you are unsure what rules to write AND the report cannot be
    built yet because there are fewer than three working Taskless
    rules. Ask only what would let you write the missing rules, then
    write them. If you can find good candidates on your own, do that
    instead.
 
-9. **Mark onboarding complete.** Once the rules are written, run:
+10. **Mark onboarding complete.** Once the rules are written, run:
 
-   ```
-   %(TASKLESS_CLI)s onboard --mark-complete
-   ```
+    ```
+    %(TASKLESS_CLI)s onboard --mark-complete
+    ```
 
-   Do not ask first. The user's yes in step 2 is the consent this
-   records, and it does not wait on the report.
+    Do not ask first. The user's yes in step 3 is the consent this
+    records, and it does not wait on the report.
 
-10. **Publish the report, and send feedback alongside it.** Follow
+11. **Publish the report, and send feedback alongside it.** Follow
     `%(TASKLESS_CLI)s agent report` to publish the report; it carries
-    the runtime candidates from step 7 as Taskless Cloud candidates.
+    the runtime candidates from step 8 as Taskless Cloud candidates.
     In parallel, follow `%(TASKLESS_CLI)s agent rule-feedback` as the
     respondent, reached from onboarding: answer from your own account
     of this session, ask the user nothing, and send it. If the report
-    recipe refuses for too few rules, that is step 8's case.
+    recipe refuses for too few rules, that is step 9's case.
 
-11. **Make the case for CI, last.** After the report summary has been
+12. **Make the case for CI, last.** After the report summary has been
     shown, offer to run `%(TASKLESS_CLI)s check` in this repository's CI
     by following `%(TASKLESS_CLI)s agent ci`, naming the CI systems the
     `ci` field of `detect --json` reported, or saying there are none.
@@ -188,7 +203,7 @@ making the case for running them in CI.
 | code                  | meaning                                      | fix                                                  |
 |-----------------------|----------------------------------------------|------------------------------------------------------|
 | `ALREADY_ONBOARDED`   | `install.onboarded` is true and no `--force` | tell the user onboarding already ran                 |
-| `REPORT_INSUFFICIENT` | fewer than three working Taskless rules      | step 8: write more rules, asking only if you're stuck |
+| `REPORT_INSUFFICIENT` | fewer than three working Taskless rules      | step 9: write more rules, asking only if you're stuck |
 
 ## See Also
 
