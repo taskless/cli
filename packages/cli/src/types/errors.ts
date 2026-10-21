@@ -8,6 +8,9 @@
  */
 export type CLIErrorCode =
   | "AUTH_REQUIRED"
+  // A device-code login expired before the user approved it. Not a network
+  // failure: running `auth login` again starts a new login with a new code.
+  | "AUTH_EXPIRED"
   // Remote rule generation needs a verifiable org, which comes from a GitHub
   // `origin`. The three codes below name WHICH of the three populations a
   // project is in, because the remedies differ: `git init`, add a remote, or
