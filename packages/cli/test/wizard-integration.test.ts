@@ -11,9 +11,14 @@ import { dirname, join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const captureSpy = vi.fn();
+// Flipped per test so the notice can be checked under both opt-out states.
+let telemetryEnabled = true;
 vi.mock("../src/telemetry", () => ({
   getTelemetry: () =>
     Promise.resolve({ capture: captureSpy, shutdown: () => Promise.resolve() }),
+  isTelemetryEnabled: () => Promise.resolve(telemetryEnabled),
+  // The wording is asserted in telemetry.test.ts; here only that it is shown.
+  TELEMETRY_NOTICE: "<telemetry notice>",
   shutdownTelemetry: () => Promise.resolve(),
 }));
 
@@ -39,6 +44,8 @@ let summaryConfirmMessage: string | undefined;
 const loggedMessages: string[] = [];
 // Everything it warned through `log.warn`.
 const warnedMessages: string[] = [];
+// Everything it said through `log.info`.
+const infoMessages: string[] = [];
 
 vi.mock("@clack/prompts", () => ({
   intro: () => {},
@@ -47,7 +54,9 @@ vi.mock("@clack/prompts", () => ({
     cancelSpy(message);
   },
   log: {
-    info: () => {},
+    info: (message: string) => {
+      infoMessages.push(message);
+    },
     message: (message: string) => {
       loggedMessages.push(message);
     },
@@ -99,6 +108,8 @@ beforeEach(async () => {
   summaryConfirmMessage = undefined;
   loggedMessages.length = 0;
   warnedMessages.length = 0;
+  infoMessages.length = 0;
+  telemetryEnabled = true;
   vi.stubEnv("TASKLESS_TOKEN", "stub-token");
 });
 
@@ -153,6 +164,29 @@ describe("runWizard end-to-end", () => {
       String(options.message)
     );
     expect(messages.filter((m) => /log\s*in/i.test(m))).toEqual([]);
+  });
+
+  it("says once that it collects telemetry, and how to opt out", async () => {
+    clackResponses.locations = [".claude"];
+    clackResponses.summary = true;
+
+    const { runWizard } = await import("../src/wizard");
+    await runWizard({ cwd, globalTrustEnvironment });
+
+    expect(infoMessages.filter((m) => m === "<telemetry notice>")).toHaveLength(
+      1
+    );
+  });
+
+  it("says nothing about telemetry when it is already off", async () => {
+    clackResponses.locations = [".claude"];
+    clackResponses.summary = true;
+    telemetryEnabled = false;
+
+    const { runWizard } = await import("../src/wizard");
+    await runWizard({ cwd, globalTrustEnvironment });
+
+    expect(infoMessages).not.toContain("<telemetry notice>");
   });
 
   it("re-running with the same location is idempotent", async () => {

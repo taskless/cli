@@ -43,7 +43,7 @@ export async function resolveRunIdentity(
   }
 }
 
-function isTelemetryDisabled(): boolean {
+function isDisabledByEnvironment(): boolean {
   return (
     process.env.TASKLESS_TELEMETRY_DISABLED === "1" ||
     process.env.DO_NOT_TRACK === "1"
@@ -51,14 +51,39 @@ function isTelemetryDisabled(): boolean {
 }
 
 /**
- * Whether captures reach PostHog at all. The same predicate that hands out
+ * Whether the project's manifest opts out with `"telemetry": false`. Only the
+ * literal `false` counts, matching the env opt-outs, which accept only `"1"`.
+ *
+ * The manifest is checked in, so this turns telemetry off for everyone working
+ * in the repository. That is the point of putting it there rather than in the
+ * environment.
+ */
+function isDisabledByManifest(manifest: ProjectManifest | undefined): boolean {
+  return manifest?.telemetry === false;
+}
+
+/**
+ * Whether captures reach PostHog at all. The same predicates that hand out
  * the no-op client, exposed so a caller that must NOT do work under the
  * opt-out (the survey invite, which has nowhere to send an answer) asks this
- * rather than restating the two variables.
+ * rather than restating them. Pass `cwd` so the project's manifest opt-out is
+ * honored; without it only the environment is consulted.
  */
-export function isTelemetryEnabled(): boolean {
-  return !isTelemetryDisabled();
+export async function isTelemetryEnabled(cwd?: string): Promise<boolean> {
+  if (isDisabledByEnvironment()) return false;
+  return !isDisabledByManifest(await readProjectManifest(cwd));
 }
+
+/**
+ * Said once per install, by the wizard and by `init --no-interactive`, which
+ * are where a person (or the agent acting for one) is told what the CLI does.
+ * Both skip it when telemetry is already off: there is nothing to opt out of,
+ * and naming the switches would read as though it were still on.
+ */
+export const TELEMETRY_NOTICE =
+  "Taskless collects anonymous telemetry to help us learn how the CLI is being used. " +
+  "You can opt out with `TASKLESS_TELEMETRY_DISABLED=1` / `DO_NOT_TRACK=1`, " +
+  'or by setting `"telemetry": false` in `.taskless/taskless.json`.';
 
 const noopClient: TelemetryClient = {
   capture() {},
@@ -104,27 +129,44 @@ function decodeSubject(token: string): string | undefined {
   }
 }
 
+/** The two fields of `.taskless/taskless.json` telemetry reads. */
+interface ProjectManifest {
+  version?: unknown;
+  telemetry?: unknown;
+}
+
 /**
- * Read `.taskless/taskless.json` and return its `version` field, or `0` if
- * the file is missing, unreadable, or has no numeric version. Called once at
- * telemetry init; the resolved value is attached as a super-property to every
- * subsequent event.
+ * Read `.taskless/taskless.json`, or `undefined` if there is no `cwd` or the
+ * file is missing, unreadable, or not an object. Deliberately not
+ * `readRawManifest`, which throws on an unreadable file: telemetry failures
+ * are silent, and a broken manifest is reported by the command that needs it.
  */
-async function resolveScaffoldVersion(
+async function readProjectManifest(
   cwd: string | undefined
-): Promise<number> {
-  if (!cwd) return 0;
+): Promise<ProjectManifest | undefined> {
+  if (!cwd) return undefined;
   try {
     const content = await readFile(
       join(cwd, ".taskless", "taskless.json"),
       "utf8"
     );
-    const parsed = JSON.parse(content) as { version?: unknown };
-    const version = Number(parsed.version);
-    return Number.isFinite(version) ? version : 0;
+    const parsed: unknown = JSON.parse(content);
+    return typeof parsed === "object" && parsed !== null
+      ? (parsed as ProjectManifest)
+      : undefined;
   } catch {
-    return 0;
+    return undefined;
   }
+}
+
+/**
+ * The manifest's `version` field, or `0` if it is absent or not numeric.
+ * Resolved once at telemetry init and attached as a super-property to every
+ * subsequent event.
+ */
+function resolveScaffoldVersion(manifest: ProjectManifest | undefined): number {
+  const version = Number(manifest?.version);
+  return Number.isFinite(version) ? version : 0;
 }
 
 let instance: TelemetryClient | undefined;
@@ -146,7 +188,14 @@ export async function shutdownTelemetry(): Promise<void> {
 export async function getTelemetry(cwd?: string): Promise<TelemetryClient> {
   if (instance) return instance;
 
-  if (isTelemetryDisabled()) {
+  // The environment first, since it costs nothing; the manifest read is the
+  // only filesystem work either opt-out is allowed to do.
+  if (isDisabledByEnvironment()) {
+    instance = noopClient;
+    return instance;
+  }
+  const manifest = await readProjectManifest(cwd);
+  if (isDisabledByManifest(manifest)) {
     instance = noopClient;
     return instance;
   }
@@ -174,17 +223,18 @@ export async function getTelemetry(cwd?: string): Promise<TelemetryClient> {
       orgSubject = decodeOrgId(token) ?? NIL_ORG_ID;
     }
 
-    // These three are independent of each other and each spawns a subprocess
+    // These two are independent of each other and each spawns a subprocess
     // or reads the filesystem, so they run concurrently rather than in a
     // chain. `getTelemetry` runs on essentially every invocation, and this was
     // three sequential git/fs round trips in front of every command.
     //
-    // Everything here runs only when telemetry is enabled: the opt-out returns
+    // Everything here runs only when telemetry is enabled: the opt-outs return
     // the no-op client before `getTelemetry` reaches this point, so
-    // `DO_NOT_TRACK=1` costs no git spawn and no filesystem probe. The opt-out
-    // has to be an opt-out of the WORK, not only of the send.
-    const [scaffoldVersion, repository, dimensions] = await Promise.all([
-      resolveScaffoldVersion(cwd),
+    // `DO_NOT_TRACK=1` or `"telemetry": false` costs no git spawn and no
+    // filesystem probe beyond the manifest read. The opt-out has to be an
+    // opt-out of the WORK, not only of the send.
+    const scaffoldVersion = resolveScaffoldVersion(manifest);
+    const [repository, dimensions] = await Promise.all([
       // Which GitHub owner is using the CLI, including anonymously — see the
       // note below on why this is resolved from the git remote.
       cwd ? resolveRepositoryContext(cwd) : undefined,

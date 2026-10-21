@@ -107,7 +107,7 @@ const dismissCommand = defineCommand({
   },
   async run({ args }) {
     const cwd = resolve(args.dir ?? process.cwd());
-    if (!isTelemetryEnabled()) {
+    if (!(await isTelemetryEnabled(cwd))) {
       console.log(NOTHING_SENT);
       return;
     }
@@ -175,7 +175,7 @@ const sendCommand = defineCommand({
       );
     }
 
-    if (!isTelemetryEnabled()) {
+    if (!(await isTelemetryEnabled(cwd))) {
       console.log(SEND_DISABLED);
       return;
     }
