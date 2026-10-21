@@ -91,6 +91,9 @@ export function locationChoices(
   const checked = new Set(
     all.filter((row) => projectNames.has(row.value)).map((row) => row.value)
   );
+  // Taken before the manifest loop, so it holds only the project-detected
+  // rows: a recorded directory is pre-checked through its own row only when
+  // no detected harness already installs into it.
   const covered = new Set(
     all.filter((row) => checked.has(row.value)).map((row) => row.dir)
   );
