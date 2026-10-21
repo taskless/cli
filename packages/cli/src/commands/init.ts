@@ -187,10 +187,11 @@ export const initCommand = defineCommand({
         migrated: result.migrated !== undefined,
         previousCliVersion: result.previousCliVersion,
         cliVersion: result.cliVersion,
-        // A message a person reads, so the launcher they used, not the
-        // build's fixed spelling: the same convention as every other remedy
-        // (`auth login`, `rule delete`).
-        invocation: getCliPrefix(),
+        // The launcher this install just wrote, not the npx that ran it:
+        // npx is for installing and upgrading, and `update` runs as the
+        // version the project now records. A build with no launcher names
+        // the invocation the person used.
+        invocation: buildLauncherInvocation() ?? getCliPrefix(),
       });
       if (upgradeTrailer !== undefined) {
         console.log(upgradeTrailer);

@@ -19,7 +19,7 @@ export interface UpgradeTrailerInput {
   previousCliVersion?: string;
   /** The version this run recorded. */
   cliVersion: string;
-  /** The invocation to print in front of `update`, e.g. `npx @taskless/cli`. */
+  /** The invocation to print in front of `update`, e.g. `./.taskless/bin/cli.mjs`. */
   invocation: string;
 }
 

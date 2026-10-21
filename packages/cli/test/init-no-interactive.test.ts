@@ -256,7 +256,9 @@ describe("taskless init (the batch install)", () => {
     expect(stdout).toContain(".taskless/");
     expect(stdout).toContain(".claude/");
     expect(stdout).toContain("moved from 0.0.1-previous to");
-    expect(stdout).toMatch(/Run `.* update`/);
+    // The launcher this install wrote, never the npx that ran it: `update`
+    // must run as the version the project now records.
+    expect(stdout).toContain("Run `./.taskless/bin/cli.mjs update`");
 
     // Order: upgrade trailer, then the reload banner (the version moved, so
     // it prints), then the onboarding line last.
