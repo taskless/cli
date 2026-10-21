@@ -167,7 +167,7 @@ Both serving paths SHALL resolve every render option identically, the detected h
 
 ### Requirement: Onboard recipe follows the canonical recipe template and asks one question
 
-The `onboard.md` file SHALL follow the canonical recipe template defined in the `cli-agent` capability (header with CLI version + topic version, `## Goal`, `## Preconditions`, `## Steps`, `## Errors`, `## See Also`). The topic version SHALL be 8.
+The `onboard.md` file SHALL follow the canonical recipe template defined in the `cli-agent` capability (header with CLI version + topic version, `## Goal`, `## Preconditions`, `## Steps`, `## Errors`, `## See Also`). The spec SHALL NOT pin the topic version: it changes with every revision of the recipe, and the recipe header is where it is recorded.
 
 The recipe SHALL instruct the agent to:
 
@@ -197,7 +197,7 @@ The recipe SHALL NOT restate the destination criterion itself; it SHALL referenc
 #### Scenario: Recipe header includes CLI and topic version
 
 - **WHEN** `onboard.md` is read
-- **THEN** the first line SHALL match the canonical header format `# Topic: onboard     (CLI v<x.y.z> / topic v8)`
+- **THEN** the first line SHALL match the canonical header format `# Topic: onboard     (CLI v<x.y.z> / topic v<n>)`
 
 #### Scenario: The opening question is the only scripted question
 
@@ -288,3 +288,25 @@ The recipe SHALL NOT restate the destination criterion itself; it SHALL referenc
 
 - **WHEN** the recipe's scan step is read
 - **THEN** it SHALL state that evidence from commit history chooses candidates and does not count toward `surfaced`
+
+### Requirement: Onboard recipe first checks a worktree has Taskless committed
+
+The onboard recipe's first step SHALL have the agent run `git rev-parse --path-format=absolute --git-dir --git-common-dir`, and SHALL go on when the directory is not a git repository or the two paths match. When they differ, the agent is in a linked worktree, and the recipe SHALL have it run `git ls-files .taskless/taskless.json`. When that prints nothing and the main checkout, the directory holding the common git directory, has a `.taskless/`, the recipe SHALL have the agent stop and tell the user that `init`'s files are most likely uncommitted in their main checkout, to commit `.taskless/` and the skill directories there, and to start a new worktree and ask to onboard again. When the main checkout has no `.taskless/`, the recipe SHALL treat `init` as having run in the worktree and go on.
+
+The step SHALL test whether `.taskless/` is tracked, not whether it exists, because the `onboard` subcommand bootstraps an empty `.taskless/` before it serves the recipe.
+
+#### Scenario: The check comes before reading the manifest
+
+- **WHEN** the onboard recipe is rendered
+- **THEN** its first step SHALL be the worktree check
+- **AND** it SHALL come before the step that reads the manifest
+
+#### Scenario: A worktree cut before init was committed stops onboarding
+
+- **WHEN** the agent is in a linked worktree, `.taskless/taskless.json` is not tracked, and the main checkout has a `.taskless/`
+- **THEN** the recipe SHALL have the agent stop and tell the user to commit `init`'s files in the main checkout and start a new worktree
+
+#### Scenario: Init run inside the worktree continues
+
+- **WHEN** the agent is in a linked worktree, `.taskless/taskless.json` is not tracked, and the main checkout has no `.taskless/`
+- **THEN** the recipe SHALL have the agent go on with onboarding
