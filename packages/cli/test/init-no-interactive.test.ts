@@ -665,7 +665,7 @@ describe("taskless init (the batch install)", () => {
       );
       expect(boxed).not.toContain(".claude/skills/taskless");
       expect(stdout.indexOf("COMMIT BEFORE YOU START YOUR AGENT")).toBeLessThan(
-        stdout.indexOf("ask to onboard with Taskless")
+        stdout.indexOf(ONBOARD_PROMPT)
       );
     });
 
