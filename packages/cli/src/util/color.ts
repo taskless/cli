@@ -24,8 +24,11 @@ export function detectColorLevel(): 0 | 1 | 2 | 3 {
   if (force === "1") return 1;
   if (force === "2") return 2;
   if (force === "3") return 3;
-  const isTTY = process.stdout.isTTY === true || process.stderr.isTTY === true;
-  if (!isTTY) return 0;
+  // Stdout alone decides. Every coloured surface writes there, so a redirected
+  // stdout (`taskless init > out.txt`) must come out plain even when stderr is
+  // still the terminal. Chalk has one level for both streams, so the cost is
+  // that coloured text sent to stderr loses its colour in that case.
+  if (process.stdout.isTTY !== true) return 0;
   const term = process.env.TERM ?? "";
   const colorterm = process.env.COLORTERM ?? "";
   if (colorterm === "truecolor" || colorterm === "24bit") return 3;

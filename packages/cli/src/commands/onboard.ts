@@ -39,8 +39,8 @@ export const ONBOARD_PROMPT = "Onboard this project with Taskless";
  * exactly the prompt. Colour only marks it as the thing to copy: cyan, in the
  * family of the logo's teal but brighter, since the prompt has to stand out
  * and the logo's `#2B7384` is muted. With colour off, which
- * `util/color` decides (`NO_COLOR`, or neither stdout nor stderr a terminal),
- * chalk prints it plain and the layout alone keeps it copyable.
+ * `util/color` decides (`NO_COLOR`, or stdout not a terminal), chalk prints
+ * it plain and the layout alone keeps it copyable.
  */
 export function getOnboardTrailer(): string {
   return [
