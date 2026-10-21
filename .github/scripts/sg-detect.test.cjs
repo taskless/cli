@@ -131,7 +131,7 @@ const pinnedAt = (version) => ({
 
 test("sg-detect: the repository's own pins are exact and agree", () => {
   // Not a fixture. If someone changes a pin to `^0.41.0` or bumps one platform
-  // without the others, the badge has no honest value to show and this is
+  // without the others, there is no honest version to compare and this is
   // where that is caught.
   assert.match(collectPinnedVersion(CLI_PACKAGE_JSON), /^\d+\.\d+\.\d+$/);
 });
@@ -219,7 +219,7 @@ test("sg-detect: no @ast-grep dependency at all aborts", () => {
 });
 
 test("sg-detect: an upstream prerelease on latest aborts loudly", () => {
-  // Better a failed run than a badge silently comparing 0.41.0 against
+  // Better a failed run than silently comparing 0.41.0 against
   // something it cannot order.
   assert.throws(
     () => isAhead("0.41.0", "0.46.0-alpha.1"),
