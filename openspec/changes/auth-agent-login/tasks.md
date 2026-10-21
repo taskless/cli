@@ -1,7 +1,7 @@
 ## 1. Pending login state
 
-- [ ] 1.1 Add read/save/clear for `.taskless/.auth-pending.json` beside the token helpers (mode `0600`, added to `.taskless/.gitignore`, `expires_at` absolute); unit-test save → read → clear, and that an expired file reads as absent
-- [ ] 1.2 Add `AUTH_EXPIRED` to the error code enum; typecheck passes
+- [x] 1.1 Add read/save/clear for `.taskless/.auth-pending.json` beside the token helpers (mode `0600`, added to `.taskless/.gitignore`, `expires_at` absolute); unit-test save → read → clear, and that an expired file reads as absent
+- [x] 1.2 Add `AUTH_EXPIRED` to the error code enum; typecheck passes
 
 ## 2. Stepped login
 
