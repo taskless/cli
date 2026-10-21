@@ -11,7 +11,7 @@
 
 ## 3. Recipe
 
-- [ ] 3.1 Rewrite the login branch of `src/agent/auth.md` to loop on `auth login --json`, add `AUTH_EXPIRED` to its error table, and bump the topic version from #562's v4 to v5; recipe tests pass
+- [x] 3.1 Rewrite the login branch of `src/agent/auth.md` to loop on `auth login --json`, add `AUTH_EXPIRED` to its error table, and bump the topic version from #562's v4 to v5; recipe tests pass
 
 ## 4. Verification
 
