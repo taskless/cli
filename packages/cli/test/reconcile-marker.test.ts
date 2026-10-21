@@ -201,6 +201,56 @@ describe("recording a rules reconciliation", () => {
         vale: VALE_VERSION,
       });
     });
+
+    it("moves a Vale rule's tests: cases into fixtures when it crosses 3.24.0", async () => {
+      const ruleDirectory = join(cwd, ".taskless", "rules", "vale", "hedge");
+      await mkdir(ruleDirectory, { recursive: true });
+      await writeFile(
+        join(ruleDirectory, "hedge.yml"),
+        'extends: existence\nmessage: "x"\nlevel: warning\ntokens:\n  - perhaps\n' +
+          "tests:\n  - name: flags it\n    input: Perhaps.\n    contains: x\n"
+      );
+      const manifestPath = join(cwd, ".taskless", "taskless.json");
+      const manifest = JSON.parse(
+        await readFile(manifestPath, "utf8")
+      ) as Record<string, unknown>;
+      manifest["rules"] = {
+        reconciledTo: "0.11.0",
+        engines: { sg: AST_GREP_VERSION, vale: "3.23.0" },
+      };
+      await writeFile(manifestPath, JSON.stringify(manifest, undefined, 2));
+
+      const result = await runCli(["update", "--rules", "--json", "-d", cwd]);
+      expect(result.exitCode).toBe(0);
+      const payload = JSON.parse(result.stdout) as {
+        migrated: { engineVersion: string; files: string[] }[];
+      };
+      expect(payload.migrated).toContainEqual(
+        expect.objectContaining({
+          engineVersion: "3.24.0",
+          files: [
+            join(
+              ".taskless",
+              "rules",
+              "vale",
+              "hedge",
+              ".tests",
+              "fail",
+              "flags-it.md"
+            ),
+            join(".taskless", "rules", "vale", "hedge", "hedge.yml"),
+          ],
+        })
+      );
+      expect(
+        await readFile(join(ruleDirectory, "hedge.yml"), "utf8")
+      ).not.toContain("tests:");
+      const rules = await readRules();
+      expect(rules?.engines).toEqual({
+        sg: AST_GREP_VERSION,
+        vale: VALE_VERSION,
+      });
+    });
   });
 
   it("refuses when there is no .taskless/ to reconcile", async () => {
