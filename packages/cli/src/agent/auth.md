@@ -1,4 +1,4 @@
-# Topic: auth     (CLI v%(CLI_VERSION)s / topic v3)
+# Topic: auth     (CLI v%(CLI_VERSION)s / topic v4)
 
 %(ONE_COMMAND_PER_CALL)s
 
@@ -13,6 +13,15 @@ Manage Taskless authentication. Three branches:
 ## Preconditions
 - `.taskless/` directory exists.
 - For login: the user has a browser to approve the device code.
+
+`auth` runs on any version of the CLI. Most commands refuse with
+`CLI_VERSION_MISMATCH` when the running CLI is not the version
+`.taskless/taskless.json` records, but a login is a token saved in
+`.taskless/.env.local.json`, not something a version owns, so `auth`
+is exempt. Use the invocation below anyway. A person logging in by hand
+can run `auth login` from any version, launcher or not. When another
+command refused with `CLI_VERSION_MISMATCH`, logging in does not fix
+it. Follow that message's own remedy.
 
 ## Steps
 
