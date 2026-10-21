@@ -1,5 +1,52 @@
 # @taskless/cli
 
+## 0.13.3
+
+[Compare with v0.13.2](https://github.com/taskless/cli/compare/v0.13.2...v0.13.3)
+
+### Patch Changes
+
+- fa8b6e9: Update the bundled ast-grep to 0.51.0 (from 0.45.3).
+
+  What a rule author sees:
+  - **Haskell rules on `kind: type_synomym` are renamed to `kind: type_synonym`.** ast-grep's Haskell grammar fixed the typo in that kind name, and a rule still using the old spelling fails to load. Because `taskless check` loads every ast-grep rule together, `check` would report the failure and no ast-grep findings at all. `taskless update --rules` now applies the rename itself when it records a reconciliation, naming each file it rewrote. No other Haskell kind or field changed.
+  - `taskless update --rules` applies mechanical rule rewrites for the engine versions a project's rules cross, keyed on the engine versions it last recorded rather than on the `.taskless/` layout version, so they never force a scaffold bump. `taskless update --json` lists them in advance. It now refuses with `SCAFFOLD_MIGRATION_REQUIRED` when the layout is behind; run `taskless init` first.
+  - `sg` rules can target `Zig`.
+  - A rule file ending in a stray `---` no longer stops `taskless check` from reporting any ast-grep findings for the project. ast-grep used to read the empty document after it as a broken rule and abort the whole scan. `taskless validate` still flags the file as multi-document YAML.
+  - The `.taskless/` layout does not change, so a pinned CLI keeps reading the project.
+
+- 21594b5: The CLI now runs only as the version a project records, and only on rules reconciled for its engines.
+  - **A CLI that is not the version `.taskless/taskless.json` records refuses every command except `init`, `info`, `auth`, and `feedback`**, with `CLI_VERSION_MISMATCH`. That covers npx, `pnpm dlx`, a `devDependencies` install, and any other way of starting it. Run commands through the project launcher, `./.taskless/bin/cli.mjs`, which runs the recorded version, and upgrade by running `init` with the newer CLI. If CI runs a pinned CLI, move the pin in the same commit as the upgrade.
+  - **`check` and `verify` refuse rules reconciled against a different ast-grep or Vale**, with `RULES_ENGINE_MISMATCH`, when `rules.engines` names an engine version this CLI does not bundle and the project has rules for that engine. Until now they ran the new engine against rules nobody had migrated. A rule still using a renamed kind could leave `check` reporting no ast-grep findings at all. When the rules are behind, run `update` and then `update --rules`, which applies the rule rewrites and records the bundled engines. A project that never recorded its engines is not affected.
+  - `--allow-version-mismatches` skips both refusals, and `TASKLESS_ALLOW_VERSION_MISMATCHES=1` does the same from the environment.
+  - npx is now only for installing, upgrading, and logging in (`auth` runs on any version). The `.taskless/README.md` written for new projects runs `check` through the launcher and names `init` for npx and `pnpm dlx`. `init`'s closing line says to run `./.taskless/bin/cli.mjs update` rather than the npx invocation that ran it, and the bare, non-interactive notice sends its reader to the launcher for recipes when the project has one.
+  - **An agent can now log a user in.** `auth login --json` is a step an agent repeats until it finishes. The first call returns `{ ok: true, status: "pending", verificationUrl, userCode, expiresAt }` at once. Each later call waits at most 45 seconds, then returns `pending` again, `authenticated`, or an error. A code that expires fails with the new `AUTH_EXPIRED` code, and running it again starts a new login. `auth login --json` used to block silently until approval, which kept the URL from an agent whose tool shows output only on exit. It now prints a success envelope, including `already_logged_in` with its `source`, where it printed nothing. A started login is saved to `.taskless/.auth-pending.json`, gitignored and readable only by its owner, and `auth logout` discards it. `auth login` without `--json` is unchanged.
+
+- 5616253: The setup wizard lists every supported harness by name (Claude Code, OpenCode, Cursor, Codex, Gemini CLI, Crush, Devin, and other Agent Skills harnesses), so you no longer need to know which directory your harness reads. Harnesses found in the project are listed first and pre-checked; harnesses found on this machine come next, unchecked. Installing stays project-local. Checking Codex now also writes its permission rule, even in a project without `.codex/`. Devin is new: it installs into `.devin/` when the project has one, and `.agents/` otherwise.
+- 46ca90e: `init` no longer asks to "Remove Taskless from .claude/" when an upgrade only retires a stub there. A directory that keeps its Taskless skill is now described as losing that stub ("Remove 1 stub from .claude/?"). "Remove Taskless from" is reserved for a directory you deselected.
+- ffaa50a: The setup wizard now offers to commit what it installed. An agent that works in a git worktree builds it from commits, so until the install is committed it sees no Taskless at all. Choose the suggested message, write your own, or commit it yourself; the commit carries only Taskless's files and leaves anything else you had staged alone. `init` without the wizard says the commit is owed instead.
+
+  The onboard recipe (topic v10) now starts by checking for that case: in a worktree where `.taskless/` was never committed, it tells you to commit `init`'s files in your main checkout and start a new worktree, instead of onboarding into a checkout that has no install.
+
+- 98dfa99: Onboarding now ends its final message with the report link, after the CI offer, so the link is the last thing the user reads instead of scrolling away under the CI pitch.
+- f03aee7: `taskless init` and the setup wizard now end with a prompt you can copy. After one line of explanation, `Onboard this project with Taskless` prints alone on the last line, coloured on a colour terminal and plain otherwise, so a triple-click copies exactly the prompt to paste into your AI tool.
+
+  Colour now follows stdout alone. Redirecting output to a file, as in `taskless init > out.txt`, prints it plain even when stderr is still your terminal, so no escape codes land in the file.
+
+- 566b238: Telemetry can now be turned off for a whole project with `"telemetry": false` in `.taskless/taskless.json`. The file is checked in, so this applies to everyone working in the repository, CI included. Like `TASKLESS_TELEMETRY_DISABLED=1` and `DO_NOT_TRACK=1`, it skips the work as well as the send: no client is created and no network request is made. The setup wizard and `taskless init` now say that Taskless collects anonymous telemetry and name all three opt-outs, and `init --json` reports `telemetry: { enabled }` so an agent running the install can pass that on.
+- b3aeca1: Update the bundled Vale to 3.24.0.
+
+  Vale 3.24.0 warns about any key it does not recognise inside a matcher, including the `tskl) rule` breadcrumb every Vale rule config carries. The CLI now comments the breadcrumb out of the config it assembles for Vale, so `check` no longer prints one notice per matcher, and a file Vale cannot parse is again set aside with its own finding instead of failing the whole Vale run. Vale's warnings now arrive as one notice each.
+
+  Two findings change for existing rules: C# `// ReSharper disable` and `// NOSONAR` comments are no longer linted, and a word after a link and a non-breaking space is now matched. `update` (topic v18) walks both.
+
+  `validate` and `verify` now reject a Vale rule's `tests:` key. Vale 3.24.0 runs those cases with `vale test`, which Taskless never calls; a Vale rule is verified by its `.tests/pass` and `.tests/fail` documents. `update --rules` moves each case into one of those fixtures for you.
+
+- 85025cb: The setup wizard's output reads as one block per step, and says plainly when the install is left uncommitted.
+  - A migration's summary, and the `Created` lines for the project launcher, continue under the step that opened them instead of each starting a new one.
+  - The telemetry notice is shown under a "Telemetry Information" heading, one sentence per line, and `init` prints the same lines. It, the README, and the `init` (topic v14) and `feedback-invite` (topic v5) recipes name `TASKLESS_TELEMETRY_DISABLED=1` and the `"telemetry": false` setting as the opt-outs. `DO_NOT_TRACK=1` still turns telemetry off; it is a cross-tool setting, so Taskless no longer advertises it as its own.
+  - Cancelling the commit question (Ctrl+C), declining it, or a commit git refuses now closes the wizard with "Taskless is installed, but its files are not committed yet." instead of "Taskless is ready to go.", which read as though the commit had happened.
+
 ## 0.13.2
 
 [Compare with v0.13.1](https://github.com/taskless/cli/compare/v0.13.1...v0.13.2)
