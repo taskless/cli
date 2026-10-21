@@ -15,5 +15,5 @@
 
 ## 4. Verification
 
-- [ ] 4.1 `pnpm typecheck`, `pnpm lint`, and the CLI suite pass
-- [ ] 4.2 A real login against the service, driven only by repeated `auth login --json` calls, ends in `authenticated` and leaves no `.auth-pending.json` behind
+- [x] 4.1 `pnpm typecheck`, `pnpm lint`, and the CLI suite pass
+- [x] 4.2 A real login against the service, driven only by repeated `auth login --json` calls, ends in `authenticated` and leaves no `.auth-pending.json` behind
