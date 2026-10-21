@@ -10,7 +10,7 @@ import { detectColorLevel } from "../src/util/color";
  *
  * These assertions pin the precedence, because each rung is a documented
  * promise to someone: `NO_COLOR` to anyone piping output, `FORCE_COLOR` to CI,
- * and the TTY check to everything else.
+ * and the stdout TTY check to everything else.
  */
 
 /**
@@ -66,6 +66,27 @@ describe("runtime colour detection", () => {
     vi.stubEnv("FORCE_COLOR", "");
     withTTY(false);
     expect(detectColorLevel()).toBe(0);
+  });
+
+  it("reports no colour when stdout is redirected, even with stderr on a terminal", () => {
+    // `taskless init > out.txt` from a shell: escapes written into the file
+    // would land in front of the prompt the user means to copy out of it.
+    vi.stubEnv("NO_COLOR", "");
+    vi.stubEnv("FORCE_COLOR", "");
+    vi.stubEnv("TERM", "xterm-256color");
+    process.stdout.isTTY = false;
+    process.stderr.isTTY = true;
+    expect(detectColorLevel()).toBe(0);
+  });
+
+  it("colours stdout on a terminal when only stderr is redirected", () => {
+    vi.stubEnv("NO_COLOR", "");
+    vi.stubEnv("FORCE_COLOR", "");
+    vi.stubEnv("COLORTERM", "");
+    vi.stubEnv("TERM", "xterm-256color");
+    process.stdout.isTTY = true;
+    process.stderr.isTTY = false;
+    expect(detectColorLevel()).toBe(2);
   });
 
   it.each([
