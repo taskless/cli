@@ -218,14 +218,15 @@ function diffEntry(
   target: string,
   removedSkills: string[],
   removedCommands: string[] = [],
-  mode: "reference" | "canonical" = "reference"
+  mode: "reference" | "canonical" = "reference",
+  unchangedSkills: string[] = []
 ) {
   return {
     target,
     mode,
     additions: { skills: [], commands: [] },
     removals: { skills: removedSkills, commands: removedCommands },
-    unchanged: { skills: [], commands: [] },
+    unchanged: { skills: unchangedSkills, commands: [] },
   };
 }
 
@@ -243,6 +244,44 @@ describe("buildRemovalConfirmMessage", () => {
     });
     expect(message).toBe(
       "Remove Taskless from .claude/ (2 stubs), .cursor/ (1 stub)?"
+    );
+  });
+
+  it("does not call a target that keeps its skill an uninstall", async () => {
+    // An upgrade that retires the /tskl command leaves the skill in place, so
+    // the question is about one stub, not about Taskless leaving .claude/.
+    const { buildRemovalConfirmMessage } =
+      await import("../src/wizard/steps/summary");
+    const message = buildRemovalConfirmMessage(
+      {
+        entries: [
+          diffEntry(".taskless", [], ["tskl.md"], "canonical", ["taskless"]),
+          diffEntry(".claude", [], ["tskl.md"], "reference", ["taskless"]),
+        ],
+        hasAdditions: false,
+        hasRemovals: true,
+      },
+      { editsSettings: true }
+    );
+    expect(message).toBe(
+      "Remove 1 stub from .claude/, and make these changes to your settings?"
+    );
+    expect(message).not.toContain("Remove Taskless");
+  });
+
+  it("names uninstalled targets before trimmed ones", async () => {
+    const { buildRemovalConfirmMessage } =
+      await import("../src/wizard/steps/summary");
+    const message = buildRemovalConfirmMessage({
+      entries: [
+        diffEntry(".claude", [], ["tskl.md"], "reference", ["taskless"]),
+        diffEntry(".cursor", ["taskless"], ["tskl.md"]),
+      ],
+      hasAdditions: false,
+      hasRemovals: true,
+    });
+    expect(message).toBe(
+      "Remove Taskless from .cursor/ (2 stubs), 1 stub from .claude/?"
     );
   });
 
