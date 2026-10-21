@@ -11,6 +11,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { ONBOARD_PROMPT } from "../src/commands/onboard";
 import { LATEST_SCHEMA_VERSION } from "../src/filesystem/migrate";
 import { GLOBAL_TRUST_ENTRY } from "../src/install/global-trust";
 import { builtCli } from "./support/built-cli";
@@ -199,7 +200,8 @@ describe("taskless init (the batch install)", () => {
       cwd,
     ]);
 
-    expect(stdout).toMatch(/^In your AI tool, .*Taskless skill/m);
+    expect(stdout).toMatch(/^Your AI tool has the Taskless skill now\. /m);
+    expect(stdout.trimEnd().split("\n").at(-1)).toBe(ONBOARD_PROMPT);
     expect(stdout).not.toContain("/tskl onboard");
     expect(stdout).not.toMatch(/@taskless\/cli@latest onboard/);
   });
@@ -213,7 +215,8 @@ describe("taskless init (the batch install)", () => {
       cwd,
     ]);
 
-    expect(stdout).toMatch(/^In your AI tool, .*Taskless skill/m);
+    expect(stdout).toMatch(/^Your AI tool has the Taskless skill now\. /m);
+    expect(stdout.trimEnd().split("\n").at(-1)).toBe(ONBOARD_PROMPT);
     expect(stdout).not.toContain("/tskl onboard");
     expect(stdout).not.toMatch(/@taskless\/cli@latest onboard/);
   });
@@ -248,7 +251,7 @@ describe("taskless init (the batch install)", () => {
     const reloadAt = lines.findIndex((line) => line.includes("Reload skills"));
     expect(trailerAt).toBeGreaterThan(-1);
     expect(reloadAt).toBeGreaterThan(trailerAt);
-    expect(lines.at(-1)).toMatch(/^In your AI tool, /);
+    expect(lines.at(-1)).toBe(ONBOARD_PROMPT);
   });
 
   it("omits the update pointer when the version did not move", async () => {
@@ -326,7 +329,7 @@ describe("taskless init (the batch install)", () => {
     // trailer.
     expect(trailerAt).toBeGreaterThan(-1);
     expect(pinAt).toBeGreaterThan(trailerAt);
-    expect(lines.at(-1)).toMatch(/^In your AI tool, /);
+    expect(lines.at(-1)).toBe(ONBOARD_PROMPT);
   });
 
   it("says CI will break when the same run migrated .taskless/", async () => {
@@ -448,7 +451,7 @@ describe("taskless init (the batch install)", () => {
       cwd,
     ]);
 
-    expect(stdout).not.toMatch(/ask to onboard with Taskless/);
+    expect(stdout).not.toContain(ONBOARD_PROMPT);
     expect(stdout).not.toContain("/tskl onboard");
   });
 
@@ -473,7 +476,7 @@ describe("taskless init (the batch install)", () => {
       cwd,
     ]);
 
-    expect(stdout).toMatch(/ask to onboard with Taskless/);
+    expect(stdout).toContain(ONBOARD_PROMPT);
 
     const manifest = JSON.parse(
       await readFile(join(cwd, ".taskless", "taskless.json"), "utf8")
