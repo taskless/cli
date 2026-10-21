@@ -119,9 +119,12 @@ export async function loginStep(
       }
     }
 
-    // The code expires before another poll could be made, so no later step
-    // can finish this login. Say so to the caller that was waiting on it.
-    if (pending.expiresAt < now() + interval) {
+    // Expiry, not the wait, ended the polling: the code runs out inside this
+    // step's window. Wait it out so the report is never early, then say so to
+    // the caller that was waiting on it. A code that outlives the window is
+    // still pending, and the step that reaches its expiry reports it.
+    if (pending.expiresAt <= deadline) {
+      await sleep(Math.max(0, pending.expiresAt - now()));
       await clearPendingLogin(cwd);
       return { status: "failed", reason: "expired" };
     }

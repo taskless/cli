@@ -161,7 +161,28 @@ describe("a login step", () => {
       status: "failed",
       reason: "expired",
     });
-    expect(clock - START).toBeLessThan(45_000);
+    // Reported at the expiry itself, never before it, and inside the wait.
+    expect(clock).toBe(START + 12_000);
+    expect(await readPendingLogin(cwd)).toBeUndefined();
+  });
+
+  it("leaves a code that outlives its wait pending, for the next step to report", async () => {
+    // Valid for 48s against a 45s wait: the wait, not the code, ends this step.
+    await savePendingLogin(cwd, { ...PENDING, expiresAt: START + 48_000 });
+    mockedPollForToken.mockResolvedValue({ status: "pending" });
+    expect(await loginStep({ cwd, ...time })).toMatchObject({
+      status: "pending",
+      userCode: PENDING.userCode,
+    });
+    expect(clock).toBe(START + 45_000);
+    expect(await readPendingLogin(cwd)).toBeDefined();
+
+    // The next step reaches the expiry and reports it.
+    expect(await loginStep({ cwd, ...time })).toEqual({
+      status: "failed",
+      reason: "expired",
+    });
+    expect(clock).toBe(START + 48_000);
     expect(await readPendingLogin(cwd)).toBeUndefined();
   });
 
