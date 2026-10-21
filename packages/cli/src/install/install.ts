@@ -75,10 +75,6 @@ export interface ToolDescriptor {
    * harness is detected in the project. Taskless never creates it.
    */
   ownDir?: string;
-  /**
-   * Whether the harness reads skills from `.agents/skills`, per its own docs.
-   */
-  readsAgentSkills?: boolean;
 }
 
 export interface EmbeddedSkill {
@@ -145,8 +141,6 @@ export const TOOLS: ToolDescriptor[] = [
       override(env, "OPENCODE_CONFIG_DIR", join(home, ".config", "opencode")),
     ],
     installDir: ".opencode",
-    // opencode.ai/docs/skills: "Project agent-compatible: `.agents/skills`".
-    readsAgentSkills: true,
   },
   {
     name: "Cursor",
@@ -172,7 +166,6 @@ export const TOOLS: ToolDescriptor[] = [
       override(env, "CODEX_HOME", join(home, ".codex")),
     ],
     installDir: ".agents",
-    readsAgentSkills: true,
   },
   {
     // gemini-cli docs/cli/skills.md: workspace skills live in `.gemini/skills/`
@@ -188,7 +181,6 @@ export const TOOLS: ToolDescriptor[] = [
       join(override(env, "GEMINI_CLI_HOME", home), ".gemini"),
     ],
     installDir: ".agents",
-    readsAgentSkills: true,
   },
   {
     // charmbracelet/crush README: project skills include `.agents/skills`.
@@ -212,7 +204,6 @@ export const TOOLS: ToolDescriptor[] = [
       ),
     ],
     installDir: ".agents",
-    readsAgentSkills: true,
   },
   {
     // docs.devin.ai/cli/reference/configuration/global-vs-local: user config
@@ -225,7 +216,6 @@ export const TOOLS: ToolDescriptor[] = [
     machine: ({ home }) => [join(home, ".config", "devin")],
     installDir: ".agents",
     ownDir: ".devin",
-    readsAgentSkills: true,
   },
 ];
 
