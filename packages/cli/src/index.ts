@@ -34,6 +34,8 @@ import { shouldLaunchWizard } from "./util/interactive";
 import { showResolvedUsage } from "./util/help";
 import { getCliPrefix } from "./util/package-manager";
 import { CLIError } from "./util/cli-error";
+import { requireRecordedVersion } from "./install/version-gate";
+import { writeJsonError } from "./types/errors";
 
 // zod registers its English messages as a side effect of importing "zod", but
 // its package.json declares `"sideEffects": false`, so the bundler drops that
@@ -161,6 +163,34 @@ const main = defineCommand({
   },
 });
 
+/**
+ * The version-pin gate, rendered the way the subcommand would render it: a
+ * JSON envelope on stdout under `--json`, prose on stderr otherwise.
+ */
+async function requireRecordedVersionForRun(
+  rawArguments: string[]
+): Promise<void> {
+  const { positionals } = splitRawArguments(rawArguments);
+  try {
+    await requireRecordedVersion(
+      resolveCwd(rawArguments),
+      positionals[0],
+      rawArguments
+    );
+  } catch (error) {
+    if (
+      error instanceof CLIError &&
+      error.code !== undefined &&
+      rawArguments.includes("--json")
+    ) {
+      writeJsonError(error.code, error.message);
+      process.exitCode = 1;
+      throw new CLIError(error.message, error.code, { reported: true });
+    }
+    throw error;
+  }
+}
+
 // main loop to run cli and make every attempt to shut down gracefully
 // `-d <path>` is joined into `--dir=<path>` so citty's subcommand resolution
 // cannot mistake the path for a command name (see joinDirectoryValues).
@@ -184,6 +214,7 @@ try {
   } else if (hasVersionFlag(rawArguments)) {
     process.stdout.write(`${__VERSION__}\n`);
   } else {
+    await requireRecordedVersionForRun(rawArguments);
     await runCommand(main, { rawArgs: rawArguments });
   }
 } catch (error) {

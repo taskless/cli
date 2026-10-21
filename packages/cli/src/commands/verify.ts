@@ -5,6 +5,7 @@ import { defineCommand } from "citty";
 
 import { ensureTasklessDirectory } from "../filesystem/directory";
 import { requireCurrentSchema } from "../filesystem/migrate";
+import { requireReconciledEngines } from "../rules/engine-gate";
 import type { FixtureFinding } from "../rules/fixtures";
 import {
   verifyOneRule,
@@ -99,6 +100,10 @@ async function runOverPath(options: {
   // and name the thing that fixes it.
   try {
     await requireCurrentSchema(cwd);
+    // `verify` runs the engines, so it holds the rules to the engines they
+    // were reconciled for. `validate` does not: it checks shape, and is what
+    // an agent runs part-way through the walk that clears this refusal.
+    if (label === "verify") await requireReconciledEngines(cwd);
   } catch (error) {
     if (error instanceof CLIError) {
       if (json) {

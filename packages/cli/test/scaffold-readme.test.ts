@@ -23,14 +23,14 @@ const NO_SPECIFIER: string | undefined = undefined;
 describe("buildReadmeContent", () => {
   it("offers both launchers for a released build", () => {
     const readme = buildReadmeContent(RELEASED_SPECIFIER);
-    expect(readme).toContain(`pnpm dlx ${RELEASED_SPECIFIER} check`);
-    expect(readme).toContain(`npx ${RELEASED_SPECIFIER} check`);
+    expect(readme).toContain(`pnpm dlx ${RELEASED_SPECIFIER} init`);
+    expect(readme).toContain(`npx ${RELEASED_SPECIFIER} init`);
   });
 
   it("keeps both launchers for a nightly, and names the nightly in both", () => {
     const readme = buildReadmeContent(NIGHTLY_SPECIFIER);
-    expect(readme).toContain(`pnpm dlx ${NIGHTLY_SPECIFIER} check`);
-    expect(readme).toContain(`npx ${NIGHTLY_SPECIFIER} check`);
+    expect(readme).toContain(`pnpm dlx ${NIGHTLY_SPECIFIER} init`);
+    expect(readme).toContain(`npx ${NIGHTLY_SPECIFIER} init`);
   });
 
   it("never names the released package in a nightly's README", () => {
@@ -40,6 +40,13 @@ describe("buildReadmeContent", () => {
     const readme = buildReadmeContent(NIGHTLY_SPECIFIER);
     expect(readme).not.toContain(RELEASED_SPECIFIER);
     expect(readme).not.toContain("@taskless/cli@");
+  });
+
+  it("runs only init through a package manager", () => {
+    // Any version but the recorded one refuses everything except `init`, and
+    // `@latest` is rarely the recorded one, so `npx … check` would be refused.
+    const readme = buildReadmeContent(RELEASED_SPECIFIER);
+    expect(readme).not.toContain(`${RELEASED_SPECIFIER} check`);
   });
 
   it("lists each package's own launcher first", () => {

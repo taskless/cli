@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 import { join } from "node:path";
 
 import { inject } from "vitest";
@@ -16,4 +17,14 @@ export function builtDirectory(): string {
 /** The built CLI entry, for `execFile("node", [builtCli(), ...])`. */
 export function builtCli(): string {
   return join(builtDirectory(), "index.js");
+}
+
+/**
+ * The version the built CLI reports, for a fixture manifest that records a
+ * CLI version without meaning to test the version-pin gate.
+ */
+export function builtCliVersion(): string {
+  return execFileSync("node", [builtCli(), "--version"], {
+    encoding: "utf8",
+  }).trim();
 }

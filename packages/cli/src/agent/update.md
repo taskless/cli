@@ -1,4 +1,4 @@
-# Topic: update     (CLI v%(CLI_VERSION)s / topic v18)
+# Topic: update     (CLI v%(CLI_VERSION)s / topic v19)
 
 %(ONE_COMMAND_PER_CALL)s
 
@@ -58,6 +58,14 @@ that you finished.
    it means for existing rules. A section that says there is nothing to
    do means exactly that; it is a claim, not an oversight.
 
+   Until step 5 records the walk, `check` and `verify` refuse with
+   `RULES_ENGINE_MISMATCH`: the rules are still recorded against the
+   engines they were last reconciled for, not the ones this CLI
+   bundles. When a section asks you to run one of them mid-walk, add
+   `--allow-version-mismatches`. Mechanical rewrites have not been
+   applied yet at that point, so a rule a later section says step 5
+   rewrites can still fail to load.
+
 4. **Offer to bump a pinned CLI.** Read `pinnedCli` from the same
    `info --json` payload as step 1. Each entry is a pin of
    `@taskless/cli` or `@taskless/cli-nightly` behind the installed CLI:
@@ -69,24 +77,17 @@ that you finished.
    that publishes it: a nightly version exists only on
    `@taskless/cli-nightly`, a release only on `@taskless/cli`.
 
-   If the upgrade also migrated an existing `.taskless/` (`init` printed
-   a migration, or `init --json` carried `migrated` with `from` above
-   `0`), this is not optional advice: a CLI that predates the new
-   schema refuses the project with `SCAFFOLD_VERSION_MISMATCH`, so CI
-   breaks on the push that carries the migrated files. The bump belongs
-   in that same commit. Without a migration the pin still reads the
-   layout, but checks rules against engines this walk has moved past.
-
-   `info --json` does not say whether a migration ran. If you did not
-   see `init`'s output yourself, treat the bump as required, but say
-   that you cannot tell whether `.taskless/` was migrated; do not name
-   schema versions you have not read.
+   This is not optional advice. A CLI that is not the version
+   `.taskless/taskless.json` records refuses every command but `init`,
+   `info`, `auth` and `feedback` with `CLI_VERSION_MISMATCH`, so any
+   pin left behind breaks CI on the push that carries `init`'s changes.
+   The bump belongs in that same commit.
 
    Offer the user the bump to the installed version, along with
    reinstalling dependencies. Do not make it silently: a pin can be
    deliberate, and the bump changes the lockfile. The walk does not
-   depend on the answer, so record it either way, but if they decline
-   after a migration, tell them plainly that CI will fail.
+   depend on the answer, so record it either way, but if they decline,
+   tell them plainly that whatever runs that pin will fail.
 
 5. **Record that you finished.** Run:
    ```
@@ -571,6 +572,15 @@ it never touches a signed rule. A rule with a case that reads through a
 `validate` keeps naming it; move that rule's cases by hand the same
 way.
 
+**The CLI now runs only as the version the project records, and only
+on rules reconciled for its engines.** Any command but `init`, `info`,
+`auth` and `feedback` refuses with `CLI_VERSION_MISMATCH` when the
+running CLI is not the version `.taskless/taskless.json` records, and
+`check` and `verify` refuse with `RULES_ENGINE_MISMATCH` when
+`rules.engines` names an engine version this CLI does not bundle. You
+are already doing what clears both: `init` moved the record to this
+CLI, step 4 moves the pins, and step 5 records the engines.
+
 ## Errors
 
 With `--json`, `--rules` failures emit `{ ok: false, code, message }`:
@@ -579,6 +589,10 @@ With `--json`, `--rules` failures emit `{ ok: false, code, message }`:
 |-----------------|------------------------------------------------|--------------------------------------------|
 | `INVALID_INPUT` | no `.taskless/`, or an older CLI would rewind the marker | set the project up, or upgrade first |
 | `SCAFFOLD_MIGRATION_REQUIRED` | the `.taskless/` layout is behind this CLI, so rule rewrites have nowhere safe to write | run `%(TASKLESS_CLI)s init`, then `update --rules` again |
+| `CLI_VERSION_MISMATCH` | this CLI is not the version the project records | run the project launcher, `./.taskless/bin/cli.mjs`, or `init` with this CLI to move the project to it |
+
+`check` and `verify` refuse with `RULES_ENGINE_MISMATCH` until step 5
+has run; see step 3.
 
 ## See Also
 

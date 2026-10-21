@@ -7,7 +7,7 @@ import chalk from "chalk";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { getOnboardTrailer, ONBOARD_PROMPT } from "../src/commands/onboard";
 import { LATEST_SCHEMA_VERSION } from "../src/filesystem/migrate";
-import { builtCli } from "./support/built-cli";
+import { builtCli, builtCliVersion } from "./support/built-cli";
 
 const execFileAsync = promisify(execFile);
 const binPath = builtCli();
@@ -159,14 +159,16 @@ describe("taskless onboard", () => {
 
   it("--mark-complete writes onboarded:true and preserves other fields", async () => {
     // Seed the manifest with an existing install and an unknown top-level
-    // field; --mark-complete must not clobber either.
+    // field; --mark-complete must not clobber either. The recorded version is
+    // the built CLI's own, so the version-pin gate lets `onboard` run.
+    const cliVersion = builtCliVersion();
     await mkdir(join(cwd, ".taskless"), { recursive: true });
     await writeFile(
       join(cwd, ".taskless", "taskless.json"),
       JSON.stringify({
         version: 2,
         install: {
-          cliVersion: "0.7.0",
+          cliVersion,
           targets: { ".claude": { skills: ["taskless"], commands: ["tskl"] } },
         },
         experimental: { keep: "me" },
@@ -189,7 +191,7 @@ describe("taskless onboard", () => {
       targets?: Record<string, unknown>;
     };
     expect(install.onboarded).toBe(true);
-    expect(install.cliVersion).toBe("0.7.0");
+    expect(install.cliVersion).toBe(cliVersion);
     expect(install.targets).toEqual({
       ".claude": { skills: ["taskless"], commands: ["tskl"] },
     });
