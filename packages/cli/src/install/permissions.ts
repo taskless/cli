@@ -708,7 +708,7 @@ const openCode: Harness = {
  * allow), so a deny elsewhere still wins without this file needing to look
  * for it.
  */
-const codex: Harness = {
+const codexHarness: Harness = {
   ...fixed(CODEX_FILE),
   rules: (invocation) => [
     `prefix_rule(pattern = ${JSON.stringify(invocation.split(" "))}, decision = "allow")`,
@@ -761,23 +761,19 @@ const codex: Harness = {
   },
 };
 
-const HARNESSES = [claudeCode, cursorEditor, cursorCli, openCode, codex];
+const HARNESSES = [claudeCode, cursorEditor, cursorCli, openCode, codexHarness];
 
 /**
  * The harnesses that get a rule for this install: one per directory Taskless
- * installed the skill into, and Codex only when `.agents/` was selected AND
- * Codex is in the project, since `.agents/` is read by many harnesses and
- * names none of them.
+ * installed the skill into, and Codex when it was chosen, since `.agents/` is
+ * read by many harnesses and names none of them.
  */
-function harnessesFor(
-  selected: readonly string[],
-  codexDetected: boolean
-): Harness[] {
+function harnessesFor(selected: readonly string[], codex: boolean): Harness[] {
   const harnesses: Harness[] = [];
   if (selected.includes(".claude")) harnesses.push(claudeCode);
   if (selected.includes(".cursor")) harnesses.push(cursorEditor, cursorCli);
   if (selected.includes(".opencode")) harnesses.push(openCode);
-  if (selected.includes(".agents") && codexDetected) harnesses.push(codex);
+  if (codex) harnesses.push(codexHarness);
   return harnesses;
 }
 
@@ -832,8 +828,11 @@ async function writeRecords(cwd: string, records: Records): Promise<void> {
 export interface SyncPermissionsOptions {
   /** Tool directories the skill is installed into. */
   selected: readonly string[];
-  /** Whether Codex is present in the project. */
-  codexDetected: boolean;
+  /**
+   * Whether Codex gets its rule: the wizard's Codex row was checked, or,
+   * without the wizard, Codex is detected in the project.
+   */
+  codex: boolean;
   /** The invocation to allow: this build's pinned CLI. */
   invocation: string;
   /**
@@ -872,7 +871,7 @@ export async function syncPermissions(
     return name !== undefined && name !== own;
   };
   const desired = new Map<string, { harness: Harness; rules: string[] }>();
-  for (const harness of harnessesFor(options.selected, options.codexDetected)) {
+  for (const harness of harnessesFor(options.selected, options.codex)) {
     desired.set(await harness.locate(cwd), {
       harness,
       rules: [

@@ -32,6 +32,7 @@ const cancelSpy = vi.fn();
 
 // Clack mock responses are set per-test via these mutable refs.
 const clackResponses: {
+  /** Checked row values: harness names, or `agents` for the generic row. */
   locations?: string[] | symbol;
   summary?: boolean | symbol;
   commit?: string | symbol;
@@ -75,7 +76,7 @@ vi.mock("@clack/prompts", () => ({
   },
   note: () => {},
   isCancel: (value: unknown) => value === fakeCancelSymbol,
-  multiselect: vi.fn(() => Promise.resolve(clackResponses.locations)),
+  groupMultiselect: vi.fn(() => Promise.resolve(clackResponses.locations)),
   select: vi.fn(({ message }: { message: string }) => {
     selectMessages.push(message);
     return Promise.resolve(clackResponses.commit);
@@ -138,7 +139,7 @@ afterEach(async () => {
 
 describe("runWizard end-to-end", () => {
   it("installs all bundled skills to selected location and records manifest", async () => {
-    clackResponses.locations = [".claude"];
+    clackResponses.locations = ["Claude Code"];
     clackResponses.summary = true;
 
     const { runWizard } = await import("../src/wizard");
@@ -165,7 +166,7 @@ describe("runWizard end-to-end", () => {
 
   it("completes without a token and never offers to log in", async () => {
     vi.stubEnv("TASKLESS_TOKEN", "");
-    clackResponses.locations = [".claude"];
+    clackResponses.locations = ["Claude Code"];
     clackResponses.summary = true;
 
     const clack = await import("@clack/prompts");
@@ -183,7 +184,7 @@ describe("runWizard end-to-end", () => {
   });
 
   it("says once that it collects telemetry, and how to opt out", async () => {
-    clackResponses.locations = [".claude"];
+    clackResponses.locations = ["Claude Code"];
     clackResponses.summary = true;
 
     const { runWizard } = await import("../src/wizard");
@@ -195,7 +196,7 @@ describe("runWizard end-to-end", () => {
   });
 
   it("says nothing about telemetry when it is already off", async () => {
-    clackResponses.locations = [".claude"];
+    clackResponses.locations = ["Claude Code"];
     clackResponses.summary = true;
     telemetryEnabled = false;
 
@@ -206,7 +207,7 @@ describe("runWizard end-to-end", () => {
   });
 
   it("re-running with the same location is idempotent", async () => {
-    clackResponses.locations = [".claude"];
+    clackResponses.locations = ["Claude Code"];
     clackResponses.summary = true;
 
     const { runWizard } = await import("../src/wizard");
@@ -244,7 +245,7 @@ describe("runWizard end-to-end", () => {
   });
 
   it("shows the permission edit before writing, and asks", async () => {
-    clackResponses.locations = [".claude"];
+    clackResponses.locations = ["Claude Code"];
     clackResponses.summary = false;
 
     const { runWizard } = await import("../src/wizard");
@@ -268,7 +269,7 @@ describe("runWizard end-to-end", () => {
       join(cwd, ".claude", "settings.json"),
       JSON.stringify({ permissions: { allow: [stale] } })
     );
-    clackResponses.locations = [".claude"];
+    clackResponses.locations = ["Claude Code"];
     clackResponses.summary = false;
 
     const { runWizard } = await import("../src/wizard");
@@ -289,7 +290,7 @@ describe("runWizard end-to-end", () => {
 
   describe("global trust", () => {
     it("lists project and global edits together under one question", async () => {
-      clackResponses.locations = [".claude"];
+      clackResponses.locations = ["Claude Code"];
       clackResponses.summary = true;
 
       const { runWizard } = await import("../src/wizard");
@@ -315,7 +316,7 @@ describe("runWizard end-to-end", () => {
     });
 
     it("declining writes neither the project nor the global settings", async () => {
-      clackResponses.locations = [".claude"];
+      clackResponses.locations = ["Claude Code"];
       clackResponses.summary = false;
 
       const { runWizard } = await import("../src/wizard");
@@ -328,7 +329,7 @@ describe("runWizard end-to-end", () => {
 
     it("asks again on the next run after a decline", async () => {
       // Nothing records the answer: an absent entry is offered every time.
-      clackResponses.locations = [".claude"];
+      clackResponses.locations = ["Claude Code"];
       clackResponses.summary = false;
 
       const { runWizard } = await import("../src/wizard");
@@ -341,7 +342,7 @@ describe("runWizard end-to-end", () => {
     });
 
     it("asks about the global entry alone when the project is current", async () => {
-      clackResponses.locations = [".claude"];
+      clackResponses.locations = ["Claude Code"];
       clackResponses.summary = true;
       const { runWizard } = await import("../src/wizard");
       // A first run with no home settings writes both; remove the global one.
@@ -366,7 +367,7 @@ describe("runWizard end-to-end", () => {
         autoMode: { allow: ["$defaults", GLOBAL_TRUST_ENTRY] },
       });
       await writeFile(userSettings(), original);
-      clackResponses.locations = [".claude"];
+      clackResponses.locations = ["Claude Code"];
       clackResponses.summary = true;
 
       const { runWizard } = await import("../src/wizard");
@@ -392,7 +393,7 @@ describe("runWizard end-to-end", () => {
           },
         })
       );
-      clackResponses.locations = [".claude"];
+      clackResponses.locations = ["Claude Code"];
       clackResponses.summary = true;
 
       const { runWizard } = await import("../src/wizard");
@@ -420,7 +421,7 @@ describe("runWizard end-to-end", () => {
         autoMode: { allow: ["$defaults", "Taskless CLI: mine"] },
       });
       await writeFile(userSettings(), original);
-      clackResponses.locations = [".claude"];
+      clackResponses.locations = ["Claude Code"];
       clackResponses.summary = false;
 
       const { runWizard } = await import("../src/wizard");
@@ -431,7 +432,7 @@ describe("runWizard end-to-end", () => {
   });
 
   it("writes the permission rule once confirmed", async () => {
-    clackResponses.locations = [".claude"];
+    clackResponses.locations = ["Claude Code"];
     clackResponses.summary = true;
 
     const { runWizard } = await import("../src/wizard");
@@ -447,7 +448,7 @@ describe("runWizard end-to-end", () => {
   });
 
   it("cancelling the summary confirm writes nothing", async () => {
-    clackResponses.locations = [".claude"];
+    clackResponses.locations = ["Claude Code"];
     clackResponses.summary = false;
 
     // Seed install state with a stale skill name that is no longer in the
@@ -478,7 +479,7 @@ describe("runWizard end-to-end", () => {
     const { runWizard } = await import("../src/wizard");
 
     // First run: install Taskless into both .claude/ and .agents/.
-    clackResponses.locations = [".claude", ".agents"];
+    clackResponses.locations = ["Claude Code", "agents"];
     clackResponses.summary = true;
     await runWizard({ cwd, globalTrustEnvironment });
 
@@ -489,7 +490,7 @@ describe("runWizard end-to-end", () => {
 
     // Second run: uncheck .claude/, keep .agents/ — consolidating onto .agents.
     summaryConfirmMessage = undefined;
-    clackResponses.locations = [".agents"];
+    clackResponses.locations = ["agents"];
     clackResponses.summary = true;
     const result = await runWizard({ cwd, globalTrustEnvironment });
 
@@ -515,7 +516,7 @@ describe("runWizard end-to-end", () => {
   it("declining the removal confirm keeps the unchecked location's stubs", async () => {
     const { runWizard } = await import("../src/wizard");
 
-    clackResponses.locations = [".claude", ".agents"];
+    clackResponses.locations = ["Claude Code", "agents"];
     clackResponses.summary = true;
     await runWizard({ cwd, globalTrustEnvironment });
 
@@ -523,7 +524,7 @@ describe("runWizard end-to-end", () => {
     expect(await exists(claudeSkill)).toBe(true);
 
     // Uncheck .claude/ but decline the removal confirm — nothing is removed.
-    clackResponses.locations = [".agents"];
+    clackResponses.locations = ["agents"];
     clackResponses.summary = false;
     const result = await runWizard({ cwd, globalTrustEnvironment });
 
@@ -545,7 +546,7 @@ describe("runWizard with an unreadable manifest", () => {
   const CORRUPT = '{"version": 6,\n<<<<<<< HEAD\n}\n';
 
   it("refuses inside the frame and leaves the file alone", async () => {
-    clackResponses.locations = [".claude"];
+    clackResponses.locations = ["Claude Code"];
     clackResponses.summary = true;
 
     const manifest = join(cwd, ".taskless", "taskless.json");
@@ -579,7 +580,7 @@ describe("runWizard with an unreadable manifest", () => {
  */
 describe("the wizard's restart-your-agents banner", () => {
   it("prints on a second run whose recorded version moved", async () => {
-    clackResponses.locations = [".claude"];
+    clackResponses.locations = ["Claude Code"];
     clackResponses.summary = true;
 
     const { runWizard } = await import("../src/wizard");
@@ -614,7 +615,7 @@ describe("the wizard's restart-your-agents banner", () => {
   });
 
   it("stays quiet on a first run", async () => {
-    clackResponses.locations = [".claude"];
+    clackResponses.locations = ["Claude Code"];
     clackResponses.summary = true;
 
     const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
@@ -633,7 +634,7 @@ describe("the wizard's restart-your-agents banner", () => {
   });
 
   it("stays quiet when the recorded version did not move", async () => {
-    clackResponses.locations = [".claude"];
+    clackResponses.locations = ["Claude Code"];
     clackResponses.summary = true;
 
     const { runWizard } = await import("../src/wizard");
@@ -686,7 +687,7 @@ describe("the wizard's offer to commit the install", () => {
     vi.stubEnv("GIT_CONFIG_COUNT", "1");
     vi.stubEnv("GIT_CONFIG_KEY_0", "commit.gpgsign");
     vi.stubEnv("GIT_CONFIG_VALUE_0", "false");
-    clackResponses.locations = [".claude"];
+    clackResponses.locations = ["Claude Code"];
     clackResponses.summary = true;
   });
 
@@ -787,7 +788,7 @@ describe("the wizard's offer to commit the install", () => {
 
 describe("the wizard outside a git repository", () => {
   it("does not offer to commit", async () => {
-    clackResponses.locations = [".claude"];
+    clackResponses.locations = ["Claude Code"];
     clackResponses.summary = true;
 
     const { runWizard } = await import("../src/wizard");
@@ -805,7 +806,7 @@ describe("the wizard outside a git repository", () => {
  */
 describe("the wizard's stale-pin notice", () => {
   it("names a package.json pin older than the running CLI", async () => {
-    clackResponses.locations = [".claude"];
+    clackResponses.locations = ["Claude Code"];
     clackResponses.summary = true;
     const packageJson = JSON.stringify({
       devDependencies: { "@taskless/cli": "0.0.1" },
@@ -834,7 +835,7 @@ describe("the wizard's stale-pin notice", () => {
   });
 
   it("stays quiet without a stale pin", async () => {
-    clackResponses.locations = [".claude"];
+    clackResponses.locations = ["Claude Code"];
     clackResponses.summary = true;
 
     const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
@@ -848,5 +849,31 @@ describe("the wizard's stale-pin notice", () => {
     } finally {
       logSpy.mockRestore();
     }
+  });
+
+  it("checking Codex alone installs into .agents and writes its rules file", async () => {
+    // Codex on this machine only: the project has no `.codex/`.
+    await mkdir(join(globalTrustEnvironment.home, ".codex"));
+    clackResponses.locations = ["Codex"];
+    clackResponses.summary = true;
+
+    const { runWizard } = await import("../src/wizard");
+    const result = await runWizard({ cwd, globalTrustEnvironment });
+
+    expect(result.status).toBe("completed");
+    expect(result.locations).toEqual([".agents"]);
+    expect(
+      await exists(join(cwd, ".agents", "skills", "taskless", "SKILL.md"))
+    ).toBe(true);
+    expect(await exists(join(cwd, ".codex", "rules", "taskless.rules"))).toBe(
+      true
+    );
+    // Nothing is written beside the home-directory signal it was found by.
+    expect(await exists(join(globalTrustEnvironment.home, ".agents"))).toBe(
+      false
+    );
+    expect(
+      await exists(join(globalTrustEnvironment.home, ".codex", "rules"))
+    ).toBe(false);
   });
 });

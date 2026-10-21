@@ -7,6 +7,7 @@ import {
   applyInstallPlan,
   buildInstallPlan,
   checkStaleness,
+  detectMachineTools,
   detectSelectedDirectories,
   detectTools,
   getEmbeddedSkills,
@@ -103,7 +104,66 @@ describe("detectTools", () => {
   });
 });
 
+async function names(env: Record<string, string> = {}): Promise<string[]> {
+  const tools = await detectMachineTools({ home: cwd, env });
+  return tools.map((tool) => tool.name);
+}
+
+describe("detectMachineTools", () => {
+  it("finds nothing in an empty home", async () => {
+    expect(await names()).toEqual([]);
+  });
+
+  it.each([
+    ["Claude Code", ".claude"],
+    ["OpenCode", ".config/opencode"],
+    ["Cursor", ".cursor"],
+    ["Codex", ".codex"],
+    ["Gemini CLI", ".gemini"],
+    ["Crush", ".local/share/crush"],
+    ["Devin", ".config/devin"],
+  ])("detects %s by ~/%s", async (name, directory) => {
+    await mkdir(join(cwd, directory), { recursive: true });
+    expect(await names()).toEqual([name]);
+  });
+
+  it("follows an override", async () => {
+    const elsewhere = join(cwd, "elsewhere");
+    await mkdir(elsewhere);
+    expect(await names({ CLAUDE_CONFIG_DIR: elsewhere })).toEqual([
+      "Claude Code",
+    ]);
+  });
+
+  it("finds Gemini CLI under GEMINI_CLI_HOME", async () => {
+    await mkdir(join(cwd, "gemini-home", ".gemini"), { recursive: true });
+    expect(await names({ GEMINI_CLI_HOME: join(cwd, "gemini-home") })).toEqual([
+      "Gemini CLI",
+    ]);
+  });
+
+  it("does not fall back to home when an override names a missing directory", async () => {
+    await mkdir(join(cwd, ".codex"));
+    expect(await names({ CODEX_HOME: join(cwd, "missing") })).toEqual([]);
+  });
+
+  it("treats an empty override as unset", async () => {
+    await mkdir(join(cwd, ".codex"));
+    expect(await names({ CODEX_HOME: "" })).toEqual(["Codex"]);
+  });
+
+  it("does not count a file", async () => {
+    await writeFile(join(cwd, ".cursor"), "", "utf8");
+    expect(await names()).toEqual([]);
+  });
+});
+
 describe("detectSelectedDirectories", () => {
+  it("maps Devin detection to .devin", async () => {
+    await mkdir(join(cwd, ".devin"), { recursive: true });
+    expect(await detectSelectedDirectories(cwd)).toEqual([".devin"]);
+  });
+
   it("defaults to .agents when no tools are detected", async () => {
     expect(await detectSelectedDirectories(cwd)).toEqual([".agents"]);
   });
