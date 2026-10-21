@@ -19,6 +19,7 @@ vi.mock("../src/telemetry", () => ({
 }));
 
 const { initCommand } = await import("../src/commands/init");
+const { getOnboardTrailer } = await import("../src/commands/onboard");
 
 interface RunnableCommand {
   run: (context: {
@@ -68,7 +69,9 @@ describe("init tells the user about telemetry", () => {
     expect(output.filter((line) => line === "<telemetry notice>")).toHaveLength(
       1
     );
-    expect(output.at(-1)).toMatch(/^In your AI tool, /);
+    // One `console.log` call per entry, and the trailer is a single two-line
+    // call, so the last entry is the whole trailer.
+    expect(output.at(-1)).toBe(getOnboardTrailer());
     expect(isTelemetryEnabled).toHaveBeenCalledWith(cwd);
   });
 
