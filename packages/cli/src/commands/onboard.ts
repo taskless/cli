@@ -1,6 +1,7 @@
 import { resolve } from "node:path";
 import process from "node:process";
 
+import chalk from "chalk";
 import { defineCommand } from "citty";
 
 import { detectHostTools } from "../detect/host-tools";
@@ -10,6 +11,9 @@ import { getRecipe } from "../prompts/recipes";
 import { withSurveyInvite } from "../survey/invite";
 import { getTelemetry } from "../telemetry";
 import { CLIError } from "../util/cli-error";
+// Sets `chalk.level` from the real terminal on import. The trailer colours its
+// prompt line, so it establishes that itself.
+import "../util/color";
 import {
   detectCliInvocation,
   getCliPrefix,
@@ -17,16 +21,31 @@ import {
 } from "../util/package-manager";
 
 /**
- * One-line trailer printed by `taskless init` (and the wizard) after a
- * successful install. Lives here so the install paths share the same
- * wording with the onboard subcommand they point at.
+ * The prompt the trailer hands the user, exactly as they should paste it.
+ */
+export const ONBOARD_PROMPT = "Onboard this project with Taskless";
+
+/**
+ * Trailer printed by `taskless init` (and the wizard) after a successful
+ * install. Lives here so the install paths share the same wording with the
+ * onboard subcommand they point at.
  *
  * Every install target receives the Taskless skill, so the trailer points
  * at the skill in plain language and nothing else: no slash command, no
  * terminal fallback.
+ *
+ * One line of explanation, then the prompt alone on the final line. The
+ * prompt line carries no quotes, bullet, or prefix, so a triple-click copies
+ * exactly the prompt. Colour only marks it as the thing to copy (cyan, the
+ * Taskless logo colour, so it ties back to the intro): under
+ * `NO_COLOR` or a non-TTY stdout chalk prints it plain, and the layout alone
+ * keeps it copyable.
  */
 export function getOnboardTrailer(): string {
-  return "In your AI tool, you can use the Taskless skill now - just ask to onboard with Taskless to set up starter rules for your codebase and get a report of what Taskless can catch.";
+  return [
+    "Your AI tool has the Taskless skill now. Paste this to set up your first rules for your Agents to follow:",
+    chalk.cyan(ONBOARD_PROMPT),
+  ].join("\n");
 }
 
 export const onboardCommand = defineCommand({

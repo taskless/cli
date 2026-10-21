@@ -3,7 +3,9 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
+import chalk from "chalk";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { getOnboardTrailer, ONBOARD_PROMPT } from "../src/commands/onboard";
 import { LATEST_SCHEMA_VERSION } from "../src/filesystem/migrate";
 import { builtCli } from "./support/built-cli";
 
@@ -39,6 +41,45 @@ async function readJsonManifest(cwd: string): Promise<Record<string, unknown>> {
   const text = await readFile(join(cwd, ".taskless", "taskless.json"), "utf8");
   return JSON.parse(text) as Record<string, unknown>;
 }
+
+function withLevel(level: 0 | 1 | 2 | 3, render: () => string): string {
+  const previous = chalk.level;
+  chalk.level = level;
+  try {
+    return render();
+  } finally {
+    chalk.level = previous;
+  }
+}
+
+describe("the post-install onboarding trailer", () => {
+  // The prompt is what the user copies, so it sits alone on the last line:
+  // nothing a triple-click would pick up besides the prompt itself.
+  it("prints one line of explanation, then the bare prompt, when plain", () => {
+    // `NO_COLOR` and a non-TTY stdout both land here, as chalk level 0.
+    const lines = withLevel(0, getOnboardTrailer).split("\n");
+    expect(lines).toHaveLength(2);
+    expect(lines[0]).toMatch(/Taskless skill/);
+    expect(lines[1]).toBe(ONBOARD_PROMPT);
+    expect(ONBOARD_PROMPT).toBe("Onboard this project with Taskless");
+  });
+
+  it("colours only the prompt line, leaving its text unchanged", () => {
+    const plain = withLevel(0, getOnboardTrailer).split("\n");
+    const lines = withLevel(1, getOnboardTrailer).split("\n");
+    expect(lines).toHaveLength(2);
+    expect(lines[0]).toBe(plain[0]);
+    expect(lines[1]).not.toBe(ONBOARD_PROMPT);
+    // eslint-disable-next-line no-control-regex
+    expect(lines[1]?.replaceAll(/\u001B\[[\d;]*m/g, "")).toBe(ONBOARD_PROMPT);
+  });
+
+  it("names no slash command or terminal command", () => {
+    const trailer = withLevel(0, getOnboardTrailer);
+    expect(trailer).not.toContain("/tskl");
+    expect(trailer).not.toMatch(/taskless onboard/i);
+  });
+});
 
 describe("taskless onboard", () => {
   let cwd: string;
