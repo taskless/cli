@@ -89,6 +89,20 @@ describe("the version-pin gate", () => {
     expect(result.exitCode).toBe(0);
   });
 
+  it("lets init run, since init is what moves the record", async () => {
+    await record("0.0.1");
+    const result = await runCli(["init", "--json", "-d", cwd]);
+    expect(result.stdout).not.toContain("CLI_VERSION_MISMATCH");
+    expect(result.exitCode).toBe(0);
+  });
+
+  it("leaves an unreadable manifest to the command's own refusal", async () => {
+    await writeFile(join(cwd, ".taskless", "taskless.json"), "{ not json");
+    const result = await runCli(["check", "--json", "-d", cwd]);
+    expect(result.stdout).not.toContain("CLI_VERSION_MISMATCH");
+    expect(result.stdout).toContain("SCAFFOLD_MANIFEST_UNREADABLE");
+  });
+
   it("does not refuse the recorded version", async () => {
     await record(builtCliVersion());
     const result = await runCli(["check", "--json", "-d", cwd]);
