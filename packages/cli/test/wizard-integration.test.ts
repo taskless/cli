@@ -1,5 +1,6 @@
 import { execFileSync } from "node:child_process";
 import {
+  chmod,
   mkdir,
   mkdtemp,
   readFile,
@@ -732,6 +733,24 @@ describe("the wizard's offer to commit the install", () => {
     await runWizard({ cwd: project, globalTrustEnvironment });
 
     expect(git(cwd, "status", "--porcelain")).toBe("");
+  });
+
+  it("shows git's refusal and still completes when a hook rejects the commit", async () => {
+    const hook = join(cwd, ".git", "hooks", "pre-commit");
+    await writeFile(hook, "#!/bin/sh\necho 'hook says no' >&2\nexit 1\n");
+    await chmod(hook, 0o755);
+    clackResponses.commit = "default";
+
+    const { runWizard } = await import("../src/wizard");
+    const result = await runWizard({ cwd, globalTrustEnvironment });
+
+    expect(result.status).toBe("completed");
+    const warning = warnedMessages.find((message) =>
+      message.includes("git could not commit")
+    );
+    expect(warning).toContain("hook says no");
+    expect(warning).toContain("Commit them yourself");
+    expect(() => git(cwd, "rev-parse", "--verify", "HEAD")).toThrow();
   });
 
   it("leaves everything uncommitted when the person will do it", async () => {
