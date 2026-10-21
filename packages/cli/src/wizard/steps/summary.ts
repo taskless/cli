@@ -172,26 +172,46 @@ function describeProjectEdits(
  * misleading; when only canonical removals are present the message falls back
  * to a generic prompt. Only meaningful when {@link InstallDiff.hasRemovals}
  * is true.
+ *
+ * "Remove Taskless from" is said only of a target that keeps nothing. A target
+ * that loses a retired stub but keeps its skill is still a Taskless install,
+ * and telling someone it is being uninstalled makes them decline an upgrade
+ * that removes one command file.
  */
 export function buildRemovalConfirmMessage(
   diff: InstallDiff,
   options: { editsSettings?: boolean } = {}
 ): string {
-  const clauses: string[] = [];
+  const uninstalled: string[] = [];
+  const trimmed: string[] = [];
   for (const entry of diff.entries) {
     if (entry.mode === "canonical") continue;
     const count = entry.removals.skills.length + entry.removals.commands.length;
     if (count === 0) continue;
-    clauses.push(
-      `${entry.target}/ (${String(count)} stub${count === 1 ? "" : "s"})`
-    );
+    const stubs = `${String(count)} stub${count === 1 ? "" : "s"}`;
+    const kept =
+      entry.additions.skills.length +
+      entry.additions.commands.length +
+      entry.unchanged.skills.length +
+      entry.unchanged.commands.length;
+    if (kept === 0) {
+      uninstalled.push(`${entry.target}/ (${stubs})`);
+    } else {
+      trimmed.push(`${stubs} from ${entry.target}/`);
+    }
   }
-  if (clauses.length === 0) {
+  if (uninstalled.length === 0 && trimmed.length === 0) {
     return options.editsSettings === true
       ? "Some files recorded in the previous install will be removed. Proceed, and make these changes to your settings?"
       : "Some files recorded in the previous install will be removed. Proceed?";
   }
+  const clauses = [
+    ...(uninstalled.length > 0
+      ? [`Taskless from ${uninstalled.join(", ")}`]
+      : []),
+    ...trimmed,
+  ];
   return options.editsSettings === true
-    ? `Remove Taskless from ${clauses.join(", ")}, and make these changes to your settings?`
-    : `Remove Taskless from ${clauses.join(", ")}?`;
+    ? `Remove ${clauses.join(", ")}, and make these changes to your settings?`
+    : `Remove ${clauses.join(", ")}?`;
 }
