@@ -246,6 +246,200 @@ describe("taskless detect", () => {
     expect(linterNames(result)).not.toContain("ruff");
   });
 
+  describe("a linter installed or run the way its ecosystem defaults to", () => {
+    // Each fixture is the whole repository: no dedicated config file, which is
+    // how these tools usually run.
+    it.each([
+      [
+        "clippy",
+        "Cargo.toml [lints.clippy]",
+        {
+          "Cargo.toml":
+            '[package]\nname = "x"\n\n[lints.clippy]\npedantic = "warn"\n',
+        },
+      ],
+      [
+        "clippy",
+        "Cargo.toml [workspace.lints.clippy]",
+        {
+          "Cargo.toml":
+            '[workspace]\nmembers = []\n\n[workspace.lints.clippy]\nall = "deny"\n',
+        },
+      ],
+      [
+        "clippy",
+        ".github/workflows/ci.yml (cargo +nightly clippy)",
+        {
+          "Cargo.toml": '[package]\nname = "x"\n',
+          ".github/workflows/ci.yml":
+            "jobs:\n  lint:\n    steps:\n      - run: cargo +nightly clippy -- -D warnings\n",
+        },
+      ],
+      [
+        "rubocop",
+        "dependency rubocop (Gemfile)",
+        {
+          Gemfile:
+            'source "https://rubygems.org"\ngem "rubocop", require: false\n',
+        },
+      ],
+      [
+        "standard",
+        "dependency standard (Gemfile)",
+        { Gemfile: "gem 'standard'\n" },
+      ],
+      [
+        "phpstan",
+        "dependency phpstan/phpstan (composer.json)",
+        { "composer.json": '{"require-dev":{"phpstan/phpstan":"^2"}}' },
+      ],
+      [
+        "pint",
+        "dependency laravel/pint (composer.json)",
+        { "composer.json": '{"require-dev":{"laravel/pint":"^1"}}' },
+      ],
+      [
+        "golangci-lint",
+        "dependency github.com/golangci/golangci-lint (go.mod)",
+        {
+          "go.mod":
+            "module x\n\ngo 1.24\n\ntool (\n\tgithub.com/golangci/golangci-lint/v2/cmd/golangci-lint\n)\n",
+        },
+      ],
+      [
+        "swiftlint",
+        "dependency github.com/realm/swiftlint (Package.swift)",
+        {
+          "Package.swift":
+            'dependencies: [\n  .package(url: "https://github.com/realm/SwiftLint.git", from: "0.57.0"),\n]\n',
+        },
+      ],
+      [
+        "flake8",
+        "setup.cfg [flake8]",
+        { "setup.cfg": "[flake8]\nmax-line-length = 100\n" },
+      ],
+      [
+        "flake8",
+        "tox.ini [flake8]",
+        { "tox.ini": "[tox]\n\n[flake8]\nextend-ignore = E203\n" },
+      ],
+      [
+        "ruff",
+        "dependency ruff (requirements/dev.txt)",
+        { "requirements/dev.txt": "ruff==0.6.0\n" },
+      ],
+      [
+        "ruff",
+        "dependency ruff (requirements-dev.txt)",
+        { "requirements-dev.txt": "-r requirements.txt\nruff\n" },
+      ],
+      [
+        "ruff",
+        ".pre-commit-config.yaml (astral-sh/ruff-pre-commit)",
+        {
+          ".pre-commit-config.yaml":
+            "repos:\n  - repo: https://github.com/astral-sh/ruff-pre-commit\n    hooks:\n      - id: ruff\n",
+        },
+      ],
+      [
+        "prettier",
+        "package.json (prettier)",
+        { "package.json": '{"prettier":{"semi":false}}' },
+      ],
+      [
+        "stylelint",
+        "package.json (stylelint)",
+        { "package.json": '{"stylelint":{}}' },
+      ],
+      [
+        "prettier",
+        "prettier.config.ts",
+        { "prettier.config.ts": "export default {};\n" },
+      ],
+      [
+        "eslint",
+        "eslint.config.mts",
+        { "eslint.config.mts": "export default [];\n" },
+      ],
+    ])("detects %s from %s", async (name, expected, files) => {
+      for (const [path, content] of Object.entries(files)) {
+        await mkdir(join(cwd, path, ".."), { recursive: true });
+        await writeFile(join(cwd, path), content, "utf8");
+      }
+      const result = await detect(cwd);
+      expect(
+        result.linters.find((linter) => linter.name === name)?.evidence
+      ).toContain(expected);
+    });
+
+    it("does not report clippy for a Rust repository that never configures or runs it", async () => {
+      // clippy ships with the toolchain, so being Rust is not evidence of it.
+      await writeFile(
+        join(cwd, "Cargo.toml"),
+        '[package]\nname = "x"\n',
+        "utf8"
+      );
+      const result = await detect(cwd);
+      expect(linterNames(result)).not.toContain("clippy");
+      expect(result.languages).toContain("Rust");
+    });
+
+    it.each([
+      [
+        "a workflow comment and step name",
+        ".github/workflows/ci.yml",
+        "# TODO: switch to golangci-lint\njobs:\n  test:\n    steps:\n      - name: golangci-lint is not used here\n        run: go test ./...\n",
+      ],
+      [
+        "a commented-out hook command",
+        ".husky/pre-commit",
+        "#!/bin/sh\n# golangci-lint run\ngo vet ./...\n",
+      ],
+      [
+        "a Jenkinsfile comment",
+        "Jenkinsfile",
+        "// golangci-lint runs elsewhere\npipeline { stages { stage('t') { steps { sh 'go test ./...' } } } }\n",
+      ],
+    ])("does not read an invocation from %s", async (_case, path, content) => {
+      await mkdir(join(cwd, path, ".."), { recursive: true });
+      await writeFile(join(cwd, path), content, "utf8");
+      const result = await detect(cwd);
+      expect(linterNames(result)).not.toContain("golangci-lint");
+    });
+
+    it.each([
+      [".gitlab-ci.yml", "lint:\n  script:\n    - golangci-lint run\n"],
+      [
+        ".circleci/config.yml",
+        "jobs:\n  lint:\n    steps:\n      - run:\n          command: golangci-lint run\n",
+      ],
+      [".husky/pre-commit", "#!/bin/sh\ngolangci-lint run\n"],
+      [".lintstagedrc", '{"*.go": "golangci-lint run"}'],
+    ])("reads an invocation from the commands in %s", async (path, content) => {
+      await mkdir(join(cwd, path, ".."), { recursive: true });
+      await writeFile(join(cwd, path), content, "utf8");
+      const result = await detect(cwd);
+      expect(
+        result.linters.find((linter) => linter.name === "golangci-lint")
+          ?.evidence
+      ).toContain(`${path} (golangci-lint)`);
+    });
+
+    it("does not read an invocation from a CI config below the root", async () => {
+      await mkdir(join(cwd, "vendor-tool/.github/workflows"), {
+        recursive: true,
+      });
+      await writeFile(
+        join(cwd, "vendor-tool/.github/workflows/ci.yml"),
+        "steps:\n  - run: golangci-lint run\n",
+        "utf8"
+      );
+      const result = await detect(cwd);
+      expect(linterNames(result)).not.toContain("golangci-lint");
+    });
+  });
+
   it("detects flake8 from a requirements.txt entry", async () => {
     await writeFile(
       join(cwd, "requirements.txt"),

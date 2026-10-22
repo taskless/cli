@@ -1,6 +1,9 @@
 import { existsSync, globSync, readdirSync } from "node:fs";
 import { readFile } from "node:fs/promises";
-import { resolve } from "node:path";
+import { basename, extname, resolve } from "node:path";
+
+import { parse as parseToml } from "smol-toml";
+import { parse as parseYaml } from "yaml";
 
 /**
  * Something that runs commands on the repository's behalf without anyone
@@ -212,4 +215,103 @@ export async function detectAutomation(
     ci: matchSignals(root, CI_SIGNALS, packageJson),
     hooks: matchSignals(root, HOOK_SIGNALS, packageJson),
   };
+}
+
+/**
+ * Keys whose values are commands, or name what a step runs, across the CI and
+ * hook formats above: GitHub Actions `run`/`uses`, GitLab and Travis
+ * `script`, CircleCI `run`/`command`, Buildkite and Drone `commands`, Azure
+ * `bash`/`pwsh`, lefthook `run`, pre-commit `entry` and `repo`. Everything
+ * beneath one is collected, so `run: { command }` and script arrays count.
+ * Labels (`name`, `id`, `description`) are deliberately absent.
+ */
+const COMMAND_KEYS: ReadonlySet<string> = new Set([
+  "run",
+  "uses",
+  "script",
+  "before_script",
+  "after_script",
+  "before_install",
+  "install",
+  "command",
+  "commands",
+  "bash",
+  "pwsh",
+  "powershell",
+  "sh",
+  "entry",
+  "repo",
+]);
+
+/** Configs whose every value is a command: lint-staged maps globs to them, simple-git-hooks maps hook names. */
+function isCommandMap(file: string): boolean {
+  return /^\.?(?:lintstagedrc|lint-staged|simple-git-hooks)/.test(
+    basename(file)
+  );
+}
+
+function collectStrings(value: unknown, into: string[]): void {
+  if (typeof value === "string") into.push(value);
+  else if (Array.isArray(value)) {
+    for (const item of value) collectStrings(item, into);
+  } else if (typeof value === "object" && value !== null) {
+    for (const item of Object.values(value)) collectStrings(item, into);
+  }
+}
+
+function collectCommands(value: unknown, into: string[]): void {
+  if (Array.isArray(value)) {
+    for (const item of value) collectCommands(item, into);
+  } else if (typeof value === "object" && value !== null) {
+    for (const [key, item] of Object.entries(value)) {
+      if (COMMAND_KEYS.has(key)) collectStrings(item, into);
+      else collectCommands(item, into);
+    }
+  }
+}
+
+/** A structured config parsed by its extension; `undefined` when it is not one, `null` when malformed. */
+function parseStructured(file: string, raw: string): unknown {
+  const extension = extname(file);
+  try {
+    if (extension === ".yml" || extension === ".yaml") return parseYaml(raw);
+    if (extension === ".json") return JSON.parse(raw);
+    if (extension === ".toml") return parseToml(raw);
+  } catch {
+    return null;
+  }
+  // `.lintstagedrc` with no extension is JSON or YAML, and YAML reads both.
+  if (extension === "" && isCommandMap(file)) {
+    try {
+      return parseYaml(raw);
+    } catch {
+      return null;
+    }
+  }
+  return undefined;
+}
+
+/**
+ * The commands a CI or hook config runs, so a linter is evidenced by being
+ * RUN rather than by being mentioned. A structured config contributes only
+ * the values of its command keys; a step's name or a comment is not a
+ * command. Anything else (a husky script, a Jenkinsfile, a JavaScript
+ * config) is code, and contributes its lines with comments removed. A
+ * malformed config contributes nothing.
+ */
+export function automationCommands(file: string, raw: string): string[] {
+  const parsed = parseStructured(file, raw);
+  if (parsed === null) return [];
+  const commands: string[] = [];
+  if (parsed === undefined) {
+    for (const line of raw.split("\n")) {
+      const code = line.replace(/(?:^|\s)(?:#|\/\/).*$/, "").trim();
+      if (code !== "") commands.push(code);
+    }
+  } else if (isCommandMap(file)) {
+    collectStrings(parsed, commands);
+  } else {
+    collectCommands(parsed, commands);
+  }
+  return commands;
 }

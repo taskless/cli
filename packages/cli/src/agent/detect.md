@@ -1,4 +1,4 @@
-# Topic: detect     (CLI v%(CLI_VERSION)s / topic v3)
+# Topic: detect     (CLI v%(CLI_VERSION)s / topic v4)
 
 %(ONE_COMMAND_PER_CALL)s
 
@@ -51,9 +51,14 @@ routing flow reads `detect` to decide where a new rule should live.
      ]
    }
    ```
-   - `linters`: each has a `name` and `evidence` (config-file paths,
-     a pyproject table marker, or a dependency marker from the
-     language's package file; not every entry is a path).
+   - `linters`: each has a `name` and `evidence`: a config-file path,
+     a table or section marker in a manifest (`pyproject.toml
+     [tool.ruff]`, `Cargo.toml [lints.clippy]`, `setup.cfg [flake8]`),
+     a dependency marker from the language's package file, or a root CI
+     or hook config that runs the linter (`.github/workflows/ci.yml
+     (cargo clippy)`). Not every entry is a path. A linter that only
+     ships with a toolchain, like clippy, is reported only when
+     something configures or runs it.
    - `languages`: inferred from manifests and the detected linters.
    - `ruleStyles`: how the repo authors its own rules, surfaced for
      downstream reuse.

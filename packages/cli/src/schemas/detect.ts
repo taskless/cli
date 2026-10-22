@@ -6,7 +6,7 @@ const detectedLinterSchema = z.object({
   evidence: z
     .array(z.string())
     .describe(
-      "On-disk evidence: config-file paths, a pyproject table marker, or a dependency marker from the language's package file (not all entries are file paths)"
+      "On-disk evidence: config-file paths, a manifest table or section marker, a dependency marker from the language's package file, or a root CI or hook config that runs the linter (not all entries are file paths)"
     ),
 });
 

@@ -5,13 +5,19 @@ import { resolve } from "node:path";
 import { parse as parseToml } from "smol-toml";
 
 import { RULES_DIRECTORY } from "../rules/layout";
-import { detectAutomation, type DetectedAutomation } from "./automation";
+import {
+  automationCommands,
+  automationFiles,
+  detectAutomation,
+  type DetectedAutomation,
+} from "./automation";
 
 export interface DetectedLinter {
   name: string;
   /**
-   * On-disk evidence for this linter: a config-file path, a `pyproject.toml`
-   * table marker, or a dependency marker from the language's package file. Each
+   * On-disk evidence for this linter: a config-file path, a manifest table or
+   * INI section marker, a dependency marker from the language's package file,
+   * or a root CI or hook config that runs it. Each
    * entry carries the path it was found at, so monorepo evidence
    * (`packages/api/.eslintrc.json`) is attributable. Not all entries are file
    * paths.
@@ -86,9 +92,11 @@ const MAX_DIRECTORY_DEPTH = 8;
  *
  * Each linter is tagged with the language(s) it serves so dependency evidence
  * is read from the right package file: a node dependency lives in
- * `package.json`, a Python dependency in `pyproject.toml`/`requirements.txt`.
- * Tagging by language lets the scan look for a linter's dependency only in its
- * own ecosystem's manifest instead of conflating the two. Config-file presence
+ * `package.json`, a Python dependency in `pyproject.toml`/`requirements*.txt`,
+ * a Ruby one in `Gemfile`, a PHP one in `composer.json`, a Go one in `go.mod`,
+ * a Swift one in `Package.swift`. Tagging by language lets the scan look for a
+ * linter's dependency only in its own ecosystem's manifest instead of
+ * conflating them. Config-file presence
  * is honored unconditionally, per the detect spec ("a recognized linter config
  * ... SHALL report each configured linter it found"), so a lone `.eslintrc.json`
  * still detects eslint.
@@ -99,11 +107,32 @@ interface LinterSignal {
   languages: string[];
   /** Fixed config filenames; presence on disk is direct evidence. */
   configFiles?: string[];
-  /** `[tool.<x>]` tables in `pyproject.toml` (Python linters). */
-  pyprojectTables?: string[];
-  /** Dependency names, matched against the manifest of this linter's language. */
+  /**
+   * Dotted TOML tables in a manifest the linter reads its config from, e.g.
+   * `tool.ruff` in `pyproject.toml` or `lints.clippy` in `Cargo.toml`.
+   */
+  manifestTables?: Array<{ manifest: TomlManifest; table: string }>;
+  /** `[section]` headers in an INI file the linter reads, e.g. `[flake8]` in `setup.cfg`. */
+  iniSections?: Array<{ file: string; section: string }>;
+  /** Top-level `package.json` keys the linter reads its config from. */
+  packageJsonKeys?: string[];
+  /**
+   * Dependency names, matched against the manifests of this linter's
+   * languages. A Go module matches by path prefix, so the `/v2` and `/cmd/...`
+   * forms of a module count; a Swift package is its lowercased repository path.
+   */
   deps?: string[];
+  /**
+   * Commands that run this linter, matched against the commands the root CI
+   * and commit-hook configs run (`automationCommands`), never their comments
+   * or step names. This is the only evidence for a linter that runs on its defaults
+   * and is not a dependency, such as clippy, which ships with the toolchain.
+   */
+  invocations?: RegExp[];
 }
+
+/** TOML manifests parsed for `manifestTables`. */
+type TomlManifest = "pyproject.toml" | "Cargo.toml";
 
 const LINTER_SIGNALS: readonly LinterSignal[] = [
   {
@@ -121,7 +150,10 @@ const LINTER_SIGNALS: readonly LinterSignal[] = [
       "eslint.config.mjs",
       "eslint.config.cjs",
       "eslint.config.ts",
+      "eslint.config.mts",
+      "eslint.config.cts",
     ],
+    packageJsonKeys: ["eslintConfig"],
     deps: ["eslint"],
   },
   {
@@ -147,17 +179,22 @@ const LINTER_SIGNALS: readonly LinterSignal[] = [
   {
     name: "stylelint",
     languages: ["JavaScript", "TypeScript"],
+    // cosmiconfig's default search places for `stylelint` (cosmiconfig 9).
     configFiles: [
       ".stylelintrc",
       ".stylelintrc.js",
       ".stylelintrc.cjs",
+      ".stylelintrc.mjs",
+      ".stylelintrc.ts",
       ".stylelintrc.json",
       ".stylelintrc.yml",
       ".stylelintrc.yaml",
       "stylelint.config.js",
       "stylelint.config.cjs",
       "stylelint.config.mjs",
+      "stylelint.config.ts",
     ],
+    packageJsonKeys: ["stylelint"],
     deps: ["stylelint"],
   },
   {
@@ -167,45 +204,77 @@ const LINTER_SIGNALS: readonly LinterSignal[] = [
       ".prettierrc",
       ".prettierrc.js",
       ".prettierrc.cjs",
+      ".prettierrc.mjs",
+      ".prettierrc.ts",
+      ".prettierrc.mts",
+      ".prettierrc.cts",
       ".prettierrc.json",
+      ".prettierrc.json5",
       ".prettierrc.yml",
       ".prettierrc.yaml",
+      ".prettierrc.toml",
       "prettier.config.js",
       "prettier.config.cjs",
       "prettier.config.mjs",
+      "prettier.config.ts",
+      "prettier.config.mts",
+      "prettier.config.cts",
     ],
+    packageJsonKeys: ["prettier"],
     deps: ["prettier"],
   },
   {
     name: "ruff",
     languages: ["Python"],
     configFiles: ["ruff.toml", ".ruff.toml"],
-    pyprojectTables: ["ruff"],
+    manifestTables: [{ manifest: "pyproject.toml", table: "tool.ruff" }],
     deps: ["ruff"],
+    invocations: [
+      /\bruff\s+(?:check|format)\b/,
+      /\bastral-sh\/ruff-(?:pre-commit|action)\b/,
+    ],
   },
   {
     name: "flake8",
     languages: ["Python"],
     configFiles: [".flake8"],
+    // flake8 does not read `pyproject.toml`, so this is where its config
+    // usually lives.
+    iniSections: [
+      { file: "setup.cfg", section: "flake8" },
+      { file: "tox.ini", section: "flake8" },
+    ],
     deps: ["flake8"],
+    invocations: [/\bflake8\b/],
   },
   {
     name: "pylint",
     languages: ["Python"],
     configFiles: [".pylintrc", "pylintrc"],
-    pyprojectTables: ["pylint"],
+    manifestTables: [{ manifest: "pyproject.toml", table: "tool.pylint" }],
     deps: ["pylint"],
+    invocations: [/\bpylint\b/],
   },
   {
     name: "black",
     languages: ["Python"],
-    pyprojectTables: ["black"],
+    manifestTables: [{ manifest: "pyproject.toml", table: "tool.black" }],
     deps: ["black"],
+    invocations: [/\bblack\s+--check\b/, /\bpsf\/black\b/],
   },
   {
     name: "rubocop",
     languages: ["Ruby"],
     configFiles: [".rubocop.yml", ".rubocop.yaml"],
+    deps: ["rubocop"],
+    invocations: [/\brubocop\b/],
+  },
+  {
+    name: "standard",
+    languages: ["Ruby"],
+    configFiles: [".standard.yml"],
+    deps: ["standard"],
+    invocations: [/\bstandardrb\b/],
   },
   {
     name: "golangci-lint",
@@ -216,16 +285,29 @@ const LINTER_SIGNALS: readonly LinterSignal[] = [
       ".golangci.toml",
       ".golangci.json",
     ],
+    // A `tool` directive (Go 1.24+) or the older tools.go `require`.
+    deps: ["github.com/golangci/golangci-lint"],
+    invocations: [/\bgolangci-lint\b/],
   },
   {
+    // Ships with rustup, so it is never a dependency, and most repositories
+    // run it with no config file. Being a Rust repository is NOT evidence:
+    // clippy counts only when it is configured or something runs it.
     name: "clippy",
     languages: ["Rust"],
     configFiles: ["clippy.toml", ".clippy.toml"],
+    manifestTables: [
+      { manifest: "Cargo.toml", table: "lints.clippy" },
+      { manifest: "Cargo.toml", table: "workspace.lints.clippy" },
+    ],
+    invocations: [/\bcargo\s+(?:\+\S+\s+)?clippy\b/],
   },
   {
     name: "phpstan",
     languages: ["PHP"],
     configFiles: ["phpstan.neon", "phpstan.neon.dist", "phpstan.dist.neon"],
+    deps: ["phpstan/phpstan"],
+    invocations: [/\bphpstan\b/],
   },
   {
     name: "php_codesniffer",
@@ -236,17 +318,46 @@ const LINTER_SIGNALS: readonly LinterSignal[] = [
       ".phpcs.xml",
       ".phpcs.xml.dist",
     ],
+    deps: ["squizlabs/php_codesniffer"],
+    invocations: [/\bphpcs\b/],
   },
   {
     name: "psalm",
     languages: ["PHP"],
     configFiles: ["psalm.xml", "psalm.xml.dist"],
+    deps: ["vimeo/psalm"],
+    invocations: [/\bvendor\/bin\/psalm\b/],
   },
-  { name: "clang-tidy", languages: ["C", "C++"], configFiles: [".clang-tidy"] },
+  {
+    name: "pint",
+    languages: ["PHP"],
+    configFiles: ["pint.json"],
+    deps: ["laravel/pint"],
+    invocations: [/\bvendor\/bin\/pint\b/],
+  },
+  {
+    name: "php-cs-fixer",
+    languages: ["PHP"],
+    configFiles: [".php-cs-fixer.php", ".php-cs-fixer.dist.php"],
+    deps: ["friendsofphp/php-cs-fixer"],
+    invocations: [/\bphp-cs-fixer\b/],
+  },
+  {
+    name: "clang-tidy",
+    languages: ["C", "C++"],
+    configFiles: [".clang-tidy"],
+    invocations: [/\bclang-tidy\b/],
+  },
   {
     name: "swiftlint",
     languages: ["Swift"],
     configFiles: [".swiftlint.yml", ".swiftlint.yaml"],
+    // The SwiftPM plugin, from either of its two published repositories.
+    deps: [
+      "github.com/realm/swiftlint",
+      "github.com/simplydanny/swiftlintplugins",
+    ],
+    invocations: [/\bswiftlint\b/],
   },
   { name: "checkstyle", languages: ["Java"], configFiles: ["checkstyle.xml"] },
   // Polyglot and prose linters: neither says anything about which languages
@@ -300,8 +411,22 @@ const DISCOVERABLE_FILES: readonly string[] = [
     "package.json",
     "tsconfig.json",
     ...LANGUAGE_MARKERS.flatMap((marker) => marker.files),
-    ...LINTER_SIGNALS.flatMap((signal) => signal.configFiles ?? []),
+    ...LINTER_SIGNALS.flatMap((signal) => [
+      ...(signal.configFiles ?? []),
+      ...(signal.iniSections ?? []).map((ini) => ini.file),
+    ]),
   ]),
+];
+
+/**
+ * pip requirements files beyond the bare `requirements.txt` marker: the
+ * `requirements-dev.txt` / `dev-requirements.txt` split, a `requirements/`
+ * directory of them, and pip-tools `.in` sources. Dev tools such as linters
+ * live in exactly these.
+ */
+const REQUIREMENTS_PATTERNS: readonly string[] = [
+  "**/*requirements*.{txt,in}",
+  "**/requirements/*.{txt,in}",
 ];
 
 async function readFileSafe(path: string): Promise<string | undefined> {
@@ -316,7 +441,6 @@ interface PackageJson {
   dependencies?: Record<string, string>;
   devDependencies?: Record<string, string>;
   peerDependencies?: Record<string, string>;
-  eslintConfig?: unknown;
 }
 
 /** Object keys, but only for a plain object (a malformed manifest field that
@@ -338,12 +462,13 @@ function nodeDependencyNames(packageJson: PackageJson): Set<string> {
 }
 
 /**
- * Parse `pyproject.toml` with a real TOML parser. A malformed file yields
- * `undefined` rather than throwing — detect degrades gracefully, losing only
- * the pyproject-derived signals (the file's mere presence still marks Python,
- * and config files like `ruff.toml` are independent tells).
+ * Parse a TOML manifest (`pyproject.toml`, `Cargo.toml`) with a real TOML
+ * parser. A malformed file yields `undefined` rather than throwing — detect
+ * degrades gracefully, losing only the manifest-derived signals (the file's
+ * mere presence still marks the language, and config files like `ruff.toml`
+ * are independent tells).
  */
-function parsePyproject(
+function parseTomlManifest(
   raw: string | undefined
 ): Record<string, unknown> | undefined {
   if (raw === undefined) return undefined;
@@ -362,17 +487,29 @@ function asRecord(value: unknown): Record<string, unknown> | undefined {
 }
 
 /**
- * Whether a parsed `pyproject.toml` declares a `[tool.<table>]` table (or a
- * nested table under it, e.g. `[tool.ruff.lint]`). A real parser makes this
+ * Whether a parsed TOML manifest declares the dotted `table` (or a nested table
+ * under it: `tool.ruff` matches `[tool.ruff.lint]`). A real parser makes this
  * exact: a similarly-named sibling like `[tool.ruff-lsp]` is a distinct key and
  * does not match.
  */
-function pyprojectHasTable(
-  pyproject: Record<string, unknown> | undefined,
+function hasTomlTable(
+  manifest: Record<string, unknown> | undefined,
   table: string
 ): boolean {
-  const tool = asRecord(pyproject?.tool);
-  return tool !== undefined && Object.hasOwn(tool, table);
+  let node: Record<string, unknown> | undefined = manifest;
+  for (const key of table.split(".")) {
+    if (node === undefined || !Object.hasOwn(node, key)) return false;
+    node = asRecord(node[key]);
+  }
+  return node !== undefined;
+}
+
+/** Whether an INI file (`setup.cfg`, `tox.ini`) has a `[section]` header. */
+function hasIniSection(raw: string | undefined, section: string): boolean {
+  if (raw === undefined) return false;
+  return raw
+    .split("\n")
+    .some((line) => line.trim().toLowerCase() === `[${section}]`);
 }
 
 /** Strip a PEP 508 requirement string down to its package name. */
@@ -459,6 +596,81 @@ function pythonDepsFromPyproject(
   return names;
 }
 
+/** Gem names declared in a `Gemfile` (`gem "rubocop", require: false`). */
+function rubyDepsFromGemfile(raw: string | undefined): string[] {
+  if (raw === undefined) return [];
+  return [...raw.matchAll(/^\s*gem\s+["']([^"']+)["']/gm)].map((match) =>
+    match[1]!.toLowerCase()
+  );
+}
+
+/** Package names in a `composer.json`'s `require` and `require-dev`. */
+function phpDepsFromComposer(raw: string | undefined): string[] {
+  if (raw === undefined) return [];
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return [];
+  }
+  const composer = asRecord(parsed);
+  return [
+    ...plainObjectKeys(composer?.require),
+    ...plainObjectKeys(composer?.["require-dev"]),
+  ].map((name) => name.toLowerCase());
+}
+
+/**
+ * Module paths named in a `go.mod`'s `require` and `tool` directives, single
+ * or block form, with every `/`-prefix of each, so a signal's
+ * `github.com/golangci/golangci-lint` matches the
+ * `github.com/golangci/golangci-lint/v2/cmd/golangci-lint` a tool line names.
+ */
+function goDepsFromGoModule(raw: string | undefined): string[] {
+  if (raw === undefined) return [];
+  const paths: string[] = [];
+  let block: string | undefined;
+  for (const line of raw.split("\n")) {
+    const tokens = line
+      .replace(/\/\/.*$/, "")
+      .trim()
+      .split(/\s+/);
+    if (tokens[0] === ")") {
+      block = undefined;
+      continue;
+    }
+    let path: string | undefined;
+    if (tokens[0] === "require" || tokens[0] === "tool") {
+      if (tokens[1] === "(") block = tokens[0];
+      else path = tokens[1];
+    } else if (block !== undefined) {
+      path = tokens[0];
+    }
+    if (path === undefined || !path.includes("/")) continue;
+    const segments = path.split("/");
+    for (let index = 2; index <= segments.length; index++) {
+      paths.push(segments.slice(0, index).join("/"));
+    }
+  }
+  return paths;
+}
+
+/**
+ * Repository paths of the packages a `Package.swift` depends on, lowercased
+ * and normalized from URL or SSH form (`github.com/realm/swiftlint`).
+ */
+function swiftDepsFromPackageSwift(raw: string | undefined): string[] {
+  if (raw === undefined) return [];
+  return [...raw.matchAll(/\.package\(\s*url:\s*"([^"]+)"/g)].map((match) =>
+    match[1]!
+      .toLowerCase()
+      .replace(/^[a-z+]+:\/\//, "")
+      .replace(/^git@([^:]+):/, "$1/")
+      .replace(/\.git$/, "")
+      .replace(/\/$/, "")
+  );
+}
+
 /** Python dependency names declared in a `requirements.txt`. */
 function pythonDepsFromRequirements(raw: string | undefined): string[] {
   if (raw === undefined) return [];
@@ -489,16 +701,15 @@ function shouldExclude(relativePath: string): boolean {
   return IGNORED_DIRECTORIES.has(segments.at(-1) ?? "");
 }
 
-interface NodeManifest {
+/** A package file and the dependency names it declares. */
+interface Manifest {
   path: string;
   deps: Set<string>;
-  hasEslintConfigKey: boolean;
 }
 
-interface PythonManifest {
-  path: string;
-  parsed?: Record<string, unknown>;
-  deps: Set<string>;
+interface NodeManifest extends Manifest {
+  /** Top-level keys, for linters configured inside `package.json`. */
+  keys: Set<string>;
 }
 
 /**
@@ -572,6 +783,14 @@ export async function detectRepository(cwd: string): Promise<DetectResult> {
     cwd: root,
     exclude: shouldExclude,
   });
+  const requirementsPaths = [
+    ...new Set(
+      globSync([...REQUIREMENTS_PATTERNS], {
+        cwd: root,
+        exclude: shouldExclude,
+      })
+    ),
+  ];
 
   const pathsByBasename = new Map<string, string[]>();
   for (const relativePath of foundPaths) {
@@ -582,11 +801,13 @@ export async function detectRepository(cwd: string): Promise<DetectResult> {
   }
   const pathsFor = (basename: string): string[] =>
     pathsByBasename.get(basename) ?? [];
+  const readAt = (relativePath: string): Promise<string | undefined> =>
+    readFileSafe(resolve(root, relativePath));
 
   // Node manifests → JS/TS dependency names, per location.
   const nodeManifests: NodeManifest[] = [];
   for (const relativePath of pathsFor("package.json")) {
-    const raw = await readFileSafe(resolve(root, relativePath));
+    const raw = await readAt(relativePath);
     if (raw === undefined) continue;
     let parsed: PackageJson;
     try {
@@ -597,31 +818,76 @@ export async function detectRepository(cwd: string): Promise<DetectResult> {
     nodeManifests.push({
       path: relativePath,
       deps: nodeDependencyNames(parsed),
-      hasEslintConfigKey: parsed.eslintConfig !== undefined,
+      keys: new Set(plainObjectKeys(parsed)),
     });
   }
 
+  // TOML manifests, parsed once: Python dependencies and `manifestTables`
+  // both read them.
+  const tomlManifests = new Map<
+    TomlManifest,
+    Array<{ path: string; parsed?: Record<string, unknown> }>
+  >();
+  for (const manifest of ["pyproject.toml", "Cargo.toml"] as const) {
+    const parsedManifests = [];
+    for (const relativePath of pathsFor(manifest)) {
+      parsedManifests.push({
+        path: relativePath,
+        parsed: parseTomlManifest(await readAt(relativePath)),
+      });
+    }
+    tomlManifests.set(manifest, parsedManifests);
+  }
+
   // Python manifests → Python dependency names, per location.
-  const pythonManifests: PythonManifest[] = [];
-  for (const relativePath of pathsFor("pyproject.toml")) {
-    const parsed = parsePyproject(
-      await readFileSafe(resolve(root, relativePath))
-    );
+  const pythonManifests: Manifest[] = (
+    tomlManifests.get("pyproject.toml") ?? []
+  ).map(({ path, parsed }) => ({
+    path,
+    deps: new Set(pythonDepsFromPyproject(parsed)),
+  }));
+  for (const relativePath of requirementsPaths) {
     pythonManifests.push({
       path: relativePath,
-      parsed,
-      deps: new Set(pythonDepsFromPyproject(parsed)),
+      deps: new Set(pythonDepsFromRequirements(await readAt(relativePath))),
     });
   }
-  for (const relativePath of pathsFor("requirements.txt")) {
-    pythonManifests.push({
-      path: relativePath,
-      deps: new Set(
-        pythonDepsFromRequirements(
-          await readFileSafe(resolve(root, relativePath))
-        )
-      ),
-    });
+
+  // The other ecosystems' manifests, one reader each.
+  const manifestsFrom = async (
+    basename: string,
+    read: (raw: string | undefined) => string[]
+  ): Promise<Manifest[]> => {
+    const manifests: Manifest[] = [];
+    for (const relativePath of pathsFor(basename)) {
+      manifests.push({
+        path: relativePath,
+        deps: new Set(read(await readAt(relativePath))),
+      });
+    }
+    return manifests;
+  };
+  const manifestsByLanguage = new Map<string, Manifest[]>([
+    ["JavaScript", nodeManifests],
+    ["TypeScript", nodeManifests],
+    ["Python", pythonManifests],
+    ["Ruby", await manifestsFrom("Gemfile", rubyDepsFromGemfile)],
+    ["PHP", await manifestsFrom("composer.json", phpDepsFromComposer)],
+    ["Go", await manifestsFrom("go.mod", goDepsFromGoModule)],
+    ["Swift", await manifestsFrom("Package.swift", swiftDepsFromPackageSwift)],
+  ]);
+
+  // The commands the root CI and hook configs run, read once for every
+  // signal's `invocations`.
+  const automation: Array<{ path: string; commands: string[] }> = [];
+  for (const relativePath of automationFiles(root)) {
+    const raw = await readAt(relativePath);
+    if (raw !== undefined) {
+      automation.push({
+        path: relativePath,
+        commands: automationCommands(relativePath, raw),
+      });
+    }
   }
 
   // Languages: manifest/marker files first, then JS/TS from node manifests.
@@ -645,44 +911,50 @@ export async function detectRepository(cwd: string): Promise<DetectResult> {
   }
 
   // Linters: config files unconditionally; dependency evidence from the
-  // manifests of the linter's own language. A detected linter contributes its
-  // language(s).
+  // manifests of the linter's own languages; invocations from the root CI and
+  // hook configs. A detected linter contributes its language(s).
   const linters: DetectedLinter[] = [];
   for (const signal of LINTER_SIGNALS) {
     const evidence: string[] = [];
-    const servesPython = signal.languages.includes("Python");
-    const servesNode =
-      signal.languages.includes("JavaScript") ||
-      signal.languages.includes("TypeScript");
 
     for (const configFile of signal.configFiles ?? []) {
       evidence.push(...pathsFor(configFile));
     }
-    for (const table of signal.pyprojectTables ?? []) {
-      for (const manifest of pythonManifests) {
-        if (pyprojectHasTable(manifest.parsed, table)) {
-          evidence.push(`${manifest.path} [tool.${table}]`);
+    for (const { manifest, table } of signal.manifestTables ?? []) {
+      for (const { path, parsed } of tomlManifests.get(manifest) ?? []) {
+        if (hasTomlTable(parsed, table)) evidence.push(`${path} [${table}]`);
+      }
+    }
+    for (const { file, section } of signal.iniSections ?? []) {
+      for (const relativePath of pathsFor(file)) {
+        if (hasIniSection(await readAt(relativePath), section)) {
+          evidence.push(`${relativePath} [${section}]`);
         }
       }
     }
+    for (const key of signal.packageJsonKeys ?? []) {
+      for (const manifest of nodeManifests) {
+        if (manifest.keys.has(key)) evidence.push(`${manifest.path} (${key})`);
+      }
+    }
+    // JavaScript and TypeScript share `package.json`; read it once.
+    const manifests = new Set(
+      signal.languages.flatMap(
+        (language) => manifestsByLanguage.get(language) ?? []
+      )
+    );
     for (const dep of signal.deps ?? []) {
-      const manifests = servesPython
-        ? pythonManifests
-        : servesNode
-          ? nodeManifests
-          : [];
       for (const manifest of manifests) {
         if (manifest.deps.has(dep)) {
           evidence.push(`dependency ${dep} (${manifest.path})`);
         }
       }
     }
-    if (signal.name === "eslint") {
-      for (const manifest of nodeManifests) {
-        if (manifest.hasEslintConfigKey) {
-          evidence.push(`${manifest.path} (eslintConfig)`);
-        }
-      }
+    for (const { path, commands } of automation) {
+      const match = (signal.invocations ?? [])
+        .flatMap((pattern) => commands.map((command) => pattern.exec(command)))
+        .find((result) => result !== null);
+      if (match) evidence.push(`${path} (${match[0]})`);
     }
 
     if (evidence.length > 0) {
