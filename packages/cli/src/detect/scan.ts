@@ -393,6 +393,15 @@ function requirementNames(value: unknown): string[] {
     .map((entry) => requirementName(entry));
 }
 
+/** Package names from a table of named groups, each an array of PEP 508
+ * requirement strings (`optional-dependencies`, PEP 735 `dependency-groups`,
+ * PDM's `dev-dependencies`). */
+function groupedRequirementNames(value: unknown): string[] {
+  return Object.values(asRecord(value) ?? {}).flatMap((group) =>
+    requirementNames(group)
+  );
+}
+
 /**
  * Python dependency names declared in a parsed `pyproject.toml`.
  *
@@ -410,25 +419,17 @@ function pythonDepsFromPyproject(
   const names: string[] = [];
 
   const project = asRecord(pyproject.project);
-  names.push(...requirementNames(project?.dependencies));
-  for (const group of Object.values(
-    asRecord(project?.["optional-dependencies"]) ?? {}
-  )) {
-    names.push(...requirementNames(group));
-  }
-  for (const group of Object.values(
-    asRecord(pyproject["dependency-groups"]) ?? {}
-  )) {
-    names.push(...requirementNames(group));
-  }
+  names.push(
+    ...requirementNames(project?.dependencies),
+    ...groupedRequirementNames(project?.["optional-dependencies"]),
+    ...groupedRequirementNames(pyproject["dependency-groups"])
+  );
 
   const tool = asRecord(pyproject.tool);
-  names.push(...requirementNames(asRecord(tool?.uv)?.["dev-dependencies"]));
-  for (const group of Object.values(
-    asRecord(asRecord(tool?.pdm)?.["dev-dependencies"]) ?? {}
-  )) {
-    names.push(...requirementNames(group));
-  }
+  names.push(
+    ...requirementNames(asRecord(tool?.uv)?.["dev-dependencies"]),
+    ...groupedRequirementNames(asRecord(tool?.pdm)?.["dev-dependencies"])
+  );
   for (const environment of Object.values(
     asRecord(asRecord(tool?.hatch)?.envs) ?? {}
   )) {
