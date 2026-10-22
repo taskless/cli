@@ -909,6 +909,10 @@ export async function detectRepository(cwd: string): Promise<DetectResult> {
       languages.add(marker.language);
     }
   }
+  // Any pip requirements file marks Python, not only the bare
+  // `requirements.txt` marker: a repository may keep only
+  // `requirements-dev.txt` or a `requirements/` directory.
+  if (requirementsPaths.length > 0) languages.add("Python");
 
   // Linters: config files unconditionally; dependency evidence from the
   // manifests of the linter's own languages; invocations from the root CI and
