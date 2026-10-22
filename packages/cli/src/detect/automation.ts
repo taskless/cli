@@ -292,6 +292,35 @@ function parseStructured(file: string, raw: string): unknown {
 }
 
 /**
+ * A line of shell or JavaScript with its trailing comment removed. A comment
+ * starts at a `#` or `//` that opens the line or follows whitespace, and only
+ * outside a quoted string: `echo "a # b" && golangci-lint run` keeps its
+ * invocation. Backslash escapes inside double quotes and backticks; single
+ * quotes are literal, as in shell.
+ */
+function stripLineComment(line: string): string {
+  let quote: string | undefined;
+  for (let index = 0; index < line.length; index++) {
+    const char = line[index];
+    if (quote !== undefined) {
+      if (char === "\\" && quote !== "'") index++;
+      else if (char === quote) quote = undefined;
+      continue;
+    }
+    if (char === '"' || char === "'" || char === "`") {
+      quote = char;
+      continue;
+    }
+    const opensComment =
+      char === "#" || (char === "/" && line[index + 1] === "/");
+    if (opensComment && (index === 0 || /\s/.test(line[index - 1] ?? ""))) {
+      return line.slice(0, index);
+    }
+  }
+  return line;
+}
+
+/**
  * The commands a CI or hook config runs, so a linter is evidenced by being
  * RUN rather than by being mentioned. A structured config contributes only
  * the values of its command keys; a step's name or a comment is not a
@@ -305,7 +334,7 @@ export function automationCommands(file: string, raw: string): string[] {
   const commands: string[] = [];
   if (parsed === undefined) {
     for (const line of raw.split("\n")) {
-      const code = line.replace(/(?:^|\s)(?:#|\/\/).*$/, "").trim();
+      const code = stripLineComment(line).trim();
       if (code !== "") commands.push(code);
     }
   } else if (isCommandMap(file)) {

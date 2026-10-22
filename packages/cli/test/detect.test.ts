@@ -307,6 +307,19 @@ describe("taskless detect", () => {
         },
       ],
       [
+        "golangci-lint",
+        "dependency github.com/golangci/golangci-lint (go.mod)",
+        {
+          "go.mod":
+            "module x\n\ngo 1.24\n\nrequire github.com/golangci/golangci-lint v1.64.8 // indirect\n",
+        },
+      ],
+      [
+        "phpstan",
+        "dependency phpstan/phpstan (composer.json)",
+        { "composer.json": '{"require":{"phpstan/phpstan":"^2"}}' },
+      ],
+      [
         "swiftlint",
         "dependency github.com/realm/swiftlint (Package.swift)",
         {
@@ -373,6 +386,13 @@ describe("taskless detect", () => {
       ).toContain(expected);
     });
 
+    it("reports Python for a repository whose only manifest is a requirements file", async () => {
+      await mkdir(join(cwd, "requirements"), { recursive: true });
+      await writeFile(join(cwd, "requirements/docs.txt"), "sphinx\n", "utf8");
+      const result = await detect(cwd);
+      expect(result.languages).toContain("Python");
+    });
+
     it("does not report clippy for a Rust repository that never configures or runs it", async () => {
       // clippy ships with the toolchain, so being Rust is not evidence of it.
       await writeFile(
@@ -416,6 +436,14 @@ describe("taskless detect", () => {
       ],
       [".husky/pre-commit", "#!/bin/sh\ngolangci-lint run\n"],
       [".lintstagedrc", '{"*.go": "golangci-lint run"}'],
+      [
+        ".husky/pre-commit",
+        '#!/bin/sh\necho "checking # lint rules" && golangci-lint run\n',
+      ],
+      [
+        "Jenkinsfile",
+        "pipeline { stages { stage('l') { steps { sh \"echo 'see //lint' && golangci-lint run\" } } } }\n",
+      ],
     ])("reads an invocation from the commands in %s", async (path, content) => {
       await mkdir(join(cwd, path, ".."), { recursive: true });
       await writeFile(join(cwd, path), content, "utf8");
