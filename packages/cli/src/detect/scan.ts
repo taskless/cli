@@ -383,7 +383,26 @@ function requirementName(requirement: string): string {
     .toLowerCase();
 }
 
-/** Python dependency names declared in a parsed `pyproject.toml` (PEP 621 + Poetry). */
+/** Package names from an array of PEP 508 requirement strings. Non-string
+ * entries (a PEP 735 `{ include-group = "..." }`) and non-arrays contribute
+ * nothing. */
+function requirementNames(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .filter((entry): entry is string => typeof entry === "string")
+    .map((entry) => requirementName(entry));
+}
+
+/**
+ * Python dependency names declared in a parsed `pyproject.toml`.
+ *
+ * A dev tool like ruff is rarely a runtime dependency, so the dev-dependency
+ * locations matter as much as `[project]`: PEP 735 `[dependency-groups]` (what
+ * `uv add --dev` writes), uv's legacy `[tool.uv] dev-dependencies`, PDM's and
+ * Hatch's own tables, and Poetry's groups. A repository that installs ruff
+ * through any of these and runs it on its defaults has no `[tool.ruff]` table,
+ * so this is the only evidence it lints.
+ */
 function pythonDepsFromPyproject(
   pyproject: Record<string, unknown> | undefined
 ): string[] {
@@ -391,26 +410,49 @@ function pythonDepsFromPyproject(
   const names: string[] = [];
 
   const project = asRecord(pyproject.project);
-  const projectDeps = project?.dependencies;
-  if (Array.isArray(projectDeps)) {
-    for (const entry of projectDeps) {
-      if (typeof entry === "string") names.push(requirementName(entry));
-    }
+  names.push(...requirementNames(project?.dependencies));
+  for (const group of Object.values(
+    asRecord(project?.["optional-dependencies"]) ?? {}
+  )) {
+    names.push(...requirementNames(group));
   }
-  const optional = asRecord(project?.["optional-dependencies"]);
-  for (const group of Object.values(optional ?? {})) {
-    if (!Array.isArray(group)) continue;
-    for (const entry of group) {
-      if (typeof entry === "string") names.push(requirementName(entry));
-    }
+  for (const group of Object.values(
+    asRecord(pyproject["dependency-groups"]) ?? {}
+  )) {
+    names.push(...requirementNames(group));
   }
 
-  const poetry = asRecord(asRecord(pyproject.tool)?.poetry);
-  for (const key of ["dependencies", "dev-dependencies", "group"]) {
-    const table = asRecord(poetry?.[key]);
-    if (table) {
-      names.push(...Object.keys(table).map((name) => name.toLowerCase()));
-    }
+  const tool = asRecord(pyproject.tool);
+  names.push(...requirementNames(asRecord(tool?.uv)?.["dev-dependencies"]));
+  for (const group of Object.values(
+    asRecord(asRecord(tool?.pdm)?.["dev-dependencies"]) ?? {}
+  )) {
+    names.push(...requirementNames(group));
+  }
+  for (const environment of Object.values(
+    asRecord(asRecord(tool?.hatch)?.envs) ?? {}
+  )) {
+    const table = asRecord(environment);
+    names.push(
+      ...requirementNames(table?.dependencies),
+      ...requirementNames(table?.["extra-dependencies"])
+    );
+  }
+
+  // Poetry keys dependencies by name. Groups nest one level deeper, under
+  // `[tool.poetry.group.<name>.dependencies]`.
+  const poetry = asRecord(tool?.poetry);
+  const poetryTables = [
+    poetry?.dependencies,
+    poetry?.["dev-dependencies"],
+    ...Object.values(asRecord(poetry?.group) ?? {}).map(
+      (group) => asRecord(group)?.dependencies
+    ),
+  ];
+  for (const table of poetryTables) {
+    names.push(
+      ...Object.keys(asRecord(table) ?? {}).map((name) => name.toLowerCase())
+    );
   }
 
   return names;
