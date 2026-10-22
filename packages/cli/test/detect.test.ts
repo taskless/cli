@@ -204,6 +204,48 @@ describe("taskless detect", () => {
     expect(result.languages).toContain("Python");
   });
 
+  it.each([
+    [
+      "PEP 735 [dependency-groups]",
+      '[dependency-groups]\ndev = [{ include-group = "test" }, "ruff>=0.6"]\ntest = ["pytest"]\n',
+    ],
+    ["[tool.uv] dev-dependencies", '[tool.uv]\ndev-dependencies = ["ruff"]\n'],
+    [
+      "[tool.pdm.dev-dependencies]",
+      '[tool.pdm.dev-dependencies]\nlint = ["ruff==0.6.0"]\n',
+    ],
+    [
+      "a Hatch environment",
+      '[tool.hatch.envs.lint]\ndependencies = ["ruff"]\n',
+    ],
+    [
+      "a Poetry dependency group",
+      '[tool.poetry.group.dev.dependencies]\nruff = "^0.6"\n',
+    ],
+  ])(
+    "detects ruff installed only as a dev dependency in %s",
+    async (_location, toml) => {
+      // No [tool.ruff] table: ruff running on its defaults is still a linter.
+      await writeFile(
+        join(cwd, "pyproject.toml"),
+        `[project]\nname = "x"\n\n${toml}`,
+        "utf8"
+      );
+      const result = await detect(cwd);
+      expect(linterNames(result)).toContain("ruff");
+    }
+  );
+
+  it("does not read a Poetry group's name as a dependency", async () => {
+    await writeFile(
+      join(cwd, "pyproject.toml"),
+      '[tool.poetry.group.ruff.dependencies]\npytest = "^8"\n',
+      "utf8"
+    );
+    const result = await detect(cwd);
+    expect(linterNames(result)).not.toContain("ruff");
+  });
+
   it("detects flake8 from a requirements.txt entry", async () => {
     await writeFile(
       join(cwd, "requirements.txt"),
