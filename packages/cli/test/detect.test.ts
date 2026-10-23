@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
@@ -691,6 +691,28 @@ describe("taskless detect", () => {
       expect(rules?.count).toBe(7);
       expect(rules?.evidence).toEqual(["eslint-rules (7 rules)"]);
     });
+
+    // Permissions do not restrict root, and Windows ignores the mode bits.
+    it.skipIf(process.platform === "win32" || process.getuid?.() === 0)(
+      "skips an unreadable rule directory instead of failing the scan",
+      async () => {
+        await writeFile(join(cwd, "eslint.config.js"), "export default [];");
+        const directory = join(cwd, "eslint-rules");
+        await mkdir(directory);
+        await writeFile(join(directory, "a.js"), "");
+        await chmod(directory, 0o000);
+        try {
+          const result = await detect(cwd);
+          expect(result.success).toBe(true);
+          expect(customRules(result, "eslint")).toEqual({
+            count: 0,
+            evidence: [],
+          });
+        } finally {
+          await chmod(directory, 0o755);
+        }
+      }
+    );
 
     it("reports a preset-only ESLint config as zero", async () => {
       await writeFile(

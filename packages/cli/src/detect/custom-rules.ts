@@ -71,8 +71,11 @@ function asRecord(value: unknown): Record<string, unknown> | undefined {
 
 // --- ESLint ------------------------------------------------------------------
 
-/** House directories that hold one ESLint rule per entry. */
-const ESLINT_RULE_DIRECTORIES = [
+/**
+ * House directories that hold one ESLint rule per entry. The scan's rule-style
+ * hints read the same list, so the two cannot drift.
+ */
+export const ESLINT_RULE_DIRECTORIES = [
   "eslint-rules",
   "eslint-local-rules",
   "tools/eslint-rules",
@@ -111,10 +114,19 @@ const NOT_A_RULE_DIRECTORY = new Set([
  * Rules in a house rule directory: each source file is one rule, and so is
  * each subdirectory (a rule with its own folder). Index files, tests, type
  * declarations, and helper folders are not rules.
+ *
+ * An unreadable directory returns `undefined` rather than throwing: the scan
+ * skips what it cannot read, and one bad directory must not fail `detect`.
  */
-function countRuleDirectory(path: string): number {
+function countRuleDirectory(path: string): number | undefined {
+  let entries: string[];
+  try {
+    entries = readdirSync(path);
+  } catch {
+    return undefined;
+  }
   let count = 0;
-  for (const entry of readdirSync(path)) {
+  for (const entry of entries) {
     let isDirectory: boolean;
     try {
       isDirectory = statSync(join(path, entry)).isDirectory();
@@ -144,6 +156,7 @@ async function countEslint(context: CustomRuleContext): Promise<CustomRules> {
     const path = resolve(context.root, directory);
     if (!existsSync(path)) continue;
     const count = countRuleDirectory(path);
+    if (count === undefined) continue;
     known += count;
     evidence.push(`${directory} (${count} rules)`);
   }

@@ -11,7 +11,11 @@ import {
   detectAutomation,
   type DetectedAutomation,
 } from "./automation";
-import { countCustomRules, type CustomRules } from "./custom-rules";
+import {
+  countCustomRules,
+  type CustomRules,
+  ESLINT_RULE_DIRECTORIES,
+} from "./custom-rules";
 
 export interface DetectedLinter {
   name: string;
@@ -741,11 +745,7 @@ function detectRuleStyles(
     });
     break;
   }
-  for (const directory of [
-    "eslint-rules",
-    "eslint-local-rules",
-    "tools/eslint-rules",
-  ]) {
+  for (const directory of ESLINT_RULE_DIRECTORIES) {
     if (existsSync(resolve(root, directory))) {
       ruleStyles.push({
         source: directory,
