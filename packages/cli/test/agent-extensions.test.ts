@@ -622,4 +622,24 @@ describe("taskless agent --tool (variant lookup)", () => {
     expect(result.stderr).toContain(instead);
     expect(result.stdout).toBe("");
   });
+
+  it("refuses only on a topic that has tool variants", async () => {
+    const plain = await runCli(["agent", "route", "-d", cwd]);
+    const vale = await runCli(["agent", "route", "--tool=vale", "-d", cwd]);
+    expect(vale.exitCode).toBe(0);
+    expect(vale.stdout).toBe(plain.stdout);
+  });
+
+  it("reports an unknown topic as unknown, not as a refused tool", async () => {
+    const result = await runCli([
+      "agent",
+      "no-such-topic",
+      "--tool=vale",
+      "-d",
+      cwd,
+    ]);
+    expect(result.exitCode).not.toBe(0);
+    expect(result.stderr).toContain("Unknown command: no-such-topic");
+    expect(result.stderr).not.toContain("has no legacy recipe");
+  });
 });

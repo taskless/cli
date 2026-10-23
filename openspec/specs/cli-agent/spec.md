@@ -15,7 +15,7 @@ The CLI SHALL support an `agent` subcommand that accepts at most one positional 
 3. Otherwise, return `<topic>.md`.
 4. If none of these exists, exit with code 1 and an error message suggesting `taskless agent` for the topic index.
 
-`--tool` SHALL refuse, with a non-zero exit and a message naming the recipe to use instead, a tool that has its own authoring recipe (`ast-grep`, `vale`) or that cannot hold a rule (`prettier`, `black`). An unrecognized tool name SHALL fall back to `<topic>.md`.
+On a topic that has tool variants, `--tool` SHALL refuse, with a non-zero exit and a message naming the recipe to use instead, a tool that has its own authoring recipe (`ast-grep`, `vale`) or that cannot hold a rule (`prettier`, `black`). An unrecognized tool name SHALL fall back to `<topic>.md`.
 
 When no positional argument is provided, the subcommand SHALL print a topic index containing a one-paragraph human slug followed by a topic disambiguation table mapping topic names to their summaries.
 
@@ -58,6 +58,16 @@ The subcommand is named for its reader. It serves agents fetching a procedure, n
 
 - **WHEN** a user runs `taskless agent create-legacy-rule --tool=vale`
 - **THEN** the CLI SHALL exit non-zero and name `create-vale-rule` as the recipe to use
+
+#### Scenario: A refused tool name is ignored on a topic without tool variants
+
+- **WHEN** a user runs `taskless agent route --tool=vale`
+- **THEN** the CLI SHALL print `route.md` and exit zero
+
+#### Scenario: An unknown topic is not masked by a refused tool
+
+- **WHEN** a user runs `taskless agent no-such-topic --tool=vale`
+- **THEN** the CLI SHALL exit non-zero with the unknown-topic error, not the tool refusal
 
 ### Requirement: Recipe files are embedded at build time
 

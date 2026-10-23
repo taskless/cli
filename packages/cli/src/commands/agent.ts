@@ -16,6 +16,7 @@ import {
   LINTER_VARIABLES,
   getRawRecipe,
   getRecipe,
+  toolVariants,
 } from "../prompts/recipes";
 import { withSurveyInvite } from "../survey/invite";
 import { applyCliInvocation } from "../util/invocation";
@@ -267,7 +268,14 @@ export function createAgentCommand(subCommands: SubCommandsDef) {
       }
 
       const tool = args.tool as string | undefined;
-      const refusal = tool === undefined ? undefined : REFUSED_TOOLS.get(tool);
+      // Refusal is a statement about a topic's tool variants, so it applies
+      // only to a topic that has them. Elsewhere `--tool` selects nothing and
+      // is ignored, and an unknown topic still reports itself as unknown
+      // rather than hiding behind a "no legacy recipe" message.
+      const refusal =
+        tool === undefined || toolVariants(key).length === 0
+          ? undefined
+          : REFUSED_TOOLS.get(tool);
       if (refusal !== undefined) {
         telemetry.capture("cli_agent", { topic: key });
         console.error(`--tool=${tool} has no legacy recipe: ${refusal}`);
