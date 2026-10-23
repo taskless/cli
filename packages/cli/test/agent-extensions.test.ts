@@ -551,3 +551,75 @@ describe("create-sg-rule names the tree-sitter traps under Quirks", () => {
     expect(result.stdout).toContain("kind: await_expression");
   });
 });
+
+describe("taskless agent --tool (variant lookup)", () => {
+  let cwd: string;
+
+  beforeEach(async () => {
+    cwd = await mkdtemp(join(tmpdir(), "taskless-agent-tool-"));
+  });
+
+  afterEach(async () => {
+    await rm(cwd, { recursive: true, force: true });
+  });
+
+  it.each(["ruff", "eslint", "biome", "pylint", "flake8"])(
+    "serves the %s variant of create-legacy-rule",
+    async (tool) => {
+      const result = await runCli([
+        "agent",
+        "create-legacy-rule",
+        `--tool=${tool}`,
+        "-d",
+        cwd,
+      ]);
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout).toContain(`# Topic: create-legacy-rule (${tool})`);
+    }
+  );
+
+  it("takes the value as a separate argument, not as a second topic", async () => {
+    const result = await runCli([
+      "agent",
+      "create-legacy-rule",
+      "--tool",
+      "ruff",
+      "-d",
+      cwd,
+    ]);
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain("# Topic: create-legacy-rule (ruff)");
+  });
+
+  it("falls back to the generic recipe for a tool with no variant", async () => {
+    const generic = await runCli(["agent", "create-legacy-rule", "-d", cwd]);
+    const rubocop = await runCli([
+      "agent",
+      "create-legacy-rule",
+      "--tool=rubocop",
+      "-d",
+      cwd,
+    ]);
+    expect(rubocop.exitCode).toBe(0);
+    expect(rubocop.stdout).toBe(generic.stdout);
+  });
+
+  it.each([
+    ["vale", "agent create-vale-rule"],
+    ["ast-grep", "agent create-sg-rule"],
+    ["prettier", "agent route"],
+    ["black", "agent route"],
+    ["anonymous", "--anonymous"],
+  ])("refuses --tool=%s and names what to use", async (tool, instead) => {
+    const result = await runCli([
+      "agent",
+      "create-legacy-rule",
+      `--tool=${tool}`,
+      "-d",
+      cwd,
+    ]);
+    expect(result.exitCode).not.toBe(0);
+    expect(result.stderr).toContain(instead);
+    expect(result.stdout).toBe("");
+  });
+});

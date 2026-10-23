@@ -8,6 +8,12 @@ function recipe(topic: string): string {
   return text;
 }
 
+function tool(name: string): string {
+  const text = getRecipe("create-legacy-rule", { tool: name });
+  if (text === undefined) throw new Error(`no recipe for ${name}`);
+  return text;
+}
+
 describe("route's legacy ladder", () => {
   const route = recipe("route");
 
@@ -98,4 +104,76 @@ describe("onboarding's legacy limits", () => {
       "During onboarding do not write a custom rule in any linter,\n   however many the repo has, and do not add a dependency."
     );
   });
+});
+
+describe("the per-tool legacy recipes", () => {
+  it("has Ruff try banned-api before anything else", () => {
+    const ruff = tool("ruff");
+    const banned = ruff.indexOf("**Always check `banned-api` first.**");
+    expect(banned).toBeGreaterThan(-1);
+    expect(banned).toBeLessThan(
+      ruff.indexOf("**Otherwise, find a shipped rule.**")
+    );
+    expect(ruff).toContain("`ruff rule <code-or-name>`");
+    expect(ruff).toContain(
+      "Never enable a preview rule in a\n     configuration where it cannot fire."
+    );
+  });
+
+  it("has ESLint try a core rule before a plugin", () => {
+    const eslint = tool("eslint");
+    const core = eslint.indexOf("**Always try a core rule first.**");
+    expect(core).toBeGreaterThan(-1);
+    expect(core).toBeLessThan(
+      eslint.indexOf("**Then a plugin, preferring one already installed.**")
+    );
+  });
+
+  it("gives every curated ESLint plugin a summary and a docs link", () => {
+    const eslint = tool("eslint");
+    for (const plugin of [
+      "eslint-plugin-import",
+      "eslint-plugin-regexp",
+      "eslint-plugin-promise",
+      "eslint-plugin-n",
+      "eslint-plugin-react",
+      "eslint-plugin-react-hooks",
+      "eslint-plugin-jsx-a11y",
+      "eslint-plugin-sonarjs",
+    ]) {
+      expect(eslint).toMatch(
+        new RegExp(
+          String.raw`- \`${plugin}\`: [^\n]+(?:\n {5}[^\n]+)*\n? *https://`
+        )
+      );
+    }
+    expect(eslint).toContain("`eslint-plugin-import-x`");
+  });
+
+  it("has Biome check its catch-alls and confirm with biome explain", () => {
+    const biome = tool("biome");
+    expect(biome).toContain("`noRestrictedImports`");
+    expect(biome).toContain("`noRestrictedGlobals`");
+    expect(biome).toContain("`biome explain <ruleName>`");
+    expect(biome).toContain("Do not write a Biome plugin.");
+  });
+
+  it("has pylint load an extension before ruling its message out", () => {
+    expect(tool("pylint")).toContain(
+      "Load the extension\n   before concluding a message does not exist."
+    );
+  });
+
+  it("sends flake8 straight to banned-modules with no discovery step", () => {
+    const flake8 = tool("flake8");
+    expect(flake8).toContain("**Use `banned-modules`.**");
+    expect(flake8).not.toContain("--list");
+  });
+
+  it.each(["ruff", "eslint", "biome", "pylint", "flake8"])(
+    "has the %s recipe say Taskless does not run the linter",
+    (name) => {
+      expect(tool(name)).toMatch(/check` does NOT run /);
+    }
+  );
 });

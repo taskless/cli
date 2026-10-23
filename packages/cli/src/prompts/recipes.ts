@@ -49,30 +49,45 @@ const recipeFiles: Record<string, string> = import.meta.glob("../agent/*.md", {
   eager: true,
 });
 
-// Build two lookup maps:
+// Build three lookup maps:
 //   - recipeMap: "rule-create"           → canonical recipe text
 //   - anonymousMap: "rule-create"      → anonymous variant text (if exists)
+//   - toolMap: "create-legacy-rule"    → tool name → that tool's variant
+//
+// A topic name never contains a dot, so everything after the first one in a
+// filename is the variant: `anonymous`, or a tool name as `detect` reports it.
 function buildRecipeMaps(): {
   recipeMap: Map<string, string>;
   anonymousMap: Map<string, string>;
+  toolMap: Map<string, Map<string, string>>;
 } {
   const recipeMap = new Map<string, string>();
   const anonymousMap = new Map<string, string>();
+  const toolMap = new Map<string, Map<string, string>>();
   for (const [path, rawContent] of Object.entries(recipeFiles)) {
     const content = stripValeDirectives(rawContent);
     const filename = path.split("/").pop()?.replace(/\.md$/, "");
     if (!filename) continue;
-    if (filename.endsWith(".anonymous")) {
-      const topic = filename.slice(0, -".anonymous".length);
+    const [topic, variant] = filename.split(".", 2) as [string, string?];
+    if (variant === undefined) {
+      recipeMap.set(topic, content);
+    } else if (variant === "anonymous") {
       anonymousMap.set(topic, content);
     } else {
-      recipeMap.set(filename, content);
+      const tools = toolMap.get(topic) ?? new Map<string, string>();
+      tools.set(variant, content);
+      toolMap.set(topic, tools);
     }
   }
-  return { recipeMap, anonymousMap };
+  return { recipeMap, anonymousMap, toolMap };
 }
 
-const { recipeMap, anonymousMap } = buildRecipeMaps();
+const { recipeMap, anonymousMap, toolMap } = buildRecipeMaps();
+
+/** The tools that have their own variant of a topic, e.g. `create-legacy-rule`. */
+export function toolVariants(topic: string): string[] {
+  return [...(toolMap.get(topic)?.keys() ?? [])];
+}
 
 /** The canonical `<topic>.md` recipe names present in the build. */
 export function canonicalRecipeTopics(): string[] {
@@ -169,6 +184,13 @@ export interface RecipeOptions {
    * @default false
    */
   anonymous?: boolean;
+  /**
+   * Select the topic's variant for one tool, named as `detect` reports it
+   * (`create-legacy-rule` with `ruff` serves `create-legacy-rule.ruff.md`).
+   * Takes precedence over {@link anonymous}, and falls back the same way
+   * when the topic has no variant for that tool.
+   */
+  tool?: string;
   /**
    * Value substituted for the `%(PACKAGE_MANAGER_DLX)s` placeholder. The
    * default is an agent-fill marker, which is the right answer whenever
@@ -491,7 +513,7 @@ It is a plugin package, so the repo may need to add it.`,
  */
 function legacyLintersBlock(
   linters: string[] | undefined,
-  fetchPrefix: string
+  fetchPrefix: string | undefined
 ): string {
   const described = LEGACY_LINTER_GUIDE.filter(
     ([name]) => linters === undefined || linters.includes(name)
@@ -504,14 +526,16 @@ function legacyLintersBlock(
     linters === undefined
       ? "   Linters with a legacy recipe, and what step 1 always checks:"
       : "   The linters `detect` found here, and what step 1 always checks:";
-  const items = described.map(
-    ([, paragraph]) => `   - ${indentBlock(paragraph, "     ")}`
-  );
+  const items = described.map(([name, paragraph]) => {
+    const fetch =
+      fetchPrefix === undefined
+        ? `Fetch \`create-legacy-rule\` with tool \`${name}\`.`
+        : `Fetch \`${fetchPrefix}create-legacy-rule --tool=${name}\`.`;
+    return `   - ${indentBlock(`${paragraph}\n${fetch}`, "     ")}`;
+  });
   return `${heading}
 
-${items.join("\n")}
-
-   For any of them, fetch \`${fetchPrefix}create-legacy-rule\`.`;
+${items.join("\n")}`;
 }
 
 /** The state a passage conditioned on one tool renders from. */
@@ -770,7 +794,9 @@ export function buildVariables(
     HOST_TOOLS: indentBlock(hostToolsStep(options.hostTools), "   "),
     LEGACY_LINTERS: legacyLintersBlock(
       options.linters,
-      options.mechanics === false ? "" : `${resolveInvocation(options)} agent `
+      options.mechanics === false
+        ? undefined
+        : `${resolveInvocation(options)} agent `
     ),
   };
   if (content.includes("%(INPUT_SCHEMA)s")) {
@@ -923,6 +949,11 @@ function lookupRecipe(
   topic: string,
   options: RecipeOptions
 ): string | undefined {
+  const toolVariant =
+    options.tool === undefined
+      ? undefined
+      : toolMap.get(topic)?.get(options.tool);
+  if (toolVariant !== undefined) return toolVariant;
   return options.anonymous
     ? (anonymousMap.get(topic) ?? recipeMap.get(topic))
     : recipeMap.get(topic);

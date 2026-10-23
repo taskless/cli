@@ -105,6 +105,26 @@ async function resolveDescription(
  */
 const UNLISTED_COMMANDS = new Set(["agent", "feedback"]);
 
+/**
+ * Names `--tool` refuses rather than falling back on. Each one is a linter
+ * `detect` reports, so an agent could copy it into the flag, but none of them
+ * hosts a legacy rule, and the generic recipe would tell it to try.
+ * `anonymous` is here because it names the other variant file.
+ */
+const REFUSED_TOOLS = new Map<string, string>([
+  ["ast-grep", "author an ast-grep rule with `agent create-sg-rule`."],
+  ["vale", "author a Vale rule with `agent create-vale-rule`."],
+  [
+    "prettier",
+    "it is a formatter and holds no rules; decide again with `agent route`.",
+  ],
+  [
+    "black",
+    "it is a formatter and holds no rules; decide again with `agent route`.",
+  ],
+  ["anonymous", "pass `--anonymous` for the local-only variant."],
+]);
+
 export function createAgentCommand(subCommands: SubCommandsDef) {
   return defineCommand({
     meta: {
@@ -124,11 +144,16 @@ export function createAgentCommand(subCommands: SubCommandsDef) {
           "Return the local-only recipe variant when the topic has one",
         default: false,
       },
+      tool: {
+        type: "string",
+        description:
+          "Return the topic's variant for one tool, named as `detect` reports it",
+      },
     },
     async run({ args, rawArgs }) {
       // Extract positional args from rawArgs, skipping flags and their values.
-      // --dir/-d take a value; --json/--anonymous are boolean and do not.
-      const valueFlagSet = new Set(["--dir", "-d"]);
+      // --dir/-d/--tool take a value; --json/--anonymous are boolean and do not.
+      const valueFlagSet = new Set(["--dir", "-d", "--tool"]);
       const positionals: string[] = [];
       for (let index = 0; index < rawArgs.length; index++) {
         const argument = rawArgs[index]!;
@@ -241,6 +266,15 @@ export function createAgentCommand(subCommands: SubCommandsDef) {
         return;
       }
 
+      const tool = args.tool as string | undefined;
+      const refusal = tool === undefined ? undefined : REFUSED_TOOLS.get(tool);
+      if (refusal !== undefined) {
+        telemetry.capture("cli_agent", { topic: key });
+        console.error(`--tool=${tool} has no legacy recipe: ${refusal}`);
+        process.exitCode = 1;
+        return;
+      }
+
       // Anonymous variant lookup: prefer <topic>.anonymous.md when
       // --anonymous is set, fall back to the canonical recipe. The lookup and
       // the render both live in the shared prompts module, so `agent` and the
@@ -258,7 +292,7 @@ export function createAgentCommand(subCommands: SubCommandsDef) {
       // template is asked (`variables` comes from sprintf's own parse) rather
       // than a topic name being hardcoded, so the next recipe to use the
       // mechanism needs no edit here.
-      const template = getRawRecipe(key, { anonymous: args.anonymous });
+      const template = getRawRecipe(key, { anonymous: args.anonymous, tool });
       const hostTools = template?.variables.some((name) =>
         HOST_TOOL_VARIABLES.has(name)
       )
@@ -274,6 +308,7 @@ export function createAgentCommand(subCommands: SubCommandsDef) {
       const linters = scan?.linters.map((linter) => linter.name);
       const recipe = getRecipe(key, {
         anonymous: args.anonymous,
+        tool,
         invocation,
         hostTools,
         linters,
