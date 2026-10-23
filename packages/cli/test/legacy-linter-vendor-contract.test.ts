@@ -39,6 +39,9 @@ function run(command: string, args: string[]) {
   });
   return {
     status: result.status,
+    // stdout alone, for output that is parsed: on a cold cache `uvx` reports
+    // what it installed on stderr.
+    stdout: result.stdout ?? "",
     output: `${result.stdout ?? ""}${result.stderr ?? ""}`,
   };
 }
@@ -57,7 +60,7 @@ describe.skipIf(!ENABLED)("legacy linter vendor contract", () => {
 
   describe("ruff", () => {
     it("reports preview status in `ruff rule` JSON, which the recipe tells the agent to check", () => {
-      const { status, output } = run("uvx", [
+      const { status, stdout } = run("uvx", [
         RUFF,
         "rule",
         "--all",
@@ -65,7 +68,7 @@ describe.skipIf(!ENABLED)("legacy linter vendor contract", () => {
         "json",
       ]);
       expect(status).toBe(0);
-      const rules = JSON.parse(output) as Array<Record<string, unknown>>;
+      const rules = JSON.parse(stdout) as Array<Record<string, unknown>>;
       expect(rules.length).toBeGreaterThan(400);
       for (const key of ["code", "name", "preview"]) {
         expect(rules[0]).toHaveProperty(key);
@@ -158,14 +161,14 @@ describe.skipIf(!ENABLED)("legacy linter vendor contract", () => {
     });
 
     it("lists installed plugins as JSON with --bug-report", () => {
-      const { status, output } = run("uvx", [
+      const { status, stdout } = run("uvx", [
         "--from",
         FLAKE8,
         "flake8",
         "--bug-report",
       ]);
       expect(status).toBe(0);
-      expect(JSON.parse(output)).toHaveProperty("plugins");
+      expect(JSON.parse(stdout)).toHaveProperty("plugins");
     });
   });
 
