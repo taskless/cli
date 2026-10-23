@@ -31,5 +31,5 @@
 
 ## 5. Archive (PR 2, tip)
 
-- [ ] 5.1 Run the pre-archive check from CLAUDE.md (commit, keep the SHA, `pnpm openspec archive legacy-linter-recipes -y`, confirm every prior scenario of `cli-rule-routing`, `cli-agent`, `cli-detect`, and `cli-onboard` survives, then reset to the SHA).
-- [ ] 5.2 Archive for real. Verify `pnpm openspec validate --strict` passes on the result.
+- [x] 5.1 Run the pre-archive check from CLAUDE.md (commit, keep the SHA, `pnpm openspec archive legacy-linter-recipes -y`, confirm every prior scenario of `cli-rule-routing`, `cli-agent`, `cli-detect`, and `cli-onboard` survives, then reset to the SHA).
+- [x] 5.2 Archive for real. Verify `pnpm openspec validate --strict` passes on the result.
