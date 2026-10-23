@@ -57,11 +57,14 @@ async function importBuiltPrompts(): Promise<{
 /** Canonical `<topic>.md` names on disk, excluding `.anonymous` variants. */
 async function canonicalTopicsOnDisk(): Promise<string[]> {
   const entries = await readdir(recipeDirectory);
-  return entries
-    .filter((name) => name.endsWith(".md"))
-    .map((name) => name.slice(0, -".md".length))
-    .filter((stem) => !stem.endsWith(".anonymous"))
-    .toSorted();
+  return (
+    entries
+      .filter((name) => name.endsWith(".md"))
+      .map((name) => name.slice(0, -".md".length))
+      // A variant (`.anonymous`, or a tool such as `.ruff`) is not a topic.
+      .filter((stem) => !stem.includes("."))
+      .toSorted()
+  );
 }
 
 describe("prompt rendering", () => {
@@ -653,7 +656,8 @@ describe("route's per-linter passage", () => {
 
   it("names the topic rather than a command when mechanics are off", () => {
     const route = getPrompt("route", { mechanics: false });
-    expect(route).toContain("For any of them, fetch `create-legacy-rule`.");
+    expect(route).toContain("Fetch `create-legacy-rule` with tool `ruff`.");
+    expect(route).not.toContain("--tool=");
   });
 
   it("is rendered from the repository the agent command scans", async () => {
@@ -669,6 +673,7 @@ describe("route's per-linter passage", () => {
       ]);
       expect(stdout).toContain("The linters `detect` found here");
       expect(stdout).toContain("**Ruff**");
+      expect(stdout).toContain("agent create-legacy-rule --tool=ruff`.");
       expect(stdout).not.toContain("**ESLint**");
     } finally {
       await rm(directory, { recursive: true, force: true });

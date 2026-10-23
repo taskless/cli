@@ -15,19 +15,19 @@
 
 ## 3. The `--tool` flag (PR 2)
 
-- [ ] 3.1 Collect `create-legacy-rule.<tool>.md` variants at build time with the same glob mechanism as `.anonymous`, and add `--tool` to the agent command's value flags. Resolve `--tool` before `--anonymous`. Verify tests: a known tool serves its variant, an unknown tool falls back to the generic recipe, `--tool` as `--tool x` and `--tool=x` both parse, and the positional parser does not read the value as a topic.
-- [ ] 3.2 Refuse `ast-grep`, `vale`, `prettier`, `black`, and `anonymous` with a non-zero exit that names the right recipe. Verify a test per refused name.
-- [ ] 3.3 Make the `route` paragraphs name `create-legacy-rule --tool=<name>`. Verify the "Shipped recipes name only commands that exist" check passes for every rendered paragraph.
+- [x] 3.1 Collect `create-legacy-rule.<tool>.md` variants at build time with the same glob mechanism as `.anonymous`, and add `--tool` to the agent command's value flags. Resolve `--tool` before `--anonymous`. Verify tests: a known tool serves its variant, an unknown tool falls back to the generic recipe, `--tool` as `--tool x` and `--tool=x` both parse, and the positional parser does not read the value as a topic.
+- [x] 3.2 Refuse `ast-grep`, `vale`, `prettier`, `black`, and `anonymous` with a non-zero exit that names the right recipe. Verify a test per refused name.
+- [x] 3.3 Make the `route` paragraphs name `create-legacy-rule --tool=<name>`. Verify the "Shipped recipes name only commands that exist" check passes for every rendered paragraph.
 
 ## 4. Per-tool recipes (PR 2)
 
-- [ ] 4.1 Write `create-legacy-rule.ruff.md`: `banned-api` first, web discovery confirmed with `ruff rule`, preview status checked, the 0.16 default-set change, `extend` and nested configs, and how to run Ruff. Verify recipe tests for the Ruff scenarios.
-- [ ] 4.2 Write `create-legacy-rule.eslint.md`: core rules and the `no-restricted-*` catch-alls first (including `@typescript-eslint/`), the eight curated plugins each with a summary and docs link, installed plugins preferred, the ESLint 10 peer gap and `import-x`, flat config against `.eslintrc`, and how to run ESLint. Verify recipe tests that every plugin has a summary and URL and that no individual plugin rules are listed.
-- [ ] 4.3 Write `create-legacy-rule.biome.md`: an existing rule first, `noRestrictedImports`/`noRestrictedGlobals` as the catch-alls, web discovery confirmed with `biome explain`, nested configs and `extends`, and how to run Biome. Verify the recipe tests.
-- [ ] 4.4 Write `create-legacy-rule.pylint.md`: `--list-msgs`/`--help-msg` with the `--load-plugins` trap, `deprecated-modules`/`preferred-modules`/`bad-functions`, config search order, and how to run pylint. Verify the recipe tests.
-- [ ] 4.5 Write `create-legacy-rule.flake8.md`: no discovery step, `banned-modules` from `flake8-tidy-imports` (a dependency that needs consent), the three config files, and how to run flake8. Verify the recipe tests.
-- [ ] 4.6 Add vendor tests that run each tool at a pinned version and assert every behavioral claim the recipes make: the `preview` field in `ruff rule --output-format json`, `ruff rule TID251`, `biome explain` output, `pylint --help-msg` failing without and succeeding with `--load-plugins`, and `--banned-modules` in `flake8 --help` with the plugin. Verify they pass locally and in CI, and fail when a claim is edited to be false.
-- [ ] 4.7 Extend the changeset with `--tool` and the five recipes. Run `pnpm typecheck` and `pnpm lint`; both pass.
+- [x] 4.1 Write `create-legacy-rule.ruff.md`: `banned-api` first, web discovery confirmed with `ruff rule`, preview status checked, the 0.16 default-set change, `extend` and nested configs, and how to run Ruff. Verify recipe tests for the Ruff scenarios.
+- [x] 4.2 Write `create-legacy-rule.eslint.md`: core rules and the `no-restricted-*` catch-alls first (including `@typescript-eslint/`), the eight curated plugins each with a summary and docs link, installed plugins preferred, the ESLint 10 peer gap and `import-x`, flat config against `.eslintrc`, and how to run ESLint. Verify recipe tests that every plugin has a summary and URL and that no individual plugin rules are listed.
+- [x] 4.3 Write `create-legacy-rule.biome.md`: an existing rule first, `noRestrictedImports`/`noRestrictedGlobals` as the catch-alls, web discovery confirmed with `biome explain`, nested configs and `extends`, and how to run Biome. Verify the recipe tests.
+- [x] 4.4 Write `create-legacy-rule.pylint.md`: `--list-msgs`/`--help-msg` with the `--load-plugins` trap, `deprecated-modules`/`preferred-modules`/`bad-functions`, config search order, and how to run pylint. Verify the recipe tests.
+- [x] 4.5 Write `create-legacy-rule.flake8.md`: no discovery step, `banned-modules` from `flake8-tidy-imports` (a dependency that needs consent), the three config files, and how to run flake8. Verify the recipe tests.
+- [x] 4.6 Add vendor tests that run each tool at a pinned version and assert every behavioral claim the recipes make: the `preview` field in `ruff rule --output-format json`, `ruff rule TID251`, `biome explain` output, `pylint --help-msg` failing without and succeeding with `--load-plugins`, and `--banned-modules` in `flake8 --help` with the plugin. Verify they pass locally and in CI, and fail when a claim is edited to be false.
+- [x] 4.7 Extend the changeset with `--tool` and the five recipes. Run `pnpm typecheck` and `pnpm lint`; both pass.
 
 ## 5. Archive (PR 2, tip)
 

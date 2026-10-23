@@ -143,7 +143,7 @@ async function embeddedTopics(): Promise<Set<string>> {
   return new Set(
     files
       .map((file) => file.replace(/\.md$/, ""))
-      .map((name) => name.replace(/\.anonymous$/, ""))
+      .map((name) => name.split(".")[0]!)
   );
 }
 
@@ -151,10 +151,13 @@ async function embeddedTopics(): Promise<Set<string>> {
 async function renderedRecipes(): Promise<Array<[string, string]>> {
   const files = await recipeFiles();
   return files.map((file) => {
-    const stem = file.replace(/\.md$/, "");
-    const anonymous = stem.endsWith(".anonymous");
-    const topic = stem.replace(/\.anonymous$/, "");
-    return [file, getRecipe(topic, { anonymous }) ?? ""];
+    const [topic, variant] = file.replace(/\.md$/, "").split(".") as [
+      string,
+      string?,
+    ];
+    const anonymous = variant === "anonymous";
+    const tool = variant === undefined || anonymous ? undefined : variant;
+    return [file, getRecipe(topic, { anonymous, tool }) ?? ""];
   });
 }
 
@@ -212,7 +215,7 @@ describe("shipped recipes name only commands that exist", () => {
     const mismatched: string[] = [];
     for (const file of await recipeFiles()) {
       const source = await readFile(join(recipeDirectory, file), "utf8");
-      const topic = file.replace(/(\.anonymous)?\.md$/, "");
+      const topic = file.replace(/\.md$/, "").split(".")[0]!;
       const firstLine = source.split("\n")[0] ?? "";
       if (!firstLine.startsWith(`# Topic: ${topic}`)) {
         mismatched.push(`${file}: ${firstLine}`);

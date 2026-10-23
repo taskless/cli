@@ -40,7 +40,7 @@ Constraints that shape the approach:
 
 **The ESLint plugin list is curated and linked, and the recipe never lists individual rules.** Eight plugins, each with a summary and a docs link. This narrows the standing "no catalog" line instead of removing it, because a catalog of rules goes stale with every plugin release, while a list of plugins changes rarely.
 
-**Vendor tests pin recipe claims against real installs.** Each claim a recipe makes about tool behavior gets a test that runs the tool, in the same spirit as the existing Vale and ast-grep vendor-contract tests: preview status in the `ruff rule` JSON, `--help-msg` failing without `--load-plugins`, `biome explain` output, and `banned-modules` in `flake8-tidy-imports --help`. They run through `uvx` and `pnpm dlx` at pinned versions, so a version bump that breaks a claim fails a test instead of shipping a wrong recipe.
+**Vendor tests pin recipe claims against real installs.** Each claim a recipe makes about tool behavior gets a test that runs the tool, in the same spirit as the existing Vale and ast-grep vendor-contract tests: preview status in the `ruff rule` JSON, `--help-msg` failing without `--load-plugins`, `biome explain` output, and `banned-modules` in `flake8-tidy-imports --help`. They run through `uvx` and `pnpm dlx` at pinned versions, so a version bump that breaks a claim fails a test instead of shipping a wrong recipe. Because they download packages, they are opt-in (`TASKLESS_LEGACY_LINTER_CONTRACT=1`) and run in their own `legacy-linter-contract` workflow on changes to the legacy recipes, not in `Validate`: a registry outage must not block every merge.
 
 ## Research record
 
