@@ -61,6 +61,12 @@ calls, so CI needs no secrets. Runtime rules (which execute code) only run once
 the server has verified their signature; otherwise they are reported as skipped
 and never change the exit code.
 
+When `CI` is `true` or `1`, the human output prints only error-severity
+findings and ends with a count of the warnings, infos, and hints it left out.
+They never affect the exit code, and nobody reads them in a job log. Pass
+`--include-warnings` to print them anyway. `--json` always carries every
+finding.
+
 Ask your agent to "add taskless to CI" and it will wire this into the CI
 system you already use rather than replacing it.
 

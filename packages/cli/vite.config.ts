@@ -553,9 +553,16 @@ export default defineConfig({
     // never launches `init` — and the daily shape tracked the Validate run
     // count. Tests that exercise the opt-out itself clear these with
     // `vi.stubEnv` first, so the default costs them nothing.
+    //
+    // `CI` is cleared for the same reason in the other direction: a runner sets
+    // it, every spawned `check` inherits it, and human output then hides
+    // findings below error. Suites asserting on a warning rule's text output
+    // would pass locally and fail in Validate. Tests of the CI behavior pass
+    // `CI` to the child explicitly.
     env: {
       TASKLESS_TELEMETRY_DISABLED: "1",
       DO_NOT_TRACK: "1",
+      CI: "",
     },
     // Two projects, because `__TASKLESS_CLI__` is a compile-time define rather
     // than a value a test can stub: whatever this config resolves is what every
