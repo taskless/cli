@@ -1,4 +1,4 @@
-# Topic: route     (CLI v%(CLI_VERSION)s / topic v7)
+# Topic: route     (CLI v%(CLI_VERSION)s / topic v8)
 
 %(ONE_COMMAND_PER_CALL)s
 
@@ -63,9 +63,31 @@ answered together.
    and only here. The destination recipes describe their own scope and
    deliberately do not restate this table.
 
+   **The legacy ladder comes first when `detect` reports a linter.** Take
+   these in order and stop at the first that solves the request:
+
+   1. **A rule the linter already ships solves it.** Always check this,
+      however little the repo has configured: enabling a shipped rule adds
+      nothing new for the team to maintain. Each linter's catch-all rules
+      count, and are named below because a search for the request's
+      subject will not surface them.
+   2. **The repo already writes its own rules for that linter.** Only when
+      `detect` reports a `customRules.count` of 5 or more, so there are
+      enough of the repo's own examples to model a new one on. An
+      `"unknown"` count is below the threshold. Taskless does not teach
+      custom-rule authoring for any linter; the repo's examples are the
+      only reference.
+   3. **A Taskless `sg` or `vale` rule**, from the table below.
+   4. **A Taskless runtime rule**, from the table below.
+
+   Steps 1 and 2 go to `create-legacy-rule`. When neither applies, the
+   request is a Taskless rule even though the linter is installed.
+
+%(LEGACY_LINTERS)s
+
 | The rule is decided by…                                                                                                      | Destination                                  | Login      |
 |------------------------------------------------------------------------------------------------------------------------------|----------------------------------------------|------------|
-| a tool the repo already runs, in that tool's dialect                                                                         | `create-legacy-rule`                         | no         |
+| a rule a linter the repo already runs ships, or a new one there (the legacy ladder above)                                    | `create-legacy-rule`                         | no         |
 | **one file's syntax tree**: a call, an import, a JSX attribute, a type annotation                                           | `create-sg-rule`                             | no         |
 | **a document's words**: docs, README, comments, commit bodies                                                               | `create-vale-rule`                           | no         |
 | **more than one file, or something outside the files**: the repo graph, git metadata, build output, a resolved config chain | `create-runtime-rule` / `create-remote-rule` | see step 5 |
@@ -186,8 +208,8 @@ answered together.
 
    **A language on neither list does not route to runtime by default.**
    Check `create-legacy-rule` first: the repo may already run a linter
-   that speaks it, and that linter's own dialect is a local destination
-   with no login. Escalate only once nothing local can see the evidence.
+   that ships a rule for it, which is a local destination with no login.
+   Escalate only once nothing local can see the evidence.
 
    Worked examples:
 
@@ -248,8 +270,9 @@ answered together.
 ## When two destinations both fit
 
 - **A linter the repo already runs AND a local Taskless rule both fit** →
-  do not silently pick. Present both with trade-offs and let the user
-  choose.
+  do not ask. The legacy ladder in step 4 decides: a rule the linter
+  already ships wins, and so does a new one where the repo has 5 or more
+  of its own to model it on. Otherwise it is the Taskless rule.
 - **A rule that seems to need two engines is usually two rules.** Split
   it and route each half, rather than forcing one engine to cover
   evidence it cannot see.
@@ -300,7 +323,7 @@ will work.
 
 ## See Also
 
-- `%(RECIPE_FETCH)screate-legacy-rule`: author in a linter the repo already uses
+- `%(RECIPE_FETCH)screate-legacy-rule`: use a rule a linter the repo already runs ships
 - `%(RECIPE_FETCH)screate-sg-rule`: author a local ast-grep rule (no login)
 - `%(RECIPE_FETCH)screate-vale-rule`: author a local Vale rule (no login)
 - `%(RECIPE_FETCH)screate-runtime-rule`: the runtime tier, logged out

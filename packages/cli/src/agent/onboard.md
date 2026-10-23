@@ -1,4 +1,4 @@
-# Topic: onboard     (CLI v%(CLI_VERSION)s / topic v10)
+# Topic: onboard     (CLI v%(CLI_VERSION)s / topic v11)
 
 %(ONE_COMMAND_PER_CALL)s
 
@@ -154,6 +154,13 @@ making the case for running them in CI.
    `legacy`, `sg`, or `vale`, follow the `%(TASKLESS_CLI)s agent route`
    recipe you already fetched, with the candidate as the rule
    description, and write it. Do not ask before each one.
+
+   A `legacy` candidate here only ever enables or configures a rule
+   the linter, or a plugin the repo already has installed, already
+   ships. During onboarding do not write a custom rule in any linter,
+   however many the repo has, and do not add a dependency. When no
+   installed rule solves it, continue down `route`'s legacy ladder to
+   a Taskless rule.
 
    A candidate you judge better solved by a runtime rule is not
    written: runtime rules need an account, and onboarding stays

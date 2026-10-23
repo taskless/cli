@@ -1,11 +1,12 @@
 import { execFile } from "node:child_process";
-import { readFile, readdir } from "node:fs/promises";
+import { mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { promisify } from "node:util";
 
 import { sprintf } from "sprintf-js";
-import { describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import {
   PROMPTS,
@@ -212,6 +213,7 @@ describe("the CLI invocation variable", () => {
       "DETECT_EVIDENCE",
       "FIXTURE_SOURCES",
       "HOST_TOOLS",
+      "LEGACY_LINTERS",
       "LOGIN_EVIDENCE",
       "NAME_DESTINATION",
       "ONE_COMMAND_PER_CALL",
@@ -584,19 +586,94 @@ describe("typed accessor", () => {
 });
 
 describe("agent command parity", () => {
+  // The command scans its working directory for the passages that describe
+  // detected linters, so it runs against an empty one and the export is told
+  // the same measured answer: no linters.
+  let emptyDirectory: string;
+  beforeAll(async () => {
+    emptyDirectory = await mkdtemp(join(tmpdir(), "taskless-parity-"));
+  });
+  afterAll(async () => {
+    await rm(emptyDirectory, { recursive: true, force: true });
+  });
+
   it.each([...TOPICS])(
     "matches `taskless agent %s` byte for byte",
     async (topic) => {
-      const { stdout } = await execFileAsync("node", [binPath, "agent", topic]);
+      const { stdout } = await execFileAsync("node", [
+        binPath,
+        "agent",
+        topic,
+        "-d",
+        emptyDirectory,
+      ]);
       // The command trims trailing whitespace before printing; console.log then
       // adds the single newline that stdout carries. It also asks for the
       // fetch-time directive, which the export leaves off by default; a
       // consumer that wants the served text asks for it the same way.
       expect(stdout.trimEnd()).toBe(
-        getPrompt(topic, { directive: true }).trimEnd()
+        getPrompt(topic, { directive: true, linters: [] }).trimEnd()
       );
     }
   );
+});
+
+describe("route's per-linter passage", () => {
+  const LINTER_HEADINGS = [
+    "**ESLint**",
+    "**Biome**",
+    "**Ruff**",
+    "**pylint**",
+    "**flake8**",
+  ];
+
+  it("describes only the linters it is told were detected", () => {
+    const route = getPrompt("route", { linters: ["ruff", "prettier"] });
+    expect(route).toContain("**Ruff**");
+    expect(route).toContain("`banned-api` (TID251)");
+    for (const heading of LINTER_HEADINGS.filter((h) => h !== "**Ruff**")) {
+      expect(route).not.toContain(heading);
+    }
+  });
+
+  it("says so when no detected linter has a legacy recipe", () => {
+    const route = getPrompt("route", { linters: ["prettier"] });
+    for (const heading of LINTER_HEADINGS) {
+      expect(route).not.toContain(heading);
+    }
+    expect(route).toContain("found no linter here with a legacy recipe");
+  });
+
+  it("describes every linter when nothing was scanned", () => {
+    const route = getPrompt("route");
+    for (const heading of LINTER_HEADINGS) {
+      expect(route).toContain(heading);
+    }
+  });
+
+  it("names the topic rather than a command when mechanics are off", () => {
+    const route = getPrompt("route", { mechanics: false });
+    expect(route).toContain("For any of them, fetch `create-legacy-rule`.");
+  });
+
+  it("is rendered from the repository the agent command scans", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "taskless-route-"));
+    try {
+      await writeFile(join(directory, "ruff.toml"), "line-length = 100\n");
+      const { stdout } = await execFileAsync("node", [
+        binPath,
+        "agent",
+        "route",
+        "-d",
+        directory,
+      ]);
+      expect(stdout).toContain("The linters `detect` found here");
+      expect(stdout).toContain("**Ruff**");
+      expect(stdout).not.toContain("**ESLint**");
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
 });
 
 describe("topic membership", () => {

@@ -267,6 +267,15 @@ export interface RecipeOptions {
    * told to install `gh`, which is the one instruction that cannot help it.
    */
   hostTools?: HostTool[];
+  /**
+   * The linter names `detect` found in the repository, for the `route`
+   * passage that describes each one.
+   *
+   * An argument for the same reason as {@link hostTools}: scanning needs the
+   * filesystem. Omitting it renders every linter that has a legacy recipe,
+   * since nothing was measured; an empty array is a measured "none".
+   */
+  linters?: string[];
 }
 
 /**
@@ -419,6 +428,91 @@ export const HOST_TOOL_VARIABLES: ReadonlySet<string> = new Set([
   "SOURCE_PR_REVIEW",
   "HOST_TOOLS",
 ]);
+
+/**
+ * The variable names whose value depends on {@link RecipeOptions.linters}.
+ * Exported for the same reason as {@link HOST_TOOL_VARIABLES}: the `agent`
+ * command asks the template whether a scan is worth running.
+ */
+export const LINTER_VARIABLES: ReadonlySet<string> = new Set([
+  "LEGACY_LINTERS",
+]);
+
+/**
+ * One paragraph per linter that has a legacy recipe, in the order `route`
+ * prints them. Each says what the tool is for and what step 1 always checks
+ * there, which is the part an agent gets wrong without being told: a
+ * catch-all rule is not found by searching for the request's subject.
+ */
+const LEGACY_LINTER_GUIDE: ReadonlyArray<[string, string]> = [
+  [
+    "eslint",
+    `**ESLint** lints JavaScript and TypeScript and runs plugins. Always
+try a core rule first. \`no-restricted-syntax\` (an AST selector with
+your message) and \`no-restricted-imports\` are the catch-alls, with
+their \`@typescript-eslint/\` counterparts in a TypeScript repo. Then a
+plugin the repo already has installed.`,
+  ],
+  [
+    "biome",
+    `**Biome** lints JavaScript, TypeScript, JSON, and CSS with a large
+built-in rule set. Always check whether an existing rule makes the
+problem go away. \`noRestrictedImports\` and \`noRestrictedGlobals\`
+are the catch-alls.`,
+  ],
+  [
+    "ruff",
+    `**Ruff** lints Python with a large built-in rule set and has no
+custom-rule mechanism, so it never takes step 2. Always check
+\`banned-api\` (TID251) first: it bans an import or attribute with a
+message of your choosing, which covers most "never call X" requests.`,
+  ],
+  [
+    "pylint",
+    `**pylint** lints Python with a broad set of built-in messages. Always
+check them first, with the \`deprecated-modules\`,
+\`preferred-modules\`, and \`bad-functions\` options as the catch-alls.`,
+  ],
+  [
+    "flake8",
+    `**flake8** lints Python through plugins. Always check \`banned-modules\`
+from \`flake8-tidy-imports\` first, which bans a module with a message.
+It is a plugin package, so the repo may need to add it.`,
+  ],
+];
+
+/**
+ * The linters `route` describes, as one block.
+ *
+ * `undefined` means nobody scanned, which renders every paragraph: a
+ * consumer of `@taskless/cli/prompts` has no repository to describe, and
+ * omitting a linter there would read as "this one does not apply". An empty
+ * match is a measured answer and says so in one line.
+ */
+function legacyLintersBlock(
+  linters: string[] | undefined,
+  fetchPrefix: string
+): string {
+  const described = LEGACY_LINTER_GUIDE.filter(
+    ([name]) => linters === undefined || linters.includes(name)
+  );
+  if (described.length === 0) {
+    return `   \`detect\` found no linter here with a legacy recipe, so step 1 and
+   step 2 do not apply. Continue from step 3.`;
+  }
+  const heading =
+    linters === undefined
+      ? "   Linters with a legacy recipe, and what step 1 always checks:"
+      : "   The linters `detect` found here, and what step 1 always checks:";
+  const items = described.map(
+    ([, paragraph]) => `   - ${indentBlock(paragraph, "     ")}`
+  );
+  return `${heading}
+
+${items.join("\n")}
+
+   For any of them, fetch \`${fetchPrefix}create-legacy-rule\`.`;
+}
 
 /** The state a passage conditioned on one tool renders from. */
 type ToolState = "unknown" | "present" | "absent" | "not-applicable";
@@ -674,6 +768,10 @@ export function buildVariables(
       "     "
     ),
     HOST_TOOLS: indentBlock(hostToolsStep(options.hostTools), "   "),
+    LEGACY_LINTERS: legacyLintersBlock(
+      options.linters,
+      options.mechanics === false ? "" : `${resolveInvocation(options)} agent `
+    ),
   };
   if (content.includes("%(INPUT_SCHEMA)s")) {
     const schema = TOPIC_INPUT_SCHEMAS[topic];

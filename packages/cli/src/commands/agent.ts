@@ -10,8 +10,10 @@ import {
 
 import { getTelemetry } from "../telemetry";
 import { detectHostTools } from "../detect/host-tools";
+import { detectRepository } from "../detect/scan";
 import {
   HOST_TOOL_VARIABLES,
+  LINTER_VARIABLES,
   getRawRecipe,
   getRecipe,
 } from "../prompts/recipes";
@@ -262,10 +264,19 @@ export function createAgentCommand(subCommands: SubCommandsDef) {
       )
         ? await detectHostTools(cwd)
         : undefined;
+      // The same question for the per-linter passage: a repository scan is
+      // filesystem work, so only the topics that describe linters pay for it.
+      const scan = template?.variables.some((name) =>
+        LINTER_VARIABLES.has(name)
+      )
+        ? await detectRepository(cwd)
+        : undefined;
+      const linters = scan?.linters.map((linter) => linter.name);
       const recipe = getRecipe(key, {
         anonymous: args.anonymous,
         invocation,
         hostTools,
+        linters,
         // What this command serves IS a fetch, so the served text says so:
         // resolved now, fetch again next task, and a session that installed
         // or upgraded mid-way holds a stale skill. The prompts export leaves
