@@ -24,12 +24,15 @@ const fixturesDirectory = resolve(
 
 /** Run the CLI and capture output, allowing non-zero exit codes */
 async function runCli(
-  args: string[]
+  args: string[],
+  env: Record<string, string> = {}
 ): Promise<{ stdout: string; stderr: string; exitCode: number }> {
   await migrateFixture(args);
 
   try {
-    const { stdout, stderr } = await execFileAsync("node", [binPath, ...args]);
+    const { stdout, stderr } = await execFileAsync("node", [binPath, ...args], {
+      env: { ...process.env, ...env },
+    });
     return { stdout, stderr, exitCode: 0 };
   } catch (error) {
     const execError = error as {
@@ -43,6 +46,32 @@ async function runCli(
       exitCode: execError.code,
     };
   }
+}
+
+/** One error rule and one warning rule, each matching once. */
+async function writeMixedSeverityProject(directory: string): Promise<void> {
+  const rules = join(directory, ".taskless", "sg", "rules");
+  await mkdir(rules, { recursive: true });
+  for (const [id, severity, callee] of [
+    ["no-console-error", "error", "console.error"],
+    ["no-console-warn", "warning", "console.warn"],
+  ] as const) {
+    await writeFile(
+      join(rules, `${id}.yml`),
+      [
+        `id: ${id}`,
+        "language: javascript",
+        `severity: ${severity}`,
+        "rule:",
+        `  pattern: ${callee}($$$)`,
+        `message: Avoid ${callee}`,
+      ].join("\n")
+    );
+  }
+  await writeFile(
+    join(directory, "test.js"),
+    'console.error("a");\nconsole.warn("b");\n'
+  );
 }
 
 describe("check", () => {
@@ -194,6 +223,75 @@ describe("check", () => {
 
     const { exitCode } = await runCli(["check", "-d", temporaryDirectory]);
     expect(exitCode).toBe(0); // warnings only → exit 0
+  });
+
+  describe("in CI", () => {
+    it("hides warnings from human output and counts them", async () => {
+      await writeMixedSeverityProject(temporaryDirectory);
+
+      const { stdout, exitCode } = await runCli(
+        ["check", "-d", temporaryDirectory],
+        { CI: "true" }
+      );
+      expect(exitCode).toBe(1);
+      expect(stdout).toContain("no-console-error");
+      expect(stdout).not.toContain("no-console-warn");
+      expect(stdout).toContain(
+        "1 warning hidden in CI. Pass --include-warnings to show them."
+      );
+    });
+
+    it("says no errors were found, not no issues, when only warnings matched", async () => {
+      await writeMixedSeverityProject(temporaryDirectory);
+      await writeFile(
+        join(temporaryDirectory, "test.js"),
+        'console.warn("b");\n'
+      );
+
+      const { stdout, exitCode } = await runCli(
+        ["check", "-d", temporaryDirectory],
+        { CI: "1" }
+      );
+      expect(exitCode).toBe(0);
+      expect(stdout).not.toContain("No issues found.");
+      expect(stdout).toContain("No errors found. 1 warning hidden in CI.");
+    });
+
+    it("shows warnings again with --include-warnings", async () => {
+      await writeMixedSeverityProject(temporaryDirectory);
+
+      const { stdout } = await runCli(
+        ["check", "-d", temporaryDirectory, "--include-warnings"],
+        { CI: "true" }
+      );
+      expect(stdout).toContain("no-console-warn");
+      expect(stdout).not.toContain("hidden in CI");
+    });
+
+    it("leaves --json results whole", async () => {
+      await writeMixedSeverityProject(temporaryDirectory);
+
+      const { stdout } = await runCli(
+        ["check", "-d", temporaryDirectory, "--json"],
+        { CI: "true" }
+      );
+      const output = JSON.parse(stdout) as {
+        results: Array<{ ruleId: string }>;
+      };
+      expect(output.results.map((result) => result.ruleId).toSorted()).toEqual([
+        "no-console-error",
+        "no-console-warn",
+      ]);
+    });
+
+    it("hides nothing when CI is not a claim of CI", async () => {
+      await writeMixedSeverityProject(temporaryDirectory);
+
+      const { stdout } = await runCli(["check", "-d", temporaryDirectory], {
+        CI: "false",
+      });
+      expect(stdout).toContain("no-console-warn");
+    });
   });
 
   it("does not require taskless.json to run", async () => {

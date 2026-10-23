@@ -23,6 +23,7 @@ import { requireReconciledEngines } from "../rules/engine-gate";
 import { discoverRuntimeRules } from "../rules/runtime/discover";
 import { resolveRuleSelection, type RuleSelection } from "../rules/rule-filter";
 import { scanProject } from "../rules/scan-project";
+import { isCiEnvironment } from "../util/interactive";
 import { markNotice } from "../util/notices";
 import { getCliPrefix } from "../util/package-manager";
 
@@ -229,6 +230,12 @@ export const checkCommand = defineCommand({
     rule: {
       type: "string",
       description: "Run only the named rule; repeatable (--rule a --rule b)",
+    },
+    "include-warnings": {
+      type: "boolean",
+      description:
+        "Show findings below error severity in CI, where they are hidden by default",
+      default: false,
     },
     "preserve-logs": {
       type: "boolean",
@@ -555,7 +562,21 @@ export const checkCommand = defineCommand({
           });
           console.log(JSON.stringify(output));
         } else {
-          console.log(formatText(results));
+          // In CI, findings below error are counted rather than printed: they
+          // never fail the run, and nobody reads them in a job log. Human
+          // output only. `--json` is read by a program, often an agent
+          // checking that a rule fires, and a sandbox that sets `CI` would
+          // otherwise hand it an empty `results` for a warning rule that
+          // matched.
+          const hideBelowError =
+            isCiEnvironment(process.env.CI) && !args["include-warnings"];
+          const shown = hideBelowError
+            ? results.filter((result) => result.severity === "error")
+            : results;
+          const hidden = hideBelowError
+            ? results.filter((result) => result.severity !== "error")
+            : [];
+          console.log(formatText(shown, hidden));
           if (preserve) {
             console.error(`Run directory kept: ${runDirectory}`);
           }

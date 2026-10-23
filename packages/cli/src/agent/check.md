@@ -269,6 +269,8 @@ delete the rules to make `check` pass, and do not suggest
    never reported via the `{ ok: false, code, message }` envelope:
    the envelope only appears when the scan itself fails (e.g.
    `SCAN_FAILED`) and the normal results payload is absent.
+   `results` is whole even when `CI` is set: only the human output
+   hides findings below error there, and `--include-warnings` shows them.
 
 ## Exit codes
 

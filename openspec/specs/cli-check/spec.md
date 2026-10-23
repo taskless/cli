@@ -97,6 +97,33 @@ When the `--json` flag is not set, the CLI SHALL format `CheckResult` items as h
 - **WHEN** the scanner completes with zero results
 - **THEN** stdout SHALL indicate that no issues were found
 
+### Requirement: Check hides findings below error from human output in CI
+
+When `CI` is `true` or `1` and `--include-warnings` is not set, the human output SHALL print only error-severity findings, and SHALL state how many findings it left out, by severity, and that `--include-warnings` shows them. When every finding was left out, the output SHALL say that no errors were found rather than that no issues were found. Any other value of `CI`, including an empty string, SHALL NOT hide anything. `--json` output SHALL carry every finding whatever `CI` is. The exit code SHALL be unaffected.
+
+#### Scenario: Warnings are counted, not printed, in CI
+
+- **WHEN** `CI=true` and the scan produces one error and one warning
+- **THEN** stdout SHALL include the error and SHALL NOT include the warning
+- **AND** stdout SHALL include `1 warning hidden in CI. Pass --include-warnings to show them.`
+- **AND** the process SHALL exit with code 1
+
+#### Scenario: Only warnings matched in CI
+
+- **WHEN** `CI=1` and the scan produces only warnings
+- **THEN** stdout SHALL begin with `No errors found.` followed by the hidden count
+- **AND** the process SHALL exit with code 0
+
+#### Scenario: --include-warnings shows them
+
+- **WHEN** `CI=true` and `--include-warnings` is set
+- **THEN** stdout SHALL include every finding and no hidden count
+
+#### Scenario: JSON is unaffected
+
+- **WHEN** `CI=true` and `--json` is set
+- **THEN** `results` SHALL include findings of every severity
+
 ### Requirement: Check subcommand formats JSON output when --json is set
 
 When the `--json` flag is set, the CLI SHALL output each `CheckResult` as a JSON object per line (JSONL format) to stdout.
