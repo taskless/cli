@@ -46,6 +46,11 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      # The suite's global setup snapshots the built CLI and refuses to start
+      # without one, even for a test file that never spawns it.
+      - name: Build
+        run: pnpm build
+
       - name: Test
         working-directory: packages/cli
         env:
