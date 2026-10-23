@@ -8,6 +8,19 @@ const detectedLinterSchema = z.object({
     .describe(
       "On-disk evidence: config-file paths, a manifest table or section marker, a dependency marker from the language's package file, or a root CI or hook config that runs the linter (not all entries are file paths)"
     ),
+  customRules: z
+    .object({
+      count: z
+        .union([z.number().int().nonnegative(), z.literal("unknown")])
+        .describe(
+          "Rules the repository wrote itself for this linter; unknown when one exists but cannot be counted without executing config"
+        ),
+      evidence: z.array(z.string()).describe("Where those rules were found"),
+    })
+    .optional()
+    .describe(
+      "Present only for linters that can hold a custom rule (eslint, biome, pylint, flake8) and for ruff, which always reports zero"
+    ),
 });
 
 /** A surfaced style of the repo's own existing rules */

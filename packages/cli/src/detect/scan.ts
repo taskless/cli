@@ -11,6 +11,7 @@ import {
   detectAutomation,
   type DetectedAutomation,
 } from "./automation";
+import { countCustomRules, type CustomRules } from "./custom-rules";
 
 export interface DetectedLinter {
   name: string;
@@ -23,6 +24,11 @@ export interface DetectedLinter {
    * paths.
    */
   evidence: string[];
+  /**
+   * Rules the repository wrote itself for this linter, for the linters that
+   * can hold one. Absent for every other linter.
+   */
+  customRules?: CustomRules;
 }
 
 export interface RuleStyle {
@@ -962,7 +968,17 @@ export async function detectRepository(cwd: string): Promise<DetectResult> {
     }
 
     if (evidence.length > 0) {
-      linters.push({ name: signal.name, evidence });
+      const customRules = await countCustomRules(signal.name, {
+        root,
+        pathsFor,
+        pyprojects: tomlManifests.get("pyproject.toml") ?? [],
+        nodeDeps: nodeManifests,
+      });
+      linters.push({
+        name: signal.name,
+        evidence,
+        ...(customRules && { customRules }),
+      });
       for (const language of signal.languages) languages.add(language);
     }
   }

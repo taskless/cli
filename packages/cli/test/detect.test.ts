@@ -45,7 +45,11 @@ async function runCli(
 
 interface DetectJson {
   success: boolean;
-  linters: { name: string; evidence: string[] }[];
+  linters: {
+    name: string;
+    evidence: string[];
+    customRules?: { count: number | "unknown"; evidence: string[] };
+  }[];
   languages: string[];
   ruleStyles: { source: string; description: string }[];
   ci: { name: string; evidence: string[] }[];
@@ -71,6 +75,10 @@ async function detect(cwd: string): Promise<DetectJson> {
 
 function linterNames(result: DetectJson): string[] {
   return result.linters.map((l) => l.name);
+}
+
+function customRules(result: DetectJson, name: string) {
+  return result.linters.find((l) => l.name === name)?.customRules;
 }
 
 describe("taskless detect", () => {
@@ -553,11 +561,12 @@ describe("taskless detect", () => {
         "success",
       ].toSorted()
     );
-    // A linter entry exposes only name + evidence, never a rule-name claim.
+    // A linter entry exposes name, evidence, and a count of the repository's
+    // own rules, never a rule-name claim.
     for (const linter of result.linters) {
-      expect(Object.keys(linter).toSorted()).toEqual(
-        ["evidence", "name"].toSorted()
-      );
+      for (const key of Object.keys(linter)) {
+        expect(["customRules", "evidence", "name"]).toContain(key);
+      }
     }
   });
 
@@ -655,6 +664,135 @@ describe("taskless detect", () => {
     const result = await detect(cwd);
     expect(result.success).toBe(true);
     expect(result.linters).toEqual([]);
+  });
+
+  describe("custom-rule counts", () => {
+    it("counts the rules in a house ESLint rule directory", async () => {
+      await writeFile(join(cwd, "eslint.config.js"), "export default [];");
+      await mkdir(join(cwd, "eslint-rules", "no-foo"), { recursive: true });
+      for (const file of [
+        "a.js",
+        "b.ts",
+        "c.mjs",
+        "d.cjs",
+        "e.js",
+        "f.js",
+        "index.js",
+        "a.test.js",
+        "types.d.ts",
+        "README.md",
+      ]) {
+        await writeFile(join(cwd, "eslint-rules", file), "");
+      }
+      await mkdir(join(cwd, "eslint-rules", "__tests__"));
+      const rules = customRules(await detect(cwd), "eslint");
+      // Six files and the no-foo rule folder; index, tests, declarations,
+      // docs, and the tests folder are not rules.
+      expect(rules?.count).toBe(7);
+      expect(rules?.evidence).toEqual(["eslint-rules (7 rules)"]);
+    });
+
+    it("reports a preset-only ESLint config as zero", async () => {
+      await writeFile(
+        join(cwd, "eslint.config.js"),
+        'import js from "@eslint/js";\nexport default [js.configs.recommended];\n'
+      );
+      expect(customRules(await detect(cwd), "eslint")).toEqual({
+        count: 0,
+        evidence: [],
+      });
+    });
+
+    it("reports a plugin imported from a local file as unknown", async () => {
+      await writeFile(
+        join(cwd, "eslint.config.js"),
+        'import local from "./tools/lint-plugin.js";\nexport default [{ plugins: { local } }];\n'
+      );
+      const rules = customRules(await detect(cwd), "eslint");
+      expect(rules?.count).toBe("unknown");
+      expect(rules?.evidence).toEqual([
+        "eslint.config.js (plugin imported from a local file)",
+      ]);
+    });
+
+    it("reports an inline plugin as unknown", async () => {
+      await writeFile(
+        join(cwd, "eslint.config.mjs"),
+        "export default [{ plugins: { house: { rules: { a: { create(context) { return {}; } } } } } }];\n"
+      );
+      expect(customRules(await detect(cwd), "eslint")?.count).toBe("unknown");
+    });
+
+    it("counts Biome plugins across nested configs, reading JSONC", async () => {
+      await writeFile(
+        join(cwd, "biome.jsonc"),
+        '{\n  // house rules\n  "$schema": "https://biomejs.dev/schemas/2.6.2/schema.json",\n  "plugins": ["./a.grit", "./b.grit",],\n}\n'
+      );
+      await mkdir(join(cwd, "packages", "web"), { recursive: true });
+      await writeFile(
+        join(cwd, "packages", "web", "biome.json"),
+        '{ "root": false, "plugins": ["./c.grit"] }'
+      );
+      const rules = customRules(await detect(cwd), "biome");
+      expect(rules?.count).toBe(3);
+      expect(rules?.evidence.toSorted()).toEqual(
+        [
+          "biome.jsonc (2 plugins)",
+          "packages/web/biome.json (1 plugins)",
+        ].toSorted()
+      );
+    });
+
+    it("counts pylint plugins that live in the repository", async () => {
+      await writeFile(
+        join(cwd, ".pylintrc"),
+        "[MAIN]\nload-plugins = house.checkers,\n  pylint.extensions.docparams,\n  pylint_django\n"
+      );
+      await mkdir(join(cwd, "house"), { recursive: true });
+      await writeFile(join(cwd, "house", "checkers.py"), "");
+      const rules = customRules(await detect(cwd), "pylint");
+      expect(rules).toEqual({
+        count: 1,
+        evidence: [".pylintrc load-plugins house.checkers"],
+      });
+    });
+
+    it("does not count pylint's own extensions", async () => {
+      await writeFile(
+        join(cwd, "pyproject.toml"),
+        '[tool.pylint.main]\nload-plugins = ["pylint.extensions.bad_builtin"]\n'
+      );
+      expect(customRules(await detect(cwd), "pylint")?.count).toBe(0);
+    });
+
+    it("counts flake8 local plugins and published entry points", async () => {
+      await writeFile(
+        join(cwd, ".flake8"),
+        "[flake8]\nmax-line-length = 100\n\n[flake8:local-plugins]\nextension =\n  HSE1 = house.flake8:NoFoo\n  HSE2 = house.flake8:NoBar\npaths = ./tools\n"
+      );
+      await writeFile(
+        join(cwd, "pyproject.toml"),
+        '[project]\nname = "house"\n\n[project.entry-points."flake8.extension"]\nHSE3 = "house.plugin:NoBaz"\n'
+      );
+      const rules = customRules(await detect(cwd), "flake8");
+      expect(rules?.count).toBe(3);
+    });
+
+    it("reports Ruff as zero however it is configured", async () => {
+      await writeFile(
+        join(cwd, "ruff.toml"),
+        '[lint]\nextend-select = ["TID"]\n[lint.flake8-tidy-imports.banned-api]\n"requests.get".msg = "use the client"\n'
+      );
+      expect(customRules(await detect(cwd), "ruff")).toEqual({
+        count: 0,
+        evidence: [],
+      });
+    });
+
+    it("gives no count to a linter that cannot hold a custom rule", async () => {
+      await writeFile(join(cwd, ".prettierrc"), "{}");
+      expect(customRules(await detect(cwd), "prettier")).toBeUndefined();
+    });
   });
 
   describe("CI systems and commit hooks", () => {
