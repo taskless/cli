@@ -7,11 +7,11 @@
 
 ## 2. Route ladder and linter paragraphs (PR 1)
 
-- [ ] 2.1 Add a `%(LEGACY_LINTERS)s` slot to `route`, rendered at serve time from a detect scan with one paragraph per detected linter that has a legacy recipe, and the full set when `mechanics` is off. Verify recipe tests: a Ruff-only fixture renders only the Ruff paragraph, a `prettier`-only fixture renders none, and the mechanics-off path renders all five.
-- [ ] 2.2 Rewrite `route.md` as topic v7: the four-step ladder, step 1 always taken, step 2 gated on the five-rule count, legacy and static no longer posed as a choice. Verify the recipe tests for each scenario in the `cli-rule-routing` delta, and that "Every destination resolves to a recipe" still passes.
-- [ ] 2.3 Rewrite generic `create-legacy-rule.md` as topic v2: shipped rule first, custom rule only with five or more repository examples and modeled on them, a missing plugin added only with consent, and the hand-off naming who runs the rule. Verify the recipe tests for each `cli-legacy-rule-recipes` scenario that applies to the generic recipe.
-- [ ] 2.4 Update `onboard.md` to topic v7: legacy candidates use shipped rules from installed packages only, with no custom rules and no new dependencies. Verify the `cli-onboard` delta scenarios and the onboard byte-parity tests.
-- [ ] 2.5 Add the changeset (`patch`) describing the ladder and the detect count. Run `pnpm typecheck` and `pnpm lint`; both pass.
+- [x] 2.1 Add a `%(LEGACY_LINTERS)s` slot to `route`, rendered at serve time from a detect scan with one paragraph per detected linter that has a legacy recipe, and the full set when `mechanics` is off. Verify recipe tests: a Ruff-only fixture renders only the Ruff paragraph, a `prettier`-only fixture renders none, and the mechanics-off path renders all five.
+- [x] 2.2 Rewrite `route.md` as topic v8: the four-step ladder, step 1 always taken, step 2 gated on the five-rule count, legacy and static no longer posed as a choice. Verify the recipe tests for each scenario in the `cli-rule-routing` delta, and that "Every destination resolves to a recipe" still passes.
+- [x] 2.3 Rewrite generic `create-legacy-rule.md` as topic v3: shipped rule first, custom rule only with five or more repository examples and modeled on them, a missing plugin added only with consent, and the hand-off naming who runs the rule. Verify the recipe tests for each `cli-legacy-rule-recipes` scenario that applies to the generic recipe.
+- [x] 2.4 Update `onboard.md` to topic v11: legacy candidates use shipped rules from installed packages only, with no custom rules and no new dependencies. Verify the `cli-onboard` delta scenarios and the onboard byte-parity tests.
+- [x] 2.5 Add the changeset (`patch`) describing the ladder and the detect count. Run `pnpm typecheck` and `pnpm lint`; both pass.
 
 ## 3. The `--tool` flag (PR 2)
 

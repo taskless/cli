@@ -21,7 +21,7 @@ When a repository already runs a linter, `create-legacy-rule` hands the agent 64
 - **`route` gives a paragraph to each linter it detects.** The CLI renders each paragraph at runtime, and only for linters `detect` found. Each one says what the tool is for, what it always tries first, and the `--tool` command to fetch.
 - **The catalog prohibition is lifted, narrowly.** The standing requirement says `create-legacy-rule` SHALL NOT embed a Taskless-maintained catalog of linter rules. The curated ESLint plugin list and each tool's named catch-all rules are a catalog, so that line changes to allow a short, curated, linked list of rule sources. It still forbids a catalog of individual rules.
 - **`route` stops asking the user when both legacy and a Taskless rule fit.** The ladder's order decides instead. This also resolves a conflict with onboarding, which told the agent not to ask.
-- Topic versions bump: `route` v6 → v7, `create-legacy-rule` v1 → v2, `onboard` v6 → v7.
+- Topic versions bump: `route` v7 → v8, `create-legacy-rule` v2 → v3, `onboard` v10 → v11.
 
 ## Capabilities
 
@@ -40,7 +40,7 @@ When a repository already runs a linter, `create-legacy-rule` hands the agent 64
 
 **Stacked, merging forward.** Each PR is safe in production on its own:
 
-1. **The `detect` custom-rule count, the ladder in `route`, the per-linter paragraphs, and the generic `create-legacy-rule` v2 and onboard v7 that follow the ladder.** The paragraphs name only `create-legacy-rule` here, so nothing references a variant that does not exist yet. The changeset lands on this PR.
+1. **The `detect` custom-rule count, the ladder in `route`, the per-linter paragraphs, and the generic `create-legacy-rule` v3 and onboard v11 that follow the ladder.** The paragraphs name only `create-legacy-rule` here, so nothing references a variant that does not exist yet. The changeset lands on this PR.
 2. **`--tool`, the five per-tool recipes and their vendor tests.** The `route` paragraphs start naming `--tool=<name>`. This PR archives the change.
 
 The package is pre-1.0 and every surface here is additive or recipe text, so the bump is `patch`.
