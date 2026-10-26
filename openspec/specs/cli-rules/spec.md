@@ -414,7 +414,7 @@ When `taskless rule create --anonymous` is invoked, the CLI SHALL execute the lo
 1. NOT submit any request to the Taskless API
 2. Generate the ast-grep rule using local logic (Claude SDK, agent-driven generation, or whatever the migrated implementation prefers — see design.md)
 3. Write the rule file to `.taskless/rules/sg/<id>/<id>.yml`
-4. Write any generated test files into that rule's own directory, under `.taskless/rules/sg/<id>/.tests/`
+4. Write any generated test files into that rule's own directory, under `.taskless/rules/sg/<id>/tests/`
 5. NOT write a metadata sidecar (neither does the API-backed branch: the
    service never populates the `meta` block a sidecar would be written from,
    so no branch of `rule create` has ever written one)
