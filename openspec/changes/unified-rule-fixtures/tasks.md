@@ -1,4 +1,4 @@
-Stacked, merged atomically with `gh stack merge`. The task groups describe the work; the branches group it so each layer is green on its own (see proposal, Delivery shape). Pause for review after each group (CLAUDE.md, OpenSpec Apply).
+Stacked, merging forward with `gh stack merge`. The task groups describe the work; the branches group it so each layer is green on its own (see proposal, Delivery shape). Work through every group without pausing, committing once per group (AGENTS.md, OpenSpec Apply).
 
 ## 1. Engine plumbing (bottom branch)
 
@@ -27,6 +27,7 @@ Stacked, merged atomically with `gh stack merge`. The task groups describe the w
 - [x] 3.4 Delivery: migrate an old-format response just in time. Treat `.tests/` as unsigned fixtures, convert them through `fixture-convert.ts` before writing, name anything unplaceable, and pass a new-layout set through unchanged (D6). Verify with `verify-delivery.test.ts` and deliver tests serving one v2 set of each shape.
 - [x] 3.5 Reconcile and signing exclude `tests/` and `.tests/`. Verify with a reconcile test whose rule holds both and reports neither.
 - [x] 3.6 Run migration 12 on this repository's `.taskless/rules/`, rename the ordinal cases to descriptions, and confirm every rule still passes `pnpm cli verify`. Fix any fixture that only passed because stdin bypassed `files:`, and list those fixes in the PR body.
+- [x] 3.7 Review found that case ordinals restarted in each of a rule's legacy test files, so a rule with two dated files lost a fixture: migration 12 skipped the existing destination and then deleted the source. Claim case names across a rule's files (delivery too), count a destination as written only when it holds the same bytes, and prefer a derived path that keeps the file's extension. Verify with converter and migration tests for two dated files, a conflicting destination, and an interrupted rerun.
 
 ## 4. Recipes, corpus, and archive (tip branch)
 
@@ -34,4 +35,5 @@ Stacked, merged atomically with `gh stack merge`. The task groups describe the w
 - [x] 4.2 `reference.json`: a case list for every engine, `grouping: case-directories`, and an incremented corpus `version`. Verify `reference.test.ts` covers every scenario in the `cli-conformance-reference` delta.
 - [x] 4.3 Update `.taskless/rules` READMEs, CONTRIBUTING and any doc naming `.tests/`. Verify `grep -rn '\.tests/'` outside migrations, the delivery JIT conversion and the CHANGELOG returns nothing unexpected.
 - [ ] 4.4 Note the new layout and corpus version in the CLI collab artifact as information for Cloud, stating that no action is required because delivery migrates the old format just in time (memory: cloud collab artifacts). Verify the artifact reads back with the note.
-- [x] 4.5 Run `pnpm typecheck` and `pnpm lint` across the stack tip. Archive the change on the tip (`pnpm openspec archive unified-rule-fixtures -y`), confirming every prior scenario survives per CLAUDE.md, then land the stack with `gh stack merge`.
+- [x] 4.5 Run `pnpm typecheck` and `pnpm lint` across the stack tip. Archive the change on the tip (`pnpm openspec archive unified-rule-fixtures -y`), confirming every prior scenario survives per AGENTS.md.
+- [ ] 4.6 Land the stack with `gh stack merge`, after review.

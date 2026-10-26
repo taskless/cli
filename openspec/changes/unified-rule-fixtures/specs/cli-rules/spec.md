@@ -33,3 +33,27 @@ A rule id does not carry its engine, so the CLI SHALL **resolve** which engine d
 - **WHEN** no engine directory contains `<id>`
 - **THEN** the CLI SHALL report the rule was not found under `.taskless/rules/`
 - **AND** the message SHALL NOT name a single engine's path
+
+### Requirement: Rule create supports anonymous local-only flow
+
+When `taskless rule create --anonymous` is invoked, the CLI SHALL execute the local-only rule-creation flow (previously implemented as the `taskless-create-rule-anonymous` skill body). The flow SHALL:
+
+1. NOT submit any request to the Taskless API
+2. Generate the ast-grep rule using local logic (Claude SDK, agent-driven generation, or whatever the migrated implementation prefers — see design.md)
+3. Write the rule file to `.taskless/rules/sg/<id>/<id>.yml`
+4. Write any generated test files into that rule's own directory, under `.taskless/rules/sg/<id>/tests/`
+5. NOT write a metadata sidecar (neither does the API-backed branch: the
+   service never populates the `meta` block a sidecar would be written from,
+   so no branch of `rule create` has ever written one)
+6. Return the same output format as the API-backed branch (paths to created files)
+
+#### Scenario: rule create --anonymous skips API
+
+- **WHEN** a user runs `taskless rule create --from req.json --anonymous`
+- **THEN** the CLI SHALL NOT make any HTTP request to the Taskless API
+- **AND** SHALL produce a rule file under `.taskless/rules/`
+
+#### Scenario: rule create --anonymous produces no metadata sidecar
+
+- **WHEN** `taskless rule create --anonymous` succeeds
+- **THEN** no file under `.taskless/rule-metadata/` SHALL be written for the new rule
