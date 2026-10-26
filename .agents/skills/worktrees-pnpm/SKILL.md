@@ -14,11 +14,24 @@ problem in this repo.
 **`git worktree add` is not finished until `pnpm install` has run inside the new worktree.**
 
 ```bash
-git fetch origin main
+git fetch origin +refs/heads/main:refs/remotes/origin/main   # explicit refspec; see the hook for why
 git worktree add -b <branch> .agents/.worktrees/<name> origin/main   # or an existing <branch>, without -b
 cd .agents/.worktrees/<name>
 pnpm install            # ← not optional
 ```
+
+**Then confirm the base is current, whoever made the worktree.** The `WorktreeCreate` hook fetches
+before branching, but a worktree made by hand or by another tool is cut from whatever its maker
+had locally. Before reading code or installing:
+
+```bash
+git fetch origin +refs/heads/main:refs/remotes/origin/main
+git rev-list --count HEAD..origin/main   # anything above 0: git rebase origin/main
+```
+
+Branch from `origin/main`, never the local `main`, which is only as fresh as the main checkout's
+last pull. A stale tree also carries stale conventions, including this one, so the check cannot
+wait until you have read the docs it would correct.
 
 Worktrees go in **`.agents/.worktrees/`**, gitignored except for a tracked `.gitkeep`, so the directory exists in every clone. This is the location every agent harness shares, not a Claude Code one, so a worktree made by hand, by Claude Code, or by another tool lands in the same place. In Claude Code, the `WorktreeCreate` / `WorktreeRemove` hooks configured in `.claude/settings.json` (scripts in this skill's `scripts/` directory) do the placement, which would otherwise nest worktrees at `.claude/worktrees/<id>`. A harness without those hooks follows the manual steps above, and the result is identical. `ls .agents/.worktrees/` answers "what worktrees do I have?" at a glance.
 
