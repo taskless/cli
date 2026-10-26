@@ -13,13 +13,13 @@ import {
   astGrepLanguageList,
   resolveAstGrepLanguage,
 } from "../src/rules/capabilities";
-import { ruleDirectory, ruleTestsDirectory } from "../src/rules/engines";
+import { ruleDirectory } from "../src/rules/engines";
+import { AST_GREP_LANGUAGE_EXTENSIONS } from "../src/rules/fixture-convert";
 import {
   buildPath,
   findSgBinary,
   stripSgDeprecationBanner,
 } from "../src/rules/scan";
-import { escapeRegExp } from "../src/util/regex";
 
 /**
  * ast-grep's observable behaviour, pinned.
@@ -36,7 +36,7 @@ import { escapeRegExp } from "../src/util/regex";
  * discovery changed is indistinguishable from a clean codebase.
  *
  * Each case says what breaks if it changes. These invoke the binary directly
- * rather than through `runAstGrepScan` or `runTests`, deliberately: a test that
+ * rather than through `runAstGrepScan`, deliberately: a test that
  * went through our wrapper would be asserting our interpretation of ast-grep,
  * which is the thing under test everywhere else.
  */
@@ -85,22 +85,9 @@ const haskellKindRule = (kind: string) =>
     "",
   ].join("\n");
 
-/** Valid test YAML, and invalid *rule* YAML — it carries no `language`. */
-const testFile = (id: string, invalid: string[], valid: string[] = []) =>
-  [
-    `id: ${id}`,
-    "valid:",
-    ...valid.map((source) => `  - ${JSON.stringify(source)}`),
-    "invalid:",
-    ...invalid.map((source) => `  - ${JSON.stringify(source)}`),
-    "",
-  ].join("\n");
-
 interface Project {
   /** Rule id to rule YAML. Each becomes `rules/<id>/<id>.yml`. */
   rules: Record<string, string>;
-  /** Rule id to test YAML, written to `rules/<id>/.tests/<id>-test.yml`. */
-  tests?: Record<string, string>;
   /** Path relative to the project root, to file contents. */
   sources?: Record<string, string>;
 }
@@ -110,21 +97,17 @@ interface Project {
  *
  * The `sgconfig.yml` is written literally rather than through
  * `assembleSgConfig`, so what is pinned is the binary's response to a config,
- * not our assembler's idea of one. The two relocated discovery cases at the
- * bottom of this file are the deliberate exception: there, our layout is the
- * thing being checked against discovery.
+ * not our assembler's idea of one. The discovery cases at the bottom of this
+ * file are the deliberate exception: there, our layout is the thing being
+ * checked against discovery.
  */
-function project({ rules, tests = {}, sources = {} }: Project): string {
+function project({ rules, sources = {} }: Project): string {
   const cwd = mkdtempSync(join(tmpdir(), "sg-contract-"));
   workspaces.push(cwd);
 
   for (const [id, body] of Object.entries(rules)) {
     mkdirSync(join(cwd, "rules", id), { recursive: true });
     writeFileSync(join(cwd, "rules", id, `${id}.yml`), body);
-  }
-  for (const [id, body] of Object.entries(tests)) {
-    mkdirSync(join(cwd, "rules", id, ".tests"), { recursive: true });
-    writeFileSync(join(cwd, "rules", id, ".tests", `${id}-test.yml`), body);
   }
   for (const [path, body] of Object.entries(sources)) {
     // The parent of the path actually given, not a hardcoded `src/` — every
@@ -134,16 +117,7 @@ function project({ rules, tests = {}, sources = {} }: Project): string {
     writeFileSync(join(cwd, path), body);
   }
 
-  writeFileSync(
-    join(cwd, "sgconfig.yml"),
-    [
-      "ruleDirs:",
-      "  - rules",
-      "testConfigs:",
-      ...Object.keys(tests).map((id) => `  - testDir: rules/${id}/.tests`),
-      "",
-    ].join("\n")
-  );
+  writeFileSync(join(cwd, "sgconfig.yml"), "ruleDirs:\n  - rules\n");
   return cwd;
 }
 
@@ -157,17 +131,6 @@ const run = (cwd: string, argv: string[]) =>
 /** `scan`, exactly as `runAstGrepScan` invokes it. */
 const scan = (cwd: string, config = "sgconfig.yml") =>
   run(cwd, ["scan", "--config", config, "--json=stream"]);
-
-/** `verify`, exactly as `runTests` invokes it. */
-const test = (cwd: string, ruleId: string) =>
-  run(cwd, [
-    "test",
-    "-c",
-    "sgconfig.yml",
-    "--skip-snapshot-tests",
-    "--filter",
-    `^${ruleId}$`,
-  ]);
 
 /** One eval call, at line 0 column 10 of `src/a.ts`. */
 const evalSource = { "src/a.ts": 'const x = eval("1");\n' };
@@ -429,25 +392,29 @@ const grammarMatches = (
 const arityMatches = (body: string): string[] =>
   grammarMatches(body, aritySource["src/a.ts"]);
 
-/** A rule whose fixtures all pass. */
-const passingProject = () =>
-  project({
-    rules: { "no-eval": rule("no-eval") },
-    tests: { "no-eval": testFile("no-eval", ["eval(x)"], ["const a = 1"]) },
-  });
-
 /**
- * A failing case whose fixture text reads like a summary line. This is the
- * poisoning case from issue #112, kept here as the fixture that makes the echo
- * behaviour concrete.
+ * The files `scan` reported, run as `runAstGrepScan` runs it over a fixture
+ * case: under `configPath`, walking hidden directories.
  */
-const failingProject = () =>
-  project({
-    rules: { "no-eval": rule("no-eval") },
-    tests: {
-      "no-eval": testFile("no-eval", ["const msg = '7 passed; 0 failed';"]),
-    },
-  });
+const scannedFiles = (cwd: string, configPath: string): string[] =>
+  run(cwd, [
+    "scan",
+    "--config",
+    configPath,
+    "--json=stream",
+    "--no-ignore",
+    "hidden",
+  ])
+    .stdout.split("\n")
+    .filter((line) => line !== "")
+    .map((line) => (JSON.parse(line) as { file: string }).file);
+
+/** A fresh directory for one scope case, removed after the test. */
+function scopeWorkspace(): string {
+  const directory = mkdtempSync(join(tmpdir(), "sg-contract-scope-"));
+  workspaces.push(directory);
+  return directory;
+}
 
 withSg("ast-grep vendor contract", () => {
   it("reports its own name in --version", () => {
@@ -661,149 +628,35 @@ withSg("ast-grep vendor contract", () => {
     });
   });
 
-  describe("sg test", () => {
-    it("prints `test result: ok. N passed; M failed;` to stdout and exits 0", () => {
-      // Depended on by: parseTestSummary in verify.ts, which anchors on this
-      // exact wording, and by runTests keying validity off exit 0. If the
-      // wording changes, the counts read 0/0 and verify falls through to the
-      // exit-code snippet — degraded rather than wrong, and this test is what
-      // announces it.
-      const result = test(passingProject(), "no-eval");
-      expect(result.status).toBe(0);
-      expect(result.stdout).toContain("test result:");
-      expect(result.stdout).toMatch(
-        /test result: .*ok.*\. 1 passed; 0 failed;/
-      );
-    });
-
-    it("prints `Error: test failed. N passed; M failed;` to stderr and exits 4", () => {
-      // The failure summary lands on STDERR, not stdout, which is why verify
-      // scans both streams. The exit code is 4 — not 1 — and runTests treats
-      // any non-zero as failure, so nothing depends on the number today; it is
-      // pinned because a future 0-on-failure would read as a pass.
-      const outcome = test(failingProject(), "no-eval");
-      expect(outcome.status).toBe(4);
-      expect(outcome.stderr).toMatch(
-        /Error: test failed\. 0 passed; 1 failed;/
-      );
-    });
-
-    it("no longer colorizes the summary when stdout is not a TTY", () => {
-      // CHANGED AT 0.45.2. At 0.41.0 the summary arrived colorized even
-      // through a pipe, and this test pinned that. `--color` now honours its
-      // `auto` default, so a piped run is plain text.
-      // eslint-disable-next-line no-control-regex -- the escape IS the subject
-      const greenOk = /\u001B\[32mok\u001B\[0m/;
-      expect(test(passingProject(), "no-eval").stdout).not.toMatch(greenOk);
-    });
-
-    it("still puts the escape INSIDE the phrase under --color always", () => {
-      // Depended on by: parseTestSummary stripping VT control characters
-      // before matching, in verify.ts. Colour is gone from the piped default
-      // above, but it returns whenever stdout IS a TTY, and the escape lands
-      // between `test result: ` and `ok`, i.e. inside the phrase being
-      // anchored on. A parser that dropped the stripping would therefore keep
-      // working under CI and fail interactively, which is the worst place to
-      // find out. `--color always` is the testable stand-in for a TTY.
-      const colorized = run(passingProject(), [
-        "test",
-        "-c",
-        "sgconfig.yml",
-        "--skip-snapshot-tests",
-        "--color",
-        "always",
-        "--filter",
-        "^no-eval$",
-      ]);
-      // eslint-disable-next-line no-control-regex -- the escape IS the subject
-      const inThePhrase = /test result: \u001B\[32mok\u001B\[0m\./;
-      expect(colorized.stdout).toMatch(inThePhrase);
-    });
-
-    it("echoes the offending source on failure, and nothing on success", () => {
-      // This is the root of #112: fixture text is reproduced verbatim into the
-      // output of a failing run, so an unanchored `/(\d+)\s+passed/` can match
-      // the fixture instead of the summary. A passing run echoes nothing, which
-      // is why the old parser was only ever wrong on failures.
-      expect(test(failingProject(), "no-eval").stdout).toContain(
-        "const msg = '7 passed; 0 failed';"
-      );
-      expect(test(passingProject(), "no-eval").stdout).not.toContain(
-        "const a = 1"
-      );
-    });
-
-    it("indents every echoed line, so fixture text never reaches column 0", () => {
-      // Depended on by: parseTestSummary anchoring on `^`. This is what makes
-      // the anchor close the *class* rather than the one fixture in #112 — a
-      // fixture whose own text is a verbatim summary line is still echoed
-      // indented, so it cannot be mistaken for the summary. Multi-line, since
-      // the indent has to hold for continuation lines too.
-      const poison = "Error: test failed. 99 passed; 0 failed;";
-      const cwd = project({
-        rules: { "no-eval": rule("no-eval") },
-        tests: {
-          "no-eval": testFile("no-eval", [
-            `const a = 1;\n${poison}\nlet b = 2;`,
-          ]),
-        },
-      });
-      const { stdout } = test(cwd, "no-eval");
-
-      expect(stdout).toContain(`  ${poison}`);
-      expect(stdout).not.toMatch(new RegExp(`^${escapeRegExp(poison)}`, "m"));
-    });
-
-    it("needs --skip-snapshot-tests for an invalid case with no baseline", () => {
-      // Depended on by: runTests passing the flag. Without it, every invalid
-      // case in a rule that has never had snapshots recorded fails with "No
-      // baseline found" — a rule that is correct reported as failing.
-      const cwd = passingProject();
-      const withoutFlag = run(cwd, [
-        "test",
-        "-c",
-        "sgconfig.yml",
-        "--filter",
-        "^no-eval$",
-      ]);
-      expect(withoutFlag.status).not.toBe(0);
-      expect(withoutFlag.stdout).toContain("baseline found");
-    });
-
+  describe("scan --filter", () => {
     it("treats --filter as an unanchored regex", () => {
-      // Depended on by: runTests building `^${escapeRegExp(ruleId)}$`. The
-      // anchors are load-bearing — without them, verifying `no-eval` would also
-      // run `no-eval-strict`'s cases and report its failures against the wrong
-      // rule.
+      // Depended on by: sgFilterArgv anchoring the alternation as
+      // `^(?:…)$`, which is how `check --rule` and each fixture case select
+      // one rule. Without the anchors, scanning for `no-eval` would also run
+      // `no-eval-strict` and report its findings under the wrong request.
       const cwd = project({
         rules: {
           "no-eval": rule("no-eval"),
           "no-eval-strict": rule("no-eval-strict"),
         },
-        tests: {
-          "no-eval": testFile("no-eval", ["eval(x)"]),
-          "no-eval-strict": testFile("no-eval-strict", ["eval(x)"]),
-        },
+        sources: evalSource,
       });
-      const anchored = run(cwd, [
-        "test",
-        "-c",
-        "sgconfig.yml",
-        "--skip-snapshot-tests",
-        "--filter",
-        "^no-eval$",
-      ]);
-      expect(anchored.stdout).toContain("1 passed; 0 failed;");
+      const ruleIdsFor = (filter: string): string[] =>
+        run(cwd, [
+          "scan",
+          "--config",
+          "sgconfig.yml",
+          "--json=stream",
+          "--filter",
+          filter,
+        ])
+          .stdout.split("\n")
+          .filter((line) => line !== "")
+          .map((line) => (JSON.parse(line) as { ruleId: string }).ruleId)
+          .toSorted();
 
-      const unanchored = run(cwd, [
-        "test",
-        "-c",
-        "sgconfig.yml",
-        "--skip-snapshot-tests",
-        "--filter",
-        "no-eval",
-      ]);
-      expect(unanchored.stdout).toContain("2 passed; 0 failed;");
+      expect(ruleIdsFor("^(?:no-eval)$")).toEqual(["no-eval"]);
+      expect(ruleIdsFor("no-eval")).toEqual(["no-eval", "no-eval-strict"]);
     });
   });
 
@@ -1545,57 +1398,143 @@ withSg("ast-grep vendor contract", () => {
     });
   });
 
-  describe("the .tests/ directory is invisible to rule discovery", () => {
+  /**
+   * Why ast-grep reads rules from a rules-only tree.
+   *
+   * A rule's fixtures live beside it, at `tests/<bucket>/<case>/`, and a
+   * fixture is any file: an Actions rule's cases are `.yml` workflows.
+   * ast-grep parses every `.yml` under a `ruleDirs` entry as a rule, so
+   * pointing `ruleDirs` at the committed rules tree would read each fixture
+   * as a broken rule and take the whole scan down. `assembleSgConfig` copies
+   * each rule's `<id>.yml` into `.taskless/.sg-rules/` instead, and points
+   * `ruleDirs` there.
+   *
+   * The dot in the old `.tests/` happened to keep its YAML out of discovery,
+   * which is behavior ast-grep does not document. The rules-only tree means no
+   * layout depends on it, so it is no longer pinned.
+   */
+  describe("rule discovery reads a rules-only tree", () => {
     const RULE = rule("no-eval");
-    const TEST_FILE = testFile("no-eval", ["eval(x)"], ["const a = 1"]);
 
-    /** A throwaway root carrying our committed rule layout. */
-    function layout(): { cwd: string; directory: string } {
+    /** A throwaway root carrying our committed rule layout, with a YAML fixture. */
+    function layout(): string {
       const cwd = mkdtempSync(join(tmpdir(), "sg-contract-layout-"));
       workspaces.push(cwd);
       const directory = ruleDirectory(cwd, "sg", "no-eval");
       mkdirSync(directory, { recursive: true });
       writeFileSync(join(directory, "no-eval.yml"), RULE);
-      return { cwd, directory };
-    }
-
-    it("scans clean with test YAML inside a rule's .tests/", async () => {
-      const { cwd } = layout();
-      const tests = ruleTestsDirectory(cwd, "sg", "no-eval");
-      mkdirSync(tests, { recursive: true });
-      writeFileSync(join(tests, "no-eval-20260101-test.yml"), TEST_FILE);
+      // A literal `tests/`, not the layout constant: what is pinned is how
+      // ast-grep treats a plain directory, whatever the CLI calls its own.
+      const fixture = join(directory, "tests", "pass", "workflow", "ci.yml");
+      mkdirSync(dirname(fixture), { recursive: true });
+      writeFileSync(fixture, "on: push\njobs: {}\n");
       mkdirSync(join(cwd, "src"), { recursive: true });
       writeFileSync(join(cwd, "src", "a.ts"), 'const x = eval("1");\n');
+      return cwd;
+    }
+
+    it("fails the whole scan when ruleDirs reaches YAML in a plain tests/", () => {
+      // Depended on by: assembleSgConfig building a rules-only tree. This is
+      // the failure that tree exists to avoid: the fixture is not a rule, so
+      // ast-grep refuses it, and with it every rule in the config.
+      const cwd = layout();
+      writeFileSync(
+        join(cwd, "sgconfig.yml"),
+        `ruleDirs:\n  - ${dirname(ruleDirectory(cwd, "sg", "no-eval"))}\n`
+      );
+      const result = scan(cwd);
+      expect(result.status).toBeGreaterThan(1);
+      expect(result.stderr).toContain("Cannot parse rule");
+      expect(result.stderr).toContain(join("tests", "pass", "workflow"));
+    });
+
+    it("scans clean through the config assembleSgConfig writes", async () => {
+      const cwd = layout();
 
       const configPath = await assembleSgConfig(cwd);
       expect(configPath).toBeDefined();
 
-      // The rule fires — exit 1, error severity — which proves discovery ran;
-      // the test file beneath it was never parsed as a rule, which is the
-      // property being pinned. A parse failure produces no JSON at all.
+      // The rule fires (exit 1, error severity), which proves discovery ran;
+      // the fixture beside it was never offered to ast-grep as a rule. A parse
+      // failure produces no JSON at all.
       const result = scan(cwd, configPath ?? "");
       expect(result.status).toBe(1);
       const findings = result.stdout
         .split("\n")
         .filter((line) => line !== "")
-        .map((line) => JSON.parse(line) as { ruleId: string });
+        .map((line) => JSON.parse(line) as { ruleId: string; file: string });
       expect(findings.map((finding) => finding.ruleId)).toEqual(["no-eval"]);
     });
+  });
 
-    it("fails the whole scan if the same file sits in a non-dot directory", async () => {
-      // Deliberately NOT `.tests/` — this is the layout the dot exists to
-      // avoid. A test file is invalid rule YAML: it has no `language`.
-      const { cwd, directory } = layout();
-      mkdirSync(join(directory, "tests"), { recursive: true });
-      writeFileSync(
-        join(directory, "tests", "no-eval-20260101-test.yml"),
-        TEST_FILE
-      );
+  /**
+   * How a fixture case is scanned: from the case directory, under a config
+   * that lives elsewhere.
+   *
+   * Depended on by: `runSgFixtures` in `sg-fixtures.ts`, which runs each case
+   * with the case directory as the working directory and a one-rule config in
+   * a temporary directory. A fixture exercises the rule's scope only because
+   * `files:` resolves against the working directory, not against the config's
+   * location. If that moved to the config, every scoped rule's fail cases
+   * would go quiet, and every scoped rule would fail `verify`.
+   */
+  describe("files: globs resolve against the scan's working directory", () => {
+    const SCOPED_RULE = [
+      "id: no-latest",
+      "language: Yaml",
+      "severity: error",
+      "message: m",
+      "files:",
+      '  - ".github/workflows/*.yml"',
+      "rule:",
+      "  kind: string_scalar",
+      "  regex: '@latest'",
+      "",
+    ].join("\n");
+    const OFFENDING = "steps:\n  - run: npx tool@latest\n";
 
-      const configPath = await assembleSgConfig(cwd);
-      const result = scan(cwd, configPath ?? "");
-      expect(result.status).toBeGreaterThan(1);
-      expect(result.stderr).toContain("missing field `language`");
+    /** A config in its own directory, with an absolute `ruleDirs`. */
+    function elsewhereConfig(workspace: string): string {
+      const rules = join(workspace, "run", "rules");
+      mkdirSync(rules, { recursive: true });
+      writeFileSync(join(rules, "no-latest.yml"), SCOPED_RULE);
+      const configPath = join(workspace, "run", "sgconfig.yml");
+      writeFileSync(configPath, `ruleDirs:\n  - ${rules}\n`);
+      return configPath;
+    }
+
+    /** A case directory holding `OFFENDING` at `path`. */
+    function caseWith(workspace: string, path: string): string {
+      const caseDirectory = join(workspace, "parent", "case");
+      mkdirSync(dirname(join(caseDirectory, path)), { recursive: true });
+      writeFileSync(join(caseDirectory, path), OFFENDING);
+      return caseDirectory;
+    }
+
+    it("fires on a file at a path the glob admits, relative to the cwd", () => {
+      const root = scopeWorkspace();
+      const configPath = elsewhereConfig(root);
+      const caseDirectory = caseWith(root, ".github/workflows/ci.yml");
+      expect(scannedFiles(caseDirectory, configPath)).toEqual([
+        ".github/workflows/ci.yml",
+      ]);
+    });
+
+    it("stays quiet on the same file at the case root", () => {
+      const root = scopeWorkspace();
+      const configPath = elsewhereConfig(root);
+      const caseDirectory = caseWith(root, "ci.yml");
+      expect(scannedFiles(caseDirectory, configPath)).toEqual([]);
+    });
+
+    it("stays quiet when the same case is scanned from its parent", () => {
+      // The glob is matched against the path from the cwd, which here is
+      // `case/.github/workflows/ci.yml`. This is why a case is scanned with
+      // its own directory as the cwd rather than passed as a path.
+      const root = scopeWorkspace();
+      const configPath = elsewhereConfig(root);
+      const caseDirectory = caseWith(root, ".github/workflows/ci.yml");
+      expect(scannedFiles(dirname(caseDirectory), configPath)).toEqual([]);
     });
   });
 });
@@ -1691,5 +1630,65 @@ withSg("ast-grep engine capabilities", () => {
       expect(rendered).toContain(language);
     }
     expect(rendered.split(", ")).toHaveLength(AST_GREP_LANGUAGES.length);
+  });
+
+  it("parses each AST_GREP_LANGUAGE_EXTENSIONS extension as its language by default", () => {
+    // Depended on by: fixture-convert.ts naming a converted snippet
+    // `<case>.<extension>`. ast-grep picks a file's parser from its extension
+    // alone, so an extension that maps to another language (or to none)
+    // leaves the converted fixture unparsed and every fail case quiet.
+    //
+    // One rule per language and one file per extension, in a single scan. Each
+    // file must be reported by its own language's rule and by no other, read
+    // off the `language` field ast-grep reports rather than inferred.
+    const rules: Record<string, string> = {};
+    const sources: Record<string, string> = {};
+    for (const [language, extension] of Object.entries(
+      AST_GREP_LANGUAGE_EXTENSIONS
+    )) {
+      // `pattern: zzz` parses in every grammar but Html's, where the text
+      // node is the smallest thing to match.
+      const matcher = language === "Html" ? "  kind: text" : "  pattern: zzz";
+      rules[language.toLowerCase()] = [
+        `id: ${language.toLowerCase()}`,
+        `language: ${language}`,
+        "severity: warning",
+        "message: m",
+        "rule:",
+        matcher,
+        "",
+      ].join("\n");
+      sources[`src/a.${extension}`] = "zzz\n";
+    }
+
+    const result = scan(project({ rules, sources }));
+    expect(result.status, result.stderr).toBe(0);
+    const reported = new Map<string, Set<string>>();
+    for (const line of result.stdout.split("\n")) {
+      if (line === "") continue;
+      const match = JSON.parse(line) as {
+        file: string;
+        language: string;
+        ruleId: string;
+      };
+      // The Yaml rule also reads the project's own rule files and config.
+      if (!match.file.startsWith("src/")) continue;
+      const seen = reported.get(match.file) ?? new Set<string>();
+      seen.add(`${match.language}/${match.ruleId}`);
+      reported.set(match.file, seen);
+    }
+
+    expect(
+      Object.fromEntries([...reported].map(([file, seen]) => [file, [...seen]]))
+    ).toEqual(
+      Object.fromEntries(
+        Object.entries(AST_GREP_LANGUAGE_EXTENSIONS).map(
+          ([language, extension]) => [
+            `src/a.${extension}`,
+            [`${language}/${language.toLowerCase()}`],
+          ]
+        )
+      )
+    );
   });
 });

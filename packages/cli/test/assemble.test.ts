@@ -1,13 +1,14 @@
 import {
   mkdir,
   mkdtemp,
+  readdir,
   readFile,
   rm,
   stat,
   writeFile,
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join, relative } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import {
@@ -15,7 +16,12 @@ import {
   assembleValeConfig,
   type ValeAssembly,
 } from "../src/rules/assemble";
-import { ruleDirectory, ruleTestsDirectory } from "../src/rules/engines";
+import {
+  ASSEMBLED_SG_RULES,
+  ruleDirectory,
+  ruleTestsDirectory,
+} from "../src/rules/engines";
+import { runAstGrepScan } from "../src/rules/scan";
 
 let cwd: string;
 
@@ -48,14 +54,39 @@ async function valeRule(id: string, config: string): Promise<void> {
   await writeFile(join(directory, ".vale.ini"), config);
 }
 
-/** Lay down an ast-grep rule with a test file. */
+/** Lay down an ast-grep rule with an (empty) tests directory. */
 async function sgRule(id: string): Promise<void> {
   await sgRuleWithoutTests(id);
   await mkdir(ruleTestsDirectory(cwd, "sg", id), { recursive: true });
 }
 
+/** Write one fixture file into `tests/<bucket>/<case>/` of an ast-grep rule. */
+async function sgFixture(
+  id: string,
+  bucket: "pass" | "fail",
+  name: string,
+  path: string,
+  body: string
+): Promise<void> {
+  const file = join(ruleTestsDirectory(cwd, "sg", id), bucket, name, path);
+  await mkdir(dirname(file), { recursive: true });
+  await writeFile(file, body);
+}
+
+/** Every file under `directory`, relative to it, sorted. */
+async function treeFiles(directory: string): Promise<string[]> {
+  const entries = await readdir(directory, {
+    recursive: true,
+    withFileTypes: true,
+  });
+  return entries
+    .filter((entry) => entry.isFile())
+    .map((entry) => relative(directory, join(entry.parentPath, entry.name)))
+    .toSorted();
+}
+
 /**
- * Lay down an ast-grep rule that has no `.tests/` at all.
+ * Lay down an ast-grep rule that has no `tests/` at all.
  *
  * The state a nightly-migrated project is in, and the state a hand-made
  * `mkdir .taskless/rules/sg/<id>/` reaches on any version.
@@ -259,18 +290,57 @@ describe("Vale config assembly", () => {
 });
 
 describe("ast-grep config assembly", () => {
-  it("points ruleDirs at the sg tree and testConfigs at each rule", async () => {
+  it("points ruleDirs at the rules-only tree, with no testConfigs", async () => {
     await sgRule("no-eval");
     await sgRule("no-debugger");
 
     const path = await assembleSgConfig(cwd);
     const contents = await readFile(join(cwd, path ?? ""), "utf8");
 
-    expect(contents).toContain("ruleDirs:\n  - rules/sg");
-    // Each rule keeps its tests inside its own directory, so each needs its
-    // own testConfigs entry.
-    expect(contents).toContain("- testDir: rules/sg/no-debugger/.tests");
-    expect(contents).toContain("- testDir: rules/sg/no-eval/.tests");
+    // Relative to the config, which sits beside the tree in `.taskless/`.
+    // Fixtures are judged by this same scan now, one case at a time, so
+    // nothing here names a test directory.
+    expect(contents).toBe("ruleDirs:\n  - .sg-rules\n");
+  });
+
+  it("copies each rule's <id>.yml and nothing else into the tree", async () => {
+    // A `.yml` fixture is the dangerous one: ast-grep parses every `.yml`
+    // under `ruleDirs` as a rule, and a fixture that is not one fails the
+    // whole scan with `Cannot parse rule`.
+    await sgRule("no-eval");
+    await sgRule("no-debugger");
+    await sgFixture("no-eval", "fail", "workflow", "ci.yml", "run: eval(x)\n");
+    await sgFixture("no-eval", "pass", "clean", "a.ts", "const x = 1;\n");
+
+    await assembleSgConfig(cwd);
+
+    expect(await treeFiles(join(cwd, ASSEMBLED_SG_RULES))).toEqual([
+      "no-debugger.yml",
+      "no-eval.yml",
+    ]);
+    // Copied verbatim, so what ast-grep loads is what the author wrote.
+    expect(
+      await readFile(join(cwd, ASSEMBLED_SG_RULES, "no-eval.yml"), "utf8")
+    ).toBe(
+      await readFile(
+        join(ruleDirectory(cwd, "sg", "no-eval"), "no-eval.yml"),
+        "utf8"
+      )
+    );
+  });
+
+  it("clears a rule deleted since the last assembly out of the tree", async () => {
+    // A stale copy would keep reporting for a rule that no longer exists.
+    await sgRule("keep");
+    await sgRule("gone");
+    await assembleSgConfig(cwd);
+
+    await rm(ruleDirectory(cwd, "sg", "gone"), { recursive: true });
+    await assembleSgConfig(cwd);
+
+    expect(await treeFiles(join(cwd, ASSEMBLED_SG_RULES))).toEqual([
+      "keep.yml",
+    ]);
   });
 
   it("is byte-identical across runs", async () => {
@@ -287,50 +357,39 @@ describe("ast-grep config assembly", () => {
     expect(await assembleSgConfig(cwd)).toBeUndefined();
   });
 
-  // ast-grep 0.41.0 aborts the whole invocation on a `testDir` it cannot read
-  // (exit 6), and `--filter` does not scope that away — so a single rule with
-  // no `.tests/` would fail every *other* rule's test run, naming a rule its
-  // author never touched.
-  it("omits a testDir whose directory is not on disk", async () => {
-    await sgRule("has-tests");
-    await sgRuleWithoutTests("no-tests");
-
-    const path = await assembleSgConfig(cwd);
-    const contents = await readFile(join(cwd, path ?? ""), "utf8");
-
-    expect(contents).toContain("- testDir: rules/sg/has-tests/.tests");
-    expect(contents).not.toContain("no-tests");
-  });
-
-  it("emits no testDir that is missing from disk, for any rule", async () => {
-    await sgRule("alpha");
-    await sgRuleWithoutTests("beta");
-    await sgRule("gamma");
-
-    const path = await assembleSgConfig(cwd);
-    const contents = await readFile(join(cwd, path ?? ""), "utf8");
-
-    const prefix = "  - testDir: ";
-    const emitted = contents
-      .split("\n")
-      .filter((line) => line.startsWith(prefix))
-      .map((line) => line.slice(prefix.length));
-    expect(emitted.length).toBeGreaterThan(0);
-    for (const directory of emitted) {
-      const stats = await stat(join(cwd, ".taskless", directory));
-      expect(stats.isDirectory(), `${directory} is a directory`).toBe(true);
-    }
-  });
-
-  // `testConfigs:` with no entries under it is accepted by ast-grep 0.41.0 —
-  // measured for both `sg test` and `sg scan` — so a project where no rule has
-  // tests yet still gets a config both commands can read.
   it("still emits a config when no rule has a tests directory", async () => {
     await sgRuleWithoutTests("only-rule");
 
     const path = await assembleSgConfig(cwd);
-    const contents = await readFile(join(cwd, path ?? ""), "utf8");
+    expect(await readFile(join(cwd, path ?? ""), "utf8")).toBe(
+      "ruleDirs:\n  - .sg-rules\n"
+    );
+    expect(await treeFiles(join(cwd, ASSEMBLED_SG_RULES))).toEqual([
+      "only-rule.yml",
+    ]);
+  });
 
-    expect(contents).toBe("ruleDirs:\n  - rules/sg\ntestConfigs:\n");
+  it("lets a scan complete over a rule whose tests/ holds .yml fixtures", async () => {
+    // The scan `check` runs, over the config this module wrote. Pointed at
+    // `.taskless/rules/sg/` directly, ast-grep would reach the `.yml` fixture
+    // below and abort with `Cannot parse rule` (measured on 0.51.0), taking
+    // every rule's report down with it.
+    await sgRule("no-eval");
+    await sgFixture(
+      "no-eval",
+      "fail",
+      "workflow",
+      ".github/workflows/ci.yml",
+      "steps:\n  - run: eval(x)\n"
+    );
+    await mkdir(join(cwd, "src"), { recursive: true });
+    await writeFile(join(cwd, "src", "a.ts"), "eval(input);\n");
+
+    const path = await assembleSgConfig(cwd);
+    const scan = await runAstGrepScan(cwd, [], { configPath: path });
+
+    expect(scan.results.map((result) => [result.ruleId, result.file])).toEqual([
+      ["no-eval", "src/a.ts"],
+    ]);
   });
 });

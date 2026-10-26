@@ -2550,3 +2550,100 @@ withVale(
     });
   }
 );
+
+/**
+ * A styles tree, a config directory beside it, and one case tree, all
+ * separate, as `verifyValeRule` lays them out.
+ */
+function caseLayout(matcher: string, documents: string[]) {
+  const root = mkdtempSync(join(tmpdir(), "vale-contract-cwd-"));
+  workspaces.push(root);
+  const styles = join(root, "styles");
+  mkdirSync(join(styles, "no-simply"), { recursive: true });
+  writeFileSync(
+    join(styles, "no-simply", "no-simply.yml"),
+    existence("simply")
+  );
+  const configDirectory = join(root, "config");
+  mkdirSync(configDirectory);
+  const config = join(configDirectory, "scoped.ini");
+  writeFileSync(
+    config,
+    `StylesPath = ${styles}\nMinAlertLevel = suggestion\n\n[${matcher}]\nno-simply.no-simply = YES\n`
+  );
+  const caseDirectory = join(root, "run", "case");
+  for (const path of documents) {
+    mkdirSync(join(caseDirectory, path, ".."), { recursive: true });
+    writeFileSync(join(caseDirectory, path), "Just simply do it.\n");
+  }
+  return { config, caseDirectory, parent: join(root, "run") };
+}
+
+/** The documents Vale reported a finding in. */
+function firing(cwd: string, config: string, path: string): string[] {
+  const result = spawnSync(
+    binary as string,
+    ["--config", config, "--output=JSON", "--no-exit", "--", path],
+    { cwd, encoding: "utf8" }
+  );
+  expect(result.status, result.stderr).toBe(0);
+  return Object.keys(
+    JSON.parse(result.stdout) as Record<string, unknown[]>
+  ).toSorted();
+}
+
+/**
+ * A matcher resolves against the working directory, not against `--config`.
+ *
+ * Depended on by: `verifyValeRule` in `rules/vale/verify.ts`, which judges a
+ * fixture case by running Vale with the case directory as its working
+ * directory, under a config written to a temp directory with an absolute
+ * `StylesPath`. That is how a rule's own matchers apply to a case the way
+ * they apply to a project: under `[docs/**\/*.md]`, a case document at
+ * `docs/guide/x.md` is in scope and one at `x.md` is not.
+ *
+ * If Vale ever resolved matchers against the config file's directory, every
+ * scoped rule's fail cases would go quiet and verification would blame the
+ * scope for all of them. If it resolved them against a path argument instead,
+ * running from the case would still work but the parent-directory case below
+ * would start firing, and the cwd discipline in `runCase` would be redundant
+ * rather than load-bearing.
+ */
+withVale("a matcher resolves against the working directory", () => {
+  it("applies [docs/**/*.md] to the tree below the cwd, with --config elsewhere", () => {
+    const { config, caseDirectory } = caseLayout("docs/**/*.md", [
+      "docs/guide/x.md",
+      "x.md",
+    ]);
+    expect(firing(caseDirectory, config, ".")).toEqual(["docs/guide/x.md"]);
+  });
+
+  it("fires nothing when the same tree is passed as a path from its parent", () => {
+    // The path argument does not re-root the matcher: from the parent the
+    // document is `case/docs/guide/x.md`, which `docs/**/*.md` does not match.
+    // This is why a case is run FROM its directory rather than pointed at.
+    const { config, parent } = caseLayout("docs/**/*.md", [
+      "docs/guide/x.md",
+      "x.md",
+    ]);
+    expect(firing(parent, config, "case")).toEqual([]);
+  });
+
+  it("walks a document under .github/", () => {
+    // Vale walks hidden directories, so a fixture for a rule scoped to
+    // `.github/**` can place its document there and be linted. If Vale ever
+    // skipped dot-directories, such a case would go quiet under every config,
+    // and the unscoped re-run would report "did not match" for a rule that
+    // works.
+    const { config, caseDirectory } = caseLayout("*", [
+      ".github/x.md",
+      "docs/guide/x.md",
+      "x.md",
+    ]);
+    expect(firing(caseDirectory, config, ".")).toEqual([
+      ".github/x.md",
+      "docs/guide/x.md",
+      "x.md",
+    ]);
+  });
+});
