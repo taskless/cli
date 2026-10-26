@@ -29,7 +29,7 @@ async function caseDirectory(
     "rules",
     "runtime",
     RULE,
-    ".tests",
+    "tests",
     bucket,
     name
   );
@@ -91,7 +91,7 @@ describe("reading runtime fixture cases", () => {
   it("refuses a loose file, naming it, rather than skipping it", async () => {
     await caseDirectory(cwd, "fail", "case-1");
     await writeFile(
-      join(cwd, ".taskless/rules/runtime", RULE, ".tests/fail/loose.ts"),
+      join(cwd, ".taskless/rules/runtime", RULE, "tests/fail/loose.ts"),
       "const x = 1;\n",
       "utf8"
     );
@@ -107,17 +107,25 @@ describe("reading runtime fixture cases", () => {
     expect(ENGINE_LAYOUTS.runtime.fixtureLayout).toBe("case-directories");
   });
 
+  it("refuses an entry in tests/ other than the two buckets, naming it", async () => {
+    await caseDirectory(cwd, "fail", "case-1");
+    await writeFile(
+      join(cwd, ".taskless/rules/runtime", RULE, "tests/no-eval-test.yml"),
+      "id: no-eval\n",
+      "utf8"
+    );
+
+    await expect(readRuntimeFixtures(cwd, RULE)).rejects.toThrow(
+      /tests\/no-eval-test\.yml is not a fixture bucket/
+    );
+  });
+
   it("does not read an unreadable bucket as an empty one", async () => {
     // The discrimination that matters. If this swallowed the permission error,
     // the rule below would report `fail-only` — a one-sided rule — when in
     // truth its pass side was simply unreadable.
     await caseDirectory(cwd, "fail", "case-1");
-    const passBucket = join(
-      cwd,
-      ".taskless/rules/runtime",
-      RULE,
-      ".tests/pass"
-    );
+    const passBucket = join(cwd, ".taskless/rules/runtime", RULE, "tests/pass");
     await mkdir(passBucket, { recursive: true });
     await chmod(passBucket, 0o000);
 

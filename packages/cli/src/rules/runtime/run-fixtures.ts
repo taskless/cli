@@ -127,7 +127,7 @@ export async function runRuntimeFixtures(
   }
 
   return {
-    // Only `both` can pass, for `ValeFixtureCoverage`'s reason: a rule with one
+    // Only `both` can pass, for `FixtureCoverage`'s reason: a rule with one
     // bucket has proved half of what a rule claims, and a rule with neither has
     // proved nothing while exiting zero.
     passed:
@@ -159,9 +159,7 @@ export function describeFixtureReport(
 ): string[] {
   const errors: string[] = [];
 
-  // `/` because these buckets are directories, which is how the author will go
-  // looking for them. `sg`'s are YAML keys and read `valid:`.
-  const shortfall = describeCoverageShortfall(ruleId, report.coverage, "/");
+  const shortfall = describeCoverageShortfall(ruleId, report.coverage);
   if (shortfall !== undefined) errors.push(shortfall);
   for (const name of report.missingFailures) {
     errors.push(`fail fixture did not fire: ${name}`);

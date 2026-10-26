@@ -1,0 +1,5 @@
+steps:
+  - name: Multi-line, published release
+    run: |
+      pnpm install
+      npx @taskless/cli check

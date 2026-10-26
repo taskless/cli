@@ -1,0 +1,3 @@
+steps:
+  - name: pnpm long global flag
+    run: pnpm add --global @taskless/cli

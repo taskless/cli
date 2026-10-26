@@ -28,8 +28,9 @@ import { verifyOneRule, validateOneRule } from "../src/rules/inspect";
  * `sg-files-globs-parse` wrote its `files:` array through a hand-rolled
  * serializer that emitted a `0:` mapping key whose value began with `*`, which
  * YAML reads as an alias, so the rule was refused as malformed before any glob
- * was examined; `sg-fixture-id-matches-rule` shipped a fixture with only a
- * `valid:` bucket, which fails coverage whether or not the id excluded it.
+ * was examined; a since-removed fixture-id constraint shipped a fixture with
+ * only a `valid:` bucket, which fails coverage whether or not the id excluded
+ * it.
  * Both would have kept passing with the check they name deleted, which is the
  * exact staleness this file exists to catch, so every case now names a string
  * only its own constraint produces.
@@ -53,25 +54,43 @@ const VALID_RULE = {
   rule: { pattern: "eval($ARG)" },
 };
 
-const VALID_FIXTURE = [
-  "id: probe-rule",
-  "valid:",
-  "  - const a = 1;",
-  "invalid:",
-  "  - eval(x);",
-  "",
-].join("\n");
+/** Case name → source, written as `<case>/sample.ts`. */
+type Cases = Record<string, string>;
+
+interface Fixtures {
+  pass?: Cases;
+  fail?: Cases;
+}
+
+const VALID_FIXTURE: Fixtures = {
+  pass: { "plain-assignment": "const a = 1;\n" },
+  fail: { "eval-call": "eval(x);\n" },
+};
+
+/** Write each case of `fixtures` under the rule directory's `tests/`. */
+async function writeFixtures(
+  directory: string,
+  fixtures: Fixtures
+): Promise<void> {
+  for (const bucket of ["pass", "fail"] as const) {
+    for (const [name, source] of Object.entries(fixtures[bucket] ?? {})) {
+      const caseDirectory = join(directory, "tests", bucket, name);
+      await mkdir(caseDirectory, { recursive: true });
+      await writeFile(join(caseDirectory, "sample.ts"), source);
+    }
+  }
+}
 
 /** Write one sg rule directory, then run layers 1 and 2 over it. */
 async function verifyWritten(options: {
   directoryName?: string;
   rule?: Record<string, unknown>;
-  fixture?: string | undefined;
+  fixture?: Fixtures | undefined;
   layer?: "validate" | "verify";
 }): Promise<{ ok: boolean; errors: string[]; violations: RuleViolation[] }> {
   const ruleId = options.directoryName ?? "probe-rule";
   const directory = join(project, ".taskless/rules/sg", ruleId);
-  await mkdir(join(directory, ".tests"), { recursive: true });
+  await mkdir(directory, { recursive: true });
 
   // Serialized by the same library `validate` parses with, rather than by hand.
   // The hand-rolled version treated an array as a mapping and wrote
@@ -84,18 +103,13 @@ async function verifyWritten(options: {
   );
 
   if (options.fixture !== undefined) {
-    await writeFile(
-      join(directory, ".tests", `${ruleId}-test.yml`),
-      options.fixture
-    );
+    await writeFixtures(directory, options.fixture);
   }
 
   // Through the command entry points a user actually runs, not through
-  // `verifyRule` directly. The fixture-attribution rule is decided by the
-  // coverage classification that `verifyOneRule` composes on top of the raw
-  // layers, so asserting against `verifyRule.tests` reported `valid: true` for
-  // a rule with no attributable cases: ast-grep found the rule, had nothing to
-  // run for it, and exited 0. The layer boundary is not where it looks.
+  // `verifyRule` directly, since coverage is reported by what `verifyOneRule`
+  // composes on top of the raw layers. The layer boundary is not where it
+  // looks.
   const resolved = { engine: "sg" as const, ruleId };
   if (options.layer === "verify") {
     const result = await verifyOneRule(project, resolved);
@@ -167,8 +181,7 @@ const VIOLATIONS: Record<string, Scenario> = {
       verifyWritten({
         directoryName: "probe-rule-20260101",
         rule: { ...VALID_RULE, id: "probe-rule" },
-        fixture:
-          "id: probe-rule-20260101\nvalid:\n  - const a = 1;\ninvalid:\n  - eval(x);\n",
+        fixture: VALID_FIXTURE,
       }),
     names: /does not match the rule's directory/,
   },
@@ -223,21 +236,7 @@ const VIOLATIONS: Record<string, Scenario> = {
   },
   "sg-test-file-required": {
     run: () => verifyWritten({ fixture: undefined }),
-    names: /No test file found for rule/,
-  },
-  // The fixture carries BOTH buckets under the wrong id. With only `valid:` it
-  // fails coverage as "half a claim" whether or not the id excluded it, so the
-  // scenario would still be red with the attribution check deleted. Complete
-  // buckets make "no fixtures" reachable only by exclusion: attribute this file
-  // and coverage is `both`, and the rule passes.
-  "sg-fixture-id-matches-rule": {
-    run: () =>
-      verifyWritten({
-        layer: "verify",
-        fixture:
-          "id: some-other-rule\nvalid:\n  - const a = 1;\ninvalid:\n  - eval(x);\n",
-      }),
-    names: /has no fixtures, so nothing shows it fires or stays quiet/,
+    names: /No fixture cases found for rule/,
   },
   "vale-config-no-root-keys": {
     run: () => verifyValeConfig(`StylesPath = .\n${VALID_VALE_CONFIG}`),
@@ -341,12 +340,9 @@ describe("every documented constraint is a check that still fires", () => {
     // that does not describe their failure, which is worse than none.
     const ruleId = "probe-rule";
     const directory = join(project, ".taskless/rules/sg", ruleId);
-    await mkdir(join(directory, ".tests"), { recursive: true });
+    await mkdir(directory, { recursive: true });
     await writeFile(join(directory, `${ruleId}.yml`), "id: [unclosed\n");
-    await writeFile(
-      join(directory, ".tests", `${ruleId}-test.yml`),
-      VALID_FIXTURE
-    );
+    await writeFixtures(directory, VALID_FIXTURE);
 
     const result = await validateOneRule(project, { engine: "sg", ruleId });
     expect(result.ok).toBe(false);
@@ -354,64 +350,19 @@ describe("every documented constraint is a check that still fires", () => {
     expect(result.violations).toEqual([]);
   });
 
-  it("distinguishes an unwritten fixture from one excluded by its id", async () => {
-    // Both reach `verify` as "no fixtures", and they want different advice: one
-    // author has written nothing, the other has a file sitting right there
-    // that is silently not counted. Only the second is this constraint.
-    const excluded = await verifyWritten({
+  it("reports a one-sided fixture set as half a claim, under no constraint", async () => {
+    // Coverage is `verify`'s verdict, not a published constraint: `validate`
+    // passes a rule whose author has written one side so far. Attributing the
+    // shortfall to `sg-test-file-required` would tell the author they wrote no
+    // fixtures, when they wrote half of them.
+    const result = await verifyWritten({
       layer: "verify",
-      fixture:
-        "id: some-other-rule\nvalid:\n  - const a = 1;\ninvalid:\n  - eval(x);\n",
+      fixture: { pass: VALID_FIXTURE.pass },
     });
-    expect(
-      excluded.violations.map((violation) => violation.constraintId)
-    ).toContain("sg-fixture-id-matches-rule");
-
-    // An empty-but-correctly-attributed fixture file fails the same way and is
-    // NOT an id mismatch. Attributing it would send the author looking for a
-    // wrong id in a file whose id is right.
-    const empty = await verifyWritten({
-      layer: "verify",
-      fixture: "id: probe-rule\n",
-    });
-    expect(empty.ok).toBe(false);
-    expect(empty.errors.join("\n")).toMatch(/has no fixtures/);
-    expect(
-      empty.violations.map((violation) => violation.constraintId)
-    ).not.toContain("sg-fixture-id-matches-rule");
-  });
-
-  it("does not blame an id mismatch for a shortfall fixing the id would not fix", async () => {
-    // `fixturesExcludedById` is rule-wide, but coverage is the sum over every
-    // discovered file, so the two can disagree. Here one file carries the right
-    // id and one carries the wrong one, and NEITHER has an `invalid:` bucket:
-    // combined coverage is `valid-only`, not `none`. Correcting the id would
-    // leave that shortfall exactly where it is, so attributing it to
-    // `sg-fixture-id-matches-rule` would send the author to an unrelated
-    // mismatch while the missing half of the claim goes unmentioned. This test
-    // catches a gate that reads only the flag.
-    const ruleId = "probe-rule";
-    const directory = join(project, ".taskless/rules/sg", ruleId);
-    await mkdir(join(directory, ".tests"), { recursive: true });
-    await writeFile(join(directory, `${ruleId}.yml`), stringify(VALID_RULE));
-    // Both filenames match the `<ruleId>-*-test.yml` discovery pattern, so both
-    // are found; only the second is excluded, and only by its `id:`.
-    await writeFile(
-      join(directory, ".tests", `${ruleId}-a-test.yml`),
-      "id: probe-rule\nvalid:\n  - const a = 1;\n"
-    );
-    await writeFile(
-      join(directory, ".tests", `${ruleId}-b-test.yml`),
-      "id: some-other-rule\nvalid:\n  - const b = 2;\n"
-    );
-
-    const result = await verifyOneRule(project, { engine: "sg", ruleId });
     expect(result.ok, result.errors.join("; ")).toBe(false);
-    expect(result.errors.join("\n")).toMatch(/only valid: fixtures/);
+    expect(result.errors.join("\n")).toMatch(/only pass\/ fixtures/);
     expect(result.errors.join("\n")).toMatch(/half a claim/);
-    expect(
-      result.violations.map((violation) => violation.constraintId)
-    ).not.toContain("sg-fixture-id-matches-rule");
+    expect(result.violations).toEqual([]);
   });
 
   it("says which command enforces each, since that decides eval order", () => {

@@ -1,0 +1,3 @@
+steps:
+  - name: Check house style
+    run: pnpm cli check

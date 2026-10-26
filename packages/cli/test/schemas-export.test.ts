@@ -54,6 +54,26 @@ interface ParsedSchema {
 
 let cwd: string;
 
+/** An ast-grep rule with one `pass/` and one `fail/` case directory. */
+async function sgProbe(id: string): Promise<void> {
+  const directory = join(cwd, ".taskless", "rules", "sg", id);
+  await mkdir(join(directory, "tests", "pass", "clean"), { recursive: true });
+  await mkdir(join(directory, "tests", "fail", "dirty"), { recursive: true });
+  await writeFile(
+    join(directory, `${id}.yml`),
+    `id: ${id}\nlanguage: TypeScript\nseverity: error\n` +
+      "message: no eval\nrule:\n  pattern: eval($ARG)\n"
+  );
+  await writeFile(
+    join(directory, "tests", "pass", "clean", "clean.ts"),
+    "const a = 1;\n"
+  );
+  await writeFile(
+    join(directory, "tests", "fail", "dirty", "dirty.ts"),
+    "eval(x);\n"
+  );
+}
+
 beforeEach(async () => {
   cwd = await mkdtemp(join(tmpdir(), "tskl-schemas-"));
   await execFileAsync("node", [binPath, "init", "-d", cwd]);
@@ -75,17 +95,7 @@ describe("the published schemas entry", () => {
     // The claim this entry exists to make, tested against both halves of it:
     // the built schema, and the built CLI's real output. A test that parsed a
     // hand-written fixture would prove the schema parses the fixture.
-    const directory = join(cwd, ".taskless", "rules", "sg", "probe-rule");
-    await mkdir(join(directory, ".tests"), { recursive: true });
-    await writeFile(
-      join(directory, "probe-rule.yml"),
-      "id: probe-rule\nlanguage: TypeScript\nseverity: error\n" +
-        "message: no eval\nrule:\n  pattern: eval($ARG)\n"
-    );
-    await writeFile(
-      join(directory, ".tests", "probe-rule-test.yml"),
-      "id: probe-rule\nvalid:\n  - const a = 1;\ninvalid:\n  - eval(x);\n"
-    );
+    await sgProbe("probe-rule");
 
     const { stdout } = await execFileAsync("node", [
       binPath,
@@ -107,6 +117,38 @@ describe("the published schemas entry", () => {
     // `violations` survives the round trip, which is the field a consumer came
     // for. A schema that silently dropped it would still "parse" the output.
     expect(parsed.rules[0]?.violations).toEqual([]);
+  });
+
+  it("parses what verify actually emits, fixture findings included", async () => {
+    // `validate` runs no fixtures, so the test above only ever parses an empty
+    // `findings`. This one runs the cases. ast-grep writes `"note": null` for a
+    // rule without a `note:`, which the finding schema does not allow, so
+    // `verify --json` over such a rule once printed a zod error instead of
+    // JSON. The probe has no `note:` on purpose.
+    await sgProbe("probe-rule");
+
+    const { stdout } = await execFileAsync("node", [
+      binPath,
+      "verify",
+      "-d",
+      cwd,
+      "--json",
+    ]);
+
+    const built = await importBuiltSchemas();
+    const schema = built.ruleCheckOutputSchema as ParsedSchema;
+    const parsed = schema.parse(JSON.parse(stdout)) as {
+      ok: boolean;
+      rules: {
+        findings: { bucket: string; message: string; note?: unknown }[];
+      }[];
+    };
+
+    expect(parsed.ok).toBe(true);
+    const findings = parsed.rules[0]?.findings ?? [];
+    expect(findings.map((finding) => finding.bucket)).toEqual(["fail"]);
+    expect(findings[0]?.message).toBe("no eval");
+    expect(findings[0]).not.toHaveProperty("note");
   });
 
   it("strips what it does not declare, which a JSON Schema of the same shape would not", async () => {
@@ -154,17 +196,7 @@ describe("the published schemas entry", () => {
  */
 describe("verifyOutputSchema and valeVerifyOutputSchema", () => {
   it("verifyOutputSchema parses verifyRule()'s real return value for an sg rule", async () => {
-    const directory = join(cwd, ".taskless", "rules", "sg", "schema-probe");
-    await mkdir(join(directory, ".tests"), { recursive: true });
-    await writeFile(
-      join(directory, "schema-probe.yml"),
-      "id: schema-probe\nlanguage: TypeScript\nseverity: error\n" +
-        "message: no eval\nrule:\n  pattern: eval($ARG)\n"
-    );
-    await writeFile(
-      join(directory, ".tests", "schema-probe-test.yml"),
-      "id: schema-probe\nvalid:\n  - const a = 1;\ninvalid:\n  - eval(x);\n"
-    );
+    await sgProbe("schema-probe");
 
     // The exact envelope the removed command built: `{ engine: "sg", ...result }`.
     const result = await verifyRule(cwd, "schema-probe");
@@ -174,12 +206,24 @@ describe("verifyOutputSchema and valeVerifyOutputSchema", () => {
     const parsed = schema.parse({ engine: "sg", ...result }) as {
       success: boolean;
       ruleId: string;
-      tests: { passed: number; failed: number };
+      tests: {
+        passed: number;
+        failed: number;
+        fixtures: string;
+        findings: { bucket: string }[];
+      };
     };
 
     expect(parsed.success).toBe(true);
     expect(parsed.ruleId).toBe("schema-probe");
-    expect(parsed.tests).toMatchObject({ passed: 1, failed: 0 });
+    // One per case: the `pass/` case and the `fail/` case both behaved.
+    expect(parsed.tests).toMatchObject({ passed: 2, failed: 0 });
+    // Survived `parse()`, which strips what the schema does not declare, so
+    // these assert the schema carries them rather than that the CLI does.
+    expect(parsed.tests.fixtures).toBe("both");
+    expect(parsed.tests.findings.map((finding) => finding.bucket)).toEqual([
+      "fail",
+    ]);
   });
 
   const withVale = findValeBinary().path === undefined ? it.skip : it;
@@ -194,18 +238,27 @@ describe("verifyOutputSchema and valeVerifyOutputSchema", () => {
         "vale",
         "schema-probe-vale"
       );
-      await mkdir(join(directory, ".tests", "pass"), { recursive: true });
-      await mkdir(join(directory, ".tests", "fail"), { recursive: true });
+      await mkdir(join(directory, "tests", "pass", "clean"), {
+        recursive: true,
+      });
+      await mkdir(join(directory, "tests", "fail", "dirty"), {
+        recursive: true,
+      });
       await writeFile(
         join(directory, "schema-probe-vale.yml"),
         "extends: existence\nmessage: \"Avoid 'simply'\"\nlevel: warning\ntokens:\n  - simply\n"
       );
+      // A case is judged under the rule's own matchers, so the rule needs them.
       await writeFile(
-        join(directory, ".tests", "pass", "clean.md"),
+        join(directory, ".vale.ini"),
+        "[*.md]\ntskl) rule = schema-probe-vale\nschema-probe-vale.schema-probe-vale = YES\n"
+      );
+      await writeFile(
+        join(directory, "tests", "pass", "clean", "clean.md"),
         "Nothing objectionable.\n"
       );
       await writeFile(
-        join(directory, ".tests", "fail", "dirty.md"),
+        join(directory, "tests", "fail", "dirty", "dirty.md"),
         "Just simply do it.\n"
       );
 
@@ -225,13 +278,26 @@ describe("verifyOutputSchema and valeVerifyOutputSchema", () => {
         success: result.passed,
         ruleId: result.ruleId,
         fixtures: result.fixtures,
+        findings: result.findings,
         missingFailures: result.missingFailures,
         unexpectedFindings: result.unexpectedFindings,
+        errors: result.errors,
         notices: result.notices,
-      }) as { success: boolean; ruleId: string };
+      }) as {
+        success: boolean;
+        ruleId: string;
+        findings: { bucket: string; file: string }[];
+      };
 
       expect(parsed.success).toBe(true);
       expect(parsed.ruleId).toBe("schema-probe-vale");
+      // The rendered findings survive `parse()`, so the schema declares them.
+      expect(parsed.findings).toEqual([
+        expect.objectContaining({
+          bucket: "fail",
+          file: ".taskless/rules/vale/schema-probe-vale/tests/fail/dirty/dirty.md",
+        }),
+      ]);
     }
   );
 });

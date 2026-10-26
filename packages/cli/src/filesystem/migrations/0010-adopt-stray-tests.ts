@@ -5,7 +5,7 @@ import { pathExists } from "../../rules/reconcile-marker";
 import {
   ENGINES,
   RULES_DIRECTORY,
-  RULE_TESTS_DIRECTORY,
+  LEGACY_RULE_TESTS_DIRECTORY,
   type EngineName,
 } from "../../rules/layout";
 import type { Migration } from "../types";
@@ -107,7 +107,7 @@ const migration: Migration = async (directory) => {
         RULES_DIRECTORY,
         engine,
         ruleId,
-        RULE_TESTS_DIRECTORY
+        LEGACY_RULE_TESTS_DIRECTORY
       );
       if (entry.isDirectory()) {
         // A per-rule test directory becomes the rule's `.tests/`, unless it

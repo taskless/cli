@@ -14,7 +14,7 @@ import { getCliPrefix } from "../../util/package-manager";
 import { escapeRegExp } from "../../util/regex";
 import {
   ENGINES,
-  RULE_TESTS_DIRECTORY,
+  LEGACY_RULE_TESTS_DIRECTORY,
   RULES_DIRECTORY,
 } from "../../rules/layout";
 
@@ -160,7 +160,7 @@ async function moveEngineTests(
           RULES_DIRECTORY,
           engine,
           entry.name,
-          RULE_TESTS_DIRECTORY
+          LEGACY_RULE_TESTS_DIRECTORY
         )
       );
       continue;
@@ -178,7 +178,7 @@ async function moveEngineTests(
         RULES_DIRECTORY,
         engine,
         ruleId,
-        RULE_TESTS_DIRECTORY,
+        LEGACY_RULE_TESTS_DIRECTORY,
         entry.name
       )
     );
@@ -239,7 +239,7 @@ async function ensureSgTestDirectories(directory: string): Promise<void> {
   for (const entry of await entriesOf(engineRoot)) {
     if (!entry.isDirectory()) continue;
     await ensureTrackedDirectory(
-      join(engineRoot, entry.name, RULE_TESTS_DIRECTORY)
+      join(engineRoot, entry.name, LEGACY_RULE_TESTS_DIRECTORY)
     );
   }
 }

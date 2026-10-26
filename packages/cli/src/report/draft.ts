@@ -76,7 +76,8 @@ const VALE_LANGUAGE = "Prose";
 /** What a runtime rule's checks are written in. */
 const RUNTIME_LANGUAGE = "TypeScript";
 
-async function readFirstFile(directory: string): Promise<string | null> {
+/** The first regular file under `directory`, depth-first in name order. */
+async function firstFileUnder(directory: string): Promise<string | null> {
   let entries;
   try {
     entries = await readdir(directory, { withFileTypes: true });
@@ -84,51 +85,38 @@ async function readFirstFile(directory: string): Promise<string | null> {
     if (isMissingDirectory(error)) return null;
     throw error;
   }
-  const first = entries
-    .filter((entry) => entry.isFile())
-    .map((entry) => entry.name)
-    .toSorted((a, b) => a.localeCompare(b))[0];
-  if (first === undefined) return null;
-  const raw = await readFile(join(directory, first), "utf8");
-  const content = raw.trim();
-  return content === "" ? null : content;
+  for (const entry of entries.toSorted((a, b) =>
+    a.name.localeCompare(b.name)
+  )) {
+    const path = join(directory, entry.name);
+    if (entry.isFile()) return path;
+    if (entry.isDirectory()) {
+      const nested = await firstFileUnder(path);
+      if (nested !== null) return nested;
+    }
+  }
+  return null;
 }
 
-/** The first `invalid:` and `valid:` case across an sg rule's test files. */
-async function sgFixtures(
+/**
+ * The first file of a rule's first case in each bucket, as the report's
+ * example of what the rule flags and what it lets through. The same reader
+ * for every engine, since every engine's case is a directory.
+ */
+async function caseExamples(
   cwd: string,
+  engine: "sg" | "vale",
   id: string
 ): Promise<{ fail: string | null; pass: string | null }> {
-  const directory = ruleTestsDirectory(cwd, "sg", id);
-  let entries: string[];
-  try {
-    entries = await readdir(directory);
-  } catch (error) {
-    if (isMissingDirectory(error)) return { fail: null, pass: null };
-    throw error;
-  }
-  const names = entries
-    .filter((name) => /\.ya?ml$/.test(name))
-    .toSorted((a, b) => a.localeCompare(b));
-  let fail: string | null = null;
-  let pass: string | null = null;
-  for (const name of names) {
-    const source = await readFile(join(directory, name), "utf8");
-    const parsed: unknown = parseDocument(source).toJS();
-    if (typeof parsed !== "object" || parsed === null) continue;
-    const document = parsed as { valid?: unknown; invalid?: unknown };
-    fail ??= firstString(document.invalid);
-    pass ??= firstString(document.valid);
-  }
-  return { fail, pass };
-}
-
-function firstString(value: unknown): string | null {
-  if (!Array.isArray(value)) return null;
-  const first: unknown = value.find(
-    (item) => typeof item === "string" && item.trim() !== ""
-  );
-  return typeof first === "string" ? first.trim() : null;
+  const tests = ruleTestsDirectory(cwd, engine, id);
+  const read = async (bucket: "pass" | "fail") => {
+    const file = await firstFileUnder(join(tests, bucket));
+    if (file === null) return null;
+    const raw = await readFile(file, "utf8");
+    const content = raw.trim();
+    return content === "" ? null : content;
+  };
+  return { fail: await read("fail"), pass: await read("pass") };
 }
 
 /** An sg rule's `language:`, as ast-grep spells it. */
@@ -166,12 +154,11 @@ export async function collectLocalRules(cwd: string): Promise<LocalRule[]> {
       language: await sgLanguage(cwd, id),
       tests: {
         status: await testStatus(cwd, "sg", id),
-        ...(await sgFixtures(cwd, id)),
+        ...(await caseExamples(cwd, "sg", id)),
       },
     });
   }
   for (const id of await listRuleIds(cwd, "vale")) {
-    const tests = ruleTestsDirectory(cwd, "vale", id);
     rules.push({
       id,
       engine: "vale",
@@ -179,8 +166,7 @@ export async function collectLocalRules(cwd: string): Promise<LocalRule[]> {
       language: VALE_LANGUAGE,
       tests: {
         status: await testStatus(cwd, "vale", id),
-        fail: await readFirstFile(join(tests, "fail")),
-        pass: await readFirstFile(join(tests, "pass")),
+        ...(await caseExamples(cwd, "vale", id)),
       },
     });
   }

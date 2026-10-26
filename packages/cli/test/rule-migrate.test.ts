@@ -1,6 +1,6 @@
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { parse as parseYaml } from "yaml";
 
@@ -106,11 +106,13 @@ describe("applying the Haskell rename to a project", () => {
   let tasklessDirectory: string;
   const sg = () => join(tasklessDirectory, "rules", "sg");
 
-  async function rule(id: string, body: string, tests?: string) {
-    await mkdir(join(sg(), id, ".tests"), { recursive: true });
+  const fixturePath = (id: string) =>
+    join(sg(), id, "tests", "fail", "fail-01", "fail-01.hs");
+  async function rule(id: string, body: string, fixture?: string) {
+    await mkdir(dirname(fixturePath(id)), { recursive: true });
     await writeFile(join(sg(), id, `${id}.yml`), body);
-    if (tests !== undefined) {
-      await writeFile(join(sg(), id, ".tests", `${id}-test.yml`), tests);
+    if (fixture !== undefined) {
+      await writeFile(fixturePath(id), fixture);
     }
   }
   const read = (id: string) => readFile(join(sg(), id, `${id}.yml`), "utf8");
@@ -158,12 +160,10 @@ describe("applying the Haskell rename to a project", () => {
   });
 
   it("never reads fixtures", async () => {
-    const fixture = "id: syn\ninvalid:\n  - 'kind: type_synomym'\n";
+    const fixture = "-- kind: type_synomym\ntype Name = String\n";
     await rule("syn", haskell("Haskell"), fixture);
     await haskellTypeSynonym.apply(sg());
-    expect(
-      await readFile(join(sg(), "syn", ".tests", "syn-test.yml"), "utf8")
-    ).toBe(fixture);
+    expect(await readFile(fixturePath("syn"), "utf8")).toBe(fixture);
   });
 
   it("writes nothing on a second run", async () => {
@@ -334,16 +334,24 @@ describe("applying the Vale tests: move to a project", () => {
   it("writes each case as a fixture, removes the key, and reports both", async () => {
     await rule("no-simply", source);
     const written = await valeTestsToFixtures.apply(vale());
+    // Each case is a directory named for the case. With no `.vale.ini` there
+    // is no matcher to place the document under, so it sits at the case root.
     expect(written).toEqual([
-      join("no-simply", ".tests", "fail", "flags-it.md"),
-      join("no-simply", ".tests", "pass", "quiet.md"),
+      join("no-simply", "tests", "fail", "flags-it", "flags-it.md"),
+      join("no-simply", "tests", "pass", "quiet", "quiet.md"),
       join("no-simply", "no-simply.yml"),
     ]);
     expect(
-      await readFile(path("no-simply", ".tests", "fail", "flags-it.md"), "utf8")
+      await readFile(
+        path("no-simply", "tests", "fail", "flags-it", "flags-it.md"),
+        "utf8"
+      )
     ).toBe("Just simply do it.");
     expect(
-      await readFile(path("no-simply", ".tests", "pass", "quiet.md"), "utf8")
+      await readFile(
+        path("no-simply", "tests", "pass", "quiet", "quiet.md"),
+        "utf8"
+      )
     ).toBe("Just do it.\n");
     const migrated = await readFile(path("no-simply", "no-simply.yml"), "utf8");
     expect(migrated).toBe(valeRule(""));
@@ -357,29 +365,56 @@ describe("applying the Vale tests: move to a project", () => {
     expect(await valeTestsToFixtures.apply(vale())).toEqual([]);
   });
 
+  it("places each document where the rule's own matchers look", async () => {
+    // A case is linted under the rule's `.vale.ini`, with the case directory
+    // as the root, so a document at the case root of a `[docs/**/*.md]` rule
+    // would be a quiet case for a reason that has nothing to do with the rule.
+    await rule("no-simply", source);
+    await writeFile(
+      path("no-simply", ".vale.ini"),
+      "[docs/**/*.md]\ntskl) rule = no-simply\nno-simply.no-simply = YES\n"
+    );
+    const written = await valeTestsToFixtures.apply(vale());
+    expect(written).toEqual([
+      join("no-simply", "tests", "fail", "flags-it", "docs", "flags-it.md"),
+      join("no-simply", "tests", "pass", "quiet", "docs", "quiet.md"),
+      join("no-simply", "no-simply.yml"),
+    ]);
+  });
+
   it("finishes a run interrupted after the fixtures, without duplicating them", async () => {
     await rule("no-simply", source);
-    await mkdir(path("no-simply", ".tests", "fail"), { recursive: true });
+    await mkdir(path("no-simply", "tests", "fail", "flags-it"), {
+      recursive: true,
+    });
     await writeFile(
-      path("no-simply", ".tests", "fail", "flags-it.md"),
+      path("no-simply", "tests", "fail", "flags-it", "flags-it.md"),
       "Just simply do it."
     );
     expect(await valeTestsToFixtures.apply(vale())).toEqual([
-      join("no-simply", ".tests", "pass", "quiet.md"),
+      join("no-simply", "tests", "pass", "quiet", "quiet.md"),
       join("no-simply", "no-simply.yml"),
     ]);
   });
 
   it("never overwrites a different fixture of the same name", async () => {
     await rule("no-simply", source);
-    await mkdir(path("no-simply", ".tests", "fail"), { recursive: true });
-    await writeFile(path("no-simply", ".tests", "fail", "flags-it.md"), "mine");
+    await mkdir(path("no-simply", "tests", "fail", "flags-it"), {
+      recursive: true,
+    });
+    await writeFile(
+      path("no-simply", "tests", "fail", "flags-it", "flags-it.md"),
+      "mine"
+    );
     const written = await valeTestsToFixtures.apply(vale());
     expect(written).toContain(
-      join("no-simply", ".tests", "fail", "flags-it-2.md")
+      join("no-simply", "tests", "fail", "flags-it-2", "flags-it-2.md")
     );
     expect(
-      await readFile(path("no-simply", ".tests", "fail", "flags-it.md"), "utf8")
+      await readFile(
+        path("no-simply", "tests", "fail", "flags-it", "flags-it.md"),
+        "utf8"
+      )
     ).toBe("mine");
   });
 

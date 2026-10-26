@@ -825,8 +825,8 @@ function actionMessages(
  * Vale reads the key: it is a common field of every check, measured accepted
  * since 3.22.0 and announced with `vale test` in 3.24.0, and the generated
  * vocabulary records it as one. Taskless refuses it anyway. `verify` judges a
- * Vale rule by the documents under `.tests/pass` and `.tests/fail`, which are
- * whole files in any format the rule reaches, and it never runs `vale test`. A
+ * Vale rule by the case directories under `tests/pass` and `tests/fail`, which
+ * hold whole files in any format the rule reaches, and it never runs `vale test`. A
  * rule carrying cases there would read as tested while nothing ran them, and
  * a second place to write a rule's cases is a second place for them to drift.
  *
@@ -843,8 +843,9 @@ function testsMessages(
       message:
         "'tests' holds cases for `vale test`, which Taskless never runs. " +
         "A Vale rule is verified by its fixtures: write each case as a " +
-        "document under .tests/pass (the rule must stay quiet) or " +
-        ".tests/fail (the rule must fire), then delete the key.",
+        "directory under tests/pass (the rule must stay quiet) or " +
+        "tests/fail (the rule must fire), holding the document at a path " +
+        "the rule's .vale.ini matchers admit, then delete the key.",
     },
   ];
 }

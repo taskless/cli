@@ -131,7 +131,7 @@ describe("a schema-0 project with timestamped ids, migrated end to end", () => {
     );
     await writeFile(
       join(cwd, ".taskless", "rule-tests", `${TIMESTAMPED}-test.yml`),
-      `id: ${TIMESTAMPED}\nvalid: []\ninvalid: []\n`
+      `id: ${TIMESTAMPED}\nvalid:\n  - bar()\ninvalid:\n  - foo\n`
     );
   });
 
@@ -143,9 +143,11 @@ describe("a schema-0 project with timestamped ids, migrated end to end", () => {
     await ensureTasklessDirectory(cwd);
     const rule = join(cwd, ".taskless", "rules", "sg", TIMESTAMPED);
     expect(existsSync(join(rule, `${TIMESTAMPED}.yml`))).toBe(true);
-    expect(existsSync(join(rule, ".tests", `${TIMESTAMPED}-test.yml`))).toBe(
-      true
-    );
+    // Migration 10 adopts it into `.tests/`, and migration 12 then splits it
+    // into case directories, so neither legacy location survives.
+    expect(existsSync(join(rule, "tests/pass/pass-01/pass-01.ts"))).toBe(true);
+    expect(existsSync(join(rule, "tests/fail/fail-01/fail-01.ts"))).toBe(true);
+    expect(existsSync(join(rule, ".tests"))).toBe(false);
     expect(existsSync(join(cwd, ".taskless", "sg"))).toBe(false);
   });
 });

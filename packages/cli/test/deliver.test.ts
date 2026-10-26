@@ -65,7 +65,7 @@ describe("delivering a rule as a file set", () => {
       delivered("runtime", "logs-abc12345", [
         { path: "check.ts", content: "export default async () => [];\n" },
         { path: "captures/logs.yml", content: CAPTURE },
-        { path: ".tests/valid/sample.ts", content: "const x = 1;\n" },
+        { path: "tests/pass/sample/sample.ts", content: "const x = 1;\n" },
       ])
     );
 
@@ -75,9 +75,9 @@ describe("delivering a rule as a file set", () => {
     await expect(
       readFile(join(directory, "captures", "logs.yml"), "utf8")
     ).resolves.toContain("kind: runtime");
-    expect(existsSync(join(directory, ".tests", "valid", "sample.ts"))).toBe(
-      true
-    );
+    expect(
+      existsSync(join(directory, "tests", "pass", "sample", "sample.ts"))
+    ).toBe(true);
   });
 
   it("writes a Vale rule with its own config", async () => {
@@ -286,10 +286,26 @@ describe("a delivered set defines what the rule directory contains", () => {
     expect(existsSync(join(directory, "captures", "logs.yml"))).toBe(true);
   });
 
-  it("removes .tests/ fixtures the set does not mention", async () => {
+  it("removes tests/ fixtures the set does not mention", async () => {
     // v2 serves a rule's fixtures in every file set, so a fixture the set does
     // not name is stale. Left in place it would make `taskless verify` judge
     // the rule against cases nobody issued.
+    const directory = await writeComplete();
+    await mkdir(join(directory, "tests", "fail", "stale"), { recursive: true });
+    await writeFile(
+      join(directory, "tests", "fail", "stale", "stale.ts"),
+      "console.log(1);\n",
+      "utf8"
+    );
+
+    await writeComplete();
+
+    expect(existsSync(join(directory, "tests", "fail", "stale"))).toBe(false);
+  });
+
+  it("removes a local legacy .tests/ the set does not mention", async () => {
+    // What migration 12 could not convert stays under `.tests/`. A delivery
+    // replaces the directory, so those leftovers go with everything else.
     const directory = await writeComplete();
     await mkdir(join(directory, ".tests", "valid"), { recursive: true });
     await writeFile(
@@ -308,9 +324,7 @@ describe("a delivered set defines what the rule directory contains", () => {
     expect(
       existsSync(join(directory, ".tests", "logs-abc12345-1970-test.yml"))
     ).toBe(false);
-    expect(existsSync(join(directory, ".tests", "valid", "sample.ts"))).toBe(
-      false
-    );
+    expect(existsSync(join(directory, ".tests"))).toBe(false);
   });
 
   it("purges a nested .tests/, which is not the rule's test directory", async () => {
@@ -520,7 +534,7 @@ describe("a delivery that carries no fixtures", () => {
     // exists to break.
     expect(warnings).toHaveLength(1);
     expect(warnings[0]).toContain("no-eval-abc12345");
-    expect(warnings[0]).toContain(".tests/");
+    expect(warnings[0]).toContain("tests/");
     expect(
       existsSync(
         join(
@@ -547,16 +561,16 @@ describe("a delivery that carries no fixtures", () => {
   });
 
   it("warns when the set carries no fixtures, since the purge removed the old ones", async () => {
-    // The set is the directory, `.tests/` included, so a set with no
+    // The set is the directory, `tests/` included, so a set with no
     // fixtures leaves a rule with none, and the warning is true of the rule.
     const testsDirectory = join(
       ruleDirectory(cwd, "sg", "no-eval-abc12345"),
-      ".tests"
+      "tests"
     );
-    await mkdir(testsDirectory, { recursive: true });
+    await mkdir(join(testsDirectory, "pass", "pass-01"), { recursive: true });
     await writeFile(
-      join(testsDirectory, "no-eval-abc12345-20260101-test.yml"),
-      "id: no-eval-abc12345\nvalid:\n  - const a = 1;\n",
+      join(testsDirectory, "pass", "pass-01", "pass-01.ts"),
+      "const a = 1;\n",
       "utf8"
     );
 
@@ -570,9 +584,7 @@ describe("a delivery that carries no fixtures", () => {
     );
 
     expect(warnings).toHaveLength(1);
-    expect(
-      existsSync(join(testsDirectory, "no-eval-abc12345-20260101-test.yml"))
-    ).toBe(false);
+    expect(existsSync(testsDirectory)).toBe(false);
   });
 
   it("stays silent when fixtures are present", async () => {
@@ -581,7 +593,7 @@ describe("a delivery that carries no fixtures", () => {
       cwd,
       delivered("sg", "no-eval-abc12345", [
         { path: "no-eval-abc12345.yml", content: SG_RULE },
-        { path: ".tests/valid/sample.ts", content: "const x = 1;\n" },
+        { path: "tests/pass/sample/sample.ts", content: "const x = 1;\n" },
       ]),
       (message) => warnings.push(message)
     );
@@ -604,26 +616,140 @@ describe("a delivery that carries no fixtures", () => {
 });
 
 describe("what counts as a fixture", () => {
-  it("accepts a fixture at any depth under .tests/", () => {
+  it("accepts a fixture at any depth under tests/", () => {
     // Depth is deliberately not policed here; each engine's runner judges what
     // a meaningful fixture is.
     expect(
       describeMissingFixtures([
         { path: "check.ts", content: "" },
-        { path: ".tests/fail/deeply/nested/case/input.ts", content: "" },
+        { path: "tests/fail/deeply/nested/case/input.ts", content: "" },
       ])
     ).toBeUndefined();
   });
 
-  it("does not accept a nested .tests/ that an engine would read", () => {
-    // Only the top-level `.tests/` is the fixture directory. `captures/.tests/`
-    // is a file an engine reads, which is the same distinction
-    // `PRESERVED_SUBTREES` draws when it decides what a purge may remove.
+  it("accepts a fixture under the legacy .tests/ as well", () => {
+    // A service that has not moved still serves `.tests/`. It is converted
+    // before writing, but it is a fixture either way.
     expect(
       describeMissingFixtures([
         { path: "check.ts", content: "" },
+        { path: ".tests/fail/case/input.ts", content: "" },
+      ])
+    ).toBeUndefined();
+  });
+
+  it("does not accept a nested tests/ that an engine would read", () => {
+    // Only the top-level fixture directory counts. `captures/tests/` is a file
+    // an engine reads, which is the same distinction `PRESERVED_SUBTREES`
+    // draws when it decides what a purge may remove.
+    expect(
+      describeMissingFixtures([
+        { path: "check.ts", content: "" },
+        { path: "captures/tests/logs.yml", content: "" },
         { path: "captures/.tests/logs.yml", content: "" },
       ])
     ).toBeDefined();
+  });
+});
+
+describe("a served set in the legacy .tests/ layout", () => {
+  const SG_RULE = [
+    "id: no-eval-abc12345",
+    "language: TypeScript",
+    "severity: error",
+    "message: no eval",
+    "rule:",
+    "  pattern: eval($A)",
+    "",
+  ].join("\n");
+  const SG_TEST = [
+    "id: no-eval-abc12345",
+    "valid:",
+    "  - JSON.parse(x)",
+    "  - const y = 1;",
+    "invalid:",
+    "  - eval(x)",
+    "",
+  ].join("\n");
+
+  it("is written as case directories, and never as .tests/", async () => {
+    // Until the service emits `tests/<bucket>/<case>/`, a served set carries
+    // its fixtures as an ast-grep test YAML. Delivery converts it just in time
+    // so the CLI never writes a layout its own `verify` does not read.
+    const warnings: string[] = [];
+    await writeServedRule(
+      cwd,
+      delivered("sg", "no-eval-abc12345", [
+        { path: "no-eval-abc12345.yml", content: SG_RULE },
+        { path: ".tests/no-eval-abc12345-test.yml", content: SG_TEST },
+      ]),
+      (message) => warnings.push(message)
+    );
+
+    const directory = ruleDirectory(cwd, "sg", "no-eval-abc12345");
+    expect(existsSync(join(directory, ".tests"))).toBe(false);
+    await expect(
+      readFile(join(directory, "tests/pass/pass-01/pass-01.ts"), "utf8")
+    ).resolves.toBe("JSON.parse(x)\n");
+    await expect(
+      readFile(join(directory, "tests/pass/pass-02/pass-02.ts"), "utf8")
+    ).resolves.toBe("const y = 1;\n");
+    await expect(
+      readFile(join(directory, "tests/fail/fail-01/fail-01.ts"), "utf8")
+    ).resolves.toBe("eval(x)\n");
+    // The signed rule file is never touched by the conversion.
+    await expect(
+      readFile(join(directory, "no-eval-abc12345.yml"), "utf8")
+    ).resolves.toBe(SG_RULE);
+    expect(warnings).toEqual([]);
+  });
+
+  it("writes a set already in the new layout exactly as served", async () => {
+    // The conversion is a no-op for whichever side moves first, so there is
+    // no rollout window to sequence.
+    await writeServedRule(
+      cwd,
+      delivered("sg", "no-eval-abc12345", [
+        { path: "no-eval-abc12345.yml", content: SG_RULE },
+        {
+          path: "tests/pass/json-parse/payload.ts",
+          content: "JSON.parse(x)\n",
+        },
+        { path: "tests/fail/eval-call/payload.ts", content: "eval(x)\n" },
+      ])
+    );
+
+    const directory = ruleDirectory(cwd, "sg", "no-eval-abc12345");
+    await expect(
+      readFile(join(directory, "tests/pass/json-parse/payload.ts"), "utf8")
+    ).resolves.toBe("JSON.parse(x)\n");
+    await expect(
+      readFile(join(directory, "tests/fail/eval-call/payload.ts"), "utf8")
+    ).resolves.toBe("eval(x)\n");
+    expect(existsSync(join(directory, "tests", "pass", "pass-01"))).toBe(false);
+  });
+
+  it("moves a fixture it cannot convert under tests/ as served, and names it", async () => {
+    // Never `.tests/`, even when the converter gives up: `verify` names the
+    // case, and the warning says why it was not converted.
+    const warnings: string[] = [];
+    await writeServedRule(
+      cwd,
+      delivered("runtime", "logs-abc12345", [
+        { path: "check.ts", content: "export default async () => [];\n" },
+        { path: "captures/logs.yml", content: CAPTURE },
+        { path: ".tests/fail/case/input.ts", content: "console.log(1);\n" },
+        { path: ".tests/README.md", content: "notes\n" },
+      ]),
+      (message) => warnings.push(message)
+    );
+
+    const directory = ruleDirectory(cwd, "runtime", "logs-abc12345");
+    expect(existsSync(join(directory, ".tests"))).toBe(false);
+    // A runtime case is already a directory: only its parent changes.
+    expect(existsSync(join(directory, "tests/fail/case/input.ts"))).toBe(true);
+    expect(existsSync(join(directory, "tests/README.md"))).toBe(true);
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]).toContain("README.md");
   });
 });

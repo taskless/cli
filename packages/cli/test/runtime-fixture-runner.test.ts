@@ -148,7 +148,7 @@ async function writeCase(
 ): Promise<string> {
   const matching = options.matching ?? true;
   const flagged = options.flagged ?? bucket === "fail";
-  const directory = join(ruleDirectory(), ".tests", bucket, name);
+  const directory = join(ruleDirectory(), "tests", bucket, name);
   await mkdir(directory, { recursive: true });
   const source = matching
     ? flagged
@@ -436,7 +436,7 @@ describe("an unreadable bucket", () => {
   it("is an error rather than an empty bucket", async () => {
     await writeRule();
     await writeCase("fail", "uses-eval");
-    const passBucket = join(ruleDirectory(), ".tests", "pass");
+    const passBucket = join(ruleDirectory(), "tests", "pass");
     await mkdir(passBucket, { recursive: true });
     await chmod(passBucket, 0o000);
 
@@ -455,7 +455,7 @@ describe("an unreadable bucket", () => {
   it("refuses a loose file in a bucket, naming it", async () => {
     await writeRule();
     await writeCase("fail", "uses-eval");
-    const passBucket = join(ruleDirectory(), ".tests", "pass");
+    const passBucket = join(ruleDirectory(), "tests", "pass");
     await mkdir(passBucket, { recursive: true });
     await writeFile(join(passBucket, "loose.ts"), "const x = 1;\n");
 

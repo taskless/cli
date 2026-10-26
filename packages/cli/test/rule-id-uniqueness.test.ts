@@ -113,7 +113,13 @@ async function exists(path: string): Promise<boolean> {
   }
 }
 
-/** An sg rule, with the `id:` field and one fixture the rename has to follow. */
+/**
+ * An sg rule, with the `id:` field and one fixture the rename has to follow.
+ *
+ * In the `.tests/<id>-*-test.yml` layout on purpose: migration 0009 runs on a
+ * project before 0012 moves fixtures to `tests/<bucket>/<case>/`, so this is
+ * the layout it actually meets.
+ */
 async function sgRule(id: string): Promise<string> {
   const directory = join(cwd, ".taskless", "rules", "sg", id);
   await mkdir(join(directory, ".tests"), { recursive: true });
@@ -625,7 +631,7 @@ describe("writeServedRule keeps working through a collision", () => {
             content: `id: no-debugger\nlanguage: TypeScript\nseverity: error\nmessage: no debugger\nrule:\n  pattern: debugger\n`,
           },
           // A fixture, so the only warning this can produce is a collision.
-          { path: ".tests/fail/case.ts", content: "debugger;\n" },
+          { path: "tests/fail/case/case.ts", content: "debugger;\n" },
         ],
         signatures: [],
       } as unknown as Parameters<typeof writeServedRule>[1],

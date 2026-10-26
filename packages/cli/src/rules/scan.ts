@@ -254,9 +254,8 @@ const EXCLUDED_DIRECTORIES = [TASKLESS_DIRECTORY, GIT_DIRECTORY] as const;
  * `--globs` survives `--no-ignore hidden` rather than being overridden by it,
  * and neither flag touches rule discovery — `ruleDirs` reads the rules out of
  * `.taskless/` by its own walk, so excluding that path from the *scan* does not
- * stop the rules from loading, and a rule's `.tests/` directory is still
- * skipped rather than parsed as a rule (see `RULE_TESTS_DIRECTORY` in
- * `engines.ts`).
+ * stop the rules from loading. That walk reads a rules-only copy of the tree,
+ * so a rule's `tests/` is never reached by it (see `assembleSgConfig`).
  */
 export function sgWalkArgv(paths: string[]): string[] {
   const exclude = isWholeProjectWalk(paths)

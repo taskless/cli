@@ -125,17 +125,10 @@ export const RULE_CONSTRAINTS = [
     id: "sg-test-file-required",
     engine: "sg",
     enforcedBy: "validate",
-    summary: "A rule must ship at least one test file under `.tests/`.",
+    summary:
+      "A rule must ship at least one fixture case under `tests/pass/` or `tests/fail/`.",
     rationale:
-      "A rule with no fixtures has shown neither that it fires nor that it stays quiet. `validate` requires the file; `verify` requires the cases inside it to cover both.",
-  },
-  {
-    id: "sg-fixture-id-matches-rule",
-    engine: "sg",
-    enforcedBy: "verify",
-    summary: "A test file's own `id:` must equal the rule id.",
-    rationale:
-      "Fixtures are attributed by the id inside the file, not by its name. A fixture carrying another rule's id is silently not counted, so a rule that ships one reads as a rule that shipped none. `validate` passes, because the FILE is there; `verify` is where it bites.",
+      "A rule with no fixtures has shown neither that it fires nor that it stays quiet. `validate` requires a case; `verify` requires the cases to cover both buckets.",
   },
   // --- Vale: the rule's own `.vale.ini`, checked as a parsed structure -------
   //

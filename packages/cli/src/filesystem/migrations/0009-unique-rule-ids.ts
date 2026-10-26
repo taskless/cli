@@ -15,7 +15,7 @@ import { pathExists } from "../../rules/reconcile-marker";
 import {
   ENGINE_LAYOUTS,
   ENGINES,
-  RULE_TESTS_DIRECTORY,
+  LEGACY_RULE_TESTS_DIRECTORY,
   type EngineName,
 } from "../../rules/layout";
 import { isValidRuleId } from "../../rules/validate-id";
@@ -335,7 +335,7 @@ async function renameSgFixtures(
   from: string,
   to: string
 ): Promise<string[]> {
-  const testsPath = join(ruleDirectoryPath, RULE_TESTS_DIRECTORY);
+  const testsPath = join(ruleDirectoryPath, LEGACY_RULE_TESTS_DIRECTORY);
   let entries: string[];
   try {
     entries = await readdir(testsPath);
@@ -349,7 +349,9 @@ async function renameSgFixtures(
     if (!entry.endsWith("-test.yml")) continue;
     if (entry.startsWith(`${to}-`)) {
       if (await rewriteIdField(join(testsPath, entry), from, to)) {
-        lines.push(`    rewrote ${RULE_TESTS_DIRECTORY}/${entry} id: field`);
+        lines.push(
+          `    rewrote ${LEGACY_RULE_TESTS_DIRECTORY}/${entry} id: field`
+        );
       }
       continue;
     }
@@ -358,7 +360,7 @@ async function renameSgFixtures(
     await rename(join(testsPath, entry), join(testsPath, renamed));
     const rewritten = await rewriteIdField(join(testsPath, renamed), from, to);
     lines.push(
-      `    renamed ${RULE_TESTS_DIRECTORY}/${entry} -> ${RULE_TESTS_DIRECTORY}/${renamed}${rewritten ? " and its id: field" : ""}`
+      `    renamed ${LEGACY_RULE_TESTS_DIRECTORY}/${entry} -> ${LEGACY_RULE_TESTS_DIRECTORY}/${renamed}${rewritten ? " and its id: field" : ""}`
     );
   }
   return lines;

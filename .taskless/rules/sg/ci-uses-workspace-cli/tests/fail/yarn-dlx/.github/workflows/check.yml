@@ -1,0 +1,3 @@
+steps:
+  - name: Another runner, same published build
+    run: yarn dlx @taskless/cli check

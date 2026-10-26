@@ -1,8 +1,8 @@
 import { readdir } from "node:fs/promises";
 import { join } from "node:path";
 
-import { listRuleIds, ruleDirectory } from "./engines";
-import { ENGINES, RULE_TESTS_DIRECTORY, type EngineName } from "./layout";
+import { isFixtureDirectoryName, listRuleIds, ruleDirectory } from "./engines";
+import { ENGINES, type EngineName } from "./layout";
 import { signRuleFile } from "./rule-hash";
 import type { Snapshot } from "./snapshot";
 
@@ -98,11 +98,12 @@ export async function reportRules(snapshot: Snapshot): Promise<RuleReport> {
 
 /**
  * Every regular file under a rule directory, recursively, except the rule's
- * own `.tests/`, as sorted `/`-separated paths.
+ * own fixtures (`tests/`, or a legacy `.tests/` migration `12` could not
+ * convert), as sorted `/`-separated paths.
  *
  * The snapshot has already dereferenced links and dropped operating-system
  * metadata, so every entry here is a real file an engine could read. Only the
- * TOP-LEVEL `.tests/` is a fixture directory; a nested `captures/.tests/` is
+ * TOP-LEVEL fixture directory is skipped; a nested `captures/tests/` is
  * reported like any other file, because an engine reads it.
  */
 async function listReportedPaths(directory: string): Promise<string[]> {
@@ -111,7 +112,7 @@ async function listReportedPaths(directory: string): Promise<string[]> {
     const entries = await readdir(absolute, { withFileTypes: true });
     for (const entry of entries) {
       const path = prefix === "" ? entry.name : `${prefix}/${entry.name}`;
-      if (prefix === "" && entry.name === RULE_TESTS_DIRECTORY) continue;
+      if (prefix === "" && isFixtureDirectoryName(entry.name)) continue;
       if (entry.isDirectory()) {
         await walk(join(absolute, entry.name), path);
       } else if (entry.isFile()) {

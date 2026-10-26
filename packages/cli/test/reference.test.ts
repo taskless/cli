@@ -108,9 +108,16 @@ describe("the reference corpus payload", () => {
     // iterating whatever the manifest happens to hold would pass trivially
     // over a shrunken list, which is exactly the failure being guarded.
     const required: Record<string, readonly string[]> = {
-      sg: [".tests/no-eval-call-test.yml"],
-      vale: [".vale.ini", ".tests/pass/README.md", ".tests/fail/README.md"],
-      runtime: [".tests/pass/declared/.env", ".tests/fail/undeclared/.env"],
+      sg: [
+        "tests/pass/json-parse/payload.ts",
+        "tests/fail/eval-call/payload.ts",
+      ],
+      vale: [
+        ".vale.ini",
+        "tests/pass/use-in-prose/README.md",
+        "tests/fail/utilize-in-prose/README.md",
+      ],
+      runtime: ["tests/pass/declared/.env", "tests/fail/undeclared/.env"],
     };
 
     // A fourth sample has to be added here as well as to the manifest. That is
@@ -178,10 +185,10 @@ describe("the reference corpus payload", () => {
         expect(rulePaths.has(test.path), `${test.path} is in both halves`).toBe(
           false
         );
-        expect(test.path.startsWith(".tests/")).toBe(true);
+        expect(test.path.startsWith("tests/")).toBe(true);
       }
       for (const file of rule.rule) {
-        expect(file.path.startsWith(".tests/")).toBe(false);
+        expect(file.path.startsWith("tests/")).toBe(false);
       }
     }
   });
@@ -197,30 +204,55 @@ describe("the reference corpus payload", () => {
     expect(runtime.tests.grouping).toBe("case-directories");
     const failing = runtime.tests.cases?.filter((one) => one.bucket === "fail");
     expect(failing).toHaveLength(1);
-    expect(failing?.[0]?.path).toBe(".tests/fail/undeclared");
+    expect(failing?.[0]?.path).toBe("tests/fail/undeclared");
     expect(failing?.[0]?.files.toSorted()).toEqual([
-      ".tests/fail/undeclared/.env",
-      ".tests/fail/undeclared/src/config.ts",
+      "tests/fail/undeclared/.env",
+      "tests/fail/undeclared/src/config.ts",
     ]);
 
-    // A vale case is the document, not the bucket it sits in.
-    const vale = ruleFor(reference, "vale");
-    expect(vale.tests.grouping).toBe("case-documents");
-    for (const one of vale.tests.cases ?? []) {
-      expect(one.files).toEqual([one.path]);
+    // Every engine groups the same way now, so a consumer needs one reader.
+    for (const rule of reference.rules) {
+      expect(rule.tests.grouping, rule.id).toBe("case-directories");
+      expect(rule.tests.cases, rule.id).toBeDefined();
     }
+
+    // A vale case is a directory holding its document at a scoped path.
+    const vale = ruleFor(reference, "vale");
+    expect(
+      vale.tests.cases.map((one) => [one.bucket, one.path, one.files])
+    ).toEqual(
+      expect.arrayContaining([
+        [
+          "pass",
+          "tests/pass/use-in-prose",
+          ["tests/pass/use-in-prose/README.md"],
+        ],
+        [
+          "fail",
+          "tests/fail/utilize-in-prose",
+          ["tests/fail/utilize-in-prose/README.md"],
+        ],
+      ])
+    );
   });
 
-  it("publishes no cases for ast-grep, and that absence is the statement", async () => {
+  it("publishes ast-grep cases as directories, not an ast-grep test file", async () => {
     const reference = await readReference();
     const sg = ruleFor(reference, "sg");
 
-    // Not an omission. The grouping is inside ast-grep's own test file, in a
-    // schema ast-grep documents and owns. Restating it here would be a copy
-    // this repository would then have to keep true.
-    expect(sg.tests.grouping).toBe("ast-grep-test");
-    expect(sg.tests.cases).toBeUndefined();
-    expect(sg.tests.files).toHaveLength(1);
+    // At version 3 the grouping lived inside ast-grep's own test YAML and no
+    // cases were published. A case is now judged by `check` over its
+    // directory, so the corpus states it like every other engine's.
+    expect(sg.tests.grouping).toBe("case-directories");
+    expect(
+      sg.tests.cases.map((one) => [one.bucket, one.name]).toSorted()
+    ).toEqual([
+      ["fail", "eval-call"],
+      ["pass", "json-parse"],
+    ]);
+    for (const file of sg.tests.files) {
+      expect(file.path).not.toMatch(/\.ya?ml$/);
+    }
   });
 
   it("names every case file exactly once, and names no file it does not carry", async () => {
@@ -252,7 +284,7 @@ describe("the reference corpus payload", () => {
     expect(reference.layout.ruleDirectory).toBe(
       ".taskless/rules/{engine}/{id}"
     );
-    expect(reference.layout.testsDirectory).toBe(".tests");
+    expect(reference.layout.testsDirectory).toBe("tests");
 
     // Generated from the table the CLI dispatches on, so it cannot describe a
     // layout the CLI does not implement.
@@ -284,10 +316,11 @@ describe("the reference corpus payload", () => {
 
   it("states a version a consumer can refuse on", async () => {
     const reference = await readReference();
-    // 3 is the command rename: `enforcedBy` values name different commands
-    // than they did at 2. A consumer that asserts this and stops is behaving
-    // correctly, which is what makes the bump a sufficient signal on its own.
-    expect(reference.version).toBe(3);
+    // 4 is the fixture layout: every engine's cases are directories under
+    // `tests/`, so a consumer reading `.tests/` paths or an ast-grep test YAML
+    // would misread every case. A consumer that asserts this and stops is
+    // behaving correctly, which is what makes the bump a sufficient signal.
+    expect(reference.version).toBe(4);
   });
 
   it("carries a structural fingerprint that moves with the corpus shape", async () => {
@@ -435,23 +468,34 @@ describe("the corpus refuses fixtures it cannot group", () => {
     // when it reads these buckets off disk. Without this, the corpus publishes
     // a one-file "directory" case that `taskless verify` throws on.
     expect(() =>
-      buildReference([refusalInput("runtime", [".tests/fail/oops.ts"])])
+      buildReference([refusalInput("runtime", ["tests/fail/oops.ts"])])
     ).toThrow(/has no root to be/);
   });
 
-  it("rejects a nested fixture where a vale case is one document", () => {
-    // Vale lints the rule's whole directory, so a nested fixture is linted and
-    // never attributed to a case — it would be graded, invisibly.
+  it("rejects a bare vale document, since every engine's case is a directory", () => {
+    // At version 3 a vale case was one document directly in its bucket. It is
+    // now judged with its case directory as the root, so a bare document has
+    // no root to be, exactly as a bare runtime file has none.
     expect(() =>
-      buildReference([refusalInput("vale", [".tests/pass/deep/README.md"])])
-    ).toThrow(/is nested/);
+      buildReference([refusalInput("vale", ["tests/pass/README.md"])])
+    ).toThrow(/has no root to be/);
+  });
+
+  it("rejects a fixture still under the legacy .tests/ directory", () => {
+    // The corpus publishes the layout the CLI reads. A `.tests/` path would
+    // describe a layout `verify` no longer looks in.
+    expect(() =>
+      buildReference([
+        refusalInput("runtime", [".tests/fail/case/src/config.ts"]),
+      ])
+    ).toThrow(/is not under/);
   });
 
   it("rejects a fixture that is under neither bucket", () => {
     // Nothing decides which side of the claim it asserts, so grouping it at
     // all would be a guess published as fact.
     expect(() =>
-      buildReference([refusalInput("vale", [".tests/README.md"])])
+      buildReference([refusalInput("vale", ["tests/README.md"])])
     ).toThrow(/is not under/);
   });
 
@@ -459,7 +503,7 @@ describe("the corpus refuses fixtures it cannot group", () => {
     // A bucket is where cases live, not a case. Accepting it would emit a case
     // with an empty name whose path collides with the bucket.
     expect(() =>
-      buildReference([refusalInput("vale", [".tests/pass"])])
+      buildReference([refusalInput("vale", ["tests/pass"])])
     ).toThrow(/is the bucket directory itself/);
   });
 });

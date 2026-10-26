@@ -357,9 +357,7 @@ export async function planCheck(
  */
 function renameAdvice(ruleId: string, engines: readonly EngineName[]): string {
   const places: Record<EngineName, string> = {
-    sg:
-      `under sg, the directory, ${ruleId}.yml and its \`id:\`, and each ` +
-      `.tests/${ruleId}-*-test.yml and its \`id:\``,
+    sg: `under sg, the directory, ${ruleId}.yml and its \`id:\``,
     vale:
       `under vale, the directory, ${ruleId}.yml, and in .vale.ini the ` +
       `\`tskl) rule = ${ruleId}\` breadcrumb and the \`${ruleId}.${ruleId}\` key`,

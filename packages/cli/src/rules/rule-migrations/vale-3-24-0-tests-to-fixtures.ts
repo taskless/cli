@@ -1,17 +1,22 @@
 import { mkdir, readdir, readFile, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 
 import { isMap, isScalar, isSeq, parseAllDocuments } from "yaml";
 
+import {
+  deriveFixturePath,
+  valeFixtureScope,
+  type FixtureScope,
+} from "../fixture-convert";
 import { RULE_TESTS_DIRECTORY } from "../layout";
 import type { RuleMigration } from "../rule-migrate";
 
 /**
- * Move a Vale rule's `tests:` cases into `.tests/pass` and `.tests/fail`.
+ * Move a Vale rule's `tests:` cases into `tests/pass/` and `tests/fail/`.
  *
  * Vale 3.24.0 runs the cases a rule carries under `tests:` with `vale test`.
- * Taskless never runs it: `verify` judges a Vale rule by the documents under
- * `.tests/`, and `validate` refuses the key from 3.24.0 on, so a rule written
+ * Taskless never runs it: `verify` judges a Vale rule by the case directories
+ * under `tests/`, and `validate` refuses the key from 3.24.0 on, so a rule written
  * against 0.12.0, which accepted it, would otherwise stop validating.
  *
  * A case is one document and whether the rule fires on it, which is exactly
@@ -20,17 +25,20 @@ import type { RuleMigration } from "../rule-migrate";
  *
  * | the case                       | becomes          |
  * | ------------------------------ | ---------------- |
- * | `want` with any text           | `.tests/fail/`   |
- * | `want` that is empty           | `.tests/pass/`   |
- * | no `want`, but `contains`      | `.tests/fail/`   |
- * | only `absent`                  | `.tests/pass/`   |
+ * | `want` with any text           | `tests/fail/`    |
+ * | `want` that is empty           | `tests/pass/`    |
+ * | no `want`, but `contains`      | `tests/fail/`    |
+ * | only `absent`                  | `tests/pass/`    |
  *
  * What `want` pins beyond that, the exact line, column and message, is not
  * something a rule's verification needs, and it is not carried.
  *
- * The fixture holds the case's `input` byte for byte, is named for the case,
- * and takes its extension from `format` (`md` when there is none, as Vale
- * reads it). A rule with a case this cannot place is left exactly as it is:
+ * Each case becomes a case directory named for the case. Its one document
+ * holds the case's `input` byte for byte, takes its extension from `format`
+ * (`md` when there is none, as Vale reads it), and sits at a path the rule's
+ * own `.vale.ini` matchers admit, because a case is linted under those
+ * matchers. Where no admitted path can be derived it sits at the case root,
+ * and `verify` names the scope that excluded it. A rule with a case this cannot place is left exactly as it is:
  * one that reads its input through a `view`, which this layout never defines,
  * or that names another rule file in `rule:`. `validate` keeps refusing that
  * rule, and its message says what to do.
@@ -180,14 +188,17 @@ async function readExisting(path: string): Promise<string | undefined> {
 async function writeFixture(
   ruleDirectory: string,
   placed: PlacedCase,
+  scope: FixtureScope,
   taken: Set<string>
 ): Promise<string | undefined> {
   const bucket = join(RULE_TESTS_DIRECTORY, placed.bucket);
-  await mkdir(join(ruleDirectory, bucket), { recursive: true });
   for (let attempt = 1; ; attempt += 1) {
     const stem =
       attempt === 1 ? placed.name : `${placed.name}-${String(attempt)}`;
-    const relative = join(bucket, `${stem}.${placed.extension}`);
+    const document =
+      deriveFixturePath(scope, stem, placed.extension) ??
+      `${stem}.${placed.extension}`;
+    const relative = join(bucket, stem, document);
     if (taken.has(relative)) continue;
     const existing = await readExisting(join(ruleDirectory, relative));
     if (existing === placed.input) {
@@ -196,16 +207,26 @@ async function writeFixture(
     }
     if (existing !== undefined) continue;
     taken.add(relative);
+    await mkdir(dirname(join(ruleDirectory, relative)), { recursive: true });
     await writeFile(join(ruleDirectory, relative), placed.input, "utf8");
     return relative;
   }
+}
+
+/** The scope the rule's own `.vale.ini` declares, or none when it has no config. */
+async function ruleScope(
+  directory: string,
+  ruleId: string
+): Promise<FixtureScope> {
+  const config = await readExisting(join(directory, ".vale.ini"));
+  return valeFixtureScope(ruleId, config ?? "");
 }
 
 const migration: RuleMigration = {
   engine: "vale",
   engineVersion: "3.24.0",
   summary:
-    "Vale rule `tests:` cases moved into `.tests/pass` and `.tests/fail`",
+    "Vale rule `tests:` cases moved into `tests/pass/` and `tests/fail/`",
   async apply(engineDirectory) {
     let ruleDirectories;
     try {
@@ -232,8 +253,9 @@ const migration: RuleMigration = {
         // in the rule, so the rerun finds them, sees its own fixtures, and
         // only finishes the removal.
         const taken = new Set<string>();
+        const scope = await ruleScope(directory, ruleDirectory.name);
         for (const placed of plan.cases) {
-          const fixture = await writeFixture(directory, placed, taken);
+          const fixture = await writeFixture(directory, placed, scope, taken);
           if (fixture !== undefined) {
             written.push(join(ruleDirectory.name, fixture));
           }

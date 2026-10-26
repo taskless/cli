@@ -1,0 +1,3 @@
+steps:
+  - name: Nightly smoke test
+    run: npx @taskless/cli-nightly@0.10.2 check

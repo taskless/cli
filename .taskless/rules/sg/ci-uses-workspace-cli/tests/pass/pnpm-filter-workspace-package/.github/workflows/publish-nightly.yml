@@ -1,0 +1,3 @@
+steps:
+  - name: --filter addresses the workspace package, not a published one
+    run: pnpm --filter @taskless/cli build:nightly

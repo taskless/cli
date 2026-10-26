@@ -45,15 +45,26 @@ describe("the check snapshot", () => {
 
   beforeEach(async () => {
     cwd = await mkdtemp(join(tmpdir(), "tskl-snapshot-"));
-    await mkdir(join(rules(), "sg", "no-eval-3fa9c21b", ".tests"), {
-      recursive: true,
-    });
+    await mkdir(
+      join(rules(), "sg", "no-eval-3fa9c21b", "tests", "fail", "eval"),
+      {
+        recursive: true,
+      }
+    );
     await writeFile(
       join(rules(), "sg", "no-eval-3fa9c21b", "no-eval-3fa9c21b.yml"),
       "id: no-eval-3fa9c21b\n"
     );
     await writeFile(
-      join(rules(), "sg", "no-eval-3fa9c21b", ".tests", "case.ts"),
+      join(
+        rules(),
+        "sg",
+        "no-eval-3fa9c21b",
+        "tests",
+        "fail",
+        "eval",
+        "case.ts"
+      ),
       "eval(x);\n"
     );
   });
@@ -175,13 +186,26 @@ describe("the check snapshot", () => {
     ).toBe(false);
   });
 
-  it("reports a nested .tests/ as an ordinary file; only the top-level one is fixtures", async () => {
-    const nested = join(rules(), "sg", "no-eval-3fa9c21b", "extra", ".tests");
+  it("reports a nested tests/ as an ordinary file; only the top-level one is fixtures", async () => {
+    const nested = join(rules(), "sg", "no-eval-3fa9c21b", "extra", "tests");
     await mkdir(nested, { recursive: true });
     await writeFile(join(nested, "a.yml"), "id: a\n");
     const report = await reportRules(await snap(cwd));
     expect(report.rules[0]?.files.map((file) => file.path)).toEqual([
-      "extra/.tests/a.yml",
+      "extra/tests/a.yml",
+      "no-eval-3fa9c21b.yml",
+    ]);
+  });
+
+  it("does not report a top-level legacy .tests/ that migration 12 left behind", async () => {
+    // Migration 12 leaves an old fixture in place when it cannot convert it.
+    // It is still a fixture, never something an engine reads, so it is not
+    // signed or reported.
+    const legacy = join(rules(), "sg", "no-eval-3fa9c21b", ".tests");
+    await mkdir(legacy, { recursive: true });
+    await writeFile(join(legacy, "no-eval-3fa9c21b-test.yml"), "id: a\n");
+    const report = await reportRules(await snap(cwd));
+    expect(report.rules[0]?.files.map((file) => file.path)).toEqual([
       "no-eval-3fa9c21b.yml",
     ]);
   });

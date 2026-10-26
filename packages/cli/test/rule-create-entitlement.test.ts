@@ -52,7 +52,7 @@ const runtimeRule: StubRule = {
   id: "plan-runtime-rule",
   engine: "runtime",
   files: [
-    { path: ".tests/fail/case.ts", content: "console.log(1);\n" },
+    { path: "tests/fail/case/case.ts", content: "console.log(1);\n" },
     { path: "check.ts", content: "export default async () => [];\n" },
     { path: "captures/logs.yml", content: CAPTURE },
   ],
@@ -62,7 +62,7 @@ const staticRule: StubRule = {
   id: "plan-static-rule",
   engine: "sg",
   files: [
-    { path: ".tests/fail/case.ts", content: "foo();\n" },
+    { path: "tests/fail/case/case.ts", content: "foo();\n" },
     {
       path: "plan-static-rule.yml",
       content:
@@ -203,17 +203,20 @@ describe("rule create/improve: a runtime rule the plan will not run", () => {
 
   it("replaces the rule directory, fixtures included, and creates nested paths", async () => {
     const directory = join(cwd, ".taskless", "rules", "sg", "plan-static-rule");
-    await mkdir(join(directory, ".tests", "stale"), { recursive: true });
-    await writeFile(join(directory, ".tests", "stale", "old.ts"), "old\n");
+    await mkdir(join(directory, "tests", "fail", "stale"), { recursive: true });
+    await writeFile(
+      join(directory, "tests", "fail", "stale", "old.ts"),
+      "old\n"
+    );
     await writeFile(join(directory, "stray.yml"), "id: stray\n");
 
     await stubFetch(staticRule);
     await create();
 
-    expect(existsSync(join(directory, ".tests", "fail", "case.ts"))).toBe(true);
-    expect(existsSync(join(directory, ".tests", "stale", "old.ts"))).toBe(
-      false
-    );
+    expect(
+      existsSync(join(directory, "tests", "fail", "case", "case.ts"))
+    ).toBe(true);
+    expect(existsSync(join(directory, "tests", "fail", "stale"))).toBe(false);
     expect(existsSync(join(directory, "stray.yml"))).toBe(false);
   });
 

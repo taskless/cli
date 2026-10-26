@@ -1,12 +1,18 @@
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join, posix, relative, resolve, sep } from "node:path";
+import { join, resolve } from "node:path";
 
-import { listRuleIds, ruleTestsDirectory } from "../engines";
+import { buildOneRuleValeConfig } from "../assemble";
+import { listRuleIds, ruleConfigPath, ruleTestsDirectory } from "../engines";
 import { RULES_DIRECTORY } from "../layout";
 import {
   bucketEntries,
-  classifyCoverage,
+  casePassed,
+  describeCaseFailures,
+  projectRelative,
+  readRuleFixtures,
+  type CaseOutcome,
+  type FixtureCase,
   type FixtureCoverage,
   type FixtureFinding,
 } from "../fixtures";
@@ -23,12 +29,17 @@ function stylesPath(cwd: string): string {
 }
 
 /**
- * An ephemeral config that enables exactly one rule and nothing else.
+ * An ephemeral config that enables exactly one rule everywhere, `[*]`.
  *
- * Generated rather than committed, per the spec: verification is one-time, and
- * a `rule-tests/<rule>/` subdirectory holds fixtures only. It also has to be
- * *isolating* — a `pass/` fixture proves the rule under test does not fire, and
- * that claim is worthless if some other rule's finding is what got counted.
+ * NOT what a case is judged under. That is the rule's own matchers (see
+ * {@link verifyValeRule}); judging under `[*]` is how a rule whose matchers
+ * matched nothing real passed verification and stayed silent in `check`. This
+ * config answers one question only: a `fail/` case that stayed quiet under the
+ * rule's scope, does it fire with the scope removed? If so, the scope excluded
+ * it, and the author is told to move the fixture rather than fix the pattern.
+ *
+ * It is *isolating*, like the scoped config: a finding from some other rule
+ * must not be what got counted.
  *
  * Three details are load-bearing:
  *
@@ -68,85 +79,18 @@ export function buildIsolatingConfig(cwd: string, ruleId: string): string {
   ].join("\n");
 }
 
-/**
- * Fixture documents directly under `<rule-tests>/<rule>/<bucket>/`.
- *
- * A missing directory is an empty bucket and anything else rethrows, which is
- * {@link bucketEntries}'s decision rather than one taken again here: the
- * buckets are read independently, so a swallowed `EACCES` on `pass/` would
- * silently yield `[]` while `fail/` still had fixtures — the rule would not
- * look one-sided, and could report `passed: true` having never checked the pass
- * side at all.
- *
- * What is Vale's own is the rejection below, and it is the opposite of the
- * runtime engine's: Vale's buckets hold DOCUMENTS, so a nested directory is the
- * error, where runtime's hold one directory per case and a loose file is. A
- * bucket is one directory deep, and a nested directory is rejected rather than
- * ignored. The two halves of verification disagree about recursion: this read
- * is flat, but Vale is invoked over the whole `rule-tests/<rule>` tree and
- * lints recursively. Silently skipping a nested entry therefore fails in the
- * dangerous direction — a nested `pass/` fixture that wrongly fires produces a
- * finding this function never collected, so `unexpectedFindings` discards it,
- * and a nested `fail/` fixture is never required to fire. Either way the rule
- * reports `passed: true` while half its fixtures went unchecked, which is the
- * exact failure `ValeFixtureCoverage` exists to prevent.
- *
- * Flat-and-loud is chosen over recursing because it keeps one layout legal
- * instead of two, and because the error names the offending path at the moment
- * someone creates it.
- */
-async function fixtureFiles(
-  cwd: string,
-  ruleId: string,
-  bucket: "pass" | "fail"
-): Promise<string[]> {
-  const directory = join(valeRuleTestsDirectory(cwd, ruleId), bucket);
-  const entries = await bucketEntries(directory);
-
-  const nested = entries.find((entry) => entry.isDirectory());
-  if (nested !== undefined) {
-    throw new Error(
-      `Vale fixture buckets are flat: ${join(directory, nested.name)} is a ` +
-        `directory. Move its documents directly into ${bucket}/ — Vale lints ` +
-        `the rule's whole directory, so a nested fixture is linted but never ` +
-        `checked.`
-    );
-  }
-
-  return entries
-    .filter((entry) => entry.isFile())
-    .map((entry) => join(directory, entry.name));
-}
-
-/** Vale keys findings by the path it was given, so compare in that shape. */
-function toRelativePosix(cwd: string, absolute: string): string {
-  return relative(cwd, absolute).split(sep).join(posix.sep);
-}
-
-/**
- * Which fixture buckets a rule actually populated.
- *
- * This replaces the earlier `empty: boolean`, which only distinguished "no
- * fixtures at all" from everything else and so let a one-sided rule report
- * `passed: true`. The four cases are kept apart because a caller wants to say
- * different things about them: `"none"` is an unwritten rule, while
- * `"fail-only"`/`"pass-only"` is a half-written one, which is the more
- * misleading state of the two.
- *
- * A name for {@link FixtureCoverage} over Vale's bucket names rather than a
- * fourth hand-written union: the classification is `classifyCoverage`'s, so a
- * caller reading `ValeFixtureCoverage` and one reading `SgFixtureCoverage` are
- * reading the same four states under two vocabularies.
- */
-export type ValeFixtureCoverage = FixtureCoverage<"pass" | "fail">;
+/** Which buckets a Vale rule populated. See {@link FixtureCoverage}. */
+export type ValeFixtureCoverage = FixtureCoverage;
 
 export interface ValeRuleVerification {
   ruleId: string;
   passed: boolean;
-  /** Fixtures that should have fired and did not. */
+  /** `fail/` cases that should have fired and did not, as project-relative directories. */
   missingFailures: string[];
-  /** Fixtures that should have been clean and were not. */
+  /** `pass/` cases that should have been clean and were not, as project-relative directories. */
   unexpectedFindings: string[];
+  /** One line per case that did not come out as its bucket asserts, ready to print. */
+  errors: string[];
   /**
    * Every finding the fixtures produced, each tagged with its bucket.
    *
@@ -163,11 +107,10 @@ export interface ValeRuleVerification {
    */
   findings: FixtureFinding[];
   /**
-   * Which buckets held documents. Only `"both"` can be `passed: true`: a
-   * `fail/` fixture proves the rule fires, a `pass/` fixture proves it does not
-   * over-fire, and either alone is half a claim. A rule with only `pass/`
-   * fixtures passes with `missingFailures: []` without ever demonstrating the
-   * rule can fire at all.
+   * Which buckets held cases. Only `"both"` can be `passed: true`: a `fail/`
+   * case proves the rule fires, a `pass/` case proves it does not over-fire,
+   * and either alone is half a claim. A rule with only `pass/` cases passes
+   * with `missingFailures: []` without ever demonstrating it can fire at all.
    */
   fixtures: ValeFixtureCoverage;
   /**
@@ -177,9 +120,10 @@ export interface ValeRuleVerification {
    * `W101 … isn't a core option` warning — what Vale says about an assignment
    * placed above the first `[…]` section — arrives on exactly this path: exit
    * zero, empty findings, a rule that validates clean while Vale ignores it.
-   * Empty when Vale was never run (a one-sided fixture set short-circuits) and
-   * when it ran with nothing to say; the two are not worth distinguishing, and
-   * empty-never-absent lets a caller concatenate without a fallback.
+   * Collected across every case run, deduplicated. Empty when Vale was never
+   * run (a one-sided fixture set short-circuits) and when it ran with nothing
+   * to say; the two are not worth distinguishing, and empty-never-absent lets a
+   * caller concatenate without a fallback.
    */
   notices: string[];
 }
@@ -200,7 +144,7 @@ export type ValeVerifyOutcome =
   | { status: "failed"; message: string };
 
 /**
- * Rule ids that have a populated `.tests/` directory.
+ * Rule ids that have a populated `tests/` directory.
  *
  * Walks the rule directories rather than a shared tests root: a rule's tests
  * live inside the rule, so "has tests" is a question about the rule directory.
@@ -216,25 +160,52 @@ export async function discoverValeRuleTests(cwd: string): Promise<string[]> {
 }
 
 /**
- * Verify one rule against its fixtures.
+ * Run Vale over one case, with the case directory as its working directory.
  *
- * Both buckets run in a single Vale invocation over the rule's directory —
- * `pass/` and `fail/` are siblings, so one run covers them and halves the
- * process spawns.
+ * Vale resolves a matcher against the working directory (measured on 3.24.0:
+ * under `[docs/**\/*.md]`, `docs/guide/x.md` in the case fires and `x.md` does
+ * not, and the same tree passed from its parent fires nothing), so this is the
+ * rule's scope applied to the case as it is applied to a project. No paths:
+ * `runVale` treats that as a whole-project walk of the case, the walk `check`
+ * makes of a repository.
+ */
+async function runCase(
+  cwd: string,
+  ruleId: string,
+  fixture: FixtureCase,
+  configPath: string,
+  timeoutMs: number | undefined
+): Promise<
+  | { findings: FixtureFinding[]; notices: string[] }
+  | { outcome: ValeRunFailure }
+> {
+  const outcome = await runVale({ cwd: fixture.root, configPath, timeoutMs });
+  if (outcome.status !== "ok") return { outcome };
+  // Only findings for the rule under test count. The config isolates it, so
+  // this should be every finding; filtering anyway means a leak shows up as a
+  // verification that still measures the right thing.
+  const findings = outcome.results
+    .filter((result) => result.ruleId === ruleId)
+    .map((result) => ({
+      ...result,
+      file: projectRelative(cwd, join(fixture.root, result.file)),
+      bucket: fixture.bucket,
+    }));
+  return { findings, notices: outcome.notices };
+}
+
+/**
+ * Verify one rule against its fixture cases.
  *
- * A fixture that produces no finding does not appear in Vale's output at all,
- * so the expected set comes from disk rather than from the output: absence is
- * the signal for `pass/` and the failure for `fail/`, and neither can be read
- * off a payload that simply omits them.
+ * Each case is linted under the rule's OWN matchers, so verification exercises
+ * the scope the rule declares. It used to enable the rule under `[*]`, which
+ * the spec never asked for: a rule whose matchers matched nothing real passed
+ * verification and stayed silent in `check`. A `fail/` case that stays quiet
+ * is linted once more under `[*]`, and if it fires then, the failure says the
+ * scope excluded it.
  *
- * Both buckets have to hold at least one document before the rule can report
- * `passed: true`. An empty fixture directory proves nothing, and reporting it
- * as passing is how an unverified rule ships looking verified — but so is a
- * rule with only `fail/` fixtures (never shown not to over-fire) or only
- * `pass/` fixtures (never shown to fire at all, passing on an empty
- * `missingFailures`). The one-sided cases are the same failure mode, one level
- * less obvious, so `fixtures` records which buckets were populated and only
- * `"both"` is verifiable.
+ * Both buckets have to hold at least one case before the rule can report
+ * `passed: true`, for {@link ValeFixtureCoverage}'s reason.
  *
  * Non-`ok` outcomes come back as `{ outcome }` rather than a verification.
  * The discriminant is deliberately not named for the unavailable case: it
@@ -246,86 +217,105 @@ export async function verifyValeRule(
   ruleId: string,
   options: { timeoutMs?: number } = {}
 ): Promise<ValeRuleVerification | { outcome: ValeRunFailure }> {
-  const [passFixtures, failFixtures] = await Promise.all([
-    fixtureFiles(cwd, ruleId, "pass"),
-    fixtureFiles(cwd, ruleId, "fail"),
-  ]);
+  const empty = (
+    fixtures: ValeFixtureCoverage,
+    errors: string[]
+  ): ValeRuleVerification => ({
+    ruleId,
+    passed: false,
+    missingFailures: [],
+    unexpectedFindings: [],
+    errors,
+    findings: [],
+    fixtures,
+    notices: [],
+  });
 
+  let read;
+  try {
+    read = await readRuleFixtures(cwd, "vale", ruleId);
+  } catch (error) {
+    return empty("none", [
+      error instanceof Error ? error.message : String(error),
+    ]);
+  }
   // Short-circuited before Vale runs: the rule has to be edited either way, so
   // there is nothing a subprocess could add that `fixtures` does not say.
-  const fixtures = classifyCoverage(
-    { name: "pass", count: passFixtures.length },
-    { name: "fail", count: failFixtures.length }
-  );
-  if (fixtures !== "both") {
-    return {
-      ruleId,
-      passed: false,
-      missingFailures: [],
-      unexpectedFindings: [],
-      findings: [],
-      fixtures,
-      notices: [],
-    };
+  if (read.coverage !== "both") return empty(read.coverage, []);
+
+  const configFile = ruleConfigPath(cwd, "vale", ruleId);
+  const source =
+    configFile === undefined ? undefined : await readFile(configFile, "utf8");
+  const scopedConfig =
+    source === undefined
+      ? undefined
+      : buildOneRuleValeConfig(stylesPath(cwd), ruleId, source);
+  if (scopedConfig === undefined) {
+    // `validate` runs first and refuses a missing or rejected `.vale.ini`, so
+    // this is reached only by a caller that skipped it.
+    return empty(read.coverage, [
+      `${ruleId}'s .vale.ini is missing or rejected, so there is no scope to verify under. Run validate.`,
+    ]);
   }
 
-  const configDirectory = mkdtempSync(join(tmpdir(), `vale-verify-${ruleId}-`));
-  const configPath = join(configDirectory, ".vale.ini");
-
+  const scratch = await mkdtemp(join(tmpdir(), `vale-verify-${ruleId}-`));
   try {
-    writeFileSync(configPath, buildIsolatingConfig(cwd, ruleId));
+    const scopedPath = join(scratch, "scoped.ini");
+    const unscopedPath = join(scratch, "unscoped.ini");
+    await writeFile(scopedPath, scopedConfig, "utf8");
+    await writeFile(unscopedPath, buildIsolatingConfig(cwd, ruleId), "utf8");
 
-    const outcome = await runVale({
-      cwd,
-      configPath,
-      paths: [toRelativePosix(cwd, valeRuleTestsDirectory(cwd, ruleId))],
-      timeoutMs: options.timeoutMs,
-    });
-    if (outcome.status !== "ok") return { outcome };
+    const outcomes: CaseOutcome[] = [];
+    const notices = new Set<string>();
+    for (const fixture of read.cases) {
+      const run = await runCase(
+        cwd,
+        ruleId,
+        fixture,
+        scopedPath,
+        options.timeoutMs
+      );
+      if ("outcome" in run) return run;
+      for (const notice of run.notices) notices.add(notice);
+      const outcome: CaseOutcome = { fixture, findings: run.findings };
+      if (fixture.bucket === "fail" && !casePassed(outcome)) {
+        const unscoped = await runCase(
+          cwd,
+          ruleId,
+          fixture,
+          unscopedPath,
+          options.timeoutMs
+        );
+        if ("outcome" in unscoped) return unscoped;
+        outcome.quiet =
+          unscoped.findings.length > 0 ? "scope-excluded" : "no-match";
+      }
+      outcomes.push(outcome);
+    }
 
-    // Only findings for the rule under test count. The config isolates it, so
-    // this should be every finding — filtering anyway means a leak shows up as
-    // a verification that still measures the right thing.
-    const ruleResults = outcome.results.filter(
-      (result) => result.ruleId === ruleId
-    );
-    const firedIn = new Set(ruleResults.map((result) => result.file));
-
-    // The findings themselves, kept rather than reduced away. `firedIn` above
-    // is the same data with everything but the file path thrown out, and what
-    // it throws out — the rendered message, the range, the matched text — is
-    // the only evidence an author has that the rule says what they wrote.
-    //
-    // Bucketed by membership in `pass/`, with `fail/` as the remainder rather
-    // than as a second lookup. Vale ran over the rule's tests directory and
-    // nothing else, and `fixtureFiles` refuses a nested directory inside a
-    // bucket, so every file here is a fixture in one bucket or the other.
-    const passPaths = new Set(
-      passFixtures.map((file) => toRelativePosix(cwd, file))
-    );
-    const findings: FixtureFinding[] = ruleResults.map((result) => ({
-      ...result,
-      bucket: passPaths.has(result.file) ? "pass" : "fail",
-    }));
-
-    const missingFailures = failFixtures
-      .map((file) => toRelativePosix(cwd, file))
-      .filter((file) => !firedIn.has(file));
-    const unexpectedFindings = passFixtures
-      .map((file) => toRelativePosix(cwd, file))
-      .filter((file) => firedIn.has(file));
-
+    const failing = outcomes.filter((outcome) => !casePassed(outcome));
+    const caseDirectory = (outcome: CaseOutcome) =>
+      `${projectRelative(cwd, outcome.fixture.root)}/`;
     return {
       ruleId,
-      passed: missingFailures.length === 0 && unexpectedFindings.length === 0,
-      missingFailures,
-      unexpectedFindings,
-      findings,
-      fixtures,
-      notices: outcome.notices,
+      passed: failing.length === 0,
+      missingFailures: failing
+        .filter((outcome) => outcome.fixture.bucket === "fail")
+        .map((outcome) => caseDirectory(outcome)),
+      unexpectedFindings: failing
+        .filter((outcome) => outcome.fixture.bucket === "pass")
+        .map((outcome) => caseDirectory(outcome)),
+      errors: describeCaseFailures(
+        cwd,
+        outcomes,
+        "the rule's .vale.ini matchers"
+      ),
+      findings: outcomes.flatMap((outcome) => outcome.findings),
+      fixtures: read.coverage,
+      notices: [...notices],
     };
   } finally {
-    rmSync(configDirectory, { recursive: true, force: true });
+    await rm(scratch, { recursive: true, force: true });
   }
 }
 

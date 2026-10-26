@@ -1,10 +1,4 @@
-import { mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join, posix, sep } from "node:path";
-import { spawn } from "node:child_process";
-import process from "node:process";
-import { StringDecoder } from "node:string_decoder";
-import { stripVTControlCharacters } from "node:util";
+import { readFile } from "node:fs/promises";
 
 import { parse } from "yaml";
 
@@ -14,8 +8,14 @@ import {
   findRegexWithoutKind,
 } from "../schemas/ast-grep-rule";
 import { pathPrefixed, schemaLayer } from "../schemas/layer";
-import { classifyCoverage, type FixtureCoverage } from "./fixtures";
-import { isMissingDirectory } from "./errno";
+import {
+  casePassed,
+  describeCaseFailures,
+  readRuleFixtures,
+  type FixtureCoverage,
+  type FixtureFinding,
+} from "./fixtures";
+import { runSgFixtures } from "./sg-fixtures";
 import {
   AST_GREP_TSX_SPLIT,
   AST_GREP_VERSION,
@@ -24,16 +24,14 @@ import {
   type AstGrepLanguage,
 } from "./capabilities";
 import { ensureTasklessDirectory } from "../filesystem/directory";
-import { ruleDirectory, ruleFilePath, ruleTestsDirectory } from "./engines";
+import { ruleFilePath } from "./engines";
 import { RULE_TESTS_DIRECTORY, RULES_DIRECTORY } from "./layout";
-import { findSgBinary, buildPath, stripSgDeprecationBanner } from "./scan";
 import astGrepJsonSchema from "../generated/ast-grep-rule-schema.json";
 import { RULE_EXAMPLES } from "./verify-examples";
 import { violate, type RuleViolation } from "./constraints";
 import { isValidRuleId } from "./validate-id";
 import { parseSgRuleAlone } from "./sg-parse";
 import { findSgTraps } from "./sg-traps";
-import { escapeRegExp } from "../util/regex";
 
 // --- Types ---
 
@@ -74,54 +72,21 @@ export interface RequirementsResult extends LayerResult {
   hasTestFile: boolean;
 }
 
-/**
- * Which fixture buckets a rule actually populated.
- *
- * The sg counterpart of `ValeFixtureCoverage`, and kept in the same four
- * states for the same reason: a caller wants to say different things about
- * them. `"none"` is an unwritten rule, while `"valid-only"`/`"invalid-only"`
- * is a half-written one, which is the more misleading state of the two.
- *
- * The buckets here are the `valid:`/`invalid:` keys of ast-grep's own test
- * YAML rather than Vale's `pass/`/`fail/` directories, so the names follow
- * ast-grep's vocabulary.
- */
-export type SgFixtureCoverage = FixtureCoverage<"valid" | "invalid">;
-
 export interface TestLayerResult extends LayerResult {
+  /** Cases that came out as their bucket asserts. */
   passed: number;
+  /** Cases that did not. */
   failed: number;
   /**
-   * Which buckets held sources. Only `"both"` can be `valid: true`: an
-   * `invalid:` fixture proves the rule fires, a `valid:` fixture proves it
-   * does not over-fire, and either alone is half a claim.
-   *
-   * Without this, `ast-grep test` reports an empty `invalid:` bucket as
-   * `1 passed; 0 failed` and exits zero, so a rule that has never been shown
-   * to match anything reports `ok: true, ran: true` — the exact state a
-   * `foo($A, $$$)` pattern lands in, since the pattern's comma is a node that
-   * a one-argument call has no counterpart for and the rule silently matches
-   * nothing an author expected it to.
+   * Which buckets held cases. Only `"both"` can be `valid: true`: a `fail/`
+   * case proves the rule fires, a `pass/` case proves it does not over-fire,
+   * and either alone is half a claim. Counted by the CLI over case
+   * directories, never read from an engine's summary: `ast-grep test` used to
+   * report an empty `invalid:` bucket as `1 passed; 0 failed`.
    */
-  fixtures: SgFixtureCoverage;
-  /**
-   * Whether a test file the rule owns by NAME was skipped because its own
-   * `id:` names another rule.
-   *
-   * What separates "no fixtures were written" from "fixtures were written and
-   * silently not counted", which is the whole of
-   * `sg-fixture-id-matches-rule`. The two produce the same coverage and want
-   * different advice, and only this can tell them apart — so the attribution
-   * `verify` reports is decided here rather than guessed from a shortfall
-   * message that both states produce.
-   *
-   * Necessary for that attribution but not sufficient for it. This is
-   * rule-wide, while `fixtures` is the sum over every discovered file, so an
-   * excluded file can sit beside a counted one and leave coverage at
-   * `valid-only` — a shortfall fixing the id would not repair. `verify` requires
-   * `fixtures === "none"` alongside this before naming the constraint.
-   */
-  fixturesExcludedById?: boolean;
+  fixtures: FixtureCoverage;
+  /** Every finding the cases produced, each tagged with its bucket. */
+  findings: FixtureFinding[];
 }
 
 export interface VerifyResult {
@@ -390,9 +355,9 @@ async function validateRequirements(
   // ast-grep registers a rule under the id in its BODY, so a mismatch splits
   // those two apart and both halves fail differently:
   //
-  //   `verify` cannot run it at all — `sg test --filter ^<directory>$` selects
-  //   nothing and reports `Rule not found`, which reads like a missing rule
-  //   rather than a misnamed one.
+  //   `verify` sees nothing — `--filter ^<directory>$` selects no rule, so every
+  //   `fail/` case reads as a rule that did not fire, which sends the author
+  //   to the pattern rather than to the name.
   //
   //   `check` DOES run it, and that is the worse half. The scan works and the
   //   finding is real, but it is reported under the body's id — a name that
@@ -418,299 +383,58 @@ async function validateRequirements(
     );
   }
 
-  const testFiles = await discoverRuleTestFiles(cwd, ruleId);
-  const hasTestFile = testFiles.length > 0;
+  // Whether any case exists, not whether the cases cover both buckets:
+  // `validate` must pass a rule whose author has written one side so far, and
+  // coverage is `verify`'s question. A layout `readRuleFixtures` refuses is
+  // left to `verify` too, where the refusal is reported in full.
+  let hasTestFile = false;
+  try {
+    const fixtures = await readRuleFixtures(cwd, "sg", ruleId);
+    hasTestFile = fixtures.coverage !== "none";
+  } catch {
+    hasTestFile = true;
+  }
   if (!hasTestFile) {
     violate(
       collected,
       "sg-test-file-required",
-      `No test file found for rule "${ruleId}" in ` +
-        `.taskless/${RULES_DIRECTORY}/sg/${ruleId}/${RULE_TESTS_DIRECTORY}/`
+      `No fixture cases found for rule "${ruleId}" in ` +
+        `.taskless/${RULES_DIRECTORY}/sg/${ruleId}/${RULE_TESTS_DIRECTORY}/pass/ ` +
+        `or ${RULE_TESTS_DIRECTORY}/fail/`
     );
   }
 
   return { valid: errors.length === 0, errors, violations, hasTestFile };
 }
 
-/**
- * Every file in a rule's own `.tests/` directory that the naming convention
- * claims for this rule, as absolute paths.
- *
- * A rule's tests live inside the rule directory, so there is one place to look
- * and no resolution order to get wrong. Stated once because two callers ask the
- * same question in the same `verifyRule()` pass — `validateRequirements` for
- * "are there any tests at all", `fixtureCoverage` for "what is in them" — and a
- * change to the convention has to move both at once or they disagree.
- *
- * The filename is all this decides. What ast-grep will actually RUN is keyed on
- * the file's own `id:` field, which is a separate question, asked where it
- * matters (see {@link fixtureCoverage}).
- */
-async function discoverRuleTestFiles(
-  cwd: string,
-  ruleId: string
-): Promise<string[]> {
-  const directory = ruleTestsDirectory(cwd, "sg", ruleId);
-  let entries: string[];
-  try {
-    entries = await readdir(directory);
-  } catch (error) {
-    // An absent tests directory means the rule owns no test files. Anything
-    // else is a real IO problem and must not be read as absence: an `EACCES` on
-    // `.tests/` was reported as `sg-test-file-required`, telling the author to
-    // write fixtures that are already there and merely unreadable. Still a
-    // failure either way, but a misdirected one.
-    if (isMissingDirectory(error)) return [];
-    throw error;
-  }
-  return entries
-    .filter(
-      (entry) => entry.startsWith(`${ruleId}-`) && entry.endsWith("-test.yml")
-    )
-    .map((entry) => join(directory, entry));
-}
+// --- Layer 3: Fixture cases ---
 
 /**
- * Count what the author actually put in each bucket, across every test file
- * the rule owns.
- *
- * Read from the author's own YAML rather than derived from `ast-grep test`'s
- * output: the counts are already structured in the file, and the run says
- * nothing useful about them — an empty `invalid:` bucket still reports
- * `1 passed; 0 failed` and exits zero.
- *
- * A file that cannot be read or parsed contributes nothing. `sg test` reports
- * malformed test YAML itself, and guessing at a bucket count from a file we
- * could not parse would be a worse error than the one already being raised.
- *
- * Only a file whose own `id:` is this rule counts, which is a stricter test
- * than the filename it was found by. `sg test --filter ^<id>$` resolves cases
- * against that field, so a file named for `no-eval` but carrying
- * `id: no-alert-scratch` — a draft copied from another rule — is never executed
- * for `no-eval`. Counting its buckets here would report coverage for fixtures
- * that never ran, which is the same "never shown to fire" gap this check
- * exists to close, reached through the filename rather than an empty bucket.
+ * Run every fixture case through the scan `check` runs. See `sg-fixtures.ts`.
  */
-async function fixtureCoverage(
-  cwd: string,
-  ruleId: string
-): Promise<{ coverage: SgFixtureCoverage; excludedById: boolean }> {
-  let validCount = 0;
-  let invalidCount = 0;
-  let excludedById = false;
-  for (const file of await discoverRuleTestFiles(cwd, ruleId)) {
-    let parsed: unknown;
-    try {
-      parsed = parse(await readFile(file, "utf8"));
-    } catch {
-      continue;
-    }
-    if (
-      parsed === null ||
-      typeof parsed !== "object" ||
-      Array.isArray(parsed)
-    ) {
-      continue;
-    }
-    const buckets = parsed as Record<string, unknown>;
-    // The exclusion, recorded rather than merely applied. A rule whose only
-    // fixture file carries another rule's id reads downstream as a rule that
-    // shipped no fixtures, and those two states want different advice: one
-    // author has written nothing, the other has written a file that is sitting
-    // right there and silently not counted. Only the second is
-    // `sg-fixture-id-matches-rule`, so only the second may be attributed to it.
-    // Compared as a string: an unquoted numeric `id:` resolves to a JS number,
-    // which never equals the string ruleId.
-    if (String(buckets.id) !== ruleId) {
-      excludedById = true;
-      continue;
-    }
-    if (Array.isArray(buckets.valid)) validCount += buckets.valid.length;
-    if (Array.isArray(buckets.invalid)) invalidCount += buckets.invalid.length;
+async function runTests(cwd: string, ruleId: string): Promise<TestLayerResult> {
+  const run = await runSgFixtures(cwd, ruleId);
+  const findings = run.outcomes.flatMap((outcome) => outcome.findings);
+  if (run.errors.length > 0) {
+    return {
+      valid: false,
+      errors: run.errors,
+      passed: 0,
+      failed: 0,
+      fixtures: run.coverage,
+      findings,
+    };
   }
-
+  const errors = describeCaseFailures(cwd, run.outcomes, run.scope);
+  const passed = run.outcomes.filter((outcome) => casePassed(outcome)).length;
   return {
-    coverage: classifyCoverage(
-      { name: "valid", count: validCount },
-      { name: "invalid", count: invalidCount }
-    ),
-    excludedById,
+    valid: run.coverage === "both" && errors.length === 0,
+    errors,
+    passed,
+    failed: run.outcomes.length - passed,
+    fixtures: run.coverage,
+    findings,
   };
-}
-
-// --- Layer 3: Test execution ---
-
-/**
- * The counts from `ast-grep test`'s summary line, or `undefined` if there is
- * none.
- *
- * `ast-grep test` has no structured output at 0.41.0 — `--help` offers nothing
- * machine-readable — so the counts can only come from prose. What makes that
- * defensible is anchoring: the match is the whole summary line, in one of the
- * two exact forms ast-grep emits, rather than the first number in the stream
- * that happens to be followed by "passed".
- *
- * That distinction is the bug in #112. A *failing* run echoes the offending
- * test's source, so a fixture reading `const msg = '7 passed; 0 failed';` was
- * matched ahead of `Error: test failed. 0 passed; 1 failed;` and the CLI
- * reported 7 passed, 0 failed. Wrong counts, not a false pass — validity comes
- * from the exit code — but those counts are fed back to the agent driving
- * `improve-rule`, so they steer the next edit.
- *
- * The last summary line wins, since only the final one describes the whole run.
- *
- * Stripping is DEFENSIVE here, not load-bearing: `runTests` spawns with
- * `stdio: ["ignore", "pipe", "pipe"]`, so this parser never reads a TTY, in CI
- * or interactively. Measured at 0.45.2 a piped run is plain; 0.41.0 colorized
- * through a pipe too, which is the path the stripping was originally added for.
- * It stays because the escape lands *inside* the phrase being anchored on
- * (`test result: \u001B[32mok\u001B[0m.`), so were ast-grep to colorize a pipe
- * again the anchor would break silently. The vendor-contract case that pins
- * this under `--color always` documents the BINARY's behaviour; it does not
- * describe a path this function can reach.
- *
- * The anchor closes the poisoning class rather than just the one reported
- * fixture: echoed source is indented two spaces by ast-grep, so a fixture whose
- * own text reads `Error: test failed. 99 passed; 0 failed;` still cannot reach
- * column 0. Both properties are pinned by `ast-grep-vendor-contract.test.ts`.
- */
-function parseTestSummary(
-  output: string
-): { passed: number; failed: number } | undefined {
-  const summary =
-    /^(?:test result: ok\.|Error: test failed\.) (\d+) passed; (\d+) failed;/gm;
-  let found: { passed: number; failed: number } | undefined;
-  for (const match of stripVTControlCharacters(output).matchAll(summary)) {
-    found = { passed: Number(match[1]), failed: Number(match[2]) };
-  }
-  return found;
-}
-
-async function runTests(
-  cwd: string,
-  ruleId: string
-): Promise<Omit<TestLayerResult, "fixtures">> {
-  // A config naming this rule and nothing else, rather than the project-wide
-  // one `check` assembles. `--filter` narrows which TESTS run, not which rules
-  // ast-grep parses, so under the project config one rule ast-grep refuses
-  // fails every other rule's run, reported under the wrong rule's name.
-  //
-  // Written outside the project and removed afterwards, so a run leaves
-  // nothing behind that a later `check` could read. Absolute paths, because
-  // ast-grep resolves `ruleDirs` and `testDir` against the config's own
-  // directory, which is no longer the project's. Measured on 0.45.3: the
-  // rule's `.tests/` sits inside `ruleDirs` and is not parsed as a rule, the
-  // same as under the project config.
-  const scratch = await mkdtemp(join(tmpdir(), "taskless-sg-verify-"));
-  try {
-    const configPath = join(scratch, "sgconfig.yml");
-    await writeFile(
-      configPath,
-      [
-        "ruleDirs:",
-        `  - ${JSON.stringify(ruleDirectory(cwd, "sg", ruleId).split(sep).join(posix.sep))}`,
-        "testConfigs:",
-        `  - testDir: ${JSON.stringify(ruleTestsDirectory(cwd, "sg", ruleId).split(sep).join(posix.sep))}`,
-        "",
-      ].join("\n"),
-      "utf8"
-    );
-    return await runSgTest(cwd, configPath, ruleId);
-  } finally {
-    await rm(scratch, { recursive: true, force: true });
-  }
-}
-
-/** `sg test` for one rule, under the given config. */
-async function runSgTest(
-  cwd: string,
-  configPath: string,
-  ruleId: string
-): Promise<Omit<TestLayerResult, "fixtures">> {
-  const sgBinary = findSgBinary();
-
-  return new Promise((resolve) => {
-    const child = spawn(
-      sgBinary,
-      [
-        "test",
-        "-c",
-        configPath,
-        "--skip-snapshot-tests",
-        "--filter",
-        `^${escapeRegExp(ruleId)}$`,
-      ],
-      {
-        cwd,
-        stdio: ["ignore", "pipe", "pipe"],
-        env: { ...process.env, PATH: buildPath() },
-      }
-    );
-
-    // One decoder per stream, not `chunk.toString()` per chunk. A multi-byte
-    // UTF-8 sequence split across a chunk boundary would otherwise have each
-    // half independently replaced with U+FFFD, and ast-grep echoes fixture
-    // source — arbitrary user text — into the output of a failing run. Same
-    // treatment `vale/run.ts` already gives its streams.
-    const stdoutDecoder = new StringDecoder("utf8");
-    const stderrDecoder = new StringDecoder("utf8");
-    const stdoutChunks: string[] = [];
-    const stderrChunks: string[] = [];
-
-    child.stdout.on("data", (chunk: Buffer) => {
-      stdoutChunks.push(stdoutDecoder.write(chunk));
-    });
-    child.stderr.on("data", (chunk: Buffer) => {
-      stderrChunks.push(stderrDecoder.write(chunk));
-    });
-
-    child.on("error", () => {
-      resolve({
-        valid: false,
-        errors: ["ast-grep (sg) binary not found. Is @ast-grep/cli installed?"],
-        passed: 0,
-        failed: 0,
-      });
-    });
-
-    child.on("close", (code) => {
-      // Flush whatever partial multi-byte sequence each decoder is holding, so
-      // a stream that ends mid-character contributes its replacement char once
-      // rather than leaving bytes unaccounted for.
-      stdoutChunks.push(stdoutDecoder.end());
-      stderrChunks.push(stderrDecoder.end());
-
-      // Both streams, because ast-grep prints the passing summary to stdout and
-      // the failing one to stderr. Joined with a newline so the summary stays
-      // at the start of a line for the anchored match.
-      const stderrText = stripSgDeprecationBanner(stderrChunks.join(""));
-      const output = `${stdoutChunks.join("")}\n${stderrText}`;
-
-      const summary = parseTestSummary(output);
-      const passed = summary?.passed ?? 0;
-      const failed = summary?.failed ?? 0;
-
-      if (code === 0) {
-        resolve({ valid: true, errors: [], passed, failed });
-      } else {
-        const errors: string[] = [];
-        if (failed > 0) {
-          errors.push(`${String(failed)} test case(s) failed`);
-        }
-        const stderr = stderrText.trim();
-        if (stderr && failed === 0) {
-          errors.push(stderr);
-        }
-        if (errors.length === 0) {
-          const snippet = output.trim().slice(0, 200);
-          errors.push(
-            `sg test exited with code ${String(code)}${snippet ? `: ${snippet}` : ""}`
-          );
-        }
-        resolve({ valid: false, errors, passed, failed });
-      }
-    });
-  });
 }
 
 // --- Main verify ---
@@ -729,40 +453,27 @@ async function runTestLayer(
       passed: 0,
       failed: 0,
       fixtures: "none",
+      findings: [],
     };
   }
-  if (hasTestFile) {
-    // Both halves, because a green `sg test` run is not on its own evidence
-    // the rule fires: ast-grep is content to report an empty `invalid:`
-    // bucket as a pass. Coverage is read from the fixtures rather than from
-    // the run, and a one-sided set fails the layer however the run went.
-    const [fixtures, result] = await Promise.all([
-      fixtureCoverage(cwd, ruleId),
-      runTests(cwd, ruleId),
-    ]);
-    return {
-      ...result,
-      valid: result.valid && fixtures.coverage === "both",
-      fixtures: fixtures.coverage,
-      fixturesExcludedById: fixtures.excludedById,
-    };
-  }
+  if (hasTestFile) return runTests(cwd, ruleId);
   return {
     valid: false,
-    errors: ["Skipped: no test file found"],
+    errors: ["Skipped: no fixture cases found"],
     passed: 0,
     failed: 0,
     fixtures: "none",
+    findings: [],
   };
 }
 
 export interface VerifyRuleOptions {
   /**
-   * Run Layer 3 — `sg test` over the rule's fixtures. Defaults to `true`.
+   * Run Layer 3 — every fixture case, through the scan. Defaults to `true`.
    *
    * `false` stops after Layers 1–2, for a caller that only needs to know the
-   * rule is well-formed. Layer 3 assembles an ast-grep config and spawns a
-   * subprocess, so a caller that runs `verifyRule` for its schema verdict and
+   * rule is well-formed. Layer 3 writes an ast-grep config and spawns a
+   * subprocess per case, so a caller that runs `verifyRule` for its schema verdict and
    * then runs it again for its tests pays that twice per rule.
    *
    * When Layer 3 is skipped, `tests` carries the skip as an error and
@@ -790,6 +501,7 @@ export async function verifyRule(
         passed: 0,
         failed: 0,
         fixtures: "none",
+        findings: [],
       },
     };
   }
@@ -827,6 +539,7 @@ export async function verifyRule(
         passed: 0,
         failed: 0,
         fixtures: "none",
+        findings: [],
       },
     };
   }
@@ -850,6 +563,7 @@ export async function verifyRule(
         passed: 0,
         failed: 0,
         fixtures: "none",
+        findings: [],
       },
     };
   }

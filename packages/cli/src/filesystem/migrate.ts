@@ -18,6 +18,7 @@ import dropBasedOnStyles from "./migrations/0008-drop-based-on-styles";
 import uniqueRuleIds from "./migrations/0009-unique-rule-ids";
 import adoptStrayTests from "./migrations/0010-adopt-stray-tests";
 import reportsDirectory from "./migrations/0011-reports-directory";
+import fixtureCaseDirectories from "./migrations/0012-fixture-case-directories";
 
 const migrations: Migrations = {
   "1": init,
@@ -31,6 +32,7 @@ const migrations: Migrations = {
   "9": uniqueRuleIds,
   "10": adoptStrayTests,
   "11": reportsDirectory,
+  "12": fixtureCaseDirectories,
 };
 
 /** Global flag that downgrades a too-new scaffold from an error to a skip. */

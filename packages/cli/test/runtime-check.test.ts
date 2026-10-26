@@ -457,7 +457,9 @@ describe("check: static vs runtime dispatch", () => {
       "rules",
       "runtime",
       "demo",
-      ".tests"
+      "tests",
+      "fail",
+      "logs-call"
     );
     await mkdir(fixtures, { recursive: true });
     await writeFile(join(fixtures, "case.ts"), "console.log(1);\n");
@@ -772,7 +774,7 @@ describe("check: static vs runtime dispatch", () => {
       "Rename the rule you wrote locally, not the one Taskless issued"
     );
     expect(failure).toContain(
-      "under sg, the directory, demo.yml and its `id:`, and each .tests/demo-*-test.yml and its `id:`; under runtime, the directory alone."
+      "under sg, the directory, demo.yml and its `id:`; under runtime, the directory alone."
     );
   });
 

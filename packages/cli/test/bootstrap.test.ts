@@ -7,6 +7,7 @@ import {
   stat,
   cp,
 } from "node:fs/promises";
+import { existsSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { tmpdir } from "node:os";
 import { describe, expect, it, beforeEach, afterEach } from "vitest";
@@ -281,24 +282,29 @@ describe("v0 → v1 migration", () => {
     expect(ruleContent).toContain("as any");
   });
 
-  it("preserves existing test files", async () => {
+  it("preserves existing tests, as one case per snippet", async () => {
     await ensureTasklessDirectory(temporaryDirectory);
 
-    const testContent = await readFile(
-      join(
-        temporaryDirectory,
-        ".taskless",
-        "rules",
-        "sg",
-        "no-as-any",
-        ".tests",
-        "no-as-any-20260326-test.yml"
-      ),
-      "utf8"
+    // The v0 test YAML travels with its rule (migrations 5 and 10), and
+    // migration 12 then splits each snippet into its own case directory.
+    const rule = join(
+      temporaryDirectory,
+      ".taskless",
+      "rules",
+      "sg",
+      "no-as-any"
     );
-    expect(testContent).toContain("no-as-any");
-    expect(testContent).toContain("valid");
-    expect(testContent).toContain("invalid");
+    const read = (bucket: string, name: string) =>
+      readFile(join(rule, "tests", bucket, name, `${name}.ts`), "utf8");
+    expect(await read("pass", "pass-01")).toBe(
+      "const x: string = getValue();\n"
+    );
+    expect(await read("pass", "pass-02")).toBe(
+      "const y = value as unknown as string;\n"
+    );
+    expect(await read("fail", "fail-01")).toBe("const x = value as any;\n");
+    expect(await read("fail", "fail-02")).toBe("return data as any;\n");
+    expect(existsSync(join(rule, ".tests"))).toBe(false);
   });
 
   it("preserves .gitkeep files", async () => {

@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+import { fixtureFindingSchema } from "./rule-check";
+
 // --- Schema mode output (--schema --json) ---
 
 export const schemaOutputSchema = z.object({
@@ -68,9 +70,34 @@ const schemaLayerResultSchema = layerResultSchema.extend({
     ),
 });
 
+/**
+ * Which buckets held cases, the same four states for every engine. Only `both`
+ * can succeed: a `fail/` case shows the rule fires, a `pass/` case that it stays
+ * quiet, and either alone is half a claim.
+ */
+const fixtureCoverageSchema = z
+  .enum(["both", "pass-only", "fail-only", "none"])
+  .describe(
+    "Which fixture buckets held cases. Only 'both' can succeed: one bucket alone is half a claim"
+  );
+
+/**
+ * Every finding the cases produced, in the shape `check --json` prints plus the
+ * bucket. Declared here, not only in the CLI's types, because `parse()` strips
+ * what a schema does not declare: an envelope without it would hand a consumer
+ * the verdict and silently drop the rendered messages that justify it.
+ */
+const fixtureFindingsSchema = z
+  .array(fixtureFindingSchema)
+  .describe(
+    "Every finding the fixture cases produced, each tagged with its bucket, the fail/ ones included on a passing rule. Empty, never absent, when there were none"
+  );
+
 const testLayerResultSchema = layerResultSchema.extend({
-  passed: z.number().describe("Number of test cases that passed"),
-  failed: z.number().describe("Number of test cases that failed"),
+  passed: z.number().describe("Number of fixture cases that passed"),
+  failed: z.number().describe("Number of fixture cases that failed"),
+  fixtures: fixtureCoverageSchema,
+  findings: fixtureFindingsSchema,
 });
 
 export const verifyOutputSchema = z.object({
@@ -87,16 +114,18 @@ export const verifyOutputSchema = z.object({
   requirements: layerResultSchema.describe(
     "Layer 2: Taskless requirement checks"
   ),
-  tests: testLayerResultSchema.describe("Layer 3: sg test execution"),
+  tests: testLayerResultSchema.describe(
+    "Layer 3: every fixture case, scanned with the case directory as its root"
+  ),
 });
 
 /**
  * Vale verification output.
  *
  * Deliberately not squeezed into the ast-grep shape. `sg` verification is three
- * layers over a rule file and its test cases; Vale verification is one question
- * asked of two fixture buckets — did every `fail/` document fire, did every
- * `pass/` document stay quiet. Mapping the second onto `schema`/`requirements`/
+ * layers over a rule file and its fixture cases; Vale verification is one
+ * question asked of two fixture buckets — did every `fail/` case fire, did
+ * every `pass/` case stay quiet. Mapping the second onto `schema`/`requirements`/
  * `tests` would invent two empty layers and lose the fixture coverage, which is
  * the part that catches a rule that was never really verified.
  *
@@ -110,17 +139,23 @@ export const valeVerifyOutputSchema = z.object({
     .boolean()
     .describe("True only when both buckets are populated and both behaved"),
   ruleId: z.string(),
-  fixtures: z
-    .enum(["both", "pass-only", "fail-only", "none"])
-    .describe(
-      "Which fixture buckets held documents. Only 'both' can succeed: one bucket alone is half a claim"
-    ),
+  fixtures: fixtureCoverageSchema,
+  findings: fixtureFindingsSchema,
   missingFailures: z
     .array(z.string())
-    .describe("fail/ fixtures the rule should have flagged and did not"),
+    .describe(
+      "fail/ case directories the rule should have flagged and did not, project-relative"
+    ),
   unexpectedFindings: z
     .array(z.string())
-    .describe("pass/ fixtures the rule flagged and should not have"),
+    .describe(
+      "pass/ case directories the rule flagged and should not have, project-relative"
+    ),
+  errors: z
+    .array(z.string())
+    .describe(
+      "One line per case that did not come out as its bucket asserts, or why the cases could not be read; a quiet fail/ case says whether the rule's scope excluded it. Empty when everything passed"
+    ),
   notices: z
     .array(z.string())
     .describe(

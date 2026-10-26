@@ -1,0 +1,1 @@
+const evaluate = () => 1
