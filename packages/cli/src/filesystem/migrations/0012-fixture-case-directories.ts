@@ -18,6 +18,7 @@ import {
   convertSgTestFile,
   convertValeDocument,
   valeFixtureScope,
+  type ClaimedCases,
   type Conversion,
 } from "../../rules/fixture-convert";
 import {
@@ -54,38 +55,62 @@ import type { Migration } from "../types";
  * a language with no extension, a scope no path can be derived for, an ast-grep
  * test file whose `id:` names another rule (it never ran for this one): each
  * is left under `.tests/` and named in one notice. `.tests/` is removed only
- * once empty. A destination that already exists keeps its bytes, and a source
- * is removed only once every file it produced is on disk, so a rerun after a
- * partial failure finishes the job and a completed run is a no-op.
+ * once empty. A source is removed only once every file it produced is on disk.
+ * A destination already holding the same bytes counts as on disk, so a rerun
+ * after a partial failure finishes the job and a completed run is a no-op; one
+ * holding other bytes keeps them, and the source stays and is named.
+ *
+ * Case names are claimed across all of a rule's legacy files, read in name
+ * order, so a rule's second dated test file continues at `fail-02` rather than
+ * landing on the first file's `fail-01`.
  *
  * Also refreshes the README, whose layout section names the tests directory,
  * and ignores `.sg-rules/`, the rules-only tree `check` hands ast-grep.
  */
 
-/** Write `content` at `path` unless something is already there. */
-async function writeNew(path: string, content: string): Promise<void> {
+/**
+ * Write `content` at `path` unless something is already there. True when
+ * `path` now holds `content`, false when it already held something else.
+ */
+async function writeNew(path: string, content: string): Promise<boolean> {
   await mkdir(dirname(path), { recursive: true });
-  await writeFile(path, content, { encoding: "utf8", flag: "wx" }).catch(
-    (error: unknown) => {
-      if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
-    }
-  );
+  try {
+    await writeFile(path, content, { encoding: "utf8", flag: "wx" });
+    return true;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
+    return (await readFile(path, "utf8")) === content;
+  }
 }
 
-/** Write a conversion's files under `ruleDirectory`; true when there was nothing left out. */
+/**
+ * Write a conversion's files under `ruleDirectory`. True when its source can
+ * go: nothing was left out and every file it produced is on disk.
+ */
 async function apply(
   ruleDirectory: string,
-  conversion: Conversion
+  ruleId: string,
+  conversion: Conversion,
+  notes: string[]
 ): Promise<boolean> {
+  notes.push(...conversion.unconverted.map((line) => `${ruleId}: ${line}`));
+  let complete = conversion.unconverted.length === 0;
   for (const file of conversion.files) {
-    await writeNew(join(ruleDirectory, file.path), file.content);
+    if (!(await writeNew(join(ruleDirectory, file.path), file.content))) {
+      notes.push(`${ruleId}: ${file.path} already exists with other content`);
+      complete = false;
+    }
   }
-  return conversion.unconverted.length === 0;
+  return complete;
 }
 
+/** `path`'s entries in name order, so case ordinals do not depend on the filesystem. */
 async function entriesOf(path: string) {
   try {
-    return await readdir(path, { withFileTypes: true });
+    const entries = await readdir(path, { withFileTypes: true });
+    return entries.toSorted((a, b) =>
+      a.name < b.name ? -1 : a.name > b.name ? 1 : 0
+    );
   } catch {
     return [];
   }
@@ -120,6 +145,7 @@ async function migrateSg(
     );
     return;
   }
+  const claimed: ClaimedCases = new Set();
   for (const entry of await entriesOf(legacy)) {
     if (entry.name === ".gitkeep") continue;
     if (!entry.isFile() || !/\.ya?ml$/.test(entry.name)) {
@@ -147,10 +173,10 @@ async function migrateSg(
       rule,
       entry.name,
       content,
-      RULE_TESTS_DIRECTORY
+      RULE_TESTS_DIRECTORY,
+      claimed
     );
-    notes.push(...conversion.unconverted.map((line) => `${ruleId}: ${line}`));
-    if (await apply(ruleDirectory, conversion))
+    if (await apply(ruleDirectory, ruleId, conversion, notes))
       await rm(source, { force: true });
   }
 }
@@ -172,6 +198,7 @@ async function migrateVale(
     }
   }
   const scope = valeFixtureScope(ruleId, config);
+  const claimed: ClaimedCases = new Set();
   for (const bucket of BUCKETS) {
     for (const entry of await entriesOf(join(legacy, bucket))) {
       if (entry.name === ".gitkeep") continue;
@@ -187,10 +214,10 @@ async function migrateVale(
         bucket,
         entry.name,
         await readFile(source, "utf8"),
-        RULE_TESTS_DIRECTORY
+        RULE_TESTS_DIRECTORY,
+        claimed
       );
-      notes.push(...conversion.unconverted.map((line) => `${ruleId}: ${line}`));
-      if (await apply(ruleDirectory, conversion))
+      if (await apply(ruleDirectory, ruleId, conversion, notes))
         await rm(source, { force: true });
     }
   }

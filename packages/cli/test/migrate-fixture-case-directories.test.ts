@@ -189,6 +189,74 @@ describe("migration 12: fixtures into case directories", () => {
     expect(notice()).toContain('"someone-else"');
   });
 
+  it("keeps every snippet of a rule with two dated test files", async () => {
+    // Migration 5 files each authoring round's `<id>-YYYYMMDD-test.yml` beside
+    // the others, so a rule improved twice arrives here with two. Numbering
+    // each from one put both `invalid:` snippets at fail-01, kept the first,
+    // and deleted the second file.
+    await writeTree({
+      "rules/sg/no-eval/no-eval.yml": sgRule("no-eval"),
+      "rules/sg/no-eval/.tests/no-eval-20260101-test.yml":
+        "id: no-eval\ninvalid:\n  - eval(a)\n",
+      "rules/sg/no-eval/.tests/no-eval-20260301-test.yml":
+        "id: no-eval\nvalid:\n  - ok()\ninvalid:\n  - eval(b)\n",
+    });
+
+    await fixtureCaseDirectories(tasklessDirectory);
+
+    const rule = join(tasklessDirectory, "rules", "sg", "no-eval");
+    await expect(
+      readFile(join(rule, "tests/fail/fail-01/fail-01.ts"), "utf8")
+    ).resolves.toBe("eval(a)\n");
+    await expect(
+      readFile(join(rule, "tests/fail/fail-02/fail-02.ts"), "utf8")
+    ).resolves.toBe("eval(b)\n");
+    await expect(
+      readFile(join(rule, "tests/pass/pass-01/pass-01.ts"), "utf8")
+    ).resolves.toBe("ok()\n");
+    expect(existsSync(join(rule, ".tests"))).toBe(false);
+    expect(notice()).toBe("");
+  });
+
+  it("keeps a source whose destination already holds other bytes, and names it", async () => {
+    const source = "id: no-eval\ninvalid:\n  - eval(x)\n";
+    await writeTree({
+      "rules/sg/no-eval/no-eval.yml": sgRule("no-eval"),
+      "rules/sg/no-eval/.tests/no-eval-test.yml": source,
+      "rules/sg/no-eval/tests/fail/fail-01/fail-01.ts": "hand-written()\n",
+    });
+
+    await fixtureCaseDirectories(tasklessDirectory);
+
+    const rule = join(tasklessDirectory, "rules", "sg", "no-eval");
+    await expect(
+      readFile(join(rule, "tests/fail/fail-01/fail-01.ts"), "utf8")
+    ).resolves.toBe("hand-written()\n");
+    await expect(
+      readFile(join(rule, ".tests", "no-eval-test.yml"), "utf8")
+    ).resolves.toBe(source);
+    expect(notice()).toContain(
+      "no-eval: tests/fail/fail-01/fail-01.ts already exists with other content"
+    );
+  });
+
+  it("finishes a conversion whose files were written but whose source stayed", async () => {
+    // A run interrupted between writing a case and removing its source.
+    await writeTree({
+      "rules/sg/no-eval/no-eval.yml": sgRule("no-eval"),
+      "rules/sg/no-eval/.tests/no-eval-test.yml":
+        "id: no-eval\ninvalid:\n  - eval(x)\n",
+      "rules/sg/no-eval/tests/fail/fail-01/fail-01.ts": "eval(x)\n",
+    });
+
+    await fixtureCaseDirectories(tasklessDirectory);
+
+    const rule = join(tasklessDirectory, "rules", "sg", "no-eval");
+    expect(existsSync(join(rule, ".tests"))).toBe(false);
+    expect(await readdir(join(rule, "tests", "fail"))).toEqual(["fail-01"]);
+    expect(notice()).toBe("");
+  });
+
   it("renames runtime cases only, keeping their bytes", async () => {
     const a = "import { b } from './b';\nconsole.log(b);\n";
     const b = "export const b = process.env.SECRET;\n";
