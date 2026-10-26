@@ -119,16 +119,25 @@ function admitted(path: string, scope: FixtureScope): boolean {
 /**
  * A path for a fixture file named `stem.extension` that `scope` admits, or
  * `undefined` when none of the derivations could be checked.
+ *
+ * A path keeping `.extension` is preferred over an earlier glob's that does
+ * not: both engines choose how to read a file by its extension, so under
+ * `[*.md]` and `[*.txt]` a `.txt` document written as `.md` would be linted
+ * as Markdown.
  */
 export function deriveFixturePath(
   scope: FixtureScope,
   stem: string,
   extension: string
 ): string | undefined {
-  const candidates =
+  const derived =
     scope.include.length === 0
       ? [`${stem}.${extension}`]
       : scope.include.map((glob) => pathFromGlob(glob, stem, extension));
+  const candidates = [
+    ...derived.filter((path) => path.endsWith(`.${extension}`)),
+    ...derived.filter((path) => !path.endsWith(`.${extension}`)),
+  ];
   return candidates.find(
     (candidate) =>
       candidate !== "" &&
@@ -161,6 +170,31 @@ export interface ConvertedFile {
   content: string;
 }
 
+/**
+ * The cases a rule's conversion has already written, as `<bucket>/<case>`.
+ *
+ * A rule can own several legacy test files (one per authoring round, dated
+ * `<id>-YYYYMMDD-test.yml`), and each numbers its snippets from one. Sharing
+ * this set across a rule's conversions is what keeps the second file's
+ * `fail-01` from landing on the first file's.
+ */
+export type ClaimedCases = Set<string>;
+
+/** The first `<base>`, `<base>-2`, `<base>-3`, … not yet in `claimed`. */
+function claimCase(
+  claimed: ClaimedCases,
+  bucket: FixtureBucket,
+  name: (attempt: number) => string
+): string {
+  for (let attempt = 1; ; attempt++) {
+    const candidate = name(attempt);
+    if (!claimed.has(`${bucket}/${candidate}`)) {
+      claimed.add(`${bucket}/${candidate}`);
+      return candidate;
+    }
+  }
+}
+
 /** What one conversion produced, and what it had to leave alone. */
 export interface Conversion {
   files: ConvertedFile[];
@@ -173,8 +207,10 @@ export interface Conversion {
  *
  * One case per `valid:` (pass) or `invalid:` (fail) snippet, named by bucket
  * and ordinal in source order, since a snippet carries no description to name
- * it by. `rule` is the rule file's content, which supplies `language:` and the
- * scope. `name` is the test file's name, for messages.
+ * it by. Ordinals continue past any case in `claimed`, which a successful
+ * conversion adds its own cases to. `rule` is the rule file's content, which
+ * supplies `language:` and the scope. `name` is the test file's name, for
+ * messages.
  *
  * Unconverted (and so left in place by the caller) when the test file does not
  * parse, the language has no extension, or no admitted path can be derived.
@@ -185,7 +221,8 @@ export function convertSgTestFile(
   rule: string,
   name: string,
   content: string,
-  testsDirectory: string
+  testsDirectory: string,
+  claimed: ClaimedCases = new Set()
 ): Conversion {
   const unconvertible = (reason: string): Conversion => ({
     files: [],
@@ -226,6 +263,8 @@ export function convertSgTestFile(
     exclude: globList(ruleRecord.ignores),
   };
 
+  // Claimed into a copy, so a file refused part-way claims nothing.
+  const claiming = new Set(claimed);
   const files: ConvertedFile[] = [];
   const buckets: [FixtureBucket, unknown][] = [
     ["pass", test.valid],
@@ -238,13 +277,17 @@ export function convertSgTestFile(
         `its ${bucket === "pass" ? "valid" : "invalid"}: key is not a list`
       );
     }
-    for (const [index, snippet] of snippets.entries()) {
+    for (const snippet of snippets) {
       if (typeof snippet !== "string") {
         return unconvertible(
           `a ${bucket === "pass" ? "valid" : "invalid"}: entry is not a string`
         );
       }
-      const caseName = `${bucket}-${String(index + 1).padStart(2, "0")}`;
+      const caseName = claimCase(
+        claiming,
+        bucket,
+        (ordinal) => `${bucket}-${String(ordinal).padStart(2, "0")}`
+      );
       const path = deriveFixturePath(scope, caseName, extension);
       if (path === undefined) {
         return unconvertible(
@@ -257,6 +300,7 @@ export function convertSgTestFile(
       });
     }
   }
+  for (const entry of claiming) claimed.add(entry);
   return { files, unconverted: [] };
 }
 
@@ -288,7 +332,8 @@ export function valeFixtureScope(ruleId: string, config: string): FixtureScope {
  * case directory named for the document's stem.
  *
  * The document keeps its own name and extension, placed at a path the rule's
- * enabling matchers admit. Unconverted when no such path can be derived. A
+ * enabling matchers admit. Two documents sharing a stem (`a.md`, `a.txt`) get
+ * `a` and `a-2`, through `claimed`. Unconverted when no such path can be derived. A
  * rule with no enabling matcher cannot have one, and `validate` reports that
  * rule as off before it reports anything about its fixtures.
  */
@@ -297,7 +342,8 @@ export function convertValeDocument(
   bucket: FixtureBucket,
   name: string,
   content: string,
-  testsDirectory: string
+  testsDirectory: string,
+  claimed: ClaimedCases = new Set()
 ): Conversion {
   const dot = name.lastIndexOf(".");
   const stem = dot <= 0 ? name : name.slice(0, dot);
@@ -312,9 +358,12 @@ export function convertValeDocument(
       ],
     };
   }
+  const caseName = claimCase(claimed, bucket, (attempt) =>
+    attempt === 1 ? stem : `${stem}-${String(attempt)}`
+  );
   return {
     files: [
-      { path: posix.join(testsDirectory, bucket, stem, derived), content },
+      { path: posix.join(testsDirectory, bucket, caseName, derived), content },
     ],
     unconverted: [],
   };
@@ -353,6 +402,7 @@ export function convertLegacyFileSet(
   const kept = files.filter((file) => !file.path.startsWith(prefix));
   const converted: LegacyFile[] = [];
   const unconverted: string[] = [];
+  const claimed: ClaimedCases = new Set();
   const moveAsServed = (file: LegacyFile) => {
     converted.push({
       path: `${testsDirectory}/${file.path.slice(prefix.length)}`,
@@ -381,7 +431,10 @@ export function convertLegacyFileSet(
         moveAsServed(file);
         continue;
       }
-      take(convertSgTestFile(rule, rest, file.content, testsDirectory), file);
+      take(
+        convertSgTestFile(rule, rest, file.content, testsDirectory, claimed),
+        file
+      );
       continue;
     }
     const [bucket, ...below] = segments;
@@ -405,7 +458,14 @@ export function convertLegacyFileSet(
     }
     const scope = valeFixtureScope(ruleId, sibling(".vale.ini") ?? "");
     take(
-      convertValeDocument(scope, bucket, name, file.content, testsDirectory),
+      convertValeDocument(
+        scope,
+        bucket,
+        name,
+        file.content,
+        testsDirectory,
+        claimed
+      ),
       file
     );
   }

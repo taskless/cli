@@ -331,12 +331,11 @@ export async function assembleValeConfig(
  *
  * Copied rather than linked: symlinks need privileges on Windows, and a rule
  * file is a few hundred bytes. The tree is cleared first, so a rule deleted
- * since the last run cannot keep reporting from a stale copy. `check` assembles
- * against its snapshot, so there the tree lands inside the run directory; it
- * is gitignored for any other caller.
+ * since the last run cannot keep reporting from a stale copy. `check`, the one
+ * caller, assembles against its snapshot, so the tree lands inside the run
+ * directory and never in the project.
  *
- * No `testConfigs`. Fixtures are no longer run by `sg test`: `verify` runs
- * each case through this same scan (see `rules/sg-fixtures.ts`).
+ * No `testConfigs`: `verify` writes its own one-rule config for `sg test`.
  */
 export async function assembleSgConfig(
   cwd: string

@@ -64,6 +64,12 @@ describe("deriveFixturePath", () => {
     );
   });
 
+  it("prefers a glob that keeps the file's extension over an earlier one", () => {
+    expect(deriveFixturePath(scope(["*.md", "*.txt"]), "hedges", "txt")).toBe(
+      "hedges.txt"
+    );
+  });
+
   it("returns undefined when an ignore excludes every candidate", () => {
     expect(
       deriveFixturePath(scope(["src/**/*.ts"], ["src/**"]), "fail-01", "ts")
@@ -128,6 +134,46 @@ describe("convertSgTestFile", () => {
       { path: "tests/pass/pass-02/pass-02.ts", content: "const a = 1;\n" },
       { path: "tests/fail/fail-01/fail-01.ts", content: "eval(x)\n" },
     ]);
+  });
+
+  it("continues ordinals past the cases another test file claimed", () => {
+    // A rule improved twice owns two dated test files, each numbering from
+    // one. Without the shared set, the second file's fail-01 overwrote the
+    // first's and the migration deleted its source.
+    const claimed = new Set<string>();
+    const first = convertSgTestFile(
+      rule(),
+      "no-eval-20260101-test.yml",
+      "invalid:\n  - eval(a)\n",
+      TESTS,
+      claimed
+    );
+    const second = convertSgTestFile(
+      rule(),
+      "no-eval-20260301-test.yml",
+      "valid:\n  - ok()\ninvalid:\n  - eval(b)\n",
+      TESTS,
+      claimed
+    );
+    expect(first.files.map((file) => file.path)).toEqual([
+      "tests/fail/fail-01/fail-01.ts",
+    ]);
+    expect(second.files.map((file) => file.path)).toEqual([
+      "tests/pass/pass-01/pass-01.ts",
+      "tests/fail/fail-02/fail-02.ts",
+    ]);
+  });
+
+  it("claims nothing for a test file it refuses", () => {
+    const claimed = new Set<string>();
+    convertSgTestFile(
+      rule(),
+      "half-test.yml",
+      "valid:\n  - ok()\ninvalid:\n  - 3\n",
+      TESTS,
+      claimed
+    );
+    expect(claimed).toEqual(new Set());
   });
 
   it("places each snippet where the rule's files: looks", () => {
@@ -241,6 +287,25 @@ describe("convertValeDocument", () => {
     });
   });
 
+  it("suffixes a case whose stem another document already claimed", () => {
+    const claimed = new Set<string>();
+    const paths = ["hedges.md", "hedges.txt"].map(
+      (name) =>
+        convertValeDocument(
+          scope(["*.md", "*.txt"]),
+          "fail",
+          name,
+          "Perhaps.\n",
+          TESTS,
+          claimed
+        ).files[0]?.path
+    );
+    expect(paths).toEqual([
+      "tests/fail/hedges/hedges.md",
+      "tests/fail/hedges-2/hedges.txt",
+    ]);
+  });
+
   it("names a document no admitted path can be derived for", () => {
     const conversion = convertValeDocument(
       scope(["*.md"], ["*.md"]),
@@ -278,6 +343,25 @@ describe("convertLegacyFileSet", () => {
       "no-eval.yml",
       "tests/pass/pass-01/pass-01.ts",
       "tests/fail/fail-01/fail-01.ts",
+    ]);
+  });
+
+  it("keeps every snippet when a rule serves more than one test file", () => {
+    const result = convert("sg", "no-eval", [
+      { path: "no-eval.yml", content: SG_RULE },
+      {
+        path: ".tests/no-eval-20260101-test.yml",
+        content: "invalid:\n  - eval(a)\n",
+      },
+      {
+        path: ".tests/no-eval-20260301-test.yml",
+        content: "invalid:\n  - eval(b)\n",
+      },
+    ]);
+    expect(result.unconverted).toEqual([]);
+    expect(result.files.slice(1)).toEqual([
+      { path: "tests/fail/fail-01/fail-01.ts", content: "eval(a)\n" },
+      { path: "tests/fail/fail-02/fail-02.ts", content: "eval(b)\n" },
     ]);
   });
 
