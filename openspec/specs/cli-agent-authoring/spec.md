@@ -244,7 +244,7 @@ Enforcing this is the recipe's job. `verify` SHALL NOT lint fixtures and SHALL N
 
 ### Requirement: Authoring recipes share one fixture section
 
-Every recipe in which the agent writes or extends fixtures (`create-sg-rule`, `create-vale-rule`, `create-runtime-rule`, `improve-rule` and `validate-rule`) SHALL direct the agent to one shared fixture section and SHALL NOT carry its own copy of the layout. The shared section SHALL state:
+Every recipe in which the agent writes or extends fixtures (`create-sg-rule`, `create-vale-rule`, `create-runtime-rule`, `improve-rule (anonymous)` and `validate-rule`) SHALL direct the agent to one shared fixture section and SHALL NOT carry its own copy of the layout. The shared section SHALL state:
 
 1. The layout: `tests/pass/<case>/` and `tests/fail/<case>/`, with the case directory named for what the case shows.
 2. That a case is judged by the engine's own check with the case directory as the root, so a fixture for a scoped rule places its files at a path the scope accepts. For example, an ast-grep rule scoped to `.github/workflows/*.yml` needs `tests/fail/<case>/.github/workflows/ci.yml`.
