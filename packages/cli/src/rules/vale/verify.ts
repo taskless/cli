@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
@@ -69,8 +69,12 @@ function stylesPath(cwd: string): string {
  * above. A new requirement found here belongs in both of them too.
  */
 export function buildIsolatingConfig(cwd: string, ruleId: string): string {
+  return isolatingConfig(stylesPath(cwd), ruleId);
+}
+
+function isolatingConfig(styles: string, ruleId: string): string {
   return [
-    `StylesPath = ${stylesPath(cwd)}`,
+    `StylesPath = ${styles}`,
     "MinAlertLevel = suggestion",
     "",
     "[*]",
@@ -78,6 +82,26 @@ export function buildIsolatingConfig(cwd: string, ruleId: string): string {
     "",
   ].join("\n");
 }
+
+/**
+ * A rule that reports once for any file holding a non-space character.
+ *
+ * Installed under the verified rule's own name in a scratch StylesPath, and
+ * run under the same configs, so it is read wherever and only wherever the
+ * rule itself is: a case it stays silent on is one Vale never read. Raw scope,
+ * so markup cannot hide the text; `(?s)\S.*` matches once, from the first
+ * non-space character to the end.
+ */
+const PROBE_RULE = [
+  "extends: existence",
+  'message: "read"',
+  "level: error",
+  "scope: raw",
+  "nonword: true",
+  "tokens:",
+  String.raw`  - '(?s)\S.*'`,
+  "",
+].join("\n");
 
 /** Which buckets a Vale rule populated. See {@link FixtureCoverage}. */
 export type ValeFixtureCoverage = FixtureCoverage;
@@ -202,7 +226,9 @@ async function runCase(
  * the spec never asked for: a rule whose matchers matched nothing real passed
  * verification and stayed silent in `check`. A `fail/` case that stays quiet
  * is linted once more under `[*]`, and if it fires then, the failure says the
- * scope excluded it.
+ * scope excluded it. A case with no finding is also linted with a probe rule
+ * under the same matchers, and fails, whatever its bucket, if Vale read no
+ * file in it.
  *
  * Both buckets have to hold at least one case before the rule can report
  * `passed: true`, for {@link ValeFixtureCoverage}'s reason.
@@ -265,6 +291,24 @@ export async function verifyValeRule(
     await writeFile(scopedPath, scopedConfig, "utf8");
     await writeFile(unscopedPath, buildIsolatingConfig(cwd, ruleId), "utf8");
 
+    // The probe, under the same two scopes: a case with no finding is asked
+    // whether Vale read any file in it at all.
+    const probeStyles = join(scratch, "probe");
+    await mkdir(join(probeStyles, ruleId), { recursive: true });
+    await writeFile(join(probeStyles, ruleId, `${ruleId}.yml`), PROBE_RULE);
+    const probeScopedPath = join(scratch, "probe-scoped.ini");
+    const probeUnscopedPath = join(scratch, "probe-unscoped.ini");
+    await writeFile(
+      probeScopedPath,
+      buildOneRuleValeConfig(probeStyles, ruleId, source ?? "") ?? "",
+      "utf8"
+    );
+    await writeFile(
+      probeUnscopedPath,
+      isolatingConfig(probeStyles, ruleId),
+      "utf8"
+    );
+
     const outcomes: CaseOutcome[] = [];
     const notices = new Set<string>();
     for (const fixture of read.cases) {
@@ -278,6 +322,30 @@ export async function verifyValeRule(
       if ("outcome" in run) return run;
       for (const notice of run.notices) notices.add(notice);
       const outcome: CaseOutcome = { fixture, findings: run.findings };
+      if (run.findings.length === 0) {
+        const read = await runCase(
+          cwd,
+          ruleId,
+          fixture,
+          probeScopedPath,
+          options.timeoutMs
+        );
+        if ("outcome" in read) return read;
+        if (read.findings.length === 0) {
+          const readUnscoped = await runCase(
+            cwd,
+            ruleId,
+            fixture,
+            probeUnscopedPath,
+            options.timeoutMs
+          );
+          if ("outcome" in readUnscoped) return readUnscoped;
+          outcome.unread =
+            readUnscoped.findings.length > 0 ? "scope-excluded" : "not-walked";
+          outcomes.push(outcome);
+          continue;
+        }
+      }
       if (fixture.bucket === "fail" && !casePassed(outcome)) {
         const unscoped = await runCase(
           cwd,

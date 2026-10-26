@@ -2,9 +2,9 @@ import type { Dirent } from "node:fs";
 import { readdir } from "node:fs/promises";
 import { join, posix, relative, sep } from "node:path";
 
-import { ruleTestsDirectory } from "./engines";
+import { ruleDirectory, ruleTestsDirectory } from "./engines";
 import { isMissingDirectory } from "./errno";
-import type { EngineName } from "./layout";
+import { LEGACY_RULE_TESTS_DIRECTORY, type EngineName } from "./layout";
 import type { CheckResult } from "../types/check";
 
 /**
@@ -110,6 +110,39 @@ export async function bucketEntries(directory: string): Promise<Dirent[]> {
 }
 
 /**
+ * Entries no author wrote as a fixture: operating-system metadata, and the
+ * `.gitkeep` that keeps an empty directory in git. Skipped wherever fixtures
+ * are read. Refusing a `.DS_Store` beside `pass/` would fail a rule over a
+ * file Finder wrote.
+ */
+const NOT_FIXTURES: ReadonlySet<string> = new Set([
+  ".DS_Store",
+  "Thumbs.db",
+  "desktop.ini",
+  ".gitkeep",
+]);
+
+/** Directory entries that are fixtures, see {@link NOT_FIXTURES}. */
+async function fixtureEntries(directory: string): Promise<Dirent[]> {
+  const entries = await bucketEntries(directory);
+  return entries.filter((entry) => !NOT_FIXTURES.has(entry.name));
+}
+
+/**
+ * Whether a case directory holds at least one file, at any depth.
+ *
+ * An empty case tests nothing: a `pass/` case with no file passes on no
+ * evidence, and git does not keep an empty directory, so the case would
+ * vanish from every clone.
+ */
+async function caseHoldsAFile(root: string): Promise<boolean> {
+  const entries = await readdir(root, { recursive: true, withFileTypes: true });
+  return entries.some(
+    (entry) => !entry.isDirectory() && !NOT_FIXTURES.has(entry.name)
+  );
+}
+
+/**
  * The cases in one bucket, one level deep.
  *
  * Every entry must be a directory, and a loose file is an error naming its own
@@ -123,7 +156,7 @@ async function bucketCases(
   bucket: FixtureBucket
 ): Promise<FixtureCase[]> {
   const directory = join(testsDirectory, bucket);
-  const entries = await bucketEntries(directory);
+  const entries = await fixtureEntries(directory);
 
   const loose = entries.find((entry) => !entry.isDirectory());
   if (loose !== undefined) {
@@ -135,13 +168,23 @@ async function bucketCases(
     );
   }
 
-  return entries
+  const cases = entries
     .map((entry) => ({
       bucket,
       name: entry.name,
       root: join(directory, entry.name),
     }))
     .toSorted((a, b) => a.name.localeCompare(b.name));
+  for (const fixture of cases) {
+    if (!(await caseHoldsAFile(fixture.root))) {
+      throw new Error(
+        `A fixture case holds at least one file: ${fixture.root} holds none. ` +
+          `An empty case tests nothing, and git does not keep an empty ` +
+          `directory. Add the file the case is about, or remove the case.`
+      );
+    }
+  }
+  return cases;
 }
 
 /** Every fixture case a rule holds, with what the buckets cover. */
@@ -155,7 +198,9 @@ export interface RuleFixtures {
  *
  * An entry directly under `tests/` other than the two buckets is refused,
  * naming it. The case it most often is: an ast-grep test YAML left behind,
- * which would otherwise sit beside the cases and never run.
+ * which would otherwise sit beside the cases and never run. A legacy
+ * `.tests/` beside the rule is refused for the same reason: it holds what
+ * migration 12 could not convert, and nothing else would ever mention it.
  *
  * Reads the buckets independently rather than walking `tests/` once, so an
  * unreadable bucket surfaces as itself instead of as an absence.
@@ -167,7 +212,20 @@ export async function readRuleFixtures(
 ): Promise<RuleFixtures> {
   const testsDirectory = ruleTestsDirectory(cwd, engine, ruleId);
 
-  const entries = await bucketEntries(testsDirectory);
+  const legacy = join(
+    ruleDirectory(cwd, engine, ruleId),
+    LEGACY_RULE_TESTS_DIRECTORY
+  );
+  const leftover = await fixtureEntries(legacy);
+  if (leftover.length > 0) {
+    throw new Error(
+      `${legacy} still holds fixtures in the old layout, which nothing runs. ` +
+        `Migration 12 leaves there what it could not convert. Move each into ` +
+        `tests/pass/<case>/ or tests/fail/<case>/, then delete the directory.`
+    );
+  }
+
+  const entries = await fixtureEntries(testsDirectory);
   const stray = entries.find(
     (entry) => entry.name !== "pass" && entry.name !== "fail"
   );
@@ -205,15 +263,28 @@ export function projectRelative(cwd: string, absolute: string): string {
  * or the rule did not match (`"no-match"`). The verdict is the same either way.
  * Only the message differs, and that difference is what tells an author
  * whether to edit the fixture's path or the pattern.
+ *
+ * `unread` is set on a case, of either bucket, whose files the rule never
+ * read, and fails it whatever it found. A case the engine never read proves
+ * nothing: a `pass/` case would pass on no evidence and a `fail/` one would
+ * blame the pattern. `"scope-excluded"` means the scope admitted no file in
+ * the case (the rule reads one with the scope removed); `"not-walked"` means
+ * the walk itself reached none, because the project's ignore files cover
+ * them, they are empty, or no file is in a language or format the engine
+ * reads. Detected from the engine itself (ast-grep's `--inspect`, a Vale
+ * probe rule under the same matchers), not from a glob reimplementation, so
+ * a glob dialect difference cannot hide it.
  */
 export interface CaseOutcome {
   fixture: FixtureCase;
   findings: FixtureFinding[];
   quiet?: "scope-excluded" | "no-match";
+  unread?: "scope-excluded" | "not-walked";
 }
 
 /** Whether a case came out the way its bucket asserts. */
 export function casePassed(outcome: CaseOutcome): boolean {
+  if (outcome.unread !== undefined) return false;
   return outcome.fixture.bucket === "fail"
     ? outcome.findings.length > 0
     : outcome.findings.length === 0;
@@ -235,7 +306,20 @@ export function describeCaseFailures(
   for (const outcome of outcomes) {
     if (casePassed(outcome)) continue;
     const path = projectRelative(cwd, outcome.fixture.root);
-    if (outcome.fixture.bucket === "pass") {
+    if (outcome.unread === "scope-excluded") {
+      errors.push(
+        `${outcome.fixture.bucket} case was never read, because the rule's ` +
+          `scope excluded every file in it: ${path}/. No file sits at a path ` +
+          `admitted by ${scope ?? "the scope"}. Move the fixture to such a path.`
+      );
+    } else if (outcome.unread === "not-walked") {
+      errors.push(
+        `${outcome.fixture.bucket} case was never read: ${path}/. The engine ` +
+          `walked no file in it, even with the scope removed: the project's ` +
+          `.gitignore or .ignore covers them, they are empty, or none is in a ` +
+          `language or format the engine reads. Rename the path or the file.`
+      );
+    } else if (outcome.fixture.bucket === "pass") {
       errors.push(`pass case wrongly fired: ${path}/`);
     } else if (outcome.quiet === "scope-excluded") {
       errors.push(

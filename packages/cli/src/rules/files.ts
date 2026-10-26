@@ -66,8 +66,11 @@ export async function writeServedRule(
   );
   for (const line of migrated.unconverted) {
     onWarning?.(
-      `Rule "${fileSet.id}" was served a fixture its CLI could not convert to ` +
-        `the ${RULE_TESTS_DIRECTORY}/ layout, so it was written as served: ${line}.`
+      `Rule "${fileSet.id}" was served a fixture in the old ` +
+        `${LEGACY_RULE_TESTS_DIRECTORY}/ layout that could not be converted ` +
+        `into a case, so it was written under ${RULE_TESTS_DIRECTORY}/ as it ` +
+        `was, where verify will name it, or dropped when it is an \`sg test\` ` +
+        `snapshot: ${line}.`
     );
   }
   const assessment = assessDelivery(cwd, engine, fileSet.id, migrated.files);

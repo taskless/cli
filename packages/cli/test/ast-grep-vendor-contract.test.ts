@@ -18,6 +18,7 @@ import { AST_GREP_LANGUAGE_EXTENSIONS } from "../src/rules/fixture-convert";
 import {
   buildPath,
   findSgBinary,
+  parseReachedFiles,
   stripSgDeprecationBanner,
 } from "../src/rules/scan";
 
@@ -428,6 +429,48 @@ withSg("ast-grep vendor contract", () => {
     });
     expect(result.status).toBe(0);
     expect(`${result.stdout}${result.stderr}`).toMatch(/ast-grep/i);
+  });
+
+  describe("--inspect entity", () => {
+    it("names each walked file and how many rules applied to it, on stderr", () => {
+      // Depended on by: parseReachedFiles in rules/scan.ts, which is how
+      // verify tells a fixture case the rule never read from one it read and
+      // stayed quiet on. If the line shape changes, every case reads as never
+      // read and verify fails loudly; if it moves to stdout, the findings
+      // stream would carry it. Out-of-scope files report 0, and a gitignored
+      // or empty file is not listed at all.
+      const cwd = project({
+        rules: {
+          "no-eval": `${rule("no-eval")}files:\n  - "src/**/*.ts"\n`,
+        },
+        sources: {
+          ...evalSource,
+          "src/empty.ts": "",
+          "lib/b.ts": "const b = 1;\n",
+          "dist/c.ts": "const c = 1;\n",
+        },
+      });
+      spawnSync("git", ["init", "-q"], { cwd });
+      writeFileSync(join(cwd, ".gitignore"), "dist/\n");
+      const result = run(cwd, [
+        "scan",
+        "--config",
+        "sgconfig.yml",
+        "--json=stream",
+        "--inspect",
+        "entity",
+        "--no-ignore",
+        "hidden",
+      ]);
+      expect(result.stdout).not.toContain("entity|");
+      expect(result.stderr).toContain(
+        "sg: entity|file|src/a.ts: language=TypeScript,appliedRuleCount=1"
+      );
+      expect(result.stderr).toContain(
+        "sg: entity|file|lib/b.ts: language=TypeScript,appliedRuleCount=0"
+      );
+      expect(parseReachedFiles(result.stderr)).toEqual(["src/a.ts"]);
+    });
   });
 
   describe("--json=stream", () => {

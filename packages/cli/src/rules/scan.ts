@@ -19,6 +19,32 @@ import {
 export interface ScanResult {
   results: CheckResult[];
   exitCode: number;
+  /**
+   * With {@link ScanOptions.inspect}: every file ast-grep applied at least one
+   * rule to, relative to `cwd`. A file the walk skipped (ignored, empty, in no
+   * language) or that every rule's `files:`/`ignores:` excluded is absent.
+   */
+  reached?: string[];
+}
+
+/**
+ * The files `--inspect entity` reports a rule was applied to.
+ *
+ * ast-grep 0.51.0 writes one stderr line per walked file, as
+ * `sg: entity|file|<path>: language=<lang>,appliedRuleCount=<n>`. The path is
+ * read up to the LAST `: language=`, so a path containing `: ` survives.
+ */
+export function parseReachedFiles(stderr: string): string[] {
+  const reached: string[] = [];
+  for (const line of stderr.split("\n")) {
+    const prefix = "sg: entity|file|";
+    if (!line.startsWith(prefix)) continue;
+    const split = line.lastIndexOf(": language=");
+    const count = /,appliedRuleCount=(\d+)\s*$/.exec(line)?.[1];
+    if (split === -1 || count === undefined) continue;
+    if (Number(count) > 0) reached.push(line.slice(prefix.length, split));
+  }
+  return reached;
 }
 
 /**
@@ -150,6 +176,12 @@ export interface ScanOptions {
    * by construction rather than by two code paths agreeing.
    */
   ruleIds?: readonly string[];
+  /**
+   * Also report which files a rule was applied to ({@link ScanResult.reached}),
+   * through `--inspect entity`. `verify` uses it to tell a fixture case the
+   * rule never read from one it read and stayed quiet on.
+   */
+  inspect?: boolean;
 }
 
 /**
@@ -283,6 +315,7 @@ export async function runAstGrepScan(
       options.configPath ?? ASSEMBLED_SG_CONFIG,
       "--json=stream",
       ...sgFilterArgv(options.ruleIds),
+      ...(options.inspect === true ? ["--inspect", "entity"] : []),
       ...sgWalkArgv(paths),
       ...(paths.length > 0 ? ["--", ...paths] : []),
     ];
@@ -346,24 +379,32 @@ export async function runAstGrepScan(
       // rather than leaving bytes unaccounted for.
       stderrChunks.push(stderrDecoder.end());
       const stderrText = stderrChunks.join("");
-      if (stderrText.trim() !== "")
+      if (stderrText.trim() !== "" && options.inspect !== true)
         options.log?.(`stderr: ${stderrText.trim()}`);
       options.log?.(
         `exit ${String(code)}; ${String(results.length)} finding(s)`
       );
 
-      // ast-grep exits 1 when error-severity matches found — that's expected
-      // Only treat spawn/binary failures (exit > 1) as errors
-      if (code !== null && code > 1) {
+      // ast-grep exits 1 when error-severity matches found — that's expected.
+      // Exit > 1 is a failure, and so is no exit code at all: a run killed by
+      // a signal printed nothing, and resolving it would report a scan that
+      // never finished as one that found nothing.
+      if (code === null || code > 1) {
         const stderr = stripSgDeprecationBanner(stderrChunks.join(""));
         reject(
           new Error(
-            `ast-grep scan failed with exit code ${String(code)}${stderr ? `: ${stderr.trim()}` : ""}`
+            `ast-grep scan failed ${code === null ? "without an exit code (killed by a signal)" : `with exit code ${String(code)}`}${stderr ? `: ${stderr.trim()}` : ""}`
           )
         );
         return;
       }
-      resolve({ results, exitCode: code ?? 0 });
+      resolve({
+        results,
+        exitCode: code,
+        ...(options.inspect === true
+          ? { reached: parseReachedFiles(stderrText) }
+          : {}),
+      });
     });
   });
 }
