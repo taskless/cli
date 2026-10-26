@@ -506,7 +506,7 @@ withVale("verifyValeRule applies the rule's own matchers", () => {
     // It fires with the scope removed, so the message blames the scope and
     // names it, rather than sending the author to edit a pattern that works.
     expect(result.errors).toHaveLength(1);
-    expect(result.errors[0]).toContain("scope excluded it");
+    expect(result.errors[0]).toContain("scope excluded every file in it");
     expect(result.errors[0]).toContain(
       `${testsPath("no-simply")}/fail/outside/`
     );
@@ -560,6 +560,46 @@ describe("verifyValeRules without a binary", () => {
   });
 });
 
+describe("verifyValeRule asks whether Vale read each case", () => {
+  const DOCS_ONLY = SCOPED("no-simply", "docs/**/*.md");
+
+  it("fails a pass case whose document the matchers never admit", async () => {
+    // Quiet because Vale never read it, not because the text is clean: a pass
+    // on no evidence.
+    const cwd = makeProject(
+      { "no-simply": existence("simply") },
+      {
+        "no-simply": {
+          fail: { "inside/docs/guide/notes.md": "Just simply do it.\n" },
+          pass: { "outside/notes.md": "Nothing objectionable.\n" },
+        },
+      },
+      { "no-simply": DOCS_ONLY }
+    );
+    const result = verification(await verifyValeRule(cwd, "no-simply"));
+    expect(result.passed).toBe(false);
+    expect(result.errors).toHaveLength(1);
+    expect(result.errors[0]).toContain("pass case was never read");
+    expect(result.errors[0]).toContain("scope excluded every file in it");
+  });
+
+  it("fails a case whose only document is empty", async () => {
+    const cwd = makeProject(
+      { "no-simply": existence("simply") },
+      {
+        "no-simply": {
+          fail: { "inside/docs/guide/notes.md": "Just simply do it.\n" },
+          pass: { "blank/docs/guide/notes.md": "" },
+        },
+      },
+      { "no-simply": DOCS_ONLY }
+    );
+    const result = verification(await verifyValeRule(cwd, "no-simply"));
+    expect(result.errors.join("\n")).toContain("pass case was never read");
+    expect(result.errors.join("\n")).not.toContain("scope excluded");
+  });
+});
+
 describe("verifyValeRule and Vale's notice", () => {
   // The notice is the only thing that distinguishes a run Vale ignored from a
   // run that found nothing: a `W101 … isn't a core option` warning goes to
@@ -574,27 +614,30 @@ describe("verifyValeRule and Vale's notice", () => {
     const cwd = bothBuckets();
     const run = await import("../src/rules/vale/run");
     // Each case is its own run with the case as cwd, so the stub fires only
-    // for the `fail/` case: a finding on every run would fail the pass case.
+    // for the `fail/` case, and for the probe that asks whether the quiet
+    // `pass/` case was read: a finding on every run would fail the pass case.
     vi.spyOn(run, "runVale").mockImplementation((options) =>
       Promise.resolve({
         status: "ok",
         blocking: false,
-        results: options.cwd.includes(join("tests", "fail"))
-          ? [
-              {
-                source: "vale",
-                ruleId: "no-simply",
-                severity: "warning",
-                message: "Avoid 'simply'",
-                file: "a.md",
-                range: {
-                  start: { line: 1, column: 6 },
-                  end: { line: 1, column: 12 },
+        results:
+          options.cwd.includes(join("tests", "fail")) ||
+          String(options.configPath).includes("probe")
+            ? [
+                {
+                  source: "vale",
+                  ruleId: "no-simply",
+                  severity: "warning",
+                  message: "Avoid 'simply'",
+                  file: "a.md",
+                  range: {
+                    start: { line: 1, column: 6 },
+                    end: { line: 1, column: 12 },
+                  },
+                  matchedText: "simply",
                 },
-                matchedText: "simply",
-              },
-            ]
-          : [],
+              ]
+            : [],
         notices: [NOTICE],
       })
     );

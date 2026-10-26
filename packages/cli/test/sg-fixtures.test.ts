@@ -102,6 +102,17 @@ const WORKFLOW_RULE_YAML = [
 const OFFENDING_STEP = "steps:\n  - run: npx @taskless/cli@latest check\n";
 const PINNED_STEP = "steps:\n  - run: npx @taskless/cli@0.12.0 check\n";
 
+const EVAL_ID = "no-eval";
+const EVAL_RULE = [
+  `id: ${EVAL_ID}`,
+  "language: TypeScript",
+  "severity: error",
+  "message: no eval",
+  "rule:",
+  "  pattern: eval($A)",
+  "",
+].join("\n");
+
 /** The workflow rule with one clean case, plus `fail` as given. */
 async function workflowRule(fail: Cases): Promise<void> {
   await sgRule(WORKFLOW_RULE, WORKFLOW_RULE_YAML, {
@@ -173,6 +184,74 @@ describe("an sg fixture case is judged under the rule's scope", () => {
     ]);
   });
 
+  it("fails a pass case the scope never let the rule read", async () => {
+    // A pass case passes on no finding, so one the rule never read would pass
+    // on no evidence at all.
+    await sgRule(WORKFLOW_RULE, WORKFLOW_RULE_YAML, {
+      pass: { "outside-scope": { "ci.yml": PINNED_STEP } },
+      fail: { "npx-latest": { ".github/workflows/ci.yml": OFFENDING_STEP } },
+    });
+
+    const result = await verifyRule(cwd, WORKFLOW_RULE);
+
+    expect(result.tests.valid).toBe(false);
+    const errors = result.tests.errors.join("\n");
+    expect(errors).toContain("pass case was never read");
+    expect(errors).toContain("scope excluded every file in it");
+    expect(errors).toContain("tests/pass/outside-scope/");
+  });
+
+  it("fails a case under a path the project's .gitignore covers", async () => {
+    // ast-grep walks the case as it walks a project, so the project's ignore
+    // files apply to it.
+    await execFileAsync("git", ["init", "-q"], { cwd });
+    await writeFile(join(cwd, ".gitignore"), "dist/\n");
+    await sgRule(EVAL_ID, EVAL_RULE, {
+      pass: { "built-output": { "dist/a.ts": "foo(x);\n" } },
+      fail: { "eval-call": { "a.ts": "eval(x);\n" } },
+    });
+
+    const result = await verifyRule(cwd, EVAL_ID);
+
+    expect(result.tests.valid).toBe(false);
+    const errors = result.tests.errors.join("\n");
+    expect(errors).toContain("pass case was never read");
+    expect(errors).toContain(".gitignore");
+  });
+
+  it("fails a case whose only file is empty", async () => {
+    await sgRule(EVAL_ID, EVAL_RULE, {
+      pass: { blank: { "a.ts": "" } },
+      fail: { "eval-call": { "a.ts": "eval(x);\n" } },
+    });
+
+    const result = await verifyRule(cwd, EVAL_ID);
+
+    expect(result.tests.errors.join("\n")).toContain(
+      "pass case was never read"
+    );
+  });
+
+  it("asks ast-grep what it read, so a glob dialect difference cannot hide a case", async () => {
+    // In ast-grep a single `*` crosses `/`, so `*01.ts` ignores
+    // `src/pass-01.ts`; in node:path's matchesGlob it does not. A check that
+    // re-derived the walk would have passed this case unread.
+    await sgRule(
+      EVAL_ID,
+      `${EVAL_RULE}files:\n  - "**/*.ts"\nignores:\n  - "*01.ts"\n`,
+      {
+        pass: { "pass-01": { "src/pass-01.ts": "foo(x);\n" } },
+        fail: { "eval-call": { "src/a.ts": "eval(x);\n" } },
+      }
+    );
+
+    const result = await verifyRule(cwd, EVAL_ID);
+
+    expect(result.tests.errors.join("\n")).toContain(
+      "pass case was never read"
+    );
+  });
+
   it("is not affected by another sg rule ast-grep refuses", async () => {
     // An unrecognised `language:` aborts parsing of whatever config holds it.
     // The rule under verification is scanned under a config naming it alone,
@@ -221,6 +300,53 @@ describe("an sg rule's tests/ holds only case directories", () => {
     expect(result.tests.errors.join("\n")).toContain(
       join(ruleDirectory("no-eval"), "tests", "pass", "loose.ts")
     );
+  });
+
+  it("passes over operating-system metadata in tests/ and its buckets", async () => {
+    await sgRule("no-eval", RULE, {
+      pass: { "plain-call": { "sample.ts": "foo(x);\n" } },
+      fail: { "eval-call": { "sample.ts": "eval(x);\n" } },
+    });
+    const tests = join(ruleDirectory("no-eval"), "tests");
+    await writeFile(join(tests, ".DS_Store"), "");
+    await writeFile(join(tests, "pass", ".DS_Store"), "");
+    await writeFile(join(tests, "fail", ".gitkeep"), "");
+
+    const result = await verifyRule(cwd, "no-eval");
+
+    expect(result.tests.errors).toEqual([]);
+    expect(result.success).toBe(true);
+  });
+
+  it("refuses a case directory with no file in it", async () => {
+    await sgRule("no-eval", RULE, {
+      pass: { "plain-call": { "sample.ts": "foo(x);\n" } },
+      fail: { "eval-call": { "sample.ts": "eval(x);\n" } },
+    });
+    const empty = join(ruleDirectory("no-eval"), "tests", "pass", "empty");
+    await mkdir(empty);
+    await writeFile(join(empty, ".gitkeep"), "");
+
+    const result = await verifyRule(cwd, "no-eval");
+
+    expect(result.success).toBe(false);
+    expect(result.tests.errors.join("\n")).toContain(`${empty} holds none`);
+  });
+
+  it("refuses a leftover .tests/ beside the rule, naming it", async () => {
+    // What migration 12 could not convert. Nothing else would mention it.
+    await sgRule("no-eval", RULE, {
+      pass: { "plain-call": { "sample.ts": "foo(x);\n" } },
+      fail: { "eval-call": { "sample.ts": "eval(x);\n" } },
+    });
+    const legacy = join(ruleDirectory("no-eval"), ".tests");
+    await mkdir(legacy);
+    await writeFile(join(legacy, "no-eval-test.yml"), "invalid:\n  - x\n");
+
+    const result = await verifyRule(cwd, "no-eval");
+
+    expect(result.success).toBe(false);
+    expect(result.tests.errors.join("\n")).toContain(legacy);
   });
 
   it("refuses a leftover ast-grep test YAML in tests/, naming it", async () => {

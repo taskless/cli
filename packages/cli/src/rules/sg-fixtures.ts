@@ -34,6 +34,13 @@ import { runAstGrepScan } from "./scan";
  * nothing real. Now the finding that decides the verdict is the finding
  * reported, and its `file` already points at the fixture.
  *
+ * A case the rule never read fails whichever bucket it is in. ast-grep's
+ * `--inspect entity` names every file a rule was applied to, so this asks the
+ * engine rather than re-deriving its walk: a fixture under a gitignored path,
+ * an empty file, or one a glob excludes in ast-grep's dialect but not in
+ * Node's (a single `*` crosses `/` in ast-grep) all read as never read,
+ * instead of as a pass on no evidence.
+ *
  * The config names this rule alone, in a directory of its own, so a rule
  * ast-grep refuses elsewhere in the project cannot reach this one's cases:
  * `--filter` narrows which loaded rules report, not which rules are parsed.
@@ -92,18 +99,22 @@ async function writeOneRuleConfig(
   return configPath;
 }
 
-/** Scan one case under `configPath`, with findings named project-relative. */
+/**
+ * Scan one case under `configPath`, with findings named project-relative, and
+ * whether the rule was applied to any file in it.
+ */
 async function scanCase(
   cwd: string,
   ruleId: string,
   fixture: FixtureCase,
   configPath: string
-): Promise<FixtureFinding[]> {
-  const { results } = await runAstGrepScan(fixture.root, [], {
+): Promise<{ findings: FixtureFinding[]; read: boolean }> {
+  const { results, reached = [] } = await runAstGrepScan(fixture.root, [], {
     configPath,
     ruleIds: [ruleId],
+    inspect: true,
   });
-  return results.map((result) => ({
+  const findings = results.map((result) => ({
     ...result,
     // ast-grep writes `"note": null` for a rule with no note, and the finding
     // shape `verify --json` prints has `note` as an optional string.
@@ -111,6 +122,7 @@ async function scanCase(
     file: projectRelative(cwd, join(fixture.root, result.file)),
     bucket: fixture.bucket,
   }));
+  return { findings, read: reached.length > 0 || findings.length > 0 };
 }
 
 /** Run every fixture case of ast-grep rule `ruleId`. */
@@ -169,15 +181,21 @@ export async function runSgFixtures(
 
     const outcomes: CaseOutcome[] = [];
     for (const fixture of cases) {
-      const findings = await scanCase(cwd, ruleId, fixture, scoped);
+      const { findings, read } = await scanCase(cwd, ruleId, fixture, scoped);
       const outcome: CaseOutcome = { fixture, findings };
-      if (fixture.bucket === "fail" && !casePassed(outcome)) {
-        const unscopedFindings =
-          unscoped === undefined
-            ? []
-            : await scanCase(cwd, ruleId, fixture, unscoped);
+      // Run without scope at most once, and only for a case that read
+      // nothing or a fail case that stayed quiet.
+      const unscopedRun = async () =>
+        unscoped === undefined
+          ? { findings: [], read: false }
+          : await scanCase(cwd, ruleId, fixture, unscoped);
+      if (!read) {
+        const withoutScope = await unscopedRun();
+        outcome.unread = withoutScope.read ? "scope-excluded" : "not-walked";
+      } else if (fixture.bucket === "fail" && !casePassed(outcome)) {
+        const withoutScope = await unscopedRun();
         outcome.quiet =
-          unscopedFindings.length > 0 ? "scope-excluded" : "no-match";
+          withoutScope.findings.length > 0 ? "scope-excluded" : "no-match";
       }
       outcomes.push(outcome);
     }

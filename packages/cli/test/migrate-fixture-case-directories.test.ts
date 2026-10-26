@@ -218,12 +218,14 @@ describe("migration 12: fixtures into case directories", () => {
     expect(notice()).toBe("");
   });
 
-  it("keeps a source whose destination already holds other bytes, and names it", async () => {
-    const source = "id: no-eval\ninvalid:\n  - eval(x)\n";
+  it("numbers past cases already in tests/, for a file fixed after an earlier run", async () => {
+    // An earlier run converted the good file to fail-01 and left the broken
+    // one. Once its author fixes it, it must not collide with fail-01.
     await writeTree({
       "rules/sg/no-eval/no-eval.yml": sgRule("no-eval"),
-      "rules/sg/no-eval/.tests/no-eval-test.yml": source,
-      "rules/sg/no-eval/tests/fail/fail-01/fail-01.ts": "hand-written()\n",
+      "rules/sg/no-eval/tests/fail/fail-01/fail-01.ts": "eval(first)\n",
+      "rules/sg/no-eval/.tests/no-eval-20260301-test.yml":
+        "id: no-eval\ninvalid:\n  - eval(fixed)\n",
     });
 
     await fixtureCaseDirectories(tasklessDirectory);
@@ -231,13 +233,27 @@ describe("migration 12: fixtures into case directories", () => {
     const rule = join(tasklessDirectory, "rules", "sg", "no-eval");
     await expect(
       readFile(join(rule, "tests/fail/fail-01/fail-01.ts"), "utf8")
-    ).resolves.toBe("hand-written()\n");
+    ).resolves.toBe("eval(first)\n");
     await expect(
-      readFile(join(rule, ".tests", "no-eval-test.yml"), "utf8")
-    ).resolves.toBe(source);
-    expect(notice()).toContain(
-      "no-eval: tests/fail/fail-01/fail-01.ts already exists with other content"
-    );
+      readFile(join(rule, "tests/fail/fail-02/fail-02.ts"), "utf8")
+    ).resolves.toBe("eval(fixed)\n");
+    expect(existsSync(join(rule, ".tests"))).toBe(false);
+    expect(notice()).toBe("");
+  });
+
+  it("removes sg test snapshots, which are not fixtures", async () => {
+    await writeTree({
+      "rules/sg/no-eval/no-eval.yml": sgRule("no-eval"),
+      "rules/sg/no-eval/.tests/no-eval-test.yml":
+        "id: no-eval\ninvalid:\n  - eval(x)\n",
+      "rules/sg/no-eval/.tests/__snapshots__/no-eval-snapshot.yml": "x\n",
+    });
+
+    await fixtureCaseDirectories(tasklessDirectory);
+
+    const rule = join(tasklessDirectory, "rules", "sg", "no-eval");
+    expect(existsSync(join(rule, ".tests"))).toBe(false);
+    expect(notice()).toBe("");
   });
 
   it("finishes a conversion whose files were written but whose source stayed", async () => {

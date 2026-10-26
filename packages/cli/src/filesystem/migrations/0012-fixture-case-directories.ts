@@ -17,6 +17,7 @@ import { pathExists } from "../../rules/reconcile-marker";
 import {
   convertSgTestFile,
   convertValeDocument,
+  claimedCasesOf,
   valeFixtureScope,
   type ClaimedCases,
   type Conversion,
@@ -62,7 +63,14 @@ import type { Migration } from "../types";
  *
  * Case names are claimed across all of a rule's legacy files, read in name
  * order, so a rule's second dated test file continues at `fail-02` rather than
- * landing on the first file's `fail-01`.
+ * landing on the first file's `fail-01`, and past every case already in
+ * `tests/`, so a file converted on a later run (after its author fixed it)
+ * lands beside the cases an earlier run wrote. A source whose conversion is
+ * already on disk byte for byte, from a run interrupted before it removed the
+ * source, is recognised first and only removed.
+ *
+ * ast-grep's `__snapshots__/` under `.tests/` is removed: it records the
+ * output of `sg test`, which nothing runs any more, and is not a fixture.
  *
  * Also refreshes the README, whose layout section names the tests directory,
  * and ignores `.sg-rules/`, the rules-only tree `check` hands ast-grep.
@@ -102,6 +110,65 @@ async function apply(
     }
   }
   return complete;
+}
+
+/** Whether every file `conversion` produced is on disk with exactly its bytes. */
+async function alreadyOnDisk(
+  ruleDirectory: string,
+  conversion: Conversion
+): Promise<boolean> {
+  if (conversion.unconverted.length > 0 || conversion.files.length === 0)
+    return false;
+  for (const file of conversion.files) {
+    let existing: string;
+    try {
+      existing = await readFile(join(ruleDirectory, file.path), "utf8");
+    } catch {
+      return false;
+    }
+    if (existing !== file.content) return false;
+  }
+  return true;
+}
+
+/**
+ * Convert one source and write it. True when the source can go.
+ *
+ * `ran` holds the cases this run has claimed, `onDisk` the ones `tests/` held
+ * when it started. Asked first without `onDisk`: if that conversion is on disk
+ * already, an interrupted run wrote it and only the source is left to remove.
+ * Otherwise every existing case is claimed, so nothing lands on one.
+ */
+async function convertOne(
+  ruleDirectory: string,
+  ruleId: string,
+  notes: string[],
+  onDisk: ClaimedCases,
+  ran: ClaimedCases,
+  convert: (claimed: ClaimedCases) => Conversion
+): Promise<boolean> {
+  const resumed = new Set(ran);
+  if (await alreadyOnDisk(ruleDirectory, convert(resumed))) {
+    for (const entry of resumed) ran.add(entry);
+    return true;
+  }
+  const claimed = new Set([...onDisk, ...ran]);
+  const conversion = convert(claimed);
+  for (const entry of claimed) ran.add(entry);
+  return apply(ruleDirectory, ruleId, conversion, notes);
+}
+
+/** The cases `tests/` holds in a rule directory, as `<bucket>/<case>`. */
+async function casesOnDisk(ruleDirectory: string): Promise<ClaimedCases> {
+  const paths: string[] = [];
+  for (const bucket of BUCKETS) {
+    for (const entry of await entriesOf(
+      join(ruleDirectory, RULE_TESTS_DIRECTORY, bucket)
+    )) {
+      paths.push(`${RULE_TESTS_DIRECTORY}/${bucket}/${entry.name}/`);
+    }
+  }
+  return claimedCasesOf(paths, RULE_TESTS_DIRECTORY);
 }
 
 /** `path`'s entries in name order, so case ordinals do not depend on the filesystem. */
@@ -145,9 +212,14 @@ async function migrateSg(
     );
     return;
   }
-  const claimed: ClaimedCases = new Set();
+  const onDisk = await casesOnDisk(ruleDirectory);
+  const ran: ClaimedCases = new Set();
   for (const entry of await entriesOf(legacy)) {
     if (entry.name === ".gitkeep") continue;
+    if (entry.name === "__snapshots__" && entry.isDirectory()) {
+      await rm(join(legacy, entry.name), { recursive: true, force: true });
+      continue;
+    }
     if (!entry.isFile() || !/\.ya?ml$/.test(entry.name)) {
       notes.push(`${ruleId}: ${entry.name} is not an ast-grep test file`);
       continue;
@@ -169,15 +241,22 @@ async function migrateSg(
       );
       continue;
     }
-    const conversion = convertSgTestFile(
-      rule,
-      entry.name,
-      content,
-      RULE_TESTS_DIRECTORY,
-      claimed
+    const converted = await convertOne(
+      ruleDirectory,
+      ruleId,
+      notes,
+      onDisk,
+      ran,
+      (claimed) =>
+        convertSgTestFile(
+          rule,
+          entry.name,
+          content,
+          RULE_TESTS_DIRECTORY,
+          claimed
+        )
     );
-    if (await apply(ruleDirectory, ruleId, conversion, notes))
-      await rm(source, { force: true });
+    if (converted) await rm(source, { force: true });
   }
 }
 
@@ -198,7 +277,8 @@ async function migrateVale(
     }
   }
   const scope = valeFixtureScope(ruleId, config);
-  const claimed: ClaimedCases = new Set();
+  const onDisk = await casesOnDisk(ruleDirectory);
+  const ran: ClaimedCases = new Set();
   for (const bucket of BUCKETS) {
     for (const entry of await entriesOf(join(legacy, bucket))) {
       if (entry.name === ".gitkeep") continue;
@@ -209,16 +289,24 @@ async function migrateVale(
         continue;
       }
       const source = join(legacy, bucket, entry.name);
-      const conversion = convertValeDocument(
-        scope,
-        bucket,
-        entry.name,
-        await readFile(source, "utf8"),
-        RULE_TESTS_DIRECTORY,
-        claimed
+      const content = await readFile(source, "utf8");
+      const converted = await convertOne(
+        ruleDirectory,
+        ruleId,
+        notes,
+        onDisk,
+        ran,
+        (claimed) =>
+          convertValeDocument(
+            scope,
+            bucket,
+            entry.name,
+            content,
+            RULE_TESTS_DIRECTORY,
+            claimed
+          )
       );
-      if (await apply(ruleDirectory, ruleId, conversion, notes))
-        await rm(source, { force: true });
+      if (converted) await rm(source, { force: true });
     }
   }
 }
