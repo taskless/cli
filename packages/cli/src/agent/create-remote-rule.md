@@ -1,4 +1,4 @@
-# Topic: create-remote-rule     (CLI v%(CLI_VERSION)s / topic v8)
+# Topic: create-remote-rule     (CLI v%(CLI_VERSION)s / topic v9)
 
 %(ONE_COMMAND_PER_CALL)s
 
@@ -151,7 +151,7 @@ Two ways to legitimately be here:
 
    **Read `notices` if it is present.** It is an optional array of
    advisory messages about a delivery that was written anyway. A rule
-   arriving with no `.tests/` fixtures is the one to expect. That rule works, but
+   arriving with no `tests/` fixtures is the one to expect. That rule works, but
    nothing exercises it: `verify` reports a pass over zero cases, which
    reads exactly like a rule proven to work. Surface any notice to the
    user rather than reporting an unqualified success. Under `--json`

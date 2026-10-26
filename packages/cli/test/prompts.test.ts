@@ -214,6 +214,7 @@ describe("the CLI invocation variable", () => {
       "AST_GREP_VERSION",
       "CLI_VERSION",
       "DETECT_EVIDENCE",
+      "FIXTURE_LAYOUT",
       "FIXTURE_SOURCES",
       "HOST_TOOLS",
       "LEGACY_LINTERS",

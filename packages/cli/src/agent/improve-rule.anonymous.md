@@ -1,4 +1,4 @@
-# Topic: improve-rule (anonymous)     (CLI v%(CLI_VERSION)s / topic v5)
+# Topic: improve-rule (anonymous)     (CLI v%(CLI_VERSION)s / topic v6)
 
 %(ONE_COMMAND_PER_CALL)s
 
@@ -16,8 +16,7 @@ check it with `validate` and `verify` in a feedback loop.
 
 1. **Identify the target rule.** If the user named one, use it.
    Otherwise, list `.taskless/rules/sg/` and ask which one. Read the
-   rule file and any test file under
-   `.taskless/rules/sg/<id>/.tests/`.
+   rule file and its cases under `.taskless/rules/sg/<id>/tests/`.
 
 2. **Gather improvement guidance.** Ask:
    - Are there false positives (cases currently flagged but
@@ -38,9 +37,12 @@ check it with `validate` and `verify` in a feedback loop.
    `language`, and `severity` unless the user explicitly asked to
    change them.
 
-5. **Update test cases.** Add the new false-positive examples to the
-   `valid:` list and the new false-negative examples to the
-   `invalid:` list in `.taskless/rules/sg/<id>/.tests/<id>-*.yml`.
+5. **Update test cases.** Add each new false-positive example as a case
+   under `.taskless/rules/sg/<id>/tests/pass/` and each new
+   false-negative example as a case under `tests/fail/`, one directory
+   per case, named for what it shows.
+
+   %(FIXTURE_LAYOUT)s
 
    %(FIXTURE_SOURCES)s
 
@@ -62,7 +64,7 @@ check it with `validate` and `verify` in a feedback loop.
 
 7. **Report results.** Show:
    - The updated rule file path
-   - The updated test file path
+   - The cases added or changed under `tests/`
    - A diff-style summary of what changed
    Suggest fetching `%(TASKLESS_CLI)s agent check` to validate against the
    broader codebase.

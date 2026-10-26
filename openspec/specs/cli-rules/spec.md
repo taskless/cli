@@ -118,12 +118,12 @@ response's `error` as given.
 
 ### Requirement: Rules create writes test files to disk
 
-`taskless rule create` SHALL write generated test files into the rule's own directory, at `.taskless/rules/sg/<id>/.tests/`, regardless of whether `--anonymous` was set. (Renamed; strengthened; repathed for the rule-directory layout.)
+`taskless rule create` SHALL write generated test files into the rule's own directory, at `.taskless/rules/sg/<id>/tests/`, regardless of whether `--anonymous` was set. (Renamed; strengthened; repathed for the rule-directory layout.)
 
 #### Scenario: Tests land inside the rule they cover
 
 - **WHEN** `taskless rule create` generates test cases for rule `<id>`
-- **THEN** the CLI SHALL write them under `.taskless/rules/sg/<id>/.tests/`
+- **THEN** the CLI SHALL write them under `.taskless/rules/sg/<id>/tests/`
 - **AND** it SHALL do so whether or not `--anonymous` was set
 
 ### Requirement: Rules create outputs results
@@ -319,7 +319,7 @@ A rule id does not carry its engine, so the CLI SHALL **resolve** which engine d
 #### Scenario: Deleting a rule removes its whole directory
 
 - **WHEN** a user runs `taskless rule delete no-eval`
-- **THEN** the CLI SHALL remove the rule's directory including its `.tests/`
+- **THEN** the CLI SHALL remove the rule's directory including its `tests/`
 - **AND** no file belonging to that rule SHALL remain
 
 #### Scenario: Deleting a rule filed under any engine

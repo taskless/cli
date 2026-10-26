@@ -1,4 +1,4 @@
-# Topic: update     (CLI v%(CLI_VERSION)s / topic v20)
+# Topic: update     (CLI v%(CLI_VERSION)s / topic v21)
 
 %(ONE_COMMAND_PER_CALL)s
 
@@ -582,6 +582,38 @@ running CLI is not the version `.taskless/taskless.json` records, and
 `rules.engines` names an engine version this CLI does not bundle. You
 are already doing what clears both: `init` moved the record to this
 CLI, step 4 moves the pins, and step 5 records the engines.
+
+### Migrating to 0.13.4
+
+**A rule's fixtures are case directories under `tests/` now, for every
+engine, and `init` moves them for you.** They used to live in `.tests/`,
+in three shapes: ast-grep's `valid:`/`invalid:` test YAML, Vale's loose
+documents, and runtime's case directories. Each rule now keeps
+`tests/pass/<case>/` and `tests/fail/<case>/`, and `verify` runs each
+case through the engine's own check with the case as its root, so the
+rule's `files:` globs or `.vale.ini` matchers apply to its fixtures the
+way they apply to real code. A rule whose scope matched no real file
+used to pass `verify` and report nothing in `check`; now its fixtures
+fail, saying the scope excluded them.
+
+Migration 12, which `%(TASKLESS_CLI)s init` applies, writes each ast-grep
+snippet as its own case and moves each Vale document into a case named
+for it, each at a path the rule's scope admits, and renames runtime
+cases. It leaves anything it cannot convert under `.tests/` and names
+it. Fixtures carry no signature, so no issued rule is touched.
+
+What needs you, after `init`:
+
+- **Run `%(TASKLESS_CLI)s verify`.** A case that now fails because the
+  rule's scope excluded it is a fixture that only ever passed because
+  the old runner ignored scope. Move it to a path the scope admits, or
+  widen the scope if the rule was meant to reach it.
+- **Rename the converted cases.** ast-grep snippets carry no
+  description, so they arrive named `pass-01`, `fail-01` and so on. Name
+  each directory for what it shows.
+- **Anything left under `.tests/`** is named in the migration's output
+  with the reason. Move those files by hand into case directories, then
+  delete `.tests/`.
 
 ## Errors
 

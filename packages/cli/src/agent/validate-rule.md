@@ -1,4 +1,4 @@
-# Topic: validate-rule     (CLI v%(CLI_VERSION)s / topic v7)
+# Topic: validate-rule     (CLI v%(CLI_VERSION)s / topic v8)
 
 %(ONE_COMMAND_PER_CALL)s
 
@@ -43,9 +43,11 @@ What each engine is checked for:
 
 | engine    | `validate` checks                                                                                                                    | `verify` runs                                                |
 |-----------|--------------------------------------------------------------------------------------------------------------------------------------|------------------------------------------------------------|
-| `sg`      | ast-grep schema, plus `id`/`language`/`severity`/`message`/`rule`, `regex` accompanied by `kind`, no top-level `strictness`, then ast-grep loads the rule on its own | the `valid`/`invalid` cases in `.tests/`                   |
-| `vale`    | style parses, `extends` and `message` present, `level` in vocabulary, and the rule's `.vale.ini` enables `<id>.<id>` under a matcher | the `.tests/pass/` and `.tests/fail/` buckets              |
-| `runtime` | `check.ts` present, at least one capture rule in `captures/`                                                                         | each directory under `.tests/pass/` and `.tests/fail/`, as the check's `root` |
+| `sg`      | ast-grep schema, plus `id`/`language`/`severity`/`message`/`rule`, `regex` accompanied by `kind`, no top-level `strictness`, then ast-grep loads the rule on its own | each case under `tests/pass/` and `tests/fail/`, scanned as its own root |
+| `vale`    | style parses, `extends` and `message` present, `level` in vocabulary, and the rule's `.vale.ini` enables `<id>.<id>` under a matcher | each case under `tests/pass/` and `tests/fail/`, linted as its own root under the rule's matchers |
+| `runtime` | `check.ts` present, at least one capture rule in `captures/`                                                                         | each case under `tests/pass/` and `tests/fail/`, as the check's `root` |
+
+%(FIXTURE_LAYOUT)s
 
 A runtime rule's fixtures execute its `check.ts`, so they run only when
 you pass `--dangerously-run-scripts`. Nothing else runs them: `verify`

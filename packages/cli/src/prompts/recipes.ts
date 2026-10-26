@@ -423,6 +423,47 @@ the construct is written, real ones follow how it is actually written.
 }
 
 /**
+ * How a rule's fixtures are laid out and judged, shared by every recipe that
+ * has the agent write or extend them.
+ *
+ * One block for every engine, because the contract is one contract: every
+ * engine's case is a directory, judged by that engine's own check with the
+ * case as its root. Three recipe-local copies of it would drift the way the
+ * three fixture readers did before they became one. The new thing for an
+ * author is the path rule for a scoped rule, so it is stated here, where every
+ * recipe reaches it. Each recipe keeps what is its engine's own beside it.
+ */
+function fixtureLayoutBlock(): string {
+  return `**How fixtures are laid out and judged.** Every rule, whatever its
+engine, keeps its cases beside it in \`tests/\`:
+
+\`\`\`
+<rule directory>/tests/pass/<case>/…   the rule must stay quiet here
+<rule directory>/tests/fail/<case>/…   the rule must fire here
+\`\`\`
+
+- **A case is a directory**, named for what it shows
+  (\`tests/fail/npx-latest/\`, not \`tests/fail/case-1/\`). It holds as many
+  files as the case needs. A file directly in \`pass/\` or \`fail/\`, or
+  anything in \`tests/\` besides those two, is refused by \`verify\`.
+- **Each case is run like a small repository.** \`verify\` runs the
+  engine's own check with the case directory as the project root, so the
+  rule's scope applies to the case exactly as it applies to real code. A
+  rule scoped to some paths needs its fixture at such a path inside the
+  case: a rule with \`files: [".github/workflows/*.yml"]\` reads
+  \`tests/fail/<case>/.github/workflows/ci.yml\`, and a bare
+  \`tests/fail/<case>/ci.yml\` is outside its scope.
+- **Firing is the whole test.** A \`fail/\` case passes when the rule reports
+  at least one finding in it, and a \`pass/\` case when it reports none.
+  Nothing about the line, the column, the message or the count is
+  asserted. Both buckets need at least one case.
+- **"The rule's scope excluded it"** means a \`fail/\` case fires once its
+  scope is removed, so the pattern is fine and the fixture's path is not.
+  Move the fixture to a path the scope admits, or widen the scope. Do not
+  edit the pattern.`;
+}
+
+/**
  * Indent every line after the first, so a multi-line block substituted into an
  * indented `%(KEY)s` is still the markdown unit it replaces.
  *
@@ -769,6 +810,7 @@ export function buildVariables(
       "   "
     ),
     // Substituted into a numbered fixture step, so indented to its body.
+    FIXTURE_LAYOUT: indentBlock(fixtureLayoutBlock(), "   "),
     FIXTURE_SOURCES: indentBlock(
       fixtureSourcesBlock(
         options.mechanics === false ? undefined : resolveInvocation(options)

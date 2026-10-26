@@ -1,4 +1,4 @@
-# Topic: create-runtime-rule     (CLI v%(CLI_VERSION)s / topic v6)
+# Topic: create-runtime-rule     (CLI v%(CLI_VERSION)s / topic v7)
 
 %(ONE_COMMAND_PER_CALL)s
 
@@ -33,22 +33,13 @@ kinds of file:
 |------------------|---------------------------------------------------------------------------|
 | `captures/*.yml` | ast-grep capture rules that narrow which files the check looks at         |
 | `check.ts`       | a module whose default export receives those matches and returns findings |
-| `.tests/`        | fixtures, in `pass/` and `fail/` buckets                                  |
+| `tests/`         | fixtures, one directory per case under `pass/` and `fail/`                |
 
-A fixture case is a DIRECTORY, not a file: `.tests/pass/case-1/`, and its
-path is the `root` the harness hands the check, with every `match.file`
-relative to it. So a case may hold as many files as the case needs.
-
-That is not a detail. A runtime rule exists because its evidence spans
-more than one file, so a layout allowing one file per case could not
-express the rules the tier is for. `pass/case-1/src/a.ts` alongside
-`pass/case-1/src/b.ts` is the ordinary shape, not the exotic one.
-
-`pass`/`fail` rather than `valid`/`invalid`, matching Vale's buckets.
-`valid`/`invalid` are key names inside an ast-grep test YAML and are
-right for `sg` for one reason only: that file is handed to `sg test`
-verbatim. Nothing hands a runtime fixture to ast-grep, so borrowing the
-word here would make it mean two things.
+A case directory is the `root` the harness hands the check, with every
+`match.file` relative to it. That matters more here than for any other
+engine: a runtime rule exists because its evidence spans more than one
+file, so `pass/declared/src/config.ts` alongside `pass/declared/.env` is
+the ordinary shape, not the exotic one.
 
 `validate` fails a runtime rule with no capture rule in `captures/`,
 because `check.ts` would then never be invoked.
@@ -132,6 +123,8 @@ Without the flag `verify` prints `○` for the rule, says the fixtures did
 not run, names the flag, and exits 0. That is neither a pass nor a
 failure, and it is deliberately not a failure: nothing the holder of an
 unblessed rule can do would make a failure green.
+
+%(FIXTURE_LAYOUT)s
 
 %(FIXTURE_SOURCES)s
 

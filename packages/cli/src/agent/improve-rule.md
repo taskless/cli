@@ -1,4 +1,4 @@
-# Topic: improve-rule     (CLI v%(CLI_VERSION)s / topic v10)
+# Topic: improve-rule     (CLI v%(CLI_VERSION)s / topic v11)
 
 %(ONE_COMMAND_PER_CALL)s
 
@@ -90,21 +90,21 @@ If the user wants the local-only flow (no API call), fetch
 9. **Clean up.** Delete `.taskless/.tmp-improve-request.json`
    regardless of success or failure.
 
-10. **Report results.** The CLI overwrites the rule file (and its
-    test file) with the updated version. Show the file paths and a
+10. **Report results.** The CLI overwrites the rule directory, its
+    `tests/` included, with the updated version. Show the file paths and a
     summary of what changed. Suggest fetching `%(TASKLESS_CLI)s agent check`
     to validate.
 
     **Read `notices` if it is present.** It is an optional array of
     advisory messages about a delivery that was written anyway. A rule
-    arriving with no `.tests/` fixtures is the one to expect. Surface any notice
+    arriving with no `tests/` fixtures is the one to expect. Surface any notice
     rather than reporting an unqualified success. Under `--json` these
     do not go to stderr, so the envelope is the only place they appear.
 
-    **Confirm both fixture buckets are still non-empty.** `verify` fails
-    an ast-grep rule whose `valid:` or `invalid:` array is empty, and
-    narrowing a pattern to kill a false positive is exactly how
-    `invalid:` ends up with nothing the rule still matches. Run
+    **Confirm both fixture buckets still hold a case the rule behaves
+    on.** `verify` fails a rule whose `tests/pass/` or `tests/fail/` is
+    empty, and narrowing a pattern to kill a false positive is exactly
+    how `tests/fail/` ends up with nothing the rule still matches. Run
     ```
     %(TASKLESS_CLI)s verify .taskless/rules/sg/<id> --json
     ```

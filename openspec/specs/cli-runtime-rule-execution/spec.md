@@ -22,7 +22,7 @@ would be reported as a clean pass. The refusal SHALL be per capture file, not pe
 unimplemented mode does not remove a rule's other narrows.
 
 Rule files under `.taskless/rules/sg/` SHALL continue to be treated as static ast-grep rules,
-not runtime rules. A rule's `.tests/` directory holds verification fixtures and SHALL NOT be
+not runtime rules. A rule's `tests/` directory holds verification fixtures and SHALL NOT be
 executed by `check`.
 
 #### Scenario: A runtime directory entry is a runtime rule
@@ -184,7 +184,7 @@ bounded to the rule root would let any nested directory carry unsigned code past
 `check.ts` still matched its blessed signature. The search SHALL also consider only files, so a
 directory whose name ends in a module extension is not reported as one.
 
-The rule's `.tests/` directory SHALL be excluded from this search. A runtime check reads real
+The rule's `tests/` directory SHALL be excluded from this search. A runtime check reads real
 files under a root, so a fixture that is itself TypeScript is the normal case rather than a
 smuggled helper, and refusing it would break correct rules — a worse failure than the one being
 prevented.
@@ -197,7 +197,7 @@ prevented.
 
 #### Scenario: A TypeScript test fixture is not a stray module
 
-- **WHEN** a runtime rule carries a `.ts` file under its `.tests/` directory
+- **WHEN** a runtime rule carries a `.ts` file under its `tests/` directory
 - **THEN** the CLI SHALL still discover and run the rule
 
 ### Requirement: Declared versions are read
@@ -216,7 +216,7 @@ executed against the current one.
 ### Requirement: A runtime rule's fixtures are executed through the harness
 
 The CLI SHALL execute a runtime rule against the fixture cases it holds under
-`.tests/pass/` and `.tests/fail/`. A case SHALL be a **directory**, and that
+`tests/pass/` and `tests/fail/`. A case SHALL be a **directory**, and that
 directory SHALL be the `root` the harness passes to the check.
 
 Each bucket SHALL be read one level deep. An entry that is not a directory SHALL

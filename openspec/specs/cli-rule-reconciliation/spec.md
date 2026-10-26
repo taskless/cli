@@ -18,7 +18,11 @@ any `key=value` parameters are parsed. Signatures SHALL be compared as whole str
 The algoVersion SHALL also determine **what one signature covers**. A signature at
 algoVersion `1` covers exactly one file. **Which** files of a rule are signed is set by the
 reconcile contract, not by the envelope: every file in the rule's directory except those
-under `.tests/`, each with its own signature.
+under `tests/` or the legacy `.tests/`, each with its own signature.
+
+`.tests/` stays excluded beside `tests/` because migration 12 leaves in place any fixture it
+cannot convert, and a leftover fixture reported as a rule file would make an issued rule read as
+edited over a file that was never signed.
 
 **Rationale.** Coverage per signature is a property of the signature scheme; the set of
 signed files is a property of the rule contract. Keeping them apart is what lets the rule
@@ -55,7 +59,7 @@ because no single signature's meaning changed.
 
 - **WHEN** the CLI signs a rule directory for reconcile
 - **THEN** it SHALL compute one signature per file in the directory
-- **AND** SHALL NOT sign any file under `.tests/`
+- **AND** SHALL NOT sign any file under `tests/` or `.tests/`
 
 ### Requirement: Signature normalization procedure (algoVersion 1)
 
@@ -184,7 +188,7 @@ When `check` reconciles, the CLI SHALL send `POST /cli/api/v2/reconcile` with
 `{ ruleId, files: [{ path, signature }] }` for **every** rule directory under
 `.taskless/rules/<engine>/`, of every engine, whatever `--rule` selects to run. `ruleId`
 SHALL be the directory name. `files` SHALL list every regular file under the directory,
-recursively, except files under `.tests/` and the operating-system metadata files
+recursively, except files under `tests/` or the legacy `.tests/` and the operating-system metadata files
 `.DS_Store`, `Thumbs.db`, and `desktop.ini`. `path` SHALL be relative to the rule directory
 with `/` separators on every platform, and `signature` SHALL be the full algoVersion-1
 envelope of the snapshot's bytes for that file.
@@ -201,8 +205,14 @@ envelope of the snapshot's bytes for that file.
 
 #### Scenario: Fixtures are not reported
 
-- **WHEN** a rule directory holds files under `.tests/`
+- **WHEN** a rule directory holds files under `tests/`
+- **THEN** no reported path SHALL begin with `tests/`
+
+#### Scenario: Unconverted legacy fixtures are not reported
+
+- **WHEN** a rule directory still holds files under `.tests/` that migration 12 could not convert
 - **THEN** no reported path SHALL begin with `.tests/`
+- **AND** the rule SHALL NOT read as edited because of them
 
 #### Scenario: --rule does not narrow the report
 
