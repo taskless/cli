@@ -6,7 +6,7 @@ import {
   RULE_TESTS_DIRECTORY,
   type EngineName,
 } from "./layout";
-import { ruleDirectory } from "./engines";
+import { isFixturePath, ruleDirectory } from "./engines";
 import { isMissingDirectory } from "./errno";
 import { getCliPrefix } from "../util/package-manager";
 
@@ -128,7 +128,7 @@ export function describeIncompleteSet(
  * requirement is real and simply not visible across the seam, so the only way
  * to know a delivery kept it is to look at what arrived.
  *
- * Asks only whether ANY file lands under `.tests/`. Depth is deliberately not
+ * Asks only whether ANY file lands under `tests/` (or the legacy `.tests/`). Depth is deliberately not
  * policed: what makes a fixture meaningful differs per engine, every engine's
  * own runner already judges it, and a second opinion here would be a worse one
  * computed from less.
@@ -137,7 +137,7 @@ export function describeMissingFixtures(
   files: readonly DeliveredFile[]
 ): string | undefined {
   const prefix = `${RULE_TESTS_DIRECTORY}/`;
-  const hasFixture = files.some((file) => file.path.startsWith(prefix));
+  const hasFixture = files.some((file) => isFixturePath(file.path));
   if (hasFixture) return undefined;
   return (
     `was delivered with no ${prefix} fixtures, so nothing exercises it: ` +

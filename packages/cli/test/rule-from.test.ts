@@ -140,7 +140,7 @@ describe("the create and improve --json envelopes carry delivery notices", () =>
   // delivery is invisible to a `--json` caller unless the envelope carries it,
   // and that caller is the one most likely to act on it unattended.
   it("carries notices through to the parsed output", () => {
-    const notice = 'Rule "a" was delivered with no .tests/ fixtures';
+    const notice = 'Rule "a" was delivered with no tests/ fixtures';
     expect(
       createOutputSchema.parse({ ...CREATE, notices: [notice] }).notices
     ).toEqual([notice]);

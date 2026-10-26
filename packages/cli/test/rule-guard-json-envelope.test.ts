@@ -49,7 +49,7 @@ describe("rule create/improve --json: a served rule that fails verification", ()
         content:
           "id: guard-test-rule-3fa9c21b\nlanguage: TypeScript\nrule:\n  pattern: foo\n",
       },
-      { path: ".tests/fail/case.ts", content: "foo();\n" },
+      { path: "tests/fail/case/case.ts", content: "foo();\n" },
     ],
   };
 

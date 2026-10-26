@@ -575,8 +575,8 @@ const DIVERGENCES: ValeCorpusEntry[] = [
     expected: "accepted",
     divergence:
       "Vale loads the key and runs the rule. The schema refuses it as " +
-      "policy: `verify` judges a Vale rule by its .tests/pass and " +
-      ".tests/fail documents and never runs `vale test`, so cases written " +
+      "policy: `verify` judges a Vale rule by its tests/pass and " +
+      "tests/fail case directories and never runs `vale test`, so cases written " +
       "here would read as coverage while nothing ran them.",
   },
 ];

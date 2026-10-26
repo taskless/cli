@@ -41,7 +41,7 @@ export const outputSchema = z.object({
     .array(z.string())
     .optional()
     .describe(
-      "Advisory messages about a delivery that was still written — a rule delivered with no `.tests/` fixtures above all. Present only when there is something to say. A machine consumer cannot read stderr prose, so these are carried here rather than only printed"
+      "Advisory messages about a delivery that was still written — a rule delivered with no `tests/` fixtures above all. Present only when there is something to say. A machine consumer cannot read stderr prose, so these are carried here rather than only printed"
     ),
 });
 

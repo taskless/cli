@@ -1,0 +1,5 @@
+steps:
+  - name: Multi-line, workspace build
+    run: |
+      pnpm build
+      pnpm cli check

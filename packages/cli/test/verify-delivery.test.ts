@@ -9,7 +9,23 @@ const SG: StubRule = {
   engine: "sg",
   files: [
     { path: "no-eval-3fa9c21b.yml", content: "id: no-eval-3fa9c21b\n" },
-    { path: ".tests/fail/case.ts", content: "eval(x);\n" },
+    { path: "tests/fail/case/case.ts", content: "eval(x);\n" },
+  ],
+};
+
+/**
+ * The same rule as a service that has not moved to the case-directory layout
+ * still serves it: its fixtures under `.tests/`, unsigned.
+ */
+const SG_LEGACY: StubRule = {
+  id: "no-eval-3fa9c21b",
+  engine: "sg",
+  files: [
+    { path: "no-eval-3fa9c21b.yml", content: "id: no-eval-3fa9c21b\n" },
+    {
+      path: ".tests/no-eval-3fa9c21b-test.yml",
+      content: "id: no-eval-3fa9c21b\ninvalid:\n  - eval(x)\n",
+    },
   ],
 };
 
@@ -51,6 +67,32 @@ describe("verifyServedRule", () => {
     expect(verdict).toMatchObject({ ok: true, revisionId: "rev-1" });
   });
 
+  it("accepts fixtures under the legacy .tests/ unsigned, too", async () => {
+    // Refusing them as unsigned files would refuse every rule a service that
+    // has not moved serves. Delivery converts them before writing.
+    const body = await served(SG_LEGACY);
+    expect(body.rules[0]?.signatures.map((entry) => entry.path)).toEqual([
+      "no-eval-3fa9c21b.yml",
+    ]);
+    const verdict = await verifyServedRule(body, { ruleId: SG_LEGACY.id });
+    expect(verdict.ok).toBe(true);
+  });
+
+  it("refuses an unsigned file under a nested tests/, which an engine reads", async () => {
+    // Only the top-level fixture directory is exempt from signing.
+    const verdict = await verifyServedRule(
+      await served(SG, (body) => {
+        body.rules[0]!.files.push({
+          path: "captures/tests/x.yml",
+          content: "id: x\n",
+        });
+      }),
+      { ruleId: SG.id }
+    );
+    expect(verdict.ok).toBe(false);
+    expect(verdict.ok ? "" : verdict.reason).toContain("with no signature");
+  });
+
   it("accepts a runtime set whose signature equals its check.ts entry", async () => {
     const verdict = await verifyServedRule(await served(RUNTIME), {
       ruleId: RUNTIME.id,
@@ -84,7 +126,7 @@ describe("verifyServedRule", () => {
       "a signed fixture",
       (body: Parameters<Parameters<typeof served>[1] & object>[0]) => {
         body.rules[0]!.signatures.push({
-          path: ".tests/fail/case.ts",
+          path: "tests/fail/case/case.ts",
           signature: "x",
         });
       },

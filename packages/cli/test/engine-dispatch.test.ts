@@ -531,23 +531,24 @@ describe("engine dispatch by directory", () => {
     expect(await discoverRuntimeRules(temporaryDirectory)).toHaveLength(1);
   });
 
-  it("allows a TypeScript fixture under .tests/", async () => {
+  it("allows a TypeScript fixture under tests/", async () => {
     // A runtime check reads real files under a root, so a fixture that is
     // legitimately TypeScript is the normal case rather than a smuggled
     // helper. Refusing it would break correct rules — a worse failure than the
     // one the stray-module check prevents.
     const rule = ruleDirectory(temporaryDirectory, "runtime", "logs-abc12345");
     await mkdir(join(rule, "captures"), { recursive: true });
-    await mkdir(join(rule, ".tests", "valid"), { recursive: true });
     await writeFile(
       join(rule, "captures", "logs.yml"),
       RUNTIME_CAPTURE,
       "utf8"
     );
     await writeFile(join(rule, "check.ts"), RUNTIME_CHECK, "utf8");
-    await mkdir(join(rule, ".tests", "valid", "deep"), { recursive: true });
+    await mkdir(join(rule, "tests", "pass", "logs", "deep"), {
+      recursive: true,
+    });
     await writeFile(
-      join(rule, ".tests", "valid", "deep", "sample.ts"),
+      join(rule, "tests", "pass", "logs", "deep", "sample.ts"),
       "console.log('x');\n",
       "utf8"
     );

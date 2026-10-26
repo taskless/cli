@@ -1,7 +1,7 @@
 import type { ServedFileSet, ServedRule } from "../api/v2";
 import { isRecord } from "../util/is-record";
 import { canonicalHash } from "./rule-hash";
-import { RULE_TESTS_DIRECTORY } from "./layout";
+import { isFixturePath } from "./engines";
 
 /**
  * Checking a served rule against the signatures it arrived with, before any
@@ -38,7 +38,7 @@ export interface DeliveryExpectation {
 }
 
 function isFixture(path: string): boolean {
-  return path.startsWith(`${RULE_TESTS_DIRECTORY}/`);
+  return isFixturePath(path);
 }
 
 /** Why a served file set is not the documented shape, or `undefined`. */

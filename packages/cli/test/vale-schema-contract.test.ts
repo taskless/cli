@@ -272,7 +272,7 @@ withVale("Vale schema contract", () => {
   });
 
   describe("errors an author can act on", () => {
-    it("points a rule's tests: cases at the .tests fixtures", () => {
+    it("points a rule's tests: cases at the tests/ fixture cases", () => {
       // Every check takes the key, so the refusal cannot live in one field
       // table: a permissive check would let it through.
       for (const check of ["existence", "spelling"]) {
@@ -283,7 +283,7 @@ withVale("Vale schema contract", () => {
           )
         );
         expect(valid, check).toBe(false);
-        expect(errors.join("\n")).toContain(".tests/fail");
+        expect(errors.join("\n")).toContain("tests/fail");
       }
     });
 

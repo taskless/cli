@@ -1,0 +1,1 @@
+const nodeProcess = globalThis.process;

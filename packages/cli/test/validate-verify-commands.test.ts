@@ -1,7 +1,7 @@
 import { execFile } from "node:child_process";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { promisify } from "node:util";
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -64,13 +64,18 @@ async function valeRule(
     await writeFile(join(directory, ".vale.ini"), options.config);
   }
   if (options.fixtures ?? false) {
-    await mkdir(join(directory, ".tests", "pass"), { recursive: true });
-    await mkdir(join(directory, ".tests", "fail"), { recursive: true });
+    await mkdir(join(directory, "tests", "pass", "plain"), { recursive: true });
+    await mkdir(join(directory, "tests", "fail", "simply"), {
+      recursive: true,
+    });
     await writeFile(
-      join(directory, ".tests", "fail", "bad.md"),
+      join(directory, "tests", "fail", "simply", "bad.md"),
       "You simply do it.\n"
     );
-    await writeFile(join(directory, ".tests", "pass", "ok.md"), "You do it.\n");
+    await writeFile(
+      join(directory, "tests", "pass", "plain", "ok.md"),
+      "You do it.\n"
+    );
   }
   return directory;
 }
@@ -78,15 +83,22 @@ async function valeRule(
 /** One sg rule, written whole, with its `id:` under the caller's control. */
 async function sgRule(directoryName: string, declaredId: string) {
   const directory = join(cwd, ".taskless", "rules", "sg", directoryName);
-  await mkdir(join(directory, ".tests"), { recursive: true });
+  await mkdir(join(directory, "tests", "pass", "plain"), { recursive: true });
+  await mkdir(join(directory, "tests", "fail", "eval-call"), {
+    recursive: true,
+  });
   await writeFile(
     join(directory, `${directoryName}.yml`),
     `id: ${declaredId}\nlanguage: TypeScript\nseverity: error\n` +
       `message: no eval\nrule:\n  pattern: eval($ARG)\n`
   );
   await writeFile(
-    join(directory, ".tests", `${directoryName}-test.yml`),
-    `id: ${directoryName}\nvalid:\n  - const a = 1;\ninvalid:\n  - eval(x);\n`
+    join(directory, "tests", "pass", "plain", "sample.ts"),
+    "const a = 1;\n"
+  );
+  await writeFile(
+    join(directory, "tests", "fail", "eval-call", "sample.ts"),
+    "eval(x);\n"
   );
 }
 
@@ -378,7 +390,7 @@ withVale("verify runs validate first", () => {
       config: SCOPED,
       fixtures: true,
     });
-    await rm(join(directory, ".tests", "pass"), {
+    await rm(join(directory, "tests", "pass"), {
       recursive: true,
       force: true,
     });
@@ -603,36 +615,53 @@ describe("a rejection names the constraint it violated", () => {
 });
 
 /**
- * An sg rule with both fixture buckets populated, so `verify` passes it, and
- * `scope` written verbatim between `message:` and `rule:`.
+ * An sg rule with both fixture buckets populated, and `scope` written verbatim
+ * between `message:` and `rule:`.
+ *
+ * Fixtures are scanned under the rule's scope, so each case holds its file at
+ * `fixture`, a path inside the case that the scope admits. That is what lets
+ * `verify` pass the rule; whether the scope reaches any file in the PROJECT is
+ * the separate question every test below asks.
  */
-async function scopedSgRule(id: string, scope = "") {
+async function scopedSgRule(id: string, scope = "", fixture = "sample.ts") {
   const directory = join(cwd, ".taskless", "rules", "sg", id);
-  await mkdir(join(directory, ".tests"), { recursive: true });
+  await mkdir(directory, { recursive: true });
   await writeFile(
     join(directory, `${id}.yml`),
     `id: ${id}\nlanguage: TypeScript\nseverity: error\nmessage: no log\n` +
       `${scope}rule:\n  pattern: console.log($$$)\n`
   );
-  await writeFile(
-    join(directory, ".tests", `${id}-test.yml`),
-    `id: ${id}\nvalid:\n  - console.error(x);\ninvalid:\n  - console.log(x);\n`
-  );
+  for (const [bucket, name, source] of [
+    ["pass", "error-call", "console.error(x);\n"],
+    ["fail", "log-call", "console.log(x);\n"],
+  ] as const) {
+    const file = join(directory, "tests", bucket, name, fixture);
+    await mkdir(dirname(file), { recursive: true });
+    await writeFile(file, source);
+  }
   return `.taskless/rules/sg/${id}`;
 }
 
-/** The notices `verify --json` attached to the one rule, asserting it passed. */
-async function noticesFor(path: string): Promise<string[] | undefined> {
+/**
+ * The notices `verify --json` attached to the one rule, asserting it passed
+ * unless `passes` says the fixtures cannot.
+ */
+async function noticesFor(
+  path: string,
+  passes = true
+): Promise<string[] | undefined> {
   const result = await runCli(["verify", path, "-d", cwd, "--json"]);
-  // A notice, never a failure: a narrow glob can be deliberate.
-  expect(result.exitCode).toBe(0);
   const rule = (JSON.parse(result.stdout) as Report).rules[0];
-  expect(rule?.ok).toBe(true);
+  // A notice, never a failure: a narrow glob can be deliberate.
+  expect(result.exitCode === 0).toBe(passes);
+  expect(rule?.ok).toBe(passes);
   return rule?.notices;
 }
 
-// #486. An sg fixture has no path, so `files:` never applies to it, and a glob
-// that selects nothing passed `verify` while `check` never ran the rule.
+// #486. An sg fixture used to have no path, so `files:` never applied to it,
+// and a glob that selected nothing passed `verify` while `check` never ran the
+// rule. Fixtures now sit at paths the scope admits, which shows the globs reach
+// the fixture; whether they reach anything in the project is still asked here.
 //
 // Every case here is one a glob matcher of our own would get wrong in at least
 // one direction, which is why the scope is asked of ast-grep's walk instead.
@@ -643,30 +672,49 @@ describe("verify says when an sg rule's globs reach no file", () => {
   });
 
   it("notices a files: glob that matches nothing", async () => {
-    const path = await scopedSgRule("no-log", `files:\n  - "lib/**/*.ts"\n`);
+    const path = await scopedSgRule(
+      "no-log",
+      `files:\n  - "lib/**/*.ts"\n`,
+      "lib/sample.ts"
+    );
     const notices = await noticesFor(path);
     expect(notices).toHaveLength(1);
     expect(notices?.[0]).toContain("no-log's files: globs match no file");
   });
 
   it("is silent when the glob reaches a file", async () => {
-    const path = await scopedSgRule("no-log", `files:\n  - "src/**/*.ts"\n`);
+    const path = await scopedSgRule(
+      "no-log",
+      `files:\n  - "src/**/*.ts"\n`,
+      "src/sample.ts"
+    );
     expect(await noticesFor(path)).toEqual([]);
   });
 
   // The glob matches a real file, but not one in the rule's language, so
   // ast-grep never applies the rule to it. Matching the glob alone would call
-  // this in scope.
+  // this in scope. No fixture can fire either, for the same reason, so the
+  // rule fails its cases and carries the notice that explains why.
   it("notices a glob that only reaches files in another language", async () => {
     await writeFile(join(cwd, "src", "notes.md"), "console.log('hi')\n");
-    const path = await scopedSgRule("no-log", `files:\n  - "src/**/*.md"\n`);
-    expect(await noticesFor(path)).toHaveLength(1);
+    const path = await scopedSgRule(
+      "no-log",
+      `files:\n  - "src/**/*.md"\n`,
+      "src/sample.md"
+    );
+    expect(await noticesFor(path, false)).toHaveLength(1);
   });
 
   // An `ignores:` that swallows every file empties the scope as surely as a
   // mistyped `files:`, and the notice has to name the key that did it.
   it("notices an ignores: glob that excludes every file", async () => {
-    const path = await scopedSgRule("no-log", `ignores:\n  - "**/*.ts"\n`);
+    // `.mts` is TypeScript to ast-grep and outside `**/*.ts`, so the fixture
+    // still fires while every file in the project is ignored.
+    const path = await scopedSgRule(
+      "no-log",
+      `ignores:\n  - "**/*.ts"\n`,
+      "sample.mts"
+    );
     const notices = await noticesFor(path);
     expect(notices).toHaveLength(1);
     expect(notices?.[0]).toContain("no-log's ignores: globs match no file");
@@ -678,8 +726,15 @@ describe("verify says when an sg rule's globs reach no file", () => {
     await execFileAsync("git", ["init", "-q"], { cwd });
     await mkdir(join(cwd, "dist"), { recursive: true });
     await writeFile(join(cwd, "dist", "app.ts"), "console.log('hi');\n");
-    await writeFile(join(cwd, ".gitignore"), "dist/\n");
-    const path = await scopedSgRule("no-log", `files:\n  - "dist/**/*.ts"\n`);
+    // Anchored, so it ignores the project's `dist/` and not the fixture's:
+    // a case is scanned inside this repository, and an unanchored `dist/`
+    // would hide the fixture from its own scan.
+    await writeFile(join(cwd, ".gitignore"), "/dist/\n");
+    const path = await scopedSgRule(
+      "no-log",
+      `files:\n  - "dist/**/*.ts"\n`,
+      "dist/sample.ts"
+    );
     expect(await noticesFor(path)).toHaveLength(1);
   });
 

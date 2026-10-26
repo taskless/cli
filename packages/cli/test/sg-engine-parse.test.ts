@@ -46,18 +46,37 @@ afterEach(async () => {
   await rm(cwd, { recursive: true, force: true });
 });
 
-/** An sg rule with both fixture buckets, `body` written verbatim. */
+/** Write one fixture case holding a single `sample.ts`. */
+async function fixtureCase(
+  id: string,
+  bucket: "pass" | "fail",
+  name: string,
+  source: string
+) {
+  const directory = join(
+    cwd,
+    ".taskless",
+    "rules",
+    "sg",
+    id,
+    "tests",
+    bucket,
+    name
+  );
+  await mkdir(directory, { recursive: true });
+  await writeFile(join(directory, "sample.ts"), source);
+}
+
+/** An sg rule with one case in each fixture bucket, `body` written verbatim. */
 async function sgRule(id: string, body: string, language = "TypeScript") {
   const directory = join(cwd, ".taskless", "rules", "sg", id);
-  await mkdir(join(directory, ".tests"), { recursive: true });
+  await mkdir(directory, { recursive: true });
   await writeFile(
     join(directory, `${id}.yml`),
     `id: ${id}\nlanguage: ${language}\nseverity: error\nmessage: m\n${body}`
   );
-  await writeFile(
-    join(directory, ".tests", `${id}-test.yml`),
-    `id: ${id}\nvalid:\n  - foo(x);\ninvalid:\n  - eval(x);\n`
-  );
+  await fixtureCase(id, "pass", "plain-call", "foo(x);\n");
+  await fixtureCase(id, "fail", "eval-call", "eval(x);\n");
 }
 
 const GOOD =
@@ -174,7 +193,7 @@ describe("verify judges an sg rule on its own fixtures", () => {
     const ruleDirectory = await readdir(
       join(cwd, ".taskless", "rules", "sg", "good")
     );
-    expect(ruleDirectory.toSorted()).toEqual([".tests", "good.yml"]);
+    expect(ruleDirectory.toSorted()).toEqual(["good.yml", "tests"]);
   });
 
   it("passes a rule whose only findings from validate are trap notices", async () => {
@@ -189,10 +208,11 @@ describe("verify judges an sg rule on its own fixtures", () => {
         '    has: { field: function, kind: identifier, regex: "^eval$" }\n' +
         "  follows: { kind: expression_statement }\n"
     );
-    await writeFile(
-      join(cwd, ".taskless", "rules", "sg", "sib", ".tests", "sib-test.yml"),
-      "id: sib\nvalid:\n  - eval(x);\ninvalid:\n  - |\n    a();\n    eval(x);\n"
-    );
+    await rm(join(cwd, ".taskless", "rules", "sg", "sib", "tests"), {
+      recursive: true,
+    });
+    await fixtureCase("sib", "pass", "eval-alone", "eval(x);\n");
+    await fixtureCase("sib", "fail", "eval-after-call", "a();\neval(x);\n");
     const { rules } = await report("verify", ".taskless/rules/sg/sib");
     expect(rules[0]?.errors).toEqual([]);
     expect(rules[0]?.ok).toBe(true);

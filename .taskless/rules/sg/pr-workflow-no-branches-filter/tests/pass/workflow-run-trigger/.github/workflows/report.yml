@@ -1,0 +1,4 @@
+on:
+  workflow_run:
+    workflows: [Validate]
+    types: [completed]

@@ -22,6 +22,10 @@ export default tseslint.config(
       // repository — so it is deliberately outside every tsconfig, and
       // type-aware linting has no project to resolve it against.
       "packages/cli/assets/reference-runtime/",
+      // Every reference rule's fixtures, for the same reason: they are case
+      // DATA a rule is judged against, outside every tsconfig. They used to
+      // sit in a `.tests/` directory, which the linter never walked into.
+      "packages/cli/assets/reference-*/tests/",
       // The project launcher template, for the same reason: it ships as DATA,
       // written into a user's `.taskless/bin/` as plain JavaScript run by any
       // Node they have, and no tsconfig covers it. `launcher.test.ts` runs the
@@ -47,11 +51,11 @@ export default tseslint.config(
       // worth doing, but it is a separate change — the rules that would apply
       // are not these ones.
       ".agents/skills/*/scripts/",
-      // Taskless rule fixtures. A rule's `.tests/` holds inputs written to be
+      // Taskless rule fixtures. A rule's `tests/` holds inputs written to be
       // flagged, and a rule about source comments needs `.ts` fixtures
       // specifically — Vale picks its comments-only tier by extension. They are
       // not part of any tsconfig, so the type-aware rules fail to parse them.
-      // `taskless verify` and `taskless test` are what keep them honest.
+      // `taskless verify` is what keeps them honest.
       ".taskless/",
       // The demo project. Its source is deliberately wrong — `example.cjs`
       // calls `eval` so a rule has something to find — and its fixtures are

@@ -6,7 +6,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -48,44 +48,59 @@ function verification(
   return result;
 }
 
+/**
+ * A rule's fixtures, keyed by `<case>/<path inside the case>`.
+ *
+ * The case is a directory and the path beneath it is where the document sits
+ * relative to the root Vale is run from, which is what a matcher is resolved
+ * against: `outside/notes.md` and `inside/docs/guide/notes.md` are two cases
+ * whose only difference is the path.
+ */
 interface RuleFixtures {
   pass?: Record<string, string>;
   fail?: Record<string, string>;
 }
 
-/** A project with rules and per-rule fixture buckets, and no committed config. */
+/** The matcher every rule gets unless a test names its own. */
+const SCOPED = (id: string, matcher = "*.md"): string =>
+  `[${matcher}]\ntskl) rule = ${id}\n${id}.${id} = YES\n`;
+
+const ruleDirectory = (cwd: string, ruleId: string): string =>
+  join(cwd, ".taskless", "rules", "vale", ruleId);
+
+/** `.taskless/rules/vale/<id>/tests`, project-relative, for asserting on paths. */
+const testsPath = (ruleId: string): string =>
+  `.taskless/rules/vale/${ruleId}/tests`;
+
+/**
+ * A project with rules and per-rule fixture cases.
+ *
+ * Every rule gets its own `.vale.ini`, `[*.md]` unless `configs` says
+ * otherwise: verification runs a case under the rule's own matchers, so a rule
+ * without one has no scope to verify under.
+ */
 function makeProject(
   rules: Record<string, string>,
-  fixtures: Record<string, RuleFixtures>
+  fixtures: Record<string, RuleFixtures>,
+  configs: Record<string, string> = {}
 ): string {
   const cwd = mkdtempSync(join(tmpdir(), "vale-verify-"));
   workspaces.push(cwd);
-  // A rule is a directory; each `write` below creates its own.
   for (const [name, body] of Object.entries(rules)) {
-    mkdirSync(join(cwd, ".taskless", "rules", "vale", name), {
-      recursive: true,
-    });
-    writeFileSync(
-      join(cwd, ".taskless", "rules", "vale", name, `${name}.yml`),
-      body
-    );
+    const directory = ruleDirectory(cwd, name);
+    mkdirSync(directory, { recursive: true });
+    writeFileSync(join(directory, `${name}.yml`), body);
+    writeFileSync(join(directory, ".vale.ini"), configs[name] ?? SCOPED(name));
   }
   for (const [ruleId, buckets] of Object.entries(fixtures)) {
     for (const bucket of ["pass", "fail"] as const) {
       const documents = buckets[bucket];
       if (documents === undefined) continue;
-      const directory = join(
-        cwd,
-        ".taskless",
-        "rules",
-        "vale",
-        ruleId,
-        ".tests",
-        bucket
-      );
+      const directory = join(ruleDirectory(cwd, ruleId), "tests", bucket);
       mkdirSync(directory, { recursive: true });
-      for (const [name, body] of Object.entries(documents)) {
-        writeFileSync(join(directory, name), body);
+      for (const [path, body] of Object.entries(documents)) {
+        mkdirSync(dirname(join(directory, path)), { recursive: true });
+        writeFileSync(join(directory, path), body);
       }
     }
   }
@@ -101,8 +116,8 @@ function bothBuckets(): string {
     { "no-simply": existence("simply") },
     {
       "no-simply": {
-        fail: { "a.md": "Just simply do it.\n" },
-        pass: { "c.md": "Nothing objectionable.\n" },
+        fail: { "a/a.md": "Just simply do it.\n" },
+        pass: { "c/c.md": "Nothing objectionable.\n" },
       },
     }
   );
@@ -139,8 +154,8 @@ describe("discoverValeRuleTests", () => {
     const cwd = makeProject(
       { "no-simply": existence("simply"), "no-very": existence("very") },
       {
-        "no-simply": { fail: { "a.md": "Just simply do it.\n" } },
-        "no-very": { fail: { "a.md": "It is very good.\n" } },
+        "no-simply": { fail: { "a/a.md": "Just simply do it.\n" } },
+        "no-very": { fail: { "a/a.md": "It is very good.\n" } },
       }
     );
     expect(await discoverValeRuleTests(cwd)).toEqual(["no-simply", "no-very"]);
@@ -160,27 +175,20 @@ asUser("verifyValeRule with an unreadable bucket", () => {
     // The buckets are read independently: swallowing this would leave `pass/`
     // silently `[]` beside a populated `fail/`, and the rule could report
     // passing having never checked the pass side.
-    const cwd = makeProject(
-      { "no-simply": existence("simply") },
-      {
-        "no-simply": {
-          fail: { "a.md": "Just simply do it.\n" },
-          pass: { "c.md": "Nothing objectionable.\n" },
-        },
-      }
-    );
+    const cwd = bothBuckets();
     const passDirectory = join(
-      cwd,
-      ".taskless",
-      "rules",
-      "vale",
-      "no-simply",
-      ".tests",
+      ruleDirectory(cwd, "no-simply"),
+      "tests",
       "pass"
     );
     chmodSync(passDirectory, 0o000);
     try {
-      await expect(verifyValeRule(cwd, "no-simply")).rejects.toThrow(/EACCES/);
+      const result = verification(await verifyValeRule(cwd, "no-simply"));
+      expect(result.passed).toBe(false);
+      expect(result.errors.join("\n")).toMatch(/EACCES/);
+      // Not reported as a half-written rule: `pass-only`/`fail-only` would
+      // be the exact misreading this read discipline exists to prevent.
+      expect(result.fixtures).not.toBe("fail-only");
     } finally {
       // Restore, or the afterEach cleanup cannot recurse into it either.
       chmodSync(passDirectory, 0o700);
@@ -188,47 +196,43 @@ asUser("verifyValeRule with an unreadable bucket", () => {
   });
 });
 
-describe("fixture buckets are flat", () => {
-  it("rejects a nested directory instead of silently skipping it", async () => {
-    // The dangerous case: Vale lints the rule's `.tests/` recursively, so a
-    // nested fixture IS linted, but a flat read never collects it. Skipping it
-    // quietly would let a nested `pass/` fixture fire with its finding
-    // discarded, and a nested `fail/` fixture never be required to fire —
-    // `passed: true` over fixtures that were never checked.
-    const cwd = makeProject(
-      { "no-simply": existence("simply") },
-      {
-        "no-simply": {
-          pass: { "clean.md": "Nothing objectionable.\n" },
-          fail: { "a.md": "Just simply do it.\n" },
-        },
-      }
-    );
-    mkdirSync(
-      join(
-        cwd,
-        ".taskless",
-        "rules",
-        "vale",
-        "no-simply",
-        ".tests",
-        "pass",
-        "nested"
-      ),
-      {
-        recursive: true,
-      }
+describe("a rule's tests/ holds only case directories", () => {
+  it("refuses a loose file in a bucket, naming its path", async () => {
+    // The engine is run with a case directory as its root, so a bare file in
+    // `pass/` has no root to be. Skipping it would leave a fixture an author
+    // wrote, that never ran, and that nothing mentioned.
+    const cwd = bothBuckets();
+    writeFileSync(
+      join(ruleDirectory(cwd, "no-simply"), "tests", "pass", "loose.md"),
+      "Nothing objectionable.\n"
     );
 
-    await expect(verifyValeRule(cwd, "no-simply")).rejects.toThrow(
-      /fixture buckets are flat/i
+    const result = verification(await verifyValeRule(cwd, "no-simply"));
+    expect(result.passed).toBe(false);
+    expect(result.errors.join("\n")).toContain(
+      join("no-simply", "tests", "pass", "loose.md")
     );
 
     // This rejection IS the declared layout, and the conformance corpus
     // publishes that declaration as fact. Asserted here so a reader changing
-    // either meets the other, rather than leaving the corpus telling consumers
-    // a case is one document while the reader collects trees.
-    expect(ENGINE_LAYOUTS.vale.fixtureLayout).toBe("case-documents");
+    // either meets the other.
+    expect(ENGINE_LAYOUTS.vale.fixtureLayout).toBe("case-directories");
+  });
+
+  it("refuses a stray entry in tests/, naming its path", async () => {
+    // A leftover from the old layout, or an engine-native test file, would
+    // otherwise sit beside the cases and never run.
+    const cwd = bothBuckets();
+    writeFileSync(
+      join(ruleDirectory(cwd, "no-simply"), "tests", "notes.md"),
+      "Just simply do it.\n"
+    );
+
+    const result = verification(await verifyValeRule(cwd, "no-simply"));
+    expect(result.passed).toBe(false);
+    expect(result.errors.join("\n")).toContain(
+      join("no-simply", "tests", "notes.md")
+    );
   });
 });
 
@@ -239,24 +243,24 @@ withVale("verifyValeRule", () => {
       {
         "no-simply": {
           fail: {
-            "a.md": "Just simply do it.\n",
-            "b.md": "Keep it simply short.\n",
+            "a/a.md": "Just simply do it.\n",
+            "b/b.md": "Keep it simply short.\n",
           },
-          pass: { "c.md": "Nothing objectionable.\n" },
+          pass: { "c/c.md": "Nothing objectionable.\n" },
         },
       }
     );
     const result = await verifyValeRule(cwd, "no-simply");
     // Exhaustive on purpose: a field added to the verification shows up here
     // rather than sliding in unasserted. `findings` is spelled out per finding
-    // for the same reason — it is carried rather than reduced to the file paths
-    // in `missingFailures`/`unexpectedFindings`, and the rendered `message` is
-    // the field the array exists to carry.
+    // for the same reason, and because `file` is the project-relative path of
+    // the fixture document, case directory included, with its bucket beside it.
     expect(result).toEqual({
       ruleId: "no-simply",
       passed: true,
       missingFailures: [],
       unexpectedFindings: [],
+      errors: [],
       fixtures: "both",
       notices: [],
       findings: [
@@ -265,7 +269,7 @@ withVale("verifyValeRule", () => {
           ruleId: "no-simply",
           severity: "warning",
           message: "Avoid 'simply'",
-          file: ".taskless/rules/vale/no-simply/.tests/fail/a.md",
+          file: `${testsPath("no-simply")}/fail/a/a.md`,
           range: {
             start: { line: 0, column: 5 },
             end: { line: 0, column: 10 },
@@ -278,7 +282,7 @@ withVale("verifyValeRule", () => {
           ruleId: "no-simply",
           severity: "warning",
           message: "Avoid 'simply'",
-          file: ".taskless/rules/vale/no-simply/.tests/fail/b.md",
+          file: `${testsPath("no-simply")}/fail/b/b.md`,
           range: {
             start: { line: 0, column: 8 },
             end: { line: 0, column: 13 },
@@ -296,37 +300,46 @@ withVale("verifyValeRule", () => {
       {
         "no-simply": {
           fail: {
-            "a.md": "Just simply do it.\n",
-            "quiet.md": "Nothing here.\n",
+            "a/a.md": "Just simply do it.\n",
+            "quiet/quiet.md": "Nothing here.\n",
           },
-          pass: { "c.md": "Nothing objectionable.\n" },
+          pass: { "c/c.md": "Nothing objectionable.\n" },
         },
       }
     );
     const result = verification(await verifyValeRule(cwd, "no-simply"));
     expect(result.passed).toBe(false);
-    // A fixture that produces nothing is absent from Vale's output entirely,
-    // so this can only be caught by comparing against the files on disk.
+    // A case that produces nothing is absent from Vale's output entirely, so
+    // this can only be caught by comparing against the cases on disk.
     expect(result.missingFailures).toEqual([
-      ".taskless/rules/vale/no-simply/.tests/fail/quiet.md",
+      `${testsPath("no-simply")}/fail/quiet/`,
+    ]);
+    // Quiet with the scope removed too, so the pattern is what is blamed.
+    expect(result.errors).toEqual([
+      `fail case did not fire: ${testsPath("no-simply")}/fail/quiet/ (the rule did not match it)`,
     ]);
   });
 
-  it("reports a pass fixture that fires", async () => {
+  it("reports a pass fixture that fires, under the pass bucket", async () => {
     const cwd = makeProject(
       { "no-simply": existence("simply") },
       {
         "no-simply": {
-          fail: { "a.md": "Just simply do it.\n" },
-          pass: { "oops.md": "This simply fires.\n" },
+          fail: { "a/a.md": "Just simply do it.\n" },
+          pass: { "oops/oops.md": "This simply fires.\n" },
         },
       }
     );
     const result = verification(await verifyValeRule(cwd, "no-simply"));
     expect(result.passed).toBe(false);
     expect(result.unexpectedFindings).toEqual([
-      ".taskless/rules/vale/no-simply/.tests/pass/oops.md",
+      `${testsPath("no-simply")}/pass/oops/`,
     ]);
+    expect(
+      result.findings
+        .filter((finding) => finding.bucket === "pass")
+        .map((finding) => finding.file)
+    ).toEqual([`${testsPath("no-simply")}/pass/oops/oops.md`]);
   });
 
   it("isolates the rule under test from every other rule", async () => {
@@ -337,14 +350,34 @@ withVale("verifyValeRule", () => {
       { "no-simply": existence("simply"), "no-very": existence("very") },
       {
         "no-simply": {
-          fail: { "a.md": "Just simply do it.\n" },
-          pass: { "b.md": "It is very fine.\n" },
+          fail: { "a/a.md": "Just simply do it.\n" },
+          pass: { "b/b.md": "It is very fine.\n" },
         },
       }
     );
     const result = verification(await verifyValeRule(cwd, "no-simply"));
     expect(result.passed).toBe(true);
     expect(result.unexpectedFindings).toEqual([]);
+  });
+
+  it("is not failed by another rule whose .vale.ini is rejected", async () => {
+    // `check` refuses the whole Vale assembly over one rejected config, on
+    // purpose. Verification builds its config from the rule under test alone,
+    // so a sibling's broken config cannot fail this rule's cases.
+    const cwd = makeProject(
+      { "no-simply": existence("simply"), "no-very": existence("very") },
+      {
+        "no-simply": {
+          fail: { "a/a.md": "Just simply do it.\n" },
+          pass: { "c/c.md": "Nothing objectionable.\n" },
+        },
+      },
+      // No breadcrumb, and it assigns another rule's key: refused twice over.
+      { "no-very": "[*.md]\nno-simply.no-simply = NO\n" }
+    );
+    const result = verification(await verifyValeRule(cwd, "no-simply"));
+    expect(result.errors).toEqual([]);
+    expect(result.passed).toBe(true);
   });
 
   it("does not report success for a rule with no fixtures", async () => {
@@ -367,7 +400,7 @@ withVale("verifyValeRule", () => {
     // an unexpectedFindings that had nothing to check.
     const cwd = makeProject(
       { "no-simply": existence("simply") },
-      { "no-simply": { fail: { "a.md": "Just simply do it.\n" } } }
+      { "no-simply": { fail: { "a/a.md": "Just simply do it.\n" } } }
     );
     const result = verification(await verifyValeRule(cwd, "no-simply"));
     expect(result.fixtures).toBe("fail-only");
@@ -379,69 +412,105 @@ withVale("verifyValeRule", () => {
     // used to pass without ever demonstrating the rule can fire at all.
     const cwd = makeProject(
       { "no-simply": existence("simply") },
-      { "no-simply": { pass: { "c.md": "Nothing objectionable.\n" } } }
+      { "no-simply": { pass: { "c/c.md": "Nothing objectionable.\n" } } }
     );
     const result = verification(await verifyValeRule(cwd, "no-simply"));
     expect(result.fixtures).toBe("pass-only");
     expect(result.passed).toBe(false);
   });
 
-  it("needs no committed .vale.ini", async () => {
-    // The spec is explicit that rule-tests hold fixtures only; the config is
-    // generated. makeProject never writes one.
-    const cwd = makeProject(
-      { "no-simply": existence("simply") },
-      {
-        "no-simply": {
-          fail: { "a.md": "Just simply do it.\n" },
-          pass: { "c.md": "Nothing objectionable.\n" },
-        },
-      }
-    );
-    const result = verification(await verifyValeRule(cwd, "no-simply"));
-    expect(result.passed).toBe(true);
-  });
-
   it("excludes a fixture with unparseable front matter instead of blocking every other fixture (taskless/cli#300)", async () => {
-    // `verifyValeRule` points `runVale` at `.taskless/rules/vale/<ruleId>/.tests`
-    // directly — an explicit path, not a whole-project walk — so the
-    // `.taskless/**` glob exclusion in `runVale` never applies here and Vale
-    // really does walk into this directory. A malformed fixture therefore
-    // reports a config-error `Path` that starts with `.taskless/rules/vale/…`.
-    // `targetFileParseError` must still recognize that as a target file (no
-    // `.taskless/`-prefix carve-out) or this call path falls back to the
-    // pre-#300 behaviour: one bad fixture returns `{ outcome: { status:
-    // "failed" } }` for the WHOLE rule, and neither `a.md` nor `c.md` below is
-    // ever evaluated.
+    // Each case is its own Vale run with the case as the working directory,
+    // so a malformed document reports a config-error `Path` relative to the
+    // case. `targetFileParseError` must still recognize it as a target file,
+    // or that one case returns `{ outcome: { status: "failed" } }` for the
+    // WHOLE rule and neither `a/` nor `c/` below is ever evaluated.
     const cwd = makeProject(
       { "no-simply": existence("simply") },
       {
         "no-simply": {
           fail: {
-            "a.md": "Just simply do it.\n",
-            "bad.md":
+            "a/a.md": "Just simply do it.\n",
+            "bad/bad.md":
               "---\ndescription: has a colon: right here\n---\n\nJust simply do it.\n",
           },
-          pass: { "c.md": "Nothing objectionable.\n" },
+          pass: { "c/c.md": "Nothing objectionable.\n" },
         },
       }
     );
 
     const result = verification(await verifyValeRule(cwd, "no-simply"));
 
-    // The good fixtures are still evaluated normally: `a.md` fires, `c.md`
-    // stays clean.
+    // The good cases are still evaluated normally: `a/` fires, `c/` stays
+    // clean.
     expect(result.missingFailures).not.toContain(
-      ".taskless/rules/vale/no-simply/.tests/fail/a.md"
+      `${testsPath("no-simply")}/fail/a/`
     );
     expect(result.unexpectedFindings).toEqual([]);
     // `bad.md` could not be parsed, so it never fires under its own rule id —
     // it is reported as a missing failure rather than silently dropped, and
-    // rather than taking `a.md` and `c.md` down with it.
+    // rather than taking `a/` and `c/` down with it.
     expect(result.missingFailures).toContain(
-      ".taskless/rules/vale/no-simply/.tests/fail/bad.md"
+      `${testsPath("no-simply")}/fail/bad/`
     );
     expect(result.passed).toBe(false);
+  });
+});
+
+withVale("verifyValeRule applies the rule's own matchers", () => {
+  // The rule is enabled only under `[docs/**/*.md]`. Verification used to
+  // enable it under `[*]`, so a rule whose matchers matched nothing real
+  // passed verification and stayed silent in `check`.
+  const DOCS_ONLY = SCOPED("no-simply", "docs/**/*.md");
+
+  it("fires on a case document at a path the matcher admits", async () => {
+    const cwd = makeProject(
+      { "no-simply": existence("simply") },
+      {
+        "no-simply": {
+          fail: { "inside/docs/guide/notes.md": "Just simply do it.\n" },
+          pass: { "clean/docs/guide/notes.md": "Nothing objectionable.\n" },
+        },
+      },
+      { "no-simply": DOCS_ONLY }
+    );
+    const result = verification(await verifyValeRule(cwd, "no-simply"));
+    expect(result.errors).toEqual([]);
+    expect(result.passed).toBe(true);
+    expect(result.findings.map((finding) => finding.file)).toEqual([
+      `${testsPath("no-simply")}/fail/inside/docs/guide/notes.md`,
+    ]);
+  });
+
+  it("fails a case whose document the scope excluded, and says so", async () => {
+    const cwd = makeProject(
+      { "no-simply": existence("simply") },
+      {
+        "no-simply": {
+          fail: {
+            "inside/docs/guide/notes.md": "Just simply do it.\n",
+            "outside/notes.md": "Just simply do it.\n",
+          },
+          pass: { "clean/docs/guide/notes.md": "Nothing objectionable.\n" },
+        },
+      },
+      { "no-simply": DOCS_ONLY }
+    );
+    const result = verification(await verifyValeRule(cwd, "no-simply"));
+    expect(result.passed).toBe(false);
+    // The same text, so the only difference between the two cases is where
+    // the document sits.
+    expect(result.missingFailures).toEqual([
+      `${testsPath("no-simply")}/fail/outside/`,
+    ]);
+    // It fires with the scope removed, so the message blames the scope and
+    // names it, rather than sending the author to edit a pattern that works.
+    expect(result.errors).toHaveLength(1);
+    expect(result.errors[0]).toContain("scope excluded it");
+    expect(result.errors[0]).toContain(
+      `${testsPath("no-simply")}/fail/outside/`
+    );
+    expect(result.errors[0]).toContain(".vale.ini matchers");
   });
 });
 
@@ -451,12 +520,12 @@ withVale("verifyValeRules", () => {
       { "no-simply": existence("simply"), "no-very": existence("very") },
       {
         "no-simply": {
-          fail: { "a.md": "Just simply do it.\n" },
-          pass: { "c.md": "Nothing objectionable.\n" },
+          fail: { "a/a.md": "Just simply do it.\n" },
+          pass: { "c/c.md": "Nothing objectionable.\n" },
         },
         "no-very": {
-          fail: { "a.md": "It is very good.\n" },
-          pass: { "c.md": "Nothing objectionable.\n" },
+          fail: { "a/a.md": "It is very good.\n" },
+          pass: { "c/c.md": "Nothing objectionable.\n" },
         },
       }
     );
@@ -485,15 +554,7 @@ describe("verifyValeRules without a binary", () => {
 
     // Both buckets, or the rule short-circuits on incomplete fixtures and Vale
     // is never invoked — the binary's absence would go unnoticed.
-    const cwd = makeProject(
-      { "no-simply": existence("simply") },
-      {
-        "no-simply": {
-          fail: { "a.md": "Just simply do it.\n" },
-          pass: { "c.md": "Nothing objectionable.\n" },
-        },
-      }
-    );
+    const cwd = bothBuckets();
     const outcome = await verifyValeRules(cwd);
     expect(outcome.status).toBe("unavailable");
   });
@@ -504,36 +565,43 @@ describe("verifyValeRule and Vale's notice", () => {
   // run that found nothing: a `W101 … isn't a core option` warning goes to
   // stderr with exit zero and an empty result, so a verification that drops it
   // reports a clean pass for a rule Vale never applied. `runVale` is stubbed
-  // because the isolating config verification generates is always well-formed
-  // — the diagnostic is real, but no fixture layout can provoke it here.
+  // because the config verification generates is always well-formed — the
+  // diagnostic is real, but no fixture layout can provoke it here.
   const NOTICE =
     "Vale reported while running: W101 'rules.no-simply' isn't a core option; Vale is ignoring it.";
 
   it("carries the notice onto a verification that otherwise passes", async () => {
     const cwd = bothBuckets();
     const run = await import("../src/rules/vale/run");
-    vi.spyOn(run, "runVale").mockResolvedValue({
-      status: "ok",
-      blocking: false,
-      results: [
-        {
-          source: "vale",
-          ruleId: "no-simply",
-          severity: "warning",
-          message: "Avoid 'simply'",
-          file: ".taskless/rules/vale/no-simply/.tests/fail/a.md",
-          range: {
-            start: { line: 1, column: 6 },
-            end: { line: 1, column: 12 },
-          },
-          matchedText: "simply",
-        },
-      ],
-      notices: [NOTICE],
-    });
+    // Each case is its own run with the case as cwd, so the stub fires only
+    // for the `fail/` case: a finding on every run would fail the pass case.
+    vi.spyOn(run, "runVale").mockImplementation((options) =>
+      Promise.resolve({
+        status: "ok",
+        blocking: false,
+        results: options.cwd.includes(join("tests", "fail"))
+          ? [
+              {
+                source: "vale",
+                ruleId: "no-simply",
+                severity: "warning",
+                message: "Avoid 'simply'",
+                file: "a.md",
+                range: {
+                  start: { line: 1, column: 6 },
+                  end: { line: 1, column: 12 },
+                },
+                matchedText: "simply",
+              },
+            ]
+          : [],
+        notices: [NOTICE],
+      })
+    );
 
     const result = verification(await verifyValeRule(cwd, "no-simply"));
     expect(result.passed).toBe(true);
+    // Deduplicated across the two case runs.
     expect(result.notices).toEqual([NOTICE]);
   });
 

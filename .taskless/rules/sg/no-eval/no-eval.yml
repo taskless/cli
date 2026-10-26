@@ -3,6 +3,10 @@ language: TypeScript
 severity: error
 message: Do not use eval() or Function() to evaluate strings as code. These are security risks that enable code injection attacks.
 note: Use safer alternatives like JSON.parse() for data, or restructure code to avoid dynamic evaluation.
+# The conformance corpus ships an `eval` call as a fail fixture on purpose:
+# it is the case the reference rule is judged against, not code that runs.
+ignores:
+  - "packages/cli/assets/reference-*/tests/**"
 rule:
   any:
     - pattern: eval($$$)

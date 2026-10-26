@@ -1,0 +1,1 @@
+import { runWizard } from "./index";

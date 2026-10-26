@@ -44,10 +44,16 @@ export const REFERENCE_SIGNATURE = `1;h=sha-256;d=${"0".repeat(64)}`;
  * value now names a different command than it did, so a consumer that maps
  * `"verify"` to "decided from the files alone" would read the opposite.
  *
+ * 4 — every engine's fixtures are case directories under `tests/` rather than
+ * `.tests/`. `tests.files` paths changed prefix, `sg` and `vale` changed
+ * `grouping` to `case-directories`, and `cases` is now always present, so a
+ * consumer that grouped a `vale` case as one document, or read an ast-grep
+ * test YAML out of `files`, would misread every case.
+ *
  * A consumer that asserts this and stops is behaving correctly, which is what
  * makes the bump a sufficient signal on its own.
  */
-export const REFERENCE_VERSION = 3;
+export const REFERENCE_VERSION = 4;
 
 /**
  * The check this corpus exists to make possible, stated in the artifact itself.
@@ -87,11 +93,9 @@ export type FixtureBucket = "pass" | "fail";
 /**
  * One fixture case: the unit a runner is pointed at, and the files it holds.
  *
- * `path` is what the engine is handed, and its kind differs by engine because
- * the engines differ — a directory for `runtime`, whose check is called with
- * that path as its root; the document itself for `vale`, which lints files. The
- * enclosing {@link ReferenceTests.grouping} is what tells a reader which of the
- * two it is looking at, and publishing that is this shape's entire purpose.
+ * `path` is what the engine is handed: the case directory, which every engine
+ * is run over as its root. The enclosing {@link ReferenceTests.grouping} says
+ * so, and it is what a later layout change would move.
  *
  * `files` names paths rather than repeating content. The bytes live once, in
  * {@link ReferenceTests.files}. Two copies of a fixture in one document is a
@@ -100,7 +104,7 @@ export type FixtureBucket = "pass" | "fail";
  */
 export interface ReferenceCase {
   bucket: FixtureBucket;
-  /** The case's own name — a directory name, or a document's filename. */
+  /** The case directory's own name, which is the case's description. */
   name: string;
   /** Rule-relative, and what the runner is given. */
   path: string;
@@ -119,17 +123,11 @@ export interface ReferenceCase {
  * fixtures shipped beside it (#263): their request format carried one anonymous
  * blob per case, so the two-file `runtime` case could not be expressed and the
  * rule was graded against half of itself.
- *
- * `cases` is absent for `ast-grep-test`, and the absence is a statement. That
- * grouping lives inside ast-grep's own test file, in a schema ast-grep
- * documents and owns; restating it here would move a fact out of the schema
- * that owns it and into a copy this repository would then have to keep true.
  */
 export interface ReferenceTests {
   grouping: FixtureLayout;
   files: ReferenceFile[];
-  /** Present for every grouping the CLI itself defines. */
-  cases?: ReferenceCase[];
+  cases: ReferenceCase[];
 }
 
 /** One rule as this corpus carries it. */
@@ -276,7 +274,7 @@ const plain = (files: readonly DeliveredFile[]): ReferenceFile[] =>
 /**
  * The bucket and remaining segments of a fixture path, or a thrown explanation.
  *
- * Every fixture lives under `.tests/<bucket>/…`. A path that does not is not a
+ * Every fixture lives under `tests/<bucket>/…`. A path that does not is not a
  * case this corpus can group, and the generator REFUSES rather than emitting a
  * corpus whose grouping is a guess — a mis-grouped case is exactly the defect
  * publishing the grouping exists to prevent, and it would be published as fact.
@@ -304,42 +302,25 @@ function fixtureSegments(
 }
 
 /**
- * Group a rule's fixture files into cases, by the layout its engine declares.
+ * Group a rule's fixture files into cases.
  *
- * Keyed on `fixtureLayout` rather than on the engine name, so this reads the
- * same fact the fixture runners implement instead of restating it. A fourth
- * engine states its layout in the table and is grouped here without a change.
+ * Every engine's case is a directory (`fixtureLayout` is `case-directories`
+ * throughout): the first segment below the bucket names the case, and
+ * everything deeper is its tree.
  */
-function groupCases(
-  engine: EngineName,
-  ruleId: string,
-  files: ReferenceFile[]
-): ReferenceCase[] | undefined {
-  const grouping = ENGINE_LAYOUTS[engine].fixtureLayout;
-  if (grouping === "ast-grep-test") return undefined;
-
+function groupCases(ruleId: string, files: ReferenceFile[]): ReferenceCase[] {
   const cases = new Map<string, ReferenceCase>();
   for (const file of files) {
     const { bucket, rest } = fixtureSegments(ruleId, file.path);
-    // A document engine's case IS the file; a directory engine's case is the
-    // first segment below the bucket, and everything deeper is its tree.
     const name = rest[0] ?? "";
-    if (grouping === "case-documents" && rest.length > 1)
+    // The rejection `readRuleFixtures` makes when the runner reads these
+    // buckets off disk. Publishing a bare file as a one-file "case" would emit
+    // a corpus that `taskless verify` throws on.
+    if (rest.length === 1)
       throw new Error(
-        `${ruleId}: ${file.path} is nested, but a ${engine} case is one ` +
-          `document. Vale lints the rule's whole directory, so a nested ` +
-          `fixture is linted and never attributed to a case.`
-      );
-    // The opposite rejection, and it is the one `bucketCases` already makes
-    // when the runner reads these buckets off disk. Publishing a bare file as
-    // a one-file "case" would emit a corpus indistinguishable in shape from a
-    // valid `case-documents` one, that `taskless verify` throws on.
-    if (grouping === "case-directories" && rest.length === 1)
-      throw new Error(
-        `${ruleId}: ${file.path} is a bare file, but a ${engine} case is a ` +
-          `directory. The check is handed the case directory as its root and ` +
-          `reads the files it needs beneath it, so a bare file in ${bucket}/ ` +
-          `has no root to be and would never run.`
+        `${ruleId}: ${file.path} is a bare file, but a case is a directory. ` +
+          `The engine is run with the case directory as its root, so a bare ` +
+          `file in ${bucket}/ has no root to be and would never run.`
       );
 
     const path = `${RULE_TESTS_DIRECTORY}/${bucket}/${name}`;
@@ -374,7 +355,7 @@ export function buildReference(rules: readonly ReferenceInput[]): Reference {
     constraints: [...RULE_CONSTRAINTS],
     rules: rules.map((rule) => {
       const files = plain(rule.testFiles);
-      const cases = groupCases(rule.engine, rule.ruleId, files);
+      const cases = groupCases(rule.ruleId, files);
       return {
         engine: rule.engine,
         id: rule.ruleId,
@@ -385,7 +366,7 @@ export function buildReference(rules: readonly ReferenceInput[]): Reference {
         tests: {
           grouping: ENGINE_LAYOUTS[rule.engine].fixtureLayout,
           files,
-          ...(cases === undefined ? {} : { cases }),
+          cases,
         },
         ...(rule.engine === "runtime"
           ? { signature: REFERENCE_SIGNATURE }

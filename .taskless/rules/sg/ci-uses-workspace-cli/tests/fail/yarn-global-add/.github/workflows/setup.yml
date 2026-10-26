@@ -1,0 +1,3 @@
+steps:
+  - name: yarn word form
+    run: yarn global add @taskless/cli

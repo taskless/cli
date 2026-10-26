@@ -70,7 +70,7 @@ describe("rule create: transient failures while polling and fetching", () => {
         content:
           "id: poll-test-rule-3fa9c21b\nlanguage: TypeScript\nrule:\n  pattern: foo\n",
       },
-      { path: ".tests/fail/case.ts", content: "foo();\n" },
+      { path: "tests/fail/case/case.ts", content: "foo();\n" },
     ],
   };
 

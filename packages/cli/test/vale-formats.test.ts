@@ -377,7 +377,16 @@ withVale(
       // The rule's own fixture directory: prose about the machinery, which a
       // whole-project run must not report as a user's finding.
       mkdirSync(
-        join(cwd, ".taskless", "rules", "vale", "no-simply", ".tests", "fail"),
+        join(
+          cwd,
+          ".taskless",
+          "rules",
+          "vale",
+          "no-simply",
+          "tests",
+          "fail",
+          "hedged"
+        ),
         { recursive: true }
       );
       writeFileSync(
@@ -387,8 +396,9 @@ withVale(
           "rules",
           "vale",
           "no-simply",
-          ".tests",
+          "tests",
           "fail",
+          "hedged",
           "hedged.md"
         ),
         "Just simply do it.\n"

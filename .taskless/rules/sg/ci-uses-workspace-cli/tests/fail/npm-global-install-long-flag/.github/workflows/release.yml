@@ -1,0 +1,3 @@
+steps:
+  - name: Long global flag
+    run: npm install --global @taskless/cli

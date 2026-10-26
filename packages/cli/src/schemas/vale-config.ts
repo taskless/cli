@@ -441,7 +441,7 @@ const TASKLESS_TREE_PREFIX = ".taskless/";
  * reasoning that `check` excludes the tree anyway. It does not always: the
  * exclusion is applied on a whole-project walk only, because an explicit path
  * is a request (`rules/vale/run.ts`). So the matcher does act on
- * `check .taskless/rules/vale/<id>/.tests/fail`, which is the one command
+ * `check .taskless/rules/vale/<id>/tests/fail`, which is the one command
  * that shows an author a rendered message, and it empties the result while
  * `verify` stays green (taskless/cli#370). Still an advisory, since the matcher
  * has a reading; no longer described as costing nothing.

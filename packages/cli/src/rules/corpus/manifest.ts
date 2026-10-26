@@ -61,8 +61,8 @@ export interface CorpusManifest {
    * model to read, and these are different instances of the same subject. A
    * rule graded on the examples it was generated from is graded on nothing.
    *
-   * Listed rather than globbed. Several are dot-paths — under `.tests/`, or
-   * named `.env` — and glob helpers skip those by default, so a glob would
+   * Listed rather than globbed. Some are dot-paths, such as `.env`, and glob
+   * helpers skip those by default, so a glob would
    * embed the rule file and silently omit every case. That produces a rule that
    * writes, validates, and has nothing to prove, which is the exact failure
    * these runners exist to catch.
@@ -79,7 +79,10 @@ export const CORPUS_MANIFESTS: readonly CorpusManifest[] = [
     assetDirectory: "reference-sg",
     promptPath: "prompt.md",
     rulePaths: ["no-eval-call.yml"],
-    testPaths: [".tests/no-eval-call-test.yml"],
+    testPaths: [
+      "tests/pass/json-parse/payload.ts",
+      "tests/fail/eval-call/payload.ts",
+    ],
   },
   {
     engine: "vale",
@@ -89,7 +92,10 @@ export const CORPUS_MANIFESTS: readonly CorpusManifest[] = [
     // `.vale.ini` is the rule's own engine config, so it is part of what a
     // generator must produce rather than part of the oracle.
     rulePaths: ["prefer-use-over-utilize.yml", ".vale.ini"],
-    testPaths: [".tests/pass/README.md", ".tests/fail/README.md"],
+    testPaths: [
+      "tests/pass/use-in-prose/README.md",
+      "tests/fail/utilize-in-prose/README.md",
+    ],
   },
   {
     engine: "runtime",
@@ -98,10 +104,10 @@ export const CORPUS_MANIFESTS: readonly CorpusManifest[] = [
     promptPath: "prompt.md",
     rulePaths: ["check.ts", "captures/env-read.yml"],
     testPaths: [
-      ".tests/pass/declared/src/config.ts",
-      ".tests/pass/declared/.env",
-      ".tests/fail/undeclared/src/config.ts",
-      ".tests/fail/undeclared/.env",
+      "tests/pass/declared/src/config.ts",
+      "tests/pass/declared/.env",
+      "tests/fail/undeclared/src/config.ts",
+      "tests/fail/undeclared/.env",
     ],
   },
 ];

@@ -1,0 +1,5 @@
+steps:
+  - name: Global install names the package too
+    run: |
+      npm i -g @taskless/cli
+      taskless check

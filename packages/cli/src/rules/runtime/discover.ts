@@ -10,7 +10,8 @@ import {
   SUPPORTED_METADATA_VERSIONS,
 } from "../../types/runtime-rule";
 import type { CaptureRule, MatchMode } from "../../types/runtime-rule";
-import { RULES_DIRECTORY, RULE_TESTS_DIRECTORY } from "../layout";
+import { isFixtureDirectoryName } from "../engines";
+import { RULES_DIRECTORY } from "../layout";
 
 /**
  * Directory (relative to `.taskless/`) that holds runtime rules — the
@@ -74,7 +75,7 @@ export interface RuntimeRule {
  * transpiles TypeScript, but `import "./helper.js"` resolves to a `.js` file
  * sitting there just as happily.
  *
- * `.tests/` IS DELIBERATELY NOT SEARCHED. A runtime check reads real files
+ * `tests/` IS DELIBERATELY NOT SEARCHED, nor is a legacy `.tests/`. A runtime check reads real files
  * under a root, so its fixtures are a tree of ordinary source, and a fixture
  * that is legitimately TypeScript is the normal case rather than a smuggled
  * helper. Searching it would refuse correct rules, which is a worse failure
@@ -106,7 +107,7 @@ export async function strayModules(ruleDirectory: string): Promise<string[]> {
       if (entry.isDirectory()) {
         // Fixtures are data the check reads, not modules it imports; see the
         // note above on why searching them would refuse correct rules.
-        if (relative === RULE_TESTS_DIRECTORY) continue;
+        if (isFixtureDirectoryName(relative)) continue;
         await walk(join(directory, entry.name), relative);
         continue;
       }
@@ -319,7 +320,7 @@ async function loadCaptureRules(
 /**
  * Enumerate `.taskless/rules/runtime/` under `cwd` and return each rule
  * directory that holds at least one `kind: runtime` capture rule.
- * `.taskless/rules/runtime/<id>/.tests/` is never enumerated — it holds verification
+ * `.taskless/rules/runtime/<id>/tests/` is never enumerated — it holds verification
  * fixtures, not executable rules — and neither is any other engine's
  * directory: a rule under `.taskless/rules/sg/` is static by virtue of where
  * it lives, and is never considered here.

@@ -7,7 +7,13 @@ import { ensureTasklessDirectory } from "../filesystem/directory";
 import { CLIError } from "../util/cli-error";
 import type { ServedFileSet } from "../api/v2";
 import { ruleDirectory, ruleFilePath, findRuleEngines } from "./engines";
-import { isKnownEngine, type EngineName } from "./layout";
+import { convertLegacyFileSet } from "./fixture-convert";
+import {
+  isKnownEngine,
+  LEGACY_RULE_TESTS_DIRECTORY,
+  RULE_TESTS_DIRECTORY,
+  type EngineName,
+} from "./layout";
 import { describeRuleIdCollision, findRuleIdCollision } from "./id-uniqueness";
 import { isValidRuleId } from "./validate-id";
 import {
@@ -25,7 +31,14 @@ import {
  * which v2 always sends, so nothing is inferred from the payload's shape.
  *
  * The set IS the directory: whatever is on disk that the set does not name is
- * removed, `.tests/` included, since v2 serves a rule's fixtures with it.
+ * removed, `tests/` included, since v2 serves a rule's fixtures with it.
+ *
+ * A set whose fixtures are in the legacy `.tests/` layout is migrated just in
+ * time, before it is assessed or written, by the converter migration `12`
+ * uses. That is a permanent reading of the old format, so the CLI never
+ * depends on the service moving: it never writes a layout its own `verify`
+ * does not read. Fixtures carry no signature, and `verifyServedRule` has
+ * already checked every signed file, so no signed byte changes here.
  */
 export async function writeServedRule(
   cwd: string,
@@ -44,7 +57,20 @@ export async function writeServedRule(
       "RULE_UNSUPPORTED"
     );
   }
-  const assessment = assessDelivery(cwd, engine, fileSet.id, fileSet.files);
+  const migrated = convertLegacyFileSet(
+    engine,
+    fileSet.id,
+    fileSet.files,
+    LEGACY_RULE_TESTS_DIRECTORY,
+    RULE_TESTS_DIRECTORY
+  );
+  for (const line of migrated.unconverted) {
+    onWarning?.(
+      `Rule "${fileSet.id}" was served a fixture its CLI could not convert to ` +
+        `the ${RULE_TESTS_DIRECTORY}/ layout, so it was written as served: ${line}.`
+    );
+  }
+  const assessment = assessDelivery(cwd, engine, fileSet.id, migrated.files);
   if (!assessment.ok) {
     throw new Error(`Rule "${fileSet.id}" ${assessment.reason}.`);
   }

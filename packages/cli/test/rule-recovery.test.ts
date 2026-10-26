@@ -44,7 +44,7 @@ function sgRule(content: string): StubRule {
     engine: "sg",
     files: [
       { path: `${RULE_ID}.yml`, content },
-      { path: ".tests/fail/case.ts", content: "eval(x);\n" },
+      { path: "tests/fail/case/case.ts", content: "eval(x);\n" },
     ],
   };
 }
@@ -215,9 +215,12 @@ describe("rule restore / rule rollback", () => {
 
   async function writeLocal(content: string): Promise<void> {
     const directory = join(cwd, ".taskless", "rules", "sg", RULE_ID);
-    await mkdir(join(directory, ".tests", "fail"), { recursive: true });
+    await mkdir(join(directory, "tests", "fail", "case"), { recursive: true });
     await writeFile(join(directory, `${RULE_ID}.yml`), content);
-    await writeFile(join(directory, ".tests", "fail", "case.ts"), "eval(x);\n");
+    await writeFile(
+      join(directory, "tests", "fail", "case", "case.ts"),
+      "eval(x);\n"
+    );
   }
 
   async function run(argv: string[]): Promise<Record<string, unknown>> {
@@ -337,8 +340,9 @@ describe("rule restore / rule rollback", () => {
           "rules",
           "sg",
           RULE_ID,
-          ".tests",
+          "tests",
           "fail",
+          "case",
           "case.ts"
         )
       )
@@ -595,7 +599,7 @@ describe("rule restore / rule rollback", () => {
           content:
             "id: logs\nlanguage: typescript\nrule:\n  pattern: console.log($A)\nmetadata:\n  taskless:\n    version: 1\n    kind: runtime\n    name: logs\n    check: check.ts\n    match: anchor\n",
         },
-        { path: ".tests/fail/case.ts", content: "console.log(1);\n" },
+        { path: "tests/fail/case/case.ts", content: "console.log(1);\n" },
       ],
     };
     stub({

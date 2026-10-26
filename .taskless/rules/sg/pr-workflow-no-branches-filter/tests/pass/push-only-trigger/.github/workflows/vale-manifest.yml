@@ -1,0 +1,5 @@
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/scripts/vale-manifest.json"

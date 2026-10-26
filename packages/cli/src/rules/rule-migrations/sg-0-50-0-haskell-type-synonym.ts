@@ -18,7 +18,7 @@ import type { RuleMigration } from "../rule-migrate";
  *
  * Only `kind:` values are rewritten, and only in a rule whose `language`
  * resolves to Haskell: the name means nothing in another grammar, and a
- * message mentioning it is the author's prose. Fixtures under `.tests/` are
+ * message mentioning it is the author's prose. Fixtures under `tests/` are
  * Haskell source, not kind names, and are never read.
  *
  * The Taskless service has issued no rule naming the old kind, so no issued

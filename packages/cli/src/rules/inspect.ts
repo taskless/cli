@@ -9,7 +9,6 @@ import {
   ruleFilePath,
 } from "./engines";
 import { describeCoverageShortfall, type FixtureFinding } from "./fixtures";
-import { collectSgFixtureFindings } from "./sg-fixture-findings";
 import { describeEmptySgScope } from "./sg-scope";
 import { type EngineName } from "./layout";
 import {
@@ -174,7 +173,7 @@ async function readYaml(path: string): Promise<unknown> {
  * `validate` and `verify` want different halves of the same three-layer run:
  * `validate` reads Layers 1–2, `verify` needs Layer 3 as well. Asking twice —
  * once for the verdict, once for the tests — assembled the config and spawned
- * `sg test` twice for every rule, so `taskless verify` paid two subprocesses per
+ * every case twice for every rule, so `taskless verify` paid two runs per
  * rule to produce one answer. Returning both halves from a single call keeps
  * each caller's view unchanged and runs the layers once.
  */
@@ -267,7 +266,7 @@ async function validateRuleComponents(
   const errors: string[] = [];
 
   if (engine === "sg") {
-    // Layers 1–2 only: running the tests here would spawn `sg test` for a
+    // Layers 1–2 only: running the cases here would spawn ast-grep for a
     // caller that never looks at the result.
     const { validation } = await validateSgRule(cwd, ruleId, {
       runTests: false,
@@ -439,80 +438,36 @@ export async function verifyOneRule(
     const { validation: verdict, result } = await validateSgRule(cwd, ruleId);
     // `verify` runs `validate` first, and the uniqueness check is part of `validate`.
     // Reached through the same helper rather than by a second `validateSgRule`
-    // call, which would spawn `sg test` twice for one answer.
+    // call, which would run every case twice for one answer.
     const validation = await withIdCollision(cwd, ruleId, verdict);
     if (!validation.ok) {
       return { ...validation, ran: false, findings: [] };
     }
-    const errors = [...result.tests.errors];
-    const violations: RuleViolation[] = [];
-    // Mirrors the Vale branch below, and for the same reason: a rule that
-    // populated only one bucket has proved only half of what a rule claims.
-    // `ast-grep test` will not say so — an empty `invalid:` bucket is
-    // `1 passed; 0 failed`, exit zero — so the message has to come from here.
-    //
-    // `:` rather than `/` because ast-grep's buckets are the `valid:`/`invalid:`
-    // KEYS of a test YAML document, not directories. The other two engines read
-    // `pass/`. Naming a bucket in the shape the author will search for is the
-    // point of the message, so the difference is deliberate, not drift.
-    const shortfall = describeCoverageShortfall(
-      ruleId,
-      result.tests.fixtures,
-      ":"
-    );
-    if (shortfall !== undefined) {
-      // Both halves are required, because each rules out a different way of
-      // being wrong about the same shortfall.
-      //
-      // `fixturesExcludedById` says a file the rule owns by NAME was skipped
-      // for carrying another rule's `id:`. Without it, a rule that simply has
-      // no cases would be told to look for a mismatched id in a file it never
-      // wrote.
-      //
-      // `fixtures === "none"` says the shortfall is the one this constraint
-      // describes: exclusion making a rule read as having shipped NOTHING. The
-      // flag alone cannot say that, because it is rule-wide while coverage is
-      // the sum over every discovered file. A rule shipping `<id>-a-test.yml`
-      // with the right id but only a `valid:` bucket, beside an excluded
-      // `<id>-b-test.yml` that is also `valid:`-only, lands on `valid-only`
-      // with the flag set — and fixing the id would not fix that shortfall,
-      // since neither file has an `invalid:` case. Attributing it would send
-      // the author to an unrelated id mismatch and leave the missing half of
-      // the claim unmentioned.
-      if (
-        result.tests.fixturesExcludedById === true &&
-        result.tests.fixtures === "none"
-      ) {
-        violate(
-          { errors, violations },
-          "sg-fixture-id-matches-rule",
-          shortfall
-        );
-      } else {
-        errors.push(shortfall);
-      }
-    }
+    // A rule that populated only one bucket has proved only half of what a
+    // rule claims, and the CLI says so: coverage is counted over case
+    // directories, never read from an engine's summary.
+    const shortfall = describeCoverageShortfall(ruleId, result.tests.fixtures);
     return {
       engine,
       ruleId,
       ok: result.tests.valid,
-      errors,
-      violations,
+      errors: [
+        ...(shortfall === undefined ? [] : [shortfall]),
+        ...result.tests.errors,
+      ],
+      violations: [],
       ran: true,
-      // The fixtures above have no path, so nothing they proved says the
-      // rule's globs reach a real file. Asked here, on a rule that validated,
-      // and only ever as a notice; see `sg-scope.ts`.
+      // The cases now carry paths, so a `fail/` case shows the rule's globs
+      // reach the fixture. Whether they reach any file in the PROJECT is a
+      // separate question, asked here on a rule that validated, and only ever
+      // as a notice; see `sg-scope.ts`.
       notices: collectNotices([
         ...validation.notices,
         await describeEmptySgScope(cwd, ruleId),
       ]),
-      // `sg test` still decides the verdict above and still cannot produce a
-      // finding — the vendored binary has no `--json` and no output-format
-      // flag. So unlike the other two engines, these are not read back out of
-      // what the run already handed us: each fixture snippet is replayed
-      // through `scan --stdin`, which renders the message the author needs to
-      // see. Gathered AFTER the verdict, and never able to change it.
-      findings: await collectSgFixtureFindings(cwd, ruleId),
+      // The findings that decided the verdict, as the scan reported them:
+      // rendered messages, and `file` naming the fixture in its case.
+      findings: result.tests.findings,
     };
   }
 
@@ -536,16 +491,9 @@ export async function verifyOneRule(
       };
     }
     const errors: string[] = [];
-    // `/` because Vale's buckets are directories; see the `sg` branch above for
-    // why that suffix is a parameter rather than one spelling for all three.
-    const shortfall = describeCoverageShortfall(ruleId, result.fixtures, "/");
+    const shortfall = describeCoverageShortfall(ruleId, result.fixtures);
     if (shortfall !== undefined) errors.push(shortfall);
-    for (const file of result.missingFailures) {
-      errors.push(`fail fixture did not fire: ${file}`);
-    }
-    for (const file of result.unexpectedFindings) {
-      errors.push(`pass fixture wrongly fired: ${file}`);
-    }
+    errors.push(...result.errors);
     return {
       engine,
       ruleId,

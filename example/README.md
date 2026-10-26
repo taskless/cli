@@ -23,21 +23,23 @@ file gets edited either way.
 ```
 .taskless/rules/
     sg/no-eval/
-        no-eval.yml                       the rule
-        .tests/no-eval-20260814-test.yml  its test cases
+        no-eval.yml                                  the rule
+        tests/fail/eval-of-input/parse.js            code it must flag
+        tests/pass/json-parse/parse.js               code it must leave alone
     vale/no-simply/
-        no-simply.yml                     the rule
-        .vale.ini                         which files it applies to
-        .tests/fail/hedged.md             prose it must flag
-        .tests/pass/direct.md             prose it must leave alone
+        no-simply.yml                                the rule
+        .vale.ini                                    which files it applies to
+        tests/fail/simply-in-prose/hedged.md         prose it must flag
+        tests/pass/no-hedge/direct.md                prose it must leave alone
 ```
 
 Two details in there need explaining.
 
-**`.tests/` is dot-prefixed on purpose.** ast-grep discovers rules by walking
-the rules tree, and it reads every `.yml` it finds as a rule. A plain `tests/`
-directory would make it parse the test files as rules and fail the whole scan.
-A dot-directory gets skipped by that walk. The test runner still finds it.
+**Each test case is a directory.** `verify` runs the engine's own check over
+each case as if it were a small repository, so the rule's scope applies to its
+fixtures the same way it applies to your code. A rule limited to some paths
+needs its fixture at such a path inside the case. The directory name says what
+the case shows.
 
 **Only Vale has a per-rule `.vale.ini`.** Vale can't express "which files does
 this apply to" inside the rule file, because it rejects unknown keys. Scope

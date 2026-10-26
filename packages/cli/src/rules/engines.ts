@@ -5,6 +5,7 @@ import { isMissingDirectory } from "./errno";
 import {
   ENGINE_LAYOUTS,
   ENGINES,
+  LEGACY_RULE_TESTS_DIRECTORY,
   RULE_TESTS_DIRECTORY,
   RULES_DIRECTORY,
   TASKLESS_DIRECTORY,
@@ -40,6 +41,24 @@ export function ruleFilePath(
   return join(
     ruleDirectory(cwd, engine, ruleId),
     ENGINE_LAYOUTS[engine].ruleFile(ruleId)
+  );
+}
+
+/**
+ * Whether a directory directly inside a rule directory holds fixtures: the
+ * current `tests/`, or the legacy `.tests/` that migration `12` leaves behind
+ * when it cannot convert something. Neither is signed, reported to reconcile,
+ * or searched for stray modules.
+ */
+export function isFixtureDirectoryName(name: string): boolean {
+  return name === RULE_TESTS_DIRECTORY || name === LEGACY_RULE_TESTS_DIRECTORY;
+}
+
+/** Whether a rule-relative, `/`-separated path is a fixture. */
+export function isFixturePath(path: string): boolean {
+  const [first, ...rest] = path.split("/");
+  return (
+    rest.length > 0 && first !== undefined && isFixtureDirectoryName(first)
   );
 }
 

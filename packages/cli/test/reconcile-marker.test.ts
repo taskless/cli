@@ -273,8 +273,9 @@ describe("recording a rules reconciliation", () => {
               "rules",
               "vale",
               "hedge",
-              ".tests",
+              "tests",
               "fail",
+              "flags-it",
               "flags-it.md"
             ),
             join(".taskless", "rules", "vale", "hedge", "hedge.yml"),

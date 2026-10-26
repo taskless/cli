@@ -1,5 +1,6 @@
 import { vi } from "vitest";
 
+import { isFixturePath } from "../../src/rules/engines";
 import { canonicalHash } from "../../src/rules/rule-hash";
 
 /**
@@ -32,7 +33,8 @@ export async function servedBody(
 ): Promise<Record<string, unknown>> {
   const signatures = await Promise.all(
     rule.files
-      .filter((file) => !file.path.startsWith(".tests/"))
+      // Fixtures, under `tests/` or the legacy `.tests/`, are never signed.
+      .filter((file) => !isFixturePath(file.path))
       .map(async (file) => ({
         path: file.path,
         signature: await canonicalHash(file.content),

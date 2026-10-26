@@ -816,7 +816,12 @@ describe("taskless report", () => {
 
   async function sgRule(id: string): Promise<void> {
     const directory = join(cwd, ".taskless", "rules", "sg", id);
-    await mkdir(join(directory, ".tests"), { recursive: true });
+    await mkdir(join(directory, "tests", "pass", "clean"), {
+      recursive: true,
+    });
+    await mkdir(join(directory, "tests", "fail", "fires"), {
+      recursive: true,
+    });
     await writeFile(
       join(directory, `${id}.yml`),
       stringify({
@@ -828,8 +833,12 @@ describe("taskless report", () => {
       })
     );
     await writeFile(
-      join(directory, ".tests", `${id}-test.yml`),
-      stringify({ id, valid: ["const a = 1;"], invalid: [`${id}(x);`] })
+      join(directory, "tests", "pass", "clean", "clean.ts"),
+      "const a = 1;\n"
+    );
+    await writeFile(
+      join(directory, "tests", "fail", "fires", "fires.ts"),
+      `${id}(x);\n`
     );
   }
 

@@ -7,41 +7,58 @@ import { promisify } from "node:util";
 import { describe, expect, it, beforeEach, afterEach } from "vitest";
 import { stringify } from "yaml";
 
+import { findValeBinary } from "../src/rules/vale/binary";
 import { verifyRule, getSchemaPayload } from "../src/rules/verify";
 import { cliRejectionToResult } from "./support/spawn-cli";
 import { builtCli } from "./support/built-cli";
 
 const execFileAsync = promisify(execFile);
 
+/** A rule that fires on `eval(...)`, in the shape every other case reuses. */
+const NO_EVAL = {
+  id: "no-eval",
+  language: "typescript",
+  severity: "error",
+  message: "Do not use eval()",
+  rule: { pattern: "eval($$$)" },
+};
+
 /**
- * A rule that fires on `eval(...)`, plus one test file holding exactly the
- * buckets given. Mirrors the Vale coverage cases in `vale-verify.test.ts`,
- * which build the same four shapes out of `pass/` and `fail/` directories.
+ * Write sg rule `rule` at `.taskless/rules/sg/<id>/`, with one case directory
+ * per source given, each holding the source as `sample.ts`. Cases are named
+ * `<bucket>-<n>`.
+ */
+async function sgProject(
+  cwd: string,
+  rule: Record<string, unknown> & { id: string },
+  buckets: { pass?: string[]; fail?: string[] } = {}
+): Promise<void> {
+  const directory = join(cwd, ".taskless", "rules", "sg", rule.id);
+  await mkdir(directory, { recursive: true });
+  await writeFile(join(directory, `${rule.id}.yml`), stringify(rule), "utf8");
+  for (const bucket of ["pass", "fail"] as const) {
+    for (const [index, source] of (buckets[bucket] ?? []).entries()) {
+      const caseDirectory = join(
+        directory,
+        "tests",
+        bucket,
+        `${bucket}-${index + 1}`
+      );
+      await mkdir(caseDirectory, { recursive: true });
+      await writeFile(join(caseDirectory, "sample.ts"), source, "utf8");
+    }
+  }
+}
+
+/**
+ * `no-eval` holding exactly the buckets given. Mirrors the Vale coverage cases
+ * in `vale-verify.test.ts`, which build the same four shapes.
  */
 async function coverageProject(
   cwd: string,
-  buckets: { valid?: string[]; invalid?: string[] }
+  buckets: { pass?: string[]; fail?: string[] }
 ): Promise<void> {
-  const rulesDirectory = join(cwd, ".taskless", "sg", "rules");
-  const testsDirectory = join(cwd, ".taskless", "sg", "rule-tests");
-  await mkdir(rulesDirectory, { recursive: true });
-  await mkdir(testsDirectory, { recursive: true });
-  await writeFile(
-    join(rulesDirectory, "no-eval.yml"),
-    stringify({
-      id: "no-eval",
-      language: "typescript",
-      severity: "error",
-      message: "Do not use eval()",
-      rule: { pattern: "eval($$$)" },
-    }),
-    "utf8"
-  );
-  await writeFile(
-    join(testsDirectory, "no-eval-20260330-test.yml"),
-    stringify({ id: "no-eval", ...buckets }),
-    "utf8"
-  );
+  await sgProject(cwd, NO_EVAL, buckets);
 }
 
 /**
@@ -82,38 +99,10 @@ describe("verifyRule", () => {
   });
 
   it("passes all layers for a valid rule with tests", async () => {
-    // Write a valid rule
-    const rulesDirectory = join(temporaryDirectory, ".taskless", "sg", "rules");
-    const testsDirectory = join(
-      temporaryDirectory,
-      ".taskless",
-      "sg",
-      "rule-tests"
-    );
-    await mkdir(rulesDirectory, { recursive: true });
-    await mkdir(testsDirectory, { recursive: true });
-
-    await writeFile(
-      join(rulesDirectory, "no-eval.yml"),
-      stringify({
-        id: "no-eval",
-        language: "typescript",
-        severity: "error",
-        message: "Do not use eval()",
-        rule: { pattern: "eval($$$)" },
-      }),
-      "utf8"
-    );
-
-    await writeFile(
-      join(testsDirectory, "no-eval-20260330-test.yml"),
-      stringify({
-        id: "no-eval",
-        valid: ["const x = 1;"],
-        invalid: ["eval('alert(1)')"],
-      }),
-      "utf8"
-    );
+    await sgProject(temporaryDirectory, NO_EVAL, {
+      pass: ["const x = 1;"],
+      fail: ["eval('alert(1)')"],
+    });
 
     const result = await verifyRule(temporaryDirectory, "no-eval");
 
@@ -124,63 +113,32 @@ describe("verifyRule", () => {
     expect(result.schema.errors).toHaveLength(0);
     expect(result.requirements.errors).toHaveLength(0);
     expect(result.tests.errors).toHaveLength(0);
-    expect(result.tests.passed).toBe(1);
+    // One per case directory: the `pass/` case and the `fail/` case.
+    expect(result.tests.passed).toBe(2);
     expect(result.tests.failed).toBe(0);
   });
 
   it("isolates test results to the specified rule only", async () => {
-    const rulesDirectory = join(temporaryDirectory, ".taskless", "sg", "rules");
-    const testsDirectory = join(
-      temporaryDirectory,
-      ".taskless",
-      "sg",
-      "rule-tests"
-    );
-    await mkdir(rulesDirectory, { recursive: true });
-    await mkdir(testsDirectory, { recursive: true });
-
     // Rule A: valid, tests pass
-    await writeFile(
-      join(rulesDirectory, "no-eval.yml"),
-      stringify({
-        id: "no-eval",
-        language: "typescript",
-        severity: "error",
-        message: "Do not use eval()",
-        rule: { pattern: "eval($$$)" },
-      }),
-      "utf8"
-    );
-    await writeFile(
-      join(testsDirectory, "no-eval-20260330-test.yml"),
-      stringify({
-        id: "no-eval",
-        valid: ["const x = 1;"],
-        invalid: ["eval('alert(1)')"],
-      }),
-      "utf8"
-    );
+    await sgProject(temporaryDirectory, NO_EVAL, {
+      pass: ["const x = 1;"],
+      fail: ["eval('alert(1)')"],
+    });
 
-    // Rule B: valid rule, but test file has a "valid" case that actually triggers
-    await writeFile(
-      join(rulesDirectory, "no-console.yml"),
-      stringify({
+    // Rule B: valid rule, but its "pass" case actually triggers it
+    await sgProject(
+      temporaryDirectory,
+      {
         id: "no-console",
         language: "typescript",
         severity: "warning",
         message: "No console",
         rule: { pattern: "console.log($$$)" },
-      }),
-      "utf8"
-    );
-    await writeFile(
-      join(testsDirectory, "no-console-20260330-test.yml"),
-      stringify({
-        id: "no-console",
-        valid: ["console.log('this should fail')"], // deliberately wrong — triggers the rule
-        invalid: ["console.log('correct')"],
-      }),
-      "utf8"
+      },
+      {
+        pass: ["console.log('this should fail')"], // deliberately wrong — triggers the rule
+        fail: ["console.log('correct')"],
+      }
     );
 
     // Verify rule A — should pass despite rule B's test failure
@@ -240,10 +198,10 @@ describe("verifyRule", () => {
 
     expect(result.requirements.valid).toBe(false);
     expect(result.requirements.errors).toContainEqual(
-      expect.stringContaining("No test file found")
+      expect.stringContaining("No fixture cases found")
     );
     expect(result.tests.errors).toContainEqual(
-      expect.stringContaining("no test file")
+      expect.stringContaining("no fixture cases")
     );
   });
 
@@ -314,36 +272,16 @@ describe("verifyRule", () => {
   });
 
   it("reports regex-without-kind violation", async () => {
-    const rulesDirectory = join(temporaryDirectory, ".taskless", "sg", "rules");
-    const testsDirectory = join(
+    await sgProject(
       temporaryDirectory,
-      ".taskless",
-      "sg",
-      "rule-tests"
-    );
-    await mkdir(rulesDirectory, { recursive: true });
-    await mkdir(testsDirectory, { recursive: true });
-
-    await writeFile(
-      join(rulesDirectory, "regex-no-kind.yml"),
-      stringify({
+      {
         id: "regex-no-kind",
         language: "typescript",
         severity: "error",
         message: "Bad regex usage",
         rule: { regex: "foo.*bar" },
-      }),
-      "utf8"
-    );
-
-    await writeFile(
-      join(testsDirectory, "regex-no-kind-20260330-test.yml"),
-      stringify({
-        id: "regex-no-kind",
-        valid: ["const x = 1;"],
-        invalid: ["foobar"],
-      }),
-      "utf8"
+      },
+      { pass: ["const x = 1;"], fail: ["foobar"] }
     );
 
     const result = await verifyRule(temporaryDirectory, "regex-no-kind");
@@ -383,52 +321,38 @@ describe("verifyRule", () => {
     );
   });
 
-  it("reads the counts off the summary line, not off echoed fixture text", async () => {
-    // Regression for #112. `ast-grep test` echoes the source of a FAILING case
-    // into its output, and the old parser took the first `(\d+)\s+passed`
-    // anywhere in stdout+stderr — so this fixture made a run whose summary says
-    // `0 passed; 1 failed;` report 7 passed, 0 failed. Wrong counts rather than
-    // a false pass (validity comes from the exit code), but the counts are what
-    // `improve-rule` feeds back to an agent iterating on the rule.
-    const rulesDirectory = join(temporaryDirectory, ".taskless", "sg", "rules");
-    const testsDirectory = join(
-      temporaryDirectory,
-      ".taskless",
-      "sg",
-      "rule-tests"
-    );
-    await mkdir(rulesDirectory, { recursive: true });
-    await mkdir(testsDirectory, { recursive: true });
-
+  it("counts cases, one per directory, however many files each holds", async () => {
+    // The counts are what `improve-rule` feeds back to an agent iterating on
+    // the rule, so they are the CLI's own tally of case directories. A case
+    // holding two files is one case, and a quiet `fail/` case is one failure.
+    await sgProject(temporaryDirectory, NO_EVAL, {
+      pass: ["const x = 1;"],
+      fail: ["eval('alert(1)')", "const msg = '7 passed; 0 failed';"],
+    });
     await writeFile(
-      join(rulesDirectory, "no-eval.yml"),
-      stringify({
-        id: "no-eval",
-        language: "typescript",
-        severity: "error",
-        message: "Do not use eval()",
-        rule: { pattern: "eval($$$)" },
-      }),
-      "utf8"
-    );
-
-    // The invalid case contains no `eval(...)`, so the rule does not fire and
-    // ast-grep echoes it back as a failure — carrying its numbers with it.
-    await writeFile(
-      join(testsDirectory, "no-eval-20260330-test.yml"),
-      stringify({
-        id: "no-eval",
-        valid: [],
-        invalid: ["const msg = '7 passed; 0 failed';"],
-      }),
+      join(
+        temporaryDirectory,
+        ".taskless",
+        "rules",
+        "sg",
+        "no-eval",
+        "tests",
+        "fail",
+        "fail-1",
+        "second.ts"
+      ),
+      "eval(y);\n",
       "utf8"
     );
 
     const result = await verifyRule(temporaryDirectory, "no-eval");
 
     expect(result.tests.valid).toBe(false);
-    expect(result.tests.passed).toBe(0);
+    expect(result.tests.passed).toBe(2);
     expect(result.tests.failed).toBe(1);
+    expect(result.tests.errors).toEqual([
+      expect.stringContaining("tests/fail/fail-2/"),
+    ]);
   });
 
   /**
@@ -629,91 +553,54 @@ describe("verifyRule", () => {
 
   describe("fixture coverage", () => {
     it("does not report success for a rule with no fixtures", async () => {
-      // Both buckets present and both empty. `ast-grep test` calls this
-      // `1 passed; 0 failed` and exits zero, so without the coverage check the
-      // rule reports a clean pass having demonstrated nothing at all.
-      await coverageProject(temporaryDirectory, { valid: [], invalid: [] });
+      // Both bucket directories present and both empty. Coverage is counted
+      // over case directories, so an empty bucket demonstrates nothing.
+      await coverageProject(temporaryDirectory, {});
+      const testsDirectory = join(
+        temporaryDirectory,
+        ".taskless",
+        "rules",
+        "sg",
+        "no-eval",
+        "tests"
+      );
+      await mkdir(join(testsDirectory, "pass"), { recursive: true });
+      await mkdir(join(testsDirectory, "fail"), { recursive: true });
       const result = await verifyRule(temporaryDirectory, "no-eval");
       expect(result.tests.fixtures).toBe("none");
       expect(result.tests.valid).toBe(false);
       expect(result.success).toBe(false);
     });
 
-    it("does not report success for a rule with only valid fixtures", async () => {
+    it("does not report success for a rule with only pass fixtures", async () => {
       // The misleading half, and the shape #152 arrived as: every fixture is
       // a source the rule should stay quiet on, so the run is trivially green
       // and the rule has never been shown to match anything.
-      await coverageProject(temporaryDirectory, { valid: ["const x = 1;"] });
+      await coverageProject(temporaryDirectory, { pass: ["const x = 1;"] });
       const result = await verifyRule(temporaryDirectory, "no-eval");
-      expect(result.tests.fixtures).toBe("valid-only");
+      expect(result.tests.fixtures).toBe("pass-only");
       expect(result.tests.valid).toBe(false);
     });
 
-    it("does not report success for a rule with only invalid fixtures", async () => {
+    it("does not report success for a rule with only fail fixtures", async () => {
       // The rule is shown to fire and never shown not to over-fire.
       await coverageProject(temporaryDirectory, {
-        invalid: ["eval('alert(1)')"],
+        fail: ["eval('alert(1)')"],
       });
       const result = await verifyRule(temporaryDirectory, "no-eval");
-      expect(result.tests.fixtures).toBe("invalid-only");
+      expect(result.tests.fixtures).toBe("fail-only");
       expect(result.tests.valid).toBe(false);
     });
 
     it("reports both buckets for a rule that populated each", async () => {
       await coverageProject(temporaryDirectory, {
-        valid: ["const x = 1;"],
-        invalid: ["eval('alert(1)')"],
+        pass: ["const x = 1;"],
+        fail: ["eval('alert(1)')"],
       });
       const result = await verifyRule(temporaryDirectory, "no-eval");
       expect(result.tests.fixtures).toBe("both");
       expect(result.tests.valid).toBe(true);
       expect(result.success).toBe(true);
-    });
-
-    it("sums buckets across every test file the rule owns", async () => {
-      // Coverage is a property of the rule, not of one file: an author who
-      // splits `valid:` and `invalid:` across two dated test files has still
-      // made the whole claim.
-      await coverageProject(temporaryDirectory, { valid: ["const x = 1;"] });
-      await writeFile(
-        join(
-          temporaryDirectory,
-          ".taskless",
-          "sg",
-          "rule-tests",
-          "no-eval-20260331-test.yml"
-        ),
-        stringify({ id: "no-eval", invalid: ["eval('alert(1)')"] }),
-        "utf8"
-      );
-      const result = await verifyRule(temporaryDirectory, "no-eval");
-      expect(result.tests.fixtures).toBe("both");
-      expect(result.tests.valid).toBe(true);
-    });
-
-    it("ignores a file in the rule's directory whose own id is another rule", async () => {
-      // The filename says `no-eval`, the `id:` inside says otherwise — the
-      // shape a draft copied from another rule arrives in. `sg test --filter
-      // ^no-eval$` resolves cases against that `id:`, so these fixtures never
-      // run; counting them would report coverage the rule never earned.
-      await coverageProject(temporaryDirectory, { valid: ["const x = 1;"] });
-      await writeFile(
-        join(
-          temporaryDirectory,
-          ".taskless",
-          "sg",
-          "rule-tests",
-          "no-eval-20260331-test.yml"
-        ),
-        stringify({
-          id: "no-alert-scratch",
-          invalid: ["eval('alert(1)')"],
-        }),
-        "utf8"
-      );
-      const result = await verifyRule(temporaryDirectory, "no-eval");
-      expect(result.tests.fixtures).toBe("valid-only");
-      expect(result.tests.valid).toBe(false);
     });
   });
 });
@@ -797,27 +684,23 @@ describe("verify: the verified/failed/refused split on a mixed run (#284)", () =
     id: string,
     options: { passes: boolean }
   ): Promise<void> {
-    const directory = join(cwd, ".taskless", "rules", "sg", id);
-    await mkdir(join(directory, ".tests"), { recursive: true });
-    await writeFile(
-      join(directory, `${id}.yml`),
-      stringify({
+    // A `pass/` case that actually fires the rule is what makes `taskless
+    // verify` report this rule as failed rather than refused or passed.
+    await sgProject(
+      cwd,
+      {
         id,
         language: "TypeScript",
         severity: "error",
         message: `no ${id}`,
         rule: { pattern: "console.log($ARG)" },
-      })
-    );
-    // A "valid" fixture that actually fires the rule is what makes `ast-grep
-    // test` — and therefore `taskless verify` — report this rule as failed
-    // rather than refused or passed.
-    const valid = options.passes
-      ? ["const a = 1;"]
-      : ["console.log('this should fail');"];
-    await writeFile(
-      join(directory, ".tests", `${id}-test.yml`),
-      stringify({ id, valid, invalid: ["console.log('correct');"] })
+      },
+      {
+        pass: [
+          options.passes ? "const a = 1;" : "console.log('this should fail');",
+        ],
+        fail: ["console.log('correct');"],
+      }
     );
   }
 
@@ -933,5 +816,458 @@ describe("verify: the verified/failed/refused split on a mixed run (#284)", () =
     expect(humanResult.stdout).toContain("1 rule(s) verified.");
     expect(humanResult.stdout).toContain("1 rule(s) did not run.");
     expect(humanResult.stdout).not.toContain("failed");
+  });
+});
+
+/**
+ * The findings `verify` reports, per rule and per fixture bucket, for the Vale
+ * and runtime engines. The ast-grep half lives in `sg-fixtures.test.ts`.
+ *
+ * The defect these exist for: `verify --json` reported a boolean per rule and
+ * nothing else, while the findings that produced the boolean were in hand and
+ * thrown away. A rule whose message interpolates its captures can have the
+ * slots in the wrong order, fire on every `fail/` case, stay quiet on every
+ * `pass/` one, and be reported as a rule that passed. The RENDERED message is
+ * the only evidence otherwise, so the assertions on it below must not be
+ * relaxed to "some message".
+ *
+ * These spawn the built CLI, because the always-present `findings` key and the
+ * human rendering are both properties of what the command prints.
+ */
+interface ReportedFinding {
+  source: string;
+  ruleId: string;
+  severity: string;
+  message: string;
+  file: string;
+  range: {
+    start: { line: number; column: number };
+    end: { line: number; column: number };
+  };
+  matchedText: string;
+  bucket: "pass" | "fail";
+}
+
+interface FindingsReport {
+  ok: boolean;
+  rules: {
+    engine: string;
+    ruleId: string;
+    ok: boolean;
+    errors: string[];
+    ran?: boolean;
+    refused?: string;
+    findings: ReportedFinding[];
+  }[];
+}
+
+function findingsOf(
+  report: FindingsReport,
+  bucket?: "pass" | "fail"
+): ReportedFinding[] {
+  const findings = report.rules.flatMap((rule) => rule.findings);
+  return bucket === undefined
+    ? findings
+    : findings.filter((finding) => finding.bucket === bucket);
+}
+
+const withVale = findValeBinary().path === undefined ? describe.skip : describe;
+
+/** Write one case directory holding a single file. */
+async function fixtureCase(
+  ruleDirectory: string,
+  bucket: "pass" | "fail",
+  name: string,
+  file: string,
+  contents: string
+): Promise<void> {
+  const caseDirectory = join(ruleDirectory, "tests", bucket, name);
+  await mkdir(caseDirectory, { recursive: true });
+  await writeFile(join(caseDirectory, file), contents);
+}
+
+describe("verify reports the findings each fixture case produced", () => {
+  let cwd: string;
+
+  beforeEach(async () => {
+    cwd = await mkdtemp(join(tmpdir(), "tskl-findings-"));
+    await runVerifyMixedRunCli(["init", "-d", cwd]);
+  });
+
+  afterEach(async () => {
+    await rm(cwd, { recursive: true, force: true });
+  });
+
+  /* ------------------------------------------------------------------------ */
+  /* Vale                                                                      */
+  /* ------------------------------------------------------------------------ */
+
+  const VALE_RULE = "use-email";
+
+  /**
+   * A `substitution` rule, chosen deliberately over `existence`: its message
+   * takes TWO `%s` slots, the replacement and then the match, so it is the
+   * check whose message can be wrong in the way a verdict cannot see.
+   */
+  const SUBSTITUTION_STYLE = [
+    "extends: substitution",
+    `message: "Use '%s' instead of '%s'"`,
+    "level: warning",
+    "ignorecase: true",
+    "swap:",
+    "  e-mail: email",
+    "",
+  ].join("\n");
+
+  const VALE_CONFIG = [
+    "[*.md]",
+    `tskl) rule = ${VALE_RULE}`,
+    `${VALE_RULE}.${VALE_RULE} = YES`,
+    "",
+  ].join("\n");
+
+  /** The message Vale renders, with the slots in the order Vale fills them. */
+  const RENDERED = "Use 'email' instead of 'e-mail'";
+
+  async function writeValeRule(options: { passFires?: boolean } = {}) {
+    const directory = join(cwd, ".taskless", "rules", "vale", VALE_RULE);
+    await rm(directory, { recursive: true, force: true });
+    await mkdir(directory, { recursive: true });
+    await writeFile(join(directory, `${VALE_RULE}.yml`), SUBSTITUTION_STYLE);
+    await writeFile(join(directory, ".vale.ini"), VALE_CONFIG);
+    await fixtureCase(
+      directory,
+      "fail",
+      "hyphenated",
+      "bad.md",
+      "Send an e-mail today.\n"
+    );
+    await fixtureCase(
+      directory,
+      "pass",
+      "plain",
+      "ok.md",
+      (options.passFires ?? false)
+        ? "Send an e-mail now.\n"
+        : "Send an email today.\n"
+    );
+  }
+
+  async function testVale(...extra: string[]) {
+    return runVerifyMixedRunCli([
+      "verify",
+      `.taskless/rules/vale/${VALE_RULE}`,
+      "-d",
+      cwd,
+      ...extra,
+    ]);
+  }
+
+  withVale("for a Vale rule", () => {
+    it("reports the rendered message, so a swapped %s pair cannot pass", async () => {
+      await writeValeRule();
+
+      const { stdout, exitCode } = await testVale("--json");
+      const report = JSON.parse(stdout) as FindingsReport;
+
+      expect(exitCode).toBe(0);
+      expect(report.ok).toBe(true);
+      const messages = findingsOf(report).map((finding) => finding.message);
+      expect(messages).toEqual([RENDERED]);
+      expect(messages).not.toContain("Use 'e-mail' instead of 'email'");
+    });
+
+    it("carries the whole check finding, naming the fixture file", async () => {
+      await writeValeRule();
+
+      const { stdout } = await testVale("--json");
+      const report = JSON.parse(stdout) as FindingsReport;
+      const finding = findingsOf(report)[0];
+
+      expect(finding).toBeDefined();
+      expect(finding?.source).toBe("vale");
+      expect(finding?.ruleId).toBe(VALE_RULE);
+      expect(finding?.severity).toBe("warning");
+      expect(finding?.matchedText).toBe("e-mail");
+      expect(finding?.file).toBe(
+        `.taskless/rules/vale/${VALE_RULE}/tests/fail/hyphenated/bad.md`
+      );
+      expect(finding?.range.start.line).toBe(0);
+      expect(finding?.range.start.column).toBe(8);
+    });
+
+    it("reports the fail bucket on a run that passed", async () => {
+      // The evidence is only ever produced by a green run. A payload that
+      // carried it once the rule was already failing would carry it at the one
+      // moment nobody needs it.
+      await writeValeRule();
+
+      const { stdout } = await testVale("--json");
+      const report = JSON.parse(stdout) as FindingsReport;
+
+      expect(report.rules[0]?.ok).toBe(true);
+      expect(findingsOf(report, "fail")).toHaveLength(1);
+      expect(findingsOf(report, "pass")).toHaveLength(0);
+    });
+
+    it("tags a wrongly-fired pass case as the pass bucket", async () => {
+      await writeValeRule({ passFires: true });
+
+      const { stdout, exitCode } = await testVale("--json");
+      const report = JSON.parse(stdout) as FindingsReport;
+
+      expect(exitCode).toBe(1);
+      expect(report.ok).toBe(false);
+      const passFindings = findingsOf(report, "pass");
+      expect(passFindings).toHaveLength(1);
+      expect(passFindings[0]?.file).toContain("tests/pass/plain/ok.md");
+      expect(passFindings[0]?.message).toBe(RENDERED);
+    });
+
+    it("prints one line and no findings when the rule passed", async () => {
+      await writeValeRule();
+
+      const { stdout } = await testVale();
+
+      expect(stdout).toContain(`✓ vale/${VALE_RULE}`);
+      expect(stdout).not.toContain(RENDERED);
+      expect(stdout).not.toContain("fixture findings");
+    });
+
+    it("prints what matched under a failing rule, not only which case", async () => {
+      await writeValeRule({ passFires: true });
+
+      const { stdout } = await testVale();
+
+      expect(stdout).toContain(`✗ vale/${VALE_RULE}`);
+      expect(stdout).toContain("pass case wrongly fired:");
+      expect(stdout).toContain("pass fixture findings:");
+      // `check`'s own renderer, so a finding does not read two ways depending
+      // on which command surfaced it.
+      expect(stdout).toContain(`warning[${VALE_RULE}] ${RENDERED}`);
+      expect(stdout).toContain("> e-mail");
+    });
+
+    it("carries an empty array when validation failed before fixtures ran", async () => {
+      // No `.vale.ini`, so `validate` fails and `verify` never reaches the
+      // fixtures.
+      const directory = join(cwd, ".taskless", "rules", "vale", VALE_RULE);
+      await mkdir(directory, { recursive: true });
+      await writeFile(join(directory, `${VALE_RULE}.yml`), SUBSTITUTION_STYLE);
+
+      const { stdout, exitCode } = await testVale("--json");
+      const report = JSON.parse(stdout) as FindingsReport;
+
+      expect(exitCode).toBe(1);
+      expect(report.rules[0]?.ok).toBe(false);
+      expect(report.rules[0]?.ran).toBe(false);
+      expect(report.rules[0]?.findings).toEqual([]);
+    });
+  });
+
+  /* ------------------------------------------------------------------------ */
+  /* Runtime                                                                   */
+  /* ------------------------------------------------------------------------ */
+
+  const RUNTIME_RULE = "no-eval";
+
+  const EVAL_CAPTURE = [
+    "id: no-eval-abc12345",
+    "language: typescript",
+    "rule:",
+    "  pattern: eval($ARG)",
+    "metadata:",
+    "  taskless:",
+    "    version: 1",
+    "    kind: runtime",
+    "    name: no-eval",
+    "    check: check.ts",
+    "    match: anchor",
+    "",
+  ].join("\n");
+
+  const RUNTIME_MESSAGE = "eval on a non-literal is not allowed";
+
+  /** Reports only where the argument is not a literal, so a pass case can run. */
+  const FLAGS_DYNAMIC_EVAL = String.raw`import { readFileSync } from "node:fs";
+import { join } from "node:path";
+
+export default async function (root, matches) {
+  return matches
+    .filter((m) => !readFileSync(join(root, m.file), "utf8").includes('eval("'))
+    .map((m) => ({
+      file: m.file,
+      line: m.line,
+      column: m.column,
+      message: "${RUNTIME_MESSAGE}",
+      severity: "warning",
+    }));
+}
+`;
+
+  /** Reports every match, so the `pass/` case wrongly fires. */
+  const FLAGS_EVERY_MATCH = `export default async function (root, matches) {
+  return matches.map((m) => ({
+    file: m.file,
+    line: m.line,
+    column: m.column,
+    message: "${RUNTIME_MESSAGE}",
+    severity: "warning",
+  }));
+}
+`;
+
+  async function writeRuntimeRule(check: string = FLAGS_DYNAMIC_EVAL) {
+    const directory = join(cwd, ".taskless", "rules", "runtime", RUNTIME_RULE);
+    await mkdir(join(directory, "captures"), { recursive: true });
+    await writeFile(join(directory, "captures", "eval.yml"), EVAL_CAPTURE);
+    await writeFile(join(directory, "check.ts"), check);
+    await fixtureCase(
+      directory,
+      "fail",
+      "dynamic-eval",
+      "sample.ts",
+      "const input = globalThis.userInput;\neval(input);\n"
+    );
+    await fixtureCase(
+      directory,
+      "pass",
+      "literal-eval",
+      "sample.ts",
+      'eval("1 + 1");\n'
+    );
+  }
+
+  async function testRuntime(...extra: string[]) {
+    return runVerifyMixedRunCli([
+      "verify",
+      `.taskless/rules/runtime/${RUNTIME_RULE}`,
+      "-d",
+      cwd,
+      "--dangerously-run-scripts",
+      ...extra,
+    ]);
+  }
+
+  describe("for a runtime rule", () => {
+    it("reports what the check said, bucketed by case, on a passing run", async () => {
+      await writeRuntimeRule();
+
+      const { stdout, exitCode } = await testRuntime("--json");
+      const report = JSON.parse(stdout) as FindingsReport;
+
+      expect(exitCode).toBe(0);
+      expect(report.rules[0]?.ok).toBe(true);
+      const failFindings = findingsOf(report, "fail");
+      expect(failFindings).toHaveLength(1);
+      expect(failFindings[0]?.message).toBe(RUNTIME_MESSAGE);
+      expect(failFindings[0]?.severity).toBe("warning");
+      expect(failFindings[0]?.file).toContain("sample.ts");
+      expect(findingsOf(report, "pass")).toHaveLength(0);
+    });
+
+    it("tags a wrongly-fired pass case as the pass bucket", async () => {
+      await writeRuntimeRule(FLAGS_EVERY_MATCH);
+
+      const { stdout, exitCode } = await testRuntime("--json");
+      const report = JSON.parse(stdout) as FindingsReport;
+
+      expect(exitCode).toBe(1);
+      expect(findingsOf(report, "pass")).toHaveLength(1);
+      expect(findingsOf(report, "fail")).toHaveLength(1);
+    });
+
+    it("prints the pass-bucket finding under a failing rule", async () => {
+      await writeRuntimeRule(FLAGS_EVERY_MATCH);
+
+      const { stdout } = await testRuntime();
+
+      expect(stdout).toContain(`✗ runtime/${RUNTIME_RULE}`);
+      expect(stdout).toContain("pass fixture findings:");
+      expect(stdout).toContain(RUNTIME_MESSAGE);
+    });
+
+    it("prints one line and no findings when the rule passed", async () => {
+      await writeRuntimeRule();
+
+      const { stdout } = await testRuntime();
+
+      expect(stdout).toContain(`✓ runtime/${RUNTIME_RULE}`);
+      expect(stdout).not.toContain("fixture findings");
+    });
+
+    it("carries an empty array, not an absent key, on a refused run", async () => {
+      // Without the flag nothing executes, so there is nothing to report, and
+      // that is the case a consumer must not have to tell apart from "this
+      // command does not report findings".
+      await writeRuntimeRule();
+
+      const { stdout } = await runVerifyMixedRunCli([
+        "verify",
+        `.taskless/rules/runtime/${RUNTIME_RULE}`,
+        "-d",
+        cwd,
+        "--json",
+      ]);
+      const report = JSON.parse(stdout) as FindingsReport;
+
+      expect(report.rules[0]?.refused).toBeDefined();
+      expect(report.rules[0]?.findings).toEqual([]);
+    });
+  });
+
+  /* ------------------------------------------------------------------------ */
+  /* ast-grep: always present                                                  */
+  /* ------------------------------------------------------------------------ */
+
+  /** `no-eval-sg`, with one clean `pass/` case and `failSource` as its `fail/` case. */
+  async function noEvalSg(failSource: string): Promise<void> {
+    await sgProject(
+      cwd,
+      {
+        id: "no-eval-sg",
+        language: "TypeScript",
+        severity: "error",
+        message: "no eval",
+        rule: { pattern: "eval($ARG)" },
+      },
+      { pass: ["const a = 1;"], fail: [failSource] }
+    );
+  }
+
+  describe("for an ast-grep rule", () => {
+    it("carries an empty array, not an absent key, for a rule that matched nothing", async () => {
+      // A `fail/` case the rule does not match fails the rule, and the rule
+      // produced nothing. Empty is the true answer, and it has to be stated
+      // rather than left to an absent key.
+      await noEvalSg("const b = 2;");
+
+      const { stdout } = await runVerifyMixedRunCli([
+        "verify",
+        ".taskless/rules/sg/no-eval-sg",
+        "-d",
+        cwd,
+        "--json",
+      ]);
+      const report = JSON.parse(stdout) as FindingsReport;
+
+      expect(report.rules[0]?.ok).toBe(false);
+      expect(report.rules[0]?.findings).toEqual([]);
+    });
+
+    it("carries an empty array for validate, which runs no fixtures", async () => {
+      await noEvalSg("eval(x);");
+
+      const { stdout } = await runVerifyMixedRunCli([
+        "validate",
+        ".taskless/rules/sg/no-eval-sg",
+        "-d",
+        cwd,
+        "--json",
+      ]);
+      const report = JSON.parse(stdout) as FindingsReport;
+
+      expect(report.rules[0]?.findings).toEqual([]);
+    });
   });
 });

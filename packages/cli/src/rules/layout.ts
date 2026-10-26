@@ -30,28 +30,21 @@ export type EngineName = (typeof ENGINES)[number];
 /**
  * How a rule's fixtures group into cases.
  *
- * Stated here rather than left implicit in each engine's fixture reader, which
- * is where it lived: `runtime/fixtures.ts` rejects a loose file because a case
- * is a directory, `vale/verify.ts` rejects a nested directory because a case is
- * a document, and `verify.ts` counts ast-grep's own `valid:`/`invalid:` keys.
- * The fact was recoverable only by reading three rejections, so every consumer
- * transcribed it — which is what published this table in the first place.
+ * One value, for every engine: a case is a directory under `tests/pass/` or
+ * `tests/fail/`, and the engine's own check is run with that directory as its
+ * root. It used to be three values (`runtime` read case directories, `vale`
+ * read loose documents, `sg` read ast-grep's `valid:`/`invalid:` test YAML),
+ * and each was judged by a different mechanism, none of which was the one
+ * `check` runs. A rule whose scope never matched a real file passed its
+ * fixtures and reported nothing in `check`.
  *
- * Each value is pinned beside the rejection that implements it, rather than in
- * a test of its own: `runtime-fixtures.test.ts` asserts `case-directories`
- * where it proves a loose file is refused, `vale-verify.test.ts` asserts
- * `case-documents` where it proves a nested directory is refused, and
- * `reference.test.ts` asserts `ast-grep-test` publishes no cases. A reader
- * changing a reader's mind about its layout meets the declaration in the same
- * test, which a separate file would not have achieved.
+ * Kept as a type, and published per engine, though it has one member: a
+ * consumer asserts on `fixtureLayout`, and it is what a later layout change
+ * would move.
  */
 export type FixtureLayout =
   /** A case is a directory under `pass/` or `fail/`, handed to the check as its root. */
-  | "case-directories"
-  /** A case is one document under `pass/` or `fail/`. */
-  | "case-documents"
-  /** Not a directory layout: `valid:`/`invalid:` keys inside one ast-grep test file. */
-  | "ast-grep-test";
+  "case-directories";
 
 /** How a rule reaches execution, or `null` when this CLI has no executor yet. */
 export type EngineExecutor =
@@ -113,27 +106,29 @@ export const RULES_DIRECTORY = "rules";
 export const TASKLESS_DIRECTORY = ".taskless";
 
 /**
- * A rule's tests, relative to its rule directory. **The dot is load-bearing.**
+ * A rule's tests, relative to its rule directory: `tests/pass/<case>/` and
+ * `tests/fail/<case>/`.
  *
- * ast-grep's `ruleDirs` recurses and parses every `.yml` beneath it as a rule,
- * so a plain `tests/` directory inside a rule directory fails the entire scan
- * with `Fail to parse yaml as RuleConfig: missing field 'language'`. Measured
- * against ast-grep 0.41.0: `tests/` and `__tests__/` both hard-fail,
- * a dot-directory is skipped by rule discovery, and `sg test` still reads it
- * when `testDir` names it.
- *
- * That is undocumented behavior, and three things make depending on it
- * acceptable. The failure is loud — a parse error naming the file, never a test
- * silently reinterpreted as a rule. `ast-grep-vendor-contract.test.ts` pins it
- * alongside the rest of ast-grep's observed behavior, so it is
- * checked on every run rather than remembered. And the binary is pinned to an
- * exact version, so it cannot change without a deliberate bump, which is
- * exactly where that test fires.
- *
- * If it ever does break, the recorded fallback is to materialize a rules-only
- * tree for ast-grep and point `ruleDirs` at that (design D2).
+ * No dot. The dot used to be load-bearing: ast-grep's `ruleDirs` recurses and
+ * parses every `.yml` beneath it as a rule, so a plain `tests/` inside a rule
+ * directory fails the whole scan (re-measured on 0.51.0, it still does). The
+ * engine is no longer pointed at the committed tree at all. It reads a
+ * rules-only copy assembled per run (see `assembleSgConfig`), so what a rule
+ * directory may contain stops depending on undocumented discovery behavior,
+ * and fixtures sit where an author or an agent looks first.
  */
-export const RULE_TESTS_DIRECTORY = ".tests";
+export const RULE_TESTS_DIRECTORY = "tests";
+
+/**
+ * Where fixtures lived before migration `12`, relative to a rule directory.
+ *
+ * Still read in three places, each for its own reason: the migrations that
+ * ran before `12` (`5`, `9`, `10`) wrote here and must keep doing so; delivery
+ * reads a served set in this layout and migrates it on write, because the
+ * service is not required to move; and reconcile never signs or reports a
+ * file under it, because migration `12` leaves behind what it cannot convert.
+ */
+export const LEGACY_RULE_TESTS_DIRECTORY = ".tests";
 
 export const ENGINE_LAYOUTS = {
   sg: {
@@ -141,7 +136,7 @@ export const ENGINE_LAYOUTS = {
     ruleFile: (ruleId: string) => `${ruleId}.yml`,
     ruleConfigFile: undefined,
     capturesDirectory: undefined,
-    fixtureLayout: "ast-grep-test",
+    fixtureLayout: "case-directories",
     executor: "ast-grep",
   },
   vale: {
@@ -149,7 +144,7 @@ export const ENGINE_LAYOUTS = {
     ruleFile: (ruleId: string) => `${ruleId}.yml`,
     ruleConfigFile: ".vale.ini",
     capturesDirectory: undefined,
-    fixtureLayout: "case-documents",
+    fixtureLayout: "case-directories",
     executor: "vale-runner",
   },
   runtime: {
@@ -160,9 +155,6 @@ export const ENGINE_LAYOUTS = {
     // config section elsewhere in this tree, and one word for two unrelated
     // concepts is a cost paid at every future reading.
     capturesDirectory: "captures",
-    // Directories, not documents. A runtime rule exists because its evidence
-    // spans more than one file, so a one-file case could not express the rules
-    // this tier is for.
     fixtureLayout: "case-directories",
     executor: "runtime-harness",
   },

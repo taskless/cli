@@ -1,5 +1,5 @@
 {
-  "version": 3,
+  "version": 4,
   "protocol": [
     "Generate a rule from `prompt`, using your own pipeline.",
     "Run `taskless validate` over what you generated. It enforces constraints beyond the engine's own schema, listed in `constraints` below, so a rule the engine executes correctly can still be refused. A rule that fails here is not deliverable however well it behaves, and every later step would be measuring the wrong thing. Check `enforcedBy` before concluding anything: some constraints are only decided once the fixtures run.",
@@ -10,19 +10,19 @@
   "layout": {
     "rulesRoot": ".taskless/rules",
     "ruleDirectory": ".taskless/rules/{engine}/{id}",
-    "testsDirectory": ".tests",
+    "testsDirectory": "tests",
     "engines": {
       "sg": {
         "ruleFile": "{id}.yml",
         "ruleConfigFile": null,
         "capturesDirectory": null,
-        "fixtureLayout": "ast-grep-test"
+        "fixtureLayout": "case-directories"
       },
       "vale": {
         "ruleFile": "{id}.yml",
         "ruleConfigFile": ".vale.ini",
         "capturesDirectory": null,
-        "fixtureLayout": "case-documents"
+        "fixtureLayout": "case-directories"
       },
       "runtime": {
         "ruleFile": "check.ts",
@@ -79,15 +79,8 @@
       "id": "sg-test-file-required",
       "engine": "sg",
       "enforcedBy": "validate",
-      "summary": "A rule must ship at least one test file under `.tests/`.",
-      "rationale": "A rule with no fixtures has shown neither that it fires nor that it stays quiet. `validate` requires the file; `verify` requires the cases inside it to cover both."
-    },
-    {
-      "id": "sg-fixture-id-matches-rule",
-      "engine": "sg",
-      "enforcedBy": "verify",
-      "summary": "A test file's own `id:` must equal the rule id.",
-      "rationale": "Fixtures are attributed by the id inside the file, not by its name. A fixture carrying another rule's id is silently not counted, so a rule that ships one reads as a rule that shipped none. `validate` passes, because the FILE is there; `verify` is where it bites."
+      "summary": "A rule must ship at least one fixture case under `tests/pass/` or `tests/fail/`.",
+      "rationale": "A rule with no fixtures has shown neither that it fires nor that it stays quiet. `validate` requires a case; `verify` requires the cases to cover both buckets."
     },
     {
       "id": "vale-config-no-root-keys",
@@ -160,11 +153,29 @@
         }
       ],
       "tests": {
-        "grouping": "ast-grep-test",
+        "grouping": "case-directories",
         "files": [
           {
-            "path": ".tests/no-eval-call-test.yml",
-            "content": "id: no-eval-call\nvalid:\n  - const parsed = JSON.parse(payload);\ninvalid:\n  - const result = eval(payload);\n"
+            "path": "tests/pass/json-parse/payload.ts",
+            "content": "const parsed = JSON.parse(payload);\n"
+          },
+          {
+            "path": "tests/fail/eval-call/payload.ts",
+            "content": "const result = eval(payload);\n"
+          }
+        ],
+        "cases": [
+          {
+            "bucket": "pass",
+            "name": "json-parse",
+            "path": "tests/pass/json-parse",
+            "files": ["tests/pass/json-parse/payload.ts"]
+          },
+          {
+            "bucket": "fail",
+            "name": "eval-call",
+            "path": "tests/fail/eval-call",
+            "files": ["tests/fail/eval-call/payload.ts"]
           }
         ]
       }
@@ -186,29 +197,29 @@
         }
       ],
       "tests": {
-        "grouping": "case-documents",
+        "grouping": "case-directories",
         "files": [
           {
-            "path": ".tests/pass/README.md",
+            "path": "tests/pass/use-in-prose/README.md",
             "content": "# Setup\n\nUse the installer to write the config file.\n"
           },
           {
-            "path": ".tests/fail/README.md",
+            "path": "tests/fail/utilize-in-prose/README.md",
             "content": "# Setup\n\nUtilize the installer to write the config file.\n"
           }
         ],
         "cases": [
           {
             "bucket": "pass",
-            "name": "README.md",
-            "path": ".tests/pass/README.md",
-            "files": [".tests/pass/README.md"]
+            "name": "use-in-prose",
+            "path": "tests/pass/use-in-prose",
+            "files": ["tests/pass/use-in-prose/README.md"]
           },
           {
             "bucket": "fail",
-            "name": "README.md",
-            "path": ".tests/fail/README.md",
-            "files": [".tests/fail/README.md"]
+            "name": "utilize-in-prose",
+            "path": "tests/fail/utilize-in-prose",
+            "files": ["tests/fail/utilize-in-prose/README.md"]
           }
         ]
       }
@@ -233,19 +244,19 @@
         "grouping": "case-directories",
         "files": [
           {
-            "path": ".tests/pass/declared/src/config.ts",
+            "path": "tests/pass/declared/src/config.ts",
             "content": "// API_URL is read here and declared in .env, so this case is clean.\nexport const apiUrl = process.env.API_URL;\n"
           },
           {
-            "path": ".tests/pass/declared/.env",
+            "path": "tests/pass/declared/.env",
             "content": "API_URL=https://api.example.com\n"
           },
           {
-            "path": ".tests/fail/undeclared/src/config.ts",
+            "path": "tests/fail/undeclared/src/config.ts",
             "content": "// API_URL is declared; API_KEY is not, so the rule fires on the second.\nexport const apiUrl = process.env.API_URL;\nexport const apiKey = process.env.API_KEY;\n"
           },
           {
-            "path": ".tests/fail/undeclared/.env",
+            "path": "tests/fail/undeclared/.env",
             "content": "API_URL=https://api.example.com\n"
           }
         ],
@@ -253,19 +264,19 @@
           {
             "bucket": "pass",
             "name": "declared",
-            "path": ".tests/pass/declared",
+            "path": "tests/pass/declared",
             "files": [
-              ".tests/pass/declared/src/config.ts",
-              ".tests/pass/declared/.env"
+              "tests/pass/declared/src/config.ts",
+              "tests/pass/declared/.env"
             ]
           },
           {
             "bucket": "fail",
             "name": "undeclared",
-            "path": ".tests/fail/undeclared",
+            "path": "tests/fail/undeclared",
             "files": [
-              ".tests/fail/undeclared/src/config.ts",
-              ".tests/fail/undeclared/.env"
+              "tests/fail/undeclared/src/config.ts",
+              "tests/fail/undeclared/.env"
             ]
           }
         ]

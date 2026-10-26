@@ -30,7 +30,7 @@ const positionSchema = z.object({
  * order — such a rule fires on every `fail/` fixture, stays quiet on every
  * `pass/` one, and a boolean verdict reports it as a rule that passed.
  */
-const fixtureFindingSchema = z.object({
+export const fixtureFindingSchema = z.object({
   source: z.string().describe("The engine that produced it"),
   ruleId: z.string(),
   severity: z.enum(["error", "warning", "info", "hint"]),
