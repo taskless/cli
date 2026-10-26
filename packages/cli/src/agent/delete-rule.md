@@ -1,9 +1,9 @@
-# Topic: delete-rule     (CLI v%(CLI_VERSION)s / topic v5)
+# Topic: delete-rule     (CLI v%(CLI_VERSION)s / topic v6)
 
 %(ONE_COMMAND_PER_CALL)s
 
 ## Goal
-Remove a rule and its associated test files from `.taskless/`. Does not
+Remove a rule and its test cases from `.taskless/`. Does not
 contact the Taskless API; purely a local filesystem operation.
 
 `rule delete` takes a bare id, not a path, and resolves which engine
@@ -34,7 +34,7 @@ picking one.
 
    The CLI removes:
    - `.taskless/rules/<engine>/<id>/`: the whole directory, which holds
-     the rule, its `.tests/`, and any per-rule config
+     the rule, its `tests/`, and any per-rule config
    - `.taskless/rule-metadata/<id>.yml`, a sidecar the CLI never
      writes. The removal is there for a directory a person created by
      hand; expect it to be absent.

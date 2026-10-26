@@ -1,4 +1,4 @@
-# Topic: create-sg-rule     (CLI v%(CLI_VERSION)s / topic v11)
+# Topic: create-sg-rule     (CLI v%(CLI_VERSION)s / topic v12)
 
 %(ONE_COMMAND_PER_CALL)s
 
@@ -9,7 +9,7 @@ If that is not the kind of check you need, re-run `%(TASKLESS_CLI)s agent route`
 and follow its decision rather than adapting this recipe.
 
 ## Goal
-Produce a verified ast-grep rule and its test file, locally, without
+Produce a verified ast-grep rule and its test cases, locally, without
 contacting the Taskless service. You derive the rule yourself, write it
 in the canonical on-disk shape, and check it with `validate` and
 `verify` in a feedback loop. The files you produce match exactly what the
@@ -30,15 +30,10 @@ two rules never collide.
 
 ```
 .taskless/rules/sg/no-eval/
-    no-eval.yml                       the rule
-    .tests/no-eval-YYYYMMDD-test.yml  its test cases
+    no-eval.yml                               the rule
+    tests/fail/eval-of-payload/handler.ts     a case it must fire on
+    tests/pass/json-parse/handler.ts          a case it must stay quiet on
 ```
-
-**The leading dot on `.tests/` is required.** ast-grep walks the rules
-tree and parses every `.yml` it reaches as a rule, so a plain `tests/`
-directory makes it read your test file as a rule and fail the scan for
-the whole project. A dot-directory is skipped by that walk, and the
-test runner still finds it. Do not rename it.
 
 Unlike Vale, an `sg` rule needs no second config file. It carries its
 own `files` and `ignores` inside the rule, so the rule file is the
@@ -104,7 +99,7 @@ whole rule.
 5. **Check the rule against Quirks.** Read the **Quirks** section below
    against what you just wrote, before writing any tests. Most entries
    there get past `validate` and then either fail the whole scan or match
-   less than they should, and a test file written from the same
+   less than they should, and a test case written from the same
    assumption passes anyway. The table says which ones `validate` does
    catch. Look again at:
    - a `$$$` next to a comma (the separator trap),
@@ -113,28 +108,31 @@ whole rule.
      `await f<T>(...)`,
    - a `follows` or `precedes`, or a `not` that reuses a metavariable.
 
-6. **Write the tests.** Write
-   `.taskless/rules/sg/<id>/.tests/<id>-YYYYMMDD-test.yml` with the matching
-   `id` field plus `valid` and `invalid` arrays, at least two of each.
-   The `id` must match the rule's `id` so ast-grep test filtering pairs
-   them. These paths and this shape are the same ones the service
-   writes; do not invent a different layout.
+6. **Write the tests.** Write at least two cases in each bucket under
+   `.taskless/rules/sg/<id>/tests/`. These paths are the same ones the
+   service writes; do not invent a different layout.
+
+   %(FIXTURE_LAYOUT)s
+
+   Each case file takes the extension ast-grep parses as the rule's
+   `language:` (`.ts` for `TypeScript`, `.tsx` for `Tsx`, `.yml` for
+   `Yaml`), and sits at a path the rule's `files:` admits and its
+   `ignores:` does not.
 
    %(FIXTURE_SOURCES)s
 
-   **Both arrays must be non-empty, and `verify` fails the rule if either
-   one is.** An empty `invalid:` is not a neutral starting point to fill
-   in later: ast-grep reports `1 passed; 0 failed` and exits zero over
-   no cases at all, so a rule that matches nothing anywhere looks
-   exactly like a rule that works. The `invalid:` bucket is the only
-   thing that demonstrates the rule can fire.
+   **Both buckets must hold a case, and `verify` fails the rule if either
+   one is empty.** An empty `fail/` is not a neutral starting point to
+   fill in later: it is the only thing that demonstrates the rule can
+   fire, and a rule that matches nothing anywhere looks exactly like a
+   rule that works without it.
 
    Where the rule has an arity boundary (the separator trap under
    Quirks), put a case on each side of it. A pattern that starts at two
    arguments when it was meant to start at one passes a test suite whose
    fixtures all have two. Where the rule keys on a callee that the
    repository awaits with a type argument (`await f<T>(...)`), put that
-   form among the `invalid:` cases. Write it only for such a callee: an
+   form among the `fail/` cases. Write it only for such a callee: an
    awaited generic call to a function the repository never awaits is
    not code it would accept, and the case would teach the wrong shape.
 
@@ -145,8 +143,8 @@ whole rule.
    %(TASKLESS_CLI)s verify   .taskless/rules/sg/<id> --json
    ```
    `validate` asks whether the rule is well-formed: the YAML matches the
-   ast-grep schema and every Taskless-required field is present. It
-   needs no test file, so run it the moment the rule exists. `verify` runs
+   ast-grep schema and every Taskless-required field is present. Run it
+   the moment the rule exists. `verify` runs
    the cases, after running `validate` and stopping if that fails, so a
    malformed rule reports the malformation rather than a test complaint.
 
@@ -163,6 +161,7 @@ whole rule.
 | the YAML doesn't match the schema    | check field types against the upstream schema   |
 | a Taskless-required field is missing | add `id`/`language`/`severity`/`message`/`rule` |
 | a case didn't behave as expected     | fix the rule pattern OR the test case           |
+| the rule's scope excluded a case     | move the fixture to a path `files:` admits      |
 
    A `regex` without an accompanying `kind` fails validation, the two
    always travel together.

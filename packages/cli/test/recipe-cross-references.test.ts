@@ -436,15 +436,15 @@ describe("recipes state engine reach from the pinned versions", () => {
     expect(recipe).toContain("A hyphen is a boundary");
   });
 
-  it("explains why a named fixture bucket is reachable by check", async () => {
-    // `check` on a `fail/` bucket is the only way to read a rendered `%s`
-    // message, and it works: `.taskless/` is excluded from the whole-project
-    // walk only. taskless/cli#370 read an empty `results` as proof the
-    // command could never work, so the recipe now says which exclusion is
-    // which, and names the rule-local matcher that really does empty it.
+  it("sends the author to verify --json for a rendered message", async () => {
+    // A `substitution` rule can render its `%s` slots in the wrong order and
+    // still pass every case, so the rendered message is the only evidence.
+    // It used to be read by running `check` on a fixture bucket, which no
+    // longer applies the rule's matchers the way `verify` does now that each
+    // case is run as its own root. `verify --json` reports every finding,
+    // the `fail/` ones included on a passing rule.
     const recipe = await rendered("create-vale-rule.md");
-    expect(recipe).toContain(".tests/fail --json");
-    expect(recipe).toContain("a path you name is honored");
-    expect(recipe).toContain("matcher [.taskless/**]");
+    expect(recipe).toContain("`verify --json` shows you every finding");
+    expect(recipe).not.toContain(".tests/");
   });
 });

@@ -1,4 +1,4 @@
-# Topic: create-vale-rule     (CLI v%(CLI_VERSION)s / topic v18)
+# Topic: create-vale-rule     (CLI v%(CLI_VERSION)s / topic v19)
 
 %(ONE_COMMAND_PER_CALL)s
 
@@ -26,10 +26,10 @@ touched either way, so two agents authoring two rules never collide.
 
 ```
 .taskless/rules/vale/no-simply/
-    no-simply.yml          the style: what the rule looks for
-    .vale.ini              the scope: which files it applies to
-    .tests/fail/bad.md     prose it must flag
-    .tests/pass/ok.md      prose it must leave alone
+    no-simply.yml                       the style: what the rule looks for
+    .vale.ini                           the scope: which files it applies to
+    tests/fail/simply-in-setup/README.md   prose it must flag
+    tests/pass/simple-noun/README.md       prose it must leave alone
 ```
 
 The rule is **incomplete until the style and the config both exist**,
@@ -845,25 +845,15 @@ it.
    `text.class.<name>` tail, because the set of component names is the
    author's, not Vale's.
 
-5. **Write the fixtures.** Two directories inside the rule, both flat.
-   Vale lints the whole fixture tree, so a document nested a level
-   deeper would be linted and never checked against either bucket, which
-   `verify` rejects by name rather than skipping. Keep both one level
-   deep:
+5. **Write the fixtures.** Cases go under
+   `.taskless/rules/vale/<id>/tests/`, one directory per case.
 
-   ```
-   .taskless/rules/vale/<id>/.tests/pass/ok.md    # rule must stay quiet
-   .taskless/rules/vale/<id>/.tests/fail/bad.md   # rule must fire
-   ```
+   %(FIXTURE_LAYOUT)s
 
-   **The leading dot on `.tests/` is required.** ast-grep walks the
-   rules tree and parses every `.yml` it reaches as a rule, and a plain
-   `tests/` directory fails that scan for the whole project. A
-   dot-directory is skipped. Do not rename it.
-
-   Give the fixtures an extension your matcher's glob matches. A `.txt`
-   fixture under a `[*.md]` matcher is never linted, so the `fail/`
-   document silently passes.
+   For a Vale rule, "a path the scope admits" means a path one of the
+   rule's own `.vale.ini` matchers enables it for. A rule enabled under
+   `[docs/**/*.md]` reads `tests/fail/<case>/docs/guide.md`; a `.txt`
+   fixture under a `[*.md]` matcher is never linted.
 
    %(FIXTURE_SOURCES)s
 
@@ -897,14 +887,13 @@ it.
    three. If the fixture fires on the prose line and not on the other
    two, the answer is `scope: raw`. See step 2 for what that costs.
 
-   **Fixtures run under a config that isolates this rule, so a green
-   `verify` is not evidence the rule reaches any real file.** `verify`
-   generates its own `.vale.ini` pointing at the fixture directory and
-   enabling only `<id>.<id>`; your rule's own matcher globs are not
-   consulted. So a glob of `packages/cli/src/**/*.ts` that matches
-   nothing in the repository still produces a rule that validates, passes
-   `verify`, and reports forever. The only check for that is a real
-   `check` over a real file:
+   **A green `verify` shows your matchers admit the fixture's path, not
+   that any real file sits at such a path.** Each case is linted under
+   the rule's own matchers, so a glob that misses the fixture fails
+   `verify`. A glob of `packages/cli/src/**/*.ts` in a repository whose
+   source lives elsewhere still admits a fixture written to match it, and
+   then reports nothing forever. The check for that is a real `check`
+   over a real file:
 
    ```
    %(TASKLESS_CLI)s check <a real path the rule should flag> --json
@@ -1002,40 +991,12 @@ it.
    reported one entry per rule. `.taskless/rules/vale` covers every Vale
    rule; no argument at all covers the project.
 
-   **`verify` answers pass-or-fail and never shows you the finding**, so
-   it cannot tell you that a `substitution` message renders its two
-   `%%s` slots in the wrong order: the rule fires, the fixture is
-   satisfied, and `verify` reports `ok`. To read the rendered message,
-   the line numbers and the matched text, name the bucket to `check`:
-
-   ```
-   %(TASKLESS_CLI)s check .taskless/rules/vale/<id>/.tests/fail --json
-   ```
-
-   **That works because a path you name is honored.** `.taskless/` is
-   excluded from the *whole-project* walk only, so a bare `check` over
-   the project reports nothing from anyone's fixtures while the command
-   above reports every finding in that bucket. Measured on this build:
-   a whole-project `check` returned no result under `.taskless/`, and
-   the same rule's `fail/` bucket named explicitly returned its
-   findings with the message text rendered.
-
-   **If that command returns `results: []` for a rule whose `verify` is
-   green, suspect the rule's own config before the pattern.** A
-   `[.taskless/**]` matcher setting `<id>.<id> = NO` turns the bucket
-   off for exactly this invocation, which is the one shape that
-   reproduces "`verify` says the fixture fired, `check` on the same
-   fixture says nothing". Measured: adding that matcher to a working
-   rule left `verify` at `ok: true` and emptied `results`. The tell is
-   in the same envelope, as a notice reading `matcher [.taskless/**]
-   is unnecessary`. `validate` reports it too, as an advisory. Delete
-   the matcher; step 4 explains why no rule needs one.
-
-   Read `results` there. Ignore `success` and the exit code: `success`
-   says the run worked rather than that the fixture behaved, and the
-   exit code follows severity, so a `level: error` rule exits 1 on
-   `fail/` while a `warning` rule exits 0 and both are correct. `verify`
-   answers pass-or-fail; `check` shows you the finding.
+   **`verify --json` shows you every finding the cases produced,** each
+   with its rendered message, line, matched text and bucket, the
+   `fail/` findings included on a rule that passed. That is how to catch
+   a `substitution` message that renders its two `%%s` slots in the
+   wrong order: the rule fires, the case passes, and only the message
+   says something is off. Read `findings` in the rule's entry.
 
    **An empty `results` is a clean pass only when nothing else in the
    envelope says otherwise.** Two things can leave a file unchecked
@@ -1058,8 +1019,8 @@ it.
 
      Every other file's findings are reported normally, and no rule of
      yours ran over this one. If it is a fixture, `verify` shows the same
-     gap from the other side: a `fail/` fixture Vale cannot parse
-     reports as `fail fixture did not fire`, and a `pass/` fixture it
+     gap from the other side: a `fail/` case Vale cannot parse
+     reports as `fail case did not fire`, and a `pass/` case it
      cannot parse stays green, since a rule that never ran cannot fire.
      Fix the front matter rather than the pattern.
 
@@ -1092,22 +1053,20 @@ it.
    with the rule set to `NO`, meant to keep a bare run quiet over
    fixtures that hold violations on purpose. It does not stay confined
    to the invocation it was written for: a whole-project `check` skips
-   `.taskless/` without its help, and on a fixture bucket you name it
-   is the one thing acting, which is how it empties the `check` above
-   while `verify` stays green. `validate` reports it as an advisory (step 4
+   `.taskless/` without its help, and on a path under `.taskless/` you
+   name it is the one thing acting. `validate` reports it as an advisory (step 4
    lists it). A rule needs the matchers for the files it is about and
    no more.
 
    When a `fail/` document does not fire, work down this list before
    touching the pattern. The cause is usually further up:
-   - Read the finding first, with the `check` on the `fail/` bucket
-     above. What the run saw is cheaper than any guess about why it
-     saw nothing, and it separates "no finding" from "a finding whose
-     message is wrong".
+   - Read what `verify` said first. "The rule's scope excluded it"
+     means the case fires with the scope removed, so the matchers and
+     the fixture's path disagree and the pattern is fine.
    - Does the rule have a `.vale.ini` at all?
    - Is the assignment underneath a `[…]` matcher?
    - Is it spelled `<id>.<id>`, both halves the same?
-   - Does the matcher's glob match the fixture's extension?
+   - Does a matcher's glob match the fixture's path inside its case?
    - Only then: does the pattern actually match the text?
 
    A `pass/` document that fires means the pattern is too broad. Look

@@ -57,17 +57,17 @@ When `taskless.json`'s `version` exceeds the highest migration the installed CLI
 
 ### Requirement: Rules are one directory each, partitioned by engine
 
-The system SHALL store every rule as a directory at `.taskless/rules/<engine>/<id>/`, holding the rule, any config that engine requires, and its tests under `.tests/`.
+The system SHALL store every rule as a directory at `.taskless/rules/<engine>/<id>/`, holding the rule, any config that engine requires, and its tests under `tests/`.
 
-| Engine    | Rule directory contents                                   |
-| --------- | --------------------------------------------------------- |
-| `sg`      | `<id>.yml`, `.tests/<id>-YYYYMMDD-test.yml`               |
-| `vale`    | `<id>.yml`, `.vale.ini`, `.tests/pass/*`, `.tests/fail/*` |
-| `runtime` | `check.ts`, `captures/*.yml`, `.tests/…`                  |
+| Engine    | Rule directory contents                                                    |
+| --------- | -------------------------------------------------------------------------- |
+| `sg`      | `<id>.yml`, `tests/pass/<case>/…`, `tests/fail/<case>/…`                   |
+| `vale`    | `<id>.yml`, `.vale.ini`, `tests/pass/<case>/…`, `tests/fail/<case>/…`      |
+| `runtime` | `check.ts`, `captures/*.yml`, `tests/pass/<case>/…`, `tests/fail/<case>/…` |
 
 One directory per rule is what lets a rule be addressed, reviewed, moved, or deleted as a single thing, and it is what makes `verify <path>` and `test <path>` possible without an id lookup.
 
-Tests SHALL live in `.tests/`, dot-prefixed. This is not cosmetic: ast-grep's `ruleDirs` recurses and parses every `.yml` beneath it as a rule, so a plain `tests/` directory inside a rule directory fails the scan outright. Measured against ast-grep 0.41.0, a dot-directory is skipped by rule discovery while `sg test` still reads it when `testDir` names it.
+Tests SHALL live in `tests/`, with no dot prefix, laid out as `cli-rule-fixtures` describes. The previous dot prefix worked around ast-grep's rule discovery: `ruleDirs` recurses and parses every `.yml` beneath it as a rule, and a plain `tests/` inside a rule directory fails the whole scan. Re-measured on 0.51.0, that is still true. So the engine is never pointed at the committed rules tree. It reads its rules from a rules-only tree the CLI assembles (see "Each engine's native config is the source of truth"), and what a rule directory may contain stops depending on undocumented engine behavior. A visible `tests/` is also where an author or an agent looks first. A dot directory is hidden in most listings, and fixtures written beside it were common enough to need a migration of their own (`0010`).
 
 #### Scenario: A rule is one path
 
@@ -77,7 +77,7 @@ Tests SHALL live in `.tests/`, dot-prefixed. This is not cosmetic: ast-grep's `r
 
 #### Scenario: Test files are not mistaken for rules
 
-- **WHEN** an ast-grep rule directory contains `.tests/` with test YAML in it
+- **WHEN** an ast-grep rule directory contains `tests/` with `.yml` fixture files in it
 - **THEN** a scan SHALL complete without attempting to parse those files as rules
 
 #### Scenario: The engine is read from the path
@@ -102,9 +102,10 @@ An engine SHALL NOT be given a per-rule config file it has nothing to put in. as
 
 #### Scenario: ast-grep config is assembled from the rule tree
 
-- **WHEN** the CLI runs a check or a test
-- **THEN** it assembles `sgconfig.yml` with `ruleDirs` covering the rules tree and `testConfigs` covering each rule's `.tests/`
-- **AND** the assembled file SHALL be gitignored
+- **WHEN** the CLI runs a check or verifies a rule
+- **THEN** it assembles a rules-only tree holding each selected rule's `<id>.yml` and nothing else from its directory
+- **AND** it assembles `sgconfig.yml` with `ruleDirs` naming that tree
+- **AND** both SHALL live in the run directory or be gitignored, and SHALL NOT be written under `.taskless/rules/`
 
 #### Scenario: No empty per-rule config is required
 
@@ -129,7 +130,7 @@ The system SHALL place each Vale rule in its own directory `.taskless/rules/vale
 
 #### Scenario: A rule's tests are not loaded as styles
 
-- **WHEN** a Vale rule directory contains `.tests/`
+- **WHEN** a Vale rule directory contains `tests/`
 - **THEN** Vale SHALL NOT load anything under it as a rule
 
 ### Requirement: Runtime capture rules live in captures

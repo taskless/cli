@@ -28,7 +28,7 @@ The `create-vale-rule` recipe SHALL instruct the agent to produce three artifact
 
 1. A Vale style file at `.taskless/rules/vale/<id>/<id>.yml`.
 2. That rule's own `.taskless/rules/vale/<id>/.vale.ini`, declaring the matchers that scope it and enabling it as `<id>.<id> = YES`.
-3. `pass/` and `fail/` fixture documents under `.taskless/rules/vale/<id>/.tests/`.
+3. Fixture case directories under `.taskless/rules/vale/<id>/tests/pass/` and `tests/fail/`, laid out as the shared fixture section describes.
 
 The recipe SHALL state that scope is declared in the rule's own config, that no shared file is edited, and that the project-wide config is assembled rather than authored.
 
@@ -241,3 +241,27 @@ Enforcing this is the recipe's job. `verify` SHALL NOT lint fixtures and SHALL N
 
 - **WHEN** `verify` runs a rule whose `pass` fixture would fail the repository's linter
 - **THEN** `verify` SHALL report on the rule's behavior alone, and SHALL NOT fail the rule over that fixture's style
+
+### Requirement: Authoring recipes share one fixture section
+
+Every recipe in which the agent writes or extends fixtures (`create-sg-rule`, `create-vale-rule`, `create-runtime-rule`, `improve-rule` and `validate-rule`) SHALL direct the agent to one shared fixture section and SHALL NOT carry its own copy of the layout. The shared section SHALL state:
+
+1. The layout: `tests/pass/<case>/` and `tests/fail/<case>/`, with the case directory named for what the case shows.
+2. That a case is judged by the engine's own check with the case directory as the root, so a fixture for a scoped rule places its files at a path the scope accepts. For example, an ast-grep rule scoped to `.github/workflows/*.yml` needs `tests/fail/<case>/.github/workflows/ci.yml`.
+3. That a `fail/` case needs one finding and a `pass/` case none, and that nothing about position, message, or count is asserted.
+4. What a "scope excluded this case" failure means, and that the fix is the fixture's path or the scope, not the pattern.
+
+A per-engine recipe SHALL keep only what is that engine's own, such as Vale's scope reach and the fact that a runtime case is the check's root.
+
+**Rationale.** The fixture contract is now one contract. Three copies of it would drift the way the three fixture readers did, and the path rule for scoped rules is the one new thing authors have to learn. It belongs where every recipe reaches it.
+
+#### Scenario: Every authoring recipe reaches the same fixture guidance
+
+- **WHEN** the agent follows any recipe that writes fixtures
+- **THEN** the recipe SHALL direct it to the shared fixture section
+- **AND** SHALL NOT restate the layout in its own words
+
+#### Scenario: A scoped rule's fixture path is taught
+
+- **WHEN** the agent writes fixtures for a rule that declares `files:` or Vale matchers
+- **THEN** the shared section SHALL direct it to place each case's files at a path the scope accepts

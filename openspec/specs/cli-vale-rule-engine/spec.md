@@ -44,16 +44,24 @@ When the `vale` binary cannot be found or invoked, the system SHALL report that 
 
 ### Requirement: Vale rules are verified with per-rule fixture subdirectories
 
-The system SHALL verify a Vale rule from a `.taskless/rules/vale/<rule>/.tests/` subdirectory containing `pass/` and `fail/` fixture documents. Because verification isolates one rule, the system SHALL generate an ephemeral config enabling only that rule — derived from the rule's own config so that verification exercises the scope the rule actually declares. Verification SHALL assert that every `fail/` fixture produces at least one finding for the rule and every `pass/` fixture produces none (mirroring ast-grep's `invalid`/`valid`).
+The system SHALL verify a Vale rule from the case directories under `.taskless/rules/vale/<rule>/tests/pass/` and `tests/fail/`, as `cli-rule-fixtures` describes. Because verification isolates one rule, the system SHALL generate an ephemeral config assembled from that rule's own `.vale.ini` alone, so verification exercises the scope the rule actually declares. Verification SHALL assert that every `fail/` case produces at least one finding for the rule and every `pass/` case produces none.
+
+The config SHALL be the rule's own matchers, not a blanket `[*]` enabling the rule everywhere. This requirement always said verification exercises the declared scope, and the implementation did not: it enabled the rule under `[*]`, so a rule whose matchers matched nothing real passed verification and stayed silent in `check`. The blanket config is still the right tool for one thing, the unscoped re-run that diagnoses a quiet `fail/` case.
 
 #### Scenario: Verification isolates the rule under test
 
 - **WHEN** verify runs for a rule and generates a config enabling only that rule
 - **THEN** findings from other rules SHALL NOT affect its result
 
+#### Scenario: Verification applies the rule's own matchers
+
+- **WHEN** a rule's `.vale.ini` enables it only under `[docs/**/*.md]`, and a `fail/` case holds the offending text at `notes.md`
+- **THEN** that case SHALL produce no finding and verification SHALL fail
+- **AND** the same text at `docs/guide/notes.md` in the case SHALL produce a finding
+
 #### Scenario: Verification fails when a fail fixture does not trigger
 
-- **WHEN** a `fail/` fixture for a rule produces no finding
+- **WHEN** a `fail/` case for a rule produces no finding
 - **THEN** verification reports a failure for that rule
 
 #### Scenario: A one-sided fixture set is not verified
@@ -190,7 +198,7 @@ A rule's config SHALL NOT carry `BasedOnStyles`, with any value. Measured agains
 
 ### Requirement: A Vale rule is a self-contained directory
 
-The system SHALL store a Vale rule as a directory `.taskless/rules/vale/<id>/` containing its style file `<id>.yml`, its own `.vale.ini`, and its fixtures under `.tests/`. No file outside that directory SHALL be required to define or verify the rule.
+The system SHALL store a Vale rule as a directory `.taskless/rules/vale/<id>/` containing its style file `<id>.yml`, its own `.vale.ini`, and its fixtures under `tests/`. No file outside that directory SHALL be required to define or verify the rule.
 
 Self-containment is what removes the engine's silent-failure class. A rule can be added, reviewed, moved, or deleted as one directory, and no two authors write the same file.
 

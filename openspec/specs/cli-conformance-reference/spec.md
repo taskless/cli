@@ -33,52 +33,6 @@ behaving correctly, so the bump is the only signal the corpus owes it.
 - **THEN** the files a generator must produce SHALL be carried apart from the cases both sides' rules must satisfy
 - **AND** no file SHALL appear in both
 
-### Requirement: The corpus states how its fixtures group into cases
-
-Each corpus entry's `tests` SHALL carry a `grouping` field naming how its fixture
-files group into cases, the flat list of fixture files with their contents, and
-— where the grouping is the CLI's own — an explicit list of cases.
-
-A consumer SHALL be able to recover which files belong to which case by reading
-published fields alone. Deriving it from path prefixes requires knowing that a
-`runtime` case is a directory and a `vale` case is a document, which is a fact
-about the CLI's layout that every consumer would otherwise transcribe, and a
-transcribed fact goes stale silently when the layout changes.
-
-Each case SHALL name the `bucket` it asserts (`pass` or `fail`), its own `name`,
-the `path` the engine is pointed at, and the fixture files it holds. Case files
-SHALL be named by path rather than by repeated content, and every such path
-SHALL resolve to an entry in the same `tests.files` list.
-
-`bucket` SHALL be spelled `pass`/`fail`, matching the directories the CLI reads,
-rather than an individual engine's vocabulary.
-
-#### Scenario: A runtime case is a directory of files
-
-- **WHEN** a consumer reads the `runtime` entry
-- **THEN** `grouping` SHALL be `case-directories`
-- **AND** each case SHALL name the directory the check is handed as its root
-- **AND** a case whose evidence spans two files SHALL list both
-
-#### Scenario: A vale case is one document
-
-- **WHEN** a consumer reads the `vale` entry
-- **THEN** `grouping` SHALL be `case-documents`
-- **AND** each case SHALL name the document and hold exactly that one file
-
-#### Scenario: An ast-grep entry says its grouping is not the CLI's
-
-- **WHEN** a consumer reads the `sg` entry
-- **THEN** `grouping` SHALL be `ast-grep-test`
-- **AND** the ast-grep test file SHALL be carried whole
-- **AND** no case list SHALL be published, because the grouping inside that file belongs to ast-grep's own documented schema rather than to the CLI
-
-#### Scenario: Every case file resolves
-
-- **WHEN** the corpus is generated
-- **THEN** every path a case names SHALL appear in that entry's `tests.files`
-- **AND** every file in `tests.files` SHALL belong to exactly one case, where a case list is published
-
 ### Requirement: The corpus states where a rule lives
 
 The corpus SHALL publish the rule layout: the root every rule hangs off, the
@@ -130,3 +84,52 @@ disagreement about the subject the rule addresses.
 - **WHEN** the commands an `enforcedBy` value names are renamed, so an existing value would mean a different command
 - **THEN** the corpus `version` SHALL be incremented
 - **AND** a consumer reading the new version SHALL find only the current command names among the `enforcedBy` values
+
+### Requirement: The corpus publishes every engine's fixtures as case directories
+
+Each corpus entry's `tests` SHALL carry a `grouping` field naming how its fixture
+files group into cases, the flat list of fixture files with their contents, and
+an explicit list of cases.
+
+A consumer SHALL be able to recover which files belong to which case by reading
+published fields alone, so that the case layout stays a published fact and is
+not transcribed by every consumer. A transcribed fact goes stale silently when
+the layout changes, and this change is such a change.
+
+Every engine SHALL publish `grouping` as `case-directories` with an explicit case
+list. The field stays even though it now has one value: a consumer asserts on
+it, and it is what a later layout change would move. The `case-documents` and
+`ast-grep-test` values SHALL NOT be published, because no engine uses them.
+
+Each case SHALL name the `bucket` it asserts (`pass` or `fail`), its own `name`,
+the `path` the engine is pointed at, and the fixture files it holds. Case files
+SHALL be named by path rather than by repeated content, and every such path
+SHALL resolve to an entry in the same `tests.files` list.
+
+`bucket` SHALL be spelled `pass`/`fail`, matching the directories the CLI reads,
+rather than an individual engine's vocabulary.
+
+#### Scenario: Every engine publishes case directories
+
+- **WHEN** a consumer reads the `sg`, `vale`, or `runtime` entry
+- **THEN** `grouping` SHALL be `case-directories`
+- **AND** each case SHALL name the directory the engine is handed as its root
+- **AND** a case whose evidence spans two files SHALL list both
+
+#### Scenario: No engine-native test file is published
+
+- **WHEN** a consumer reads the `sg` entry
+- **THEN** its `tests.files` SHALL hold no ast-grep test YAML
+- **AND** every file SHALL belong to a published case
+
+#### Scenario: A single-document case is still a directory
+
+- **WHEN** a consumer reads the `vale` entry and a case holds a single document
+- **THEN** the case SHALL name its directory as its `path`
+- **AND** SHALL list that one document as its file
+
+#### Scenario: Every case file resolves
+
+- **WHEN** the corpus is generated
+- **THEN** every path a case names SHALL appear in that entry's `tests.files`
+- **AND** every file in `tests.files` SHALL belong to exactly one case
