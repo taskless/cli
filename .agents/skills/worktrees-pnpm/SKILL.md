@@ -17,17 +17,14 @@ problem in this repo.
 git fetch origin +refs/heads/main:refs/remotes/origin/main   # explicit refspec; see the hook for why
 git worktree add -b <branch> .agents/.worktrees/<name> origin/main   # or an existing <branch>, without -b
 cd .agents/.worktrees/<name>
-pnpm install            # ← not optional
-```
-
-**Then confirm the base is current, whoever made the worktree.** The `WorktreeCreate` hook fetches
-before branching, but a worktree made by hand or by another tool is cut from whatever its maker
-had locally. Before reading code or installing:
-
-```bash
-git fetch origin +refs/heads/main:refs/remotes/origin/main
 git rev-list --count HEAD..origin/main   # anything above 0: git rebase origin/main
+pnpm install            # ← not optional, and after the rebase, which can change the lockfile
 ```
+
+**The base check applies whoever made the worktree.** The `WorktreeCreate` hook fetches before
+branching, but a worktree made by hand or by another tool is cut from whatever its maker had
+locally. Stepping into one you did not create, run the fetch and the `rev-list` check above first,
+before reading code or installing.
 
 Branch from `origin/main`, never the local `main`, which is only as fresh as the main checkout's
 last pull. A stale tree also carries stale conventions, including this one, so the check cannot
