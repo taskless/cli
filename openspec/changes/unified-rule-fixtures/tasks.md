@@ -1,4 +1,4 @@
-Stacked, merging down: groups 1–4 are one branch each, bottom to tip. Pause for review after each group (CLAUDE.md, OpenSpec Apply).
+Stacked, merged atomically with `gh stack merge`. The task groups describe the work; the branches group it so each layer is green on its own (see proposal, Delivery shape). Pause for review after each group (CLAUDE.md, OpenSpec Apply).
 
 ## 1. Engine plumbing (bottom branch)
 
@@ -34,4 +34,4 @@ Stacked, merging down: groups 1–4 are one branch each, bottom to tip. Pause fo
 - [x] 4.2 `reference.json`: a case list for every engine, `grouping: case-directories`, and an incremented corpus `version`. Verify `reference.test.ts` covers every scenario in the `cli-conformance-reference` delta.
 - [x] 4.3 Update `.taskless/rules` READMEs, CONTRIBUTING and any doc naming `.tests/`. Verify `grep -rn '\.tests/'` outside migrations, the delivery JIT conversion and the CHANGELOG returns nothing unexpected.
 - [ ] 4.4 Note the new layout and corpus version in the CLI collab artifact as information for Cloud, stating that no action is required because delivery migrates the old format just in time (memory: cloud collab artifacts). Verify the artifact reads back with the note.
-- [x] 4.5 Run `pnpm typecheck` and `pnpm lint` across the stack tip. Archive the change on the tip (`pnpm openspec archive unified-rule-fixtures -y`), confirming every prior scenario survives per CLAUDE.md, then merge down.
+- [x] 4.5 Run `pnpm typecheck` and `pnpm lint` across the stack tip. Archive the change on the tip (`pnpm openspec archive unified-rule-fixtures -y`), confirming every prior scenario survives per CLAUDE.md, then land the stack with `gh stack merge`.

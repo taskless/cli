@@ -116,8 +116,8 @@ This is a permanent reading of the old format, not a transition shim. The CLI de
 
 ## Migration Plan
 
-1. Land the stack on `main` in one protected merge (stacked, merging down; see proposal). The nightly publishes it. This repository's own `.taskless/rules/` migrate in the stack itself, so `pnpm cli check` keeps working throughout.
-2. Release 0.14 when ready. Nothing is gated on Cloud (D6).
+1. Land the stack on `main` with `gh stack merge` (see proposal, Delivery shape). The nightly publishes it. This repository's own `.taskless/rules/` migrate in the stack itself, so `pnpm cli check` keeps working throughout.
+2. Release 0.13.4 when ready. Nothing is gated on Cloud (D6).
 3. Tell Cloud about the new layout and the `reference.json` version through the collab artifact, so that they can move the generator when it suits them. No action is required of them.
 
 Rollback: revert the stack. Migration 12 is forward-only like every scaffold migration, but it only moves unsigned fixtures, so a project on a reverted CLI fails with `SCAFFOLD_VERSION_MISMATCH` rather than misreading its rules.
