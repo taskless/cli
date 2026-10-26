@@ -445,18 +445,26 @@ engine, keeps its cases beside it in \`tests/\`:
 - **A case is a directory**, named for what it shows
   (\`tests/fail/npx-latest/\`, not \`tests/fail/case-1/\`). It holds as many
   files as the case needs. A file directly in \`pass/\` or \`fail/\`, or
-  anything in \`tests/\` besides those two, is refused by \`verify\`.
+  anything in \`tests/\` besides those two, is refused by \`verify\`, and
+  so is a case with no file in it.
 - **Each case is run like a small repository.** \`verify\` runs the
   engine's own check with the case directory as the project root, so the
   rule's scope applies to the case exactly as it applies to real code. A
   rule scoped to some paths needs its fixture at such a path inside the
   case: a rule with \`files: [".github/workflows/*.yml"]\` reads
   \`tests/fail/<case>/.github/workflows/ci.yml\`, and a bare
-  \`tests/fail/<case>/ci.yml\` is outside its scope.
+  \`tests/fail/<case>/ci.yml\` is outside its scope. The project's
+  \`.gitignore\` applies inside a case too, so keep fixtures out of ignored
+  directory names such as \`dist/\` or \`build/\`.
 - **Firing is the whole test.** A \`fail/\` case passes when the rule reports
   at least one finding in it, and a \`pass/\` case when it reports none.
   Nothing about the line, the column, the message or the count is
   asserted. Both buckets need at least one case.
+- **Every case must be read.** A case in which the rule read no file fails
+  in either bucket, because it shows nothing: \`verify\` says the case "was
+  never read". Either the scope excluded every file in it (move the file to
+  a path the scope admits), or the engine walked none of them (an ignored
+  path, an empty file, or an extension the engine does not read).
 - **"The rule's scope excluded it"** means a \`fail/\` case fires once its
   scope is removed, so the pattern is fine and the fixture's path is not.
   Move the fixture to a path the scope admits, or widen the scope. Do not

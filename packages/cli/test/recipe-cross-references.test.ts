@@ -448,3 +448,29 @@ describe("recipes state engine reach from the pinned versions", () => {
     expect(recipe).not.toContain(".tests/");
   });
 });
+
+/** How many spaces `line` starts with. */
+function indentOf(line: string): number | undefined {
+  return /^ */.exec(line)?.[0].length;
+}
+
+describe("a substituted block keeps one indent", () => {
+  it("indents the fixture layout block's first line like the rest", async () => {
+    // Block variables indent every line after the first by three spaces, so
+    // a placeholder at any other column renders a block whose first line is
+    // flush and whose body is indented: two markdown units where the source
+    // meant one.
+    const offenders: string[] = [];
+    for (const [file, rendered] of await renderedRecipes()) {
+      const lines = rendered.split("\n");
+      const index = lines.findIndex((line) =>
+        line.includes("**How fixtures are laid out and judged.**")
+      );
+      if (index === -1) continue;
+      if (indentOf(lines[index] ?? "") !== indentOf(lines[index + 1] ?? "")) {
+        offenders.push(file);
+      }
+    }
+    expect(offenders).toEqual([]);
+  });
+});

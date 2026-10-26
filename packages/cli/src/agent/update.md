@@ -558,15 +558,16 @@ whose front matter satisfies it. `validate` accepts it.
 **A Vale rule's `tests:` cases move into its fixtures, and
 `update --rules` moves them for you.** Vale 3.24.0 ships `vale test`, which runs
 cases written in a rule's `tests:` list. Taskless never runs it:
-`verify` judges a Vale rule by the documents under `.tests/pass` and
-`.tests/fail`. So `validate` and `verify` now reject the key, which
+`verify` judges a Vale rule by its fixture cases under `tests/pass/` and
+`tests/fail/`. So `validate` and `verify` now reject the key, which
 0.12.0 had started accepting, rather than let a rule look tested by
 cases nothing runs. `check` still runs such a rule.
 
-Do not move them by hand. Step 5 writes each case's `input` as a
-document named for the case, under `.tests/fail` when the case expects
-an alert and `.tests/pass` when it expects none, with the case's
-`format` as its extension. It then deletes the `tests:` block, leaves
+Do not move them by hand. Step 5 writes each case's `input` as one
+document in a case directory named for the case, under `tests/fail/`
+when the case expects an alert and `tests/pass/` when it expects none,
+with the case's `format` as its extension, at a path the rule's
+`.vale.ini` matchers admit. It then deletes the `tests:` block, leaves
 everything else in the rule as it was, never overwrites a fixture, and
 names each file it wrote. No rule Taskless issued carries `tests:`, so
 it never touches a signed rule. A rule with a case that reads through a
@@ -607,13 +608,16 @@ What needs you, after `init`:
 - **Run `%(TASKLESS_CLI)s verify`.** A case that now fails because the
   rule's scope excluded it is a fixture that only ever passed because
   the old runner ignored scope. Move it to a path the scope admits, or
-  widen the scope if the rule was meant to reach it.
+  widen the scope if the rule was meant to reach it. A case the rule
+  never read at all, in either bucket, now fails too: a pass case used
+  to pass on no evidence when its file sat outside the scope, under an
+  ignored path, or was empty.
 - **Rename the converted cases.** ast-grep snippets carry no
   description, so they arrive named `pass-01`, `fail-01` and so on. Name
   each directory for what it shows.
 - **Anything left under `.tests/`** is named in the migration's output
-  with the reason. Move those files by hand into case directories, then
-  delete `.tests/`.
+  with the reason, and `verify` fails the rule until it is gone. Move
+  those files by hand into case directories, then delete `.tests/`.
 
 ## Errors
 

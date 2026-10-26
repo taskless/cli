@@ -47,7 +47,7 @@ What each engine is checked for:
 | `vale`    | style parses, `extends` and `message` present, `level` in vocabulary, and the rule's `.vale.ini` enables `<id>.<id>` under a matcher | each case under `tests/pass/` and `tests/fail/`, linted as its own root under the rule's matchers |
 | `runtime` | `check.ts` present, at least one capture rule in `captures/`                                                                         | each case under `tests/pass/` and `tests/fail/`, as the check's `root` |
 
-%(FIXTURE_LAYOUT)s
+   %(FIXTURE_LAYOUT)s
 
 A runtime rule's fixtures execute its `check.ts`, so they run only when
 you pass `--dangerously-run-scripts`. Nothing else runs them: `verify`
