@@ -85,6 +85,8 @@ export function ruleCapturesDirectory(
  */
 export const ASSEMBLED_VALE_CONFIG = ".taskless/.vale.ini";
 export const ASSEMBLED_SG_CONFIG = ".taskless/.sgconfig.yml";
+/** The rules-only copy of the `sg` tree that {@link ASSEMBLED_SG_CONFIG} names. */
+export const ASSEMBLED_SG_RULES = ".taskless/.sg-rules";
 
 /** One engine's disposition for this run. */
 export interface EngineDispatch {

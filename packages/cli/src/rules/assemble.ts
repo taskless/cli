@@ -1,12 +1,20 @@
-import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
-import { dirname, join, posix, relative, sep } from "node:path";
+import {
+  copyFile,
+  mkdir,
+  readFile,
+  rm,
+  stat,
+  writeFile,
+} from "node:fs/promises";
+import { basename, dirname, join, posix, relative, sep } from "node:path";
 
 import {
   ASSEMBLED_SG_CONFIG,
+  ASSEMBLED_SG_RULES,
   ASSEMBLED_VALE_CONFIG,
   listRuleIds,
   ruleConfigPath,
-  ruleTestsDirectory,
+  ruleFilePath,
 } from "./engines";
 import { validateValeRuleConfig } from "../schemas/vale-config";
 import type { RuleViolation } from "./constraints";
@@ -54,11 +62,11 @@ function toPosix(path: string): string {
   return path.split(sep).join(posix.sep);
 }
 
-/** Whether `path` is a directory on disk. */
-async function isDirectory(path: string): Promise<boolean> {
+/** Whether `path` is a regular file on disk. */
+async function isFile(path: string): Promise<boolean> {
   try {
     const stats = await stat(path);
-    return stats.isDirectory();
+    return stats.isFile();
   } catch {
     return false;
   }
@@ -130,6 +138,35 @@ export interface ValeConfigRefusal {
   ruleId: string;
   /** Every rejection, each naming the line and the constraint it broke. */
   rejections: RuleViolation[];
+}
+
+/**
+ * A Vale config enabling one rule under its own matchers, and nothing else.
+ *
+ * What `verify` runs a Vale case under: the rule's `.vale.ini`, block for
+ * block what `check` assembles for it, behind a header whose `StylesPath` is
+ * absolute because the config is written outside the project. Not
+ * `assembleValeConfig({ ruleIds })`, which validates every rule and refuses
+ * the whole assembly on any rejection, deliberately, so `check --rule` cannot
+ * report findings an unfiltered `check` never would. Under `verify` that
+ * would let another rule's broken config fail this rule's cases.
+ *
+ * `undefined` when the schema rejects the config, which `validate` reports
+ * before `verify` ever gets here.
+ */
+export function buildOneRuleValeConfig(
+  stylesPath: string,
+  ruleId: string,
+  source: string
+): string | undefined {
+  const verdict = validateValeRuleConfig(ruleId, source);
+  if (verdict.rejections.length > 0) return undefined;
+  return [
+    `StylesPath = ${toPosix(stylesPath)}`,
+    "MinAlertLevel = suggestion",
+    "",
+    valeRuleBlock(ruleId, source, verdict.breadcrumbLines),
+  ].join("\n");
 }
 
 /**
@@ -282,27 +319,24 @@ export async function assembleValeConfig(
 }
 
 /**
- * Assemble `.taskless/.sgconfig.yml`.
+ * Assemble `.taskless/.sgconfig.yml`, over a rules-only copy of the tree.
  *
- * `ruleDirs` names the ast-grep rules tree, which ast-grep walks recursively —
- * that recursion is why tests live in `.tests/` rather than `tests/`, since
- * every `.yml` it reaches is parsed as a rule.
+ * ast-grep walks `ruleDirs` recursively and parses every `.yml` it reaches as
+ * a rule, so it is never pointed at `.taskless/rules/sg/` itself: a rule's
+ * `tests/` holds fixture files, and the first `.yml` fixture would fail the
+ * whole scan with `Cannot parse rule`. Measured on 0.51.0. Each rule's
+ * `<id>.yml` is copied into `.taskless/.sg-rules/` instead, and that is what
+ * `ruleDirs` names, so what a rule directory may contain is the CLI's
+ * business rather than a property of ast-grep's discovery.
  *
- * `testConfigs` gets one entry per rule, because each rule keeps its tests
- * inside its own directory. Sorted with the rule ids, so the file is stable.
+ * Copied rather than linked: symlinks need privileges on Windows, and a rule
+ * file is a few hundred bytes. The tree is cleared first, so a rule deleted
+ * since the last run cannot keep reporting from a stale copy. `check` assembles
+ * against its snapshot, so there the tree lands inside the run directory; it
+ * is gitignored for any other caller.
  *
- * A rule whose `.tests/` is not on disk is left out of `testConfigs`
- * entirely. **ast-grep 0.41.0 treats a missing `testDir` as fatal to the whole
- * invocation** — `Cannot read rule directory ...`, exit 6 — and `--filter` does
- * not scope that away, so emitting the entry regardless would let one rule fail
- * every other rule's test run, with an error naming a rule its author never
- * touched. Migration `0005` now creates the directory, but that does not make
- * this check redundant: `runMigrations` short-circuits once the manifest reads
- * version 5, so a project a nightly already stamped never re-runs the amended
- * migration, and a hand-made `mkdir .taskless/rules/sg/<id>/` reaches the same
- * state on any version. Nothing becomes a silent pass — `validate` still reports
- * "No test file found" and `verify` still reports "Skipped: no test file found",
- * both of which read the rule directory rather than this config.
+ * No `testConfigs`. Fixtures are no longer run by `sg test`: `verify` runs
+ * each case through this same scan (see `rules/sg-fixtures.ts`).
  */
 export async function assembleSgConfig(
   cwd: string
@@ -310,22 +344,20 @@ export async function assembleSgConfig(
   const ruleIds = await listRuleIds(cwd, "sg");
   if (ruleIds.length === 0) return undefined;
 
-  const rulesDirectory = tasklessRelative(RULES_DIRECTORY, "sg");
-  const candidates = ruleIds.map((ruleId) =>
-    ruleTestsDirectory(cwd, "sg", ruleId)
+  const tree = join(cwd, ASSEMBLED_SG_RULES);
+  await rm(tree, { recursive: true, force: true });
+  await mkdir(tree, { recursive: true });
+  await Promise.all(
+    ruleIds.map(async (ruleId) => {
+      const source = ruleFilePath(cwd, "sg", ruleId);
+      if (!(await isFile(source))) return;
+      await copyFile(source, join(tree, basename(source)));
+    })
   );
-  const present = await Promise.all(
-    candidates.map((path) => isDirectory(path))
-  );
-  const testDirectories = candidates
-    .filter((_, index) => present[index])
-    .map((path) => toPosix(relative(join(cwd, ".taskless"), path)));
 
   const contents = [
     "ruleDirs:",
-    `  - ${rulesDirectory}`,
-    "testConfigs:",
-    ...testDirectories.map((directory) => `  - testDir: ${directory}`),
+    `  - ${toPosix(relative(dirname(join(cwd, ASSEMBLED_SG_CONFIG)), tree))}`,
     "",
   ].join("\n");
 
