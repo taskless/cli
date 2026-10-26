@@ -127,7 +127,9 @@ changes no signed byte, and the CLI never writes a layout its own `verify` does 
 is a permanent reading of the old format, not a transition step. The CLI SHALL NOT depend on
 the service emitting the new layout, and a served set already in the new layout SHALL be
 written unchanged. A rule served with several legacy test files SHALL keep every snippet:
-case names SHALL NOT collide across them. Fixtures the converter cannot place SHALL be written
+case names SHALL NOT collide across them, nor with a case the served set already carries
+under `tests/`, nor with the name a fixture moved as served keeps. `sg test`'s
+`__snapshots__/` SHALL be dropped and named. Fixtures the converter cannot place SHALL be written
 under `tests/` at their served path below `.tests/`, and the delivery SHALL say so, naming them.
 `verify` then refuses them by path, so an unplaced fixture is never mistaken for a passing one.
 
@@ -151,6 +153,12 @@ under `tests/` at their served path below `.tests/`, and the delivery SHALL say 
 
 - **WHEN** a served `sg` rule carries two legacy test files, each with one `invalid:` snippet
 - **THEN** the CLI SHALL write two `fail/` cases, one per snippet
+
+#### Scenario: A served set in both layouts keeps its cases apart
+
+- **WHEN** a served `sg` rule carries `tests/fail/fail-01/` and a legacy test file with one `invalid:` snippet
+- **THEN** the CLI SHALL write the converted snippet as `tests/fail/fail-02/`
+- **AND** `tests/fail/fail-01/` SHALL hold only what was served there
 
 #### Scenario: A fixture the converter cannot place is written and named
 

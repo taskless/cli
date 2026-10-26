@@ -10,9 +10,9 @@ One fixture contract for every rule engine: where a rule's test cases live, what
 
 Every rule, whatever its engine, SHALL keep its fixtures at `tests/pass/<case>/` and `tests/fail/<case>/` inside its rule directory. A case SHALL be a directory, and its name SHALL be the case's description. A case MAY hold any number of files at any depth.
 
-Each bucket SHALL be read one level deep. An entry directly under `pass/` or `fail/` that is not a directory SHALL be an error naming the path, not an ignored entry. An entry directly under `tests/` other than `pass/` and `fail/` SHALL be an error naming the path. Buckets SHALL be read independently, and a bucket that exists but cannot be read SHALL be an error rather than an empty bucket.
+Each bucket SHALL be read one level deep. An entry directly under `pass/` or `fail/` that is not a directory SHALL be an error naming the path, not an ignored entry. An entry directly under `tests/` other than `pass/` and `fail/` SHALL be an error naming the path. A case directory that holds no file at any depth SHALL be an error naming it. A legacy `.tests/` beside the rule that still holds fixtures SHALL be an error naming it. Operating-system metadata (`.DS_Store`, `Thumbs.db`, `desktop.ini`) and `.gitkeep` SHALL be skipped wherever fixtures are read, and SHALL NOT count as a case's file. Buckets SHALL be read independently, and a bucket that exists but cannot be read SHALL be an error rather than an empty bucket.
 
-**Rationale.** One shape for every engine is what lets one loop verify every rule. A case is a directory rather than a document because the engines that scope by path judge a file by where it sits, so a case has to be able to place a file at the path the rule expects. A runtime rule's evidence also spans files. The strict reads keep a fixture that was written but never ran from passing in silence: a skipped loose file is a fixture nobody mentioned, and a swallowed permission error makes a two-sided rule look one-sided and a one-sided rule look complete. An engine-native test file left in `tests/`, such as an ast-grep test YAML, is refused for the same reason. It would otherwise sit beside the cases and never run.
+**Rationale.** One shape for every engine is what lets one loop verify every rule. A case is a directory rather than a document because the engines that scope by path judge a file by where it sits, so a case has to be able to place a file at the path the rule expects. A runtime rule's evidence also spans files. The strict reads keep a fixture that was written but never ran from passing in silence: a skipped loose file is a fixture nobody mentioned, and a swallowed permission error makes a two-sided rule look one-sided and a one-sided rule look complete. An engine-native test file left in `tests/`, such as an ast-grep test YAML, is refused for the same reason. It would otherwise sit beside the cases and never run, and so would a leftover `.tests/`. An empty case tests nothing, and git does not keep an empty directory, so it would vanish from every clone. Metadata a file manager writes is no author's fixture, and refusing it would fail a rule over a `.DS_Store`.
 
 #### Scenario: A case is a directory named for what it shows
 
@@ -30,6 +30,21 @@ Each bucket SHALL be read one level deep. An entry directly under `pass/` or `fa
 
 - **WHEN** `tests/` contains an entry other than `pass/` and `fail/`, such as `<id>-test.yml`
 - **THEN** verification SHALL report an error naming that path
+
+#### Scenario: A case with no file is refused
+
+- **WHEN** `tests/pass/clean/` exists and holds no file, or only `.gitkeep`
+- **THEN** verification SHALL report an error naming that case
+
+#### Scenario: A leftover .tests is refused
+
+- **WHEN** a rule has valid `tests/` cases and a `.tests/` still holding a fixture
+- **THEN** verification SHALL report an error naming `.tests/`
+
+#### Scenario: Operating-system metadata is skipped
+
+- **WHEN** a rule's `tests/` and `tests/pass/` each hold a `.DS_Store`
+- **THEN** verification SHALL judge the rule on its cases as if neither were there
 
 #### Scenario: An unreadable bucket is not an empty bucket
 
@@ -79,9 +94,41 @@ The findings a case produces SHALL be the findings `verify` reports for it, in t
 - **THEN** nothing SHALL have been written under `.taskless/rules/`
 - **AND** nothing SHALL remain that a later `check` could report against
 
+### Requirement: A case the engine never read fails
+
+Verification SHALL establish, for every case, whether the engine read at least one file in it under the rule's scope. A case in which it read none SHALL fail, whichever bucket it is in, and SHALL be reported as never read. The failure SHALL say which cause it was: the rule's scope excluded every file in the case, decided by asking again with the scope removed; or the walk reached no file even then, because the project's ignore files cover them, they are empty, or none is in a language or format the engine reads.
+
+Whether a file was read SHALL be asked of the engine itself, not decided by reimplementing its walk or its glob matching: for ast-grep, the files its `--inspect entity` output reports a rule was applied to; for Vale, a probe rule that reports once on any non-empty document, run under the same matchers. A case that produced a finding was read.
+
+A scan that ends without an exit code, killed by a signal, SHALL be a failure of the run, never a scan that found nothing.
+
+**Rationale.** A `pass/` case passes on no finding, and a case the engine never read produces no finding, so a pass case under a gitignored path, holding an empty file, or excluded by the scope passed on no evidence at all. A `fail/` case in the same position blamed the pattern. Reproduced in each form during review, including through a glob dialect difference: in ast-grep a single `*` crosses `/`, in `node:path`'s `matchesGlob` it does not, so any check that re-derived the walk would have agreed the file was read when ast-grep never opened it. Asking the engine leaves no second implementation to disagree with it.
+
+#### Scenario: A pass case outside the scope fails as never read
+
+- **WHEN** an ast-grep rule declares `files: [".github/workflows/*.yml"]` and a `pass/` case holds only `ci.yml` at its root
+- **THEN** the case SHALL fail
+- **AND** the failure SHALL say the case was never read because the scope excluded every file in it
+
+#### Scenario: A case under an ignored path fails as never read
+
+- **WHEN** the project's `.gitignore` lists `dist/` and an ast-grep rule's `pass/` case holds its only file at `dist/a.ts`
+- **THEN** the case SHALL fail as never read
+- **AND** the failure SHALL name the project's ignore files among the causes
+
+#### Scenario: A case whose only file is empty fails as never read
+
+- **WHEN** a `pass/` case holds one empty file
+- **THEN** the case SHALL fail as never read
+
+#### Scenario: The engine decides what was read
+
+- **WHEN** an ast-grep rule declares `files: ["**/*.ts"]` and `ignores: ["*01.ts"]`, and a `pass/` case holds `src/pass-01.ts`
+- **THEN** the case SHALL fail as never read, because ast-grep's `*` matches across `/` and the ignore applies
+
 ### Requirement: A quiet fail case is diagnosed against the rule's scope
 
-When a `fail/` case of an ast-grep or Vale rule produces no finding, verification SHALL run that case once more with the rule's scope removed. If that run produces a finding, the failure SHALL say that the rule's scope excluded the case and name the scope that did it. Otherwise it SHALL say the rule did not match. The diagnostic run SHALL NOT change the verdict. The case still fails.
+When a `fail/` case of an ast-grep or Vale rule was read and produced no finding, verification SHALL run that case once more with the rule's scope removed. If that run produces a finding, the failure SHALL say that the rule's scope excluded the case and name the scope that did it. Otherwise it SHALL say the rule did not match. The diagnostic run SHALL NOT change the verdict. The case still fails.
 
 **Rationale.** Applying scope to fixtures adds a new way for a correct rule to fail: a fixture at a path the scope does not accept. "Did not fire" points at the pattern, and an author edits the wrong thing. One extra run separates the two causes, and it costs nothing on a passing rule.
 
