@@ -104,8 +104,17 @@ function pathFromGlob(glob: string, stem: string, extension: string): string {
     .replaceAll("**", stem)
     .replaceAll("*", stem)
     .replaceAll("?", "x")
-    .replaceAll(/\[!?([^\]])[^\]]*\]/g, "$1");
+    .replaceAll(
+      /\[(!?)([^\]]*)\]/g,
+      (_class, negated: string, members: string) =>
+        negated === "" ? (members[0] ?? "x") : classOutsider(members)
+    );
   return path;
+}
+
+/** A character a negated class `[!members]` admits. */
+function classOutsider(members: string): string {
+  return [..."xyzq0"].find((candidate) => !members.includes(candidate)) ?? "_";
 }
 
 /** Whether `path` is admitted by `scope`, in `node:path`'s glob dialect. */
@@ -120,10 +129,13 @@ function admitted(path: string, scope: FixtureScope): boolean {
  * A path for a fixture file named `stem.extension` that `scope` admits, or
  * `undefined` when none of the derivations could be checked.
  *
- * A path keeping `.extension` is preferred over an earlier glob's that does
- * not: both engines choose how to read a file by its extension, so under
- * `[*.md]` and `[*.txt]` a `.txt` document written as `.md` would be linted
- * as Markdown.
+ * The file always keeps `.extension`: both engines choose how to read a file
+ * by its extension, so under `[*.md]` a `.txt` document written as `.md`
+ * would be linted as Markdown, and a TypeScript snippet under `lib/*.js` would
+ * be parsed as JavaScript. A glob whose last segment names no extension
+ * (`src/*`, `[*]`) gets `.extension` appended, which it still admits. With no
+ * glob that admits the extension, there is no path, and the fixture is left
+ * unconverted rather than converted into a different language.
  */
 export function deriveFixturePath(
   scope: FixtureScope,
@@ -134,10 +146,12 @@ export function deriveFixturePath(
     scope.include.length === 0
       ? [`${stem}.${extension}`]
       : scope.include.map((glob) => pathFromGlob(glob, stem, extension));
-  const candidates = [
-    ...derived.filter((path) => path.endsWith(`.${extension}`)),
-    ...derived.filter((path) => !path.endsWith(`.${extension}`)),
-  ];
+  const candidates = derived.flatMap((path) => {
+    if (path.endsWith(`.${extension}`)) return [path];
+    // A last segment that was all wildcard (`*`, `src/*`) names no extension,
+    // so it takes this file's. One naming another extension cannot hold it.
+    return path.endsWith(stem) ? [`${path}.${extension}`] : [];
+  });
   return candidates.find(
     (candidate) =>
       candidate !== "" &&
@@ -179,6 +193,26 @@ export interface ConvertedFile {
  * `fail-01` from landing on the first file's.
  */
 export type ClaimedCases = Set<string>;
+
+/**
+ * The cases `paths` already occupy, for seeding a conversion's
+ * {@link ClaimedCases}: every `<testsDirectory>/<bucket>/<case>/…` path claims
+ * `<bucket>/<case>`. A conversion that ignored them would number its first
+ * case `fail-01` beside, or into, a case of that name already there.
+ */
+export function claimedCasesOf(
+  paths: Iterable<string>,
+  testsDirectory: string
+): ClaimedCases {
+  const claimed: ClaimedCases = new Set();
+  for (const path of paths) {
+    const [directory, bucket, name] = path.split("/");
+    if (directory !== testsDirectory || name === undefined) continue;
+    if (bucket === "pass" || bucket === "fail")
+      claimed.add(`${bucket}/${name}`);
+  }
+  return claimed;
+}
 
 /** The first `<base>`, `<base>-2`, `<base>-3`, … not yet in `claimed`. */
 function claimCase(
@@ -306,7 +340,9 @@ export function convertSgTestFile(
 
 /**
  * The scope a Vale rule's `.vale.ini` declares: every matcher assigning
- * `<id>.<id> = YES` admits, every one assigning `NO` excludes.
+ * `<id>.<id> = NO` excludes, and every one assigning anything else admits,
+ * since Vale enables a rule with `YES` or with a level (`suggestion`,
+ * `warning`, `error`).
  *
  * Positional precedence is flattened, deliberately. A path is admitted when
  * some enabling matcher matches it and no disabling one does, which is
@@ -320,8 +356,8 @@ export function valeFixtureScope(ruleId: string, config: string): FixtureScope {
     for (const node of section.nodes) {
       if (node.kind !== "property" || node.key !== key) continue;
       const value = node.value.trim().toUpperCase();
-      if (value === "YES") scope.include.push(section.name);
       if (value === "NO") scope.exclude.push(section.name);
+      else scope.include.push(section.name);
     }
   }
   return scope;
@@ -386,7 +422,12 @@ export interface LegacyFile {
  *
  * A fixture that cannot be placed keeps its bytes and moves to the same path
  * under `tests/`, so the CLI still never writes `.tests/`. `verify` then names
- * it, and `unconverted` says why, for the delivery to warn with.
+ * it, and `unconverted` says why, for the delivery to warn with. Case names
+ * are claimed past every case the set already carries under `tests/` and
+ * every name a moved fixture lands on, so no two fixtures share a path.
+ *
+ * `sg test`'s `__snapshots__/` is dropped and named: it records the output of
+ * the runner this layout replaced, and nothing reads it.
  */
 export function convertLegacyFileSet(
   engine: "sg" | "vale" | "runtime",
@@ -402,7 +443,16 @@ export function convertLegacyFileSet(
   const kept = files.filter((file) => !file.path.startsWith(prefix));
   const converted: LegacyFile[] = [];
   const unconverted: string[] = [];
-  const claimed: ClaimedCases = new Set();
+  const claimed = claimedCasesOf(
+    [
+      ...kept.map((file) => file.path),
+      // A moved fixture keeps its name under its bucket, so claim it first.
+      ...legacy.map(
+        (file) => `${testsDirectory}/${file.path.slice(prefix.length)}`
+      ),
+    ],
+    testsDirectory
+  );
   const moveAsServed = (file: LegacyFile) => {
     converted.push({
       path: `${testsDirectory}/${file.path.slice(prefix.length)}`,
@@ -425,6 +475,10 @@ export function convertLegacyFileSet(
     const rest = file.path.slice(prefix.length);
     const segments = rest.split("/");
     if (engine === "sg") {
+      if (segments[0] === "__snapshots__") {
+        unconverted.push(`${rest}: an \`sg test\` snapshot, dropped`);
+        continue;
+      }
       const rule = sibling(`${ruleId}.yml`);
       if (segments.length !== 1 || rule === undefined) {
         unconverted.push(`${rest}: not an ast-grep test file beside its rule`);

@@ -64,9 +64,34 @@ describe("deriveFixturePath", () => {
     );
   });
 
-  it("prefers a glob that keeps the file's extension over an earlier one", () => {
+  it("takes the glob that keeps the file's extension over an earlier one", () => {
     expect(deriveFixturePath(scope(["*.md", "*.txt"]), "hedges", "txt")).toBe(
       "hedges.txt"
+    );
+  });
+
+  it("never changes the file's extension to fit a glob", () => {
+    // Both engines read a file by its extension: a .txt document under
+    // [*.md] would be linted as Markdown, a TypeScript snippet under lib/*.js
+    // parsed as JavaScript.
+    expect(deriveFixturePath(scope(["*.md"]), "a", "txt")).toBeUndefined();
+    expect(
+      deriveFixturePath(
+        scope(["src/**/*.ts", "lib/*.js"], ["src/**"]),
+        "f",
+        "ts"
+      )
+    ).toBeUndefined();
+  });
+
+  it("gives a wildcard-only last segment the file's extension", () => {
+    expect(deriveFixturePath(scope(["*"]), "a", "md")).toBe("a.md");
+    expect(deriveFixturePath(scope(["src/*"]), "a.b", "ts")).toBe("src/a.b.ts");
+  });
+
+  it("fills a negated character class with a character it admits", () => {
+    expect(deriveFixturePath(scope(["src/[!_]*.ts"]), "f", "ts")).toBe(
+      "src/xf.ts"
     );
   });
 
@@ -263,6 +288,14 @@ describe("valeFixtureScope", () => {
     });
   });
 
+  it("admits under a matcher that enables the rule with a level", () => {
+    const config = "[docs/*.md]\nhedge.hedge = error\n";
+    expect(valeFixtureScope("hedge", config)).toEqual({
+      include: ["docs/*.md"],
+      exclude: [],
+    });
+  });
+
   it("ignores another rule's key", () => {
     expect(
       valeFixtureScope("hedge", "[*.md]\nother.other = YES\n").include
@@ -362,6 +395,50 @@ describe("convertLegacyFileSet", () => {
     expect(result.files.slice(1)).toEqual([
       { path: "tests/fail/fail-01/fail-01.ts", content: "eval(a)\n" },
       { path: "tests/fail/fail-02/fail-02.ts", content: "eval(b)\n" },
+    ]);
+  });
+
+  it("numbers past the cases the set already carries under tests/", () => {
+    const result = convert("sg", "no-eval", [
+      { path: "no-eval.yml", content: SG_RULE },
+      { path: "tests/fail/fail-01/fail-01.ts", content: "eval(old)\n" },
+      { path: ".tests/no-eval-test.yml", content: "invalid:\n  - eval(new)\n" },
+    ]);
+    expect(result.files.map((file) => file.path)).toEqual([
+      "no-eval.yml",
+      "tests/fail/fail-01/fail-01.ts",
+      "tests/fail/fail-02/fail-02.ts",
+    ]);
+  });
+
+  it("never converts a case onto a name a moved fixture keeps", () => {
+    // An extensionless Vale document cannot be converted and moves as served
+    // to tests/pass/a; the converted a.md must not become tests/pass/a/a.md.
+    const result = convert("vale", "hedge", [
+      {
+        path: ".vale.ini",
+        content: "[*]\ntskl) rule = hedge\nhedge.hedge = YES\n",
+      },
+      { path: ".tests/pass/a", content: "x\n" },
+      { path: ".tests/pass/a.md", content: "Fine.\n" },
+    ]);
+    const paths = result.files.map((file) => file.path);
+    expect(paths).toContain("tests/pass/a");
+    expect(paths).toContain("tests/pass/a-2/a.md");
+  });
+
+  it("drops sg test snapshots, and names them", () => {
+    const result = convert("sg", "no-eval", [
+      { path: "no-eval.yml", content: SG_RULE },
+      { path: ".tests/__snapshots__/no-eval-snapshot.yml", content: "x\n" },
+      { path: ".tests/no-eval-test.yml", content: "invalid:\n  - eval(x)\n" },
+    ]);
+    expect(result.files.map((file) => file.path)).toEqual([
+      "no-eval.yml",
+      "tests/fail/fail-01/fail-01.ts",
+    ]);
+    expect(result.unconverted).toEqual([
+      "__snapshots__/no-eval-snapshot.yml: an `sg test` snapshot, dropped",
     ]);
   });
 
