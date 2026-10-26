@@ -20,7 +20,7 @@ One layout for every engine, judged by the same invocation `check` makes, gives 
 
 ## Delivery shape
 
-**Stacked, merging down.** The layout, the migration, the verify runner and delivery are only correct together. A CLI that verifies `tests/` while delivery still writes `.tests/`, or that migrates fixtures without a runner that reads them, ships a broken intermediate state. The stack lands on `main` in one protected merge, the nightly carries it, and 0.14 releases when it is ready. Nothing waits on Cloud, because delivery migrates the old format just in time. One `patch` changeset sits on the bottom branch, since the package is pre-1.0. Its body tells consumers about the layout move.
+**Stacked, merged atomically with `gh stack merge`.** The directory rename, the runners that read it, migration 12 and delivery's conversion are only correct together, so they share one layer; a CLI that verifies `tests/` while delivery still writes `.tests/` would ship a broken state. Everything that is correct on its own goes in a layer below it: the rules-only ast-grep tree, the fixture converter and the engine behavior pins. Every layer is green on its own, because a stack merge is all-or-nothing and one red layer blocks the whole stack. The nightly carries it, and the release (0.13.4) follows when it is ready. Nothing waits on Cloud, because delivery migrates the old format just in time. One `patch` changeset sits on the bottom branch, since the package is pre-1.0. Its body tells consumers about the layout move.
 
 ## Capabilities
 
