@@ -68,6 +68,7 @@ Every recipe in which the agent writes or extends fixtures (`create-sg-rule`, `c
 2. That a case is judged by the engine's own check with the case directory as the root, so a fixture for a scoped rule places its files at a path the scope accepts. For example, an ast-grep rule scoped to `.github/workflows/*.yml` needs `tests/fail/<case>/.github/workflows/ci.yml`.
 3. That a `fail/` case needs one finding and a `pass/` case none, and that nothing about position, message, or count is asserted.
 4. What a "scope excluded this case" failure means, and that the fix is the fixture's path or the scope, not the pattern.
+5. That every case must be read: a case the rule read no file in fails in either bucket, the project's `.gitignore` applies inside a case, and a case with no file is refused.
 
 A per-engine recipe SHALL keep only what is that engine's own, such as Vale's scope reach and the fact that a runtime case is the check's root.
 
