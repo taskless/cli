@@ -37,4 +37,3 @@ Stacked, merging forward with `gh stack merge`. The task groups describe the wor
 - [x] 4.3 Update `.taskless/rules` READMEs, CONTRIBUTING and any doc naming `.tests/`. Verify `grep -rn '\.tests/'` outside migrations, the delivery JIT conversion and the CHANGELOG returns nothing unexpected.
 - [x] 4.4 Tell Cloud about the new layout and corpus version. Filed as taskless/taskless#398 instead of the collab artifact: delivery migrates the old format just in time, so nothing breaks when the CLI ships, and Cloud follows by keying the new format on CLI >= 0.13.4 and validating against the nightly.
 - [x] 4.5 Run `pnpm typecheck` and `pnpm lint` across the stack tip. Archive the change on the tip (`pnpm openspec archive unified-rule-fixtures -y`), confirming every prior scenario survives per AGENTS.md.
-- [ ] 4.6 Land the stack with `gh stack merge`, after review.
