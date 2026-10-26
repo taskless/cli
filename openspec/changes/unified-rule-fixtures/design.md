@@ -84,8 +84,8 @@ The diagnostic run only selects the message. It never changes the verdict.
 The layout is what the scaffold version records (see the header of `rule-migrate.ts`), so this is `filesystem/migrations/0012-*`, not a rule-content migration. The conversion lives in `rules/fixture-convert.ts` so that migration 12 and delivery (D6) share it:
 
 - **Language → extension:** a const table over the languages ast-grep 0.51.0 supports, keyed by ast-grep's own spelling. A vendor-contract test asserts the table covers the binary's language list, so a bump that adds a language fails there rather than in a user's migration.
-- **Scope → path:** take the first `files:` glob, substitute `**/` → empty and `*` → the case name, and expand the first `{a,b}` alternative. Then check the result against `files` and `ignores` with `node:path`'s `matchesGlob`, which the Node floor (≥22.22) provides, so no glob dependency is added. Its dialect is close to ast-grep's `globset` but not identical, so the check catches derivation mistakes and is not a proof. The next `verify` is the proof, and D3 names the cause if they disagree. A rule with no `files:` gets `<case>.<ext>` at the case root. Vale does the same with the rule's enabling matchers. If the result fails its own check, the rule is left unconverted and named.
-- **Case names:** `<bucket>-<NN>` in source order. Authors rename them to descriptions. The migration cannot invent one.
+- **Scope → path:** take the first `files:` glob that keeps the file's extension (falling back to the first glob), substitute `**/` → empty and `*` → the case name, and expand the first `{a,b}` alternative. Then check the result against `files` and `ignores` with `node:path`'s `matchesGlob`, which the Node floor (≥22.22) provides, so no glob dependency is added. Its dialect is close to ast-grep's `globset` but not identical, so the check catches derivation mistakes and is not a proof. The next `verify` is the proof, and D3 names the cause if they disagree. A rule with no `files:` gets `<case>.<ext>` at the case root. Vale does the same with the rule's enabling matchers. If the result fails its own check, the rule is left unconverted and named.
+- **Case names:** `<bucket>-<NN>` in source order, continuing across all of a rule's test files: a rule improved twice owns two dated `<id>-YYYYMMDD-test.yml` files, and numbering each from one would put both files' first snippets at the same path. A Vale document is named by its stem, suffixed `-2`, `-3`… when another document already took it. Authors rename them to descriptions. The migration cannot invent one.
 
 Migration 12 cannot run `verify`: scaffold migrations spawn no engines. Checking each derived path against the scope's own patterns is what stands in for that. A converted rule that still fails surfaces on the next `verify`, with D3's message pointing at the cause. This walks back an earlier idea of "report verdict changes after migrating": doing that would need the old verifier alive alongside the new one.
 
@@ -104,7 +104,7 @@ This is a permanent reading of the old format, not a transition shim. The CLI de
 ### D7. Published surface
 
 - `RULE_TESTS_DIRECTORY` becomes `"tests"`. `FixtureLayout` narrows to `"case-directories"`, and every `ENGINE_LAYOUTS` entry carries it. The type stays (not deleted), because the published `fixtureLayout` field is what a consumer reads and a later layout change would move.
-- `reference.json` publishes a case list for every engine and increments its own `version`. Per CLAUDE.md, the artifact's version field is the compatibility signal, not the package version.
+- `reference.json` publishes a case list for every engine and increments its own `version`. Per AGENTS.md, the artifact's version field is the compatibility signal, not the package version.
 
 ## Risks / Trade-offs
 

@@ -39,7 +39,7 @@ After verification, the CLI SHALL write a served rule so that its directory hold
 served files: every file in the directory that the served set does not contain SHALL be removed,
 including under `tests/`, since a served set always carries the rule's fixtures. The CLI SHALL
 create each served file's parent directories as needed, so a nested path such as
-`captures/env.yml` or `tests/fail/case.ts` is written wherever it lands. When a stale file cannot be removed, the CLI SHALL say that the served
+`captures/env.yml` or `tests/fail/eval-call/case.ts` is written wherever it lands. When a stale file cannot be removed, the CLI SHALL say that the served
 bytes were written and name each entry it could not remove.
 
 A served set whose fixtures are in the old format, under `.tests/`, SHALL be migrated just in
@@ -48,8 +48,10 @@ layout, and never written under `.tests/`. Fixtures carry no signature, so the c
 changes no signed byte, and the CLI never writes a layout its own `verify` does not read. This
 is a permanent reading of the old format, not a transition step. The CLI SHALL NOT depend on
 the service emitting the new layout, and a served set already in the new layout SHALL be
-written unchanged. Fixtures the converter cannot place SHALL be written under
-`tests/` as served, and the delivery SHALL say so, naming them.
+written unchanged. A rule served with several legacy test files SHALL keep every snippet:
+case names SHALL NOT collide across them. Fixtures the converter cannot place SHALL be written
+under `tests/` at their served path below `.tests/`, and the delivery SHALL say so, naming them.
+`verify` then refuses them by path, so an unplaced fixture is never mistaken for a passing one.
 
 #### Scenario: A local extra file does not survive
 
@@ -58,14 +60,26 @@ written unchanged. Fixtures the converter cannot place SHALL be written under
 
 #### Scenario: Nested paths are written
 
-- **WHEN** a served set carries `tests/fail/case.ts` and the rule directory does not exist
-- **THEN** the CLI SHALL create `tests/fail/` and write the file
+- **WHEN** a served set carries `tests/fail/eval-call/case.ts` and the rule directory does not exist
+- **THEN** the CLI SHALL create `tests/fail/eval-call/` and write the file
 
 #### Scenario: Legacy fixture paths are written in the new layout
 
 - **WHEN** a served `sg` rule carries its fixtures as `.tests/<id>-test.yml` with `valid:` and `invalid:` snippets
 - **THEN** the CLI SHALL write them as case directories under `tests/pass/` and `tests/fail/`
 - **AND** the rule directory SHALL NOT contain `.tests/` afterwards
+
+#### Scenario: Several legacy test files keep every snippet
+
+- **WHEN** a served `sg` rule carries two legacy test files, each with one `invalid:` snippet
+- **THEN** the CLI SHALL write two `fail/` cases, one per snippet
+
+#### Scenario: A fixture the converter cannot place is written and named
+
+- **WHEN** a served `sg` rule's `files:` and `ignores:` admit no path the converter can derive for its `.tests/<id>-test.yml`
+- **THEN** the CLI SHALL write that file at `tests/<id>-test.yml`, not under `.tests/`
+- **AND** the delivery SHALL warn, naming the file and why
+- **AND** the next `verify` of the rule SHALL report `tests/<id>-test.yml` as a stray entry
 
 #### Scenario: A served set in the new layout is written as served
 
