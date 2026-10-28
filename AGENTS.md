@@ -112,17 +112,17 @@ When PRs stack, the **stack-breadcrumb workflow** (`.github/workflows/stack-brea
 
 The proposal states which of these the change is, and why. Decide it while writing the proposal, not when the diff has already grown too big to review.
 
-| Shape                                       | When                                                                                                       | How it lands                                                                                                                  |
-| ------------------------------------------- | ---------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
-| **Single PR**                               | The whole change fits one reviewable diff.                                                                 | Spec, implementation, and the archive land together.                                                                          |
-| **Stacked, merging forward** (the default)  | Every layer is green on its own: typecheck, lint and the full suite pass on each branch, not only the tip. | `gh stack merge <tip> --yes`, which lands every layer on `main` in one all-or-nothing operation. The tip archives the change. |
-| **Stacked, merging down** (vendor upgrades) | A vendored engine is bumped in its own layer, which goes red, and the layers above it make it green again. | Merge each PR **down** into its parent from the tip, then one protected merge of the bottom branch to `main`. See below.      |
+| Shape                                       | When                                                                                                       | How it lands                                                                                                                                                                |
+| ------------------------------------------- | ---------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Single PR**                               | The whole change fits one reviewable diff.                                                                 | Spec, implementation, and the archive land together.                                                                                                                        |
+| **Stacked, merging forward** (the default)  | Every layer is green on its own: typecheck, lint and the full suite pass on each branch, not only the tip. | `gh stack merge <tip> --yes`, which lands every layer on `main` in one all-or-nothing operation. The tip archives the change.                                               |
+| **Stacked, merging down** (vendor upgrades) | A vendored engine is bumped in its own layer, which goes red, and the layers above it make it green again. | Merge each PR **down** into its parent from the tip, then one protected merge of the bottom branch to `main`. A machine-generated bump merges laterally instead. See below. |
 
 **Prefer stacking, and aim to keep an individual diff under ~1200 lines of hand-written change.** A PR far past that does not get reviewed, it gets approved. Generated files (lockfiles, regenerated schemas, vendored artifacts) do not count toward the total, since a reviewer does not read them. Tests and OpenSpec artifacts do count, but never split from the change they describe. The number is set so that a task change, its implementation, and its tests fit together comfortably, rather than forcing a split along the seam the rest of this guidance tells you not to cut. A diff well past this is not automatically wrong, but it should come with a reason.
 
 **Merge forward, all green, by default.** `gh stack merge` is all-or-nothing in both directions: it lands the whole stack at once, so units that are only correct together still reach `main` together, and one red layer blocks the whole stack. So "these units are only correct together" is not a reason for a red intermediate layer. It is a reason to put those units in the **same** layer. Find the change that cannot be split (a renamed directory and everything that reads its name, say), make it one layer, and move everything that is correct without it into the layers below. Verify each branch, since "this layer is green" is a claim about behavior, not intent: run typecheck, lint and the full suite on every branch before pushing.
 
-**Merge down only for a vendor upgrade.** Bumping a vendored engine (ast-grep, Vale) is the one case where a red layer is the point. The bump goes in its own layer, so a reviewer sees exactly what the new version broke, and the layers above it are the codemods and fixes that make it green. That bottom layer cannot be green on its own by construction, so `gh stack merge` cannot land the stack, and it merges down instead (below).
+**Merge down only for a vendor upgrade, or laterally when the upgrade is a machine-generated PR.** Bumping a vendored engine (ast-grep, Vale) is the one case where a red layer is the point. The bump goes in its own layer, so a reviewer sees exactly what the new version broke, and the layers above it are the codemods and fixes that make it green. That bottom layer cannot be green on its own by construction, so `gh stack merge` cannot land the stack, and it merges down instead (below). When the bump arrives as a PR the upgrade workflow opened, do not stack on it: merging down would land the fixes into a machine-generated branch. Merge laterally instead (below).
 
 Note how this interacts with archiving: a change is archived exactly once, on whichever PR is the tip. **No check gates that anywhere any more, though the state is reported.** A PR-time gate could only guess at stack position, and guessed wrong often enough to be ignored; a `main`-only gate replaced it and turned `main` red for the entire time a stack merged one PR at a time was draining, which is a red that means "work is in progress" rather than "something is wrong". A signal that is expected to be red is not a signal. Archiving is a step you perform on the tip, and what replaced the gates reports instead of failing: an `Open OpenSpec` label and a tip warning on pull requests, and on `main` a tracking issue and a stale-work sweep, which is the abandoned work neither gate measured.
 
@@ -204,6 +204,16 @@ git diff --stat origin/<bottom-branch> origin/<tip-branch>   # empty = fully abs
 ```
 
 An empty diff with differing SHAs is the _expected_ healthy state after a rebase merge, not evidence of a problem. If the diff is genuinely non-empty, reconcile from the tip (a tip branch contains the whole stack), then re-check the diff and push.
+
+### Landing a machine-generated vendor bump: merge _laterally_
+
+When the upgrade workflow opens a PR for a Vale or ast-grep bump and it goes red, start from that PR but target `main`:
+
+- Cut a new branch from the generated PR's head, so it carries the bump commit, and open it against `main`.
+- Add the codemods and fixes on top, until `Validate` is green.
+- Land that one PR. The bump and its repair reach `main` together, and nothing is merged down into a branch no person wrote.
+
+Close the generated PR once the replacement lands, linking to it.
 
 ### Never `--delete-branch` mid-stack
 
