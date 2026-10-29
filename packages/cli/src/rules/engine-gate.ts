@@ -24,9 +24,9 @@ import { compareVersions } from "../util/version-compare";
  * must not be refused by the gate it exists to clear.
  */
 
-const ENGINE_LABELS = { sg: "ast-grep", vale: "Vale" } as const;
+export const ENGINE_LABELS = { sg: "ast-grep", vale: "Vale" } as const;
 
-type GatedEngine = keyof typeof ENGINE_LABELS;
+export type GatedEngine = keyof typeof ENGINE_LABELS;
 
 const BUNDLED: Record<GatedEngine, string> = {
   sg: AST_GREP_VERSION,
@@ -66,6 +66,18 @@ export function findEngineMismatches(
     }
   }
   return mismatches;
+}
+
+/** The gated engines that have at least one rule in this project. */
+export async function findEnginesWithRules(
+  cwd: string
+): Promise<Set<GatedEngine>> {
+  const engines = new Set<GatedEngine>();
+  for (const engine of Object.keys(ENGINE_LABELS) as GatedEngine[]) {
+    const ids = await listRuleIds(cwd, engine);
+    if (ids.length > 0) engines.add(engine);
+  }
+  return engines;
 }
 
 /** The refusal's text: what differs, and the remedy for each direction. */
@@ -118,13 +130,10 @@ export async function requireReconciledEngines(cwd: string): Promise<void> {
   }
   if (recorded === undefined) return;
 
-  const enginesWithRules = new Set<GatedEngine>();
-  for (const engine of Object.keys(ENGINE_LABELS) as GatedEngine[]) {
-    const ids = await listRuleIds(cwd, engine);
-    if (ids.length > 0) enginesWithRules.add(engine);
-  }
-
-  const mismatches = findEngineMismatches(recorded, enginesWithRules);
+  const mismatches = findEngineMismatches(
+    recorded,
+    await findEnginesWithRules(cwd)
+  );
   if (mismatches.length === 0) return;
   throw new CLIError(
     engineMismatchMessage(mismatches, getCliPrefix()),

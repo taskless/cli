@@ -31,6 +31,11 @@ async function runCli(
   }
 }
 
+async function runJson(args: string[]): Promise<unknown> {
+  const { stdout } = await runCli(args);
+  return JSON.parse(stdout) as unknown;
+}
+
 /**
  * The marker records that RULE CONTENT was reconciled, which nothing else in
  * the manifest does. `install.cliVersion` moves on a skills refresh and the
@@ -374,6 +379,105 @@ describe("recording a rules reconciliation", () => {
     const result = await runCli(["update", "--json", "-d", cwd]);
     const payload = JSON.parse(result.stdout) as { walk: unknown };
     expect(payload.walk).toBeNull();
+  });
+
+  /**
+   * Every nightly of one release reads as that release to the ledger, so a
+   * project moving between two of them owes no walk. An engine bump can still
+   * land between them, and the engine gate compares exact versions. `info`
+   * and `update` used to say "nothing to walk" while `check` refused, so an
+   * agent following the recipe stopped before `update --rules`.
+   */
+  describe("an engine bump with nothing to walk", () => {
+    interface Reconcile {
+      required: boolean;
+      engines: { engine: string; recorded: string; bundled: string }[];
+    }
+
+    beforeEach(async () => {
+      await mkdir(join(cwd, ".taskless", "rules", "sg", "r"), {
+        recursive: true,
+      });
+      await writeFile(
+        join(cwd, ".taskless", "rules", "sg", "r", "r.yml"),
+        "id: r\nlanguage: JavaScript\nseverity: error\nmessage: m\nrule:\n  pattern: eval($A)\n"
+      );
+      const version = await installedVersion();
+      const manifestPath = join(cwd, ".taskless", "taskless.json");
+      const manifest = JSON.parse(
+        await readFile(manifestPath, "utf8")
+      ) as Record<string, unknown>;
+      manifest["rules"] = {
+        reconciledTo: version,
+        engines: { sg: "0.45.3", vale: VALE_VERSION },
+      };
+      await writeFile(manifestPath, JSON.stringify(manifest, undefined, 2));
+    });
+
+    it("reports a reconcile as required on info and update, with no walk", async () => {
+      const info = (await runJson(["info", "--json", "-d", cwd])) as {
+        rules: { walk: unknown; reconcile: Reconcile };
+      };
+      expect(info.rules.walk).toBeNull();
+      expect(info.rules.reconcile.required).toBe(true);
+      expect(info.rules.reconcile.engines).toEqual([
+        { engine: "sg", recorded: "0.45.3", bundled: AST_GREP_VERSION },
+      ]);
+
+      const update = (await runJson(["update", "--json", "-d", cwd])) as {
+        walk: unknown;
+        reconcile: Reconcile;
+      };
+      expect(update.walk).toBeNull();
+      expect(update.reconcile.required).toBe(true);
+    });
+
+    it("has init name update --rules, on the human path and in --json", async () => {
+      // A version move as well, so the upgrade trailer prints beside the
+      // notice and has to leave the instruction to it.
+      const manifestPath = join(cwd, ".taskless", "taskless.json");
+      const manifest = JSON.parse(await readFile(manifestPath, "utf8")) as {
+        install: Record<string, unknown>;
+      };
+      manifest.install["cliVersion"] = "0.0.1-previous";
+      await writeFile(manifestPath, JSON.stringify(manifest, undefined, 2));
+
+      const human = await runCli(["init", "-d", cwd]);
+      expect(human.exitCode).toBe(0);
+      expect(human.stdout).toContain("not reconciled to this CLI");
+      expect(human.stdout).toContain(
+        `ast-grep moved from 0.45.3 to ${AST_GREP_VERSION}`
+      );
+      expect(human.stdout).toMatch(/update --rules/);
+      expect(human.stdout).toContain("will refuse");
+
+      // The upgrade trailer states the move without a second "Run update".
+      expect(human.stdout).toContain("moved from 0.0.1-previous to");
+      expect(human.stdout.match(/update`/g)).toHaveLength(1);
+
+      // A re-run moves no version and still has to say it.
+      const rerun = await runCli(["init", "-d", cwd]);
+      expect(rerun.stdout).toContain("not reconciled to this CLI");
+
+      const json = (await runJson(["init", "--json", "-d", cwd])) as {
+        rules: Reconcile;
+      };
+      expect(json.rules.required).toBe(true);
+    });
+
+    it("clears once update --rules records the engines", async () => {
+      const reconciled = await runCli(["update", "--rules", "-d", cwd]);
+      expect(reconciled.exitCode).toBe(0);
+      const info = (await runJson(["info", "--json", "-d", cwd])) as {
+        rules: { reconcile: Reconcile };
+      };
+      expect(info.rules.reconcile).toMatchObject({
+        required: false,
+        engines: [],
+      });
+      const human = await runCli(["init", "-d", cwd]);
+      expect(human.stdout).not.toContain("not reconciled to this CLI");
+    });
   });
 
   it("leaves install untouched, since the two namespaces drift apart", async () => {

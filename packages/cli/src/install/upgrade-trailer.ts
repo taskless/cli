@@ -21,6 +21,12 @@ export interface UpgradeTrailerInput {
   cliVersion: string;
   /** The invocation to print in front of `update`, e.g. `./.taskless/bin/cli.mjs`. */
   invocation: string;
+  /**
+   * Whether `init` prints the reconcile notice after this trailer. That notice
+   * names `update` and `update --rules` with the reason, so this one states
+   * only the move rather than sending the reader to `update` twice.
+   */
+  reconcileDue?: boolean;
 }
 
 /**
@@ -48,9 +54,11 @@ export function getUpgradeTrailer(
   ];
 
   if (versionMoved(input)) {
+    const moved = `The CLI moved from ${input.previousCliVersion ?? ""} to ${input.cliVersion}.`;
     lines.push(
-      `The CLI moved from ${input.previousCliVersion ?? ""} to ${input.cliVersion}. ` +
-        `Run \`${input.invocation} update\` to learn what that changes for the rules already in this project.`
+      input.reconcileDue === true
+        ? moved
+        : `${moved} Run \`${input.invocation} update\` to learn what that changes for the rules already in this project.`
     );
   }
 
