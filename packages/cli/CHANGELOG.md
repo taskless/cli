@@ -1,5 +1,30 @@
 # @taskless/cli
 
+## 0.13.4
+
+[Compare with v0.13.3](https://github.com/taskless/cli/compare/v0.13.3...v0.13.4)
+
+### Patch Changes
+
+- fa2ac04: `taskless check` prints only error-severity findings when `CI` is `true` or `1`, and ends with a count of the warnings, infos, and hints it left out. Pass `--include-warnings` to print them. `--json` output and the exit code are unchanged.
+- cf968ff: `taskless detect` now finds a linter the way its ecosystem usually installs or runs it, not only from a dedicated config file, so a repository that lints on a tool's defaults no longer reads as having no linter.
+  - **Dependencies** are read from every ecosystem's manifest: `pyproject.toml` dev dependencies (PEP 735 `[dependency-groups]`, which `uv add --dev` writes, `[tool.uv] dev-dependencies`, `[tool.pdm.dev-dependencies]`, Hatch environments, and Poetry groups, which were previously read by group name), every pip requirements file such as `requirements-dev.txt` or `requirements/*.txt`, `Gemfile` gems, `composer.json` `require-dev`, `go.mod` `tool` directives, and `Package.swift` packages.
+  - **Config inside a manifest**: `[lints.clippy]` in `Cargo.toml`, a `[flake8]` section in `setup.cfg` or `tox.ini`, and the `prettier` and `stylelint` keys in `package.json`.
+  - **A root CI or hook config that runs the linter**, such as a workflow running `cargo clippy` or a pre-commit hook from `astral-sh/ruff-pre-commit`. Being a Rust repository is not on its own evidence of clippy.
+  - **New linters**: `standard`, `pint`, and `php-cs-fixer`. ESLint, Prettier, and stylelint gain their TypeScript and other missing config filenames.
+
+- 172f963: Rules for a linter the repository already runs now follow a fixed order. The agent first looks for a rule the linter already ships, checking each tool's catch-all rules by name (`no-restricted-syntax`, `banned-api`, `noRestrictedImports`, and others). It writes a new custom rule in that linter only when the repository already has five or more of its own to model it on. Otherwise the request becomes a Taskless rule. `route` (topic v8) no longer asks the user to choose between a linter rule and a Taskless rule, and it describes each linter `detect` found in the repository. During onboarding (topic v11), the agent only enables rules the repository's installed packages already ship.
+
+  `detect --json` reports `customRules` for ESLint, Biome, pylint, flake8, and Ruff: how many rules the repository wrote itself for that linter, and where they are. A count that cannot be read without running a JavaScript config is reported as `"unknown"`.
+
+  `taskless agent create-legacy-rule --tool=<name>` serves a recipe for one linter, named as `detect` reports it: `ruff`, `eslint` (including typescript-eslint), `biome`, `pylint`, or `flake8`. Each recipe names the tool's catch-all rules, says how to confirm a rule exists in the installed version (`ruff rule`, `biome explain`, `pylint --help-msg`), and covers the traps that make a rule silently not fire, such as Ruff preview rules and ESLint 10's removal of `.eslintrc`. The ESLint recipe also lists eight well-known plugins, each with a docs link. Other tool names fall back to the generic recipe. `ast-grep`, `vale`, `prettier`, and `black` are refused with a pointer to the right recipe. `route` now names the `--tool` command for each linter it describes.
+
+- 5d6da09: A nightly `init` installs beside the release and no longer offers to move `@taskless/cli` pins in scripts, CI, or hooks onto `@taskless/cli-nightly`. It also keeps the release's recorded version when the manifest predates `install.launchers`, so `.taskless/bin/cli.mjs` still has a version to run. A release `init` now retires the nightly: it removes `.taskless/bin/cli-nightly.mjs` and its lockfile, drops the nightly's recorded version and permission rules, and names any `@taskless/cli-nightly` pin left in scripts, CI, or hooks. Any `package.json` dependency on the CLI is now raised for removal in favour of the project launcher, and `pinnedCli` entries carry a `reason`.
+- 0fc529b: `taskless init` now says when the project's rules need `update --rules`, on every run rather than only when the CLI version moves, with the same answer as `reconcile` (`{ required, engines, ruleMigrations }`) on `init --json` and `update --json`, and as `rules.reconcile` on `info --json`. Previously, moving between two nightlies of one release that bumped ast-grep or Vale reported nothing to walk, while `check` and `verify` refused with `RULES_ENGINE_MISMATCH` until `update --rules` ran.
+- 2ade397: Every rule's fixtures are now case directories under `tests/` for every engine: `tests/pass/<case>/` and `tests/fail/<case>/`. `taskless verify` runs each case through the engine's own check, with the case directory as its root, so ast-grep `files:`/`ignores:` and a Vale rule's `.vale.ini` matchers apply to fixtures the same way they apply to your code. A fixture that only passed because the old runner ignored scope now fails, and the failure says the scope excluded it. ast-grep `valid:`/`invalid:` test YAML and `sg test` are no longer used.
+
+  Run `taskless init` once to migrate. Migration 12 converts `.tests/` into the new layout: each ast-grep snippet becomes its own case, at a path the rule's scope admits, and each Vale document becomes a case named for it. It leaves anything it cannot convert in place and names it. The scaffold version moves to 12, so an older pinned CLI refuses a migrated project with `SCAFFOLD_VERSION_MISMATCH` until it is upgraded. A rule served in the old `.tests/` layout is converted as it is written, so nothing depends on the service changing. The `reference.json` corpus moves to version 4.
+
 ## 0.13.3
 
 [Compare with v0.13.2](https://github.com/taskless/cli/compare/v0.13.2...v0.13.3)
