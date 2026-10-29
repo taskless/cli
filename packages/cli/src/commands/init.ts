@@ -64,6 +64,7 @@ import {
 } from "../filesystem/migrate";
 import {
   getReconcileNotice,
+  reconcileReport,
   reconcileStatus,
   type ReconcileStatus,
 } from "../rules/reconcile-status";
@@ -176,8 +177,9 @@ export const initCommand = defineCommand({
           // and how to turn it off; the human path prints the notice instead.
           telemetry: { enabled: telemetryEnabled },
           // Whether the rules need `update --rules`, on every run rather
-          // than only on a version move, in the shape `info --json` reports.
-          rules: result.rules,
+          // than only on a version move. The shape `info --json` reports as
+          // `rules.reconcile` and `update --json` as `reconcile`.
+          reconcile: reconcileReport(result.rules),
           // Absent when nothing ran, so a caller distinguishes "the tree was
           // rewritten" from "nothing happened" by presence, never by reading
           // empty arrays out of it.
@@ -337,13 +339,21 @@ export const updateCommand = defineCommand({
             // Whether to finish with `update --rules`, which a null `walk`
             // does not settle: an engine bump between two nightlies of one
             // release has no ledger section and still trips the engine gate.
-            reconcile: {
-              required: manifest !== undefined && status.required,
-              engines: status.engines,
-            },
+            // Without a project nothing is due and nothing would be rewritten.
+            reconcile: reconcileReport(
+              manifest === undefined
+                ? {
+                    ...status,
+                    required: false,
+                    engines: [],
+                    ruleMigrations: [],
+                  }
+                : status
+            ),
             // The rewrites `update --rules` will apply before it stamps, so
             // the walk can tell its reader what it does not need to do by
-            // hand. Empty without a project, which has nothing to rewrite.
+            // hand. Also on `reconcile`; kept here for callers that read it
+            // from before `reconcile` existed.
             ruleMigrations: manifest === undefined ? [] : status.ruleMigrations,
             recipe,
           })

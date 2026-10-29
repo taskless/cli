@@ -460,9 +460,18 @@ describe("recording a rules reconciliation", () => {
       expect(rerun.stdout).toContain("not reconciled to this CLI");
 
       const json = (await runJson(["init", "--json", "-d", cwd])) as {
-        rules: Reconcile;
+        reconcile: Reconcile;
       };
-      expect(json.rules.required).toBe(true);
+      expect(json.reconcile.required).toBe(true);
+      // One shape across the three commands that report it.
+      const info = (await runJson(["info", "--json", "-d", cwd])) as {
+        rules: { reconcile: Reconcile };
+      };
+      const update = (await runJson(["update", "--json", "-d", cwd])) as {
+        reconcile: Reconcile;
+      };
+      expect(update.reconcile).toEqual(info.rules.reconcile);
+      expect(json.reconcile).toEqual(info.rules.reconcile);
     });
 
     it("clears once update --rules records the engines", async () => {
