@@ -72,6 +72,22 @@ export async function reconcileStatus(
 }
 
 /**
+ * The `reconcile` object every `--json` payload carries: `info` under
+ * `rules`, `init` and `update` at the top level. One shape, built here, so an
+ * agent reads the same path whichever command it ran. `walk` is left out
+ * because each payload already reports it where it always has.
+ */
+export function reconcileReport(
+  status: ReconcileStatus
+): Omit<ReconcileStatus, "walk"> {
+  return {
+    required: status.required,
+    engines: status.engines,
+    ruleMigrations: status.ruleMigrations,
+  };
+}
+
+/**
  * The line `init` prints when a reconciliation is due, or `undefined` when it
  * is not. Printed on every run that finds one due, not only on a version move:
  * an install between two nightlies, or a re-run after an upgrade nobody

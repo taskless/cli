@@ -11,7 +11,7 @@ import { outputSchema as infoOutputSchema } from "../schemas/info";
 import { makeErrorEnvelope } from "../types/errors";
 import { resolveRepositoryContext } from "../util/git-remote";
 import { readManifest } from "../filesystem/manifest";
-import { reconcileStatus } from "../rules/reconcile-status";
+import { reconcileReport, reconcileStatus } from "../rules/reconcile-status";
 import { TASKLESS_DIRECTORY } from "../rules/vale/formats";
 
 export const infoCommand = defineCommand({
@@ -117,11 +117,7 @@ export const infoCommand = defineCommand({
         // Whether `update --rules` is due, which `walk` alone cannot say: an
         // engine bump between two nightlies of one release owes no walk and
         // still trips the engine gate.
-        reconcile: {
-          required: reconcile.required,
-          engines: reconcile.engines,
-          ruleMigrations: reconcile.ruleMigrations,
-        },
+        reconcile: reconcileReport(reconcile),
       },
       pinnedCli,
     };
