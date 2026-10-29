@@ -11,7 +11,7 @@ import { outputSchema as infoOutputSchema } from "../schemas/info";
 import { makeErrorEnvelope } from "../types/errors";
 import { resolveRepositoryContext } from "../util/git-remote";
 import { readManifest } from "../filesystem/manifest";
-import { reconciliationStart } from "../rules/reconcile-marker";
+import { reconcileStatus } from "../rules/reconcile-status";
 import { TASKLESS_DIRECTORY } from "../rules/vale/formats";
 
 export const infoCommand = defineCommand({
@@ -76,6 +76,8 @@ export const infoCommand = defineCommand({
       }
     }
 
+    const reconcile = await reconcileStatus(cwd, manifest?.rules);
+
     const result = {
       success: true as const,
       version: __VERSION__,
@@ -111,7 +113,15 @@ export const infoCommand = defineCommand({
         // The walk boundary, decided once here rather than by each caller.
         // A missing marker resolves to the baseline, so a project predating
         // the ledger reports a walk rather than "nothing to do".
-        walk: reconciliationStart(manifest?.rules?.reconciledTo) ?? null,
+        walk: reconcile.walk,
+        // Whether `update --rules` is due, which `walk` alone cannot say: an
+        // engine bump between two nightlies of one release owes no walk and
+        // still trips the engine gate.
+        reconcile: {
+          required: reconcile.required,
+          engines: reconcile.engines,
+          ruleMigrations: reconcile.ruleMigrations,
+        },
       },
       pinnedCli,
     };

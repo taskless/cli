@@ -125,6 +125,39 @@ export const outputSchema = z.object({
         .describe(
           "Where a ledger walk should start and end, or null when there is nothing to walk. Computed here so a caller does not re-derive the boundary"
         ),
+      reconcile: z
+        .object({
+          required: z
+            .boolean()
+            .describe(
+              "Whether `update --rules` is due: true when there is a walk, or when an engine with rules is recorded behind the bundled one. An engine bump between two nightlies of one release makes this true with `walk` null"
+            ),
+          engines: z
+            .array(
+              z.object({
+                engine: z.enum(["sg", "vale"]),
+                recorded: z.string(),
+                bundled: z.string(),
+              })
+            )
+            .describe(
+              "Engines with rules recorded behind the bundled version. `check` and `verify` refuse while this is non-empty"
+            ),
+          ruleMigrations: z
+            .array(
+              z.object({
+                engine: z.string(),
+                engineVersion: z.string(),
+                summary: z.string(),
+              })
+            )
+            .describe(
+              "Mechanical rule rewrites `update --rules` applies before it records the reconciliation"
+            ),
+        })
+        .describe(
+          "Whether the rules need reconciling, decided once so a caller does not combine `walk` and `engines` itself"
+        ),
     })
     .describe(
       "What the rules are valid against. Distinct from `install`: these advance only on a completed reconciliation, never on an upgrade"

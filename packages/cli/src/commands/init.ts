@@ -55,7 +55,6 @@ import {
 import {
   pathExists,
   recordReconciliation,
-  reconciliationStart,
   stampNewProjectRules,
 } from "../rules/reconcile-marker";
 import { readManifest } from "../filesystem/manifest";
@@ -63,7 +62,11 @@ import {
   requireCurrentSchema,
   type MigrationReport,
 } from "../filesystem/migrate";
-import { pendingRuleMigrations } from "../rules/rule-migrate";
+import {
+  getReconcileNotice,
+  reconcileStatus,
+  type ReconcileStatus,
+} from "../rules/reconcile-status";
 import { TASKLESS_DIRECTORY } from "../rules/vale/formats";
 import { CLIError } from "../util/cli-error";
 import { buildInvocation } from "../util/invocation";
@@ -172,6 +175,9 @@ export const initCommand = defineCommand({
           // Always present, so the agent can tell the user telemetry is on
           // and how to turn it off; the human path prints the notice instead.
           telemetry: { enabled: telemetryEnabled },
+          // Whether the rules need `update --rules`, on every run rather
+          // than only on a version move, in the shape `info --json` reports.
+          rules: result.rules,
           // Absent when nothing ran, so a caller distinguishes "the tree was
           // rewritten" from "nothing happened" by presence, never by reading
           // empty arrays out of it.
@@ -196,9 +202,20 @@ export const initCommand = defineCommand({
         // version the project now records. A build with no launcher names
         // the invocation the person used.
         invocation: buildLauncherInvocation() ?? getCliPrefix(),
+        reconcileDue: result.rules.required,
       });
       if (upgradeTrailer !== undefined) {
         console.log(upgradeTrailer);
+      }
+      // Not gated on the run having changed anything, like the pin notice
+      // below. Between two nightlies, or on a re-run after an upgrade nobody
+      // reconciled, nothing moves and `check` still refuses.
+      const reconcileNotice = getReconcileNotice(
+        result.rules,
+        buildLauncherInvocation() ?? getCliPrefix()
+      );
+      if (reconcileNotice !== undefined) {
+        console.log(reconcileNotice);
       }
       // Not gated on the run having changed anything. A re-install that wrote
       // nothing still leaves the pin and the project disagreeing, and this is
@@ -306,7 +323,7 @@ export const updateCommand = defineCommand({
         const { manifest } = await readManifest(
           join(cwd, TASKLESS_DIRECTORY)
         ).catch(() => ({ manifest: undefined }));
-        const walk = reconciliationStart(manifest?.rules?.reconciledTo);
+        const status = await reconcileStatus(cwd, manifest?.rules);
         console.log(
           JSON.stringify({
             ok: true,
@@ -316,20 +333,18 @@ export const updateCommand = defineCommand({
             // `null` when there is nothing to walk: either the project has
             // never recorded a reconciliation, which is not the same as being
             // behind, or it is already current.
-            walk: walk ?? null,
+            walk: status.walk,
+            // Whether to finish with `update --rules`, which a null `walk`
+            // does not settle: an engine bump between two nightlies of one
+            // release has no ledger section and still trips the engine gate.
+            reconcile: {
+              required: manifest !== undefined && status.required,
+              engines: status.engines,
+            },
             // The rewrites `update --rules` will apply before it stamps, so
             // the walk can tell its reader what it does not need to do by
             // hand. Empty without a project, which has nothing to rewrite.
-            ruleMigrations:
-              manifest === undefined
-                ? []
-                : pendingRuleMigrations(manifest.rules?.engines).map(
-                    ({ engine, engineVersion, summary }) => ({
-                      engine,
-                      engineVersion,
-                      summary,
-                    })
-                  ),
+            ruleMigrations: manifest === undefined ? [] : status.ruleMigrations,
             recipe,
           })
         );
@@ -421,6 +436,8 @@ async function runNonInteractive(
   permissions: PermissionEdit[];
   /** User-level trust entries, read and never written. */
   globalTrust: GlobalTrustOutcome[];
+  /** Whether the rules need `update --rules`, read after any stamp. */
+  rules: ReconcileStatus;
 }> {
   // Under `--json`, stdout carries only the envelope printed by the caller.
   // This per-target summary is not on that envelope (it is finer-grained than
@@ -572,6 +589,11 @@ async function runNonInteractive(
     log(warning);
   }
 
+  // Read after `stampNewProjectRules`, so a project this run created reports
+  // nothing due.
+  const { manifest } = await readManifest(join(cwd, TASKLESS_DIRECTORY));
+  const rules = await reconcileStatus(cwd, manifest.rules);
+
   return {
     reloadNotice,
     // Read after every write above, so it lists what this run left behind.
@@ -598,6 +620,7 @@ async function runNonInteractive(
       launcherVersionMoved(previousState, result.state) ||
       versionMoved({ previousCliVersion, cliVersion }),
     pinnedCli: await findCliPins(cwd, cliVersion, { migrated }),
+    rules,
   };
 }
 

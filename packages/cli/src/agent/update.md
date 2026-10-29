@@ -1,4 +1,4 @@
-# Topic: update     (CLI v%(CLI_VERSION)s / topic v21)
+# Topic: update     (CLI v%(CLI_VERSION)s / topic v22)
 
 %(ONE_COMMAND_PER_CALL)s
 
@@ -48,6 +48,17 @@ that you finished.
    `{ "from": ..., "to": ... }` when there is something to walk, and
    `null` when there is not. Prefer it to re-deriving the boundary
    yourself, so the offer and the enforcement cannot disagree.
+
+   **A `null` walk does not mean you are done.** Read
+   `rules.reconcile.required` too. It is `true` when there is a walk,
+   and also when `rules.reconcile.engines` lists an engine whose rules
+   are recorded behind the one this CLI bundles. That second case has no
+   ledger section: every nightly of one release reads as that release,
+   so an ast-grep or Vale bump between two nightlies leaves `walk` null
+   while `check` and `verify` refuse with `RULES_ENGINE_MISMATCH`. With
+   `required` true and `walk` null, skip steps 2 and 3 and go on to step
+   4. With `required` false, the rules need nothing and step 5 has
+   nothing to record.
 
 2. **Walk forward, in order.** Start at the section after
    `reconciledTo` and continue to the installed version. Sections are
