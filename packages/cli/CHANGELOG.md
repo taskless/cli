@@ -1,5 +1,14 @@
 # @taskless/cli
 
+## 0.13.5
+
+[Compare with v0.13.4](https://github.com/taskless/cli/compare/v0.13.4...v0.13.5)
+
+### Patch Changes
+
+- 0b41364: The `no-eval-call` entry in `@taskless/cli/reference.json` now flags a call to `eval` with any number of arguments, as its prompt asks, and carries a fail case for `eval()` and for `eval(a, b)`. Previously the reference rule matched exactly one argument, so a rule generated correctly from the prompt, with fixtures on each side of the arity boundary as `create-sg-rule` recommends, was graded against a reference that did not fire on them. The prompt now names the arities it expects. The corpus `version` is unchanged: the shape is the same, only the content of one entry moved.
+- 0b2ed45: The `prefer-use-over-utilize` entry in `@taskless/cli/reference.json` now flags `utilized` and `utilization`, as its prompt asks, and carries a fail case for each. Previously the reference rule missed both, so a rule generated correctly from the prompt was graded against a reference that did not fire on those cases. The prompt now names the forms it expects. The corpus `version` is unchanged: the shape is the same, only the content of one entry moved.
+
 ## 0.13.4
 
 [Compare with v0.13.3](https://github.com/taskless/cli/compare/v0.13.3...v0.13.4)
