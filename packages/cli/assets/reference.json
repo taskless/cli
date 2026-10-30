@@ -185,11 +185,11 @@
       "id": "prefer-use-over-utilize",
       "directory": ".taskless/rules/vale/prefer-use-over-utilize",
       "ruleFile": "prefer-use-over-utilize.yml",
-      "prompt": "Create a rule that flags the word \"utilize\" in markdown documentation and\nsuggests \"use\" instead.\n\n\"Utilize\" is longer than \"use\" and means the same thing in nearly every\nsentence a reader will meet. It should match case-insensitively and cover the\ninflected forms.\n\nThis is a prose rule. It applies to markdown, and it must not look at source\ncode.\n\nProse that should NOT be flagged:\n\n```md\nUse the installer to write the config file.\n```\n\nProse that SHOULD be flagged:\n\n```md\nUtilize the installer to write the config file.\n```\n",
+      "prompt": "Create a rule that flags the word \"utilize\" in markdown documentation and\nsuggests \"use\" instead.\n\n\"Utilize\" is longer than \"use\" and means the same thing in nearly every\nsentence a reader will meet. It should match case-insensitively and cover the\ninflected forms (\"utilizes\", \"utilized\", \"utilizing\") as well as the noun\n\"utilization\".\n\nThis is a prose rule. It applies to markdown, and it must not look at source\ncode.\n\nProse that should NOT be flagged:\n\n```md\nUse the installer to write the config file.\n```\n\nProse that SHOULD be flagged:\n\n```md\nUtilize the installer to write the config file.\n```\n",
       "rule": [
         {
           "path": "prefer-use-over-utilize.yml",
-          "content": "extends: substitution\nmessage: \"Prefer '%s' over '%s'.\"\nlevel: warning\nignorecase: true\nswap:\n  utilize: use\n  utilizes: uses\n  utilizing: using\n"
+          "content": "extends: substitution\nmessage: \"Prefer '%s' over '%s'.\"\nlevel: warning\nignorecase: true\nswap:\n  utilize: use\n  utilizes: uses\n  utilized: used\n  utilizing: using\n  utilization: use\n"
         },
         {
           "path": ".vale.ini",
@@ -206,6 +206,14 @@
           {
             "path": "tests/fail/utilize-in-prose/README.md",
             "content": "# Setup\n\nUtilize the installer to write the config file.\n"
+          },
+          {
+            "path": "tests/fail/utilized-past/README.md",
+            "content": "# Migration\n\nWe utilized the API to export the records.\n"
+          },
+          {
+            "path": "tests/fail/utilization-noun/README.md",
+            "content": "# Limits\n\nMemory utilization grows with the size of the batch.\n"
           }
         ],
         "cases": [
@@ -220,6 +228,18 @@
             "name": "utilize-in-prose",
             "path": "tests/fail/utilize-in-prose",
             "files": ["tests/fail/utilize-in-prose/README.md"]
+          },
+          {
+            "bucket": "fail",
+            "name": "utilized-past",
+            "path": "tests/fail/utilized-past",
+            "files": ["tests/fail/utilized-past/README.md"]
+          },
+          {
+            "bucket": "fail",
+            "name": "utilization-noun",
+            "path": "tests/fail/utilization-noun",
+            "files": ["tests/fail/utilization-noun/README.md"]
           }
         ]
       }
