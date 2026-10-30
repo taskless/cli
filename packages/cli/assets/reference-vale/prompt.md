@@ -3,7 +3,8 @@ suggests "use" instead.
 
 "Utilize" is longer than "use" and means the same thing in nearly every
 sentence a reader will meet. It should match case-insensitively and cover the
-inflected forms.
+inflected forms ("utilizes", "utilized", "utilizing") as well as the noun
+"utilization".
 
 This is a prose rule. It applies to markdown, and it must not look at source
 code.

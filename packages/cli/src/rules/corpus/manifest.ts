@@ -95,6 +95,8 @@ export const CORPUS_MANIFESTS: readonly CorpusManifest[] = [
     testPaths: [
       "tests/pass/use-in-prose/README.md",
       "tests/fail/utilize-in-prose/README.md",
+      "tests/fail/utilized-past/README.md",
+      "tests/fail/utilization-noun/README.md",
     ],
   },
   {
