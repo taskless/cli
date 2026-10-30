@@ -9,4 +9,4 @@ note: |-
   The evidence is one expression in one file, which is what makes this an `sg`
   rule rather than a runtime one: no other file has to be read to decide it.
 rule:
-  pattern: eval($ARG)
+  pattern: eval($$$ARGS)

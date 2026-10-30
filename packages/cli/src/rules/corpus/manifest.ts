@@ -82,6 +82,8 @@ export const CORPUS_MANIFESTS: readonly CorpusManifest[] = [
     testPaths: [
       "tests/pass/json-parse/payload.ts",
       "tests/fail/eval-call/payload.ts",
+      "tests/fail/eval-no-args/payload.ts",
+      "tests/fail/eval-multiple-args/payload.ts",
     ],
   },
   {

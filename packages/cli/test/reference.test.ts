@@ -248,6 +248,8 @@ describe("the reference corpus payload", () => {
       sg.tests.cases.map((one) => [one.bucket, one.name]).toSorted()
     ).toEqual([
       ["fail", "eval-call"],
+      ["fail", "eval-multiple-args"],
+      ["fail", "eval-no-args"],
       ["pass", "json-parse"],
     ]);
     for (const file of sg.tests.files) {
