@@ -7,6 +7,7 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import type { Reference } from "../src/rules/reference";
 import { findValeBinary } from "../src/rules/vale/binary";
+import { verifyRule } from "../src/rules/verify";
 import { verifyValeRule } from "../src/rules/vale/verify";
 
 /**
@@ -15,9 +16,10 @@ import { verifyValeRule } from "../src/rules/vale/verify";
  * Other teams grade a generated rule by running OUR rule against THEIR cases,
  * so a reference narrower than its prompt marks a correct generation wrong.
  * `prefer-use-over-utilize` shipped with a prompt asking for the inflected
- * forms and a swap that lacked `utilized` (#591). Nothing ran the reference
- * against its own cases, so nothing noticed. This stages the published entry
- * exactly as a consumer would and verifies it.
+ * forms and a swap that lacked `utilized`, and `no-eval-call` with a prompt
+ * asking for any call and a pattern that matched exactly one argument (#591).
+ * Nothing ran the reference against its own cases, so nothing noticed. This
+ * stages each published entry exactly as a consumer would and verifies it.
  */
 
 const referencePath = join(
@@ -48,13 +50,32 @@ function stage(rule: Reference["rules"][number]): string {
   return cwd;
 }
 
+/** Read the published corpus and return its rule for one engine. */
+async function referenceRule(
+  engine: Reference["rules"][number]["engine"]
+): Promise<Reference["rules"][number]> {
+  const reference = JSON.parse(
+    await readFile(referencePath, "utf8")
+  ) as Reference;
+  const rule = reference.rules.find((entry) => entry.engine === engine);
+  if (rule === undefined) throw new Error(`reference has no ${engine} rule`);
+  return rule;
+}
+
+describe("the sg reference rule", () => {
+  it("fires on every fail case and stays quiet on every pass case", async () => {
+    const rule = await referenceRule("sg");
+
+    const result = await verifyRule(stage(rule), rule.id);
+
+    expect(result.tests.errors).toEqual([]);
+    expect(result.success).toBe(true);
+  });
+});
+
 withVale("the vale reference rule", () => {
   it("fires on every fail case and stays quiet on every pass case", async () => {
-    const reference = JSON.parse(
-      await readFile(referencePath, "utf8")
-    ) as Reference;
-    const rule = reference.rules.find((entry) => entry.engine === "vale");
-    if (rule === undefined) throw new Error("reference has no vale rule");
+    const rule = await referenceRule("vale");
 
     const result = await verifyValeRule(stage(rule), rule.id);
     if ("outcome" in result) {

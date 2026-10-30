@@ -145,11 +145,11 @@
       "id": "no-eval-call",
       "directory": ".taskless/rules/sg/no-eval-call",
       "ruleFile": "no-eval-call.yml",
-      "prompt": "Create a rule that flags any call to `eval()` in TypeScript.\n\nExecuting a string at runtime is an injection risk, and it defeats every static\nanalysis the project runs: nothing downstream can see what the code will do.\nPrefer a parser, a lookup table, or an explicit dispatch.\n\nDeciding this needs only the expression itself. No other file has to be read,\nand no state has to be resolved.\n\nCode that should NOT be flagged:\n\n```ts\nconst parsed = JSON.parse(payload);\n```\n\nCode that SHOULD be flagged:\n\n```ts\nconst result = eval(payload);\n```\n",
+      "prompt": "Create a rule that flags any call to `eval()` in TypeScript, whatever the\nnumber of arguments: `eval()`, `eval(code)` and `eval(code, scope)` are all\ncalls to `eval`.\n\nExecuting a string at runtime is an injection risk, and it defeats every static\nanalysis the project runs: nothing downstream can see what the code will do.\nPrefer a parser, a lookup table, or an explicit dispatch.\n\nDeciding this needs only the expression itself. No other file has to be read,\nand no state has to be resolved.\n\nCode that should NOT be flagged:\n\n```ts\nconst parsed = JSON.parse(payload);\n```\n\nCode that SHOULD be flagged:\n\n```ts\nconst result = eval(payload);\n```\n",
       "rule": [
         {
           "path": "no-eval-call.yml",
-          "content": "id: no-eval-call\nlanguage: TypeScript\nseverity: error\nmessage: \"`eval` executes arbitrary code at runtime; use a parser or a lookup table instead.\"\nnote: |-\n  This is an example rule, shipped with the Taskless CLI to demonstrate the\n  `sg` tier. It was not written for this repository.\n\n  The evidence is one expression in one file, which is what makes this an `sg`\n  rule rather than a runtime one: no other file has to be read to decide it.\nrule:\n  pattern: eval($ARG)\n"
+          "content": "id: no-eval-call\nlanguage: TypeScript\nseverity: error\nmessage: \"`eval` executes arbitrary code at runtime; use a parser or a lookup table instead.\"\nnote: |-\n  This is an example rule, shipped with the Taskless CLI to demonstrate the\n  `sg` tier. It was not written for this repository.\n\n  The evidence is one expression in one file, which is what makes this an `sg`\n  rule rather than a runtime one: no other file has to be read to decide it.\nrule:\n  pattern: eval($$$ARGS)\n"
         }
       ],
       "tests": {
@@ -162,6 +162,14 @@
           {
             "path": "tests/fail/eval-call/payload.ts",
             "content": "const result = eval(payload);\n"
+          },
+          {
+            "path": "tests/fail/eval-no-args/payload.ts",
+            "content": "const value = eval();\n"
+          },
+          {
+            "path": "tests/fail/eval-multiple-args/payload.ts",
+            "content": "const value = eval(source, scope);\n"
           }
         ],
         "cases": [
@@ -176,6 +184,18 @@
             "name": "eval-call",
             "path": "tests/fail/eval-call",
             "files": ["tests/fail/eval-call/payload.ts"]
+          },
+          {
+            "bucket": "fail",
+            "name": "eval-no-args",
+            "path": "tests/fail/eval-no-args",
+            "files": ["tests/fail/eval-no-args/payload.ts"]
+          },
+          {
+            "bucket": "fail",
+            "name": "eval-multiple-args",
+            "path": "tests/fail/eval-multiple-args",
+            "files": ["tests/fail/eval-multiple-args/payload.ts"]
           }
         ]
       }

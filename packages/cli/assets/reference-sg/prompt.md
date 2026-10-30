@@ -1,4 +1,6 @@
-Create a rule that flags any call to `eval()` in TypeScript.
+Create a rule that flags any call to `eval()` in TypeScript, whatever the
+number of arguments: `eval()`, `eval(code)` and `eval(code, scope)` are all
+calls to `eval`.
 
 Executing a string at runtime is an injection risk, and it defeats every static
 analysis the project runs: nothing downstream can see what the code will do.
