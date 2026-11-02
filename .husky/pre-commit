@@ -1,1 +1,2 @@
+sh .agents/skills/worktrees-pnpm/scripts/refuse-main-checkout.sh
 npx lint-staged

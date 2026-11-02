@@ -144,6 +144,24 @@ printf '{"hook_event_name":"WorktreeRemove","worktree_path":"%s"}' "$PWD/.agents
 **2. Add the ignores** described in the next section. Skipping this is the single most common way
 to end up debugging a lint failure in code you never wrote.
 
+**3. Refuse commits in the primary checkout.** Instructions telling agents to stay out of the
+main checkout are not enough on their own, so a `pre-commit` hook makes it a hard stop.
+`scripts/refuse-main-checkout.sh` exits non-zero when `git rev-parse --git-dir` equals
+`--git-common-dir`, which is true only in the primary checkout, never in a linked worktree. It
+checks the checkout, not the branch, so a feature branch checked out in the primary tree is
+refused too. It skips when `CI` is set, because a CI runner commits from a plain clone (version
+PRs, review bots), and a plain clone is a primary checkout. With Husky, run it first in
+`.husky/pre-commit`:
+
+```sh
+sh .agents/skills/worktrees-pnpm/scripts/refuse-main-checkout.sh
+npx lint-staged
+```
+
+Without Husky, call it from `.git/hooks/pre-commit`, or from whatever hook manager the repo
+uses. A person who really means to commit in the primary checkout runs `git commit --no-verify`.
+An agent never does that to get past this guard.
+
 ## Every root-level tool must ignore the worktrees directory
 
 This is the one real cost of keeping worktrees in the repo, and it is not optional. A worktree is
