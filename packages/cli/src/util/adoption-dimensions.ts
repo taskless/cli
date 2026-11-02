@@ -167,10 +167,9 @@ export function resolveRunEnvironment(
   environment: NodeJS.ProcessEnv = process.env
 ): { ci: boolean; provider?: string } {
   const ci = isContinuousIntegration(environment);
+  if (!ci) return { ci };
   const provider = resolveCiProvider(environment);
-  if (!ci || provider === NO_CI_PROVIDER || provider === UNKNOWN_DIMENSION) {
-    return { ci };
-  }
+  if (provider === UNKNOWN_DIMENSION) return { ci };
   return { ci, provider: provider.replaceAll("_", "-") };
 }
 
