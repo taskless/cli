@@ -153,12 +153,23 @@ refused too. It skips when `GITHUB_ACTIONS=true`, because a runner commits from 
 (version PRs, review bots), and a plain clone is a primary checkout. It keys on the variable the
 runner sets itself rather than `CI`, which any shell can export as an unnamed bypass. A repo on
 another CI system adds that system's own marker. With Husky, run it first in
-`.husky/pre-commit`:
+`.husky/pre-commit`. This is the body taskless/cli, taskless/taskless and taskless/marketing
+share:
 
 ```sh
-sh .agents/skills/worktrees-pnpm/scripts/refuse-main-checkout.sh
-npx lint-staged
+guard=.agents/skills/worktrees-pnpm/scripts/refuse-main-checkout.sh
+if [ ! -f "$guard" ]; then
+  echo "pre-commit: $guard is missing. Run pnpm install (or pnpm dotagents install) first." >&2
+  exit 1
+fi
+sh "$guard" || exit 1
+pnpm exec lint-staged
 ```
+
+The `|| exit 1` is load-bearing outside Husky. Husky 9 runs a hook as `sh -e`, so a bare
+`sh "$guard"` line happens to stop there, but the same two lines as a raw git hook carry on into
+`lint-staged`, and its passing exit lets the refused commit through. The missing-file check
+turns a bare `sh` error into one that says what to run.
 
 Without Husky, call it from `.git/hooks/pre-commit`, or from whatever hook manager the repo
 uses. A person who really means to commit in the primary checkout runs `git commit --no-verify`.
