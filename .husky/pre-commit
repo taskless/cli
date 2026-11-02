@@ -1,2 +1,7 @@
-sh .agents/skills/worktrees-pnpm/scripts/refuse-main-checkout.sh
-npx lint-staged
+guard=.agents/skills/worktrees-pnpm/scripts/refuse-main-checkout.sh
+if [ ! -f "$guard" ]; then
+  echo "pre-commit: $guard is missing. Run pnpm install (or pnpm dotagents install) first." >&2
+  exit 1
+fi
+sh "$guard" || exit 1
+pnpm exec lint-staged
