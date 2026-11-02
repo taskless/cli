@@ -1,4 +1,9 @@
-import { describeCoverageShortfall, type FixtureFinding } from "../fixtures";
+import {
+  caseResult,
+  describeCoverageShortfall,
+  type FixtureCaseResult,
+  type FixtureFinding,
+} from "../fixtures";
 import type { RuntimeRule } from "./discover";
 import { executeRuntimeRuleDetailed } from "./harness";
 import type { RuntimeRunOptions } from "./harness";
@@ -57,6 +62,14 @@ export interface RuntimeFixtureReport {
    * crash to the rule — the exact confusion `checkFailures` exists to prevent.
    */
   findings: FixtureFinding[];
+  /**
+   * Every case's verdict, in the order the cases ran.
+   *
+   * The four lists above are the same information grouped by failure kind;
+   * this is it grouped by case, with the line `describeFixtureReport` prints
+   * for that case as its message.
+   */
+  cases: FixtureCaseResult[];
 }
 
 /** `fail/case-1` — the bucket is half the identity of a case. */
@@ -75,8 +88,12 @@ function label(fixtureCase: RuntimeFixtureCase): string {
  *
  * Cases run in sequence, matching `executeRuntimeRules`, so `tsx` worker
  * startup stays predictable.
+ *
+ * `cwd` is the project root, and is used only to name a failing case's files
+ * project-relative in `cases`, the spelling `findings[].file` uses.
  */
 export async function runRuntimeFixtures(
+  cwd: string,
   rule: RuntimeRule,
   fixtures: RuntimeFixtures,
   options: RuntimeRunOptions = {}
@@ -86,6 +103,10 @@ export async function runRuntimeFixtures(
   const neverInvoked: string[] = [];
   const checkFailures: FixtureCheckFailure[] = [];
   const findings: FixtureFinding[] = [];
+  const cases: FixtureCaseResult[] = [];
+  const record = async (fixtureCase: RuntimeFixtureCase, message?: string) => {
+    cases.push(await caseResult(cwd, fixtureCase, message));
+  };
 
   for (const fixtureCase of fixtures.cases) {
     const execution = await executeRuntimeRuleDetailed(
@@ -98,15 +119,18 @@ export async function runRuntimeFixtures(
     // both arrive as one error-severity finding, so reading the findings alone
     // would count a crashed check as a `fail/` case that fired correctly.
     if (execution.failure !== undefined) {
-      checkFailures.push({
+      const failure = {
         name: label(fixtureCase),
         message: execution.failure,
-      });
+      };
+      checkFailures.push(failure);
+      await record(fixtureCase, describeCheckFailure(failure));
       continue;
     }
 
     if (!execution.invoked) {
       neverInvoked.push(label(fixtureCase));
+      await record(fixtureCase, describeNeverInvoked(label(fixtureCase)));
       continue;
     }
 
@@ -119,11 +143,17 @@ export async function runRuntimeFixtures(
     }
 
     if (fixtureCase.bucket === "fail") {
-      if (execution.findings.length === 0)
+      if (execution.findings.length === 0) {
         missingFailures.push(label(fixtureCase));
+        await record(fixtureCase, describeMissingFailure(label(fixtureCase)));
+        continue;
+      }
     } else if (execution.findings.length > 0) {
       unexpectedFindings.push(label(fixtureCase));
+      await record(fixtureCase, describeUnexpectedFinding(label(fixtureCase)));
+      continue;
     }
+    await record(fixtureCase);
   }
 
   return {
@@ -142,7 +172,30 @@ export async function runRuntimeFixtures(
     neverInvoked,
     checkFailures,
     findings,
+    cases,
   };
+}
+
+// One line per kind of case failure. Shared by `describeFixtureReport` and the
+// per-case `message`, so the two can never describe one case differently.
+
+function describeMissingFailure(name: string): string {
+  return `fail fixture did not fire: ${name}`;
+}
+
+function describeUnexpectedFinding(name: string): string {
+  return `pass fixture wrongly fired: ${name}`;
+}
+
+function describeNeverInvoked(name: string): string {
+  return (
+    `fixture case matched no captures, so check.ts never ran: ${name}. ` +
+    `The case is the defect, not the check: add code the rule's captures match.`
+  );
+}
+
+function describeCheckFailure(failure: FixtureCheckFailure): string {
+  return `check failed on ${failure.name}: ${failure.message}`;
 }
 
 /**
@@ -162,19 +215,16 @@ export function describeFixtureReport(
   const shortfall = describeCoverageShortfall(ruleId, report.coverage);
   if (shortfall !== undefined) errors.push(shortfall);
   for (const name of report.missingFailures) {
-    errors.push(`fail fixture did not fire: ${name}`);
+    errors.push(describeMissingFailure(name));
   }
   for (const name of report.unexpectedFindings) {
-    errors.push(`pass fixture wrongly fired: ${name}`);
+    errors.push(describeUnexpectedFinding(name));
   }
   for (const name of report.neverInvoked) {
-    errors.push(
-      `fixture case matched no captures, so check.ts never ran: ${name}. ` +
-        `The case is the defect, not the check: add code the rule's captures match.`
-    );
+    errors.push(describeNeverInvoked(name));
   }
   for (const failure of report.checkFailures) {
-    errors.push(`check failed on ${failure.name}: ${failure.message}`);
+    errors.push(describeCheckFailure(failure));
   }
 
   return errors;

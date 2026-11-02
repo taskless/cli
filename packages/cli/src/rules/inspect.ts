@@ -8,7 +8,11 @@ import {
   ruleDirectory,
   ruleFilePath,
 } from "./engines";
-import { describeCoverageShortfall, type FixtureFinding } from "./fixtures";
+import {
+  describeCoverageShortfall,
+  type FixtureCaseResult,
+  type FixtureFinding,
+} from "./fixtures";
 import { describeEmptySgScope } from "./sg-scope";
 import { type EngineName } from "./layout";
 import {
@@ -132,6 +136,14 @@ export interface RuleVerification {
    * only ever produced by the runs that passed.
    */
   findings: FixtureFinding[];
+  /**
+   * Every fixture case's verdict, one entry per case.
+   *
+   * Empty, never absent, whenever the cases did not run, for `findings`' reason.
+   * Built from the outcome each runner judged rather than from `errors`, whose
+   * wording a consumer must not have to parse to learn which case failed.
+   */
+  cases: FixtureCaseResult[];
 }
 
 /** What `verify` needs beyond a rule, all of it about the runtime engine. */
@@ -441,7 +453,7 @@ export async function verifyOneRule(
     // call, which would run every case twice for one answer.
     const validation = await withIdCollision(cwd, ruleId, verdict);
     if (!validation.ok) {
-      return { ...validation, ran: false, findings: [] };
+      return { ...validation, ran: false, findings: [], cases: [] };
     }
     // A rule that populated only one bucket has proved only half of what a
     // rule claims, and the CLI says so: coverage is counted over case
@@ -468,12 +480,13 @@ export async function verifyOneRule(
       // The findings that decided the verdict, as the scan reported them:
       // rendered messages, and `file` naming the fixture in its case.
       findings: result.tests.findings,
+      cases: result.tests.cases,
     };
   }
 
   const validation = await validateOneRule(cwd, rule);
   if (!validation.ok) {
-    return { ...validation, ran: false, findings: [] };
+    return { ...validation, ran: false, findings: [], cases: [] };
   }
 
   if (engine === "vale") {
@@ -488,6 +501,7 @@ export async function verifyOneRule(
         ran: false,
         notices: [],
         findings: [],
+        cases: [],
       };
     }
     const errors: string[] = [];
@@ -503,6 +517,7 @@ export async function verifyOneRule(
       ran: true,
       notices: result.notices,
       findings: result.findings,
+      cases: result.cases,
     };
   }
 
@@ -542,6 +557,7 @@ export async function verifyOneRule(
       violations: [],
       ran: false,
       findings: [],
+      cases: [],
       refused: reason,
       notices: [],
     };
@@ -567,6 +583,7 @@ export async function verifyOneRule(
       violations: [],
       ran: false,
       findings: [],
+      cases: [],
       refused: reason,
       notices: [],
     };
@@ -589,6 +606,7 @@ export async function verifyOneRule(
       ran: false,
       notices: [],
       findings: [],
+      cases: [],
     };
   }
 
@@ -596,7 +614,7 @@ export async function verifyOneRule(
   // run anything, and a warning about code that never executed is noise.
   options.onRuntimeWarning?.(RUN_SCRIPTS_WARNING);
 
-  const report = await runRuntimeFixtures(runtimeRule, fixtures);
+  const report = await runRuntimeFixtures(cwd, runtimeRule, fixtures);
   return {
     engine,
     ruleId,
@@ -606,5 +624,6 @@ export async function verifyOneRule(
     ran: true,
     notices: [],
     findings: report.findings,
+    cases: report.cases,
   };
 }

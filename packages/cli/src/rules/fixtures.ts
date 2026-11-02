@@ -1,5 +1,5 @@
 import type { Dirent } from "node:fs";
-import { readdir } from "node:fs/promises";
+import { readdir, readFile, stat } from "node:fs/promises";
 import { join, posix, relative, sep } from "node:path";
 
 import { ruleDirectory, ruleTestsDirectory } from "./engines";
@@ -291,48 +291,158 @@ export function casePassed(outcome: CaseOutcome): boolean {
 }
 
 /**
- * One error line per case that did not come out as its bucket asserts.
+ * Why one case did not come out as its bucket asserts, or `undefined` when it
+ * did.
  *
  * `scope` names what was in effect, in the rule's own terms (the `files:`
  * globs, or the Vale matchers), so a "scope excluded" message points at the
  * exact text an author would edit.
+ *
+ * The single source of a case's failure wording: `errors` and `cases[].message`
+ * are both built from it, so the two can never describe one case differently.
  */
+export function describeCaseFailure(
+  cwd: string,
+  outcome: CaseOutcome,
+  scope: string | undefined
+): string | undefined {
+  if (casePassed(outcome)) return undefined;
+  const path = projectRelative(cwd, outcome.fixture.root);
+  if (outcome.unread === "scope-excluded") {
+    return (
+      `${outcome.fixture.bucket} case was never read, because the rule's ` +
+      `scope excluded every file in it: ${path}/. No file sits at a path ` +
+      `admitted by ${scope ?? "the scope"}. Move the fixture to such a path.`
+    );
+  }
+  if (outcome.unread === "not-walked") {
+    return (
+      `${outcome.fixture.bucket} case was never read: ${path}/. The engine ` +
+      `walked no file in it, even with the scope removed: the project's ` +
+      `.gitignore or .ignore covers them, they are empty, or none is in a ` +
+      `language or format the engine reads. Rename the path or the file.`
+    );
+  }
+  if (outcome.fixture.bucket === "pass") {
+    return `pass case wrongly fired: ${path}/`;
+  }
+  if (outcome.quiet === "scope-excluded") {
+    return (
+      `fail case did not fire because the rule's scope excluded it: ${path}/. ` +
+      `It fires with the scope removed, so the pattern matches, and no ` +
+      `file in the case sits at a path admitted by ${scope ?? "the scope"}. ` +
+      `Move the fixture to such a path, or widen the scope.`
+    );
+  }
+  return `fail case did not fire: ${path}/ (the rule did not match it)`;
+}
+
+/** One error line per case that did not come out as its bucket asserts. */
 export function describeCaseFailures(
   cwd: string,
   outcomes: readonly CaseOutcome[],
   scope: string | undefined
 ): string[] {
-  const errors: string[] = [];
-  for (const outcome of outcomes) {
-    if (casePassed(outcome)) continue;
-    const path = projectRelative(cwd, outcome.fixture.root);
-    if (outcome.unread === "scope-excluded") {
-      errors.push(
-        `${outcome.fixture.bucket} case was never read, because the rule's ` +
-          `scope excluded every file in it: ${path}/. No file sits at a path ` +
-          `admitted by ${scope ?? "the scope"}. Move the fixture to such a path.`
-      );
-    } else if (outcome.unread === "not-walked") {
-      errors.push(
-        `${outcome.fixture.bucket} case was never read: ${path}/. The engine ` +
-          `walked no file in it, even with the scope removed: the project's ` +
-          `.gitignore or .ignore covers them, they are empty, or none is in a ` +
-          `language or format the engine reads. Rename the path or the file.`
-      );
-    } else if (outcome.fixture.bucket === "pass") {
-      errors.push(`pass case wrongly fired: ${path}/`);
-    } else if (outcome.quiet === "scope-excluded") {
-      errors.push(
-        `fail case did not fire because the rule's scope excluded it: ${path}/. ` +
-          `It fires with the scope removed, so the pattern matches, and no ` +
-          `file in the case sits at a path admitted by ${scope ?? "the scope"}. ` +
-          `Move the fixture to such a path, or widen the scope.`
-      );
-    } else {
-      errors.push(
-        `fail case did not fire: ${path}/ (the rule did not match it)`
-      );
+  return outcomes.flatMap((outcome) => {
+    const message = describeCaseFailure(cwd, outcome, scope);
+    return message === undefined ? [] : [message];
+  });
+}
+
+/** One file of a fixture case, as `verify --json` reports it. */
+export interface FixtureCaseFile {
+  /** Project-relative, `/`-separated: the same spelling as `findings[].file`. */
+  path: string;
+  content: string;
+}
+
+/**
+ * One fixture case's verdict, as `verify --json` reports it under `cases`.
+ *
+ * Structured so a consumer never has to recover a case from `errors`, whose
+ * wording is free to change. Built from the outcome each runner already
+ * judged, never from the error text.
+ */
+export interface FixtureCaseResult {
+  /** `<bucket>/<case>`, the case's path under `tests/`, e.g. `fail/cast`. */
+  name: string;
+  /** The bucket's assertion: `fail` should make the rule fire, `pass` should not. */
+  expected: FixtureBucket;
+  /** Whether the case came out as its bucket asserts. */
+  ok: boolean;
+  /** Why it did not, when `ok` is false: the same line `errors` carries. */
+  message?: string;
+  /** The case's files, on a failing case only. See {@link readCaseFiles}. */
+  files?: FixtureCaseFile[];
+}
+
+/** Larger than any fixture worth reading in a report; such a file is left out. */
+const CASE_FILE_LIMIT_BYTES = 64 * 1024;
+
+/**
+ * A case's files, for a report reader who wants to see what failed.
+ *
+ * Text only and bounded: a file over {@link CASE_FILE_LIMIT_BYTES} or holding
+ * a NUL byte is left out rather than truncated, since a truncated fixture
+ * misrepresents the case it came from. Operating-system metadata is skipped
+ * for the reason {@link NOT_FIXTURES} gives. Never rejects: the files are
+ * context for a verdict already reached, so a file that cannot be read is
+ * left out rather than turning a report into a failure.
+ */
+export async function readCaseFiles(
+  cwd: string,
+  root: string
+): Promise<FixtureCaseFile[]> {
+  let entries: Dirent[];
+  try {
+    entries = await readdir(root, { recursive: true, withFileTypes: true });
+  } catch {
+    return [];
+  }
+  const files: FixtureCaseFile[] = [];
+  for (const entry of entries) {
+    if (entry.isDirectory() || NOT_FIXTURES.has(entry.name)) continue;
+    const absolute = join(entry.parentPath, entry.name);
+    try {
+      const { size } = await stat(absolute);
+      if (size > CASE_FILE_LIMIT_BYTES) continue;
+      const content = await readFile(absolute, "utf8");
+      if (content.includes("\0")) continue;
+      files.push({ path: projectRelative(cwd, absolute), content });
+    } catch {
+      continue;
     }
   }
-  return errors;
+  return files.toSorted((a, b) => a.path.localeCompare(b.path));
+}
+
+/** A case's verdict, with its files attached when it failed. */
+export async function caseResult(
+  cwd: string,
+  fixture: FixtureCase,
+  message: string | undefined
+): Promise<FixtureCaseResult> {
+  const result: FixtureCaseResult = {
+    name: `${fixture.bucket}/${fixture.name}`,
+    expected: fixture.bucket,
+    ok: message === undefined,
+  };
+  if (message !== undefined) {
+    result.message = message;
+    result.files = await readCaseFiles(cwd, fixture.root);
+  }
+  return result;
+}
+
+/** Every case's verdict, for the two engines whose check is a scan. */
+export function describeCaseResults(
+  cwd: string,
+  outcomes: readonly CaseOutcome[],
+  scope: string | undefined
+): Promise<FixtureCaseResult[]> {
+  return Promise.all(
+    outcomes.map((outcome) =>
+      caseResult(cwd, outcome.fixture, describeCaseFailure(cwd, outcome, scope))
+    )
+  );
 }

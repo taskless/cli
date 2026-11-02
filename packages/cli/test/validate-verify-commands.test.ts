@@ -37,6 +37,13 @@ interface Report {
     errors: string[];
     violations: { constraintId: string; message: string }[];
     notices: string[];
+    cases: {
+      name: string;
+      expected: "pass" | "fail";
+      ok: boolean;
+      message?: string;
+      files?: { path: string; content: string }[];
+    }[];
   }[];
 }
 
@@ -399,6 +406,83 @@ withVale("verify runs validate first", () => {
     expect(
       (JSON.parse(result.stdout) as Report).rules[0]?.errors.join(" ")
     ).toContain("half a claim");
+  });
+});
+
+/**
+ * `cases` on `verify --json`: one entry per fixture case, built from the
+ * outcome the runner judged. The failing case's `message` is the line `errors`
+ * carries for it, so a consumer never has to parse `errors` to name the case.
+ */
+describe("verify reports every sg case", () => {
+  it("names the failing case, why, and what it held", async () => {
+    await sgRule("no-eval", "no-eval");
+    const directory = join(cwd, ".taskless", "rules", "sg", "no-eval");
+    await writeFile(
+      join(directory, "tests", "fail", "eval-call", "sample.ts"),
+      "evaluate(x);\n"
+    );
+
+    const result = await runCli(["verify", "-d", cwd, "--json"]);
+    expect(result.exitCode).not.toBe(0);
+    const rule = (JSON.parse(result.stdout) as Report).rules[0];
+    const path = ".taskless/rules/sg/no-eval/tests/fail/eval-call";
+    expect(rule?.cases).toEqual([
+      {
+        name: "fail/eval-call",
+        expected: "fail",
+        ok: false,
+        message: `fail case did not fire: ${path}/ (the rule did not match it)`,
+        files: [{ path: `${path}/sample.ts`, content: "evaluate(x);\n" }],
+      },
+      { name: "pass/plain", expected: "pass", ok: true },
+    ]);
+    expect(rule?.errors).toContain(rule?.cases[0]?.message);
+  });
+
+  it("reports passing cases on a passing rule", async () => {
+    await sgRule("no-eval", "no-eval");
+    const result = await runCli(["verify", "-d", cwd, "--json"]);
+    expect(result.exitCode).toBe(0);
+    expect((JSON.parse(result.stdout) as Report).rules[0]?.cases).toEqual([
+      { name: "fail/eval-call", expected: "fail", ok: true },
+      { name: "pass/plain", expected: "pass", ok: true },
+    ]);
+  });
+
+  it("carries an empty list from validate, which runs no cases", async () => {
+    await sgRule("no-eval", "no-eval");
+    const result = await runCli(["validate", "-d", cwd, "--json"]);
+    expect((JSON.parse(result.stdout) as Report).rules[0]?.cases).toEqual([]);
+  });
+});
+
+withVale("verify reports every Vale case", () => {
+  it("names the pass case that fired, why, and what it held", async () => {
+    const directory = await valeRule("no-simply", {
+      config: SCOPED,
+      fixtures: true,
+    });
+    await writeFile(
+      join(directory, "tests", "pass", "plain", "ok.md"),
+      "You simply do it.\n"
+    );
+
+    const result = await runCli(["verify", "-d", cwd, "--json"]);
+    expect(result.exitCode).not.toBe(0);
+    const rule = (JSON.parse(result.stdout) as Report).rules[0];
+    const path = ".taskless/rules/vale/no-simply/tests/pass/plain";
+    expect(rule?.cases).toEqual([
+      { name: "fail/simply", expected: "fail", ok: true },
+      {
+        name: "pass/plain",
+        expected: "pass",
+        ok: false,
+        message: `pass case wrongly fired: ${path}/`,
+        files: [{ path: `${path}/ok.md`, content: "You simply do it.\n" }],
+      },
+    ]);
+    expect(rule?.errors).toContain(rule?.cases[1]?.message);
   });
 });
 

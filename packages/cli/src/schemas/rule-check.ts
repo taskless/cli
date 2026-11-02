@@ -51,6 +51,46 @@ export const fixtureFindingSchema = z.object({
     ),
 });
 
+/**
+ * One fixture case's verdict.
+ *
+ * What a consumer reads to learn WHICH case failed without parsing `errors`,
+ * whose wording is the CLI's to change. Built from the outcome each engine's
+ * runner judged, never recovered from the error text.
+ */
+export const fixtureCaseSchema = z.object({
+  name: z
+    .string()
+    .describe(
+      "The case's path under the rule's tests/, as `<bucket>/<case>`, e.g. `fail/cast`"
+    ),
+  expected: z
+    .enum(["pass", "fail"])
+    .describe(
+      "The bucket's assertion: `fail` should make the rule fire, `pass` should leave it quiet"
+    ),
+  ok: z.boolean().describe("Whether the case came out as its bucket asserts"),
+  message: z
+    .string()
+    .optional()
+    .describe(
+      "Why it did not, present only when `ok` is false. The same line `errors` carries for this case"
+    ),
+  files: z
+    .array(
+      z.object({
+        path: z
+          .string()
+          .describe("Project-relative, the same spelling as `findings[].file`"),
+        content: z.string(),
+      })
+    )
+    .optional()
+    .describe(
+      "The case's files, present only when `ok` is false. A file over 64 KiB, or one that is not text, is left out rather than truncated"
+    ),
+});
+
 const ruleResultSchema = z.object({
   engine: z.enum(["sg", "vale", "runtime"]),
   ruleId: z.string(),
@@ -96,6 +136,12 @@ const ruleResultSchema = z.object({
     .default([])
     .describe(
       "The findings this rule's fixtures produced, each tagged with its bucket. ALWAYS PRESENT, empty rather than absent — for a rule that produced nothing, for one whose verification failed before its fixtures ran, for a refused run, for `validate`, which runs no fixtures at all, and for an engine whose fixture findings are not surfaced yet. A key that is sometimes absent is one a reader learns to treat as optional, and reads absence as zero. The `fail` bucket is reported on a passing run too: it is the evidence that the rendered messages say what their author meant, and a payload carrying that only once the rule is already failing carries it at the one moment it is no longer needed"
+    ),
+  cases: z
+    .array(fixtureCaseSchema)
+    .default([])
+    .describe(
+      "`verify` only: one entry per fixture case, failing or not, for every engine. ALWAYS PRESENT, empty rather than absent whenever the cases did not run — for `validate`, a refused run, and a rule whose verification failed before its fixtures ran — for `findings`' reason. Additive: `errors` still carries every failure line"
     ),
 });
 

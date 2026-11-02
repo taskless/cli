@@ -9,6 +9,8 @@ import {
   bucketEntries,
   casePassed,
   describeCaseFailures,
+  describeCaseResults,
+  type FixtureCaseResult,
   projectRelative,
   readRuleFixtures,
   type CaseOutcome,
@@ -115,6 +117,8 @@ export interface ValeRuleVerification {
   unexpectedFindings: string[];
   /** One line per case that did not come out as its bucket asserts, ready to print. */
   errors: string[];
+  /** Every case's verdict, built from the same outcomes as `errors`. */
+  cases: FixtureCaseResult[];
   /**
    * Every finding the fixtures produced, each tagged with its bucket.
    *
@@ -252,6 +256,7 @@ export async function verifyValeRule(
     missingFailures: [],
     unexpectedFindings: [],
     errors,
+    cases: [],
     findings: [],
     fixtures,
     notices: [],
@@ -374,6 +379,11 @@ export async function verifyValeRule(
         .filter((outcome) => outcome.fixture.bucket === "pass")
         .map((outcome) => caseDirectory(outcome)),
       errors: describeCaseFailures(
+        cwd,
+        outcomes,
+        "the rule's .vale.ini matchers"
+      ),
+      cases: await describeCaseResults(
         cwd,
         outcomes,
         "the rule's .vale.ini matchers"
