@@ -15,7 +15,7 @@ problem in this repo.
 
 ```bash
 git fetch origin +refs/heads/main:refs/remotes/origin/main   # explicit refspec; see the hook for why
-git worktree add -b <branch> .agents/.worktrees/<name> origin/main   # or an existing <branch>, without -b
+git worktree add --no-track -b <branch> .agents/.worktrees/<name> origin/main   # or an existing <branch>, without -b
 cd .agents/.worktrees/<name>
 git rev-list --count HEAD..origin/main   # anything above 0: git rebase origin/main
 pnpm install            # ← not optional, and after the rebase, which can change the lockfile
@@ -149,8 +149,10 @@ main checkout are not enough on their own, so a `pre-commit` hook makes it a har
 `scripts/refuse-main-checkout.sh` exits non-zero when `git rev-parse --git-dir` equals
 `--git-common-dir`, which is true only in the primary checkout, never in a linked worktree. It
 checks the checkout, not the branch, so a feature branch checked out in the primary tree is
-refused too. It skips when `CI` is set, because a CI runner commits from a plain clone (version
-PRs, review bots), and a plain clone is a primary checkout. With Husky, run it first in
+refused too. It skips when `GITHUB_ACTIONS=true`, because a runner commits from a plain clone
+(version PRs, review bots), and a plain clone is a primary checkout. It keys on the variable the
+runner sets itself rather than `CI`, which any shell can export as an unnamed bypass. A repo on
+another CI system adds that system's own marker. With Husky, run it first in
 `.husky/pre-commit`:
 
 ```sh
@@ -160,7 +162,8 @@ npx lint-staged
 
 Without Husky, call it from `.git/hooks/pre-commit`, or from whatever hook manager the repo
 uses. A person who really means to commit in the primary checkout runs `git commit --no-verify`.
-An agent never does that to get past this guard.
+An agent never gets past it, whether by passing `--no-verify`, setting `GITHUB_ACTIONS`, or any
+other means; a refusal means it is in the wrong checkout, so it moves to a worktree.
 
 ## Every root-level tool must ignore the worktrees directory
 
