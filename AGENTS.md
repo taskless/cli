@@ -82,6 +82,20 @@ gh api -X PATCH repos/{owner}/{repo}/pulls/PR_NUMBER -f title='new: Title here'
 
 Both flags can be passed in one call. See also **Stacked PRs → Other gotchas** for the PR-state equivalent.
 
+## Requesting the Claude review
+
+**On taskless/cli an agent always requests the review; nothing triggers it automatically here.** Post a standalone comment whose whole body is `@claude /review`:
+
+```bash
+gh pr comment <n> -R taskless/cli --body '@claude /review'
+```
+
+- **When opening a PR**, every time.
+- **On a later push that adds significant new code.**
+- **Never for** review fixes, renames, typo or doc tweaks, or a rebase with no new work, and never twice for the same code.
+
+This is where taskless/cli differs from the other Taskless repos, which run the review automatically when a PR opens and take a manual `@claude /review` only for a later push that adds significant new code.
+
 ## Background Agents and Worktrees
 
 **Use the `worktrees-pnpm` skill** whenever creating a worktree or delegating to a background agent with worktree isolation. It covers the full procedure, the pnpm specifics, cleanup, and recovery.
@@ -100,8 +114,8 @@ The refspec is spelled out because a bare `git fetch origin main` only updates `
 
 The three rules that cause the most damage when missed:
 
-- **A worktree starts from the latest `origin/main`, checked before any work begins.** Run `git fetch origin +refs/heads/main:refs/remotes/origin/main` (the explicit refspec, for the reason above), then `git rev-list --count HEAD..origin/main`. Anything above `0` means the worktree is behind: rebase onto `origin/main` (`git rebase origin/main`) before reading code, making changes, or running `pnpm install` (a rebase can change the lockfile), unless the work was explicitly asked to start from another branch or commit. The `WorktreeCreate` hook already branches from a freshly fetched `origin/main`, but a worktree made any other way (by hand, by another tool, or by a session board) is cut from whatever the main checkout was last pulled to. One started 68 commits behind `main`, and nothing flagged it: stale code reads exactly like current code. Another started 156 behind and never saw this rule at all, because the rule landed after its base: **a stale tree carries stale conventions**, so nothing in the repo can warn a checkout that is already behind. That is why the fix belongs in whatever creates the worktree (the hook, a session board, your own hands), and why this check comes before reading anything else here.
-- **A worktree gets its own empty `node_modules`.** `git worktree add` is not finished until `pnpm install` has run inside it. Without that, `git commit` fails in `lint-staged` (no `prettier`/`eslint`), and every `pnpm` script fails. A missing `prettier` here once cost an agent an hour of dead-end workarounds. There is no `pnpm worktree` command; `git worktree` is the tool.
+- **A worktree starts from the latest `origin/main`, checked before any work begins.** Confirm `git rev-parse --is-shallow-repository` prints `false` (a shallow clone cannot answer the next question; see the shallow-clone entry above), run `git fetch origin +refs/heads/main:refs/remotes/origin/main` (the explicit refspec, for the reason above), then `git rev-list --count HEAD..origin/main`. Anything above `0` means the worktree is behind: rebase onto `origin/main` (`git rebase origin/main`) before reading code, making changes, or running `pnpm install` (a rebase can change the lockfile), unless the work was explicitly asked to start from another branch or commit. The `WorktreeCreate` hook already branches from a freshly fetched `origin/main`, but a worktree made any other way (by hand, by another tool, or by a session board) is cut from whatever the main checkout was last pulled to. One started 68 commits behind `main`, and nothing flagged it: stale code reads exactly like current code. Another started 156 behind and never saw this rule at all, because the rule landed after its base: **a stale tree carries stale conventions**, so nothing in the repo can warn a checkout that is already behind. That is why the fix belongs in whatever creates the worktree (the hook, a session board, your own hands), and why this check comes before reading anything else here.
+- **A worktree gets its own empty `node_modules`.** `git worktree add` is not finished until `pnpm install` has run inside it. Without it, `.husky/_` does not exist in the worktree (the install generates it; it is not tracked), and since `core.hooksPath` points there, `git commit` runs no hooks at all: `lint-staged` and the primary-checkout guard are both skipped, silently. Every `pnpm` script fails too. A missing `prettier` here once cost an agent an hour of dead-end workarounds. There is no `pnpm worktree` command; `git worktree` is the tool.
 - **NEVER point an agent at the main repo path** (e.g. `/Users/<you>/code/taskless/skills`). It will `cd` there and run git commands and edits in the **main** checkout, defeating isolation. It can create and check out a branch in your working tree, silently switching your session off its own branch. Tell the agent to work in **its assigned worktree** (`$PWD`) and pass only relative paths plus GitHub identifiers (`owner/repo`). The `pre-commit` hook enforces the commit half of this: it refuses any commit made in the primary checkout (outside CI), whatever branch is checked out there. `git commit --no-verify` is the deliberate override; an agent never uses it to get past this guard.
 
 **Do not offer to fast-forward or pull the local `main`.** Nothing here reads it: worktrees branch from a freshly fetched `origin/main`, and every freshness check compares against `origin/main`. So "want me to fast-forward `main`?" at the end of a task asks for a step that changes nothing. The one time it is worth mentioning is right after this session's own work has been rebased and merged to `main`, and even then mention it once, as optional, not as a closing step.
