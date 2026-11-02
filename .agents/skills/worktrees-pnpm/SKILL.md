@@ -157,19 +157,25 @@ another CI system adds that system's own marker. With Husky, run it first in
 share:
 
 ```sh
-guard=.agents/skills/worktrees-pnpm/scripts/refuse-main-checkout.sh
-if [ ! -f "$guard" ]; then
-  echo "pre-commit: $guard is missing. Run pnpm install (or pnpm dotagents install) first." >&2
-  exit 1
+# GitHub Actions skips the dotagents install (postinstall checks CI), so the
+# skill's guard may be absent there; the guard exempts Actions anyway.
+if [ "${GITHUB_ACTIONS:-}" != "true" ]; then
+  guard=.agents/skills/worktrees-pnpm/scripts/refuse-main-checkout.sh
+  if [ ! -f "$guard" ]; then
+    echo "pre-commit: $guard is missing. Run pnpm install (or pnpm dotagents install) first." >&2
+    exit 1
+  fi
+  sh "$guard" || exit 1
 fi
-sh "$guard" || exit 1
 pnpm exec lint-staged
 ```
 
 The `|| exit 1` is load-bearing outside Husky. Husky 9 runs a hook as `sh -e`, so a bare
 `sh "$guard"` line happens to stop there, but the same two lines as a raw git hook carry on into
 `lint-staged`, and its passing exit lets the refused commit through. The missing-file check
-turns a bare `sh` error into one that says what to run.
+turns a bare `sh` error into one that says what to run. It sits inside the `GITHUB_ACTIONS`
+test because a repo that installs this skill through dotagents skips that install under CI, so on
+a runner the guard may not exist, and the check would otherwise block every automated commit.
 
 Without Husky, call it from `.git/hooks/pre-commit`, or from whatever hook manager the repo
 uses. A person who really means to commit in the primary checkout runs `git commit --no-verify`.
