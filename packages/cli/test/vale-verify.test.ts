@@ -261,6 +261,11 @@ withVale("verifyValeRule", () => {
       missingFailures: [],
       unexpectedFindings: [],
       errors: [],
+      cases: [
+        { name: "fail/a", expected: "fail", ok: true },
+        { name: "fail/b", expected: "fail", ok: true },
+        { name: "pass/c", expected: "pass", ok: true },
+      ],
       fixtures: "both",
       notices: [],
       findings: [

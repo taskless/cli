@@ -48,6 +48,13 @@ interface Report {
     errors: string[];
     ran?: boolean;
     refused?: string;
+    cases: {
+      name: string;
+      expected: "pass" | "fail";
+      ok: boolean;
+      message?: string;
+      files?: { path: string; content: string }[];
+    }[];
   }[];
 }
 
@@ -329,6 +336,62 @@ describe("fixture directions", () => {
     expect(rule?.ran).toBe(true);
     expect(rule?.ok).toBe(false);
     expect(rule?.errors.join("\n")).toContain("pass/literal-eval");
+  });
+});
+
+/**
+ * `cases`: the per-case verdict a consumer reads instead of parsing `errors`.
+ * Asserted against the runner's own judgement, so a case's `message` must be
+ * the line `errors` carries for it, and the files must be the case's own.
+ */
+describe("per-case results", () => {
+  it("reports every case, with the failing one's reason and files", async () => {
+    await writeRule(FLAGS_EVERY_MATCH);
+    await writeCase("fail", "uses-eval");
+    await writeCase("pass", "literal-eval");
+
+    const report = await testRuleJson("--dangerously-run-scripts");
+    const rule = report.rules[0];
+
+    expect(rule?.cases).toEqual([
+      { name: "fail/uses-eval", expected: "fail", ok: true },
+      {
+        name: "pass/literal-eval",
+        expected: "pass",
+        ok: false,
+        message: "pass fixture wrongly fired: pass/literal-eval",
+        files: [
+          {
+            path: `.taskless/rules/runtime/${RULE}/tests/pass/literal-eval/sample.ts`,
+            content: 'eval("1 + 1");\n',
+          },
+        ],
+      },
+    ]);
+    expect(rule?.errors).toContain(rule?.cases[1]?.message);
+  });
+
+  it("reports a case that never reached the check as failed", async () => {
+    await writeRule();
+    await writeCase("fail", "unmatched", { matching: false });
+    await writeCase("pass", "literal-eval");
+
+    const report = await testRuleJson("--dangerously-run-scripts");
+    const unmatched = report.rules[0]?.cases.find(
+      (entry) => entry.name === "fail/unmatched"
+    );
+    expect(unmatched?.ok).toBe(false);
+    expect(unmatched?.message).toContain("check.ts never ran");
+  });
+
+  it("is empty, never absent, when the fixtures did not run", async () => {
+    await writeRule();
+    await writeCase("fail", "uses-eval");
+    await writeCase("pass", "literal-eval");
+
+    const report = await testRuleJson();
+    expect(report.rules[0]?.ran).toBe(false);
+    expect(report.rules[0]?.cases).toEqual([]);
   });
 });
 

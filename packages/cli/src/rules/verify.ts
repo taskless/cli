@@ -11,7 +11,9 @@ import { pathPrefixed, schemaLayer } from "../schemas/layer";
 import {
   casePassed,
   describeCaseFailures,
+  describeCaseResults,
   readRuleFixtures,
+  type FixtureCaseResult,
   type FixtureCoverage,
   type FixtureFinding,
 } from "./fixtures";
@@ -87,6 +89,8 @@ export interface TestLayerResult extends LayerResult {
   fixtures: FixtureCoverage;
   /** Every finding the cases produced, each tagged with its bucket. */
   findings: FixtureFinding[];
+  /** Every case's verdict. Empty when the cases did not run. */
+  cases: FixtureCaseResult[];
 }
 
 export interface VerifyResult {
@@ -423,6 +427,7 @@ async function runTests(cwd: string, ruleId: string): Promise<TestLayerResult> {
       failed: 0,
       fixtures: run.coverage,
       findings,
+      cases: [],
     };
   }
   const errors = describeCaseFailures(cwd, run.outcomes, run.scope);
@@ -434,6 +439,7 @@ async function runTests(cwd: string, ruleId: string): Promise<TestLayerResult> {
     failed: run.outcomes.length - passed,
     fixtures: run.coverage,
     findings,
+    cases: await describeCaseResults(cwd, run.outcomes, run.scope),
   };
 }
 
@@ -454,6 +460,7 @@ async function runTestLayer(
       failed: 0,
       fixtures: "none",
       findings: [],
+      cases: [],
     };
   }
   if (hasTestFile) return runTests(cwd, ruleId);
@@ -464,6 +471,7 @@ async function runTestLayer(
     failed: 0,
     fixtures: "none",
     findings: [],
+    cases: [],
   };
 }
 
@@ -502,6 +510,7 @@ export async function verifyRule(
         failed: 0,
         fixtures: "none",
         findings: [],
+        cases: [],
       },
     };
   }
@@ -540,6 +549,7 @@ export async function verifyRule(
         failed: 0,
         fixtures: "none",
         findings: [],
+        cases: [],
       },
     };
   }
@@ -564,6 +574,7 @@ export async function verifyRule(
         failed: 0,
         fixtures: "none",
         findings: [],
+        cases: [],
       },
     };
   }
