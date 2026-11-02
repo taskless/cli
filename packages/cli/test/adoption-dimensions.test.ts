@@ -10,6 +10,7 @@ import {
   UNKNOWN_DIMENSION,
   isContinuousIntegration,
   resolveCiProvider,
+  resolveRunEnvironment,
   resolveLanguageStack,
   resolveRepositoryId,
   resolveWorkspaceId,
@@ -190,6 +191,28 @@ describe("the CI dimensions", () => {
         JENKINS_URL: "x",
       })
     ).toBe("github_actions");
+  });
+});
+
+describe("resolveRunEnvironment", () => {
+  it("states a local run as ci:false with no provider", () => {
+    expect(resolveRunEnvironment({})).toEqual({ ci: false });
+    expect(
+      resolveRunEnvironment({ CI: "false", GITHUB_ACTIONS: "true" })
+    ).toEqual({ ci: false });
+  });
+
+  it("names a recognized provider in the service's hyphenated spelling", () => {
+    expect(
+      resolveRunEnvironment({ CI: "true", GITHUB_ACTIONS: "true" })
+    ).toEqual({ ci: true, provider: "github-actions" });
+    expect(
+      resolveRunEnvironment({ CI: "1", BITBUCKET_BUILD_NUMBER: "7" })
+    ).toEqual({ ci: true, provider: "bitbucket-pipelines" });
+  });
+
+  it("omits an unrecognized provider rather than sending the sentinel", () => {
+    expect(resolveRunEnvironment({ CI: "true" })).toEqual({ ci: true });
   });
 });
 

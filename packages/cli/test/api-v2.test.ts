@@ -79,6 +79,34 @@ describe("v2 client", () => {
       expect(request.headers.get("authorization")).toBe("Bearer tok");
     });
 
+    it("states the run environment on every reconcile, CI or not", async () => {
+      // Stubbed both ways so the assertion does not depend on whether the
+      // suite itself happens to run in CI.
+      vi.stubEnv("CI", "true");
+      vi.stubEnv("GITHUB_ACTIONS", "true");
+      respond(200, { rules: [], unknown: [], entitlement: {} });
+      await reconcileRules("tok", {
+        orgId: "o",
+        repositoryUrl: REPO,
+        rules: [],
+      });
+      expect(await sent().json()).toEqual({
+        orgId: "o",
+        repositoryUrl: REPO,
+        rules: [],
+        environment: { ci: true, provider: "github-actions" },
+      });
+
+      fetchMock.mockClear();
+      vi.stubEnv("CI", "");
+      vi.stubEnv("GITHUB_ACTIONS", "");
+      respond(200, { rules: [], unknown: [], entitlement: {} });
+      await reconcileRules("tok", { repositoryUrl: REPO, rules: [] });
+      const local = (await sent().json()) as { environment?: unknown };
+      expect(local.environment).toEqual({ ci: false });
+      vi.unstubAllEnvs();
+    });
+
     it("puts the repository in the query for a GET, never the path", async () => {
       respond(200, SERVED);
       await fetchRule("tok", "no-eval-3fa9c21b", { repositoryUrl: REPO });
