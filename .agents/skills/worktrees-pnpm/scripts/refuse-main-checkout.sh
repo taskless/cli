@@ -12,13 +12,16 @@
 # directory. This does not care what branch is checked out, so it also stops a
 # commit to a feature branch that someone checked out in the primary tree.
 #
-# Not enforced in CI: the runners commit from a plain clone (changeset version
-# PRs, review actions), and a plain clone is a primary checkout.
+# Not enforced on GitHub Actions: the runners commit from a plain clone
+# (changeset version PRs, review actions), and a plain clone is a primary
+# checkout. The skip keys on GITHUB_ACTIONS, which the runner sets itself,
+# rather than CI, which any shell exports and which no instruction names, so it
+# would be a quieter bypass than --no-verify.
 #
-# Escape hatch for a deliberate commit here: git commit --no-verify
+# Escape hatch for a person's deliberate commit here: git commit --no-verify
 set -eu
 
-if [ -n "${CI:-}" ]; then
+if [ "${GITHUB_ACTIONS:-}" = "true" ]; then
   exit 0
 fi
 
@@ -37,8 +40,11 @@ Refusing to commit in the primary checkout ($top).
 
 Work in a worktree instead:
   git fetch origin +refs/heads/main:refs/remotes/origin/main
-  git worktree add -b <branch> .agents/.worktrees/<name> origin/main
+  git worktree add --no-track -b <branch> .agents/.worktrees/<name> origin/main
   cd .agents/.worktrees/<name> && pnpm install
+
+--no-track keeps the branch from tracking origin/main, so a bare git push
+cannot target main.
 
 To commit here deliberately: git commit --no-verify
 EOF
