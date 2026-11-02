@@ -380,11 +380,21 @@ export interface FixtureCaseResult {
 const CASE_FILE_LIMIT_BYTES = 64 * 1024;
 
 /**
+ * Strict, so bytes that are not UTF-8 throw instead of decoding to U+FFFD, and
+ * BOM-preserving, so a file that decodes comes back exactly as it is on disk.
+ */
+const CASE_FILE_DECODER = new TextDecoder("utf-8", {
+  fatal: true,
+  ignoreBOM: true,
+});
+
+/**
  * A case's files, for a report reader who wants to see what failed.
  *
- * Text only and bounded: a file over {@link CASE_FILE_LIMIT_BYTES} or holding
- * a NUL byte is left out rather than truncated, since a truncated fixture
- * misrepresents the case it came from. Operating-system metadata is skipped
+ * Text only and bounded: a file over {@link CASE_FILE_LIMIT_BYTES}, holding
+ * a NUL byte, or not valid UTF-8 is left out rather than truncated or decoded
+ * with replacement characters, since either misrepresents the case it came
+ * from. Operating-system metadata is skipped
  * for the reason {@link NOT_FIXTURES} gives. Never rejects: the files are
  * context for a verdict already reached, so a file that cannot be read is
  * left out rather than turning a report into a failure.
@@ -406,8 +416,9 @@ export async function readCaseFiles(
     try {
       const { size } = await stat(absolute);
       if (size > CASE_FILE_LIMIT_BYTES) continue;
-      const content = await readFile(absolute, "utf8");
-      if (content.includes("\0")) continue;
+      const bytes = await readFile(absolute);
+      if (bytes.includes(0)) continue;
+      const content = CASE_FILE_DECODER.decode(bytes);
       files.push({ path: projectRelative(cwd, absolute), content });
     } catch {
       continue;
