@@ -4,6 +4,7 @@ import { z } from "zod";
 import type { paths } from "../generated/api-v2";
 import { getApiBaseUrl } from "./config";
 import { parseRefusal, stripControlCharacters, type Refusal } from "./refusal";
+import { resolveRunEnvironment } from "../util/adoption-dimensions";
 import { isRecord } from "../util/is-record";
 import { CLI_VERSION, CLI_VERSION_HEADER } from "../version";
 
@@ -558,6 +559,21 @@ export type ReconcileBody = NonNullable<
   Operation<"/cli/api/v2/reconcile", "post">["requestBody"]
 >["content"]["application/json"];
 
+/**
+ * `environment` on the reconcile body, declared here until the vendored schema
+ * is refreshed.
+ *
+ * The live `/cli/api/v2/__schema` already publishes it as optional
+ * (`{ ci?: boolean; provider?: string }`, no other keys). Regenerating to pick
+ * it up would also vendor error codes the service has added since
+ * (`github_forbidden`, `github_unavailable`, `cli_upgrade_required`), which
+ * every v2 client must then handle; that is its own change. Once the schema
+ * is re-vendored this intersection is redundant and can be deleted.
+ */
+type ReconcileRequest = ReconcileBody & {
+  environment?: { ci?: boolean; provider?: string };
+};
+
 export type ReconcileResult = OkBody<"/cli/api/v2/reconcile", "post">;
 
 export type ReconcileCode = ErrorCode<"/cli/api/v2/reconcile", "post">;
@@ -579,8 +595,15 @@ export function reconcileRules(
   body: ReconcileBody
 ): Promise<V2Outcome<ReconcileResult, ReconcileCode>> {
   const client = createV2Client(token);
+  // Attached here rather than by each caller, so no reconcile can be sent
+  // without it. The service only records when a repository last reconciled
+  // from CI; verdicts are identical with or without it.
+  const request: ReconcileRequest = {
+    ...body,
+    environment: resolveRunEnvironment(),
+  };
   return settle<ReconcileResult, ReconcileCode>(
-    () => client.POST("/cli/api/v2/reconcile", { body }),
+    () => client.POST("/cli/api/v2/reconcile", { body: request }),
     RECONCILE_CODES,
     acceptObject
   );

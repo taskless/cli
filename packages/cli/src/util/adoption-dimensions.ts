@@ -150,6 +150,31 @@ export function resolveCiProvider(
 }
 
 /**
+ * Where the process is running, as the v2 reconcile body states it.
+ *
+ * The same detection telemetry reports as `ci` / `ciProvider`, so the two can
+ * never disagree about whether a run was CI. Only the spelling differs: the
+ * service's published schema names providers with hyphens (`github-actions`),
+ * while telemetry keeps its established underscores, which existing dashboards
+ * already group by.
+ *
+ * `provider` is omitted rather than sentinelled when there is no CI or the
+ * provider is not recognised. The sentinels exist to keep telemetry aggregates
+ * countable; on the wire they would be values the service has to know to
+ * ignore.
+ */
+export function resolveRunEnvironment(
+  environment: NodeJS.ProcessEnv = process.env
+): { ci: boolean; provider?: string } {
+  const ci = isContinuousIntegration(environment);
+  const provider = resolveCiProvider(environment);
+  if (!ci || provider === NO_CI_PROVIDER || provider === UNKNOWN_DIMENSION) {
+    return { ci };
+  }
+  return { ci, provider: provider.replaceAll("_", "-") };
+}
+
+/**
  * Node's manifest, which `LANGUAGE_MARKERS` has no entry for.
  *
  * The detection scan derives JavaScript and TypeScript from `package.json`
