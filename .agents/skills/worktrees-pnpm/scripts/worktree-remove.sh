@@ -22,7 +22,12 @@ worktree_path=$(printf '%s' "$payload" | jq -r '.worktree_path // empty')
 [ -n "$worktree_path" ] || exit 0
 [ -d "$worktree_path" ] || exit 0
 
-repo_root=$(git -C "$worktree_path" rev-parse --path-format=absolute --git-common-dir 2>/dev/null | xargs dirname) || exit 0
+# Resolved physically rather than with `rev-parse --path-format=absolute`, which
+# git before 2.31 rejects; that failure exited 0 here and silently left every
+# worktree in place. --git-common-dir can print a path relative to the worktree,
+# so it is resolved from inside it.
+common_dir=$(cd "$worktree_path" && cd "$(git rev-parse --git-common-dir 2>/dev/null)" && pwd -P) || exit 0
+repo_root=$(dirname "$common_dir")
 
 # Refuse to discard uncommitted changes. `git worktree remove` without --force
 # already refuses, but check explicitly so the reason is greppable in debug logs.

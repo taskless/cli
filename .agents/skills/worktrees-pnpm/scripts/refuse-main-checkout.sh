@@ -22,9 +22,13 @@ if [ -n "${CI:-}" ]; then
   exit 0
 fi
 
-dirs=$(git rev-parse --path-format=absolute --git-dir --git-common-dir)
-git_dir=$(printf '%s\n' "$dirs" | sed -n 1p)
-common_dir=$(printf '%s\n' "$dirs" | sed -n 2p)
+# Both paths are resolved physically rather than with
+# `rev-parse --path-format=absolute`, which git before 2.31 rejects. Under
+# `set -e` that rejection would fail the hook everywhere, worktrees included,
+# leaving --no-verify as the only way to commit. `pwd -P` also settles symlinks
+# and relative output, so the comparison is path to path.
+git_dir=$(cd "$(git rev-parse --git-dir)" && pwd -P)
+common_dir=$(cd "$(git rev-parse --git-common-dir)" && pwd -P)
 
 if [ "$git_dir" = "$common_dir" ]; then
   top=$(git rev-parse --show-toplevel)
