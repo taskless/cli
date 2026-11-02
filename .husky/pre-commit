@@ -1,7 +1,11 @@
-guard=.agents/skills/worktrees-pnpm/scripts/refuse-main-checkout.sh
-if [ ! -f "$guard" ]; then
-  echo "pre-commit: $guard is missing. Run pnpm install (or pnpm dotagents install) first." >&2
-  exit 1
+# GitHub Actions skips the dotagents install (postinstall checks CI), so the
+# skill's guard may be absent there; the guard exempts Actions anyway.
+if [ "${GITHUB_ACTIONS:-}" != "true" ]; then
+  guard=.agents/skills/worktrees-pnpm/scripts/refuse-main-checkout.sh
+  if [ ! -f "$guard" ]; then
+    echo "pre-commit: $guard is missing. Run pnpm install (or pnpm dotagents install) first." >&2
+    exit 1
+  fi
+  sh "$guard" || exit 1
 fi
-sh "$guard" || exit 1
 pnpm exec lint-staged
