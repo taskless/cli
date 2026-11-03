@@ -832,7 +832,6 @@ export function oneCommandPerCall(invocation?: string): string {
   );
 }
 
-/** The invocation a render should use, resolved the same way `TASKLESS_CLI` is. */
 /**
  * The invocation a rendering spells commands with: the caller's, else the
  * marker a released build uses when it cannot know its launcher, else this
