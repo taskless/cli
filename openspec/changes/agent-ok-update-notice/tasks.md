@@ -10,7 +10,7 @@
 
 ## 3. `check` notice
 
-- [ ] 3.1 In `commands/check.ts`, when `isCiEnvironment(process.env.CI)` is false, start `measureEnvironment` alongside the scan, await it before printing notices, and publish one out-of-date notice through the existing notice path. Verify with tests: the notice appears in text and in `--json` `notices`; the exit code and results are unchanged; nothing is measured in CI; a failed lookup changes nothing.
+- [x] 3.1 In `commands/check.ts`, when `isCiEnvironment(process.env.CI)` is false, start `measureEnvironment` alongside the scan, await it before printing notices, and publish one out-of-date notice through the existing notice path. Verify with tests: the notice appears in text and in `--json` `notices`; the exit code and results are unchanged; nothing is measured in CI; a failed lookup changes nothing.
 
 ## 4. Skill and release
 

@@ -46,7 +46,7 @@ async function runAgent(
  * for a registry that answers with nothing usable. The suite runs as a
  * release build, so without this `agent ok` would ask the real registry.
  */
-function stubRegistry(latest: string | undefined) {
+function stubRegistry(latest?: string) {
   const fetcher = vi.fn(() =>
     Promise.resolve(
       latest === undefined

@@ -117,11 +117,12 @@ export async function measureEnvironment(
   options: MeasureOptions
 ): Promise<EnvironmentMeasurement> {
   const directory = join(options.cwd, ".taskless");
-  const project = await exists(directory);
+  // Outside a `.taskless/` project there is no skill or rules state to judge.
+  if (!(await exists(directory))) return { cli: await measureCli(options) };
   const [cli, skill, rules] = await Promise.all([
     measureCli(options),
-    project ? measureSkill(options.cwd) : Promise.resolve(),
-    project ? measureRules(directory, options.cwd) : Promise.resolve(),
+    measureSkill(options.cwd),
+    measureRules(directory, options.cwd),
   ]);
   return { cli, skill, rules };
 }
