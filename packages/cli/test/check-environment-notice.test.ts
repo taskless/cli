@@ -61,6 +61,7 @@ describe("check out-of-date notice", () => {
     await cp(fixturesDirectory, project, { recursive: true });
     await migrateFixture(["-d", project]);
     measureEnvironment.mockReset();
+    vi.stubEnv("NO_UPDATE_NOTIFIER", "");
     process.exitCode = undefined;
     logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
     errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
@@ -133,6 +134,26 @@ describe("check out-of-date notice", () => {
     expect(json().notices ?? []).not.toContainEqual(
       expect.stringContaining("out of date")
     );
+  });
+
+  it("does not measure under NO_UPDATE_NOTIFIER", async () => {
+    vi.stubEnv("NO_UPDATE_NOTIFIER", "1");
+    measureEnvironment.mockResolvedValue(NEWER_CLI);
+    await check("--json");
+    expect(measureEnvironment).not.toHaveBeenCalled();
+  });
+
+  it("publishes the notice as one line", async () => {
+    measureEnvironment.mockResolvedValue({
+      ...NEWER_CLI,
+      skill: [{ name: "taskless", installed: "0.9.0", current: "1.0.0" }],
+    });
+    await check("--json");
+    const added = (json().notices ?? []).filter((notice) =>
+      notice.includes("out of date")
+    );
+    expect(added).toHaveLength(1);
+    expect(added[0]).not.toContain("\n");
   });
 
   it("completes normally when the measurement fails", async () => {
