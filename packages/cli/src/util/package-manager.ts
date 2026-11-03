@@ -140,6 +140,19 @@ const LAUNCHER_COMMANDS: Record<Launcher, string> = {
   "pnpm-dlx": "pnpm dlx",
 };
 
+/**
+ * The command word of the launcher that started this process (`npx`,
+ * `pnpm dlx`), or `undefined` when nothing says. For spelling a command that
+ * runs a DIFFERENT version of this package, where the pinned invocation is
+ * the wrong thing to reuse.
+ */
+export function detectLauncherCommand(
+  context: LauncherContext
+): string | undefined {
+  const detected = detectLauncher(context);
+  return detected === undefined ? undefined : LAUNCHER_COMMANDS[detected];
+}
+
 /** The prefix a launcher-form build invocation carries. */
 const NPX_PREFIX = "npx ";
 
