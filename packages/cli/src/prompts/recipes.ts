@@ -109,7 +109,7 @@ const TOPIC_INPUT_SCHEMAS: Record<string, z.ZodType> = {
 };
 
 /** Agent-fill marker used when the caller does not supply a real value. */
-const PACKAGE_MANAGER_DLX_MARKER = "<package-manager-dlx>";
+export const PACKAGE_MANAGER_DLX_MARKER = "<package-manager-dlx>";
 
 /**
  * Agent-fill marker for the CLI invocation itself.
@@ -173,6 +173,21 @@ export interface HostTool {
    * Ignored when `applicable` is true.
    */
   reason?: string;
+}
+
+/**
+ * One step that brings the Taskless environment up to date, as the CLI
+ * measured and worded it (`src/install/freshness.ts`). Pre-rendered on the CLI
+ * side because measuring it reads the filesystem and the network, which this
+ * module may not do; the renderer only lays the steps out.
+ */
+export interface EnvironmentStep {
+  /** Which part is out of date. */
+  part: "cli" | "skill" | "rules";
+  /** What is out of date and why it matters, in a sentence or two. */
+  text: string;
+  /** The exact command that fixes it, or absent when another step's does. */
+  command?: string;
 }
 
 /** Options accepted by the shared render path. */
@@ -268,6 +283,15 @@ export interface RecipeOptions {
    * @default false
    */
   directive?: boolean;
+  /**
+   * What the CLI measured about the Taskless environment when the recipe was
+   * fetched, for the `ok` topic's passage. An empty `steps` means up to date.
+   *
+   * AN ARGUMENT, NEVER AN AMBIENT READ, like {@link hostTools}. Omitting it
+   * renders a passage that says the environment was not checked, never one
+   * that claims either outcome.
+   */
+  environment?: { steps: EnvironmentStep[] };
   /**
    * What the host has on its `PATH`, for the passages that condition on it.
    *
@@ -508,6 +532,51 @@ export const HOST_TOOL_VARIABLES: ReadonlySet<string> = new Set([
 export const LINTER_VARIABLES: ReadonlySet<string> = new Set([
   "LEGACY_LINTERS",
 ]);
+
+/**
+ * The variable names whose value depends on {@link RecipeOptions.environment}.
+ * Exported for the same reason as {@link HOST_TOOL_VARIABLES}: the `agent`
+ * command asks the template whether the measurement is worth running.
+ */
+export const ENVIRONMENT_VARIABLES: ReadonlySet<string> = new Set([
+  "ENVIRONMENT_STATUS",
+]);
+
+/**
+ * The `ok` topic's passage: up to date, out of date with its steps, or (with
+ * nothing measured) not checked. The two measured sentences are fixed text a
+ * caller can match on.
+ */
+function environmentStatusBlock(
+  environment: RecipeOptions["environment"],
+  invocation: string
+): string {
+  if (environment === undefined) {
+    return `The Taskless environment was not checked when this text was
+rendered, so it says nothing about whether Taskless is up to date.`;
+  }
+  if (environment.steps.length === 0) {
+    return "Your Taskless environment is up to date and you can proceed.";
+  }
+  const steps = environment.steps
+    .map((step, index) => {
+      const body = `${String(index + 1)}. ${step.text}`;
+      return step.command === undefined
+        ? body
+        : `${body}\n   \`\`\`\n   ${step.command}\n   \`\`\``;
+    })
+    .join("\n\n");
+  return `Your Taskless environment is out of date, the following steps are needed in order for commands to work reliably:
+
+${steps}
+
+Do not run these steps yourself. Give them to the user, once, to run
+themselves: in Claude Code by typing each command with the \`!\` prefix,
+which runs it in this session's shell, or in another terminal. A
+harness that blocks Taskless commands usually blocks these too. Then
+carry on with the user's request. When the user says they ran the
+steps, run \`${invocation} agent ok\` again to confirm.`;
+}
 
 /**
  * One paragraph per linter that has a legacy recipe, in the order `route`
@@ -764,7 +833,15 @@ export function oneCommandPerCall(invocation?: string): string {
 }
 
 /** The invocation a render should use, resolved the same way `TASKLESS_CLI` is. */
-function resolveInvocation(options: RecipeOptions): string {
+/**
+ * The invocation a rendering spells commands with: the caller's, else the
+ * marker a released build uses when it cannot know its launcher, else this
+ * build's own. Exported so a CLI-side caller pre-rendering text for a recipe
+ * (the `ok` environment steps) spells it exactly as the recipe around it.
+ */
+export function resolveInvocation(
+  options: Pick<RecipeOptions, "invocation">
+): string {
   return (
     options.invocation ??
     (isProductionInvocation() ? TASKLESS_CLI_MARKER : buildInvocation())
@@ -842,6 +919,10 @@ export function buildVariables(
       "     "
     ),
     HOST_TOOLS: indentBlock(hostToolsStep(options.hostTools), "   "),
+    ENVIRONMENT_STATUS: environmentStatusBlock(
+      options.environment,
+      resolveInvocation(options)
+    ),
     LEGACY_LINTERS: legacyLintersBlock(
       options.linters,
       options.mechanics === false

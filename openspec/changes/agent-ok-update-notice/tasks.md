@@ -1,7 +1,7 @@
 ## 1. Freshness measurement
 
-- [ ] 1.1 Add a latest-version lookup that takes a package name and an injectable `fetch`, asks the registry's dist-tags endpoint with a 1s timeout, and returns `latest` only when it is strict semver, otherwise `undefined`. Verify with unit tests covering success, a prerelease version, a non-2xx response, a throw, the timeout, a payload with no `latest`, and rejected strings (`latest`, `1.0`, `1.0.0 && echo x`, `1.0.0\n`, a leading `v`).
-- [ ] 1.2 Add `measureEnvironment({ cwd, fetch, ci })`: it runs the lookup (skipped in CI and when `buildLauncherPackage()` is `undefined`), `checkStaleness`, and `reconcileStatus` in parallel, and returns the out-of-date parts in cli/skill/rules order with their details, leaving out skill and rules when there is no `.taskless/`. Verify with unit tests for each part alone, all three together, nothing stale, no `.taskless/`, and CI (fetch never called).
+- [x] 1.1 Add a latest-version lookup that takes a package name and an injectable `fetch`, asks the registry's dist-tags endpoint with a 1s timeout, and returns `latest` only when it is strict semver, otherwise `undefined`. Verify with unit tests covering success, a prerelease version, a non-2xx response, a throw, the timeout, a payload with no `latest`, and rejected strings (`latest`, `1.0`, `1.0.0 && echo x`, `1.0.0\n`, a leading `v`).
+- [x] 1.2 Add `measureEnvironment({ cwd, fetch, ci })`: it runs the lookup (skipped in CI and when `buildLauncherPackage()` is `undefined`), `checkStaleness`, and `reconcileStatus` in parallel, and returns the out-of-date parts in cli/skill/rules order with their details, leaving out skill and rules when there is no `.taskless/`. Verify with unit tests for each part alone, all three together, nothing stale, no `.taskless/`, and CI (fetch never called).
 
 ## 2. The `ok` recipe
 
