@@ -75,7 +75,12 @@ describe("agent ok", () => {
 
   beforeEach(() => {
     capture.mockClear();
+    // Cleared so these tests can drive the lookup, which means every test in
+    // this file must stub `fetch`: the default registry answers nothing, and a
+    // test that needs a version stubs its own over it. Without this a test that
+    // never mentions the registry would reach the real one.
     vi.stubEnv("NO_UPDATE_NOTIFIER", "");
+    stubRegistry();
     process.exitCode = undefined;
     directory = mkdtempSync(join(tmpdir(), "taskless-agent-ok-"));
     logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
