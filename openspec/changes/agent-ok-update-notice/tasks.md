@@ -14,8 +14,8 @@
 
 ## 4. Skill and release
 
-- [ ] 4.1 Update the preflight section of `skills/taskless/SKILL.md`: `agent ok` returns a recipe that says whether the environment is up to date; if it is, proceed; if it is out of date, give the user the steps to run themselves (with `!` in Claude Code, or in another terminal) rather than running them, carry on with the request, and when the user says they ran them, run `agent ok` again to confirm; otherwise do not rerun the preflight once it has passed. Bump the skill version with `tsx scripts/sync-skill-versions.ts`. Verify that the skill tests pass and that `pnpm build` passes its skill-version assertion.
-- [ ] 4.2 Add a `patch` changeset for `@taskless/cli` describing the `ok` environment report and the `check` notice. Verify that `.changeset/` holds the new file.
+- [x] 4.1 Update the preflight section of `skills/taskless/SKILL.md`: `agent ok` returns a recipe that says whether the environment is up to date; if it is, proceed; if it is out of date, give the user the steps to run themselves (with `!` in Claude Code, or in another terminal) rather than running them, carry on with the request, and when the user says they ran them, run `agent ok` again to confirm; otherwise do not rerun the preflight once it has passed. Leave the skill version alone: it tracks the CLI package version, which the changeset moves at release (`scripts/sync-skill-versions.ts` is a no-op here). Verify that the skill tests pass and that `pnpm build` passes its skill-version assertion.
+- [x] 4.2 Add a `patch` changeset for `@taskless/cli` describing the `ok` environment report and the `check` notice. Verify that `.changeset/` holds the new file.
 
 ## 5. Checks
 

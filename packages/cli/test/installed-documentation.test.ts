@@ -190,6 +190,17 @@ describe("this repository's own installed Taskless docs", () => {
     const prose = skill.replaceAll(/\s+/g, " ");
     expect(prose).toContain("%(TASKLESS_CLI)s agent ok");
     expect(prose).toContain("before any other Taskless command");
+    // The preflight's environment report: both outcomes, the steps handed to
+    // the user rather than run, and the one confirming rerun.
+    expect(prose).toContain("the environment is up to date");
+    expect(prose).toContain("the environment is out of date");
+    expect(prose).toContain("Do not run them yourself");
+    expect(prose).toContain("with the `!` prefix");
+    expect(prose).toContain("another terminal");
+    expect(prose).toContain("Then carry on with the user's request");
+    expect(prose).toContain(
+      "When the user says they ran the steps, run `%(TASKLESS_CLI)s agent ok` again to confirm"
+    );
     expect(prose).toContain(
       "allow rule for exactly the invocation `%(TASKLESS_CLI)s`"
     );
