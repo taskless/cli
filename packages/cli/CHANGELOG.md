@@ -1,5 +1,21 @@
 # @taskless/cli
 
+## 0.13.5
+
+[Compare with v0.13.4](https://github.com/taskless/cli/compare/v0.13.4...v0.13.5)
+
+### Patch Changes
+
+- 2cc82a6: `taskless agent ok` is now a recipe that says whether your Taskless environment is up to date. It still confirms the CLI can run. It checks three things: whether a newer CLI is published, whether the installed skill matches this CLI, and whether the rules owe a reconcile. When all three are current it says "Your Taskless environment is up to date and you can proceed." Otherwise it lists numbered steps with the exact commands that fix each one. The Taskless skill tells the agent to hand those steps to you to run yourself (with `!` in Claude Code, or in another terminal) and to run `agent ok` again once you have. A local `taskless check` adds the same report as a single notice, without changing its results or exit code.
+
+  The newer-CLI check asks only the npm registry, once, with a one-second timeout. It accepts the answer only if it is a strict semantic version, and says nothing if the lookup fails. It is skipped in CI and when `NO_UPDATE_NOTIFIER` is set, and under `NO_UPDATE_NOTIFIER` a local `check` shows no notice at all. `agent ok` reads `.taskless/` but never writes to it.
+
+- ef2744a: Reconcile now tells Taskless whether it is running in CI. Every `POST /cli/api/v2/reconcile` carries `environment: { ci, provider? }`, using the CI detection telemetry already performs (`provider` is the hyphenated name, such as `github-actions`, when it is recognized). The service uses it only to record when a repository last reconciled from CI, which drives the dashboard's "CI set up" indicator; verdicts, entitlements and output are unchanged, and a local run sends `ci: false`.
+- 0b41364: The `no-eval-call` entry in `@taskless/cli/reference.json` now flags a call to `eval` with any number of arguments, as its prompt asks, and carries a fail case for `eval()` and for `eval(a, b)`. Previously the reference rule matched exactly one argument, so a rule generated correctly from the prompt, with fixtures on each side of the arity boundary as `create-sg-rule` recommends, was graded against a reference that did not fire on them. The prompt now names the arities it expects. The corpus `version` is unchanged: the shape is the same, only the content of one entry moved.
+- 0b2ed45: The `prefer-use-over-utilize` entry in `@taskless/cli/reference.json` now flags `utilized` and `utilization`, as its prompt asks, and carries a fail case for each. Previously the reference rule missed both, so a rule generated correctly from the prompt was graded against a reference that did not fire on those cases. The prompt now names the forms it expects. The corpus `version` is unchanged: the shape is the same, only the content of one entry moved.
+- 408b230: Update the bundled Vale to 3.26.0. `.mjs`, `.cjs`, `.mts` and `.cts` files are now read as code, so a Vale rule over them sees comments only, as it already did for `.js` and `.ts`. A phrase in a rule now matches across a line wrap, and a `spelling` rule no longer flags common technical words such as `OAuth` and `npm`.
+- 333cc04: `taskless verify --json` now reports every fixture case under each rule's new `cases` array, for `sg`, `vale` and `runtime` alike: `{ name, expected, ok, message?, files? }`, where `name` is the case's path under `tests/` (such as `fail/cast`). A failing case carries the same line `errors` prints for it as `message`, and its files as `files` (project-relative paths, the spelling `findings[].file` uses; a file over 64 KiB or one that is not text is left out). The entries are built from each runner's own per-case verdict, so a consumer no longer has to parse `errors` to learn which case failed. The field is additive: `errors` is unchanged, and `cases` is always present, empty when no case ran (for `validate`, a refused runtime run, or a rule that failed before its fixtures ran). It is also declared in the schema `@taskless/cli/schemas` publishes.
+
 ## 0.13.4
 
 [Compare with v0.13.3](https://github.com/taskless/cli/compare/v0.13.3...v0.13.4)
