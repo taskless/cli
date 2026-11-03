@@ -25,10 +25,10 @@
     "onboarded": true
   },
   "rules": {
-    "reconciledTo": "0.11.0-self",
+    "reconciledTo": "0.13.4",
     "engines": {
-      "sg": "0.45.2",
-      "vale": "3.18.0"
+      "sg": "0.51.0",
+      "vale": "3.24.0"
     }
   }
 }
