@@ -45,6 +45,8 @@ Alternatives considered: racing jsDelivr's `@latest/package.json` against the re
 
 **`NO_UPDATE_NOTIFIER` turns the lookup off.** It is the convention update-notifier and many CLIs honor, so a user who has opted out elsewhere is opted out here too. It is also how the test suite stays off the network: the suite runs as a release build with `CI` empty (so it can test local behavior), which would otherwise send every spawned `check` and `agent ok` to the registry. `vite.config.ts` sets it for every test, and the lookup's own tests clear it and stub `fetch`. This was found during implementation.
 
+**In `check`, `NO_UPDATE_NOTIFIER` silences the whole notice, and the notice is one line.** Found when the full suite ran. Fixture projects carry stale local state, so the skill and rules parts fired in tests that assert an exact notice list. More to the point, a user who opted out of update notices does not want a local one on every commit either. `agent ok` still reports local staleness under the opt-out, because the user ran the preflight on purpose. The notice also numbers its steps inline on one line, because `vale-orchestration.test.ts` holds `check`'s `--json` notices to one line each, and a consumer should not have to split an element.
+
 **`--anonymous` does not gate the lookup.** It means "skip the Taskless API"; npm is not it. Gating on it would also contradict `check`'s "--anonymous is a no-op" requirement.
 
 ## Risks / Trade-offs

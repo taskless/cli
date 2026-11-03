@@ -197,13 +197,11 @@ export function environmentNotice(
   steps: EnvironmentStep[]
 ): string | undefined {
   if (steps.length === 0) return undefined;
-  const lines = ["Your Taskless environment is out of date:"];
-  for (const step of steps) {
-    lines.push(
-      step.command === undefined
-        ? `- ${step.text}`
-        : `- ${step.text} Run: ${step.command}`
-    );
-  }
-  return lines.join("\n");
+  // One line: a `--json` consumer reads `notices` one element per notice, and
+  // text output marks it once. Steps are numbered inline instead.
+  const parts = steps.map((step, index) => {
+    const run = step.command === undefined ? "" : ` Run: ${step.command}`;
+    return `(${String(index + 1)}) ${step.text}${run}`;
+  });
+  return `Your Taskless environment is out of date: ${parts.join(" ")}`;
 }

@@ -19,5 +19,5 @@
 
 ## 5. Checks
 
-- [ ] 5.1 Run `pnpm typecheck` and `pnpm lint`, and fix anything they report.
-- [ ] 5.2 Run `pnpm build`, then `pnpm cli agent ok` in this repo and in an empty temporary directory, and `pnpm cli check` here, and confirm the recipe renders, both exit 0, the empty directory gains no `.taskless/`, and `check`'s exit code matches a run with `CI=1`.
+- [x] 5.1 Run `pnpm typecheck` and `pnpm lint`, and fix anything they report.
+- [x] 5.2 Run `pnpm build`, then `pnpm cli agent ok` in this repo and in an empty temporary directory, and `pnpm cli check` here, and confirm the recipe renders, both exit 0, the empty directory gains no `.taskless/`, and `check`'s exit code matches a run with `CI=1`.

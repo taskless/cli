@@ -204,6 +204,28 @@ function parseTimeoutMs(raw: string | undefined): number | undefined {
   return Math.round(seconds * 1000);
 }
 
+/**
+ * The out-of-date notice for a local run, or `undefined` when there is none to
+ * give. Never measured in CI, where nobody acts on it, nor under
+ * `NO_UPDATE_NOTIFIER`, the usual opt-out from update notices. Advisory: a
+ * failure to measure is no notice, never an error.
+ */
+async function outOfDateNotice(cwd: string): Promise<string | undefined> {
+  if (isCiEnvironment(process.env.CI)) return undefined;
+  if ((process.env.NO_UPDATE_NOTIFIER ?? "") !== "") return undefined;
+  try {
+    const measured = await measureEnvironment({ cwd, ci: process.env.CI });
+    return environmentNotice(
+      environmentSteps(measured, {
+        invocation: getCliPrefix(),
+        launcher: detectLauncherCommand(processLauncherContext()) ?? "npx",
+      })
+    );
+  } catch {
+    return undefined;
+  }
+}
+
 export const checkCommand = defineCommand({
   meta: {
     name: "check",
@@ -473,24 +495,7 @@ export const checkCommand = defineCommand({
       // a local run (or a git hook) waits on the registry only if the scan
       // finishes first, and never past the lookup's timeout. Started here, after
       // every early return, so a run that scans nothing leaves no request open.
-      // Never in CI, where nobody acts on it. Advisory: it cannot fail the run.
-      const environment = isCiEnvironment(process.env.CI)
-        ? Promise.resolve()
-        : measureEnvironment({
-            cwd,
-            ci: process.env.CI,
-            noUpdateNotifier: process.env.NO_UPDATE_NOTIFIER,
-          })
-            .then((measured) =>
-              environmentNotice(
-                environmentSteps(measured, {
-                  invocation: getCliPrefix(),
-                  launcher:
-                    detectLauncherCommand(processLauncherContext()) ?? "npx",
-                })
-              )
-            )
-            .catch(() => {});
+      const environment = outOfDateNotice(cwd);
 
       const preserve = Boolean(args["preserve-logs"]);
       try {

@@ -163,7 +163,10 @@ describe("measureEnvironment", () => {
     const steps = environmentSteps(await measure(registry("2.0.0")), SPELLING);
     expect(steps.map((step) => step.part)).toEqual(["cli", "skill", "rules"]);
     expect(steps[1]?.command).toBeUndefined();
-    expect(environmentNotice(steps)).toContain("Run: npx @taskless/cli@2.0.0");
+    const notice = environmentNotice(steps);
+    expect(notice).toContain("(1) ");
+    expect(notice).toContain("Run: npx @taskless/cli@2.0.0");
+    expect(notice).not.toContain("\n");
   });
 
   it("leaves out skill and rules outside a .taskless/ project", async () => {
