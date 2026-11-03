@@ -501,6 +501,38 @@ withVale("Vale vendor contract", () => {
     expect(isAbsolute(ruleError.Path ?? "")).toBe(true);
   });
 
+  it("reports every unreadable target file, one error object each, and lints the rest", () => {
+    // Depended on by: `parseValeConfigErrors` in run.ts, which reads stderr
+    // as a stream of objects rather than one document. Through 3.24.0 Vale
+    // stopped at the first unreadable document: one object, empty stdout.
+    // Since 3.26.0 (upstream b5b8e429) it lints the others, prints their
+    // alerts, exits 2, and writes one object per unreadable document. Read
+    // as one JSON document, two objects did not parse, the narrowing lost
+    // every `Path`, and the run failed with every finding gone: #300 again.
+    const bad =
+      "---\ndescription: has a colon: right here\n---\n\nJust simply do it.\n";
+    const cwd = project(
+      `${header}\n[*.md]\nrules.lvl = YES\n`,
+      { lvl: existence("simply") },
+      { "good.md": "Just simply do it.\n", "bad-1.md": bad, "bad-2.md": bad }
+    );
+    const result = runRaw(
+      cwd,
+      ["good.md", "bad-1.md", "bad-2.md"],
+      ["--no-exit"]
+    );
+    expect(result.status).toBe(2);
+    expect(Object.keys(JSON.parse(result.stdout) as object)).toEqual([
+      "good.md",
+    ]);
+    const objects = result.stderr.trim().split(/\n(?=\{)/);
+    expect(
+      objects
+        .map((object) => (JSON.parse(object) as { Path?: string }).Path)
+        .toSorted()
+    ).toEqual(["bad-1.md", "bad-2.md"]);
+  });
+
   describe("matcher semantics", () => {
     const rules = {
       "no-simply": existence("simply"),

@@ -278,6 +278,22 @@ const CONVERTER_TIER_PREFIX = "converter:";
  * extensions, so each one still needs `internal/core/format.go` read and the
  * extension probed before a row is added.
  *
+ * 3.24.0 → 3.26.0 LEARNED FOUR SPELLINGS, AND THE UPGRADE REPORT POINTED AT
+ * THE WRONG FILES. It named four readers added under `internal/lint/`, and
+ * none of them is a format: `code_js.go`, `code_ts.go` and
+ * `native_stubs_js.go` split the existing code and converter handlers by
+ * build tag for the new WebAssembly build, and `built.go` lints a converted
+ * format from HTML a JavaScript host supplies, which only that build reaches.
+ * The native CLI routes exactly as before through all four. The learned
+ * formats came from a two-line edit to `internal/core/format.go` (upstream
+ * a07aa34c), which no added file announces: `.mjs` and `.cjs` now route to
+ * `.js`, and `.mts` and `.cts` to `.ts`, so all four left the unnamed
+ * plaintext fallback for the `comment` tier and are new rows below. The
+ * benign narrowing again: measured on both binaries, a rule matching
+ * `[*.mjs]` fired on `const simply = 1` through 3.24.0 and reads only the
+ * comment on 3.26.0. Read the `format.go` diff on every bump, not only the
+ * added files.
+ *
  * 3.22.0 → 3.23.0 LEARNED ONE FORMAT, AND NO TEST NOTICED UNTIL IT WAS
  * PROBED. Every existing row was re-probed against the 3.23.0 binary and none
  * moved, so the contract suite was green. The source check is what shows the
@@ -406,10 +422,12 @@ export const VALE_FORMAT_TIERS: Readonly<Record<string, ValeFormatTier>> = {
   ".c++": "comment",
   ".bsh": "comment",
   ".cc": "comment",
+  ".cjs": "comment",
   ".clj": "comment",
   ".cpp": "comment",
   ".cs": "comment",
   ".css": "comment",
+  ".cts": "comment",
   ".csx": "comment",
   ".cxx": "comment",
   ".ex": "comment",
@@ -427,6 +445,8 @@ export const VALE_FORMAT_TIERS: Readonly<Record<string, ValeFormatTier>> = {
   ".kts": "comment",
   ".less": "comment",
   ".lua": "comment",
+  ".mjs": "comment",
+  ".mts": "comment",
   ".php": "comment",
   ".pl": "comment",
   ".pm": "comment",
