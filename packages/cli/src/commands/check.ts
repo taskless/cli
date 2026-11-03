@@ -25,7 +25,16 @@ import { resolveRuleSelection, type RuleSelection } from "../rules/rule-filter";
 import { scanProject } from "../rules/scan-project";
 import { isCiEnvironment } from "../util/interactive";
 import { markNotice } from "../util/notices";
-import { getCliPrefix } from "../util/package-manager";
+import {
+  detectLauncherCommand,
+  getCliPrefix,
+  processLauncherContext,
+} from "../util/package-manager";
+import {
+  environmentNotice,
+  environmentSteps,
+  measureEnvironment,
+} from "../install/freshness";
 
 async function pathExists(absolutePath: string): Promise<boolean> {
   try {
@@ -460,6 +469,29 @@ export const checkCommand = defineCommand({
         return;
       }
 
+      // Whether Taskless itself is out of date, measured alongside the scan so
+      // a local run (or a git hook) waits on the registry only if the scan
+      // finishes first, and never past the lookup's timeout. Started here, after
+      // every early return, so a run that scans nothing leaves no request open.
+      // Never in CI, where nobody acts on it. Advisory: it cannot fail the run.
+      const environment = isCiEnvironment(process.env.CI)
+        ? Promise.resolve()
+        : measureEnvironment({
+            cwd,
+            ci: process.env.CI,
+            noUpdateNotifier: process.env.NO_UPDATE_NOTIFIER,
+          })
+            .then((measured) =>
+              environmentNotice(
+                environmentSteps(measured, {
+                  invocation: getCliPrefix(),
+                  launcher:
+                    detectLauncherCommand(processLauncherContext()) ?? "npx",
+                })
+              )
+            )
+            .catch(() => {});
+
       const preserve = Boolean(args["preserve-logs"]);
       try {
         const { plan, dispatched, runDirectory } = await scanProject(cwd, {
@@ -482,10 +514,13 @@ export const checkCommand = defineCommand({
         const results = dispatched.results;
 
         for (const notice of dispatched.notices) warnNotice(notice);
+        const outOfDate = await environment;
+        if (outOfDate !== undefined) warnNotice(outOfDate);
         const runNotices = [
           ...pathNotices,
           ...plan.notices,
           ...dispatched.notices,
+          ...(outOfDate === undefined ? [] : [outOfDate]),
         ];
         for (const failure of dispatched.failures) warn(`Error: ${failure}`);
 
