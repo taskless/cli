@@ -11,17 +11,22 @@ import {
 import { getTelemetry } from "../telemetry";
 import { detectHostTools } from "../detect/host-tools";
 import { detectRepository } from "../detect/scan";
+import { environmentSteps, measureEnvironment } from "../install/freshness";
 import {
+  ENVIRONMENT_VARIABLES,
   HOST_TOOL_VARIABLES,
   LINTER_VARIABLES,
   getRawRecipe,
   getRecipe,
+  PACKAGE_MANAGER_DLX_MARKER,
+  resolveInvocation,
   toolVariants,
 } from "../prompts/recipes";
 import { withSurveyInvite } from "../survey/invite";
 import { applyCliInvocation } from "../util/invocation";
 import {
   detectCliInvocation,
+  detectLauncherCommand,
   getCliPrefix,
   processLauncherContext,
 } from "../util/package-manager";
@@ -53,18 +58,15 @@ const FEEDBACK_TOPICS: ReadonlyArray<[string, string]> = [
 ];
 
 /**
- * The preflight topic. Built into this command rather than kept as a recipe
- * file, because it is a confirmation and not a recipe: the recipe template's
- * sections and the fetch-time directive ("fetch again next task") would wrap
- * one line in instructions that do not apply to it.
+ * The preflight topic, listed under its own heading in the index. It is an
+ * ordinary recipe (`agent/ok.md`) served through the same path as every other
+ * topic, with two differences handled below: its body is the environment
+ * report measured at fetch time, and it carries no fetch-time directive,
+ * because the skill runs it once per session rather than once per task.
  *
- * Reaching it at all is the signal. A harness that refuses to run the CLI
- * (a permission check that blocks download-and-run commands, say) refuses
- * this first, before an agent has started any work, rather than halfway into
- * a task whose consent question sits inside a recipe it never received. So it
- * touches no project state (no `.taskless/`, manifest, or auth) and is safe to
- * run anywhere, first. Its one side effect is the intent event every topic
- * captures, with telemetry's usual anonymous-id write.
+ * Reaching it at all is the confirmation. A harness that refuses to run the
+ * CLI refuses this first, before an agent has started any work. It reads
+ * `.taskless/` to judge the environment and writes nothing there.
  */
 const PREFLIGHT_TOPIC: [string, string] = [
   "ok",
@@ -253,20 +255,6 @@ export function createAgentCommand(subCommands: SubCommandsDef) {
 
       const key = positionals[0]!;
 
-      if (key === PREFLIGHT_TOPIC[0]) {
-        telemetry.capture("cli_agent", { topic: key });
-        // The detected invocation, the same value recipes are rendered with,
-        // so the preflight and every later recipe spell the CLI alike. When
-        // the launcher is unknown, say so rather than fall back to `npx` as
-        // `getCliPrefix()` would: an agent copies this text, and a guessed
-        // launcher is worse than none.
-        const invocation = detectCliInvocation(processLauncherContext());
-        console.log(
-          `This message confirms you can run Taskless via ${invocation ?? "the command you just ran"}.`
-        );
-        return;
-      }
-
       const tool = args.tool as string | undefined;
       // Refusal is a statement about a topic's tool variants, so it applies
       // only to a topic that has them. Elsewhere `--tool` selects nothing and
@@ -314,17 +302,41 @@ export function createAgentCommand(subCommands: SubCommandsDef) {
         ? await detectRepository(cwd)
         : undefined;
       const linters = scan?.linters.map((linter) => linter.name);
+      // The environment report: what is out of date, measured now. Only the
+      // topics whose template asks for it pay for the registry lookup.
+      const launcherContext = processLauncherContext();
+      const environment = template?.variables.some((name) =>
+        ENVIRONMENT_VARIABLES.has(name)
+      )
+        ? {
+            steps: environmentSteps(
+              await measureEnvironment({
+                cwd,
+                ci: process.env.CI,
+                noUpdateNotifier: process.env.NO_UPDATE_NOTIFIER,
+              }),
+              {
+                invocation: resolveInvocation({ invocation }),
+                launcher:
+                  detectLauncherCommand(launcherContext) ??
+                  PACKAGE_MANAGER_DLX_MARKER,
+              }
+            ),
+          }
+        : undefined;
       const recipe = getRecipe(key, {
         anonymous: args.anonymous,
         tool,
         invocation,
         hostTools,
         linters,
+        environment,
         // What this command serves IS a fetch, so the served text says so:
         // resolved now, fetch again next task, and a session that installed
         // or upgraded mid-way holds a stale skill. The prompts export leaves
         // it off; see `RecipeOptions.directive`.
-        directive: true,
+        // Except the preflight, which runs once per session.
+        directive: key !== PREFLIGHT_TOPIC[0],
       });
 
       if (recipe) {

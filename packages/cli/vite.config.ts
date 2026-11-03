@@ -563,6 +563,10 @@ export default defineConfig({
       TASKLESS_TELEMETRY_DISABLED: "1",
       DO_NOT_TRACK: "1",
       CI: "",
+      // No test reaches the npm registry. `agent ok` and local `check` ask
+      // it for the latest version; tests of that lookup clear this and stub
+      // `fetch` instead.
+      NO_UPDATE_NOTIFIER: "1",
     },
     // Two projects, because `__TASKLESS_CLI__` is a compile-time define rather
     // than a value a test can stub: whatever this config resolves is what every

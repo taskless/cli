@@ -182,6 +182,19 @@ describe("measureEnvironment", () => {
     expect(measured.cli).toBeUndefined();
   });
 
+  it("never asks the registry when NO_UPDATE_NOTIFIER is set", async () => {
+    const fetcher = registry("9.9.9");
+    const measured = await measureEnvironment({
+      cwd: directory,
+      fetch: fetcher,
+      noUpdateNotifier: "1",
+      running: "1.0.0",
+      packageName: "@taskless/cli",
+    });
+    expect(fetcher).not.toHaveBeenCalled();
+    expect(measured.cli).toBeUndefined();
+  });
+
   it("never asks the registry for a build that is not a package", async () => {
     const fetcher = registry("9.9.9");
     const measured = await measureEnvironment({
