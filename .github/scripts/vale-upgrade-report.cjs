@@ -34,6 +34,14 @@
  * run. Listing the files upstream ADDED under `internal/lint/` is the source
  * check, mechanically.
  *
+ * AND THE ROUTING TABLE, BECAUSE A FORMAT CAN BE LEARNED WITHOUT A NEW FILE.
+ * 3.26.0 sent `.mjs`, `.cjs`, `.mts` and `.cts` to the existing JavaScript and
+ * TypeScript readers with a two-line edit to `FormatByExtension` in
+ * `internal/core/format.go`, while the four files it did add were build-tag
+ * splits for a WebAssembly build that the native CLI never reaches. The list
+ * above pointed a reviewer at four non-formats and said nothing about four
+ * real ones. So the report also prints that file's patch, whenever it changed.
+ *
  * Both halves report and never throw. A failed fetch or a missing test report
  * is said in the body rather than failing the run: the proposal is still worth
  * opening, and "we could not check" must not read like "nothing to see".
@@ -42,6 +50,9 @@
 const { readFileSync, writeFileSync } = require("node:fs");
 
 const { baseVersion } = require("./vale-upgrade-detect.cjs");
+
+/** Where upstream maps an extension to the reader that handles it. */
+const ROUTING_FILE = "internal/core/format.go";
 
 /** The compare API returns at most this many files, with no marker when cut. */
 const COMPARE_FILE_CAP = 300;
@@ -66,7 +77,9 @@ function summarizeContract(report) {
     for (const assertion of file.assertionResults ?? []) {
       if (assertion.status !== "failed") continue;
       failed.push({
-        file: String(file.name ?? "").split("/").pop(),
+        file: String(file.name ?? "")
+          .split("/")
+          .pop(),
         name: assertion.fullName,
         message: String(assertion.failureMessages?.[0] ?? "").split("\n")[0],
       });
@@ -105,24 +118,32 @@ async function fetchAddedReaders(repository, from, to) {
     throw new Error(`GET ${url} responded ${response.status}`);
   }
   const files = (await response.json()).files ?? [];
+  const routing = files.find((file) => file.filename === ROUTING_FILE);
   return {
     added: files
       .filter((file) => file.status === "added" && isReader(file.filename))
       .map((file) => file.filename)
       .toSorted(),
+    // The patch text, or `undefined` when the file did not change. The API
+    // omits `patch` for a diff too large to inline, which reads as a change
+    // with nothing to show rather than as no change.
+    routing:
+      routing === undefined
+        ? undefined
+        : (routing.patch ?? "(patch too large to inline; read it in the diff)"),
     complete: files.length < COMPARE_FILE_CAP,
     url: `https://github.com/${repository}/compare/v${from}...v${to}`,
   };
 }
 
 /** A fence no line of `text` can close early. */
-function fence(text) {
+function fence(text, info = "") {
   const longest = Math.max(
     2,
     ...[...text.matchAll(/`+/g)].map((match) => match[0].length)
   );
   const marker = "`".repeat(longest + 1);
-  return `${marker}\n${text}\n${marker}`;
+  return `${marker}${info}\n${text}\n${marker}`;
 }
 
 function formatContract(contract) {
@@ -147,11 +168,20 @@ function formatReaders(readers, error) {
   const caveat = readers.complete
     ? ""
     : `\n\nThe comparison touched ${COMPARE_FILE_CAP} or more files, where the API stops listing them, so this may be incomplete. Check [the full diff](${readers.url}).`;
+  const routing = formatRouting(readers.routing);
   if (readers.added.length === 0) {
-    return `${heading}\n\nNone under \`${READER_PREFIX}\` ([diff](${readers.url})). No extension can have changed tier without a row that re-probes it.${caveat}\n`;
+    return `${heading}\n\nNone under \`${READER_PREFIX}\` ([diff](${readers.url})).${caveat}\n${routing}`;
   }
   const list = readers.added.map((file) => `- \`${file}\``).join("\n");
-  return `${heading}\n\n${list}\n\nEach can route an extension that \`VALE_FORMAT_TIERS\` in \`capabilities.ts\` has no row for, and an unlisted extension is never probed. Find where \`internal/core/format.go\` sends it, probe the extension against the new binary, and add a row. A reader that needs an external converter is the dangerous case: the missing row becomes a crash that aborts every Vale rule in the run. ([diff](${readers.url}))${caveat}\n`;
+  return `${heading}\n\n${list}\n\nEach can route an extension that \`VALE_FORMAT_TIERS\` in \`capabilities.ts\` has no row for, and an unlisted extension is never probed. Find where \`${ROUTING_FILE}\` sends it, probe the extension against the new binary, and add a row. A reader that needs an external converter is the dangerous case: the missing row becomes a crash that aborts every Vale rule in the run. A file whose first line is \`//go:build js\` belongs to the WebAssembly build only, and the CLI never reaches it. ([diff](${readers.url}))${caveat}\n${routing}`;
+}
+
+function formatRouting(patch) {
+  const heading = `### Extension routing (\`${ROUTING_FILE}\`)`;
+  if (patch === undefined) {
+    return `\n${heading}\n\nUnchanged. With no reader added either, no extension can have changed tier without a row that re-probes it.\n`;
+  }
+  return `\n${heading}\n\n**Changed.** An extension added to \`FormatByExtension\` is a format Vale learned, even when no reader file was added. Probe each one against the new binary and add a row to \`VALE_FORMAT_TIERS\`.\n\n${fence(patch, "diff")}\n`;
 }
 
 function formatReport({ from, to, contract, readers, readersError }) {
@@ -176,7 +206,9 @@ async function main({
   const repository = readArgument(argv, "--repository");
   const out = readArgument(argv, "--out");
 
-  const contract = summarizeContract(readReport(readArgument(argv, "--contract")));
+  const contract = summarizeContract(
+    readReport(readArgument(argv, "--contract"))
+  );
   let readers;
   let readersError;
   try {
@@ -193,6 +225,7 @@ async function main({
 
 module.exports = {
   COMPARE_FILE_CAP,
+  ROUTING_FILE,
   fetchAddedReaders,
   formatReport,
   isReader,

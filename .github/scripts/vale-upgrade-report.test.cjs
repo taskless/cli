@@ -75,7 +75,10 @@ test("contract: names each failure with its file and first message line", () => 
   ]);
   const section = report({ contract });
   assert.match(section, /\*\*1 of 204 failed\.\*\*/);
-  assert.match(section, /vale-schema-contract\.test\.ts > Vale schema contract/);
+  assert.match(
+    section,
+    /vale-schema-contract\.test\.ts > Vale schema contract/
+  );
   assert.doesNotMatch(section, /at somewhere/);
 });
 
@@ -108,7 +111,10 @@ test("readers: lists only added, non-test Go files under internal/lint/", () => 
 
 test("readers: an added reader asks for a probe and a row", () => {
   const section = report({
-    readers: readers(["internal/lint/code/kt.go", "internal/lint/code/toml.go"]),
+    readers: readers([
+      "internal/lint/code/kt.go",
+      "internal/lint/code/toml.go",
+    ]),
   });
   assert.match(section, /- `internal\/lint\/code\/kt\.go`/);
   assert.match(section, /VALE_FORMAT_TIERS/);
@@ -122,7 +128,10 @@ test("readers: none added is said, with the diff to check it by", () => {
 });
 
 test("readers: a failed fetch says it could not check, never that none were added", () => {
-  const section = report({ readers: undefined, readersError: "GET x responded 502" });
+  const section = report({
+    readers: undefined,
+    readersError: "GET x responded 502",
+  });
   assert.match(section, /\*\*Could not check\*\* \(GET x responded 502\)/);
   assert.doesNotMatch(section, /None under/);
 });
@@ -188,8 +197,28 @@ test("main: a fetch that throws is reported, not raised", async () => {
       },
       readReport: () => vitestReport(),
     });
-    assert.match(readFileSync(out, "utf8"), /Could not check\*\* \(GET x responded 403\)/);
+    assert.match(
+      readFileSync(out, "utf8"),
+      /Could not check\*\* \(GET x responded 403\)/
+    );
   } finally {
     rmSync(directory, { recursive: true, force: true });
   }
+});
+
+test("routing: a changed format.go prints its patch, even with no reader added", () => {
+  // 3.26.0: four `.mjs`-style spellings learned in format.go, no reader added
+  // for them, and the added readers were all WebAssembly build splits.
+  const patch =
+    '-	`\\.(?:js|jsx)$`: {".js", "code"},\n+	`\\.(?:js|jsx|mjs|cjs)$`: {".js", "code"},';
+  const section = report({ readers: { ...readers([]), routing: patch } });
+  assert.match(section, /\*\*Changed\.\*\*/);
+  assert.match(section, /^```diff$/m);
+  assert.ok(section.includes("mjs|cjs"), "the patch itself is in the body");
+  assert.doesNotMatch(section, /Unchanged\./);
+});
+
+test("routing: an unchanged format.go is said, so silence is not mistaken for a check", () => {
+  const section = report({});
+  assert.match(section, /internal\/core\/format\.go`\)\n\nUnchanged\./);
 });

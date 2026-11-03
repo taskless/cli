@@ -111,22 +111,93 @@ export type ValeRunOutcome =
   | { status: "failed"; blocking: true; message: string };
 
 /**
- * Parse Vale's stderr as its one-object config-error document, or `undefined`
- * when it is not that shape.
+ * Split concatenated top-level JSON objects into one string each, or
+ * `undefined` when `text` is anything else.
+ *
+ * Tracks brace depth outside strings, so a `{` or `}` inside an error's
+ * `Text` cannot end an object early. Whitespace between objects is allowed;
+ * anything else between them means this was not an object stream.
+ */
+function splitJsonObjects(text: string): string[] | undefined {
+  const objects: string[] = [];
+  let depth = 0;
+  let start = -1;
+  let inString = false;
+  let escaped = false;
+  for (let index = 0; index < text.length; index += 1) {
+    const char = text[index];
+    if (inString) {
+      if (escaped) escaped = false;
+      else if (char === "\\") escaped = true;
+      else if (char === '"') inString = false;
+      continue;
+    }
+    if (depth === 0) {
+      if (char === "{") {
+        start = index;
+        depth = 1;
+      } else if (!/\s/.test(char ?? "")) {
+        return undefined;
+      }
+      continue;
+    }
+    switch (char) {
+      case '"': {
+        inString = true;
+        break;
+      }
+      case "{": {
+        depth += 1;
+        break;
+      }
+      case "}": {
+        depth -= 1;
+        if (depth === 0) objects.push(text.slice(start, index + 1));
+        break;
+      }
+    }
+  }
+  return depth === 0 && objects.length > 0 ? objects : undefined;
+}
+
+/**
+ * Parse Vale's stderr as the error objects it holds, or `undefined` when any
+ * part of it is not that shape.
+ *
+ * Through 3.24.0 a failed run wrote ONE object and stopped at the first
+ * document it could not parse. Since 3.26.0 (upstream b5b8e429) Vale lints
+ * every other document, exits 2, and writes one object per document it could
+ * not read, back to back. Parsing the stream as one JSON document failed on
+ * the second object, which lost every `Path` and with it the narrowing that
+ * keeps unparseable files from taking every other file's findings down
+ * (taskless/cli#300). Measured on both binaries with two documents whose front
+ * matter is invalid YAML.
+ *
+ * All or nothing: a stream with one object that is not an error is returned
+ * as `undefined`, so the caller reports the raw bytes rather than a partial
+ * reading of them.
  *
  * Split out from {@link describeValeStderr} so the non-zero-exit branch in
  * {@link spawnVale} can parse `stderr` exactly once and use the result both to
- * build the failure message and to populate `ValeAttempt.configError` — the
- * value {@link targetFileParseError} reads to decide whether this failure can
- * be narrowed to one target file and retried. Without this split, the same
- * bytes were parsed twice: once here, once again inside `describeValeStderr`.
+ * build the failure message and to populate `ValeAttempt.configErrors`, which
+ * {@link targetFileParseError} reads to decide whether this failure can be
+ * narrowed to target files and retried.
  */
-function parseValeConfigError(stderr: string): ValeConfigError | undefined {
-  try {
-    return asValeConfigError(JSON.parse(stderr));
-  } catch {
-    return undefined;
+function parseValeConfigErrors(stderr: string): ValeConfigError[] | undefined {
+  const objects = splitJsonObjects(stderr);
+  if (objects === undefined) return undefined;
+  const errors: ValeConfigError[] = [];
+  for (const object of objects) {
+    let error: ValeConfigError | undefined;
+    try {
+      error = asValeConfigError(JSON.parse(object));
+    } catch {
+      return undefined;
+    }
+    if (error === undefined) return undefined;
+    errors.push(error);
   }
+  return errors;
 }
 
 /** A line Vale's `core.Warn` wrote: its code, a space, then the message. */
@@ -173,17 +244,19 @@ function splitValeWarnings(stderr: string): {
  * decoding ast-grep's stderr rather than forwarding bytes — the message is the
  * only thing the user has to act on.
  *
- * Takes the already-parsed error rather than re-parsing `stderr` itself — see
- * {@link parseValeConfigError}. Anything that did not parse to that shape is
+ * Takes the already-parsed errors rather than re-parsing `stderr` itself — see
+ * {@link parseValeConfigErrors}. Anything that did not parse to that shape is
  * returned untouched. A best-effort decoder that swallows what it cannot read
  * would be worse than none.
  */
 function describeValeStderr(
   stderr: string,
-  configError: ValeConfigError | undefined
+  configErrors: readonly ValeConfigError[] | undefined
 ): string {
-  if (configError === undefined) return stderr;
-  return formatValeConfigError(configError, { withPath: true });
+  if (configErrors === undefined) return stderr;
+  return configErrors
+    .map((error) => formatValeConfigError(error, { withPath: true }))
+    .join("; ");
 }
 
 /**
@@ -330,7 +403,11 @@ async function targetFileParseError(
 type ValeAttempt =
   | { status: "ok"; results: CheckResult[]; notices: string[] }
   | { status: "timeout"; message: string }
-  | { status: "failed"; message: string; configError?: ValeConfigError };
+  | {
+      status: "failed";
+      message: string;
+      configErrors?: readonly ValeConfigError[];
+    };
 
 /**
  * Spawn Vale once and map what it reports. Extracted from {@link runVale} so
@@ -426,18 +503,18 @@ async function spawnVale(
         const { warnings, rest } = splitValeWarnings(
           stderrChunks.join("").trim()
         );
-        const configError = parseValeConfigError(rest);
+        const configErrors = parseValeConfigErrors(rest);
         // The error first, because it is why the run stopped; the warnings
         // after it, because one may be the reason (a rule switched off by a
         // misspelled level).
         const said = [
-          ...(rest === "" ? [] : [describeValeStderr(rest, configError)]),
+          ...(rest === "" ? [] : [describeValeStderr(rest, configErrors)]),
           ...warnings,
         ].join(" ");
         settle({
           status: "failed",
           message: `Vale exited ${String(code)}${said === "" ? "" : `: ${said}`}`,
-          ...(configError === undefined ? {} : { configError }),
+          ...(configErrors === undefined ? {} : { configErrors }),
         });
         return;
       }
@@ -487,7 +564,7 @@ async function spawnVale(
           settle({
             status: "failed",
             message: `Vale rejected the configuration: ${formatValeConfigError(configError, { withPath: true })}`,
-            configError,
+            configErrors: [configError],
           });
           return;
         }
@@ -685,16 +762,18 @@ export async function runVale(
   // one file that triggered it. Unlike that case there is no format to
   // preemptively exclude; which file is bad is only known once Vale says so.
   //
-  // So this retries: on a failure Vale's own error object attributes to one
-  // of *our* target files (`targetFileParseError`), that file is added to the
+  // So this retries: when every error object Vale wrote names one of *our*
+  // target files (`targetFileParseError`), those files are added to the
   // exclusion glob and the whole thing is asked again, with a finding
-  // recorded for the file that was dropped. A failure that cannot be
-  // attributed to a single target file — a bad rule, a timeout, a crash — is
-  // not this bug, and is reported exactly as before: blocking, with nothing
-  // to retry around.
+  // recorded for each file that was dropped. Since 3.26.0 Vale reports every
+  // unreadable document in one run, so one retry usually covers them all;
+  // through 3.24.0 it stopped at the first, and this took one retry per file.
+  // A failure that cannot be attributed to target files — a bad rule, a
+  // timeout, a crash — is not this bug, and is reported exactly as before:
+  // blocking, with nothing to retry around.
   //
   // Bounded by construction rather than by a counter: every successful
-  // iteration excludes one target file that was not already excluded, and
+  // iteration excludes at least one target file that was not already excluded, and
   // there are finitely many files to exclude. Re-reporting the same path
   // twice in a row is the only way this could spin, and that path is refused
   // rather than retried (see the `excludedTargets.has` check below).
@@ -746,21 +825,28 @@ export async function runVale(
       return { status: "timeout", blocking: true, message: attempt.message };
     }
 
-    const { configError } = attempt;
-    const candidate =
-      configError === undefined
-        ? undefined
-        : await targetFileParseError(configError, options.cwd);
-
-    if (candidate === undefined || configError === undefined) {
+    // Every error must name a target file this run has not excluded yet.
+    // One that does not (a bad rule, a style, a file already dropped) is a
+    // failure no exclusion can route around, and the run reports it whole
+    // rather than retrying past the part it can attribute.
+    const { configErrors } = attempt;
+    if (configErrors === undefined) {
       return { status: "failed", blocking: true, message: attempt.message };
     }
-    if (excludedTargets.has(candidate)) {
-      return { status: "failed", blocking: true, message: attempt.message };
+    const dropped: { candidate: string; error: ValeConfigError }[] = [];
+    for (const error of configErrors) {
+      const candidate = await targetFileParseError(error, options.cwd);
+      if (candidate === undefined || excludedTargets.has(candidate)) {
+        return { status: "failed", blocking: true, message: attempt.message };
+      }
+      dropped.push({ candidate, error });
     }
 
-    excludedTargets.add(candidate);
-    excludedFindings.push(parseErrorResult(candidate, configError));
+    for (const { candidate, error } of dropped) {
+      if (excludedTargets.has(candidate)) continue;
+      excludedTargets.add(candidate);
+      excludedFindings.push(parseErrorResult(candidate, error));
+    }
   }
 }
 

@@ -630,6 +630,29 @@ What needs you, after `init`:
   with the reason, and `verify` fails the rule until it is gone. Move
   those files by hand into case directories, then delete `.tests/`.
 
+### Migrating to 0.13.5
+
+Vale moves from 3.24.0 to 3.26.0. Nothing here needs work by hand.
+Three things change which findings an existing rule reports, each
+measured against both binaries on the same fixture.
+
+**`.mjs`, `.cjs`, `.mts` and `.cts` are read as code.** Through 3.24.0
+Vale linted them as one block of prose, so a rule matching `[*.mjs]`
+fired on `const simply = 1` as readily as on a comment. They now go
+through the JavaScript and TypeScript readers, which read comments
+only, the way `.js` and `.ts` always were. Findings in code disappear;
+findings in comments stay.
+
+**A phrase matches across a line wrap.** A rule with the token
+`click here` missed `click` at the end of one line and `here` at the
+start of the next. It now reports it, so a wrapped Markdown paragraph
+can produce findings it did not before.
+
+**Vale's built-in dictionary knows common technical words.** A
+`spelling` rule no longer flags words like `OAuth` and `npm`, so
+findings disappear and a project vocabulary entry that existed only
+for such a word is now redundant. Leave it; it does no harm.
+
 ## Errors
 
 With `--json`, `--rules` failures emit `{ ok: false, code, message }`:

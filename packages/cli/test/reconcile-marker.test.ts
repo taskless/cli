@@ -596,6 +596,15 @@ describe("taskless update with no flags", () => {
     expect(result.stdout).toContain("Do not rename it by hand");
   });
 
+  it("carries the 0.13.5 ledger entry", async () => {
+    const result = await runCli(["update"]);
+    expect(result.stdout).toContain("Migrating to 0.13.5");
+    expect(result.stdout).toContain("Vale moves from 3.24.0 to 3.26.0");
+    expect(result.stdout).toContain(
+      "`.mjs`, `.cjs`, `.mts` and `.cts` are read as code"
+    );
+  });
+
   it("warns that kind: link is loud, not a silent zero-match", async () => {
     // The correction that took a verified 0.45.2 binary to establish: an
     // invalid kind aborts config parsing and takes every other rule down.
