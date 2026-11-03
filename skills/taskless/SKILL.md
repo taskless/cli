@@ -36,11 +36,23 @@ each CLI version.
 ## Preflight: confirm you can run Taskless
 
 Once per session, before any other Taskless command, run
-`%(TASKLESS_CLI)s agent ok`. It touches no project files, and prints one line
-confirming the invocation works. Once you see it, go straight to the user's
-request: no survey of the install, and no menu of what Taskless can do.
-`init` writes an allow rule for this exact invocation into the permission
-settings of each harness it installs for, so the preflight usually passes.
+`%(TASKLESS_CLI)s agent ok`. It writes no project files. Receiving its recipe
+confirms the invocation works, and the recipe says whether the Taskless
+environment is up to date. `init` writes an allow rule for this exact
+invocation into the permission settings of each harness it installs for, so
+the preflight usually passes.
+
+If it says the environment is up to date, go straight to the user's request:
+no survey of the install, and no menu of what Taskless can do.
+
+If it says the environment is out of date, it lists numbered steps with their
+commands. Do not run them yourself, since a harness that blocks Taskless
+commands usually blocks these too. Give them to the user once, to run
+themselves: in Claude Code by typing each command with the `!` prefix, which
+runs it in this session's shell, or in another terminal. Then carry on with
+the user's request. When the user says they ran the steps, run
+`%(TASKLESS_CLI)s agent ok` again to confirm. Apart from that confirmation,
+do not run the preflight again in the session once it has passed.
 
 Run every Taskless command on a line of its own that begins with
 `%(TASKLESS_CLI)s`, with nothing around it: no variable assignment, `cd`,
