@@ -214,6 +214,7 @@ describe("the CLI invocation variable", () => {
       "AST_GREP_VERSION",
       "CLI_VERSION",
       "DETECT_EVIDENCE",
+      "ENVIRONMENT_STATUS",
       "FIXTURE_LAYOUT",
       "FIXTURE_SOURCES",
       "HOST_TOOLS",
@@ -915,5 +916,53 @@ describe("fixture sources", () => {
     const rendered = getPrompt("create-sg-rule", { mechanics: false });
     expect(rendered).toContain("detection evidence the caller supplies");
     expect(rendered).not.toContain("otherwise run");
+  });
+});
+
+describe("environment status", () => {
+  const invocation = "npx @taskless/cli@1.0.0";
+
+  it("says nothing was checked when no environment is supplied", () => {
+    const text = getRecipe("ok", { invocation }) ?? "";
+    expect(text).toContain("was not checked");
+    expect(text).not.toContain("Your Taskless environment is up to date");
+    expect(text).not.toContain("Your Taskless environment is out of date");
+  });
+
+  it("says up to date when there are no steps", () => {
+    const text = getRecipe("ok", { invocation, environment: { steps: [] } });
+    expect(text).toContain(
+      "Your Taskless environment is up to date and you can proceed."
+    );
+  });
+
+  it("numbers each step and fences its command", () => {
+    const text =
+      getRecipe("ok", {
+        invocation,
+        environment: {
+          steps: [
+            {
+              part: "cli",
+              text: "Newer CLI.",
+              command: "npx @taskless/cli@2.0.0",
+            },
+            { part: "skill", text: "Refreshed by the step above." },
+            {
+              part: "rules",
+              text: "Rules owe a reconcile.",
+              command: `${invocation} update`,
+            },
+          ],
+        },
+      }) ?? "";
+    expect(text).toContain(
+      "Your Taskless environment is out of date, the following steps are needed in order for commands to work reliably:"
+    );
+    expect(text).toContain(
+      "1. Newer CLI.\n   ```\n   npx @taskless/cli@2.0.0\n   ```"
+    );
+    expect(text).toContain("2. Refreshed by the step above.\n\n3.");
+    expect(text).toContain(`run \`${invocation} agent ok\` again`);
   });
 });

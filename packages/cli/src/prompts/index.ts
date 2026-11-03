@@ -102,6 +102,7 @@ export const INTERNAL_TOPICS = [
   "improve-rule",
   "info",
   "init",
+  "ok",
   "onboard",
   "recover-rule",
   "report",

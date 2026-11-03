@@ -43,6 +43,8 @@ Alternatives considered: racing jsDelivr's `@latest/package.json` against the re
 
 **The user runs the steps, and the agent re-checks with `agent ok`.** A harness whose permissions block Taskless commands usually blocks a newer CLI or `update` too, so an agent that offers to run the steps runs straight into the block. The skill tells the agent to hand the steps to the user to run themselves: in Claude Code with the `!` prefix, which runs the line in the session's shell, or in another terminal. When the user says they are done, the agent runs `agent ok` again to confirm. That rerun is the one exception to once per session. It is distinct from the blocked-preflight guidance, which does not offer `!`, because there `!` would clear only the one preflight call and leave every later Taskless command blocked. Here the steps are one-off commands, and running them once is the whole job.
 
+**`NO_UPDATE_NOTIFIER` turns the lookup off.** It is the convention update-notifier and many CLIs honor, so a user who has opted out elsewhere is opted out here too. It is also how the test suite stays off the network: the suite runs as a release build with `CI` empty (so it can test local behavior), which would otherwise send every spawned `check` and `agent ok` to the registry. `vite.config.ts` sets it for every test, and the lookup's own tests clear it and stub `fetch`. This was found during implementation.
+
 **`--anonymous` does not gate the lookup.** It means "skip the Taskless API"; npm is not it. Gating on it would also contradict `check`'s "--anonymous is a no-op" requirement.
 
 ## Risks / Trade-offs

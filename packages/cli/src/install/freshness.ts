@@ -34,6 +34,11 @@ export interface MeasureOptions {
   cwd: string;
   /** `process.env.CI`. In CI nothing is measured over the network. */
   ci?: string;
+  /**
+   * `process.env.NO_UPDATE_NOTIFIER`, the convention update-notifier and many
+   * CLIs honour. Any non-empty value turns the registry lookup off.
+   */
+  noUpdateNotifier?: string;
   /** Injected for tests; the global `fetch` otherwise. */
   fetch?: typeof fetch;
   /** The running version; this build's own otherwise. */
@@ -55,6 +60,8 @@ async function measureCli(
   options: MeasureOptions
 ): Promise<EnvironmentMeasurement["cli"]> {
   if (isCiEnvironment(options.ci)) return undefined;
+  if (options.noUpdateNotifier !== undefined && options.noUpdateNotifier !== "")
+    return undefined;
   const packageName =
     options.packageName === null
       ? undefined

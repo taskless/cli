@@ -4,7 +4,7 @@
 
 When `taskless check` runs outside a CI environment, it SHALL measure whether the Taskless environment is out of date, with the same cli, skill, and rules parts and the same rules that `taskless agent ok` uses, and SHALL do so alongside the scan rather than before it. When one or more parts are out of date, `check` SHALL publish one notice that names each out-of-date part and the command that fixes it. In text output, the notice SHALL print through the same marked-notice path as every other notice. Under `--json`, it SHALL be an entry in the `notices` array.
 
-The measurement SHALL NOT change the exit code, the results, or which rules run. A latest-version lookup that fails or times out SHALL leave the cli part out, silently. In a CI environment, `check` SHALL NOT measure, SHALL NOT contact the registry, and SHALL publish no such notice.
+The measurement SHALL NOT change the exit code, the results, or which rules run. A latest-version lookup that fails or times out SHALL leave the cli part out, silently. In a CI environment, `check` SHALL NOT measure, SHALL NOT contact the registry, and SHALL publish no such notice. When `NO_UPDATE_NOTIFIER` is set to a non-empty value, `check` SHALL NOT contact the registry, and the cli part SHALL be left out.
 
 #### Scenario: Out-of-date environment adds a notice locally
 
