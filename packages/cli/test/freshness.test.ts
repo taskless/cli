@@ -122,7 +122,7 @@ describe("measureEnvironment", () => {
     });
     const [step] = environmentSteps(measured, SPELLING);
     expect(step?.part).toBe("cli");
-    expect(step?.command).toBe("npx @taskless/cli@1.1.0");
+    expect(step?.command).toBe("npx @taskless/cli@1.1.0 init");
     expect(step?.text).toContain("1.0.0");
   });
 
@@ -131,7 +131,7 @@ describe("measureEnvironment", () => {
     expect(measured.cli).toBeUndefined();
   });
 
-  it("reports a stale skill with the bare invocation", async () => {
+  it("reports a stale skill with init", async () => {
     project();
     checkStaleness.mockResolvedValue(STALE_SKILLS);
     const measured = await measure(registry("1.0.0"));
@@ -139,7 +139,7 @@ describe("measureEnvironment", () => {
     expect(steps).toEqual([
       expect.objectContaining({
         part: "skill",
-        command: "npx @taskless/cli@1.0.0",
+        command: "npx @taskless/cli@1.0.0 init",
       }),
     ]);
   });
@@ -165,7 +165,7 @@ describe("measureEnvironment", () => {
     expect(steps[1]?.command).toBeUndefined();
     const notice = environmentNotice(steps);
     expect(notice).toContain("(1) ");
-    expect(notice).toContain("Run: npx @taskless/cli@2.0.0");
+    expect(notice).toContain("Run: npx @taskless/cli@2.0.0 init");
     expect(notice).not.toContain("\n");
   });
 
