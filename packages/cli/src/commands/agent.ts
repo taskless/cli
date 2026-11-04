@@ -29,6 +29,7 @@ import {
   detectLauncherCommand,
   getCliPrefix,
   processLauncherContext,
+  projectLauncher,
 } from "../util/package-manager";
 
 // Recipe-only topics (no backing subcommand) that should still be
@@ -319,7 +320,11 @@ export function createAgentCommand(subCommands: SubCommandsDef) {
                 invocation: resolveInvocation({ invocation }),
                 launcher:
                   detectLauncherCommand(launcherContext) ??
-                  PACKAGE_MANAGER_DLX_MARKER,
+                  // A project launcher hides how the CLI was first installed,
+                  // and npx is the spelling for moving to a new version.
+                  (projectLauncher(launcherContext) === undefined
+                    ? PACKAGE_MANAGER_DLX_MARKER
+                    : "npx"),
               }
             ),
           }

@@ -558,6 +558,9 @@ rendered, so it says nothing about whether Taskless is up to date.`;
   if (environment.steps.length === 0) {
     return "Your Taskless environment is up to date and you can proceed.";
   }
+  const rulesOwed = environment.steps.some((step) => step.part === "rules");
+  const personOwed = environment.steps.some((step) => step.part !== "rules");
+  const upgradeOwed = environment.steps.some((step) => step.part === "cli");
   const steps = environment.steps
     .map((step, index) => {
       const body = `${String(index + 1)}. ${step.text}`;
@@ -566,16 +569,36 @@ rendered, so it says nothing about whether Taskless is up to date.`;
         : `${body}\n   \`\`\`\n   ${step.command}\n   \`\`\``;
     })
     .join("\n\n");
-  return `Your Taskless environment is out of date, the following steps are needed in order for commands to work reliably:
+  const header = `Your Taskless environment is out of date, the following steps are needed in order for commands to work reliably:
 
-${steps}
+${steps}`;
+  // Moving the CLI is the user's decision, and it runs newly published code.
+  // Reconciling the rules runs the version the project already records, so it
+  // is ordinary agent work once the CLI has stopped moving.
+  const applyRules = `run its command and follow the recipe it prints to its last step. If that command is refused, give it to the user to run instead.`;
+  if (!personOwed) {
+    return `${header}
 
-Do not run these steps yourself. Give them to the user, once, to run
-themselves: in Claude Code by typing each command with the \`!\` prefix,
-which runs it in this session's shell, or in another terminal. A
-harness that blocks Taskless commands usually blocks these too. Then
-carry on with the user's request. When the user says they ran the
-steps, run \`${invocation} agent ok\` again to confirm.`;
+Apply this step yourself: ${applyRules}`;
+  }
+  const afterUser = rulesOwed
+    ? ` Leave the rules step until then, because a newer CLI can owe a different reconcile. If that run still reports it, ${applyRules}`
+    : "";
+  const declined = upgradeOwed
+    ? `\n\nThe user can decline the upgrade. Tell them what that means: the project stays on this CLI and keeps working, and this report keeps listing the upgrade until they move.${
+        rulesOwed
+          ? ` The rules are still owed on this CLI, and \`check\` and \`verify\` refuse to run them until that is recorded, so apply the rules step now: ${applyRules}`
+          : ""
+      }`
+    : "";
+  return `${header}
+
+Moving the CLI and reinstalling the skill are the user's to do, so do not
+run those steps yourself. Give them to the user, once, to run themselves:
+in Claude Code by typing each command with the \`!\` prefix, which runs it
+in this session's shell, or in another terminal. Then carry on with the
+user's request. When the user says they ran the steps,
+run \`${invocation} agent ok\` again to confirm.${afterUser}${declined}`;
 }
 
 /**

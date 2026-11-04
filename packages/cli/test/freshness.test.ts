@@ -124,6 +124,7 @@ describe("measureEnvironment", () => {
     expect(step?.part).toBe("cli");
     expect(step?.command).toBe("npx @taskless/cli@1.1.0 init");
     expect(step?.text).toContain("1.0.0");
+    expect(step?.text).toContain("without `init` opens the installer");
   });
 
   it("does not report an older published version", async () => {

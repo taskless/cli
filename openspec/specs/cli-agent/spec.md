@@ -432,12 +432,12 @@ An agent topic `report` SHALL be registered. The CLI SHALL embed `packages/cli/s
 The recipe's body SHALL be one of two passages, chosen from the environment state the CLI measured when the recipe was fetched:
 
 - When nothing is out of date: `Your Taskless environment is up to date and you can proceed.`
-- When one or more parts are out of date: `Your Taskless environment is out of date, the following steps are needed in order for commands to work reliably:`, followed by one numbered step per out-of-date part, in the order cli, skill, rules. Each step SHALL name what is out of date, say why it matters, and give the exact command that fixes it, spelled with the detected invocation. After the steps, the passage SHALL tell the agent to give the steps to the user to run themselves, rather than running them, and to run `<invocation> agent ok` again once the user says they are done.
+- When one or more parts are out of date: `Your Taskless environment is out of date, the following steps are needed in order for commands to work reliably:`, followed by one numbered step per out-of-date part, in the order cli, skill, rules. Each step SHALL name what is out of date, say why it matters, and give the exact command that fixes it, spelled with the detected invocation. After the steps, the passage SHALL say who runs them. The cli and skill steps belong to the user: when either is present, the passage SHALL tell the agent to give them to the user to run themselves, rather than running them, and to run `<invocation> agent ok` again once the user says they are done. The rules step belongs to the agent: when it is the only step, the passage SHALL tell the agent to run its command and follow the recipe it prints to its last step, and to give the command to the user if it is refused. When it appears beside a cli or skill step, the passage SHALL tell the agent to leave it until the confirming `agent ok`, and to apply it the same way if that run still reports it. When the cli part is present, the passage SHALL say the user can decline the upgrade and what follows: the project stays on this CLI and the report keeps listing the upgrade, and a reported rules step is still owed on this CLI, so the agent applies it.
 
 The three parts SHALL be decided as follows:
 
-- **cli**: a newer version of the package this build is (`@taskless/cli` for a release build, `@taskless/cli-nightly` for a nightly) is published as `latest` than the running version, by semver precedence. The latest version SHALL be asked of the npm registry only, at most once per run, with a timeout of at most one second. The answer SHALL be used only when it is a strict semantic version (`MAJOR.MINOR.PATCH` with optional prerelease and build identifiers, and nothing else), because it is written into a command the user runs. A lookup that fails, times out, or returns a missing or invalid version SHALL leave this part out, and SHALL NOT change the output's form or the exit code. The lookup SHALL be skipped, and the part left out, in a CI environment, when `NO_UPDATE_NOTIFIER` is set to a non-empty value (the opt-out convention many CLIs honor), and on a build that is not a published package. The fixing command SHALL run `init` with that package at exactly the newer version.
-- **skill**: the Taskless skill installed in the project is not the version this CLI carries, by the same comparison `taskless info` reports. The fixing command SHALL be `<invocation> init`. When the cli part is also present, the skill step SHALL say that the cli step's command also refreshes the skill and SHALL give no separate command.
+- **cli**: a newer version of the package this build is (`@taskless/cli` for a release build, `@taskless/cli-nightly` for a nightly) is published as `latest` than the running version, by semver precedence. The latest version SHALL be asked of the npm registry only, at most once per run, with a timeout of at most one second. The answer SHALL be used only when it is a strict semantic version (`MAJOR.MINOR.PATCH` with optional prerelease and build identifiers, and nothing else), because it is written into a command the user runs. A lookup that fails, times out, or returns a missing or invalid version SHALL leave this part out, and SHALL NOT change the output's form or the exit code. The lookup SHALL be skipped, and the part left out, in a CI environment, when `NO_UPDATE_NOTIFIER` is set to a non-empty value (the opt-out convention many CLIs honor), and on a build that is not a published package. The fixing command SHALL run `init` with that package at exactly the newer version, and the step SHALL say that in a terminal the same command without `init` opens the installer. A project launcher hides how the CLI was first installed, so when one started the CLI this command SHALL be spelled with `npx`.
+- **skill**: the Taskless skill installed in the project is not the version this CLI carries, by the same comparison `taskless info` reports. The fixing command SHALL be `<invocation> init`, and the step SHALL say that in a terminal the same command without `init` opens the installer. When the cli part is also present, the skill step SHALL say that the cli step's command also refreshes the skill and SHALL give no separate command.
 - **rules**: the project's rules are not reconciled to this CLI, by the same status `taskless info` and `taskless init` report. The fixing command SHALL be `<invocation> update`.
 
 In a directory with no `.taskless/`, the skill and rules parts SHALL be left out. The command MAY read `.taskless/`, and SHALL NOT create or write it.
@@ -484,9 +484,31 @@ It SHALL emit the command's `cli_agent` intent event with `topic: "ok"`. The top
 
 #### Scenario: The out-of-date passage hands the steps to the user
 
-- **WHEN** `taskless agent ok` reports any out-of-date part
-- **THEN** the output SHALL tell the agent to have the user run the steps
+- **WHEN** `taskless agent ok` reports the cli or skill part
+- **THEN** the output SHALL tell the agent to have the user run those steps
 - **AND** SHALL tell the agent to run `<invocation> agent ok` again once the user is done
+
+#### Scenario: The agent applies a rules step on its own
+
+- **WHEN** `taskless agent ok` reports only the rules part
+- **THEN** the output SHALL tell the agent to run the step's command and follow its recipe to the last step
+- **AND** SHALL NOT tell the agent to have the user run it, unless the command is refused
+
+#### Scenario: A rules step waits for the upgrade
+
+- **WHEN** `taskless agent ok` reports the rules part beside the cli part
+- **THEN** the output SHALL tell the agent to leave the rules step until the confirming `agent ok`
+
+#### Scenario: Declining an upgrade is explained
+
+- **WHEN** `taskless agent ok` reports the cli part
+- **THEN** the output SHALL say the user can decline, and that the project stays on this CLI and the report keeps listing the upgrade
+- **AND** when the rules part is also reported, SHALL say the rules are still owed on this CLI and tell the agent to apply the rules step once the user declines
+
+#### Scenario: A launcher run spells the upgrade with npx
+
+- **WHEN** `./.taskless/bin/cli.mjs agent ok` is run and a newer CLI is published
+- **THEN** the cli step's command SHALL be `npx <package>@<latest> init`
 
 #### Scenario: A failed registry lookup is silent
 
