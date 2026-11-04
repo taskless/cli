@@ -436,8 +436,8 @@ The recipe's body SHALL be one of two passages, chosen from the environment stat
 
 The three parts SHALL be decided as follows:
 
-- **cli**: a newer version of the package this build is (`@taskless/cli` for a release build, `@taskless/cli-nightly` for a nightly) is published as `latest` than the running version, by semver precedence. The latest version SHALL be asked of the npm registry only, at most once per run, with a timeout of at most one second. The answer SHALL be used only when it is a strict semantic version (`MAJOR.MINOR.PATCH` with optional prerelease and build identifiers, and nothing else), because it is written into a command the user runs. A lookup that fails, times out, or returns a missing or invalid version SHALL leave this part out, and SHALL NOT change the output's form or the exit code. The lookup SHALL be skipped, and the part left out, in a CI environment, when `NO_UPDATE_NOTIFIER` is set to a non-empty value (the opt-out convention many CLIs honor), and on a build that is not a published package. The fixing command SHALL run that package at exactly the newer version with no arguments.
-- **skill**: the Taskless skill installed in the project is not the version this CLI carries, by the same comparison `taskless info` reports. The fixing command SHALL be the invocation run with no arguments. When the cli part is also present, the skill step SHALL say that the cli step's command also refreshes the skill and SHALL give no separate command.
+- **cli**: a newer version of the package this build is (`@taskless/cli` for a release build, `@taskless/cli-nightly` for a nightly) is published as `latest` than the running version, by semver precedence. The latest version SHALL be asked of the npm registry only, at most once per run, with a timeout of at most one second. The answer SHALL be used only when it is a strict semantic version (`MAJOR.MINOR.PATCH` with optional prerelease and build identifiers, and nothing else), because it is written into a command the user runs. A lookup that fails, times out, or returns a missing or invalid version SHALL leave this part out, and SHALL NOT change the output's form or the exit code. The lookup SHALL be skipped, and the part left out, in a CI environment, when `NO_UPDATE_NOTIFIER` is set to a non-empty value (the opt-out convention many CLIs honor), and on a build that is not a published package. The fixing command SHALL run `init` with that package at exactly the newer version.
+- **skill**: the Taskless skill installed in the project is not the version this CLI carries, by the same comparison `taskless info` reports. The fixing command SHALL be `<invocation> init`. When the cli part is also present, the skill step SHALL say that the cli step's command also refreshes the skill and SHALL give no separate command.
 - **rules**: the project's rules are not reconciled to this CLI, by the same status `taskless info` and `taskless init` report. The fixing command SHALL be `<invocation> update`.
 
 In a directory with no `.taskless/`, the skill and rules parts SHALL be left out. The command MAY read `.taskless/`, and SHALL NOT create or write it.
@@ -480,7 +480,7 @@ It SHALL emit the command's `cli_agent` intent event with `topic: "ok"`. The top
 - **WHEN** `taskless agent ok` is run and the published `latest` for this build's package is newer than the running version
 - **THEN** the output SHALL contain the out-of-date passage
 - **AND** a step SHALL name the running version and the newer one
-- **AND** SHALL give a command that runs that package at exactly the newer version with no arguments
+- **AND** SHALL give a command that runs `init` with that package at exactly the newer version
 
 #### Scenario: The out-of-date passage hands the steps to the user
 
@@ -509,7 +509,7 @@ It SHALL emit the command's `cli_agent` intent event with `topic: "ok"`. The top
 
 - **WHEN** `taskless agent ok` is run in a project whose installed Taskless skill is not the version this CLI carries, and no newer CLI is reported
 - **THEN** the output SHALL contain the out-of-date passage
-- **AND** a step SHALL give the invocation run with no arguments
+- **AND** a step SHALL give `<invocation> init`
 
 #### Scenario: A newer CLI subsumes the skill refresh
 

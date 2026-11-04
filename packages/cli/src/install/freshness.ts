@@ -135,6 +135,10 @@ export async function measureEnvironment(
  * `invocation` spells the current CLI. `launcher` is the command word that
  * runs a package (`npx`, `pnpm dlx`), used for the newer CLI, which the
  * pinned invocation cannot reach.
+ *
+ * Both install steps name `init` rather than the bare invocation. A bare run
+ * only installs from a terminal, through the wizard. Anywhere else it prints
+ * the topic index and exits 0 having changed nothing.
  */
 export function environmentSteps(
   measurement: EnvironmentMeasurement,
@@ -147,8 +151,8 @@ export function environmentSteps(
       part: "cli",
       text:
         `A newer Taskless CLI is published: ${cli.packageName} ${cli.latest}, and this project runs ${cli.running}. ` +
-        "Running the newer version with no arguments moves the project to it and refreshes the installed skills.",
-      command: `${spelling.launcher} ${cli.packageName}@${cli.latest}`,
+        "Running `init` with the newer version moves the project to it and refreshes the installed skills.",
+      command: `${spelling.launcher} ${cli.packageName}@${cli.latest} init`,
     });
   }
   if (skill !== undefined) {
@@ -164,8 +168,8 @@ export function environmentSteps(
             part: "skill",
             text:
               `The installed Taskless skill is not this CLI's (${listed}), so its instructions may not match the commands. ` +
-              "Running the CLI with no arguments reinstalls it.",
-            command: spelling.invocation,
+              "Running `init` reinstalls it.",
+            command: `${spelling.invocation} init`,
           }
         : {
             part: "skill",
