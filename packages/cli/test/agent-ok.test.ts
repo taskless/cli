@@ -147,7 +147,8 @@ describe("agent ok", () => {
   it("offers the prefix of the harness running it", async () => {
     vi.stubEnv("npm_command", "exec");
     vi.stubEnv("npm_lifecycle_event", "npx");
-    vi.stubEnv("CLAUDECODE");
+    // eslint-disable-next-line unicorn/no-useless-undefined -- stubEnv requires the value, and undefined deletes the variable so this holds when the suite runs inside Claude Code
+    vi.stubEnv("CLAUDECODE", undefined);
     vi.stubEnv("CURSOR_AGENT", "1");
     stubRegistry("999.0.0");
     await runAgent(directory, ["agent", "ok"]);
