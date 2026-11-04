@@ -128,7 +128,7 @@ describe("agent ok", () => {
     expect(output()).toContain(
       "Your Taskless environment is out of date, the following steps are needed in order for commands to work reliably:"
     );
-    expect(output()).toContain("npx @taskless/cli@999.0.0");
+    expect(output()).toContain("npx @taskless/cli@999.0.0 init");
     expect(output()).toContain("Do not run these steps yourself.");
     expect(output()).toMatch(/run `npx @taskless\/cli@\S+ agent ok` again/);
   });
@@ -139,7 +139,9 @@ describe("agent ok", () => {
     vi.stubEnv("npm_config_user_agent", "");
     stubRegistry("999.0.0");
     await runAgent(directory, ["agent", "ok"]);
-    expect(output()).toContain("<package-manager-dlx> @taskless/cli@999.0.0");
+    expect(output()).toContain(
+      "<package-manager-dlx> @taskless/cli@999.0.0 init"
+    );
   });
 
   it("is silent when the registry lookup fails", async () => {
