@@ -964,5 +964,42 @@ describe("environment status", () => {
     );
     expect(text).toContain("2. Refreshed by the step above.\n\n3.");
     expect(text).toContain(`run \`${invocation} agent ok\` again`);
+    expect(text).toContain("Leave the rules step until then");
+    expect(text).toContain("The user can decline the upgrade.");
+    expect(text).toContain("so apply the rules step now");
+  });
+
+  it("gives the CLI step to the user and keeps the rules out of it", () => {
+    const text =
+      getRecipe("ok", {
+        invocation,
+        environment: {
+          steps: [{ part: "cli", text: "Newer CLI.", command: "npx x@2.0.0" }],
+        },
+      }) ?? "";
+    expect(text).toContain("user's to do");
+    expect(text).not.toContain("Leave the rules step");
+    expect(text).toContain("The user can decline the upgrade.");
+    expect(text).not.toContain("so apply the rules step now");
+    expect(text).not.toContain("Apply this step yourself");
+  });
+
+  it("has the agent apply a rules step when nothing else is owed", () => {
+    const text =
+      getRecipe("ok", {
+        invocation,
+        environment: {
+          steps: [
+            {
+              part: "rules",
+              text: "Rules owe a reconcile.",
+              command: `${invocation} update`,
+            },
+          ],
+        },
+      }) ?? "";
+    expect(text).toContain("Apply this step yourself");
+    expect(text).toContain("to its last step");
+    expect(text).not.toContain("user's to do");
   });
 });

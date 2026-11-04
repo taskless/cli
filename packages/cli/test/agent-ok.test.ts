@@ -129,8 +129,19 @@ describe("agent ok", () => {
       "Your Taskless environment is out of date, the following steps are needed in order for commands to work reliably:"
     );
     expect(output()).toContain("npx @taskless/cli@999.0.0 init");
-    expect(output()).toContain("Do not run these steps yourself.");
+    expect(output()).toContain("do not\nrun those steps yourself");
     expect(output()).toMatch(/run `npx @taskless\/cli@\S+ agent ok` again/);
+  });
+
+  it("spells the upgrade with npx on a project launcher run", async () => {
+    vi.stubEnv("npm_command", "");
+    vi.stubEnv("npm_lifecycle_event", "");
+    vi.stubEnv("npm_config_user_agent", "");
+    vi.stubEnv("TASKLESS_LAUNCHER", "./.taskless/bin/cli.mjs");
+    stubRegistry("999.0.0");
+    await runAgent(directory, ["agent", "ok"]);
+    expect(output()).toContain("npx @taskless/cli@999.0.0 init");
+    expect(output()).toContain("./.taskless/bin/cli.mjs agent ok");
   });
 
   it("does not guess a launcher it cannot detect", async () => {

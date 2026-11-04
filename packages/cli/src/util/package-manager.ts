@@ -223,7 +223,7 @@ const PROJECT_LAUNCHERS = new Set([
 ]);
 
 /** The project launcher that started this process, if one did. */
-function projectLauncher(context: LauncherContext): string | undefined {
+export function projectLauncher(context: LauncherContext): string | undefined {
   const named = context.env.TASKLESS_LAUNCHER;
   return named !== undefined && PROJECT_LAUNCHERS.has(named)
     ? named

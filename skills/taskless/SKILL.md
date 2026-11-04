@@ -46,13 +46,20 @@ If it says the environment is up to date, go straight to the user's request:
 no survey of the install, and no menu of what Taskless can do.
 
 If it says the environment is out of date, it lists numbered steps with their
-commands. Do not run them yourself, since a harness that blocks Taskless
-commands usually blocks these too. Give them to the user once, to run
+commands. Moving the CLI and reinstalling the skill are the user's to do, so
+do not run those steps yourself. Give them to the user once, to run
 themselves: in Claude Code by typing each command with the `!` prefix, which
 runs it in this session's shell, or in another terminal. Then carry on with
 the user's request. When the user says they ran the steps, run
-`%(TASKLESS_CLI)s agent ok` again to confirm. Apart from that confirmation,
-do not run the preflight again in the session once it has passed.
+`%(TASKLESS_CLI)s agent ok` again to confirm.
+
+A step that says the rules owe a reconcile is yours once no CLI or skill step
+is left: run its command and follow the recipe it prints to its last step. If
+that command is refused, give it to the user instead. If the user declines
+an upgrade, tell them what the report says that means, and apply a rules step
+to this CLI. Apart from confirming
+those steps, do not run the preflight again in the session once it has
+passed.
 
 Run every Taskless command on a line of its own that begins with
 `%(TASKLESS_CLI)s`, with nothing around it: no variable assignment, `cd`,

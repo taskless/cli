@@ -194,7 +194,9 @@ describe("this repository's own installed Taskless docs", () => {
     // the user rather than run, and the one confirming rerun.
     expect(prose).toContain("the environment is up to date");
     expect(prose).toContain("the environment is out of date");
-    expect(prose).toContain("Do not run them yourself");
+    expect(prose).toContain("do not run those steps yourself");
+    expect(prose).toContain("follow the recipe it prints to its last step");
+    expect(prose).toContain("If the user declines an upgrade");
     expect(prose).toContain("with the `!` prefix");
     expect(prose).toContain("another terminal");
     expect(prose).toContain("Then carry on with the user's request");

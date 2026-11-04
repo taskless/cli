@@ -127,6 +127,10 @@ export async function measureEnvironment(
   return { cli, skill, rules };
 }
 
+/** What a person gets by leaving `init` off, which only works in a terminal. */
+const INSTALLER_NOTE =
+  "In a terminal, the same command without `init` opens the installer and its options.";
+
 /**
  * The steps that bring the environment up to date, in the order they are to
  * be run: cli, skill, rules. `update` has to run with the CLI the project
@@ -151,7 +155,7 @@ export function environmentSteps(
       part: "cli",
       text:
         `A newer Taskless CLI is published: ${cli.packageName} ${cli.latest}, and this project runs ${cli.running}. ` +
-        "Running `init` with the newer version moves the project to it and refreshes the installed skills.",
+        `Running \`init\` with the newer version moves the project to it and refreshes the installed skills. ${INSTALLER_NOTE}`,
       command: `${spelling.launcher} ${cli.packageName}@${cli.latest} init`,
     });
   }
@@ -168,7 +172,7 @@ export function environmentSteps(
             part: "skill",
             text:
               `The installed Taskless skill is not this CLI's (${listed}), so its instructions may not match the commands. ` +
-              "Running `init` reinstalls it.",
+              `Running \`init\` reinstalls it. ${INSTALLER_NOTE}`,
             command: `${spelling.invocation} init`,
           }
         : {
