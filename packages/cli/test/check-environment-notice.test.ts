@@ -107,7 +107,7 @@ describe("check out-of-date notice", () => {
       notice.includes("out of date")
     );
     expect(added).toHaveLength(1);
-    expect(added[0]).toContain("@taskless/cli@9.0.0");
+    expect(added[0]).toContain("@taskless/cli@9.0.0 init");
   });
 
   it("prints the notice as a marked line in text output", async () => {
