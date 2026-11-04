@@ -432,7 +432,7 @@ An agent topic `report` SHALL be registered. The CLI SHALL embed `packages/cli/s
 The recipe's body SHALL be one of two passages, chosen from the environment state the CLI measured when the recipe was fetched:
 
 - When nothing is out of date: `Your Taskless environment is up to date and you can proceed.`
-- When one or more parts are out of date: `Your Taskless environment is out of date, the following steps are needed in order for commands to work reliably:`, followed by one numbered step per out-of-date part, in the order cli, skill, rules. Each step SHALL name what is out of date, say why it matters, and give the exact command that fixes it, spelled with the detected invocation. After the steps, the passage SHALL say who runs them. The cli and skill steps belong to the user: when either is present, the passage SHALL tell the agent to give them to the user to run themselves, rather than running them, and to run `<invocation> agent ok` again once the user says they are done. The rules step belongs to the agent: when it is the only step, the passage SHALL tell the agent to run its command and follow the recipe it prints to its last step, and to give the command to the user if it is refused. When it appears beside a cli or skill step, the passage SHALL tell the agent to leave it until the confirming `agent ok`, and to apply it the same way if that run still reports it. When the cli part is present, the passage SHALL say the user can decline the upgrade and what follows: the project stays on this CLI and the report keeps listing the upgrade, and a reported rules step is still owed on this CLI, so the agent applies it.
+- When one or more parts are out of date: `Your Taskless environment is out of date, the following steps are needed in order for commands to work reliably:`, followed by one numbered step per out-of-date part, in the order cli, skill, rules. Each step SHALL name what is out of date, say why it matters, and give the exact command that fixes it, spelled with the detected invocation. After the steps, the passage SHALL say who runs them. The cli and skill steps belong to the user: when either is present, the passage SHALL tell the agent to give them to the user to run themselves, rather than running them, and to run `<invocation> agent ok` again once the user says they are done. The passage SHALL always offer another terminal. When the CLI recognizes the harness that started it, the passage SHALL also name that harness and show the first command with the prefix that harness documents for a person's one-off command, and SHALL state any documented limit of that route: `!` in the Claude Code CLI, OpenCode, Codex, Gemini CLI, and Devin, and `/shell ` in Cursor with its 30-second limit. A harness the CLI does not recognize, or a surface with no such prefix, SHALL get only another terminal. Recognition SHALL read environment variables against a fixed table, SHALL shape this wording only, and SHALL NOT place any environment value in the output. The rules step belongs to the agent: when it is the only step, the passage SHALL tell the agent to run its command and follow the recipe it prints to its last step, and to give the command to the user if it is refused. When it appears beside a cli or skill step, the passage SHALL tell the agent to leave it until the confirming `agent ok`, and to apply it the same way if that run still reports it. When the cli part is present, the passage SHALL say the user can decline the upgrade and what follows: the project stays on this CLI and the report keeps listing the upgrade, and a reported rules step is still owed on this CLI, so the agent applies it.
 
 The three parts SHALL be decided as follows:
 
@@ -487,6 +487,24 @@ It SHALL emit the command's `cli_agent` intent event with `topic: "ok"`. The top
 - **WHEN** `taskless agent ok` reports the cli or skill part
 - **THEN** the output SHALL tell the agent to have the user run those steps
 - **AND** SHALL tell the agent to run `<invocation> agent ok` again once the user is done
+
+#### Scenario: The passage offers the harness's prefix
+
+- **WHEN** `taskless agent ok` reports the cli part, run by the Claude Code CLI
+- **THEN** the output SHALL show the command with the `!` prefix
+- **AND** SHALL also offer another terminal
+
+#### Scenario: Cursor's limit is stated
+
+- **WHEN** `taskless agent ok` reports the cli part, with `CURSOR_AGENT` set
+- **THEN** the output SHALL show the command with the `/shell ` prefix
+- **AND** SHALL say it stops after 30 seconds, and offer another terminal for longer runs
+
+#### Scenario: An unrecognized harness gets a terminal
+
+- **WHEN** `taskless agent ok` reports the cli part and no known harness variable is set
+- **THEN** the output SHALL offer another terminal
+- **AND** SHALL NOT name a prefix
 
 #### Scenario: The agent applies a rules step on its own
 

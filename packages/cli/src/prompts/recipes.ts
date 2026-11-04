@@ -176,6 +176,20 @@ export interface HostTool {
 }
 
 /**
+ * How a person runs a one-off command from inside the harness running this.
+ * Detected by the CLI (`src/detect/harness-shell.ts`), since reading the
+ * environment is something this module may not do.
+ */
+export interface HarnessShell {
+  /** The harness's name, as its users know it. */
+  name: string;
+  /** What goes in front of the command at the harness's prompt. */
+  prefix: string;
+  /** A limit of this route worth saying out loud, if it has one. */
+  caveat?: string;
+}
+
+/**
  * One step that brings the Taskless environment up to date, as the CLI
  * measured and worded it (`src/install/freshness.ts`). Pre-rendered on the CLI
  * side because measuring it reads the filesystem and the network, which this
@@ -291,7 +305,11 @@ export interface RecipeOptions {
    * renders a passage that says the environment was not checked, never one
    * that claims either outcome.
    */
-  environment?: { steps: EnvironmentStep[] };
+  environment?: {
+    steps: EnvironmentStep[];
+    /** How the harness running this runs a command for a person, if known. */
+    shell?: HarnessShell;
+  };
   /**
    * What the host has on its `PATH`, for the passages that condition on it.
    *
@@ -575,6 +593,18 @@ ${steps}`;
   // Moving the CLI is the user's decision, and it runs newly published code.
   // Reconciling the rules runs the version the project already records, so it
   // is ordinary agent work once the CLI has stopped moving.
+  const firstCommand = environment.steps.find(
+    (step) => step.part !== "rules" && step.command !== undefined
+  )?.command;
+  const shell = environment.shell;
+  const howToRun =
+    shell === undefined || firstCommand === undefined
+      ? "in another terminal"
+      : `in ${shell.name} by typing the command with its \`${shell.prefix.trim()}\` prefix, as \`${shell.prefix}${firstCommand}\`, which runs it in this session's shell, or in another terminal${
+          shell.caveat === undefined
+            ? ""
+            : ` if it takes longer, since ${shell.caveat}`
+        }`;
   const applyRules = `run its command and follow the recipe it prints to its last step. If that command is refused, give it to the user to run instead.`;
   if (!personOwed) {
     return `${header}
@@ -595,9 +625,7 @@ Apply this step yourself: ${applyRules}`;
 
 Moving the CLI and reinstalling the skill are the user's to do, so do not
 run those steps yourself. Give them to the user, once, to run themselves:
-in Claude Code by typing each command with the \`!\` prefix, which runs it
-in this session's shell, or in another terminal. Then carry on with the
-user's request. When the user says they ran the steps,
+${howToRun}. Then carry on with the user's request. When the user says they ran the steps,
 run \`${invocation} agent ok\` again to confirm.${afterUser}${declined}`;
 }
 

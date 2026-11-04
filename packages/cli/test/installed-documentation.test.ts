@@ -197,7 +197,7 @@ describe("this repository's own installed Taskless docs", () => {
     expect(prose).toContain("do not run those steps yourself");
     expect(prose).toContain("follow the recipe it prints to its last step");
     expect(prose).toContain("If the user declines an upgrade");
-    expect(prose).toContain("with the `!` prefix");
+    expect(prose).toContain("with this harness's prefix");
     expect(prose).toContain("another terminal");
     expect(prose).toContain("Then carry on with the user's request");
     expect(prose).toContain(

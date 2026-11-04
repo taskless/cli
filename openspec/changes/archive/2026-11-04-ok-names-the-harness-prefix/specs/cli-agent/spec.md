@@ -1,0 +1,158 @@
+## MODIFIED Requirements
+
+### Requirement: ok topic confirms the CLI can run
+
+`taskless agent ok` SHALL serve the recipe at `packages/cli/src/agent/ok.md` through the same render path as every other topic, and exit 0. Serving it at all confirms the CLI can run. The rendered recipe SHALL carry the `# Topic:` header and the one-command-per-call paragraph. It SHALL NOT carry the fetch-time directive, because the preflight runs once per session rather than once per task, and SHALL NOT carry a survey invite.
+
+The recipe's body SHALL be one of two passages, chosen from the environment state the CLI measured when the recipe was fetched:
+
+- When nothing is out of date: `Your Taskless environment is up to date and you can proceed.`
+- When one or more parts are out of date: `Your Taskless environment is out of date, the following steps are needed in order for commands to work reliably:`, followed by one numbered step per out-of-date part, in the order cli, skill, rules. Each step SHALL name what is out of date, say why it matters, and give the exact command that fixes it, spelled with the detected invocation. After the steps, the passage SHALL say who runs them. The cli and skill steps belong to the user: when either is present, the passage SHALL tell the agent to give them to the user to run themselves, rather than running them, and to run `<invocation> agent ok` again once the user says they are done. The passage SHALL always offer another terminal. When the CLI recognizes the harness that started it, the passage SHALL also name that harness and show the first command with the prefix that harness documents for a person's one-off command, and SHALL state any documented limit of that route: `!` in the Claude Code CLI, OpenCode, Codex, Gemini CLI, and Devin, and `/shell ` in Cursor with its 30-second limit. A harness the CLI does not recognize, or a surface with no such prefix, SHALL get only another terminal. Recognition SHALL read environment variables against a fixed table, SHALL shape this wording only, and SHALL NOT place any environment value in the output. The rules step belongs to the agent: when it is the only step, the passage SHALL tell the agent to run its command and follow the recipe it prints to its last step, and to give the command to the user if it is refused. When it appears beside a cli or skill step, the passage SHALL tell the agent to leave it until the confirming `agent ok`, and to apply it the same way if that run still reports it. When the cli part is present, the passage SHALL say the user can decline the upgrade and what follows: the project stays on this CLI and the report keeps listing the upgrade, and a reported rules step is still owed on this CLI, so the agent applies it.
+
+The three parts SHALL be decided as follows:
+
+- **cli**: a newer version of the package this build is (`@taskless/cli` for a release build, `@taskless/cli-nightly` for a nightly) is published as `latest` than the running version, by semver precedence. The latest version SHALL be asked of the npm registry only, at most once per run, with a timeout of at most one second. The answer SHALL be used only when it is a strict semantic version (`MAJOR.MINOR.PATCH` with optional prerelease and build identifiers, and nothing else), because it is written into a command the user runs. A lookup that fails, times out, or returns a missing or invalid version SHALL leave this part out, and SHALL NOT change the output's form or the exit code. The lookup SHALL be skipped, and the part left out, in a CI environment, when `NO_UPDATE_NOTIFIER` is set to a non-empty value (the opt-out convention many CLIs honor), and on a build that is not a published package. The fixing command SHALL run `init` with that package at exactly the newer version, and the step SHALL say that in a terminal the same command without `init` opens the installer. A project launcher hides how the CLI was first installed, so when one started the CLI this command SHALL be spelled with `npx`.
+- **skill**: the Taskless skill installed in the project is not the version this CLI carries, by the same comparison `taskless info` reports. The fixing command SHALL be `<invocation> init`, and the step SHALL say that in a terminal the same command without `init` opens the installer. When the cli part is also present, the skill step SHALL say that the cli step's command also refreshes the skill and SHALL give no separate command.
+- **rules**: the project's rules are not reconciled to this CLI, by the same status `taskless info` and `taskless init` report. The fixing command SHALL be `<invocation> update`.
+
+In a directory with no `.taskless/`, the skill and rules parts SHALL be left out. The command MAY read `.taskless/`, and SHALL NOT create or write it.
+
+When the recipe is rendered by a caller that supplies no measured state, as the `@taskless/cli/prompts` export does, the body SHALL say that the environment was not checked, and SHALL claim neither outcome.
+
+It SHALL emit the command's `cli_agent` intent event with `topic: "ok"`. The topic SHALL appear in the `taskless agent` index.
+
+#### Scenario: ok prints one confirmation line
+
+- **WHEN** `taskless agent ok` is run in a project where nothing is out of date
+- **THEN** stdout SHALL begin with the `# Topic: ok` header line
+- **AND** SHALL contain `Your Taskless environment is up to date and you can proceed.`
+- **AND** the CLI SHALL exit with code 0
+
+#### Scenario: ok carries no fetch-time directive
+
+- **WHEN** `taskless agent ok` is run
+- **THEN** its output SHALL NOT contain the fetch-time directive
+
+#### Scenario: ok names the detected invocation
+
+- **WHEN** `taskless agent ok` is run by a launcher the CLI detects, and reports an out-of-date part
+- **THEN** each fixing command SHALL be spelled with that launcher
+
+#### Scenario: ok does not guess an unknown launcher
+
+- **WHEN** `taskless agent ok` is run, the launcher cannot be determined, and an out-of-date part is reported
+- **THEN** each fixing command SHALL be spelled with the same agent-fill marker every recipe uses for an unknown invocation, and SHALL NOT name a guessed launcher
+
+#### Scenario: ok runs outside a Taskless project
+
+- **WHEN** `taskless agent ok` is run in a directory with no `.taskless/`
+- **THEN** it SHALL serve the recipe and exit 0
+- **AND** SHALL report neither the skill nor the rules part
+- **AND** SHALL NOT create `.taskless/`
+
+#### Scenario: ok reports a newer published CLI
+
+- **WHEN** `taskless agent ok` is run and the published `latest` for this build's package is newer than the running version
+- **THEN** the output SHALL contain the out-of-date passage
+- **AND** a step SHALL name the running version and the newer one
+- **AND** SHALL give a command that runs `init` with that package at exactly the newer version
+
+#### Scenario: The out-of-date passage hands the steps to the user
+
+- **WHEN** `taskless agent ok` reports the cli or skill part
+- **THEN** the output SHALL tell the agent to have the user run those steps
+- **AND** SHALL tell the agent to run `<invocation> agent ok` again once the user is done
+
+#### Scenario: The passage offers the harness's prefix
+
+- **WHEN** `taskless agent ok` reports the cli part, run by the Claude Code CLI
+- **THEN** the output SHALL show the command with the `!` prefix
+- **AND** SHALL also offer another terminal
+
+#### Scenario: Cursor's limit is stated
+
+- **WHEN** `taskless agent ok` reports the cli part, with `CURSOR_AGENT` set
+- **THEN** the output SHALL show the command with the `/shell ` prefix
+- **AND** SHALL say it stops after 30 seconds, and offer another terminal for longer runs
+
+#### Scenario: An unrecognized harness gets a terminal
+
+- **WHEN** `taskless agent ok` reports the cli part and no known harness variable is set
+- **THEN** the output SHALL offer another terminal
+- **AND** SHALL NOT name a prefix
+
+#### Scenario: The agent applies a rules step on its own
+
+- **WHEN** `taskless agent ok` reports only the rules part
+- **THEN** the output SHALL tell the agent to run the step's command and follow its recipe to the last step
+- **AND** SHALL NOT tell the agent to have the user run it, unless the command is refused
+
+#### Scenario: A rules step waits for the upgrade
+
+- **WHEN** `taskless agent ok` reports the rules part beside the cli part
+- **THEN** the output SHALL tell the agent to leave the rules step until the confirming `agent ok`
+
+#### Scenario: Declining an upgrade is explained
+
+- **WHEN** `taskless agent ok` reports the cli part
+- **THEN** the output SHALL say the user can decline, and that the project stays on this CLI and the report keeps listing the upgrade
+- **AND** when the rules part is also reported, SHALL say the rules are still owed on this CLI and tell the agent to apply the rules step once the user declines
+
+#### Scenario: A launcher run spells the upgrade with npx
+
+- **WHEN** `./.taskless/bin/cli.mjs agent ok` is run and a newer CLI is published
+- **THEN** the cli step's command SHALL be `npx <package>@<latest> init`
+
+#### Scenario: A failed registry lookup is silent
+
+- **WHEN** `taskless agent ok` is run, nothing local is out of date, and the registry lookup fails or exceeds its timeout
+- **THEN** the output SHALL contain the up-to-date passage
+- **AND** the CLI SHALL exit with code 0
+
+#### Scenario: An invalid version is ignored
+
+- **WHEN** `taskless agent ok` is run and the registry returns a `latest` that is not a strict semantic version
+- **THEN** the cli part SHALL be left out
+- **AND** the output SHALL NOT contain that string
+
+#### Scenario: The registry is not asked in CI
+
+- **WHEN** `taskless agent ok` is run in a CI environment, or with `NO_UPDATE_NOTIFIER` set
+- **THEN** the CLI SHALL NOT contact the registry
+
+#### Scenario: ok reports an out-of-date skill
+
+- **WHEN** `taskless agent ok` is run in a project whose installed Taskless skill is not the version this CLI carries, and no newer CLI is reported
+- **THEN** the output SHALL contain the out-of-date passage
+- **AND** a step SHALL give `<invocation> init`
+
+#### Scenario: A newer CLI subsumes the skill refresh
+
+- **WHEN** `taskless agent ok` reports both the cli and skill parts
+- **THEN** the skill step SHALL point to the cli step's command and SHALL give no command of its own
+
+#### Scenario: ok reports rules owing a reconcile
+
+- **WHEN** `taskless agent ok` is run in a project whose rules are not reconciled to this CLI
+- **THEN** a step SHALL give `<invocation> update`
+
+#### Scenario: ok does not write the project
+
+- **WHEN** `taskless agent ok` is run in a project with a `.taskless/` directory
+- **THEN** no file under `.taskless/` SHALL be created or modified
+
+#### Scenario: The prompts export claims no outcome
+
+- **WHEN** the `ok` recipe is rendered with no measured state
+- **THEN** it SHALL say the environment was not checked
+- **AND** SHALL contain neither the up-to-date nor the out-of-date passage
+
+#### Scenario: ok is in the index
+
+- **WHEN** `taskless agent` is run with no arguments
+- **THEN** the index SHALL include a row for `ok`
+
+#### Scenario: ok captures its topic
+
+- **WHEN** `taskless agent ok` is run
+- **THEN** PostHog SHALL receive a `cli_agent` event whose `topic` property is `ok`

@@ -144,6 +144,16 @@ describe("agent ok", () => {
     expect(output()).toContain("./.taskless/bin/cli.mjs agent ok");
   });
 
+  it("offers the prefix of the harness running it", async () => {
+    vi.stubEnv("npm_command", "exec");
+    vi.stubEnv("npm_lifecycle_event", "npx");
+    vi.stubEnv("CLAUDECODE");
+    vi.stubEnv("CURSOR_AGENT", "1");
+    stubRegistry("999.0.0");
+    await runAgent(directory, ["agent", "ok"]);
+    expect(output()).toContain("`/shell npx @taskless/cli@999.0.0 init`");
+  });
+
   it("does not guess a launcher it cannot detect", async () => {
     vi.stubEnv("npm_command", "");
     vi.stubEnv("npm_lifecycle_event", "");
