@@ -11,6 +11,7 @@ import {
 import { getTelemetry } from "../telemetry";
 import { detectHostTools } from "../detect/host-tools";
 import { detectRepository } from "../detect/scan";
+import { detectHarnessShell } from "../detect/harness-shell";
 import { environmentSteps, measureEnvironment } from "../install/freshness";
 import {
   ENVIRONMENT_VARIABLES,
@@ -327,6 +328,7 @@ export function createAgentCommand(subCommands: SubCommandsDef) {
                     : "npx"),
               }
             ),
+            shell: detectHarnessShell(process.env),
           }
         : undefined;
       const recipe = getRecipe(key, {

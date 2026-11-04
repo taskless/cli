@@ -984,6 +984,33 @@ describe("environment status", () => {
     expect(text).not.toContain("Apply this step yourself");
   });
 
+  it("offers the harness's prefix for the first command it can run", () => {
+    const text =
+      getRecipe("ok", {
+        invocation,
+        environment: {
+          shell: { name: "Cursor", prefix: "/shell ", caveat: "it is limited" },
+          steps: [{ part: "cli", text: "Newer CLI.", command: "npx x@2.0.0" }],
+        },
+      }) ?? "";
+    expect(text).toContain("in Cursor by typing");
+    expect(text).toContain("`/shell npx x@2.0.0`");
+    expect(text).toContain("or in another terminal if it takes longer");
+    expect(text).toContain("since it is limited");
+  });
+
+  it("offers only another terminal for an unknown harness", () => {
+    const text =
+      getRecipe("ok", {
+        invocation,
+        environment: {
+          steps: [{ part: "cli", text: "Newer CLI.", command: "npx x@2.0.0" }],
+        },
+      }) ?? "";
+    expect(text).toContain("to run themselves:\nin another terminal.");
+    expect(text).not.toContain("prefix");
+  });
+
   it("has the agent apply a rules step when nothing else is owed", () => {
     const text =
       getRecipe("ok", {
