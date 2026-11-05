@@ -170,6 +170,40 @@ describe("runWizard end-to-end", () => {
     expect(captureSpy).toHaveBeenCalledWith("cli_installed");
   });
 
+  it("records a new project's rules as reconciled, so nothing is owed", async () => {
+    clackResponses.locations = ["Claude Code"];
+    clackResponses.summary = true;
+
+    const { runWizard } = await import("../src/wizard");
+    await runWizard({ cwd, globalTrustEnvironment });
+
+    const manifest = JSON.parse(
+      await readFile(join(cwd, ".taskless", "taskless.json"), "utf8")
+    ) as {
+      rules?: { reconciledTo?: string; engines?: unknown };
+      install: { cliVersion?: string };
+    };
+    expect(manifest.rules?.reconciledTo).toBeDefined();
+    expect(manifest.rules?.reconciledTo).toBe(manifest.install.cliVersion);
+    expect(manifest.rules?.engines).toBeDefined();
+  });
+
+  it("leaves a project with rules owing its walk", async () => {
+    clackResponses.locations = ["Claude Code"];
+    clackResponses.summary = true;
+    await mkdir(join(cwd, ".taskless", "rules", "sg", "some-rule"), {
+      recursive: true,
+    });
+
+    const { runWizard } = await import("../src/wizard");
+    await runWizard({ cwd, globalTrustEnvironment });
+
+    const manifest = JSON.parse(
+      await readFile(join(cwd, ".taskless", "taskless.json"), "utf8")
+    ) as { rules?: { reconciledTo?: string } };
+    expect(manifest.rules?.reconciledTo).toBeUndefined();
+  });
+
   it("completes without a token and never offers to log in", async () => {
     vi.stubEnv("TASKLESS_TOKEN", "");
     clackResponses.locations = ["Claude Code"];

@@ -53,9 +53,8 @@ import {
   processLauncherContext,
 } from "../util/package-manager";
 import {
-  pathExists,
   recordReconciliation,
-  stampNewProjectRules,
+  stampRulelessProject,
 } from "../rules/reconcile-marker";
 import { readManifest } from "../filesystem/manifest";
 import {
@@ -455,15 +454,6 @@ async function runNonInteractive(
   // stderr — visible to a person watching the terminal, invisible to a
   // machine consumer parsing stdout.
   const log = options.json ? console.error : console.log;
-  // Sampled BEFORE the directory is created, and that order is the whole
-  // point. `ensureTasklessDirectory` mkdir -p's, so afterwards a pre-existing
-  // project is indistinguishable from a fresh one.
-  //
-  // This path is `init` itself, whose documented job is
-  // refreshing an EXISTING project. Stamping there would mark a project that
-  // never walked the ledger as fully reconciled and skip every entry, which is
-  // the silent skip this feature exists to prevent.
-  const wasNewProject = !(await pathExists(join(cwd, TASKLESS_DIRECTORY)));
   // `init` is now the ONLY command that migrates, so it is the only one that
   // can report what a migration moved. `check`, `validate` and `verify` used to
   // carry this on their own envelopes and refuse rather than migrate now, so
@@ -486,11 +476,7 @@ async function runNonInteractive(
       if (!options.json) console.error(message);
     },
   });
-  if (wasNewProject) {
-    // A project this CLI just created has no entries to walk: everything the
-    // ledger describes is already true of the scaffold it wrote.
-    await stampNewProjectRules(cwd);
-  }
+  await stampRulelessProject(cwd);
 
   const allSkills = getEmbeddedSkills();
   const mandatoryNames = new Set(getMandatorySkillNames());
@@ -599,7 +585,7 @@ async function runNonInteractive(
     log(warning);
   }
 
-  // Read after `stampNewProjectRules`, so a project this run created reports
+  // Read after `stampRulelessProject`, so a project with no rules reports
   // nothing due.
   const { manifest } = await readManifest(join(cwd, TASKLESS_DIRECTORY));
   const rules = await reconcileStatus(cwd, manifest.rules);
