@@ -90,6 +90,16 @@ describe("recording a rules reconciliation", () => {
     return (JSON.parse(raw) as { rules?: Record<string, unknown> }).rules;
   }
 
+  async function setMarker(reconciledTo: string): Promise<void> {
+    const path = join(cwd, ".taskless", "taskless.json");
+    const manifest = JSON.parse(await readFile(path, "utf8")) as Record<
+      string,
+      unknown
+    >;
+    manifest["rules"] = { reconciledTo };
+    await writeFile(path, JSON.stringify(manifest, undefined, 2));
+  }
+
   async function installedVersion(): Promise<string> {
     const result = await runCli(["info", "--json", "-d", cwd]);
     return (JSON.parse(result.stdout) as { version: string }).version;
@@ -325,10 +335,8 @@ describe("recording a rules reconciliation", () => {
 
   it("does not stamp a pre-existing project that never reconciled", async () => {
     // The silent skip this whole feature exists to prevent, reachable through
-    // setup rather than through the walk. `init` is the
-    // documented refresh path for an EXISTING project, and it runs after
-    // `ensureTasklessDirectory` has already created the directory, so
-    // "was this new" has to be sampled before that or it always reads new.
+    // setup rather than through the walk. `init` is the documented refresh
+    // path for an EXISTING project, and this fixture has rules.
     //
     // Stamping here would mark a project that has walked nothing as fully
     // reconciled and skip every ledger entry.
@@ -347,6 +355,55 @@ describe("recording a rules reconciliation", () => {
     ).walk;
     expect(walk).not.toBeNull();
     expect(walk?.from).toBe("0.0.0");
+  });
+
+  describe("a project with no rules", () => {
+    beforeEach(async () => {
+      await rm(join(cwd, ".taskless", "rules"), {
+        recursive: true,
+        force: true,
+      });
+    });
+
+    it("is stamped by init when it never recorded a marker", async () => {
+      // The ledger is about rules already here, so there is nothing to owe.
+      // The wizard left projects in this state, and `agent ok` then told a
+      // person who had just installed that their rules were out of date.
+      await runCli(["init", "-d", cwd]);
+
+      expect(await readRules()).toEqual({
+        reconciledTo: await installedVersion(),
+        engines: { sg: AST_GREP_VERSION, vale: VALE_VERSION },
+      });
+    });
+
+    it("moves forward with the CLI", async () => {
+      await setMarker("0.11.0");
+
+      await runCli(["init", "-d", cwd]);
+
+      const rules = await readRules();
+      expect(rules?.["reconciledTo"]).toBe(await installedVersion());
+    });
+
+    it("keeps a marker a newer CLI wrote", async () => {
+      await setMarker("999.0.0");
+
+      await runCli(["init", "-d", cwd, "--allow-version-mismatches"]);
+
+      const rules = await readRules();
+      expect(rules?.["reconciledTo"]).toBe("999.0.0");
+    });
+
+    it("leaves a project alone once any engine holds a rule", async () => {
+      const rule = join(cwd, ".taskless", "rules", "runtime", "some-rule");
+      await mkdir(rule, { recursive: true });
+
+      await runCli(["init", "-d", cwd]);
+
+      const rules = await readRules();
+      expect(rules?.["reconciledTo"]).toBeUndefined();
+    });
   });
 
   it("reports the walk boundary on info as well, so callers agree", async () => {

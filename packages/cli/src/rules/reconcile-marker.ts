@@ -2,6 +2,8 @@ import { access } from "node:fs/promises";
 import { join } from "node:path";
 
 import { AST_GREP_VERSION, VALE_VERSION } from "./capabilities";
+import { listRuleIds } from "./engines";
+import { ENGINES } from "./layout";
 import { applyRuleMigrations, type AppliedRuleMigration } from "./rule-migrate";
 import { readManifest, writeManifest } from "../filesystem/manifest";
 import { TASKLESS_DIRECTORY } from "./vale/formats";
@@ -138,8 +140,8 @@ export function reconciliationStart(
 ): { from: string; to: string } | undefined {
   const installed = getCliVersion();
   // A missing marker means the project PREDATES the marker, so every entry
-  // still applies and the walk starts from the beginning. `init` stamps the
-  // field on a genuinely new project, which is what makes the two
+  // still applies and the walk starts from the beginning. Installing stamps
+  // the field on a project with no rules, which is what makes the two
   // distinguishable: absent is old, present is accounted for. Treating absent
   // as "nothing to do" would have quietly excused every project that existed
   // before this feature from the entries written for it.
@@ -159,29 +161,32 @@ export async function pathExists(path: string): Promise<boolean> {
 }
 
 /**
- * Stamp the rules marker on a project being set up by this CLI.
+ * Stamp the rules marker on a project that has no rules.
  *
- * A new project has no ledger entries to walk: everything the entries describe
- * is already true of a scaffold this CLI just wrote. Recording that up front
- * is what gives an ABSENT marker its meaning, which is "this project predates
- * the ledger and has had none of it applied".
+ * The ledger describes what to do about rules already in a project. With none
+ * there is nothing to apply, so owing a walk would be a false claim, and
+ * `agent ok` and `check` would repeat it to a person who just installed. That
+ * holds whether the project is new, set up before this ran on the wizard's
+ * path, or has moved to a newer CLI since.
  *
- * ONLY call this when the project was genuinely new, which the caller has to
- * establish BEFORE creating the directory. This function cannot tell: by the
- * time it runs, `ensureTasklessDirectory` has already `mkdir -p`'d, so a
- * pre-existing project and a fresh one look identical. Stamping one that
- * merely never recorded a marker would mark it fully reconciled and skip every
- * entry, which is the exact silent-skip this whole feature exists to prevent,
- * reachable by re-running setup on an ordinary older project.
+ * Both install paths call this after `ensureTasklessDirectory`, since asking
+ * about the rules, unlike asking whether `.taskless/` exists, still has its
+ * answer after the directory is created.
  *
- * Never overwrites either. Re-running setup on a project that HAS a marker
- * must not reset one a real walk earned.
+ * It never touches a project that has rules: stamping one that merely never
+ * recorded a marker would skip every entry, which is the exact silent skip
+ * this feature exists to prevent, reachable by re-running setup on an ordinary
+ * older project. It also never rewinds a marker a newer CLI wrote.
  */
-export async function stampNewProjectRules(cwd: string): Promise<void> {
+export async function stampRulelessProject(cwd: string): Promise<void> {
   const tasklessDirectory = join(cwd, TASKLESS_DIRECTORY);
   try {
     const { manifest, raw } = await readManifest(tasklessDirectory);
-    if (manifest.rules?.reconciledTo !== undefined) return;
+    if (reconciliationStart(manifest.rules?.reconciledTo) === undefined) return;
+    const rules = await Promise.all(
+      ENGINES.map((engine) => listRuleIds(cwd, engine))
+    );
+    if (rules.some((ids) => ids.length > 0)) return;
     await writeManifest(
       tasklessDirectory,
       {

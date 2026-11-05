@@ -33,6 +33,7 @@ import {
   TELEMETRY_NOTICE,
   TELEMETRY_NOTICE_TITLE,
 } from "../telemetry";
+import { stampRulelessProject } from "../rules/reconcile-marker";
 import { CLIError } from "../util/cli-error";
 import { buildInvocation } from "../util/invocation";
 import { getCliPrefix } from "../util/package-manager";
@@ -140,6 +141,7 @@ export async function runWizard(
         }
       },
     });
+    await stampRulelessProject(options.cwd);
     const cliVersion = getCliVersion();
     const { launcher, lockfile, retired } = await applyInstallPlan(
       options.cwd,
