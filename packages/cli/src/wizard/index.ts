@@ -41,6 +41,7 @@ import { getCliPrefix } from "../util/package-manager";
 import { WizardCancelled } from "./ask";
 import { getCliVersion, renderIntro } from "./intro";
 import { promptCommit } from "./steps/commit";
+import { promptGlobalTrust } from "./steps/global-trust";
 import { promptLocations } from "./steps/locations";
 import { renderSummaryAndConfirm } from "./steps/summary";
 
@@ -117,15 +118,22 @@ export async function runWizard(
       write: false,
     });
 
-    const proceed = await renderSummaryAndConfirm(diff, permissionPreview, {
-      outcomes: globalTrustPreview,
-      home: globalTrustEnvironment.home,
-    });
+    const proceed = await renderSummaryAndConfirm(diff, permissionPreview);
     if (!proceed) {
       cancel(`Install cancelled. Run \`${getCliPrefix()} init\` to try again.`);
       cancelledStep = "summary";
       return finish({ status: "cancelled" });
     }
+
+    // Asked before anything is written, so cancelling here leaves the project
+    // as it was. Only a cancel stops the install: saying no is a real answer.
+    const offered = globalTrustPreview.some((outcome) => needsWrite(outcome));
+    const trusted =
+      offered &&
+      (await promptGlobalTrust(
+        globalTrustPreview,
+        globalTrustEnvironment.home
+      ));
 
     // The migration's start opens a step; its summary, and the launcher
     // lines below, continue under it rather than each opening one of their
@@ -160,22 +168,30 @@ export async function runWizard(
     created.push(...retired.map((path) => describeRetired(path)));
     if (created.length > 0) log.message(created.join("\n"));
     await syncPermissions(options.cwd, { ...permissionOptions, write: true });
-    // Confirmed with the project edits, in the summary's one question.
-    if (globalTrustPreview.some((outcome) => needsWrite(outcome))) {
+    if (trusted) {
       await syncGlobalTrust({ ...globalTrustOptions, write: true });
     }
     // Read again rather than assumed, so a skipped file, and a write that did
-    // not land, still warn.
+    // not land, still warn. An entry the person just said no to does not: the
+    // warning is for an edit they still owe, and they have answered.
     const globalTrust = await syncGlobalTrust({
       ...globalTrustOptions,
       write: false,
     });
+    const declined = offered && !trusted;
     for (const warning of globalTrustWarnings(
-      globalTrust,
+      declined
+        ? globalTrust.filter((outcome) => !needsWrite(outcome))
+        : globalTrust,
       getCliPrefix(),
       globalTrustEnvironment.home
     )) {
       log.warn(warning);
+    }
+    if (declined) {
+      log.info(
+        `Your agent settings were left as they are, so your agent may ask you to approve Taskless commands. Run \`${getCliPrefix()}\` with no arguments in a terminal to be offered this again.`
+      );
     }
 
     if (await isTelemetryEnabled(options.cwd)) {

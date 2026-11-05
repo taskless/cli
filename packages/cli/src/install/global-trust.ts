@@ -39,6 +39,8 @@ import { SETTINGS_TONE } from "./settings-tone";
 export interface GlobalTrustText {
   /** The package the entry covers. */
   packageName: string;
+  /** How the project's launcher for that package is run. */
+  launcher: string;
   label: string;
   entry: string;
 }
@@ -59,6 +61,7 @@ function trustText(
 ): GlobalTrustText {
   return {
     packageName,
+    launcher,
     label,
     entry:
       `${label} The npm package ${packageName} is tooling published by ` +
@@ -136,6 +139,8 @@ interface GlobalTrust {
   key: readonly string[];
   /** The list to write when there is none, holding the entry. */
   seed: readonly string[];
+  /** The wizard's sentence on why a project rule does not reach this harness. */
+  why: string;
 }
 
 const claudeCode: GlobalTrust = {
@@ -156,6 +161,12 @@ const claudeCode: GlobalTrust = {
   // `$defaults` splices in the shipped exceptions. A new list without it
   // would replace them, and the user would lose every one.
   seed: ["$defaults", GLOBAL_TRUST_ENTRY],
+  why:
+    "Claude Code's auto mode judges each command as it sees it. It can't see " +
+    "that pin, or a delay you set on new releases such as min-release-age, " +
+    "and a project's own settings can't overrule it, so a cloned repository " +
+    "can't approve itself. Only your own settings can tell it " +
+    "that you trust this command.",
 };
 
 const GLOBAL_TRUST: readonly GlobalTrust[] = [claudeCode];
@@ -310,22 +321,68 @@ function display(file: string, home: string): string {
   return file.startsWith(`${home}/`) ? `~${file.slice(home.length)}` : file;
 }
 
+/** The edit the wizard offers for one missing or stale entry. */
+export interface GlobalTrustOffer {
+  replace: boolean;
+  what: string;
+  where: string;
+  /** The file, shortened, for the question and the decline. */
+  file: string;
+  /** The paragraphs that come before the entry's text. */
+  before: string[];
+  /** The paragraphs that come after it. */
+  after: string[];
+}
+
 /**
- * The proposed edit for each missing or stale entry, for the wizard's
- * summary, beside the project's own lines: what it allows, and where it goes.
- * `replace` marks a stale entry, which is swapped rather than added.
+ * What the wizard says about each missing or stale entry: the edit, and
+ * enough for a person to decide on it without reading anything else. It says
+ * how far the entry reaches as well as what the pin protects, because an entry
+ * in user settings follows the launcher's path, not this repository.
  */
 export function describeGlobalTrust(
   outcomes: readonly GlobalTrustOutcome[],
   home: string = homedir()
-): { replace: boolean; what: string; where: string }[] {
+): GlobalTrustOffer[] {
   return outcomes
     .filter((outcome) => needsWrite(outcome))
-    .map((outcome) => ({
-      replace: outcome.state === "stale",
-      what: `${BUILD_TRUST.packageName} at an exact version`,
-      where: `in ${display(outcome.file, home)} (${outcome.key})`,
-    }));
+    .map((outcome) => {
+      const { packageName, launcher } = BUILD_TRUST;
+      const file = display(outcome.file, home);
+      const { why } =
+        GLOBAL_TRUST.find((trust) => trust.harness === outcome.harness) ??
+        claudeCode;
+      const change =
+        outcome.state === "stale"
+          ? outcome.labelled > 1
+            ? `This folds the ${String(outcome.labelled)} Taskless entries already in \`${outcome.key}\` into this one`
+            : `This replaces the older Taskless entry already in \`${outcome.key}\` with this one`
+          : `This adds one entry to \`${outcome.key}\``;
+      return {
+        replace: outcome.state === "stale",
+        what: `${packageName} at an exact version`,
+        where: `in ${file} (${outcome.key})`,
+        file,
+        before: [
+          `Taskless runs through ${launcher}, a script in this repository that ` +
+            `starts the exact ${packageName} version recorded in ` +
+            ".taskless/taskless.json. You can read both, and review any change " +
+            "to them like other code.",
+          why,
+          `${change}. That file is the only one Taskless changes outside this ` +
+            "project. The entry applies to every project on this machine, " +
+            "including a launcher at that path in another repository, so " +
+            "review that script when you clone one.",
+        ],
+        after: [
+          "Dist-tags such as @latest, version ranges and unversioned calls are " +
+            "not covered. Remove the entry at any time to undo this.",
+          `Taskless installs either way. Without the entry, ${outcome.harness} ` +
+            "may stop to ask you to approve Taskless commands, or refuse them " +
+            "in auto mode.",
+        ],
+      };
+    });
 }
 
 /**
