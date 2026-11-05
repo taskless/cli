@@ -38,6 +38,8 @@ const clackResponses: {
   /** Checked row values: harness names, or `agents` for the generic row. */
   locations?: string[] | symbol;
   summary?: boolean | symbol;
+  /** The answer to the global trust entry's own question. */
+  globalTrust?: boolean | symbol;
   commit?: string | symbol;
   commitMessage?: string | symbol;
 } = {};
@@ -50,6 +52,11 @@ const confirmMessages: string[] = [];
 
 // Captures the message of the summary confirm prompt for assertions.
 let summaryConfirmMessage: string | undefined;
+
+// The default each confirm offered, in order.
+const confirmDefaults: unknown[] = [];
+
+const GLOBAL_QUESTION = "Add the Taskless entry to ~/.claude/settings.json?";
 
 // Everything the wizard showed through `log.message`, in order.
 const loggedMessages: string[] = [];
@@ -87,11 +94,23 @@ vi.mock("@clack/prompts", () => ({
     return Promise.resolve(clackResponses.commit);
   }),
   text: vi.fn(() => Promise.resolve(clackResponses.commitMessage)),
-  confirm: vi.fn(({ message }: { message: string }) => {
-    confirmMessages.push(message);
-    summaryConfirmMessage = message;
-    return Promise.resolve(clackResponses.summary);
-  }),
+  confirm: vi.fn(
+    ({
+      message,
+      initialValue,
+    }: {
+      message: string;
+      initialValue?: boolean;
+    }) => {
+      confirmMessages.push(message);
+      confirmDefaults.push(initialValue);
+      if (/Taskless entry (to|in) /.test(message)) {
+        return Promise.resolve(clackResponses.globalTrust);
+      }
+      summaryConfirmMessage = message;
+      return Promise.resolve(clackResponses.summary);
+    }
+  ),
 }));
 
 async function exists(path: string): Promise<boolean> {
@@ -128,6 +147,8 @@ beforeEach(async () => {
   clackResponses.commitMessage = undefined;
   selectMessages.length = 0;
   confirmMessages.length = 0;
+  confirmDefaults.length = 0;
+  clackResponses.globalTrust = true;
   summaryConfirmMessage = undefined;
   loggedMessages.length = 0;
   warnedMessages.length = 0;
@@ -329,24 +350,26 @@ describe("runWizard end-to-end", () => {
   });
 
   describe("global trust", () => {
-    it("lists project and global edits together under one question", async () => {
+    it("asks about the global entry on its own, after the project's edits", async () => {
       clackResponses.locations = ["Claude Code"];
       clackResponses.summary = true;
 
       const { runWizard } = await import("../src/wizard");
       await runWizard({ cwd, globalTrustEnvironment });
 
-      const summary = loggedMessages.join("\n");
-      // Labels padded to the widest, statements in one column, the file on
-      // its own line beneath, and nothing past 76 columns.
+      const [summary, offer] = loggedMessages;
       expect(summary).toMatch(
         /ALLOW \(project\): npx @taskless\/cli@\S+\n {17}in \.claude\/settings\.json/
       );
-      expect(summary).toContain(
-        "ALLOW (global):  @taskless/cli at an exact version\n" +
-          "                 in ~/.claude/settings.json (autoMode.allow)"
+      expect(summary).not.toContain("(global)");
+      expect(offer).toContain(
+        "ALLOW (global): @taskless/cli at an exact version\n" +
+          "                in ~/.claude/settings.json (autoMode.allow)"
       );
-      expect(confirmMessages).toEqual(["Make these changes to your settings?"]);
+      expect(confirmMessages).toEqual([
+        "Make these changes to your settings?",
+        GLOBAL_QUESTION,
+      ]);
       const settings = JSON.parse(await readFile(userSettings(), "utf8")) as {
         autoMode: { allow: string[] };
       };
@@ -355,7 +378,29 @@ describe("runWizard end-to-end", () => {
       expect(warnedMessages).toEqual([]);
     });
 
-    it("declining writes neither the project nor the global settings", async () => {
+    it("explains the entry and defaults to no", async () => {
+      clackResponses.locations = ["Claude Code"];
+      clackResponses.summary = true;
+
+      const { GLOBAL_TRUST_ENTRY } =
+        await import("../src/install/global-trust");
+      const { runWizard } = await import("../src/wizard");
+      await runWizard({ cwd, globalTrustEnvironment });
+
+      const offer = loggedMessages[1] ?? "";
+      const unwrapped = offer.replaceAll(/\s+/g, " ");
+      expect(confirmDefaults.at(-1)).toBe(false);
+      expect(unwrapped).toContain(GLOBAL_TRUST_ENTRY);
+      expect(unwrapped).toContain("./.taskless/bin/cli.mjs");
+      expect(unwrapped).toContain("min-release-age");
+      expect(unwrapped).toContain("every project on this machine");
+      expect(unwrapped).toContain("Taskless installs either way");
+      for (const line of offer.split("\n")) {
+        expect(line.length).toBeLessThanOrEqual(76);
+      }
+    });
+
+    it("declining the summary neither writes nor asks about the entry", async () => {
       clackResponses.locations = ["Claude Code"];
       clackResponses.summary = false;
 
@@ -363,21 +408,57 @@ describe("runWizard end-to-end", () => {
       const result = await runWizard({ cwd, globalTrustEnvironment });
 
       expect(result.status).toBe("cancelled");
+      expect(confirmMessages).not.toContain(GLOBAL_QUESTION);
       expect(await exists(userSettings())).toBe(false);
       expect(await exists(join(cwd, ".claude", "settings.json"))).toBe(false);
+    });
+
+    it("declining the entry still installs, with one calm line", async () => {
+      clackResponses.locations = ["Claude Code"];
+      clackResponses.summary = true;
+      clackResponses.globalTrust = false;
+
+      const { runWizard } = await import("../src/wizard");
+      const result = await runWizard({ cwd, globalTrustEnvironment });
+
+      expect(result.status).toBe("completed");
+      expect(await exists(userSettings())).toBe(false);
+      expect(await exists(join(cwd, ".claude", "settings.json"))).toBe(true);
+      expect(warnedMessages).toEqual([]);
+      expect(
+        infoMessages.filter((message) => message.includes("ask you to approve"))
+      ).toHaveLength(1);
+    });
+
+    it("cancelling the entry's question writes nothing", async () => {
+      clackResponses.locations = ["Claude Code"];
+      clackResponses.summary = true;
+      clackResponses.globalTrust = fakeCancelSymbol;
+
+      const { runWizard } = await import("../src/wizard");
+      const result = await runWizard({ cwd, globalTrustEnvironment });
+
+      expect(result).toMatchObject({
+        status: "cancelled",
+        cancelledStep: "global-trust",
+      });
+      expect(await exists(userSettings())).toBe(false);
+      expect(await exists(join(cwd, ".claude", "settings.json"))).toBe(false);
+      expect(await exists(join(cwd, ".taskless", "taskless.json"))).toBe(false);
     });
 
     it("asks again on the next run after a decline", async () => {
       // Nothing records the answer: an absent entry is offered every time.
       clackResponses.locations = ["Claude Code"];
-      clackResponses.summary = false;
+      clackResponses.summary = true;
+      clackResponses.globalTrust = false;
 
       const { runWizard } = await import("../src/wizard");
       await runWizard({ cwd, globalTrustEnvironment });
       await runWizard({ cwd, globalTrustEnvironment });
 
       expect(
-        loggedMessages.filter((message) => message.includes("ALLOW (global)"))
+        confirmMessages.filter((message) => message === GLOBAL_QUESTION)
       ).toHaveLength(2);
     });
 
@@ -396,7 +477,7 @@ describe("runWizard end-to-end", () => {
       const summary = loggedMessages.join("\n");
       expect(summary).not.toContain("ALLOW (project)");
       expect(summary).toContain("ALLOW (global)");
-      expect(confirmMessages).toEqual(["Make these changes to your settings?"]);
+      expect(confirmMessages).toEqual([GLOBAL_QUESTION]);
     });
 
     it("does not offer an entry that is already there", async () => {
@@ -443,7 +524,10 @@ describe("runWizard end-to-end", () => {
         "REPLACE (global): @taskless/cli at an exact version\n" +
           "                  in ~/.claude/settings.json (autoMode.allow)"
       );
-      expect(confirmMessages).toEqual(["Make these changes to your settings?"]);
+      expect(confirmMessages).toEqual([
+        "Make these changes to your settings?",
+        "Update the Taskless entry in ~/.claude/settings.json?",
+      ]);
       const settings = JSON.parse(await readFile(userSettings(), "utf8")) as {
         autoMode: { allow: string[] };
       };
@@ -462,11 +546,13 @@ describe("runWizard end-to-end", () => {
       });
       await writeFile(userSettings(), original);
       clackResponses.locations = ["Claude Code"];
-      clackResponses.summary = false;
+      clackResponses.summary = true;
+      clackResponses.globalTrust = false;
 
       const { runWizard } = await import("../src/wizard");
-      await runWizard({ cwd, globalTrustEnvironment });
+      const result = await runWizard({ cwd, globalTrustEnvironment });
 
+      expect(result.status).toBe("completed");
       expect(await readFile(userSettings(), "utf8")).toBe(original);
     });
   });

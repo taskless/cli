@@ -340,12 +340,29 @@ describe("rendering", () => {
   it("describes a missing entry as a global edit", async () => {
     const outcomes = await sync(false);
     expect(describeGlobalTrust(outcomes, home)).toEqual([
-      {
+      expect.objectContaining({
         replace: false,
         what: "@taskless/cli at an exact version",
         where: "in ~/.claude/settings.json (autoMode.allow)",
-      },
+        file: "~/.claude/settings.json",
+      }),
     ]);
+  });
+
+  it("says how a stale entry changes before asking to change it", async () => {
+    await put(JSON.stringify({ autoMode: { allow: ["Taskless CLI: old"] } }));
+    const [replaced] = describeGlobalTrust(await sync(false), home);
+    expect(replaced?.before.join(" ")).toContain(
+      "replaces the older Taskless entry"
+    );
+
+    await put(
+      JSON.stringify({
+        autoMode: { allow: [GLOBAL_TRUST_ENTRY, "Taskless CLI: pasted"] },
+      })
+    );
+    const [folded] = describeGlobalTrust(await sync(false), home);
+    expect(folded?.before.join(" ")).toContain("folds the 2 Taskless entries");
   });
 
   it("warns with the file, key, and entry", async () => {

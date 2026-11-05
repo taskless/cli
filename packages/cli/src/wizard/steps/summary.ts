@@ -6,11 +6,6 @@ import chalk from "chalk";
 // whichever caller happened to load `wizard/intro.ts` first.
 import "../../util/color";
 
-import {
-  describeGlobalTrust,
-  needsWrite,
-  type GlobalTrustOutcome,
-} from "../../install/global-trust";
 import { commandOfRule, type PermissionEdit } from "../../install/permissions";
 import { wrap } from "../../install/notice-box";
 import { SETTINGS_TONE, type SettingsTone } from "../../install/settings-tone";
@@ -19,8 +14,7 @@ import { ask } from "../ask";
 
 export async function renderSummaryAndConfirm(
   diff: InstallDiff,
-  permissions: readonly PermissionEdit[] = [],
-  globalTrust?: { outcomes: readonly GlobalTrustOutcome[]; home: string }
+  permissions: readonly PermissionEdit[] = []
 ): Promise<boolean> {
   const lines: string[] = [];
 
@@ -56,21 +50,9 @@ export async function renderSummaryAndConfirm(
     lines.push("");
   }
 
-  // Every settings edit, project and global, in one group under one
-  // question: each is a line a person can read, with where it goes.
-  const settingsLines = layoutSettings([
-    ...describeProjectEdits(permissions),
-    ...(globalTrust === undefined
-      ? []
-      : describeGlobalTrust(globalTrust.outcomes, globalTrust.home).map(
-          ({ replace, what, where }): SettingsLine => ({
-            label: replace ? "REPLACE (global):" : "ALLOW (global):",
-            tone: replace ? "replace" : "allow",
-            what,
-            where,
-          })
-        )),
-  ]);
+  // Every project settings edit under one question. The global entry reaches
+  // past this project, so it is asked about on its own, in a later step.
+  const settingsLines = layoutSettings(describeProjectEdits(permissions));
   if (settingsLines.length > 0) {
     lines.push(chalk.bold("Agent settings"), ...settingsLines, "");
   }
@@ -79,9 +61,7 @@ export async function renderSummaryAndConfirm(
 
   // A settings file is the user's, so an edit to one is confirmed even when
   // nothing is being removed.
-  const editsSettings =
-    permissions.some((edit) => edit.skipped === null) ||
-    (globalTrust?.outcomes.some((outcome) => needsWrite(outcome)) ?? false);
+  const editsSettings = permissions.some((edit) => edit.skipped === null);
   if (!diff.hasRemovals && !editsSettings) {
     return true;
   }
@@ -98,7 +78,7 @@ export async function renderSummaryAndConfirm(
 const SETTINGS_QUESTION = "Make these changes to your settings?";
 
 /** One settings edit: what it allows or removes, and where. */
-interface SettingsLine {
+export interface SettingsLine {
   label: string;
   tone: SettingsTone;
   what: string;
@@ -109,14 +89,14 @@ interface SettingsLine {
  * Lines inside clack's gutter stay within this many columns, so the summary
  * fits an 80-column terminal.
  */
-const SUMMARY_COLUMNS = 76;
+export const SUMMARY_COLUMNS = 76;
 
 /**
  * Labels padded to the widest one, so every statement starts in one column,
  * and each statement wrapped under itself, never mid-token: a nightly version
  * is one long token and must stay copyable.
  */
-function layoutSettings(entries: readonly SettingsLine[]): string[] {
+export function layoutSettings(entries: readonly SettingsLine[]): string[] {
   const width = Math.max(0, ...entries.map((entry) => entry.label.length)) + 1;
   const indent = " ".repeat(width);
   const lines: string[] = [];
