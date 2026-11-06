@@ -1,4 +1,4 @@
-# Topic: route     (CLI v%(CLI_VERSION)s / topic v8)
+# Topic: route     (CLI v%(CLI_VERSION)s / topic v9)
 
 %(ONE_COMMAND_PER_CALL)s
 

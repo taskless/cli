@@ -17,8 +17,8 @@ function tool(name: string): string {
 describe("route's legacy ladder", () => {
   const route = recipe("route");
 
-  it("is topic v8", () => {
-    expect(route).toMatch(/^# Topic: route {5}\(CLI v.+ \/ topic v8\)/m);
+  it("is topic v9", () => {
+    expect(route).toMatch(/^# Topic: route {5}\(CLI v.+ \/ topic v9\)/m);
   });
 
   it("orders shipped rule, repo examples, Taskless static, Taskless runtime", () => {
@@ -158,6 +158,16 @@ describe("the per-tool legacy recipes", () => {
     expect(biome).toContain("Do not write a Biome plugin.");
   });
 
+  it("has Oxlint check its catch-alls and confirm with oxlint --rules", () => {
+    const oxlint = tool("oxlint");
+    expect(oxlint).toContain("`no-restricted-imports`");
+    expect(oxlint).toContain("`no-restricted-globals`");
+    expect(oxlint).toContain("Oxlint has no `no-restricted-syntax`.");
+    expect(oxlint).toContain("`oxlint --rules`");
+    expect(oxlint).toContain("a nested\n   config replaces its parent");
+    expect(oxlint).toContain("Do not write an Oxlint plugin.");
+  });
+
   it("has pylint load an extension before ruling its message out", () => {
     expect(tool("pylint")).toContain(
       "Load the extension\n   before concluding a message does not exist."
@@ -170,7 +180,7 @@ describe("the per-tool legacy recipes", () => {
     expect(flake8).not.toContain("--list");
   });
 
-  it.each(["ruff", "eslint", "biome", "pylint", "flake8"])(
+  it.each(["ruff", "eslint", "biome", "oxlint", "pylint", "flake8"])(
     "has the %s recipe say Taskless does not run the linter",
     (name) => {
       expect(tool(name)).toMatch(/check` does NOT run /);

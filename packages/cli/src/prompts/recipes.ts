@@ -652,6 +652,13 @@ problem go away. \`noRestrictedImports\` and \`noRestrictedGlobals\`
 are the catch-alls.`,
   ],
   [
+    "oxlint",
+    `**Oxlint** lints JavaScript and TypeScript with a large built-in rule
+set, including many ESLint rules under the same names. Always check
+\`no-restricted-imports\` and \`no-restricted-globals\`, the catch-alls.
+It has no \`no-restricted-syntax\`.`,
+  ],
+  [
     "ruff",
     `**Ruff** lints Python with a large built-in rule set and has no
 custom-rule mechanism, so it never takes step 2. Always check
@@ -673,38 +680,77 @@ It is a plugin package, so the repo may need to add it.`,
 ];
 
 /**
+ * Detected tools that are not a legacy destination: formatters, which enforce
+ * no rule a request could ask for, and Taskless's own two engines, which are
+ * destinations in their own right further down `route`.
+ *
+ * Held here rather than on `LINTER_SIGNALS` because that table imports host
+ * capabilities and the prompts bundle must not.
+ */
+const NOT_A_LEGACY_HOST: ReadonlySet<string> = new Set([
+  "prettier",
+  "black",
+  "pint",
+  "php-cs-fixer",
+  "ast-grep",
+  "vale",
+]);
+
+/**
  * The linters `route` describes, as one block.
  *
  * `undefined` means nobody scanned, which renders every paragraph: a
  * consumer of `@taskless/cli/prompts` has no repository to describe, and
- * omitting a linter there would read as "this one does not apply". An empty
- * match is a measured answer and says so in one line.
+ * omitting a linter there would read as "this one does not apply".
+ *
+ * A scan renders everything it found that can host a rule, with or without a
+ * paragraph. A tool with no paragraph is named on one line and sent to the
+ * generic recipe, because the ladder's first step applies to it all the same.
+ * Leaving it out would tell the agent the repository does not run it.
  */
 function legacyLintersBlock(
   linters: string[] | undefined,
   fetchPrefix: string | undefined
 ): string {
+  const fetchFor = (name: string): string =>
+    fetchPrefix === undefined
+      ? `Fetch \`create-legacy-rule\` with tool \`${name}\`.`
+      : `Fetch \`${fetchPrefix}create-legacy-rule --tool=${name}\`.`;
   const described = LEGACY_LINTER_GUIDE.filter(
     ([name]) => linters === undefined || linters.includes(name)
   );
-  if (described.length === 0) {
-    return `   \`detect\` found no linter here with a legacy recipe, so step 1 and
-   step 2 do not apply. Continue from step 3.`;
-  }
-  const heading =
-    linters === undefined
-      ? "   Linters with a legacy recipe, and what step 1 always checks:"
-      : "   The linters `detect` found here, and what step 1 always checks:";
-  const items = described.map(([name, paragraph]) => {
-    const fetch =
-      fetchPrefix === undefined
-        ? `Fetch \`create-legacy-rule\` with tool \`${name}\`.`
-        : `Fetch \`${fetchPrefix}create-legacy-rule --tool=${name}\`.`;
-    return `   - ${indentBlock(`${paragraph}\n${fetch}`, "     ")}`;
-  });
-  return `${heading}
+  const guided = new Set(LEGACY_LINTER_GUIDE.map(([name]) => name));
+  const unguided = (linters ?? []).filter(
+    (name) => !guided.has(name) && !NOT_A_LEGACY_HOST.has(name)
+  );
+  const unrecognized = `   \`detect\` recognizes a fixed list of tools, so this repository may run
+   others it does not know about.`;
+  if (described.length === 0 && unguided.length === 0) {
+    return `   \`detect\` found no linter here that can host a rule, so step 1 and
+   step 2 do not apply. Continue from step 3.
 
-${items.join("\n")}`;
+${unrecognized}`;
+  }
+  const sections: string[] = [];
+  if (described.length > 0) {
+    const heading =
+      linters === undefined
+        ? "   Linters with a legacy recipe, and what step 1 always checks:"
+        : "   The linters `detect` found here, and what step 1 always checks:";
+    const items = described.map(
+      ([name, paragraph]) =>
+        `   - ${indentBlock(`${paragraph}\n${fetchFor(name)}`, "     ")}`
+    );
+    sections.push(`${heading}\n\n${items.join("\n")}`);
+  }
+  if (unguided.length > 0) {
+    const names = unguided.map((name) => `\`${name}\``).join(", ");
+    const fetches = unguided.map((name) => fetchFor(name)).join(" ");
+    sections.push(`   Also detected here, with no guide of their own: ${names}. Steps 1 and
+   2 still apply to them. ${fetches}`);
+  }
+  if (linters !== undefined) sections.push(unrecognized);
+  return sections.join("\n\n");
 }
 
 /** The state a passage conditioned on one tool renders from. */
