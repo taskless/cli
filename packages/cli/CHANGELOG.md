@@ -1,5 +1,23 @@
 # @taskless/cli
 
+## 0.13.6
+
+[Compare with v0.13.5](https://github.com/taskless/cli/compare/v0.13.5...v0.13.6)
+
+### Patch Changes
+
+- ea2b361: Fix the upgrade steps `agent ok` and `check` print. They told you to run the CLI with no arguments, which only installs from a terminal: anywhere else it printed the topic index and changed nothing. They now name `init`, which works in both.
+
+  Your agent now finishes the job after you upgrade. Moving the CLI stays yours to do, and once you have, the agent applies the rules instructions itself instead of handing them back. On a project launcher run, the upgrade step now names `npx` rather than a placeholder.
+
+  `agent ok` also offers the upgrade the way your harness runs it: with the `!` prefix in the Claude Code CLI, OpenCode, Codex, Gemini CLI, and Devin, and with `/shell` in Cursor. Another terminal is always offered, and it's the only offer when the harness isn't recognized.
+
+- 2614cf0: Stop telling a new project its rules are out of date. Installing from the terminal never recorded that a new project had nothing to reconcile, so the first `agent ok` during onboarding asked for `update --rules` on a project with no rules. Installing now records it, and upgrading clears the message on any project that already has it and still has no rules.
+- 6a09da2: Ask separately before changing your global agent settings. The installer now explains why it wants an entry in `~/.claude/settings.json`, shows the exact text, and defaults to no. Saying no still installs Taskless; your agent may just ask you to approve Taskless commands more often.
+- 226e590: `verify` no longer reports success when a rule did not run. It used to exit 0 and print `ok: true` when a runtime rule's fixtures were skipped for want of `--dangerously-run-scripts`, so CI and agents read a rule nothing exercised as a pass. It now exits 2 and reports `ok: false` when nothing failed but a rule did not run, and still exits 1 when a rule failed.
+
+  If a script or hook runs a bare `verify` in a project with runtime rules, it now needs to change: pass `--dangerously-run-scripts` if it should run them, or name `.taskless/rules/sg` and `.taskless/rules/vale`. Pre-commit hooks should do the latter, since `--dangerously-run-scripts` never belongs in a hook.
+
 ## 0.13.5
 
 [Compare with v0.13.4](https://github.com/taskless/cli/compare/v0.13.4...v0.13.5)
