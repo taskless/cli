@@ -20,8 +20,8 @@ import {
 export interface DetectedLinter {
   name: string;
   /**
-   * On-disk evidence for this linter: a config-file path, a manifest table or
-   * INI section marker, a dependency marker from the language's package file,
+   * On-disk evidence for this linter: a config-file path, a manifest table,
+   * INI section, or config key marker, a dependency marker from the language's package file,
    * or a root CI or hook config that runs it. Each
    * entry carries the path it was found at, so monorepo evidence
    * (`packages/api/.eslintrc.json`) is attributable. Not all entries are file
@@ -81,6 +81,10 @@ const IGNORED_DIRECTORIES: ReadonlySet<string> = new Set([
   ".pytest_cache",
   ".tox",
   ".gradle",
+  // .NET build output. `obj` holds restore artifacts generated from the
+  // project files, which are not the repository's own declarations.
+  "bin",
+  "obj",
   // Taskless's own state. It holds an `sgconfig.yml` and a `.vale.ini` that
   // Taskless writes for itself, which are not the repository's linters: an
   // unpruned walk reports every installed repository as already running
@@ -104,7 +108,7 @@ const MAX_DIRECTORY_DEPTH = 8;
  * is read from the right package file: a node dependency lives in
  * `package.json`, a Python dependency in `pyproject.toml`/`requirements*.txt`,
  * a Ruby one in `Gemfile`, a PHP one in `composer.json`, a Go one in `go.mod`,
- * a Swift one in `Package.swift`. Tagging by language lets the scan look for a
+ * a Swift one in `Package.swift`, a C# one in an MSBuild project file. Tagging by language lets the scan look for a
  * linter's dependency only in its own ecosystem's manifest instead of
  * conflating them. Config-file presence
  * is honored unconditionally, per the detect spec ("a recognized linter config
@@ -124,6 +128,12 @@ interface LinterSignal {
   manifestTables?: Array<{ manifest: TomlManifest; table: string }>;
   /** `[section]` headers in an INI file the linter reads, e.g. `[flake8]` in `setup.cfg`. */
   iniSections?: Array<{ file: string; section: string }>;
+  /**
+   * Keys in a shared config file the linter reads, e.g. `roslynator_*` in
+   * `.editorconfig`. Each pattern matches from the start of a line, so a
+   * commented-out key is not evidence, and the match is reported.
+   */
+  configKeys?: Array<{ file: string; key: RegExp }>;
   /** Top-level `package.json` keys the linter reads its config from. */
   packageJsonKeys?: string[];
   /**
@@ -143,6 +153,24 @@ interface LinterSignal {
 
 /** TOML manifests parsed for `manifestTables`. */
 type TomlManifest = "pyproject.toml" | "Cargo.toml";
+
+/**
+ * The keys only Roslynator reads: its own options and refactorings, the `RCS`
+ * analyzer ids, and its severity category. EditorConfig keys are
+ * case-insensitive, and `RCS1234` is usually written in capitals.
+ */
+const ROSLYNATOR_CONFIG_KEY =
+  /^[ \t]*(?:roslynator_|dotnet_diagnostic\.rcs\d|dotnet_analyzer_diagnostic\.category-roslynator\.)[^\s=]*/im;
+
+/**
+ * Roslyn analyzers share their config files, so each is told apart by its own
+ * diagnostic ids, as `dotnet_diagnostic.<id>.severity`. Each analyzer stays its
+ * own linter rather than one `roslyn` entry: people know the tool they
+ * installed, not the platform under it.
+ */
+function analyzerConfigKeys(key: RegExp): LinterSignal["configKeys"] {
+  return [".editorconfig", ".globalconfig"].map((file) => ({ file, key }));
+}
 
 const LINTER_SIGNALS: readonly LinterSignal[] = [
   {
@@ -370,6 +398,38 @@ const LINTER_SIGNALS: readonly LinterSignal[] = [
     invocations: [/\bswiftlint\b/],
   },
   { name: "checkstyle", languages: ["Java"], configFiles: ["checkstyle.xml"] },
+  {
+    // Configured almost entirely through `.editorconfig`, which any language
+    // may have, so the keys are the signal rather than the file. The
+    // `.roslynatorconfig` it documents is user-wide, but one committed to a
+    // repository still says what the repository uses. Being a C# repository
+    // is NOT evidence, and neither are the analyzers the .NET SDK ships.
+    name: "roslynator",
+    languages: ["C#"],
+    configFiles: [".roslynatorconfig"],
+    configKeys: analyzerConfigKeys(ROSLYNATOR_CONFIG_KEY),
+    deps: [
+      "roslynator.analyzers",
+      "roslynator.formatting.analyzers",
+      "roslynator.codeanalysis.analyzers",
+      "roslynator.dotnet.cli",
+    ],
+    invocations: [/\broslynator(?:\.dotnet\.cli|\s+(?:analyze|fix|format))\b/i],
+  },
+  {
+    name: "stylecop",
+    languages: ["C#"],
+    configFiles: ["stylecop.json", ".stylecop.json"],
+    configKeys: analyzerConfigKeys(/^[ \t]*dotnet_diagnostic\.sa\d[^\s=]*/im),
+    deps: ["stylecop.analyzers"],
+  },
+  {
+    name: "sonaranalyzer",
+    languages: ["C#"],
+    configFiles: ["SonarLint.xml"],
+    configKeys: analyzerConfigKeys(/^[ \t]*dotnet_diagnostic\.s\d[^\s=]*/im),
+    deps: ["sonaranalyzer.csharp"],
+  },
   // Polyglot and prose linters: neither says anything about which languages
   // the repository is written in, so they contribute none.
   {
@@ -415,15 +475,37 @@ export const LANGUAGE_MARKERS: ReadonlyArray<{
   { language: "Swift", files: ["Package.swift"] },
 ];
 
+/**
+ * MSBuild files that can declare a NuGet package. A shared `.props` or
+ * `.targets` is how a solution applies analyzers to every project.
+ *
+ * A pattern rather than a `LANGUAGE_MARKERS` entry because a project file has
+ * no fixed name, and the telemetry probe built on that constant checks exact
+ * paths. `.sln` is not a C# marker: it can hold any language's projects.
+ */
+const MSBUILD_PATTERN = "**/*.{csproj,props,targets}";
+
+/**
+ * .NET local tool manifests. `dotnet new tool-manifest` writes the one under
+ * `.config/`, and the walk does not enter a dot-directory unless a pattern
+ * names it.
+ */
+const TOOL_MANIFEST_PATTERNS: readonly string[] = [
+  "**/dotnet-tools.json",
+  "**/.config/dotnet-tools.json",
+];
+
 /** Every basename the walk needs to find, deduped for a single glob pass. */
 const DISCOVERABLE_FILES: readonly string[] = [
   ...new Set<string>([
     "package.json",
     "tsconfig.json",
+    "packages.config",
     ...LANGUAGE_MARKERS.flatMap((marker) => marker.files),
     ...LINTER_SIGNALS.flatMap((signal) => [
       ...(signal.configFiles ?? []),
       ...(signal.iniSections ?? []).map((ini) => ini.file),
+      ...(signal.configKeys ?? []).map((config) => config.file),
     ]),
   ]),
 ];
@@ -681,6 +763,44 @@ function swiftDepsFromPackageSwift(raw: string | undefined): string[] {
   );
 }
 
+/**
+ * NuGet package ids an MSBuild file references, lowercased because NuGet ids
+ * are case-insensitive. Comments are removed first, since disabling a package
+ * by commenting it out is common. A `<PackageVersion>` is deliberately not
+ * read: central package management pins a version there whether or not any
+ * project uses the package, and the project that does has a `PackageReference`.
+ */
+function nugetDepsFromMsbuild(raw: string | undefined): string[] {
+  if (raw === undefined) return [];
+  const source = raw.replaceAll(/<!--[\s\S]*?-->/g, "");
+  const references = source.matchAll(
+    /<(?:Global)?PackageReference\b[^>]*?\bInclude\s*=\s*["']([^"']+)["']/gi
+  );
+  return [...references].flatMap((match) =>
+    match[1]!.split(";").map((id) => id.trim().toLowerCase())
+  );
+}
+
+/** NuGet package ids from a legacy `packages.config`. */
+function nugetDepsFromPackagesConfig(raw: string | undefined): string[] {
+  if (raw === undefined) return [];
+  const source = raw.replaceAll(/<!--[\s\S]*?-->/g, "");
+  return [
+    ...source.matchAll(/<package\b[^>]*?\bid\s*=\s*["']([^"']+)["']/gi),
+  ].map((match) => match[1]!.toLowerCase());
+}
+
+/** Tool package ids from a .NET local tool manifest (`dotnet-tools.json`). */
+function nugetDepsFromToolManifest(raw: string | undefined): string[] {
+  if (raw === undefined) return [];
+  try {
+    const parsed = JSON.parse(raw) as { tools?: unknown };
+    return plainObjectKeys(parsed.tools).map((id) => id.toLowerCase());
+  } catch {
+    return [];
+  }
+}
+
 /** Python dependency names declared in a `requirements.txt`. */
 function pythonDepsFromRequirements(raw: string | undefined): string[] {
   if (raw === undefined) return [];
@@ -789,6 +909,14 @@ export async function detectRepository(cwd: string): Promise<DetectResult> {
     cwd: root,
     exclude: shouldExclude,
   });
+  const msbuildPaths = globSync(MSBUILD_PATTERN, {
+    cwd: root,
+    exclude: shouldExclude,
+  });
+  const toolManifestPaths = globSync([...TOOL_MANIFEST_PATTERNS], {
+    cwd: root,
+    exclude: shouldExclude,
+  });
   const requirementsPaths = [
     ...new Set(
       globSync([...REQUIREMENTS_PATTERNS], {
@@ -873,6 +1001,22 @@ export async function detectRepository(cwd: string): Promise<DetectResult> {
     }
     return manifests;
   };
+  const nugetManifests = await manifestsFrom(
+    "packages.config",
+    nugetDepsFromPackagesConfig
+  );
+  for (const relativePath of msbuildPaths) {
+    nugetManifests.push({
+      path: relativePath,
+      deps: new Set(nugetDepsFromMsbuild(await readAt(relativePath))),
+    });
+  }
+  for (const relativePath of new Set(toolManifestPaths)) {
+    nugetManifests.push({
+      path: relativePath,
+      deps: new Set(nugetDepsFromToolManifest(await readAt(relativePath))),
+    });
+  }
   const manifestsByLanguage = new Map<string, Manifest[]>([
     ["JavaScript", nodeManifests],
     ["TypeScript", nodeManifests],
@@ -881,6 +1025,7 @@ export async function detectRepository(cwd: string): Promise<DetectResult> {
     ["PHP", await manifestsFrom("composer.json", phpDepsFromComposer)],
     ["Go", await manifestsFrom("go.mod", goDepsFromGoModule)],
     ["Swift", await manifestsFrom("Package.swift", swiftDepsFromPackageSwift)],
+    ["C#", nugetManifests],
   ]);
 
   // The commands the root CI and hook configs run, read once for every
@@ -915,6 +1060,9 @@ export async function detectRepository(cwd: string): Promise<DetectResult> {
       languages.add(marker.language);
     }
   }
+  if (msbuildPaths.some((path) => path.endsWith(".csproj"))) {
+    languages.add("C#");
+  }
   // Any pip requirements file marks Python, not only the bare
   // `requirements.txt` marker: a repository may keep only
   // `requirements-dev.txt` or a `requirements/` directory.
@@ -940,6 +1088,12 @@ export async function detectRepository(cwd: string): Promise<DetectResult> {
         if (hasIniSection(await readAt(relativePath), section)) {
           evidence.push(`${relativePath} [${section}]`);
         }
+      }
+    }
+    for (const { file, key } of signal.configKeys ?? []) {
+      for (const relativePath of pathsFor(file)) {
+        const match = key.exec((await readAt(relativePath)) ?? "");
+        if (match) evidence.push(`${relativePath} (${match[0].trim()})`);
       }
     }
     for (const key of signal.packageJsonKeys ?? []) {
