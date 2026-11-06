@@ -1,4 +1,4 @@
-# Topic: detect     (CLI v%(CLI_VERSION)s / topic v4)
+# Topic: detect     (CLI v%(CLI_VERSION)s / topic v5)
 
 %(ONE_COMMAND_PER_CALL)s
 
@@ -54,6 +54,7 @@ routing flow reads `detect` to decide where a new rule should live.
    - `linters`: each has a `name` and `evidence`: a config-file path,
      a table or section marker in a manifest (`pyproject.toml
      [tool.ruff]`, `Cargo.toml [lints.clippy]`, `setup.cfg [flake8]`),
+     a key in a shared config (`.editorconfig (roslynator_use_var)`),
      a dependency marker from the language's package file, or a root CI
      or hook config that runs the linter (`.github/workflows/ci.yml
      (cargo clippy)`). Not every entry is a path. A linter that only

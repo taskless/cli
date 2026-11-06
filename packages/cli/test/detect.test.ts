@@ -1,7 +1,7 @@
 import { execFile } from "node:child_process";
 import { chmod, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { promisify } from "node:util";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
@@ -79,6 +79,20 @@ function linterNames(result: DetectJson): string[] {
 
 function customRules(result: DetectJson, name: string) {
   return result.linters.find((l) => l.name === name)?.customRules;
+}
+
+function roslynatorEvidence(result: DetectJson): string[] | undefined {
+  return result.linters.find((l) => l.name === "roslynator")?.evidence;
+}
+
+async function writeNested(
+  root: string,
+  path: string,
+  content: string
+): Promise<void> {
+  const target = join(root, path);
+  await mkdir(dirname(target), { recursive: true });
+  await writeFile(target, content, "utf8");
 }
 
 describe("taskless detect", () => {
@@ -664,6 +678,194 @@ describe("taskless detect", () => {
     const result = await detect(cwd);
     expect(result.success).toBe(true);
     expect(result.linters).toEqual([]);
+  });
+
+  describe("Roslynator in a C# repository", () => {
+    const analyzerReference =
+      '<Project>\n  <ItemGroup>\n    <PackageReference Include="Roslynator.Analyzers" Version="5.0.1">\n      <PrivateAssets>all</PrivateAssets>\n    </PackageReference>\n  </ItemGroup>\n</Project>\n';
+
+    it("reports C# from a project file, and never Roslynator from that alone", async () => {
+      await writeNested(
+        cwd,
+        "src/App/App.csproj",
+        '<Project Sdk="Microsoft.NET.Sdk" />\n'
+      );
+      const result = await detect(cwd);
+      expect(result.languages).toContain("C#");
+      expect(linterNames(result)).not.toContain("roslynator");
+    });
+
+    it.each([
+      [
+        "a project PackageReference",
+        "src/App/App.csproj",
+        analyzerReference,
+        "dependency roslynator.analyzers (src/App/App.csproj)",
+      ],
+      [
+        "a shared Directory.Build.props",
+        "Directory.Build.props",
+        analyzerReference,
+        "dependency roslynator.analyzers (Directory.Build.props)",
+      ],
+      [
+        "a GlobalPackageReference in lowercase",
+        "Directory.Packages.props",
+        '<Project><ItemGroup><GlobalPackageReference Include="roslynator.formatting.analyzers" Version="5.0.1" /></ItemGroup></Project>\n',
+        "dependency roslynator.formatting.analyzers (Directory.Packages.props)",
+      ],
+      [
+        "a legacy packages.config",
+        "src/App/packages.config",
+        '<packages>\n  <package id="Roslynator.Analyzers" version="4.0.0" developmentDependency="true" />\n</packages>\n',
+        "dependency roslynator.analyzers (src/App/packages.config)",
+      ],
+      [
+        "a local tool manifest",
+        ".config/dotnet-tools.json",
+        '{"version":1,"isRoot":true,"tools":{"roslynator.dotnet.cli":{"version":"0.10.0","commands":["roslynator"]}}}\n',
+        "dependency roslynator.dotnet.cli (.config/dotnet-tools.json)",
+      ],
+      [
+        "an option key in .editorconfig",
+        ".editorconfig",
+        "root = true\n\n[*.cs]\nroslynator_use_var = always\n",
+        ".editorconfig (roslynator_use_var)",
+      ],
+      [
+        "an analyzer id, capitalized as usually written",
+        "src/.editorconfig",
+        "[*.cs]\ndotnet_diagnostic.RCS1044.severity = warning\n",
+        "src/.editorconfig (dotnet_diagnostic.RCS1044.severity)",
+      ],
+      [
+        "the severity category",
+        ".globalconfig",
+        "is_global = true\ndotnet_analyzer_diagnostic.category-roslynator.severity = warning\n",
+        ".globalconfig (dotnet_analyzer_diagnostic.category-roslynator.severity)",
+      ],
+      [
+        "a committed .roslynatorconfig",
+        ".roslynatorconfig",
+        "is_global = true\nroslynator_analyzers.enabled_by_default = true\n",
+        ".roslynatorconfig",
+      ],
+      [
+        "a CI step that runs it",
+        ".github/workflows/ci.yml",
+        "jobs:\n  lint:\n    steps:\n      - run: dotnet tool run roslynator analyze App.sln\n",
+        ".github/workflows/ci.yml (roslynator analyze)",
+      ],
+      [
+        "a CI step that installs it",
+        ".github/workflows/ci.yml",
+        "jobs:\n  lint:\n    steps:\n      - run: dotnet tool install -g Roslynator.DotNet.Cli\n",
+        ".github/workflows/ci.yml (Roslynator.DotNet.Cli)",
+      ],
+    ])("reports it from %s", async (_label, path, content, expected) => {
+      await writeNested(cwd, path, content);
+      const result = await detect(cwd);
+      expect(roslynatorEvidence(result)).toContain(expected);
+      expect(result.languages).toContain("C#");
+    });
+
+    it.each([
+      [
+        "a commented-out reference",
+        "App.csproj",
+        '<Project><!-- <PackageReference Include="Roslynator.Analyzers" /> --></Project>\n',
+      ],
+      [
+        "a version pin no project references",
+        "Directory.Packages.props",
+        '<Project><ItemGroup><PackageVersion Include="Roslynator.Analyzers" Version="5.0.1" /></ItemGroup></Project>\n',
+      ],
+      [
+        "a commented-out key",
+        ".editorconfig",
+        "[*.cs]\n# roslynator_use_var = always\n; dotnet_diagnostic.RCS1044.severity = none\n",
+      ],
+      [
+        "another analyzer's diagnostic id",
+        ".editorconfig",
+        "[*.cs]\ndotnet_diagnostic.CA1000.severity = none\ndotnet_diagnostic.SA1000.severity = none\n",
+      ],
+      [
+        "restore output under obj",
+        "src/App/obj/Generated.props",
+        analyzerReference,
+      ],
+      ["a malformed tool manifest", "dotnet-tools.json", "{ not json\n"],
+    ])("does not report it from %s", async (_label, path, content) => {
+      await writeNested(cwd, path, content);
+      const result = await detect(cwd);
+      expect(linterNames(result)).not.toContain("roslynator");
+    });
+  });
+
+  describe("other Roslyn analyzers, each its own linter", () => {
+    it.each([
+      [
+        "stylecop",
+        "App.csproj",
+        '<Project><ItemGroup><PackageReference Include="StyleCop.Analyzers" Version="1.1.118" /></ItemGroup></Project>\n',
+        "dependency stylecop.analyzers (App.csproj)",
+      ],
+      ["stylecop", "src/stylecop.json", "{}\n", "src/stylecop.json"],
+      ["stylecop", ".stylecop.json", "{}\n", ".stylecop.json"],
+      [
+        "stylecop",
+        ".editorconfig",
+        "[*.cs]\ndotnet_diagnostic.SA1200.severity = none\n",
+        ".editorconfig (dotnet_diagnostic.SA1200.severity)",
+      ],
+      [
+        "sonaranalyzer",
+        "App.csproj",
+        '<Project><ItemGroup><PackageReference Include="SonarAnalyzer.CSharp" Version="10.35.0.4138" /></ItemGroup></Project>\n',
+        "dependency sonaranalyzer.csharp (App.csproj)",
+      ],
+      [
+        "sonaranalyzer",
+        "SonarLint.xml",
+        "<AnalysisInput />\n",
+        "SonarLint.xml",
+      ],
+      [
+        "sonaranalyzer",
+        ".globalconfig",
+        "is_global = true\ndotnet_diagnostic.S107.severity = warning\n",
+        ".globalconfig (dotnet_diagnostic.S107.severity)",
+      ],
+    ])("reports only %s from %s", async (name, path, content, expected) => {
+      await writeNested(cwd, path, content);
+      const result = await detect(cwd);
+      expect(linterNames(result)).toEqual([name]);
+      expect(result.linters[0]?.evidence).toContain(expected);
+      expect(result.languages).toContain("C#");
+    });
+
+    it("reports each analyzer from one shared .editorconfig", async () => {
+      await writeNested(
+        cwd,
+        ".editorconfig",
+        "[*.cs]\ndotnet_diagnostic.RCS1044.severity = warning\ndotnet_diagnostic.SA1200.severity = none\ndotnet_diagnostic.S107.severity = none\n"
+      );
+      expect(linterNames(await detect(cwd))).toEqual([
+        "roslynator",
+        "stylecop",
+        "sonaranalyzer",
+      ]);
+    });
+
+    it("does not read an SDK analyzer id as any of them", async () => {
+      await writeNested(
+        cwd,
+        ".editorconfig",
+        "[*.cs]\ndotnet_diagnostic.CA1000.severity = none\n"
+      );
+      expect(linterNames(await detect(cwd))).toEqual([]);
+    });
   });
 
   describe("custom-rule counts", () => {
