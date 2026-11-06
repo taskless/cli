@@ -94,7 +94,13 @@ interface CheckOutput {
 
 interface RuleReport {
   ok: boolean;
-  rules: { engine: string; ruleId: string; ok: boolean; errors: string[] }[];
+  rules: {
+    engine: string;
+    ruleId: string;
+    ok: boolean;
+    ran?: boolean;
+    errors: string[];
+  }[];
 }
 
 beforeEach(async () => {
@@ -191,9 +197,14 @@ withVale("a version-4 project upgraded through 0005", () => {
   it("still runs the tests that moved with their rules", async () => {
     await seedVersion4Project();
 
+    // The seed holds a runtime rule, which does not run without the flag, so
+    // the run as a whole is incomplete (exit 2) rather than failed (exit 1).
     const result = await runCli(["verify", "-d", cwd, "--json"]);
-    expect(parseJson<RuleReport>(result.stdout).ok).toBe(true);
-    expect(result.exitCode).toBe(0);
+    expect(result.exitCode).toBe(2);
+    const { rules } = parseJson<RuleReport>(result.stdout);
+    const statics = rules.filter((rule) => rule.engine !== "runtime");
+    expect(statics.length).toBeGreaterThan(0);
+    expect(statics.every((rule) => rule.ran === true && rule.ok)).toBe(true);
   });
 
   // Runtime capture bytes determine the server-side reconciliation hash, so a

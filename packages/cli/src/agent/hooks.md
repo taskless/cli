@@ -1,4 +1,4 @@
-# Topic: hooks     (CLI v%(CLI_VERSION)s / topic v5)
+# Topic: hooks     (CLI v%(CLI_VERSION)s / topic v6)
 
 %(ONE_COMMAND_PER_CALL)s
 
@@ -151,9 +151,16 @@ and it can affect files that were not staged. In that case run the
 rule tests and a full, unscoped `check`:
 
 ```
-node .taskless/bin/cli.mjs verify
+node .taskless/bin/cli.mjs verify .taskless/rules/sg
+node .taskless/bin/cli.mjs verify .taskless/rules/vale
 node .taskless/bin/cli.mjs check
 ```
+
+Name the two engine directories rather than running a bare `verify`.
+A runtime rule's fixtures run only with `--dangerously-run-scripts`,
+which never belongs in a hook, and a bare `verify` exits 2 on any
+runtime rule that did not run, which blocks the commit. An engine
+directory with no rules passes, so keep both lines either way.
 
 lint-staged can express that in a JavaScript config, where a function
 task receives the matched files and its returned commands are run as
@@ -163,7 +170,8 @@ written, with no files appended:
 export default {
   "*": "node .taskless/bin/cli.mjs check",
   ".taskless/rules/**": () => [
-    "node .taskless/bin/cli.mjs verify",
+    "node .taskless/bin/cli.mjs verify .taskless/rules/sg",
+    "node .taskless/bin/cli.mjs verify .taskless/rules/vale",
     "node .taskless/bin/cli.mjs check",
   ],
 };

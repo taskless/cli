@@ -1,4 +1,4 @@
-# Topic: validate-rule     (CLI v%(CLI_VERSION)s / topic v8)
+# Topic: validate-rule     (CLI v%(CLI_VERSION)s / topic v9)
 
 %(ONE_COMMAND_PER_CALL)s
 
@@ -55,11 +55,20 @@ makes no network request and does not reconcile, so a signature the
 service blessed does not count here. Without the flag, that rule prints `○` rather than a tick, names the reason
 and the flag, and is reported as `"ran": false` with a `refused` string
 saying why. It is counted under "did not run" rather than among the
-rules verified, and on its own it does not fail the command.
+rules verified.
 
-Read `ran` before `ok`. A runtime rule that did not run is not a rule
-that passed, and treating the two alike is the defect this reporting
-exists to prevent.
+`verify` exits 0 only when every rule you asked for was verified:
+
+| exit | meaning                                               | top-level `ok` |
+|------|-------------------------------------------------------|----------------|
+| `0`  | every rule ran and passed                             | `true`         |
+| `1`  | at least one rule failed                              | `false`        |
+| `2`  | nothing failed, but at least one rule did not run     | `false`        |
+
+Exit `2` is not a broken rule. Read `ran` on each rule to see which ones
+did not run, and rerun them with the flag if you mean to execute them.
+A runtime rule that did not run is not a rule that passed, and treating
+the two alike is the defect this reporting exists to prevent.
 
 ## What a path means
 

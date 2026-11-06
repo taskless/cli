@@ -124,7 +124,7 @@ const ruleResultSchema = z.object({
     .string()
     .optional()
     .describe(
-      "`verify` only: the execution policy declined to run the rule's fixtures, and why. Neither a pass nor a failure, excluded from the rules verified, and never on its own a reason for a non-zero exit"
+      "`verify` only: the execution policy declined to run the rule's fixtures, and why. Neither a pass nor a failure, and excluded from the rules verified. Sets top-level `ok` to false and, when no rule failed, makes the command exit 2"
     ),
   notices: z
     .array(z.string())
@@ -147,6 +147,10 @@ const ruleResultSchema = z.object({
 
 /** Output schema for `taskless validate --json` and `taskless verify --json`. */
 export const outputSchema = z.object({
-  ok: z.boolean(),
+  ok: z
+    .boolean()
+    .describe(
+      "Whether every requested rule passed. False when a rule failed, and for `verify` when a rule did not run: `ok` is false whenever the exit code is non-zero"
+    ),
   rules: z.array(ruleResultSchema).describe("Per-rule results"),
 });

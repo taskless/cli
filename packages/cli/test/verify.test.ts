@@ -650,8 +650,8 @@ describe("getSchemaPayload", () => {
  * taskless/cli#284.
  *
  * `tested = results.length - refused.length`, and both the human summary and
- * the `--json` `ok` field are derived from `failed`, which itself excludes
- * anything `isRefused`. Every other test in this repo runs a single rule per
+ * the exit code are derived from `failed`, which itself excludes anything
+ * `isRefused`. Every other test in this repo runs a single rule per
  * invocation, which cannot exercise either arithmetic operation: with one
  * rule, `results.length - refused.length` and `results.length` agree, and a
  * refused rule "leaking" into `failed` is invisible unless something else in
@@ -771,10 +771,8 @@ describe("verify: the verified/failed/refused split on a mixed run (#284)", () =
         refused?: string;
       }[];
     };
-    // The `ok` field is derived from `failed`, and must stay false because of
-    // the one genuine failure — a mutation that let the refusal leak into
-    // `failed` would not be visible here (it is already false), which is why
-    // the second test below isolates that case with no genuine failure.
+    // `ok` is false for the failure and the refusal alike here, which is why
+    // the second test below isolates the refusal with no genuine failure.
     expect(report.ok).toBe(false);
     expect(jsonResult.exitCode).not.toBe(0);
     expect(report.rules.find((rule) => rule.ruleId === "pass-rule")?.ok).toBe(
@@ -794,10 +792,11 @@ describe("verify: the verified/failed/refused split on a mixed run (#284)", () =
     expect(humanResult.stdout).toContain("1 rule(s) did not run.");
   });
 
-  it("does not let a refused rule count as a failure", async () => {
-    // No genuine failure at all: one passing rule and one refused rule. If a
-    // refused rule were counted in `failed`, `ok` would read false and the
-    // human summary would read "of 1 rule(s) failed" instead of "tested".
+  it("does not let a refused rule count as a pass or a failure", async () => {
+    // No genuine failure at all: one passing rule and one refused rule. Exit 2
+    // and `ok: false` say the run was incomplete. Exit 1 or an "of 1 rule(s)
+    // failed" summary would mean the refusal leaked into `failed`; exit 0 is
+    // #612, a rule nothing exercised reading as a pass.
     await sgRule("pass-rule", { passes: true });
     await refusedRuntimeRule("rt-rule");
 
@@ -808,14 +807,63 @@ describe("verify: the verified/failed/refused split on a mixed run (#284)", () =
       "--json",
     ]);
     const report = JSON.parse(jsonResult.stdout) as { ok: boolean };
-    expect(report.ok).toBe(true);
-    expect(jsonResult.exitCode).toBe(0);
+    expect(report.ok).toBe(false);
+    expect(jsonResult.exitCode).toBe(2);
 
     const humanResult = await runVerifyMixedRunCli(["verify", "-d", cwd]);
-    expect(humanResult.exitCode).toBe(0);
+    expect(humanResult.exitCode).toBe(2);
     expect(humanResult.stdout).toContain("1 rule(s) verified.");
     expect(humanResult.stdout).toContain("1 rule(s) did not run.");
     expect(humanResult.stdout).not.toContain("failed");
+  });
+
+  it("exits 2 when nothing was verified at all", async () => {
+    await refusedRuntimeRule("rt-rule");
+
+    const jsonResult = await runVerifyMixedRunCli([
+      "verify",
+      join(".taskless", "rules", "runtime", "rt-rule"),
+      "-d",
+      cwd,
+      "--json",
+    ]);
+    expect(jsonResult.exitCode).toBe(2);
+    const report = JSON.parse(jsonResult.stdout) as {
+      ok: boolean;
+      rules: { ok: boolean; ran?: boolean }[];
+    };
+    expect(report.ok).toBe(false);
+    expect(report.rules[0]?.ran).toBe(false);
+
+    const humanResult = await runVerifyMixedRunCli(["verify", "-d", cwd]);
+    expect(humanResult.exitCode).toBe(2);
+    expect(humanResult.stdout).toContain("0 rule(s) verified.");
+    expect(humanResult.stdout).toContain("1 rule(s) did not run.");
+  });
+
+  it("lets a failure outrank a rule that did not run", async () => {
+    await sgRule("fail-rule", { passes: false });
+    await refusedRuntimeRule("rt-rule");
+
+    const { exitCode } = await runVerifyMixedRunCli(["verify", "-d", cwd]);
+    expect(exitCode).toBe(1);
+  });
+
+  // The pre-commit recipe depends on this: it names the static engine
+  // directories so that holding a runtime rule cannot block a commit.
+  it("passes on the static engine paths in a project holding a runtime rule", async () => {
+    await sgRule("pass-rule", { passes: true });
+    await refusedRuntimeRule("rt-rule");
+
+    for (const engine of ["sg", "vale"]) {
+      const { exitCode } = await runVerifyMixedRunCli([
+        "verify",
+        join(".taskless", "rules", engine),
+        "-d",
+        cwd,
+      ]);
+      expect(exitCode, engine).toBe(0);
+    }
   });
 });
 
