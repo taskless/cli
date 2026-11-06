@@ -563,7 +563,7 @@ describe("taskless agent --tool (variant lookup)", () => {
     await rm(cwd, { recursive: true, force: true });
   });
 
-  it.each(["ruff", "eslint", "biome", "pylint", "flake8"])(
+  it.each(["ruff", "eslint", "biome", "oxlint", "pylint", "flake8"])(
     "serves the %s variant of create-legacy-rule",
     async (tool) => {
       const result = await runCli([

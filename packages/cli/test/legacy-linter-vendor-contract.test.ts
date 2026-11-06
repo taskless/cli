@@ -26,6 +26,7 @@ const PYLINT = "pylint==4.1.3";
 const FLAKE8 = "flake8==7.4.1";
 const FLAKE8_TIDY_IMPORTS = "flake8-tidy-imports";
 const BIOME = "@biomejs/biome@2.6.2";
+const OXLINT = "oxlint@1.82.0";
 
 let workdir: string;
 
@@ -186,6 +187,18 @@ describe.skipIf(!ENABLED)("legacy linter vendor contract", () => {
       expect(
         run("pnpm", ["dlx", BIOME, "explain", "noSuchRule"]).status
       ).not.toBe(0);
+    });
+  });
+
+  describe("oxlint", () => {
+    it("lists both catch-all rules and has no no-restricted-syntax", () => {
+      const { status, output } = run("pnpm", ["dlx", OXLINT, "--rules"]);
+      expect(status).toBe(0);
+      for (const rule of ["no-restricted-imports", "no-restricted-globals"]) {
+        expect(output).toContain(rule);
+        expect(recipe("oxlint")).toContain(`\`${rule}\``);
+      }
+      expect(output).not.toContain("no-restricted-syntax");
     });
   });
 });

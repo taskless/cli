@@ -627,6 +627,7 @@ describe("route's per-linter passage", () => {
   const LINTER_HEADINGS = [
     "**ESLint**",
     "**Biome**",
+    "**Oxlint**",
     "**Ruff**",
     "**pylint**",
     "**flake8**",
@@ -641,12 +642,40 @@ describe("route's per-linter passage", () => {
     }
   });
 
-  it("says so when no detected linter has a legacy recipe", () => {
+  it("says so when no detected tool can host a rule", () => {
     const route = getPrompt("route", { linters: ["prettier"] });
     for (const heading of LINTER_HEADINGS) {
       expect(route).not.toContain(heading);
     }
-    expect(route).toContain("found no linter here with a legacy recipe");
+    expect(route).toContain("found no linter here that can host a rule");
+    expect(route).not.toContain("`prettier`");
+  });
+
+  it("describes oxlint when it is the only linter detected", () => {
+    const route = getPrompt("route", { linters: ["oxlint"] });
+    expect(route).toContain("**Oxlint**");
+    expect(route).not.toContain("found no linter here");
+  });
+
+  it("never drops a detected linter that has no guide of its own", () => {
+    const route = getPrompt("route", { linters: ["eslint", "stylelint"] });
+    expect(route).toContain("**ESLint**");
+    expect(route).toContain("with no guide of their own: `stylelint`");
+    expect(route).toContain("create-legacy-rule --tool=stylelint`.");
+    expect(route).not.toContain("found no linter here");
+  });
+
+  it("keeps a tool that is not a legacy host out of that list", () => {
+    const route = getPrompt("route", {
+      linters: ["eslint", "prettier", "vale"],
+    });
+    expect(route).not.toContain("with no guide of their own");
+  });
+
+  it("says detect is a fixed list only when something was scanned", () => {
+    const fixedList = "`detect` recognizes a fixed list of tools";
+    expect(getPrompt("route", { linters: ["ruff"] })).toContain(fixedList);
+    expect(getPrompt("route")).not.toContain(fixedList);
   });
 
   it("describes every linter when nothing was scanned", () => {
