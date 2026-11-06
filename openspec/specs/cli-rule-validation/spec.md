@@ -215,7 +215,9 @@ A runtime rule's fixtures execute code, so they SHALL run only when `--dangerous
 
 That is deliberately stricter than the policy `check` applies, not softer. `check` executes rules as a side effect of scanning a repository, so a blessed signature admits code the user never asked to run and a reconcile stands between the request and the execution. `verify` runs fixtures because the user asked for them, so the verb is the consent and the flag is the confirmation; a rule that `check` would run unflagged on a blessed signature still requires the flag here. Nothing executes under `verify` that would not have executed under the shared policy.
 
-A run refused for want of the flag SHALL be reported as not run, and SHALL be reported as neither a pass nor a failure: the rule is not defective, and no action available to its holder would make a failure green. The refusal SHALL name the flag, and SHALL NOT direct the reader to authenticate — authenticating cannot bless a rule that never left the working tree, so naming it would offer a fix that is not one.
+A run refused for want of the flag SHALL be reported as not run, and SHALL be reported as neither a pass nor a failure: the rule is not defective, but nothing has shown that it works. The refusal SHALL name the flag, and SHALL NOT direct the reader to authenticate — authenticating cannot bless a rule that never left the working tree, so naming it would offer a fix that is not one.
+
+`verify` SHALL exit 0 only when every requested rule was verified. It SHALL exit 1 when any rule failed, and SHALL exit 2 when no rule failed and at least one rule did not run, whether or not other rules in the run were verified. Under `--json`, the top-level `ok` SHALL be `false` whenever the exit code is non-zero. An exit code is often all a CI step or an agent reads, so a rule nothing exercised SHALL NOT share a code with a rule that passed, and a distinct code keeps it apart from a rule that is broken.
 
 `verify` SHALL report, per rule, the findings its fixtures produced, as a `findings` array carrying the same finding shape `check --json` prints — `source`, `ruleId`, `severity`, `message`, `file`, `range`, `matchedText` and the optional `note` and `fix` — plus the `bucket` the fixture that produced it belongs to.
 
@@ -270,7 +272,20 @@ The human rendering SHALL stay a single line per passing rule. Under a FAILING r
 - **AND** the output SHALL name `--dangerously-run-scripts` as what would run them
 - **AND** the output SHALL NOT direct the reader to authenticate
 - **AND** the rule SHALL NOT be counted among the rules verified
-- **AND** the refusal alone SHALL NOT fail the command
+- **AND** the command SHALL exit with code 2
+- **AND** under `--json` the top-level `ok` SHALL be `false`
+
+#### Scenario: A run mixing verified and unrun rules is reported as incomplete
+
+- **WHEN** `verify` runs over rules where every rule that ran passed and at least one runtime rule did not run
+- **THEN** the command SHALL exit with code 2
+- **AND** under `--json` the top-level `ok` SHALL be `false`
+- **AND** the output SHALL report the verified rules and the rules that did not run separately
+
+#### Scenario: A failure outranks a rule that did not run
+
+- **WHEN** `verify` runs over rules where at least one rule failed and at least one runtime rule did not run
+- **THEN** the command SHALL exit with code 1
 
 #### Scenario: Verifying a runtime rule reaches no network
 

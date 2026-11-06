@@ -25,6 +25,14 @@ import { formatText } from "../util/format";
 import { markNotice } from "../util/notices";
 
 /**
+ * `verify`'s exit code when nothing failed but a requested rule did not run.
+ *
+ * Distinct from 1 so a caller can tell "this rule is broken" from "this rule was
+ * never exercised", which call for different responses.
+ */
+const NOT_RUN_EXIT_CODE = 2;
+
+/**
  * The findings a result carries, or none.
  *
  * `validate` never runs fixtures, so its results have no `findings` at all, while
@@ -176,11 +184,11 @@ async function runOverPath(options: {
   }
 
   // Three outcomes, not two. A run the execution policy refused is neither a
-  // pass nor a failure: the rule is not defective, and no action available to
-  // its holder would make a failure green, so failing it would turn `verify` red
-  // for every project holding a runtime rule. It is excluded from the failures
-  // that set the exit code and from the count of rules verified, and gets its
-  // own marker below.
+  // pass nor a failure: the rule is not defective, but nothing showed it works.
+  // It is excluded from the failures and from the count of rules verified, gets
+  // its own marker below, and has its own exit code, because an exit code is all
+  // a CI step or an agent reads, and a rule nothing exercised must not read the
+  // same as a rule that passed.
   const isRefused = (result: RuleValidation | RuleVerification): boolean =>
     "refused" in result && result.refused !== undefined;
   const refused = results.filter((result) => isRefused(result));
@@ -191,7 +199,9 @@ async function runOverPath(options: {
     console.log(
       JSON.stringify(
         ruleCheckOutputSchema.parse({
-          ok: failed.length === 0,
+          // Agrees with the exit code. "1 rule did not run" under `ok: true` is
+          // the same false pass in a second place.
+          ok: failed.length === 0 && refused.length === 0,
           rules: results,
         })
       )
@@ -241,7 +251,13 @@ async function runOverPath(options: {
     );
   }
 
-  if (failed.length > 0) process.exitCode = 1;
+  // A failure outranks a rule that did not run: it is the one a caller has to
+  // act on, and the per-rule results still say what was refused.
+  if (failed.length > 0) {
+    process.exitCode = 1;
+  } else if (refused.length > 0) {
+    process.exitCode = NOT_RUN_EXIT_CODE;
+  }
 }
 
 const ruleTargetArguments = {

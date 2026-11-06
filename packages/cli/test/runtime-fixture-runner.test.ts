@@ -194,8 +194,7 @@ afterEach(async () => {
  * 5.1 — the defect itself.
  *
  * With no blessed signature and no escape flag the fixtures cannot run. That is
- * not a failure of the rule, but it is emphatically not a pass, and the two
- * assertions below are the ones that were false before the runner existed.
+ * not a failure of the rule, but it is emphatically not a pass.
  */
 describe("a runtime rule whose fixtures did not run", () => {
   it("is not reported as passing, and prints no tick", async () => {
@@ -206,8 +205,9 @@ describe("a runtime rule whose fixtures did not run", () => {
     const { stdout, exitCode } = await testRule();
 
     expect(stdout).not.toContain(`✓ runtime/${RULE}`);
-    // A refusal by policy is not the rule's fault, so it must not fail either.
-    expect(exitCode).toBe(0);
+    // A refusal by policy is not the rule's fault, but nothing was exercised:
+    // exit 2 keeps it apart from both a pass and a failure.
+    expect(exitCode).toBe(2);
     expect(stdout).not.toContain("1 rule(s) verified");
   });
 
@@ -250,8 +250,9 @@ describe("a runtime rule whose fixtures did not run", () => {
     expect(rule?.engine).toBe("runtime");
     expect(rule?.ran).toBe(false);
     expect(rule?.ok).not.toBe(true);
-    // The envelope still succeeds: nothing here is a defect in the rule.
-    expect(report.ok).toBe(true);
+    // The envelope agrees with the exit code. #612: this read `ok: true` over
+    // a run that exercised nothing.
+    expect(report.ok).toBe(false);
   });
 });
 
