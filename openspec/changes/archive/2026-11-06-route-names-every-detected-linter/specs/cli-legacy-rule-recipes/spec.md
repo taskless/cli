@@ -30,7 +30,7 @@ A per-tool recipe SHALL state the check its tool always performs first:
 
 ### Requirement: Rule discovery is confirmed against the installed version
 
-Where a tool's rule set is too large to match a request against locally, the recipe SHALL direct the agent to find candidate rules on the tool's rules page by web search or fetch, then confirm each candidate against the installed version with the tool's own command before enabling it. The Ruff recipe SHALL use `ruff rule <name or code>`, the Biome recipe `biome explain <rule>`, and the Oxlint recipe `oxlint --rules`.
+Where a tool's rule set is too large to match a request against locally, the recipe SHALL direct the agent to find candidate rules on the tool's rules page by web search or fetch, then confirm each candidate against the installed version with the tool's own command before enabling it. The Ruff recipe SHALL use `ruff rule <name or code>`, the Biome recipe `biome explain <rule>`, and the Oxlint recipe `oxlint --rules --format default`.
 
 The Ruff recipe SHALL state that a preview-only rule does not fire unless preview mode is enabled, and SHALL direct the agent to check the rule's preview status before enabling it. The pylint recipe SHALL state that `--help-msg` reports a message from an optional extension as nonexistent unless that extension is passed with `--load-plugins`.
 

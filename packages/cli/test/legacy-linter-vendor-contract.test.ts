@@ -192,8 +192,17 @@ describe.skipIf(!ENABLED)("legacy linter vendor contract", () => {
 
   describe("oxlint", () => {
     it("lists both catch-all rules and has no no-restricted-syntax", () => {
-      const { status, output } = run("pnpm", ["dlx", OXLINT, "--rules"]);
+      // `--format default` is part of the contract: under GitHub Actions or
+      // an agent, Oxlint picks a format that lists no rules, and exits 0.
+      const { status, output } = run("pnpm", [
+        "dlx",
+        OXLINT,
+        "--rules",
+        "--format",
+        "default",
+      ]);
       expect(status).toBe(0);
+      expect(recipe("oxlint")).toContain("`oxlint --rules --format default`");
       for (const rule of ["no-restricted-imports", "no-restricted-globals"]) {
         expect(output).toContain(rule);
         expect(recipe("oxlint")).toContain(`\`${rule}\``);

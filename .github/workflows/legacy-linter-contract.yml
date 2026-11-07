@@ -1,5 +1,5 @@
 # Pins what the `create-legacy-rule` recipes say about Ruff, pylint, flake8,
-# and Biome, by asking each linter at a pinned version. See
+# Biome, and Oxlint, by asking each linter at a pinned version. See
 # `packages/cli/test/legacy-linter-vendor-contract.test.ts`.
 #
 # Separate from `Validate` on purpose: it downloads linters from PyPI and npm,
