@@ -122,13 +122,32 @@ export type CLIErrorCode =
   // that URL. Distinct from DELETE_FAILED because retrying cannot help.
   | "REPORT_NOT_AVAILABLE"
   | "REPORT_DELETE_FAILED"
+  // The report was PUBLISHED and is live, but its local record, the only
+  // place the delete credential is kept, could not be written. The envelope
+  // carries `url`, `deleteUrl` and `expiresAt`, and the message states them,
+  // because nothing else holds the credential. Never retry the publish: that
+  // makes a second live report, not a record of the first.
+  | "REPORT_RECORD_FAILED"
   | "INTERNAL_ERROR";
+
+/**
+ * Fields an envelope carries beyond the code and message, present only for the
+ * codes that name them.
+ */
+export interface CLIErrorDetails {
+  /** `REPORT_RECORD_FAILED`: the live report's URL. */
+  url?: string;
+  /** `REPORT_RECORD_FAILED`: the only credential that deletes the report. */
+  deleteUrl?: string;
+  /** `REPORT_RECORD_FAILED`: when the report expires on its own. */
+  expiresAt?: string;
+}
 
 /**
  * Standardized JSON error envelope written to stdout when an action
  * command exits with an error AND `--json` was set.
  */
-export interface CLIErrorEnvelope {
+export interface CLIErrorEnvelope extends CLIErrorDetails {
   ok: false;
   code: CLIErrorCode;
   message: string;
@@ -136,11 +155,16 @@ export interface CLIErrorEnvelope {
 
 export function makeErrorEnvelope(
   code: CLIErrorCode,
-  message: string
+  message: string,
+  details?: CLIErrorDetails
 ): CLIErrorEnvelope {
-  return { ok: false, code, message };
+  return { ...details, ok: false, code, message };
 }
 
-export function writeJsonError(code: CLIErrorCode, message: string): void {
-  console.log(JSON.stringify(makeErrorEnvelope(code, message)));
+export function writeJsonError(
+  code: CLIErrorCode,
+  message: string,
+  details?: CLIErrorDetails
+): void {
+  console.log(JSON.stringify(makeErrorEnvelope(code, message, details)));
 }

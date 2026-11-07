@@ -1,4 +1,4 @@
-# Topic: report     (CLI v%(CLI_VERSION)s / topic v7)
+# Topic: report     (CLI v%(CLI_VERSION)s / topic v8)
 
 %(ONE_COMMAND_PER_CALL)s
 
@@ -203,6 +203,7 @@ The `--from` JSON file conforms to:
 | `REPORT_RATE_LIMITED`    | tskl.es is limiting publishes from this address                 | wait a minute, then retry                                                 |
 | `REPORT_PUBLISH_FAILED`  | tskl.es could not store the report; nothing was published       | retry later                                                               |
 | `REPORT_PUBLISH_UNKNOWN` | publishing timed out; a report may exist                        | tell the user; do not retry on your own, since a retry may duplicate it  |
+| `REPORT_RECORD_FAILED`   | the report is live, but its record could not be written         | give the user the URL and delete URL the message names, since nothing else holds them; do not retry, since a retry publishes a second report |
 | `REPORT_NOT_FOUND`       | no record by that name in `.taskless/reports/`                  | list the directory and use a file name from it                            |
 | `REPORT_NOT_AVAILABLE`   | tskl.es has no report for that delete URL                       | it was already deleted, expired, or has not propagated yet; do not retry  |
 | `REPORT_DELETE_FAILED`   | tskl.es did not delete the report                               | the record is kept; retry later                                           |

@@ -1,6 +1,7 @@
 import { execFile } from "node:child_process";
 import { createServer, type Server } from "node:http";
 import {
+  chmod,
   mkdir,
   mkdtemp,
   readFile,
@@ -24,6 +25,12 @@ import {
   type ReportFacts,
 } from "../src/schemas/report-facts";
 import { deletePublishedReport, publishReport } from "../src/report/publish";
+import {
+  readRecord,
+  recordStamp,
+  reportsDirectory,
+  writeRecord,
+} from "../src/report/records";
 import { scanText } from "../src/report/redact";
 import { reportSchemaIssues } from "../src/report/schema";
 import { renderSummary } from "../src/report/summary";
@@ -776,6 +783,67 @@ describe("deletePublishedReport", () => {
   });
 });
 
+// #622: the record holds the only credential that deletes a live report, and
+// it is written after the publish succeeded. Failing to write it must never
+// lose that credential.
+describe("writeRecord", () => {
+  const published = {
+    url: "https://tskl.es/r/abc",
+    deleteUrl: "https://tskl.es/api/v1/reports/abc/secret-key",
+    expiresAt: "2026-11-12T00:00:00Z",
+  };
+  const now = new Date("2026-10-13T14:22:00.500Z");
+  let cwd: string;
+
+  beforeEach(async () => {
+    cwd = await mkdtemp(join(tmpdir(), "tskl-record-"));
+  });
+
+  afterEach(async () => {
+    await chmod(reportsDirectory(cwd), 0o755).catch(() => {});
+    await rm(cwd, { recursive: true, force: true });
+  });
+
+  it("moves to a suffixed name when the stamp is taken, overwriting nothing", async () => {
+    const directory = reportsDirectory(cwd);
+    await mkdir(directory, { recursive: true });
+    const taken = `${recordStamp(now)}.json`;
+    await writeFile(join(directory, taken), "earlier\n", "utf8");
+
+    const second = await writeRecord(cwd, published, now);
+    const third = await writeRecord(cwd, published, now);
+
+    expect(second).toBe("2026-10-13_142200_2.json");
+    expect(third).toBe("2026-10-13_142200_3.json");
+    await expect(readFile(join(directory, taken), "utf8")).resolves.toBe(
+      "earlier\n"
+    );
+    // `--delete` resolves the suffixed name like any other.
+    await expect(readRecord(cwd, second)).resolves.toMatchObject({
+      published: { deleteUrl: published.deleteUrl },
+    });
+    // And it still sorts after the record it collided with.
+    expect([second, taken].toSorted()).toEqual([taken, second]);
+  });
+
+  it("keeps the credential in the error when the record cannot be written", async () => {
+    const directory = reportsDirectory(cwd);
+    await mkdir(directory, { recursive: true });
+    await chmod(directory, 0o555);
+
+    const failure = await writeRecord(cwd, published, now).then(
+      () => "written",
+      (error: unknown) => error
+    );
+    expect(failure).toBeInstanceOf(CLIError);
+    const error = failure as CLIError;
+    expect(error.code).toBe("REPORT_RECORD_FAILED");
+    expect(error.message).toContain(published.url);
+    expect(error.message).toContain(published.deleteUrl);
+    expect(error.details).toEqual(published);
+  });
+});
+
 /** End to end, through the built CLI, against a fake tskl.es. */
 describe("taskless report", () => {
   const binPath = builtCli();
@@ -938,6 +1006,86 @@ describe("taskless report", () => {
     await expect(recordsIn(cwd)).resolves.toEqual([]);
   });
 
+  /** A fake tskl.es that publishes one report, and the facts to send it. */
+  async function publishable(): Promise<{
+    factsPath: string;
+    env: Record<string, string>;
+    deleteUrl: string;
+  }> {
+    const fake = await fakeTsklEs((_request, base) => ({
+      status: 201,
+      body: {
+        url: "https://tskl.es/r/abc",
+        deleteUrl: `${base}/api/v1/reports/abc/secret-key`,
+        expiresAt: "2026-11-12T00:00:00Z",
+      },
+    }));
+    server = fake.server;
+    const factsPath = join(cwd, ".taskless", ".tmp-report.json");
+    await writeFile(
+      factsPath,
+      JSON.stringify(factsFor(["alpha", "beta", "gamma"])),
+      "utf8"
+    );
+    return {
+      factsPath,
+      env: { TASKLESS_REPORT_URL: `${fake.url}/api/v1/reports` },
+      deleteUrl: `${fake.url}/api/v1/reports/abc/secret-key`,
+    };
+  }
+
+  // #622: two publishes in one second used to collide on the record name, and
+  // the second report went live with its delete credential lost.
+  it("records a publish whose stamp is already taken under another name", async () => {
+    const { factsPath, env, deleteUrl } = await publishable();
+    // Take every stamp the run could land on, so it collides wherever it does.
+    const directory = reportsDirectory(cwd);
+    const start = Date.now();
+    const taken: string[] = [];
+    for (let second = 0; second < 120; second += 1) {
+      const name = `${recordStamp(new Date(start + second * 1000))}.json`;
+      taken.push(name);
+      await writeFile(join(directory, name), "{}\n", "utf8");
+    }
+
+    const published = await run(["report", "--from", factsPath, "--json"], env);
+    expect(published.exitCode).toBe(0);
+    const result = JSON.parse(published.stdout) as { record: string };
+    expect(result.record).toMatch(/_2\.json$/);
+
+    const name = result.record.replace(".taskless/reports/", "");
+    expect(taken).toContain(name.replace("_2.json", ".json"));
+    const record = JSON.parse(
+      await readFile(join(directory, name), "utf8")
+    ) as { deleteUrl: string };
+    expect(record.deleteUrl).toBe(deleteUrl);
+  });
+
+  it("prints the live report's credential when the record cannot be written", async () => {
+    const { factsPath, env, deleteUrl } = await publishable();
+    const directory = reportsDirectory(cwd);
+    await chmod(directory, 0o555);
+    try {
+      const human = await run(["report", "--from", factsPath], env);
+      expect(human.exitCode).not.toBe(0);
+      expect(human.stderr).toContain("REPORT_RECORD_FAILED");
+      expect(human.stderr).toContain("https://tskl.es/r/abc");
+      expect(human.stderr).toContain(deleteUrl);
+
+      const json = await run(["report", "--from", factsPath, "--json"], env);
+      expect(json.exitCode).not.toBe(0);
+      expect(JSON.parse(json.stdout)).toMatchObject({
+        ok: false,
+        code: "REPORT_RECORD_FAILED",
+        url: "https://tskl.es/r/abc",
+        deleteUrl,
+        expiresAt: "2026-11-12T00:00:00Z",
+      });
+    } finally {
+      await chmod(directory, 0o755);
+    }
+  });
+
   it("refuses too few rules without touching the network", async () => {
     await rm(join(cwd, ".taskless", "rules", "sg", "gamma"), {
       recursive: true,
@@ -979,7 +1127,7 @@ describe("taskless report", () => {
   it("counts only review comments, and asks for a candidate estimate, not pricing", async () => {
     const { stdout, exitCode } = await run(["agent", "report"]);
     expect(exitCode).toBe(0);
-    expect(stdout).toMatch(/^# Topic: report {5}\(CLI v.+ \/ topic v7\)/m);
+    expect(stdout).toMatch(/^# Topic: report {5}\(CLI v.+ \/ topic v8\)/m);
     const flat = stdout.replaceAll(/\s+/g, " ");
     const counting = flat.slice(flat.indexOf("## Counting surfaced"));
     expect(counting).toContain("**Only review comments count.**");

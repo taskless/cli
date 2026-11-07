@@ -1,4 +1,4 @@
-import type { CLIErrorCode } from "../types/errors";
+import type { CLIErrorCode, CLIErrorDetails } from "../types/errors";
 
 /**
  * Sentinel error for expected CLI failures (e.g. validation errors).
@@ -23,14 +23,17 @@ export class CLIError extends Error {
    * handler assumes of every CLIError.
    */
   readonly reported: boolean;
+  /** Fields the `--json` envelope carries beyond the code and message. */
+  readonly details?: CLIErrorDetails;
 
   constructor(
     message?: string,
     code?: CLIErrorCode,
-    options: { reported?: boolean } = {}
+    options: { reported?: boolean; details?: CLIErrorDetails } = {}
   ) {
     super(message);
     this.code = code;
     this.reported = options.reported ?? false;
+    this.details = options.details;
   }
 }
