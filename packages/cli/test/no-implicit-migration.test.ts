@@ -253,6 +253,136 @@ describe("a reporting command never migrates", () => {
 });
 
 /**
+ * `onboard` and `report` reached the same migration through
+ * `ensureTasklessDirectory`, in every mode (taskless/cli#621). An agent that
+ * fetched the onboarding recipe, or drafted a report, moved and deleted tracked
+ * files in a project whose `.taskless/` was behind the CLI.
+ */
+describe("onboard and report never migrate", () => {
+  let directory: string;
+  let taskless: string;
+
+  beforeEach(async () => {
+    directory = await mkdtemp(join(tmpdir(), "tskl-no-migrate-onboard-"));
+    taskless = join(directory, ".taskless");
+    await mkdir(join(taskless, "rules"), { recursive: true });
+    await writeFile(
+      join(taskless, "taskless.json"),
+      JSON.stringify({ version: 3, install: {} }),
+      "utf8"
+    );
+    await writeFile(join(taskless, "rules", "no-eval.yml"), FLAT_RULE, "utf8");
+  });
+
+  afterEach(async () => {
+    await rm(directory, { recursive: true, force: true });
+  });
+
+  /** The tree is exactly as the fixture wrote it: nothing moved, nothing added. */
+  async function expectUntouched(): Promise<void> {
+    const manifest = JSON.parse(
+      await readFile(join(taskless, "taskless.json"), "utf8")
+    ) as { version: number };
+    expect(manifest.version).toBe(3);
+    await expect(
+      stat(join(taskless, "rules", "no-eval.yml"))
+    ).resolves.toBeDefined();
+    await expect(stat(join(taskless, "rules", "sg"))).rejects.toThrow();
+  }
+
+  it.each([
+    ["onboard"],
+    ["onboard", "--force"],
+    ["onboard", "--mark-complete"],
+    ["report"],
+    ["report", "--from", "facts.json"],
+    ["report", "--delete", "2026-10-13_142200.json"],
+  ])(
+    "%s %s refuses and leaves the working tree as it found it",
+    async (...args) => {
+      const { stdout, stderr, exitCode } = await runCli([
+        ...args,
+        "-d",
+        directory,
+      ]);
+      expect(exitCode).toBe(1);
+      // Printed in prose too, so a recipe can branch on it without `--json`.
+      expect(stderr).toContain("SCAFFOLD_MIGRATION_REQUIRED");
+      expect(stderr).toMatch(/init/);
+      // The draft never reached stdout.
+      expect(stdout.trim()).toBe("");
+      await expectUntouched();
+    }
+  );
+
+  it("report --json carries the code an agent branches on", async () => {
+    const { stdout, exitCode } = await runCli([
+      "report",
+      "--json",
+      "-d",
+      directory,
+    ]);
+    expect(exitCode).toBe(1);
+    const envelope = parseEnvelope<{ ok?: boolean; code?: string }>(stdout);
+    expect(envelope.ok).toBe(false);
+    expect(envelope.code).toBe("SCAFFOLD_MIGRATION_REQUIRED");
+    await expectUntouched();
+  });
+
+  it.each([["onboard"], ["report", "--json"]])(
+    "%s %s still refuses a scaffold NEWER than the CLI",
+    async (...args) => {
+      await writeFile(
+        join(taskless, "taskless.json"),
+        JSON.stringify({ version: 99, install: {} }),
+        "utf8"
+      );
+      const { stdout, stderr, exitCode } = await runCli([
+        ...args,
+        "-d",
+        directory,
+      ]);
+      expect(exitCode).toBe(1);
+      expect(`${stdout}${stderr}`).toContain("SCAFFOLD_VERSION_MISMATCH");
+    }
+  );
+
+  it("onboard still scaffolds a project with no .taskless at all", async () => {
+    // Absent is not behind: creating a fresh directory is not a rewrite.
+    const bare = await mkdtemp(join(tmpdir(), "tskl-bare-onboard-"));
+    try {
+      const { stdout, exitCode } = await runCli(["onboard", "-d", bare]);
+      expect(exitCode).toBe(0);
+      expect(stdout).not.toContain("SCAFFOLD_MIGRATION_REQUIRED");
+      const manifest = JSON.parse(
+        await readFile(join(bare, ".taskless", "taskless.json"), "utf8")
+      ) as { version: number };
+      expect(manifest.version).toBe(LATEST_SCHEMA_VERSION);
+    } finally {
+      await rm(bare, { recursive: true, force: true });
+    }
+  });
+
+  it("report --json drafts a project with no .taskless, scaffold prose kept off stderr", async () => {
+    const bare = await mkdtemp(join(tmpdir(), "tskl-bare-report-"));
+    try {
+      const { stdout, stderr, exitCode } = await runCli([
+        "report",
+        "--json",
+        "-d",
+        bare,
+      ]);
+      expect(exitCode).toBe(0);
+      expect(stderr).not.toContain("Migrating .taskless/");
+      const draft = parseEnvelope<{ missing?: unknown }>(stdout);
+      expect(draft.missing).toBeDefined();
+    } finally {
+      await rm(bare, { recursive: true, force: true });
+    }
+  });
+});
+
+/**
  * A manifest that cannot be parsed is a DIFFERENT failure from a manifest that
  * is behind, and it used to be reported as one (taskless/cli#278).
  *
