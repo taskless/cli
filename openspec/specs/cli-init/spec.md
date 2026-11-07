@@ -1205,10 +1205,11 @@ An entry is:
 
 Every dependency SHALL be reported with reason `dependency`, whatever its spec, its package, or the running channel, because the CLI runs through the project launcher and a dependency stays on the build its lockfile resolved. Its `installed` SHALL be the version read from `node_modules/<name>/package.json` in the directory holding it, then in each parent up to the working directory, the first found winning, as Node resolves it; `null` when none is found.
 
-A command pin SHALL be judged by the running channel first. The running CLI is a nightly when its version carries a prerelease, and a release otherwise.
+A command pin SHALL be judged by the running channel first. The running channel SHALL be taken from the build target, not read from the version: a release, a nightly, or a development (`self`) build run from a path, whose version carries a `-self` prerelease and which publishes no package.
 
 - Under a nightly, a `@taskless/cli` command pin SHALL NOT be reported, because a nightly installs beside the release, except that when the same run migrated an existing `.taskless/` (the migration's `from` is above `0`) it SHALL be reported with reason `unreleased`.
 - Under a release, a `@taskless/cli-nightly` command pin SHALL be reported with reason `nightly`, whatever its version, because a release install is the move back to mainline.
+- Under a self build, no command pin SHALL be reported, because there is no published version to move it to, except that a `@taskless/cli` pin SHALL be reported with reason `unreleased` when the same run migrated an existing `.taskless/` (the migration's `from` is above `0`).
 - Any other command pin SHALL be reported with reason `stale` when its spec is bounded and cannot reach the running version.
 
 A bounded spec is an exact version (optionally prefixed `=` or `v`, prerelease, and build metadata), or a `^` or `~` range. An exact version SHALL be compared with semver precedence, so a prerelease sorts before its release and two prereleases of one base compare by their prerelease text, which orders nightlies by build time. A range SHALL be compared by its exclusive ceiling on the numeric core, with caret ranges holding the left-most non-zero part as npm does. A spec the CLI cannot bound (`latest`, `*`, a comparator range) SHALL NOT be reported as `stale`. An absent or unparseable file, or an unreadable installed manifest, SHALL produce no report from that source and SHALL NOT fail the install.
@@ -1217,7 +1218,7 @@ Entries SHALL be reported root `package.json` first, then workspace manifests by
 
 The install SHALL NOT modify any `package.json`, CI file, or hook. The report SHALL offer each change rather than claim it.
 
-On the human path (batch and wizard), when at least one entry is reported, the CLI SHALL print a notice, introduced without naming `package.json` alone, naming for each entry its manifest, location, package, spec, installed version when known, and what to do: remove the dependency for `dependency`; leave it as is for `unreleased`; for `stale` and `nightly`, the running version on the package that publishes it (`@taskless/cli-nightly` when the running version carries a prerelease, `@taskless/cli` otherwise), with the switch named when the pin is on the other package. The notice SHALL add one paragraph per reason present: for `dependency`, that Taskless runs through the project launcher, and the offer to remove it, point callers of its binary at the launcher, and reinstall dependencies; for `nightly`, that the pin keeps a prerelease after the move back to the release; for `unreleased`, that a nightly leaves release pins alone but a release predating the new schema refuses the project, and that the user should be told before committing `.taskless/`. Only a `dependency` entry SHALL ask for dependencies to be reinstalled. The notice SHALL print whether or not the run changed anything. On the batch path it SHALL print after the upgrade trailer, and the onboarding trailer SHALL remain the final line.
+On the human path (batch and wizard), when at least one entry is reported, the CLI SHALL print a notice, introduced without naming `package.json` alone, naming for each entry its manifest, location, package, spec, installed version when known, and what to do: remove the dependency for `dependency`; leave it as is for `unreleased`; for `stale` and `nightly`, the running version on the package that publishes it (`@taskless/cli-nightly` under a nightly, `@taskless/cli` under a release), with the switch named when the pin is on the other package. The notice SHALL add one paragraph per reason present: for `dependency`, that Taskless runs through the project launcher, and the offer to remove it, point callers of its binary at the launcher, and reinstall dependencies; for `nightly`, that the pin keeps a prerelease after the move back to the release; for `unreleased`, that a nightly leaves release pins alone but a release predating the new schema refuses the project, and that the user should be told before committing `.taskless/`. Only a `dependency` entry SHALL ask for dependencies to be reinstalled. The notice SHALL print whether or not the run changed anything. On the batch path it SHALL print after the upgrade trailer, and the onboarding trailer SHALL remain the final line.
 
 When the same run migrated an existing `.taskless/` and a `stale` or `dependency` entry is reported, the notice SHALL NOT hedge. It SHALL name the schema versions the run moved between, state that a CLI predating the new schema refuses the project with `SCAFFOLD_VERSION_MISMATCH` so CI running those entries will break on the push carrying the migrated files, and say the change belongs in the same commit as `.taskless/`. A migration from `0` is how a fresh install creates `.taskless/`; it SHALL NOT be described as an upgrade, and like a run with no migration the notice SHALL describe a `stale` entry's failure as likely, not certain.
 
@@ -1267,6 +1268,12 @@ Under `--json`, the envelope SHALL carry `pinnedCli`: an array of `{ manifest, l
 
 - **WHEN** a release `V` runs `init` and a CI file pins `@taskless/cli-nightly` at a version newer than `V`
 - **THEN** it SHALL be reported with reason `nightly` and the target `@taskless/cli@V`, naming the package switch
+
+#### Scenario: A self build moves no pin
+
+- **WHEN** a self build at `0.13.0-self` runs `init` without migrating an existing `.taskless/`, and scripts pin `@taskless/cli` at `0.9.0` and `@taskless/cli-nightly` at an older nightly
+- **THEN** neither pin SHALL be reported
+- **AND** no notice SHALL name `0.13.0-self` as a version to move a pin to
 
 #### Scenario: A floating or current command pin is not reported
 
