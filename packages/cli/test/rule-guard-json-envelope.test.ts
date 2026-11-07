@@ -16,6 +16,7 @@ import {
 import { runCommand } from "citty";
 
 import { ruleCommand } from "../src/commands/rules";
+import { LATEST_SCHEMA_VERSION } from "../src/filesystem/migrate";
 import {
   servedBody,
   stubV2Server,
@@ -71,7 +72,7 @@ describe("rule create/improve --json: a served rule that fails verification", ()
     await writeFile(
       join(cwd, ".taskless", "taskless.json"),
       JSON.stringify({
-        version: "2026-03-03",
+        version: LATEST_SCHEMA_VERSION,
         orgId: 123,
         repositoryUrl: "https://github.com/test/test",
       })
