@@ -158,12 +158,12 @@ describe("the per-tool legacy recipes", () => {
     expect(biome).toContain("Do not write a Biome plugin.");
   });
 
-  it("has Oxlint check its catch-alls and confirm with oxlint --rules", () => {
+  it("has Oxlint check its catch-alls and confirm with oxlint --rules --format default", () => {
     const oxlint = tool("oxlint");
     expect(oxlint).toContain("`no-restricted-imports`");
     expect(oxlint).toContain("`no-restricted-globals`");
     expect(oxlint).toContain("Oxlint has no `no-restricted-syntax`.");
-    expect(oxlint).toContain("`oxlint --rules`");
+    expect(oxlint).toContain("`oxlint --rules --format default`");
     expect(oxlint).toContain("a nested\n   config replaces its parent");
     expect(oxlint).toContain("Do not write an Oxlint plugin.");
   });

@@ -665,6 +665,12 @@ describe("route's per-linter passage", () => {
     expect(route).not.toContain("found no linter here");
   });
 
+  it("names a detected linter even when none of them has a guide", () => {
+    const route = getPrompt("route", { linters: ["stylelint"] });
+    expect(route).toContain("with no guide of their own: `stylelint`");
+    expect(route).not.toContain("found no linter here");
+  });
+
   it("keeps a tool that is not a legacy host out of that list", () => {
     const route = getPrompt("route", {
       linters: ["eslint", "prettier", "vale"],

@@ -37,17 +37,19 @@ installed version, and enable it in the repository's Oxlint configuration.
    https://oxc.rs/llms.txt.
 
 3. **Confirm the rule against the installed version.** Run
-   `oxlint --rules`, which lists the rules the installed build has. A
-   rule belonging to a plugin only fires when that plugin is on, and
-   setting `plugins` replaces the default set, so read the config's
-   `plugins` before relying on one.
+   `oxlint --rules --format default`, which lists the rules the installed
+   build has. Keep `--format default`: without it, Oxlint prints nothing
+   when it detects an agent or GitHub Actions, and still exits 0, so an
+   empty list says nothing about the rule. A rule belonging to a plugin
+   only fires when that plugin is on, and setting `plugins` replaces the
+   default set, so read the config's `plugins` before relying on one.
 
 4. **Enable it where the repo configures Oxlint.** Oxlint reads
    `.oxlintrc.json`, `.oxlintrc.jsonc`, `oxlint.config.ts`, or
    `oxlint.config.mts`. Each file uses the nearest config, and a nested
    config replaces its parent rather than merging with it, unless it
-   says `extends`. So change the config that governs the files in
-   question, which `oxlint --print-config` shows. Rules go under
+   says `extends`. So change the config nearest the files in question,
+   not necessarily the one at the repository root. Rules go under
    `rules`, as a severity or a `[severity, options]` pair:
    ```json
    "rules": {
