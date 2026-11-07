@@ -95,22 +95,67 @@ export function renderLauncher(packageName: LauncherPackage): string {
 }
 
 /**
- * The package this build's launcher runs, or `undefined` for a build that has
- * none. A `self` build runs from a path in this checkout, not from a published
- * package, so there is no version for a launcher to pin.
+ * Which build a CLI is: the published release, the published nightly, or a
+ * `self` build run from a path in this checkout. Taken from the build target,
+ * never from the version string: a self build's version (`<next>-self`) has a
+ * prerelease part just as a nightly's does, and no published package carries
+ * it.
  */
-export function buildLauncherPackage(): LauncherPackage | undefined {
+export type Channel = "release" | "nightly" | "self";
+
+/** This build's channel. */
+export function buildChannel(): Channel {
   switch (__TASKLESS_BUILD_TARGET__) {
     case "prod": {
-      return LAUNCHER_PACKAGES[0];
+      return "release";
     }
     case "nightly": {
-      return LAUNCHER_PACKAGES[1];
+      return "nightly";
     }
     default: {
+      return "self";
+    }
+  }
+}
+
+/**
+ * The package a channel publishes, or `undefined` for `self`, which runs from
+ * a path rather than a package and so has no version for a launcher to pin.
+ */
+export function channelPackage(channel: Channel): LauncherPackage | undefined {
+  const [release, nightly] = LAUNCHER_PACKAGES;
+  switch (channel) {
+    case "release": {
+      return release;
+    }
+    case "nightly": {
+      return nightly;
+    }
+    case "self": {
       return undefined;
     }
   }
+}
+
+/** The package this build's launcher runs, or `undefined` for a self build. */
+export function buildLauncherPackage(): LauncherPackage | undefined {
+  return channelPackage(buildChannel());
+}
+
+/**
+ * The channel of a version a LEGACY manifest recorded: one written before
+ * `install.launchers` existed, which names its version only in
+ * `install.cliVersion`. Nothing else reads a channel off a version.
+ *
+ * A release has no prerelease part. A self build ends in `-self`. Any other
+ * prerelease is a nightly, which covers both a published nightly
+ * (`<base>-<stamp>x<sha>`) and a `build:next` one (`<next>-next-<sha>`). The
+ * launcher template carries its own copy of this rule, since it runs without
+ * the CLI.
+ */
+export function legacyChannel(version: string): Channel {
+  if (version.endsWith("-self")) return "self";
+  return /^\d+\.\d+\.\d+$/.test(version) ? "release" : "nightly";
 }
 
 /**
@@ -225,21 +270,27 @@ async function removeQuietly(path: string): Promise<void> {
 const STALE_INSTALL_MS = 60 * 60 * 1000;
 
 /**
- * The version a package's launcher would run: its `install.launchers` entry,
- * or `install.cliVersion` when that belongs to the package (a nightly version
- * always has a prerelease part, a release's never does). The template applies
- * the same rule when it runs.
+ * The version a package's launcher would run.
+ *
+ * `install.launchers` is the record. Once it holds any package's version it is
+ * the only source, and `install.cliVersion` is only the last version that
+ * installed, for display. A legacy manifest, written before `launchers`
+ * existed, records its version only in `cliVersion`, which is read as the
+ * package {@link legacyChannel} names: for a self build, none. The next
+ * install by a current CLI moves it into `launchers`. The template applies the
+ * same rule when it runs.
  */
 export function recordedLauncherVersion(
   packageName: LauncherPackage,
   launchers: Record<string, string> | undefined,
   cliVersion: string | undefined
 ): string | undefined {
-  const recorded = launchers?.[packageName];
-  if (recorded !== undefined) return recorded;
+  if (launchers !== undefined && Object.keys(launchers).length > 0) {
+    return launchers[packageName];
+  }
   if (
     cliVersion !== undefined &&
-    cliVersion.includes("-") === packageName.endsWith("-nightly")
+    channelPackage(legacyChannel(cliVersion)) === packageName
   ) {
     return cliVersion;
   }

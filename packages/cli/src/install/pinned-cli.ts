@@ -6,6 +6,7 @@ import { parse as parseYaml } from "yaml";
 import { automationFiles } from "../detect/automation";
 import { isRecord } from "../util/is-record";
 import { compareSemver, compareVersions } from "../util/version-compare";
+import { buildChannel, type Channel } from "./launcher";
 import { renderNoticeBox } from "./notice-box";
 
 /**
@@ -49,14 +50,6 @@ import { renderNoticeBox } from "./notice-box";
 const PACKAGE_NAMES = ["@taskless/cli", "@taskless/cli-nightly"] as const;
 
 /**
- * Whether `version` is a nightly. A nightly is always `<base>-<stamp>x<sha>`
- * and a release never has a prerelease, so the version alone says which.
- */
-function isNightly(version: string): boolean {
-  return version.includes("-");
-}
-
-/**
  * Whether a script pin of `name` belongs in the report at all, before its
  * version is looked at: `true` to report it whatever its version, `false` to
  * leave it out whatever its version, `undefined` to judge it by staleness.
@@ -67,11 +60,22 @@ function isNightly(version: string): boolean {
  * hooks keep running the release they chose. A release install is the move
  * back to mainline, so it offers to clean up every nightly pin, including one
  * newer than the release by version, which staleness alone would never name.
+ * A self build is neither package, so it has no version to move any pin to,
+ * and leaves every one alone.
  */
-function channelVerdict(name: string, cliVersion: string): boolean | undefined {
+function channelVerdict(name: string, channel: Channel): boolean | undefined {
   const [release, nightly] = PACKAGE_NAMES;
-  if (isNightly(cliVersion)) return name === release ? false : undefined;
-  return name === nightly ? true : undefined;
+  switch (channel) {
+    case "release": {
+      return name === nightly ? true : undefined;
+    }
+    case "nightly": {
+      return name === release ? false : undefined;
+    }
+    case "self": {
+      return false;
+    }
+  }
 }
 
 /** The `package.json` fields a dependency pin may live in. */
@@ -336,10 +340,11 @@ function scriptPinReason(
   name: string,
   spec: string,
   cliVersion: string,
+  channel: Channel,
   upgraded: PinMigration | undefined
 ): PinReason | undefined {
   const [release] = PACKAGE_NAMES;
-  switch (channelVerdict(name, cliVersion)) {
+  switch (channelVerdict(name, channel)) {
     case true: {
       return "nightly";
     }
@@ -362,6 +367,7 @@ async function findPinsIn(
   manifest: string,
   parsed: unknown,
   cliVersion: string,
+  channel: Channel,
   upgraded: PinMigration | undefined
 ): Promise<PinnedCli[]> {
   if (!isRecord(parsed)) return [];
@@ -398,7 +404,13 @@ async function findPinsIn(
         // is one pin to change, not two.
         if (spec === undefined || seen.has(`${name}@${spec}`)) continue;
         seen.add(`${name}@${spec}`);
-        const reason = scriptPinReason(name, spec, cliVersion, upgraded);
+        const reason = scriptPinReason(
+          name,
+          spec,
+          cliVersion,
+          channel,
+          upgraded
+        );
         if (reason !== undefined) {
           pins.push({
             manifest,
@@ -428,6 +440,7 @@ async function findPinsInAutomationFile(
   cwd: string,
   file: string,
   cliVersion: string,
+  channel: Channel,
   upgraded: PinMigration | undefined
 ): Promise<PinnedCli[]> {
   let text: string;
@@ -444,7 +457,7 @@ async function findPinsInAutomationFile(
       const name = `@taskless/${suffix ?? "cli"}`;
       if (spec === undefined || seen.has(`${name}@${spec}`)) continue;
       seen.add(`${name}@${spec}`);
-      const reason = scriptPinReason(name, spec, cliVersion, upgraded);
+      const reason = scriptPinReason(name, spec, cliVersion, channel, upgraded);
       if (reason !== undefined) {
         pins.push({
           manifest: file,
@@ -477,15 +490,17 @@ async function findPinsInAutomationFile(
 export async function findCliPins(
   cwd: string,
   cliVersion: string,
-  options: { migrated?: PinMigration } = {}
+  options: { migrated?: PinMigration; channel?: Channel } = {}
 ): Promise<PinnedCli[]> {
   const upgraded = upgradeOf(options.migrated);
+  const channel = options.channel ?? buildChannel();
   const root = await readJson(join(cwd, "package.json"));
   const pins = await findPinsIn(
     cwd,
     "package.json",
     root,
     cliVersion,
+    channel,
     upgraded
   );
   for (const manifest of await listWorkspaceManifests(cwd, root)) {
@@ -495,13 +510,20 @@ export async function findCliPins(
         manifest,
         await readJson(join(cwd, manifest)),
         cliVersion,
+        channel,
         upgraded
       ))
     );
   }
   for (const file of automationFiles(cwd)) {
     pins.push(
-      ...(await findPinsInAutomationFile(cwd, file, cliVersion, upgraded))
+      ...(await findPinsInAutomationFile(
+        cwd,
+        file,
+        cliVersion,
+        channel,
+        upgraded
+      ))
     );
   }
   return pins;
@@ -512,18 +534,33 @@ export async function findCliPins(
  * `cliVersion`. A pin on the other package has to switch names rather than
  * name a version its own package never published. Only a release run reports
  * a pin on the other package (see {@link channelVerdict}), so in practice the
- * switch is always a nightly pin moving back to the release.
+ * switch is always a nightly pin moving back to the release. A self build
+ * carries no package, so there is nothing to move a pin to.
  */
-function bumpTarget(cliVersion: string): { name: string; version: string } {
+function bumpTarget(
+  cliVersion: string,
+  channel: Channel
+): { name: string; version: string } | undefined {
   const [release, nightly] = PACKAGE_NAMES;
-  return {
-    name: isNightly(cliVersion) ? nightly : release,
-    version: cliVersion,
-  };
+  switch (channel) {
+    case "release": {
+      return { name: release, version: cliVersion };
+    }
+    case "nightly": {
+      return { name: nightly, version: cliVersion };
+    }
+    case "self": {
+      return undefined;
+    }
+  }
 }
 
 /** What to do with one raised entry, as the arrow side of its line. */
-function pinAction(pin: PinnedCli, cliVersion: string): string {
+function pinAction(
+  pin: PinnedCli,
+  cliVersion: string,
+  channel: Channel
+): string {
   switch (pin.reason) {
     case "dependency": {
       return "remove the dependency";
@@ -533,7 +570,8 @@ function pinAction(pin: PinnedCli, cliVersion: string): string {
     }
     case "stale":
     case "nightly": {
-      const target = bumpTarget(cliVersion);
+      const target = bumpTarget(cliVersion, channel);
+      if (target === undefined) return "leave as is";
       return pin.name === target.name
         ? `${target.name}@${target.version}`
         : `${target.name}@${target.version}, replacing ${pin.name}`;
@@ -546,10 +584,14 @@ function pinAction(pin: PinnedCli, cliVersion: string): string {
  * what to do with it. The manifest is named even at the root, so a list
  * mixing the root with workspace packages reads the same way throughout.
  */
-export function describePin(pin: PinnedCli, cliVersion: string): string {
+export function describePin(
+  pin: PinnedCli,
+  cliVersion: string,
+  channel: Channel = buildChannel()
+): string {
   const installed =
     pin.installed === null ? "" : ` (installed ${pin.installed})`;
-  return `${pin.manifest} ${pin.location}: ${pin.name} ${pin.spec}${installed} -> ${pinAction(pin, cliVersion)}`;
+  return `${pin.manifest} ${pin.location}: ${pin.name} ${pin.spec}${installed} -> ${pinAction(pin, cliVersion, channel)}`;
 }
 
 /**
@@ -571,9 +613,10 @@ export function describePin(pin: PinnedCli, cliVersion: string): string {
 export function getPinnedCliNotice(
   pins: readonly PinnedCli[],
   cliVersion: string,
-  options: { migrated?: PinMigration } = {}
+  options: { migrated?: PinMigration; channel?: Channel } = {}
 ): string | undefined {
   if (pins.length === 0) return undefined;
+  const channel = options.channel ?? buildChannel();
   const upgraded = upgradeOf(options.migrated);
   const has = (reason: PinReason): boolean =>
     pins.some((pin) => pin.reason === reason);
@@ -614,7 +657,7 @@ export function getPinnedCliNotice(
 
   return renderNoticeBox("TASKLESS CLI PINS", [
     `This project names the Taskless CLI in ways that need a look after ${cliVersion} ran here:`,
-    { items: pins.map((pin) => describePin(pin, cliVersion)) },
+    { items: pins.map((pin) => describePin(pin, cliVersion, channel)) },
     ...paragraphs,
   ]);
 }

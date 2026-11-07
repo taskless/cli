@@ -51,6 +51,42 @@ describe("finding a version mismatch", () => {
     });
   });
 
+  it("reads a build:next cliVersion as the nightly's", () => {
+    expect(mismatch({ cliVersion: "0.13.0-next-fa9ae7c" })).toMatchObject({
+      recordedPackage: NIGHTLY,
+      recorded: "0.13.0-next-fa9ae7c",
+    });
+  });
+
+  it("passes a nightly and a release after a self install", () => {
+    // A self build runs from a path and carries no package, so its `-self`
+    // version is neither channel's, though it has a prerelease part.
+    const install = { cliVersion: "0.13.0-self" };
+    expect(mismatch(install, "0.14.0-20261020x1")).toBeUndefined();
+    expect(mismatch(install, "0.14.0")).toBeUndefined();
+  });
+
+  it("reads launchers alone once it records a version", () => {
+    // A self install over a release keeps the release's launcher record and
+    // moves cliVersion to its own version, which says nothing about either.
+    const install = {
+      cliVersion: "0.13.0-self",
+      launchers: { [RELEASE]: "0.12.0" },
+    };
+    expect(mismatch(install, "0.12.0")).toBeUndefined();
+    expect(mismatch(install, "0.14.0-20261020x1")).toMatchObject({
+      recordedPackage: RELEASE,
+      recorded: "0.12.0",
+    });
+    // A stale cliVersion beside the record is display only.
+    expect(
+      mismatch(
+        { cliVersion: "0.11.0", launchers: { [NIGHTLY]: "0.15.0-20261020x1" } },
+        "0.15.0-20261020x1"
+      )
+    ).toBeUndefined();
+  });
+
   it("passes either channel in a project carrying both launchers", () => {
     const install = {
       cliVersion: "0.15.0-20261020x1",

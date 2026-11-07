@@ -273,6 +273,34 @@ describe.skipIf(process.platform === "win32")("project launcher", () => {
     expect(result.stdout).toBe("");
   });
 
+  it("reads a self build's cliVersion as neither package's", async () => {
+    const manifest = { install: { cliVersion: "0.13.0-self" } };
+    for (const packageName of [
+      "@taskless/cli",
+      "@taskless/cli-nightly",
+    ] as const) {
+      const result = launch(await install(packageName, manifest), []);
+      expect(result.status).toBe(1);
+      expect(result.stderr).toContain(`no ${packageName} version is recorded`);
+    }
+  });
+
+  it("ignores cliVersion once launchers records a version", async () => {
+    // The nightly's own record is absent, and cliVersion would otherwise be
+    // read as the nightly's.
+    const manifest = {
+      install: {
+        cliVersion: "0.14.0-20261020120000xabc1234",
+        launchers: { "@taskless/cli": "0.13.0" },
+      },
+    };
+    const result = launch(await install("@taskless/cli-nightly", manifest), []);
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain(
+      "no @taskless/cli-nightly version is recorded"
+    );
+  });
+
   it("reads the manifest and cache beside it when run from a subdirectory", async () => {
     const path = await install("@taskless/cli", RELEASE, "0.13.0");
     const subdirectory = join(root, "src");

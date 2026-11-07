@@ -39,7 +39,7 @@ const lockfile = join(
 const cache = join(tasklessDirectory, ".cache");
 const INSTALLER = `npx ${PACKAGE}@latest`;
 
-// A release version has no prerelease part; a nightly version always does.
+// A version: a release has no prerelease part, a nightly always does.
 const VERSION = /^\d+\.\d+\.\d+(?:-[\da-z.-]+)?$/i;
 // A temporary install this old is not still being written by anyone.
 const STALE_INSTALL_MS = 60 * 60 * 1000;
@@ -58,17 +58,37 @@ function readInstall() {
   }
 }
 
+/**
+ * The package a version recorded only as `install.cliVersion` belongs to. A
+ * release has no prerelease part, a local self build ends in `-self` and
+ * belongs to no package, and any other prerelease is a nightly.
+ */
+function legacyPackage(version) {
+  if (version.endsWith("-self")) return undefined;
+  return /^\d+\.\d+\.\d+$/.test(version) ? PACKAGES[0] : PACKAGES[1];
+}
+
 /** A package's recorded version, or undefined when none is usable. */
 function versionFor(install, name) {
-  const recorded = install?.launchers?.[name];
-  if (typeof recorded === "string" && VERSION.test(recorded)) return recorded;
-  // A manifest written before `install.launchers` existed, or rewritten by a
-  // CLI that does not know it, still records the last installed version.
+  const launchers = install?.launchers;
+  const recorded =
+    launchers !== null && typeof launchers === "object"
+      ? Object.entries(launchers).filter(
+          ([, version]) => typeof version === "string"
+        )
+      : [];
+  // `install.launchers` is the record once it holds any package's version.
+  if (recorded.length > 0) {
+    const version = Object.fromEntries(recorded)[name];
+    return version !== undefined && VERSION.test(version) ? version : undefined;
+  }
+  // A manifest written before `install.launchers` existed records the last
+  // installed version only here.
   const last = install?.cliVersion;
   if (
     typeof last === "string" &&
     VERSION.test(last) &&
-    last.includes("-") === name.endsWith("-nightly")
+    legacyPackage(last) === name
   ) {
     return last;
   }

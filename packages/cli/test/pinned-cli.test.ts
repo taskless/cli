@@ -5,6 +5,7 @@ import chalk from "chalk";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import {
+  describePin,
   findCliPins,
   getPinnedCliNotice,
   type PinnedCli,
@@ -176,7 +177,9 @@ describe("findCliPins", () => {
         await writePackage({
           scripts: { lint: `npx @taskless/cli-nightly@${pin} check` },
         });
-        expect(await findCliPins(cwd, running)).toHaveLength(stale ? 1 : 0);
+        expect(
+          await findCliPins(cwd, running, { channel: "nightly" })
+        ).toHaveLength(stale ? 1 : 0);
       }
     );
 
@@ -185,7 +188,9 @@ describe("findCliPins", () => {
         scripts: { lint: "npx @taskless/cli-nightly@^0.11.0 check" },
       });
       expect(
-        await findCliPins(cwd, "0.12.0-20261002181147x023048f")
+        await findCliPins(cwd, "0.12.0-20261002181147x023048f", {
+          channel: "nightly",
+        })
       ).toHaveLength(1);
     });
   });
@@ -200,7 +205,9 @@ describe("findCliPins", () => {
       await writePackage({
         scripts: { lint: "npx @taskless/cli@0.9.0 check" },
       });
-      expect(await findCliPins(cwd, nightly)).toEqual([]);
+      expect(await findCliPins(cwd, nightly, { channel: "nightly" })).toEqual(
+        []
+      );
     });
 
     it("still raises an older nightly script pin when a nightly is running", async () => {
@@ -210,7 +217,7 @@ describe("findCliPins", () => {
           try: "npx @taskless/cli-nightly@0.12.0-20260901000000xaaaaaaa check",
         },
       });
-      const pins = await findCliPins(cwd, nightly);
+      const pins = await findCliPins(cwd, nightly, { channel: "nightly" });
       expect(pins.map((pin) => [pin.location, pin.reason])).toEqual([
         ["scripts.try", "stale"],
       ]);
@@ -224,12 +231,44 @@ describe("findCliPins", () => {
       expect(pins.map((pin) => pin.reason)).toEqual(["nightly"]);
     });
 
+    it("leaves every script pin alone when a self build is running", async () => {
+      // A self build carries no package, so it has no version to move a pin
+      // to, and its `-self` version is not a nightly's.
+      await writePackage({
+        scripts: {
+          lint: "npx @taskless/cli@0.9.0 check",
+          try: "npx @taskless/cli-nightly@0.12.0-20260901000000xaaaaaaa check",
+        },
+      });
+      expect(
+        await findCliPins(cwd, "0.13.0-self", { channel: "self" })
+      ).toEqual([]);
+    });
+
+    it("names no version to move a pin to when a self build is running", () => {
+      const pin = {
+        manifest: "package.json",
+        location: "scripts.lint",
+        name: "@taskless/cli",
+        spec: "0.9.0",
+        installed: null,
+        reason: "stale",
+      } as const;
+      expect(describePin(pin, "0.13.0-self", "self")).toBe(
+        "package.json scripts.lint: @taskless/cli 0.9.0 -> leave as is"
+      );
+      expect(describePin(pin, "0.13.0", "release")).toBe(
+        "package.json scripts.lint: @taskless/cli 0.9.0 -> @taskless/cli@0.13.0"
+      );
+    });
+
     it("raises a release script pin as unreleased after a nightly migrated the project", async () => {
       await writePackage({
         scripts: { lint: "npx @taskless/cli@0.11.2 check" },
       });
       const pins = await findCliPins(cwd, nightly, {
         migrated: { from: 8, to: 9 },
+        channel: "nightly",
       });
       expect(pins.map((pin) => pin.reason)).toEqual(["unreleased"]);
     });
@@ -239,7 +278,10 @@ describe("findCliPins", () => {
         scripts: { lint: "npx @taskless/cli@0.11.2 check" },
       });
       expect(
-        await findCliPins(cwd, nightly, { migrated: { from: 0, to: 9 } })
+        await findCliPins(cwd, nightly, {
+          migrated: { from: 0, to: 9 },
+          channel: "nightly",
+        })
       ).toEqual([]);
     });
   });
@@ -372,7 +414,8 @@ describe("findCliPins", () => {
       );
       const underNightly = await findCliPins(
         cwd,
-        "0.12.0-20261002181147x023048f"
+        "0.12.0-20261002181147x023048f",
+        { channel: "nightly" }
       );
       expect(underNightly).toEqual([]);
       const underRelease = await findCliPins(cwd, "0.12.0");
@@ -537,7 +580,8 @@ describe("getPinnedCliNotice", () => {
             spec: "0.11.1-20260831132610x088fa7c",
           },
         ],
-        "0.12.0-20261006162512x92b3715"
+        "0.12.0-20261006162512x92b3715",
+        { channel: "nightly" }
       ) as string;
       expect(notice).not.toBe(plain(notice));
       const rows = plain(notice)
@@ -631,7 +675,7 @@ describe("getPinnedCliNotice", () => {
     const notice = pinnedNotice(
       [{ ...script, spec: "0.11.2", reason: "unreleased" }],
       "0.12.0-20261002181147x023048f",
-      { migrated: { from: 8, to: 9 } }
+      { migrated: { from: 8, to: 9 }, channel: "nightly" }
     );
     expect(notice).toContain("-> leave as is");
     expect(notice).not.toContain("replacing");
