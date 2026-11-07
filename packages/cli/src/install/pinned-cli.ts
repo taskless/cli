@@ -111,8 +111,8 @@ const BOUNDED_SPEC =
  * - `stale`: a script names an older build. Move it to the running version.
  * - `nightly`: a script still names the nightly after a release install. Move
  *   it back to the release.
- * - `unreleased`: a nightly migrated an existing `.taskless/`, and a script
- *   names a release. A nightly installs alongside the release, so the pin is
+ * - `unreleased`: a nightly or self build migrated an existing `.taskless/`,
+ *   and a script names a release. Neither replaces the release, so the pin is
  *   left as it is, but a release that predates the new schema refuses the
  *   project. Nothing to change in `package.json`; the person decides whether
  *   to commit the migration before a release that reads it ships.
@@ -349,8 +349,8 @@ function scriptPinReason(
       return "nightly";
     }
     case false: {
-      // Left alone, and raised only when the nightly moved the layout out
-      // from under it.
+      // Left alone, and raised only when a nightly or self build moved the
+      // layout out from under it.
       return upgraded !== undefined && name === release
         ? "unreleased"
         : undefined;
@@ -649,7 +649,9 @@ export function getPinnedCliNotice(
   }
   if (has("unreleased") && migration !== undefined) {
     paragraphs.push(
-      `This nightly ${migration}. A nightly installs alongside the release, so the release pins marked "leave as is" stay as they are, ` +
+      (channel === "self"
+        ? `This development build ${migration}. It runs from a path rather than a package, so the release pins marked "leave as is" stay as they are, `
+        : `This nightly ${migration}. A nightly installs alongside the release, so the release pins marked "leave as is" stay as they are, `) +
         `but one that predates schema version ${String(upgraded?.to)} fails on the push that carries the migrated files. ` +
         `Tell the user before they commit .taskless/, so they can hold the migration until a release that reads it ships.`
     );
