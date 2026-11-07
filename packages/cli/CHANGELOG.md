@@ -1,5 +1,14 @@
 # @taskless/cli
 
+## 0.13.7
+
+[Compare with v0.13.6](https://github.com/taskless/cli/compare/v0.13.6...v0.13.7)
+
+### Patch Changes
+
+- 374a7b6: `taskless detect` now recognizes C# repositories and the Roslynator, StyleCop and SonarAnalyzer analyzers. C# comes from a `.csproj`. Roslynator comes from its NuGet packages in an MSBuild file, `packages.config` or `dotnet-tools.json`, its keys in `.editorconfig` or `.globalconfig`, a `.roslynatorconfig`, or a CI or hook command that runs it. StyleCop and SonarAnalyzer are each reported as their own linter, from their NuGet package, their config file, or their diagnostic ids.
+- 70321e8: `agent route` no longer reads as though a detected linter is missing. It now names every detected tool that can host a rule, and Oxlint gets its own `create-legacy-rule --tool=oxlint` guide.
+
 ## 0.13.6
 
 [Compare with v0.13.5](https://github.com/taskless/cli/compare/v0.13.5...v0.13.6)
