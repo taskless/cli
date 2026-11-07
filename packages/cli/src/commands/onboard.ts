@@ -5,9 +5,8 @@ import chalk from "chalk";
 import { defineCommand } from "citty";
 
 import { detectHostTools } from "../detect/host-tools";
-import { ensureTasklessDirectory } from "../filesystem/directory";
+import { ensureSchema } from "../filesystem/directory";
 import { readManifest, writeManifest } from "../filesystem/manifest";
-import { requireCurrentSchema } from "../filesystem/migrate";
 import { getRecipe } from "../prompts/recipes";
 import { withSurveyInvite } from "../survey/invite";
 import { getTelemetry } from "../telemetry";
@@ -95,8 +94,11 @@ export const onboardCommand = defineCommand({
     // deletes tracked files, so an agent fetching the recipe rewrote the
     // repository. `init` is the one command that migrates; the refusal names
     // it, as `check` and `verify` do.
+    //
+    // Still scaffolds a `.taskless/` that is absent: a fresh directory is not
+    // a rewrite, and `--mark-complete` needs the manifest to exist.
     try {
-      await requireCurrentSchema(cwd);
+      await ensureSchema(cwd, "scaffold-if-absent");
     } catch (error) {
       if (error instanceof CLIError) {
         // The code is printed so the recipe can branch on it, as `report`
@@ -109,9 +111,6 @@ export const onboardCommand = defineCommand({
       }
       throw error;
     }
-    // Still scaffolds a `.taskless/` that is absent: a fresh directory is not
-    // a rewrite, and `--mark-complete` needs the manifest to exist.
-    await ensureTasklessDirectory(cwd);
     const tasklessDirectory = resolve(cwd, ".taskless");
 
     if (args["mark-complete"]) {

@@ -182,7 +182,22 @@ export const LATEST_SCHEMA_VERSION: number =
   sortedMigrations(migrations).at(-1)?.[0] ?? 0;
 
 /**
- * What a migration WOULD do, without doing it.
+ * Where a project's `.taskless/` stands relative to this CLI.
+ *
+ * Every command needs this answer before it touches the scaffold. Until it had
+ * a name, each helper worked it out for itself, and which policy a command got
+ * depended on which helper it happened to call: that is how `onboard` and
+ * `report` kept migrating after only `init` was meant to. `ensureSchema` in
+ * `directory.ts` switches on it; nothing else should re-derive it.
+ */
+export type SchemaState =
+  | { kind: "absent" }
+  | { kind: "behind"; from: number; to: number }
+  | { kind: "current"; version: number }
+  | { kind: "ahead"; version: number; supported: number };
+
+/**
+ * Classify the scaffold without changing it.
  *
  * Read-only on purpose. A command that reports on a project must be able to
  * find out that the project is behind without changing it, and until this
@@ -191,33 +206,43 @@ export const LATEST_SCHEMA_VERSION: number =
  * findings before and after is impossible when asking the question performs
  * the change, so a migration that silently dropped a rule could not be caught
  * by the one check that would catch it.
- *
- * `undefined` means nothing is pending, which includes a project newer than
- * this CLI understands. That case is a different failure with its own message,
- * and it is {@link runMigrations}' to report.
  */
-export async function pendingMigration(
-  cwd: string
-): Promise<{ from: number; to: number } | undefined> {
+export async function classifySchema(cwd: string): Promise<SchemaState> {
   const tasklessDirectory = join(cwd, ".taskless");
   // Keyed on the DIRECTORY, not the manifest. A `.taskless/` with no manifest
   // reads as version 0, which is behind — and it is exactly the case that must
   // not be waved through, because its tree is the pre-`0004` layout that a
   // current CLI finds no rules in. Waving it through would report "no rules
   // configured" for a project full of them, which is the silent answer this
-  // whole change exists to stop giving.
-  //
-  // A project with no `.taskless/` at all has nothing to migrate and is not
-  // this function's business.
-  if (!(await pathExists(tasklessDirectory))) return undefined;
+  // classification exists to stop giving.
+  if (!(await pathExists(tasklessDirectory))) return { kind: "absent" };
   const { version } = await readRawManifest(tasklessDirectory);
-  if (version >= LATEST_SCHEMA_VERSION) return undefined;
-  return { from: version, to: LATEST_SCHEMA_VERSION };
+  if (version < LATEST_SCHEMA_VERSION) {
+    return { kind: "behind", from: version, to: LATEST_SCHEMA_VERSION };
+  }
+  if (version > LATEST_SCHEMA_VERSION) {
+    return { kind: "ahead", version, supported: LATEST_SCHEMA_VERSION };
+  }
+  return { kind: "current", version };
 }
 
 /**
- * Refuse to read a project whose scaffold is behind this CLI, and say what to
- * run.
+ * The refusal for a scaffold written by a newer CLI, and the ONLY place its
+ * text is built. {@link runMigrations} and `ensureSchema` both throw it; before
+ * this existed each carried its own copy, and the two had to be kept in step
+ * by hand.
+ */
+export function schemaAheadError(version: number, supported: number): CLIError {
+  return new CLIError(
+    `This project's .taskless/ scaffold is version ${String(version)}, but this CLI only understands version ${String(supported)}. ` +
+      `Upgrade the CLI to continue, or re-run with ${ALLOW_VERSION_MISMATCHES_FLAG} to proceed without migrating.`,
+    "SCAFFOLD_VERSION_MISMATCH"
+  );
+}
+
+/**
+ * The refusal for a scaffold that is behind, from a command that does not
+ * migrate. It says what to run.
  *
  * `check` and `validate` used to migrate as a precondition, which made two
  * read-only commands rewrite the repository: `0005` moves and deletes tracked
@@ -231,31 +256,13 @@ export async function pendingMigration(
  * service makes for a client below the version floor: refuse, and name the
  * thing that fixes it.
  */
-export async function requireCurrentSchema(cwd: string): Promise<void> {
-  // BOTH directions. `check` used to reach `runMigrations` through
-  // `ensureTasklessDirectory`, which is where the newer-than-this-CLI refusal
-  // lived; it does not any more, so this is the only precondition left and it
-  // has to carry that case too. Without it a version-99 scaffold read as
-  // "nothing pending" and `check` reported "No rules configured" for a project
-  // whose layout it simply could not parse — the same silent answer this
-  // change exists to stop giving, reintroduced by the change itself.
-  const tasklessDirectory = join(cwd, ".taskless");
-  if (await pathExists(tasklessDirectory)) {
-    const { version } = await readRawManifest(tasklessDirectory);
-    if (version > LATEST_SCHEMA_VERSION && !hasVersionMismatchOverride()) {
-      throw new CLIError(
-        `This project's .taskless/ scaffold is version ${String(version)}, but this CLI only understands version ${String(LATEST_SCHEMA_VERSION)}. ` +
-          `Upgrade the CLI to continue, or re-run with ${ALLOW_VERSION_MISMATCHES_FLAG} to proceed without migrating.`,
-        "SCAFFOLD_VERSION_MISMATCH"
-      );
-    }
-  }
-
-  const pending = await pendingMigration(cwd);
-  if (pending === undefined) return;
-  throw new CLIError(
-    `This project's .taskless/ is at schema version ${String(pending.from)}, and this ` +
-      `CLI expects ${String(pending.to)}. Migrating moves and deletes files, so it is ` +
+export function schemaMigrationRequiredError(
+  from: number,
+  to: number
+): CLIError {
+  return new CLIError(
+    `This project's .taskless/ is at schema version ${String(from)}, and this ` +
+      `CLI expects ${String(to)}. Migrating moves and deletes files, so it is ` +
       `not done as a side effect of a command that only reads.\n\n` +
       `Run \`${getCliPrefix()} init\` to migrate, then run this again.`,
     "SCAFFOLD_MIGRATION_REQUIRED"
@@ -289,11 +296,7 @@ export async function runMigrations(
     if (options.allowVersionMismatches ?? hasVersionMismatchOverride()) {
       return undefined;
     }
-    throw new CLIError(
-      `This project's .taskless/ scaffold is version ${String(version)}, but this CLI only understands version ${String(maxVersion)}. ` +
-        `Upgrade the CLI to continue, or re-run with ${ALLOW_VERSION_MISMATCHES_FLAG} to proceed without migrating.`,
-      "SCAFFOLD_VERSION_MISMATCH"
-    );
+    throw schemaAheadError(version, maxVersion);
   }
 
   if (version === maxVersion) {

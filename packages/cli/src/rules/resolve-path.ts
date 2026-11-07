@@ -69,7 +69,7 @@ export async function resolveRulePath(
   // `<rule>/<rule>.yml` is a real file inside a real rule, while here
   // `<engine>/<something>.yml` is a leftover from the flat layout or a typo.
   //
-  // Callers reach this after `ensureTasklessDirectory` has already migrated the
+  // Callers reach this after `ensureSchema` has migrated, or refused, the
   // flat layout, so anything still a file here was not a rule the migration
   // recognised. Resolving it anyway produced a rule id like `no-eval.yml` and
   // an error two layers down about `no-eval.yml/no-eval.yml.yml`; reporting it

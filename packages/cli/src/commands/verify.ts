@@ -3,8 +3,7 @@ import process from "node:process";
 
 import { defineCommand } from "citty";
 
-import { ensureTasklessDirectory } from "../filesystem/directory";
-import { requireCurrentSchema } from "../filesystem/migrate";
+import { ensureSchema } from "../filesystem/directory";
 import { requireReconciledEngines } from "../rules/engine-gate";
 import type { FixtureFinding } from "../rules/fixtures";
 import {
@@ -122,8 +121,18 @@ async function runOverPath(options: {
   // A wall the user meets once after an upgrade is the visible version of the
   // same cost, and it is the trade this CLI already makes elsewhere: refuse,
   // and name the thing that fixes it.
+  //
+  // An ABSENT scaffold is still created (`scaffold-if-absent`). That writes a
+  // fresh directory rather than rewriting an existing one, so it is not the
+  // refusal above. The notice stays suppressed under `--json`: scaffolding a
+  // brand-new project runs every migration from 0, and its file-by-file
+  // summary on stderr hands a machine consumer prose it cannot parse.
   try {
-    await requireCurrentSchema(cwd);
+    await ensureSchema(cwd, "scaffold-if-absent", {
+      onNotice: (message: string) => {
+        if (!json) console.error(message);
+      },
+    });
     // `verify` runs the engines, so it holds the rules to the engines they
     // were reconciled for. `validate` does not: it checks shape, and is what
     // an agent runs part-way through the walk that clears this refusal.
@@ -140,18 +149,6 @@ async function runOverPath(options: {
     }
     throw error;
   }
-  // Still creates a scaffold that is absent. That writes a fresh directory
-  // rather than rewriting an existing one, so it is not the refusal above.
-  //
-  // The notice stays suppressed under `--json`. Scaffolding a brand-new
-  // project runs every migration from 0, and its file-by-file summary went to
-  // stderr unconditionally once this call lost its handler — handing a machine
-  // consumer prose it cannot parse, on the one path that still writes.
-  await ensureTasklessDirectory(cwd, {
-    onNotice: (message: string) => {
-      if (!json) console.error(message);
-    },
-  });
 
   let rules;
   try {

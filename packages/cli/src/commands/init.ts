@@ -2,7 +2,7 @@ import { join, resolve } from "node:path";
 import process from "node:process";
 import { defineCommand } from "citty";
 
-import { ensureTasklessDirectory } from "../filesystem/directory";
+import { ensureSchema } from "../filesystem/directory";
 import {
   applyInstallPlan,
   buildInstallPlan,
@@ -57,10 +57,7 @@ import {
   stampRulelessProject,
 } from "../rules/reconcile-marker";
 import { readManifest } from "../filesystem/manifest";
-import {
-  requireCurrentSchema,
-  type MigrationReport,
-} from "../filesystem/migrate";
+import type { MigrationReport } from "../filesystem/migrate";
 import {
   getReconcileNotice,
   reconcileReport,
@@ -369,7 +366,7 @@ export const updateCommand = defineCommand({
       // Rule migrations rewrite files where the CURRENT layout puts them, so
       // a scaffold that is behind has to be migrated first. Checked here and
       // not in `recordReconciliation`, because `migrate` imports the marker.
-      await requireCurrentSchema(cwd);
+      await ensureSchema(cwd, "refuse");
       const result = await recordReconciliation(cwd);
       if (args.json) {
         console.log(JSON.stringify({ ok: true, ...result }));
@@ -471,7 +468,13 @@ async function runNonInteractive(
   // left it on the default fallback (unconditional `console.error`), which
   // never corrupts stdout but doesn't suppress the duplicate under `--json`
   // either — the gap a reviewer of this PR caught.
-  const migrated = await ensureTasklessDirectory(cwd, {
+  //
+  // Under the version-mismatch override an AHEAD scaffold passes here, and the
+  // install below still writes into its manifest. That is deliberate: every
+  // manifest write merges over the raw object, so `version` and any field this
+  // CLI does not know survive, and the override is an explicit request to
+  // proceed (this repository's `pnpm cli` sets it on every run).
+  const { migrated } = await ensureSchema(cwd, "migrate", {
     onNotice: (message: string) => {
       if (!options.json) console.error(message);
     },
