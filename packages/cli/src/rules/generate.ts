@@ -2,6 +2,7 @@ import {
   fetchRule,
   getRequestStatus,
   type RequestStatus,
+  type ServedFileSet,
   type ServedRule,
 } from "../api/v2";
 import { notRunOnPlanSentence, parseEntitlementV2 } from "../api/entitlement";
@@ -9,7 +10,11 @@ import { describeRefusal, stripControlCharacters } from "../api/refusal";
 import { rejectedTokenRemedy } from "../auth/token";
 import { CLIError } from "../util/cli-error";
 import { getCliPrefix } from "../util/package-manager";
-import { writeServedRule } from "./files";
+import {
+  prepareServedRule,
+  writePreparedRule,
+  type PreparedRule,
+} from "./files";
 import { verifyServedRule } from "./verify-delivery";
 
 /**
@@ -219,11 +224,16 @@ export interface Delivered {
 }
 
 /**
- * Fetch, verify, then write every rule a request produced.
+ * Fetch, verify, check, then write every rule a request produced.
  *
- * All rules are fetched and verified before ANY is written, so a request whose
- * second rule fails verification leaves the tree exactly as it was rather than
- * holding half a delivery that already reported nothing.
+ * Every rule is fetched, verified against its signatures, and checked as a
+ * writable rule (its id, its engine, and its file set's paths and
+ * completeness) before ANY is written. A request whose second rule fails any
+ * of those leaves the tree exactly as it was, rather than holding half a
+ * delivery the command then reports as nothing.
+ *
+ * What this does not cover is an IO failure part-way through the writes
+ * themselves (a full disk, say): the rules written before it stay written.
  */
 export async function deliverRevisions(
   cwd: string,
@@ -251,7 +261,11 @@ export async function deliverRevisions(
     }))
   );
 
-  const verified = [];
+  const ready: {
+    served: ServedRule;
+    prepared: PreparedRule;
+    notices: string[];
+  }[] = [];
   for (const { ruleId, revisionId, outcome, attempts } of fetched) {
     const served = servedOrThrow(context, ruleId, requestId, outcome, attempts);
     const verdict = await verifyServedRule(served, { ruleId, revisionId });
@@ -261,20 +275,52 @@ export async function deliverRevisions(
         "RULE_GENERATION_FAILED"
       );
     }
-    verified.push({ served, fileSet: verdict.fileSet });
+    // Held per rule and released in the write loop, so a rule's notices stay
+    // together in the order the request listed the rules.
+    const notices: string[] = [];
+    const prepared = prepareOrThrow(cwd, verdict.fileSet, (message) => {
+      notices.push(message);
+    });
+    ready.push({ served, prepared, notices });
   }
 
   const delivered: Delivered = { rules: [], files: [], notices: [] };
-  for (const { served, fileSet } of verified) {
-    const ruleFile = await writeServedRule(cwd, fileSet, (message) => {
+  for (const { served, prepared, notices } of ready) {
+    delivered.notices.push(...notices);
+    const ruleFile = await writePreparedRule(cwd, prepared, (message) => {
       delivered.notices.push(message);
     });
-    delivered.rules.push(fileSet.id);
+    delivered.rules.push(prepared.id);
     delivered.files.push(ruleFile);
-    const planNotice = notRunOnPlanNotice(served, fileSet.engine, ruleFile);
+    const planNotice = notRunOnPlanNotice(served, prepared.engine, ruleFile);
     if (planNotice !== undefined) delivered.notices.push(planNotice);
   }
   return delivered;
+}
+
+/**
+ * {@link prepareServedRule}, with its refusals carrying a code.
+ *
+ * A refusal that is already a `CLIError` (an engine this CLI does not know,
+ * `RULE_UNSUPPORTED`) keeps its own code. The rest are plain `Error`s, which
+ * `rule restore` also receives and reports as it always has, so they are
+ * wrapped here rather than at the source: a generated rule that cannot be
+ * written is a `RULE_GENERATION_FAILED`, like one that fails verification.
+ */
+function prepareOrThrow(
+  cwd: string,
+  fileSet: ServedFileSet,
+  onWarning: (message: string) => void
+): PreparedRule {
+  try {
+    return prepareServedRule(cwd, fileSet, onWarning);
+  } catch (error) {
+    if (error instanceof CLIError) throw error;
+    throw new CLIError(
+      `The generated rule could not be delivered: ${error instanceof Error ? error.message : String(error)}`,
+      "RULE_GENERATION_FAILED"
+    );
+  }
 }
 
 type FetchOutcome = Awaited<ReturnType<typeof fetchRule>>;
