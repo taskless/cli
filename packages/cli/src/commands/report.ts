@@ -66,7 +66,7 @@ export const reportCommand = defineCommand({
     function fail(error: CLIError): never {
       const code: CLIErrorCode = error.code ?? "INTERNAL_ERROR";
       if (args.json) {
-        writeJsonError(code, error.message);
+        writeJsonError(code, error.message, error.details);
       } else {
         // The code is printed so a recipe can branch on it without `--json`.
         console.error(`Error (${code}): ${error.message}`);
