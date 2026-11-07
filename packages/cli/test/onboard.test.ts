@@ -111,7 +111,10 @@ describe("taskless onboard", () => {
     await mkdir(join(cwd, ".taskless"), { recursive: true });
     await writeFile(
       join(cwd, ".taskless", "taskless.json"),
-      JSON.stringify({ version: 2, install: { onboarded: true } }),
+      JSON.stringify({
+        version: LATEST_SCHEMA_VERSION,
+        install: { onboarded: true },
+      }),
       "utf8"
     );
 
@@ -129,7 +132,10 @@ describe("taskless onboard", () => {
     await mkdir(join(cwd, ".taskless"), { recursive: true });
     await writeFile(
       join(cwd, ".taskless", "taskless.json"),
-      JSON.stringify({ version: 2, install: { onboarded: false } }),
+      JSON.stringify({
+        version: LATEST_SCHEMA_VERSION,
+        install: { onboarded: false },
+      }),
       "utf8"
     );
 
@@ -144,7 +150,10 @@ describe("taskless onboard", () => {
     await mkdir(join(cwd, ".taskless"), { recursive: true });
     await writeFile(
       join(cwd, ".taskless", "taskless.json"),
-      JSON.stringify({ version: 2, install: { onboarded: true } }),
+      JSON.stringify({
+        version: LATEST_SCHEMA_VERSION,
+        install: { onboarded: true },
+      }),
       "utf8"
     );
 
@@ -166,7 +175,7 @@ describe("taskless onboard", () => {
     await writeFile(
       join(cwd, ".taskless", "taskless.json"),
       JSON.stringify({
-        version: 2,
+        version: LATEST_SCHEMA_VERSION,
         install: {
           cliVersion,
           targets: { ".claude": { skills: ["taskless"], commands: ["tskl"] } },
@@ -233,7 +242,10 @@ describe("taskless onboard", () => {
     await mkdir(join(cwd, ".taskless"), { recursive: true });
     await writeFile(
       join(cwd, ".taskless", "taskless.json"),
-      JSON.stringify({ version: 2, install: { onboarded: true } }),
+      JSON.stringify({
+        version: LATEST_SCHEMA_VERSION,
+        install: { onboarded: true },
+      }),
       "utf8"
     );
 

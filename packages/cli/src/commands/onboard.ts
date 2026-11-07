@@ -7,6 +7,7 @@ import { defineCommand } from "citty";
 import { detectHostTools } from "../detect/host-tools";
 import { ensureTasklessDirectory } from "../filesystem/directory";
 import { readManifest, writeManifest } from "../filesystem/manifest";
+import { requireCurrentSchema } from "../filesystem/migrate";
 import { getRecipe } from "../prompts/recipes";
 import { withSurveyInvite } from "../survey/invite";
 import { getTelemetry } from "../telemetry";
@@ -89,6 +90,27 @@ export const onboardCommand = defineCommand({
       throw new CLIError("conflicting flags", undefined, { reported: true });
     }
 
+    // REFUSES rather than migrates, in every mode. Even the read-only path
+    // that only prints the recipe used to migrate here, and `0005` moves and
+    // deletes tracked files, so an agent fetching the recipe rewrote the
+    // repository. `init` is the one command that migrates; the refusal names
+    // it, as `check` and `verify` do.
+    try {
+      await requireCurrentSchema(cwd);
+    } catch (error) {
+      if (error instanceof CLIError) {
+        // The code is printed so the recipe can branch on it, as `report`
+        // does: this command has no `--json` envelope to carry it.
+        console.error(
+          `Error (${error.code ?? "INTERNAL_ERROR"}): ${error.message}`
+        );
+        process.exitCode = 1;
+        throw new CLIError(error.message, error.code, { reported: true });
+      }
+      throw error;
+    }
+    // Still scaffolds a `.taskless/` that is absent: a fresh directory is not
+    // a rewrite, and `--mark-complete` needs the manifest to exist.
     await ensureTasklessDirectory(cwd);
     const tasklessDirectory = resolve(cwd, ".taskless");
 
