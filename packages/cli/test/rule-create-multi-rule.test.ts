@@ -22,6 +22,8 @@ import {
 import { runCommand } from "citty";
 
 import { ruleCommand } from "../src/commands/rules";
+import { LATEST_SCHEMA_VERSION } from "../src/filesystem/migrate";
+import { ruleDirectory, ruleFilePath } from "../src/rules/engines";
 import { servedBody, stubV2Server, type StubRule } from "./support/v2-server";
 
 /**
@@ -68,14 +70,18 @@ describe("rule create: a request with several rules", () => {
     await writeFile(
       join(cwd, ".taskless", "taskless.json"),
       JSON.stringify({
-        version: "2026-03-03",
+        // Current, so nothing migrates the tree before delivery and the
+        // seeded rule below is compared where it was written.
+        version: LATEST_SCHEMA_VERSION,
         orgId: 123,
         repositoryUrl: "https://github.com/test/test",
       })
     );
-    const existing = join(cwd, ".taskless", "rules", "sg", "first-good-rule");
-    await mkdir(existing, { recursive: true });
-    await writeFile(join(existing, "first-good-rule.yml"), EXISTING);
+    // Seeded in the current rules layout, by the same helpers delivery uses.
+    await mkdir(ruleDirectory(cwd, "sg", "first-good-rule"), {
+      recursive: true,
+    });
+    await writeFile(ruleFilePath(cwd, "sg", "first-good-rule"), EXISTING);
     execFileSync("git", ["init"], { cwd });
     execFileSync(
       "git",
@@ -119,6 +125,20 @@ describe("rule create: a request with several rules", () => {
     return tree;
   }
 
+  /**
+   * The tree before a request, asserted to hold the seeded rule at its
+   * current-layout path, so "unchanged" cannot pass over an empty tree.
+   */
+  async function seededTree(): Promise<Record<string, string>> {
+    const tree = await rulesTree();
+    const seeded = relative(
+      join(cwd, ".taskless", "rules"),
+      ruleFilePath(cwd, "sg", "first-good-rule")
+    );
+    expect(tree[seeded]).toBe(EXISTING);
+    return tree;
+  }
+
   async function create(): Promise<void> {
     const requestFile = join(cwd, "request.json");
     await writeFile(requestFile, JSON.stringify({ prompt: "add rules" }));
@@ -136,7 +156,7 @@ describe("rule create: a request with several rules", () => {
   }
 
   it("writes nothing when the second rule's engine is unknown", async () => {
-    const before = await rulesTree();
+    const before = await seededTree();
     await serve({
       id: "second-rule",
       engine: "semgrep" as StubRule["engine"],
@@ -149,7 +169,7 @@ describe("rule create: a request with several rules", () => {
   });
 
   it("writes nothing when the second rule delivers an unsafe path", async () => {
-    const before = await rulesTree();
+    const before = await seededTree();
     await serve({
       id: "second-rule",
       engine: "sg",
@@ -169,12 +189,15 @@ describe("rule create: a request with several rules", () => {
     expect(message).toContain("second-rule");
     expect(await rulesTree()).toEqual(before);
     await expect(
-      readFile(join(cwd, ".taskless", "rules", "sg", "escape.yml"), "utf8")
+      readFile(
+        join(ruleDirectory(cwd, "sg", "second-rule"), "..", "escape.yml"),
+        "utf8"
+      )
     ).rejects.toThrow();
   });
 
   it("writes nothing when the second rule's file set is incomplete", async () => {
-    const before = await rulesTree();
+    const before = await seededTree();
     await serve({
       id: "second-rule",
       engine: "sg",
@@ -208,11 +231,10 @@ describe("rule create: a request with several rules", () => {
       rules?: string[];
     };
     expect(output.rules).toEqual(["first-good-rule", "second-rule"]);
-    const tree = await rulesTree();
-    expect(tree[join("sg", "first-good-rule", "first-good-rule.yml")]).toBe(
-      goodRule.files[1]?.content
-    );
-    expect(tree[join("sg", "second-rule", "second-rule.yml")]).toBe(
+    expect(
+      await readFile(ruleFilePath(cwd, "sg", "first-good-rule"), "utf8")
+    ).toBe(goodRule.files[1]?.content);
+    expect(await readFile(ruleFilePath(cwd, "sg", "second-rule"), "utf8")).toBe(
       second.files[1]?.content
     );
   });
