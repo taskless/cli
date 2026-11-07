@@ -906,18 +906,21 @@ export async function syncPermissions(
     const text = await readText(path);
     const want = desired.get(file)?.rules ?? [];
     const had = recorded?.rules ?? [];
-    const remove = harness
-      .found(text)
-      .filter(
-        (rule) => (isOwn(rule) && !want.includes(rule)) || isRetired(rule)
-      );
-    const add = want.filter((rule) => !had.includes(rule));
+    // Both sides are read from the file, never the record: a rule the record
+    // lists but the file lost (a hand edit, a revert, a merge) is added back.
+    const present = harness.found(text);
+    const remove = present.filter(
+      (rule) => (isOwn(rule) && !want.includes(rule)) || isRetired(rule)
+    );
+    const add = want.filter((rule) => !present.includes(rule));
     if (add.length === 0 && remove.length === 0) {
       if (recorded !== undefined) next[file] = recorded;
       continue;
     }
 
-    const created = recorded?.created ?? text === undefined;
+    // A file this run writes from nothing is one Taskless created, whatever
+    // an earlier record said about a file that has since been deleted.
+    const created = text === undefined || recorded?.created === true;
     const result = harness.edit(text, add, remove, {
       invocation: options.invocation,
       ...(options.launcher === undefined ? {} : { launcher: options.launcher }),
@@ -937,8 +940,10 @@ export async function syncPermissions(
 
     const removed = remove;
     const rules = [
-      ...had.filter((rule) => want.includes(rule) || isOther(rule)),
-      ...result.added,
+      ...new Set([
+        ...had.filter((rule) => want.includes(rule) || isOther(rule)),
+        ...result.added,
+      ]),
     ];
     if (rules.length > 0) next[file] = { rules, created };
     if (result.added.length === 0 && removed.length === 0) continue;

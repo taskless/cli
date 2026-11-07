@@ -60,6 +60,18 @@ async function json(path: string): Promise<unknown> {
   return JSON.parse(await text(path)) as unknown;
 }
 
+/** The manifest's permission record for `file`. */
+async function record(
+  file: string
+): Promise<{ rules: string[]; created: boolean } | undefined> {
+  const manifest = (await json(".taskless/taskless.json")) as {
+    install: {
+      permissions?: Record<string, { rules: string[]; created: boolean }>;
+    };
+  };
+  return manifest.install.permissions?.[file];
+}
+
 function sync(
   options: Partial<SyncPermissionsOptions> & { selected: string[] }
 ): ReturnType<typeof syncPermissions> {
@@ -881,4 +893,115 @@ describe("launcher rules", () => {
     expect(commandOfRule(`Shell(${RL})`)).toBe(RL);
     expect(commandOfRule(`Bash(${RL} *)`)).toBe(RL);
   });
+});
+
+describe("a recorded rule the file no longer holds", () => {
+  /** Each harness's file, its rule, and the file with that rule taken out. */
+  const harnesses: {
+    name: string;
+    selected: string[];
+    codex?: boolean;
+    file: string;
+    rule: string;
+    /** How the rule reads in the file's text. */
+    written: string;
+    without: string;
+  }[] = [
+    {
+      name: "Claude Code",
+      selected: [".claude"],
+      file: ".claude/settings.json",
+      rule: `Bash(${V1} *)`,
+      written: `"Bash(${V1} *)"`,
+      without: '{ "permissions": { "allow": [] } }\n',
+    },
+    {
+      name: "the Cursor editor",
+      selected: [".cursor"],
+      file: ".cursor/permissions.json",
+      rule: V1,
+      written: `"${V1}"`,
+      without: '{ "terminalAllowlist": [] }\n',
+    },
+    {
+      name: "the Cursor CLI",
+      selected: [".cursor"],
+      file: ".cursor/cli.json",
+      rule: "Shell(npx:@taskless/cli@0.13.0 *)",
+      written: '"Shell(npx:@taskless/cli@0.13.0 *)"',
+      without: '{ "permissions": { "allow": [] } }\n',
+    },
+    {
+      name: "OpenCode",
+      selected: [".opencode"],
+      file: ".opencode/opencode.json",
+      rule: `${V1} *`,
+      written: `"${V1} *"`,
+      without: '{ "permission": { "bash": {} } }\n',
+    },
+    {
+      name: "Codex",
+      selected: [".agents"],
+      codex: true,
+      file: ".codex/rules/taskless.rules",
+      rule: 'prefix_rule(pattern = ["npx","@taskless/cli@0.13.0"], decision = "allow")',
+      written:
+        'prefix_rule(pattern = ["npx","@taskless/cli@0.13.0"], decision = "allow")',
+      without:
+        "# Written by Taskless: allows exactly the installed Taskless CLI.\n",
+    },
+  ];
+
+  for (const harness of harnesses) {
+    const options = {
+      selected: harness.selected,
+      codex: harness.codex ?? false,
+    };
+
+    describe(harness.name, () => {
+      it("is added back, and reported as an edit", async () => {
+        await sync(options);
+        const first = await record(harness.file);
+        expect(first?.rules).toContain(harness.rule);
+        await put(harness.file, harness.without);
+
+        const edits = await sync(options);
+        const edit = edits.find((found) => found.file === harness.file);
+        expect(edit).toMatchObject({ created: false, skipped: null });
+        expect(edit?.allowed).toContain(harness.rule);
+        expect(await text(harness.file)).toContain(harness.written);
+        // The record lists the rule once, not once per restore.
+        const restored = await record(harness.file);
+        expect(
+          restored?.rules.filter((rule) => rule === harness.rule)
+        ).toHaveLength(1);
+        expect(await sync(options)).toEqual([]);
+      });
+
+      it("is written to a new file when the file was deleted", async () => {
+        // The file existed before Taskless, so the record says it did not
+        // create it.
+        await put(harness.file, harness.without);
+        await sync(options);
+        expect(await record(harness.file)).toMatchObject({ created: false });
+        await rm(join(cwd, harness.file));
+
+        const edits = await sync(options);
+        const edit = edits.find((found) => found.file === harness.file);
+        expect(edit).toMatchObject({ created: true, skipped: null });
+        expect(edit?.allowed).toContain(harness.rule);
+        expect(await text(harness.file)).toContain(harness.written);
+        // Taskless made this file, so it may delete it once it is empty.
+        expect(await record(harness.file)).toMatchObject({ created: true });
+      });
+
+      it("makes no edit when the record and the file agree", async () => {
+        await sync(options);
+        const before = await text(harness.file);
+
+        expect(await sync(options)).toEqual([]);
+        expect(await text(harness.file)).toBe(before);
+      });
+    });
+  }
 });
