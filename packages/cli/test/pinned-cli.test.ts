@@ -245,6 +245,17 @@ describe("findCliPins", () => {
       ).toEqual([]);
     });
 
+    it("raises a release script pin as unreleased after a self build migrated the project", async () => {
+      await writePackage({
+        scripts: { lint: "npx @taskless/cli@0.11.2 check" },
+      });
+      const pins = await findCliPins(cwd, "0.13.0-self", {
+        migrated: { from: 8, to: 9 },
+        channel: "self",
+      });
+      expect(pins.map((pin) => pin.reason)).toEqual(["unreleased"]);
+    });
+
     it("names no version to move a pin to when a self build is running", () => {
       const pin = {
         manifest: "package.json",
@@ -682,6 +693,18 @@ describe("getPinnedCliNotice", () => {
     expect(notice).toContain("installs alongside the release");
     expect(notice).toContain("predates schema version 9");
     expect(notice).toContain("Tell the user before they commit .taskless/");
+  });
+
+  it("names a self build, not a nightly, when it migrated the project", () => {
+    const notice = pinnedNotice(
+      [{ ...script, spec: "0.11.2", reason: "unreleased" }],
+      "0.13.0-self",
+      { migrated: { from: 8, to: 9 }, channel: "self" }
+    );
+    expect(notice).toContain("-> leave as is");
+    expect(notice).toContain("This development build migrated");
+    expect(notice).not.toContain("nightly");
+    expect(notice).toContain("predates schema version 9");
   });
 
   it("hedges without a migration: the layout the pin reads did not move", () => {
