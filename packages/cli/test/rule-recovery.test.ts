@@ -23,6 +23,7 @@ import {
 import { runCommand } from "citty";
 
 import { ruleCommand } from "../src/commands/rules";
+import { LATEST_SCHEMA_VERSION } from "../src/filesystem/migrate";
 import { canonicalHash } from "../src/rules/rule-hash";
 import { servedBody, type StubRule } from "./support/v2-server";
 
@@ -246,7 +247,7 @@ describe("rule restore / rule rollback", () => {
     await mkdir(join(cwd, ".taskless"), { recursive: true });
     await writeFile(
       join(cwd, ".taskless", "taskless.json"),
-      JSON.stringify({ version: "2026-03-03", orgId: 123 })
+      JSON.stringify({ version: LATEST_SCHEMA_VERSION, orgId: 123 })
     );
     execFileSync("git", ["init", "-q"], { cwd });
     execFileSync(

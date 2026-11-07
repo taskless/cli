@@ -18,6 +18,7 @@ import {
   type V2Outcome,
 } from "../api/v2";
 import { rejectedTokenRemedy } from "../auth/token";
+import { ensureSchema } from "../filesystem/directory";
 import { readRuleMetaFile, deleteRuleFiles } from "../rules/files";
 import {
   awaitRequest,
@@ -144,6 +145,31 @@ function resumeRequestId(
     );
   }
   return requestId;
+}
+
+/**
+ * Refuse a scaffold that is behind (or ahead of) this CLI, through the
+ * command's own `fail`, before anything is sent to the service.
+ *
+ * The commands that write a served rule (`create`, `improve`, `restore`,
+ * `rollback`) used to migrate a behind scaffold on the way to writing it:
+ * the write path settles the layout first. That made them the last commands
+ * besides `init` to move and delete tracked files as a side effect, after the
+ * service call, with the migration prose on stderr even under `--json`.
+ *
+ * Policy `refuse`, not `scaffold-if-absent`: an absent scaffold is still
+ * created by the write itself, only once there is a rule to write, as before.
+ */
+async function schemaOrFail(
+  cwd: string,
+  fail: (message: string, code?: CLIErrorCode) => never
+): Promise<void> {
+  try {
+    await ensureSchema(cwd, "refuse");
+  } catch (error) {
+    if (error instanceof CLIError) fail(error.message, error.code);
+    throw error;
+  }
 }
 
 /**
@@ -354,6 +380,7 @@ const createCommand = defineCommand({
 
     try {
       const resumed = resumeRequestId(args, "create", fail);
+      await schemaOrFail(cwd, fail);
       if (resumed !== undefined) {
         const identity = await identityOrFail(cwd, fail);
         console.error(`Resuming request ${resumed}. Waiting for generation...`);
@@ -497,6 +524,7 @@ const improveCommand = defineCommand({
 
     try {
       const resumed = resumeRequestId(args, "improve", fail);
+      await schemaOrFail(cwd, fail);
       if (resumed !== undefined) {
         const identity = await identityOrFail(cwd, fail);
         console.error(`Resuming request ${resumed}. Waiting for generation...`);
@@ -740,7 +768,8 @@ const deleteCommand = defineCommand({
  */
 async function runForIssuedRule<T>(
   args: { dir?: string; json: boolean },
-  act: (cwd: string, identity: Identity) => Promise<T>
+  act: (cwd: string, identity: Identity) => Promise<T>,
+  options: { writes?: boolean } = {}
 ): Promise<T | undefined> {
   const cwd = resolve(args.dir ?? process.cwd());
   const report = (message: string, code: CLIErrorCode): void => {
@@ -748,6 +777,19 @@ async function runForIssuedRule<T>(
     else console.error(`Error: ${message}`);
     process.exitCode = 1;
   };
+
+  // A command that writes the rule refuses a scaffold it would otherwise
+  // migrate on the way; see `schemaOrFail`. One that only reads the service
+  // (`revisions`) has no reason to.
+  if (options.writes) {
+    try {
+      await ensureSchema(cwd, "refuse");
+    } catch (error) {
+      if (!(error instanceof CLIError)) throw error;
+      report(error.message, error.code ?? "INTERNAL_ERROR");
+      return undefined;
+    }
+  }
 
   let identity: Identity;
   try {
@@ -780,7 +822,7 @@ async function runRecovery(
   ruleId: string,
   recover: (cwd: string, identity: Identity) => Promise<Recovered | string>
 ): Promise<void> {
-  const outcome = await runForIssuedRule(args, recover);
+  const outcome = await runForIssuedRule(args, recover, { writes: true });
   if (outcome === undefined) return;
 
   // A string is "nothing to do": the rule is already intact.

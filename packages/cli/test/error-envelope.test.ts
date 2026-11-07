@@ -7,6 +7,7 @@ import { promisify } from "node:util";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { resolveActingOrg } from "../src/auth/org";
+import { LATEST_SCHEMA_VERSION } from "../src/filesystem/migrate";
 import { cliRejectionToResult } from "./support/spawn-cli";
 import { builtCli } from "./support/built-cli";
 
@@ -57,7 +58,7 @@ describe("standardized error envelope (--json)", () => {
     await writeFile(
       join(cwd, ".taskless", "taskless.json"),
       JSON.stringify({
-        version: "2026-03-03",
+        version: LATEST_SCHEMA_VERSION,
         orgId: 123,
         repositoryUrl: "https://github.com/test/test",
       })
@@ -303,7 +304,7 @@ describe("resolveIdentity failure codes (--json)", () => {
     await writeFile(
       join(cwd, ".taskless", "taskless.json"),
       JSON.stringify({
-        version: "2026-03-03",
+        version: LATEST_SCHEMA_VERSION,
         orgId: 123,
         repositoryUrl: "https://github.com/test/test",
       })

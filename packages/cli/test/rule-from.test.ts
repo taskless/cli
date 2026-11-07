@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { promisify } from "node:util";
 import { describe, expect, it, beforeEach, afterEach } from "vitest";
 
+import { LATEST_SCHEMA_VERSION } from "../src/filesystem/migrate";
 import { outputSchema as createOutputSchema } from "../src/schemas/rules-create";
 import { outputSchema as improveOutputSchema } from "../src/schemas/rules-improve";
 import { builtCli } from "./support/built-cli";
@@ -22,7 +23,7 @@ describe("rules create --from", () => {
     await writeFile(
       join(temporaryDirectory, ".taskless", "taskless.json"),
       JSON.stringify({
-        version: "2026-03-03",
+        version: LATEST_SCHEMA_VERSION,
         orgId: 123,
         repositoryUrl: "https://github.com/test/test",
       })
