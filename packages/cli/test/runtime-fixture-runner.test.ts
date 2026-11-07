@@ -46,6 +46,7 @@ interface Report {
     ruleId: string;
     ok: boolean;
     errors: string[];
+    status?: "passed" | "failed" | "not-run" | "refused";
     ran?: boolean;
     refused?: string;
     cases: {
@@ -248,6 +249,7 @@ describe("a runtime rule whose fixtures did not run", () => {
     const rule = report.rules[0];
 
     expect(rule?.engine).toBe("runtime");
+    expect(rule?.status).toBe("refused");
     expect(rule?.ran).toBe(false);
     expect(rule?.ok).not.toBe(true);
     // The envelope agrees with the exit code. #612: this read `ok: true` over
@@ -317,6 +319,7 @@ describe("fixture directions", () => {
     const report = await testRuleJson("--dangerously-run-scripts");
     const rule = report.rules[0];
 
+    expect(rule?.status).toBe("failed");
     expect(rule?.ran).toBe(true);
     expect(rule?.ok).toBe(false);
     expect(rule?.errors.join("\n")).toContain("fail/uses-eval");

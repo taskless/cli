@@ -1,4 +1,4 @@
-# Topic: create-sg-rule     (CLI v%(CLI_VERSION)s / topic v12)
+# Topic: create-sg-rule     (CLI v%(CLI_VERSION)s / topic v13)
 
 %(ONE_COMMAND_PER_CALL)s
 
@@ -151,7 +151,7 @@ whole rule.
    Both answer in the same shape:
    ```json
    {"ok":true,"rules":[{"engine":"sg","ruleId":"no-eval",
-    "ok":true,"errors":[],"ran":true}]}
+    "status":"passed","ok":true,"errors":[],"ran":true}]}
    ```
    - `ok: true` → go to step 8.
    - `ok: false` → read `errors` and fix. Repeat up to 3 times.

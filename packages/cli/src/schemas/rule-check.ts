@@ -94,7 +94,17 @@ export const fixtureCaseSchema = z.object({
 const ruleResultSchema = z.object({
   engine: z.enum(["sg", "vale", "runtime"]),
   ruleId: z.string(),
-  ok: z.boolean(),
+  status: z
+    .enum(["passed", "failed", "not-run", "refused"])
+    .optional()
+    .describe(
+      "`verify` only, absent from `validate`, which runs no tests. The rule's outcome, and the field to branch on: `passed` (its tests ran and passed), `failed` (its tests ran and something failed), `not-run` (it failed before its tests ran, for example because `validate` rejected it), or `refused` (the execution policy declined to run its tests). `ok`, `ran` and `refused` are derived from it and kept for existing consumers"
+    ),
+  ok: z
+    .boolean()
+    .describe(
+      "Whether the rule passed. Under `verify`, derived from `status`: true exactly when it is `passed`"
+    ),
   errors: z.array(z.string()).describe("Human-readable failure messages"),
   violations: z
     .array(
@@ -118,13 +128,13 @@ const ruleResultSchema = z.object({
     .boolean()
     .optional()
     .describe(
-      "`verify` only: whether the rule's tests actually ran. Branch on this, not on `ok` alone: `ok: true` with `ran: false` is not a rule that passed"
+      "`verify` only: whether the rule's tests actually ran. Derived from `status`: true exactly when it is `passed` or `failed`. Prefer `status`; if you read this instead, never read `ok` alone: `ok: true` with `ran: false` is not a rule that passed"
     ),
   refused: z
     .string()
     .optional()
     .describe(
-      "`verify` only: the execution policy declined to run the rule's fixtures, and why. Neither a pass nor a failure, and excluded from the rules verified. Sets top-level `ok` to false and, when no rule failed, makes the command exit 2"
+      "`verify` only: the execution policy declined to run the rule's fixtures, and why. Present exactly when `status` is `refused`. Neither a pass nor a failure, and excluded from the rules verified. Sets top-level `ok` to false and, when no rule failed, makes the command exit 2"
     ),
   notices: z
     .array(z.string())
