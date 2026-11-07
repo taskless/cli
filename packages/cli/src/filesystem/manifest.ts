@@ -135,7 +135,7 @@ function unreadableManifest(path: string, reason: string): CLIError {
  * ABSENT AND UNREADABLE ARE DIFFERENT STATES, and collapsing them was the bug
  * in taskless/cli#278. An absent manifest is an ordinary fresh project and
  * reads as version 0. A manifest that is present and unparseable read as
- * version 0 too, which `requireCurrentSchema` then reported as fact: a file
+ * version 0 too, which the scaffold refusal then reported as fact: a file
  * declaring `"version": 6` produced "This project's .taskless/ is at schema
  * version 0". The number was invented, and acting on it destroyed the file.
  *

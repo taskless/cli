@@ -18,7 +18,7 @@ import { getTelemetry } from "../telemetry";
 import { outputSchema as checkOutputSchema } from "../schemas/check";
 import { makeErrorEnvelope, writeJsonError } from "../types/errors";
 import { CLIError } from "../util/cli-error";
-import { requireCurrentSchema } from "../filesystem/migrate";
+import { ensureSchema } from "../filesystem/directory";
 import { requireReconciledEngines } from "../rules/engine-gate";
 import { discoverRuntimeRules } from "../rules/runtime/discover";
 import { resolveRuleSelection, type RuleSelection } from "../rules/rule-filter";
@@ -368,18 +368,19 @@ export const checkCommand = defineCommand({
       }
       for (const notice of pathNotices) warnNotice(notice);
 
-      // REFUSES rather than migrates. This used to call
-      // `ensureTasklessDirectory`, so a command whose entire job is to report
+      // REFUSES rather than migrates (policy `refuse`). This used to migrate
+      // as a precondition, so a command whose entire job is to report
       // rewrote the repository as a side effect: `0005` moves and deletes
       // tracked files, and the change landed in whatever commit came next. In
-      // CI it ran on every checkout.
+      // CI it ran on every checkout. An absent scaffold is left absent: `check`
+      // creates nothing, and reports a project with no rules as such.
       //
       // It also made a migration unverifiable. Comparing findings before and
       // after is impossible when asking the question performs the change, so
       // a migration that silently dropped a rule could not be caught by the
       // one check that would catch it.
       try {
-        await requireCurrentSchema(cwd);
+        await ensureSchema(cwd, "refuse");
         // And the rules must have been reconciled for the engines this CLI
         // bundles; `check` refuses rather than running the rewrites itself.
         await requireReconciledEngines(cwd);
@@ -389,7 +390,7 @@ export const checkCommand = defineCommand({
         // for a different response from a scan that blew up.
         if (error instanceof CLIError) {
           if (args.json) {
-            // `requireCurrentSchema` always sets a code, so the fallback is
+            // `ensureSchema` always sets a code, so the fallback is
             // dead either way — which is exactly why the two call sites had
             // drifted to different dead values. One helper, one answer.
             writeJsonError(error.code ?? "INTERNAL_ERROR", error.message);

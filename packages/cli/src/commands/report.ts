@@ -3,8 +3,7 @@ import process from "node:process";
 
 import { defineCommand } from "citty";
 
-import { ensureTasklessDirectory } from "../filesystem/directory";
-import { requireCurrentSchema } from "../filesystem/migrate";
+import { ensureSchema } from "../filesystem/directory";
 import { assembleReport } from "../report/assemble";
 import { buildDraft } from "../report/draft";
 import { reportFactsSchema } from "../schemas/report-facts";
@@ -98,14 +97,15 @@ export const reportCommand = defineCommand({
     // REFUSES rather than migrates, in all three modes. The draft only reads,
     // and `0005` moves and deletes tracked files, so drafting a report used to
     // rewrite the repository. `init` is the one command that migrates.
-    await guarded(() => requireCurrentSchema(cwd));
     // Still scaffolds a `.taskless/` that is absent: a fresh directory is not
-    // a rewrite, and the refusal above leaves nothing behind to migrate.
-    await ensureTasklessDirectory(cwd, {
-      onNotice: (message: string) => {
-        if (!args.json) console.error(message);
-      },
-    });
+    // a rewrite.
+    await guarded(() =>
+      ensureSchema(cwd, "scaffold-if-absent", {
+        onNotice: (message: string) => {
+          if (!args.json) console.error(message);
+        },
+      })
+    );
 
     if (args.delete !== undefined) {
       const record = args.delete;

@@ -4,7 +4,7 @@ import process from "node:process";
 import { intro, outro, cancel, log } from "@clack/prompts";
 
 import { getOnboardTrailer } from "../commands/onboard";
-import { ensureTasklessDirectory } from "../filesystem/directory";
+import { ensureSchema } from "../filesystem/directory";
 import {
   applyInstallPlan,
   buildInstallPlan,
@@ -138,8 +138,14 @@ export async function runWizard(
     // The migration's start opens a step; its summary, and the launcher
     // lines below, continue under it rather than each opening one of their
     // own, so one install reads as one block.
+    //
+    // Under the version-mismatch override an AHEAD scaffold passes, and the
+    // install still writes into its manifest. Deliberate, as in `init`'s
+    // non-interactive path: every manifest write merges over the raw object,
+    // so `version` and unknown fields survive, and the override is an explicit
+    // request to proceed.
     let migrationStarted = false;
-    const migrated = await ensureTasklessDirectory(options.cwd, {
+    const { migrated } = await ensureSchema(options.cwd, "migrate", {
       onNotice: (message) => {
         if (migrationStarted) {
           log.message(message, { spacing: 0 });

@@ -20,7 +20,7 @@ import { compareVersions } from "../util/version-compare";
  * never writes to the rules tree. So `check` and `verify` refuse instead, and
  * name the command that reconciles.
  *
- * Separate from `requireCurrentSchema`, because `update --rules` calls that and
+ * Separate from `ensureSchema`, because `update --rules` calls that and
  * must not be refused by the gate it exists to clear.
  */
 
@@ -117,7 +117,7 @@ export function engineMismatchMessage(
 /**
  * Throw `RULES_ENGINE_MISMATCH` when the rules were reconciled against an
  * engine version this CLI does not bundle. A manifest that cannot be read is
- * left to `requireCurrentSchema`, which callers run first.
+ * left to `ensureSchema`, which callers run first.
  */
 export async function requireReconciledEngines(cwd: string): Promise<void> {
   if (hasVersionMismatchOverride()) return;

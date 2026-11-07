@@ -169,7 +169,7 @@ export async function pathExists(path: string): Promise<boolean> {
  * holds whether the project is new, set up before this ran on the wizard's
  * path, or has moved to a newer CLI since.
  *
- * Both install paths call this after `ensureTasklessDirectory`, since asking
+ * Both install paths call this after `ensureSchema`, since asking
  * about the rules, unlike asking whether `.taskless/` exists, still has its
  * answer after the directory is created.
  *
