@@ -1,4 +1,4 @@
-# Topic: validate-rule     (CLI v%(CLI_VERSION)s / topic v9)
+# Topic: validate-rule     (CLI v%(CLI_VERSION)s / topic v10)
 
 %(ONE_COMMAND_PER_CALL)s
 
@@ -53,8 +53,8 @@ A runtime rule's fixtures execute its `check.ts`, so they run only when
 you pass `--dangerously-run-scripts`. Nothing else runs them: `verify`
 makes no network request and does not reconcile, so a signature the
 service blessed does not count here. Without the flag, that rule prints `○` rather than a tick, names the reason
-and the flag, and is reported as `"ran": false` with a `refused` string
-saying why. It is counted under "did not run" rather than among the
+and the flag, and is reported as `"status": "refused"` with a `refused`
+string saying why. It is counted under "did not run" rather than among the
 rules verified.
 
 `verify` exits 0 only when every rule you asked for was verified:
@@ -65,8 +65,8 @@ rules verified.
 | `1`  | at least one rule failed                              | `false`        |
 | `2`  | nothing failed, but at least one rule did not run     | `false`        |
 
-Exit `2` is not a broken rule. Read `ran` on each rule to see which ones
-did not run, and rerun them with the flag if you mean to execute them.
+Exit `2` is not a broken rule. Read `status` on each rule to see which
+ones did not run, and rerun them with the flag if you mean to execute them.
 A runtime rule that did not run is not a rule that passed, and treating
 the two alike is the defect this reporting exists to prevent.
 
@@ -102,10 +102,13 @@ Both commands answer in the same shape, one entry per rule:
 
 - `ok` at the top is true only when every rule passed.
 - `errors` is one string per problem, written to be read by a person.
-- `verify` adds `ran`, which is false when `validate` failed and the tests
-  never executed, and false for a runtime rule the execution policy
-  refused. The second case also carries `refused` with the reason, and
-  is the one where `ok` alone would mislead you.
+- `verify` adds `status`, the field to branch on. It is one of
+  `passed` (the tests ran and passed), `failed` (they ran and something
+  failed), `not-run` (`validate` failed, so the tests never executed),
+  or `refused` (the execution policy declined to run them, with the
+  reason in `refused`). `validate` runs no tests and reports no
+  `status`. The older `ran` and `refused` fields are still there and
+  agree with it, but `ok` alone would mislead you on a refused rule.
 - `notice` is something true about the rule that is not a failure, and
   it is reported on a pass as well. For a Vale rule it carries what
   Vale wrote to stderr on a run that still exited zero, such as the
@@ -113,7 +116,7 @@ Both commands answer in the same shape, one entry per rule:
   validates, Vale ignores it, and only this field says so. For an `sg`
   rule it names the silent traps from `create-sg-rule`'s Quirks section
   that the rule's shape matches, such as `$$$` beside a comma. Read it
-  before `ok`, the same as `ran`.
+  before `ok`, the same as `status`.
 
 A green Vale `verify` also assumes Vale read every fixture. A fixture
 whose front matter Vale cannot parse is excluded from the run and

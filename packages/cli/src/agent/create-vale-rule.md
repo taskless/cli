@@ -1,4 +1,4 @@
-# Topic: create-vale-rule     (CLI v%(CLI_VERSION)s / topic v19)
+# Topic: create-vale-rule     (CLI v%(CLI_VERSION)s / topic v20)
 
 %(ONE_COMMAND_PER_CALL)s
 
@@ -980,7 +980,7 @@ it.
 
    ```json
    {"ok":true,"rules":[{"engine":"vale","ruleId":"no-simply",
-    "ok":true,"errors":[],"ran":true}]}
+    "status":"passed","ok":true,"errors":[],"ran":true}]}
    ```
 
    `ok` is the answer. `errors` names what failed, one string per

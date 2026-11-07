@@ -71,10 +71,32 @@ export interface RuleValidation {
   notices: string[];
 }
 
+/**
+ * The four outcomes of verifying one rule, as one value.
+ *
+ * - `passed`: the tests ran and passed.
+ * - `failed`: the tests ran and something failed.
+ * - `not-run`: the rule failed before its tests ran (`validate` rejected it,
+ *   or its fixtures could not be read), and nothing refused it.
+ * - `refused`: the execution policy declined to run its tests.
+ */
+export type VerifyStatus = "passed" | "failed" | "not-run" | "refused";
+
 /** What `verify` concluded about one rule. */
 export interface RuleVerification {
   engine: EngineName;
   ruleId: string;
+  /**
+   * The outcome, and the field to branch on.
+   *
+   * `ok`, `ran` and `refused` are all derived from it by
+   * {@link verification}, so no producer can set them inconsistently. They
+   * spread the four outcomes over three fields, which let a consumer read `ok`
+   * alone and report a rule that never ran as passing; each consumer had also
+   * grown its own precedence for combining them.
+   */
+  status: VerifyStatus;
+  /** Derived from `status`: true exactly when it is `passed`. */
   ok: boolean;
   errors: string[];
   /**
@@ -93,7 +115,8 @@ export interface RuleVerification {
    */
   violations: RuleViolation[];
   /**
-   * Whether the rule's tests actually ran.
+   * Whether the rule's tests actually ran. Derived from `status`: true exactly
+   * when it is `passed` or `failed`.
    *
    * Load-bearing rather than advisory. `verify` used to report a runtime rule as
    * `ok: true, ran: false` and print a tick, so the one field that knew the
@@ -102,14 +125,15 @@ export interface RuleVerification {
   ran: boolean;
   /**
    * Set when the execution policy refused the run, carrying the reason.
+   * Present exactly when `status` is `refused`.
    *
-   * The third outcome, and the one `ok` cannot express. A rule that cannot run
-   * because nothing blessed it is not a pass, and it is not a failure either:
-   * failing it would turn `verify` red for every project holding a runtime rule,
-   * with no action available to its holder that makes it green. So it is
-   * neither, and the renderer, the summary count and the exit code all read
-   * this field rather than inferring the state from `ok` and `ran` together
-   * (which cannot distinguish it from a rule whose `validate` failed).
+   * The outcome `ok` cannot express. A rule that cannot run because nothing
+   * blessed it is not a pass, and it is not a failure either: failing it would
+   * turn `verify` red for every project holding a runtime rule, with no action
+   * available to its holder that makes it green. So it is neither, and the
+   * renderer, the summary count and the exit code all read `status` rather
+   * than inferring the state from `ok` and `ran` together (which cannot
+   * distinguish it from a rule whose `validate` failed).
    */
   refused?: string;
   /**
@@ -173,6 +197,52 @@ export interface VerifyOptions {
    */
   onRuntimeWarning?: (message: string) => void;
 }
+
+/** The fields of a {@link RuleVerification} that `status` does not decide. */
+type VerificationBody = Omit<
+  RuleVerification,
+  "status" | "ok" | "ran" | "refused"
+>;
+
+/** An outcome, with the reason when it is a refusal. */
+type VerificationOutcome =
+  | { status: "passed" | "failed" | "not-run" }
+  | { status: "refused"; reason: string };
+
+/**
+ * Build a {@link RuleVerification}, deriving `ok`, `ran` and `refused` from its
+ * outcome.
+ *
+ * The only way this module builds one, so the legacy fields cannot disagree
+ * with `status`: `ok: true` with `ran: false`, the false pass that once
+ * shipped, has no spelling here.
+ */
+export function verification(
+  outcome: VerificationOutcome,
+  body: VerificationBody
+): RuleVerification {
+  const { status } = outcome;
+  return {
+    engine: body.engine,
+    ruleId: body.ruleId,
+    status,
+    ok: status === "passed",
+    errors: body.errors,
+    violations: body.violations,
+    ran: status === "passed" || status === "failed",
+    ...(outcome.status === "refused" ? { refused: outcome.reason } : {}),
+    notices: body.notices,
+    findings: body.findings,
+    cases: body.cases,
+  };
+}
+
+/** Whether the tests ran and passed, as a `passed` or `failed` outcome. */
+function judged(passed: boolean): VerificationOutcome {
+  return { status: passed ? "passed" : "failed" };
+}
+
+const NOT_RUN: VerificationOutcome = { status: "not-run" };
 
 async function readYaml(path: string): Promise<unknown> {
   return parse(await readFile(path, "utf8")) as unknown;
@@ -453,22 +523,20 @@ export async function verifyOneRule(
     // call, which would run every case twice for one answer.
     const validation = await withIdCollision(cwd, ruleId, verdict);
     if (!validation.ok) {
-      return { ...validation, ran: false, findings: [], cases: [] };
+      return verification(NOT_RUN, { ...validation, findings: [], cases: [] });
     }
     // A rule that populated only one bucket has proved only half of what a
     // rule claims, and the CLI says so: coverage is counted over case
     // directories, never read from an engine's summary.
     const shortfall = describeCoverageShortfall(ruleId, result.tests.fixtures);
-    return {
+    return verification(judged(result.tests.valid), {
       engine,
       ruleId,
-      ok: result.tests.valid,
       errors: [
         ...(shortfall === undefined ? [] : [shortfall]),
         ...result.tests.errors,
       ],
       violations: [],
-      ran: true,
       // The cases now carry paths, so a `fail/` case shows the rule's globs
       // reach the fixture. Whether they reach any file in the PROJECT is a
       // separate question, asked here on a rule that validated, and only ever
@@ -481,44 +549,40 @@ export async function verifyOneRule(
       // rendered messages, and `file` naming the fixture in its case.
       findings: result.tests.findings,
       cases: result.tests.cases,
-    };
+    });
   }
 
   const validation = await validateOneRule(cwd, rule);
   if (!validation.ok) {
-    return { ...validation, ran: false, findings: [], cases: [] };
+    return verification(NOT_RUN, { ...validation, findings: [], cases: [] });
   }
 
   if (engine === "vale") {
     const result = await verifyValeRule(cwd, ruleId);
     if ("outcome" in result) {
-      return {
+      return verification(NOT_RUN, {
         engine,
         ruleId,
-        ok: false,
         errors: [result.outcome.message],
         violations: [],
-        ran: false,
         notices: [],
         findings: [],
         cases: [],
-      };
+      });
     }
     const errors: string[] = [];
     const shortfall = describeCoverageShortfall(ruleId, result.fixtures);
     if (shortfall !== undefined) errors.push(shortfall);
     errors.push(...result.errors);
-    return {
+    return verification(judged(result.passed), {
       engine,
       ruleId,
-      ok: result.passed,
       errors,
       violations: [],
-      ran: true,
       notices: result.notices,
       findings: result.findings,
       cases: result.cases,
-    };
+    });
   }
 
   // Runtime rules execute code, so `verify` runs their fixtures only behind
@@ -549,18 +613,18 @@ export async function verifyOneRule(
     const reason =
       `fixtures did not run: running them executes the rule's check.ts. ` +
       `Pass --dangerously-run-scripts to run them.`;
-    return {
-      engine,
-      ruleId,
-      ok: false,
-      errors: [reason],
-      violations: [],
-      ran: false,
-      findings: [],
-      cases: [],
-      refused: reason,
-      notices: [],
-    };
+    return verification(
+      { status: "refused", reason },
+      {
+        engine,
+        ruleId,
+        errors: [reason],
+        violations: [],
+        findings: [],
+        cases: [],
+        notices: [],
+      }
+    );
   }
 
   // Discovery, not a plan: the bytes are the working tree's, which is the point
@@ -575,18 +639,18 @@ export async function verifyOneRule(
     const reason =
       `fixtures did not run: it was not discovered as a runnable runtime ` +
       `rule (no capture rules under captures/).`;
-    return {
-      engine,
-      ruleId,
-      ok: false,
-      errors: [reason],
-      violations: [],
-      ran: false,
-      findings: [],
-      cases: [],
-      refused: reason,
-      notices: [],
-    };
+    return verification(
+      { status: "refused", reason },
+      {
+        engine,
+        ruleId,
+        errors: [reason],
+        violations: [],
+        findings: [],
+        cases: [],
+        notices: [],
+      }
+    );
   }
 
   let fixtures;
@@ -597,17 +661,15 @@ export async function verifyOneRule(
     // Both are failures of the fixtures rather than refusals of the run, so
     // they fail: the alternative is a bucket reading as empty, which makes a
     // two-sided rule look one-sided and a one-sided rule look complete.
-    return {
+    return verification(NOT_RUN, {
       engine,
       ruleId,
-      ok: false,
       errors: [error instanceof Error ? error.message : String(error)],
       violations: [],
-      ran: false,
       notices: [],
       findings: [],
       cases: [],
-    };
+    });
   }
 
   // Warned at the last possible moment: everything above can still decline to
@@ -615,15 +677,13 @@ export async function verifyOneRule(
   options.onRuntimeWarning?.(RUN_SCRIPTS_WARNING);
 
   const report = await runRuntimeFixtures(cwd, runtimeRule, fixtures);
-  return {
+  return verification(judged(report.passed), {
     engine,
     ruleId,
-    ok: report.passed,
     errors: describeFixtureReport(ruleId, report),
     violations: [],
-    ran: true,
     notices: [],
     findings: report.findings,
     cases: report.cases,
-  };
+  });
 }

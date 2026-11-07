@@ -75,6 +75,22 @@ function printFindings(findings: FixtureFinding[]): void {
 }
 
 /**
+ * How a result counts toward the marks, the summary and the exit code.
+ *
+ * `verify` results carry `status`, which is read as given apart from one fold:
+ * a rule that failed before its tests ran (`not-run`) counts as a failure,
+ * because something about it is broken and the errors say what. Only a refusal
+ * is held apart. `validate` runs no tests and has no `status`, so `ok` is its
+ * whole answer.
+ */
+function verdictOf(
+  result: RuleValidation | RuleVerification
+): "passed" | "failed" | "refused" {
+  if (!("status" in result)) return result.ok ? "passed" : "failed";
+  return result.status === "not-run" ? "failed" : result.status;
+}
+
+/**
  * The shared body of `validate` and `verify`.
  *
  * Both take a path, resolve it to rules, and report per rule — they differ only
@@ -189,10 +205,8 @@ async function runOverPath(options: {
   // its own marker below, and has its own exit code, because an exit code is all
   // a CI step or an agent reads, and a rule nothing exercised must not read the
   // same as a rule that passed.
-  const isRefused = (result: RuleValidation | RuleVerification): boolean =>
-    "refused" in result && result.refused !== undefined;
-  const refused = results.filter((result) => isRefused(result));
-  const failed = results.filter((result) => !result.ok && !isRefused(result));
+  const refused = results.filter((result) => verdictOf(result) === "refused");
+  const failed = results.filter((result) => verdictOf(result) === "failed");
   const judged = results.length - refused.length;
 
   if (json) {
@@ -211,7 +225,9 @@ async function runOverPath(options: {
       // `○` is neither tick nor cross on purpose: the rule was not verified, and
       // a reader scanning the column has to be able to see that at a glance.
       // The reason prints below it, from `errors`, and names what would run it.
-      const mark = isRefused(result) ? "○" : result.ok ? "✓" : "✗";
+      const verdict = verdictOf(result);
+      const mark =
+        verdict === "refused" ? "○" : verdict === "passed" ? "✓" : "✗";
       console.log(`${mark} ${result.engine}/${result.ruleId}`);
       for (const error of result.errors) {
         console.log(`    ${error}`);
@@ -233,7 +249,7 @@ async function runOverPath(options: {
       // Under the errors, because the errors say which fixture is wrong and
       // these say what the rule reported about it. A refused run has nothing
       // to show: nothing ran.
-      if (!result.ok && !isRefused(result)) {
+      if (verdict === "failed") {
         printFindings(findingsOf(result));
       }
     }

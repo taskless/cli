@@ -33,6 +33,7 @@ interface Report {
   rules: {
     engine: string;
     ruleId: string;
+    status?: "passed" | "failed" | "not-run" | "refused";
     ok: boolean;
     errors: string[];
     violations: { constraintId: string; message: string }[];
@@ -426,6 +427,7 @@ describe("verify reports every sg case", () => {
     const result = await runCli(["verify", "-d", cwd, "--json"]);
     expect(result.exitCode).not.toBe(0);
     const rule = (JSON.parse(result.stdout) as Report).rules[0];
+    expect(rule?.status).toBe("failed");
     const path = ".taskless/rules/sg/no-eval/tests/fail/eval-call";
     expect(rule?.cases).toEqual([
       {
@@ -444,6 +446,9 @@ describe("verify reports every sg case", () => {
     await sgRule("no-eval", "no-eval");
     const result = await runCli(["verify", "-d", cwd, "--json"]);
     expect(result.exitCode).toBe(0);
+    expect((JSON.parse(result.stdout) as Report).rules[0]?.status).toBe(
+      "passed"
+    );
     expect((JSON.parse(result.stdout) as Report).rules[0]?.cases).toEqual([
       { name: "fail/eval-call", expected: "fail", ok: true },
       { name: "pass/plain", expected: "pass", ok: true },
@@ -454,6 +459,30 @@ describe("verify reports every sg case", () => {
     await sgRule("no-eval", "no-eval");
     const result = await runCli(["validate", "-d", cwd, "--json"]);
     expect((JSON.parse(result.stdout) as Report).rules[0]?.cases).toEqual([]);
+  });
+
+  it("reports no status from validate, which runs no tests", async () => {
+    await sgRule("no-eval", "no-eval");
+    const result = await runCli(["validate", "-d", cwd, "--json"]);
+    const rule = (JSON.parse(result.stdout) as Report).rules[0];
+    expect(rule?.ok).toBe(true);
+    expect(rule).not.toHaveProperty("status");
+  });
+
+  it("reports not-run for a rule validate rejected", async () => {
+    // Directory and `id:` disagree, which `validate` refuses, so `verify`
+    // stops before its cases run.
+    await sgRule("no-eval", "something-else");
+    const result = await runCli(["verify", "-d", cwd, "--json"]);
+    expect(result.exitCode).toBe(1);
+    const rule = (
+      JSON.parse(result.stdout) as {
+        rules: { status?: string; ok: boolean; ran?: boolean }[];
+      }
+    ).rules[0];
+    expect(rule?.status).toBe("not-run");
+    expect(rule?.ok).toBe(false);
+    expect(rule?.ran).toBe(false);
   });
 });
 
@@ -635,11 +664,17 @@ withVale("a rule Vale would choke on never reaches Vale", () => {
     expect(result.exitCode).not.toBe(0);
     const rule = (
       JSON.parse(result.stdout) as {
-        rules: { ok: boolean; ran: boolean; errors: string[] }[];
+        rules: {
+          status?: string;
+          ok: boolean;
+          ran: boolean;
+          errors: string[];
+        }[];
       }
     ).rules[0];
     // `ran: false` is the assertion that matters: the fixtures were never
     // linted, so Vale was never asked to load this config.
+    expect(rule?.status).toBe("not-run");
     expect(rule?.ran).toBe(false);
     expect(rule?.errors.join(" ")).toContain("occurrence");
     // And the fixture complaint does not crowd out the real one.

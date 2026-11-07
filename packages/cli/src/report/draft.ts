@@ -138,9 +138,22 @@ async function testStatus(
   engine: "sg" | "vale",
   id: string
 ): Promise<TestStatus> {
-  const verification = await verifyOneRule(cwd, { engine, ruleId: id });
-  if (verification.refused !== undefined) return "refused";
-  return verification.ok && verification.ran ? "pass" : "fail";
+  const { status } = await verifyOneRule(cwd, { engine, ruleId: id });
+  switch (status) {
+    case "passed": {
+      return "pass";
+    }
+    case "refused": {
+      return "refused";
+    }
+    // A rule that failed before its tests ran is reported as failing, not as
+    // `not-run`: the report's `not-run` means nothing tried to test it, and
+    // here something did and found it broken.
+    case "failed":
+    case "not-run": {
+      return "fail";
+    }
+  }
 }
 
 /** Every rule under `.taskless/rules/`, with its tests run. */
