@@ -20,31 +20,40 @@ import {
   assessDelivery,
   describeMissingFixtures,
   writeDeliveredFileSet,
+  type DeliveryAssessment,
 } from "./deliver";
 
+/** A served rule that passed every check and only remains to be written. */
+export interface PreparedRule {
+  id: string;
+  engine: EngineName;
+  assessment: Extract<DeliveryAssessment, { ok: true }>;
+}
+
 /**
- * Write a rule served by the v2 API into `.taskless/rules/<engine>/<id>/`.
+ * Check that a rule served by the v2 API is a complete, writable rule, writing
+ * nothing. Throws the reason it is not.
  *
  * The caller must already have passed the set through `verifyServedRule`:
  * this function checks that the set is a complete, writable rule, and trusts
  * that its bytes are the issued ones. The engine is the set's own `engine`,
  * which v2 always sends, so nothing is inferred from the payload's shape.
  *
- * The set IS the directory: whatever is on disk that the set does not name is
- * removed, `tests/` included, since v2 serves a rule's fixtures with it.
- *
  * A set whose fixtures are in the legacy `.tests/` layout is migrated just in
- * time, before it is assessed or written, by the converter migration `12`
- * uses. That is a permanent reading of the old format, so the CLI never
- * depends on the service moving: it never writes a layout its own `verify`
- * does not read. Fixtures carry no signature, and `verifyServedRule` has
- * already checked every signed file, so no signed byte changes here.
+ * time, before it is assessed, by the converter migration `12` uses. That is a
+ * permanent reading of the old format, so the CLI never depends on the service
+ * moving: it never writes a layout its own `verify` does not read. Fixtures
+ * carry no signature, and `verifyServedRule` has already checked every signed
+ * file, so no signed byte changes here.
+ *
+ * Separate from {@link writePreparedRule} so a caller delivering several rules
+ * can refuse any one of them before writing the first.
  */
-export async function writeServedRule(
+export function prepareServedRule(
   cwd: string,
   fileSet: ServedFileSet,
   onWarning?: (message: string) => void
-): Promise<string> {
+): PreparedRule {
   if (!isValidRuleId(fileSet.id)) {
     throw new Error(`Invalid rule ID "${fileSet.id}"`);
   }
@@ -77,18 +86,49 @@ export async function writeServedRule(
   if (!assessment.ok) {
     throw new Error(`Rule "${fileSet.id}" ${assessment.reason}.`);
   }
+  return { id: fileSet.id, engine, assessment };
+}
+
+/**
+ * Write a rule {@link prepareServedRule} accepted into
+ * `.taskless/rules/<engine>/<id>/`, and return its rule file.
+ *
+ * The set IS the directory: whatever is on disk that the set does not name is
+ * removed, `tests/` included, since v2 serves a rule's fixtures with it.
+ */
+export async function writePreparedRule(
+  cwd: string,
+  prepared: PreparedRule,
+  onWarning?: (message: string) => void
+): Promise<string> {
+  const { id, engine, assessment } = prepared;
   await ensureTasklessDirectory(cwd);
-  await mkdir(ruleDirectory(cwd, engine, fileSet.id), { recursive: true });
-  await writeDeliveredFileSet(cwd, engine, fileSet.id, assessment);
+  await mkdir(ruleDirectory(cwd, engine, id), { recursive: true });
+  await writeDeliveredFileSet(cwd, engine, id, assessment);
   // After the write, and asked of the set alone: the purge made the directory
   // equal to the set, so "the delivery carried no fixtures" and "the rule has
   // none" are now the same statement.
   const missingFixtures = describeMissingFixtures(assessment.files);
   if (missingFixtures !== undefined) {
-    onWarning?.(`Rule "${fileSet.id}" ${missingFixtures}.`);
+    onWarning?.(`Rule "${id}" ${missingFixtures}.`);
   }
-  await warnOnIdCollision(cwd, fileSet.id, onWarning);
-  return ruleFilePath(cwd, engine, fileSet.id);
+  await warnOnIdCollision(cwd, id, onWarning);
+  return ruleFilePath(cwd, engine, id);
+}
+
+/**
+ * Check, then write, one rule served by the v2 API:
+ * {@link prepareServedRule} followed by {@link writePreparedRule}. For a
+ * caller delivering a single rule, where checking first and writing second is
+ * already all-or-nothing.
+ */
+export async function writeServedRule(
+  cwd: string,
+  fileSet: ServedFileSet,
+  onWarning?: (message: string) => void
+): Promise<string> {
+  const prepared = prepareServedRule(cwd, fileSet, onWarning);
+  return writePreparedRule(cwd, prepared, onWarning);
 }
 
 /**
