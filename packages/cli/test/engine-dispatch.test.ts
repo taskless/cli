@@ -21,7 +21,8 @@ import {
   ruleDirectory,
 } from "../src/rules/engines";
 import type { EngineName } from "../src/rules/layout";
-import { deleteRuleFiles, writeServedRule } from "../src/rules/files";
+import { deleteRuleFiles } from "../src/rules/files";
+import { writeServedRule } from "./support/write-served-rule";
 import { validateOneRule } from "../src/rules/inspect";
 import { discoverRuntimeRules } from "../src/rules/runtime/discover";
 import type { ServedFileSet } from "../src/api/v2";

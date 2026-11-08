@@ -8,7 +8,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import migration, {
   retargetValeConfig,
 } from "../src/filesystem/migrations/0009-unique-rule-ids";
-import { writeServedRule } from "../src/rules/files";
+import { writeServedRule } from "./support/write-served-rule";
 import { validateOneRule } from "../src/rules/inspect";
 import { findRuleIdCollisions } from "../src/rules/id-uniqueness";
 import type { EngineName } from "../src/rules/layout";
@@ -591,7 +591,7 @@ describe("retargetValeConfig", () => {
 });
 
 describe("writeServedRule keeps working through a collision", () => {
-  // `rule restore` writes through `writeServedRule`. A refusal here would brick
+  // `rule restore` writes through the same staged path. A refusal here would brick
   // recovery for BOTH colliding rules, which is worse than the silence it would
   // replace, so the write succeeds and only warns.
   it("writes the rule and warns instead of refusing", async () => {

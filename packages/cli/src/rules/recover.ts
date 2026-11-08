@@ -15,9 +15,12 @@ import { rejectedTokenRemedy } from "../auth/token";
 import { CLIError } from "../util/cli-error";
 import { isRecord } from "../util/is-record";
 import { getCliPrefix } from "../util/package-manager";
-import { PurgeIncompleteError } from "./deliver";
 import { ruleFilePath } from "./engines";
-import { writeServedRule } from "./files";
+import {
+  prepareServedRule,
+  writePreparedRules,
+  type PreparedRule,
+} from "./files";
 import { orgNotFoundMessage } from "./generate";
 import { isKnownEngine, type EngineName } from "./layout";
 import { reportRules } from "./check-summary";
@@ -354,38 +357,59 @@ export async function rollback(
   return write(cwd, outcome.data, verdict.fileSet, revisionId, "rolled back");
 }
 
+/**
+ * Write a verified rule through the same staged delivery `rule create` uses,
+ * so a write that fails part-way leaves `.taskless/rules/` as it was.
+ *
+ * The rule is written in full under `.taskless/.tmp-delivery-*`, then its
+ * directory is renamed into place, with any version already there renamed
+ * aside first and back again if the move fails. A rule directory is replaced
+ * whole, so there is no "the rule is on disk but a stale entry beside it
+ * survived" outcome to report: either the served set is the directory, or the
+ * directory is what it was before the command ran.
+ *
+ * A process killed outright between the two renames is outside this: the
+ * version it replaced is then under `.taskless/.tmp-delivery-*`, and nothing
+ * moves it back automatically.
+ */
 async function write(
   cwd: string,
   served: ServedRule,
-  fileSet: Parameters<typeof writeServedRule>[1],
+  fileSet: ServedRule["rules"][number],
   revisionId: string,
   verb: string
 ): Promise<Recovered> {
   const notices: string[] = [];
-  let ruleFile: string;
+  const onWarning = (message: string): void => {
+    notices.push(message);
+  };
+  let prepared: PreparedRule;
   try {
-    ruleFile = await writeServedRule(cwd, fileSet, (message) =>
-      notices.push(message)
-    );
+    prepared = prepareServedRule(cwd, fileSet, onWarning);
   } catch (error) {
-    if (error instanceof PurgeIncompleteError) {
-      notices.push(
-        `Rule ${fileSet.id} was ${verb}, but ${String(error.failures.length)} stale ${error.failures.length === 1 ? "entry" : "entries"} could not be removed and an engine still reads ${error.failures.length === 1 ? "it" : "them"}: ${error.failures.join(", ")}.`
-      );
-      // Thrown only after every delivered file was written: the rule IS on
-      // disk, so `files` says so. Only the stale entries beside it failed.
-      const engine: string = fileSet.engine;
-      return {
-        ruleId: fileSet.id,
-        revisionId,
-        files: isKnownEngine(engine)
-          ? [ruleFilePath(cwd, engine, fileSet.id)]
-          : [],
-        notices,
-      };
-    }
-    throw error;
+    // `RULE_UNSUPPORTED` already says what to do: upgrade the CLI.
+    if (error instanceof CLIError) throw error;
+    // Verified bytes that are still not a writable rule: an unsafe path, an
+    // incomplete set. The service served something other than a rule this
+    // CLI can put on disk, which is a mismatch, not a crash.
+    throw new CLIError(
+      `Rule ${fileSet.id} was not ${verb}: ${errorMessage(error)} Nothing was written.`,
+      "RULE_RESTORE_MISMATCH"
+    );
   }
+  try {
+    await writePreparedRules(cwd, [prepared], onWarning);
+  } catch (error) {
+    if (error instanceof CLIError) throw error;
+    // An IO failure (a full disk, an unwritable directory). The staged write
+    // has already rolled back, and its message says so, or says where the
+    // previous version was kept when the roll-back itself could not finish.
+    throw new CLIError(
+      `Rule ${fileSet.id} was not ${verb}: ${errorMessage(error)}`,
+      "RULE_RESTORE_FAILED"
+    );
+  }
+  const ruleFile = ruleFilePath(cwd, prepared.engine, prepared.id);
 
   const entitlement =
     fileSet.engine === "runtime"
@@ -470,4 +494,8 @@ export function describeRevisions(
       : `Make a revision current with \`${getCliPrefix()} rule rollback ${ruleId} <revisionId>\`.`
   );
   return lines;
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }

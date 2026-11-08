@@ -4,12 +4,13 @@ import {
   chmod,
   mkdir,
   mkdtemp,
+  readdir,
   readFile,
   rm,
   writeFile,
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, relative } from "node:path";
 import {
   afterEach,
   beforeEach,
@@ -94,6 +95,14 @@ function listing(revisions: unknown[], truncated = false) {
   return { ruleId: RULE_ID, revisions, truncated };
 }
 
+/**
+ * Whether a read-only directory actually refuses this process. It does not
+ * for root, which CI containers sometimes are, nor on Windows, where `chmod`
+ * only toggles the read-only attribute on files.
+ */
+const readOnlyDirectoriesRefuse =
+  process.platform !== "win32" && process.getuid?.() !== 0;
+
 const currentLine = (printed: string) =>
   printed.split("\n").filter((line) => line.includes("(current)"));
 
@@ -104,6 +113,7 @@ describe("rule restore / rule rollback", () => {
   let calls: string[];
   const ruleFile = () =>
     join(cwd, ".taskless", "rules", "sg", RULE_ID, `${RULE_ID}.yml`);
+  const engineDirectory = () => join(cwd, ".taskless", "rules", "sg");
 
   function stub(options: Stub): void {
     calls = [];
@@ -240,6 +250,45 @@ describe("rule restore / rule rollback", () => {
     return logSpy.mock.calls.map((call) => String(call[0])).join("\n");
   }
 
+  /** Every file under `.taskless/rules/`, with its content. */
+  async function rulesTree(): Promise<Record<string, string>> {
+    const root = join(cwd, ".taskless", "rules");
+    const entries = await readdir(root, {
+      recursive: true,
+      withFileTypes: true,
+    }).catch(() => []);
+    const tree: Record<string, string> = {};
+    for (const entry of entries) {
+      if (!entry.isFile()) continue;
+      const path = join(entry.parentPath, entry.name);
+      tree[relative(root, path)] = await readFile(path, "utf8");
+    }
+    return tree;
+  }
+
+  /** Any staging directory a write left inside `.taskless/`. */
+  async function leftovers(): Promise<string[]> {
+    const entries = await readdir(join(cwd, ".taskless"));
+    return entries.filter((name) => name.startsWith(".tmp-delivery-"));
+  }
+
+  /**
+   * Make `.taskless/rules/sg/` read-only, run `argv`, and check it failed
+   * with `RULE_RESTORE_FAILED` and left the tree as it was.
+   */
+  async function expectUntouched(argv: string[]): Promise<void> {
+    const before = await rulesTree();
+    await mkdir(engineDirectory(), { recursive: true });
+    await chmod(engineDirectory(), 0o555);
+    const output = await run(argv);
+    expect(output).toMatchObject({ ok: false, code: "RULE_RESTORE_FAILED" });
+    expect(String(output.message)).toContain("EACCES");
+    expect(String(output.message)).toContain("is as it was");
+    expect(process.exitCode).toBe(1);
+    expect(await rulesTree()).toEqual(before);
+    expect(await leftovers()).toEqual([]);
+  }
+
   const restoreCalled = () => calls.some((call) => call.endsWith("/restore"));
 
   beforeEach(async () => {
@@ -350,34 +399,136 @@ describe("rule restore / rule rollback", () => {
     ).toBe(true);
   });
 
-  it.skipIf(process.getuid?.() === 0)(
-    "still names the rule file when only the stale-entry cleanup failed",
-    async () => {
+  it("refuses a verified set that is not a writable rule as a mismatch", async () => {
+    // Fixtures carry no signature, so a fixture at an unsafe path passes
+    // verification and is refused only when the set is assessed for writing.
+    await writeLocal(NEWER);
+    const rule = sgRule(ISSUED);
+    rule.files.push({ path: "tests/../../escape.ts", content: "owned\n" });
+    stub({
+      verdict: { kind: "run" },
+      served: { ...(await servedBody(rule, "r1")), restoreRules: true },
+    });
+    const before = await rulesTree();
+    const output = await run(["rollback", RULE_ID, "r1"]);
+    expect(output).toMatchObject({ ok: false, code: "RULE_RESTORE_MISMATCH" });
+    expect(String(output.message)).toContain("path that");
+    expect(String(output.message)).toContain("Nothing was written");
+    expect(await rulesTree()).toEqual(before);
+    expect(await leftovers()).toEqual([]);
+  });
+
+  it("replaces the rule directory whole, so nothing stale survives beside it", async () => {
+    await writeLocal(NEWER);
+    const directory = join(cwd, ".taskless", "rules", "sg", RULE_ID);
+    await writeFile(join(directory, "notes.md"), "scratch\n");
+    await mkdir(join(directory, "tests", "pass", "old"), { recursive: true });
+    await writeFile(join(directory, "tests", "pass", "old", "old.ts"), "x\n");
+    stub({
+      verdict: { kind: "run" },
+      served: {
+        ...(await servedBody(sgRule(ISSUED), "r1")),
+        restoreRules: true,
+      },
+    });
+    const output = await run(["rollback", RULE_ID, "r1"]);
+    expect(output).toMatchObject({ success: true, files: [ruleFile()] });
+    // Exactly the served set: the old directory went as a unit, so there is
+    // no stale entry for a notice to name.
+    expect(await rulesTree()).toEqual({
+      [`sg/${RULE_ID}/${RULE_ID}.yml`]: ISSUED,
+      [`sg/${RULE_ID}/tests/fail/case/case.ts`]: "eval(x);\n",
+    });
+    expect(await leftovers()).toEqual([]);
+  });
+
+  /**
+   * A write that fails with a real IO error. `.taskless/rules/sg/` is made
+   * read-only, so the rule directory can be neither moved aside nor moved
+   * into place. Skipped as root and on Windows, where a read-only directory
+   * does not refuse the write.
+   */
+  describe.skipIf(!readOnlyDirectoriesRefuse)("a write that fails", () => {
+    afterEach(async () => {
+      await chmod(engineDirectory(), 0o755).catch(() => {});
+    });
+
+    it("restore leaves the edited rule exactly as it was", async () => {
+      await writeLocal(EDITED);
+      stub({
+        verdict: { kind: "unsafe", expected: await canonicalHash(ISSUED) },
+        served: {
+          ...(await servedBody(sgRule(ISSUED), "r1")),
+          restoreRules: true,
+        },
+      });
+      await expectUntouched(["restore", RULE_ID]);
+      expect(await readFile(ruleFile(), "utf8")).toBe(EDITED);
+    });
+
+    it("restore of a missing rule leaves no rule directory", async () => {
+      stub({
+        verdict: { kind: "missing", revisionId: "r1" },
+        served: {
+          ...(await servedBody(sgRule(ISSUED), "r1")),
+          restoreRules: true,
+        },
+      });
+      await expectUntouched(["restore", RULE_ID]);
+      expect(existsSync(join(engineDirectory(), RULE_ID))).toBe(false);
+    });
+
+    it("rollback leaves the current version exactly as it was", async () => {
       await writeLocal(NEWER);
-      const blocked = join(cwd, ".taskless", "rules", "sg", RULE_ID, "blocked");
-      await mkdir(blocked);
-      await writeFile(join(blocked, "stale.ts"), "stale\n");
-      await chmod(blocked, 0o500);
-      try {
-        stub({
-          verdict: { kind: "run" },
-          served: {
-            ...(await servedBody(sgRule(ISSUED), "r1")),
-            restoreRules: true,
-          },
-        });
-        const output = await run(["rollback", RULE_ID, "r1"]);
-        expect(output).toMatchObject({
-          success: true,
-          files: [ruleFile()],
-        });
-        expect(await readFile(ruleFile(), "utf8")).toBe(ISSUED);
-        expect(String((output.notices as string[]).at(-1))).toContain(
-          "could not be removed"
-        );
-      } finally {
-        await chmod(blocked, 0o700);
-      }
+      // A stray beside the rule, so "as it was" covers the whole directory
+      // and not only the files the served set names.
+      await writeFile(join(engineDirectory(), RULE_ID, "notes.md"), "kept\n");
+      stub({
+        verdict: { kind: "run" },
+        served: {
+          ...(await servedBody(sgRule(ISSUED), "r1")),
+          restoreRules: true,
+        },
+      });
+      await expectUntouched(["rollback", RULE_ID, "r1"]);
+      expect(await readFile(ruleFile(), "utf8")).toBe(NEWER);
+    });
+  });
+
+  it.skipIf(!readOnlyDirectoriesRefuse)(
+    "rollback over a version holding a read-only file writes every served file",
+    async () => {
+      // Written in place, this used to overwrite the rule file and then fail
+      // on the read-only fixture, leaving the rule at the new revision and
+      // its fixture at the old one. The directory is now replaced as a unit.
+      await writeLocal(NEWER);
+      const fixture = join(
+        cwd,
+        ".taskless",
+        "rules",
+        "sg",
+        RULE_ID,
+        "tests",
+        "fail",
+        "case",
+        "case.ts"
+      );
+      await writeFile(fixture, "eval(old);\n");
+      await chmod(fixture, 0o444);
+      stub({
+        verdict: { kind: "run" },
+        served: {
+          ...(await servedBody(sgRule(ISSUED), "r1")),
+          restoreRules: true,
+        },
+      });
+      const output = await run(["rollback", RULE_ID, "r1"]);
+      expect(output).toMatchObject({ success: true, files: [ruleFile()] });
+      expect(await rulesTree()).toEqual({
+        [`sg/${RULE_ID}/${RULE_ID}.yml`]: ISSUED,
+        [`sg/${RULE_ID}/tests/fail/case/case.ts`]: "eval(x);\n",
+      });
+      expect(await leftovers()).toEqual([]);
     }
   );
 

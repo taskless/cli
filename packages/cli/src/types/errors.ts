@@ -64,6 +64,12 @@ export type CLIErrorCode =
   // repairs a rule and never advances it, so this is refused rather than
   // accepted as an upgrade.
   | "RULE_RESTORE_MISMATCH"
+  // Restore or rollback verified the served rule, then could not write it: a
+  // full disk, an unwritable directory. The write is staged and rolled back,
+  // so `.taskless/rules/` is as it was. Distinct from RULE_RESTORE_MISMATCH,
+  // which says the bytes were wrong: these were right, and running the
+  // command again once the filesystem is fixed is the remedy.
+  | "RULE_RESTORE_FAILED"
   | "INVALID_INPUT"
   | "NETWORK_ERROR"
   | "SCAN_FAILED"
