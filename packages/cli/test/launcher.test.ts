@@ -262,26 +262,22 @@ describe.skipIf(process.platform === "win32")("project launcher", () => {
     expect(reported(launch(path, []).stdout).version).toBe("0.13.0");
   });
 
-  it("falls back to cliVersion only when it is its own package's", async () => {
-    const manifest = { install: { cliVersion: "0.13.0" } };
-    const release = await install("@taskless/cli", manifest, "0.13.0");
-    expect(reported(launch(release, []).stdout).version).toBe("0.13.0");
-
-    const nightly = await install("@taskless/cli-nightly", manifest);
-    const result = launch(nightly, []);
-    expect(result.status).toBe(1);
-    expect(result.stdout).toBe("");
-  });
-
-  it("reads a self build's cliVersion as neither package's", async () => {
-    const manifest = { install: { cliVersion: "0.13.0-self" } };
-    for (const packageName of [
-      "@taskless/cli",
-      "@taskless/cli-nightly",
-    ] as const) {
-      const result = launch(await install(packageName, manifest), []);
-      expect(result.status).toBe(1);
-      expect(result.stderr).toContain(`no ${packageName} version is recorded`);
+  it("never reads cliVersion, which migration 13 moved into launchers", async () => {
+    // A release version and a self build's: before the migration existed,
+    // the first was read as the release's and the second as neither's.
+    for (const cliVersion of ["0.13.0", "0.13.0-self"]) {
+      const manifest = { install: { cliVersion } };
+      for (const packageName of [
+        "@taskless/cli",
+        "@taskless/cli-nightly",
+      ] as const) {
+        const result = launch(await install(packageName, manifest), []);
+        expect(result.status).toBe(1);
+        expect(result.stdout).toBe("");
+        expect(result.stderr).toContain(
+          `no ${packageName} version is recorded`
+        );
+      }
     }
   });
 

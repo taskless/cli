@@ -40,12 +40,20 @@ async function runCli(
 describe("the version-pin gate", () => {
   let cwd: string;
 
-  async function record(cliVersion: string): Promise<void> {
+  // Recorded for both packages, so the refusal does not depend on which
+  // channel the test build is.
+  async function record(version: string): Promise<void> {
     await writeFile(
       join(cwd, ".taskless", "taskless.json"),
       JSON.stringify({
         version: LATEST_SCHEMA_VERSION,
-        install: { cliVersion },
+        install: {
+          cliVersion: version,
+          launchers: {
+            "@taskless/cli": version,
+            "@taskless/cli-nightly": version,
+          },
+        },
       })
     );
   }

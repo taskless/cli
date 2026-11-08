@@ -38,32 +38,23 @@ describe("finding a version mismatch", () => {
   });
 
   it("refuses an older CLI", () => {
-    expect(mismatch({ cliVersion: "0.15.0" }, "0.14.0")?.recorded).toBe(
-      "0.15.0"
-    );
+    expect(
+      mismatch({ launchers: { [RELEASE]: "0.15.0" } }, "0.14.0")?.recorded
+    ).toBe("0.15.0");
   });
 
-  it("falls back to cliVersion only when it belongs to the package", () => {
-    // A nightly cliVersion says nothing about the release launcher, and the
-    // project records nothing else for the release, so it is the other channel.
-    expect(mismatch({ cliVersion: "0.15.0-20261020x1" })).toMatchObject({
-      recordedPackage: NIGHTLY,
-    });
-  });
-
-  it("reads a build:next cliVersion as the nightly's", () => {
-    expect(mismatch({ cliVersion: "0.13.0-next-fa9ae7c" })).toMatchObject({
-      recordedPackage: NIGHTLY,
-      recorded: "0.13.0-next-fa9ae7c",
-    });
-  });
-
-  it("passes a nightly and a release after a self install", () => {
-    // A self build runs from a path and carries no package, so its `-self`
-    // version is neither channel's, though it has a prerelease part.
-    const install = { cliVersion: "0.13.0-self" };
-    expect(mismatch(install, "0.14.0-20261020x1")).toBeUndefined();
-    expect(mismatch(install, "0.14.0")).toBeUndefined();
+  it("never reads cliVersion, which migration 13 moved into launchers", () => {
+    // Before the migration, each of these was read off the version string:
+    // a release, a nightly, a build:next nightly, and a self build.
+    for (const cliVersion of [
+      "0.13.0",
+      "0.15.0-20261020x1",
+      "0.13.0-next-fa9ae7c",
+      "0.13.0-self",
+    ]) {
+      expect(mismatch({ cliVersion }, "0.14.0")).toBeUndefined();
+      expect(mismatch({ cliVersion }, "0.14.0-20261020x1")).toBeUndefined();
+    }
   });
 
   it("reads launchers alone once it records a version", () => {
@@ -116,7 +107,7 @@ describe("finding a version mismatch", () => {
           command,
           running: "0.14.0",
           runningPackage: RELEASE,
-          install: { cliVersion: "0.13.2" },
+          install: { launchers: { [RELEASE]: "0.13.2" } },
         })
       ).toBeUndefined();
     }
@@ -124,12 +115,12 @@ describe("finding a version mismatch", () => {
 
   it("gates update, which moves the rules' record and not the CLI's", () => {
     expect(
-      mismatch({ cliVersion: "0.13.2" }, "0.14.0", "update")
+      mismatch({ launchers: { [RELEASE]: "0.13.2" } }, "0.14.0", "update")
     ).toBeDefined();
   });
 
   it("does not gate a self build or an unknown version", () => {
-    const install = { cliVersion: "0.13.2" };
+    const install = { launchers: { [RELEASE]: "0.13.2" } };
     expect(
       findVersionMismatch({
         command: "check",
@@ -154,7 +145,7 @@ describe("the version mismatch message", () => {
 
   it("offers the launcher and init to a newer CLI", () => {
     const message = versionMismatchMessage(
-      mismatch({ cliVersion: "0.13.2" })!,
+      mismatch({ launchers: { [RELEASE]: "0.13.2" } })!,
       options
     );
     expect(message).toContain("@taskless/cli 0.14.0");
@@ -165,7 +156,7 @@ describe("the version mismatch message", () => {
 
   it("never offers init to an older CLI", () => {
     const message = versionMismatchMessage(
-      mismatch({ cliVersion: "0.15.0" })!,
+      mismatch({ launchers: { [RELEASE]: "0.15.0" } })!,
       options
     );
     expect(message).toContain("`./.taskless/bin/cli.mjs check`");
@@ -174,7 +165,7 @@ describe("the version mismatch message", () => {
 
   it("does not name a launcher the project does not have", () => {
     const message = versionMismatchMessage(
-      mismatch({ cliVersion: "0.13.2" })!,
+      mismatch({ launchers: { [RELEASE]: "0.13.2" } })!,
       { ...options, launcherExists: false }
     );
     expect(message).not.toContain(".taskless/bin");

@@ -30,9 +30,7 @@ import {
 } from "./state";
 import {
   buildLauncherPackage,
-  LAUNCHER_PACKAGES,
   pruneLauncherCache,
-  recordedLauncherVersion,
   retiredLauncherPackage,
   retireLauncher,
   writeLauncher,
@@ -590,21 +588,13 @@ export async function applyInstallPlan(
   const previousState = await readInstallState(cwd);
 
   // Each package records only its own launcher's version and keeps the
-  // other's, so a nightly never moves the release. The other's version is
-  // carried even when it was only ever implied by `cliVersion`, as it is in a
-  // manifest written before `launchers` existed: this run is about to
-  // overwrite `cliVersion`, and the other launcher would lose its version.
+  // other's, so a nightly never moves the release. A manifest written before
+  // `launchers` existed has already had its `cliVersion` moved into
+  // `launchers` by scaffold migration 13, which every caller runs first, so
+  // `launchers` is the whole record here.
   const launcherPackage = buildLauncherPackage();
   const retiredPackage = retiredLauncherPackage(launcherPackage);
   const launchers = { ...previousState.launchers };
-  for (const packageName of LAUNCHER_PACKAGES) {
-    const version = recordedLauncherVersion(
-      packageName,
-      previousState.launchers,
-      previousState.cliVersion
-    );
-    if (version !== undefined) launchers[packageName] = version;
-  }
   if (launcherPackage !== undefined) {
     launchers[launcherPackage] = options.cliVersion;
   }
@@ -683,7 +673,7 @@ export async function applyInstallPlan(
   await writeInstallState(cwd, nextState);
   // Installed versions nothing records any more. The launcher installs the
   // new one on its first run; init never downloads.
-  await pruneLauncherCache(cwd, nextState.launchers, nextState.cliVersion);
+  await pruneLauncherCache(cwd, nextState.launchers);
 
   return {
     state: nextState,
