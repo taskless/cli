@@ -6,7 +6,7 @@ import { parse } from "yaml";
 import { ensureTasklessDirectory } from "../filesystem/directory";
 import { CLIError } from "../util/cli-error";
 import type { ServedFileSet } from "../api/v2";
-import { ruleDirectory, ruleFilePath, findRuleEngines } from "./engines";
+import { ruleDirectory, findRuleEngines } from "./engines";
 import { convertLegacyFileSet } from "./fixture-convert";
 import {
   isKnownEngine,
@@ -49,7 +49,7 @@ export interface PreparedRule {
  * carry no signature, and `verifyServedRule` has already checked every signed
  * file, so no signed byte changes here.
  *
- * Separate from {@link writePreparedRule} so a caller delivering several rules
+ * Separate from {@link writePreparedRules} so a caller delivering several rules
  * can refuse any one of them before writing the first.
  */
 export function prepareServedRule(
@@ -93,34 +93,7 @@ export function prepareServedRule(
 }
 
 /**
- * Write a rule {@link prepareServedRule} accepted into
- * `.taskless/rules/<engine>/<id>/`, and return its rule file.
- *
- * The set IS the directory: whatever is on disk that the set does not name is
- * removed, `tests/` included, since v2 serves a rule's fixtures with it.
- */
-export async function writePreparedRule(
-  cwd: string,
-  prepared: PreparedRule,
-  onWarning?: (message: string) => void
-): Promise<string> {
-  const { id, engine, assessment } = prepared;
-  await ensureTasklessDirectory(cwd);
-  await mkdir(ruleDirectory(cwd, engine, id), { recursive: true });
-  await writeDeliveredFileSet(cwd, engine, id, assessment);
-  // After the write, and asked of the set alone: the purge made the directory
-  // equal to the set, so "the delivery carried no fixtures" and "the rule has
-  // none" are now the same statement.
-  const missingFixtures = describeMissingFixtures(assessment.files);
-  if (missingFixtures !== undefined) {
-    onWarning?.(`Rule "${id}" ${missingFixtures}.`);
-  }
-  await warnOnIdCollision(cwd, id, onWarning);
-  return ruleFilePath(cwd, engine, id);
-}
-
-/**
- * Where a multi-rule delivery is assembled, inside `.taskless/` so that every
+ * Where a delivery is assembled, inside `.taskless/` so that every
  * rename out of it stays on one filesystem: a rename across devices is a copy,
  * which is neither atomic nor guaranteed to succeed.
  */
@@ -140,7 +113,7 @@ interface CommitStep {
 }
 
 /**
- * Write several rules {@link prepareServedRule} accepted, so that an IO
+ * Write the rules {@link prepareServedRule} accepted, so that an IO
  * failure part-way leaves `.taskless/rules/` as it was. `onWarning` names the
  * rule a warning is about by its index in `rules`, and omits the index for a
  * warning about the delivery as a whole.
@@ -148,8 +121,7 @@ interface CommitStep {
  * Two phases:
  *
  * 1. **Stage.** Every rule is written in full into a fresh directory under
- *    `.taskless/`, by the same {@link writeDeliveredFileSet} a single rule
- *    goes through, so a full disk or an unwritable file stops here, before
+ *    `.taskless/`, by {@link writeDeliveredFileSet}, so a full disk or an unwritable file stops here, before
  *    anything under `.taskless/rules/` has moved.
  * 2. **Commit.** Each rule is moved into place with `rename`: the version
  *    already there (if any) is renamed aside into the staging directory, then
@@ -224,8 +196,8 @@ export async function writePreparedRules(
   const unremoved = await removeStaging(staging);
   if (unremoved !== undefined) onWarning?.(unremoved);
 
-  // After the commit, and asked of the real tree, as `writePreparedRule` asks
-  // them: these are observations about rules that are now on disk.
+  // After the commit, and asked of the real tree: these are observations
+  // about rules that are now on disk.
   if (onWarning === undefined) return;
   for (const [index, { id, assessment }] of rules.entries()) {
     const warn = (message: string): void => {
@@ -357,28 +329,13 @@ class RollbackIncompleteError extends Error {
 }
 
 /**
- * Check, then write, one rule served by the v2 API:
- * {@link prepareServedRule} followed by {@link writePreparedRule}. For a
- * caller delivering a single rule, where checking first and writing second is
- * already all-or-nothing.
- */
-export async function writeServedRule(
-  cwd: string,
-  fileSet: ServedFileSet,
-  onWarning?: (message: string) => void
-): Promise<string> {
-  const prepared = prepareServedRule(cwd, fileSet, onWarning);
-  return writePreparedRule(cwd, prepared, onWarning);
-}
-
-/**
  * Say so when the rule just written shares its id with another engine's.
  *
  * A WARNING, never a refusal, and that is the whole design. `rule restore`
- * writes through here, so refusing would brick recovery for both colliding
- * rules — strictly worse than the silence it replaces. The failure belongs in
- * `validate` (and in `check`, which refuses a logged-in run over it), which is
- * what the message points at.
+ * writes through {@link writePreparedRules} too, so refusing would brick
+ * recovery for both colliding rules — strictly worse than the silence it
+ * replaces. The failure belongs in `validate` (and in `check`, which refuses
+ * a logged-in run over it), which is what the message points at.
  *
  * After the write, like the fixtures warning above it: this is an observation
  * about a rule that is now on disk, and warning first would read as a reason

@@ -14,10 +14,12 @@ import { dirname, join } from "node:path";
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { writeServedRule } from "../src/rules/files";
+import { writeServedRule } from "./support/write-served-rule";
 import {
   PurgeIncompleteError,
+  assessDelivery,
   describeMissingFixtures,
+  writeDeliveredFileSet,
 } from "../src/rules/deliver";
 import { ruleDirectory } from "../src/rules/engines";
 import type { ServedFileSet } from "../src/api/v2";
@@ -449,6 +451,12 @@ describe("a delivered set defines what the rule directory contains", () => {
 /**
  * A removal that fails is reported, and does not abandon the rest of the pass.
  *
+ * Driven through {@link writeDeliveredFileSet} directly, writing over a
+ * directory that already holds a rule. No command does that any more: every
+ * delivery stages into a fresh directory and renames it over the rule whole,
+ * so there is nothing stale for the purge to meet. The purge still guards
+ * that function's own contract, and these cases pin what it does.
+ *
  * Skipped as root, which ignores the permission bits the failure is staged
  * with. The same convention as `vale-verify.test.ts`.
  */
@@ -459,6 +467,18 @@ asUser("a purge that cannot finish", () => {
     { path: "check.ts", content: "export default async () => [];\n" },
     { path: "captures/logs.yml", content: CAPTURE },
   ];
+
+  /** Write the complete rule over whatever its directory already holds. */
+  async function writeInPlace(): Promise<void> {
+    const assessment = assessDelivery(
+      cwd,
+      "runtime",
+      "logs-abc12345",
+      COMPLETE
+    );
+    if (!assessment.ok) throw new Error(assessment.reason);
+    await writeDeliveredFileSet(cwd, "runtime", "logs-abc12345", assessment);
+  }
 
   it("removes what it can, and names what it could not", async () => {
     await writeServedRule(cwd, delivered("runtime", "logs-abc12345", COMPLETE));
@@ -471,9 +491,9 @@ asUser("a purge that cannot finish", () => {
     await chmod(join(directory, "blocked"), 0o500);
 
     try {
-      await expect(
-        writeServedRule(cwd, delivered("runtime", "logs-abc12345", COMPLETE))
-      ).rejects.toThrow(/could not remove.*blocked\/a\.txt/s);
+      await expect(writeInPlace()).rejects.toThrow(
+        /could not remove.*blocked\/a\.txt/s
+      );
 
       // The rest of the pass still ran. Abandoning it at the first failure
       // left later strays in place for no reason other than `readdir` order,
@@ -500,10 +520,7 @@ asUser("a purge that cannot finish", () => {
     await chmod(join(directory, "blocked"), 0o500);
 
     try {
-      const error = await writeServedRule(
-        cwd,
-        delivered("runtime", "logs-abc12345", COMPLETE)
-      ).catch((error_: unknown) => error_);
+      const error = await writeInPlace().catch((error_: unknown) => error_);
 
       expect(error).toBeInstanceOf(PurgeIncompleteError);
       expect((error as PurgeIncompleteError).failures).toHaveLength(1);

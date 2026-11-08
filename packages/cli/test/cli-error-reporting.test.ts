@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { CLIError } from "../src/util/cli-error";
 import type { ServedFileSet } from "../src/api/v2";
-import { writeServedRule } from "../src/rules/files";
+import { writeServedRule } from "./support/write-served-rule";
 
 /**
  * `index.ts` decides whether to print a failure and set a non-zero exit from

@@ -468,6 +468,12 @@ async function purgeUndeliveredFiles(
  * Never swallowed. A stray this could not remove is still a file an engine
  * reads, and an unreadable stray is indistinguishable from a clean directory
  * unless somebody is told.
+ *
+ * Every command now writes through `writePreparedRules`, which calls
+ * {@link writeDeliveredFileSet} on a fresh staging directory and renames the
+ * result over the rule directory whole, so in that path there is nothing
+ * stale to purge. Should this be thrown there all the same, it fails the
+ * delivery and is rolled back like any other write error.
  */
 export class PurgeIncompleteError extends Error {
   /** Each entry that survived, with the errno that stopped it. */

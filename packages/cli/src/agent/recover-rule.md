@@ -1,4 +1,4 @@
-# Topic: recover-rule     (CLI v%(CLI_VERSION)s / topic v4)
+# Topic: recover-rule     (CLI v%(CLI_VERSION)s / topic v5)
 
 %(ONE_COMMAND_PER_CALL)s
 
@@ -145,6 +145,7 @@ When `--json` is set, failures emit `{ ok: false, code, message }`:
 | `RULE_NOT_FOUND`            | Taskless did not issue this rule for this repository  | check the id; a local rule cannot be restored         |
 | `REVISION_NOT_FOUND`        | rollback named a revision that is not this rule's     | list them with `%(TASKLESS_CLI)s rule revisions <ruleId>` |
 | `RULE_RESTORE_MISMATCH`     | the service served bytes other than the expected ones | nothing was written; report it, do not retry blindly  |
+| `RULE_RESTORE_FAILED`       | the verified rule could not be written to disk        | the rule is as it was; fix what `message` names, then run the command again |
 | `RULE_ID_AMBIGUOUS`         | two engines hold this id                               | rename the local one, then restore                    |
 | `NETWORK_ERROR`             | the service could not be reached or failed            | report and suggest a retry                            |
 
