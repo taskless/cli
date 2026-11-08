@@ -887,13 +887,13 @@ Gemini CLI SHALL be detected when a `.gemini/` directory or a `GEMINI.md` file e
 
 Every `init` that writes the canonical skill, in the wizard and in `--no-interactive`, SHALL also write this build's launcher, as defined by the `cli-project-launcher` capability, and record this build's version for its package under `install.launchers` in `.taskless/taskless.json`, keyed by package name. `install.cliVersion` SHALL keep recording the build that last installed.
 
-A nightly `init` SHALL keep the release's recorded version. Where the release's version was recorded only as `install.cliVersion` (a manifest written before `install.launchers` existed), the nightly `init` SHALL carry it into `install.launchers` before overwriting `install.cliVersion`, so `.taskless/bin/cli.mjs` keeps a version to run.
+A nightly `init` SHALL keep the release's recorded version. Where the release's version was recorded only as `install.cliVersion` (a manifest written before `install.launchers` existed), scaffold migration 13, which `init` runs before installing, moves it into `install.launchers`, so `.taskless/bin/cli.mjs` keeps a version to run after `install.cliVersion` is overwritten. The install itself SHALL read only `install.launchers`.
 
 A release `init` is the move back to mainline, and SHALL retire the nightly: it SHALL drop `@taskless/cli-nightly` from `install.launchers`, and remove `.taskless/bin/cli-nightly.mjs` and `.taskless/bin/cli-nightly.lock.json` when they exist. The cached nightly build is then pruned, since nothing records it. Each file removed SHALL be named in the install summary and listed in `init --json` as `retired`, an array of root-relative paths present on every successful run and empty when nothing was removed, and a removal SHALL count as a change. The release `init` SHALL NOT touch the user-level global trust entry, which other projects may still use.
 
 A launcher whose bytes differ from this build's launcher SHALL be rewritten, and the install summary SHALL name it as restored, since a launcher runs whatever it contains under any rule that allows it. A `self` build SHALL write no launcher, record no version under `install.launchers`, and retire nothing.
 
-No scaffold migration SHALL be added for this: the launcher and its record are install output, written by the same step as the canonical skill.
+The launcher and its record are install output, written by the same step as the canonical skill. The one scaffold migration involved, migration 13, only moves a legacy `install.cliVersion` into the record; it writes no launcher.
 
 #### Scenario: A release install records its version
 
@@ -909,7 +909,7 @@ No scaffold migration SHALL be added for this: the launcher and its record are i
 
 #### Scenario: A nightly install keeps a release version only cliVersion recorded
 
-- **WHEN** `.taskless/taskless.json` records `install.cliVersion` `0.13.0` and no `install.launchers`, and a nightly `init` runs at `0.14.0-20261020120000xabc1234`
+- **WHEN** `.taskless/taskless.json` records scaffold version 12, `install.cliVersion` `0.13.0` and no `install.launchers`, and a nightly `init` runs at `0.14.0-20261020120000xabc1234`
 - **THEN** `install.launchers` SHALL be `{ "@taskless/cli": "0.13.0", "@taskless/cli-nightly": "0.14.0-20261020120000xabc1234" }`
 
 #### Scenario: A release install retires the nightly
