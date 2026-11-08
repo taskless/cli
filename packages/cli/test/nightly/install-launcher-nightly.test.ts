@@ -10,6 +10,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
+import { ensureTasklessDirectory } from "../../src/filesystem/directory";
 import {
   applyInstallPlan,
   buildInstallPlan,
@@ -79,13 +80,18 @@ describe("a nightly install beside the release", () => {
 
   it("keeps a release version only cliVersion implied, and retires nothing", async () => {
     // A manifest written before `launchers` existed records the release only
-    // as `cliVersion`, which this install overwrites.
+    // as `cliVersion`, which this install overwrites. Migration 13, which
+    // `init` runs before installing, moves it into `launchers` first.
     await mkdir(join(cwd, ".taskless", "bin"), { recursive: true });
     await writeFile(
       join(cwd, RELEASE_LAUNCHER),
       renderLauncher("@taskless/cli")
     );
-    await writeInstallState(cwd, { cliVersion: "0.13.0", targets: {} });
+    await writeFile(
+      join(cwd, ".taskless", "taskless.json"),
+      JSON.stringify({ version: 12, install: { cliVersion: "0.13.0" } })
+    );
+    await ensureTasklessDirectory(cwd, { onNotice: () => {} });
 
     const version = getCliVersion();
     const result = await applyInstallPlan(

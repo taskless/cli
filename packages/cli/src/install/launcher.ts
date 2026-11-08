@@ -143,22 +143,6 @@ export function buildLauncherPackage(): LauncherPackage | undefined {
 }
 
 /**
- * The channel of a version a LEGACY manifest recorded: one written before
- * `install.launchers` existed, which names its version only in
- * `install.cliVersion`. Nothing else reads a channel off a version.
- *
- * A release has no prerelease part. A self build ends in `-self`. Any other
- * prerelease is a nightly, which covers both a published nightly
- * (`<base>-<stamp>x<sha>`) and a `build:next` one (`<next>-next-<sha>`). The
- * launcher template carries its own copy of this rule, since it runs without
- * the CLI.
- */
-export function legacyChannel(version: string): Channel {
-  if (version.endsWith("-self")) return "self";
-  return /^\d+\.\d+\.\d+$/.test(version) ? "release" : "nightly";
-}
-
-/**
  * What an install did to this build's launcher. `restored` means a launcher
  * was there with other bytes: it runs whatever it contains under any rule that
  * allows its path, so an edit is put back and said out loud.
@@ -270,34 +254,6 @@ async function removeQuietly(path: string): Promise<void> {
 const STALE_INSTALL_MS = 60 * 60 * 1000;
 
 /**
- * The version a package's launcher would run.
- *
- * `install.launchers` is the record. Once it holds any package's version it is
- * the only source, and `install.cliVersion` is only the last version that
- * installed, for display. A legacy manifest, written before `launchers`
- * existed, records its version only in `cliVersion`, which is read as the
- * package {@link legacyChannel} names: for a self build, none. The next
- * install by a current CLI moves it into `launchers`. The template applies the
- * same rule when it runs.
- */
-export function recordedLauncherVersion(
-  packageName: LauncherPackage,
-  launchers: Record<string, string> | undefined,
-  cliVersion: string | undefined
-): string | undefined {
-  if (launchers !== undefined && Object.keys(launchers).length > 0) {
-    return launchers[packageName];
-  }
-  if (
-    cliVersion !== undefined &&
-    channelPackage(legacyChannel(cliVersion)) === packageName
-  ) {
-    return cliVersion;
-  }
-  return undefined;
-}
-
-/**
  * Remove cache entries no package records, and temporary install directories
  * old enough that no install can still be writing them. Best effort: anything
  * that cannot be removed now, such as a file Windows holds open, is left for
@@ -307,12 +263,11 @@ export function recordedLauncherVersion(
 export async function pruneLauncherCache(
   cwd: string,
   launchers: Record<string, string> | undefined,
-  cliVersion: string | undefined,
   now: number = Date.now()
 ): Promise<void> {
   const keep = new Set<string>();
   for (const packageName of LAUNCHER_PACKAGES) {
-    const version = recordedLauncherVersion(packageName, launchers, cliVersion);
+    const version = launchers?.[packageName];
     if (version !== undefined) keep.add(cacheEntryPath(packageName, version));
   }
   const cache = join(cwd, LAUNCHER_CACHE);

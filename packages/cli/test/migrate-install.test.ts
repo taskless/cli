@@ -76,11 +76,13 @@ describe("install-state migrations", () => {
       await readFile(join(tasklessDirectory, "taskless.json"), "utf8")
     ) as { version: number; install: Record<string, unknown> };
 
-    // Migration 3 strips the unused timestamp; everything else survives.
+    // Migration 3 strips the unused timestamp and migration 13 records the
+    // release cliVersion under its launcher; everything else survives.
     expect(manifest.version).toBe(LATEST_SCHEMA_VERSION);
     expect(manifest.install).toEqual({
       cliVersion: "0.5.4",
       targets: { ".claude": { skills: ["taskless-check"] } },
+      launchers: { "@taskless/cli": "0.5.4" },
     });
   });
 

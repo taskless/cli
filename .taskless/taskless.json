@@ -1,5 +1,5 @@
 {
-  "version": 12,
+  "version": 13,
   "install": {
     "targets": {
       ".taskless": {
@@ -22,7 +22,10 @@
       }
     },
     "cliVersion": "0.11.2",
-    "onboarded": true
+    "onboarded": true,
+    "launchers": {
+      "@taskless/cli": "0.11.2"
+    }
   },
   "rules": {
     "reconciledTo": "0.13.4",

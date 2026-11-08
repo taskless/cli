@@ -12,7 +12,6 @@ import {
   buildLauncherPackage,
   LAUNCHER_PACKAGES,
   launcherPath,
-  recordedLauncherVersion,
   type LauncherPackage,
 } from "./launcher";
 
@@ -55,23 +54,20 @@ export interface VersionMismatch {
   recorded: string;
 }
 
-/** Read `install` defensively: a hand-edited manifest can hold anything. */
-function recordedVersions(install: unknown): {
-  launchers: Record<string, string> | undefined;
-  cliVersion: string | undefined;
-} {
-  if (!isRecord(install))
-    return { launchers: undefined, cliVersion: undefined };
-  const launchers = isRecord(install.launchers)
-    ? Object.fromEntries(
-        Object.entries(install.launchers).filter(
-          (entry): entry is [string, string] => typeof entry[1] === "string"
-        )
-      )
-    : undefined;
-  const cliVersion =
-    typeof install.cliVersion === "string" ? install.cliVersion : undefined;
-  return { launchers, cliVersion };
+/**
+ * The versions `install.launchers` records, read defensively: a hand-edited
+ * manifest can hold anything. `install.cliVersion` is display only and is not
+ * read: scaffold migration 13 moved a legacy one into `launchers`.
+ */
+function recordedLaunchers(
+  install: unknown
+): Record<string, string | undefined> {
+  if (!isRecord(install) || !isRecord(install.launchers)) return {};
+  return Object.fromEntries(
+    Object.entries(install.launchers).filter(
+      (entry): entry is [string, string] => typeof entry[1] === "string"
+    )
+  );
 }
 
 /**
@@ -95,8 +91,8 @@ export function findVersionMismatch(input: {
   // match; outside a build the version is unknown.
   if (runningPackage === undefined || running === "unknown") return undefined;
 
-  const { launchers, cliVersion } = recordedVersions(input.install);
-  const own = recordedLauncherVersion(runningPackage, launchers, cliVersion);
+  const launchers = recordedLaunchers(input.install);
+  const own = launchers[runningPackage];
   if (own !== undefined) {
     return own === running
       ? undefined
@@ -110,7 +106,7 @@ export function findVersionMismatch(input: {
 
   for (const other of LAUNCHER_PACKAGES) {
     if (other === runningPackage) continue;
-    const version = recordedLauncherVersion(other, launchers, cliVersion);
+    const version = launchers[other];
     if (version !== undefined) {
       return {
         runningPackage,

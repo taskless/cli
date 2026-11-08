@@ -91,7 +91,7 @@ function notice(): string {
 }
 
 describe("migration 12: fixtures into case directories", () => {
-  it("turns ast-grep snippets into case directories and records version 12", async () => {
+  it("turns ast-grep snippets into case directories and records the latest version", async () => {
     await scaffoldAtVersion11();
     await writeTree({
       "rules/sg/no-eval/no-eval.yml": sgRule("no-eval"),
@@ -101,8 +101,8 @@ describe("migration 12: fixtures into case directories", () => {
 
     const report = await ensureTasklessDirectory(cwd, { onNotice: () => {} });
 
-    expect(report?.applied).toEqual([12]);
-    expect(await readVersion()).toBe(12);
+    expect(report?.applied[0]).toBe(12);
+    expect(await readVersion()).toBe(LATEST_SCHEMA_VERSION);
     const rule = join(tasklessDirectory, "rules", "sg", "no-eval");
     expect(await readdir(join(rule, "tests", "pass"))).toEqual([
       "pass-01",
@@ -344,17 +344,17 @@ describe("migration 12: fixtures into case directories", () => {
     );
   });
 
-  it("runs 1 through 12 on a fresh scaffold", async () => {
+  it("runs 1 through the latest on a fresh scaffold", async () => {
     // A fresh project and an old one end in the same state by running every
     // migration in order, which is why the shipped ones were left alone.
     const report = await ensureTasklessDirectory(cwd, { onNotice: () => {} });
 
-    expect(LATEST_SCHEMA_VERSION).toBe(12);
+    expect(LATEST_SCHEMA_VERSION).toBeGreaterThanOrEqual(12);
     expect(report?.from).toBe(0);
     expect(report?.applied).toEqual(
-      Array.from({ length: 12 }, (_, index) => index + 1)
+      Array.from({ length: LATEST_SCHEMA_VERSION }, (_, index) => index + 1)
     );
-    expect(await readVersion()).toBe(12);
+    expect(await readVersion()).toBe(LATEST_SCHEMA_VERSION);
     await expect(
       readFile(join(tasklessDirectory, ".gitignore"), "utf8")
     ).resolves.toContain("/.sg-rules/");

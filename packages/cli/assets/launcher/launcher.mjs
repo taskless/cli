@@ -59,40 +59,24 @@ function readInstall() {
 }
 
 /**
- * The package a version recorded only as `install.cliVersion` belongs to. A
- * release has no prerelease part, a local self build ends in `-self` and
- * belongs to no package, and any other prerelease is a nightly.
+ * A package's recorded version, or undefined when none is usable.
+ *
+ * `install.launchers` is the only record; `install.cliVersion` is the last
+ * version that installed, for display. A manifest written before `launchers`
+ * existed is migrated by the `init` that writes this script (scaffold
+ * migration 13), and every CLI since keeps `launchers` when it rewrites the
+ * manifest, so this script never meets one that records its version only in
+ * `cliVersion`.
  */
-function legacyPackage(version) {
-  if (version.endsWith("-self")) return undefined;
-  return /^\d+\.\d+\.\d+$/.test(version) ? PACKAGES[0] : PACKAGES[1];
-}
-
-/** A package's recorded version, or undefined when none is usable. */
 function versionFor(install, name) {
   const launchers = install?.launchers;
-  const recorded =
+  const version =
     launchers !== null && typeof launchers === "object"
-      ? Object.entries(launchers).filter(
-          ([, version]) => typeof version === "string"
-        )
-      : [];
-  // `install.launchers` is the record once it holds any package's version.
-  if (recorded.length > 0) {
-    const version = Object.fromEntries(recorded)[name];
-    return version !== undefined && VERSION.test(version) ? version : undefined;
-  }
-  // A manifest written before `install.launchers` existed records the last
-  // installed version only here.
-  const last = install?.cliVersion;
-  if (
-    typeof last === "string" &&
-    VERSION.test(last) &&
-    legacyPackage(last) === name
-  ) {
-    return last;
-  }
-  return undefined;
+      ? launchers[name]
+      : undefined;
+  return typeof version === "string" && VERSION.test(version)
+    ? version
+    : undefined;
 }
 
 /** The installed package's bin script under `directory`, if it is there. */
