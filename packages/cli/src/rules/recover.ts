@@ -401,8 +401,12 @@ async function write(
     await writePreparedRules(cwd, [prepared], onWarning);
   } catch (error) {
     if (error instanceof CLIError) throw error;
-    // An IO failure (a full disk, an unwritable directory). The staged write
-    // has already rolled back, and its message says so, or says where the
+    // The rule could not be put on disk: an IO failure (a full disk, an
+    // unwritable directory), or a symlink standing where the rule directory
+    // belongs, which is refused before anything is staged. Either way the
+    // tree is as it was, and fixing what the message names then running the
+    // command again is the remedy. After an IO failure the staged write has
+    // already rolled back, and its message says so, or says where the
     // previous version was kept when the roll-back itself could not finish.
     throw new CLIError(
       `Rule ${fileSet.id} was not ${verb}: ${errorMessage(error)}`,
