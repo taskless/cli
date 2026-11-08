@@ -12,9 +12,10 @@ import { CLIError } from "../util/cli-error";
 import { getCliPrefix } from "../util/package-manager";
 import {
   prepareServedRule,
-  writePreparedRule,
+  writePreparedRules,
   type PreparedRule,
 } from "./files";
+import { ruleFilePath } from "./engines";
 import { verifyServedRule } from "./verify-delivery";
 
 /**
@@ -232,8 +233,18 @@ export interface Delivered {
  * of those leaves the tree exactly as it was, rather than holding half a
  * delivery the command then reports as nothing.
  *
- * What this does not cover is an IO failure part-way through the writes
- * themselves (a full disk, say): the rules written before it stay written.
+ * The writes are then all or nothing too, through
+ * {@link writePreparedRules}: every rule is staged in full under `.taskless/`
+ * before any is moved into `.taskless/rules/`, and an IO failure while
+ * staging or moving (a full disk, an `EACCES` on the second rule) rolls back
+ * the rules already moved, so the command fails with
+ * `RULE_GENERATION_FAILED` and `.taskless/rules/` holds what it held before.
+ *
+ * What remains is a process killed outright between two renames, which no
+ * rollback runs for: some rules are then at their new version and the rest
+ * at their old, with every replaced version kept under
+ * `.taskless/.tmp-delivery-*`. A rollback that itself fails keeps that
+ * directory too, and the error says where each replaced version is.
  */
 export async function deliverRevisions(
   cwd: string,
@@ -285,16 +296,37 @@ export async function deliverRevisions(
   }
 
   const delivered: Delivered = { rules: [], files: [], notices: [] };
+  if (ready.length === 0) return delivered;
+
+  // Write warnings arrive tagged with their rule, and join that rule's
+  // notices; one about the delivery as a whole goes after every rule's.
+  const deliveryNotices: string[] = [];
+  try {
+    await writePreparedRules(
+      cwd,
+      ready.map(({ prepared }) => prepared),
+      (message, index) => {
+        const rule = index === undefined ? undefined : ready[index];
+        (rule?.notices ?? deliveryNotices).push(message);
+      }
+    );
+  } catch (error) {
+    if (error instanceof CLIError) throw error;
+    throw new CLIError(
+      error instanceof Error ? error.message : String(error),
+      "RULE_GENERATION_FAILED"
+    );
+  }
+
   for (const { served, prepared, notices } of ready) {
+    const ruleFile = ruleFilePath(cwd, prepared.engine, prepared.id);
     delivered.notices.push(...notices);
-    const ruleFile = await writePreparedRule(cwd, prepared, (message) => {
-      delivered.notices.push(message);
-    });
     delivered.rules.push(prepared.id);
     delivered.files.push(ruleFile);
     const planNotice = notRunOnPlanNotice(served, prepared.engine, ruleFile);
     if (planNotice !== undefined) delivered.notices.push(planNotice);
   }
+  delivered.notices.push(...deliveryNotices);
   return delivered;
 }
 
