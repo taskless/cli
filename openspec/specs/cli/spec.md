@@ -576,7 +576,7 @@ The `update` recipe SHALL read the entries from `info --json`, the read-only com
 
 ### Requirement: The CLI runs only as the version the project recorded
 
-When `.taskless/taskless.json` records a version for the package the running CLI belongs to, the CLI SHALL refuse to run any subcommand other than `init`, `info`, `auth`, and `feedback` unless its own version equals that recorded version. The recorded version for a package SHALL be the version that package's project launcher runs: its `install.launchers` entry, or, only in a manifest whose `install.launchers` records no version, `install.cliVersion` when that value belongs to the package (a release version has no prerelease part, a version ending in `-self` belongs to no package, and any other prerelease belongs to the nightly). The package the running CLI belongs to SHALL be taken from its build target, not read from its version.
+When `.taskless/taskless.json` records a version for the package the running CLI belongs to, the CLI SHALL refuse to run any subcommand other than `init`, `info`, `auth`, and `feedback` unless its own version equals that recorded version. The recorded version for a package SHALL be the version that package's project launcher runs: its `install.launchers` entry. `install.cliVersion` records only the build that last installed, for display, and SHALL NOT be read as any package's version; scaffold migration 13 moves a legacy one into `install.launchers`. The package the running CLI belongs to SHALL be taken from its build target, not read from its version.
 
 `init` is exempt because it is the command that moves the recorded version. `info`, `auth`, and `feedback` are exempt because they read no rules and serve no recipes, and `info` is where a reader diagnoses the refusal. A bare invocation with no subcommand, `--help`, and `--version` SHALL NOT be refused.
 
@@ -610,18 +610,23 @@ The CLI SHALL NOT refuse when the project has no readable `taskless.json`, when 
 
 #### Scenario: A project with no recorded version is not gated
 
-- **WHEN** the project has no `.taskless/taskless.json`, or its manifest records neither `install.launchers` nor `install.cliVersion`
+- **WHEN** the project has no `.taskless/taskless.json`, or its manifest records no version under `install.launchers`
 - **THEN** every subcommand SHALL run on any version
 
 #### Scenario: A self install does not gate the published builds
 
-- **WHEN** the manifest records `install.cliVersion` as `0.13.0-self` and no `install.launchers`
+- **WHEN** the manifest records `install.cliVersion` as `0.13.0-self` and no `install.launchers`, as a self install over a legacy manifest leaves it
 - **THEN** a nightly CLI and a release CLI SHALL each run gated subcommands without `CLI_VERSION_MISMATCH`
 
 #### Scenario: A JSON caller gets the envelope
 
 - **WHEN** a gated subcommand is refused with `--json` set
 - **THEN** stdout SHALL hold `{"ok": false, "code": "CLI_VERSION_MISMATCH", "message": ...}`
+
+#### Scenario: A cliVersion with no launchers record is not read
+
+- **WHEN** the manifest records `install.cliVersion` as `0.13.2` and no `install.launchers`
+- **THEN** `npx @taskless/cli@0.14.0 check` SHALL NOT be refused with `CLI_VERSION_MISMATCH`
 
 ### Requirement: Rule-running commands refuse rules reconciled against other engine versions
 
