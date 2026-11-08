@@ -306,7 +306,9 @@ function describeErrno(error: unknown): string {
  * describes, and silently deleting it would orphan whatever a developer had
  * pointed it at.
  */
-async function assertRuleDirectoryIsNotALink(directory: string): Promise<void> {
+export async function assertRuleDirectoryIsNotALink(
+  directory: string
+): Promise<void> {
   let entry;
   try {
     entry = await lstat(directory);

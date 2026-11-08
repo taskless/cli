@@ -1,5 +1,6 @@
 import { execFileSync } from "node:child_process";
 import {
+  chmod,
   mkdir,
   mkdtemp,
   readdir,
@@ -23,7 +24,11 @@ import { runCommand } from "citty";
 
 import { ruleCommand } from "../src/commands/rules";
 import { LATEST_SCHEMA_VERSION } from "../src/filesystem/migrate";
-import { ruleDirectory, ruleFilePath } from "../src/rules/engines";
+import {
+  engineRulesDirectory,
+  ruleDirectory,
+  ruleFilePath,
+} from "../src/rules/engines";
 import { servedBody, stubV2Server, type StubRule } from "./support/v2-server";
 
 /**
@@ -50,15 +55,38 @@ const goodRule: StubRule = {
 const EXISTING =
   "id: first-good-rule\nlanguage: TypeScript\nrule:\n  pattern: bar\n";
 
-/** Serve a request that produced `goodRule`, then `second`. */
-async function serve(second: StubRule): Promise<void> {
+/** Serve a request that produced `first` (`goodRule` unless named), then `second`. */
+async function serve(second: StubRule, first = goodRule): Promise<void> {
   stubV2Server({
     produced: [
-      { rule: goodRule, body: await servedBody(goodRule, "rev-1") },
+      { rule: first, body: await servedBody(first, "rev-1") },
       { rule: second, body: await servedBody(second, "rev-1") },
     ],
   });
 }
+
+/** A complete Vale rule, so its write lands in a different engine directory. */
+const valeRule: StubRule = {
+  id: "second-rule",
+  engine: "vale",
+  files: [
+    { path: "tests/fail/case/case.md", content: "Some text.\n" },
+    {
+      path: "second-rule.yml",
+      content:
+        "extends: existence\nmessage: no\nlevel: error\ntokens:\n  - text\n",
+    },
+    { path: ".vale.ini", content: "[*.md]\nBasedOnStyles = Taskless\n" },
+  ],
+};
+
+/**
+ * Whether a read-only directory actually refuses this process. It does not
+ * for root, which CI containers sometimes are, nor on Windows, where `chmod`
+ * only toggles the read-only attribute on files.
+ */
+const readOnlyDirectoriesRefuse =
+  process.platform !== "win32" && process.getuid?.() !== 0;
 
 describe("rule create: a request with several rules", () => {
   let cwd: string;
@@ -102,6 +130,9 @@ describe("rule create: a request with several rules", () => {
   });
 
   afterEach(async () => {
+    // A test may leave an engine directory read-only; hand it back so the
+    // temporary tree can be removed.
+    await chmod(engineRulesDirectory(cwd, "vale"), 0o755).catch(() => {});
     vi.restoreAllMocks();
     vi.unstubAllGlobals();
     delete process.env.TASKLESS_TOKEN;
@@ -238,4 +269,77 @@ describe("rule create: a request with several rules", () => {
       second.files[1]?.content
     );
   });
+
+  /**
+   * An IO failure on the second rule's write, after both rules passed every
+   * check: `.taskless/rules/vale/` is read-only, so the Vale rule cannot be
+   * moved into place, and the `sg` rule committed before it must be undone.
+   */
+  async function failSecondWrite(): Promise<void> {
+    await mkdir(engineRulesDirectory(cwd, "vale"), { recursive: true });
+    await chmod(engineRulesDirectory(cwd, "vale"), 0o555);
+  }
+
+  /** Any staging directory a delivery left inside `.taskless/`. */
+  async function leftovers(): Promise<string[]> {
+    const entries = await readdir(join(cwd, ".taskless"));
+    return entries.filter((name) => name.startsWith(".tmp-delivery-"));
+  }
+
+  it.skipIf(!readOnlyDirectoriesRefuse)(
+    "restores an overwritten rule when a later write fails",
+    async () => {
+      // A stray beside the seeded rule, so the restore is shown to bring back
+      // the whole old directory and not only the file being replaced.
+      const stray = join(
+        ruleDirectory(cwd, "sg", "first-good-rule"),
+        "tests",
+        "pass",
+        "old",
+        "case.ts"
+      );
+      await mkdir(join(stray, ".."), { recursive: true });
+      await writeFile(stray, "bar();\n");
+      const before = await seededTree();
+      await serve(valeRule);
+      await failSecondWrite();
+
+      await expect(create()).rejects.toThrow();
+      const { code, message } = envelope();
+      expect(code).toBe("RULE_GENERATION_FAILED");
+      expect(message).toContain('Rule "second-rule" could not be written');
+      expect(message).toContain("EACCES");
+      expect(await rulesTree()).toEqual(before);
+      expect(await leftovers()).toEqual([]);
+    }
+  );
+
+  it.skipIf(!readOnlyDirectoriesRefuse)(
+    "removes a new rule when a later write fails",
+    async () => {
+      const before = await seededTree();
+      const newRule: StubRule = {
+        id: "brand-new-rule",
+        engine: "sg",
+        files: [
+          { path: "tests/fail/case/case.ts", content: "foo();\n" },
+          {
+            path: "brand-new-rule.yml",
+            content:
+              "id: brand-new-rule\nlanguage: TypeScript\nrule:\n  pattern: foo\n",
+          },
+        ],
+      };
+      await serve(valeRule, newRule);
+      await failSecondWrite();
+
+      await expect(create()).rejects.toThrow();
+      expect(envelope().code).toBe("RULE_GENERATION_FAILED");
+      expect(await rulesTree()).toEqual(before);
+      await expect(
+        readdir(ruleDirectory(cwd, "sg", "brand-new-rule"))
+      ).rejects.toThrow();
+      expect(await leftovers()).toEqual([]);
+    }
+  );
 });

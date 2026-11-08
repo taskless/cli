@@ -1,5 +1,5 @@
-import { mkdir, readFile, rm } from "node:fs/promises";
-import { join } from "node:path";
+import { mkdir, mkdtemp, readFile, rename, rm, rmdir } from "node:fs/promises";
+import { dirname, join } from "node:path";
 
 import { parse } from "yaml";
 
@@ -12,11 +12,14 @@ import {
   isKnownEngine,
   LEGACY_RULE_TESTS_DIRECTORY,
   RULE_TESTS_DIRECTORY,
+  TASKLESS_DIRECTORY,
   type EngineName,
 } from "./layout";
 import { describeRuleIdCollision, findRuleIdCollision } from "./id-uniqueness";
+import { isMissingDirectory } from "./errno";
 import { isValidRuleId } from "./validate-id";
 import {
+  assertRuleDirectoryIsNotALink,
   assessDelivery,
   describeMissingFixtures,
   writeDeliveredFileSet,
@@ -114,6 +117,243 @@ export async function writePreparedRule(
   }
   await warnOnIdCollision(cwd, id, onWarning);
   return ruleFilePath(cwd, engine, id);
+}
+
+/**
+ * Where a multi-rule delivery is assembled, inside `.taskless/` so that every
+ * rename out of it stays on one filesystem: a rename across devices is a copy,
+ * which is neither atomic nor guaranteed to succeed.
+ */
+const STAGING_PREFIX = ".tmp-delivery-";
+
+/** One rule's move into `.taskless/rules/`, recorded so it can be undone. */
+interface CommitStep {
+  id: string;
+  /** The rule directory being replaced or created. */
+  target: string;
+  /** Where the version already at `target` was moved, when there was one. */
+  previous?: string;
+  /** The topmost directory `mkdir` created above `target`, when it made one. */
+  createdParent?: string;
+  /** Set once the staged rule is at `target`. */
+  committed: boolean;
+}
+
+/**
+ * Write several rules {@link prepareServedRule} accepted, so that an IO
+ * failure part-way leaves `.taskless/rules/` as it was. `onWarning` names the
+ * rule a warning is about by its index in `rules`, and omits the index for a
+ * warning about the delivery as a whole.
+ *
+ * Two phases:
+ *
+ * 1. **Stage.** Every rule is written in full into a fresh directory under
+ *    `.taskless/`, by the same {@link writeDeliveredFileSet} a single rule
+ *    goes through, so a full disk or an unwritable file stops here, before
+ *    anything under `.taskless/rules/` has moved.
+ * 2. **Commit.** Each rule is moved into place with `rename`: the version
+ *    already there (if any) is renamed aside into the staging directory, then
+ *    the staged directory is renamed onto the rule's path. If any rename
+ *    fails, the rules already moved are undone in reverse order: the new
+ *    directory is removed and the old one renamed back, and directories the
+ *    commit created are removed again.
+ *
+ * WHAT IS AND IS NOT ATOMIC. Each rename is atomic, on one filesystem; the
+ * sequence of them is not. A process killed outright (SIGKILL, a power loss)
+ * between two renames leaves `.taskless/rules/` holding some rules at their
+ * new version and the rest at their old one, possibly with one rule absent
+ * for the instant between its two renames. Every replaced version is then
+ * still on disk, under `.taskless/.tmp-delivery-*`, but nothing restores it
+ * automatically. No renames are fsynced, so after a power loss the order in
+ * which they reached the disk is up to the filesystem. Rollback can itself
+ * fail (a permission changed underneath it, say), and then the staging
+ * directory is KEPT rather than removed and the error names what is where, so
+ * the replaced version is never deleted while it is the only copy.
+ *
+ * The rule directory being a symlink is refused before anything is staged,
+ * as {@link writeDeliveredFileSet} refuses it: renaming the link aside would
+ * otherwise orphan whatever a developer had pointed it at.
+ */
+export async function writePreparedRules(
+  cwd: string,
+  rules: readonly PreparedRule[],
+  onWarning?: (message: string, index?: number) => void
+): Promise<void> {
+  await ensureTasklessDirectory(cwd);
+  const staging = await mkdtemp(join(cwd, TASKLESS_DIRECTORY, STAGING_PREFIX));
+  // The rule being staged, then the steps of the commit: between them, the
+  // rule a failure happened on.
+  let current: string | undefined;
+  const steps: CommitStep[] = [];
+  try {
+    for (const rule of rules) {
+      current = rule.id;
+      await assertRuleDirectoryIsNotALink(
+        ruleDirectory(cwd, rule.engine, rule.id)
+      );
+      // The staging directory stands in for the project root, so the staged
+      // copy lands at the same relative path it will occupy for real.
+      await writeDeliveredFileSet(
+        staging,
+        rule.engine,
+        rule.id,
+        rule.assessment
+      );
+    }
+    current = undefined;
+    await commitStaged(cwd, staging, rules, steps);
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : String(error);
+    if (error instanceof RollbackIncompleteError) {
+      // The staging directory holds the only copy of a replaced version.
+      throw new Error(
+        `${reason} The staging directory ${staging} was kept, so nothing ` +
+          `in it is lost; move what it names back, then delete it.`
+      );
+    }
+    const unremoved = await removeStaging(staging);
+    const failed = current ?? steps.at(-1)?.id;
+    throw new Error(
+      `${failed === undefined ? "The rules" : `Rule "${failed}"`} could ` +
+        `not be written (${reason}). Every rule already moved into place was ` +
+        `rolled back, so .taskless/rules/ is as it was.` +
+        (unremoved === undefined ? "" : ` ${unremoved}`)
+    );
+  }
+
+  const unremoved = await removeStaging(staging);
+  if (unremoved !== undefined) onWarning?.(unremoved);
+
+  // After the commit, and asked of the real tree, as `writePreparedRule` asks
+  // them: these are observations about rules that are now on disk.
+  if (onWarning === undefined) return;
+  for (const [index, { id, assessment }] of rules.entries()) {
+    const warn = (message: string): void => {
+      onWarning(message, index);
+    };
+    const missingFixtures = describeMissingFixtures(assessment.files);
+    if (missingFixtures !== undefined) {
+      warn(`Rule "${id}" ${missingFixtures}.`);
+    }
+    await warnOnIdCollision(cwd, id, warn);
+  }
+}
+
+/**
+ * Move every staged rule into `.taskless/rules/`, recording each move in
+ * `steps`, and undo the ones already made if any move fails. Throws the
+ * failure once the undo is complete, or {@link RollbackIncompleteError} when
+ * the undo itself could not finish.
+ */
+async function commitStaged(
+  cwd: string,
+  staging: string,
+  rules: readonly PreparedRule[],
+  steps: CommitStep[]
+): Promise<void> {
+  const replaced = join(staging, "replaced");
+  await mkdir(replaced);
+  try {
+    for (const [index, rule] of rules.entries()) {
+      const step: CommitStep = {
+        id: rule.id,
+        target: ruleDirectory(cwd, rule.engine, rule.id),
+        committed: false,
+      };
+      // Recorded before the first rename, so a failure on either rename of
+      // this rule is undone along with every rule before it.
+      steps.push(step);
+      const previous = join(replaced, String(index));
+      try {
+        await rename(step.target, previous);
+        step.previous = previous;
+      } catch (error) {
+        // Nothing there yet is the ordinary case for a new rule.
+        if (!isMissingDirectory(error)) throw error;
+      }
+      step.createdParent = await mkdir(dirname(step.target), {
+        recursive: true,
+      });
+      await rename(ruleDirectory(staging, rule.engine, rule.id), step.target);
+      step.committed = true;
+    }
+  } catch (error) {
+    const stranded = await rollBack(steps);
+    if (stranded.length > 0) {
+      const reason = error instanceof Error ? error.message : String(error);
+      throw new RollbackIncompleteError(reason, stranded);
+    }
+    throw error;
+  }
+}
+
+/**
+ * Undo {@link commitStaged}'s steps, last first, and return a description of
+ * each one that could not be undone. Every step is attempted even after one
+ * fails, so as much as possible is put back.
+ */
+async function rollBack(steps: readonly CommitStep[]): Promise<string[]> {
+  const stranded: string[] = [];
+  for (const step of steps.toReversed()) {
+    try {
+      if (step.committed) {
+        await rm(step.target, { recursive: true, force: true });
+      }
+      if (step.createdParent !== undefined) {
+        await removeCreatedParents(step.target, step.createdParent);
+      }
+      if (step.previous !== undefined) {
+        await rename(step.previous, step.target);
+      }
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code ?? String(error);
+      stranded.push(
+        step.previous === undefined
+          ? `rule "${step.id}" may still be at ${step.target} (${code})`
+          : `the previous version of rule "${step.id}" is at ${step.previous}, not ${step.target} (${code})`
+      );
+    }
+  }
+  return stranded;
+}
+
+/**
+ * Remove the directories `mkdir` created for a rule, deepest first, stopping
+ * at the topmost one it created. `rmdir` rather than a recursive `rm`, so a
+ * directory something else has since written into is refused, never emptied.
+ */
+async function removeCreatedParents(
+  target: string,
+  createdParent: string
+): Promise<void> {
+  for (let directory = dirname(target); ; directory = dirname(directory)) {
+    await rmdir(directory);
+    if (directory === createdParent || dirname(directory) === directory) {
+      return;
+    }
+  }
+}
+
+/** Remove the staging directory, returning a warning when it could not be. */
+async function removeStaging(staging: string): Promise<string | undefined> {
+  try {
+    await rm(staging, { recursive: true, force: true });
+    return undefined;
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code ?? String(error);
+    return `The staging directory ${staging} could not be removed (${code}); it holds nothing still in use and can be deleted.`;
+  }
+}
+
+/** A failed commit whose undo could not put everything back. */
+class RollbackIncompleteError extends Error {
+  constructor(reason: string, stranded: readonly string[]) {
+    super(
+      `The rules could not be written (${reason}), and rolling back the ` +
+        `rules already moved into place did not finish: ${stranded.join("; ")}.`
+    );
+    this.name = "RollbackIncompleteError";
+  }
 }
 
 /**
