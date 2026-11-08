@@ -117,8 +117,11 @@ After verification, the CLI SHALL write a served rule so that its directory hold
 served files: every file in the directory that the served set does not contain SHALL be removed,
 including under `tests/`, since a served set always carries the rule's fixtures. The CLI SHALL
 create each served file's parent directories as needed, so a nested path such as
-`captures/env.yml` or `tests/fail/eval-call/case.ts` is written wherever it lands. When a stale file cannot be removed, the CLI SHALL say that the served
-bytes were written and name each entry it could not remove.
+`captures/env.yml` or `tests/fail/eval-call/case.ts` is written wherever it lands. The CLI
+SHALL write the served set in full into a staging directory and move it over the rule
+directory as a unit, so the old directory is removed whole, every entry in it included, and
+there is no outcome in which the served bytes are written while a stale entry beside them
+survives.
 
 A served set whose fixtures are in the old format, under `.tests/`, SHALL be migrated just in
 time: converted the same way migration 12 converts a local rule, written in the `tests/`
@@ -176,6 +179,11 @@ under `tests/` at their served path below `.tests/`, and the delivery SHALL say 
 
 - **WHEN** `rule create` or `rule improve` fetches a produced rule whose served `revisionId` differs from the one the request reported
 - **THEN** the CLI SHALL refuse that rule and write nothing for it
+
+#### Scenario: An entry the old directory held is gone after the write
+
+- **WHEN** a rule directory holds `notes.md` and `tests/pass/old/old.ts`, and the served set names neither
+- **THEN** after the write the rule directory SHALL hold exactly the served files
 
 ### Requirement: Every rule of a request is checked before any is written
 
