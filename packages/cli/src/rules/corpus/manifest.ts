@@ -106,12 +106,18 @@ export const CORPUS_MANIFESTS: readonly CorpusManifest[] = [
     ruleId: "env-keys-declared",
     assetDirectory: "reference-runtime",
     promptPath: "prompt.md",
-    rulePaths: ["check.ts", "captures/env-read.yml"],
+    rulePaths: [
+      "check.ts",
+      "captures/env-read.yml",
+      "captures/env-read-tsx.yml",
+    ],
     testPaths: [
       "tests/pass/declared/src/config.ts",
       "tests/pass/declared/.env",
       "tests/fail/undeclared/src/config.ts",
       "tests/fail/undeclared/.env",
+      "tests/fail/undeclared-tsx/src/banner.tsx",
+      "tests/fail/undeclared-tsx/.env",
     ],
   },
 ];

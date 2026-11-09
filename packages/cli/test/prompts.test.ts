@@ -937,6 +937,28 @@ describe("Vale directives never reach a reader", () => {
   });
 });
 
+describe("runtime capture quirks", () => {
+  // Each is pinned against the bundled binary in
+  // ast-grep-vendor-contract.test.ts; this checks the recipe states them
+  // (taskless/cli#654).
+  it("names the four ast-grep traps a capture hits", () => {
+    const rendered = getPrompt("create-runtime-rule");
+    expect(rendered).toContain("## Capture quirks");
+    expect(rendered).toContain(
+      "**`Tsx` and `TypeScript` are two parsers, not aliases.**"
+    );
+    expect(rendered).toContain(
+      "- pattern: foo($VAR)\n      - pattern: foo($VAR, $$$)"
+    );
+    expect(rendered).toContain(
+      "**A match on a chained call starts at the head of the chain.**"
+    );
+    expect(rendered).toContain(
+      "**A `jsx_text` match starts at the end of the opening tag.**"
+    );
+  });
+});
+
 describe("fixture sources", () => {
   // The recipes in which the agent writes fixtures itself. A recipe that only
   // submits cases to the generator carries its own sentence instead.

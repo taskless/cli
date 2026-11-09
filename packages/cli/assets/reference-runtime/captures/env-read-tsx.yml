@@ -1,0 +1,16 @@
+# The same narrow over `.tsx` files. `TypeScript` and `Tsx` are two ast-grep
+# parsers, not aliases: a capture declaring `TypeScript` never reads a `.tsx`
+# file. The id differs, because ast-grep attributes a match by id, and the name
+# is the same, because a check branches on the name and both captures find the
+# same thing.
+id: env-read-tsx
+language: Tsx
+rule:
+  pattern: process.env.$VAR
+metadata:
+  taskless:
+    version: 1
+    kind: runtime
+    name: env-read
+    check: check.ts
+    match: anchor

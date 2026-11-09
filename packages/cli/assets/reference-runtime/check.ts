@@ -24,6 +24,11 @@ interface Match {
   file: string;
   line: number;
   column: number;
+  /**
+   * The matched source text. A capture with no metavariable, such as one on
+   * `kind: jsx_text`, has nothing in `captures`, so this is what it reads.
+   */
+  text: string;
   /** Captured metavariables by name. */
   captures: Record<string, string>;
 }
@@ -73,7 +78,8 @@ export default async function check(
 
   for (const match of matches) {
     // Branch on the capture rule's NAME, never on its id: the id is a
-    // baked-in hash and is opaque to a check.
+    // baked-in hash and is opaque to a check. Both captures, the TypeScript
+    // one and the Tsx one, carry this name, so one branch covers both.
     if (match.rule !== "env-read") continue;
 
     const name = match.captures.VAR;
