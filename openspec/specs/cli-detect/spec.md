@@ -287,6 +287,12 @@ Optional extensions shipped with the tool, third-party plugin packages, presets,
 - **WHEN** the repository has a local ESLint plugin defining six rules
 - **THEN** `detect --json` SHALL report a custom-rule count of six for ESLint with the plugin's path as evidence
 
+#### Scenario: A rule directory beside a nested ESLint config is counted
+
+- **WHEN** an ESLint config lives in a sub-directory (for example `dashboard/eslint.config.ts`) and a house rule directory sits beside it (`dashboard/eslint-rules/`)
+- **THEN** `detect --json` run from the repository root SHALL count that directory's rules for ESLint, with `dashboard/eslint-rules` in the evidence, and SHALL report it as a rule style
+- **AND** a rule directory reached both from the root and from a config beside it SHALL be counted once
+
 #### Scenario: A built-in pylint extension does not count
 
 - **WHEN** `load-plugins` names only `pylint.extensions.*` modules

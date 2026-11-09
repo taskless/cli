@@ -90,6 +90,45 @@ const FLAT_CONFIGS = [
   "eslint.config.cts",
 ];
 
+/** Every ESLint config file name, legacy and flat. The scan's linter signal reads it too. */
+export const ESLINT_CONFIG_FILES = [
+  ".eslintrc",
+  ".eslintrc.js",
+  ".eslintrc.cjs",
+  ".eslintrc.mjs",
+  ".eslintrc.json",
+  ".eslintrc.yml",
+  ".eslintrc.yaml",
+  ...FLAT_CONFIGS,
+];
+
+/**
+ * The house rule directories that exist, relative to `root`: at the root and
+ * beside every ESLint config the scan found, so a package that keeps its
+ * ESLint setup in `dashboard/` reports `dashboard/eslint-rules` from a root
+ * run. A directory reached twice (a root config beside a root rule directory)
+ * is listed once.
+ */
+export function findEslintRuleDirectories(
+  root: string,
+  pathsFor: (basename: string) => string[]
+): string[] {
+  const bases = new Set<string>(["."]);
+  for (const name of ESLINT_CONFIG_FILES) {
+    for (const relativePath of pathsFor(name)) {
+      bases.add(dirname(relativePath));
+    }
+  }
+  const found = new Set<string>();
+  for (const base of bases) {
+    for (const directory of ESLINT_RULE_DIRECTORIES) {
+      const relativePath = base === "." ? directory : join(base, directory);
+      if (existsSync(resolve(root, relativePath))) found.add(relativePath);
+    }
+  }
+  return [...found];
+}
+
 /** Packages that load rules from a file in the repository. */
 const ESLINT_LOCAL_RULE_PACKAGES = [
   "eslint-plugin-local-rules",
@@ -152,10 +191,11 @@ async function countEslint(context: CustomRuleContext): Promise<CustomRules> {
   let unknown = false;
   const evidence: string[] = [];
 
-  for (const directory of ESLINT_RULE_DIRECTORIES) {
-    const path = resolve(context.root, directory);
-    if (!existsSync(path)) continue;
-    const count = countRuleDirectory(path);
+  for (const directory of findEslintRuleDirectories(
+    context.root,
+    context.pathsFor
+  )) {
+    const count = countRuleDirectory(resolve(context.root, directory));
     if (count === undefined) continue;
     known += count;
     evidence.push(`${directory} (${count} rules)`);
