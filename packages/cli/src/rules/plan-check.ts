@@ -6,6 +6,7 @@ import {
   resolveRepositoryPath,
   resolveRepositoryUrl,
 } from "../util/git-remote";
+import type { IntegrityEntry } from "../schemas/check";
 import { getCliPrefix } from "../util/package-manager";
 import { orgNotFoundRemedy } from "./generate";
 import type { EngineName } from "./layout";
@@ -20,11 +21,7 @@ import {
   takeSnapshot,
   type Snapshot,
 } from "./snapshot";
-import {
-  applyVerdicts,
-  NOT_IN_PLAN_REASON,
-  type IntegrityEntry,
-} from "./verdicts";
+import { applyVerdicts, NOT_IN_PLAN_REASON } from "./verdicts";
 
 /**
  * Deciding what a `check` runs, separately from running it.
@@ -289,7 +286,7 @@ export async function planCheck(
         `missing: ${entry.ruleId} (revision ${entry.revisionId ?? "unknown"})`
       );
     }
-    if (entry.copyOf !== undefined) {
+    if (entry.verdict === "unknown" && entry.copyOf !== undefined) {
       log.write(
         `copy: ${entry.ruleId} carries files of ${entry.copyOf.ruleId} (revision ${
           entry.copyOf.revisionId ?? "unknown"

@@ -1,5 +1,95 @@
 import { z } from "zod";
 
+/** A file that differs from what was issued, by signature. */
+export const differingFileSchema = z.object({
+  path: z.string(),
+  expected: z
+    .string()
+    .optional()
+    .describe("Issued signature; absent for an added file"),
+  got: z
+    .string()
+    .optional()
+    .describe("Reported signature; absent for a removed file"),
+});
+
+const integrityEngineSchema = z.enum(["sg", "vale", "runtime"]).optional();
+
+/**
+ * One `check --json` `integrity` entry, discriminated on `verdict` so each
+ * verdict carries only its own fields (#647). A flat object with every field
+ * optional accepted, and documented, a `missing` entry with `copyOf` or an
+ * `unsafe` one with `revisionId`; the pairing lived only in descriptions.
+ */
+export const integrityEntrySchema = z.discriminatedUnion("verdict", [
+  z.strictObject({
+    ruleId: z.string(),
+    engine: integrityEngineSchema,
+    verdict: z.literal("unsafe").describe("Edited since Taskless issued it"),
+    files: z
+      .array(differingFileSchema)
+      .describe("Each file that differs from what was issued"),
+  }),
+  z.strictObject({
+    ruleId: z.string(),
+    engine: integrityEngineSchema,
+    verdict: z
+      .literal("missing")
+      .describe("Issued for this repository but not on disk"),
+    revisionId: z
+      .string()
+      .optional()
+      .describe("The revision `rule restore` brings back"),
+  }),
+  z.strictObject({
+    ruleId: z.string(),
+    engine: integrityEngineSchema,
+    verdict: z
+      .literal("unknown")
+      .describe(
+        "A runtime rule the service never issued, or a rule of any engine carrying an issued rule's file (see copyOf)"
+      ),
+    files: z
+      .array(differingFileSchema)
+      .optional()
+      .describe("For a copy: each file that differs from its source revision"),
+    copyOf: z
+      .object({
+        ruleId: z.string().describe("The issued rule it was copied from"),
+        revisionId: z
+          .string()
+          .optional()
+          .describe("The source revision it matches best"),
+        sourceMissing: z
+          .boolean()
+          .describe(
+            "The source is also missing from disk: the copy is a rename, and restoring the source is the fix"
+          ),
+      })
+      .optional()
+      .describe(
+        "The rule carries a file Taskless issued to another rule. An ast-grep or Vale copy does not run and fails the check"
+      ),
+  }),
+  z.strictObject({
+    ruleId: z.string(),
+    engine: integrityEngineSchema,
+    verdict: z
+      .literal("unaccounted")
+      .describe("The service's answer did not account for it"),
+  }),
+  z.strictObject({
+    ruleId: z.string(),
+    engine: integrityEngineSchema,
+    verdict: z
+      .literal("duplicate")
+      .describe("Its id is used by more than one engine"),
+  }),
+]);
+
+/** A `check --json` `integrity` entry, typed from the schema. */
+export type IntegrityEntry = z.infer<typeof integrityEntrySchema>;
+
 /** Schema for a single check result */
 const checkResultSchema = z.object({
   source: z.string().describe("Scanner that produced this result"),
@@ -85,56 +175,7 @@ export const outputSchema = z.object({
       "Present only with --preserve-logs: the kept run directory, relative to the project root. It holds the snapshot that ran, the assembled engine configs, and engine.log, sg.log, vale.log, and runtime.log"
     ),
   integrity: z
-    .array(
-      z.object({
-        ruleId: z.string(),
-        engine: z.enum(["sg", "vale", "runtime"]).optional(),
-        verdict: z
-          .enum(["unsafe", "missing", "unknown", "unaccounted", "duplicate"])
-          .describe(
-            "unsafe: edited since issued; missing: issued but not on disk; unknown: a runtime rule the service never issued, or a rule of any engine carrying an issued rule's file (see copyOf); unaccounted: the service's answer did not account for it; duplicate: its id is used by more than one engine"
-          ),
-        files: z
-          .array(
-            z.object({
-              path: z.string(),
-              expected: z
-                .string()
-                .optional()
-                .describe("Issued signature; absent for an added file"),
-              got: z
-                .string()
-                .optional()
-                .describe("Reported signature; absent for a removed file"),
-            })
-          )
-          .optional()
-          .describe(
-            "For unsafe: each file that differs from what was issued. For a copy: each file that differs from its source revision"
-          ),
-        revisionId: z
-          .string()
-          .optional()
-          .describe("For missing: the revision `rule restore` brings back"),
-        copyOf: z
-          .object({
-            ruleId: z.string().describe("The issued rule it was copied from"),
-            revisionId: z
-              .string()
-              .optional()
-              .describe("The source revision it matches best"),
-            sourceMissing: z
-              .boolean()
-              .describe(
-                "The source is also missing from disk: the copy is a rename, and restoring the source is the fix"
-              ),
-          })
-          .optional()
-          .describe(
-            "For unknown: the rule carries a file Taskless issued to another rule. An ast-grep or Vale copy does not run and fails the check"
-          ),
-      })
-    )
+    .array(integrityEntrySchema)
     .optional()
     .describe(
       "Rules whose verified state needs attention. `taskless rule restore <ruleId>` repairs unsafe and missing ones"
