@@ -894,6 +894,38 @@ describe("taskless detect", () => {
       expect(rules?.evidence).toEqual(["eslint-rules (7 rules)"]);
     });
 
+    it("counts a rule directory beside a nested config from a root run", async () => {
+      await writeNested(
+        cwd,
+        "dashboard/eslint.config.ts",
+        'import noFoo from "./eslint-rules/no-foo";\nexport default [{ plugins: { house: { rules: { noFoo } } } }];\n'
+      );
+      for (const file of ["a.ts", "b.ts", "c.ts", "d.ts", "e.ts", "f.ts"]) {
+        await writeNested(cwd, `dashboard/eslint-rules/${file}`, "");
+      }
+      const result = await detect(cwd);
+      const rules = customRules(result, "eslint");
+      expect(rules?.count).toBe(6);
+      expect(rules?.evidence).toContain("dashboard/eslint-rules (6 rules)");
+      expect(result.ruleStyles.map((style) => style.source)).toEqual([
+        "dashboard/eslint-rules",
+      ]);
+    });
+
+    it("counts a root rule directory once beside a root config", async () => {
+      await writeFile(join(cwd, "eslint.config.js"), "export default [];");
+      await writeNested(cwd, "packages/web/.eslintrc.json", "{}");
+      await writeNested(cwd, "eslint-rules/a.js", "");
+      const result = await detect(cwd);
+      expect(customRules(result, "eslint")).toEqual({
+        count: 1,
+        evidence: ["eslint-rules (1 rules)"],
+      });
+      expect(result.ruleStyles.map((style) => style.source)).toEqual([
+        "eslint-rules",
+      ]);
+    });
+
     // Permissions do not restrict root, and Windows ignores the mode bits.
     it.skipIf(process.platform === "win32" || process.getuid?.() === 0)(
       "skips an unreadable rule directory instead of failing the scan",

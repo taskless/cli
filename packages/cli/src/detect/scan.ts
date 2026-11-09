@@ -14,7 +14,8 @@ import {
 import {
   countCustomRules,
   type CustomRules,
-  ESLINT_RULE_DIRECTORIES,
+  ESLINT_CONFIG_FILES,
+  findEslintRuleDirectories,
 } from "./custom-rules";
 
 export interface DetectedLinter {
@@ -176,21 +177,7 @@ const LINTER_SIGNALS: readonly LinterSignal[] = [
   {
     name: "eslint",
     languages: ["JavaScript", "TypeScript"],
-    configFiles: [
-      ".eslintrc",
-      ".eslintrc.js",
-      ".eslintrc.cjs",
-      ".eslintrc.mjs",
-      ".eslintrc.json",
-      ".eslintrc.yml",
-      ".eslintrc.yaml",
-      "eslint.config.js",
-      "eslint.config.mjs",
-      "eslint.config.cjs",
-      "eslint.config.ts",
-      "eslint.config.mts",
-      "eslint.config.cts",
-    ],
+    configFiles: ESLINT_CONFIG_FILES,
     packageJsonKeys: ["eslintConfig"],
     deps: ["eslint"],
   },
@@ -853,6 +840,7 @@ interface NodeManifest extends Manifest {
  */
 function detectRuleStyles(
   root: string,
+  pathsFor: (basename: string) => string[],
   nodeManifests: NodeManifest[]
 ): RuleStyle[] {
   const ruleStyles: RuleStyle[] = [];
@@ -865,14 +853,12 @@ function detectRuleStyles(
     });
     break;
   }
-  for (const directory of ESLINT_RULE_DIRECTORIES) {
-    if (existsSync(resolve(root, directory))) {
-      ruleStyles.push({
-        source: directory,
-        description:
-          "Custom ESLint rules — follow the house style when authoring new ones.",
-      });
-    }
+  for (const directory of findEslintRuleDirectories(root, pathsFor)) {
+    ruleStyles.push({
+      source: directory,
+      description:
+        "Custom ESLint rules — follow the house style when authoring new ones.",
+    });
   }
   const localRulesManifest = nodeManifests.find(
     (manifest) =>
@@ -1140,7 +1126,7 @@ export async function detectRepository(cwd: string): Promise<DetectResult> {
   return {
     linters,
     languages: [...languages],
-    ruleStyles: detectRuleStyles(root, nodeManifests),
+    ruleStyles: detectRuleStyles(root, pathsFor, nodeManifests),
     ...(await detectAutomation(root)),
   };
 }
