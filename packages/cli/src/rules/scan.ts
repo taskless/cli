@@ -14,6 +14,7 @@ import {
   isPlatformBinary,
   pathCommandName,
   resolvePlatformBinary,
+  type PlatformBinaryResolution,
 } from "./platform-binary";
 
 export interface ScanResult {
@@ -126,16 +127,23 @@ export function isAstGrepBinary(path: string): boolean {
  * The result is cached for the process: the search spawns a subprocess per
  * candidate, and callers resolve once per rule.
  */
-let cachedSgBinary: string | undefined;
+let cachedSgBinary: PlatformBinaryResolution | undefined;
+
+/**
+ * The cached resolution itself, for a caller that needs more than the path:
+ * the engine gate reads `source` and `versionOutput` to refuse a binary that
+ * is not the version this CLI bundles (#650). A miss is not cached, as before.
+ */
+export function resolveSgBinary(): PlatformBinaryResolution {
+  if (cachedSgBinary !== undefined) return cachedSgBinary;
+  const resolution = resolvePlatformBinary(AST_GREP_BINARY);
+  if (resolution.path !== undefined) cachedSgBinary = resolution;
+  return resolution;
+}
 
 export function findSgBinary(): string {
-  if (cachedSgBinary !== undefined) return cachedSgBinary;
-
-  const { path, tried } = resolvePlatformBinary(AST_GREP_BINARY);
-  if (path !== undefined) {
-    cachedSgBinary = path;
-    return path;
-  }
+  const { path, tried } = resolveSgBinary();
+  if (path !== undefined) return path;
 
   // ast-grep, unlike Vale, has no degraded mode: it is the executor for every
   // `sg` rule, so a miss is fatal for this command rather than one engine
