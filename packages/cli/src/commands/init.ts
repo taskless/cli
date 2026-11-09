@@ -338,7 +338,9 @@ export const updateCommand = defineCommand({
               // `null` when there is nothing to walk: either the project has
               // never recorded a reconciliation, which is not the same as being
               // behind, or it is already current.
-              walk: status.walk,
+              // Without a project there is nothing to walk either, so this
+              // agrees with `reconcile.required` below.
+              walk: project ? status.walk : null,
               // Whether to finish with `update --rules`, which a null `walk`
               // does not settle: an engine bump between two nightlies of one
               // release has no ledger section and still trips the engine gate.

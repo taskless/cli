@@ -386,6 +386,29 @@ describe("recording a rules reconciliation", () => {
       expect(rules?.["reconciledTo"]).toBe(await installedVersion());
     });
 
+    it("is stamped despite a recorded engine ahead, since no rule uses it", async () => {
+      // An engine counts as ahead only while it has rules, as in the gate.
+      // Checking the recorded engines before the rules left a ruleless
+      // project with a stale entry unstamped forever.
+      const path = join(cwd, ".taskless", "taskless.json");
+      const manifest = JSON.parse(await readFile(path, "utf8")) as Record<
+        string,
+        unknown
+      >;
+      manifest["rules"] = {
+        reconciledTo: "0.11.0",
+        engines: { sg: "999.0.0", vale: VALE_VERSION },
+      };
+      await writeFile(path, JSON.stringify(manifest, undefined, 2));
+
+      await runCli(["init", "-d", cwd]);
+
+      expect(await readRules()).toEqual({
+        reconciledTo: await installedVersion(),
+        engines: { sg: AST_GREP_VERSION, vale: VALE_VERSION },
+      });
+    });
+
     it("keeps a marker a newer CLI wrote", async () => {
       await setMarker("999.0.0");
 
@@ -613,6 +636,22 @@ describe("recording a rules reconciliation", () => {
       expect(envelope.message).toContain("ast-grep 999.0.0");
       expect(await readRules()).toEqual(before);
     });
+
+    it("does not hold up update --rules once that engine's rules are gone", async () => {
+      // `reconcileStatus` reports nothing due here, because the gate only
+      // compares engines with rules. `update --rules` has to agree.
+      await rm(join(cwd, ".taskless", "rules", "sg"), {
+        recursive: true,
+        force: true,
+      });
+      const info = (await runJson(["info", "--json", "-d", cwd])) as {
+        rules: { reconcile: Reconcile };
+      };
+      expect(info.rules.reconcile.enginesAhead).toEqual([]);
+
+      const result = await runCli(["update", "--rules", "-d", cwd]);
+      expect(result.exitCode).toBe(0);
+    });
   });
 
   it("leaves install untouched, since the two namespaces drift apart", async () => {
@@ -646,9 +685,10 @@ describe("taskless update with no flags", () => {
     expect(payload.topic).toBe("update");
     expect(payload.installed).toBeTruthy();
     expect(payload.recipe).toContain("# Topic: update");
-    // No marker recorded, so the walk starts at the baseline: absent means
-    // the project predates the ledger and every entry still applies.
-    expect(payload.walk).toEqual({ from: "0.0.0", to: payload.installed });
+    // Run where there is no `.taskless/`, so there is nothing to walk. The
+    // baseline walk for a project with no marker is asserted on a fixture
+    // above ("reports a walk from the baseline when no marker is recorded").
+    expect(payload.walk).toBeNull();
   });
 
   it("reports an unreadable manifest as an error, not as nothing due", async () => {
@@ -680,10 +720,12 @@ describe("taskless update with no flags", () => {
       expect(result.exitCode).toBe(0);
       const payload = JSON.parse(result.stdout) as {
         ok: boolean;
+        walk: unknown;
         reconcile: { required: boolean; engines: unknown[] };
         ruleMigrations: unknown[];
       };
       expect(payload.ok).toBe(true);
+      expect(payload.walk).toBeNull();
       expect(payload.reconcile).toMatchObject({
         required: false,
         engines: [],

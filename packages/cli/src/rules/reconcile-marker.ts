@@ -2,6 +2,7 @@ import { access } from "node:fs/promises";
 import { join } from "node:path";
 
 import { AST_GREP_VERSION, VALE_VERSION } from "./capabilities";
+import { ENGINE_LABELS, findEnginesAhead } from "./engine-versions";
 import { listRuleIds } from "./engines";
 import { ENGINES } from "./layout";
 import { applyRuleMigrations, type AppliedRuleMigration } from "./rule-migrate";
@@ -111,10 +112,14 @@ export async function recordReconciliation(
   // The engines are stamped from this CLI unconditionally below, so one
   // recorded AHEAD of what it bundles would be moved backwards, and the rules
   // made valid for the newer engine would be recorded against the older one.
-  const ahead = enginesAhead(manifest.rules?.engines);
+  // Only engines that still have rules count, the same set `check` refuses
+  // on: with an engine's rules gone there is nothing left to invalidate.
+  const ahead = await findEnginesAhead(cwd, manifest.rules?.engines);
   if (ahead.length > 0) {
+    const label = ({ engine }: { engine: keyof typeof ENGINE_LABELS }) =>
+      ENGINE_LABELS[engine];
     throw new CLIError(
-      `This CLI bundles ${ahead.map(({ label, bundled }) => `${label} ${bundled}`).join(" and ")}, and the project's rules are recorded against ${ahead.map(({ label, recorded }) => `${label} ${recorded}`).join(" and ")}. Recording this CLI would move the engines backwards. Upgrade before reconciling.`,
+      `This CLI bundles ${ahead.map((m) => `${label(m)} ${m.bundled}`).join(" and ")}, and the project's rules are recorded against ${ahead.map((m) => `${label(m)} ${m.recorded}`).join(" and ")}. Recording this CLI would move the engines backwards. Upgrade before reconciling.`,
       "INVALID_INPUT"
     );
   }
@@ -166,31 +171,6 @@ export function reconciliationStart(
   return { from, to: installed };
 }
 
-/**
- * Recorded engines newer than the ones this CLI bundles. Every recorded engine
- * counts, with rules or without, since the stamp overwrites both.
- */
-function enginesAhead(
-  recorded: unknown
-): Array<{ label: string; recorded: string; bundled: string }> {
-  if (typeof recorded !== "object" || recorded === null) return [];
-  const bundled = { sg: AST_GREP_VERSION, vale: VALE_VERSION };
-  const labels = { sg: "ast-grep", vale: "Vale" };
-  const ahead: Array<{ label: string; recorded: string; bundled: string }> = [];
-  for (const engine of ["sg", "vale"] as const) {
-    const version = (recorded as Record<string, unknown>)[engine];
-    if (typeof version !== "string") continue;
-    if (compareSemver(version, bundled[engine]) > 0) {
-      ahead.push({
-        label: labels[engine],
-        recorded: version,
-        bundled: bundled[engine],
-      });
-    }
-  }
-  return ahead;
-}
-
 /** Whether a path exists, without distinguishing why it does not. */
 export async function pathExists(path: string): Promise<boolean> {
   try {
@@ -224,8 +204,6 @@ export async function stampRulelessProject(cwd: string): Promise<void> {
   try {
     const { manifest, raw } = await readManifest(tasklessDirectory);
     if (reconciliationStart(manifest.rules?.reconciledTo) === undefined) return;
-    // Never move a recorded engine backwards, the same as the walk's stamp.
-    if (enginesAhead(manifest.rules?.engines).length > 0) return;
     const rules = await Promise.all(
       ENGINES.map((engine) => listRuleIds(cwd, engine))
     );

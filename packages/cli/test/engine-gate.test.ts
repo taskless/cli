@@ -1,9 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import {
-  engineMismatchMessage,
-  findEngineMismatches,
-} from "../src/rules/engine-gate";
+import { engineMismatchMessage } from "../src/rules/engine-gate";
+import { findEngineMismatches } from "../src/rules/engine-versions";
 
 const BUNDLED = { sg: "0.51.0", vale: "3.24.0" };
 const BOTH = new Set(["sg", "vale"] as const);

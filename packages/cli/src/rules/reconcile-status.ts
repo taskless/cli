@@ -2,12 +2,12 @@ import {
   ENGINE_LABELS,
   findEngineMismatches,
   findEnginesWithRules,
+  isRecordedAhead,
   type EngineMismatch,
-} from "./engine-gate";
+} from "./engine-versions";
 import { reconciliationStart } from "./reconcile-marker";
 import { pendingRuleMigrations } from "./rule-migrate";
 import type { TasklessRulesManifest } from "../filesystem/manifest";
-import { compareVersions } from "../util/version-compare";
 
 /**
  * Whether a project's rules still need `update --rules`, decided once.
@@ -68,11 +68,9 @@ export async function reconcileStatus(
     rules?.engines,
     await findEnginesWithRules(cwd)
   );
-  const engines = mismatches.filter(
-    ({ recorded, bundled }) => compareVersions(recorded, bundled) < 0
-  );
-  const enginesAhead = mismatches.filter(
-    ({ recorded, bundled }) => compareVersions(recorded, bundled) >= 0
+  const engines = mismatches.filter((mismatch) => !isRecordedAhead(mismatch));
+  const enginesAhead = mismatches.filter((mismatch) =>
+    isRecordedAhead(mismatch)
   );
   const ruleMigrations = pendingRuleMigrations(rules?.engines).map(
     ({ engine, engineVersion, summary }) => ({ engine, engineVersion, summary })
