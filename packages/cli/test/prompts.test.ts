@@ -1046,6 +1046,32 @@ describe("environment status", () => {
     expect(text).not.toContain("prefix");
   });
 
+  it("has the agent apply the rules step now when only the skill is the user's", () => {
+    // No CLI step means no newer CLI, so nothing the user runs can change
+    // what the rules owe. Holding the step back for one told the agent to
+    // wait on a reason that did not apply (taskless/cli#645).
+    const text =
+      getRecipe("ok", {
+        invocation,
+        environment: {
+          steps: [
+            { part: "skill", text: "Skill.", command: "npx x skill" },
+            {
+              part: "rules",
+              text: "Rules owe a reconcile.",
+              command: `${invocation} update`,
+            },
+          ],
+        },
+      }) ?? "";
+    expect(text).toContain("user's to do");
+    expect(text).not.toContain("newer CLI");
+    expect(text).not.toContain("Leave the rules step");
+    expect(text).toContain("so apply the rules step now");
+    expect(text).toContain("to its last step");
+    expect(text).not.toContain("The user can decline the upgrade.");
+  });
+
   it("has the agent apply a rules step when nothing else is owed", () => {
     const text =
       getRecipe("ok", {
