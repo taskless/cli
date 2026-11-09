@@ -66,6 +66,18 @@ const pinnedCliSchema = z.object({
     ),
 });
 
+const authStateSchema = z.enum([
+  "authenticated",
+  "rejected",
+  "unreachable",
+  "upgrade_required",
+  "none",
+  "anonymous",
+]);
+
+/** What `info`'s auth probe found. */
+export type AuthState = z.infer<typeof authStateSchema>;
+
 const authSchema = z.object({
   user: z.string(),
   email: z.string(),
@@ -87,8 +99,27 @@ export const outputSchema = z.object({
     .describe(
       "Command-line tools found on PATH. Presence only: nothing is executed"
     ),
-  loggedIn: z.boolean().describe("Whether the user is authenticated"),
-  auth: authSchema.optional().describe("User identity if logged in"),
+  loggedIn: z
+    .boolean()
+    .describe(
+      "True only when the Taskless service accepted the token (`authState` " +
+        "is `authenticated`). A token that is rejected, or that could not be " +
+        "checked, is not logged in. Read `authState` for why"
+    ),
+  authState: authStateSchema.describe(
+    "The result of the auth probe: `authenticated` the service accepted the " +
+      "token; `rejected` it refused the token as invalid or expired, so log " +
+      "in again; `unreachable` the service could not be reached or did not " +
+      "answer usably, so the token is unverified and may be fine, try later; " +
+      "`upgrade_required` the service no longer supports this CLI version, " +
+      "so upgrade it; `none` no token; `anonymous` `--anonymous` skipped the " +
+      "probe"
+  ),
+  auth: authSchema
+    .optional()
+    .describe(
+      "User identity, present only when `authState` is `authenticated`"
+    ),
   repositoryUrl: z
     .string()
     .nullable()

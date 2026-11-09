@@ -1,4 +1,4 @@
-# Topic: info     (CLI v%(CLI_VERSION)s / topic v4)
+# Topic: info     (CLI v%(CLI_VERSION)s / topic v5)
 
 %(ONE_COMMAND_PER_CALL)s
 
@@ -45,6 +45,7 @@ which version of the CLI/skills the agent is talking to.
        { "name": "jq", "present": false, "applicable": true }
      ],
      "loggedIn": true,
+     "authState": "authenticated",
      "auth": { "user": "...", "email": "...", "orgs": ["..."] },
      "pinnedCli": [
        { "manifest": "packages/app/package.json",
@@ -58,7 +59,7 @@ which version of the CLI/skills the agent is talking to.
 3. **Report to the user.** Summarize:
    - CLI version
    - For each harness: number of installed skills, count out-of-date
-   - Auth: logged in as <user> (orgs) OR not logged in
+   - Auth, from `authState` (see below)
 
    `harnesses` is the agent harnesses Taskless installs into. `tools`
    is the command-line binaries found on PATH, and it is presence
@@ -67,6 +68,22 @@ which version of the CLI/skills the agent is talking to.
    `applicable: false` means the tool could do nothing in this
    repository whatever is installed, which is not the same as
    missing, and must not be reported as missing.
+
+   `loggedIn` is `true` only when the service accepted the token.
+   `authState` says what the probe found, and each value asks for
+   something different:
+
+   | `authState`        | meaning                                         | tell the user                                     |
+   |--------------------|-------------------------------------------------|---------------------------------------------------|
+   | `authenticated`    | the token works; `auth` names the user and orgs | logged in as `<user>` (`<orgs>`)                  |
+   | `rejected`         | the service refused the token: invalid or expired | log in again: fetch `%(TASKLESS_CLI)s agent auth` |
+   | `unreachable`      | the service could not be reached                | the token is unverified, not bad; try again later |
+   | `upgrade_required` | the service no longer supports this CLI version | upgrade the CLI before anything that needs the service |
+   | `none`             | no token                                        | not logged in                                     |
+   | `anonymous`        | `--anonymous` skipped the probe                 | nothing; auth was not checked                     |
+
+   Do not send the user to log in for `unreachable`: their login may be
+   fine, and logging in again cannot fix an outage.
 
 4. **Suggest reinit on staleness.** If any skill has `current: false`,
    suggest `%(TASKLESS_CLI)s` to reinstall and pull the latest
@@ -91,9 +108,9 @@ When `--json` is set, failures emit `{ ok: false, code, message }`:
 |------------------|----------------------------|--------------------------|
 | `INTERNAL_ERROR` | Internal schema validation | Report; likely a CLI bug |
 
-(Network errors during the auth probe are silently swallowed:
-`info` falls back to reporting `loggedIn: false` rather than
-failing.)
+(A failed auth probe never fails `info`: a rejected token, an
+unreachable service, or a refused CLI version is reported in
+`authState`, with `loggedIn: false`.)
 
 ## See Also
 

@@ -1,4 +1,4 @@
-# Topic: route     (CLI v%(CLI_VERSION)s / topic v9)
+# Topic: route     (CLI v%(CLI_VERSION)s / topic v10)
 
 %(ONE_COMMAND_PER_CALL)s
 
@@ -37,6 +37,14 @@ answered together.
 2. **Read the login state and the repository context.** %(LOGIN_EVIDENCE)s `loggedIn` and `ghOwner`. Do this now, not later: they change
    which destinations exist, so classifying first means classifying
    against a set that may be wrong.
+
+   `loggedIn` is true only when the service accepted the token. When it
+   is false and `authState` is `rejected`, the user has a token that no
+   longer works: route as logged out, and say a fresh `auth login` is
+   what opens the logged-in destinations. When `authState` is
+   `unreachable`, the login could not be checked: route as logged out
+   for now, and say the service was unreachable rather than that the
+   user is not logged in.
 
    `ghOwner` is the GitHub owner this project belongs to, or the literal
    `[unknown]` when there is none to find: not a git repository, no

@@ -17,8 +17,8 @@ function tool(name: string): string {
 describe("route's legacy ladder", () => {
   const route = recipe("route");
 
-  it("is topic v9", () => {
-    expect(route).toMatch(/^# Topic: route {5}\(CLI v.+ \/ topic v9\)/m);
+  it("is topic v10", () => {
+    expect(route).toMatch(/^# Topic: route {5}\(CLI v.+ \/ topic v10\)/m);
   });
 
   it("orders shipped rule, repo examples, Taskless static, Taskless runtime", () => {
