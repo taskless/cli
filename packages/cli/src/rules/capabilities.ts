@@ -39,7 +39,7 @@
  * Pinned against the binary by `test/ast-grep-vendor-contract.test.ts`
  * ("engine capabilities" → "reports the pinned version").
  */
-export const AST_GREP_VERSION = "0.51.0";
+export const AST_GREP_VERSION = "0.51.1";
 
 /**
  * Every language ast-grep can parse, verbatim from
