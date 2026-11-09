@@ -237,13 +237,19 @@ export async function planCheck(
         }`
   );
   if (outcome.status !== "ok") {
-    // A rejected token is an answer about this run's credentials, not an
-    // outage: a revoked or mistyped key would otherwise leave CI green with
-    // nothing verified, run after run. An unreachable service stays non-fatal
-    // so a Taskless outage does not turn every customer's CI red (#655).
+    // A rejected token, or a CLI the service has retired, is an answer about
+    // this run, not an outage: either would otherwise leave CI green with
+    // nothing verified, run after run, since no retry can change it. An
+    // unreachable service stays non-fatal so a Taskless outage does not turn
+    // every customer's CI red (#655).
     if (outcome.status === "unauthorized") {
       failures.push(
         "authentication was rejected, so no rule was verified and `check` fails until the token is fixed (the notice names how)."
+      );
+    }
+    if (outcome.status === "upgrade_required") {
+      failures.push(
+        "the Taskless service no longer supports this version of the CLI, so no rule was verified and `check` fails until the CLI is upgraded (the notice names how)."
       );
     }
     return {

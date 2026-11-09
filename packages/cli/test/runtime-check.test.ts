@@ -851,6 +851,21 @@ describe("check: static vs runtime dispatch", () => {
     );
   });
 
+  it("CLI below the service's version floor: fails the run, and the notice names the upgrade", async () => {
+    const { stderr, exitCode } = await authedCheck(
+      () => ({ statusCode: 426, body: { error: "cli_upgrade_required" } }),
+      []
+    );
+    expect(exitCode).toBe(1);
+    expect(stderr).toMatch(
+      /Error: the Taskless service no longer supports this version of the CLI, so no rule was verified and `check` fails/
+    );
+    expect(stderr).toContain(
+      "Rules were not verified: the Taskless service no longer supports this version of the CLI."
+    );
+    expect(stderr).toMatch(/Upgrade it: run `npx .+@latest init`/);
+  });
+
   it("--anonymous with a token: skips runtime and never calls reconcile", async () => {
     const { stdout, server } = await authedCheck(
       (request) => ({ statusCode: 200, body: answer(request) }),
