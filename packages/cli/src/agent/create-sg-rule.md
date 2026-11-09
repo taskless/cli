@@ -1,11 +1,11 @@
-# Topic: create-sg-rule     (CLI v%(CLI_VERSION)s / topic v13)
+# Topic: create-sg-rule     (CLI v%(CLI_VERSION)s / topic v14)
 
 %(ONE_COMMAND_PER_CALL)s
 
 ## You are here
 This is `create-sg-rule`. It helps you write an ast-grep rule: a check
 over the structure of a single source file, authored on this machine.
-If that is not the kind of check you need, re-run `%(TASKLESS_CLI)s agent route`
+If that is not the kind of check you need, re-run `%(RECIPE_FETCH)sroute`
 and follow its decision rather than adapting this recipe.
 
 ## Goal
@@ -56,7 +56,7 @@ whole rule.
 3. **Check for an existing rule that already covers this.** Scan
    `.taskless/rules/sg/` and read each rule's `message`, `note`, and
    `rule` fields. If one overlaps, show the user and ask whether they
-   would rather improve it, `%(TASKLESS_CLI)s agent improve-rule --anonymous`
+   would rather improve it, `%(RECIPE_FETCH)simprove-rule --anonymous`
    iterates a rule locally.
 
 4. **Author the rule in the canonical shape.** Write the rule to
@@ -172,7 +172,7 @@ whole rule.
 
 8. **On success, report.** Show the rule directory and what is in it,
    plus a one-line summary of what the rule detects. Suggest
-   `%(TASKLESS_CLI)s agent check` to validate against the broader codebase.
+   `%(RECIPE_FETCH)scheck` to validate against the broader codebase.
 
 9. **On failure, escalate, with confirmation.** If after the feedback
    loop the rule still cannot capture the user's cases:
@@ -182,8 +182,9 @@ whole rule.
    - Tell the user the local rule could not capture the cases, and that
      generating via the Taskless service uses a generation and requires
      login.
-   - Only after the user confirms, fetch `%(TASKLESS_CLI)s agent
-     create-remote-rule` and follow it. Do not call the service silently.
+   - Only after the user confirms, fetch
+     `%(RECIPE_FETCH)screate-remote-rule` and follow it. Do not call the
+     service silently.
 
 ## Quirks
 
@@ -443,8 +444,8 @@ metavariable, it always finds it.
 
 ## See Also
 
-- `%(TASKLESS_CLI)s agent route`: re-decide the destination
-- `%(TASKLESS_CLI)s agent validate-rule`: the `validate` and `verify` commands step 7 calls
-- `%(TASKLESS_CLI)s agent improve-rule`: iterate on a rule that already exists
-- `%(TASKLESS_CLI)s agent create-remote-rule`: generate via the service (login)
-- `%(TASKLESS_CLI)s agent check`: validate the new rule against the codebase
+- `%(RECIPE_FETCH)sroute`: re-decide the destination
+- `%(RECIPE_FETCH)svalidate-rule`: the `validate` and `verify` commands step 7 calls
+- `%(RECIPE_FETCH)simprove-rule`: iterate on a rule that already exists
+- `%(RECIPE_FETCH)screate-remote-rule`: generate via the service (login)
+- `%(RECIPE_FETCH)scheck`: validate the new rule against the codebase

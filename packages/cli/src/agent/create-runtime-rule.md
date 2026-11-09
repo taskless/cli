@@ -7,7 +7,7 @@ This is `create-runtime-rule`. It helps you write a runtime rule: a
 check that runs your own code, because answering it needs more than one
 file, the repository graph, git metadata, build output, a resolved
 config chain.
-If that is not the kind of check you need, re-run `%(TASKLESS_CLI)s agent route`
+If that is not the kind of check you need, re-run `%(RECIPE_FETCH)sroute`
 and follow its decision rather than adapting this recipe.
 
 You are reading this recipe rather than `create-remote-rule` because the
@@ -22,7 +22,7 @@ tiers are not, and what the user has to do before one can run.
 - `.taskless/` directory exists.
 - The user is **not** logged in. If `%(TASKLESS_CLI)s info --json` reports
   `loggedIn: true`, you are in the wrong recipe, re-run
-  `%(TASKLESS_CLI)s agent route`.
+  `%(RECIPE_FETCH)sroute`.
 
 ## What a runtime rule is
 
@@ -145,7 +145,7 @@ capture did not match, which is a fact about the fixture.
    recipe deliberately does not restate it:
 
    ```
-   %(TASKLESS_CLI)s agent auth
+   %(RECIPE_FETCH)sauth
    ```
 
    Follow that recipe with the user. If they do not want an account,
@@ -156,7 +156,7 @@ capture did not match, which is a fact about the fixture.
 
 3. **Once they are logged in, re-route.** Run
    `%(TASKLESS_CLI)s info --json` to confirm `loggedIn: true`, then
-   re-run `%(TASKLESS_CLI)s agent route` with the original request. The
+   re-run `%(RECIPE_FETCH)sroute` with the original request. The
    destination changes now that the gate is open.
 
 ## Important Notes
@@ -174,6 +174,6 @@ capture did not match, which is a fact about the fixture.
 
 ## See Also
 
-- `%(TASKLESS_CLI)s agent auth`: log in, log out, check status
-- `%(TASKLESS_CLI)s agent route`: re-decide once the login state changes
-- `%(TASKLESS_CLI)s agent check`: see which rules ran and which were skipped
+- `%(RECIPE_FETCH)sauth`: log in, log out, check status
+- `%(RECIPE_FETCH)sroute`: re-decide once the login state changes
+- `%(RECIPE_FETCH)scheck`: see which rules ran and which were skipped
