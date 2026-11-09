@@ -11,7 +11,7 @@ import {
 import { isCiEnvironment } from "../util/interactive";
 import { compareSemver } from "../util/version-compare";
 import { CLI_VERSION } from "../version";
-import { checkStaleness } from "./install";
+import { checkCanonicalSkills } from "./install";
 import { fetchLatestVersion } from "./latest-version";
 import { buildLauncherPackage, type LauncherPackage } from "./launcher";
 
@@ -77,25 +77,23 @@ async function measureCli(
   return { packageName, running, latest };
 }
 
+/**
+ * Measured from the canonical store directly, not per detected harness: the
+ * version lives in `.taskless/` whatever harness reads it, and a project with
+ * no harness detected still has a skill installed to `.agents/` (#644).
+ */
 async function measureSkill(
   cwd: string
 ): Promise<EnvironmentMeasurement["skill"]> {
-  const harnesses = await checkStaleness(cwd);
-  const stale = new Map<
-    string,
-    { name: string; installed?: string; current: string }
-  >();
-  for (const harness of harnesses) {
-    for (const skill of harness.skills) {
-      if (skill.current) continue;
-      stale.set(skill.name, {
-        name: skill.name,
-        installed: skill.installedVersion,
-        current: skill.currentVersion,
-      });
-    }
-  }
-  return stale.size === 0 ? undefined : [...stale.values()];
+  const skills = await checkCanonicalSkills(cwd);
+  const stale = skills
+    .filter((skill) => !skill.current)
+    .map((skill) => ({
+      name: skill.name,
+      installed: skill.installedVersion,
+      current: skill.currentVersion,
+    }));
+  return stale.length === 0 ? undefined : stale;
 }
 
 async function measureRules(
