@@ -1,4 +1,4 @@
-# Topic: auth     (CLI v%(CLI_VERSION)s / topic v5)
+# Topic: auth     (CLI v%(CLI_VERSION)s / topic v6)
 
 %(ONE_COMMAND_PER_CALL)s
 
@@ -53,6 +53,9 @@ each call is one short step you repeat:
 
 Stop calling once the user says they will not approve, and run
 `%(TASKLESS_CLI)s auth logout` to discard the pending login.
+
+The first call also cancels an `auth login` the user left waiting
+in a terminal. Have them approve the URL and code you show instead.
 
 If a saved token is already present, `auth login` asks the service
 whether it is still accepted. A rejected token (revoked or expired)
@@ -111,7 +114,7 @@ report.
 | `INVALID_INPUT` | `--anonymous` passed to `auth login` (rejected: auth commands cannot be anonymous)   | Don't pass `--anonymous`             |
 | `NETWORK_ERROR` | Device flow / token endpoint unreachable. The pending login is kept                  | Check connectivity; run it again     |
 | `AUTH_EXPIRED`  | The code expired before the user approved it                                         | Run it again; show the new URL/code  |
-| `AUTH_REQUIRED` | The user denied the request in their browser, or `auth logout` cancelled the login   | Ask the user; run it again to retry  |
+| `AUTH_REQUIRED` | The user denied the request, or `auth logout` or another login cancelled it          | Ask the user; run it again to retry  |
 
 ## See Also
 
