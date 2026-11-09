@@ -196,8 +196,9 @@ async function identityOrFail(
  * `pr`, `merged` and `closed` are the pull-request delivery path: the rules
  * went to a pull request, never to a CLI. A request this CLI submits does not
  * take that path, but `--resume` polls any request id, so an older one can be
- * found there. Anything else is a state this CLI does not know, or a response
- * that named none.
+ * found there. `awaitRequest` keeps polling any status it does not know and
+ * fails on a missing one, so the last two branches are a guard: if either
+ * ever arrives, it is reported as a failure rather than as success.
  */
 function undeliverableMessage(requestId: string, state: unknown): string {
   const nothingWritten = "No rules were written.";
