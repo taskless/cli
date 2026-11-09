@@ -342,6 +342,7 @@ export const updateCommand = defineCommand({
                     ...status,
                     required: false,
                     engines: [],
+                    enginesAhead: [],
                     ruleMigrations: [],
                   }
                 : status

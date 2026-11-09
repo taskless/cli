@@ -37,10 +37,18 @@ export interface ReconcileStatus {
   /**
    * Engines with rules recorded BEHIND the bundled version: what `check`
    * refuses on and `update --rules` clears. An engine recorded ahead is not
-   * listed, since reconciling with an older CLI does not clear it; the
-   * refusal itself names the remedy for that.
+   * listed here, since reconciling with an older CLI does not clear it.
    */
   engines: EngineMismatch[];
+  /**
+   * Engines with rules recorded AHEAD of the bundled version: a newer CLI
+   * reconciled them. `check` and `verify` refuse on these too, and
+   * `update --rules` from this CLI refuses rather than move them backwards,
+   * so they do not make a reconcile `required`. The remedy is running the
+   * newer CLI the project records. Listed so `info` and `update` can say why
+   * `check` refuses instead of reporting nothing due.
+   */
+  enginesAhead: EngineMismatch[];
   /** The mechanical rewrites `update --rules` applies before it stamps. */
   ruleMigrations: Array<{
     engine: string;
@@ -56,10 +64,16 @@ export async function reconcileStatus(
   const walk = reconciliationStart(rules?.reconciledTo) ?? null;
   // The same comparison the gate makes, so what this reports and what `check`
   // enforces cannot drift apart.
-  const engines = findEngineMismatches(
+  const mismatches = findEngineMismatches(
     rules?.engines,
     await findEnginesWithRules(cwd)
-  ).filter(({ recorded, bundled }) => compareVersions(recorded, bundled) < 0);
+  );
+  const engines = mismatches.filter(
+    ({ recorded, bundled }) => compareVersions(recorded, bundled) < 0
+  );
+  const enginesAhead = mismatches.filter(
+    ({ recorded, bundled }) => compareVersions(recorded, bundled) >= 0
+  );
   const ruleMigrations = pendingRuleMigrations(rules?.engines).map(
     ({ engine, engineVersion, summary }) => ({ engine, engineVersion, summary })
   );
@@ -67,6 +81,7 @@ export async function reconcileStatus(
     required: walk !== null || engines.length > 0,
     walk,
     engines,
+    enginesAhead,
     ruleMigrations,
   };
 }
@@ -83,6 +98,7 @@ export function reconcileReport(
   return {
     required: status.required,
     engines: status.engines,
+    enginesAhead: status.enginesAhead,
     ruleMigrations: status.ruleMigrations,
   };
 }
