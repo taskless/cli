@@ -651,6 +651,50 @@ describe("taskless update with no flags", () => {
     expect(payload.walk).toEqual({ from: "0.0.0", to: payload.installed });
   });
 
+  it("reports an unreadable manifest as an error, not as nothing due", async () => {
+    // The read used to sit behind a catch-all that turned any failure into
+    // "no project", so a broken manifest printed `ok: true` with nothing due
+    // while `update --rules` refused the same project (taskless/cli#646).
+    const cwd = await mkdtemp(join(tmpdir(), "taskless-corrupt-"));
+    try {
+      await mkdir(join(cwd, ".taskless"));
+      await writeFile(
+        join(cwd, ".taskless", "taskless.json"),
+        '<<<<<<< HEAD\n{ "version": 6 }\n'
+      );
+      const result = await runCli(["update", "--json", "-d", cwd]);
+      expect(result.exitCode).toBe(1);
+      expect(JSON.parse(result.stdout)).toMatchObject({
+        ok: false,
+        code: "SCAFFOLD_MANIFEST_UNREADABLE",
+      });
+    } finally {
+      await rm(cwd, { recursive: true, force: true });
+    }
+  });
+
+  it("reports nothing due where there is no .taskless/", async () => {
+    const cwd = await mkdtemp(join(tmpdir(), "taskless-empty-"));
+    try {
+      const result = await runCli(["update", "--json", "-d", cwd]);
+      expect(result.exitCode).toBe(0);
+      const payload = JSON.parse(result.stdout) as {
+        ok: boolean;
+        reconcile: { required: boolean; engines: unknown[] };
+        ruleMigrations: unknown[];
+      };
+      expect(payload.ok).toBe(true);
+      expect(payload.reconcile).toMatchObject({
+        required: false,
+        engines: [],
+        ruleMigrations: [],
+      });
+      expect(payload.ruleMigrations).toEqual([]);
+    } finally {
+      await rm(cwd, { recursive: true, force: true });
+    }
+  });
+
   it("serves the same ledger recipe as `agent update`", async () => {
     const direct = await runCli(["update"]);
     const viaAgent = await runCli(["agent", "update"]);

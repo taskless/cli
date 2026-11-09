@@ -53,6 +53,7 @@ import {
   processLauncherContext,
 } from "../util/package-manager";
 import {
+  pathExists,
   recordReconciliation,
   stampRulelessProject,
 } from "../rules/reconcile-marker";
@@ -318,43 +319,58 @@ export const updateCommand = defineCommand({
       // two places deriving one answer can disagree, and the one that acts on
       // it should not be the one guessing.
       if (args.json) {
-        const { manifest } = await readManifest(
-          join(cwd, TASKLESS_DIRECTORY)
-        ).catch(() => ({ manifest: undefined }));
-        const status = await reconcileStatus(cwd, manifest?.rules);
-        console.log(
-          JSON.stringify({
-            ok: true,
-            topic: "update",
-            reconciledTo: manifest?.rules?.reconciledTo ?? null,
-            installed: getCliVersion(),
-            // `null` when there is nothing to walk: either the project has
-            // never recorded a reconciliation, which is not the same as being
-            // behind, or it is already current.
-            walk: status.walk,
-            // Whether to finish with `update --rules`, which a null `walk`
-            // does not settle: an engine bump between two nightlies of one
-            // release has no ledger section and still trips the engine gate.
-            // Without a project nothing is due and nothing would be rewritten.
-            reconcile: reconcileReport(
-              manifest === undefined
-                ? {
-                    ...status,
-                    required: false,
-                    engines: [],
-                    enginesAhead: [],
-                    ruleMigrations: [],
-                  }
-                : status
-            ),
-            // The rewrites `update --rules` will apply before it stamps, so
-            // the walk can tell its reader what it does not need to do by
-            // hand. Also on `reconcile`; kept here for callers that read it
-            // from before `reconcile` existed.
-            ruleMigrations: manifest === undefined ? [] : status.ruleMigrations,
-            recipe,
-          })
-        );
+        try {
+          // No catch-all around the read. A missing manifest already reads as
+          // an empty one; what throws is a manifest that is present and
+          // unreadable, and swallowing that reported a broken project as
+          // having nothing due (taskless/cli#646).
+          const tasklessDirectory = join(cwd, TASKLESS_DIRECTORY);
+          const { manifest } = await readManifest(tasklessDirectory);
+          const status = await reconcileStatus(cwd, manifest.rules);
+          // Without a project nothing is due and nothing would be rewritten.
+          const project = await pathExists(tasklessDirectory);
+          console.log(
+            JSON.stringify({
+              ok: true,
+              topic: "update",
+              reconciledTo: manifest.rules?.reconciledTo ?? null,
+              installed: getCliVersion(),
+              // `null` when there is nothing to walk: either the project has
+              // never recorded a reconciliation, which is not the same as being
+              // behind, or it is already current.
+              walk: status.walk,
+              // Whether to finish with `update --rules`, which a null `walk`
+              // does not settle: an engine bump between two nightlies of one
+              // release has no ledger section and still trips the engine gate.
+              reconcile: reconcileReport(
+                project
+                  ? status
+                  : {
+                      ...status,
+                      required: false,
+                      engines: [],
+                      enginesAhead: [],
+                      ruleMigrations: [],
+                    }
+              ),
+              // The rewrites `update --rules` will apply before it stamps, so
+              // the walk can tell its reader what it does not need to do by
+              // hand. Also on `reconcile`; kept here for callers that read it
+              // from before `reconcile` existed.
+              ruleMigrations: project ? status.ruleMigrations : [],
+              recipe,
+            })
+          );
+        } catch (error) {
+          const message =
+            error instanceof Error ? error.message : String(error);
+          const code =
+            error instanceof CLIError && error.code
+              ? error.code
+              : "INTERNAL_ERROR";
+          console.log(JSON.stringify(makeErrorEnvelope(code, message)));
+          process.exitCode = 1;
+        }
         return;
       }
 
