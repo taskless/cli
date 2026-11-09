@@ -111,7 +111,7 @@ report.
 | `INVALID_INPUT` | `--anonymous` passed to `auth login` (rejected: auth commands cannot be anonymous)   | Don't pass `--anonymous`             |
 | `NETWORK_ERROR` | Device flow / token endpoint unreachable. The pending login is kept                  | Check connectivity; run it again     |
 | `AUTH_EXPIRED`  | The code expired before the user approved it                                         | Run it again; show the new URL/code  |
-| `AUTH_REQUIRED` | The user denied the authorization request in their browser                           | Ask the user; run it again to retry  |
+| `AUTH_REQUIRED` | The user denied the request in their browser, or `auth logout` cancelled the login   | Ask the user; run it again to retry  |
 
 ## See Also
 

@@ -30,7 +30,11 @@ export type LoginStepResult =
     }
   | {
       status: "failed";
-      reason: "denied" | "expired" | "error";
+      /**
+       * `cancelled`: the pending login this step was polling was removed
+       * (by `auth logout`) or replaced (by another login) while it waited.
+       */
+      reason: "denied" | "expired" | "cancelled" | "error";
       message?: string;
     };
 
@@ -85,11 +89,29 @@ export async function loginStep(
     const pending = saved;
     const deadline = now() + waitMs;
     let interval = pending.interval * 1000;
+    /**
+     * Whether the saved pending login is still the one this step polls.
+     * `auth logout` clears it, and a later `auth login --json` may replace
+     * it, while this step sleeps on the copy it read. Checked after every
+     * poll and before every write, so a cancelled login never saves a token
+     * and is never written back. The gap between this read and the write
+     * that follows it is a few milliseconds, and is accepted.
+     */
+    const stillPending = async (): Promise<boolean> => {
+      const current = await readPendingLogin(cwd);
+      return current?.deviceCode === pending.deviceCode;
+    };
+    const cancelled: LoginStepResult = {
+      status: "failed",
+      reason: "cancelled",
+    };
+
     // Poll only while a whole interval still fits, so the service's pacing
     // is never cut short and a step ends within its wait.
     while (now() + interval <= Math.min(deadline, pending.expiresAt)) {
       await sleep(interval);
       const result = await deviceFlowProvider.pollForToken(pending.deviceCode);
+      if (!(await stillPending())) return cancelled;
       switch (result.status) {
         case "success": {
           await saveToken(result.token, cwd);
@@ -125,6 +147,8 @@ export async function loginStep(
     // still pending, and the step that reaches its expiry reports it.
     if (pending.expiresAt <= deadline) {
       await sleep(Math.max(0, pending.expiresAt - now()));
+      // A login that replaced this one while it waited is not this one's to clear.
+      if (!(await stillPending())) return cancelled;
       await clearPendingLogin(cwd);
       return { status: "failed", reason: "expired" };
     }

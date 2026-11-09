@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { whoami } from "../src/api/v2";
 import { loginStep } from "../src/auth/login-step";
 import {
+  clearPendingLogin,
   type PendingLogin,
   readPendingLogin,
   savePendingLogin,
@@ -63,6 +64,31 @@ function issueCode(code = "WXYZ-1234"): void {
 async function savedToken(): Promise<string | undefined> {
   const raw = await readFile(join(cwd, ".taskless", ".env.local.json"), "utf8");
   return (JSON.parse(raw) as { access_token?: string }).access_token;
+}
+
+/** Whether any token file was written. */
+async function hasSavedToken(): Promise<boolean> {
+  try {
+    await readFile(join(cwd, ".taskless", ".env.local.json"), "utf8");
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** The step clock, with `during` run once, the first time the step sleeps. */
+function timeWith(during: () => Promise<void>) {
+  let ran = false;
+  return {
+    now: time.now,
+    sleep: async (ms: number) => {
+      clock += ms;
+      if (!ran) {
+        ran = true;
+        await during();
+      }
+    },
+  };
 }
 
 beforeEach(async () => {
@@ -240,5 +266,46 @@ describe("a login step", () => {
       source: "environment",
     });
     expect(mockedWhoami).not.toHaveBeenCalled();
+  });
+
+  it("saves no token when auth logout ran while it waited", async () => {
+    await savePendingLogin(cwd, PENDING);
+    mockedPollForToken.mockResolvedValue({
+      status: "success",
+      token: { access_token: "fresh-token", token_type: "Bearer" },
+    });
+    const result = await loginStep({
+      cwd,
+      ...timeWith(() => clearPendingLogin(cwd)),
+    });
+    expect(result).toEqual({ status: "failed", reason: "cancelled" });
+    expect(await hasSavedToken()).toBe(false);
+  });
+
+  it("does not write back a pending login auth logout removed", async () => {
+    await savePendingLogin(cwd, PENDING);
+    mockedPollForToken.mockResolvedValue({ status: "slow_down" });
+    const result = await loginStep({
+      cwd,
+      ...timeWith(() => clearPendingLogin(cwd)),
+    });
+    expect(result).toEqual({ status: "failed", reason: "cancelled" });
+    expect(await readPendingLogin(cwd)).toBeUndefined();
+  });
+
+  it("leaves alone a login that replaced the one it was polling", async () => {
+    await savePendingLogin(cwd, PENDING);
+    const replacement = { ...PENDING, deviceCode: "device-other" };
+    mockedPollForToken.mockResolvedValue({
+      status: "success",
+      token: { access_token: "fresh-token", token_type: "Bearer" },
+    });
+    const result = await loginStep({
+      cwd,
+      ...timeWith(() => savePendingLogin(cwd, replacement)),
+    });
+    expect(result).toEqual({ status: "failed", reason: "cancelled" });
+    expect(await hasSavedToken()).toBe(false);
+    expect(await readPendingLogin(cwd)).toEqual(replacement);
   });
 });
