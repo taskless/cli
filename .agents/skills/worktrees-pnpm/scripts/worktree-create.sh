@@ -54,8 +54,30 @@ if ! [[ "$worktree_id" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]] || [[ "$worktree_id" =
 fi
 
 # Resolve against the repo this hook was invoked for, not $PWD.
+#
+# The MAIN checkout, not the caller's: `--show-toplevel` from inside a linked
+# worktree names that worktree, so a session running in one nested every agent
+# worktree one level down (`<wt>/.agents/.worktrees/<id>`), out of sight of the
+# main checkout's `.agents/.worktrees/` and in the way of removing the parent.
+# The common git dir is shared by every worktree, and its parent is the main
+# checkout. Resolved physically, as worktree-remove.sh does, rather than with
+# `rev-parse --path-format=absolute`, which git before 2.31 rejects;
+# --git-common-dir can print a path relative to where it ran.
 cwd=$(printf '%s' "$payload" | jq -r '.cwd // empty')
-repo_root=$(git -C "${cwd:-$PWD}" rev-parse --show-toplevel)
+start_dir="${cwd:-$PWD}"
+common_dir=$(cd "$start_dir" && cd "$(git rev-parse --git-common-dir)" && pwd -P) || {
+  echo "WorktreeCreate: could not resolve the git common dir from $start_dir" >&2
+  exit 1
+}
+# A bare repository, or a common dir kept apart from its checkout with
+# --separate-git-dir, has no main checkout to put worktrees in. `dirname` would
+# name some unrelated directory, so refuse rather than guess.
+if [ "$(basename "$common_dir")" != ".git" ] \
+  || [ "$(git --git-dir="$common_dir" rev-parse --is-bare-repository)" = "true" ]; then
+  echo "WorktreeCreate: $common_dir is not the .git directory of a main checkout (bare or separate git dir); refusing to guess where worktrees go" >&2
+  exit 1
+fi
+repo_root=$(dirname "$common_dir")
 worktree_dir="$repo_root/.agents/.worktrees/$worktree_id"
 
 # Idempotent, but only for a real worktree. A bare directory test would hand back

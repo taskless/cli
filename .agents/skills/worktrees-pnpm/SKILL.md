@@ -136,9 +136,16 @@ printf '{"hook_event_name":"WorktreeCreate","cwd":"%s","name":"probe-name"}' "$P
   | .agents/skills/worktrees-pnpm/scripts/worktree-create.sh
 # expect: <repo>/.agents/.worktrees/probe-name
 
+# A caller inside a linked worktree still gets the MAIN checkout's directory,
+# never <repo>/.agents/.worktrees/probe/.agents/.worktrees/... The hook resolves
+# the main checkout from --git-common-dir, and refuses a bare repository.
+printf '{"hook_event_name":"WorktreeCreate","cwd":"%s","name":"probe-nested"}' "$PWD/.agents/.worktrees/probe" \
+  | .agents/skills/worktrees-pnpm/scripts/worktree-create.sh
+# expect: <repo>/.agents/.worktrees/probe-nested
+
 printf '{"hook_event_name":"WorktreeRemove","worktree_path":"%s"}' "$PWD/.agents/.worktrees/probe" \
   | .agents/skills/worktrees-pnpm/scripts/worktree-remove.sh
-# ...and the same for .agents/.worktrees/probe-name
+# ...and the same for .agents/.worktrees/probe-name and probe-nested
 ```
 
 **2. Add the ignores** described in the next section. Skipping this is the single most common way
