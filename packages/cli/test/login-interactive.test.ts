@@ -47,17 +47,12 @@ async function readSavedToken(): Promise<string | undefined> {
 
 function quiet(): {
   out: (l: string) => void;
-  err: (l: string) => void;
   logs: string[];
-  errors: string[];
 } {
   const logs: string[] = [];
-  const errors: string[] = [];
   return {
     out: (l) => logs.push(l),
-    err: (l) => errors.push(l),
     logs,
-    errors,
   };
 }
 
@@ -90,7 +85,6 @@ describe("loginInteractive", () => {
     });
     expect(mockedWhoami).not.toHaveBeenCalled();
     expect(sinks.logs).toEqual([]);
-    expect(sinks.errors).toEqual([]);
   });
 
   it("keeps a saved token the service accepts", async () => {
