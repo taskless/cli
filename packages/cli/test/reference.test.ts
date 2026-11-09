@@ -117,7 +117,11 @@ describe("the reference corpus payload", () => {
         "tests/pass/use-in-prose/README.md",
         "tests/fail/utilize-in-prose/README.md",
       ],
-      runtime: ["tests/pass/declared/.env", "tests/fail/undeclared/.env"],
+      runtime: [
+        "tests/pass/declared/.env",
+        "tests/fail/undeclared/.env",
+        "tests/fail/undeclared-tsx/.env",
+      ],
     };
 
     // A fourth sample has to be added here as well as to the manifest. That is
@@ -203,9 +207,14 @@ describe("the reference corpus payload", () => {
     const runtime = ruleFor(reference, "runtime");
     expect(runtime.tests.grouping).toBe("case-directories");
     const failing = runtime.tests.cases?.filter((one) => one.bucket === "fail");
-    expect(failing).toHaveLength(1);
-    expect(failing?.[0]?.path).toBe("tests/fail/undeclared");
-    expect(failing?.[0]?.files.toSorted()).toEqual([
+    expect(failing?.map((one) => one.path).toSorted()).toEqual([
+      "tests/fail/undeclared",
+      "tests/fail/undeclared-tsx",
+    ]);
+    const undeclared = failing?.find(
+      (one) => one.path === "tests/fail/undeclared"
+    );
+    expect(undeclared?.files.toSorted()).toEqual([
       "tests/fail/undeclared/.env",
       "tests/fail/undeclared/src/config.ts",
     ]);

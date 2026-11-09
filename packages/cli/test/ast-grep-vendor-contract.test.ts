@@ -417,6 +417,29 @@ function scopeWorkspace(): string {
   return directory;
 }
 
+/** The first match of a one-rule scan, for asking where ast-grep starts it. */
+function matchStart(language: string, ruleBody: string, source: string) {
+  const extension = language === "Tsx" ? "tsx" : "ts";
+  const cwd = project({
+    rules: {
+      where: [
+        "id: where",
+        `language: ${language}`,
+        "severity: error",
+        "message: where",
+        "rule:",
+        ruleBody,
+        "",
+      ].join("\n"),
+    },
+    sources: { [`src/a.${extension}`]: source },
+  });
+  return JSON.parse(scan(cwd).stdout.split("\n")[0] ?? "") as {
+    text: string;
+    range: { start: { line: number; column: number } };
+  };
+}
+
 withSg("ast-grep vendor contract", () => {
   it("reports its own name in --version", () => {
     // Depended on by: AST_GREP_BINARY.identity (/ast-grep/i) in rules/ast-grep-binary.ts. The
@@ -1733,5 +1756,36 @@ withSg("ast-grep engine capabilities", () => {
         )
       )
     );
+  });
+
+  /**
+   * Where a match starts, which is where a runtime rule's finding points.
+   *
+   * Depended on by: the **Capture quirks** in `create-runtime-rule.md`. The
+   * narrow reports a match's `range.start` as `match.line`, so a check that
+   * reports `match.line` points at the start of the matched node, which is not
+   * always the line the author was thinking of (taskless/cli#654).
+   */
+  describe("where a match starts", () => {
+    it("starts a chained call at the head of the chain", () => {
+      const match = matchStart(
+        "TypeScript",
+        "  pattern: $OBJ.map($FN)",
+        "const ids = items\n  .filter((x) => x)\n  .map((x) => x.id);\n"
+      );
+      expect(match.range.start).toEqual({ line: 0, column: 12 });
+      expect(match.text.startsWith("items\n")).toBe(true);
+    });
+
+    it("starts jsx_text at the end of the opening tag", () => {
+      const match = matchStart(
+        "Tsx",
+        "  kind: jsx_text\n  regex: Hello",
+        "export const A = () => (\n  <p>\n    Hello\n  </p>\n);\n"
+      );
+      // Line 1 is `  <p>`; the text itself is on line 2.
+      expect(match.range.start).toEqual({ line: 1, column: 5 });
+      expect(match.text).toBe("\n    Hello\n  ");
+    });
   });
 });

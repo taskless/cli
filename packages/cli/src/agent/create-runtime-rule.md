@@ -1,4 +1,4 @@
-# Topic: create-runtime-rule     (CLI v%(CLI_VERSION)s / topic v7)
+# Topic: create-runtime-rule     (CLI v%(CLI_VERSION)s / topic v8)
 
 %(ONE_COMMAND_PER_CALL)s
 
@@ -133,6 +133,42 @@ has to match at least one capture. A case the captures do not match
 never reaches `check.ts`, and is reported as a defect in the case rather
 than in the rule, in `pass/` as well as `fail/`: such a case proves the
 capture did not match, which is a fact about the fixture.
+
+## Capture quirks
+
+A capture is an ast-grep rule, so the **Quirks** in
+`%(RECIPE_FETCH)screate-sg-rule` apply to it as well. Four of them catch
+captures most often. Each was measured against the ast-grep this CLI
+ships (v%(AST_GREP_VERSION)s). The first two decide what a capture
+matches; the last two decide where a match says it is.
+
+- **`Tsx` and `TypeScript` are two parsers, not aliases.** A capture
+  that declares `TypeScript` does not read `.tsx` files at all, so over
+  a `.tsx` tree it matches nothing and `check.ts` is never invoked. A
+  rule that must cover both extensions needs two captures, one per
+  parser. Give them different `id`s, since ast-grep attributes a match
+  by id, and the same `metadata.taskless.name`, so `check.ts` still
+  branches on one name.
+- **A `$$$` next to a comma does not mean "zero or more".** The comma
+  is itself a node the call has to have, so `foo($VAR, $$$)` never
+  matches the one-argument `foo("x")`. List both shapes:
+  ```yaml
+  rule:
+    any:
+      - pattern: foo($VAR)
+      - pattern: foo($VAR, $$$)
+  ```
+- **A match on a chained call starts at the head of the chain.** Over
+  `items` on one line and `.map(fn)` two lines below, `$OBJ.map($FN)`
+  reports the line and column `items` is on, and `match.text` is the
+  whole chain. To point a finding at the call itself, `check.ts` adds
+  the line breaks in `match.text` before `.map` to `match.line`.
+- **A `jsx_text` match starts at the end of the opening tag.** Text on
+  its own line below `<p>` reports the `<p>` line, and `match.text`
+  begins with that line break and the indentation. A capture on
+  `kind: jsx_text` has no metavariable, so `check.ts` reads
+  `match.text`: trim it before comparing, and add its leading line
+  breaks to `match.line` to point at the text.
 
 ## Steps
 
