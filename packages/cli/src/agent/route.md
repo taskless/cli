@@ -80,7 +80,7 @@ answered together.
       count, and are named below because a search for the request's
       subject will not surface them.
    2. **The repo already writes its own rules for that linter.** Only when
-      `detect` reports a `customRules.count` of 5 or more, so there are
+      `detect` reports a `customRules.count` of %(CUSTOM_RULE_THRESHOLD)s or more, so there are
       enough of the repo's own examples to model a new one on. An
       `"unknown"` count is below the threshold. Taskless does not teach
       custom-rule authoring for any linter; the repo's examples are the
@@ -279,7 +279,7 @@ answered together.
 
 - **A linter the repo already runs AND a local Taskless rule both fit** →
   do not ask. The legacy ladder in step 4 decides: a rule the linter
-  already ships wins, and so does a new one where the repo has 5 or more
+  already ships wins, and so does a new one where the repo has %(CUSTOM_RULE_THRESHOLD)s or more
   of its own to model it on. Otherwise it is the Taskless rule.
 - **A rule that seems to need two engines is usually two rules.** Split
   it and route each half, rather than forcing one engine to cover

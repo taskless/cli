@@ -2,11 +2,13 @@ import { existsSync, readdirSync, statSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 
+import { CUSTOM_RULE_THRESHOLD } from "./custom-rule-threshold";
+
 /**
  * How many rules the repository wrote itself for one linter, and where they
  * were found. The legacy ladder reads this to decide whether an agent may write
- * another custom rule, which it may only do with five or more examples to model
- * it on.
+ * another custom rule, which it may only do with `CUSTOM_RULE_THRESHOLD` or
+ * more examples to model it on.
  *
  * `"unknown"` means a custom rule exists but its count cannot be read without
  * executing configuration (an ESLint plugin imported into a JavaScript config).
@@ -226,7 +228,7 @@ async function countEslint(context: CustomRuleContext): Promise<CustomRules> {
 
   // A counted directory that already clears the threshold settles it; an
   // uncountable source can only add to it.
-  const count = unknown && known < 5 ? "unknown" : known;
+  const count = unknown && known < CUSTOM_RULE_THRESHOLD ? "unknown" : known;
   return { count, evidence };
 }
 
