@@ -611,8 +611,13 @@ ${steps}`;
 
 Apply this step yourself: ${applyRules}`;
   }
+  // Only a CLI move can change what the rules owe. With the skill alone to
+  // reinstall there is no newer CLI, so holding the rules step back for one
+  // would wait on a reason that does not apply (taskless/cli#645).
   const afterUser = rulesOwed
-    ? ` Leave the rules step until then, because a newer CLI can owe a different reconcile. If that run still reports it, ${applyRules}`
+    ? upgradeOwed
+      ? ` Leave the rules step until then, because a newer CLI can owe a different reconcile. If that run still reports it, ${applyRules}`
+      : ` The rules step does not wait for the skill: it runs on the CLI the project already uses, and reinstalling the skill does not change what it owes, so apply the rules step now: ${applyRules}`
     : "";
   const declined = upgradeOwed
     ? `\n\nThe user can decline the upgrade. Tell them what that means: the project stays on this CLI and keeps working, and this report keeps listing the upgrade until they move.${
