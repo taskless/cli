@@ -111,6 +111,12 @@ export type CLIErrorCode =
   // recorded. Distinct from the code above because a matching CLI can still
   // hold rules nobody reconciled after an upgrade.
   | "RULES_ENGINE_MISMATCH"
+  // The ast-grep or Vale binary that would run came from outside the pinned
+  // platform package (`node_modules/.bin` or PATH) and reports another version
+  // than the one this CLI bundles. Not RULES_ENGINE_MISMATCH: the rules may be
+  // fine, and `update --rules` does not fix it. Reinstalling does, and
+  // `--allow-version-mismatches` runs the binary anyway.
+  | "ENGINE_BINARY_MISMATCH"
   | "SCAFFOLD_CONFLICT"
   // `taskless report`. INSUFFICIENT is the gate (fewer than three working
   // Taskless rules) and is the one a recipe answers by asking the user;

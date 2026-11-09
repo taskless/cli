@@ -17,7 +17,7 @@ export const ENGINE_LABELS = { sg: "ast-grep", vale: "Vale" } as const;
 
 export type GatedEngine = keyof typeof ENGINE_LABELS;
 
-const BUNDLED: Record<GatedEngine, string> = {
+export const BUNDLED: Record<GatedEngine, string> = {
   sg: AST_GREP_VERSION,
   vale: VALE_VERSION,
 };

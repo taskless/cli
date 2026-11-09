@@ -143,13 +143,23 @@ export function isPlatformBinary(
   spec: PlatformBinarySpec,
   path: string
 ): boolean {
-  if (!existsSync(path)) return false;
+  return identify(spec, path) !== undefined;
+}
+
+/**
+ * The candidate's `--version` output when it identifies as this binary, or
+ * `undefined` when it does not. One spawn answers both questions a caller has
+ * about a candidate: is it the tool, and which version of it.
+ */
+function identify(spec: PlatformBinarySpec, path: string): string | undefined {
+  if (!existsSync(path)) return undefined;
   const result = spawnSync(path, ["--version"], {
     encoding: "utf8",
     timeout: 5000,
   });
-  if (result.error !== undefined || result.status !== 0) return false;
-  return spec.identity.test(`${result.stdout ?? ""}${result.stderr ?? ""}`);
+  if (result.error !== undefined || result.status !== 0) return undefined;
+  const output = `${result.stdout ?? ""}${result.stderr ?? ""}`;
+  return spec.identity.test(output) ? output : undefined;
 }
 
 /**
@@ -196,6 +206,13 @@ export interface PlatformBinaryResolution {
    * a consumer, and copies drift.
    */
   source: PlatformBinarySource | undefined;
+  /**
+   * What the resolved binary printed for `--version` while proving its
+   * identity, or `undefined` when nothing resolved. Kept so a caller holding a
+   * binary from a tier other than `platform-package` can learn its version
+   * without spawning it a second time.
+   */
+  versionOutput?: string;
   /** Locations searched, in order, for an actionable failure message. */
   tried: string[];
 }
@@ -257,8 +274,10 @@ export function resolvePlatformBinary(
   const tried = [...new Set(candidates.map(([, label]) => label))];
 
   for (const [source, , path] of candidates) {
-    if (path !== undefined && isPlatformBinary(spec, path)) {
-      return { path, source, tried };
+    if (path === undefined) continue;
+    const versionOutput = identify(spec, path);
+    if (versionOutput !== undefined) {
+      return { path, source, versionOutput, tried };
     }
   }
 
