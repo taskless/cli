@@ -16,6 +16,7 @@ import {
 import { runCommand } from "citty";
 
 import { ruleCommand } from "../src/commands/rules";
+import { awaitRequest } from "../src/rules/generate";
 import { LATEST_SCHEMA_VERSION } from "../src/filesystem/migrate";
 import {
   ITERATE_REQUEST_ID,
@@ -369,6 +370,41 @@ describe("rule create: transient failures while polling and fetching", () => {
       expect(envelope.message).toContain(`rule create --resume ${REQUEST_ID}`);
       expect(calls(fetchMock, "GET", "/cli/api/v2/request/")).toBe(120);
       expect(existsSync(ruleFile())).toBe(false);
+    });
+  });
+
+  describe("awaitRequest with an injected deadline and clock", () => {
+    it("measures the deadline on the injected clock, not Date.now", async () => {
+      const fetchMock = await stub({
+        poll: Array.from({ length: 10 }, () => "building" as const),
+      });
+      // Each read of the injected clock moves it one poll interval, so the
+      // 45-second deadline is reached on the third check: two polls. Date.now
+      // (advanced only by the collapsed waits) would allow a third.
+      let tick = 0;
+      const now = (): number => tick++ * 15_000;
+      const progress: string[] = [];
+
+      const poll = awaitRequest(
+        {
+          token: "test-token",
+          repositoryUrl: "https://github.com/test/test",
+          onProgress: (message) => progress.push(message),
+          resumeCommand: `taskless rule create --resume ${REQUEST_ID}`,
+          deadlineMs: 45_000,
+          now,
+        },
+        REQUEST_ID
+      );
+
+      await expect(poll).rejects.toMatchObject({
+        code: "NETWORK_ERROR",
+        message: expect.stringContaining(
+          'did not finish within 45 seconds (last status: "building")'
+        ) as unknown,
+      });
+      expect(calls(fetchMock, "GET", "/cli/api/v2/request/")).toBe(2);
+      expect(progress).toHaveLength(2);
     });
   });
 

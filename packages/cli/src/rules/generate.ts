@@ -47,7 +47,9 @@ export interface GenerationContext {
   resumeCommand: string;
   /**
    * How long {@link awaitRequest} waits for an end state before it gives up.
-   * Defaults to {@link REQUEST_DEADLINE_MS}; tests shorten it.
+   * Defaults to {@link REQUEST_DEADLINE_MS}. The commands never set it; it
+   * and `now` exist so a test can drive the deadline without waiting
+   * (`test/rule-poll-transient.test.ts`).
    */
   deadlineMs?: number;
   /** The clock the deadline is measured on. Defaults to `Date.now`. */
