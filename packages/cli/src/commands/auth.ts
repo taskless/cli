@@ -40,6 +40,14 @@ function loginStepErrorCode(reason: FailedLoginStep["reason"]): CLIErrorCode {
   }
 }
 
+/**
+ * Why a login saved no token though it was waiting on one, for the interactive
+ * flow and the `--json` step alike. `rerun` is the command that starts anew.
+ */
+function cancelledLoginMessage(rerun: string): string {
+  return `The login was cancelled: \`auth logout\` ran, or another login replaced it, while this one waited. Run \`${rerun}\` again to start a new one.`;
+}
+
 function loginStepMessage(step: FailedLoginStep): string {
   if (step.message !== undefined) return step.message;
   switch (step.reason) {
@@ -47,7 +55,7 @@ function loginStepMessage(step: FailedLoginStep): string {
       return "Authorization denied.";
     }
     case "cancelled": {
-      return "The login was cancelled: `auth logout` ran, or another login replaced it, while this one waited. Run `auth login --json` again to start a new one.";
+      return cancelledLoginMessage("auth login --json");
     }
     case "expired": {
       return "The login code expired before it was approved. Run `auth login --json` again for a new one.";
@@ -184,15 +192,21 @@ const loginCommand = defineCommand({
           return;
         }
         case "cancelled": {
+          // A cancelled login is AUTH_REQUIRED here for the same reasons as
+          // under --json: see loginStepErrorCode.
           const code: CLIErrorCode =
-            result.reason === "denied" ? "AUTH_REQUIRED" : "NETWORK_ERROR";
+            result.reason === "denied" || result.reason === "cancelled"
+              ? loginStepErrorCode(result.reason)
+              : "NETWORK_ERROR";
           const message =
             result.message ??
             (result.reason === "denied"
               ? "Authorization denied."
-              : result.reason === "expired"
-                ? "Device code expired. Please try again."
-                : "Authentication failed.");
+              : result.reason === "cancelled"
+                ? cancelledLoginMessage("auth login")
+                : result.reason === "expired"
+                  ? "Device code expired. Please try again."
+                  : "Authentication failed.");
           fail(code, message);
           return;
         }
@@ -235,10 +249,12 @@ const logoutCommand = defineCommand({
 
     let removed = false;
     try {
-      removed = await removeToken(cwd);
       // A login still waiting on approval would otherwise sign this
-      // repository back in after the user asked to be logged out.
+      // repository back in after the user asked to be logged out. Cleared
+      // before the token is removed, so a login that saves a token between
+      // the two has its token removed here rather than kept.
       await clearPendingLogin(cwd);
+      removed = await removeToken(cwd);
       if (!args.json) {
         // logout only removes the saved token. Without saying so, a user
         // whose token comes from the environment reads "Not logged in." and

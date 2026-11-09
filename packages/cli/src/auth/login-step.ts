@@ -2,6 +2,7 @@ import { deviceFlowProvider } from "./device-flow";
 import { existingLoginSource } from "./login-interactive";
 import {
   clearPendingLogin,
+  isPendingLogin,
   type PendingLogin,
   readPendingLogin,
   savePendingLogin,
@@ -82,25 +83,22 @@ export async function loginStep(
     const saved = await readPendingLogin(cwd);
     // A code that expired before this step began belongs to a login this
     // caller may never have seen, so it is replaced rather than reported.
-    if (saved === undefined || saved.expiresAt <= now()) {
+    // An interactive login is polled by the process that started it, never
+    // by a step, so a step replaces it too, which cancels that login.
+    if (
+      saved === undefined ||
+      saved.expiresAt <= now() ||
+      saved.mode === "interactive"
+    ) {
       return pendingResult(await startLogin(cwd, now()));
     }
 
     const pending = saved;
     const deadline = now() + waitMs;
     let interval = pending.interval * 1000;
-    /**
-     * Whether the saved pending login is still the one this step polls.
-     * `auth logout` clears it, and a later `auth login --json` may replace
-     * it, while this step sleeps on the copy it read. Checked after every
-     * poll and before every write, so a cancelled login never saves a token
-     * and is never written back. The gap between this read and the write
-     * that follows it is a few milliseconds, and is accepted.
-     */
-    const stillPending = async (): Promise<boolean> => {
-      const current = await readPendingLogin(cwd);
-      return current?.deviceCode === pending.deviceCode;
-    };
+    /** Whether the saved pending login is still the one this step polls. */
+    const stillPending = (): Promise<boolean> =>
+      isPendingLogin(cwd, pending.deviceCode);
     const cancelled: LoginStepResult = {
       status: "failed",
       reason: "cancelled",
@@ -186,6 +184,7 @@ async function startLogin(
       deviceCode.verification_uri_complete ?? deviceCode.verification_uri,
     interval: deviceCode.interval,
     expiresAt: startedAt + deviceCode.expires_in * 1000,
+    mode: "step",
   };
   await savePendingLogin(cwd, pending);
   return pending;

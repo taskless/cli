@@ -220,6 +220,20 @@ describe("a login step", () => {
     expect(mockedPollForToken).not.toHaveBeenCalled();
   });
 
+  it("replaces an interactive login rather than polling its code", async () => {
+    // The interactive process polls its own code; a step that polled it too
+    // could finish that login behind its back.
+    await savePendingLogin(cwd, { ...PENDING, mode: "interactive" });
+    issueCode("NEWC-0DE0");
+    const result = await loginStep({ cwd, ...time });
+    expect(result).toMatchObject({ status: "pending", userCode: "NEWC-0DE0" });
+    expect(mockedPollForToken).not.toHaveBeenCalled();
+    expect(await readPendingLogin(cwd)).toMatchObject({
+      deviceCode: "device-NEWC-0DE0",
+      mode: "step",
+    });
+  });
+
   it("backs off on slow_down and keeps the slower pace for the next step", async () => {
     await savePendingLogin(cwd, PENDING);
     mockedPollForToken
