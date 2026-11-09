@@ -11,6 +11,7 @@ import {
   getRenderedRecipe,
   TASKLESS_CLI_MARKER,
   type RecipeOptions,
+  type RawRecipeText,
   type RecipeText,
 } from "./recipes.js";
 
@@ -165,21 +166,41 @@ export function getInstructions(
 }
 
 /**
- * The **unrendered** template for a prompt, plus the variables it contains.
+ * An unrendered prompt: {@link Instructions} plus `defaults`, the package's
+ * value for each of its `variables`.
+ */
+export type RawInstructions = RawRecipeText;
+
+/**
+ * The **unrendered** template for a prompt, the variables it contains, and
+ * the package's default value for each.
  *
  * Use this when the host knows a value the package cannot: which launcher the
  * reader will actually use, which package manager the target repository runs.
- * Render it with `sprintf-js`'s named-argument form; the text is the source
- * template verbatim, so its `%%` escapes are intact and it is safe to render
- * exactly once.
+ * Render it with `sprintf-js`'s named-argument form, spreading `defaults`
+ * first so the host supplies only what it overrides:
+ *
+ * ```ts
+ * const { text, defaults } = getRawInstructions("route");
+ * const prompt = sprintf(text, {
+ *   ...defaults,
+ *   PACKAGE_MANAGER_DLX: "pnpm dlx",
+ * });
+ * ```
+ *
+ * `defaults` covers every variable, including the version pins, the
+ * custom-rule threshold and the invocation markers, so
+ * `sprintf(text, defaults)` is {@link getPrompt}'s text for the same options.
+ * The text is the source template verbatim, so its `%%` escapes are intact and
+ * it is safe to render exactly once.
  *
  * @throws when the topic has no canonical recipe in the build.
  */
 export function getRawInstructions(
   topic: PromptTopic,
   options?: PromptOptions
-): Instructions {
-  return required(getRawRecipe(topic, options), topic);
+): RawInstructions {
+  return required(getRawRecipe(topic, forHost(options)), topic);
 }
 
 /**
