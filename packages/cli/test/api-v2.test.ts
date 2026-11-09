@@ -9,6 +9,7 @@ import {
   restoreRule,
   rollbackRule,
   submitRequest,
+  upgradeRequiredMessage,
   whoami,
 } from "../src/api/v2";
 import { CLI_VERSION, CLI_VERSION_HEADER } from "../src/version";
@@ -336,6 +337,34 @@ describe("v2 client", () => {
     it("gives 401 its own outcome", async () => {
       respond(401, { error: "unauthorized" });
       expect(await whoami("tok")).toEqual({ status: "unauthorized" });
+    });
+
+    // #643: no route documents `cli_upgrade_required` yet, so it used to fall
+    // through to `unavailable` and read as an outage.
+    it.each([426, 400, 403])(
+      "gives cli_upgrade_required its own outcome on every route (HTTP %i)",
+      async (status) => {
+        respond(status, { error: "cli_upgrade_required" });
+        expect(await whoami("tok")).toEqual({
+          status: "upgrade_required",
+          httpStatus: status,
+        });
+        respond(status, { error: "cli_upgrade_required" });
+        expect(
+          await reconcileRules("tok", { repositoryUrl: REPO, rules: [] })
+        ).toEqual({ status: "upgrade_required", httpStatus: status });
+        respond(status, { error: "cli_upgrade_required" });
+        expect(await restoreRule("tok", "r", { repositoryUrl: REPO })).toEqual({
+          status: "upgrade_required",
+          httpStatus: status,
+        });
+      }
+    );
+
+    it("tells the user to upgrade, never to retry", () => {
+      const message = upgradeRequiredMessage();
+      expect(message).toContain("no longer supports this version");
+      expect(message).toMatch(/@taskless\/cli(-nightly)?@latest init/);
     });
 
     it("reads a code the operation does not document as unavailable, naming it", async () => {

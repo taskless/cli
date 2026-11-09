@@ -1,4 +1,4 @@
-# Topic: create-remote-rule     (CLI v%(CLI_VERSION)s / topic v9)
+# Topic: create-remote-rule     (CLI v%(CLI_VERSION)s / topic v10)
 
 %(ONE_COMMAND_PER_CALL)s
 
@@ -191,6 +191,7 @@ With `--json`, failures emit `{ ok: false, code, message }`:
 | `UNSUPPORTED_REMOTE_HOST`| `origin` is not GitHub          | route to a local recipe; `auth login` cannot fix it |
 | `INVALID_INPUT`          | `--from` JSON failed validation | re-read the input schema, fix, retry         |
 | `NETWORK_ERROR`          | submit/poll failed              | the CLI already retried transient failures. If the message names a `--resume` command, run that to keep waiting on the same request; re-running with `--from` submits a NEW request, so confirm with the user first |
+| `CLI_UPGRADE_REQUIRED`   | the service no longer serves this CLI version | tell the user to upgrade with the command in `message`; do not retry |
 | `RULE_GENERATION_FAILED` | the service failed to generate  | report the message; suggest enriching prompt |
 | `RULE_UNSUPPORTED`       | plan lacks this generation type | tell the user to enable it; do not retry     |
 

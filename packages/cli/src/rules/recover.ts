@@ -4,6 +4,7 @@ import {
   restoreRule,
   retryAdvice,
   rollbackRule,
+  upgradeRequiredMessage,
   type RevisionList,
   type ServedRule,
   type V2Outcome,
@@ -89,6 +90,9 @@ function failure(
         `Authentication was rejected. ${rejectedTokenRemedy()}`,
         "AUTH_REQUIRED"
       );
+    }
+    case "upgrade_required": {
+      return new CLIError(upgradeRequiredMessage(), "CLI_UPGRADE_REQUIRED");
     }
     case "unavailable": {
       return new CLIError(

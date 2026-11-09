@@ -72,8 +72,9 @@ export interface StubServerOptions {
   error?: string;
   /**
    * Failures to answer with before the real response, consumed one per call
-   * in order: an HTTP status, or `"network"` for a fetch that throws the way
-   * Node's does on a transport failure. `poll` answers status checks, and may
+   * in order: an HTTP status, `"network"` for a fetch that throws the way
+   * Node's does on a transport failure, or `"upgrade"` for the service
+   * refusing this CLI version. `poll` answers status checks, and may
    * also hold `"building"`, a real in-progress answer, or `{ status }` for any
    * other status a poll answers with before the terminal one; `fetch` answers
    * `GET rule/{ruleId}` across all rules.
@@ -81,13 +82,24 @@ export interface StubServerOptions {
   failures?: {
     poll?: Array<StubFailure | "building" | { status: string }>;
     fetch?: StubFailure[];
+    /** Answers the submit, `POST request`, once. */
+    submit?: StubFailure;
   };
 }
 
-/** One injected failure: an HTTP status, or a transport failure. */
-export type StubFailure = number | "network";
+/**
+ * One injected failure: an HTTP status, a transport failure, or the service
+ * refusing this CLI version with `cli_upgrade_required`.
+ */
+export type StubFailure = number | "network" | "upgrade";
+
+/** The answer the service gives a client below its version floor. */
+export function upgradeRequiredResponse(): Response {
+  return Response.json({ error: "cli_upgrade_required" }, { status: 426 });
+}
 
 function failWith(failure: StubFailure): Response {
+  if (failure === "upgrade") return upgradeRequiredResponse();
   if (failure === "network") {
     throw new TypeError("fetch failed", {
       cause: Object.assign(new Error("connect ECONNREFUSED"), {
@@ -118,6 +130,9 @@ export function stubV2Server(
       return Response.json({}, { status: 500 });
     }
     if (method === "POST" && pathname === "/cli/api/v2/request") {
+      if (options.failures?.submit !== undefined) {
+        return failWith(options.failures.submit);
+      }
       return Response.json({ requestId: REQUEST_ID, status: "accepted" });
     }
     if (method === "POST" && pathname.endsWith("/iterate")) {

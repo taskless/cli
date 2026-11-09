@@ -1,4 +1,4 @@
-# Topic: recover-rule     (CLI v%(CLI_VERSION)s / topic v5)
+# Topic: recover-rule     (CLI v%(CLI_VERSION)s / topic v6)
 
 %(ONE_COMMAND_PER_CALL)s
 
@@ -148,6 +148,7 @@ When `--json` is set, failures emit `{ ok: false, code, message }`:
 | `RULE_RESTORE_FAILED`       | the verified rule could not be written to disk        | the rule is as it was; fix what `message` names, then run the command again |
 | `RULE_ID_AMBIGUOUS`         | two engines hold this id                               | rename the local one, then restore                    |
 | `NETWORK_ERROR`             | the service could not be reached or failed            | report and suggest a retry                            |
+| `CLI_UPGRADE_REQUIRED`      | the service no longer serves this CLI version         | tell the user to upgrade with the command in `message`; do not retry |
 
 `RULE_RESTORE_MISMATCH` protects the rule: restore repairs a rule to
 what `check` compared it against and never advances it to a newer

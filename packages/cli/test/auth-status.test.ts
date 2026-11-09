@@ -77,4 +77,15 @@ describe("describeAuthStatus", () => {
     ]);
     expect(lines.join("\n")).not.toMatch(/rejected|invalid|expired/);
   });
+
+  it("tells the user to upgrade when the service refuses the CLI version", () => {
+    const lines = describeAuthStatus({
+      status: "upgrade_required",
+      httpStatus: 426,
+    });
+
+    expect(lines[0]).toBe("Logged in, but unable to verify identity.");
+    expect(lines[1]).toMatch(/no longer supports this version of the CLI/);
+    expect(lines.join("\n")).not.toMatch(/rejected|unreachable/);
+  });
 });

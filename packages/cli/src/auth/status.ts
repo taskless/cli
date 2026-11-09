@@ -1,4 +1,8 @@
-import type { V2Outcome, WhoamiResult } from "../api/v2";
+import {
+  upgradeRequiredMessage,
+  type V2Outcome,
+  type WhoamiResult,
+} from "../api/v2";
 import { isEnvironmentToken, rejectedTokenRemedy } from "./token";
 
 /**
@@ -23,6 +27,12 @@ export function describeAuthStatus(
       return [
         `Logged in${source}, but the token was rejected.`,
         `It is invalid or expired. ${rejectedTokenRemedy()}`,
+      ];
+    }
+    case "upgrade_required": {
+      return [
+        `Logged in${source}, but unable to verify identity.`,
+        upgradeRequiredMessage(),
       ];
     }
     case "unavailable": {
