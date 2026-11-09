@@ -111,6 +111,7 @@ jobs:
       actions: read # wait on the Release Vale run for this commit
       contents: write # push the vendor/vale/upgrade branch
       pull-requests: write # open the upgrade PR
+      issues: write # label the PR (the labels endpoint is an Issues one)
     steps:
       # Credentials persist because this job pushes a branch. It holds no npm
       # identity and no id-token.

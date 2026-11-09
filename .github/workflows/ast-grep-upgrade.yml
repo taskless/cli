@@ -93,6 +93,7 @@ jobs:
     permissions:
       contents: write # push the vendor/ast-grep/upgrade branch
       pull-requests: write # open the bump PR
+      issues: write # label the PR (the labels endpoint is an Issues one)
     steps:
       # Credentials persist because this job pushes a branch. It holds no npm
       # identity and no id-token.
