@@ -216,6 +216,33 @@ describe("auth login (interactive) after auth logout", () => {
   });
 });
 
+describe("auth login (interactive) with an expired code", () => {
+  // Without --json the error code is not printed, so the shared mapping that
+  // makes this AUTH_EXPIRED shows here as the step path's message and remedy.
+  it("fails as the --json step does, naming a new login as the remedy", async () => {
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    mockedRequestDeviceCode.mockResolvedValue({
+      device_code: "device-1",
+      user_code: "ABCD-EFGH",
+      verification_uri: "https://taskless.io/device",
+      expires_in: 600,
+      interval: 0,
+    });
+    mockedPollForToken.mockResolvedValue({ status: "expired" });
+    let errors: string[];
+    try {
+      await runCommand(authCommand, { rawArgs: ["login", "-d", cwd] });
+      errors = errorSpy.mock.calls.map((call) => String(call[0]));
+    } finally {
+      errorSpy.mockRestore();
+    }
+    expect(process.exitCode).toBe(1);
+    expect(errors).toContain(
+      "Error: The login code expired before it was approved. Run `auth login` again for a new one."
+    );
+  });
+});
+
 describe("auth logout", () => {
   it("discards a pending login", async () => {
     const pending: PendingLogin = {
