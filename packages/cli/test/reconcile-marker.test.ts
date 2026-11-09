@@ -546,6 +546,75 @@ describe("recording a rules reconciliation", () => {
     });
   });
 
+  /**
+   * A newer CLI reconciled these rules against newer engines. `check` refuses
+   * on any difference, so `info` and `update` have to say so rather than
+   * report nothing due, and `update --rules` from this older CLI must not
+   * stamp its own engines over them (taskless/cli#649).
+   */
+  describe("engines recorded ahead of the bundled ones", () => {
+    interface Reconcile {
+      required: boolean;
+      engines: { engine: string; recorded: string; bundled: string }[];
+      enginesAhead: { engine: string; recorded: string; bundled: string }[];
+    }
+
+    beforeEach(async () => {
+      await mkdir(join(cwd, ".taskless", "rules", "sg", "r"), {
+        recursive: true,
+      });
+      await writeFile(
+        join(cwd, ".taskless", "rules", "sg", "r", "r.yml"),
+        "id: r\nlanguage: JavaScript\nseverity: error\nmessage: m\nrule:\n  pattern: eval($A)\n"
+      );
+      const version = await installedVersion();
+      const manifestPath = join(cwd, ".taskless", "taskless.json");
+      const manifest = JSON.parse(
+        await readFile(manifestPath, "utf8")
+      ) as Record<string, unknown>;
+      manifest["rules"] = {
+        reconciledTo: version,
+        engines: { sg: "999.0.0", vale: VALE_VERSION },
+      };
+      await writeFile(manifestPath, JSON.stringify(manifest, undefined, 2));
+    });
+
+    it("names them on info and update while check refuses", async () => {
+      const ahead = [
+        { engine: "sg", recorded: "999.0.0", bundled: AST_GREP_VERSION },
+      ];
+      const info = (await runJson(["info", "--json", "-d", cwd])) as {
+        rules: { reconcile: Reconcile };
+      };
+      expect(info.rules.reconcile).toMatchObject({
+        required: false,
+        engines: [],
+        enginesAhead: ahead,
+      });
+      const update = (await runJson(["update", "--json", "-d", cwd])) as {
+        reconcile: Reconcile;
+      };
+      expect(update.reconcile).toEqual(info.rules.reconcile);
+
+      const refused = await runCli(["check", "--json", "-d", cwd]);
+      expect(refused.exitCode).not.toBe(0);
+      expect(refused.stdout).toContain("RULES_ENGINE_MISMATCH");
+    });
+
+    it("refuses update --rules rather than move them backwards", async () => {
+      const before = await readRules();
+      const result = await runCli(["update", "--rules", "--json", "-d", cwd]);
+      expect(result.exitCode).toBe(1);
+      const envelope = JSON.parse(result.stdout) as {
+        code: string;
+        message: string;
+      };
+      expect(envelope.code).toBe("INVALID_INPUT");
+      expect(envelope.message).toContain("ast-grep 999.0.0");
+      expect(await readRules()).toEqual(before);
+    });
+  });
+
   it("leaves install untouched, since the two namespaces drift apart", async () => {
     const before = JSON.parse(
       await readFile(join(cwd, ".taskless", "taskless.json"), "utf8")

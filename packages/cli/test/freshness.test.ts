@@ -58,12 +58,14 @@ const RECONCILED: ReconcileStatus = {
   required: false,
   walk: null,
   engines: [],
+  enginesAhead: [],
   ruleMigrations: [],
 };
 const OWES_RECONCILE: ReconcileStatus = {
   required: true,
   walk: { from: "0.9.0", to: "1.0.0" },
   engines: [],
+  enginesAhead: [],
   ruleMigrations: [],
 };
 

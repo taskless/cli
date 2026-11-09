@@ -9,6 +9,7 @@ const NOTHING: ReconcileStatus = {
   required: false,
   walk: null,
   engines: [],
+  enginesAhead: [],
   ruleMigrations: [],
 };
 

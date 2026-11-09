@@ -9,7 +9,7 @@ import { readManifest, writeManifest } from "../filesystem/manifest";
 import { TASKLESS_DIRECTORY } from "./vale/formats";
 import { CLIError } from "../util/cli-error";
 import { getCliPrefix } from "../util/package-manager";
-import { compareVersions } from "../util/version-compare";
+import { compareSemver, compareVersions } from "../util/version-compare";
 import { getCliVersion } from "../wizard/intro";
 
 /**
@@ -96,9 +96,25 @@ export async function recordReconciliation(
   // Still guarded, because the stamp comes from whichever CLI is running: an
   // older one on the same project would otherwise rewind the marker and send
   // the next walk back through entries already applied.
-  if (previous !== undefined && compareVersions(reconciledTo, previous) < 0) {
+  //
+  // Semver precedence, prerelease included, and not the ledger's numeric-core
+  // comparison. Two nightlies of one release compare equal on their core, so
+  // the older one passed this guard and then stamped its own, older, engines
+  // over the ones the newer nightly recorded (taskless/cli#649).
+  if (previous !== undefined && compareSemver(reconciledTo, previous) < 0) {
     throw new CLIError(
       `This CLI is ${reconciledTo} and the project is already reconciled to ${previous}. Ledger entries are cumulative and a walk only moves forward, so recording an older CLI would claim work was undone. Upgrade before reconciling.`,
+      "INVALID_INPUT"
+    );
+  }
+
+  // The engines are stamped from this CLI unconditionally below, so one
+  // recorded AHEAD of what it bundles would be moved backwards, and the rules
+  // made valid for the newer engine would be recorded against the older one.
+  const ahead = enginesAhead(manifest.rules?.engines);
+  if (ahead.length > 0) {
+    throw new CLIError(
+      `This CLI bundles ${ahead.map(({ label, bundled }) => `${label} ${bundled}`).join(" and ")}, and the project's rules are recorded against ${ahead.map(({ label, recorded }) => `${label} ${recorded}`).join(" and ")}. Recording this CLI would move the engines backwards. Upgrade before reconciling.`,
       "INVALID_INPUT"
     );
   }
@@ -150,6 +166,31 @@ export function reconciliationStart(
   return { from, to: installed };
 }
 
+/**
+ * Recorded engines newer than the ones this CLI bundles. Every recorded engine
+ * counts, with rules or without, since the stamp overwrites both.
+ */
+function enginesAhead(
+  recorded: unknown
+): Array<{ label: string; recorded: string; bundled: string }> {
+  if (typeof recorded !== "object" || recorded === null) return [];
+  const bundled = { sg: AST_GREP_VERSION, vale: VALE_VERSION };
+  const labels = { sg: "ast-grep", vale: "Vale" };
+  const ahead: Array<{ label: string; recorded: string; bundled: string }> = [];
+  for (const engine of ["sg", "vale"] as const) {
+    const version = (recorded as Record<string, unknown>)[engine];
+    if (typeof version !== "string") continue;
+    if (compareSemver(version, bundled[engine]) > 0) {
+      ahead.push({
+        label: labels[engine],
+        recorded: version,
+        bundled: bundled[engine],
+      });
+    }
+  }
+  return ahead;
+}
+
 /** Whether a path exists, without distinguishing why it does not. */
 export async function pathExists(path: string): Promise<boolean> {
   try {
@@ -183,6 +224,8 @@ export async function stampRulelessProject(cwd: string): Promise<void> {
   try {
     const { manifest, raw } = await readManifest(tasklessDirectory);
     if (reconciliationStart(manifest.rules?.reconciledTo) === undefined) return;
+    // Never move a recorded engine backwards, the same as the walk's stamp.
+    if (enginesAhead(manifest.rules?.engines).length > 0) return;
     const rules = await Promise.all(
       ENGINES.map((engine) => listRuleIds(cwd, engine))
     );

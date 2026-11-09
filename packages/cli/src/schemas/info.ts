@@ -143,6 +143,17 @@ export const outputSchema = z.object({
             .describe(
               "Engines with rules recorded behind the bundled version. `check` and `verify` refuse while this is non-empty"
             ),
+          enginesAhead: z
+            .array(
+              z.object({
+                engine: z.enum(["sg", "vale"]),
+                recorded: z.string(),
+                bundled: z.string(),
+              })
+            )
+            .describe(
+              "Engines with rules recorded ahead of the bundled version, by a newer CLI. `check` and `verify` refuse while this is non-empty, and `update --rules` from this CLI refuses rather than move them backwards, so they do not make `required` true. Run the newer CLI the project records"
+            ),
           ruleMigrations: z
             .array(
               z.object({
