@@ -1,4 +1,7 @@
+import type { z } from "zod";
+
 import { parseEntitlementV2, type EntitlementV2 } from "../api/entitlement";
+import type { differingFileSchema, IntegrityEntry } from "../schemas/check";
 import { isRecord } from "../util/is-record";
 import type { EngineName } from "./layout";
 import { isKnownEngine } from "./layout";
@@ -40,40 +43,7 @@ import type { ReportedRule } from "./check-summary";
  */
 
 /** A differing file, as the service reported it. */
-export interface DifferingFile {
-  path: string;
-  /** What was issued. Absent for a file the service never issued. */
-  expected?: string;
-  /** What was reported. Absent for an issued file that was not reported. */
-  got?: string;
-}
-
-export type IntegrityVerdict =
-  | "unsafe"
-  | "missing"
-  | "unknown"
-  | "unaccounted"
-  | "duplicate";
-
-/** The issued rule an `unknown` rule was copied from, as `check --json` reports it. */
-export interface IntegrityCopyOf {
-  ruleId: string;
-  /** The source revision the copy matches best. */
-  revisionId?: string;
-  /** Whether the source was answered `missing`: the copy is a rename. */
-  sourceMissing: boolean;
-}
-
-/** A non-`run` outcome worth reporting, for `check --json`'s `integrity`. */
-export interface IntegrityEntry {
-  ruleId: string;
-  engine?: EngineName;
-  verdict: IntegrityVerdict;
-  files?: DifferingFile[];
-  revisionId?: string;
-  /** For an `unknown` rule that carries an issued rule's file. */
-  copyOf?: IntegrityCopyOf;
-}
+export type DifferingFile = z.infer<typeof differingFileSchema>;
 
 /** What happens to one reported rule. */
 export interface RuleDisposition {
