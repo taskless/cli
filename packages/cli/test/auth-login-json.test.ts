@@ -181,6 +181,41 @@ describe("auth login --json after auth logout", () => {
   });
 });
 
+describe("auth login (interactive) after auth logout", () => {
+  it("fails with AUTH_REQUIRED, saves no token, and captures no login", async () => {
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    mockedRequestDeviceCode.mockResolvedValue({
+      device_code: "device-1",
+      user_code: "ABCD-EFGH",
+      verification_uri: "https://taskless.io/device",
+      expires_in: 600,
+      interval: 0,
+    });
+    // `auth logout` lands while the poll is in flight, then the user approves.
+    mockedPollForToken.mockImplementation(async () => {
+      await clearPendingLogin(cwd);
+      return {
+        status: "success",
+        token: { access_token: "fresh-token", token_type: "Bearer" },
+      };
+    });
+    try {
+      await runCommand(authCommand, { rawArgs: ["login", "-d", cwd] });
+      expect(process.exitCode).toBe(1);
+      expect(errorSpy).toHaveBeenCalledWith(
+        expect.stringContaining("The login was cancelled")
+      );
+    } finally {
+      errorSpy.mockRestore();
+    }
+    await expect(
+      access(join(cwd, ".taskless", ".env.local.json"))
+    ).rejects.toThrow();
+    expect(telemetry.identifyAuthenticated).not.toHaveBeenCalled();
+    expect(telemetry.capture).not.toHaveBeenCalledWith("cli_authenticated");
+  });
+});
+
 describe("auth logout", () => {
   it("discards a pending login", async () => {
     const pending: PendingLogin = {

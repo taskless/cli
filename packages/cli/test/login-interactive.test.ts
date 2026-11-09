@@ -5,7 +5,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { whoami } from "../src/api/v2";
 import { loginInteractive } from "../src/auth/login-interactive";
-import { readPendingLogin, savePendingLogin } from "../src/auth/pending-login";
+import {
+  clearPendingLogin,
+  type PendingLogin,
+  readPendingLogin,
+  savePendingLogin,
+} from "../src/auth/pending-login";
 import { rejectedTokenRemedy } from "../src/auth/token";
 
 const { mockedRequestDeviceCode, mockedPollForToken } = vi.hoisted(() => ({
@@ -163,6 +168,132 @@ describe("loginInteractive", () => {
     expect(await loginInteractive({ cwd, ...quiet() })).toEqual({
       status: "ok",
     });
+    expect(await readPendingLogin(cwd)).toBeUndefined();
+  });
+});
+
+/** Whether any token file was written. */
+async function hasSavedToken(): Promise<boolean> {
+  try {
+    await readFile(join(cwd, ".taskless", ".env.local.json"), "utf8");
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+const START = 1_800_000_000_000;
+
+/**
+ * A clock that only moves when the login sleeps, with `during` run once, the
+ * first time it does: the moment another shell acts while this one waits.
+ */
+function waitingWhile(during: () => Promise<void> = () => Promise.resolve()) {
+  let clock = START;
+  let ran = false;
+  return {
+    now: () => clock,
+    sleep: async (ms: number) => {
+      clock += ms;
+      if (!ran) {
+        ran = true;
+        await during();
+      }
+    },
+  };
+}
+
+function issueCode(): void {
+  mockedRequestDeviceCode.mockResolvedValue({
+    device_code: "device-own",
+    user_code: "ABCD-EFGH",
+    verification_uri: "https://example.test/device",
+    verification_uri_complete: "https://example.test/device?code=ABCD-EFGH",
+    expires_in: 600,
+    // Short, so a run against a build that ignores the injected sleep fails
+    // on its assertions rather than on the test timeout.
+    interval: 1,
+  });
+}
+
+function approve(): void {
+  mockedPollForToken.mockResolvedValue({
+    status: "success",
+    token: { access_token: "fresh-token", token_type: "Bearer" },
+  });
+}
+
+/**
+ * The interactive login records itself as pending while it waits, so that
+ * `auth logout` or another login run from a different shell can cancel it.
+ */
+describe("loginInteractive while it waits", () => {
+  it("records itself as an interactive pending login", async () => {
+    issueCode();
+    approve();
+    let seen: PendingLogin | undefined;
+    const result = await loginInteractive({
+      cwd,
+      ...quiet(),
+      ...waitingWhile(async () => {
+        seen = await readPendingLogin(cwd);
+      }),
+    });
+    expect(result).toEqual({ status: "ok" });
+    expect(seen).toEqual({
+      deviceCode: "device-own",
+      userCode: "ABCD-EFGH",
+      verificationUrl: "https://example.test/device?code=ABCD-EFGH",
+      interval: 1,
+      expiresAt: START + 600_000,
+      mode: "interactive",
+    });
+    // Finished, so no longer pending.
+    expect(await readPendingLogin(cwd)).toBeUndefined();
+  });
+
+  it("saves no token when auth logout ran while it waited, though the user then approves", async () => {
+    issueCode();
+    approve();
+    const sinks = quiet();
+    const result = await loginInteractive({
+      cwd,
+      ...sinks,
+      ...waitingWhile(() => clearPendingLogin(cwd)),
+    });
+    expect(result).toEqual({ status: "cancelled", reason: "cancelled" });
+    expect(await hasSavedToken()).toBe(false);
+    expect(sinks.logs).not.toContain("Logged in successfully.");
+  });
+
+  it("leaves alone a login another process started while it waited", async () => {
+    issueCode();
+    approve();
+    const replacement: PendingLogin = {
+      deviceCode: "device-other",
+      userCode: "WXYZ-1234",
+      verificationUrl: "https://example.test/device?code=WXYZ-1234",
+      interval: 5,
+      expiresAt: START + 600_000,
+      mode: "step",
+    };
+    const result = await loginInteractive({
+      cwd,
+      ...quiet(),
+      ...waitingWhile(() => savePendingLogin(cwd, replacement)),
+    });
+    expect(result).toEqual({ status: "cancelled", reason: "cancelled" });
+    expect(await hasSavedToken()).toBe(false);
+    // Its pending file is the other login's, and is not deleted.
+    expect(await readPendingLogin(cwd)).toEqual(replacement);
+  });
+
+  it("forgets its own pending login on a denial", async () => {
+    issueCode();
+    mockedPollForToken.mockResolvedValue({ status: "denied" });
+    expect(
+      await loginInteractive({ cwd, ...quiet(), ...waitingWhile() })
+    ).toEqual({ status: "cancelled", reason: "denied" });
     expect(await readPendingLogin(cwd)).toBeUndefined();
   });
 });
