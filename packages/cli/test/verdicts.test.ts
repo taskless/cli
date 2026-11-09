@@ -85,7 +85,7 @@ describe("applyVerdicts", () => {
     });
   });
 
-  it("an unsafe runtime rule does not run and does NOT fail", () => {
+  it("an unsafe runtime rule does not run, fails, and names restore (#655)", () => {
     const plan = applyVerdicts(
       [RT],
       {
@@ -103,8 +103,12 @@ describe("applyVerdicts", () => {
       recovery
     );
     expect(plan.dispositions).toMatchObject([{ run: false }]);
-    expect(plan.failures).toEqual([]);
-    expect(plan.notices[0]).toContain(restore(RT.ruleId));
+    expect(plan.failures).toHaveLength(1);
+    expect(plan.failures[0]).toMatch(
+      new RegExp(`runtime rule ${RT.ruleId} was edited .*\`check\` fails`)
+    );
+    expect(plan.failures[0]).toContain(restore(RT.ruleId));
+    expect(plan.notices).toEqual([]);
   });
 
   it("unknown: static runs silently, runtime does not run", () => {
@@ -524,7 +528,7 @@ describe("applyVerdicts on a plan without rule recovery", () => {
     expect(plan.failures[0]).not.toContain("rule restore");
   });
 
-  it("an unsafe runtime rule's notice gives git steps, not rule restore", () => {
+  it("an unsafe runtime rule's failure gives git steps, not rule restore", () => {
     const plan = applyVerdicts(
       [RT],
       {
@@ -541,10 +545,10 @@ describe("applyVerdicts on a plan without rule recovery", () => {
       },
       noRecovery
     );
-    expect(plan.notices[0]).toContain(
+    expect(plan.failures[0]).toContain(
       `git log -- .taskless/rules/runtime/${RT.ruleId}/`
     );
-    expect(plan.notices[0]).not.toContain("rule restore");
+    expect(plan.failures[0]).not.toContain("rule restore");
   });
 
   it.each([

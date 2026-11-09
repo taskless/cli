@@ -1,4 +1,4 @@
-# Topic: ci     (CLI v%(CLI_VERSION)s / topic v8)
+# Topic: ci     (CLI v%(CLI_VERSION)s / topic v9)
 
 %(ONE_COMMAND_PER_CALL)s
 
@@ -95,6 +95,10 @@ Run `%(TASKLESS_CLI)s check`:
   as `unsafe`) → CI will fail until it is put back. Run
   `%(TASKLESS_CLI)s rule restore <ruleId>`; do not edit it back by hand
   and do not add a flag to the CI command to skip verification.
+- "authentication was rejected" in `failures` → CI will fail until the
+  token is replaced (a revoked or mistyped `TASKLESS_TOKEN`). A rule
+  service that cannot be reached does not fail the run; only a rejected
+  token does.
 
 ### 4. Generate the config
 

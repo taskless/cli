@@ -240,6 +240,15 @@ export async function planCheck(
         }`
   );
   if (outcome.status !== "ok") {
+    // A rejected token is an answer about this run's credentials, not an
+    // outage: a revoked or mistyped key would otherwise leave CI green with
+    // nothing verified, run after run. An unreachable service stays non-fatal
+    // so a Taskless outage does not turn every customer's CI red (#655).
+    if (outcome.status === "unauthorized") {
+      failures.push(
+        "authentication was rejected, so no rule was verified and `check` fails until the token is fixed (the notice names how)."
+      );
+    }
     return {
       ...unverified(
         await discoverRuntimeRulesIn(runtimeRoot),

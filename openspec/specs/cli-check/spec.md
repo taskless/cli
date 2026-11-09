@@ -143,9 +143,11 @@ When the `--json` flag is set, the CLI SHALL output each `CheckResult` as a JSON
 The CLI SHALL exit with code 0 when no error-severity matches are found (including when only warnings, info, or hints exist) and no reconcile outcome below requires failure. The CLI SHALL exit with code 1 when at least one error-severity match is found. The CLI SHALL also exit with code 1, whatever the findings and in both human and `--json` modes, when a completed reconcile:
 
 - returned a non-empty `entitlement.withheld`;
-- returned an `unsafe` verdict for an `sg` or `vale` rule;
+- returned an `unsafe` verdict for a rule of any engine, runtime included;
 - returned an `sg` or `vale` rule in `unknown` carrying `copyOf`, or a rule of any engine carrying a `copyOf` the CLI cannot read; or
 - left a reported rule unaccounted for (in none, or more than one, of `rules`, `unknown`, and `entitlement.withheld`).
+
+The CLI SHALL also exit with code 1 when reconcile was attempted and the rule service rejected the token (`401 unauthorized`), since a rejected token means no rule was verified on this or any later run until the token is replaced. A reconcile that could not complete for any other reason, including a rule service that could not be reached, SHALL NOT change the exit code.
 
 On an authenticated run that would reconcile, the CLI SHALL also exit with code 1 when two rule directories under different engines share an id. A logged-out run verifies nothing and does not fail on it. Under `--json`, `success` SHALL be `false` whenever the exit code is non-zero.
 
@@ -179,6 +181,23 @@ On an authenticated run that would reconcile, the CLI SHALL also exit with code 
 
 - **WHEN** reconciliation returns an `unsafe` verdict for an `sg` or `vale` rule and the scan produces zero results
 - **THEN** the process SHALL exit with code 1
+
+#### Scenario: Exit 1 when a runtime rule was edited
+
+- **WHEN** reconciliation returns an `unsafe` verdict for a runtime rule and the scan produces zero results
+- **THEN** the process SHALL exit with code 1
+- **AND** under `--json`, `failures` SHALL name the rule and `success` SHALL be `false`
+
+#### Scenario: Exit 1 when the token is rejected
+
+- **WHEN** an authenticated `check` attempts reconciliation and the rule service answers `401 unauthorized`
+- **THEN** the process SHALL exit with code 1 whatever the scan found
+- **AND** the failure SHALL say that authentication was rejected and no rule was verified
+
+#### Scenario: An unreachable rule service does not fail
+
+- **WHEN** an authenticated `check` attempts reconciliation and the rule service cannot be reached, or answers with a retryable status, and the scan produces zero results
+- **THEN** the process SHALL exit with code 0
 
 #### Scenario: Exit 1 when a static rule is a copy of an issued rule
 
@@ -349,13 +368,16 @@ excludes, and only then assemble engine configs and run.
 
 ### Requirement: Check degrades to a local scan when reconciliation cannot complete
 
-`taskless check` SHALL NOT fail solely because an attempted reconciliation cannot complete.
-When a token is available and `--anonymous` is not set but reconciliation cannot complete (no
-resolvable git remote, the endpoint unreachable, a `401`, a `404 organization_not_found`, or a
-transport error), the CLI SHALL warn that rule verification could not be performed, SHALL run
+`taskless check` SHALL NOT fail solely because an attempted reconciliation cannot complete,
+with one exception: a `401` that rejects the token fails the run (see "Check subcommand exit
+codes reflect error severity"), because a rejected token is a fact about this run's credentials
+rather than an outage. When a token is available and `--anonymous` is not set but
+reconciliation cannot complete (no resolvable git remote, the endpoint unreachable, a `401`, a
+`404 organization_not_found`, or a transport error), the CLI SHALL warn that rule verification could not be performed, SHALL run
 every **static** rule from the snapshot unverified, and SHALL **skip runtime rules** unless
-`--dangerously-run-scripts` is set. The CLI SHALL NOT exit with a non-zero code solely because
-reconciliation failed, and the warning SHALL be suppressed under `--json`.
+`--dangerously-run-scripts` is set. Except for a rejected token, the CLI SHALL NOT exit with a
+non-zero code solely because reconciliation failed, and the warning SHALL be suppressed under
+`--json`.
 
 #### Scenario: Endpoint unreachable degrades static and skips runtime
 
@@ -364,6 +386,13 @@ reconciliation failed, and the warning SHALL be suppressed under `--json`.
 - **AND** SHALL scan all static rules
 - **AND** SHALL NOT execute any runtime rule's `check.ts`
 - **AND** SHALL NOT exit with a non-zero code solely due to the reconcile failure
+
+#### Scenario: A rejected token degrades the same way and fails
+
+- **WHEN** an authenticated `check` attempts reconciliation and the endpoint answers `401 unauthorized`
+- **THEN** the CLI SHALL scan all static rules unverified
+- **AND** SHALL NOT execute any runtime rule's `check.ts`
+- **AND** SHALL exit with code 1
 
 #### Scenario: Degrade warning is suppressed under --json
 
