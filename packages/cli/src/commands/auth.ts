@@ -19,13 +19,16 @@ type FailedLoginStep = Extract<
 >;
 
 /**
+ * The error code for a login that saved no token, for the interactive flow
+ * and the `--json` step alike.
+ *
  * A cancelled login is AUTH_REQUIRED, like a denial: the repository is not
  * logged in, nothing about the network failed, and the remedy is a new
  * `auth login`. It is not AUTH_EXPIRED, which says the code ran out, and an
  * agent must not read it as NETWORK_ERROR and retry the login the user just
  * logged out of.
  */
-function loginStepErrorCode(reason: FailedLoginStep["reason"]): CLIErrorCode {
+function loginErrorCode(reason: FailedLoginStep["reason"]): CLIErrorCode {
   switch (reason) {
     case "denied":
     case "cancelled": {
@@ -41,24 +44,23 @@ function loginStepErrorCode(reason: FailedLoginStep["reason"]): CLIErrorCode {
 }
 
 /**
- * Why a login saved no token though it was waiting on one, for the interactive
- * flow and the `--json` step alike. `rerun` is the command that starts anew.
+ * Why a login saved no token, for the interactive flow and the `--json` step
+ * alike. `rerun` is the command that starts a new login.
  */
-function cancelledLoginMessage(rerun: string): string {
-  return `The login was cancelled: \`auth logout\` ran, or another login replaced it, while this one waited. Run \`${rerun}\` again to start a new one.`;
-}
-
-function loginStepMessage(step: FailedLoginStep): string {
-  if (step.message !== undefined) return step.message;
-  switch (step.reason) {
+function loginFailureMessage(
+  failure: { reason: FailedLoginStep["reason"]; message?: string },
+  rerun: string
+): string {
+  if (failure.message !== undefined) return failure.message;
+  switch (failure.reason) {
     case "denied": {
       return "Authorization denied.";
     }
     case "cancelled": {
-      return cancelledLoginMessage("auth login --json");
+      return `The login was cancelled: \`auth logout\` ran, or another login replaced it, while this one waited. Run \`${rerun}\` again to start a new one.`;
     }
     case "expired": {
-      return "The login code expired before it was approved. Run `auth login --json` again for a new one.";
+      return `The login code expired before it was approved. Run \`${rerun}\` again for a new one.`;
     }
     case "error": {
       return "Authentication failed.";
@@ -162,7 +164,10 @@ const loginCommand = defineCommand({
             return;
           }
           case "failed": {
-            fail(loginStepErrorCode(step.reason), loginStepMessage(step));
+            fail(
+              loginErrorCode(step.reason),
+              loginFailureMessage(step, "auth login --json")
+            );
             return;
           }
         }
@@ -192,22 +197,12 @@ const loginCommand = defineCommand({
           return;
         }
         case "cancelled": {
-          // A cancelled login is AUTH_REQUIRED here for the same reasons as
-          // under --json: see loginStepErrorCode.
-          const code: CLIErrorCode =
-            result.reason === "denied" || result.reason === "cancelled"
-              ? loginStepErrorCode(result.reason)
-              : "NETWORK_ERROR";
-          const message =
-            result.message ??
-            (result.reason === "denied"
-              ? "Authorization denied."
-              : result.reason === "cancelled"
-                ? cancelledLoginMessage("auth login")
-                : result.reason === "expired"
-                  ? "Device code expired. Please try again."
-                  : "Authentication failed.");
-          fail(code, message);
+          // One mapping for both flows, so an outcome reads the same however
+          // the login ran.
+          fail(
+            loginErrorCode(result.reason),
+            loginFailureMessage(result, "auth login")
+          );
           return;
         }
       }
