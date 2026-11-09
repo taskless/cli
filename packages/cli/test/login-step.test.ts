@@ -308,4 +308,34 @@ describe("a login step", () => {
     expect(await hasSavedToken()).toBe(false);
     expect(await readPendingLogin(cwd)).toEqual(replacement);
   });
+
+  it("polls at least once when the interval is longer than its wait", async () => {
+    await savePendingLogin(cwd, { ...PENDING, interval: 60 });
+    mockedPollForToken.mockResolvedValue({
+      status: "success",
+      token: { access_token: "fresh-token", token_type: "Bearer" },
+    });
+    expect(await loginStep({ cwd, ...time })).toEqual({
+      status: "authenticated",
+    });
+    expect(mockedPollForToken).toHaveBeenCalledTimes(1);
+    expect(clock - START).toBeLessThanOrEqual(45_000);
+    expect(await savedToken()).toBe("fresh-token");
+  });
+
+  it("keeps the service's interval when it caps a step's wait", async () => {
+    await savePendingLogin(cwd, { ...PENDING, interval: 60 });
+    mockedPollForToken.mockResolvedValue({ status: "slow_down" });
+    expect(await loginStep({ cwd, ...time })).toMatchObject({
+      status: "pending",
+    });
+    expect(mockedPollForToken).toHaveBeenCalledTimes(1);
+    expect(await readPendingLogin(cwd)).toMatchObject({ interval: 65 });
+
+    // The next step still polls, though the saved interval only grew.
+    expect(await loginStep({ cwd, ...time })).toMatchObject({
+      status: "pending",
+    });
+    expect(mockedPollForToken).toHaveBeenCalledTimes(2);
+  });
 });
