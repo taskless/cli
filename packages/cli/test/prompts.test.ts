@@ -369,6 +369,21 @@ describe("host mechanics suppression", () => {
     expect(rendered).toContain("The caller supplies");
   });
 
+  it("reduces every recipe citation in an exported topic to its name", () => {
+    // `mechanics: false` promises a citation renders as the topic name, not
+    // as `<taskless-cli> agent <topic>` (taskless/cli#652). The topic list
+    // comes from the recipes on disk so a citation of a new recipe is caught
+    // too, and `\s+` catches a citation wrapped across a line break.
+    const names = canonicalRecipeTopics().join("|");
+    const citation = new RegExp(String.raw`\bagent\s+(?:${names})\b`);
+    for (const topic of TOPICS) {
+      const rendered = getPrompt(topic, { mechanics: false });
+      expect(rendered, topic).not.toMatch(citation);
+      // The default render still cites them as commands.
+      expect(getPrompt(topic), topic).toMatch(citation);
+    }
+  });
+
   it("leaves no malformed command behind when the caller has no CLI", () => {
     // The defect this option exists for. `invocation` substitutes a binary
     // NAME inside a command, so a consumer with no CLI that sets it to a

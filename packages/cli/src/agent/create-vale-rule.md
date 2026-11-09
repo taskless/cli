@@ -1,11 +1,11 @@
-# Topic: create-vale-rule     (CLI v%(CLI_VERSION)s / topic v20)
+# Topic: create-vale-rule     (CLI v%(CLI_VERSION)s / topic v21)
 
 %(ONE_COMMAND_PER_CALL)s
 
 ## You are here
 This is `create-vale-rule`. It helps you write a Vale rule: a check over
 the words of a document, prose, markup, and the prose parts of code.
-If that is not the kind of check you need, re-run `%(TASKLESS_CLI)s agent route`
+If that is not the kind of check you need, re-run `%(RECIPE_FETCH)sroute`
 and follow its decision rather than adapting this recipe.
 
 ## Goal
@@ -1286,6 +1286,6 @@ definition when the acronym is missing".
 
 ## See Also
 
-- `%(TASKLESS_CLI)s agent route`: re-decide the destination
-- `%(TASKLESS_CLI)s agent check`: run every engine over the repo
-- `%(TASKLESS_CLI)s agent create-sg-rule`: author a rule over code structure
+- `%(RECIPE_FETCH)sroute`: re-decide the destination
+- `%(RECIPE_FETCH)scheck`: run every engine over the repo
+- `%(RECIPE_FETCH)screate-sg-rule`: author a rule over code structure
