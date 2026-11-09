@@ -1,4 +1,4 @@
-# Topic: improve-rule     (CLI v%(CLI_VERSION)s / topic v11)
+# Topic: improve-rule     (CLI v%(CLI_VERSION)s / topic v12)
 
 %(ONE_COMMAND_PER_CALL)s
 
@@ -137,6 +137,7 @@ When `--json` is set, failures emit `{ ok: false, code, message }`:
 | `INVALID_INPUT`          | `--from` JSON failed validation     | re-read input schema, fix, retry              |
 | `RULE_NOT_FOUND`         | the service did not issue this rule | re-check the directory name; a local or pre-0.12.0 rule needs the anonymous flow |
 | `NETWORK_ERROR`          | API submit/poll failed              | the CLI already retried transient failures. If the message names a `--resume` command, run that to keep waiting on the same request; re-running with `--from` submits a NEW request, so confirm with the user first |
+| `CLI_UPGRADE_REQUIRED`   | the service no longer serves this CLI version | tell the user to upgrade with the command in `message`; do not retry |
 | `RULE_GENERATION_FAILED` | API returned a generation failure   | report; suggest enriching guidance/references |
 | `RULE_UNSUPPORTED`       | plan lacks this generation type     | tell the user to enable it; do not retry      |
 

@@ -105,6 +105,12 @@ export type CLIErrorCode =
   // is to run the version the project records (its launcher), or `init` with
   // this CLI to move the project to it.
   | "CLI_VERSION_MISMATCH"
+  // The Taskless service answered `cli_upgrade_required`: it no longer serves
+  // this CLI version. Distinct from CLI_VERSION_MISMATCH, which compares this
+  // CLI with the project's record and never asks the service. Distinct from
+  // NETWORK_ERROR because the service answered, and it will answer the same
+  // way to every retry. The remedy is a newer CLI.
+  | "CLI_UPGRADE_REQUIRED"
   // `rules.engines` names an ast-grep or Vale version other than the one this
   // CLI bundles, for an engine the project has rules for. Behind asks for the
   // `update` walk and `update --rules`; ahead asks for the CLI the project

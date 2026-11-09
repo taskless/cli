@@ -1,6 +1,6 @@
 import { getToken, rejectedTokenRemedy } from "../auth/token";
 import { resolveActingOrg } from "../auth/org";
-import { reconcileRules, retryAdvice } from "../api/v2";
+import { reconcileRules, retryAdvice, upgradeRequiredMessage } from "../api/v2";
 import { CLIError } from "../util/cli-error";
 import {
   resolveRepositoryPath,
@@ -406,6 +406,13 @@ function reconcileFailure(
       return {
         cause: "authentication was rejected",
         remedy: [rejectedTokenRemedy()],
+      };
+    }
+    case "upgrade_required": {
+      return {
+        cause:
+          "the Taskless service no longer supports this version of the CLI",
+        remedy: [upgradeRequiredMessage()],
       };
     }
     case "unavailable": {

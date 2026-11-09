@@ -4,6 +4,7 @@ import { z } from "zod";
 import type { paths } from "../generated/api-v2";
 import { getApiBaseUrl } from "./config";
 import { parseRefusal, stripControlCharacters, type Refusal } from "./refusal";
+import { buildLauncherPackage, LAUNCHER_PACKAGES } from "../install/launcher";
 import { resolveRunEnvironment } from "../util/adoption-dimensions";
 import { isRecord } from "../util/is-record";
 import { CLI_VERSION, CLI_VERSION_HEADER } from "../version";
@@ -60,6 +61,11 @@ export type ErrorCode<P extends keyof paths, M extends Method> = Exclude<
  *   `validation_error`, the one code the service explains.
  * - `unauthorized`: `401`. Its own outcome, because every caller answers it the
  *   same way (log in again) and it is never a verdict about the request.
+ * - `upgrade_required`: the service answered `cli_upgrade_required`, on any
+ *   route. It no longer serves this CLI version, so every caller answers it
+ *   the same way (upgrade the CLI), and retrying can never help. It is
+ *   recognized here, ahead of each route's own codes, so no route can let it
+ *   fall through to `unavailable` and be reported as an outage.
  * - `unavailable`: anything the schema does not describe: a network failure, an
  *   undocumented status or code, or a body that is not what it says it is.
  *   `retryable` marks the ones a later attempt may not repeat (a network
@@ -71,7 +77,28 @@ export type V2Outcome<T, C extends string> =
   | { status: "refused"; refusal: Refusal }
   | { status: "error"; code: C; httpStatus: number; details?: string[] }
   | { status: "unauthorized" }
+  | { status: "upgrade_required"; httpStatus: number }
   | { status: "unavailable"; reason: string; retryable: boolean };
+
+/** The error code the service answers a client below its version floor with. */
+export const UPGRADE_REQUIRED_CODE = "cli_upgrade_required";
+
+/**
+ * What to tell the user when the service answered `upgrade_required`.
+ *
+ * The remedy names `@latest` rather than this build's pinned specifier: the
+ * pinned one is the version the service just refused. `init` is what moves a
+ * project to another CLI version, since `.taskless/taskless.json` records the
+ * one it runs.
+ */
+export function upgradeRequiredMessage(): string {
+  // A `self` build has no package; the release is the one to upgrade to.
+  const packageName = buildLauncherPackage() ?? LAUNCHER_PACKAGES[0];
+  return (
+    `The Taskless service no longer supports this version of the CLI (${CLI_VERSION}). ` +
+    `Upgrade it: run \`npx ${packageName}@latest init\` to move this project to the newest release, then run this command again.`
+  );
+}
 
 /**
  * The sentence to append to a message about an `unavailable` outcome: advice
@@ -174,6 +201,9 @@ async function settle<T, C extends string>(
   // than at every message that interpolates them.
   const body = fetched.error;
   const code = isRecord(body) ? body.error : undefined;
+  if (code === UPGRADE_REQUIRED_CODE) {
+    return { status: "upgrade_required", httpStatus: response.status };
+  }
   if (typeof code === "string" && (codes as readonly string[]).includes(code)) {
     const details =
       isRecord(body) && Array.isArray(body.details)

@@ -15,6 +15,7 @@ import {
   iterateRule,
   retryAdvice,
   submitRequest,
+  upgradeRequiredMessage,
   type V2Outcome,
 } from "../api/v2";
 import { rejectedTokenRemedy } from "../auth/token";
@@ -64,6 +65,12 @@ function describeSubmitFailure(
       return {
         message: `Authentication was rejected. ${rejectedTokenRemedy()}`,
         code: "AUTH_REQUIRED",
+      };
+    }
+    case "upgrade_required": {
+      return {
+        message: upgradeRequiredMessage(),
+        code: "CLI_UPGRADE_REQUIRED",
       };
     }
     case "unavailable": {

@@ -81,6 +81,7 @@ describe("rule create: transient failures while polling and fetching", () => {
   async function stub(failures: {
     poll?: Array<StubFailure | "building" | { status: string }>;
     fetch?: StubFailure[];
+    submit?: StubFailure;
   }): Promise<ReturnType<typeof vi.fn>> {
     return stubV2Server({
       produced: [{ rule, body: await servedBody(rule, "rev-1") }],
@@ -239,6 +240,43 @@ describe("rule create: transient failures while polling and fetching", () => {
 
     expect(lastEnvelope().code).toBe("AUTH_REQUIRED");
     expect(calls(fetchMock, "GET", "/cli/api/v2/request/")).toBe(1);
+  });
+
+  // #643: the service refuses an old client with `cli_upgrade_required`. That
+  // is an answer, not an outage, so it is never retried and never reported
+  // as NETWORK_ERROR.
+  it("reports a refused CLI version on submit as an upgrade, not an outage", async () => {
+    const fetchMock = await stub({ submit: "upgrade" });
+
+    await expect(create()).rejects.toThrow();
+
+    const envelope = lastEnvelope();
+    expect(envelope.code).toBe("CLI_UPGRADE_REQUIRED");
+    expect(envelope.message).toContain("no longer supports this version");
+    expect(envelope.message).toContain("@latest init");
+    expect(envelope.message).not.toContain("try again in a few minutes");
+    expect(calls(fetchMock, "POST", "/cli/api/v2/request")).toBe(1);
+  });
+
+  it("fails at once when the service refuses the CLI version mid-poll", async () => {
+    const fetchMock = await stub({ poll: ["upgrade"] });
+
+    await expect(create()).rejects.toThrow();
+
+    expect(lastEnvelope().code).toBe("CLI_UPGRADE_REQUIRED");
+    expect(calls(fetchMock, "GET", "/cli/api/v2/request/")).toBe(1);
+  });
+
+  it("fails at once when the service refuses the CLI version on fetch", async () => {
+    const fetchMock = await stub({ fetch: ["upgrade"] });
+
+    await expect(create()).rejects.toThrow();
+
+    const envelope = lastEnvelope();
+    expect(envelope.code).toBe("CLI_UPGRADE_REQUIRED");
+    expect(envelope.message).toContain(rule.id);
+    expect(calls(fetchMock, "GET", "/cli/api/v2/rule/")).toBe(1);
+    expect(existsSync(ruleFile())).toBe(false);
   });
 
   it("retries fetching a generated rule through transient failures", async () => {
