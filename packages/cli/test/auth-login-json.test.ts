@@ -1,10 +1,11 @@
-import { mkdtemp, rm } from "node:fs/promises";
+import { access, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { runCommand } from "citty";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
+  clearPendingLogin,
   type PendingLogin,
   readPendingLogin,
   savePendingLogin,
@@ -123,6 +124,35 @@ describe("auth login --json", () => {
       code: "AUTH_EXPIRED",
     });
     expect(process.exitCode).toBe(1);
+  });
+});
+
+describe("auth login --json after auth logout", () => {
+  it("fails with AUTH_REQUIRED and saves no token", async () => {
+    await savePendingLogin(cwd, {
+      deviceCode: "device-1",
+      userCode: "ABCD-EFGH",
+      verificationUrl: "https://taskless.io/device",
+      interval: 0,
+      expiresAt: Date.now() + 600_000,
+    });
+    // `auth logout` lands while the poll is in flight, then the user approves.
+    mockedPollForToken.mockImplementation(async () => {
+      await clearPendingLogin(cwd);
+      return {
+        status: "success",
+        token: { access_token: "fresh-token", token_type: "Bearer" },
+      };
+    });
+    expect(await run("login", "--json")).toMatchObject({
+      ok: false,
+      code: "AUTH_REQUIRED",
+      message: expect.stringContaining("cancelled") as unknown,
+    });
+    expect(process.exitCode).toBe(1);
+    await expect(
+      access(join(cwd, ".taskless", ".env.local.json"))
+    ).rejects.toThrow();
   });
 });
 

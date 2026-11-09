@@ -13,6 +13,51 @@ import { type CLIErrorCode, writeJsonError } from "../types/errors";
 import { splitRawArguments } from "../util/argv";
 import { getCliPrefix } from "../util/package-manager";
 
+type FailedLoginStep = Extract<
+  Awaited<ReturnType<typeof loginStep>>,
+  { status: "failed" }
+>;
+
+/**
+ * A cancelled login is AUTH_REQUIRED, like a denial: the repository is not
+ * logged in, nothing about the network failed, and the remedy is a new
+ * `auth login`. It is not AUTH_EXPIRED, which says the code ran out, and an
+ * agent must not read it as NETWORK_ERROR and retry the login the user just
+ * logged out of.
+ */
+function loginStepErrorCode(reason: FailedLoginStep["reason"]): CLIErrorCode {
+  switch (reason) {
+    case "denied":
+    case "cancelled": {
+      return "AUTH_REQUIRED";
+    }
+    case "expired": {
+      return "AUTH_EXPIRED";
+    }
+    case "error": {
+      return "NETWORK_ERROR";
+    }
+  }
+}
+
+function loginStepMessage(step: FailedLoginStep): string {
+  if (step.message !== undefined) return step.message;
+  switch (step.reason) {
+    case "denied": {
+      return "Authorization denied.";
+    }
+    case "cancelled": {
+      return "The login was cancelled: `auth logout` ran, or another login replaced it, while this one waited. Run `auth login --json` again to start a new one.";
+    }
+    case "expired": {
+      return "The login code expired before it was approved. Run `auth login --json` again for a new one.";
+    }
+    case "error": {
+      return "Authentication failed.";
+    }
+  }
+}
+
 const loginCommand = defineCommand({
   meta: {
     name: "login",
@@ -93,19 +138,7 @@ const loginCommand = defineCommand({
             return;
           }
           case "failed": {
-            const code: CLIErrorCode =
-              step.reason === "denied"
-                ? "AUTH_REQUIRED"
-                : step.reason === "expired"
-                  ? "AUTH_EXPIRED"
-                  : "NETWORK_ERROR";
-            fail(
-              code,
-              step.message ??
-                (step.reason === "denied"
-                  ? "Authorization denied."
-                  : "The login code expired before it was approved. Run `auth login --json` again for a new one.")
-            );
+            fail(loginStepErrorCode(step.reason), loginStepMessage(step));
             return;
           }
         }
