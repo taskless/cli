@@ -34,6 +34,11 @@ interface AutomationSignal {
   deps?: string[];
   /** Root `package.json` top-level keys the tool reads its config from. */
   packageJsonKeys?: string[];
+  /**
+   * Report a directory signal's files rather than the directory itself, for a
+   * directory named by no tool, where the scripts are the only thing to show.
+   */
+  listFiles?: boolean;
 }
 
 /** The file table the `ci` recipe uses, as root-relative globs. */
@@ -62,9 +67,14 @@ const CI_SIGNALS: readonly AutomationSignal[] = [
  * listed because it is what turns "run on commit" into "run on the staged
  * files", which is the question the onboard recipe asks, and leaving it out
  * would hide the most common way a repository already answers it.
+ *
+ * `githooks` is plain scripts in a tracked `.githooks/`, enabled with
+ * `git config core.hooksPath .githooks`. The directory is the signal, not that
+ * setting: it is local config a fresh clone does not carry.
  */
 const HOOK_SIGNALS: readonly AutomationSignal[] = [
   { name: "husky", paths: [".husky/"], deps: ["husky"] },
+  { name: "githooks", paths: [".githooks/"], listFiles: true },
   {
     name: "lefthook",
     paths: [
@@ -144,6 +154,20 @@ async function readRootPackageJson(root: string): Promise<RootPackageJson> {
   };
 }
 
+/** The files directly inside a directory signal, as sorted root-relative paths. */
+function directoryFiles(root: string, pattern: string): string[] {
+  let entries;
+  try {
+    entries = readdirSync(resolve(root, pattern), { withFileTypes: true });
+  } catch {
+    return [];
+  }
+  return entries
+    .filter((entry) => entry.isFile())
+    .map((entry) => `${pattern}${entry.name}`)
+    .toSorted();
+}
+
 function matchSignals(
   root: string,
   signals: readonly AutomationSignal[],
@@ -153,7 +177,9 @@ function matchSignals(
   for (const signal of signals) {
     const evidence: string[] = [];
     for (const pattern of signal.paths ?? []) {
-      if (pattern.endsWith("/")) {
+      if (pattern.endsWith("/") && signal.listFiles) {
+        evidence.push(...directoryFiles(root, pattern));
+      } else if (pattern.endsWith("/")) {
         if (existsSync(resolve(root, pattern))) evidence.push(pattern);
       } else {
         evidence.push(...globSync(pattern, { cwd: root }).toSorted());
@@ -184,19 +210,10 @@ export function automationFiles(root: string): string[] {
   const files = new Set<string>();
   for (const signal of [...CI_SIGNALS, ...HOOK_SIGNALS]) {
     for (const pattern of signal.paths ?? []) {
-      if (!pattern.endsWith("/")) {
-        for (const path of globSync(pattern, { cwd: root })) files.add(path);
-        continue;
-      }
-      let entries;
-      try {
-        entries = readdirSync(resolve(root, pattern), { withFileTypes: true });
-      } catch {
-        continue;
-      }
-      for (const entry of entries) {
-        if (entry.isFile()) files.add(`${pattern}${entry.name}`);
-      }
+      const paths = pattern.endsWith("/")
+        ? directoryFiles(root, pattern)
+        : globSync(pattern, { cwd: root });
+      for (const path of paths) files.add(path);
     }
   }
   return [...files].toSorted();
