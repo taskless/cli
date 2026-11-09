@@ -61,6 +61,8 @@ describe("rule create: transient failures while polling and fetching", () => {
   let cwd: string;
   let logSpy: MockInstance<(...data: unknown[]) => void>;
   let errorSpy: MockInstance<(...data: unknown[]) => void>;
+  /** A fake clock the poll deadline reads, advanced by every collapsed wait. */
+  let clock: number;
 
   const rule: StubRule = {
     id: "poll-test-rule-3fa9c21b",
@@ -76,7 +78,7 @@ describe("rule create: transient failures while polling and fetching", () => {
   };
 
   async function stub(failures: {
-    poll?: Array<StubFailure | "building">;
+    poll?: Array<StubFailure | "building" | { status: string }>;
     fetch?: StubFailure[];
   }): Promise<ReturnType<typeof vi.fn>> {
     return stubV2Server({
@@ -144,10 +146,14 @@ describe("rule create: transient failures while polling and fetching", () => {
 
     logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
     errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
-    // Collapse every wait between attempts to nothing.
+    // Collapse every wait between attempts to nothing, while advancing the
+    // clock the poll deadline is measured on by the time it would have taken.
+    clock = Date.UTC(2026, 0, 1);
+    vi.spyOn(Date, "now").mockImplementation(() => clock);
     vi.stubGlobal(
       "setTimeout",
-      (function_: (...arguments_: unknown[]) => void) => {
+      (function_: (...arguments_: unknown[]) => void, ms?: number) => {
+        clock += ms ?? 0;
         function_();
         return 0 as unknown as NodeJS.Timeout;
       }
@@ -282,17 +288,20 @@ describe("rule create: transient failures while polling and fetching", () => {
       });
     }
 
-    it("fails on a status this CLI does not know, naming it", async () => {
-      stubV2Server({ produced: [], status: "archived" });
+    it("fails, never succeeds, on a status this CLI does not know that never ends", async () => {
+      const fetchMock = stubV2Server({ produced: [], status: "archived" });
 
       await expect(resume("create", REQUEST_ID)).rejects.toThrow();
 
       expect(process.exitCode).toBe(1);
       const envelope = lastEnvelope();
       expect(envelope.ok).toBe(false);
-      expect(envelope.code).toBe("RULE_GENERATION_FAILED");
+      expect(envelope.code).toBe("NETWORK_ERROR");
+      expect(envelope.message).toContain("did not finish within 30 minutes");
       expect(envelope.message).toContain('"archived"');
-      expect(envelope.message).toContain("does not recognize");
+      expect(envelope.message).toContain(`rule create --resume ${REQUEST_ID}`);
+      // 30 minutes of 15-second polls, then the deadline.
+      expect(calls(fetchMock, "GET", "/cli/api/v2/request/")).toBe(120);
     });
 
     it("fails on a response with no status", async () => {
@@ -305,6 +314,61 @@ describe("rule create: transient failures while polling and fetching", () => {
       expect(envelope.ok).toBe(false);
       expect(envelope.message).toContain(ITERATE_REQUEST_ID);
       expect(envelope.message).not.toContain('"undefined"');
+    });
+  });
+
+  /**
+   * #638: `pushing` and any status this CLI does not know ended the poll as
+   * if final. Both are a request still moving, and are now waited on.
+   */
+  describe("statuses between submit and an end state", () => {
+    it("waits through pushing with its own progress line, then delivers", async () => {
+      const fetchMock = await stub({
+        poll: ["building", { status: "pushing" }],
+      });
+
+      await create();
+
+      expect(process.exitCode).toBeUndefined();
+      expect(lastEnvelope()).toMatchObject({ rules: [rule.id] });
+      expect(existsSync(ruleFile())).toBe(true);
+      expect(calls(fetchMock, "GET", "/cli/api/v2/request/")).toBe(3);
+      expect(errorSpy).toHaveBeenCalledWith(
+        expect.stringContaining("Status: pushing")
+      );
+    });
+
+    it("keeps polling a status this CLI does not know, then delivers", async () => {
+      const fetchMock = await stub({
+        poll: [{ status: "reviewing" }, { status: "reviewing" }],
+      });
+
+      await create();
+
+      expect(process.exitCode).toBeUndefined();
+      expect(existsSync(ruleFile())).toBe(true);
+      expect(calls(fetchMock, "GET", "/cli/api/v2/request/")).toBe(3);
+      expect(errorSpy).toHaveBeenCalledWith(
+        expect.stringContaining("Status: reviewing")
+      );
+    });
+
+    it("gives up at the poll deadline with a non-zero exit, even while building", async () => {
+      const fetchMock = await stub({
+        poll: Array.from({ length: 200 }, () => "building" as const),
+      });
+
+      await expect(create()).rejects.toThrow();
+
+      expect(process.exitCode).toBe(1);
+      const envelope = lastEnvelope();
+      expect(envelope.code).toBe("NETWORK_ERROR");
+      expect(envelope.message).toContain("did not finish within 30 minutes");
+      expect(envelope.message).toContain('(last status: "building")');
+      expect(envelope.message).toContain("may still complete");
+      expect(envelope.message).toContain(`rule create --resume ${REQUEST_ID}`);
+      expect(calls(fetchMock, "GET", "/cli/api/v2/request/")).toBe(120);
+      expect(existsSync(ruleFile())).toBe(false);
     });
   });
 

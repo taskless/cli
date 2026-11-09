@@ -74,11 +74,12 @@ export interface StubServerOptions {
    * Failures to answer with before the real response, consumed one per call
    * in order: an HTTP status, or `"network"` for a fetch that throws the way
    * Node's does on a transport failure. `poll` answers status checks, and may
-   * also hold `"building"`, a real in-progress answer; `fetch` answers
+   * also hold `"building"`, a real in-progress answer, or `{ status }` for any
+   * other status a poll answers with before the terminal one; `fetch` answers
    * `GET rule/{ruleId}` across all rules.
    */
   failures?: {
-    poll?: Array<StubFailure | "building">;
+    poll?: Array<StubFailure | "building" | { status: string }>;
     fetch?: StubFailure[];
   };
 }
@@ -127,10 +128,10 @@ export function stubV2Server(
     }
     if (method === "GET" && pathname.startsWith("/cli/api/v2/request/")) {
       const failure = pollFailures.shift();
-      if (failure === "building") {
+      if (failure === "building" || typeof failure === "object") {
         return Response.json({
           requestId: pathname.split("/").at(-1),
-          status: "building",
+          status: failure === "building" ? "building" : failure.status,
           revisions: [],
         });
       }

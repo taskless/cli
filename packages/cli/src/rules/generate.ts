@@ -45,9 +45,56 @@ export interface GenerationContext {
    * finish.
    */
   resumeCommand: string;
+  /**
+   * How long {@link awaitRequest} waits for an end state before it gives up.
+   * Defaults to {@link REQUEST_DEADLINE_MS}; tests shorten it.
+   */
+  deadlineMs?: number;
+  /** The clock the deadline is measured on. Defaults to `Date.now`. */
+  now?: () => number;
 }
 
 const POLL_INTERVAL_MS = 15_000;
+
+/**
+ * How long `awaitRequest` waits for a request to reach an end state, measured
+ * from the first poll: 30 minutes.
+ *
+ * The CLI had no ceiling of its own before #638, so there was no constant to
+ * reuse; the value is taken from the service's. The generator resets a request
+ * that has sat in `building` or `pushing` for more than 15 minutes to `failed`
+ * (taskless/taskless `openspec/specs/ticket-pipeline/spec.md`, "3x sandbox
+ * timeout"). Twice that leaves room for the queue time before `building` and
+ * for one stale reset to be reported, so a request the service is still
+ * working on, or is about to fail, reaches its real end state first. The
+ * deadline is the backstop for what the service never resolves, chiefly a
+ * status this CLI does not know, which is now polled rather than treated as
+ * final. Giving up cancels nothing, and the error names the `--resume`
+ * command, so a request that outlives it is still recoverable.
+ */
+export const REQUEST_DEADLINE_MS = 30 * 60 * 1000;
+
+/**
+ * The statuses that end a poll. Anything else, including a status this CLI
+ * does not know, is a request still moving: the service adding a step (as it
+ * did with `pushing`) must not make released CLIs stop early.
+ */
+const TERMINAL_STATUSES: ReadonlySet<string> = new Set<RequestStatus["status"]>(
+  ["generated", "failed", "unsupported", "pr", "merged", "closed"]
+);
+
+/**
+ * Progress lines for the in-progress statuses this CLI knows. `pushing` is
+ * the server's step between `building` and `pr`; it is not in the published
+ * enum yet (the service still reports it as `building`), so it is keyed as a
+ * plain string rather than added to the generated types by hand.
+ */
+const PROGRESS: ReadonlyMap<string, string> = new Map([
+  ["accepted", "Status: accepted — waiting for processing..."],
+  ["classifying", "Status: classifying — analyzing your request..."],
+  ["building", "Status: building — generating rules..."],
+  ["pushing", "Status: pushing — pushing the rule to a pull request..."],
+]);
 
 /**
  * How many retryable `unavailable` outcomes in a row a poll or a rule fetch
@@ -109,7 +156,11 @@ export function orgNotFoundRemedy(): string[] {
 export type FinishedRequest = RequestStatus;
 
 /**
- * Poll a request until it stops moving.
+ * Poll a request until it reaches an end state: one of `TERMINAL_STATUSES`.
+ * Every other status, `pushing` and any status this CLI does not know
+ * included, keeps the poll going, up to `deadlineMs` (by default
+ * {@link REQUEST_DEADLINE_MS}), after which it fails with `NETWORK_ERROR` and
+ * names the `--resume` command.
  *
  * A retryable `unavailable` (a network failure, `408`, `429`, or a `5xx`) is
  * not an answer about the request either, but it is one a later poll may not
@@ -126,8 +177,18 @@ export async function awaitRequest(
   context: GenerationContext,
   requestId: string
 ): Promise<FinishedRequest> {
+  const now = context.now ?? (() => Date.now());
+  const deadlineMs = context.deadlineMs ?? REQUEST_DEADLINE_MS;
+  const deadline = now() + deadlineMs;
   let unavailable = 0;
+  let last: string | undefined;
   while (true) {
+    if (now() >= deadline) {
+      throw new CLIError(
+        `Polling stopped: request ${requestId} did not finish within ${describeDuration(deadlineMs)}${last === undefined ? "" : ` (last status: "${last}")`}.${abandonedRequestAdvice(context, requestId)}`,
+        "NETWORK_ERROR"
+      );
+    }
     await pause();
 
     const outcome = await getRequestStatus(context.token, requestId, {
@@ -180,24 +241,33 @@ export async function awaitRequest(
     }
 
     const status = outcome.data;
-    switch (status.status) {
-      case "accepted": {
-        context.onProgress("Status: accepted — waiting for processing...");
-        continue;
-      }
-      case "classifying": {
-        context.onProgress("Status: classifying — analyzing your request...");
-        continue;
-      }
-      case "building": {
-        context.onProgress("Status: building — generating rules...");
-        continue;
-      }
-      default: {
-        return status;
-      }
+    // `getRequestStatus` only checks that the body is an object, so the
+    // status is read as what it may really be: a string outside the enum, or
+    // missing. A missing one is a malformed response, not a step to wait on.
+    const state: unknown = status.status;
+    if (typeof state !== "string" || state === "") {
+      throw new CLIError(
+        `Polling failed: invalid response body (no request status).${abandonedRequestAdvice(context, requestId)}`,
+        "NETWORK_ERROR"
+      );
     }
+    if (TERMINAL_STATUSES.has(state)) return status;
+
+    last = stripControlCharacters(state);
+    context.onProgress(
+      PROGRESS.get(state) ??
+        `Status: ${last} — waiting for the request to finish...`
+    );
   }
+}
+
+/** A deadline in words: whole minutes when it is one, else seconds. */
+function describeDuration(ms: number): string {
+  if (ms >= 60_000 && ms % 60_000 === 0) {
+    const minutes = ms / 60_000;
+    return `${String(minutes)} minute${minutes === 1 ? "" : "s"}`;
+  }
+  return `${String(Math.round(ms / 1000))} seconds`;
 }
 
 /**
