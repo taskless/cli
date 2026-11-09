@@ -370,3 +370,15 @@ jobs:
                packages/cli/src/rules/capabilities.ts \
                packages/cli/src/generated/vale-vocabulary.ts \
                packages/cli/src/generated/vale-vocabulary-report.md
+
+          # Label the PR as a bot's, so pending upgrades show at a glance and
+          # nobody mistakes it for a person's work. On every run rather than
+          # only at creation, so a PR opened before this step existed, or a
+          # label removed by hand, is put right. REST, not `gh pr edit`
+          # (GraphQL; see vendor-pr.cjs). Adding a label is idempotent.
+          # Non-fatal: a missing label is cosmetic.
+          pr="$(gh pr list --head vendor/vale/upgrade --state open --json number --jq '.[0].number // empty' || true)"
+          if [ -n "$pr" ] && ! gh api -X POST "repos/{owner}/{repo}/issues/${pr}/labels" \
+            -f 'labels[]=automated' -f 'labels[]=vale-upgrade' >/dev/null; then
+            echo "::warning::Could not label #${pr} automated and vale-upgrade."
+          fi
