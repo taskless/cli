@@ -559,7 +559,7 @@ describe("check: static vs runtime dispatch", () => {
     expect(await treeDigest(directory)).toBe(before);
   });
 
-  it("an edited runtime rule does not execute and does not fail the run", async () => {
+  it("an edited runtime rule does not execute and fails the run (#655)", async () => {
     const { stdout, exitCode } = await authedCheck((request) => ({
       statusCode: 200,
       body: answer(request, {
@@ -570,14 +570,17 @@ describe("check: static vs runtime dispatch", () => {
       }),
     }));
     const output = parseJson(stdout);
-    expect(exitCode).toBe(0);
+    expect(exitCode).toBe(1);
+    expect(output.success).toBe(false);
     expect(output.results.some((r) => r.source === "taskless-runtime")).toBe(
       false
     );
     expect(output.skipped?.find((s) => s.rule === "demo")?.reason).toMatch(
       /edited .*added captures\/extra\.yml/
     );
-    expect(output.notices?.join("\n")).toMatch(/rule restore demo/);
+    expect(output.failures?.join("\n")).toMatch(
+      /runtime rule demo was edited .*`check` fails.*rule restore demo/
+    );
   });
 
   it("missing warns, names restore, and fetches nothing", async () => {
@@ -645,7 +648,12 @@ describe("check: static vs runtime dispatch", () => {
       ["--json"],
       whoami
     );
-    const notices = parseJson(stdout).notices?.join("\n") ?? "";
+    const output = parseJson(stdout);
+    // The edited runtime rule fails the run (#655); the missing one warns.
+    const notices = [
+      ...(output.notices ?? []),
+      ...(output.failures ?? []),
+    ].join("\n");
     // The acting org came from the same whoami call that carried the plan.
     expect(server.requests[0]?.orgId).toBe("uuid-__taskless_test__");
     expect(notices).toContain("git log -- .taskless/rules/runtime/demo/");
@@ -822,12 +830,15 @@ describe("check: static vs runtime dispatch", () => {
 
   // authedCheck supplies the token through TASKLESS_TOKEN, which `auth login`
   // cannot replace, so the remedy names the variable rather than the command.
-  it("token rejected: the notice names replacing TASKLESS_TOKEN", async () => {
+  it("token rejected: fails the run, and the notice names replacing TASKLESS_TOKEN (#655)", async () => {
     const { stderr, exitCode } = await authedCheck(
       () => ({ statusCode: 401 }),
       []
     );
-    expect(exitCode).toBe(0);
+    expect(exitCode).toBe(1);
+    expect(stderr).toMatch(
+      /Error: authentication was rejected, so no rule was verified and `check` fails/
+    );
     expect(stderr.split("Rules were not verified")).toHaveLength(2);
     expect(stderr).toContain(
       "Rules were not verified: authentication was rejected."

@@ -17,7 +17,7 @@ import type { ReportedRule } from "./check-summary";
  * |--------------|---------------------------------|----------------------------------|
  * | `run`        | execute                         | run                              |
  * | withheld     | not executed; fails             | (never sent)                     |
- * | `unsafe`     | not executed; restore offered   | not run; FAILS; restore offered  |
+ * | `unsafe`     | not executed; FAILS; restore    | not run; FAILS; restore offered  |
  * | `missing`    | warn; restore offered           | warn; restore offered            |
  * | `unknown`    | not executed                    | run, silently                    |
  * | ... `copyOf` | not executed; source named      | not run; FAILS; source named     |
@@ -412,32 +412,22 @@ export function applyVerdicts(
         break;
       }
       case "unsafe": {
+        // Edited code is a local fact, not an outage: the rule did not run
+        // because someone changed it, so a green run would be a lie for a
+        // runtime rule exactly as for a static one (#655).
         const files = readFiles(answer.files);
         const changes = describeDifferences(files);
         plan.integrity.push({ ruleId, engine, verdict: "unsafe", files });
-        if (engine === "runtime") {
-          plan.dispositions.push({
-            ruleId,
-            engine,
-            run: false,
-            verdict: "unsafe",
-            reason: `edited since Taskless issued it (${changes})`,
-          });
-          plan.notices.push(
-            `runtime rule ${ruleId} was edited since Taskless issued it (${changes}), so it did not run. ${recovery({ ruleId, engine, purpose: "put back the issued version" })}`
-          );
-        } else {
-          plan.dispositions.push({
-            ruleId,
-            engine,
-            run: false,
-            verdict: "unsafe",
-            reason: `edited since Taskless issued it (${changes})`,
-          });
-          plan.failures.push(
-            `${engine} rule ${ruleId} was edited since Taskless issued it (${changes}), so it did not run and \`check\` fails. ${recovery({ ruleId, engine, purpose: "put back the issued version" })}`
-          );
-        }
+        plan.dispositions.push({
+          ruleId,
+          engine,
+          run: false,
+          verdict: "unsafe",
+          reason: `edited since Taskless issued it (${changes})`,
+        });
+        plan.failures.push(
+          `${engine} rule ${ruleId} was edited since Taskless issued it (${changes}), so it did not run and \`check\` fails. ${recovery({ ruleId, engine, purpose: "put back the issued version" })}`
+        );
         break;
       }
       default: {
