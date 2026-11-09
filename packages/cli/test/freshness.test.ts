@@ -6,9 +6,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { ReconcileStatus } from "../src/rules/reconcile-status";
 
-const checkStaleness = vi.fn();
+const checkCanonicalSkills = vi.fn();
 vi.mock("../src/install/install", () => ({
-  checkStaleness: (cwd: string): unknown => checkStaleness(cwd),
+  checkCanonicalSkills: (cwd: string): unknown => checkCanonicalSkills(cwd),
 }));
 
 const reconcileStatus = vi.fn();
@@ -30,28 +30,18 @@ const { environmentNotice, environmentSteps, measureEnvironment } =
 
 const CURRENT_SKILLS = [
   {
-    name: "Claude Code",
-    skills: [
-      {
-        name: "taskless",
-        installedVersion: "1.0.0",
-        currentVersion: "1.0.0",
-        current: true,
-      },
-    ],
+    name: "taskless",
+    installedVersion: "1.0.0",
+    currentVersion: "1.0.0",
+    current: true,
   },
 ];
 const STALE_SKILLS = [
   {
-    name: "Claude Code",
-    skills: [
-      {
-        name: "taskless",
-        installedVersion: "0.9.0",
-        currentVersion: "1.0.0",
-        current: false,
-      },
-    ],
+    name: "taskless",
+    installedVersion: "0.9.0",
+    currentVersion: "1.0.0",
+    current: false,
   },
 ];
 const RECONCILED: ReconcileStatus = {
@@ -82,7 +72,7 @@ describe("measureEnvironment", () => {
 
   beforeEach(() => {
     directory = mkdtempSync(join(tmpdir(), "taskless-freshness-"));
-    checkStaleness.mockReset().mockResolvedValue(CURRENT_SKILLS);
+    checkCanonicalSkills.mockReset().mockResolvedValue(CURRENT_SKILLS);
     reconcileStatus.mockReset().mockResolvedValue(RECONCILED);
   });
 
@@ -136,7 +126,7 @@ describe("measureEnvironment", () => {
 
   it("reports a stale skill with init", async () => {
     project();
-    checkStaleness.mockResolvedValue(STALE_SKILLS);
+    checkCanonicalSkills.mockResolvedValue(STALE_SKILLS);
     const measured = await measure(registry("1.0.0"));
     const steps = environmentSteps(measured, SPELLING);
     expect(steps).toEqual([
@@ -161,7 +151,7 @@ describe("measureEnvironment", () => {
 
   it("orders all three, and the newer CLI absorbs the skill command", async () => {
     project();
-    checkStaleness.mockResolvedValue(STALE_SKILLS);
+    checkCanonicalSkills.mockResolvedValue(STALE_SKILLS);
     reconcileStatus.mockResolvedValue(OWES_RECONCILE);
     const steps = environmentSteps(await measure(registry("2.0.0")), SPELLING);
     expect(steps.map((step) => step.part)).toEqual(["cli", "skill", "rules"]);
@@ -173,12 +163,12 @@ describe("measureEnvironment", () => {
   });
 
   it("leaves out skill and rules outside a .taskless/ project", async () => {
-    checkStaleness.mockResolvedValue(STALE_SKILLS);
+    checkCanonicalSkills.mockResolvedValue(STALE_SKILLS);
     reconcileStatus.mockResolvedValue(OWES_RECONCILE);
     const measured = await measure(registry("1.0.0"));
     expect(measured.skill).toBeUndefined();
     expect(measured.rules).toBeUndefined();
-    expect(checkStaleness).not.toHaveBeenCalled();
+    expect(checkCanonicalSkills).not.toHaveBeenCalled();
   });
 
   it("never asks the registry in CI", async () => {

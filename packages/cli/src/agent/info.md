@@ -61,7 +61,10 @@ which version of the CLI/skills the agent is talking to.
    - For each harness: number of installed skills, count out-of-date
    - Auth, from `authState` (see below)
 
-   `harnesses` is the agent harnesses Taskless installs into. `tools`
+   `harnesses` is the agent harnesses Taskless installs into. In a
+   Taskless project where no harness is detected it holds one entry,
+   `Agent Skills (.agents/)`: the default directory the skill is
+   installed to, so its staleness is still reported. `tools`
    is the command-line binaries found on PATH, and it is presence
    only: Taskless looked for a file of each name and ran none of
    them, so do not report a tool as working or name a version.

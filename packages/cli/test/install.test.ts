@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -7,11 +7,13 @@ import {
   applyInstallPlan,
   buildInstallPlan,
   checkStaleness,
+  DEFAULT_HARNESS_NAME,
   detectMachineTools,
   detectSelectedDirectories,
   detectTools,
   getEmbeddedSkills,
 } from "../src/install/install";
+import { environmentSteps, measureEnvironment } from "../src/install/freshness";
 
 let cwd: string;
 
@@ -269,5 +271,85 @@ describe("checkStaleness", () => {
       expect(skill.current).toBe(false);
       expect(skill.installedVersion).toBeUndefined();
     }
+  });
+});
+
+// Helpers for the no-harness freshness tests below.
+const SPELLING = { invocation: "npx @taskless/cli@1.0.0", launcher: "npx" };
+
+async function installToDefault(): Promise<void> {
+  expect(await detectSelectedDirectories(cwd)).toEqual([".agents"]);
+  const plan = buildInstallPlan([".agents"], getEmbeddedSkills());
+  await applyInstallPlan(cwd, plan, { cliVersion: "0.7.0" });
+  expect(await detectTools(cwd)).toEqual([]);
+}
+
+function canonicalSkill(name: string): string {
+  return join(cwd, ".taskless", "skills", name, "SKILL.md");
+}
+
+/** `ci` keeps the registry out of it; only the skill step is under test. */
+function measure() {
+  return measureEnvironment({ cwd, ci: "true" });
+}
+
+/**
+ * #644: with no harness detected, install falls back to `.agents/`, but
+ * staleness was reported per detected harness, so a project there never heard
+ * about a stale or missing skill. These run the real measurement `agent ok`
+ * and `check` share, against a real install.
+ */
+describe("skill freshness with no harness detected", () => {
+  it("reports a current skill under the default directory, and no step", async () => {
+    await installToDefault();
+
+    const statuses = await checkStaleness(cwd);
+    expect(statuses).toHaveLength(1);
+    expect(statuses[0]!.name).toBe(DEFAULT_HARNESS_NAME);
+    expect(statuses[0]!.skills.length).toBeGreaterThan(0);
+    for (const skill of statuses[0]!.skills) expect(skill.current).toBe(true);
+
+    const measured = await measure();
+    expect(measured.skill).toBeUndefined();
+  });
+
+  it("reports a stale skill", async () => {
+    await installToDefault();
+    const [skill] = getEmbeddedSkills();
+    const path = canonicalSkill(skill!.name);
+    const content = await readFile(path, "utf8");
+    const stale = content.replace(/^(\s+version:\s*).*$/m, "$10.0.1");
+    expect(stale).not.toBe(content);
+    await writeFile(path, stale, "utf8");
+
+    const [status] = await checkStaleness(cwd);
+    expect(status?.skills.find((s) => s.name === skill!.name)).toMatchObject({
+      installedVersion: "0.0.1",
+      current: false,
+    });
+
+    const measured = await measure();
+    expect(measured.skill).toEqual([
+      expect.objectContaining({ name: skill!.name, installed: "0.0.1" }),
+    ]);
+    const parts = environmentSteps(measured, SPELLING).map((step) => step.part);
+    expect(parts).toContain("skill");
+  });
+
+  it("reports a removed skill as missing", async () => {
+    await installToDefault();
+    await rm(join(cwd, ".taskless", "skills"), {
+      recursive: true,
+      force: true,
+    });
+
+    const step = environmentSteps(await measure(), SPELLING).find(
+      (candidate) => candidate.part === "skill"
+    );
+    expect(step?.text).toContain("(missing)");
+  });
+
+  it("reports nothing outside a Taskless project", async () => {
+    expect(await checkStaleness(cwd)).toEqual([]);
   });
 });

@@ -90,7 +90,10 @@ export const outputSchema = z.object({
   harnesses: z
     .array(harnessStatusSchema)
     .describe(
-      "Detected agent harnesses and their skill status. Published under " +
+      "Detected agent harnesses and their skill status. In a Taskless " +
+        "project where no harness is detected, one entry named " +
+        "`Agent Skills (.agents/)` reports the skills installed to the " +
+        "default `.agents/` directory. Published under " +
         "the key `tools` before that name was given to the CLI binaries " +
         "below; the entry shape is unchanged."
     ),

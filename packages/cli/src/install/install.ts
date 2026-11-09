@@ -706,33 +706,59 @@ async function readCanonicalSkillVersion(
 }
 
 /**
- * Report skill staleness for every detected tool. Versions are read from the
- * canonical `.taskless/` store — stubs are version-free — so every detected
- * tool reflects the single canonical install.
+ * Compare every embedded skill with the version installed in the canonical
+ * `.taskless/` store.
+ *
+ * The installed version is a property of that store, not of a harness: the
+ * stubs in each harness directory are version-free. So this answers without
+ * asking which harnesses are present, and a project with none still gets an
+ * answer.
  */
-export async function checkStaleness(cwd: string): Promise<ToolStatus[]> {
-  const embedded = getEmbeddedSkills();
-  const tools = await detectTools(cwd);
-
-  const results: ToolStatus[] = [];
-
-  for (const tool of tools) {
-    const skillStatuses: SkillStatus[] = [];
-
-    for (const skill of embedded) {
+export async function checkCanonicalSkills(
+  cwd: string
+): Promise<SkillStatus[]> {
+  return Promise.all(
+    getEmbeddedSkills().map(async (skill) => {
       const installedVersion = await readCanonicalSkillVersion(cwd, skill.name);
       const currentVersion = skill.metadata.version ?? "unknown";
-
-      skillStatuses.push({
+      return {
         name: skill.name,
         installedVersion,
         currentVersion,
         current: installedVersion === currentVersion,
-      });
-    }
+      };
+    })
+  );
+}
 
-    results.push({ name: tool.name, skills: skillStatuses });
+/**
+ * The name `checkStaleness` reports the canonical skills under when no harness
+ * is detected: the directory install falls back to in that case
+ * ({@link detectSelectedDirectories}).
+ */
+export const DEFAULT_HARNESS_NAME = `Agent Skills (${DEFAULT_SHIM_DIR}/)`;
+
+/**
+ * Report skill staleness for every detected tool. Versions are read from the
+ * canonical `.taskless/` store — stubs are version-free — so every detected
+ * tool reflects the single canonical install.
+ *
+ * In a Taskless project with no detected harness, the skills are reported
+ * once under {@link DEFAULT_HARNESS_NAME}, the `.agents/` directory install
+ * uses when it detects nothing. Reporting nothing there hid a stale or
+ * missing skill however old it was (#644). Outside a Taskless project nothing
+ * was installed, so there is still nothing to report.
+ */
+export async function checkStaleness(cwd: string): Promise<ToolStatus[]> {
+  const [tools, skills] = await Promise.all([
+    detectTools(cwd),
+    checkCanonicalSkills(cwd),
+  ]);
+  if (tools.length > 0) {
+    return tools.map((tool) => ({ name: tool.name, skills }));
   }
-
-  return results;
+  const isProject = await stat(join(cwd, CANONICAL_DIR))
+    .then((s) => s.isDirectory())
+    .catch(() => false);
+  return isProject ? [{ name: DEFAULT_HARNESS_NAME, skills }] : [];
 }
