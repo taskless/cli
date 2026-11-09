@@ -9,7 +9,7 @@ import {
   resolveIdentity,
   type Identity,
 } from "../auth/identity";
-import { describeRefusal } from "../api/refusal";
+import { describeRefusal, stripControlCharacters } from "../api/refusal";
 import {
   isRequestId,
   iterateRule,
@@ -189,6 +189,27 @@ async function identityOrFail(
   }
 }
 
+/**
+ * Why a finished request delivered nothing to this CLI, for an end state
+ * other than `generated`, `failed` and `unsupported`.
+ *
+ * `pr`, `merged` and `closed` are the pull-request delivery path: the rules
+ * went to a pull request, never to a CLI. A request this CLI submits does not
+ * take that path, but `--resume` polls any request id, so an older one can be
+ * found there. Anything else is a state this CLI does not know, or a response
+ * that named none.
+ */
+function undeliverableMessage(requestId: string, state: unknown): string {
+  const nothingWritten = "No rules were written.";
+  if (state === "pr" || state === "merged" || state === "closed") {
+    return `Request ${requestId} is in state "${state}": its rules are delivered through a pull request, not to this CLI. ${nothingWritten}`;
+  }
+  if (typeof state !== "string" || state === "") {
+    return `Request ${requestId} finished without a status this CLI can read. ${nothingWritten}`;
+  }
+  return `Request ${requestId} is in state "${stripControlCharacters(state)}", which this CLI does not recognize. ${nothingWritten}`;
+}
+
 /** How {@link completeRequest} reports, per command. */
 interface CompletionOptions {
   /** Which command this is, for the `--resume` line a give-up names. */
@@ -246,14 +267,13 @@ async function completeRequest(
         break;
       }
       default: {
-        // `pr`, `merged`, `closed`: states a CLI request does not reach. Report
-        // the state rather than inventing a delivery.
-        if (options.json) {
-          console.log(JSON.stringify(options.output({ rules: [], files: [] })));
-        } else {
-          console.log(`Request ${requestId} is in state "${status.status}".`);
-        }
-        return 0;
+        // Only `generated` delivers. Any other end state wrote nothing, and
+        // printing the success envelope with `rules: []` made it look like a
+        // request that succeeded and produced no rules (#648).
+        options.fail(
+          undeliverableMessage(requestId, status.status),
+          "RULE_GENERATION_FAILED"
+        );
       }
     }
     delivered = await deliverRevisions(

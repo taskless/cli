@@ -260,6 +260,54 @@ describe("rule create: transient failures while polling and fetching", () => {
     expect(existsSync(ruleFile())).toBe(false);
   });
 
+  /**
+   * #648: a request that ended anywhere but `generated` printed the success
+   * envelope with `rules: []` and exited 0, so a `--json` caller could not
+   * tell "nothing was delivered" from "it worked and produced nothing".
+   */
+  describe("an end state that delivers nothing", () => {
+    for (const state of ["pr", "merged", "closed"]) {
+      it(`fails on "${state}", naming the state and the pull-request path`, async () => {
+        stubV2Server({ produced: [], status: state });
+
+        await expect(resume("create", REQUEST_ID)).rejects.toThrow();
+
+        expect(process.exitCode).toBe(1);
+        const envelope = lastEnvelope();
+        expect(envelope.ok).toBe(false);
+        expect(envelope.code).toBe("RULE_GENERATION_FAILED");
+        expect(envelope.message).toContain(`"${state}"`);
+        expect(envelope.message).toContain("pull request");
+        expect(envelope.message).toContain("No rules were written");
+      });
+    }
+
+    it("fails on a status this CLI does not know, naming it", async () => {
+      stubV2Server({ produced: [], status: "archived" });
+
+      await expect(resume("create", REQUEST_ID)).rejects.toThrow();
+
+      expect(process.exitCode).toBe(1);
+      const envelope = lastEnvelope();
+      expect(envelope.ok).toBe(false);
+      expect(envelope.code).toBe("RULE_GENERATION_FAILED");
+      expect(envelope.message).toContain('"archived"');
+      expect(envelope.message).toContain("does not recognize");
+    });
+
+    it("fails on a response with no status", async () => {
+      stubV2Server({ produced: [], status: null });
+
+      await expect(resume("improve", ITERATE_REQUEST_ID)).rejects.toThrow();
+
+      expect(process.exitCode).toBe(1);
+      const envelope = lastEnvelope();
+      expect(envelope.ok).toBe(false);
+      expect(envelope.message).toContain(ITERATE_REQUEST_ID);
+      expect(envelope.message).not.toContain('"undefined"');
+    });
+  });
+
   describe("--resume", () => {
     it("picks up a request a give-up abandoned, without submitting another", async () => {
       // One stub across both runs: the first spends all 8 failures and gives

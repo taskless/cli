@@ -63,8 +63,11 @@ export async function servedBody(
 export interface StubServerOptions {
   /** Rules the request produces, each with the body `GET rule/{id}` serves. */
   produced: Array<{ rule: StubRule; body: Record<string, unknown> }>;
-  /** Terminal request status. Defaults to `generated`. */
-  status?: string;
+  /**
+   * Terminal request status. Defaults to `generated`; `null` omits the field,
+   * for a malformed response.
+   */
+  status?: string | null;
   /** `error` on the terminal status, for `failed` / `unsupported`. */
   error?: string;
   /**
@@ -134,7 +137,9 @@ export function stubV2Server(
       if (failure !== undefined) return failWith(failure);
       return Response.json({
         requestId: pathname.split("/").at(-1),
-        status: options.status ?? "generated",
+        ...(options.status === null
+          ? {}
+          : { status: options.status ?? "generated" }),
         revisions: options.produced.map(({ rule, body }) => ({
           ruleId: rule.id,
           revisionId: body.revisionId,
