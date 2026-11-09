@@ -106,10 +106,14 @@ export async function loginStep(
       reason: "cancelled",
     };
 
-    // Poll only while a whole interval still fits, so the service's pacing
-    // is never cut short and a step ends within its wait.
-    while (now() + interval <= Math.min(deadline, pending.expiresAt)) {
-      await sleep(interval);
+    // Poll only while a wait still fits, so a step ends within its window.
+    // The wait is the service's interval, capped at the window: an interval
+    // longer than the window would otherwise never fit, and every step would
+    // return without polling once, until the code expired. The saved
+    // interval keeps the service's value, so a slow_down is never lost.
+    const wait = (): number => Math.min(interval, waitMs);
+    while (now() + wait() <= Math.min(deadline, pending.expiresAt)) {
+      await sleep(wait());
       const result = await deviceFlowProvider.pollForToken(pending.deviceCode);
       if (!(await stillPending())) return cancelled;
       switch (result.status) {
