@@ -129,6 +129,17 @@ SHALL carry the reason.
 - **THEN** `detect --json` SHALL report the tool under `hooks`, with what matched
   as its evidence
 
+#### Scenario: Plain scripts in .githooks are reported as hooks
+
+- **WHEN** the scan root contains a `.githooks/` directory holding files (the
+  scripts a repository enables with `git config core.hooksPath .githooks`)
+- **THEN** `detect --json` SHALL report `githooks` under `hooks`, with each file
+  directly in `.githooks/` as its evidence
+- **AND** the commands those scripts run SHALL count as invocations of the
+  linters they call
+- **AND** `core.hooksPath` itself SHALL NOT be read, because it is local
+  configuration a fresh clone does not carry
+
 #### Scenario: No CI and no hooks are reported as empty lists
 
 - **WHEN** the scan root carries no recognized CI configuration and no

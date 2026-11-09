@@ -1196,7 +1196,7 @@ After a successful install, `taskless init` SHALL read `package.json` in the wor
 
 Workspace packages are declared by the `packages` list of `pnpm-workspace.yaml` and by the `workspaces` field of the root `package.json`, as an array or as `{ packages }`; both sources SHALL be read. A pattern SHALL name each directory it matches that holds a `package.json`. A pattern prefixed `!` SHALL remove the directories it matches. A pattern that is absolute or contains a `..` segment SHALL be skipped. Expansion SHALL NOT descend into `node_modules` or `.git`, and SHALL stop after a fixed number of manifests. The root SHALL be read once even when a pattern names it. An absent or malformed workspace declaration SHALL declare nothing, and a malformed root `package.json` SHALL NOT stop `pnpm-workspace.yaml` from being read.
 
-The CI and hook files read SHALL be the ones `detect` recognizes as CI and commit-time configuration at the project root: `.github/workflows/*.yml` and `*.yaml`, `.gitlab-ci.yml`, `.circleci/config.yml`, `Jenkinsfile`, `azure-pipelines.yml` and `.yaml`, `bitbucket-pipelines.yml`, `.drone.yml`, `.travis.yml`, the files directly in `.buildkite/` and `.husky/`, the lefthook, pre-commit, simple-git-hooks, and lint-staged config files.
+The CI and hook files read SHALL be the ones `detect` recognizes as CI and commit-time configuration at the project root: `.github/workflows/*.yml` and `*.yaml`, `.gitlab-ci.yml`, `.circleci/config.yml`, `Jenkinsfile`, `azure-pipelines.yml` and `.yaml`, `bitbucket-pipelines.yml`, `.drone.yml`, `.travis.yml`, the files directly in `.buildkite/`, `.husky/`, and `.githooks/`, the lefthook, pre-commit, simple-git-hooks, and lint-staged config files.
 
 An entry is:
 

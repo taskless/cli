@@ -457,6 +457,7 @@ describe("taskless detect", () => {
         "jobs:\n  lint:\n    steps:\n      - run:\n          command: golangci-lint run\n",
       ],
       [".husky/pre-commit", "#!/bin/sh\ngolangci-lint run\n"],
+      [".githooks/pre-push", "#!/bin/sh\nset -e\ngolangci-lint run\n"],
       [".lintstagedrc", '{"*.go": "golangci-lint run"}'],
       [
         ".husky/pre-commit",
@@ -1139,6 +1140,25 @@ describe("taskless detect", () => {
       await writeFile(join(cwd, file), "", "utf8");
       const result = await detect(cwd);
       expect(result.hooks).toEqual([{ name, evidence: [file] }]);
+    });
+
+    it("detects plain scripts in .githooks, each as evidence", async () => {
+      await writeNested(cwd, ".githooks/pre-commit", "#!/bin/sh\n");
+      await writeNested(cwd, ".githooks/commit-msg", "#!/bin/sh\n");
+      await mkdir(join(cwd, ".githooks", "lib"));
+      const result = await detect(cwd);
+      expect(result.hooks).toEqual([
+        {
+          name: "githooks",
+          evidence: [".githooks/commit-msg", ".githooks/pre-commit"],
+        },
+      ]);
+    });
+
+    it("does not report an empty .githooks directory", async () => {
+      await mkdir(join(cwd, ".githooks"));
+      const result = await detect(cwd);
+      expect(result.hooks).toEqual([]);
     });
 
     it("does not report a hook tool named only by a sub-package", async () => {
