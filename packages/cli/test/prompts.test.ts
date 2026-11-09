@@ -26,6 +26,7 @@ import {
   getRecipe,
   getRenderedRecipe,
 } from "../src/prompts/recipes";
+import { CUSTOM_RULE_THRESHOLD } from "../src/detect/custom-rule-threshold";
 import { builtDirectory } from "./support/built-cli";
 
 const execFileAsync = promisify(execFile);
@@ -340,6 +341,31 @@ describe("raw and rendered instructions", () => {
         getInstructions(topic).text
       );
     }
+  });
+
+  it("renders getPrompt's text from the raw template and its defaults alone", () => {
+    // A host that supplies nothing gets the default render, every package-side
+    // value included, the custom-rule threshold among them.
+    const optionSets: PromptOptions[] = [
+      {},
+      { mechanics: false },
+      { header: false },
+      { invocation: "pnpm dlx @taskless/cli@1.2.3" },
+    ];
+    for (const topic of TOPICS) {
+      for (const options of optionSets) {
+        const raw = getRawInstructions(topic, options);
+        expect(Object.keys(raw.defaults).toSorted(), topic).toEqual(
+          raw.variables.toSorted()
+        );
+        expect(sprintf(raw.text, raw.defaults), topic).toBe(
+          getPrompt(topic, options)
+        );
+      }
+    }
+    expect(getRawInstructions("route").defaults.CUSTOM_RULE_THRESHOLD).toBe(
+      String(CUSTOM_RULE_THRESHOLD)
+    );
   });
 
   it("throws on an unknown topic while getRecipe still returns undefined", () => {

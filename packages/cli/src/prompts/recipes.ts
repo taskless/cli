@@ -1087,6 +1087,20 @@ export interface RecipeText {
   variables: string[];
 }
 
+/**
+ * An unrendered recipe: {@link RecipeText} plus the package's own value for
+ * every variable the template contains.
+ */
+export interface RawRecipeText extends RecipeText {
+  /**
+   * What the package would substitute for each of `variables`, resolved from
+   * the same options. A host overrides only what it knows better:
+   * `sprintf(text, { ...defaults, ...hostValues })`. Rendering with these
+   * alone gives the text the rendered accessors return.
+   */
+  defaults: Record<string, string>;
+}
+
 function renderRecipe(
   content: string,
   topic: string,
@@ -1212,7 +1226,7 @@ function lookupRecipe(
 export function getRawRecipe(
   topic: string,
   options: RecipeOptions = {}
-): RecipeText | undefined {
+): RawRecipeText | undefined {
   const content = lookupRecipe(topic, options);
   if (content === undefined) return undefined;
   const template = applyCliInvocation(content);
@@ -1221,10 +1235,17 @@ export function getRawRecipe(
   // %(CLI_VERSION)s, so collecting before the strip would report a variable
   // the returned `text` no longer contains.
   const text = options.header === false ? stripHeader(template) : template;
-  return {
-    text,
-    variables: collectVariables(text),
-  };
+  const variables = collectVariables(text);
+  // Every variable has a package-side value, markers included: a marker is
+  // exactly what a host that supplies nothing would get from the rendered
+  // accessors, so leaving one out would only make the host re-derive it.
+  const resolved = buildVariables(text, topic, options);
+  const defaults: Record<string, string> = {};
+  for (const name of variables) {
+    const value = resolved[name];
+    if (value !== undefined) defaults[name] = value;
+  }
+  return { text, variables, defaults };
 }
 
 /** A topic's rendered text plus the variables its template contains. */
