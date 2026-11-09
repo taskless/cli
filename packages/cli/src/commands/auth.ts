@@ -8,7 +8,7 @@ import { loginStep } from "../auth/login-step";
 import { clearPendingLogin } from "../auth/pending-login";
 import { describeAuthStatus } from "../auth/status";
 import { getToken, isEnvironmentToken, removeToken } from "../auth/token";
-import { getTelemetry } from "../telemetry";
+import { getTelemetry, type TelemetryClient } from "../telemetry";
 import { type CLIErrorCode, writeJsonError } from "../types/errors";
 import { splitRawArguments } from "../util/argv";
 import { getCliPrefix } from "../util/package-manager";
@@ -56,6 +56,22 @@ function loginStepMessage(step: FailedLoginStep): string {
       return "Authentication failed.";
     }
   }
+}
+
+/**
+ * Capture `cli_authenticated` under the identity just logged in. The client
+ * was built before the login, under the anonymous id, in the interactive
+ * process and in the `--json` step process alike, so it switches to the
+ * saved token's identity first: the event that marks a login is the one
+ * that must carry the user and their org.
+ */
+async function captureAuthenticated(
+  telemetry: TelemetryClient,
+  cwd: string
+): Promise<void> {
+  const token = await getToken(cwd, { silent: true });
+  if (token !== undefined) telemetry.identifyAuthenticated(token);
+  telemetry.capture("cli_authenticated");
 }
 
 const loginCommand = defineCommand({
@@ -184,7 +200,7 @@ const loginCommand = defineCommand({
     } finally {
       // Concrete state event: a fresh authentication succeeded.
       if (authenticated) {
-        telemetry.capture("cli_authenticated");
+        await captureAuthenticated(telemetry, cwd);
       }
     }
   },

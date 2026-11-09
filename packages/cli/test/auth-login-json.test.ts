@@ -11,10 +11,17 @@ import {
   savePendingLogin,
 } from "../src/auth/pending-login";
 
-const { mockedRequestDeviceCode, mockedPollForToken } = vi.hoisted(() => ({
-  mockedRequestDeviceCode: vi.fn(),
-  mockedPollForToken: vi.fn(),
-}));
+const { mockedRequestDeviceCode, mockedPollForToken, telemetry } = vi.hoisted(
+  () => ({
+    mockedRequestDeviceCode: vi.fn(),
+    mockedPollForToken: vi.fn(),
+    telemetry: {
+      capture: vi.fn(),
+      identifyAuthenticated: vi.fn(),
+      shutdown: () => Promise.resolve(),
+    },
+  })
+);
 
 vi.mock("../src/api/v2", () => ({ whoami: vi.fn() }));
 vi.mock("../src/auth/device-flow", () => ({
@@ -24,9 +31,7 @@ vi.mock("../src/auth/device-flow", () => ({
   },
 }));
 vi.mock("../src/telemetry", () => ({
-  getTelemetry: vi.fn(() =>
-    Promise.resolve({ capture: vi.fn(), shutdown: () => Promise.resolve() })
-  ),
+  getTelemetry: vi.fn(() => Promise.resolve(telemetry)),
 }));
 
 const { authCommand } = await import("../src/commands/auth");
@@ -99,6 +104,26 @@ describe("auth login --json", () => {
       ok: true,
       status: "authenticated",
     });
+  });
+
+  it("captures cli_authenticated under the identity it just saved", async () => {
+    await savePendingLogin(cwd, {
+      deviceCode: "device-1",
+      userCode: "ABCD-EFGH",
+      verificationUrl: "https://taskless.io/device",
+      interval: 0,
+      expiresAt: Date.now() + 600_000,
+    });
+    mockedPollForToken.mockResolvedValue({
+      status: "success",
+      token: { access_token: "fresh-token", token_type: "Bearer" },
+    });
+    await run("login", "--json");
+    expect(telemetry.identifyAuthenticated).toHaveBeenCalledWith("fresh-token");
+    expect(telemetry.capture).toHaveBeenCalledWith("cli_authenticated");
+    expect(
+      telemetry.identifyAuthenticated.mock.invocationCallOrder[0]
+    ).toBeLessThan(telemetry.capture.mock.invocationCallOrder[0]!);
   });
 
   it("prints already_logged_in for TASKLESS_TOKEN", async () => {

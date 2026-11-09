@@ -20,6 +20,13 @@ const ANONYMOUS_ID_FILE = "anonymous_id";
 
 export interface TelemetryClient {
   capture(event: string, properties?: Record<string, unknown>): void;
+  /**
+   * Switch to the identity in `token` for every later capture, linking the
+   * anonymous device id to it. The client's identity is otherwise fixed at
+   * init, so a command that logs in mid-run (`auth login`) calls this once
+   * the token is saved. A token with no subject changes nothing.
+   */
+  identifyAuthenticated(token: string): void;
   shutdown(): Promise<void>;
 }
 
@@ -90,6 +97,7 @@ export const TELEMETRY_NOTICE_TITLE = "Telemetry Information";
 
 const noopClient: TelemetryClient = {
   capture() {},
+  identifyAuthenticated() {},
   async shutdown() {},
 };
 
@@ -277,27 +285,28 @@ export async function getTelemetry(cwd?: string): Promise<TelemetryClient> {
       flushInterval: 0,
     });
 
-    // Identify the user/device
-    posthog.identify({
-      distinctId,
-      properties: {
-        cli: anonymousId,
-        cliVersion: CLI_VERSION,
-        scaffoldVersion,
-        ghOwner,
-        ...dimensions,
-      },
-    });
-
-    // Group identify for authenticated users with an org
-    if (!anonymous && orgSubject !== undefined) {
-      posthog.groupIdentify({
-        groupType: "organization",
-        groupKey: String(orgSubject),
-      });
-    }
-
     const ph = posthog;
+    /** Identify the current identity, and its org when authenticated. */
+    const identify = (): void => {
+      ph.identify({
+        distinctId,
+        properties: {
+          cli: anonymousId,
+          cliVersion: CLI_VERSION,
+          scaffoldVersion,
+          ghOwner,
+          ...dimensions,
+        },
+      });
+      if (!anonymous && orgSubject !== undefined) {
+        ph.groupIdentify({
+          groupType: "organization",
+          groupKey: String(orgSubject),
+        });
+      }
+    };
+    identify();
+
     instance = {
       capture(event: string, properties?: Record<string, unknown>) {
         try {
@@ -316,6 +325,24 @@ export async function getTelemetry(cwd?: string): Promise<TelemetryClient> {
               ? { groups: { organization: String(orgSubject) } }
               : {}),
           });
+        } catch {
+          // Telemetry failures are silent
+        }
+      },
+      identifyAuthenticated(token: string) {
+        try {
+          const sub = decodeSubject(token);
+          if (sub === undefined) return;
+          // Only the anonymous device id is linked. A run that started
+          // logged in already has a subject, and aliasing one user onto
+          // another would merge two people.
+          if (anonymous) {
+            ph.alias({ distinctId: sub, alias: anonymousId });
+          }
+          distinctId = sub;
+          anonymous = false;
+          orgSubject = decodeOrgId(token) ?? NIL_ORG_ID;
+          identify();
         } catch {
           // Telemetry failures are silent
         }
