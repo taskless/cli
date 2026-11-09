@@ -338,4 +338,26 @@ describe("a login step", () => {
     });
     expect(mockedPollForToken).toHaveBeenCalledTimes(2);
   });
+
+  it("leaves alone a login that replaced it while it waited out its expiry", async () => {
+    // Expires 12s in: polls at 5s and 10s, then sleeps the last 2s to the
+    // expiry. The replacement lands in that final sleep, after every poll.
+    await savePendingLogin(cwd, { ...PENDING, expiresAt: START + 12_000 });
+    const replacement = { ...PENDING, deviceCode: "device-other" };
+    mockedPollForToken.mockResolvedValue({ status: "pending" });
+    let sleeps = 0;
+    const result = await loginStep({
+      cwd,
+      now: time.now,
+      sleep: async (ms: number) => {
+        clock += ms;
+        sleeps += 1;
+        if (sleeps === 3) await savePendingLogin(cwd, replacement);
+      },
+    });
+    expect(mockedPollForToken).toHaveBeenCalledTimes(2);
+    expect(clock).toBe(START + 12_000);
+    expect(result).toEqual({ status: "failed", reason: "cancelled" });
+    expect(await readPendingLogin(cwd)).toEqual(replacement);
+  });
 });
