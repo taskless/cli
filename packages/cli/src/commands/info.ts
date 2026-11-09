@@ -5,14 +5,51 @@ import { defineCommand } from "citty";
 import { detectHostTools } from "../detect/host-tools";
 import { checkStaleness } from "../install/install";
 import { describePin, findCliPins } from "../install/pinned-cli";
-import { getToken } from "../auth/token";
-import { fetchWhoami } from "../auth/whoami";
-import { outputSchema as infoOutputSchema } from "../schemas/info";
+import { getToken, rejectedTokenRemedy } from "../auth/token";
+import { upgradeRequiredMessage, whoami } from "../api/v2";
+import {
+  outputSchema as infoOutputSchema,
+  type AuthState,
+} from "../schemas/info";
 import { makeErrorEnvelope } from "../types/errors";
 import { resolveRepositoryContext } from "../util/git-remote";
 import { readManifest } from "../filesystem/manifest";
 import { reconcileReport, reconcileStatus } from "../rules/reconcile-status";
 import { TASKLESS_DIRECTORY } from "../rules/vale/formats";
+
+/** The human `Auth:` line for a probe's result. */
+function describeAuth(
+  state: AuthState,
+  auth: { user: string; orgs: string[] } | undefined,
+  unreachableReason: string | undefined
+): string {
+  switch (state) {
+    case "authenticated": {
+      const orgs =
+        auth !== undefined && auth.orgs.length > 0
+          ? ` (${auth.orgs.join(", ")})`
+          : "";
+      return `logged in as ${auth?.user ?? "unknown user"}${orgs}`;
+    }
+    case "rejected": {
+      return `token rejected; it is invalid or expired. ${rejectedTokenRemedy()}`;
+    }
+    case "unreachable": {
+      return `could not reach Taskless to verify the token${
+        unreachableReason === undefined ? "" : ` (${unreachableReason})`
+      }. It may still be valid; try again later.`;
+    }
+    case "upgrade_required": {
+      return `could not verify the token. ${upgradeRequiredMessage()}`;
+    }
+    case "none": {
+      return "not logged in";
+    }
+    case "anonymous": {
+      return "not checked (--anonymous)";
+    }
+  }
+}
 
 export const infoCommand = defineCommand({
   meta: {
@@ -64,15 +101,47 @@ export const infoCommand = defineCommand({
         findCliPins(cwd, __VERSION__),
       ]);
 
+    // One state for the probe, so a caller can tell "log in again" from "try
+    // later". A token on disk is not a login: only the service accepting it
+    // is, which is why `loggedIn` below reads this and not `token`.
     let auth: { user: string; email?: string; orgs: string[] } | undefined;
-    if (!args.anonymous && token) {
-      const whoami = await fetchWhoami(token);
-      if (whoami) {
-        auth = {
-          user: whoami.user,
-          email: whoami.email,
-          orgs: whoami.orgs.map((o) => o.name),
-        };
+    let authState: AuthState;
+    let unreachableReason: string | undefined;
+    if (args.anonymous) {
+      authState = "anonymous";
+    } else if (token === undefined) {
+      authState = "none";
+    } else {
+      const outcome = await whoami(token);
+      switch (outcome.status) {
+        case "ok": {
+          authState = "authenticated";
+          auth = {
+            user: outcome.data.user,
+            email: outcome.data.email,
+            orgs: outcome.data.orgs.map((o) => o.name),
+          };
+          break;
+        }
+        case "unauthorized": {
+          authState = "rejected";
+          break;
+        }
+        case "upgrade_required": {
+          authState = "upgrade_required";
+          break;
+        }
+        case "unavailable": {
+          authState = "unreachable";
+          unreachableReason = outcome.reason;
+          break;
+        }
+        default: {
+          // whoami documents no error codes and is never refused, so either
+          // is an answer this CLI cannot read: the token went unverified.
+          authState = "unreachable";
+          break;
+        }
       }
     }
 
@@ -85,7 +154,8 @@ export const infoCommand = defineCommand({
       // it actually says. The array is unchanged; only the key moved.
       harnesses,
       tools,
-      loggedIn: token !== undefined,
+      loggedIn: authState === "authenticated",
+      authState,
       auth,
       // Reported so a caller deciding whether remote generation is available
       // reads the same resolution the CLI enforces, rather than shelling out
@@ -193,11 +263,6 @@ export const infoCommand = defineCommand({
     }
 
     console.log("");
-    if (auth) {
-      const orgs = auth.orgs.length > 0 ? ` (${auth.orgs.join(", ")})` : "";
-      console.log(`Auth: logged in as ${auth.user}${orgs}`);
-    } else {
-      console.log("Auth: not logged in");
-    }
+    console.log(`Auth: ${describeAuth(authState, auth, unreachableReason)}`);
   },
 });

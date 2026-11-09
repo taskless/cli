@@ -30,7 +30,11 @@ If the user wants the local-only flow (no API call), fetch
 ## Steps
 
 1. **Confirm auth.** Run `%(TASKLESS_CLI)s info --json` and check
-   `loggedIn`. If false, fetch `%(TASKLESS_CLI)s agent auth`.
+   `loggedIn`. If false, read `authState`: for `none` or `rejected`
+   (a token the service refused), fetch `%(TASKLESS_CLI)s agent auth`.
+   For `unreachable`, tell the user the service could not be reached
+   and stop; logging in again cannot fix it. For `upgrade_required`,
+   tell the user to upgrade the CLI.
 
 2. **Identify the rule to improve.** If the user named one, use it.
    Otherwise, list the rule directories under `.taskless/rules/<engine>/`

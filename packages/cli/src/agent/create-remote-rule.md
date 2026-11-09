@@ -80,9 +80,13 @@ Two ways to legitimately be here:
    ```
    %(TASKLESS_CLI)s info --json
    ```
-   Check `loggedIn`. If false, fetch `%(TASKLESS_CLI)s agent auth` and follow the
-   login recipe before continuing. Do not build a request you cannot
-   submit.
+   Check `loggedIn`. If false, read `authState`: for `none` or
+   `rejected` (a token the service refused), fetch
+   `%(TASKLESS_CLI)s agent auth` and follow the login recipe before
+   continuing. For `unreachable`, the service could not be reached:
+   tell the user and stop, since logging in again cannot fix it. For
+   `upgrade_required`, tell the user to upgrade the CLI. Do not build a
+   request you cannot submit.
 
 2. **Check for a rule that already covers this.** Scan
    `.taskless/rules/sg/` and read each rule's `message`, `note`, and
