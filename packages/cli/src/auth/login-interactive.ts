@@ -28,8 +28,6 @@ export interface LoginInteractiveOptions {
   cwd?: string;
   /** Sink for user-facing progress lines. Defaults to console.log. */
   out?: (line: string) => void;
-  /** Sink for error lines. Defaults to console.error. */
-  err?: (line: string) => void;
   now?: () => number;
   sleep?: (ms: number) => Promise<void>;
 }
@@ -59,7 +57,8 @@ export async function existingLoginSource(
 /**
  * Run the device-code login flow interactively. Writes the user prompt,
  * polls the Taskless auth endpoint, persists the token on success, and
- * returns a tagged result the caller can surface however it wants.
+ * returns a tagged result the caller can surface however it wants. It
+ * prints no failure text of its own: the caller reports each failure once.
  *
  * The login is recorded in `.taskless/.auth-pending.json` while it waits,
  * like a `--json` step login, so that `auth logout` or a login that replaces
@@ -75,7 +74,6 @@ export async function loginInteractive(
 ): Promise<LoginResult> {
   const cwd = options.cwd ?? process.cwd();
   const out = options.out ?? ((line) => console.log(line));
-  const error_ = options.err ?? ((line) => console.error(line));
   const now = options.now ?? (() => Date.now());
   const sleep =
     options.sleep ??
@@ -146,11 +144,9 @@ export async function loginInteractive(
           break;
         }
         case "expired": {
-          error_("Device code expired. Please try again.");
           return { status: "cancelled", reason: "expired" };
         }
         case "denied": {
-          error_("Authorization denied.");
           return { status: "cancelled", reason: "denied" };
         }
         case "pending": {
@@ -159,12 +155,10 @@ export async function loginInteractive(
       }
     }
 
-    error_("Device code expired. Please try again.");
     return { status: "cancelled", reason: "expired" };
   } catch (error) {
     const message =
       error instanceof Error ? error.message : "Authentication failed.";
-    error_(message);
     return { status: "cancelled", reason: "error", message };
   } finally {
     // However this flow ends, its pending login is finished. A login that
