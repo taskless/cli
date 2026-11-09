@@ -107,7 +107,11 @@ describe("the survey gate", () => {
     let seenAtTelemetryInit: number | undefined;
     vi.mocked(getTelemetry).mockImplementationOnce(async () => {
       seenAtTelemetryInit = await readNextAsk(RULE_SURVEY_ID);
-      return { capture, shutdown: () => Promise.resolve() };
+      return {
+        capture,
+        identifyAuthenticated: () => {},
+        shutdown: () => Promise.resolve(),
+      };
     });
 
     await serve("create-sg-rule");

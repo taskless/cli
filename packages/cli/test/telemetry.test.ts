@@ -11,6 +11,7 @@ const execFileAsync = promisify(execFile);
 const mockCapture = vi.fn();
 const mockIdentify = vi.fn();
 const mockGroupIdentify = vi.fn();
+const mockAlias = vi.fn();
 const mockShutdown = vi.fn<() => Promise<void>>();
 mockShutdown.mockResolvedValue();
 const mockConstruct = vi.fn();
@@ -24,6 +25,7 @@ vi.mock("posthog-node", () => {
       capture = mockCapture;
       identify = mockIdentify;
       groupIdentify = mockGroupIdentify;
+      alias = mockAlias;
       shutdown = mockShutdown;
     },
   };
@@ -53,6 +55,7 @@ async function writeTokenFile(cwd: string, token: string): Promise<void> {
 
 let getTelemetry: (cwd?: string) => Promise<{
   capture: (event: string, properties?: Record<string, unknown>) => void;
+  identifyAuthenticated: (token: string) => void;
   shutdown: () => Promise<void>;
 }>;
 let isTelemetryEnabled: (cwd?: string) => Promise<boolean>;
@@ -69,6 +72,7 @@ beforeEach(async () => {
   mockCapture.mockClear();
   mockIdentify.mockClear();
   mockGroupIdentify.mockClear();
+  mockAlias.mockClear();
   mockShutdown.mockClear();
   mockConstruct.mockClear();
 
@@ -330,6 +334,80 @@ describe("authenticated identity", () => {
       /^[\da-f]{8}-[\da-f]{4}-4[\da-f]{3}-[89ab][\da-f]{3}-[\da-f]{12}$/i
     );
     expect(mockGroupIdentify).not.toHaveBeenCalled();
+  });
+});
+
+describe("switching to the identity a login saved", () => {
+  it("captures under the token's subject and org, aliased from the anonymous id", async () => {
+    const telemetry = await getTelemetry();
+    const anonymousId = (
+      mockIdentify.mock.calls[0]![0] as { distinctId: string }
+    ).distinctId;
+
+    telemetry.identifyAuthenticated(makeJwt({ sub: "user-123", id: "org-1" }));
+    telemetry.capture("cli_authenticated");
+
+    expect(mockAlias).toHaveBeenCalledWith({
+      distinctId: "user-123",
+      alias: anonymousId,
+    });
+    expect(mockIdentify).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        distinctId: "user-123",
+        properties: expect.objectContaining({ cli: anonymousId }) as unknown,
+      })
+    );
+    expect(mockGroupIdentify).toHaveBeenCalledWith({
+      groupType: "organization",
+      groupKey: "org-1",
+    });
+    expect(mockCapture).toHaveBeenCalledWith(
+      expect.objectContaining({
+        distinctId: "user-123",
+        event: "cli_authenticated",
+        groups: { organization: "org-1" },
+      })
+    );
+  });
+
+  it("does not alias one authenticated user onto another", async () => {
+    const cwd = await mkdtemp(join(tmpdir(), "taskless-auth-test-"));
+    try {
+      await writeTokenFile(cwd, makeJwt({ sub: "user-old", orgId: 1 }));
+      const telemetry = await getTelemetry(cwd);
+      telemetry.identifyAuthenticated(makeJwt({ sub: "user-new", orgId: 2 }));
+      telemetry.capture("cli_authenticated");
+
+      expect(mockAlias).not.toHaveBeenCalled();
+      expect(mockCapture).toHaveBeenCalledWith(
+        expect.objectContaining({
+          distinctId: "user-new",
+          groups: { organization: "2" },
+        })
+      );
+    } finally {
+      await rm(cwd, { recursive: true, force: true });
+    }
+  });
+
+  it("keeps the anonymous identity for a token with no subject", async () => {
+    const telemetry = await getTelemetry();
+    telemetry.identifyAuthenticated("not-a-jwt");
+    telemetry.capture("cli_run");
+
+    expect(mockAlias).not.toHaveBeenCalled();
+    expect(mockCapture).toHaveBeenCalledWith(
+      expect.not.objectContaining({ groups: expect.anything() as unknown })
+    );
+  });
+
+  it("is a no-op when telemetry is disabled", async () => {
+    vi.stubEnv("TASKLESS_TELEMETRY_DISABLED", "1");
+    const telemetry = await getTelemetry();
+    telemetry.identifyAuthenticated(makeJwt({ sub: "user-123" }));
+
+    expect(mockAlias).not.toHaveBeenCalled();
+    expect(mockIdentify).not.toHaveBeenCalled();
   });
 });
 
