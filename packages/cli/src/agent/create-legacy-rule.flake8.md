@@ -45,10 +45,10 @@ configuration the repository already uses.
 
 4. **No catch-all fits: check the repo's own plugins.** Read
    `customRules` for `flake8` in `detect --json`.
-   - **A `count` of 5 or more:** you may write a new checker. Read the
+   - **A `count` of %(CUSTOM_RULE_THRESHOLD)s or more:** you may write a new checker. Read the
      `[flake8:local-plugins]` entries in `evidence` and the modules they
      point to, and model yours on them.
-   - **Fewer than 5, or none:** do not write a checker. Return to
+   - **Fewer than %(CUSTOM_RULE_THRESHOLD)s, or none:** do not write a checker. Return to
      `%(TASKLESS_CLI)s agent route`.
 
 5. **Report, and say who runs it.** Show the file you changed and the

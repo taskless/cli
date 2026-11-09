@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import { getRecipe } from "../src/prompts/recipes";
+import { CUSTOM_RULE_THRESHOLD } from "../src/detect/custom-rule-threshold";
+import { getRawRecipe, getRecipe } from "../src/prompts/recipes";
 
 function recipe(topic: string): string {
   const text = getRecipe(topic);
@@ -186,4 +187,25 @@ describe("the per-tool legacy recipes", () => {
       expect(tool(name)).toMatch(/check` does NOT run /);
     }
   );
+});
+
+describe("the custom-rule threshold", () => {
+  // The detector compares `customRules.count` against this constant, and the
+  // recipes quote it from the same place rather than by hand (taskless/cli#651).
+  const sources: [string, string | undefined][] = [
+    ["route", undefined],
+    ["create-legacy-rule", undefined],
+    ["create-legacy-rule", "eslint"],
+    ["create-legacy-rule", "flake8"],
+    ["create-legacy-rule", "pylint"],
+  ];
+
+  it.each(sources)("%s %s quotes the constant, not a copy", (topic, name) => {
+    const raw = getRawRecipe(topic, { tool: name })?.text ?? "";
+    expect(raw).toContain("%(CUSTOM_RULE_THRESHOLD)s or more");
+    expect(raw).not.toMatch(/\b(?:5|five) or more\b|Fewer than 5\b/);
+
+    const rendered = getRecipe(topic, { tool: name }) ?? "";
+    expect(rendered).toContain(`${CUSTOM_RULE_THRESHOLD} or more`);
+  });
 });

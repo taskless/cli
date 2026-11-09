@@ -1,6 +1,7 @@
 import { sprintf } from "sprintf-js";
 import { z } from "zod";
 
+import { CUSTOM_RULE_THRESHOLD } from "../detect/custom-rule-threshold";
 import {
   applyCliInvocation,
   buildInvocation,
@@ -969,6 +970,10 @@ export function buildVariables(
     VALE_COMMENT_FORMATS: valeCommentList(),
     VALE_PLAINTEXT_FORMATS: valePlaintextList(),
     VALE_CONVERTER_FORMATS: valeConverterList(),
+    // The count of a linter's own rules the legacy ladder asks for before an
+    // agent may write another, from the constant the detector compares
+    // `customRules.count` against, so recipe and detector cannot disagree.
+    CUSTOM_RULE_THRESHOLD: String(CUSTOM_RULE_THRESHOLD),
     PACKAGE_MANAGER_DLX:
       options.packageManagerDlx ?? PACKAGE_MANAGER_DLX_MARKER,
     // The two steps that gather evidence by running this CLI. Rendered as

@@ -12,7 +12,7 @@ and follow its decision rather than adapting this recipe.
 ## Goal
 Find a rule the linter already ships that solves the request, and enable
 or configure it. Write a new custom rule in that linter only when the
-repository already has five or more of its own to model it on. Taskless
+repository already has %(CUSTOM_RULE_THRESHOLD)s or more of its own to model it on. Taskless
 does not teach custom-rule authoring for any linter: the repository's
 own rules are the only reference.
 
@@ -48,11 +48,11 @@ own rules are the only reference.
 
 4. **No shipped rule fits: check the repo's own rules.** Read
    `customRules` for this linter in `detect --json`.
-   - **A `count` of 5 or more:** you may write a new rule. Read the repo's
+   - **A `count` of %(CUSTOM_RULE_THRESHOLD)s or more:** you may write a new rule. Read the repo's
      rules listed in `evidence` first and model yours on them: their
      structure, naming, tests, and how they are registered. Do not reach
      for the tool's authoring documentation instead.
-   - **Fewer than 5, `"unknown"`, or no `customRules` at all:** do not
+   - **Fewer than %(CUSTOM_RULE_THRESHOLD)s, `"unknown"`, or no `customRules` at all:** do not
      write a custom rule. Return to `%(TASKLESS_CLI)s agent route` and
      continue to step 3 of its legacy ladder, a Taskless rule.
 

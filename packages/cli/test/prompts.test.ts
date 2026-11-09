@@ -213,6 +213,7 @@ describe("the CLI invocation variable", () => {
       "AST_GREP_LANGUAGES",
       "AST_GREP_VERSION",
       "CLI_VERSION",
+      "CUSTOM_RULE_THRESHOLD",
       "DETECT_EVIDENCE",
       "ENVIRONMENT_STATUS",
       "FIXTURE_LAYOUT",
@@ -848,6 +849,10 @@ describe("prompts entry carries no CLI runtime", () => {
     "../schemas/feedback",
     // The `report` recipe's facts schema. It imports `zod` and nothing else.
     "../schemas/report-facts",
+    // The custom-rule threshold the detector compares against. A constant in a
+    // module of its own that imports nothing, kept apart from the detector so
+    // this graph does not reach the `node:fs` the detector reads with.
+    "../detect/custom-rule-threshold",
     "./recipes.js",
   ]);
 
