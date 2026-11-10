@@ -28,9 +28,9 @@
     }
   },
   "rules": {
-    "reconciledTo": "0.13.4",
+    "reconciledTo": "0.13.6",
     "engines": {
-      "sg": "0.51.0",
+      "sg": "0.51.1",
       "vale": "3.26.0"
     }
   }
