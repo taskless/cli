@@ -4,7 +4,7 @@ Taskless turns the corrections you give your coding agent into rules that run on
 
 ## What Taskless is
 
-When you correct your coding agent, Taskless captures that correction as a rule: a real file in your repo, enforced by [ast-grep](https://ast-grep.github.io), [Vale](https://vale.sh), or a runtime check. The same rules run in your editor, for every agent, and in CI, with one command and one exit code. You can start without an account.
+When you correct your coding agent, Taskless captures that correction as a rule: a real file in your repo, enforced by [ast-grep](https://ast-grep.github.io), [Vale](https://vale.sh), or a runtime check ([which needs an account](#accounts)). The same rules run in your editor, for every agent, and in CI, with one command and one exit code. You can start without an account.
 
 ## Get started
 
@@ -32,7 +32,31 @@ Rules are authored and validated locally, with no account and no API calls. Your
 
 Matches are reported with file, line, severity, and message. The command exits `1` on error-severity matches, so it drops straight into CI. Ask your agent to "add taskless to CI" to wire it into the CI system you already use.
 
-A free [Taskless account](https://docs.taskless.io/getting-started/full-setup/) adds AI-powered rule generation with validation and test cases, plus a GitHub integration that turns PR comments and issues into rules. See the [Taskless docs](https://docs.taskless.io/getting-started/) for the full guide, including tips for writing better rules.
+A free [Taskless account](https://docs.taskless.io/getting-started/full-setup/) adds AI-powered rule generation with validation and test cases, plus a GitHub integration that turns PR comments and issues into rules. It's also what lets runtime rules run; see [Privacy and accounts](#privacy-and-accounts). See the [Taskless docs](https://docs.taskless.io/getting-started/) for the full guide, including tips for writing better rules.
+
+## Privacy and accounts
+
+### Telemetry
+
+The CLI sends anonymous usage events. They hold the CLI version, your OS, the languages your repository uses, counts (rules run, matches found, how long a command took), the GitHub owner name from your git remote, and hashed workspace and repository ids. They never hold your code, your rule content, or what your rules matched.
+
+Any one of these turns telemetry off:
+
+- `DO_NOT_TRACK=1`
+- `TASKLESS_TELEMETRY_DISABLED=1`
+- `"telemetry": false` in `.taskless/taskless.json`. The file is checked in, so this turns it off for everyone working in the repository.
+
+### The onboarding report
+
+Onboarding ends by publishing a report: an unlisted page on [tskl.es](https://tskl.es) at a random URL. Anyone with the link can read it. It holds your rules, their fixtures, and what they found. A page is a lot easier to read than terminal output, and easy to share with your team.
+
+Before publishing, the CLI scans everything in the report for anything that looks like a secret or contact detail (API keys, tokens, private keys, email addresses, host names, IP addresses, phone numbers) and withholds whatever matches. `taskless report --delete <record>` takes the page down, where `<record>` is its file in `.taskless/reports/`.
+
+### Accounts
+
+You can start without an account, and that's the point. The CLI doesn't log in by default, and onboarding never logs in. ast-grep rules, Vale rules, rules written into your own linter, `check`, CI, and the report all work with no account.
+
+Runtime rules, the ones that look across files, are the exception. A runtime rule is a program that runs with your permissions and lives in your repository, so anyone who can open a pull request can change it. When you're logged in, `check` hashes each rule file and runs a runtime rule only when the Taskless service confirms it issued that exact file. Logged out, `check` still runs your ast-grep and Vale rules and skips runtime rules, saying which ones and why.
 
 ## What's in this repository
 
