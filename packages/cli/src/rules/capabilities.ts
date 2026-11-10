@@ -48,14 +48,15 @@ export const AST_GREP_VERSION = "0.51.1";
  *
  * SPELLINGS ARE ast-grep's, NOT ours and not `detect`'s. `Cpp`, `CSharp`,
  * `JavaScript`, `Tsx` — a rule's `language:` field is handed to ast-grep
- * unchanged, so the binary has the final opinion. MEASURED at 0.45.2: it
- * accepts more than this list — case variants and a fixed set of extension
- * aliases, both enumerated in {@link AST_GREP_LANGUAGE_ALIASES} — so an
- * off-list spelling is not on its own an error. The two real failures are a
- * name ast-grep does not know at all (`C#`), which aborts config parsing so
- * every rule goes unreported, and a valid name for the wrong parser
- * (`TypeScript` over `.tsx`), which reports nothing and reads as a clean
- * codebase. `validate` catches both; see `verify.ts`.
+ * unchanged, so the binary has the final opinion. MEASURED against the pinned
+ * binary on every run of the vendor contract test: it accepts more than this
+ * list — case variants and a fixed set of extension aliases, both enumerated
+ * in {@link AST_GREP_LANGUAGE_ALIASES} — so an off-list spelling is not on
+ * its own an error. The two real failures are a name ast-grep does not know at
+ * all (`C#`), which aborts config parsing so every rule goes unreported, and a
+ * valid name for the wrong parser (`TypeScript` over `.tsx`), which reports
+ * nothing and reads as a clean codebase. `validate` catches both; see
+ * `verify.ts`.
  *
  * Pinned by set-equality against the binary in
  * `test/ast-grep-vendor-contract.test.ts`, so a version bump that adds or drops
@@ -167,7 +168,8 @@ const CANONICAL_BY_LOWERCASE = new Map<string, AstGrepLanguage>(
 export function resolveAstGrepLanguage(
   spelling: string
 ): AstGrepLanguage | undefined {
-  // NOT trimmed. Measured at 0.45.2, ast-grep rejects `"ts "` — folding the
+  // NOT trimmed. ast-grep rejects `"ts "`, pinned by "does not fold surrounding
+  // whitespace" in `test/ast-grep-vendor-contract.test.ts` — folding the
   // whitespace here would call a rule valid that the binary refuses to load.
   const key = spelling.toLowerCase();
   return CANONICAL_BY_LOWERCASE.get(key) ?? AST_GREP_LANGUAGE_ALIASES[key];
@@ -177,11 +179,11 @@ export function resolveAstGrepLanguage(
  * The `.ts` / `.tsx` split — the one pair of ast-grep languages that share a
  * family and read disjoint file extensions.
  *
- * MEASURED at 0.45.2: a `TypeScript` rule over a `.tsx` tree exits zero having
- * matched nothing, and a `Tsx` rule scans `.tsx` only. That is the quiet
- * failure of the two, because "no findings" is exactly what a clean codebase
- * looks like. Pinned by "treats Tsx and TypeScript as different parsers, not
- * aliases" in `test/ast-grep-vendor-contract.test.ts`.
+ * MEASURED against the pinned binary: a `TypeScript` rule over a `.tsx` tree
+ * exits zero having matched nothing, and a `Tsx` rule scans `.tsx` only. That
+ * is the quiet failure of the two, because "no findings" is exactly what a
+ * clean codebase looks like. Pinned by "treats Tsx and TypeScript as
+ * different parsers, not aliases" in `test/ast-grep-vendor-contract.test.ts`.
  *
  * Kept to this pair deliberately. Every other language's extensions would be a
  * second vendored table with no measured backing, and the trap only exists
