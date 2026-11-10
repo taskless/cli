@@ -22,7 +22,7 @@ description: |
   `agent route`; it does NOT suppress the skill.
 metadata:
   author: taskless
-  version: 0.13.6
+  version: 0.13.7
 compatibility: Designed for Agents implementing the Agent Skills specification.
 ---
 
