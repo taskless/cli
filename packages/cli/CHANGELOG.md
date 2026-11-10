@@ -1,5 +1,70 @@
 # @taskless/cli
 
+## 0.13.7
+
+[Compare with v0.13.6](https://github.com/taskless/cli/compare/v0.13.6...v0.13.7)
+
+### Patch Changes
+
+- d72da19: Update the bundled ast-grep to 0.51.1 (from 0.51.0).
+- a6b9f97: When the Taskless service no longer supports the running CLI version, every command that talks to it now says so and tells you how to upgrade, instead of reporting a network failure you might retry. Under `--json` the failure is the new code `CLI_UPGRADE_REQUIRED` rather than `NETWORK_ERROR`, and `check` names the upgrade as the reason it could not verify rules.
+
+  `taskless info` now reports whether your token actually works. The JSON carries a new `authState` field (`authenticated`, `rejected`, `unreachable`, `upgrade_required`, `none`, or `anonymous` when `--anonymous` skips the check), and `loggedIn` is `true` only when the service accepted the token. Previously a rejected or expired token, or an unreachable service, still read `loggedIn: true`, and the human output said "not logged in" for all of them. It now says which one happened and what to do.
+
+  A stale or missing Taskless skill is now reported in a project with no detected agent harness directory (no `.claude/`, `.codex/`, `.gemini/`, and so on), where the skill is installed to `.agents/`. Before, `agent ok`, `check` and `info` said nothing about the skill there, however old it was.
+
+- c26373b: `taskless check` now fails when the Taskless service no longer supports the CLI version, the same way it fails on a rejected token. Before, the run degraded to an unverified scan and exited 0 with only a notice, so CI stayed green while no rule was verified. An unreachable service still does not fail the run.
+- 8d20d8b: `taskless check` no longer reports green when enforcement did not run, and no longer runs an engine binary of the wrong version.
+  - **A rejected token fails `check`.** When the rule service rejects the token (a revoked or mistyped `TASKLESS_TOKEN`), `check` still runs static rules unverified and skips runtime rules, and now exits 1 with a failure saying authentication was rejected. A rule service that cannot be reached stays non-fatal, so a Taskless outage does not turn CI red. (#655)
+  - **An edited runtime rule fails `check`.** A runtime rule whose signed files changed is answered `unsafe` and does not run, and now fails the run like an edited ast-grep or Vale rule does: the message moves from `notices` to `failures`. Restore it with `taskless rule restore <id>`. (#655)
+  - **`check` and `verify` refuse an `sg` or `vale` binary of the wrong version.** When the pinned platform package is missing and the CLI would fall back to a binary from `node_modules/.bin` or `PATH`, it now reads that binary's `--version` and refuses with a new error code, `ENGINE_BINARY_MISMATCH`, when it differs from the engine version this CLI bundles, naming the binary's path and version. Pass `--allow-version-mismatches` to run it anyway. (#650)
+  - **`check --json` integrity entries are typed per verdict.** Each `integrity` entry now carries only its own verdict's fields: `files` on `unsafe` (always) and `unknown` (for a copy), `revisionId` on `missing`, and `copyOf` on `unknown`. The output itself is unchanged; the CLI now refuses to emit an entry that mixes fields from two verdicts, so a consumer can branch on `verdict` and rely on what it finds. (#647)
+
+- 0fd5c8a: `taskless detect` reads two more places where a repository already keeps its lint setup.
+  - ESLint rule directories (`eslint-rules`, `eslint-local-rules`, `tools/eslint-rules`) are now found beside every ESLint config, not only at the repository root. A root run on a repository whose ESLint setup lives in `dashboard/` now counts the rules in `dashboard/eslint-rules` and reports that directory as a rule style, matching what a run from `dashboard/` already reported.
+  - Plain hook scripts in a tracked `.githooks/` directory are reported under `hooks` as `githooks`, with each script as evidence, and a linter those scripts run counts as detected. `core.hooksPath` is not read, since a fresh clone does not carry it. `taskless init` also checks these scripts for stale Taskless CLI pins.
+
+- 374a7b6: `taskless detect` now recognizes C# repositories and the Roslynator, StyleCop and SonarAnalyzer analyzers. C# comes from a `.csproj`. Roslynator comes from its NuGet packages in an MSBuild file, `packages.config` or `dotnet-tools.json`, its keys in `.editorconfig` or `.globalconfig`, a `.roslynatorconfig`, or a CI or hook command that runs it. StyleCop and SonarAnalyzer are each reported as their own linter, from their NuGet package, their config file, or their diagnostic ids.
+- a4e68ba: A project installed with a local development build of the CLI no longer refuses the nightly and release builds afterwards. The CLI now knows whether it is a release, a nightly or a development build from how it was built, instead of guessing from its version number, and the version recorded in `install.launchers` is the one each project launcher and the version check use. Install advice about pinned CLI versions no longer suggests a nightly version that was never published.
+
+  The `.taskless/` scaffold advances to version 13. Its migration moves a version recorded only as `install.cliVersion`, by a CLI that predates `install.launchers`, into `install.launchers`, so the CLI and the project launcher read that field alone. Run `init` to apply it. A CLI older than this release refuses a migrated project as newer than it understands, so update any pinned CLI in CI along with the migrated files.
+
+- 92f4868: `auth logout` now cancels an interactive `auth login` that is waiting in another shell. Before, approving that login afterwards saved a token and logged the repository back in. The waiting login now fails with `AUTH_REQUIRED` and saves nothing, and finishing an interactive login no longer deletes a `--json` login another process started meanwhile. When an interactive login's code expires, it is now reported the same way as under `--json` (`AUTH_EXPIRED`, not `NETWORK_ERROR`), and the message says to run `auth login` again for a new code. A failed interactive login (expired, denied, or a failed request) now prints its error once rather than twice.
+- 8cd0269: `taskless report --from` no longer loses a published report's delete URL when its local record cannot be written. Two publishes in the same second used to collide on the record's file name, leaving the second report live for 30 days with no way to delete it. A taken name now moves to a `_2`, `_3`, … suffix, which `--delete` accepts. If the record still cannot be written, the command exits with `REPORT_RECORD_FAILED` and prints the report's URL and delete URL, which the `--json` envelope also carries as `url` and `deleteUrl`.
+- 841d046: `auth login --json` no longer logs a repository back in after `auth logout`. A step that was waiting on approval when you logged out now stops with `AUTH_REQUIRED` instead of saving the token or writing the pending login back to disk.
+
+  `auth login --json` also keeps polling when the service asks for an interval longer than one step's 45-second wait. Each step now polls at least once, where before every step returned `pending` without polling until the code expired.
+
+  The `cli_authenticated` telemetry event is now sent under the account that just logged in, with its organization, and the device's earlier anonymous events are linked to that account. Before, it was sent under the anonymous device id.
+
+- 666ffe5: `rule create` and `rule improve` no longer leave part of a request on disk when one of its rules is refused. Every rule a request produced is now checked (its engine, its paths, and whether its file set is complete) before the first is written, so a refusal leaves `.taskless/rules/` as it was. Under `--json`, these refusals now report `RULE_GENERATION_FAILED` or `RULE_UNSUPPORTED` instead of `INTERNAL_ERROR`.
+
+  An IO failure while the rules are being written (a full disk, a directory the CLI cannot write to) no longer leaves the earlier rules on disk either: every rule is staged under `.taskless/` first and moved into place afterwards, and a failure part-way moves back any rule already replaced, so `.taskless/rules/` is left as it was and the command reports `RULE_GENERATION_FAILED`.
+
+- 08e3b3e: `taskless onboard` and `taskless report` no longer migrate `.taskless/` as a side effect. On a project whose scaffold is behind the CLI they now refuse with `SCAFFOLD_MIGRATION_REQUIRED` and ask you to run `taskless init`, the same way `check`, `validate` and `verify` do. Before, fetching the onboarding recipe or drafting a report could move and delete tracked files under `.taskless/` without saying so. A project with no `.taskless/` yet is set up exactly as before.
+
+  `taskless rule create`, `rule improve`, `rule restore` and `rule rollback` refuse the same way, before contacting the service. Before, they migrated a behind scaffold on the way to writing the rule.
+
+- fe80381: Recipe fixes for agents and for `@taskless/cli/prompts` consumers:
+  - With `mechanics: false`, the `create-sg-rule`, `create-vale-rule` and `create-runtime-rule` prompts now cite other recipes by topic name, as `route` already did, instead of as `<taskless-cli> agent <topic>` commands a caller with no CLI cannot run.
+  - The custom-rule threshold the legacy-rule recipes and `route` quote now comes from the same constant the detector uses, so the two cannot disagree.
+  - `getRawInstructions` now also returns `defaults`, the package's value for every variable in the template. Render with `sprintf(text, { ...defaults, ...yourValues })` and supply only what you know better; `sprintf(text, defaults)` alone gives `getPrompt`'s text.
+  - `create-runtime-rule` now covers four ast-grep capture gotchas: `TypeScript` and `Tsx` are separate languages, `foo($A, $$$)` does not match a one-argument call, and where a chained-call or `jsx_text` match starts. The reference runtime rule also captures `.tsx` files and its `Match` type declares `text`.
+
+- 3c66641: Fix three places where `update` and `agent ok` gave the wrong reconcile advice.
+  - `update --rules` from an older nightly of the same release no longer rewinds the recorded reconciliation and engine versions; it refuses and says to upgrade. It also refuses when the project's rules are recorded against newer engines than this CLI bundles. `info --json`, `init --json` and `update --json` now list those engines under `reconcile.enginesAhead`, so they explain why `check` refuses instead of reporting nothing due.
+  - `update --json` on a project whose `.taskless/taskless.json` cannot be read now exits 1 with a `SCAFFOLD_MANIFEST_UNREADABLE` error envelope, instead of reporting `ok: true` with nothing due. In a directory with no `.taskless/` it reports `reconcile.required: false`.
+  - `agent ok` no longer tells the agent to hold the rules step back for "a newer CLI" when only the skill needs reinstalling. With no CLI upgrade owed, it tells the agent to apply the rules step now.
+
+- 17bfded: `taskless init` now puts back a Taskless allow rule that was removed from a harness permission file (`.claude/settings.json`, `.cursor/cli.json`, and the rest) by a hand edit, a revert, or a merge. Previously the install trusted its own record over the file, so a removed rule stayed removed and the wizard showed no edit. A permission file that was deleted is recreated with the rule.
+- 30db133: `taskless rule restore` and `taskless rule rollback` no longer leave a half-written rule when a write fails part-way, for example on a full disk or an unwritable file. The rule is written in full under `.taskless/` first and then moved over its directory, and a failed move puts the previous version back, so `.taskless/rules/` is left as it was. Under `--json` that failure is now `RULE_RESTORE_FAILED`, and a served rule that cannot be written is `RULE_RESTORE_MISMATCH`, rather than `INTERNAL_ERROR`. The rule directory is replaced as a whole, so files the served rule does not include no longer survive a restore, and the "stale entries could not be removed" notice is gone.
+- 70321e8: `agent route` no longer reads as though a detected linter is missing. It now names every detected tool that can host a rule, and Oxlint gets its own `create-legacy-rule --tool=oxlint` guide.
+- 4637786: `taskless rule create` and `taskless rule improve` no longer report success for a request that delivered nothing. A request that ends in `pr`, `merged` or `closed` (the pull-request delivery path, reachable through `--resume`), in a status this CLI does not know, or with no status at all, now fails with `RULE_GENERATION_FAILED` and a message naming the state, instead of printing the success envelope with `rules: []` and exiting 0.
+
+  Waiting on a request is also sturdier. The poll understands the service's `pushing` step and prints its own progress line for it, and a status the CLI does not know is now waited on rather than treated as final, so a step the service adds later does not end the wait early. The wait now has a 30-minute ceiling: a request that has not finished by then fails with `NETWORK_ERROR`, naming the last status and the `--resume` command that keeps waiting on the same request.
+
+- d1a2af2: `verify --json` now reports a `status` on each rule: `passed`, `failed`, `not-run` (the rule failed before its tests ran) or `refused` (the execution policy declined to run them). Branch on it instead of combining `ok`, `ran` and `refused`, where reading `ok` alone could report a rule that never ran as passing. The change is additive: `ok`, `ran` and `refused` are still reported and are now derived from `status`, so they always agree with it. `validate` runs no tests and does not report `status`.
+
 ## 0.13.6
 
 [Compare with v0.13.5](https://github.com/taskless/cli/compare/v0.13.5...v0.13.6)
