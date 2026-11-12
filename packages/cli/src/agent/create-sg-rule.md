@@ -463,8 +463,8 @@ rule:
 ```
 
 a `fetch()` inside a `try` block is still reported, because its parent
-is an `expression_statement`, and the `try_statement` sits several
-levels further up. Add `stopBy: end` inside `inside` and the exclusion
+is an `expression_statement`, and the `try_statement` sits two levels
+above that, past the `statement_block`. Add `stopBy: end` inside `inside` and the exclusion
 works. `has` fails the same way downward: in `foo(x)` the `x` is a
 child of `arguments`, so `has: { kind: identifier, regex: "^x$" }` on
 the call does not find it.
