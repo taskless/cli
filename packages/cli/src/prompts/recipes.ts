@@ -789,6 +789,88 @@ function toolState(tools: HostTool[] | undefined, name: string): ToolState {
 }
 
 /**
+ * How to cover a busy GitHub window, appended to every review-comment item
+ * that reads pull requests through `gh`.
+ *
+ * WRITTEN FROM RUNS THAT HIT EACH WALL (taskless/cli#674). Onboarding agents
+ * in busy repositories found the 1000-result cap of `gh pr list` and
+ * `gh search` only after getting short results, hand-rolled GraphQL
+ * pagination to export review threads, and one sampled the newest 200 PRs,
+ * which covered a single week, so its strongest evidence fell outside what it
+ * counted. Each command below was run against a real repository before it was
+ * written here; `{owner}` and `{repo}` are `gh api`'s own placeholders, which
+ * it fills in only inside the endpoint argument, which is why the search
+ * query rides in the endpoint rather than in `-f`.
+ */
+const GITHUB_REVIEW_WINDOW = `Cover the whole window, not the newest PRs. In a busy repository the
+latest 200 PRs can be a single week, and the strongest evidence then
+falls outside what you read. \`gh api --paginate\` follows every page
+for you, so write no pagination loop of your own. Below, START is the
+window's first day as YYYY-MM-DD. Send bulk output to a file outside
+the repository and read it from there rather than into your context.
+
+- **Count the window, then list it in date chunks.** \`gh pr list\`
+  and \`gh search\` stop at 1000 results without saying so. Ask for the
+  total first:
+
+  \`\`\`
+  gh api "search/issues?q=repo:{owner}/{repo}+is:pr+is:merged+merged:>=START&per_page=1" --jq .total_count
+  \`\`\`
+
+  Up to 1000, one list covers it. Past that, list one date range at a
+  time, each small enough to return fewer than 1000, and split any
+  range that returns exactly 1000:
+
+  \`\`\`
+  gh pr list --state merged --search "merged:START..END" --limit 1000 --json number,title,mergedAt
+  \`\`\`
+
+- **Fetch the window's inline review comments in one call.** The
+  endpoint covers every pull request in the repository, and \`since\`
+  filters on when a comment last changed, so keep only comments on a
+  PR in your list:
+
+  \`\`\`
+  gh api --paginate "repos/{owner}/{repo}/pulls/comments?since=START&per_page=100" --jq '.[] | {pr: (.pull_request_url | split("/") | last), id, user: .user.login, path, body}'
+  \`\`\`
+
+- **Review bodies come one PR at a time**, from
+  \`gh api --paginate "repos/{owner}/{repo}/pulls/NUMBER/reviews"\`, and
+  count toward \`surfaced\` as much as inline comments do. When the
+  window holds more PRs than you can fetch them for, sample evenly
+  across it: every Nth PR from every chunk, never the most recent N.
+  Read every inline comment either way, since they arrived in bulk.
+  Counts from a sample are a floor; say the window was sampled when you
+  report them.`;
+
+/**
+ * The GitLab counterpart of {@link GITHUB_REVIEW_WINDOW}. GitLab's list
+ * endpoints carry no 1000-result cap to chunk around, so what is left is the
+ * whole-window rule, `glab api`'s own pagination, and where review notes live.
+ * `:id` is `glab api`'s placeholder for the current project.
+ */
+const GITLAB_REVIEW_WINDOW = `Cover the whole window, not the newest MRs. In a busy repository the
+latest 200 MRs can be a single week, and the strongest evidence then
+falls outside what you read. \`glab api --paginate\` follows every page
+for you, so write no pagination loop of your own. Below, START is the
+window's first day as YYYY-MM-DD. Send bulk output to a file outside
+the repository and read it from there rather than into your context.
+
+- **List the window's merged MRs**, keeping those whose \`merged_at\`
+  falls inside it:
+
+  \`\`\`
+  glab api --paginate "projects/:id/merge_requests?state=merged&updated_after=START&per_page=100"
+  \`\`\`
+
+- **Review notes come one MR at a time**, from
+  \`glab api --paginate "projects/:id/merge_requests/IID/discussions"\`.
+  When the window holds more MRs than you can fetch them for, sample
+  evenly across it: every Nth MR across the whole window, never the
+  most recent N. Counts from a sample are a floor; say the window was
+  sampled when you report them.`;
+
+/**
  * The review-comment entry in the onboard recipe's source list, as a whole
  * list item: pull requests through `gh`, or merge requests through `glab`.
  *
@@ -817,14 +899,18 @@ function reviewCommentSource(tools: HostTool[] | undefined): string {
 Taskless looked for the file and did not run it, so treat that as
 presence rather than as a working install; \`detect --json\` names
 the command that checks sign-in under \`agent\`. Scan the last 90
-days of merged PRs for repeated reviewer feedback patterns.`;
+days of merged PRs for repeated reviewer feedback patterns.
+
+${GITHUB_REVIEW_WINDOW}`;
   }
   if (glab === "present") {
     return `- **Recent MR review comments**: \`glab\` is on your PATH.
 Taskless looked for the file and did not run it, so treat that as
 presence rather than as a working install; \`detect --json\` names
 the command that checks sign-in under \`agent\`. Scan the last 90
-days of merged merge requests for repeated reviewer feedback patterns.`;
+days of merged merge requests for repeated reviewer feedback patterns.
+
+${GITLAB_REVIEW_WINDOW}`;
   }
   if (gh === "absent") {
     return `- **Recent PR review comments** are not a source here: \`gh\` is
@@ -845,7 +931,9 @@ line rather than passing over the source in silence.`;
   return `- **Recent PR review comments**: reading merged PRs needs the
 GitHub CLI (\`gh\`), or the GitLab CLI (\`glab\`) for merge requests,
 or something equivalent. Scan the last 90 days of merged PRs for
-repeated reviewer feedback patterns.`;
+repeated reviewer feedback patterns. With \`gh\`:
+
+${GITHUB_REVIEW_WINDOW}`;
 }
 
 /**
