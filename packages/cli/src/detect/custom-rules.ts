@@ -20,12 +20,26 @@ export interface CustomRules {
   evidence: string[];
 }
 
+/**
+ * A Roslyn analyzer project an MSBuild file wires into the build with
+ * `OutputItemType="Analyzer"`. `project` is the scanned `.csproj` it names,
+ * when that can be told without evaluating MSBuild.
+ */
+export interface AnalyzerReference {
+  /** The MSBuild file holding the `ProjectReference`. */
+  declaredIn: string;
+  /** The reference's `Include`, as written. */
+  include: string;
+  project?: string;
+}
+
 /** What the scan already found, so this module reads nothing twice. */
 export interface CustomRuleContext {
   root: string;
   pathsFor: (basename: string) => string[];
   pyprojects: Array<{ path: string; parsed?: Record<string, unknown> }>;
   nodeDeps: Array<{ path: string; deps: Set<string> }>;
+  analyzerReferences: AnalyzerReference[];
 }
 
 export async function countCustomRules(
@@ -44,6 +58,9 @@ export async function countCustomRules(
     }
     case "flake8": {
       return countFlake8(context);
+    }
+    case "custom-analyzer": {
+      return countRoslynAnalyzers(context);
     }
     // Ruff has no custom-rule mechanism. A fixed zero rather than nothing,
     // because an absent count would read as "not checked".
@@ -442,5 +459,89 @@ async function countFlake8(context: CustomRuleContext): Promise<CustomRules> {
     );
   }
 
+  return { count, evidence };
+}
+
+// --- Roslyn analyzer projects ------------------------------------------------
+
+/**
+ * A `[DiagnosticAnalyzer(...)]` attribute, alone or beside others in one
+ * attribute list (`[Shared, DiagnosticAnalyzer(LanguageNames.CSharp)]`), with
+ * or without its namespace or `Attribute` suffix.
+ */
+const DIAGNOSTIC_ANALYZER_ATTRIBUTE =
+  /[[,]\s*(?:[\w.]+\.)?DiagnosticAnalyzer(?:Attribute)?\s*\(/g;
+
+/** Directories under an analyzer project that hold no source of its own. */
+const NOT_ANALYZER_SOURCE = new Set(["bin", "obj", "node_modules"]);
+
+/** How deep below the project directory the source walk descends. */
+const ANALYZER_SOURCE_DEPTH = 6;
+
+/** The `.cs` files under a project directory, skipping build output. */
+function csharpSources(directory: string, depth = 0): string[] {
+  let entries: string[];
+  try {
+    entries = readdirSync(directory);
+  } catch {
+    return [];
+  }
+  const files: string[] = [];
+  for (const entry of entries) {
+    if (entry.startsWith(".") || NOT_ANALYZER_SOURCE.has(entry)) continue;
+    const path = join(directory, entry);
+    let isDirectory: boolean;
+    try {
+      isDirectory = statSync(path).isDirectory();
+    } catch {
+      continue;
+    }
+    if (isDirectory) {
+      if (depth < ANALYZER_SOURCE_DEPTH) {
+        files.push(...csharpSources(path, depth + 1));
+      }
+    } else if (entry.endsWith(".cs")) {
+      files.push(path);
+    }
+  }
+  return files;
+}
+
+/**
+ * Analyzer classes in the repository's own analyzer projects: each
+ * `[DiagnosticAnalyzer]` attribute in the `.cs` files under a referenced
+ * project's directory is one. A reference whose project cannot be found makes
+ * the count `"unknown"`, unless the found ones already clear the threshold.
+ */
+async function countRoslynAnalyzers(
+  context: CustomRuleContext
+): Promise<CustomRules> {
+  let known = 0;
+  let unknown = false;
+  const evidence: string[] = [];
+  const counted = new Set<string>();
+  for (const { include, project } of context.analyzerReferences) {
+    if (project === undefined) {
+      unknown = true;
+      evidence.push(`${include} (project not found)`);
+      continue;
+    }
+    const directory = dirname(project);
+    if (counted.has(directory)) continue;
+    counted.add(directory);
+    let count = 0;
+    for (const file of csharpSources(resolve(context.root, directory))) {
+      const source = (await readText(file)) ?? "";
+      const code = source
+        .replaceAll(/\/\*[\s\S]*?\*\//g, "")
+        .replaceAll(/\/\/.*$/gm, "");
+      count += code.match(DIAGNOSTIC_ANALYZER_ATTRIBUTE)?.length ?? 0;
+    }
+    known += count;
+    evidence.push(
+      `${directory === "." ? project : directory} (${count} analyzers)`
+    );
+  }
+  const count = unknown && known < CUSTOM_RULE_THRESHOLD ? "unknown" : known;
   return { count, evidence };
 }

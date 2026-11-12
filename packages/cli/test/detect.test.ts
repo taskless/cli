@@ -85,6 +85,10 @@ function roslynatorEvidence(result: DetectJson): string[] | undefined {
   return result.linters.find((l) => l.name === "roslynator")?.evidence;
 }
 
+function customAnalyzer(result: DetectJson) {
+  return result.linters.find((l) => l.name === "custom-analyzer");
+}
+
 async function writeNested(
   root: string,
   path: string,
@@ -866,6 +870,193 @@ describe("taskless detect", () => {
         "[*.cs]\ndotnet_diagnostic.CA1000.severity = none\n"
       );
       expect(linterNames(await detect(cwd))).toEqual([]);
+    });
+  });
+
+  describe("Dart and Flutter", () => {
+    it("reports Dart from pubspec.yaml, and never the analyzer from that alone", async () => {
+      await writeNested(cwd, "pubspec.yaml", "name: app\n");
+      const result = await detect(cwd);
+      expect(result.languages).toContain("Dart");
+      expect(linterNames(result)).not.toContain("dart-analyzer");
+    });
+
+    it("reports Dart and the analyzer for a Flutter app with platform folders", async () => {
+      await writeNested(
+        cwd,
+        "pubspec.yaml",
+        "name: app\ndependencies:\n  flutter:\n    sdk: flutter\ndev_dependencies:\n  flutter_lints: ^5.0.0\n"
+      );
+      await writeNested(
+        cwd,
+        "analysis_options.yaml",
+        "include: package:flutter_lints/flutter.yaml\n"
+      );
+      await writeNested(cwd, "ios/Gemfile", 'source "https://rubygems.org"\n');
+      await writeNested(cwd, "android/build.gradle", "\n");
+      const result = await detect(cwd);
+      expect(result.languages).toContain("Dart");
+      expect(
+        result.linters.find((l) => l.name === "dart-analyzer")?.evidence
+      ).toEqual([
+        "analysis_options.yaml",
+        "dependency flutter_lints (pubspec.yaml)",
+      ]);
+    });
+
+    it.each([
+      [
+        "a lint set in dev_dependencies",
+        "packages/core/pubspec.yaml",
+        "name: core\ndev_dependencies:\n  lints: ^5.0.0\n",
+        "dependency lints (packages/core/pubspec.yaml)",
+      ],
+      [
+        "very_good_analysis",
+        "pubspec.yaml",
+        "name: app\ndev_dependencies:\n  very_good_analysis: ^6.0.0\n",
+        "dependency very_good_analysis (pubspec.yaml)",
+      ],
+      [
+        "a nested analysis_options.yaml",
+        "packages/core/analysis_options.yaml",
+        "linter:\n  rules:\n    - avoid_print\n",
+        "packages/core/analysis_options.yaml",
+      ],
+      [
+        "a CI step that runs it",
+        ".github/workflows/ci.yml",
+        "jobs:\n  lint:\n    steps:\n      - run: flutter analyze --fatal-infos\n",
+        ".github/workflows/ci.yml (flutter analyze)",
+      ],
+    ])(
+      "reports the analyzer from %s",
+      async (_label, path, content, expected) => {
+        await writeNested(cwd, path, content);
+        const result = await detect(cwd);
+        expect(
+          result.linters.find((l) => l.name === "dart-analyzer")?.evidence
+        ).toContain(expected);
+        expect(result.languages).toContain("Dart");
+      }
+    );
+
+    it.each([
+      [
+        "a lint set named only in a comment",
+        "name: app\n# dev_dependencies:\n#   lints: ^5.0.0\n",
+      ],
+      ["a malformed pubspec.yaml", "name: [app\n  lints: ^5\n"],
+    ])("does not report the analyzer from %s", async (_label, content) => {
+      await writeNested(cwd, "pubspec.yaml", content);
+      expect(linterNames(await detect(cwd))).not.toContain("dart-analyzer");
+    });
+  });
+
+  describe("an analyzer project in the repository", () => {
+    const analyzerSource =
+      "using Microsoft.CodeAnalysis.Diagnostics;\n\n[DiagnosticAnalyzer(LanguageNames.CSharp)]\npublic sealed class NoFooAnalyzer : DiagnosticAnalyzer { }\n\n[Shared, DiagnosticAnalyzer(LanguageNames.CSharp)]\npublic sealed class NoBarAnalyzer : DiagnosticAnalyzer { }\n\n// [DiagnosticAnalyzer(LanguageNames.CSharp)] retired\npublic sealed class Helper { }\n";
+
+    async function writeAnalyzerProject(): Promise<void> {
+      await writeNested(
+        cwd,
+        "analyzers/House.Analyzers/House.Analyzers.csproj",
+        '<Project Sdk="Microsoft.NET.Sdk" />\n'
+      );
+      await writeNested(
+        cwd,
+        "analyzers/House.Analyzers/Rules/Analyzers.cs",
+        analyzerSource
+      );
+      await writeNested(
+        cwd,
+        "analyzers/House.Analyzers/bin/Debug/Generated.cs",
+        analyzerSource
+      );
+      await writeNested(
+        cwd,
+        "src/App/App.csproj",
+        '<Project Sdk="Microsoft.NET.Sdk" />\n'
+      );
+    }
+
+    it.each([
+      [
+        "Directory.Build.props, through $(MSBuildThisFileDirectory)",
+        "Directory.Build.props",
+        '<Project>\n  <ItemGroup>\n    <ProjectReference Include="$(MSBuildThisFileDirectory)analyzers\\House.Analyzers\\House.Analyzers.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />\n  </ItemGroup>\n</Project>\n',
+      ],
+      [
+        "Directory.Build.props, through another property",
+        "Directory.Build.props",
+        '<Project>\n  <ItemGroup>\n    <ProjectReference Include="$(RepoRoot)analyzers/House.Analyzers/House.Analyzers.csproj" ReferenceOutputAssembly="false" OutputItemType="Analyzer" />\n  </ItemGroup>\n</Project>\n',
+      ],
+      [
+        "a project file, as child metadata",
+        "src/App/App.csproj",
+        '<Project Sdk="Microsoft.NET.Sdk">\n  <ItemGroup>\n    <ProjectReference Include="..\\..\\analyzers\\House.Analyzers\\House.Analyzers.csproj">\n      <OutputItemType>Analyzer</OutputItemType>\n      <ReferenceOutputAssembly>false</ReferenceOutputAssembly>\n    </ProjectReference>\n  </ItemGroup>\n</Project>\n',
+      ],
+    ])(
+      "reports it from %s, naming the project and counting its analyzers",
+      async (_label, path, content) => {
+        await writeAnalyzerProject();
+        await writeNested(cwd, path, content);
+        const result = await detect(cwd);
+        expect(customAnalyzer(result)?.evidence).toEqual([
+          `analyzer project analyzers/House.Analyzers/House.Analyzers.csproj (${path})`,
+        ]);
+        expect(customAnalyzer(result)?.customRules).toEqual({
+          count: 2,
+          evidence: ["analyzers/House.Analyzers (2 analyzers)"],
+        });
+        expect(result.languages).toContain("C#");
+      }
+    );
+
+    it("counts a project referenced from several files once", async () => {
+      await writeAnalyzerProject();
+      const reference =
+        '<Project><ItemGroup><ProjectReference Include="..\\..\\analyzers\\House.Analyzers\\House.Analyzers.csproj" OutputItemType="Analyzer" /></ItemGroup></Project>\n';
+      await writeNested(cwd, "src/App/App.csproj", reference);
+      await writeNested(cwd, "src/Lib/Lib.csproj", reference);
+      const result = await detect(cwd);
+      expect(customAnalyzer(result)?.evidence).toHaveLength(2);
+      expect(customAnalyzer(result)?.customRules?.count).toBe(2);
+    });
+
+    it("reports a project it cannot find with an unknown count", async () => {
+      await writeNested(
+        cwd,
+        "Directory.Build.props",
+        '<Project><ItemGroup><ProjectReference Include="$(AnalyzersRoot)Missing.Analyzers.csproj" OutputItemType="Analyzer" /></ItemGroup></Project>\n'
+      );
+      const result = await detect(cwd);
+      expect(customAnalyzer(result)).toEqual({
+        name: "custom-analyzer",
+        evidence: [
+          "analyzer project $(AnalyzersRoot)Missing.Analyzers.csproj (Directory.Build.props)",
+        ],
+        customRules: {
+          count: "unknown",
+          evidence: [
+            "$(AnalyzersRoot)Missing.Analyzers.csproj (project not found)",
+          ],
+        },
+      });
+    });
+
+    it.each([
+      [
+        "an ordinary project reference",
+        '<Project><ItemGroup><ProjectReference Include="..\\Lib\\Lib.csproj" /></ItemGroup></Project>\n',
+      ],
+      [
+        "a commented-out analyzer reference",
+        '<Project><!-- <ProjectReference Include="..\\Lib\\Lib.csproj" OutputItemType="Analyzer" /> --></Project>\n',
+      ],
+    ])("does not report it from %s", async (_label, content) => {
+      await writeNested(cwd, "src/App/App.csproj", content);
+      expect(linterNames(await detect(cwd))).not.toContain("custom-analyzer");
     });
   });
 

@@ -1,8 +1,9 @@
 import { existsSync, globSync } from "node:fs";
 import { readFile as readFileNode } from "node:fs/promises";
-import { resolve } from "node:path";
+import { posix, resolve } from "node:path";
 
 import { parse as parseToml } from "smol-toml";
+import { parse as parseYaml } from "yaml";
 
 import { RULES_DIRECTORY } from "../rules/layout";
 import {
@@ -12,6 +13,7 @@ import {
   type DetectedAutomation,
 } from "./automation";
 import {
+  type AnalyzerReference,
   countCustomRules,
   type CustomRules,
   ESLINT_CONFIG_FILES,
@@ -82,6 +84,9 @@ const IGNORED_DIRECTORIES: ReadonlySet<string> = new Set([
   ".pytest_cache",
   ".tox",
   ".gradle",
+  // Dart's package resolution and build state. A dot-directory the walk would
+  // skip anyway, listed so that stays true if a pattern ever names it.
+  ".dart_tool",
   // .NET build output. `obj` holds restore artifacts generated from the
   // project files, which are not the repository's own declarations.
   "bin",
@@ -109,7 +114,8 @@ const MAX_DIRECTORY_DEPTH = 8;
  * is read from the right package file: a node dependency lives in
  * `package.json`, a Python dependency in `pyproject.toml`/`requirements*.txt`,
  * a Ruby one in `Gemfile`, a PHP one in `composer.json`, a Go one in `go.mod`,
- * a Swift one in `Package.swift`, a C# one in an MSBuild project file. Tagging by language lets the scan look for a
+ * a Swift one in `Package.swift`, a C# one in an MSBuild project file, a Dart
+ * one in `pubspec.yaml`. Tagging by language lets the scan look for a
  * linter's dependency only in its own ecosystem's manifest instead of
  * conflating them. Config-file presence
  * is honored unconditionally, per the detect spec ("a recognized linter config
@@ -150,6 +156,12 @@ interface LinterSignal {
    * and is not a dependency, such as clippy, which ships with the toolchain.
    */
   invocations?: RegExp[];
+  /**
+   * An analyzer project the repository builds itself, referenced from an
+   * MSBuild file as `<ProjectReference ... OutputItemType="Analyzer" />`. The
+   * referenced project is the evidence.
+   */
+  analyzerProjects?: boolean;
 }
 
 /** TOML manifests parsed for `manifestTables`. */
@@ -417,6 +429,24 @@ const LINTER_SIGNALS: readonly LinterSignal[] = [
     configKeys: analyzerConfigKeys(/^[ \t]*dotnet_diagnostic\.s\d[^\s=]*/im),
     deps: ["sonaranalyzer.csharp"],
   },
+  {
+    // The repository's own Roslyn analyzers, built from a project in the tree
+    // and wired into the build as an analyzer rather than a library. Named for
+    // what it is, not for a tool, because the rules are the repository's.
+    name: "custom-analyzer",
+    languages: ["C#"],
+    analyzerProjects: true,
+  },
+  {
+    // The analyzer that ships with the Dart and Flutter SDKs. It reads only
+    // `analysis_options.yaml`, and the lint sets are packages in `pubspec.yaml`.
+    // Being a Dart repository is NOT evidence, as with clippy.
+    name: "dart-analyzer",
+    languages: ["Dart"],
+    configFiles: ["analysis_options.yaml"],
+    deps: ["lints", "flutter_lints", "very_good_analysis"],
+    invocations: [/\b(?:dart|flutter)\s+analyze\b/],
+  },
   // Polyglot and prose linters: neither says anything about which languages
   // the repository is written in, so they contribute none.
   {
@@ -460,6 +490,7 @@ export const LANGUAGE_MARKERS: ReadonlyArray<{
   { language: "PHP", files: ["composer.json"] },
   { language: "Java", files: ["pom.xml", "build.gradle", "build.gradle.kts"] },
   { language: "Swift", files: ["Package.swift"] },
+  { language: "Dart", files: ["pubspec.yaml"] },
 ];
 
 /**
@@ -788,6 +819,86 @@ function nugetDepsFromToolManifest(raw: string | undefined): string[] {
   }
 }
 
+/**
+ * Analyzer projects an MSBuild file references: each `ProjectReference` whose
+ * `OutputItemType` is `Analyzer`, as an attribute or as child metadata, with
+ * its `Include` as written. Comments are removed first, as for NuGet.
+ */
+function analyzerReferencesFromMsbuild(raw: string | undefined): string[] {
+  if (raw === undefined) return [];
+  const source = raw.replaceAll(/<!--[\s\S]*?-->/g, "");
+  const includes: string[] = [];
+  for (const match of source.matchAll(
+    /<ProjectReference\b([^>]*?)(?:\/>|>([\s\S]*?)<\/ProjectReference\s*>)/gi
+  )) {
+    const attributes = match[1]!;
+    const isAnalyzer =
+      /\bOutputItemType\s*=\s*["']\s*Analyzer\s*["']/i.test(attributes) ||
+      /<OutputItemType>\s*Analyzer\s*<\/OutputItemType>/i.test(match[2] ?? "");
+    const include = /\bInclude\s*=\s*["']([^"']+)["']/i.exec(attributes)?.[1];
+    if (!isAnalyzer || include === undefined) continue;
+    includes.push(
+      ...include
+        .split(";")
+        .map((path) => path.trim())
+        .filter((path) => path !== "")
+    );
+  }
+  return includes;
+}
+
+/**
+ * The scanned project file an analyzer `Include` names, or `undefined` when it
+ * cannot be told. A project file resolves its includes against its own
+ * directory. An imported `.props` or `.targets` resolves them against the
+ * project that imports it, so only a `$(MSBuildThisFileDirectory)` path is
+ * resolved against the shared file itself. Anything else (another property,
+ * an ambiguous path) falls back to the one scanned project with that file
+ * name, if there is exactly one.
+ */
+function resolveAnalyzerProject(
+  declaredIn: string,
+  include: string,
+  projectPaths: readonly string[]
+): string | undefined {
+  const written = include.replaceAll("\\", "/");
+  const thisFile = /^\$\(MSBuildThisFileDirectory\)\/?/i;
+  const relative = thisFile.test(written)
+    ? written.replace(thisFile, "")
+    : declaredIn.endsWith(".csproj")
+      ? written
+      : undefined;
+  if (relative !== undefined && !relative.includes("$(")) {
+    const candidate = posix.normalize(
+      posix.join(posix.dirname(declaredIn), relative)
+    );
+    if (projectPaths.includes(candidate)) return candidate;
+  }
+  const name = basenameOf(written);
+  const byName = projectPaths.filter((path) => basenameOf(path) === name);
+  return byName.length === 1 ? byName[0] : undefined;
+}
+
+/**
+ * Package names a `pubspec.yaml` depends on, from `dependencies` and
+ * `dev_dependencies`. The lint sets are dev dependencies by convention, but a
+ * package that ships its own lints may list them as regular ones.
+ */
+function dartDepsFromPubspec(raw: string | undefined): string[] {
+  if (raw === undefined) return [];
+  let parsed: unknown;
+  try {
+    parsed = parseYaml(raw);
+  } catch {
+    return [];
+  }
+  const pubspec = asRecord(parsed);
+  return [
+    ...plainObjectKeys(pubspec?.dependencies),
+    ...plainObjectKeys(pubspec?.dev_dependencies),
+  ];
+}
+
 /** Python dependency names declared in a `requirements.txt`. */
 function pythonDepsFromRequirements(raw: string | undefined): string[] {
   if (raw === undefined) return [];
@@ -991,11 +1102,25 @@ export async function detectRepository(cwd: string): Promise<DetectResult> {
     "packages.config",
     nugetDepsFromPackagesConfig
   );
+  // Analyzer projects are read in the same pass, from the same files.
+  const projectPaths = msbuildPaths
+    .map((path) => path.replaceAll("\\", "/"))
+    .filter((path) => path.endsWith(".csproj"));
+  const analyzerReferences: AnalyzerReference[] = [];
   for (const relativePath of msbuildPaths) {
+    const raw = await readAt(relativePath);
     nugetManifests.push({
       path: relativePath,
-      deps: new Set(nugetDepsFromMsbuild(await readAt(relativePath))),
+      deps: new Set(nugetDepsFromMsbuild(raw)),
     });
+    const declaredIn = relativePath.replaceAll("\\", "/");
+    for (const include of analyzerReferencesFromMsbuild(raw)) {
+      analyzerReferences.push({
+        declaredIn,
+        include,
+        project: resolveAnalyzerProject(declaredIn, include, projectPaths),
+      });
+    }
   }
   for (const relativePath of new Set(toolManifestPaths)) {
     nugetManifests.push({
@@ -1012,6 +1137,7 @@ export async function detectRepository(cwd: string): Promise<DetectResult> {
     ["Go", await manifestsFrom("go.mod", goDepsFromGoModule)],
     ["Swift", await manifestsFrom("Package.swift", swiftDepsFromPackageSwift)],
     ["C#", nugetManifests],
+    ["Dart", await manifestsFrom("pubspec.yaml", dartDepsFromPubspec)],
   ]);
 
   // The commands the root CI and hook configs run, read once for every
@@ -1106,6 +1232,11 @@ export async function detectRepository(cwd: string): Promise<DetectResult> {
         .find((result) => result !== null);
       if (match) evidence.push(`${path} (${match[0]})`);
     }
+    if (signal.analyzerProjects) {
+      for (const { declaredIn, include, project } of analyzerReferences) {
+        evidence.push(`analyzer project ${project ?? include} (${declaredIn})`);
+      }
+    }
 
     if (evidence.length > 0) {
       const customRules = await countCustomRules(signal.name, {
@@ -1113,6 +1244,7 @@ export async function detectRepository(cwd: string): Promise<DetectResult> {
         pathsFor,
         pyprojects: tomlManifests.get("pyproject.toml") ?? [],
         nodeDeps: nodeManifests,
+        analyzerReferences,
       });
       linters.push({
         name: signal.name,

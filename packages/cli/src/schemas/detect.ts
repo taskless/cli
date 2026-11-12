@@ -6,7 +6,7 @@ const detectedLinterSchema = z.object({
   evidence: z
     .array(z.string())
     .describe(
-      "On-disk evidence: config-file paths, a manifest table, section, or config key marker, a dependency marker from the language's package file, or a root CI or hook config that runs the linter (not all entries are file paths)"
+      "On-disk evidence: config-file paths, a manifest table, section, or config key marker, a dependency marker from the language's package file, an in-tree analyzer project and the file that references it, or a root CI or hook config that runs the linter (not all entries are file paths)"
     ),
   customRules: z
     .object({
@@ -19,7 +19,7 @@ const detectedLinterSchema = z.object({
     })
     .optional()
     .describe(
-      "Present only for linters that can hold a custom rule (eslint, biome, pylint, flake8) and for ruff, which always reports zero"
+      "Present only for linters that can hold a custom rule (eslint, biome, pylint, flake8, custom-analyzer) and for ruff, which always reports zero"
     ),
 });
 

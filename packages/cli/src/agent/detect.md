@@ -1,4 +1,4 @@
-# Topic: detect     (CLI v%(CLI_VERSION)s / topic v5)
+# Topic: detect     (CLI v%(CLI_VERSION)s / topic v6)
 
 %(ONE_COMMAND_PER_CALL)s
 
@@ -58,8 +58,14 @@ routing flow reads `detect` to decide where a new rule should live.
      a dependency marker from the language's package file, or a root CI
      or hook config that runs the linter (`.github/workflows/ci.yml
      (cargo clippy)`). Not every entry is a path. A linter that only
-     ships with a toolchain, like clippy, is reported only when
-     something configures or runs it.
+     ships with a toolchain, like clippy or `dart-analyzer`, is reported
+     only when something configures or runs it.
+   - `custom-analyzer` is a C# repository's own Roslyn analyzers: a
+     project in the tree that an MSBuild file wires in as an analyzer.
+     Its evidence names that project and the file that references it
+     (`analyzer project analyzers/House.Analyzers/House.Analyzers.csproj
+     (Directory.Build.props)`), and its `customRules` counts the
+     `[DiagnosticAnalyzer]` classes in it.
    - `languages`: inferred from manifests and the detected linters.
    - `ruleStyles`: how the repo authors its own rules, surfaced for
      downstream reuse.
