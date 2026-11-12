@@ -1,4 +1,4 @@
-# Topic: improve-rule (anonymous)     (CLI v%(CLI_VERSION)s / topic v6)
+# Topic: improve-rule (anonymous)     (CLI v%(CLI_VERSION)s / topic v7)
 
 %(ONE_COMMAND_PER_CALL)s
 
