@@ -307,6 +307,9 @@ fails against the user's cases:
 - Call the service only after the user confirms. On yes, fetch
   `%(RECIPE_FETCH)screate-remote-rule`.
 
+If a recipe that limits questions sent you here, do not ask for that
+confirmation; do what that recipe says instead.
+
 Never fall through silently from a failed local attempt to a service
 call. A developer who watches a local attempt fail reads it as a
 Taskless failure, so only attempt local when you reasonably believe it
