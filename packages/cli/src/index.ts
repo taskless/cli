@@ -6,6 +6,7 @@ import { defineCommand, runCommand, showUsage } from "citty";
 import { z } from "zod";
 
 import { createAgentCommand } from "./commands/agent";
+import { astCommand } from "./commands/ast";
 import { authCommand } from "./commands/auth";
 import { checkCommand } from "./commands/check";
 import { detectCommand } from "./commands/detect";
@@ -56,6 +57,7 @@ const subCommands = {
   update: updateCommand,
   info: infoCommand,
   detect: detectCommand,
+  ast: astCommand,
   check: checkCommand,
   feedback: feedbackCommand,
   auth: authCommand,

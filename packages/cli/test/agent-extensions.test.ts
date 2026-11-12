@@ -539,7 +539,9 @@ describe("create-sg-rule names the tree-sitter traps under Quirks", () => {
     const result = await runCli(["agent", "create-sg-rule", "-d", cwd]);
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toContain("### A keyword is not a valid `kind`");
-    expect(result.stdout).toContain("read kinds off `--debug-query=ast`");
+    expect(result.stdout).toMatch(/read kinds off `.+ ast <file>`/);
+    // An agent told to use `--debug-query` goes hunting for a binary (#673).
+    expect(result.stdout).not.toContain("--debug-query");
   });
 
   it("says an awaited generic call hides its callee", async () => {
