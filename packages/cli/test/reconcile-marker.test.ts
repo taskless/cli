@@ -37,6 +37,18 @@ async function runJson(args: string[]): Promise<unknown> {
 }
 
 /**
+ * One ledger entry as `agent update --section` prints it. `update` serves the
+ * outline, which names the entries without their text (taskless/cli#672).
+ */
+async function ledgerSection(
+  name: string
+): Promise<{ stdout: string; stderr: string; exitCode: number }> {
+  const result = await runCli(["agent", "update", "--section", name]);
+  expect(result.exitCode, result.stderr).toBe(0);
+  return result;
+}
+
+/**
  * The marker records that RULE CONTENT was reconciled, which nothing else in
  * the manifest does. `install.cliVersion` moves on a skills refresh and the
  * scaffold `version` moves on a layout migration, both without anyone reading
@@ -753,11 +765,31 @@ describe("taskless update with no flags", () => {
     expect(result.stdout).toContain("The directory is");
   });
 
+  it("serves each ledger entry as a section, in release order", async () => {
+    // The ledger is longer than one tool call shows, so the outline names its
+    // entries and the walk prints them one at a time (taskless/cli#672). The
+    // table of contents lists them in file order, which is release order, and
+    // the walk depends on that order.
+    const result = await runCli(["update"]);
+    expect(result.stdout).toContain("## The ledger");
+    expect(result.stdout).not.toContain("## Migrating to");
+    const listed = result.stdout
+      .split("\n")
+      .map((line) => /^- `(migrating-to-[^`]+)`/.exec(line)?.[1])
+      .filter((name): name is string => name !== undefined);
+    expect(listed.slice(0, 3)).toEqual([
+      "migrating-to-0-11-x",
+      "migrating-to-0-11-x-continued",
+      "migrating-to-0-11-2",
+    ]);
+    expect(listed).toContain("migrating-to-0-12-0-continued");
+  });
+
   it("tells an author what to DO about each semantics change", async () => {
     // The section used to say "re-run your fixtures and read the findings",
     // which tells someone to look without saying what for. Both shapes were
     // measured across the two binaries, so it can name the action instead.
-    const result = await runCli(["update"]);
+    const result = await ledgerSection("migrating-to-0-11-x-continued");
 
     // Shape 1: the rule was inert and now reports. Fixtures cannot catch it,
     // because a rule matching nothing passes its own `pass/` side.
@@ -779,8 +811,10 @@ describe("taskless update with no flags", () => {
   });
 
   it("carries the 0.11.0 ledger entry", async () => {
-    const result = await runCli(["update"]);
-    expect(result.stdout).toContain("Migrating to 0.11.x");
+    // Split in two to fit one tool call: Vale first, then ast-grep.
+    const first = await ledgerSection("migrating-to-0-11-x");
+    expect(first.stdout).toContain("Migrating to 0.11.x");
+    const result = await ledgerSection("migrating-to-0-11-x-continued");
     // The four things an author cannot discover from the diff.
     expect(result.stdout).toContain("rewriter now requires `fix`");
     expect(result.stdout).toContain("Markdown is now a language");
@@ -788,7 +822,7 @@ describe("taskless update with no flags", () => {
   });
 
   it("carries the 0.11.2 ledger entry", async () => {
-    const result = await runCli(["update"]);
+    const result = await ledgerSection("migrating-to-0-11-2");
     expect(result.stdout).toContain("Migrating to 0.11.2");
     // The four things an author cannot discover from the diff: each is a
     // change in what an unchanged rule reports, with no error anywhere.
@@ -799,7 +833,7 @@ describe("taskless update with no flags", () => {
   });
 
   it("carries the 0.13.3 ledger entry", async () => {
-    const result = await runCli(["update"]);
+    const result = await ledgerSection("migrating-to-0-13-3");
     expect(result.stdout).toContain("Migrating to 0.13.3");
     // The rename is mechanical, so the entry hands it to `update --rules`
     // rather than to the agent.
@@ -809,7 +843,7 @@ describe("taskless update with no flags", () => {
   });
 
   it("carries the 0.13.5 ledger entry", async () => {
-    const result = await runCli(["update"]);
+    const result = await ledgerSection("migrating-to-0-13-5");
     expect(result.stdout).toContain("Migrating to 0.13.5");
     expect(result.stdout).toContain("Vale moves from 3.24.0 to 3.26.0");
     expect(result.stdout).toContain(
@@ -820,7 +854,7 @@ describe("taskless update with no flags", () => {
   it("warns that kind: link is loud, not a silent zero-match", async () => {
     // The correction that took a verified 0.45.2 binary to establish: an
     // invalid kind aborts config parsing and takes every other rule down.
-    const result = await runCli(["update"]);
+    const result = await ledgerSection("migrating-to-0-11-x-continued");
     expect(result.stdout).toContain("HARD\nCONFIG ERROR");
     expect(result.stdout).toContain("exit 8");
   });

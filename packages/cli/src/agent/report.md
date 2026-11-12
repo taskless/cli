@@ -1,4 +1,4 @@
-# Topic: report     (CLI v%(CLI_VERSION)s / topic v8)
+# Topic: report     (CLI v%(CLI_VERSION)s / topic v9)
 
 %(ONE_COMMAND_PER_CALL)s
 
@@ -40,9 +40,10 @@ later and deletes one on request.
    publishes without them.
 
 2. **Supply what is missing.** Write
-   `.taskless/.tmp-report.json` following the schema below. Every entry
-   comes from this session or from sources you can reach now, never
-   from guesswork you present as measurement:
+   `.taskless/.tmp-report.json` following
+   [Facts schema](#facts-schema). Every entry comes from this session
+   or from sources you can reach now, never from guesswork you present
+   as measurement:
 
    - `window`: the span of history you mined, as dates.
    - `history`: what that window held. Merged pull or merge requests,
@@ -51,18 +52,18 @@ later and deletes one on request.
      A zero is honest only for a source you read and found empty, not
      for one you did not read.
    - `rules`: one entry per rule the draft listed, with a title a
-     reader understands, an `explain` written as described under
-     `## Explaining a rule`, and its `surfaced` counts, counted as
-     described under `## Counting surfaced`.
+     reader understands, an `explain` written as
+     [Explaining a rule](#explaining-a-rule) says, and its `surfaced`
+     counts, counted as [Counting surfaced](#counting-surfaced) says.
    - `legacy`: rules you wrote into the repository's own linter, which
      the CLI cannot see. Each one needs an `explain` too.
    - `cloud`: runtime-shaped candidates you judged better solved by a
      runtime rule and did not author. Count their `surfaced` the same
      way, and give each one an `explain`. Give each one
      `estimatedViolations`: how many instances of its pattern you
-     estimate are in the code today, made as described under
-     `## Estimating violations`. No rule has run, so this is an
-     estimate, and it is published as one.
+     estimate are in the code today, made as
+     [Estimating violations](#estimating-violations) says. No rule has
+     run, so this is an estimate, and it is published as one.
    - `redaction`: what you removed yourself, by kind, and any fixture
      you choose not to publish. Names of people and customers are
      yours to judge; the CLI's patterns cannot see them.
@@ -74,7 +75,7 @@ later and deletes one on request.
    ```
 
    On failure it prints `Error (<code>): <message>`. Handle the code
-   from the table under `## Errors`.
+   as [Errors](#errors) says.
    `REPORT_INSUFFICIENT` is the only one that may involve the user: if
    you are unsure what further rules to write, ask the user only what
    would let you write the rules the message says are missing, write
@@ -115,6 +116,7 @@ later and deletes one on request.
    confirms the deletion. Tell the user cached copies of the page may
    be served for up to a day afterwards.
 
+<!-- on-demand -->
 ## Explaining a rule
 
 Every rule in the facts, written or candidate, carries an `explain`:
@@ -134,6 +136,7 @@ who never saw the session understands what the rule protects.
 - No names, hosts, or contact details. The CLI screens `explain` like
   `title` and refuses the publish if its patterns match.
 
+<!-- on-demand -->
 ## Counting surfaced
 
 Every agent counts `surfaced` the same way, so reports from different
@@ -158,6 +161,7 @@ sessions compare:
   however well it shows what the rule is worth. The facts have no
   field for it; leave it out rather than count it as review.
 
+<!-- on-demand -->
 ## Estimating violations
 
 A cloud candidate's `estimatedViolations` answers one question: how
@@ -184,6 +188,7 @@ quickly:
   many held up.
 - **Write the low end of your range.**
 
+<!-- on-demand -->
 ## Facts schema
 
 The `--from` JSON file conforms to:
@@ -192,6 +197,7 @@ The `--from` JSON file conforms to:
 %(INPUT_SCHEMA)s
 ```
 
+<!-- on-demand -->
 ## Errors
 
 | code                     | meaning                                                         | fix                                                                       |
@@ -208,6 +214,7 @@ The `--from` JSON file conforms to:
 | `REPORT_NOT_AVAILABLE`   | tskl.es has no report for that delete URL                       | it was already deleted, expired, or has not propagated yet; do not retry  |
 | `REPORT_DELETE_FAILED`   | tskl.es did not delete the report                               | the record is kept; retry later                                           |
 
+<!-- on-demand -->
 ## See Also
 
 - `%(TASKLESS_CLI)s agent onboard`: the onboarding flow that ends by

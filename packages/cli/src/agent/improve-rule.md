@@ -1,4 +1,4 @@
-# Topic: improve-rule     (CLI v%(CLI_VERSION)s / topic v12)
+# Topic: improve-rule     (CLI v%(CLI_VERSION)s / topic v13)
 
 %(ONE_COMMAND_PER_CALL)s
 
@@ -53,15 +53,8 @@ If the user wants the local-only flow (no API call), fetch
    - Is the message confusing or misleading?
    - Should the severity change?
 
-   **"It doesn't fire on X" is often the `$$$` separator, not a pattern
-   that is merely too narrow.** Read the rule's pattern for a `$$$`
-   sitting next to a comma before you write that guidance. The comma is
-   itself an AST node that has to match, so `f($A, $$$)` never sees a
-   one-argument call and `f($$$, $A)` sees only one-argument calls, the
-   pattern reads as variadic and is not. `%(TASKLESS_CLI)s agent create-sg-rule`
-   carries the arity table and both remedies. Guidance that asks to
-   widen the rule when the fix is `strictness: ast` sends the iterate
-   endpoint after the wrong change, and it will oblige.
+   Before you write guidance that says "it doesn't fire on X", read
+   [Missed cases](#missed-cases) first.
 
 5. **Collect supporting references.** Ask the user for any code
    examples that should be:
@@ -73,17 +66,15 @@ If the user wants the local-only flow (no API call), fetch
    Each reference is `{ filename: string, content: string }`. Multiple
    references are an array.
 
-   Prefer references copied from the repository over invented ones, and
-   name any you invented. Hold them to the repository's idiom outside
-   the construct the rule checks. A not-flagged reference should be
-   code the linters in `detect --json` would accept, with no placeholder
-   types and no nesting a reviewer would send back.
+   Prefer references copied from the repository; read
+   [Reference quality](#reference-quality) for what a good one is.
 
 6. **Confirm the request.** Summarize the rule, the guidance, and
    the references before submitting.
 
-7. **Write the JSON payload.** Build a JSON object matching the input
-   schema below and write it to `.taskless/.tmp-improve-request.json`.
+7. **Write the JSON payload.** Build a JSON object matching the schema
+   in [Input schema](#input-schema) and write it to
+   `.taskless/.tmp-improve-request.json`.
 
 8. **Invoke the CLI.** Run:
    ```
@@ -115,6 +106,30 @@ If the user wants the local-only flow (no API call), fetch
     on the returned files rather than trusting them, and add a fixture
     the new pattern does match if that bucket came back empty.
 
+<!-- on-demand -->
+## Missed cases
+
+**"It doesn't fire on X" is often the `$$$` separator, not a pattern
+that is merely too narrow.** Read the rule's pattern for a `$$$`
+sitting next to a comma before you write that guidance. The comma is
+itself an AST node that has to match, so `f($A, $$$)` never sees a
+one-argument call and `f($$$, $A)` sees only one-argument calls, the
+pattern reads as variadic and is not.
+`%(RECIPE_FETCH)screate-sg-rule --section pattern-quirks` carries the arity
+table and both remedies. Guidance that asks to
+widen the rule when the fix is `strictness: ast` sends the iterate
+endpoint after the wrong change, and it will oblige.
+
+<!-- on-demand -->
+## Reference quality
+
+Prefer references copied from the repository over invented ones, and
+name any you invented. Hold them to the repository's idiom outside
+the construct the rule checks. A not-flagged reference should be
+code the linters in `detect --json` would accept, with no placeholder
+types and no nesting a reviewer would send back.
+
+<!-- on-demand -->
 ## Input schema
 
 The `--from` JSON file conforms to:
@@ -145,6 +160,7 @@ When `--json` is set, failures emit `{ ok: false, code, message }`:
 | `RULE_GENERATION_FAILED` | API returned a generation failure   | report; suggest enriching guidance/references |
 | `RULE_UNSUPPORTED`       | plan lacks this generation type     | tell the user to enable it; do not retry      |
 
+<!-- on-demand -->
 ## See Also
 
 - `%(TASKLESS_CLI)s agent improve-rule --anonymous`: local-only flow

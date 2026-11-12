@@ -1,4 +1,4 @@
-# Topic: recover-rule     (CLI v%(CLI_VERSION)s / topic v6)
+# Topic: recover-rule     (CLI v%(CLI_VERSION)s / topic v7)
 
 %(ONE_COMMAND_PER_CALL)s
 
@@ -14,14 +14,15 @@ write nothing they cannot verify.
 - `%(TASKLESS_CLI)s rule rollback <ruleId> <revisionId>` makes an
   earlier revision the rule's current one and writes it. Use it only
   when the user asks to go back to a specific revision; take the
-  revision id from `rule revisions` (see Rolling back).
+  revision id from `rule revisions` (read [Rolling back](#rolling-back)).
 - `%(TASKLESS_CLI)s rule revisions <ruleId>` lists the rule's recent
   revisions and marks the current one. It reads only, and it works on
   every plan.
 
 `check` never does either. It reports and names `rule restore`, or,
 when the organization's plan does not include recovery, the git steps
-that do the same job (see "When the plan does not include recovery").
+that do the same job (read
+[When the plan does not include recovery](#when-the-plan-does-not-include-recovery)).
 
 **Check the plan before offering either command.** The CLI knows the
 plan from the same login lookup it already makes, and says so in what
@@ -73,7 +74,7 @@ below, and the service's answer settles it.
      `%(TASKLESS_CLI)s check` to confirm it verifies.
    - `success: true` with empty `files`: the rule was already intact
      (or is withheld only because of the plan). Nothing was written.
-   - `ok: false`: see Errors. Nothing was written.
+   - `ok: false`: see [Errors](#errors). Nothing was written.
 
 4. **Do not hand-edit the rule to match instead.** An edited issued rule
    is what an agent tuning a rule until its own violation passes looks
@@ -82,12 +83,14 @@ below, and the service's answer settles it.
    (`%(TASKLESS_CLI)s agent improve-rule`) or write a new local rule
    under a new id.
 
+<!-- on-demand -->
 ## Rolling back
 
 1. **Check the plan, then list the revisions.** If `check` already
    gave git steps for this rule, the plan does not include rolling
-   back; go to "When the plan does not include recovery". Otherwise
-   run `%(TASKLESS_CLI)s rule revisions <ruleId>` once without
+   back; go to
+   [When the plan does not include recovery](#when-the-plan-does-not-include-recovery).
+   Otherwise run `%(TASKLESS_CLI)s rule revisions <ruleId>` once without
    `--json` and read its last line: "Rolling back is not included in
    your organization's plan" means the same. Then list them for
    reading:
@@ -114,12 +117,13 @@ below, and the service's answer settles it.
    Read the result the way restore's is read ("Read the result" under
    Steps), then run `%(TASKLESS_CLI)s check`.
 
+<!-- on-demand -->
 ## When the plan does not include recovery
 
 If `check` or `rule revisions` already said the plan does not include
 recovery, use the git steps `check` gave. Choosing the commit is covered
-in `%(TASKLESS_CLI)s agent check`, under "When the plan does not include
-restoring rules". To go back to an earlier revision on such a plan,
+in `%(RECIPE_FETCH)scheck --section when-the-plan-does-not-include-restoring-rules`.
+To go back to an earlier revision on such a plan,
 find the commit in `git log -- <rule directory>`; `rule revisions`
 still lists when each revision was created and its pull request, which
 helps match a revision to a commit.
@@ -155,6 +159,7 @@ what `check` compared it against and never advances it to a newer
 revision. If the user wants the newer revision, that is
 `%(TASKLESS_CLI)s agent improve-rule` or a rollback, chosen on purpose.
 
+<!-- on-demand -->
 ## See Also
 
 - `%(TASKLESS_CLI)s agent check`: what `unsafe` and `missing` mean

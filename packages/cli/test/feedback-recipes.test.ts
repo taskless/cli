@@ -30,11 +30,27 @@ function unwrapQuote(text: string): string {
 }
 
 describe("the rule-feedback recipe", () => {
-  it("opens with its header and embeds the payload schema", async () => {
+  it("opens with its header and serves the payload schema on request", async () => {
+    const { stdout: outline } = await execFileAsync("node", [
+      binPath,
+      "agent",
+      "rule-feedback",
+    ]);
+    expect(outline.startsWith("# Topic: rule-feedback ")).toBe(true);
+    // The review mode is the part of the recipe the invite sends a user's
+    // `review` to, so it is in the default output, not behind a section.
+    expect(outline).toContain(
+      "Show it first, if the user asked for a `review`"
+    );
+    expect(outline).toContain("--section <name>");
+    expect(outline).toContain("- `input-schema`");
+
     const { stdout } = await execFileAsync("node", [
       binPath,
       "agent",
       "rule-feedback",
+      "--section",
+      "input-schema",
     ]);
     expect(stdout.startsWith("# Topic: rule-feedback ")).toBe(true);
     // The schema is rendered from the Zod source, so the choices the agent

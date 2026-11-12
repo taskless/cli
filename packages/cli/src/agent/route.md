@@ -1,4 +1,4 @@
-# Topic: route     (CLI v%(CLI_VERSION)s / topic v11)
+# Topic: route     (CLI v%(CLI_VERSION)s / topic v12)
 
 %(ONE_COMMAND_PER_CALL)s
 
@@ -44,29 +44,15 @@ answered together.
 1. **Read the repository.** %(DETECT_EVIDENCE)s the configured linters, languages, and the repo's own
    rule styles. It is deterministic and offline. Use it as ground truth
    instead of guessing the repo's tooling. The scan is monorepo-aware, so
-   evidence may carry a sub-package path. The output shape:
-   ```json
-   {
-     "success": true,
-     "linters": [{ "name": "eslint", "evidence": ["packages/api/.eslintrc.json"] }],
-     "languages": ["JavaScript", "TypeScript"],
-     "ruleStyles": [
-       { "source": ".taskless/rules/sg", "description": "Existing Taskless ast-grep rules." }
-     ]
-   }
-   ```
+   evidence may carry a sub-package path. [Detect output](#detect-output)
+   shows the output shape.
 
 2. **Read the login state and the repository context.** %(LOGIN_EVIDENCE)s `loggedIn` and `ghOwner`. Do this now, not later: they change
    which destinations exist, so classifying first means classifying
    against a set that may be wrong.
 
-   `loggedIn` is true only when the service accepted the token. When it
-   is false and `authState` is `rejected`, the user has a token that no
-   longer works: route as logged out, and say a fresh `auth login` is
-   what opens the logged-in destinations. When `authState` is
-   `unreachable`, the login could not be checked: route as logged out
-   for now, and say the service was unreachable rather than that the
-   user is not logged in.
+   Route as logged out whenever `loggedIn` is false, and read `authState`
+   for what to tell the user ([Login state](#login-state)).
 
    `ghOwner` is the GitHub owner this project belongs to, or the literal
    `[unknown]` when there is none to find: not a git repository, no
@@ -74,11 +60,8 @@ answered together.
    Read it from this payload rather than running `git` yourself, so the
    destinations you offer match what the CLI will actually allow.
 
-   Reading it is not the same as asking about it. Do **not** open by
-   offering service generation. At this point neither you nor the user
-   knows whether this is a two-line pattern or something local authoring
-   cannot express, so the question costs a turn and cannot be answered
-   well.
+   Do **not** open by offering service generation: nobody knows yet
+   whether local authoring can express the rule.
 
 3. **State the evidence before you name a destination.** Write one
    sentence: *"to decide this, you must look at ___."* Then a short
@@ -87,178 +70,50 @@ answered together.
 
    Do this first, every time. Naming a destination and justifying it
    afterwards is how prose-about-code ends up in `sg` and cross-file
-   questions end up in `vale`.
+   questions end up in `vale`. Read [Important Notes](#important-notes)
+   for what outranks the request's wording and what to do when it stays
+   ambiguous.
 
 4. **Match the evidence to a destination.** The comparison is made here
    and only here. The destination recipes describe their own scope and
    deliberately do not restate this table.
 
-   **The legacy ladder comes first when `detect` reports a linter.** Take
-   these in order and stop at the first that solves the request:
+   **Print what each engine can read before you decide.** It decides the
+   destination, so do not route from memory of what an engine parses.
+   Fetch [ast-grep reach](#ast-grep-reach), [Vale reach](#vale-reach),
+   and, when `detect` reports a linter, [Legacy linters](#legacy-linters).
 
-   1. **A rule the linter already ships solves it.** Always check this,
-      however little the repo has configured: enabling a shipped rule adds
-      nothing new for the team to maintain. Each linter's catch-all rules
-      count, and are named below because a search for the request's
-      subject will not surface them.
-   2. **The repo already writes its own rules for that linter.** Only when
-      `detect` reports a `customRules.count` of %(CUSTOM_RULE_THRESHOLD)s or more, so there are
-      enough of the repo's own examples to model a new one on. An
-      `"unknown"` count is below the threshold. Taskless does not teach
-      custom-rule authoring for any linter; the repo's examples are the
-      only reference.
+   **The legacy ladder comes first when `detect` reports a linter.** Stop
+   at the first rung that solves the request:
+
+   1. **A rule the linter already ships solves it.** Always check this.
+   2. **The repo already writes its own rules for that linter.** At least
+      %(CUSTOM_RULE_THRESHOLD)s, by `detect`'s `customRules.count`.
    3. **A Taskless `sg` or `vale` rule**, from the table below.
    4. **A Taskless runtime rule**, from the table below.
 
    Steps 1 and 2 go to `create-legacy-rule`. When neither applies, the
-   request is a Taskless rule even though the linter is installed.
+   request is a Taskless rule even though the linter is installed. The
+   full ladder and each linter's catch-all rules are in
+   [Legacy linters](#legacy-linters).
 
-%(LEGACY_LINTERS)s
-
-| The rule is decided by…                                                                                                      | Destination                                  | Login      |
-|------------------------------------------------------------------------------------------------------------------------------|----------------------------------------------|------------|
-| a rule a linter the repo already runs ships, or a new one there (the legacy ladder above)                                    | `create-legacy-rule`                         | no         |
-| **one file's syntax tree**: a call, an import, a JSX attribute, a type annotation                                           | `create-sg-rule`                             | no         |
-| **a document's words**: docs, README, comments, commit bodies                                                               | `create-vale-rule`                           | no         |
+| The rule is decided by… | Destination | Login |
+|---|---|---|
+| a rule a linter the repo already runs ships, or a new one there (the legacy ladder above) | `create-legacy-rule` | no |
+| **one file's syntax tree**: a call, an import, a JSX attribute, a type annotation | `create-sg-rule` | no |
+| **a document's words**: docs, README, comments, commit bodies | `create-vale-rule` | no |
 | **more than one file, or something outside the files**: the repo graph, git metadata, build output, a resolved config chain | `create-runtime-rule` / `create-remote-rule` | see step 5 |
 
-   Sharpening the three engine rows, because most wrong answers are one
-   of these:
-
-   - **Relational correlation inside one file is still `sg`.** "A
-     `useEffect` whose dependency array omits a value used in its body"
-     is one file's tree. If exactly one file settles it, it is `sg`.
-   - **Prose about code is still prose.** "Comments must not say
-     'TBD'" is `vale`. The evidence is the words. "Every exported
-     function has a doc comment" is `sg`. The evidence is whether a node
-     exists above a declaration. Ask what you would have to *read* to
-     decide, not what the subject matter is.
-   - **Vale sees one document at a time.** "This term is spelled
-     consistently ACROSS the docs directory" is a graph question, so it
-     is runtime, even though it is entirely about prose.
-   - **Trust tier is not a destination.** `sg` and `vale` are both
-     static-tier: inert data, always run, no login, no reconcile, no
-     signing. Only runtime executes code. "Static vs runtime" is a
-     different axis from "which engine", and conflating them is what
-     makes a prose rule look like it needs an account.
-
-   **What each local engine can actually read.** Both lists are rendered
-   from the pinned engine versions rather than written out here, so they
-   cannot go stale against the binaries: if one looks wrong, an engine
-   was bumped and a vendor-contract test is already red.
-
-   - **ast-grep (v%(AST_GREP_VERSION)s) parses:** %(AST_GREP_LANGUAGES)s.
-
-     Those spellings are ast-grep's own and go into a rule's `language:`
-     field verbatim. Nothing local validates that field, the vendored
-     schema types it as a bare string with no enum, so the first thing
-     with an opinion is the binary. It accepts some off-list aliases
-     (`C++` and `cpp` both reach the Cpp parser), but a name it does not
-     know at all, like `C#` for `CSharp`, aborts config parsing and
-     takes every other rule's report down with it. Copy from the list.
-
-     **A GitHub Actions workflow is `Yaml`, and `Yaml` is on that list.**
-     A rule about `.github/workflows/*.yml` is an `sg` rule; sending it
-     to runtime spends a login on a check that builds here.
-
-     **`Markdown` is on that list, and it is narrower than the name
-     suggests.** tree-sitter-markdown splits its grammar in two, block
-     and inline, and ast-grep exposes only the block tree. Measured at
-     v%(AST_GREP_VERSION)s against a document holding a heading, a
-     subheading, a list, a fenced block and a link:
-
-     - *Block structure works.* `document`, `section`, `atx_heading`,
-       `setext_heading`, `fenced_code_block`, `list_item` and
-       `paragraph` all match, and headings discriminate by level:
-       `# $T` matches only the h1, `## $T` only the h2.
-     - *Everything inside a line does not.* A paragraph's contents are
-       one opaque `inline` node. There is no `link` node, no `emphasis`,
-       no `strong_emphasis`. `kind: link` does not quietly find nothing:
-       it is a config error (`Kind 'link' is invalid`) that exits 8 and
-       takes every other rule's report down with it, the same shape as
-       `C#` above. The quiet version is the pattern form, where
-       `[$T]($U)` parses, runs, and matches nothing forever.
-     - So "no bare URLs", "link text must not read 'click here'", "no
-       bold inside a heading" feel structural and are not `sg` rules.
-       The evidence is words inside a line, which is Vale's.
-
-     **Neither static engine counts, and neither sees absence.**
-     ast-grep fires once per match, `not` scopes to a node rather than
-     to a document, and there is no count assertion. "Every doc has an
-     h1" and "at most one h1" are runtime however structural they look.
-
-     **`.md` is the first extension both static engines claim, so do
-     not route it by extension.** `sg` answers "does this block-level
-     shape occur in this file"; Vale answers "do these words appear in
-     this file's prose". Fences, heading levels and list shape are `sg`.
-     The wording inside a heading, a list item or a link is Vale.
-
-   - **Vale (v%(VALE_VERSION)s) reads three tiers, and hard-fails on a fourth.**
-     The tier is decided by the file's extension:
-
-     - *markup*: the whole document is prose, and the format's own
-       non-prose constructs are skipped:
-       %(VALE_MARKUP_FORMATS)s
-     - *comments only*: the comment text is linted and the code body is
-       invisible:
-       %(VALE_COMMENT_FORMATS)s
-     - *plaintext fallback*: everything else, `.yml` `.toml` `.sh`
-       `.sql` and every unnamed extension included. There is no parser,
-       so the file is linted as one block of prose, and a Vale rule
-       scoped to YAML flags the code as readily as the comments. That is
-       rarely what was asked for. Say so before writing it. These read
-       like markup and are not: %(VALE_PLAINTEXT_FORMATS)s
-     - *not supported*: Vale parses these only by shelling out to an
-       external program, and this build does not support any format that
-       needs one:
-       %(VALE_CONVERTER_FORMATS)s
-
-       Installing the program does not change this. Taskless excludes
-       these files from the Vale run whatever is on the machine, so that
-       a repository checks the same way everywhere rather than depending
-       on what a given host happens to have available.
-
-       **One such file fails the entire Vale pass, not just that file.**
-       Vale exits 2 with an `E100` runtime error, `--no-exit` does not
-       suppress it, and every other Vale rule over every other file goes
-       unreported. A matcher written as `[*.{md,typ}]` is not a wider
-       `[*.md]`. It is a broken one.
-
-       **`.mdx` is supported** as of Vale v3.18.0, which parses it
-       natively. It needs no external program and belongs with the
-       other markup formats above. `.typ` moved the other way in the
-       same release: Typst now parses through `typst2vast`, so a Typst
-       file is excluded rather than read as prose the way it was
-       before. Both are measured, not assumed.
-
-       As of v3.19.0 an MDX component's children are read as Markdown
-       too, so prose wrapped in `<Steps>` or `<Aside>` is linted where
-       it previously was not. That widens what a Vale rule covers in
-       `.mdx`; it does not change which extensions are safe to match.
+   Most wrong answers are one of the cases in
+   [Engine boundaries](#engine-boundaries); read it when the request sits
+   near a row's edge. [Worked examples](#worked-examples) places fourteen
+   common requests. When two destinations fit, read
+   [When two destinations both fit](#when-two-destinations-both-fit).
 
    **A language on neither list does not route to runtime by default.**
    Check `create-legacy-rule` first: the repo may already run a linter
    that ships a rule for it, which is a local destination with no login.
    Escalate only once nothing local can see the evidence.
-
-   Worked examples:
-
-| Rule intent                                              | Evidence needed                           | Destination        |
-|----------------------------------------------------------|-------------------------------------------|--------------------|
-| No `eval(...)` anywhere                                  | one file's call expressions               | `create-sg-rule`   |
-| Actions workflows must pin actions to a SHA              | one workflow file's tree (`Yaml`)         | `create-sg-rule`   |
-| `useEffect` deps must include what the body reads        | one file's tree, correlated within it     | `create-sg-rule`   |
-| Don't write "TBD" or "coming soon" in docs               | a document's words                        | `create-vale-rule` |
-| Comments must not say "for now"                          | a document's words (comments are prose)   | `create-vale-rule` |
-| Headings use sentence case                               | a document's markup                       | `create-vale-rule` |
-| Every code fence declares a language                     | one `.md` file's block tree               | `create-sg-rule`   |
-| Docs must not use setext (`===`) headings                | one `.md` file's block tree               | `create-sg-rule`   |
-| Link text must not read "click here"                     | words inside a line (no inline tree)      | `create-vale-rule` |
-| Every doc has exactly one h1                             | a count over a document                   | runtime            |
-| Exported symbols must be used somewhere in the repo      | every file, correlated                    | runtime            |
-| Product name spelled the same across all docs            | many documents, compared                  | runtime            |
-| Files changed in the last release need a changelog entry | git metadata, not file contents           | runtime            |
-| Imports must resolve through the tsconfig path aliases   | config chain resolution, outside the file | runtime            |
 
 5. **Split the runtime row on login state.** Runtime rules execute code,
    so they run only against a server-verified signature:
@@ -294,10 +149,219 @@ answered together.
    sent you here, do not offer the choice; that recipe says which to do.
 
    Not logged in, no GitHub owner, or not locally expressible are not
-   choices. Do not pose them as one.
+   choices. Do not pose them as one. If a local rule you committed to
+   then fails, follow the
+   [failure fallback](#failure-fallback-try-verify-escalate).
 
 8. %(NAME_DESTINATION)s
 
+<!-- on-demand -->
+## Login state
+
+What the login fields step 2 reads mean for the route.
+
+`loggedIn` is true only when the service accepted the token. When it
+is false and `authState` is `rejected`, the user has a token that no
+longer works: route as logged out, and say a fresh `auth login` is
+what opens the logged-in destinations. When `authState` is
+`unreachable`, the login could not be checked: route as logged out
+for now, and say the service was unreachable rather than that the
+user is not logged in.
+
+Reading it is not the same as asking about it. Do **not** open by
+offering service generation. At this point neither you nor the user
+knows whether this is a two-line pattern or something local authoring
+cannot express, so the question costs a turn and cannot be answered
+well.
+
+<!-- on-demand -->
+## Detect output
+
+The shape of the evidence step 1 reads:
+
+```json
+{
+  "success": true,
+  "linters": [{ "name": "eslint", "evidence": ["packages/api/.eslintrc.json"] }],
+  "languages": ["JavaScript", "TypeScript"],
+  "ruleStyles": [
+    { "source": ".taskless/rules/sg", "description": "Existing Taskless ast-grep rules." }
+  ]
+}
+```
+
+<!-- on-demand -->
+## Legacy linters
+
+   The legacy ladder of step 4 in full, then what its first two steps
+   check for each linter.
+
+   **The legacy ladder comes first when `detect` reports a linter.** Take
+   these in order and stop at the first that solves the request:
+
+   1. **A rule the linter already ships solves it.** Always check this,
+      however little the repo has configured: enabling a shipped rule adds
+      nothing new for the team to maintain. Each linter's catch-all rules
+      count, and are named below because a search for the request's
+      subject will not surface them.
+   2. **The repo already writes its own rules for that linter.** Only when
+      `detect` reports a `customRules.count` of %(CUSTOM_RULE_THRESHOLD)s or more, so there are
+      enough of the repo's own examples to model a new one on. An
+      `"unknown"` count is below the threshold. Taskless does not teach
+      custom-rule authoring for any linter; the repo's examples are the
+      only reference.
+   3. **A Taskless `sg` or `vale` rule**, from the table in step 4.
+   4. **A Taskless runtime rule**, from the table in step 4.
+
+   Steps 1 and 2 go to `create-legacy-rule`. When neither applies, the
+   request is a Taskless rule even though the linter is installed.
+
+%(LEGACY_LINTERS)s
+
+<!-- on-demand -->
+## ast-grep reach
+
+What `sg` rules can read. This list and [Vale reach](#vale-reach) are
+rendered from the pinned engine versions rather than written out here,
+so they cannot go stale against the binaries: if one looks wrong, an
+engine was bumped and a vendor-contract test is already red.
+
+**ast-grep (v%(AST_GREP_VERSION)s) parses:** %(AST_GREP_LANGUAGES)s.
+
+Those spellings are ast-grep's own and go into a rule's `language:`
+field verbatim. Nothing local validates that field, the vendored
+schema types it as a bare string with no enum, so the first thing
+with an opinion is the binary. It accepts some off-list aliases
+(`C++` and `cpp` both reach the Cpp parser), but a name it does not
+know at all, like `C#` for `CSharp`, aborts config parsing and
+takes every other rule's report down with it. Copy from the list.
+
+**A GitHub Actions workflow is `Yaml`, and `Yaml` is on that list.**
+A rule about `.github/workflows/*.yml` is an `sg` rule; sending it
+to runtime spends a login on a check that builds here.
+
+**`Markdown` is on that list, and it is narrower than the name
+suggests.** tree-sitter-markdown splits its grammar in two, block
+and inline, and ast-grep exposes only the block tree. Measured at
+v%(AST_GREP_VERSION)s against a document holding a heading, a
+subheading, a list, a fenced block and a link:
+
+- *Block structure works.* `document`, `section`, `atx_heading`,
+  `setext_heading`, `fenced_code_block`, `list_item` and
+  `paragraph` all match, and headings discriminate by level:
+  `# $T` matches only the h1, `## $T` only the h2.
+- *Everything inside a line does not.* A paragraph's contents are
+  one opaque `inline` node. There is no `link` node, no `emphasis`,
+  no `strong_emphasis`. `kind: link` does not quietly find nothing:
+  it is a config error (`Kind 'link' is invalid`) that exits 8 and
+  takes every other rule's report down with it, the same shape as
+  `C#` above. The quiet version is the pattern form, where
+  `[$T]($U)` parses, runs, and matches nothing forever.
+- So "no bare URLs", "link text must not read 'click here'", "no
+  bold inside a heading" feel structural and are not `sg` rules.
+  The evidence is words inside a line, which is Vale's.
+
+**Neither static engine counts, and neither sees absence.**
+ast-grep fires once per match, `not` scopes to a node rather than
+to a document, and there is no count assertion. "Every doc has an
+h1" and "at most one h1" are runtime however structural they look.
+
+**`.md` is the first extension both static engines claim, so do
+not route it by extension.** `sg` answers "does this block-level
+shape occur in this file"; Vale answers "do these words appear in
+this file's prose". Fences, heading levels and list shape are `sg`.
+The wording inside a heading, a list item or a link is Vale.
+
+<!-- on-demand -->
+## Vale reach
+
+What `vale` rules can read. **Vale (v%(VALE_VERSION)s) reads three tiers,
+and hard-fails on a fourth.** The tier is decided by the file's extension:
+
+- *markup*: the whole document is prose, and the format's own
+  non-prose constructs are skipped:
+  %(VALE_MARKUP_FORMATS)s
+- *comments only*: the comment text is linted and the code body is
+  invisible:
+  %(VALE_COMMENT_FORMATS)s
+- *plaintext fallback*: everything else, `.yml` `.toml` `.sh`
+  `.sql` and every unnamed extension included. There is no parser,
+  so the file is linted as one block of prose, and a Vale rule
+  scoped to YAML flags the code as readily as the comments. That is
+  rarely what was asked for. Say so before writing it. These read
+  like markup and are not: %(VALE_PLAINTEXT_FORMATS)s
+- *not supported*: Vale parses these only by shelling out to an
+  external program, and this build does not support any format that
+  needs one:
+  %(VALE_CONVERTER_FORMATS)s
+
+  Installing the program does not change this. Taskless excludes
+  these files from the Vale run whatever is on the machine, so that
+  a repository checks the same way everywhere rather than depending
+  on what a given host happens to have available.
+
+  **One such file fails the entire Vale pass, not just that file.**
+  Vale exits 2 with an `E100` runtime error, `--no-exit` does not
+  suppress it, and every other Vale rule over every other file goes
+  unreported. A matcher written as `[*.{md,typ}]` is not a wider
+  `[*.md]`. It is a broken one.
+
+  **`.mdx` is supported** as of Vale v3.18.0, which parses it
+  natively. It needs no external program and belongs with the
+  other markup formats above. `.typ` moved the other way in the
+  same release: Typst now parses through `typst2vast`, so a Typst
+  file is excluded rather than read as prose the way it was
+  before. Both are measured, not assumed.
+
+  As of v3.19.0 an MDX component's children are read as Markdown
+  too, so prose wrapped in `<Steps>` or `<Aside>` is linted where
+  it previously was not. That widens what a Vale rule covers in
+  `.mdx`; it does not change which extensions are safe to match.
+
+<!-- on-demand -->
+## Engine boundaries
+
+Sharpening the three engine rows of step 4's table, because most wrong
+answers are one of these:
+
+- **Relational correlation inside one file is still `sg`.** "A
+  `useEffect` whose dependency array omits a value used in its body"
+  is one file's tree. If exactly one file settles it, it is `sg`.
+- **Prose about code is still prose.** "Comments must not say
+  'TBD'" is `vale`. The evidence is the words. "Every exported
+  function has a doc comment" is `sg`. The evidence is whether a node
+  exists above a declaration. Ask what you would have to *read* to
+  decide, not what the subject matter is.
+- **Vale sees one document at a time.** "This term is spelled
+  consistently ACROSS the docs directory" is a graph question, so it
+  is runtime, even though it is entirely about prose.
+- **Trust tier is not a destination.** `sg` and `vale` are both
+  static-tier: inert data, always run, no login, no reconcile, no
+  signing. Only runtime executes code. "Static vs runtime" is a
+  different axis from "which engine", and conflating them is what
+  makes a prose rule look like it needs an account.
+
+<!-- on-demand -->
+## Worked examples
+
+| Rule intent                                              | Evidence needed                           | Destination        |
+|----------------------------------------------------------|-------------------------------------------|--------------------|
+| No `eval(...)` anywhere                                  | one file's call expressions               | `create-sg-rule`   |
+| Actions workflows must pin actions to a SHA              | one workflow file's tree (`Yaml`)         | `create-sg-rule`   |
+| `useEffect` deps must include what the body reads        | one file's tree, correlated within it     | `create-sg-rule`   |
+| Don't write "TBD" or "coming soon" in docs               | a document's words                        | `create-vale-rule` |
+| Comments must not say "for now"                          | a document's words (comments are prose)   | `create-vale-rule` |
+| Headings use sentence case                               | a document's markup                       | `create-vale-rule` |
+| Every code fence declares a language                     | one `.md` file's block tree               | `create-sg-rule`   |
+| Docs must not use setext (`===`) headings                | one `.md` file's block tree               | `create-sg-rule`   |
+| Link text must not read "click here"                     | words inside a line (no inline tree)      | `create-vale-rule` |
+| Every doc has exactly one h1                             | a count over a document                   | runtime            |
+| Exported symbols must be used somewhere in the repo      | every file, correlated                    | runtime            |
+| Product name spelled the same across all docs            | many documents, compared                  | runtime            |
+| Files changed in the last release need a changelog entry | git metadata, not file contents           | runtime            |
+| Imports must resolve through the tsconfig path aliases   | config chain resolution, outside the file | runtime            |
+
+<!-- on-demand -->
 ## When two destinations both fit
 
 - **A linter the repo already runs AND a local Taskless rule both fit** →
@@ -312,6 +376,7 @@ answered together.
   decides. Uncertainty is a reason to ask; it is never a reason to spend
   a generation.
 
+<!-- on-demand -->
 ## Failure fallback (try-verify-escalate)
 
 If you committed to a local rule on reasonable confidence and it then
@@ -331,6 +396,7 @@ call. A developer who watches a local attempt fail reads it as a
 Taskless failure, so only attempt local when you reasonably believe it
 will work.
 
+<!-- on-demand -->
 ## Important Notes
 
 - **Reason first, route second.** Do not name a destination before the
@@ -343,9 +409,10 @@ will work.
   check would have to normalize a captured value against a declaration
   elsewhere.
 - **Engine reach and engine availability are two different questions.**
-  Step 4's lists say what each engine can *parse*; they say nothing
-  about whether the binary resolved on this host. A language on the list
-  is still unusable where the platform build is missing.
+  The reach sections step 4 fetches say what each engine can *parse*;
+  they say nothing about whether the binary resolved on this host. A
+  language on the list is still unusable where the platform build is
+  missing.
 - **When it stays ambiguous, choose an engine whose availability you can
   assert, and say that is why.** There is no fixed fallback. `sg` and
   `vale` both ship as platform binaries, so either can be the missing one
@@ -356,6 +423,7 @@ will work.
   enough to commit to a local rule, the failure fallback backstops a
   wrong-but-reasonable bet.
 
+<!-- on-demand -->
 ## See Also
 
 - `%(RECIPE_FETCH)screate-legacy-rule`: use a rule a linter the repo already runs ships

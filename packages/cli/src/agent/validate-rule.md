@@ -1,4 +1,4 @@
-# Topic: validate-rule     (CLI v%(CLI_VERSION)s / topic v11)
+# Topic: validate-rule     (CLI v%(CLI_VERSION)s / topic v12)
 
 %(ONE_COMMAND_PER_CALL)s
 
@@ -39,15 +39,8 @@ failure**, so a rule that is both malformed and under-fixtured reports
 the malformation. The fixture complaint is the less useful of the two
 and would otherwise bury the reason the rule could never have run.
 
-What each engine is checked for:
-
-| engine    | `validate` checks                                                                                                                    | `verify` runs                                                |
-|-----------|--------------------------------------------------------------------------------------------------------------------------------------|------------------------------------------------------------|
-| `sg`      | ast-grep schema, plus `id`/`language`/`severity`/`message`/`rule`, `regex` accompanied by `kind`, no top-level `strictness`, then ast-grep loads the rule on its own | each case under `tests/pass/` and `tests/fail/`, scanned as its own root |
-| `vale`    | style parses, `extends` and `message` present, `level` in vocabulary, and the rule's `.vale.ini` enables `<id>.<id>` under a matcher | each case under `tests/pass/` and `tests/fail/`, linted as its own root under the rule's matchers |
-| `runtime` | `check.ts` present, at least one capture rule in `captures/`                                                                         | each case under `tests/pass/` and `tests/fail/`, as the check's `root` |
-
-   %(FIXTURE_LAYOUT)s
+Each engine's checks, and where its fixtures live, are in
+[What each engine checks](#what-each-engine-checks).
 
 A runtime rule's fixtures execute its `check.ts`, so they run only when
 you pass `--dangerously-run-scripts`. Nothing else runs them: `verify`
@@ -70,20 +63,7 @@ ones did not run, and rerun them with the flag if you mean to execute them.
 A runtime rule that did not run is not a rule that passed, and treating
 the two alike is the defect this reporting exists to prevent.
 
-## What a path means
-
-The path is a location under `.taskless/rules/`, and the `<engine>`
-segment is what decides the engine. Nothing parses a rule file to work
-out who owns it, so the same id under two engines is never ambiguous.
-
-| Path                             | Scope                                               |
-|----------------------------------|-----------------------------------------------------|
-| `.taskless/rules/vale/no-simply` | that one rule                                       |
-| `.taskless/rules/vale`           | every Vale rule                                     |
-| `.taskless/rules`                | every rule (also the default when you pass no path) |
-
-A path outside `.taskless/rules/` is an error naming the path. So is a
-path inside it that holds no rule.
+Paths are explained in [What a path means](#what-a-path-means).
 
 ## Output
 
@@ -114,9 +94,11 @@ Both commands answer in the same shape, one entry per rule:
   Vale wrote to stderr on a run that still exited zero, such as the
   `W101` warning about an assignment placed above any matcher: the rule
   validates, Vale ignores it, and only this field says so. For an `sg`
-  rule it names the silent traps from `create-sg-rule`'s Quirks section
-  that the rule's shape matches, such as `$$$` beside a comma. Read it
-  before `ok`, the same as `status`.
+  rule it names the silent traps the rule's shape matches, such as
+  `$$$` beside a comma. Read it before `ok`, the same as `status`. The
+  traps are described in
+  `%(RECIPE_FETCH)screate-sg-rule --section quirks` and
+  `%(RECIPE_FETCH)screate-sg-rule --section pattern-quirks`.
 
 A green Vale `verify` also assumes Vale read every fixture. A fixture
 whose front matter Vale cannot parse is excluded from the run and
@@ -144,6 +126,36 @@ Run `validate` as soon as the rule file exists, fix what it names, then
 write tests and run `verify`. Cap at 3 attempts and report to the user if
 it still fails.
 
+<!-- on-demand -->
+## What each engine checks
+
+What each engine is checked for:
+
+| engine    | `validate` checks                                                                                                                    | `verify` runs                                                |
+|-----------|--------------------------------------------------------------------------------------------------------------------------------------|------------------------------------------------------------|
+| `sg`      | ast-grep schema, plus `id`/`language`/`severity`/`message`/`rule`, `regex` accompanied by `kind`, no top-level `strictness`, then ast-grep loads the rule on its own | each case under `tests/pass/` and `tests/fail/`, scanned as its own root |
+| `vale`    | style parses, `extends` and `message` present, `level` in vocabulary, and the rule's `.vale.ini` enables `<id>.<id>` under a matcher | each case under `tests/pass/` and `tests/fail/`, linted as its own root under the rule's matchers |
+| `runtime` | `check.ts` present, at least one capture rule in `captures/`                                                                         | each case under `tests/pass/` and `tests/fail/`, as the check's `root` |
+
+   %(FIXTURE_LAYOUT)s
+
+<!-- on-demand -->
+## What a path means
+
+The path is a location under `.taskless/rules/`, and the `<engine>`
+segment is what decides the engine. Nothing parses a rule file to work
+out who owns it, so the same id under two engines is never ambiguous.
+
+| Path                             | Scope                                               |
+|----------------------------------|-----------------------------------------------------|
+| `.taskless/rules/vale/no-simply` | that one rule                                       |
+| `.taskless/rules/vale`           | every Vale rule                                     |
+| `.taskless/rules`                | every rule (also the default when you pass no path) |
+
+A path outside `.taskless/rules/` is an error naming the path. So is a
+path inside it that holds no rule.
+
+<!-- on-demand -->
 ## See Also
 
 - `%(TASKLESS_CLI)s agent create-sg-rule`: author an ast-grep rule

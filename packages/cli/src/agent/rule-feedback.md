@@ -1,4 +1,4 @@
-# Topic: rule-feedback     (CLI v%(CLI_VERSION)s / topic v6)
+# Topic: rule-feedback     (CLI v%(CLI_VERSION)s / topic v7)
 
 %(ONE_COMMAND_PER_CALL)s
 
@@ -26,7 +26,8 @@ before they are sent.
 - The invite was put to the user and they replied, or did not. Their
   words, if any, are the only input you take from them. Or you came
   from onboarding, where the user's yes to setting up Taskless already
-  covered sending this; see "Reached from onboarding" below.
+  covered sending this; read [Reached from onboarding](#reached-from-onboarding)
+  first.
 - The user did not ask you to send nothing. If they did, this is the
   wrong recipe: run `%(TASKLESS_CLI)s feedback dismiss` and continue with what
   they asked for.
@@ -43,6 +44,7 @@ what you are running in, and which rule has earned its keep. You
 already know all of that.
 Do not put the survey's questions to the user one by one.
 
+<!-- on-demand -->
 ## Reached from onboarding
 
 The onboarding recipe sends you here with no invite, in parallel with
@@ -102,10 +104,10 @@ says so; that is the user's opt-out holding, not a failure.
    them want the shape of the friction, not a transcript.
 
 3. **Write the payload** to `.taskless/.tmp-feedback.json`, matching the
-   input schema below, with `"kind": "rule"`. Use the human keys exactly
-   as given; the CLI maps
-   them to the survey's own question identifiers, and a payload carrying
-   a `$survey_` key is not what it expects.
+   schema in [Input schema](#input-schema), with `"kind": "rule"`. Use
+   the human keys exactly as given; the CLI maps them to the survey's
+   own question identifiers, and a payload carrying a `$survey_` key is
+   not what it expects.
 
 4. **Show it first, if the user asked for a `review`.** Otherwise go
    straight to step 5. Put every answer in the payload in the chat,
@@ -131,8 +133,10 @@ says so; that is the user's opt-out holding, not a failure.
    ```
    %(TASKLESS_CLI)s feedback send --from .taskless/.tmp-feedback.json --json
    ```
-   Under `--json`, a failure is `{ ok: false, code, message }`; see the
-   table below. On success the command prints a thank-you.
+   Under `--json`, a failure is `{ ok: false, code, message }`; see
+   [Errors](#errors). On success the command prints a thank-you. With
+   telemetry disabled it sends nothing and exits 0; see
+   [Important Notes](#important-notes) for what to tell the user.
 
 6. **Clean up.** Delete `.taskless/.tmp-feedback.json` whether the call
    succeeded or failed. `.taskless/.gitignore` already ignores it, so a
@@ -143,6 +147,7 @@ says so; that is the user's opt-out holding, not a failure.
    Do not ask for more, and do not run this recipe a second time in the
    same session.
 
+<!-- on-demand -->
 ## Input schema
 
 The `--from` JSON file conforms to:
@@ -156,6 +161,7 @@ optional, and an optional
 answer you have nothing for is an omitted key rather than an empty
 string.
 
+<!-- on-demand -->
 ## Important Notes
 
 - Do NOT edit the user's words. `verbatim` is the one answer that is
@@ -172,6 +178,7 @@ string.
   error to retry. Tell the user nothing was sent, and that they can
   still reach the team at https://github.com/taskless/cli/issues.
 
+<!-- on-demand -->
 ## Errors
 
 With `--json`, failures emit `{ ok: false, code, message }`:
@@ -180,6 +187,7 @@ With `--json`, failures emit `{ ok: false, code, message }`:
 |-----------------|---------------------------------------------|-------------------------------------------------------|
 | `INVALID_INPUT` | `--from` missing, unreadable, or failed validation | the message names the field; fix the payload and retry |
 
+<!-- on-demand -->
 ## See Also
 
 - `%(TASKLESS_CLI)s feedback dismiss`: what to run when the user asked for nothing to be sent

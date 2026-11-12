@@ -1,4 +1,4 @@
-# Topic: create-vale-rule     (CLI v%(CLI_VERSION)s / topic v22)
+# Topic: create-vale-rule     (CLI v%(CLI_VERSION)s / topic v23)
 
 %(ONE_COMMAND_PER_CALL)s
 
@@ -17,6 +17,7 @@ quiet on the prose it should not, scoped to the files it is about.
 - The agent can read/write files and run shell commands.
 - No auth required.
 
+<!-- on-demand -->
 ## One rule, one directory
 
 Everything that defines a Vale rule lives in
@@ -60,20 +61,96 @@ it.
 ## Steps
 
 1. **Say what the rule reads, then pick an extension point.** Write one
-   sentence: "this fires when a document contains ___." Vale rules are
-   built by extending one of its twelve checks, and the sentence tells
-   you which. Twelve is measured, not counted off the docs: give Vale
-   v%(VALE_VERSION)s an `extends` it does not know and it names the whole
-   set back at you:
+   sentence: "this fires when a document contains ___." It names one of
+   Vale's twelve checks: pick the `extends` from
+   [Extension points](#extension-points). Then read the worked rule
+   closest to your intent, in [Worked rules](#worked-rules) or
+   [More worked rules](#more-worked-rules). Most mistakes shown there
+   fail silently.
+
+2. **Write the style file** to `.taskless/rules/vale/<id>/<id>.yml`.
+   The id is kebab-case (word characters only for `consistency`), the
+   extension `.yml`, and the id must agree in all four places
+   [One rule, one directory](#one-rule-one-directory) lists. Read
+   [Style fields](#style-fields) for the fields, [Scopes](#scopes) and
+   [Scope quirks](#scope-quirks) before setting `scope` (a wrong one
+   fails silently), and [Messages](#messages) before writing `message`.
+   To exempt a passage, read [Exception zones](#exception-zones).
+
+3. **Know what you are writing: `tokens` and `swap` keys are patterns,
+   not literals.** Read [Patterns](#patterns) and
+   [Pattern quirks](#pattern-quirks) before writing one. A
+   `capitalization`, `occurrence` or `metric` rule has neither, skip to
+   step 4.
+
+4. **Scope the rule** by writing `.taskless/rules/vale/<id>/.vale.ini`.
+   A rule with no config is enabled nowhere: it parses, it runs, and it
+   reports nothing. The whole file, for a rule that applies to markdown:
+
+   ```ini
+   # Which files this rule applies to.
+   [*.md]
+   tskl) rule = no-simply
+   no-simply.no-simply = YES
+   ```
+
+   Do not write `BasedOnStyles`, `StylesPath` or `MinAlertLevel`. Read
+   [Vale config](#vale-config) to exclude files,
+   [Config schema](#config-schema) for what `validate` rejects, and
+   [File reach](#file-reach) before widening a glob.
+
+5. **Write the fixtures** under `.taskless/rules/vale/<id>/tests/`, one
+   directory per case, at a path the rule's matchers admit. Read
+   [Fixtures](#fixtures) and [Near-misses](#near-misses), and for a
+   voice or tone rule [Voice rules](#voice-rules).
+
+6. **Validate, then verify**, from the project root:
 
    ```
-   'extends' key must be one of [capitalization conditional consistency
-   existence occurrence repetition substitution readability spelling
-   sequence metric script].
+   %(TASKLESS_CLI)s validate .taskless/rules/vale/<id> --json
+   %(TASKLESS_CLI)s verify   .taskless/rules/vale/<id> --json
    ```
 
-   The docs enumerate eleven, folding `readability` into `metric`. They
-   are separate checks with separate fields.
+   `ok` is the answer and `errors` names what failed. Read the rendered
+   messages in `findings`. Use only the Vale shipped with this CLI,
+   never a bare `vale`. Read [Validate and verify](#validate-and-verify),
+   [Empty results](#empty-results) before trusting a `results: []`, and
+   [Troubleshooting](#troubleshooting) when a case misbehaves.
+
+7. **Report.** Show the rule directory you created and what is in it, a
+   one-line summary of what the rule flags, and the glob it is scoped
+   to. The scope is a decision the user should see rather than one
+   buried in a config. Note that a whole-project `%(TASKLESS_CLI)s check` skips
+   your fixtures: `.taskless/` is excluded from the project walk, by
+   design. `verify` is what exercises them.
+
+## Important Notes
+
+- Vale reads one document at a time and has no cross-document view. A
+  rule about consistency *between* documents cannot be written here.
+- Prose inside code is still prose: comments and docstrings are Vale's
+  subject, and a rule about them belongs under a matcher whose glob
+  covers the source files.
+- Do NOT add a `[*]` matcher to widen a rule that isn't firing. Matchers
+  from every rule are assembled into one config, so `[*]` applies this
+  rule to every file the walk reaches and turns one rule's scoping bug
+  into a flood of false positives.
+
+<!-- on-demand -->
+## Extension points
+
+Vale rules are built by extending one of its twelve checks. Twelve is
+measured, not counted off the docs: give Vale v%(VALE_VERSION)s an
+`extends` it does not know and it names the whole set back at you:
+
+```
+'extends' key must be one of [capitalization conditional consistency
+existence occurrence repetition substitution readability spelling
+sequence metric script].
+```
+
+The docs enumerate eleven, folding `readability` into `metric`. They
+are separate checks with separate fields.
 
 | If the rule is about…                                                                   | extends          |
 |-----------------------------------------------------------------------------------------|------------------|
@@ -90,75 +167,126 @@ it.
 | phrases that must appear in a fixed order                                               | `sequence`       |
 | anything the above cannot express (Tengo script)                                        | `script`         |
 
-   **`capitalization` is about a whole scope, not a word.** It asks
-   whether an entire heading or sentence matches a case pattern. It
-   cannot express "the word GitHub, wherever it appears, is spelled
-   thus". That is a `substitution`, because you are swapping a wrong
-   spelling for a right one. Reaching for `capitalization` on a product
-   name produces a rule that flags whole sentences: measured, a rule with
-   `match: GitHub` reports `We host on Github and it is fine. should be
-   GitHub`.
+**`capitalization` is about a whole scope, not a word.** It asks
+whether an entire heading or sentence matches a case pattern. It
+cannot express "the word GitHub, wherever it appears, is spelled
+thus". That is a `substitution`, because you are swapping a wrong
+spelling for a right one. Reaching for `capitalization` on a product
+name produces a rule that flags whole sentences: measured, a rule with
+`match: GitHub` reports `We host on Github and it is fine. should be
+GitHub`.
 
-   For the five this recipe has no worked example of, `metric`,
-   `readability`, `spelling`, `sequence`, `script`, read
-   https://docs.vale.sh/styles before inventing something. Vale has no
-   facility for a rule that does not extend one of these twelve, and an
-   `extends` outside the set is not a rule that misbehaves: Vale exits 2
-   and **every** Vale rule in the project goes unreported for that run.
-   `validate` rejects it before Vale is invoked, and names the twelve.
+For the five this recipe has no worked example of, `metric`,
+`readability`, `spelling`, `sequence`, `script`, read
+https://docs.vale.sh/styles before inventing something. Vale has no
+facility for a rule that does not extend one of these twelve, and an
+`extends` outside the set is not a rule that misbehaves: Vale exits 2
+and **every** Vale rule in the project goes unreported for that run.
+`validate` rejects it before Vale is invoked, and names the twelve.
 
-   **The other seven have a worked rule at the end of this recipe**,
-   nine rules between them, each with the near-miss that fails and why.
-   Read the one closest to your intent before writing anything, the
-   mistakes documented there are observed, and most of them fail
-   silently.
+**The other seven have a worked rule**, nine rules between them in
+[Worked rules](#worked-rules) and [More worked rules](#more-worked-rules),
+each with the near-miss that fails and why. Read the one closest to your
+intent before writing anything, the mistakes documented there are
+observed, and most of them fail silently.
 
-2. **Write the style file** to
-   `.taskless/rules/vale/<id>/<id>.yml`, where `<id>` is kebab-case and
-   names both the directory and the file.
+<!-- on-demand -->
+## Style fields
 
-   **One exception: a `consistency` rule's id must be word characters
-   only** (`izeise`, not `ize-ise`). That check compiles the id into its
-   pattern as a regex group name, and a hyphen there fails the entire
-   Vale run. `validate` catches it. Kebab-case is correct for the other
-   eleven.
+The style file is `.taskless/rules/vale/<id>/<id>.yml`, where `<id>` is
+kebab-case and names both the directory and the file.
 
-   Every rule carries:
+**One exception: a `consistency` rule's id must be word characters
+only** (`izeise`, not `ize-ise`). That check compiles the id into its
+pattern as a regex group name, and a hyphen there fails the entire
+Vale run. `validate` catches it. Kebab-case is correct for the other
+eleven.
+
+Every rule carries:
 
 | Field     | Required | Notes                                         |
 |-----------|----------|-----------------------------------------------|
-| `extends` | yes      | one of the twelve above                       |
-| `message` | yes      | shown to the user; see the `%%s` table below  |
+| `extends` | yes      | one of the twelve checks                      |
+| `message` | yes      | shown to the user; see [Messages](#messages)  |
 | `level`   | no       | `suggestion` (default), `warning`, or `error` |
-| `scope`   | no       | narrow to part of a document; see below      |
+| `scope`   | no       | narrow to part of a document; see [Scopes](#scopes) |
 | `link`    | no       | a URL the reader can follow for the reasoning |
 | `limit`   | no       | cap findings from this rule per scope         |
 
-   **`vocab` is not one of these.** It reads as though it were, but it is
-   a per-check field: measured, only `existence`, `substitution`,
-   `capitalization`, `conditional` and `repetition` accept it, and
-   `occurrence`, `metric`, `readability`, `script` and `sequence` reject
-   it. On one of those five it raises `E201` and takes every other Vale
-   rule in the project down with it. It is listed with the per-check
-   fields below.
+**`vocab` is not one of these.** It reads as though it were, but it is
+a per-check field: measured, only `existence`, `substitution`,
+`capitalization`, `conditional` and `repetition` accept it, and
+`occurrence`, `metric`, `readability`, `script` and `sequence` reject
+it. On one of those five it raises `E201` and takes every other Vale
+rule in the project down with it. It is listed with the per-check
+fields below.
 
-   **The file extension must be `.yml`.** Measured: rename a working
-   style file to `.yaml` and Vale loads nothing, no error, no warning,
-   zero findings, and `<id>.<id> = YES` still parses. It is
-   indistinguishable from a rule whose pattern never matched.
+**The file extension must be `.yml`.** Measured: rename a working
+style file to `.yaml` and Vale loads nothing, no error, no warning,
+zero findings, and `<id>.<id> = YES` still parses. It is
+indistinguishable from a rule whose pattern never matched.
 
-   **`scope` decides where the rule looks**, so getting it wrong is a
-   silent under-fire rather than an error. An unrecognized scope is not
-   rejected by Vale: `scope: fenced` loads, runs, and matches nothing.
-   It is the worst of the three failures on this page, because unlike a
-   bad `extends` or a foreign field it does not even take the run down to
-   tell you. The rule is inert, forever. `validate` rejects a scope
-   outside the table below, which is the only layer that ever will.
+**Then the fields the extension point adds**. This is where the rule
+actually lives, and each check reads only its own:
 
-   Every value below was measured against Vale v%(VALE_VERSION)s by
-   authoring a rule with that scope and a document the rule had to flag.
-   "Fires" means the finding appeared; a scope that never fired is not on
-   this list.
+| extends          | its fields                                                                   |
+|------------------|------------------------------------------------------------------------------|
+| `existence`      | `tokens` (a list) or `raw`; `ignorecase`, `nonword`, `exceptions`, `append`, `vocab` |
+| `substitution`   | `swap` (a map of observed → expected); `ignorecase`, `nonword`, `exceptions`, `capitalize`, `pos`, `vocab` |
+| `capitalization` | `match`; `style` (with `$title`), `exceptions`, `threshold`, `indicators`, `prefix`, `vocab` |
+| `occurrence`     | `token`, `max` and/or `min`; `ignorecase`                                    |
+| `repetition`     | `tokens`; `alpha`, `ignorecase`, `exceptions`, `max`, `vocab`                |
+| `consistency`    | `either` (a map of the two acceptable forms); `ignorecase`, `nonword`        |
+| `conditional`    | `first`, `second`; `exceptions`, `ignorecase`, `vocab`                       |
+| `metric`         | `formula`, `condition`                                                       |
+| `readability`    | `metrics` (a list of formula names), `grade`                                 |
+| `spelling`       | `aff`, `dic`, `custom`, `filters`, `ignore`, `threshold`                     |
+| `sequence`       | `tokens` (each a `pattern`/`tag` map); `ignorecase`, `exceptions`             |
+| `script`         | `script` (Tengo source)                                                      |
+
+The list above is measured, not transcribed: every entry was added to
+a minimal rule of that check and the run watched for `E201`. Three
+corrections fall out of it, all against the published docs:
+`capitalization` takes `prefix` (singular) and rejects both `prefixes`
+and `suffixes`, it rejects `ignorecase`, and `occurrence` rejects
+`exceptions` and `vocab`.
+
+**Field names are matched case-insensitively, but `extends`, `message`
+and `level` are not.** Measured: `Tokens:` and `ignoreCase:` are read
+exactly as their lowercase spellings, while `EXTENDS:` fails with
+"Missing the required 'extends' key". Their *values* are case-sensitive
+too, `level: WARNING` and `extends: Existence` are both rejected.
+Write everything lowercase and none of this can bite you.
+
+**A field from the wrong check is the loudest failure Vale has.**
+`tokens` on an `occurrence` check gives
+`E201 … has invalid keys: 'tokens'`, exit 2, and, because Vale reads
+one assembled config per run. **no** Vale rule in the project reports
+anything. `validate` rejects the rule before Vale is invoked, so this
+cannot reach `check`.
+
+**Two checks are exempt, and that is not a licence.** Measured,
+`consistency` and `spelling` accept any key at all: `bananafield:
+true` on either loads without complaint and is ignored. A misspelled
+field on those two is a silent no-op instead of a loud one, so the
+schema cannot catch a typo there and neither can Vale. Read the field
+list twice when writing those two.
+
+<!-- on-demand -->
+## Scopes
+
+**`scope` decides where the rule looks**, so getting it wrong is a
+silent under-fire rather than an error. An unrecognized scope is not
+rejected by Vale: `scope: fenced` loads, runs, and matches nothing.
+It is the worst of the three failures on this page, because unlike a
+bad `extends` or a foreign field it does not even take the run down to
+tell you. The rule is inert, forever. `validate` rejects a scope
+outside the table below, which is the only layer that ever will.
+
+Every value below was measured against Vale v%(VALE_VERSION)s by
+authoring a rule with that scope and a document the rule had to flag.
+"Fires" means the finding appeared; a scope that never fired is not on
+this list.
 
 | `scope`                | reaches                                                   |
 |------------------------|-----------------------------------------------------------|
@@ -180,7 +308,7 @@ it.
 | `table.header`         | header cells                                              |
 | `table.cell`           | body cells                                                |
 | `table.caption`        | a table's caption                                         |
-| `figure.caption`       | a figure's caption, but see below                        |
+| `figure.caption`       | a figure's caption, but see [Scope quirks](#scope-quirks) |
 | `frontmatter`          | every YAML front-matter value                             |
 | `frontmatter.<key>`    | one front-matter key's value                              |
 | `text.class.<name>`    | HTML elements carrying that class                         |
@@ -189,217 +317,180 @@ it.
 | `comment.block`        | `/* … */`-style comments                                  |
 | `doc(<selector>)`      | elements matched by a CSS selector; see below             |
 
-   **`doc(<selector>)` picks part of a document by CSS selector**, the
-   same way in every markup format, and a heading with everything under
-   it is a `section`, so one section of a document is
-   `doc(section:has(> h2:contains("Decision")))`. Chain it to narrow an
-   ordinary scope to that element: `text & doc(...)` is prose inside it,
-   `sentence & doc(...)` one sentence at a time inside it, `~doc(...)` is
-   everything outside it. On its own, `doc(...)` lints what is INSIDE the
-   element as one block, which is what `occurrence` (a section must say
-   "we will") and `metric` (a section runs over budget) want. Measured: a
-   `metric` with `scope: doc(section:has(> h2:contains("Consequences")))`
-   and `formula: words` counts that section's words, not the document's.
+**`doc(<selector>)` picks part of a document by CSS selector**, the
+same way in every markup format, and a heading with everything under
+it is a `section`, so one section of a document is
+`doc(section:has(> h2:contains("Decision")))`. Chain it to narrow an
+ordinary scope to that element: `text & doc(...)` is prose inside it,
+`sentence & doc(...)` one sentence at a time inside it, `~doc(...)` is
+everything outside it. On its own, `doc(...)` lints what is INSIDE the
+element as one block, which is what `occurrence` (a section must say
+"we will") and `metric` (a section runs over budget) want. Measured: a
+`metric` with `scope: doc(section:has(> h2:contains("Consequences")))`
+and `formula: words` counts that section's words, not the document's.
 
-   **A leaf element reads its own text either way.** `doc(h2)` alone and
-   `text & doc(h2)` both lint the heading's text, and the same holds for
-   `doc(p)` and `doc(li)`. Prefer the chained form anyway: it says which
-   text you mean, and a rule written for Vale 3.22.0 or earlier, where
-   the standalone form matched nothing, already uses it.
+**A leaf element reads its own text either way.** `doc(h2)` alone and
+`text & doc(h2)` both lint the heading's text, and the same holds for
+`doc(p)` and `doc(li)`. Prefer the chained form anyway: it says which
+text you mean, and a rule written for Vale 3.22.0 or earlier, where
+the standalone form matched nothing, already uses it.
 
-   **The selector is Vale's to check, not `validate`'s.** A selector Vale
-   cannot compile (`doc(h2[)`) fails the whole run at load with
-   `E201 invalid selector in 'doc(...)'`, which `verify` reports. A selector
-   that compiles and matches nothing is silent, like any scope with no
-   construct to find. `validate` checks that the term is `doc(` … `)` with
-   something between, and no more.
+**The selector is Vale's to check, not `validate`'s.** A selector Vale
+cannot compile (`doc(h2[)`) fails the whole run at load with
+`E201 invalid selector in 'doc(...)'`, which `verify` reports. A selector
+that compiles and matches nothing is silent, like any scope with no
+construct to find. `validate` checks that the term is `doc(` … `)` with
+something between, and no more.
 
-   **`raw` subsumes `code` and `text`.** Measured on one document holding
-   the token in prose, in an inline span, and in a fenced block: `text`
-   found one, `code` found one, `[code, text]` found two, `raw` found all
-   three. If you want prose and inline code but not fenced blocks, write
-   the list, `raw` is not "a bit wider", it is everything.
+<!-- on-demand -->
+## Scope quirks
 
-   **Front matter is text, to `raw` and to every other scope but its
-   own.** A product-casing rule under `scope: raw` flagged
-   `target: taskless` in a blog post's front matter, where the lowercase
-   value is a machine key the publish path reads, and capitalizing it
-   would have broken the corpus. That is not a `raw` peculiarity:
-   measured on Vale v%(VALE_VERSION)s with the same rule, `text`, the
-   default scope and `[raw, code, text]` all reported the value on the
-   front-matter line too, so dropping `scope: raw` on its own fixes
-   nothing. `paragraph` and `sentence` skip it, and `frontmatter.<key>`
-   matches only that key and never leaks into body prose; `~frontmatter`
-   also left the key alone and fired on the body, but chained onto `raw`
-   (`raw & ~frontmatter`) it matched nothing at all, so the negation
-   does not rescue a `raw` rule. Three fixes, then: `scope: paragraph`
-   or `sentence` when the rule is about prose, `frontmatter.<key>` when
-   it is about a field, and in either case a `pass/` fixture that
-   carries the machine key, so the rule cannot regress onto it without
-   `verify` saying so:
+**`raw` subsumes `code` and `text`.** Measured on one document holding
+the token in prose, in an inline span, and in a fenced block: `text`
+found one, `code` found one, `[code, text]` found two, `raw` found all
+three. If you want prose and inline code but not fenced blocks, write
+the list, `raw` is not "a bit wider", it is everything.
 
-   ```markdown
-   ---
-   target: taskless
-   ---
-   Taskless compiles the correction into a rule.
-   ```
+**Front matter is text, to `raw` and to every other scope but its
+own.** A product-casing rule under `scope: raw` flagged
+`target: taskless` in a blog post's front matter, where the lowercase
+value is a machine key the publish path reads, and capitalizing it
+would have broken the corpus. That is not a `raw` peculiarity:
+measured on Vale v%(VALE_VERSION)s with the same rule, `text`, the
+default scope and `[raw, code, text]` all reported the value on the
+front-matter line too, so dropping `scope: raw` on its own fixes
+nothing. `paragraph` and `sentence` skip it, and `frontmatter.<key>`
+matches only that key and never leaks into body prose; `~frontmatter`
+also left the key alone and fired on the body, but chained onto `raw`
+(`raw & ~frontmatter`) it matched nothing at all, so the negation
+does not rescue a `raw` rule. Three fixes, then: `scope: paragraph`
+or `sentence` when the rule is about prose, `frontmatter.<key>` when
+it is about a field, and in either case a `pass/` fixture that
+carries the machine key, so the rule cannot regress onto it without
+`verify` saying so:
 
-   The first line is a machine key, read by the publish path. The last
-   is prose, correctly cased. A rule that fires on this document is
-   reading the wrong one.
+```markdown
+---
+target: taskless
+---
+Taskless compiles the correction into a rule.
+```
 
-   The same reach is useful in the other direction. `occurrence` with
-   `min: 1` under `scope: raw` can require a front-matter field to
-   exist, because `raw` reads the key and the value as one unparsed
-   line. Measured: this fires on a document whose front matter has a
-   `title` and no `description`, fires on one with no front matter at
-   all, and stays quiet once the field is there.
+The first line is a machine key, read by the publish path. The last
+is prose, correctly cased. A rule that fires on this document is
+reading the wrong one.
 
-   ```yaml
-   extends: occurrence
-   message: "A blog draft needs a description in its frontmatter."
-   level: error
-   scope: raw
-   min: 1
-   token: '(?m)^description: .+$'
-   ```
+The same reach is useful in the other direction. `occurrence` with
+`min: 1` under `scope: raw` can require a front-matter field to
+exist, because `raw` reads the key and the value as one unparsed
+line. Measured: this fires on a document whose front matter has a
+`title` and no `description`, fires on one with no front matter at
+all, and stays quiet once the field is there.
 
-   **Vale drops everything inside a `<figure>` element.** Measured: a
-   `<figcaption>` nested in `<figure>` is invisible to *every* scope,
-   `text` and `raw` included, so a `scope: figure.caption` rule over a
-   normally-marked-up figure reports nothing and looks like a bad scope.
-   A bare `<figcaption>` is linted, and `figure.caption` fires on it. If a
-   fixture is not firing, check whether its subject is inside a `<figure>`
-   before you touch the pattern.
+```yaml
+extends: occurrence
+message: "A blog draft needs a description in its frontmatter."
+level: error
+scope: raw
+min: 1
+token: '(?m)^description: .+$'
+```
 
-   **`scope` also takes `~` and `&`.** `~code` is everything but inline
-   code; `text & ~code` chains two operands; a list (`[code, text]`) is a
-   union. All three parse and behave.
+**Vale drops everything inside a `<figure>` element.** Measured: a
+`<figcaption>` nested in `<figure>` is invisible to *every* scope,
+`text` and `raw` included, so a `scope: figure.caption` rule over a
+normally-marked-up figure reports nothing and looks like a bad scope.
+A bare `<figcaption>` is linted, and `figure.caption` fires on it. If a
+fixture is not firing, check whether its subject is inside a `<figure>`
+before you touch the pattern.
 
-   **Negating an inline element removes its text from the paragraph, as
-   of Vale 3.22.0.** `~link`, `~strong`, `~emphasis` and `~code` are the
-   four. A rule with `text & ~link` still runs on every paragraph, and
-   the link text inside a paragraph is blanked before the rule sees it,
-   so a casing or wording rule can leave link text and bold terms alone
-   without giving up the sentence around them. Positions after the
-   blanked element do not move. Through 3.21.0 the same scope only kept
-   the rule off the link's own fragment, and the paragraph still carried
-   the link text, so a rule written this way now reports fewer findings.
-   The release note spells these `text.raw` and `paragraph.link`; those
-   dotted forms are not scopes on the binary, bare or negated, and
-   `validate` rejects them. Write the bare inline name.
+**`scope` also takes `~` and `&`.** `~code` is everything but inline
+code; `text & ~code` chains two operands; a list (`[code, text]`) is a
+union. All three parse and behave.
 
-   **A negation over a scope Vale does not know is a silent no-op.**
-   Measured: `~banana` and `text & ~banana` both fire on everything,
-   because there is no such scope to subtract. A typo inside a `~` does
-   not narrow the rule and does not widen it visibly. It removes the
-   exclusion you wrote the rule for. `validate` checks the operands inside
-   `~` and `&` as strictly as a bare one, for exactly this reason, the
-   one place it is deliberately stricter than Vale itself.
+**Negating an inline element removes its text from the paragraph, as
+of Vale 3.22.0.** `~link`, `~strong`, `~emphasis` and `~code` are the
+four. A rule with `text & ~link` still runs on every paragraph, and
+the link text inside a paragraph is blanked before the rule sees it,
+so a casing or wording rule can leave link text and bold terms alone
+without giving up the sentence around them. Positions after the
+blanked element do not move. Through 3.21.0 the same scope only kept
+the rule off the link's own fragment, and the paragraph still carried
+the link text, so a rule written this way now reports fewer findings.
+The release note spells these `text.raw` and `paragraph.link`; those
+dotted forms are not scopes on the binary, bare or negated, and
+`validate` rejects them. Write the bare inline name.
 
-   **`scope` is per-rule, and rules do not interact.** Taskless assembles
-   every rule's matchers into one config for the run, which invites the
-   assumption that one rule's `scope` narrows another's, or that two
-   rules over the same file compete. They do not: each check carries its
-   own scope and is evaluated independently. If a rule is over-firing,
-   the cause is in that rule's own `scope` and glob, never in a
-   neighbour's.
+**A negation over a scope Vale does not know is a silent no-op.**
+Measured: `~banana` and `text & ~banana` both fire on everything,
+because there is no such scope to subtract. A typo inside a `~` does
+not narrow the rule and does not widen it visibly. It removes the
+exclusion you wrote the rule for. `validate` checks the operands inside
+`~` and `&` as strictly as a bare one, for exactly this reason, the
+one place it is deliberately stricter than Vale itself.
 
-   **A directive turns any rule off, `raw` included, as of Vale 3.20.0.**
-   `<!-- vale <id>.<id> = NO -->` opens a zone and `= YES` closes it.
-   Vale records the region each directive covers and suppresses any
-   alert located inside it, which reaches a `raw`-scoped rule too.
-   Through 3.19.0 a directive was applied to the *parsed* document and
-   `raw` reads the unparsed one, so a `raw` rule fired straight through
-   every zone: a rule about a shell command, a flag, or a package name
-   was exempt-or-remove with nothing in between. It is not any more.
+**`scope` is per-rule, and rules do not interact.** Taskless assembles
+every rule's matchers into one config for the run, which invites the
+assumption that one rule's `scope` narrows another's, or that two
+rules over the same file compete. They do not: each check carries its
+own scope and is evaluated independently. If a rule is over-firing,
+the cause is in that rule's own `scope` and glob, never in a
+neighbour's.
 
-   One thing to know before writing one over a `raw` rule: at `raw`
-   scope the directive line is itself linted text. A rule whose token
-   appears in its own id matches the marker that silences it, and
-   reports a finding on the directive. Name the rule so its own id does
-   not contain the word it looks for.
+<!-- on-demand -->
+## Exception zones
 
-   **A zone is two lines, and no blank line may separate it from the
-   prose it wraps.** Measured on Vale 3.20.0:
+**A directive turns any rule off, `raw` included, as of Vale 3.20.0.**
+`<!-- vale <id>.<id> = NO -->` opens a zone and `= YES` closes it.
+Vale records the region each directive covers and suppresses any
+alert located inside it, which reaches a `raw`-scoped rule too.
+Through 3.19.0 a directive was applied to the *parsed* document and
+`raw` reads the unparsed one, so a `raw` rule fired straight through
+every zone: a rule about a shell command, a flag, or a package name
+was exempt-or-remove with nothing in between. It is not any more.
 
-   - Inline at a list item's continuation indent works, and this is the
-     form to reach for. The pair covers the lines between it and
-     nothing else.
-   - At column 0 it works too, and it ends any list it interrupts.
-     Blocks that then reparse as indented code are already outside a
-     prose rule's reach, so a zone placed there can move coverage
-     rather than restore it.
-   - A pair separated from its prose by blank lines, at an indent past
-     the code-block threshold, suppresses nothing: what it wraps is not
-     prose any more. Nothing reports that, either.
+One thing to know before writing one over a `raw` rule: at `raw`
+scope the directive line is itself linted text. A rule whose token
+appears in its own id matches the marker that silences it, and
+reports a finding on the directive. Name the rule so its own id does
+not contain the word it looks for.
 
-   Through 3.19.0 the first of those did nothing at all. An inline pair
-   was read once per block, so the `NO` and the `YES` cancelled out
-   before the paragraph was linted and the words stayed reported with
-   no error and no warning. A zone had to wrap a whole step or a whole
-   section at the margin, and exempting the two steps of this recipe
-   that quote hedging words would have put 176 lines of prose out of
-   reach to keep two words of an example. That price is gone.
+**A zone is two lines, and no blank line may separate it from the
+prose it wraps.** Measured on Vale 3.20.0:
 
-   **A shown directive has to be inline or fenced, never a bare line.**
-   A directive on a line of its own now takes effect on the recipe at
-   any indent, and the CLI strips it before serving so a reader never
-   sees it. Measured: a directive inside backticks and a directive
-   inside a fenced block are both inert, which is why every directive
-   quoted in this file is one or the other.
+- Inline at a list item's continuation indent works, and this is the
+  form to reach for. The pair covers the lines between it and
+  nothing else.
+- At column 0 it works too, and it ends any list it interrupts.
+  Blocks that then reparse as indented code are already outside a
+  prose rule's reach, so a zone placed there can move coverage
+  rather than restore it.
+- A pair separated from its prose by blank lines, at an indent past
+  the code-block threshold, suppresses nothing: what it wraps is not
+  prose any more. Nothing reports that, either.
 
-   **Then the fields the extension point adds**. This is where the rule
-   actually lives, and each check reads only its own:
+Through 3.19.0 the first of those did nothing at all. An inline pair
+was read once per block, so the `NO` and the `YES` cancelled out
+before the paragraph was linted and the words stayed reported with
+no error and no warning. A zone had to wrap a whole step or a whole
+section at the margin, and exempting the two steps of this recipe
+that quote hedging words would have put 176 lines of prose out of
+reach to keep two words of an example. That price is gone.
 
-| extends          | its fields                                                                   |
-|------------------|------------------------------------------------------------------------------|
-| `existence`      | `tokens` (a list) or `raw`; `ignorecase`, `nonword`, `exceptions`, `append`, `vocab` |
-| `substitution`   | `swap` (a map of observed → expected); `ignorecase`, `nonword`, `exceptions`, `capitalize`, `pos`, `vocab` |
-| `capitalization` | `match`; `style` (with `$title`), `exceptions`, `threshold`, `indicators`, `prefix`, `vocab` |
-| `occurrence`     | `token`, `max` and/or `min`; `ignorecase`                                    |
-| `repetition`     | `tokens`; `alpha`, `ignorecase`, `exceptions`, `max`, `vocab`                |
-| `consistency`    | `either` (a map of the two acceptable forms); `ignorecase`, `nonword`        |
-| `conditional`    | `first`, `second`; `exceptions`, `ignorecase`, `vocab`                       |
-| `metric`         | `formula`, `condition`                                                       |
-| `readability`    | `metrics` (a list of formula names), `grade`                                 |
-| `spelling`       | `aff`, `dic`, `custom`, `filters`, `ignore`, `threshold`                     |
-| `sequence`       | `tokens` (each a `pattern`/`tag` map); `ignorecase`, `exceptions`             |
-| `script`         | `script` (Tengo source)                                                      |
+**A shown directive has to be inline or fenced, never a bare line.**
+A directive on a line of its own now takes effect on the recipe at
+any indent, and the CLI strips it before serving so a reader never
+sees it. Measured: a directive inside backticks and a directive
+inside a fenced block are both inert, which is why every directive
+quoted in this file is one or the other.
 
-   The list above is measured, not transcribed: every entry was added to
-   a minimal rule of that check and the run watched for `E201`. Three
-   corrections fall out of it, all against the published docs:
-   `capitalization` takes `prefix` (singular) and rejects both `prefixes`
-   and `suffixes`, it rejects `ignorecase`, and `occurrence` rejects
-   `exceptions` and `vocab`.
+<!-- on-demand -->
+## Messages
 
-   **Field names are matched case-insensitively, but `extends`, `message`
-   and `level` are not.** Measured: `Tokens:` and `ignoreCase:` are read
-   exactly as their lowercase spellings, while `EXTENDS:` fails with
-   "Missing the required 'extends' key". Their *values* are case-sensitive
-   too, `level: WARNING` and `extends: Existence` are both rejected.
-   Write everything lowercase and none of this can bite you.
-
-   **A field from the wrong check is the loudest failure Vale has.**
-   `tokens` on an `occurrence` check gives
-   `E201 … has invalid keys: 'tokens'`, exit 2, and, because Vale reads
-   one assembled config per run. **no** Vale rule in the project reports
-   anything. `validate` rejects the rule before Vale is invoked, so this
-   cannot reach `check`.
-
-   **Two checks are exempt, and that is not a licence.** Measured,
-   `consistency` and `spelling` accept any key at all: `bananafield:
-   true` on either loads without complaint and is ignored. A misspelled
-   field on those two is a silent no-op instead of a loud one, so the
-   schema cannot catch a typo there and neither can Vale. Read the field
-   list twice when writing those two.
-
-   **What `%%s` fills with depends on the extension point.** Getting this
-   wrong is the one mistake in this recipe that passes every check below
-. The rule fires, the fixtures are green, and only a human reading the
-   message sees that it is nonsense.
+**What `%%s` fills with depends on the extension point.** Getting this
+wrong is the one mistake in this recipe that passes every check. The
+rule fires, the fixtures are green, and only a human reading the
+message sees that it is nonsense.
 
 | extends          | `%%s` count | fills with, left to right                             |
 |------------------|-------------|-------------------------------------------------------|
@@ -407,55 +498,55 @@ it.
 | `substitution`   | **two**     | the **replacement**, then the matched text            |
 | `capitalization` | one         | the scope that failed (the whole heading or sentence) |
 
-   Measured: a `substitution` message with a single `%%s` interpolates the
-   *replacement*, not the match, so `"Use GitHub not %%s"` against the text
-   `Github` renders `Use GitHub not GitHub`.
+Measured: a `substitution` message with a single `%%s` interpolates the
+*replacement*, not the match, so `"Use GitHub not %%s"` against the text
+`Github` renders `Use GitHub not GitHub`.
 
-   For the other nine, do not guess. Write the message, run step 6, and
-   read it back off the finding, no test you can write catches a wrong
-   `%%s`, so your own eyes on the rendered message are the check.
+For the other nine, do not guess. Write the message, run step 6, and
+read it back off the finding, no test you can write catches a wrong
+`%%s`, so your own eyes on the rendered message are the check.
 
-   ```yaml
-   # existence, flag these tokens wherever they appear
-   extends: existence
-   message: "Avoid '%%s', it hides the work from the reader"
-   level: warning
-   ignorecase: true
-   tokens:
-     - simply
-     - just
-   ```
+```yaml
+# existence, flag these tokens wherever they appear
+extends: existence
+message: "Avoid '%%s', it hides the work from the reader"
+level: warning
+ignorecase: true
+tokens:
+  - simply
+  - just
+```
 
-   ```yaml
-   # substitution, first %%s is the replacement, second is what was found
-   extends: substitution
-   message: "Use '%%s' instead of '%%s'"
-   level: warning
-   ignorecase: true
-   swap:
-     utilize: use
-     "in order to": to
-   ```
+```yaml
+# substitution, first %%s is the replacement, second is what was found
+extends: substitution
+message: "Use '%%s' instead of '%%s'"
+level: warning
+ignorecase: true
+swap:
+  utilize: use
+  "in order to": to
+```
 
-   ```yaml
-   # capitalization, a whole heading must be in sentence case
-   extends: capitalization
-   message: "'%%s' should be in sentence case"
-   level: warning
-   scope: heading
-   match: $sentence
-   exceptions:
-     - Taskless
-     - API
-   ```
+```yaml
+# capitalization, a whole heading must be in sentence case
+extends: capitalization
+message: "'%%s' should be in sentence case"
+level: warning
+scope: heading
+match: $sentence
+exceptions:
+  - Taskless
+  - API
+```
 
-   `match` takes `$sentence`, `$title`, `$lower`, or `$upper`. A literal
-   string is legal but means "this whole scope must read exactly that",
-   which is almost never what anyone wants. See step 1.
+`match` takes `$sentence`, `$title`, `$lower`, or `$upper`. A literal
+string is legal but means "this whole scope must read exactly that",
+which is almost never what anyone wants. See step 1.
 
-   **`$sentence` means first word capitalized, everything else lowercase
-, proper nouns included.** It is not "sentence case allowing proper
-   nouns". Measured with `exceptions: [Taskless, API]` on headings:
+**`$sentence` means first word capitalized, everything else lowercase,
+proper nouns included.** It is not "sentence case allowing proper
+nouns". Measured with `exceptions: [Taskless, API]` on headings:
 
 | Heading                           | Result                                         |
 |-----------------------------------|------------------------------------------------|
@@ -466,387 +557,405 @@ it.
 | `getting started lowercase`       | **fires**: the first word must be capitalized |
 | `Getting Started With Title Case` | **fires**                                      |
 
-   So `exceptions` is not decoration: every proper noun, product name and
-   acronym the docs use has to be listed, or the rule flags correct
-   headings. Collect them from the docs before writing the rule, and
-   expect to add to the list.
+So `exceptions` is not decoration: every proper noun, product name and
+acronym the docs use has to be listed, or the rule flags correct
+headings. Collect them from the docs before writing the rule, and
+expect to add to the list.
 
-3. **Know what you are writing: `tokens` and `swap` keys are patterns,
-   not literals.** They compile as Go regular expressions.
+<!-- on-demand -->
+## Patterns
 
-   *This step is about `tokens` and `swap` only. A `capitalization`,
-   `occurrence` or `metric` rule has neither, skip to step 4.*
+`tokens` and `swap` keys are patterns, not literals. They compile as Go
+regular expressions.
 
-   - `(?:…)`, `[…]`, `|`, `+`, `?` all work.
-   - **Lookaround and backreferences work, and they are not free.**
-     Vale compiles every pattern with `regexp2` in RE2 compatibility
-     mode, so `(?=…)`, `(?<=…)` and `\1` are all available even
-     though Go's own `regexp` has none of them. (Older versions of
-     this topic said Vale tried Go's `regexp` first and fell back.
-     There is no fallback and never was; the conclusion was right and
-     the reason was not.) Measured on Vale v%(VALE_VERSION)s with
-     throwaway rules, each firing on its `fail/` fixture and quiet on
-     `pass/`: a repeated-word `\b(\w+) \1\b`, a `foo(?= bar)`
-     lookahead, and a `(?<=x )y` lookbehind. That engine backtracks
-     and is slower than a pattern without lookaround, so keep
-     lookaround off a rule that runs over every file in the project,
-     and prove any rule that uses one with a fixture rather than
-     trusting the syntax. "X but not when followed by Y" is therefore
-     writable as a single `substitution`, but splitting it or
-     narrowing with `scope` is still the cheaper rule when either
-     will do.
+*This section is about `tokens` and `swap` only. A `capitalization`,
+`occurrence` or `metric` rule has neither, skip to step 4.*
 
-     Three measured limits sit on top of that, and all three are
-     silent:
+- `(?:…)`, `[…]`, `|`, `+`, `?` all work.
+- **Lookaround and backreferences work, and they are not free.**
+  Vale compiles every pattern with `regexp2` in RE2 compatibility
+  mode, so `(?=…)`, `(?<=…)` and `\1` are all available even
+  though Go's own `regexp` has none of them. (Older versions of
+  this topic said Vale tried Go's `regexp` first and fell back.
+  There is no fallback and never was; the conclusion was right and
+  the reason was not.) Measured on Vale v%(VALE_VERSION)s with
+  throwaway rules, each firing on its `fail/` fixture and quiet on
+  `pass/`: a repeated-word `\b(\w+) \1\b`, a `foo(?= bar)`
+  lookahead, and a `(?<=x )y` lookbehind. That engine backtracks
+  and is slower than a pattern without lookaround, so keep
+  lookaround off a rule that runs over every file in the project,
+  and prove any rule that uses one with a fixture rather than
+  trusting the syntax. "X but not when followed by Y" is therefore
+  writable as a single `substitution`, but splitting it or
+  narrowing with `scope` is still the cheaper rule when either
+  will do.
 
-     - **No capture group survives a `swap` key**, so a
-       backreference in one can never match. Vale compiles all of a
-       rule's swap keys into ONE alternation and wraps each key in a
-       capture group of its own, because the number of the group
-       that matched is how it knows which replacement to offer. Those
-       wrappers have to be numbered 1, 2, 3…, so any group you wrote
-       is rewritten to `(?:…)` first. Whichever way round, `\1` ends
-       up pointing at Vale's wrapper (the group still being matched)
-       and matches nothing. Measured silent, with nothing on
-       stderr and the rule loading cleanly: `(\w+) \1`, `(the) \1`,
-       `the \1` and `(?:\w+) \1`. **`%(TASKLESS_CLI)s validate` rejects a
-       `swap` key with a backreference**, because a rule that loads
-       and never fires is indistinguishable from a clean project. A
-       repeated-word check has to be an `existence` rule, where the
-       same pattern works under both `tokens` and `raw`.
+  Three measured limits sit on top of that, and all three are
+  silent:
 
-       Two things this does NOT mean:
+  - **No capture group survives a `swap` key**, so a
+    backreference in one can never match. Vale compiles all of a
+    rule's swap keys into ONE alternation and wraps each key in a
+    capture group of its own, because the number of the group
+    that matched is how it knows which replacement to offer. Those
+    wrappers have to be numbered 1, 2, 3…, so any group you wrote
+    is rewritten to `(?:…)` first. Whichever way round, `\1` ends
+    up pointing at Vale's wrapper (the group still being matched)
+    and matches nothing. Measured silent, with nothing on
+    stderr and the rule loading cleanly: `(\w+) \1`, `(the) \1`,
+    `the \1` and `(?:\w+) \1`. **`%(TASKLESS_CLI)s validate` rejects a
+    `swap` key with a backreference**, because a rule that loads
+    and never fires is indistinguishable from a clean project. A
+    repeated-word check has to be an `existence` rule, where the
+    same pattern works under both `tokens` and `raw`.
 
-       - **`$1` in the swap VALUE works.** Vale expands it against
-         the original key, before the rewrite, so
-         `colour(s?): color$1` offers `colors` for `colours` and
-         `color` for `colour`. Only the key loses its groups.
-       - **`\1` inside a character class is fine**, because there it
-         is an octal escape rather than a backreference. `[\1a]bc`
-         matches `abc` and `validate` accepts it.
+    Two things this does NOT mean:
 
-     - **A trailing lookahead in `tokens` or `swap` has to peek at a
-       non-word character.** The implicit `\b` is appended after the
-       lookahead (the lookahead is zero-width, so the position is
-       still where the match ended), which puts the boundary between
-       the match and the text peeked at. `foo(?= bar)` fires;
-       `foo(?=bar)` can never match, whatever the document says. Use
-       `raw` when the lookahead has to land on a word character.
-     - **A leading lookbehind has the same problem at the other
-       end.** The implicit `\b` goes on before it, so the boundary
-       is tested between what the lookbehind peeked at and the match.
-       `(?<=x )y` fires; `(?<=x)foo` is silent under `tokens` and
-       under `swap` on a document reading `xfoo`, and fires under
-       `raw`. Same fix: use `raw`.
-   - **Word boundaries are applied for you, around the whole pattern.**
-     Measured: `Github` does not fire inside `GithubToken`, and the
-     multi-word `click here` does not fire inside `Clicking here`.
-   - **A hyphen is a boundary, so a hyphenated compound is not
-     protected.** `obviously` fires inside `obviously-named`, while
-     `obviously_stale` is safe because `_` is a word character. Do not
-     reach for a hyphenated compound as a `pass/` near-miss; it is the
-     case most likely to fire.
-   - **Regex metacharacters in a real phrase are live.** "maybe?" is a
-     pattern meaning "mayb" followed by an optional "e". Escape it.
-   - **Overlapping alternatives resolve first-wins**, one finding per
-     match. If `can login` and `login with` both match a sentence, you
-     get whichever is written first, once, not both.
-   - `ignorecase: true` matches any casing **and still skips text that
-     already equals the replacement.** Measured with `Github: GitHub`:
-     `github` and `Github` are flagged, `GitHub` is not. You do not need
-     `ignorecase: false` to protect the correct spelling.
-   - `raw` takes a full regex, used verbatim, when `tokens` is too
-     restrictive; `nonword` removes the implicit boundaries from
-     `tokens`.
-   - **`raw` entries concatenate, they do not alternate.** `tokens` is
-     a list of alternatives. `raw` is not: Vale joins every entry into
-     one pattern, back to back, with nothing between them. Measured on
-     Vale v%(VALE_VERSION)s with two entries, `\bstops ` and `being\b`:
-     `It stops being.` fires, and a document holding either half alone
-     does not. So a second entry added to widen a rule never fires on
-     its own, and its `fail/` fixture fails, which is how this was
-     found. Alternation goes inside one entry, as `(a|b|c)`:
+    - **`$1` in the swap VALUE works.** Vale expands it against
+      the original key, before the rewrite, so
+      `colour(s?): color$1` offers `colors` for `colours` and
+      `color` for `colour`. Only the key loses its groups.
+    - **`\1` inside a character class is fine**, because there it
+      is an octal escape rather than a backreference. `[\1a]bc`
+      matches `abc` and `validate` accepts it.
 
-     ```yaml
-     # wrong: the second entry is appended to the first, so the new
-     # branch never fires on its own
-     extends: existence
-     raw:
-       - "\\bstops being\\b[^.!?\\n]{0,80}\\band becomes\\b"
-       - "[A-Z][^.!?\\n]{3,70}[.!?] (The|That|This|It)('s| is| was) the (problem|twist|point)\\b\\."
-     ```
+  - **A trailing lookahead in `tokens` or `swap` has to peek at a
+    non-word character.** The implicit `\b` is appended after the
+    lookahead (the lookahead is zero-width, so the position is
+    still where the match ended), which puts the boundary between
+    the match and the text peeked at. `foo(?= bar)` fires;
+    `foo(?=bar)` can never match, whatever the document says. Use
+    `raw` when the lookahead has to land on a word character.
+  - **A leading lookbehind has the same problem at the other
+    end.** The implicit `\b` goes on before it, so the boundary
+    is tested between what the lookbehind peeked at and the match.
+    `(?<=x )y` fires; `(?<=x)foo` is silent under `tokens` and
+    under `swap` on a document reading `xfoo`, and fires under
+    `raw`. Same fix: use `raw`.
 
-     ```yaml
-     # right: one entry, the branches alternated inside it
-     extends: existence
-     raw:
-       - "(\\bstops being\\b[^.!?\\n]{0,80}\\band becomes\\b|[A-Z][^.!?\\n]{3,70}[.!?] (The|That|This|It)('s| is| was) the (problem|twist|point)\\b\\.)"
-     ```
+<!-- on-demand -->
+## Pattern quirks
 
-     No `nonword` there, and none is needed: `nonword` governs
-     `tokens`, which Vale wraps in `\b…\b` unless it is set, and a
-     `raw` entry is used verbatim. Measured, `nonword: true` beside a
-     `raw` list changes nothing. Write the boundaries you want into the
-     pattern, as above.
+- **Word boundaries are applied for you, around the whole pattern.**
+  Measured: `Github` does not fire inside `GithubToken`, and the
+  multi-word `click here` does not fire inside `Clicking here`.
+- **A hyphen is a boundary, so a hyphenated compound is not
+  protected.** `obviously` fires inside `obviously-named`, while
+  `obviously_stale` is safe because `_` is a word character. Do not
+  reach for a hyphenated compound as a `pass/` near-miss; it is the
+  case most likely to fire.
+- **Regex metacharacters in a real phrase are live.** "maybe?" is a
+  pattern meaning "mayb" followed by an optional "e". Escape it.
+- **Overlapping alternatives resolve first-wins**, one finding per
+  match. If `can login` and `login with` both match a sentence, you
+  get whichever is written first, once, not both.
+- `ignorecase: true` matches any casing **and still skips text that
+  already equals the replacement.** Measured with `Github: GitHub`:
+  `github` and `Github` are flagged, `GitHub` is not. You do not need
+  `ignorecase: false` to protect the correct spelling.
+- `raw` takes a full regex, used verbatim, when `tokens` is too
+  restrictive; `nonword` removes the implicit boundaries from
+  `tokens`.
+- **`raw` entries concatenate, they do not alternate.** `tokens` is
+  a list of alternatives. `raw` is not: Vale joins every entry into
+  one pattern, back to back, with nothing between them. Measured on
+  Vale v%(VALE_VERSION)s with two entries, `\bstops ` and `being\b`:
+  `It stops being.` fires, and a document holding either half alone
+  does not. So a second entry added to widen a rule never fires on
+  its own, and its `fail/` fixture fails, which is how this was
+  found. Alternation goes inside one entry, as `(a|b|c)`:
 
-     `validate` reports a `raw` list with more than one entry, on the
-     rule's `notice` rather than in `errors`:
+  ```yaml
+  # wrong: the second entry is appended to the first, so the new
+  # branch never fires on its own
+  extends: existence
+  raw:
+    - "\\bstops being\\b[^.!?\\n]{0,80}\\band becomes\\b"
+    - "[A-Z][^.!?\\n]{3,70}[.!?] (The|That|This|It)('s| is| was) the (problem|twist|point)\\b\\."
+  ```
 
-     ```
-     <id>: raw has N entries; Vale joins them into one pattern with no separator, so the second never matches on its own. Write one entry with (a|b) unless the join is intended.
-     ```
+  ```yaml
+  # right: one entry, the branches alternated inside it
+  extends: existence
+  raw:
+    - "(\\bstops being\\b[^.!?\\n]{0,80}\\band becomes\\b|[A-Z][^.!?\\n]{3,70}[.!?] (The|That|This|It)('s| is| was) the (problem|twist|point)\\b\\.)"
+  ```
 
-     If the join is intended, and the pieces are only split for
-     readability, the notice is yours to read and set aside.
-   - **A token made only of punctuation can never match without
-     `nonword: true`.** The boundaries above are `\b`, which needs a word
-     character on the inside. An em dash has none, on either side.
-     Measured against `This is a sentence, with an em dash.`:
+  No `nonword` there, and none is needed: `nonword` governs
+  `tokens`, which Vale wraps in `\b…\b` unless it is set, and a
+  `raw` entry is used verbatim. Measured, `nonword: true` beside a
+  `raw` list changes nothing. Write the boundaries you want into the
+  pattern, as above.
 
-     ```yaml
-     # fires on nothing, ever, and reports no error
-     extends: existence
-     message: "Use a comma, not an em dash"
-     tokens:
-       - ', '
-     ```
+  `validate` reports a `raw` list with more than one entry, on the
+  rule's `notice` rather than in `errors`:
 
-     ```yaml
-     # fires
-     extends: existence
-     message: "Use a comma, not an em dash"
-     nonword: true
-     tokens:
-       - ', '
-     ```
+  ```
+  <id>: raw has N entries; Vale joins them into one pattern with no separator, so the second never matches on its own. Write one entry with (a|b) unless the join is intended.
+  ```
 
-     The first rule validates, passes `verify` if its `fail/` fixture is
-     missing the dash, and reports nothing forever. Any token whose
-     pattern contains no `\w` (punctuation, an emoji, a bare symbol)
-     needs `nonword: true`.
+  If the join is intended, and the pieces are only split for
+  readability, the notice is yours to read and set aside.
+- **A token made only of punctuation can never match without
+  `nonword: true`.** The boundaries above are `\b`, which needs a word
+  character on the inside. An em dash has none, on either side.
+  Measured against `This is a sentence, with an em dash.`:
 
-   - **A bare word finds senses you did not mean.** `landed on` in a rule
-     <!-- vale no-hedging.no-hedging = NO -->
-     about jargon also matches "the plane landed on time"; `simply` in a
-     rule about hedging also matches "simply connected" in a maths doc.
-     <!-- vale no-hedging.no-hedging = YES -->
-     Narrow the token to the **collocation** you actually object to
-     (`landed on a decision`, not `landed on`), and check that you got it
-     right by writing the `pass/` fixture from the literal sense *first*:
-     put the innocent sentence in `pass/` before you write the guilty one
-     in `fail/`. A rule whose `pass/` bucket was written afterwards tends
-     to contain only sentences the author already knew were safe.
+  ```yaml
+  # fires on nothing, ever, and reports no error
+  extends: existence
+  message: "Use a comma, not an em dash"
+  tokens:
+    - ', '
+  ```
 
-   Vale also understands the markup, which decides what counts as text
-   before your pattern ever runs. Measured in markdown:
+  ```yaml
+  # fires
+  extends: existence
+  message: "Use a comma, not an em dash"
+  nonword: true
+  tokens:
+    - ', '
+  ```
 
-   - **URLs and code spans are not prose.** A `Github` key fires on
-     `Plain Github here` and not on `https://Github.com/x` or
-     `` `Github/docs` ``.
-   - **Link text *is* prose.** In `[click here](https://example.com)`,
-     `click here` is matched. The URL is not. With no `scope`, a rule
-     fires on both link text and ordinary prose; `scope: link` narrows it
-     to link text alone. Measured: without a scope the token hit both the
-     link and the sentence; with `scope: link`, only the link.
+  The first rule validates, passes `verify` if its `fail/` fixture is
+  missing the dash, and reports nothing forever. Any token whose
+  pattern contains no `\w` (punctuation, an emoji, a bare symbol)
+  needs `nonword: true`.
 
-4. **Scope the rule** by writing `.taskless/rules/vale/<id>/.vale.ini`.
-   This is the step that is easy to skip and impossible to notice
-   skipping. A rule with no config is enabled nowhere: it parses, it
-   runs, and it reports nothing.
+- **A bare word finds senses you did not mean.** `landed on` in a rule
+  <!-- vale no-hedging.no-hedging = NO -->
+  about jargon also matches "the plane landed on time"; `simply` in a
+  rule about hedging also matches "simply connected" in a maths doc.
+  <!-- vale no-hedging.no-hedging = YES -->
+  Narrow the token to the **collocation** you actually object to
+  (`landed on a decision`, not `landed on`), and check that you got it
+  right by writing the `pass/` fixture from the literal sense *first*:
+  put the innocent sentence in `pass/` before you write the guilty one
+  in `fail/`. A rule whose `pass/` bucket was written afterwards tends
+  to contain only sentences the author already knew were safe.
 
-   The whole file, for a rule that applies to markdown:
+Vale also understands the markup, which decides what counts as text
+before your pattern ever runs. Measured in markdown:
 
-   ```ini
-   # Which files this rule applies to.
-   [*.md]
-   tskl) rule = no-simply
-   no-simply.no-simply = YES
-   ```
+- **URLs and code spans are not prose.** A `Github` key fires on
+  `Plain Github here` and not on `https://Github.com/x` or
+  `` `Github/docs` ``.
+- **Link text *is* prose.** In `[click here](https://example.com)`,
+  `click here` is matched. The URL is not. With no `scope`, a rule
+  fires on both link text and ordinary prose; `scope: link` narrows it
+  to link text alone. Measured: without a scope the token hit both the
+  link and the sentence; with `scope: link`, only the link.
 
-   Three lines, and each one earns its place:
+<!-- on-demand -->
+## Vale config
 
-   - `[*.md]` is a **matcher**: a glob over paths, deciding which files
-     this rule sees. Match it to the files the rule is actually about,
-     such as `[*.{md,markdown}]` or `[docs/**/*.md]`. A rule can declare
-     several matchers if it needs to. Before you widen a glob, check the
-     reach table below, what Vale does to a file it cannot parse is not
-     "nothing".
-   - `tskl) rule = <id>` is a breadcrumb Taskless reads to attribute the
-     matcher back to this rule after assembly interleaves every rule's
-     matchers into one file. Vale parses the key and ignores it. Write it
-     in every matcher you add, or the tooling loses track of who owns
-     what.
-   - `no-simply.no-simply = YES` turns the rule on. The first half is
-     the style, which is this rule's directory; the second is the check
-     inside it, which is the file. Both are the id.
+`.taskless/rules/vale/<id>/.vale.ini` scopes the rule. This is the step
+that is easy to skip and impossible to notice skipping. A rule with no
+config is enabled nowhere: it parses, it runs, and it reports nothing.
 
-   **Do not write `BasedOnStyles`, empty or otherwise.** Older versions
-   of this recipe put `BasedOnStyles =` in every matcher, on the belief
-   that it kept Vale's bundled styles from loading. It never did that
-   (no bundled style loads unless a run-level `BasedOnStyles` names one,
-   and the assembled header names none), and as of Vale 3.22.0 an empty
-   value has a meaning: it clears every setting the file inherited from
-   an earlier matcher. Taskless assembles every rule's matchers into one
-   file in id order, so a rule writing the line under `[docs/**]`
-   silences every alphabetically earlier rule under `docs/`, and
-   `[*.md]` beside another rule's `[*.{md,markdown}]` silences the first
-   on every `.md` file. Only two rules with byte-identical globs escape,
-   because Vale merges those into one section. `validate` rejects the key
-   in any matcher, and `%(TASKLESS_CLI)s init` deletes it from configs
-   written by the older recipe.
+The whole file, for a rule that applies to markdown:
 
-   **Scope a rule *out* with a second matcher, not a cleverer glob.** A
-   glob says which files a rule sees; it has no way to say "these but not
-   those". The exclusion is a second matcher that assigns `NO`, and
-   because precedence here is positional (a later matcher wins), the
-   exclusion goes **after** the inclusion:
+```ini
+# Which files this rule applies to.
+[*.md]
+tskl) rule = no-simply
+no-simply.no-simply = YES
+```
 
-   ```ini
-   # Every markdown file…
-   [*.md]
-   tskl) rule = no-simply
-   no-simply.no-simply = YES
+Three lines, and each one earns its place:
 
-   # …except the changelog, which quotes release notes verbatim.
-   [CHANGELOG.md]
-   tskl) rule = no-simply
-   no-simply.no-simply = NO
-   ```
+- `[*.md]` is a **matcher**: a glob over paths, deciding which files
+  this rule sees. Match it to the files the rule is actually about,
+  such as `[*.{md,markdown}]` or `[docs/**/*.md]`. A rule can declare
+  several matchers if it needs to. Before you widen a glob, check
+  [File reach](#file-reach), what Vale does to a file it cannot parse is not
+  "nothing".
+- `tskl) rule = <id>` is a breadcrumb Taskless reads to attribute the
+  matcher back to this rule after assembly interleaves every rule's
+  matchers into one file. Vale parses the key and ignores it. Write it
+  in every matcher you add, or the tooling loses track of who owns
+  what.
+- `no-simply.no-simply = YES` turns the rule on. The first half is
+  the style, which is this rule's directory; the second is the check
+  inside it, which is the file. Both are the id.
 
-   Write the breadcrumb in the second matcher too, or `validate` rejects
-   the matcher as unattributed. Reversing the two blocks would silently
-   re-enable the rule on the file you meant to exempt, so the schema
-   rejects a `NO` matcher that precedes every `YES`: with no style
-   loaded the rule is off until something turns it on, which makes such
-   a `NO` either dead or overridden. Put the `NO` after the `YES` it
-   narrows.
+**Do not write `BasedOnStyles`, empty or otherwise.** Older versions
+of this recipe put `BasedOnStyles =` in every matcher, on the belief
+that it kept Vale's bundled styles from loading. It never did that
+(no bundled style loads unless a run-level `BasedOnStyles` names one,
+and the assembled header names none), and as of Vale 3.22.0 an empty
+value has a meaning: it clears every setting the file inherited from
+an earlier matcher. Taskless assembles every rule's matchers into one
+file in id order, so a rule writing the line under `[docs/**]`
+silences every alphabetically earlier rule under `docs/`, and
+`[*.md]` beside another rule's `[*.{md,markdown}]` silences the first
+on every `.md` file. Only two rules with byte-identical globs escape,
+because Vale merges those into one section. `validate` rejects the key
+in any matcher, and `%(TASKLESS_CLI)s init` deletes it from configs
+written by the older recipe.
 
-   **Do NOT write `StylesPath` or `MinAlertLevel` here.** Those describe
-   the run rather than a rule, and the assembler supplies them. A copy in
-   a rule's config is rejected, not dropped: the file you write is the
-   file Vale reads, byte for byte, so nothing is edited on the way in.
+**Scope a rule *out* with a second matcher, not a cleverer glob.** A
+glob says which files a rule sees; it has no way to say "these but not
+those". The exclusion is a second matcher that assigns `NO`, and
+because precedence here is positional (a later matcher wins), the
+exclusion goes **after** the inclusion:
 
-   Keep assignments underneath a matcher. An assignment above the first
-   `[…]` line belongs to no matcher; Vale would ignore it after a
-   warning on stderr and leave the rule enabled nowhere, so the schema
-   rejects it instead.
+```ini
+# Every markdown file…
+[*.md]
+tskl) rule = no-simply
+no-simply.no-simply = YES
 
-   **The config is schema-checked.** `validate` parses `.vale.ini` into a
-   structure and validates it against a schema keyed by the rule's
-   directory name, naming the line and the `vale-config-*` constraint
-   behind each rejection. `check` runs the same schema before assembling
-   the run config, and a rejected config refuses the Vale engine for
-   that run: the failure names the rule and the line, the exit code is
-   non-zero, and the other engines still run. A rule is never quietly
-   left out. What is **rejected**:
+# …except the changelog, which quotes release notes verbatim.
+[CHANGELOG.md]
+tskl) rule = no-simply
+no-simply.no-simply = NO
+```
 
-   - anything assigned above the first matcher (`StylesPath`,
-     `MinAlertLevel`, or a rule assignment)
-   - a matcher without a `tskl) rule = <id>` breadcrumb naming this rule
-   - an assignment key other than `<id>.<id>` (a key naming another rule
-     is a cross-rule override, which a rule cannot do)
-   - a value other than `YES` or `NO`
-   - a `BasedOnStyles` assignment, with any value, empty included
-   - a config with no matcher, or one that never assigns `YES`
-   - a `NO` matcher that precedes every `YES` matcher
+Write the breadcrumb in the second matcher too, or `validate` rejects
+the matcher as unattributed. Reversing the two blocks would silently
+re-enable the rule on the file you meant to exempt, so the schema
+rejects a `NO` matcher that precedes every `YES`: with no style
+loaded the rule is off until something turns it on, which makes such
+a `NO` either dead or overridden. Put the `NO` after the `YES` it
+narrows.
 
-   What is **advised**, on the rule's notice, without rejecting:
+**Do NOT write `StylesPath` or `MinAlertLevel` here.** Those describe
+the run rather than a rule, and the assembler supplies them. A copy in
+a rule's config is rejected, not dropped: the file you write is the
+file Vale reads, byte for byte, so nothing is edited on the way in.
 
-   - the same key assigned twice inside one matcher (Vale keeps the last
-     assignment as of 3.21.0; 3.20.0 kept the first). The rejections
-     above judge each matcher by that final verdict, so a `YES` that a
-     later `NO` in the same matcher overrides does not count as enabling
-     the rule: if it was the only `YES`, the config is rejected, not
-     advised
-   - a `[*]` matcher, which reaches every file Vale can read
-   - a matcher under `.taskless/**`, which a whole-project `check`
-     already excludes, and which silences the rule over a fixture
-     bucket you name on purpose (step 6)
+Keep assignments underneath a matcher. An assignment above the first
+`[…]` line belongs to no matcher; Vale would ignore it after a
+warning on stderr and leave the rule enabled nowhere, so the schema
+rejects it instead.
 
-   Each advisory has a legitimate reading, which is what separates the
-   two lists. Fix a rejection before moving on; read an advisory and
-   decide.
+<!-- on-demand -->
+## Config schema
 
-   **What a matcher's glob is allowed to catch.** Vale (v%(VALE_VERSION)s)
-   treats a file one of four ways, decided by extension. The lists are
-   rendered from the pinned Vale version, not written out here, so they
-   track the shipped binary.
+**The config is schema-checked.** `validate` parses `.vale.ini` into a
+structure and validates it against a schema keyed by the rule's
+directory name, naming the line and the `vale-config-*` constraint
+behind each rejection. `check` runs the same schema before assembling
+the run config, and a rejected config refuses the Vale engine for
+that run: the failure names the rule and the line, the exit code is
+non-zero, and the other engines still run. A rule is never quietly
+left out. What is **rejected**:
 
-   - **markup**: the document is prose and the format's own non-prose
-     constructs are skipped. This is the tier every `scope:` value
-     assumes; `scope: heading` has nothing to find outside it:
-     %(VALE_MARKUP_FORMATS)s
-   - **comment text only**: the comments are linted and the code body
-     <!-- vale no-hedging.no-hedging = NO -->
-     is invisible, which is exactly right for "comments must not say
-     'obviously'".
-     <!-- vale no-hedging.no-hedging = YES -->
-     A comment addressed to a tool (`//nolint`, `# noqa`,
-     `eslint-disable`) and a docstring's `:param:` field are not read at
-     all, so a rule cannot police what a suppression comment says:
-     %(VALE_COMMENT_FORMATS)s
-   - **plaintext fallback**: everything else, `.yml` `.toml` `.sh`
-     `.sql` and every extension not named above included. There is no
-     parser, so the whole file is linted as prose: a rule matched to
-     YAML flags key names and values, not just the comments. If that is
-     not what the rule means, narrow the glob rather than accepting it.
-     These land here despite reading like markup, so a `scope:` value
-     has nothing to act on in them: %(VALE_PLAINTEXT_FORMATS)s
-   - **not supported**: Vale parses these only by shelling out to an
-     external program, and this build does not support any format that
-     needs one:
-     %(VALE_CONVERTER_FORMATS)s
+- anything assigned above the first matcher (`StylesPath`,
+  `MinAlertLevel`, or a rule assignment)
+- a matcher without a `tskl) rule = <id>` breadcrumb naming this rule
+- an assignment key other than `<id>.<id>` (a key naming another rule
+  is a cross-rule override, which a rule cannot do)
+- a value other than `YES` or `NO`
+- a `BasedOnStyles` assignment, with any value, empty included
+- a config with no matcher, or one that never assigns `YES`
+- a `NO` matcher that precedes every `YES` matcher
 
-     Do not tell the user to install the program. Taskless excludes these
-     files from the run whatever is installed, so that a repository
-     checks the same way on every machine; `.xml` could not work anyway,
-     since an XSLT stylesheet is specific to the document.
+What is **advised**, on the rule's notice, without rejecting:
 
-   **A single unreadable file fails the whole Vale pass.** Vale exits 2
-   with an `E100` runtime error and abandons the run, `--no-exit` does
-   not suppress it, so every other Vale rule over every other file goes
-   unreported. `[*.{md,typ}]` is not a slightly wider `[*.md]`; it is a
-   matcher that takes `check` down the first time the repo grows a
-   `.typ` file. Never put one of those extensions in a glob.
+- the same key assigned twice inside one matcher (Vale keeps the last
+  assignment as of 3.21.0; 3.20.0 kept the first). The rejections
+  above judge each matcher by that final verdict, so a `YES` that a
+  later `NO` in the same matcher overrides does not count as enabling
+  the rule: if it was the only `YES`, the config is rejected, not
+  advised
+- a `[*]` matcher, which reaches every file Vale can read
+- a matcher under `.taskless/**`, which a whole-project `check`
+  already excludes, and which silences the rule over a fixture
+  bucket you name on purpose (step 6)
 
-   **A large file is linted, not skipped.** Vale's cost is linear in a
-   file's size as of 3.21.0 (a 3MB single-block document measures
-   ~230ms), so no file is excluded on size and a broad matcher such as
-   `[*.md]` at the project root reaches a generated changelog or an
-   exported note like any other document. If such a file should not be
-   checked, narrow the section rather than expecting `check` to skip
-   it.
+Each advisory has a legitimate reading, which is what separates the
+two lists. Fix a rejection before moving on; read an advisory and
+decide.
 
-   That example changed with Vale v3.18.0, which is the point: the
-   dangerous extension is whichever one the list above says needs a
-   program, not the one you remember. `.mdx` was the example until that
-   release parsed it natively, and `.typ` took its place.
+<!-- on-demand -->
+## File reach
 
-   **`.mdx` is supported** as of Vale v3.18.0, which parses it natively
-   rather than shelling out. `[*.{md,mdx}]` is a legitimate matcher
-   again, the example this recipe used to warn about is no longer the
-   broken one. Check the lists above rather than reaching for that
-   memory: `.typ` moved the opposite way in the same release, so a
-   matcher covering Typst is now the one that takes the run down.
+**What a matcher's glob is allowed to catch.** Vale (v%(VALE_VERSION)s)
+treats a file one of four ways, decided by extension. The lists are
+rendered from the pinned Vale version, not written out here, so they
+track the shipped binary.
 
-   **In `.mdx`, a component's children are prose as of v3.19.0.** Vale
-   reads a JSX element's children as the Markdown they are, so text
-   inside a wrapping component (`<Steps>`, `<Tabs>`, `<Aside>`) is
-   linted at its own source position. Only tags, attributes, `{...}`
-   expressions, self-closing elements, and an element opened and closed
-   on one standalone line are still treated as code.
+- **markup**: the document is prose and the format's own non-prose
+  constructs are skipped. This is the tier every `scope:` value
+  assumes; `scope: heading` has nothing to find outside it:
+  %(VALE_MARKUP_FORMATS)s
+- **comment text only**: the comments are linted and the code body
+  <!-- vale no-hedging.no-hedging = NO -->
+  is invisible, which is exactly right for "comments must not say
+  'obviously'".
+  <!-- vale no-hedging.no-hedging = YES -->
+  A comment addressed to a tool (`//nolint`, `# noqa`,
+  `eslint-disable`) and a docstring's `:param:` field are not read at
+  all, so a rule cannot police what a suppression comment says:
+  %(VALE_COMMENT_FORMATS)s
+- **plaintext fallback**: everything else, `.yml` `.toml` `.sh`
+  `.sql` and every extension not named above included. There is no
+  parser, so the whole file is linted as prose: a rule matched to
+  YAML flags key names and values, not just the comments. If that is
+  not what the rule means, narrow the glob rather than accepting it.
+  These land here despite reading like markup, so a `scope:` value
+  has nothing to act on in them: %(VALE_PLAINTEXT_FORMATS)s
+- **not supported**: Vale parses these only by shelling out to an
+  external program, and this build does not support any format that
+  needs one:
+  %(VALE_CONVERTER_FORMATS)s
 
-   Two consequences for a rule you write against MDX. Coverage grew,
-   so a rule can now fire in prose it never reached before, which is a
-   finding count that moves without the rule changing. And the children
-   carry the element's name as a class scope, exactly as MyST and
-   Quarto directives do, so `scope: text.class.Aside` targets one
-   component's content. That is an open family: `validate` accepts any
-   `text.class.<name>` tail, because the set of component names is the
-   author's, not Vale's.
+  Do not tell the user to install the program. Taskless excludes these
+  files from the run whatever is installed, so that a repository
+  checks the same way on every machine; `.xml` could not work anyway,
+  since an XSLT stylesheet is specific to the document.
 
-5. **Write the fixtures.** Cases go under
-   `.taskless/rules/vale/<id>/tests/`, one directory per case.
+**A single unreadable file fails the whole Vale pass.** Vale exits 2
+with an `E100` runtime error and abandons the run, `--no-exit` does
+not suppress it, so every other Vale rule over every other file goes
+unreported. `[*.{md,typ}]` is not a slightly wider `[*.md]`; it is a
+matcher that takes `check` down the first time the repo grows a
+`.typ` file. Never put one of those extensions in a glob.
+
+**A large file is linted, not skipped.** Vale's cost is linear in a
+file's size as of 3.21.0 (a 3MB single-block document measures
+~230ms), so no file is excluded on size and a broad matcher such as
+`[*.md]` at the project root reaches a generated changelog or an
+exported note like any other document. If such a file should not be
+checked, narrow the section rather than expecting `check` to skip
+it.
+
+That example changed with Vale v3.18.0, which is the point: the
+dangerous extension is whichever one the list above says needs a
+program, not the one you remember. `.mdx` was the example until that
+release parsed it natively, and `.typ` took its place.
+
+**`.mdx` is supported** as of Vale v3.18.0, which parses it natively
+rather than shelling out. `[*.{md,mdx}]` is a legitimate matcher
+again, the example this recipe used to warn about is no longer the
+broken one. Check the lists above rather than reaching for that
+memory: `.typ` moved the opposite way in the same release, so a
+matcher covering Typst is now the one that takes the run down.
+
+**In `.mdx`, a component's children are prose as of v3.19.0.** Vale
+reads a JSX element's children as the Markdown they are, so text
+inside a wrapping component (`<Steps>`, `<Tabs>`, `<Aside>`) is
+linted at its own source position. Only tags, attributes, `{...}`
+expressions, self-closing elements, and an element opened and closed
+on one standalone line are still treated as code.
+
+Two consequences for a rule you write against MDX. Coverage grew,
+so a rule can now fire in prose it never reached before, which is a
+finding count that moves without the rule changing. And the children
+carry the element's name as a class scope, exactly as MyST and
+Quarto directives do, so `scope: text.class.Aside` targets one
+component's content. That is an open family: `validate` accepts any
+`text.class.<name>` tail, because the set of component names is the
+author's, not Vale's.
+
+<!-- on-demand -->
+## Fixtures
+
+   Cases go under `.taskless/rules/vale/<id>/tests/`, one directory per
+   case.
 
    %(FIXTURE_LAYOUT)s
 
@@ -857,229 +966,239 @@ it.
 
    %(FIXTURE_SOURCES)s
 
-   **The `pass/` bucket is not "correct prose".** Correct prose proves
-   nothing. The rule was never going to fire on it. Fill it with the
-   near-misses that would catch an over-broad pattern. What counts as a
-   near-miss depends on the rule's shape:
+<!-- on-demand -->
+## Near-misses
 
-   - **`tokens`/`swap` rules**: the noun form you are not flagging, the
-     word inside a longer word, the term in a URL or a code span, the
-     correct spelling itself.
-   - **`scope`d rules**: the same phrase *outside* the scope. A rule
-     with `scope: link` needs the phrase in ordinary prose; a rule with
-     `scope: heading` needs it in body text. Without that, nothing proves
-     the scope is doing anything.
-   - **`capitalization` rules**: a scope that is entirely exceptions, a
-     scope whose exception word comes first, and the plural of an
-     exception.
+**The `pass/` bucket is not "correct prose".** Correct prose proves
+nothing. The rule was never going to fire on it. Fill it with the
+near-misses that would catch an over-broad pattern. What counts as a
+near-miss depends on the rule's shape:
 
-   That is the half of the fixture set that has to work for you.
+- **`tokens`/`swap` rules**: the noun form you are not flagging, the
+  word inside a longer word, the term in a URL or a code span, the
+  correct spelling itself.
+- **`scope`d rules**: the same phrase *outside* the scope. A rule
+  with `scope: link` needs the phrase in ordinary prose; a rule with
+  `scope: heading` needs it in body text. Without that, nothing proves
+  the scope is doing anything.
+- **`capitalization` rules**: a scope that is entirely exceptions, a
+  scope whose exception word comes first, and the plural of an
+  exception.
 
-   **When the rule's subject normally appears in code, the `fail/`
-   fixture must carry it three ways**, inline in a code span, inside a
-   fenced block, and in ordinary prose, in that one document. A rule
-   about a command, a flag, a package name or an env var has a subject
-   that lives in fenced blocks in every real README, and the default
-   scope cannot see fenced blocks at all. A `fail/` fixture written only
-   in prose therefore fires, goes green, and the rule then catches none
-   of the real violations. Measured on one document holding the token in
-   all three places: the default scope found one of three, `raw` found
-   three. If the fixture fires on the prose line and not on the other
-   two, the answer is `scope: raw`. See step 2 for what that costs.
+That is the half of the fixture set that has to work for you.
 
-   **A green `verify` shows your matchers admit the fixture's path, not
-   that any real file sits at such a path.** Each case is linted under
-   the rule's own matchers, so a glob that misses the fixture fails
-   `verify`. A glob of `packages/cli/src/**/*.ts` in a repository whose
-   source lives elsewhere still admits a fixture written to match it, and
-   then reports nothing forever. The check for that is a real `check`
-   over a real file:
+**When the rule's subject normally appears in code, the `fail/`
+fixture must carry it three ways**, inline in a code span, inside a
+fenced block, and in ordinary prose, in that one document. A rule
+about a command, a flag, a package name or an env var has a subject
+that lives in fenced blocks in every real README, and the default
+scope cannot see fenced blocks at all. A `fail/` fixture written only
+in prose therefore fires, goes green, and the rule then catches none
+of the real violations. Measured on one document holding the token in
+all three places: the default scope found one of three, `raw` found
+three. If the fixture fires on the prose line and not on the other
+two, the answer is `scope: raw`. See [Scope quirks](#scope-quirks) for
+what that costs.
 
-   ```
-   %(TASKLESS_CLI)s check <a real path the rule should flag> --json
-   ```
+**A green `verify` shows your matchers admit the fixture's path, not
+that any real file sits at such a path.** Each case is linted under
+the rule's own matchers, so a glob that misses the fixture fails
+`verify`. A glob of `packages/cli/src/**/*.ts` in a repository whose
+source lives elsewhere still admits a fixture written to match it, and
+then reports nothing forever. The check for that is a real `check`
+over a real file:
 
-   Do that once, on a file you have deliberately made violate the rule,
-   before you believe the rule works.
+```
+%(TASKLESS_CLI)s check <a real path the rule should flag> --json
+```
 
-   **A voice or tone rule is a floor, not a ceiling.** A regex catches
-   the shape it was written for and nothing beyond it, so a rule about
-   how prose sounds only ever holds the misses already measured. From a
-   repository running eleven such rules: an antithesis rule keyed on
-   "not" and "never", the sentence a reader called out had neither, and
-   twelve days later `The correction was right. The place it landed was
-   the problem.` passed the widened rule for the same reason. Treat
-   every miss as the next branch, and grow the fixtures with it:
+Do that once, on a file you have deliberately made violate the rule,
+before you believe the rule works.
 
-   - The sentence that got through becomes a `fail/` fixture, dated.
-   - The legitimate uses of the same words go into `pass/` in the same
-     change, so the branch cannot drift wider than what was measured.
+<!-- on-demand -->
+## Voice rules
 
-   ```
-   I've seen that read as a hole in his argument. It's the frame proving itself.   (fail, first miss)
-   The correction was right. The place it landed was the problem.                  (fail, twelve days on)
-   Two collections beats one. This is the answer we shipped in June.               (pass, must keep passing)
-   ```
+**A voice or tone rule is a floor, not a ceiling.** A regex catches
+the shape it was written for and nothing beyond it, so a rule about
+how prose sounds only ever holds the misses already measured. From a
+repository running eleven such rules: an antithesis rule keyed on
+"not" and "never", the sentence a reader called out had neither, and
+twelve days later `The correction was right. The place it landed was
+the problem.` passed the widened rule for the same reason. Treat
+every miss as the next branch, and grow the fixtures with it:
 
-   **Run a new branch over the repository's own prose before it ships
-   at `warning`, and record the count beside the branch.** Fixtures say
-   the branch fires where it should; only the corpus says how often it
-   fires where it should not, and a rule with no number gets switched
-   off the first week it fires on real prose. A verdict-noun branch
-   that read as broad returned one hit outside its fixtures. Keep the
-   count in a comment next to the pattern, dated, so the next author
-   knows what the branch cost when it was written:
+- The sentence that got through becomes a `fail/` fixture, dated.
+- The legitimate uses of the same words go into `pass/` in the same
+  change, so the branch cannot drift wider than what was measured.
 
-   ```yaml
-   # Every branch measured against the repo's 1,100 markdown files on
-   # 20 September. Corpus false positives per branch: 0, 0, 4, 2, 1. All
-   # of the four were written by the assistant, never by the human author.
-   ```
+```
+I've seen that read as a hole in his argument. It's the frame proving itself.   (fail, first miss)
+The correction was right. The place it landed was the problem.                  (fail, twelve days on)
+Two collections beats one. This is the answer we shipped in June.               (pass, must keep passing)
+```
 
-   `verify` isolates the rule but sees only its fixtures. To measure it
-   over the whole project, run `check` with only that rule:
+**Run a new branch over the repository's own prose before it ships
+at `warning`, and record the count beside the branch.** Fixtures say
+the branch fires where it should; only the corpus says how often it
+fires where it should not, and a rule with no number gets switched
+off the first week it fires on real prose. A verdict-noun branch
+that read as broad returned one hit outside its fixtures. Keep the
+count in a comment next to the pattern, dated, so the next author
+knows what the branch cost when it was written:
 
-   ```
-   %(TASKLESS_CLI)s check --json --rule <id>
-   ```
+```yaml
+# Every branch measured against the repo's 1,100 markdown files on
+# 20 September. Corpus false positives per branch: 0, 0, 4, 2, 1. All
+# of the four were written by the assistant, never by the human author.
+```
 
-   Count the entries in `results`. A finding carries no record of which
-   alternative matched, so to count one branch, run the rule with that
-   branch as its only `raw` entry, note the number, then fold it back
-   into the alternation. Read the hits themselves too: that is what
-   tells you whether a hit is a false positive or a real one nobody had
-   noticed.
+`verify` isolates the rule but sees only its fixtures. To measure it
+over the whole project, run `check` with only that rule:
 
-6. **Validate, then verify.** Two commands, both taking the rule's
-   directory as their argument, both run from the project root:
+```
+%(TASKLESS_CLI)s check --json --rule <id>
+```
 
-   ```
-   %(TASKLESS_CLI)s validate .taskless/rules/vale/<id> --json
-   %(TASKLESS_CLI)s verify   .taskless/rules/vale/<id> --json
-   ```
+Count the entries in `results`. A finding carries no record of which
+alternative matched, so to count one branch, run the rule with that
+branch as its only `raw` entry, note the number, then fold it back
+into the alternation. Read the hits themselves too: that is what
+tells you whether a hit is a false positive or a real one nobody had
+noticed.
 
-   `validate` asks whether the rule is well-formed: the style file parses,
-   `extends` names one of the twelve checks, `message` is present, `level`
-   is one Vale accepts, every `scope` operand is one Vale honors, every
-   field belongs to the check the rule extends, and the config declares a
-   matcher that enables `<id>.<id>`. It does **not** need fixtures, so run
-   it as soon as the style file exists.
+<!-- on-demand -->
+## Validate and verify
 
-   Those checks are measured against Vale v%(VALE_VERSION)s rather than
-   transcribed from its docs, and they run **before** Vale is invoked.
-   That ordering matters for two of them: an unknown `extends` and a
-   foreign field each fail the whole Vale run rather than just this rule,
-   so letting either reach the binary would take every other Vale rule's
-   findings down with it.
+Two commands, both taking the rule's directory as their argument,
+both run from the project root:
 
-   `verify` runs the rule against both buckets. It runs `validate` first and
-   stops if that fails, so a malformed rule tells you what is malformed
-   instead of complaining about fixtures.
+```
+%(TASKLESS_CLI)s validate .taskless/rules/vale/<id> --json
+%(TASKLESS_CLI)s verify   .taskless/rules/vale/<id> --json
+```
 
-   Both report the same shape:
+`validate` asks whether the rule is well-formed: the style file parses,
+`extends` names one of the twelve checks, `message` is present, `level`
+is one Vale accepts, every `scope` operand is one Vale honors, every
+field belongs to the check the rule extends, and the config declares a
+matcher that enables `<id>.<id>`. It does **not** need fixtures, so run
+it as soon as the style file exists.
 
-   ```json
-   {"ok":true,"rules":[{"engine":"vale","ruleId":"no-simply",
-    "status":"passed","ok":true,"errors":[],"ran":true}]}
-   ```
+Those checks are measured against Vale v%(VALE_VERSION)s rather than
+transcribed from its docs, and they run **before** Vale is invoked.
+That ordering matters for two of them: an unknown `extends` and a
+foreign field each fail the whole Vale run rather than just this rule,
+so letting either reach the binary would take every other Vale rule's
+findings down with it.
 
-   `ok` is the answer. `errors` names what failed, one string per
-   problem. Exit code is 0 when every rule passed and 1 otherwise, so
-   both are safe to script.
+`verify` runs the rule against both buckets. It runs `validate` first and
+stops if that fails, so a malformed rule tells you what is malformed
+instead of complaining about fixtures.
 
-   Pass a directory above a rule and every rule beneath it is checked,
-   reported one entry per rule. `.taskless/rules/vale` covers every Vale
-   rule; no argument at all covers the project.
+Both report the same shape:
 
-   **`verify --json` shows you every finding the cases produced,** each
-   with its rendered message, line, matched text and bucket, the
-   `fail/` findings included on a rule that passed. That is how to catch
-   a `substitution` message that renders its two `%%s` slots in the
-   wrong order: the rule fires, the case passes, and only the message
-   says something is off. Read `findings` in the rule's entry.
+```json
+{"ok":true,"rules":[{"engine":"vale","ruleId":"no-simply",
+ "status":"passed","ok":true,"errors":[],"ran":true}]}
+```
 
-   **An empty `results` is a clean pass only when nothing else in the
-   envelope says otherwise.** Two things can leave a file unchecked
-   while `results` reads `[]` for it, and both are reported, so read
-   for them before you believe the silence:
+`ok` is the answer. `errors` names what failed, one string per
+problem. Exit code is 0 when every rule passed and 1 otherwise, so
+both are safe to script.
 
-   - **A `vale-parse-error` finding.** A document whose front matter
-     Vale cannot parse used to abort the whole invocation, and `check`
-     returned `[]` for the run, indistinguishable from a clean pass.
-     Now the run retries around the file Vale blames and files it as a
-     finding of its own, at `severity: "error"`, so a file that
-     could not be read never reads as a file with nothing to report.
-     Measured, with an unquoted colon in a front-matter value:
+Pass a directory above a rule and every rule beneath it is checked,
+reported one entry per rule. `.taskless/rules/vale` covers every Vale
+rule; no argument at all covers the project.
 
-     ```json
-     {"source":"vale","ruleId":"vale-parse-error","severity":"error",
-      "message":"Vale could not check this file: E201: yaml: mapping values are not allowed in this context",
-      "file":"broken.md", …}
-     ```
+**`verify --json` shows you every finding the cases produced,** each
+with its rendered message, line, matched text and bucket, the
+`fail/` findings included on a rule that passed. That is how to catch
+a `substitution` message that renders its two `%%s` slots in the
+wrong order: the rule fires, the case passes, and only the message
+says something is off. Read `findings` in the rule's entry.
 
-     Every other file's findings are reported normally, and no rule of
-     yours ran over this one. If it is a fixture, `verify` shows the same
-     gap from the other side: a `fail/` case Vale cannot parse
-     reports as `fail case did not fire`, and a `pass/` case it
-     cannot parse stays green, since a rule that never ran cannot fire.
-     Fix the front matter rather than the pattern.
+<!-- on-demand -->
+## Empty results
 
-   - **A `notices` entry.** Under `--json` the key is absent when there
-     is nothing to say, so its presence is the signal. One notice
-     reads `Vale did not check N file(s): …` and names documents in a
-     format this build has no converter for, which `check` excludes
-     rather than letting one of them take the run down; another begins
-     `Vale reported while running:` and carries whatever Vale wrote to
-     stderr on a run that still exited zero. The one to expect there is
-     the `W101` warning about a rule assignment placed above any
-     matcher, the mistake step 4 warns of. `verify` surfaces the same
-     text as a per-rule `notice`, printed even on a pass.
+**An empty `results` is a clean pass only when nothing else in the
+envelope says otherwise.** Two things can leave a file unchecked
+while `results` reads `[]` for it, and both are reported, so read
+for them before you believe the silence:
 
-   A `failures` key is the third case and the loud one: the engine was
-   present and did not finish (a malformed rule, a timeout), `success`
-   is `false`, and `results` holds only what the other engines
-   reported. Only `results: []` with no `vale-parse-error` finding, no
-   `notices` and no `failures` is the clean pass it looks like.
+- **A `vale-parse-error` finding.** A document whose front matter
+  Vale cannot parse used to abort the whole invocation, and `check`
+  returned `[]` for the run, indistinguishable from a clean pass.
+  Now the run retries around the file Vale blames and files it as a
+  finding of its own, at `severity: "error"`, so a file that
+  could not be read never reads as a file with nothing to report.
+  Measured, with an unquoted colon in a front-matter value:
 
-   **The binary that answers is the vendored one, and only that one
-   counts.** `validate`, `verify` and `check` all run the Vale that ships
-   with this CLI, v%(VALE_VERSION)s, which is what every measurement in
-   this recipe was taken on. A bare `vale` on your `PATH` proves nothing
-   about what `check` will report: one first attempt validated a rule
-   set against Homebrew's 3.15 while Taskless pinned 3.20, and rules
-   that passed on one and not the other told nobody anything. Do not
-   run `vale` directly, and do not add config to make a bare run
-   behave. The matcher that comes from doing so is `[.taskless/**]`
-   with the rule set to `NO`, meant to keep a bare run quiet over
-   fixtures that hold violations on purpose. It does not stay confined
-   to the invocation it was written for: a whole-project `check` skips
-   `.taskless/` without its help, and on a path under `.taskless/` you
-   name it is the one thing acting. `validate` reports it as an advisory (step 4
-   lists it). A rule needs the matchers for the files it is about and
-   no more.
+  ```json
+  {"source":"vale","ruleId":"vale-parse-error","severity":"error",
+   "message":"Vale could not check this file: E201: yaml: mapping values are not allowed in this context",
+   "file":"broken.md", …}
+  ```
 
-   When a `fail/` document does not fire, work down this list before
-   touching the pattern. The cause is usually further up:
-   - Read what `verify` said first. "The rule's scope excluded it"
-     means the case fires with the scope removed, so the matchers and
-     the fixture's path disagree and the pattern is fine.
-   - Does the rule have a `.vale.ini` at all?
-   - Is the assignment underneath a `[…]` matcher?
-   - Is it spelled `<id>.<id>`, both halves the same?
-   - Does a matcher's glob match the fixture's path inside its case?
-   - Only then: does the pattern actually match the text?
+  Every other file's findings are reported normally, and no rule of
+  yours ran over this one. If it is a fixture, `verify` shows the same
+  gap from the other side: a `fail/` case Vale cannot parse
+  reports as `fail case did not fire`, and a `pass/` case it
+  cannot parse stays green, since a rule that never ran cannot fire.
+  Fix the front matter rather than the pattern.
 
-   A `pass/` document that fires means the pattern is too broad. Look
-   for a missing word boundary, an unescaped metacharacter, or a swap
-   key that also matches the form you meant to allow.
+- **A `notices` entry.** Under `--json` the key is absent when there
+  is nothing to say, so its presence is the signal. One notice
+  reads `Vale did not check N file(s): …` and names documents in a
+  format this build has no converter for, which `check` excludes
+  rather than letting one of them take the run down; another begins
+  `Vale reported while running:` and carries whatever Vale wrote to
+  stderr on a run that still exited zero. The one to expect there is
+  the `W101` warning about a rule assignment placed above any
+  matcher, the mistake step 4 warns of. `verify` surfaces the same
+  text as a per-rule `notice`, printed even on a pass.
 
-7. **Report.** Show the rule directory you created and what is in it, a
-   one-line summary of what the rule flags, and the glob it is scoped
-   to. The scope is a decision the user should see rather than one
-   buried in a config. Note that a whole-project `%(TASKLESS_CLI)s check` skips
-   your fixtures: `.taskless/` is excluded from the project walk, by
-   design. `verify` is what exercises them.
+A `failures` key is the third case and the loud one: the engine was
+present and did not finish (a malformed rule, a timeout), `success`
+is `false`, and `results` holds only what the other engines
+reported. Only `results: []` with no `vale-parse-error` finding, no
+`notices` and no `failures` is the clean pass it looks like.
 
+**The binary that answers is the vendored one, and only that one
+counts.** `validate`, `verify` and `check` all run the Vale that ships
+with this CLI, v%(VALE_VERSION)s, which is what every measurement in
+this recipe was taken on. A bare `vale` on your `PATH` proves nothing
+about what `check` will report: one first attempt validated a rule
+set against Homebrew's 3.15 while Taskless pinned 3.20, and rules
+that passed on one and not the other told nobody anything. Do not
+run `vale` directly, and do not add config to make a bare run
+behave. The matcher that comes from doing so is `[.taskless/**]`
+with the rule set to `NO`, meant to keep a bare run quiet over
+fixtures that hold violations on purpose. It does not stay confined
+to the invocation it was written for: a whole-project `check` skips
+`.taskless/` without its help, and on a path under `.taskless/` you
+name it is the one thing acting. `validate` reports it as an advisory
+([Config schema](#config-schema) lists it). A rule needs the matchers for the files it is about and
+no more.
+
+<!-- on-demand -->
+## Troubleshooting
+
+When a `fail/` document does not fire, work down this list before
+touching the pattern. The cause is usually further up:
+- Read what `verify` said first. "The rule's scope excluded it"
+  means the case fires with the scope removed, so the matchers and
+  the fixture's path disagree and the pattern is fine.
+- Does the rule have a `.vale.ini` at all?
+- Is the assignment underneath a `[…]` matcher?
+- Is it spelled `<id>.<id>`, both halves the same?
+- Does a matcher's glob match the fixture's path inside its case?
+- Only then: does the pattern actually match the text?
+
+A `pass/` document that fires means the pattern is too broad. Look
+for a missing word boundary, an unescaped metacharacter, or a swap
+key that also matches the form you meant to allow.
+
+<!-- on-demand -->
 ## Worked rules
 
 Nine rules that work, each paired with the near-miss that fails. Every
@@ -1189,6 +1308,13 @@ Whenever a rule is about a *place* in the document, the `pass/` fixture
 must contain the same phrase outside that place, otherwise nothing
 proves the scope works.
 
+<!-- on-demand -->
+## More worked rules
+
+Continued from [Worked rules](#worked-rules): each works, each is paired
+with the near-miss that fails, and every one was run against the bundled
+Vale.
+
 ### 6. Cap how often something appears, `occurrence`
 
 > "At most one exclamation mark per paragraph."
@@ -1272,18 +1398,7 @@ Measured: `Application Programming Interface (API)` licenses every later
 **Goes wrong:** swapping the two, which inverts the rule into "flag the
 definition when the acronym is missing".
 
-## Important Notes
-
-- Vale reads one document at a time and has no cross-document view. A
-  rule about consistency *between* documents cannot be written here.
-- Prose inside code is still prose: comments and docstrings are Vale's
-  subject, and a rule about them belongs under a matcher whose glob
-  covers the source files.
-- Do NOT add a `[*]` matcher to widen a rule that isn't firing. Matchers
-  from every rule are assembled into one config, so `[*]` applies this
-  rule to every file the walk reaches and turns one rule's scoping bug
-  into a flood of false positives.
-
+<!-- on-demand -->
 ## See Also
 
 - `%(RECIPE_FETCH)sroute`: re-decide the destination

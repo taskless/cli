@@ -18,8 +18,8 @@ function tool(name: string): string {
 describe("route's legacy ladder", () => {
   const route = recipe("route");
 
-  it("is topic v11", () => {
-    expect(route).toMatch(/^# Topic: route {5}\(CLI v.+ \/ topic v11\)/m);
+  it("is topic v12", () => {
+    expect(route).toMatch(/^# Topic: route {5}\(CLI v.+ \/ topic v12\)/m);
   });
 
   it("orders shipped rule, repo examples, Taskless static, Taskless runtime", () => {
@@ -150,7 +150,7 @@ describe("onboarding's legacy limits", () => {
 
   it("never writes a custom linter rule or adds a dependency", () => {
     expect(onboard).toContain(
-      "During onboarding do not write a custom rule in any linter,\n   however many the repo has, and do not add a dependency."
+      "During onboarding do not write a custom rule in any linter,\nhowever many the repo has, and do not add a dependency."
     );
   });
 });

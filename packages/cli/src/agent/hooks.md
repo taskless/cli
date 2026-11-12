@@ -1,4 +1,4 @@
-# Topic: hooks     (CLI v%(CLI_VERSION)s / topic v6)
+# Topic: hooks     (CLI v%(CLI_VERSION)s / topic v7)
 
 %(ONE_COMMAND_PER_CALL)s
 
@@ -79,6 +79,59 @@ list that includes deleted files can go straight in. Called with no
 paths at all it scans the whole project, so a hook that builds the list
 itself has to exit early when the list is empty.
 
+Copy the command for the tool from [Hook commands](#hook-commands), which
+also covers paths with spaces and simple-git-hooks' installer. Tell the
+user what the hook runs logged in and logged out, from
+[What the hook runs](#what-the-hook-runs). Never add
+`--dangerously-run-scripts` to a hook.
+
+### 4. Rerun everything when a rule changes
+
+A staged change under `.taskless/rules/` changes what `check` means,
+and it can affect files that were not staged. In that case run the
+rule tests and a full, unscoped `check`:
+
+```
+node .taskless/bin/cli.mjs verify .taskless/rules/sg
+node .taskless/bin/cli.mjs verify .taskless/rules/vale
+node .taskless/bin/cli.mjs check
+```
+
+Name the two engine directories rather than running a bare `verify`.
+A runtime rule's fixtures run only with `--dangerously-run-scripts`,
+which never belongs in a hook, and a bare `verify` exits 2 on any
+runtime rule that did not run, which blocks the commit. An engine
+directory with no rules passes, so keep both lines either way.
+
+lint-staged and the other tools each express that second command
+their own way: [Rule changes per tool](#rule-changes-per-tool).
+
+### 5. Ask before adding lint-staged's `--no-stash`
+
+If the hook tool is lint-staged, read [lint-staged and --no-stash](#lint-staged-and-no-stash)
+before adding the flag. It saves a stash `check` does not need, but a
+partially staged file is then checked as it is in the working tree.
+Present both sides and let the user choose; do not add it silently.
+
+### 6. Verify
+
+Stage a change and run the hook directly rather than committing:
+
+- lint-staged: `<package-manager> lint-staged`
+- lefthook: `<package-manager> lefthook run pre-commit`
+- pre-commit: `pre-commit run`
+- husky or simple-git-hooks: run the hook script, `sh .husky/pre-commit`
+
+Confirm it scans the staged files, and that it exits 0 when nothing
+is staged.
+
+### 7. Report back
+
+Show the file you changed and the lines you added, and `git status`. Do not commit on the user's behalf.
+
+<!-- on-demand -->
+## Hook commands
+
 **lint-staged.** lint-staged appends the staged files that match the
 glob to the command:
 
@@ -133,9 +186,12 @@ For simple-git-hooks, rerun its installer after editing the config
 (`<package-manager> simple-git-hooks`), or the change does not reach
 `.git/hooks/`.
 
+<!-- on-demand -->
+## What the hook runs
+
 What the hook runs depends on the developer's login, as for any
-`check` (see "What runs" in `%(TASKLESS_CLI)s agent check`). Logged
-in, `check` verifies the rules with the Taskless service, a network
+`check` (see `%(RECIPE_FETCH)scheck --section what-runs`).
+Logged in, `check` verifies the rules with the Taskless service, a network
 call on every commit, and runs the runtime rules that pass. Logged
 out, it runs ast-grep and Vale rules and skips runtime ones. If that
 network call makes commits too slow, `--anonymous` skips it, and with
@@ -144,25 +200,12 @@ call, and CI with a token stays the backstop. Never add
 `--dangerously-run-scripts`: it executes rule code nobody verified,
 on every commit.
 
-### 4. Rerun everything when a rule changes
+<!-- on-demand -->
+## Rule changes per tool
 
-A staged change under `.taskless/rules/` changes what `check` means,
-and it can affect files that were not staged. In that case run the
-rule tests and a full, unscoped `check`:
-
-```
-node .taskless/bin/cli.mjs verify .taskless/rules/sg
-node .taskless/bin/cli.mjs verify .taskless/rules/vale
-node .taskless/bin/cli.mjs check
-```
-
-Name the two engine directories rather than running a bare `verify`.
-A runtime rule's fixtures run only with `--dangerously-run-scripts`,
-which never belongs in a hook, and a bare `verify` exits 2 on any
-runtime rule that did not run, which blocks the commit. An engine
-directory with no rules passes, so keep both lines either way.
-
-lint-staged can express that in a JavaScript config, where a function
+A staged change under `.taskless/rules/` calls for the rule tests and a
+full, unscoped `check` (step 4). lint-staged can express that in a
+JavaScript config, where a function
 task receives the matched files and its returned commands are run as
 written, with no files appended:
 
@@ -181,7 +224,8 @@ For the other tools, add a second command scoped to
 `.taskless/rules/`, using the tool's own glob or file filter. Check
 the tool's documentation for the exact key.
 
-### 5. lint-staged and `--no-stash`
+<!-- on-demand -->
+## lint-staged and --no-stash
 
 `check` edits no tracked file: its working files go under
 `.taskless/.run/` and are removed when the run ends. So lint-staged's
@@ -198,22 +242,6 @@ silently. If lint-staged also runs a formatter that rewrites files,
 keep the stash: `--no-stash` would leave that formatter's changes
 unprotected when the commit is aborted.
 
-### 6. Verify
-
-Stage a change and run the hook directly rather than committing:
-
-- lint-staged: `<package-manager> lint-staged`
-- lefthook: `<package-manager> lefthook run pre-commit`
-- pre-commit: `pre-commit run`
-- husky or simple-git-hooks: run the hook script, `sh .husky/pre-commit`
-
-Confirm it scans the staged files, and that it exits 0 when nothing
-is staged.
-
-### 7. Report back
-
-Show the file you changed and the lines you added, and `git status`. Do not commit on the user's behalf.
-
 ## Errors
 
 - **No rules**: fetch `%(TASKLESS_CLI)s agent route`. Do not write a hook.
@@ -223,6 +251,7 @@ Show the file you changed and the lines you added, and `git status`. Do not comm
 - **The user declines a hook**: stop. `check` then runs only in CI, if
   wired, or when someone runs it.
 
+<!-- on-demand -->
 ## See Also
 
 - `%(TASKLESS_CLI)s agent check`: what `check` runs and what its exit codes mean
