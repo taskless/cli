@@ -57,7 +57,7 @@ describe("route's questions defer to the recipe that sent the agent", () => {
   it("says a calling recipe's limits win, naming every question", () => {
     expect(flat).toContain("**Another recipe may have sent you here.**");
     expect(flat).toContain(
-      "its limits win over every question below: step 7's choice, the clarifying question under \"When two destinations both fit\", and the failure fallback's confirmation."
+      "its limits win over every question this recipe asks: step 7's choice, the clarifying question under \"When two destinations both fit\", and the failure fallback's confirmation."
     );
   });
 

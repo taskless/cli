@@ -462,7 +462,8 @@ describe("onboard recipe asks one question and finishes on its own", () => {
   // taskless/cli#674: mining grouped themes more broadly than the rules
   // finally written, so runs re-read every comment to count them.
   it("records each counted comment under its candidate, at the rule's scope", async () => {
-    const scan = (await section("choosing-candidates")).replaceAll(/\s+/g, " ");
+    const scanText = await section("choosing-candidates");
+    const scan = scanText.replaceAll(/\s+/g, " ");
     expect(scan).toContain("Count while you mine, not afterwards");
     expect(scan).toContain("scoped to the rule you expect to write");
     expect(scan).toContain("recount from the list");
@@ -518,10 +519,8 @@ describe("onboard recipe asks one question and finishes on its own", () => {
       "During onboarding you ask none of them"
     );
     expect(step("Write the rules")).toMatch(/`questions-route-asks`/);
-    const write = (await section("questions-route-asks")).replaceAll(
-      /\s+/g,
-      " "
-    );
+    const writeText = await section("questions-route-asks");
+    const write = writeText.replaceAll(/\s+/g, " ");
     expect(write).toContain("During onboarding you ask none of them");
     expect(write).toContain(
       "**`route` offers a local rule or a generation** (its step 7): write the local rule."

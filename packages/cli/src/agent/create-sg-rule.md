@@ -69,34 +69,17 @@ whole rule.
    Optional but useful: `note` (multi-line guidance, supports markdown),
    `fix` (auto-fix pattern), `ignores` (file patterns to skip).
 
-   **Read every `kind:` off a real file.** A kind is a node name from
-   the language's grammar, and guessing one is how a rule ends up a
-   config error or matching nothing. Print the tree of a file the rule
-   targets:
-
-   ```
-   %(TASKLESS_CLI)s ast <file>
-   %(TASKLESS_CLI)s ast <file> --range 40:60
-   ```
-
-   It parses the file with the ast-grep this CLI ships, as the language
-   its extension resolves to, which is the parser `check` uses for it.
-   It prints named nodes only, so every kind it shows is one `kind:`
-   accepts. `--range <line>` or `--range <from>:<to>` keeps the nodes on
-   those lines and the ones enclosing them, `--lang <Language>` parses
-   as another language, and `--json` gives the same tree as data. There
-   is no need to locate an ast-grep binary yourself.
+   **Read every `kind:` off a real file; never guess one.** See
+   [Reading kinds](#reading-kinds).
 
    A `language` spelling that only looks right can take every other sg
    rule down with it, so copy it rather than typing it.
 
-5. **Check the rule against the quirks.** Read [Quirks](#quirks) and
-   [Pattern quirks](#pattern-quirks) against what you just wrote, before
+5. **Check the rule against the quirks.** Read [Quirks](#quirks),
+   [Pattern quirks](#pattern-quirks) and
+   [Relational quirks](#relational-quirks) against what you just wrote, before
    writing any tests. Most get past `validate` and then fail the whole
-   scan or match less than they should: a `$$$` next to a comma, a
-   `kind:` you did not read off `%(TASKLESS_CLI)s ast`, a callee rule
-   over `await f<T>(...)`, a `has`, `inside`, `follows` or `precedes`
-   without `stopBy`, a `not` that reuses a metavariable.
+   scan or match less than they should.
 
 6. **Write the tests.** Write at least two cases in each bucket under
    `.taskless/rules/sg/<id>/tests/`. These paths are the same ones the
@@ -195,6 +178,26 @@ fails. That includes `constraints`, `utils`, and every `not`, `has`,
 Pass a directory above a rule and every rule beneath it is checked,
 one entry per rule in the report. `.taskless/rules/sg` covers every
 ast-grep rule; no argument at all covers the project.
+
+<!-- on-demand -->
+## Reading kinds
+
+A kind is a node name from the language's grammar, and guessing one is
+how a rule ends up a config error or matching nothing. Print the tree
+of a file the rule targets:
+
+```
+%(TASKLESS_CLI)s ast <file>
+%(TASKLESS_CLI)s ast <file> --range 40:60
+```
+
+It parses the file with the ast-grep this CLI ships, as the language
+its extension resolves to, which is the parser `check` uses for it.
+It prints named nodes only, so every kind it shows is one `kind:`
+accepts. `--range <line>` or `--range <from>:<to>` keeps the nodes on
+those lines and the ones enclosing them, `--lang <Language>` parses
+as another language, and `--json` gives the same tree as data. There
+is no need to locate an ast-grep binary yourself.
 
 <!-- on-demand -->
 ## Languages
@@ -331,6 +334,7 @@ doc has an h1" is not expressible as an `sg` rule at any severity.
 
 The rest of the [Quirks](#quirks) table: the ones that come from how a
 pattern or a relational rule is written rather than from the language.
+The relational ones are under [Relational quirks](#relational-quirks).
 
 ### `$$$` next to a comma (the separator trap)
 
@@ -474,6 +478,13 @@ both branches test that instead:
 Add a `unary_expression` branch the same way if `!`, `void` or
 `typeof` matter. The wrapped match spans the `await` too, so a `fix:`
 on this rule rewrites it along with the call.
+
+<!-- on-demand -->
+## Relational quirks
+
+The [Pattern quirks](#pattern-quirks) that come from a relational rule
+rather than a pattern: a relation that looks less far than it seems,
+and a `not` that excludes more than it seems.
 
 ### `follows` and `precedes` need `stopBy: end` to cross punctuation
 
