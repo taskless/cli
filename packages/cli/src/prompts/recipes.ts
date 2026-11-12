@@ -24,6 +24,13 @@ import {
   valeMarkupList,
   valePlaintextList,
 } from "../rules/capabilities";
+import {
+  parseRecipeSource,
+  renderOutline,
+  renderSection,
+  splitSections,
+  type RecipeSource,
+} from "./sections";
 
 // Agent recipe files embedded at build time via Vite import.meta.glob.
 // Filename convention: <topic>.md for the canonical recipe and
@@ -58,25 +65,30 @@ const recipeFiles: Record<string, string> = import.meta.glob("../agent/*.md", {
 // A topic name never contains a dot, so everything after the first one in a
 // filename is the variant: `anonymous`, or a tool name as `detect` reports it.
 function buildRecipeMaps(): {
-  recipeMap: Map<string, string>;
-  anonymousMap: Map<string, string>;
-  toolMap: Map<string, Map<string, string>>;
+  recipeMap: Map<string, RecipeSource>;
+  anonymousMap: Map<string, RecipeSource>;
+  toolMap: Map<string, Map<string, RecipeSource>>;
 } {
-  const recipeMap = new Map<string, string>();
-  const anonymousMap = new Map<string, string>();
-  const toolMap = new Map<string, Map<string, string>>();
+  const recipeMap = new Map<string, RecipeSource>();
+  const anonymousMap = new Map<string, RecipeSource>();
+  const toolMap = new Map<string, Map<string, RecipeSource>>();
   for (const [path, rawContent] of Object.entries(recipeFiles)) {
-    const content = stripValeDirectives(rawContent);
     const filename = path.split("/").pop()?.replace(/\.md$/, "");
     if (!filename) continue;
+    // The on-demand markers are lifted out here, beside the Vale directives,
+    // so no rendering ever carries one. See `./sections.ts`.
+    const recipe = parseRecipeSource(
+      stripValeDirectives(rawContent),
+      `${filename}.md`
+    );
     const [topic, variant] = filename.split(".", 2) as [string, string?];
     if (variant === undefined) {
-      recipeMap.set(topic, content);
+      recipeMap.set(topic, recipe);
     } else if (variant === "anonymous") {
-      anonymousMap.set(topic, content);
+      anonymousMap.set(topic, recipe);
     } else {
-      const tools = toolMap.get(topic) ?? new Map<string, string>();
-      tools.set(variant, content);
+      const tools = toolMap.get(topic) ?? new Map<string, RecipeSource>();
+      tools.set(variant, recipe);
       toolMap.set(topic, tools);
     }
   }
@@ -1288,16 +1300,16 @@ export function getRecipe(
   topic: string,
   options: RecipeOptions = {}
 ): string | undefined {
-  const content = lookupRecipe(topic, options);
-  if (content === undefined) return undefined;
-  return renderRecipe(content, topic, options);
+  const source = lookupRecipe(topic, options);
+  if (source === undefined) return undefined;
+  return renderRecipe(source.content, topic, options);
 }
 
 /** The embedded source text for a topic, honoring the anonymous fallback. */
 function lookupRecipe(
   topic: string,
   options: RecipeOptions
-): string | undefined {
+): RecipeSource | undefined {
   const toolVariant =
     options.tool === undefined
       ? undefined
@@ -1325,9 +1337,9 @@ export function getRawRecipe(
   topic: string,
   options: RecipeOptions = {}
 ): RawRecipeText | undefined {
-  const content = lookupRecipe(topic, options);
-  if (content === undefined) return undefined;
-  const template = applyCliInvocation(content);
+  const source = lookupRecipe(topic, options);
+  if (source === undefined) return undefined;
+  const template = applyCliInvocation(source.content);
   // `variables` describes the string we hand back, so it is collected from the
   // post-strip text — not the full template. Every header line carries
   // %(CLI_VERSION)s, so collecting before the strip would report a variable
@@ -1351,17 +1363,18 @@ export function getRenderedRecipe(
   topic: string,
   options: RecipeOptions = {}
 ): RecipeText | undefined {
-  const content = lookupRecipe(topic, options);
-  if (content === undefined) return undefined;
-  const template = applyCliInvocation(content);
+  const source = lookupRecipe(topic, options);
+  if (source === undefined) return undefined;
+  const template = applyCliInvocation(source.content);
   // Variables come from the *template*, never from the rendered text — sprintf
   // has already collapsed `%%` to a literal `%` there — but from the same slice
   // of it that `text` reflects, so a header-less rendering does not report the
   // header's %(CLI_VERSION)s.
-  const source = options.header === false ? stripHeader(template) : template;
+  const variableSource =
+    options.header === false ? stripHeader(template) : template;
   return {
     text: renderTemplate(template, topic, options),
-    variables: collectVariables(source),
+    variables: collectVariables(variableSource),
   };
 }
 
@@ -1384,4 +1397,93 @@ export function getRenderedRecipe(
  */
 export function stripValeDirectives(content: string): string {
   return content.replaceAll(/^[ \t]*<!--\s*vale\b.*?-->[ \t]*\r?\n?/gm, "");
+}
+
+/**
+ * Which part of a topic the `agent` command serves.
+ *
+ * - `outline` (the default): the sections the author did not mark on demand,
+ *   then a table of contents naming the rest.
+ * - `section`: one section, by name.
+ * - `full`: the whole recipe, byte for byte what {@link getRecipe} returns.
+ */
+export type RecipeSelection =
+  | { kind: "outline" }
+  | { kind: "section"; name: string }
+  | { kind: "full" };
+
+/** What {@link getServedRecipe} found for a known topic. */
+export type ServedRecipe =
+  | { kind: "text"; text: string }
+  | { kind: "unknown-section"; name: string; sections: string[] };
+
+/**
+ * The text the `agent` command prints for a topic, or `undefined` for an
+ * unknown one. See `./sections.ts` for why a topic is served in parts.
+ *
+ * A section fetch is spelled with the same variant flags that selected this
+ * recipe, so the section comes from the same file.
+ */
+export function getServedRecipe(
+  topic: string,
+  options: RecipeOptions,
+  selection: RecipeSelection
+): ServedRecipe | undefined {
+  const source = lookupRecipe(topic, options);
+  if (source === undefined) return undefined;
+  const rendered = renderRecipe(source.content, topic, options);
+  if (selection.kind === "full") return { kind: "text", text: rendered };
+
+  const variant =
+    options.tool !== undefined && toolMap.get(topic)?.has(options.tool) === true
+      ? ` --tool=${options.tool}`
+      : options.anonymous === true && anonymousMap.has(topic)
+        ? " --anonymous"
+        : "";
+  const topicFetch = `${resolveInvocation(options)} agent ${topic}${variant}`;
+  const fetch = (name: string) => `${topicFetch} --section ${name}`;
+  const split = splitSections(rendered);
+
+  if (selection.kind === "outline") {
+    return {
+      kind: "text",
+      text: renderOutline(split, source.onDemand, fetch),
+    };
+  }
+  const section = split.sections.find(({ name }) => name === selection.name);
+  if (section === undefined) {
+    return {
+      kind: "unknown-section",
+      name: selection.name,
+      sections: split.sections.map(({ name }) => name),
+    };
+  }
+  return {
+    kind: "text",
+    text: renderSection(split, section, fetch, topicFetch),
+  };
+}
+
+/**
+ * A topic's default output as the `agent` command prints it, for the other
+ * commands that serve a recipe on their own (`onboard`, `update`) and must
+ * print the same text. `undefined` for an unknown topic.
+ */
+export function getServedRecipeText(
+  topic: string,
+  options: RecipeOptions = {}
+): string | undefined {
+  const served = getServedRecipe(topic, options, { kind: "outline" });
+  return served?.kind === "text" ? served.text : undefined;
+}
+
+/**
+ * The names of the sections a topic serves on request, for the tests that
+ * hold every topic's default output to a size budget.
+ */
+export function onDemandSections(
+  topic: string,
+  options: RecipeOptions = {}
+): string[] {
+  return [...(lookupRecipe(topic, options)?.onDemand ?? [])];
 }

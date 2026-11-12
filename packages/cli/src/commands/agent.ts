@@ -18,7 +18,7 @@ import {
   HOST_TOOL_VARIABLES,
   LINTER_VARIABLES,
   getRawRecipe,
-  getRecipe,
+  getServedRecipe,
   PACKAGE_MANAGER_DLX_MARKER,
   resolveInvocation,
   toolVariants,
@@ -154,11 +154,23 @@ export function createAgentCommand(subCommands: SubCommandsDef) {
         description:
           "Return the topic's variant for one tool, named as `detect` reports it",
       },
+      section: {
+        type: "string",
+        description:
+          "Return one section of the topic, named as its table of contents lists it",
+      },
+      full: {
+        type: "boolean",
+        description:
+          "Return the whole topic, including the sections it serves on request",
+        default: false,
+      },
     },
     async run({ args, rawArgs }) {
       // Extract positional args from rawArgs, skipping flags and their values.
-      // --dir/-d/--tool take a value; --json/--anonymous are boolean and do not.
-      const valueFlagSet = new Set(["--dir", "-d", "--tool"]);
+      // --dir/-d/--tool/--section take a value; --json/--anonymous/--full are
+      // boolean and do not.
+      const valueFlagSet = new Set(["--dir", "-d", "--tool", "--section"]);
       const positionals: string[] = [];
       for (let index = 0; index < rawArgs.length; index++) {
         const argument = rawArgs[index]!;
@@ -235,7 +247,10 @@ export function createAgentCommand(subCommands: SubCommandsDef) {
         console.log("and use local-only behavior.");
         const prefix = getCliPrefix();
         console.log(
-          `\nRun \`${prefix} agent <topic>\` for the full recipe (e.g. \`${prefix} agent create-sg-rule\`).`
+          `\nRun \`${prefix} agent <topic>\` for the recipe (e.g. \`${prefix} agent create-sg-rule\`).`
+        );
+        console.log(
+          `A long recipe ends with the sections it serves on request; print one with \`${prefix} agent <topic> --section <name>\`.`
         );
         return;
       }
@@ -250,6 +265,9 @@ export function createAgentCommand(subCommands: SubCommandsDef) {
         console.error(`Too many arguments: ${positionals.join(" ")}`);
         console.error(
           `A topic is a single token. Run \`${getCliPrefix()} agent\` for the topic index.`
+        );
+        console.error(
+          `To print one section of a topic, pass it as \`--section <name>\`.`
         );
         process.exitCode = 1;
         return;
@@ -331,22 +349,42 @@ export function createAgentCommand(subCommands: SubCommandsDef) {
             shell: detectHarnessShell(process.env),
           }
         : undefined;
-      const recipe = getRecipe(key, {
-        anonymous: args.anonymous,
-        tool,
-        invocation,
-        hostTools,
-        linters,
-        environment,
-        // What this command serves IS a fetch, so the served text says so:
-        // resolved now, fetch again next task, and a session that installed
-        // or upgraded mid-way holds a stale skill. The prompts export leaves
-        // it off; see `RecipeOptions.directive`.
-        // Except the preflight, which runs once per session.
-        directive: key !== PREFLIGHT_TOPIC[0],
-      });
+      const section = args.section as string | undefined;
+      const served = getServedRecipe(
+        key,
+        {
+          anonymous: args.anonymous,
+          tool,
+          invocation,
+          hostTools,
+          linters,
+          environment,
+          // What this command serves IS a fetch, so the served text says so:
+          // resolved now, fetch again next task, and a session that installed
+          // or upgraded mid-way holds a stale skill. The prompts export leaves
+          // it off; see `RecipeOptions.directive`.
+          // Except the preflight, which runs once per session.
+          directive: key !== PREFLIGHT_TOPIC[0],
+        },
+        // A topic prints its outline unless asked for one section or the
+        // whole text; see `src/prompts/sections.ts` (taskless/cli#672).
+        section === undefined
+          ? { kind: args.full ? "full" : "outline" }
+          : { kind: "section", name: section }
+      );
 
-      if (recipe) {
+      if (served === undefined) {
+        // cli_agent for an unknown topic — still the attempted topic string.
+        telemetry.capture("cli_agent", { topic: key });
+        console.error(`Unknown command: ${key}`);
+        console.error(`Run \`${getCliPrefix()} agent\` for available topics.`);
+        process.exitCode = 1;
+      } else if (served.kind === "unknown-section") {
+        telemetry.capture("cli_agent", { topic: key, section });
+        console.error(`Unknown section for ${key}: ${served.name}`);
+        console.error(`Sections: ${served.sections.join(", ")}`);
+        process.exitCode = 1;
+      } else if (section === undefined) {
         // cli_agent: agent fetched a specific recipe (intent signal). The topic
         // is the served topic; filtering on it replaces the old per-topic events.
         telemetry.capture("cli_agent", { topic: key });
@@ -354,7 +392,7 @@ export function createAgentCommand(subCommands: SubCommandsDef) {
         // section; the gate decides, and the render path above never sees it.
         console.log(
           await withSurveyInvite({
-            recipe,
+            recipe: served.text,
             topic: key,
             invocation,
             cwd,
@@ -362,11 +400,12 @@ export function createAgentCommand(subCommands: SubCommandsDef) {
           })
         );
       } else {
-        // cli_agent for an unknown topic — still the attempted topic string.
-        telemetry.capture("cli_agent", { topic: key });
-        console.error(`Unknown command: ${key}`);
-        console.error(`Run \`${getCliPrefix()} agent\` for available topics.`);
-        process.exitCode = 1;
+        // A section is a continuation of a topic already fetched, so it says
+        // which one: a funnel reading `cli_agent` needs to tell a second look
+        // at a topic from a fresh fetch of it. It never carries the feedback
+        // invite, which belongs to the topic.
+        telemetry.capture("cli_agent", { topic: key, section });
+        console.log(served.text);
       }
     },
   });

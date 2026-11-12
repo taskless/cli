@@ -46,7 +46,7 @@ import {
 import { getCliVersion } from "../wizard/intro";
 
 import { getOnboardTrailer } from "./onboard";
-import { getRecipe } from "../prompts/recipes";
+import { getServedRecipeText } from "../prompts/recipes";
 import {
   detectCliInvocation,
   getCliPrefix,
@@ -297,7 +297,9 @@ export const updateCommand = defineCommand({
     // cannot drift into two different sets of instructions.
     if (!args.rules) {
       const telemetry = await getTelemetry(cwd);
-      const recipe = getRecipe("update", {
+      // The outline `agent update` serves, so the two spellings stay one
+      // text: the walk, then the sections printed on request (taskless/cli#672).
+      const recipe = getServedRecipeText("update", {
         anonymous: args.anonymous,
         invocation: detectCliInvocation(processLauncherContext()),
         directive: true,
