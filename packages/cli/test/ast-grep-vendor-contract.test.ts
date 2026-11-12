@@ -26,7 +26,7 @@ import {
  * ast-grep's observable behaviour, pinned.
  *
  * Everything here is a property of a **vendored third-party binary**, exact-
- * pinned at `0.45.3` in `packages/cli/package.json`. Our own tests assert that
+ * pinned at `0.51.1` in `packages/cli/package.json`. Our own tests assert that
  * our code behaves correctly *given* these; this file asserts the givens, so an
  * ast-grep bump that changes one fails here — naming the assumption and the
  * code that rests on it — instead of surfacing downstream.
