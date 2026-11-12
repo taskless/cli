@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
@@ -237,6 +237,23 @@ withSg("against the bundled ast-grep", () => {
     expect(await detectAstLanguage(binary!, cwd, "a.yaml")).toBe("Yaml");
   });
 
+  it("resolves a file that ignore rules would skip in a directory walk", async () => {
+    // The probe names the file, and ast-grep filters only what it walks to, so
+    // a gitignored, hidden or node_modules path still reports its language.
+    await mkdir(join(cwd, ".git"));
+    await mkdir(join(cwd, "ignored"));
+    await mkdir(join(cwd, "node_modules", "pkg"), { recursive: true });
+    await writeFile(join(cwd, ".gitignore"), "ignored/\n");
+    for (const file of [
+      "ignored/a.ts",
+      ".hidden.ts",
+      "node_modules/pkg/a.ts",
+    ]) {
+      await writeFile(join(cwd, file), "x\n");
+      expect(await detectAstLanguage(binary!, cwd, file)).toBe("TypeScript");
+    }
+  });
+
   it("ignores an sgconfig.yml's languageGlobs, which check does not use", async () => {
     await writeFile(
       join(cwd, "sgconfig.yml"),
@@ -335,10 +352,16 @@ describe("taskless ast", () => {
     [["ast", "a.ts", "--range", "5:2"], /--range takes/],
     [["ast", "a.ts", "--range", "40"], /No node touches --range 40/],
     [["ast", "empty.ts"], /is empty/],
+    [["ast", "latin1.js"], /is not valid UTF-8/],
   ])("refuses %j with INVALID_INPUT", async (args, message) => {
     await writeFile(join(cwd, "a.ts"), "let a = 1;\n");
     await writeFile(join(cwd, "notes.unknownext"), "hello\n");
     await writeFile(join(cwd, "empty.ts"), "");
+    // "// café" in Latin-1: 0xE9 alone is not a UTF-8 sequence.
+    await writeFile(
+      join(cwd, "latin1.js"),
+      Buffer.from([...Buffer.from("// caf"), 0xe9, 0x0a])
+    );
     const result = await runCli([...args, "--json"], cwd);
     expect(result.exitCode).toBe(1);
     const envelope = JSON.parse(result.stdout) as {
