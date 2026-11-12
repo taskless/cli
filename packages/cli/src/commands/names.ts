@@ -11,6 +11,7 @@
  */
 export const SUBCOMMAND_NAMES = [
   "agent",
+  "ast",
   "auth",
   "check",
   "detect",

@@ -266,3 +266,13 @@ A per-engine recipe SHALL keep only what is that engine's own, such as Vale's sc
 
 - **WHEN** the agent writes fixtures for a rule that declares `files:` or Vale matchers
 - **THEN** the shared section SHALL direct it to place each case's files at a path the scope accepts
+
+### Requirement: The ast-grep authoring recipe sends kind lookups to the ast command
+
+`create-sg-rule` SHALL tell the author to read every `kind:` off `taskless ast <file>` run on a file the rule targets, and SHALL name its `--range`, `--lang` and `--json` options. It SHALL NOT direct the author to run ast-grep's `--debug-query` or to locate an ast-grep binary. The `sg-regex-needs-kind` message from `validate` SHALL name the same command as where to find a kind to add.
+
+#### Scenario: The recipe names the command
+
+- **WHEN** an agent runs `taskless agent create-sg-rule`
+- **THEN** the recipe SHALL contain an invocation of `ast <file>`
+- **AND** it SHALL NOT contain `--debug-query`

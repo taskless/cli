@@ -1,4 +1,4 @@
-# Topic: create-sg-rule     (CLI v%(CLI_VERSION)s / topic v15)
+# Topic: create-sg-rule     (CLI v%(CLI_VERSION)s / topic v16)
 
 %(ONE_COMMAND_PER_CALL)s
 
@@ -71,6 +71,24 @@ whole rule.
    Optional but useful: `note` (multi-line guidance, supports markdown),
    `fix` (auto-fix pattern), `ignores` (file patterns to skip).
 
+   **Read every `kind:` off a real file.** A kind is a node name from
+   the language's grammar, and guessing one is how a rule ends up a
+   config error or matching nothing. Print the tree of a file the rule
+   targets:
+
+   ```
+   %(TASKLESS_CLI)s ast <file>
+   %(TASKLESS_CLI)s ast <file> --range 40:60
+   ```
+
+   It parses the file with the ast-grep this CLI ships, as the language
+   its extension resolves to, which is the parser `check` uses for it.
+   It prints named nodes only, so every kind it shows is one `kind:`
+   accepts. `--range <line>` or `--range <from>:<to>` keeps the nodes on
+   those lines and the ones enclosing them, `--lang <Language>` parses
+   as another language, and `--json` gives the same tree as data. There
+   is no need to locate an ast-grep binary yourself.
+
    **`language` is ast-grep's vocabulary.** The vendored rule schema
    types the field as a bare string with no enum, so the schema layer
    accepts anything. `validate` checks it separately: an off-list spelling
@@ -103,7 +121,7 @@ whole rule.
    assumption passes anyway. The table says which ones `validate` does
    catch. Look again at:
    - a `$$$` next to a comma (the separator trap),
-   - any `kind:` you read off a `--debug-query=cst` dump,
+   - any `kind:` you did not read off `%(TASKLESS_CLI)s ast`,
    - a rule that keys on a call's callee, if callers write
      `await f<T>(...)`,
    - a `has`, `inside`, `follows` or `precedes` without `stopBy`, or
@@ -330,7 +348,7 @@ behaves identically, so there is no version to wait for.
 
 ### A keyword is not a valid `kind`
 
-`--debug-query=cst` prints keywords as nodes. For a constructor
+A concrete syntax tree prints keywords as nodes. For a constructor
 parameter `readonly x: number` in TypeScript:
 
 ```
@@ -342,13 +360,13 @@ required_parameter
 
 but `kind: readonly` is a config error, ``Kind `readonly` is
 invalid``. `readonly` is an anonymous token, and `kind:` accepts only
-named nodes. The CST dump prints both the same way, so reading it
+named nodes. A CST printout shows both the same way, so reading one
 cannot tell you which names are valid kinds. This holds for every
 keyword, not only `readonly`.
 
-Workaround: read kinds off `--debug-query=ast` instead, which prints
-named nodes only. A name that appears there is a usable kind; one that
-appears only in the CST dump is not. To match on the keyword, match
+Workaround: read kinds off `%(TASKLESS_CLI)s ast <file>` instead, which
+prints named nodes only. A name that appears there is a usable kind, and
+a keyword never does. To match on the keyword, match
 its named parent and test the parent's text. Cover every shape the
 keyword appears in: after a decorator or an accessibility modifier
 (`private readonly x`), and on an optional parameter (`readonly x?`),

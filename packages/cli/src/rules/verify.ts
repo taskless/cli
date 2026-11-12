@@ -34,6 +34,17 @@ import { violate, type RuleViolation } from "./constraints";
 import { isValidRuleId } from "./validate-id";
 import { parseSgRuleAlone } from "./sg-parse";
 import { findSgTraps } from "./sg-traps";
+import { getCliPrefix } from "../util/package-manager";
+
+/**
+ * The `sg-regex-needs-kind` message, with where to find a kind to add.
+ *
+ * Appended here rather than in `findRegexWithoutKind`, which lives with the
+ * rule schema and stays free of the CLI's own invocation.
+ */
+function withKindPointer(message: string): string {
+  return `${message} Run \`${getCliPrefix()} ast <file>\` on a file in the rule's language to see the kinds it has.`;
+}
 
 // --- Types ---
 
@@ -140,7 +151,7 @@ function validateSchema(ruleData: unknown): LayerResult {
     ) {
       violations.push({
         constraintId: REGEX_NEEDS_KIND,
-        message: pathPrefixed(issue),
+        message: withKindPointer(pathPrefixed(issue)),
       });
     }
   }
