@@ -1024,6 +1024,34 @@ describe("taskless detect", () => {
       expect(customAnalyzer(result)?.customRules?.count).toBe(2);
     });
 
+    it("reports a reference repeated within one file once", async () => {
+      await writeAnalyzerProject();
+      const reference = String.raw`<ProjectReference Include="..\..\analyzers\House.Analyzers\House.Analyzers.csproj" OutputItemType="Analyzer" />`;
+      await writeNested(
+        cwd,
+        "src/App/App.csproj",
+        `<Project><ItemGroup>${reference}${reference}</ItemGroup></Project>\n`
+      );
+      const result = await detect(cwd);
+      expect(customAnalyzer(result)?.evidence).toEqual([
+        "analyzer project analyzers/House.Analyzers/House.Analyzers.csproj (src/App/App.csproj)",
+      ]);
+    });
+
+    it("names the file holding each reference it cannot find", async () => {
+      const reference =
+        '<Project><ItemGroup><ProjectReference Include="$(AnalyzersRoot)Missing.Analyzers.csproj" OutputItemType="Analyzer" /></ItemGroup></Project>\n';
+      await writeNested(cwd, "src/App/App.csproj", reference);
+      await writeNested(cwd, "src/Lib/Lib.csproj", reference);
+      const result = await detect(cwd);
+      expect(
+        (customAnalyzer(result)?.customRules?.evidence ?? []).toSorted()
+      ).toEqual([
+        "$(AnalyzersRoot)Missing.Analyzers.csproj (project not found, src/App/App.csproj)",
+        "$(AnalyzersRoot)Missing.Analyzers.csproj (project not found, src/Lib/Lib.csproj)",
+      ]);
+    });
+
     it("reports a project it cannot find with an unknown count", async () => {
       await writeNested(
         cwd,
@@ -1039,7 +1067,7 @@ describe("taskless detect", () => {
         customRules: {
           count: "unknown",
           evidence: [
-            "$(AnalyzersRoot)Missing.Analyzers.csproj (project not found)",
+            "$(AnalyzersRoot)Missing.Analyzers.csproj (project not found, Directory.Build.props)",
           ],
         },
       });

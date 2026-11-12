@@ -822,7 +822,8 @@ function nugetDepsFromToolManifest(raw: string | undefined): string[] {
 /**
  * Analyzer projects an MSBuild file references: each `ProjectReference` whose
  * `OutputItemType` is `Analyzer`, as an attribute or as child metadata, with
- * its `Include` as written. Comments are removed first, as for NuGet.
+ * its `Include` as written, once each. Comments are removed first, as for
+ * NuGet.
  */
 function analyzerReferencesFromMsbuild(raw: string | undefined): string[] {
   if (raw === undefined) return [];
@@ -844,7 +845,7 @@ function analyzerReferencesFromMsbuild(raw: string | undefined): string[] {
         .filter((path) => path !== "")
     );
   }
-  return includes;
+  return [...new Set(includes)];
 }
 
 /**

@@ -520,10 +520,10 @@ async function countRoslynAnalyzers(
   let unknown = false;
   const evidence: string[] = [];
   const counted = new Set<string>();
-  for (const { include, project } of context.analyzerReferences) {
+  for (const { declaredIn, include, project } of context.analyzerReferences) {
     if (project === undefined) {
       unknown = true;
-      evidence.push(`${include} (project not found)`);
+      evidence.push(`${include} (project not found, ${declaredIn})`);
       continue;
     }
     const directory = dirname(project);
