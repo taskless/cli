@@ -645,12 +645,15 @@ describe("agent command parity", () => {
   });
 
   it.each([...TOPICS])(
-    "matches `taskless agent %s` byte for byte",
+    "matches `taskless agent %s --full` byte for byte",
     async (topic) => {
+      // `--full`, because the default output of a long topic is its outline
+      // (taskless/cli#672) and the export renders the whole recipe.
       const { stdout } = await execFileAsync("node", [
         binPath,
         "agent",
         topic,
+        "--full",
         "-d",
         emptyDirectory,
       ]);
@@ -743,10 +746,13 @@ describe("route's per-linter passage", () => {
     const directory = await mkdtemp(join(tmpdir(), "taskless-route-"));
     try {
       await writeFile(join(directory, "ruff.toml"), "line-length = 100\n");
+      // The per-linter passage is served on request (taskless/cli#672).
       const { stdout } = await execFileAsync("node", [
         binPath,
         "agent",
         "route",
+        "--section",
+        "legacy-linters",
         "-d",
         directory,
       ]);
@@ -880,6 +886,9 @@ describe("prompts entry carries no CLI runtime", () => {
     // this graph does not reach the `node:fs` the detector reads with.
     "../detect/custom-rule-threshold",
     "./recipes.js",
+    // The table-of-contents helpers the `agent` command serves a long topic
+    // with. String work only, and it imports nothing.
+    "./sections",
   ]);
 
   it("imports nothing outside the allowlist at source level", async () => {

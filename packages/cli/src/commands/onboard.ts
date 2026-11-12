@@ -7,7 +7,7 @@ import { defineCommand } from "citty";
 import { detectHostTools } from "../detect/host-tools";
 import { ensureSchema } from "../filesystem/directory";
 import { readManifest, writeManifest } from "../filesystem/manifest";
-import { getRecipe } from "../prompts/recipes";
+import { getServedRecipeText } from "../prompts/recipes";
 import { withSurveyInvite } from "../survey/invite";
 import { getTelemetry } from "../telemetry";
 import { CLIError } from "../util/cli-error";
@@ -147,7 +147,9 @@ export const onboardCommand = defineCommand({
     // `agent onboard` computes the same state from the same `cwd`; the two
     // must agree, and `onboard.test.ts` asserts they do byte for byte.
     const hostTools = await detectHostTools(cwd);
-    const recipe = getRecipe("onboard", {
+    // The outline, as `agent onboard` serves it: the steps, then the
+    // sections printed on request (taskless/cli#672).
+    const recipe = getServedRecipeText("onboard", {
       invocation,
       hostTools,
       // Served text is a fetch, the same as `agent onboard`, which this must

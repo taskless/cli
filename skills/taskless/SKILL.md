@@ -179,6 +179,11 @@ earlier in this session is not a substitute for fetching it again, even for
 the same topic. Start each Taskless task with `%(TASKLESS_CLI)s agent <topic>`
 and follow the copy it returns.
 
+A long recipe prints its steps and ends with a list of sections it serves on
+request. When a step names one, print it with
+`%(TASKLESS_CLI)s agent <topic> --section <name>` before you act on that step.
+It is part of the same recipe, so do not skip it or work from memory instead.
+
 ## Run each Taskless command on its own
 
 Run them from the project root, the directory that contains `.taskless/`
