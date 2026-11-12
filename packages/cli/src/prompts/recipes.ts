@@ -856,11 +856,12 @@ for you, so write no pagination loop of your own. Below, START is the
 window's first day as YYYY-MM-DD. Send bulk output to a file outside
 the repository and read it from there rather than into your context.
 
-- **List the window's merged MRs**, keeping those whose \`merged_at\`
-  falls inside it:
+- **List the window's merged MRs.** An older GitLab may ignore
+  \`merged_after\` and return every merged MR, so still drop any whose
+  \`merged_at\` falls before START:
 
   \`\`\`
-  glab api --paginate "projects/:id/merge_requests?state=merged&updated_after=START&per_page=100"
+  glab api --paginate "projects/:id/merge_requests?state=merged&merged_after=START&per_page=100"
   \`\`\`
 
 - **Review notes come one MR at a time**, from
