@@ -1,4 +1,4 @@
-# Topic: onboard     (CLI v%(CLI_VERSION)s / topic v12)
+# Topic: onboard     (CLI v%(CLI_VERSION)s / topic v13)
 
 %(ONE_COMMAND_PER_CALL)s
 
