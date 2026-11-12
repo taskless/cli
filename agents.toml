@@ -3,7 +3,7 @@ agents = ["claude"]
 
 [trust]
 github_orgs = [ "taskless" ]
-github_repos = [ "getsentry/skills", "getsentry/dotagents" ]
+github_repos = [ "getsentry/skills", "getsentry/dotagents", "cloudflare/security-audit-skill" ]
 
 [[skills]]
 name = "dotagents"
@@ -16,3 +16,7 @@ source = "getsentry/skills"
 [[skills]]
 name = "pr-writer"
 source = "getsentry/skills"
+
+[[skills]]
+name = "security-audit"
+source = "cloudflare/security-audit-skill"
