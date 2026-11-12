@@ -167,7 +167,7 @@ test("applyNightlyIdentity renames and restamps, and changes nothing else", () =
 
   // A nightly is a drop-in: same executable name, same pinned platform deps.
   assert.deepEqual(nightly.bin, COMMITTED_CLI_MANIFEST.bin);
-  assert.deepEqual(nightly.bin, { taskless: "./dist/index.js" });
+  assert.deepEqual(nightly.bin, { taskless: "./dist/bin.js" });
   assert.deepEqual(
     nightly.optionalDependencies,
     COMMITTED_CLI_MANIFEST.optionalDependencies

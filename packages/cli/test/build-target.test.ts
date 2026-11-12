@@ -222,7 +222,7 @@ describe("the nightly target", () => {
   });
 
   // `dist`, unlike self — the tarball is packed with `files: ["dist"]` and
-  // `bin: ./dist/index.js`, so a nightly build overwrites a prod build.
+  // `bin: ./dist/bin.js`, so a nightly build overwrites a prod build.
   it("emits to dist, the same directory as prod", () => {
     expect(resolveOutputDirectory(nightlyEnvironment)).toBe(OUT_DIRS.prod);
     expect(OUT_DIRS.nightly).toBe("dist");
