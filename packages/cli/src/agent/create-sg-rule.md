@@ -1,4 +1,4 @@
-# Topic: create-sg-rule     (CLI v%(CLI_VERSION)s / topic v14)
+# Topic: create-sg-rule     (CLI v%(CLI_VERSION)s / topic v15)
 
 %(ONE_COMMAND_PER_CALL)s
 
@@ -163,8 +163,9 @@ whole rule.
 | a case didn't behave as expected     | fix the rule pattern OR the test case           |
 | the rule's scope excluded a case     | move the fixture to a path `files:` admits      |
 
-   A `regex` without an accompanying `kind` fails validation, the two
-   always travel together.
+   Every `regex`, at any depth, needs a `kind` beside it, or
+   validation fails. That includes `constraints`, `utils`, and every
+   `not`, `has`, `inside`, `any` and `all` sub-rule; see **Quirks**.
 
    Pass a directory above a rule and every rule beneath it is checked,
    one entry per rule in the report. `.taskless/rules/sg` covers every
@@ -188,9 +189,9 @@ whole rule.
 
 ## Quirks
 
-Each of these comes from a grammar or from ast-grep itself, so a rule
-written carefully from the upstream reference still hits them. They
-fail in one of two ways:
+Each of these, except the first, comes from a grammar or from ast-grep
+itself, so a rule written carefully from the upstream reference still
+hits them. Those fail in one of two ways:
 
 - **Config error.** The scan exits 8 and names the problem. Loud, but
   it aborts config parsing, so every other `sg` rule in the project
@@ -208,6 +209,7 @@ sometimes what the author meant. Read it and decide.
 
 | quirk                                          | symptom                 | `validate` reports it       |
 |------------------------------------------------|-------------------------|-----------------------------|
+| a `regex` without a `kind`, at any depth       | refused by `validate`   | yes                         |
 | `language:` copied from `detect --json`        | config error, or notice | yes                         |
 | `TypeScript` declared over `.tsx` files        | silent                  | only if `files:` names .tsx |
 | an inline construct named in a `Markdown` rule | config error, or silent | the `kind:` form only       |
@@ -216,6 +218,44 @@ sometimes what the author meant. Read it and decide.
 | a callee rule over `await f<T>(...)`           | silent                  | as a notice                 |
 | `follows` or `precedes` without `stopBy: end`  | silent                  | as a notice                 |
 | a `not` containing a bare metavariable         | silent                  | no                          |
+
+### Every `regex`, at any depth, needs a `kind`
+
+This one is a Taskless rule, wider than ast-grep's own check. ast-grep
+refuses a bare `regex` only at the top of `rule` (a config error); in
+any sub-rule it runs it against the text of every node it reaches,
+which is ambiguous and slow. `validate` refuses a `regex` with no
+`kind` beside it anywhere it appears: the top of `rule`,
+`constraints.<VAR>`, `utils`, `not`, `has`/`inside` (however deeply
+nested), `precedes`/`follows`, and each `any`/`all` branch.
+
+A sibling `any:` whose every branch sets a `kind` counts, so a
+metavariable that may capture one of several kinds keeps a single
+regex. A callee is an `identifier` in `rpc()` and a
+`member_expression` in `client.rpc()`:
+
+```yaml
+rule:
+  pattern: "$CALLEE()"
+constraints:
+  CALLEE:
+    any:
+      - kind: identifier
+      - kind: member_expression
+    regex: "(^|\\.)rpc$"
+```
+
+An `all:` with one branch that sets a `kind` counts too. A `kind`
+inside `not`, `has` or another relation does not, because it describes
+a different node.
+
+To find the kind, run ast-grep with `--debug-query=ast` on a sample of
+the code and take the named node the regex should match. Under
+`constraints`, that is the node the metavariable captures, which is
+not always the obvious one: the method `$M` captures in `$OBJ.$M()` is
+a `property_identifier` in TypeScript, not an `identifier`. Read it off
+the dump rather than guessing, and if the metavariable can capture
+several kinds, list them in a sibling `any:` as above.
 
 ### `language:` copied from `detect --json`
 

@@ -82,9 +82,9 @@ export const RULE_CONSTRAINTS = [
     engine: "sg",
     enforcedBy: "validate",
     summary:
-      "A `regex` needs a sibling `kind`, in `rule`, `constraints` and `utils`.",
+      "Every `regex`, at any depth, needs a `kind` beside it: a sibling `kind`, or a sibling `any` whose every branch sets one. This covers `rule`, `constraints`, `utils` and every sub-rule beneath them (`any`, `all`, `not`, `has`, `inside`, `precedes`, `follows`).",
     rationale:
-      "A regex match with no kind to anchor it is ambiguous and slow: it is applied to every node rather than to the one shape the author meant. ast-grep accepts it, so the engine is not the thing that will tell you.",
+      "A regex match with no kind to anchor it is ambiguous and slow: it is applied to every node rather than to the one shape the author meant. ast-grep refuses it only at the top of `rule` and runs it in any sub-rule, so beyond that one spot the engine is not the thing that will tell you. The pairing is part of the rule schema Taskless publishes (`if`/`then` on every rule definition), so a schema-aware editor flags the same paths `validate` does.",
   },
   {
     id: "sg-language-accepted",

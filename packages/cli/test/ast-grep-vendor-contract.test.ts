@@ -1216,6 +1216,86 @@ withSg("ast-grep vendor contract", () => {
    * same features showed no difference at all, because neither bug fires
    * unless a metavariable is bound in the specific position the fix changed.
    */
+  /**
+   * THE REGEX/KIND PAIRING, MEASURED AT 0.51.1.
+   *
+   * `sg-regex-needs-kind` is a Taskless rule, and `create-sg-rule.md` says
+   * under Quirks how far ast-grep's own check goes: it refuses a bare regex at
+   * the top of `rule` and runs one anywhere else. The recipe also tells
+   * authors that a sibling `any:` of kinds anchors a constraint's regex, and
+   * that the method `$OBJ.$M()` captures is a `property_identifier`. Each of
+   * those is ast-grep's behavior, so each is pinned here.
+   */
+  describe("regex and kind", () => {
+    const callSource = [
+      "rpc();",
+      "client.rpc();",
+      "other();",
+      "client.rpcx();",
+      "",
+    ].join("\n");
+
+    it("refuses a bare regex at the top of `rule` as a config error", () => {
+      const outcome = grammarFindings('  regex: "^rpc"', callSource);
+      expect(outcome.status).toBe(8);
+      expect(outcome.stderr).toContain(
+        "Rule must specify a set of AST kinds to match"
+      );
+    });
+
+    it("runs a bare regex in a sub-rule, against any node's text", () => {
+      // Nothing upstream refuses this shape, which is why the house rule
+      // reaches past the top of `rule`. `rpc$` matches the callee whatever
+      // its kind: an identifier in one call, a member_expression in the other.
+      expect(
+        grammarMatches(
+          [
+            "  kind: call_expression",
+            '  has: { field: function, regex: "rpc$" }',
+          ].join("\n"),
+          callSource
+        )
+      ).toEqual(["rpc()", "client.rpc()"]);
+    });
+
+    it("anchors a constraint's regex with a sibling `any:` of kinds", () => {
+      // The recipe's example verbatim: one regex, two kinds.
+      expect(
+        grammarMatches(
+          [
+            '  pattern: "$CALLEE()"',
+            "constraints:",
+            "  CALLEE:",
+            "    any:",
+            "      - kind: identifier",
+            "      - kind: member_expression",
+            String.raw`    regex: "(^|\\.)rpc$"`,
+          ].join("\n"),
+          callSource
+        )
+      ).toEqual(["rpc()", "client.rpc()"]);
+    });
+
+    it("captures the method in `$OBJ.$M()` as a property_identifier", () => {
+      const [asIdentifier, asProperty] = [
+        "identifier",
+        "property_identifier",
+      ].map((kind) =>
+        [
+          '  pattern: "$OBJ.$M()"',
+          "constraints:",
+          "  M:",
+          `    kind: ${kind}`,
+          '    regex: "^rpc$"',
+        ].join("\n")
+      );
+      expect(grammarMatches(asIdentifier ?? "", callSource)).toEqual([]);
+      expect(grammarMatches(asProperty ?? "", callSource)).toEqual([
+        "client.rpc()",
+      ]);
+    });
+  });
+
   describe("Haskell names a type synonym `type_synonym`", () => {
     // RENAMED AT 0.51.0, which moved tree-sitter-haskell from 0.23.1 to
     // 0.24.1. Upstream fixed a typo in the kind (`fix!: typo: 'synomym' ->

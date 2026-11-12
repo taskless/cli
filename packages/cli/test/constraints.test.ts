@@ -191,7 +191,7 @@ const VIOLATIONS: Record<string, Scenario> = {
         rule: { ...VALID_RULE, rule: { regex: "^eval$" } },
         fixture: VALID_FIXTURE,
       }),
-    names: /uses "regex" without a sibling "kind" field/,
+    names: /rule: Every "regex", at any depth, needs a "kind" beside it/,
   },
   "sg-language-accepted": {
     run: () =>

@@ -3,9 +3,10 @@ import { readFile } from "node:fs/promises";
 import { parse } from "yaml";
 
 import {
+  astGrepRuleJsonSchema,
   astGrepRuleSchema,
+  REGEX_NEEDS_KIND,
   TASKLESS_REQUIRED_FIELDS,
-  findRegexWithoutKind,
 } from "../schemas/ast-grep-rule";
 import { pathPrefixed, schemaLayer } from "../schemas/layer";
 import {
@@ -28,7 +29,6 @@ import {
 import { ensureTasklessDirectory } from "../filesystem/directory";
 import { ruleFilePath } from "./engines";
 import { RULE_TESTS_DIRECTORY, RULES_DIRECTORY } from "./layout";
-import astGrepJsonSchema from "../generated/ast-grep-rule-schema.json";
 import { RULE_EXAMPLES } from "./verify-examples";
 import { violate, type RuleViolation } from "./constraints";
 import { isValidRuleId } from "./validate-id";
@@ -105,14 +105,14 @@ export interface VerifyResult {
 
 export function getSchemaPayload(): Record<string, unknown> {
   return {
-    astGrepSchema: astGrepJsonSchema,
+    astGrepSchema: astGrepRuleJsonSchema,
     tasklessRequirements: {
       requiredFields: [...TASKLESS_REQUIRED_FIELDS],
       rules: [
         {
           name: "regex-requires-kind",
           description:
-            "Rules using `regex` in any position must also specify `kind` at the same level. Without kind, regex matches against node text which is ambiguous and slow.",
+            "Every `regex`, at any depth (`rule`, `constraints`, `utils`, and every sub-rule beneath them), needs a `kind` beside it: a sibling `kind`, or a sibling `any` whose every branch sets `kind`. `astGrepSchema` states this as `if`/`then` on its rule definitions. Without kind, regex matches against node text which is ambiguous and slow.",
         },
       ],
     },
@@ -127,7 +127,24 @@ function validateSchema(ruleData: unknown): LayerResult {
   // way whichever engine wrote it. `pathPrefixed` is the half that differs:
   // ast-grep's messages come from an upstream JSON Schema and are generic
   // ("expected string"), so the path is what makes them actionable.
-  return schemaLayer(astGrepRuleSchema.safeParse(ruleData), pathPrefixed);
+  const result = astGrepRuleSchema.safeParse(ruleData);
+  const layer = schemaLayer(result, pathPrefixed);
+  // The regex/kind pairing lives in the schema (see `astGrepRuleJsonSchema`),
+  // and its issues say which constraint they are, so they are attributed
+  // here rather than re-derived from their wording.
+  const violations: RuleViolation[] = [];
+  for (const issue of result.error?.issues ?? []) {
+    if (
+      issue.code === "custom" &&
+      issue.params?.constraintId === REGEX_NEEDS_KIND
+    ) {
+      violations.push({
+        constraintId: REGEX_NEEDS_KIND,
+        message: pathPrefixed(issue),
+      });
+    }
+  }
+  return { ...layer, violations };
 }
 
 /**
@@ -306,38 +323,6 @@ async function validateRequirements(
         "sg-required-fields",
         `Missing required field: ${field}`
       );
-    }
-  }
-
-  // Check regex-requires-kind in rule and other top-level rule containers
-  for (const key of ["rule", "constraints", "utils"]) {
-    const container = ruleData[key];
-    if (
-      container &&
-      typeof container === "object" &&
-      !Array.isArray(container)
-    ) {
-      if (key === "rule") {
-        for (const message of findRegexWithoutKind(
-          container as Record<string, unknown>
-        )) {
-          violate(collected, "sg-regex-needs-kind", message);
-        }
-      } else {
-        // constraints/utils are Record<string, RuleObject>
-        for (const [name, value] of Object.entries(
-          container as Record<string, unknown>
-        )) {
-          if (value && typeof value === "object" && !Array.isArray(value)) {
-            for (const message of findRegexWithoutKind(
-              value as Record<string, unknown>,
-              `${key}.${name}`
-            )) {
-              violate(collected, "sg-regex-needs-kind", message);
-            }
-          }
-        }
-      }
     }
   }
 
@@ -601,7 +586,7 @@ export async function verifyRule(
   const schemaResult: SchemaLayerResult = {
     valid: schemaErrors.length === 0,
     errors: schemaErrors,
-    violations: language.violations,
+    violations: [...(parsed.violations ?? []), ...language.violations],
     notices: [...language.notices, ...findSgTraps(ruleRecord)],
   };
 
