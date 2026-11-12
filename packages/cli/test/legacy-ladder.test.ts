@@ -18,8 +18,8 @@ function tool(name: string): string {
 describe("route's legacy ladder", () => {
   const route = recipe("route");
 
-  it("is topic v10", () => {
-    expect(route).toMatch(/^# Topic: route {5}\(CLI v.+ \/ topic v10\)/m);
+  it("is topic v11", () => {
+    expect(route).toMatch(/^# Topic: route {5}\(CLI v.+ \/ topic v11\)/m);
   });
 
   it("orders shipped rule, repo examples, Taskless static, Taskless runtime", () => {
@@ -44,6 +44,29 @@ describe("route's legacy ladder", () => {
     expect(route).toContain("do not ask. The legacy ladder in step 4 decides");
     expect(route).not.toContain(
       "Present both with trade-offs and let the user\n  choose."
+    );
+  });
+});
+
+// #675: route's own questions must yield to a recipe that limits asking,
+// such as onboard, or reading the two together gives two answers.
+describe("route's questions defer to the recipe that sent the agent", () => {
+  const route = recipe("route");
+  const flat = route.replaceAll(/\s+/g, " ");
+
+  it("says a calling recipe's limits win, naming every question", () => {
+    expect(flat).toContain("**Another recipe may have sent you here.**");
+    expect(flat).toContain(
+      "its limits win over every question below: step 7's choice, the clarifying question under \"When two destinations both fit\", and the failure fallback's confirmation."
+    );
+  });
+
+  it("qualifies step 7's choice and the clarifying question in place", () => {
+    expect(flat).toContain(
+      "If a recipe that limits questions sent you here, do not offer the choice"
+    );
+    expect(flat).toContain(
+      "ask the user a clarifying question, unless a recipe that limits questions sent you here; then that recipe decides."
     );
   });
 });

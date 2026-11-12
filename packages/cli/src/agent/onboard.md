@@ -176,6 +176,25 @@ making the case for running them in CI.
    many instances of its pattern you saw in the code: the report asks
    for that estimate.
 
+   `route`, and the recipes it sends you to, ask the user in a few
+   places. During onboarding you ask none of them; step 9 is the only
+   clarifying question, and only in its case. Decide each yourself:
+
+   - **`route` offers a local rule or a generation** (its step 7):
+     write the local rule. Generation needs a login, and onboarding
+     stays logged out.
+   - **You cannot tell which destination fits** (`route`'s clarifying
+     question): skip the candidate. Name it in one line when you show
+     the report summary, as a candidate you left unwritten and why.
+   - **A local rule fails its cases** (`route`'s failure fallback): do
+     not offer generation. If the pattern needs runtime evidence, keep it
+     as a Taskless Cloud candidate as above; otherwise skip it and name
+     it the same way.
+   - **A destination recipe asks you to confirm something**, such as
+     exclusions, an overlapping rule, or which linter owns it: decide
+     from what you read in the repository. Where you cannot decide, skip
+     the candidate and name it the same way.
+
 9. **Clarify only when stuck.** You may ask the user something only
    when you are unsure what rules to write AND the report cannot be
    built yet because there are fewer than three working Taskless
