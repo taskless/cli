@@ -12,7 +12,7 @@ import { defineCommand } from "citty";
 
 import { hasValeRules } from "../rules/dispatch";
 import { splitRawArguments } from "../util/argv";
-import { formatText } from "../util/format";
+import { formatSummaryText, formatText } from "../util/format";
 import { listRuleIds, planEngineDispatch } from "../rules/engines";
 import { getTelemetry } from "../telemetry";
 import { outputSchema as checkOutputSchema } from "../schemas/check";
@@ -23,6 +23,8 @@ import { requireReconciledEngines } from "../rules/engine-gate";
 import { discoverRuntimeRules } from "../rules/runtime/discover";
 import { resolveRuleSelection, type RuleSelection } from "../rules/rule-filter";
 import { scanProject } from "../rules/scan-project";
+import { summarizeFindings } from "../rules/summarize-findings";
+import type { CheckResult } from "../types/check";
 import { isCiEnvironment } from "../util/interactive";
 import { markNotice } from "../util/notices";
 import {
@@ -262,6 +264,12 @@ export const checkCommand = defineCommand({
       type: "string",
       description: "Run only the named rule; repeatable (--rule a --rule b)",
     },
+    summary: {
+      type: "boolean",
+      description:
+        "Report finding counts per rule instead of every finding; with --json, omits `results`",
+      default: false,
+    },
     "include-warnings": {
       type: "boolean",
       description:
@@ -282,7 +290,7 @@ export const checkCommand = defineCommand({
 
     // Warnings/notices are advisory human output; suppress them under --json so
     // the machine output stays the
-    // { success, results, skipped?, failures?, notices? } shape. Engine
+    // { success, results?, summary, skipped?, failures?, notices? } shape. Engine
     // failures and notices are carried in that envelope instead, since a
     // machine consumer cannot read stderr prose.
     const warn = (message: string) => {
@@ -310,6 +318,15 @@ export const checkCommand = defineCommand({
     const warnNotice = (notice: string) => {
       for (const line of markNotice(notice, "Notice: ")) warn(line);
     };
+
+    // `summary` on every `--json` run, and `results` on every run but one that
+    // asked for `--summary`. One place builds both, so the early returns
+    // below cannot disagree with a full scan about which keys a run carries.
+    const summaryOnly = Boolean(args.summary);
+    const findingsFields = (results: CheckResult[]) => ({
+      ...(summaryOnly ? {} : { results }),
+      summary: summarizeFindings(cwd, results),
+    });
 
     // Set when a scan actually runs; drives cli_check_completed with counts
     // only (never matched code).
@@ -356,7 +373,7 @@ export const checkCommand = defineCommand({
             JSON.stringify(
               checkOutputSchema.parse({
                 success: true,
-                results: [],
+                ...findingsFields([]),
                 ...(pathNotices.length > 0 ? { notices: pathNotices } : {}),
               })
             )
@@ -479,7 +496,7 @@ export const checkCommand = defineCommand({
             JSON.stringify(
               checkOutputSchema.parse({
                 success: true,
-                results: [],
+                ...findingsFields([]),
                 ...(pathNotices.length > 0 ? { notices: pathNotices } : {}),
               })
             )
@@ -586,7 +603,7 @@ export const checkCommand = defineCommand({
         if (args.json) {
           const output = checkOutputSchema.parse({
             success: exitCode === 0,
-            results,
+            ...findingsFields(results),
             ...(plan.skipped.length > 0 ? { skipped: plan.skipped } : {}),
             ...(allFailures.length > 0 ? { failures: allFailures } : {}),
             // BOTH sources. `plan.notices` carries the repair diagnostics —
@@ -602,6 +619,11 @@ export const checkCommand = defineCommand({
             ...(preserve ? { runDirectory } : {}),
           });
           console.log(JSON.stringify(output));
+        } else if (summaryOnly) {
+          console.log(formatSummaryText(summarizeFindings(cwd, results)));
+          if (preserve) {
+            console.error(`Run directory kept: ${runDirectory}`);
+          }
         } else {
           // In CI, findings below error are counted rather than printed: they
           // never fail the run, and nobody reads them in a job log. Human

@@ -1,4 +1,4 @@
-# Topic: check     (CLI v%(CLI_VERSION)s / topic v9)
+# Topic: check     (CLI v%(CLI_VERSION)s / topic v10)
 
 %(ONE_COMMAND_PER_CALL)s
 
@@ -62,7 +62,7 @@ plan does not include restoring rules, the git steps that do instead
 Notices about skipped runtime rules are human-readable stderr only.
 Under `--json` they do NOT appear as warnings; instead an additive
 optional `skipped: [{ rule, reason }]` array is included alongside the
-unchanged `{ success, results }`, the not-verified notice is an entry
+unchanged `{ success, results, summary }`, the not-verified notice is an entry
 in `notices`, and the CI backstop
 (`%(TASKLESS_CLI)s agent ci`) is the enforcement point.
 
@@ -179,7 +179,10 @@ delete the rules to make `check` pass, and do not suggest
 `entitlement` with an empty `withheld` does not fail the run.
 
 ## Flags
-- `--json`: machine output (`{ success, results, skipped?, failures?, notices?, integrity?, entitlement? }`).
+- `--json`: machine output (`{ success, results, summary, skipped?, failures?, notices?, integrity?, entitlement? }`).
+- `--summary`: per-rule counts instead of every finding. With `--json`
+  it omits `results` and keeps `summary`, so the output stays small on
+  any repository. Use it when the question is "how many", not "where".
 - `--anonymous`: run only static rules; skip runtime rules.
 - `--dangerously-run-scripts`: run runtime `check.ts` unverified.
 - `--timeout <seconds>`: per-runtime-check wall-clock bound (default 10).
@@ -249,9 +252,30 @@ delete the rules to make `check` pass, and do not suggest
          "matchedText": "eval(input)",
          "fix": null
        }
-     ]
+     ],
+     "summary": {
+       "total": 1,
+       "files": 1,
+       "severities": { "error": 1, "warning": 0, "info": 0, "hint": 0 },
+       "rules": [
+         { "engine": "sg", "ruleId": "no-eval", "total": 1, "files": 1,
+           "severities": { "error": 1, "warning": 0, "info": 0, "hint": 0 } }
+       ]
+     }
    }
    ```
+
+   Each `results` entry has the same shape as a finding in
+   `verify --json`'s `rules[].findings` (which adds `bucket`), so one
+   parser reads both. `summary` is always present; its `rules` lists
+   only rules that fired, most findings first, keyed by `engine` and
+   `ruleId` as `verify` keys `rules[]`.
+
+   **To measure a whole repository, add `--summary`.** `results` can run
+   to hundreds of kilobytes; `check --json --summary` returns only
+   `summary`, one entry per rule that fired. Do not count `results`
+   yourself, and do not read an absent `results` as clean: read
+   `summary.total`.
 
 4. **Report findings to the user.** Group by `file`. Show `severity`,
    `message`, and `ruleId` for each finding; the `range.start` is the

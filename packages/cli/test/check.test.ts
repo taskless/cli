@@ -74,6 +74,11 @@ async function writeMixedSeverityProject(directory: string): Promise<void> {
   );
 }
 
+/** Counts by severity, every severity present, as `summary` reports them. */
+function severities(counts: Partial<Record<string, number>>) {
+  return { error: 0, warning: 0, info: 0, hint: 0, ...counts };
+}
+
 describe("check", () => {
   let temporaryDirectory: string;
 
@@ -291,6 +296,97 @@ describe("check", () => {
         CI: "false",
       });
       expect(stdout).toContain("no-console-warn");
+    });
+  });
+
+  describe("per-rule summary", () => {
+    it("carries a summary beside the results under --json", async () => {
+      await writeMixedSeverityProject(temporaryDirectory);
+
+      const { stdout, exitCode } = await runCli([
+        "check",
+        "-d",
+        temporaryDirectory,
+        "--json",
+      ]);
+      expect(exitCode).toBe(1);
+      const output = JSON.parse(stdout) as {
+        results: unknown[];
+        summary: unknown;
+      };
+      expect(output.results).toHaveLength(2);
+      expect(output.summary).toEqual({
+        total: 2,
+        files: 1,
+        severities: severities({ error: 1, warning: 1 }),
+        rules: [
+          {
+            engine: "sg",
+            ruleId: "no-console-error",
+            total: 1,
+            files: 1,
+            severities: severities({ error: 1 }),
+          },
+          {
+            engine: "sg",
+            ruleId: "no-console-warn",
+            total: 1,
+            files: 1,
+            severities: severities({ warning: 1 }),
+          },
+        ],
+      });
+    });
+
+    it("omits results with --summary, and keeps the exit code", async () => {
+      await writeMixedSeverityProject(temporaryDirectory);
+
+      const { stdout, exitCode } = await runCli([
+        "check",
+        "-d",
+        temporaryDirectory,
+        "--json",
+        "--summary",
+      ]);
+      expect(exitCode).toBe(1);
+      const output = JSON.parse(stdout) as {
+        success: boolean;
+        summary: { total: number };
+      };
+      expect(output).not.toHaveProperty("results");
+      expect(output.success).toBe(false);
+      expect(output.summary.total).toBe(2);
+    });
+
+    it("carries an empty summary when no rules are configured", async () => {
+      const { stdout } = await runCli([
+        "check",
+        "-d",
+        temporaryDirectory,
+        "--json",
+        "--summary",
+      ]);
+      expect(JSON.parse(stdout)).toEqual({
+        success: true,
+        summary: { total: 0, files: 0, severities: severities({}), rules: [] },
+      });
+    });
+
+    it("prints per-rule counts instead of findings in text mode", async () => {
+      await writeMixedSeverityProject(temporaryDirectory);
+
+      const { stdout } = await runCli([
+        "check",
+        "-d",
+        temporaryDirectory,
+        "--summary",
+      ]);
+      expect(stdout).toContain("sg/no-console-error: 1 error across 1 file");
+      expect(stdout).toContain("sg/no-console-warn: 1 warning across 1 file");
+      expect(stdout).toContain(
+        "2 issues (1 error, 1 warning) from 2 rules across 1 file"
+      );
+      expect(stdout).not.toContain("console.error(");
     });
   });
 

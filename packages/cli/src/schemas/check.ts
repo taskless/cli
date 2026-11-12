@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+import { findingSchema } from "./finding";
+
 /** A file that differs from what was issued, by signature. */
 export const differingFileSchema = z.object({
   path: z.string(),
@@ -90,29 +92,58 @@ export const integrityEntrySchema = z.discriminatedUnion("verdict", [
 /** A `check --json` `integrity` entry, typed from the schema. */
 export type IntegrityEntry = z.infer<typeof integrityEntrySchema>;
 
-/** Schema for a single check result */
-const checkResultSchema = z.object({
-  source: z.string().describe("Scanner that produced this result"),
-  ruleId: z.string().describe("Rule identifier"),
-  severity: z
-    .enum(["error", "warning", "info", "hint"])
-    .describe("Severity level"),
-  message: z.string().describe("Message explaining why the rule fired"),
-  note: z.string().nullable().optional().describe("Additional notes"),
-  file: z.string().describe("File path where the match was found"),
-  range: z.object({
-    start: z.object({
-      line: z.number(),
-      column: z.number(),
-    }),
-    end: z.object({
-      line: z.number(),
-      column: z.number(),
-    }),
-  }),
-  matchedText: z.string().describe("The code that matched the rule"),
-  fix: z.string().nullable().optional().describe("Suggested fix replacement"),
+/**
+ * Finding counts by severity. Every severity is present, zero included, so a
+ * reader never has to tell an absent key from a zero.
+ */
+const severityCountsSchema = z.strictObject({
+  error: z.number().int(),
+  warning: z.number().int(),
+  info: z.number().int(),
+  hint: z.number().int(),
 });
+
+/**
+ * One rule's share of the findings.
+ *
+ * Grouped by `engine` and `ruleId`, the same pair `verify --json` groups
+ * `rules[]` by and `integrity` names a rule with, since an id alone can name a
+ * rule under two engines.
+ */
+const ruleSummarySchema = z.strictObject({
+  engine: z
+    .enum(["sg", "vale", "runtime"])
+    .optional()
+    .describe(
+      "The engine directory the rule lives under. Absent only for a finding whose `source` this CLI does not map to an engine"
+    ),
+  ruleId: z.string(),
+  total: z.number().int().describe("Findings this rule produced"),
+  files: z.number().int().describe("Distinct files those findings are in"),
+  severities: severityCountsSchema,
+});
+
+/**
+ * The per-rule measurement of a run (#678).
+ *
+ * Small whatever the repository's size: one entry per rule that fired, never
+ * one per finding. It is what `--summary` keeps when it drops `results`, so an
+ * agent can ask "how many violations of each rule" in one call whose output
+ * fits in a harness.
+ */
+export const checkSummarySchema = z.strictObject({
+  total: z.number().int().describe("Findings across every rule"),
+  files: z.number().int().describe("Distinct files with at least one finding"),
+  severities: severityCountsSchema,
+  rules: z
+    .array(ruleSummarySchema)
+    .describe(
+      "One entry per rule with at least one finding, most findings first, then by `ruleId`. A rule absent from this list produced no findings, or did not run: read `skipped`, `failures` and `integrity` for the second"
+    ),
+});
+
+/** The `summary` of a `check --json` run, typed from the schema. */
+export type CheckSummary = z.infer<typeof checkSummarySchema>;
 
 /** A runtime rule that was present but not executed (advisory), for `--json`. */
 const skippedRuntimeRuleSchema = z.object({
@@ -123,7 +154,15 @@ const skippedRuntimeRuleSchema = z.object({
 /** Output schema for `taskless check --json` on success */
 export const outputSchema = z.object({
   success: z.boolean(),
-  results: z.array(checkResultSchema).describe("Check results"),
+  results: z
+    .array(findingSchema)
+    .optional()
+    .describe(
+      "Every finding. Present on every run except one asked for with `--summary`, which omits it; an absent `results` therefore never means a clean run, read `summary.total`"
+    ),
+  summary: checkSummarySchema.describe(
+    "Finding counts, overall and per rule. Always present, `--summary` or not"
+  ),
   skipped: z
     .array(skippedRuntimeRuleSchema)
     .optional()
@@ -186,5 +225,5 @@ export const outputSchema = z.object({
 export const errorSchema = z.object({
   success: z.literal(false),
   error: z.string().describe("Error message"),
-  results: z.array(checkResultSchema).describe("Check results (may be empty)"),
+  results: z.array(findingSchema).describe("Check results (may be empty)"),
 });
