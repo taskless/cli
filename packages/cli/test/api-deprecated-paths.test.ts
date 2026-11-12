@@ -1,5 +1,5 @@
 import { readFile, readdir } from "node:fs/promises";
-import { join, dirname, relative, sep } from "node:path";
+import { join, dirname, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { describe, it, expect } from "vitest";
@@ -48,23 +48,63 @@ function resourcePrefix(path: string): string {
   return prefix.replace(/\/+$/, "");
 }
 
+/** Whether `error` is a filesystem "no such file or directory". */
+function isMissing(error: unknown): boolean {
+  return (error as NodeJS.ErrnoException | undefined)?.code === "ENOENT";
+}
+
+/**
+ * Every `.ts` file under `directory`, walked by hand rather than with
+ * `readdir({ recursive: true })` so that two kinds of directory can be pruned
+ * before the walk descends into them:
+ *
+ * - `node_modules`, which is never source. A recursive `readdir` cannot skip
+ *   it, only filter its contents afterwards, and it lists a directory and then
+ *   descends into it as separate steps. When a parallel test created and
+ *   removed `src/node_modules` between those steps, the walk threw `ENOENT`
+ *   (taskless/cli#694).
+ * - `generated/`, the schema's own transcript: it necessarily names every
+ *   path, deprecated ones included, and is not a call site. Matched at any
+ *   depth, because that reasoning is about what a generated directory IS and
+ *   does not depend on where it sits.
+ *
+ * A directory that vanishes between being listed and being read is skipped
+ * rather than failing the walk: something that no longer exists cannot
+ * reference a deprecated path.
+ */
 async function typeScriptSources(directory: string): Promise<string[]> {
-  const entries = await readdir(directory, {
-    recursive: true,
-    withFileTypes: true,
-  });
-  return entries
-    .filter((entry) => entry.isFile() && entry.name.endsWith(".ts"))
-    .map((entry) => join(entry.parentPath, entry.name))
-    .filter(
-      // `generated/` is the schema's own transcript: it necessarily names every
-      // path, deprecated ones included, and is not a call site. Matched at any
-      // depth, because that reasoning is about what a generated directory IS
-      // and does not depend on where it sits. `startsWith` reached only a
-      // top-level `src/generated`, which is a no-op today and would have
-      // reported a nested one as a wall of false offenders.
-      (file) => !relative(directory, file).split(sep).includes("generated")
-    );
+  let entries;
+  try {
+    entries = await readdir(directory, { withFileTypes: true });
+  } catch (error) {
+    if (isMissing(error)) return [];
+    throw error;
+  }
+
+  const files: string[] = [];
+  for (const entry of entries) {
+    const path = join(directory, entry.name);
+    if (entry.isDirectory()) {
+      if (entry.name === "node_modules" || entry.name === "generated") continue;
+      files.push(...(await typeScriptSources(path)));
+    } else if (entry.isFile() && entry.name.endsWith(".ts")) {
+      files.push(path);
+    }
+  }
+  return files;
+}
+
+/**
+ * The file's contents, or `undefined` when it was removed after the walk
+ * listed it, for the same reason the walk tolerates a vanished directory.
+ */
+async function readSource(file: string): Promise<string | undefined> {
+  try {
+    return await readFile(file, "utf8");
+  } catch (error) {
+    if (isMissing(error)) return undefined;
+    throw error;
+  }
 }
 
 describe("deprecated API paths", () => {
@@ -88,7 +128,8 @@ describe("deprecated API paths", () => {
 
     const offenders: string[] = [];
     for (const file of await typeScriptSources(SOURCE_ROOT)) {
-      const source = await readFile(file, "utf8");
+      const source = await readSource(file);
+      if (source === undefined) continue;
       for (const prefix of deprecated) {
         // The negative lookahead keeps `/cli/api/rule` from matching
         // `/cli/api/rule-hash-vectors`, a live path that merely shares a stem.
@@ -122,7 +163,8 @@ describe("v1 API routes", () => {
     const pattern = /["'`}]\/cli\/api\/(?!v2\/)/;
     const offenders: string[] = [];
     for (const file of await typeScriptSources(SOURCE_ROOT)) {
-      const source = await readFile(file, "utf8");
+      const source = await readSource(file);
+      if (source === undefined) continue;
       for (const [index, line] of source.split("\n").entries()) {
         if (pattern.test(line)) {
           offenders.push(`${relative(SOURCE_ROOT, file)}:${String(index + 1)}`);
