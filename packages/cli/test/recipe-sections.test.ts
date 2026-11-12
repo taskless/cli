@@ -153,6 +153,22 @@ describe("sections", () => {
     expect(split.sections.map(({ name }) => name)).toEqual(["one", "two"]);
   });
 
+  it("refuses two headings that share a section name", () => {
+    expect(() =>
+      splitSections(["## Foo Bar", "## Foo-Bar"].join("\n"))
+    ).toThrow(/foo-bar/);
+  });
+
+  it("lists the heading beside a name only when it carries code", () => {
+    const outline = renderOutline(
+      splitSections(["## Steps", "## The `--x` flag", "## Plain"].join("\n")),
+      new Set(["the-x-flag", "plain"]),
+      fetch
+    );
+    expect(outline).toContain("- `the-x-flag`: The `--x` flag\n");
+    expect(outline).toContain("- `plain`\n");
+  });
+
   const text = [
     "# Topic: t",
     "",
@@ -361,6 +377,17 @@ describe("taskless agent --section", () => {
     expect(result.exitCode).toBe(1);
     expect(result.stderr).toContain("Unknown section for create-sg-rule: nope");
     expect(result.stderr).toContain("quirks");
+  });
+
+  it("refuses --section together with --full", async () => {
+    const result = await run([
+      "create-sg-rule",
+      "--section",
+      "quirks",
+      "--full",
+    ]);
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toContain("--section and --full cannot be combined");
   });
 
   it("still refuses a second positional, and points at --section", async () => {

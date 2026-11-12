@@ -157,12 +157,12 @@ export function createAgentCommand(subCommands: SubCommandsDef) {
       section: {
         type: "string",
         description:
-          "Return one section of the topic, named as its table of contents lists it",
+          "Return one section of the topic, named as its table of contents lists it. Not combined with --full",
       },
       full: {
         type: "boolean",
         description:
-          "Return the whole topic, including the sections it serves on request",
+          "Return the whole topic, including the sections it serves on request. Not combined with --section",
         default: false,
       },
     },
@@ -268,6 +268,18 @@ export function createAgentCommand(subCommands: SubCommandsDef) {
         );
         console.error(
           `To print one section of a topic, pass it as \`--section <name>\`.`
+        );
+        process.exitCode = 1;
+        return;
+      }
+
+      // One section and the whole topic are different outputs; serving
+      // either would quietly ignore half of what was asked.
+      if (args.section !== undefined && args.full) {
+        telemetry.capture("cli_agent", { topic: positionals[0] });
+        console.error("--section and --full cannot be combined.");
+        console.error(
+          "Pass --section <name> for one section, or --full for the whole topic."
         );
         process.exitCode = 1;
         return;

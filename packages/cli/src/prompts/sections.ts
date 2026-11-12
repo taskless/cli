@@ -106,6 +106,10 @@ export interface SplitRecipe {
 /**
  * Divide rendered recipe text at its `## ` headings. A heading inside a
  * fenced block is an example, not a boundary.
+ *
+ * Two headings with the same slug throw: a section is addressed by its name
+ * alone, so the second would be unreachable by `--section`, and an on-demand
+ * marker on either would hide both.
  */
 export function splitSections(text: string): SplitRecipe {
   const preamble: string[] = [];
@@ -124,14 +128,18 @@ export function splitSections(text: string): SplitRecipe {
     if (current === undefined) preamble.push(line);
     else current.lines.push(line);
   }
-  return {
-    preamble: preamble.join("\n"),
-    sections: sections.map(({ title, lines }) => ({
-      name: sectionSlug(title),
-      title,
-      text: lines.join("\n"),
-    })),
-  };
+  const seen = new Set<string>();
+  const named = sections.map(({ title, lines }) => {
+    const name = sectionSlug(title);
+    if (seen.has(name)) {
+      throw new Error(
+        `Two "${SECTION_HEADING}" headings share the section name "${name}"`
+      );
+    }
+    seen.add(name);
+    return { name, title, text: lines.join("\n") };
+  });
+  return { preamble: preamble.join("\n"), sections: named };
 }
 
 /** A markdown link to a section of the same recipe: `[Quirks](#quirks)`. */
@@ -183,18 +191,16 @@ export function renderOutline(
   const body = [split.preamble, ...shown.map(({ text }) => text)].join("\n");
   if (omitted.length === 0) return body;
   const printed = new Set(shown.map(({ name }) => name));
-  // Each entry is the name alone, the heading beside it only when it says
-  // more: a long recipe has a dozen of these, and the outline's budget is
-  // better spent on its steps.
+  // Each entry is the name alone: a long recipe has a dozen of these, and the
+  // outline's budget is better spent on its steps. The name is the heading's
+  // slug, so the heading adds nothing unless it carries code a slug drops.
   const contents = [
     "## Sections on request",
     "",
     `Not printed above. When the text names one, print it with \`${fetch("<name>")}\`:`,
     "",
     ...omitted.map(({ name, title }) =>
-      sectionSlug(title) === name && !title.includes("`")
-        ? `- \`${name}\``
-        : `- \`${name}\`: ${title}`
+      title.includes("`") ? `- \`${name}\`: ${title}` : `- \`${name}\``
     ),
   ].join("\n");
   return `${rewriteLinks(body, printed).trimEnd()}\n\n${contents}\n`;
