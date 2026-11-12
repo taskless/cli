@@ -53,6 +53,7 @@ pipeline:
 ./.taskless/bin/cli.mjs check                                   # scan everything
 ./.taskless/bin/cli.mjs check $(git diff --name-only main...HEAD)  # PR-only scan
 ./.taskless/bin/cli.mjs check --json                            # machine-readable
+./.taskless/bin/cli.mjs check --json --summary                  # per-rule counts only
 ```
 
 Paths that no longer exist are dropped silently, so raw `git diff` output can be

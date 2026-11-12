@@ -1,4 +1,5 @@
 import type { CheckResult } from "../types/check";
+import type { CheckSummary } from "../schemas/check";
 
 /** `2 errors, 1 warning`, in severity order, naming only the ones present. */
 function describeSeverities(results: CheckResult[]): string {
@@ -60,5 +61,45 @@ export function formatText(
   );
   if (hiddenLine !== undefined) lines.push(hiddenLine);
 
+  return lines.join("\n");
+}
+
+/** `2 errors, 1 warning` from counts, in severity order, naming only nonzero. */
+function describeCounts(counts: CheckSummary["severities"]): string {
+  const parts: string[] = [];
+  for (const severity of ["error", "warning", "info", "hint"] as const) {
+    const count = counts[severity];
+    if (count > 0) {
+      parts.push(`${String(count)} ${severity}${count === 1 ? "" : "s"}`);
+    }
+  }
+  return parts.join(", ");
+}
+
+function plural(count: number, noun: string): string {
+  return `${String(count)} ${noun}${count === 1 ? "" : "s"}`;
+}
+
+/**
+ * Format a run's per-rule counts, for `check --summary` without `--json`.
+ *
+ * Counts every severity, in CI too: nothing here is a finding to hide, and a
+ * summary that dropped the warnings would undercount the rules it lists.
+ */
+export function formatSummaryText(summary: CheckSummary): string {
+  if (summary.total === 0) return "No issues found.";
+
+  const lines: string[] = [];
+  for (const rule of summary.rules) {
+    const name =
+      rule.engine === undefined ? rule.ruleId : `${rule.engine}/${rule.ruleId}`;
+    lines.push(
+      `  ${name}: ${describeCounts(rule.severities)} across ${plural(rule.files, "file")}`
+    );
+  }
+  lines.push(
+    "",
+    `${plural(summary.total, "issue")} (${describeCounts(summary.severities)}) from ${plural(summary.rules.length, "rule")} across ${plural(summary.files, "file")}`
+  );
   return lines.join("\n");
 }

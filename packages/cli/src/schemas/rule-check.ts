@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+import { findingSchema } from "./finding";
+
 /**
  * One rule's verdict, as `validate` and `verify` both report it.
  *
@@ -8,42 +10,22 @@ import { z } from "zod";
  * test run, and `verify` reports `false` when verification failed first.
  */
 /**
- * A position, zero-based in both axes, exactly as `check --json` reports one.
- */
-const positionSchema = z.object({
-  line: z.number().int(),
-  column: z.number().int(),
-});
-
-/**
  * One finding a rule's fixtures produced.
  *
- * The `CheckResult` shape `check --json` already prints, plus the `bucket` the
- * fixture that produced it lives in. Reused verbatim rather than narrowed to
- * what `verify` "needs": a finding means the same thing whichever command
- * surfaced it, and a second, smaller shape would be a second thing to keep in
- * step with the engines.
+ * The shared {@link findingSchema} that `check --json` prints as `results[]`,
+ * plus the `bucket` the fixture that produced it lives in. Extended rather than
+ * redeclared: a finding means the same thing whichever command surfaced it,
+ * and a second declaration is a second thing to keep in step with the engines
+ * (the two had already drifted once, #678).
  *
- * `message` is the field this exists for. It is the RENDERED message, with the
- * rule's captures already interpolated, and it is the only evidence that a
- * rule whose message interpolates its captures put the slots in the right
- * order — such a rule fires on every `fail/` fixture, stays quiet on every
- * `pass/` one, and a boolean verdict reports it as a rule that passed.
+ * `message` is the field this exists for. It is the RENDERED message, and the
+ * only evidence that a rule whose message interpolates its captures put the
+ * slots in the right order: such a rule fires on every `fail/` fixture, stays
+ * quiet on every `pass/` one, and a boolean verdict reports it as a rule that
+ * passed.
  */
-export const fixtureFindingSchema = z.object({
-  source: z.string().describe("The engine that produced it"),
-  ruleId: z.string(),
-  severity: z.enum(["error", "warning", "info", "hint"]),
-  message: z
-    .string()
-    .describe(
-      "The message as the engine rendered it, with the rule's captures already interpolated"
-    ),
-  note: z.string().optional(),
+export const fixtureFindingSchema = findingSchema.extend({
   file: z.string().describe("The fixture the finding was reported against"),
-  range: z.object({ start: positionSchema, end: positionSchema }),
-  matchedText: z.string(),
-  fix: z.string().optional(),
   bucket: z
     .enum(["pass", "fail"])
     .describe(

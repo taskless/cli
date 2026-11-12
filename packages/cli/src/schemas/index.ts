@@ -67,6 +67,25 @@
 // consumer on `moduleResolution: node16`/`nodenext`.
 export {
   /**
+   * One finding, as every command that reports findings prints it: `taskless
+   * check --json`'s `results[]`, and `taskless verify --json`'s
+   * `rules[].findings[]`, which add the fixture `bucket`. A finding from either
+   * parses against this one schema.
+   */
+  findingSchema,
+} from "./finding.js";
+
+export {
+  /**
+   * `taskless check --json`. Findings are a flat `results[]` because `check`
+   * scans a codebase, where `verify` reports per rule; `summary.rules[]` gives
+   * `check` the same per-rule grouping, keyed by `engine` and `ruleId`.
+   */
+  outputSchema as checkOutputSchema,
+} from "./check.js";
+
+export {
+  /**
    * `taskless validate --json` and `taskless verify --json`.
    *
    * One envelope for both, because the commands share an implementation and

@@ -42,6 +42,8 @@ async function importBuiltSchemas(): Promise<Record<string, unknown>> {
  * them in the source.
  */
 const PUBLIC_EXPORTS = [
+  "checkOutputSchema",
+  "findingSchema",
   "valeVerifyOutputSchema",
   "verifyOutputSchema",
   "ruleCheckOutputSchema",
@@ -149,6 +151,50 @@ describe("the published schemas entry", () => {
     expect(findings.map((finding) => finding.bucket)).toEqual(["fail"]);
     expect(findings[0]?.message).toBe("no eval");
     expect(findings[0]).not.toHaveProperty("note");
+  });
+
+  it("parses a check finding and a verify finding against one schema", async () => {
+    // #678: a script written against `check --json` broke on `verify --json`.
+    // Both commands now print the same finding, and the proof is a finding
+    // from each, emitted by the built CLI, parsed by the one published schema.
+    await sgProbe("probe-rule");
+    await writeFile(join(cwd, "app.ts"), "eval(input);\n");
+
+    const check = await execFileAsync("node", [
+      binPath,
+      "check",
+      "-d",
+      cwd,
+      "--json",
+    ]).catch((error: unknown) => error as { stdout: string });
+    const verify = await execFileAsync("node", [
+      binPath,
+      "verify",
+      "-d",
+      cwd,
+      "--json",
+    ]);
+
+    const built = await importBuiltSchemas();
+    const findingSchema = built.findingSchema as ParsedSchema;
+    const checkSchema = built.checkOutputSchema as ParsedSchema;
+    const checked = checkSchema.parse(JSON.parse(check.stdout)) as {
+      results: unknown[];
+      summary: { rules: { engine: string; ruleId: string; total: number }[] };
+    };
+    const verified = JSON.parse(verify.stdout) as {
+      rules: { findings: unknown[] }[];
+    };
+
+    const fromCheck = checked.results[0];
+    const fromVerify = verified.rules[0]?.findings[0];
+    expect(fromCheck).toBeDefined();
+    expect(fromVerify).toBeDefined();
+    expect(findingSchema.safeParse(fromCheck).success).toBe(true);
+    expect(findingSchema.safeParse(fromVerify).success).toBe(true);
+    expect(checked.summary.rules).toEqual([
+      expect.objectContaining({ engine: "sg", ruleId: "probe-rule", total: 1 }),
+    ]);
   });
 
   it("strips what it does not declare, which a JSON Schema of the same shape would not", async () => {
