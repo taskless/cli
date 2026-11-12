@@ -1,4 +1,4 @@
-# Topic: create-remote-rule     (CLI v%(CLI_VERSION)s / topic v10)
+# Topic: create-remote-rule     (CLI v%(CLI_VERSION)s / topic v11)
 
 %(ONE_COMMAND_PER_CALL)s
 
@@ -24,7 +24,8 @@ go looking for a second topic to perform the submission.
 - The project has a GitHub owner. **Check this yourself before collecting
   anything**, see below.
 - The request reached here through `route`, or through a local attempt
-  that failed and a user who confirmed the escalation.
+  that failed and a user who confirmed the escalation. If you are not
+  sure which, read [Cost, and when this path is right](#cost-and-when-this-path-is-right).
 
 ### Check the GitHub owner first
 
@@ -40,7 +41,13 @@ succeed, and everything before it is wasted work for the user.
 Say the tier is unavailable and why, then route to a local recipe:
 `create-sg-rule`, `create-vale-rule`, or `create-legacy-rule` by the
 rule's shape, or `create-runtime-rule` if it is only expressible at
-runtime.
+runtime. **`auth login` does not fix it.** [No GitHub owner](#no-github-owner)
+says why, and what each cause looks like.
+
+<!-- on-demand -->
+## No GitHub owner
+
+Why the owner check under Preconditions stops the recipe.
 
 `route` already drops this destination when there is no owner, so
 normally you never arrive here without one. This check is for the times
@@ -48,7 +55,7 @@ that does not hold: reached directly, from a cached plan, or from a copy
 of the routing guidance older than this constraint. An omission upstream
 is advisory; this is the point of use.
 
-**`auth login` does not fix it.** No GitHub owner is a property of the
+`auth login` does not fix it: no GitHub owner is a property of the
 project, not the session, so do not send the user to log in for it. The
 causes are: not a git repository, no `origin` remote, an `origin` that is
 not GitHub, and git not being installed at all. The first three each have
@@ -58,6 +65,7 @@ the first, because the probe that would distinguish them is itself a
 directory *is* a repository, check whether `git` is on their `PATH`
 before believing the code.
 
+<!-- on-demand -->
 ## Cost, and when this path is right
 
 A generation costs the user something and requires an account. That is
@@ -91,77 +99,110 @@ Two ways to legitimately be here:
 2. **Check for a rule that already covers this.** Scan
    `.taskless/rules/sg/` and read each rule's `message`, `note`, and
    `rule` fields. If one overlaps, show the user and ask whether they
-   would rather iterate on it, `%(TASKLESS_CLI)s agent improve-rule` refines an
-   existing rule and is usually the better answer than a second rule
-   that half-overlaps the first.
+   would rather iterate on it with `%(TASKLESS_CLI)s agent improve-rule`.
 
-3. **Gather the request.** Even when the user supplied a description,
-   ask:
-   - What exact pattern should be flagged? Get concrete examples.
-   - In what language?
-   - Where is the pattern acceptable: are there contexts to exclude?
+3. **Gather the request**: the exact pattern to flag, with concrete
+   examples, the language, and the contexts where it is acceptable. Ask
+   even when the user supplied a description. From a failed local
+   attempt, reuse the cases you already gathered.
 
-   If you arrived from a failed local attempt, reuse the cases you
-   already gathered rather than asking again.
-
-4. **Enrich it.** This is the part that decides the quality of what
-   comes back:
-   - Search the codebase for real instances and show the user what you
-     found. Real matches beat invented ones.
-   - Ask for further success and failure cases, especially near-misses.
-   - Hold every case to the bar a fixture meets, since the generator
-     works from what you send. Copy cases from the
-     repository rather than inventing them. Write success cases that the
-     linters in `detect --json` would accept. Outside the construct the
-     rule checks, keep each case in the repository's idiom, with no
-     placeholder types and no nesting a reviewer would send back.
-   - Read `.gitignore`, the linter configs, and `tsconfig.json`'s
-     `exclude` for exclusion patterns the repo already believes in.
-     Present them as proposed defaults rather than applying them.
-   - Infer the primary language from the codebase and confirm it. Put it
-     in the `prompt` field.
+4. **Enrich it.** This decides the quality of what comes back. Follow
+   [Enriching the request](#enriching-the-request): real instances from
+   the codebase, near-miss cases, the repo's own exclusions, the primary
+   language.
 
 5. **Confirm before spending the generation.** Summarize the full
    prompt, the success cases, the failure cases, and the exclusions.
    This is the last point at which a misunderstanding is free.
 
 6. **Write the payload** to `.taskless/.tmp-rule-request.json`, matching
-   the input schema below.
+   [Input schema](#input-schema).
 
 7. **Submit.** Run:
    ```
    %(TASKLESS_CLI)s rule create --from .taskless/.tmp-rule-request.json --json
    ```
    This may take 30-60 seconds while the service generates the rule.
+   On failure, look the `code` up in [Errors](#errors).
 
 8. **Clean up.** Delete `.taskless/.tmp-rule-request.json` whether the
    call succeeded or failed.
 
-9. **Report.** The CLI writes each generated rule, fixtures included,
-   to `.taskless/rules/<engine>/<id>/`, replacing anything already in
-   that directory. These are the same paths and the same shape a
-   locally authored rule uses, so `check`, `improve-rule`, `validate`, and
-   `verify` treat them identically. Nothing is written under
-   `.taskless/rule-metadata/`. Show the user the paths and suggest
-   `%(TASKLESS_CLI)s agent check`.
+9. **Report.** Show the user the paths of the rules the CLI wrote under
+   `.taskless/rules/<engine>/<id>/`, surface any `notices`, and suggest
+   `%(TASKLESS_CLI)s agent check`. Read
+   [Reading the result](#reading-the-result) first: a rule id is not a
+   `requestId`, and a notice can mean nothing tests the rule.
 
-   **`rules` in the `--json` output lists each written rule's id**, and
-   the id is the rule's directory name (for example
-   `no-eval-3fa9c21b`). It is what `rule improve`, `rule restore`, and
-   `rule rollback` take, and it is on disk, so nothing needs recording.
-   `requestId` names the generation request only. The one command that
-   takes it back is `rule create --resume <requestId>` (see Errors);
-   passing it to `rule improve` as a rule id fails with `RULE_NOT_FOUND`.
+<!-- on-demand -->
+## Enriching the request
 
-   **Read `notices` if it is present.** It is an optional array of
-   advisory messages about a delivery that was written anyway. A rule
-   arriving with no `tests/` fixtures is the one to expect. That rule works, but
-   nothing exercises it: `verify` reports a pass over zero cases, which
-   reads exactly like a rule proven to work. Surface any notice to the
-   user rather than reporting an unqualified success. Under `--json`
-   these do not go to stderr, so the envelope is the only place they
-   appear.
+What steps 2 to 4 ask for in full.
 
+**Check for a rule that already covers this.** Scan
+`.taskless/rules/sg/` and read each rule's `message`, `note`, and
+`rule` fields. If one overlaps, show the user and ask whether they
+would rather iterate on it, `%(TASKLESS_CLI)s agent improve-rule` refines an
+existing rule and is usually the better answer than a second rule
+that half-overlaps the first.
+
+**Gather the request.** Even when the user supplied a description,
+ask:
+- What exact pattern should be flagged? Get concrete examples.
+- In what language?
+- Where is the pattern acceptable: are there contexts to exclude?
+
+If you arrived from a failed local attempt, reuse the cases you
+already gathered rather than asking again.
+
+**Enrich it.** This is the part that decides the quality of what
+comes back:
+- Search the codebase for real instances and show the user what you
+  found. Real matches beat invented ones.
+- Ask for further success and failure cases, especially near-misses.
+- Hold every case to the bar a fixture meets, since the generator
+  works from what you send. Copy cases from the
+  repository rather than inventing them. Write success cases that the
+  linters in `detect --json` would accept. Outside the construct the
+  rule checks, keep each case in the repository's idiom, with no
+  placeholder types and no nesting a reviewer would send back.
+- Read `.gitignore`, the linter configs, and `tsconfig.json`'s
+  `exclude` for exclusion patterns the repo already believes in.
+  Present them as proposed defaults rather than applying them.
+- Infer the primary language from the codebase and confirm it. Put it
+  in the `prompt` field.
+
+<!-- on-demand -->
+## Reading the result
+
+What step 9 reports, in full.
+
+The CLI writes each generated rule, fixtures included,
+to `.taskless/rules/<engine>/<id>/`, replacing anything already in
+that directory. These are the same paths and the same shape a
+locally authored rule uses, so `check`, `improve-rule`, `validate`, and
+`verify` treat them identically. Nothing is written under
+`.taskless/rule-metadata/`. Show the user the paths and suggest
+`%(TASKLESS_CLI)s agent check`.
+
+**`rules` in the `--json` output lists each written rule's id**, and
+the id is the rule's directory name (for example
+`no-eval-3fa9c21b`). It is what `rule improve`, `rule restore`, and
+`rule rollback` take, and it is on disk, so nothing needs recording.
+`requestId` names the generation request only. The one command that
+takes it back is `rule create --resume <requestId>` (see [Errors](#errors));
+passing it to `rule improve` as a rule id fails with `RULE_NOT_FOUND`.
+
+**Read `notices` if it is present.** It is an optional array of
+advisory messages about a delivery that was written anyway. A rule
+arriving with no `tests/` fixtures is the one to expect. That rule works, but
+nothing exercises it: `verify` reports a pass over zero cases, which
+reads exactly like a rule proven to work. Surface any notice to the
+user rather than reporting an unqualified success. Under `--json`
+these do not go to stderr, so the envelope is the only place they
+appear.
+
+<!-- on-demand -->
 ## Input schema
 
 The `--from` JSON file conforms to:
@@ -182,6 +223,7 @@ Multi-line code goes in one string with literal newlines.
   rules under `.taskless/rules/sg/`, the same shape `create-sg-rule`
   produces locally.
 
+<!-- on-demand -->
 ## Errors
 
 With `--json`, failures emit `{ ok: false, code, message }`:
@@ -199,6 +241,7 @@ With `--json`, failures emit `{ ok: false, code, message }`:
 | `RULE_GENERATION_FAILED` | the service failed to generate  | report the message; suggest enriching prompt |
 | `RULE_UNSUPPORTED`       | plan lacks this generation type | tell the user to enable it; do not retry     |
 
+<!-- on-demand -->
 ## See Also
 
 - `%(TASKLESS_CLI)s agent route`: the routing decision that leads here

@@ -1,4 +1,4 @@
-# Topic: create-runtime-rule     (CLI v%(CLI_VERSION)s / topic v9)
+# Topic: create-runtime-rule     (CLI v%(CLI_VERSION)s / topic v10)
 
 %(ONE_COMMAND_PER_CALL)s
 
@@ -50,6 +50,7 @@ files at once, read git, resolve an alias, look outside the repository.
 
 That is also exactly why it is gated.
 
+<!-- on-demand -->
 ## Why this tier is gated
 
 **Because it executes code, not because of what it can express.**
@@ -89,6 +90,7 @@ runtime rule it finds is listed as skipped with the reason
 So a runtime rule you write now is inert until the user logs in. Say
 that plainly rather than letting them discover it from a silent check.
 
+<!-- on-demand -->
 ## Testing a rule you wrote yourself needs the flag
 
 `%(TASKLESS_CLI)s verify` runs a runtime rule's fixtures by executing its
@@ -134,10 +136,13 @@ never reaches `check.ts`, and is reported as a defect in the case rather
 than in the rule, in `pass/` as well as `fail/`: such a case proves the
 capture did not match, which is a fact about the fixture.
 
+<!-- on-demand -->
 ## Capture quirks
 
-A capture is an ast-grep rule, so the **Quirks** in
-`%(RECIPE_FETCH)screate-sg-rule` apply to it as well. Four of them catch
+A capture is an ast-grep rule, so the quirks of `create-sg-rule` apply
+to it as well. Print them with
+`%(RECIPE_FETCH)screate-sg-rule --section quirks` and
+`%(RECIPE_FETCH)screate-sg-rule --section pattern-quirks`. Four of them catch
 captures most often. Each was measured against the ast-grep this CLI
 ships (v%(AST_GREP_VERSION)s). The first two decide what a capture
 matches; the last two decide where a match says it is.
@@ -176,6 +181,7 @@ matches; the last two decide where a match says it is.
    the evidence, "this has to compare two files", "this reads git
    history", and then the consequence: it has to run code, so it needs
    an account. Do not present this as a limitation of the rule.
+   [Why this tier is gated](#why-this-tier-is-gated) has the detail.
 
 2. **Point them at login.** Obtaining access is `auth`'s job, and this
    recipe deliberately does not restate it:
@@ -207,7 +213,12 @@ matches; the last two decide where a match says it is.
 - Do not author a `check.ts` and leave it in the repository unmentioned.
   A skipped runtime rule reports nothing, which reads exactly like a
   passing one.
+- If the user writes a runtime rule now anyway, read
+  [Capture quirks](#capture-quirks) and
+  [Testing a rule you wrote yourself needs the flag](#testing-a-rule-you-wrote-yourself-needs-the-flag)
+  first.
 
+<!-- on-demand -->
 ## See Also
 
 - `%(RECIPE_FETCH)sauth`: log in, log out, check status

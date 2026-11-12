@@ -1,4 +1,4 @@
-# Topic: improve-rule (anonymous)     (CLI v%(CLI_VERSION)s / topic v7)
+# Topic: improve-rule (anonymous)     (CLI v%(CLI_VERSION)s / topic v8)
 
 %(ONE_COMMAND_PER_CALL)s
 
@@ -40,11 +40,8 @@ check it with `validate` and `verify` in a feedback loop.
 5. **Update test cases.** Add each new false-positive example as a case
    under `.taskless/rules/sg/<id>/tests/pass/` and each new
    false-negative example as a case under `tests/fail/`, one directory
-   per case, named for what it shows.
-
-   %(FIXTURE_LAYOUT)s
-
-   %(FIXTURE_SOURCES)s
+   per case, named for what it shows. Read [Fixtures](#fixtures) for
+   how cases are laid out and judged and where to take them from.
 
 6. **Run the feedback loop.** Run:
    ```
@@ -68,6 +65,16 @@ check it with `validate` and `verify` in a feedback loop.
    - A diff-style summary of what changed
    Suggest fetching `%(TASKLESS_CLI)s agent check` to validate against the
    broader codebase.
+
+<!-- on-demand -->
+## Fixtures
+
+How step 5's cases are laid out and judged, then where to take them
+from.
+
+   %(FIXTURE_LAYOUT)s
+
+   %(FIXTURE_SOURCES)s
 
 ## Important Notes
 

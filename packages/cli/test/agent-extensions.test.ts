@@ -197,7 +197,15 @@ describe("taskless agent <topic>", () => {
   });
 
   it("interpolates %(INPUT_SCHEMA)s for topics with a Zod input", async () => {
-    const result = await runCli(["agent", "create-remote-rule", "-d", cwd]);
+    // The schema is served on request (taskless/cli#672).
+    const result = await runCli([
+      "agent",
+      "create-remote-rule",
+      "--section",
+      "input-schema",
+      "-d",
+      cwd,
+    ]);
     expect(result.stdout).not.toContain("{{INPUT_SCHEMA}}");
     expect(result.stdout).not.toContain("%(INPUT_SCHEMA)s");
     // Embedded schema includes the JSON Schema $schema URI
@@ -338,7 +346,15 @@ describe("taskless agent route (absorbed engine reasoning)", () => {
   });
 
   it("carries the boundary cases", async () => {
-    const result = await runCli(["agent", "route", "-d", cwd]);
+    // On request since taskless/cli#672; step 4 names the section.
+    const result = await runCli([
+      "agent",
+      "route",
+      "--section",
+      "engine-boundaries",
+      "-d",
+      cwd,
+    ]);
     // Each is a wrong answer someone actually reaches for.
     expect(result.stdout).toContain("Prose about code is still prose");
     expect(result.stdout).toContain("one document at a time");
@@ -346,7 +362,14 @@ describe("taskless agent route (absorbed engine reasoning)", () => {
   });
 
   it("states the ambiguity default as a property, not as `sg`", async () => {
-    const result = await runCli(["agent", "route", "-d", cwd]);
+    const result = await runCli([
+      "agent",
+      "route",
+      "--section",
+      "important-notes",
+      "-d",
+      cwd,
+    ]);
     // "choose an engine whose availability you can assert" stays correct on an
     // unsupported arch and server-side alike; naming `sg` outright would be
     // false on the host where `sg` is the missing one.
@@ -355,7 +378,14 @@ describe("taskless agent route (absorbed engine reasoning)", () => {
   });
 
   it("weighs the concrete form above the wording of the request", async () => {
-    const result = await runCli(["agent", "route", "-d", cwd]);
+    const result = await runCli([
+      "agent",
+      "route",
+      "--section",
+      "important-notes",
+      "-d",
+      cwd,
+    ]);
     expect(result.stdout).toContain("outranks how the request was");
   });
 
@@ -387,13 +417,19 @@ describe("taskless agent route (absorbed engine reasoning)", () => {
   it("follows the recipe header and section convention", async () => {
     const result = await runCli(["agent", "route", "-d", cwd]);
     expect(result.stdout).toContain("# Topic: route");
-    for (const section of [
-      "## Goal",
-      "## Preconditions",
-      "## Steps",
-      "## See Also",
-    ]) {
+    for (const section of ["## Goal", "## Preconditions", "## Steps"]) {
       expect(result.stdout).toContain(section);
+    }
+    // See Also is served on request (taskless/cli#672).
+    expect(result.stdout).toContain("- `see-also`");
+  });
+
+  it("sends the reader to the engine reach before the decision", async () => {
+    // The reach lists decide the destination and were what truncation lost,
+    // so the steps name each section to print (taskless/cli#672).
+    const result = await runCli(["agent", "route", "-d", cwd]);
+    for (const section of ["ast-grep-reach", "vale-reach", "legacy-linters"]) {
+      expect(result.stdout).toContain(`section \`${section}\``);
     }
   });
 });
@@ -458,7 +494,8 @@ describe("the GitHub-owner constraint is guarded twice", () => {
   it.each(["create-remote-rule", "improve-rule"])(
     "%s documents every code the populations raise",
     async (topic) => {
-      const result = await runCli(["agent", topic, "-d", cwd]);
+      // `--full`: the Errors table may be served on request (taskless/cli#672).
+      const result = await runCli(["agent", topic, "--full", "-d", cwd]);
       expect(result.exitCode).toBe(0);
       for (const code of [
         "NOT_A_GIT_REPOSITORY",
@@ -498,7 +535,14 @@ describe("create-sg-rule warns about silently inert relational rules", () => {
   });
 
   it("says a sibling relation needs stopBy to cross punctuation", async () => {
-    const result = await runCli(["agent", "create-sg-rule", "-d", cwd]);
+    const result = await runCli([
+      "agent",
+      "create-sg-rule",
+      "--section",
+      "pattern-quirks",
+      "-d",
+      cwd,
+    ]);
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toContain("stopBy: end` to cross punctuation");
     // The reason, not just the fix: the separator is a node too.
@@ -506,7 +550,14 @@ describe("create-sg-rule warns about silently inert relational rules", () => {
   });
 
   it("says a not over the binding subtree excludes everything", async () => {
-    const result = await runCli(["agent", "create-sg-rule", "-d", cwd]);
+    const result = await runCli([
+      "agent",
+      "create-sg-rule",
+      "--section",
+      "pattern-quirks",
+      "-d",
+      cwd,
+    ]);
     expect(result.stdout).toContain("excludes everything");
     expect(result.stdout).toContain("its own descendant");
   });
@@ -514,7 +565,14 @@ describe("create-sg-rule warns about silently inert relational rules", () => {
   it("frames both as reporting nothing rather than erroring", async () => {
     // The dangerous property: zero findings is what a clean codebase looks
     // like, so neither failure announces itself.
-    const result = await runCli(["agent", "create-sg-rule", "-d", cwd]);
+    const result = await runCli([
+      "agent",
+      "create-sg-rule",
+      "--section",
+      "quirks",
+      "-d",
+      cwd,
+    ]);
     expect(result.stdout).toContain("reads exactly like a clean codebase");
   });
 });
@@ -536,7 +594,14 @@ describe("create-sg-rule names the tree-sitter traps under Quirks", () => {
   });
 
   it("says a keyword is not a kind, and where to read real kinds", async () => {
-    const result = await runCli(["agent", "create-sg-rule", "-d", cwd]);
+    const result = await runCli([
+      "agent",
+      "create-sg-rule",
+      "--section",
+      "pattern-quirks",
+      "-d",
+      cwd,
+    ]);
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toContain("### A keyword is not a valid `kind`");
     expect(result.stdout).toMatch(/read kinds off `.+ ast <file>`/);
@@ -545,7 +610,14 @@ describe("create-sg-rule names the tree-sitter traps under Quirks", () => {
   });
 
   it("says an awaited generic call hides its callee", async () => {
-    const result = await runCli(["agent", "create-sg-rule", "-d", cwd]);
+    const result = await runCli([
+      "agent",
+      "create-sg-rule",
+      "--section",
+      "pattern-quirks",
+      "-d",
+      cwd,
+    ]);
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toContain(
       "### An awaited generic call hides its callee"

@@ -1,4 +1,4 @@
-# Topic: update     (CLI v%(CLI_VERSION)s / topic v22)
+# Topic: update     (CLI v%(CLI_VERSION)s / topic v23)
 
 %(ONE_COMMAND_PER_CALL)s
 
@@ -20,9 +20,9 @@ reasonably conclude the upgrade is done. It is not. The directory is
 migrated; the rules may still need work.
 
 ## Goal
-Walk the ledger below from the version this project was last reconciled
-to, up to the installed CLI, doing what each section says. Then record
-that you finished.
+Walk the ledger from the version this project was last reconciled to,
+up to the installed CLI, doing what each entry says. Then record that
+you finished.
 
 ## Preconditions
 - `.taskless/` exists. If it does not, there are no rules to reconcile.
@@ -39,10 +39,10 @@ that you finished.
    against.
 
    **No `rules.reconciledTo` at all** means this project PREDATES the
-   ledger, so treat it as `0.0.0` and walk every section. It does not
+   ledger, so treat it as `0.0.0` and walk every entry. It does not
    mean the project is new: a project this CLI set up has the field
    stamped at creation, so an absent marker is the one case where none
-   of the entries below have ever been applied.
+   of the ledger's entries have ever been applied.
 
    `rules.walk` on that same payload is this decision already made:
    `{ "from": ..., "to": ... }` when there is something to walk, and
@@ -53,85 +53,133 @@ that you finished.
    `rules.reconcile.required` too. It is `true` when there is a walk,
    and also when `rules.reconcile.engines` lists an engine whose rules
    are recorded behind the one this CLI bundles. That second case has no
-   ledger section: every nightly of one release reads as that release,
+   ledger entry: every nightly of one release reads as that release,
    so an ast-grep or Vale bump between two nightlies leaves `walk` null
    while `check` and `verify` refuse with `RULES_ENGINE_MISMATCH`. With
    `required` true and `walk` null, skip steps 2 and 3 and go on to step
    4. With `required` false, the rules need nothing and step 5 has
    nothing to record.
 
-2. **Walk forward, in order.** Start at the section after
-   `reconciledTo` and continue to the installed version. Sections are
-   cumulative, never replaceable: a later one can depend on an earlier
-   one having run, so do not skip ahead to the newest.
+2. **Walk forward, in order, one entry at a time.** Each ledger entry
+   is its own section; [The ledger](#the-ledger) says which ones apply.
+   Print the first, do what it says (step 3), then print the next, up
+   to the installed version. Entries are cumulative, never replaceable:
+   a later one can depend on an earlier one having run, so do not skip
+   ahead to the newest.
 
-3. **Do the work each section names.** Each says what changed and what
-   it means for existing rules. A section that says there is nothing to
+3. **Do the work each entry names.** Each says what changed and what
+   it means for existing rules. An entry that says there is nothing to
    do means exactly that; it is a claim, not an oversight.
 
    Until step 5 records the walk, `check` and `verify` refuse with
    `RULES_ENGINE_MISMATCH`: the rules are still recorded against the
    engines they were last reconciled for, not the ones this CLI
-   bundles. When a section asks you to run one of them mid-walk, add
+   bundles. When an entry asks you to run one of them mid-walk, add
    `--allow-version-mismatches`. Mechanical rewrites have not been
-   applied yet at that point, so a rule a later section says step 5
+   applied yet at that point, so a rule a later entry says step 5
    rewrites can still fail to load.
 
 4. **Offer the `pinnedCli` changes.** Read `pinnedCli` from the same
    `info --json` payload as step 1. Each entry names the Taskless CLI in
-   a `package.json`, CI file, or hook (`manifest` names which,
-   `location` where in it), and `reason` says what to do. An empty list
-   means there is nothing to change. A `dependency` is any dependency on
-   the CLI: Taskless runs through the project launcher, so offer to
-   remove it and point what called its `taskless` binary at
-   `node .taskless/bin/cli.mjs`. A `stale` line names an older build:
-   offer to move it to the installed version. A `nightly` line is left
-   over after a release install: offer to move it back to
-   `@taskless/cli`. Never move a `@taskless/cli` pin onto the nightly; a
-   nightly installs beside the release.
-
-   This is not optional advice. A CLI that is not the version
-   `.taskless/taskless.json` records refuses every command but `init`,
-   `info`, `auth` and `feedback` with `CLI_VERSION_MISMATCH`, so any
-   pin left behind breaks CI on the push that carries `init`'s changes.
-   The bump belongs in that same commit.
-
-   Offer each change to the user, with reinstalling dependencies when a
-   dependency is removed. Do not make it silently: a pin can be
-   deliberate, and removing a dependency changes the lockfile. The walk does not
-   depend on the answer, so record it either way, but if they decline,
-   tell them plainly that whatever runs that pin will fail.
+   a `package.json`, CI file, or hook, and `reason` says what to do. An
+   empty list means there is nothing to change. This is not optional
+   advice: a pin left behind fails with `CLI_VERSION_MISMATCH`. Offer
+   each change to the user rather than making it silently, and record
+   the walk whatever they answer. Read [Pinned CLI](#pinned-cli) for
+   what each kind of entry asks for and what to tell a user who
+   declines.
 
 5. **Record that you finished.** Run:
    ```
    %(TASKLESS_CLI)s update --rules
    ```
    Only after the walk is complete. There is no version to pass: the CLI
-   stamps its own, because the only sensible endpoint of a walk is the
-   version you are running.
+   stamps its own. A partial or abandoned walk must not be recorded: the
+   next agent starts from what you wrote and skips everything you did
+   not do. This step also applies the mechanical rewrites the entries
+   hand to it; read the rewritten files in the diff, run
+   `%(TASKLESS_CLI)s validate`, and commit them with the marker.
+   Read [Recording the walk](#recording-the-walk) for what it records
+   and rewrites, and [Errors](#errors) for what each refusal means.
 
-   A partial or abandoned walk must not be recorded. The next agent
-   starts from what you wrote and skips everything you did not do, and
-   it will look like there was nothing to do. Nothing can check this for
-   you: the CLI refuses to move the marker backwards, but it cannot tell
-   whether you read the sections.
+<!-- on-demand -->
+## Pinned CLI
 
-   This also records the engine versions the rules are now valid
-   against, which is what lets a later upgrade say what moved.
+Step 4 in full. Each `pinnedCli` entry names the Taskless CLI in a
+`package.json`, CI file, or hook (`manifest` names which, `location`
+where in it), and `reason` says what to do. An empty list means there
+is nothing to change. A `dependency` is any dependency on the CLI:
+Taskless runs through the project launcher, so offer to remove it and
+point what called its `taskless` binary at `node .taskless/bin/cli.mjs`.
+A `stale` line names an older build: offer to move it to the installed
+version. A `nightly` line is left over after a release install: offer
+to move it back to `@taskless/cli`. Never move a `@taskless/cli` pin
+onto the nightly; a nightly installs beside the release.
 
-   Before it records them, it applies every mechanical rewrite between
-   the engine versions the rules were last reconciled against and the
-   bundled ones, and names each file it changed (`migrated` with
-   `--json`). `ruleMigrations` in `update --json` lists them in advance.
-   A section below that says `update --rules` does something needs
-   nothing from you beyond this step. Read the rewritten files in the
-   diff, run `%(TASKLESS_CLI)s validate`, and commit them with the
-   marker. If the project's `.taskless/` layout is behind, this refuses
-   with `SCAFFOLD_MIGRATION_REQUIRED`; run `%(TASKLESS_CLI)s init` first.
+This is not optional advice. A CLI that is not the version
+`.taskless/taskless.json` records refuses every command but `init`,
+`info`, `auth` and `feedback` with `CLI_VERSION_MISMATCH`, so any pin
+left behind breaks CI on the push that carries `init`'s changes. The
+bump belongs in that same commit.
+
+Offer each change to the user, with reinstalling dependencies when a
+dependency is removed. Do not make it silently: a pin can be
+deliberate, and removing a dependency changes the lockfile. The walk
+does not depend on the answer, so record it either way, but if they
+decline, tell them plainly that whatever runs that pin will fail.
+
+<!-- on-demand -->
+## Recording the walk
+
+Step 5 in full. Run `%(TASKLESS_CLI)s update --rules` only after the
+walk is complete. There is no version to pass: the CLI stamps its own,
+because the only sensible endpoint of a walk is the version you are
+running.
+
+A partial or abandoned walk must not be recorded. The next agent starts
+from what you wrote and skips everything you did not do, and it will
+look like there was nothing to do. Nothing can check this for you: the
+CLI refuses to move the marker backwards, but it cannot tell whether
+you read the entries.
+
+This also records the engine versions the rules are now valid against,
+which is what lets a later upgrade say what moved.
+
+Before it records them, it applies every mechanical rewrite between the
+engine versions the rules were last reconciled against and the bundled
+ones, and names each file it changed (`migrated` with `--json`).
+`ruleMigrations` in `update --json` lists them in advance. A ledger
+entry that says `update --rules` does something needs nothing from you
+beyond this step. Read the rewritten files in the diff, run
+`%(TASKLESS_CLI)s validate`, and commit them with the marker. If the
+project's `.taskless/` layout is behind, this refuses with
+`SCAFFOLD_MIGRATION_REQUIRED`; run `%(TASKLESS_CLI)s init` first.
 
 ## The ledger
 
-### Migrating to 0.11.x
+One entry per release that changed something for rules already in a
+project, oldest first. Each entry is its own section, named
+`migrating-to-<version>`, and the sections sit in release order, so
+the list of sections served on request names them oldest first too.
+Print one with:
+```
+%(RECIPE_FETCH)supdate --section <name>
+```
+
+An entry applies when its version is above `walk.from` (your
+`reconciledTo`) and no higher than `walk.to` (the installed CLI).
+Compare the numeric core only: every nightly of a release reads as
+that release. `0.11.x` is the 0.11 series and sorts as 0.11.0. Start at
+the first entry that applies and print every one after it, in the
+order listed, through the last one at or below `walk.to`.
+
+An entry too long for one fetch is split: its second part is a section
+of the same name ending in `-continued`, listed straight after it.
+Both parts are one entry, so print and act on both before moving to
+the next version.
+
+<!-- on-demand -->
+## Migrating to 0.11.x
 
 The vendored ast-grep moves from 0.41.0 to 0.45.2, and Vale from 3.18.0
 to 3.20.0. Nine things follow for existing rules.
@@ -194,6 +242,16 @@ rule that was over-firing on a known phrase can now carry it. Upstream
 also changed how a negated sequence token is satisfied at a sentence
 boundary. No shape we tried reproduced a difference between 3.19.0 and
 3.20.0, so there is nothing to do unless you see one.
+
+The four that follow from ast-grep continue in
+[Migrating to 0.11.x, continued](#migrating-to-0-11-x-continued).
+
+<!-- on-demand -->
+## Migrating to 0.11.x, continued
+
+The second part of the 0.11.x entry: the four things that follow from
+ast-grep 0.45.2. The five that follow from Vale are in
+[Migrating to 0.11.x](#migrating-to-0-11-x).
 
 **A rewriter now requires `fix`.** `SerializableRewriter.required` goes
 from `["rule","id"]` to `["id","fix","rule"]`, so a `rewriters:` entry
@@ -285,7 +343,8 @@ leaked text into people's files.
 (ast-grep/ast-grep#2868), but no shape we tried reproduced a difference,
 including the TSX case that PR names. Nothing to do unless you see one.
 
-### Migrating to 0.11.2
+<!-- on-demand -->
+## Migrating to 0.11.2
 
 Vale moves from 3.20.0 to 3.21.0, and ast-grep from 0.45.2 to 0.45.3.
 Nothing installed migrates for ast-grep: its one user-visible change is
@@ -346,12 +405,13 @@ root-metavariable case is: nothing to do unless you see one.
 which a rule could not do before: `text & doc(section:has(> h2:contains("Decision")))`
 is the prose of one section, `~doc(...)` is everything outside it, and
 a `metric` scoped to `doc(...)` puts a word budget on that section
-alone. `%(TASKLESS_CLI)s agent create-vale-rule` has the shapes and the
+alone. `%(RECIPE_FETCH)screate-vale-rule --section scopes` has the shapes and the
 one trap (a leaf element on its own, `doc(h2)`, is inert; chain it).
 No existing rule changes; this is a reason to revisit one that was
 narrowed by hand.
 
-### Migrating to 0.12.0
+<!-- on-demand -->
+## Migrating to 0.12.0
 
 **Every project: run `%(TASKLESS_CLI)s init` once.** Migration 10 moves
 test files an earlier migration left in `.taskless/sg/rule-tests/` (from
@@ -426,8 +486,18 @@ inside `no-simply`'s config, which was a cross-rule override); and a
 overriding. A `.taskless/**` matcher is reported as an advisory rather
 than rejected: a whole-project `check` excludes that tree anyway, and
 on a fixture path you name the matcher is what silences the rule.
-Delete it. `%(TASKLESS_CLI)s agent create-vale-rule` lists every
+Delete it. `%(RECIPE_FETCH)screate-vale-rule --section config-schema` lists every
 rejection and advisory.
+
+The Vale 3.22.0 and 3.23.0 changes continue in
+[Migrating to 0.12.0, continued](#migrating-to-0-12-0-continued).
+
+<!-- on-demand -->
+## Migrating to 0.12.0, continued
+
+The second part of the 0.12.0 entry. The first, with the `init` and
+`check --json` runs every project needs, is
+[Migrating to 0.12.0](#migrating-to-0-12-0).
 
 Vale also moves from 3.21.0 to 3.23.0 in this release, by way of
 3.22.0. Two things from 3.22.0 change what an existing Vale rule does,
@@ -509,7 +579,8 @@ until now and starts reporting.
 by `check`, and `validate` rejected it before this release while Vale
 loaded it without complaint.
 
-### Migrating to 0.13.3
+<!-- on-demand -->
+## Migrating to 0.13.3
 
 The vendored ast-grep moves from 0.45.3 to 0.51.0, and Vale from 3.23.0
 to 3.24.0. Nothing here needs work by hand.
@@ -595,7 +666,8 @@ running CLI is not the version `.taskless/taskless.json` records, and
 are already doing what clears both: `init` moved the record to this
 CLI, step 4 moves the pins, and step 5 records the engines.
 
-### Migrating to 0.13.4
+<!-- on-demand -->
+## Migrating to 0.13.4
 
 **A rule's fixtures are case directories under `tests/` now, for every
 engine, and `init` moves them for you.** They used to live in `.tests/`,
@@ -630,7 +702,8 @@ What needs you, after `init`:
   with the reason, and `verify` fails the rule until it is gone. Move
   those files by hand into case directories, then delete `.tests/`.
 
-### Migrating to 0.13.5
+<!-- on-demand -->
+## Migrating to 0.13.5
 
 Vale moves from 3.24.0 to 3.26.0. Nothing here needs work by hand.
 Three things change which findings an existing rule reports, each
@@ -653,6 +726,7 @@ can produce findings it did not before.
 findings disappear and a project vocabulary entry that existed only
 for such a word is now redundant. Leave it; it does no harm.
 
+<!-- on-demand -->
 ## Errors
 
 With `--json`, `--rules` failures emit `{ ok: false, code, message }`:

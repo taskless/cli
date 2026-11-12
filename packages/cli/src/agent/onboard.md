@@ -1,51 +1,36 @@
-# Topic: onboard     (CLI v%(CLI_VERSION)s / topic v13)
+# Topic: onboard     (CLI v%(CLI_VERSION)s / topic v14)
 
 %(ONE_COMMAND_PER_CALL)s
 
 ## Goal
 Take a user who has just installed Taskless from zero rules to a
 working starter set and a published report, after asking them one
-question. Mine the codebase, agent-memory files, review history, and
-any tracker or engineering context you can reach for high-signal rule
-candidates; write every one this repository can enforce locally;
-publish a Taskless report showing what they catch; and finish by
-making the case for running them in CI.
+question: mine every source you can reach for high-signal rule
+candidates, write every one this repository can enforce locally,
+publish a report showing what they catch, and finish by making the
+case for running them in CI.
 
 ## Preconditions
-- `.taskless/` directory exists (Taskless is installed). The
-  `%(TASKLESS_CLI)s onboard` subcommand bootstraps it on first run, so this
-  is automatically satisfied.
+- `.taskless/` directory exists (Taskless is installed). The `onboard`
+  subcommand bootstraps it on first run, so this is automatically
+  satisfied.
 - A working repository the agent can read.
 - No auth, ever. Onboarding runs logged out from start to finish: do
   not run `auth login`, and do not offer it. Everything below works
   without an account.
 - The criterion for where a rule belongs lives in
-  `%(TASKLESS_CLI)s agent route` and is not restated here. This recipe
-  reads it; it does not duplicate it.
+  `%(TASKLESS_CLI)s agent route` and is not restated here.
 
 ## Steps
 
-1. **Check that this checkout has Taskless committed.** Run
-   `git rev-parse --path-format=absolute --git-dir --git-common-dir`.
-   If this is not a git repository, or the two lines match, go on.
-   If they differ, you are in a linked worktree, and a worktree holds
-   only what was committed. Run `git ls-files .taskless/taskless.json`:
-   if it prints a path, go on. If it prints nothing, `.taskless/` was
-   never committed, even if it exists here, since the
-   `%(TASKLESS_CLI)s onboard` subcommand bootstraps an empty one. Check
-   the main checkout, the directory that holds the `--git-common-dir`
-   path: if it has a `.taskless/` too, stop. Tell the user that
-   `init`'s files are most likely uncommitted in their main checkout
-   at that path, to commit `.taskless/` and the skill directories there,
-   then start a new worktree and ask to onboard again. If it has none,
-   `init` ran in this worktree; go on.
+1. **Check that this checkout has Taskless committed.** Before
+   anything else, run the check in [Worktree check](#worktree-check)
+   and stop where it says to.
 
-2. **Read the manifest first.** Run
-   `%(TASKLESS_CLI)s info --json` and check whether
-   `.taskless/taskless.json` reports `install.onboarded: true`. The
-   `%(TASKLESS_CLI)s onboard` subcommand has already gated on this for
-   you; if you reached this recipe another way and it is true, stop and
-   tell the user onboarding already ran.
+2. **Read the manifest first.** Run `%(TASKLESS_CLI)s info --json`.
+   The `onboard` subcommand already gated on
+   `install.onboarded`; if you reached this recipe another way and it
+   is `true`, stop and tell the user onboarding already ran.
 
 3. **Ask the one question.** Put exactly this to the user, word for
    word, set apart from anything else you say by a blank line above
@@ -71,24 +56,113 @@ making the case for running them in CI.
    (step 12).
 
 4. **Learn the routing surface before you propose anything.** A
-   candidate this repository cannot express is not a candidate, and
-   you cannot tell which is which until you know two things:
+   candidate this repository cannot express is not a candidate:
 
    ```
    %(TASKLESS_CLI)s agent route
    %(TASKLESS_CLI)s detect --json
    ```
 
-   Read `route` for the destination criterion, which rules are
-   decided by one file's syntax tree, by a document's words, by a
-   tool the repo already runs, or by evidence outside the files.
-   Read `detect --json` for what this repository actually has:
-   `linters`, `languages`, `ruleStyles`, `hostTools`, and `agent`,
-   the commands you may choose to run to check that a source is
-   usable, such as whether the user is signed in to `gh`.
+   `route` holds the destination criterion; `detect --json` says what
+   this repository has, and under `agent` the commands that check a
+   source is usable, such as `gh` sign-in.
 
 5. **Mine every source you can reach.** Do not ask the user which;
-   use all of these that apply:
+   use every one in [Sources](#sources) that applies, **Commit history**
+   included: in a repository reviewed before its pull requests open,
+   it is often the only signal.
+
+6. %(HOST_TOOLS)s
+
+7. **Scan with high-signal filtering.** Read
+   [Choosing candidates](#choosing-candidates) before you mine: what
+   makes a candidate, the list to keep, and what to count for the
+   report while you mine. Three high-quality candidates beat ten
+   speculative ones.
+
+8. **Write the rules.** For every candidate whose destination is
+   `legacy`, `sg`, or `vale`, follow the `route` recipe you already
+   fetched, with the candidate as the rule
+   description, and write it. Do not ask before each one.
+
+   A `legacy` candidate here only ever enables or configures a rule
+   the linter already ships.
+
+   A runtime candidate is not written; keep it for the report as a
+   Taskless Cloud candidate, with how many instances of its pattern you
+   saw: the report asks for that estimate.
+   [Legacy and runtime candidates](#legacy-and-runtime-candidates) has
+   the detail for both.
+
+   `route` and the recipes it sends you to ask the user in places.
+   During onboarding you ask none of them: read
+   [Questions route asks](#questions-route-asks) for what to do at each.
+
+9. **Clarify only when stuck.** Ask the user something only when you
+   are unsure what rules to write AND the report cannot be built
+   because there are fewer than three working Taskless rules. Ask only
+   what would let you write the missing rules. If you can find good
+   candidates on your own, do that instead.
+
+10. **Mark onboarding complete.** Once the rules are written, run:
+
+    ```
+    %(TASKLESS_CLI)s onboard --mark-complete
+    ```
+
+    Do not ask first. The user's yes in step 3 is the consent this
+    records, and it does not wait on the report.
+
+11. **Publish the report, and send feedback alongside it.** Follow
+    `%(TASKLESS_CLI)s agent report` to publish the report, with the
+    runtime candidates from step 8. In parallel, follow `%(TASKLESS_CLI)s agent rule-feedback` as the
+    respondent, reached from onboarding
+    (`%(RECIPE_FETCH)srule-feedback --section reached-from-onboarding`):
+    answer from your own account of this session, ask the user nothing,
+    and send it. If the report
+    recipe refuses for too few rules, that is step 9's case.
+
+12. **Make the case for CI, last.** After the report summary has been
+    shown, offer to run `%(TASKLESS_CLI)s check` in this repository's CI
+    by following `%(TASKLESS_CLI)s agent ci`, naming the CI systems the
+    `ci` field of `detect --json` reported, or saying there are none.
+    Encourage it strongly: these rules only keep agents from
+    reintroducing what the report shows when something runs them on
+    every change, and CI is where every agent's work passes through.
+    On a no, name
+    `%(TASKLESS_CLI)s agent hooks` in one line as the way to run them
+    before each commit instead.
+
+    Either way, end your final message with the report link, on its
+    own line as a plain URL or a Markdown link, NOT inside a code
+    block. The CI offer pushed the summary out of view, and the user
+    should not have to scroll back for the report. Use the link the
+    summary showed, never the record in `.taskless/reports/`, which
+    holds the URL that deletes the page. Then stop.
+
+<!-- on-demand -->
+## Worktree check
+
+In a linked git worktree, `.taskless/` can exist without ever having
+been committed. Run
+`git rev-parse --path-format=absolute --git-dir --git-common-dir`.
+If this is not a git repository, or the two lines match, go on.
+If they differ, you are in a linked worktree, and a worktree holds
+only what was committed. Run `git ls-files .taskless/taskless.json`:
+if it prints a path, go on. If it prints nothing, `.taskless/` was
+never committed, even if it exists here, since the
+`%(TASKLESS_CLI)s onboard` subcommand bootstraps an empty one. Check
+the main checkout, the directory that holds the `--git-common-dir`
+path: if it has a `.taskless/` too, stop. Tell the user that
+`init`'s files are most likely uncommitted in their main checkout
+at that path, to commit `.taskless/` and the skill directories there,
+then start a new worktree and ask to onboard again. If it has none,
+`init` ran in this worktree; go on.
+
+<!-- on-demand -->
+## Sources
+
+Use all of these that apply:
 
    - **Codebase TODOs / FIXMEs**: search for `TODO`, `FIXME`, `XXX`,
      and `HACK` comments. Many of these are latent rules ("don't do
@@ -115,128 +189,89 @@ making the case for running them in CI.
    MCPs to use, is yours to decide. Run a check when its answer
    changes what you can mine.
 
-6. %(HOST_TOOLS)s
+<!-- on-demand -->
+## Choosing candidates
 
-7. **Scan with high-signal filtering.** For each source:
+For each source:
 
-   - **Filter for repeated patterns.** A reviewer comment that
-     appears across multiple PRs is a much stronger rule candidate
-     than a one-off nit.
-   - **Prefer comments that cite a doc or style guide.** "Per our
-     style guide, no direct DB calls in controllers" is a rule.
-     "looks good" is not.
-   - **Prefer merge-blocking feedback.** Comments that gated a PR
-     merge are higher-signal than passing remarks.
-   - **Filter out one-off nits and pure formatting.** Linters and
-     formatters already handle those; Taskless rules earn their
-     keep on semantic patterns.
+- **Filter for repeated patterns.** A reviewer comment that
+  appears across multiple PRs is a much stronger rule candidate
+  than a one-off nit.
+- **Prefer comments that cite a doc or style guide.** "Per our
+  style guide, no direct DB calls in controllers" is a rule.
+  "looks good" is not.
+- **Prefer merge-blocking feedback.** Comments that gated a PR
+  merge are higher-signal than passing remarks.
+- **Filter out one-off nits and pure formatting.** Linters and
+  formatters already handle those; Taskless rules earn their
+  keep on semantic patterns.
 
-   Keep, for yourself, a list of candidates in this form, ordered by
-   impact (frequency in the source × severity × ease of enforcement):
+Keep, for yourself, a list of candidates in this form, ordered by
+impact (frequency in the source × severity × ease of enforcement):
 
-   ```
-   - <kebab-case-name> [<destination>]: <one-line description of what it would enforce>
-   ```
+```
+- <kebab-case-name> [<destination>]: <one-line description of what it would enforce>
+```
 
-   `<destination>` is your provisional routing call, one of `legacy`,
-   `sg`, `vale`, or `runtime`. `route` decides for real when you write
-   the rule, and may land it somewhere else. Three high-quality
-   candidates beat ten speculative ones. Note, for the report, how
-   many pull requests and review comments raised each one in the
-   window you mined: a pull request counts when it merged in the
-   window and a review comment on it asked for the change, and each
-   such comment counts. Bot and author comments count too. Judge each
-   comment by reading it, never by matching keywords. Evidence from
-   commit history chooses candidates; it never counts toward these
-   numbers, which count review comments alone.
+`<destination>` is your provisional routing call, one of `legacy`,
+`sg`, `vale`, or `runtime`. `route` decides for real when you write
+the rule, and may land it somewhere else.
 
-   Count while you mine, not afterwards. As each comment joins a
-   candidate, note its pull request and comment under that candidate,
-   scoped to the rule you expect to write rather than a broader theme,
-   so the counts come from that list instead of a second read. When
-   `route` narrows a candidate, recount from the list.
+Note, for the report, how many pull requests and review comments
+raised each one in the window you mined: a pull request counts when it
+merged in the window and a review comment on it asked for the change,
+and each such comment counts. Bot and author comments count too. Judge
+each comment by reading it, never by matching keywords. Evidence from
+commit history chooses candidates; it never counts toward these
+numbers, which count review comments alone.
 
-8. **Write the rules.** For every candidate whose destination is
-   `legacy`, `sg`, or `vale`, follow the `%(TASKLESS_CLI)s agent route`
-   recipe you already fetched, with the candidate as the rule
-   description, and write it. Do not ask before each one.
+Count while you mine, not afterwards. As each comment joins a
+candidate, note its pull request and comment under that candidate,
+scoped to the rule you expect to write rather than a broader theme,
+so the counts come from that list instead of a second read. When
+`route` narrows a candidate, recount from the list.
 
-   A `legacy` candidate here only ever enables or configures a rule
-   the linter, or a plugin the repo already has installed, already
-   ships. During onboarding do not write a custom rule in any linter,
-   however many the repo has, and do not add a dependency. When no
-   installed rule solves it, continue down `route`'s legacy ladder to
-   a Taskless rule.
+<!-- on-demand -->
+## Legacy and runtime candidates
 
-   A candidate you judge better solved by a runtime rule is not
-   written: runtime rules need an account, and onboarding stays
-   logged out. If `route` sends a rule toward a runtime or
-   login-gated recipe, stop there for that rule. Keep it for the
-   report, where it appears as a Taskless Cloud candidate, and note how
-   many instances of its pattern you saw in the code: the report asks
-   for that estimate.
+A `legacy` candidate here only ever enables or configures a rule
+the linter, or a plugin the repo already has installed, already
+ships. During onboarding do not write a custom rule in any linter,
+however many the repo has, and do not add a dependency. When no
+installed rule solves it, continue down `route`'s legacy ladder to
+a Taskless rule.
 
-   `route`, and the recipes it sends you to, ask the user in a few
-   places. During onboarding you ask none of them; step 9 is the only
-   clarifying question, and only in its case. Decide each yourself:
+A candidate you judge better solved by a runtime rule is not written:
+runtime rules need an account, and onboarding stays logged out. If
+`route` sends a rule toward a runtime or login-gated recipe, stop there
+for that rule. Keep it for the report, where it appears as a Taskless
+Cloud candidate, and note how many instances of its pattern you saw in
+the code: the report asks for that estimate.
 
-   - **`route` offers a local rule or a generation** (its step 7):
-     write the local rule. Generation needs a login, and onboarding
-     stays logged out.
-   - **You cannot tell which destination fits** (`route`'s clarifying
-     question): skip the candidate. Name it in one line when you show
-     the report summary, as a candidate you left unwritten and why.
-   - **A local rule fails its cases** (`route`'s failure fallback): do
-     not offer generation. If the pattern needs runtime evidence, keep it
-     as a Taskless Cloud candidate as above; otherwise skip it and name
-     it the same way.
-   - **A destination recipe asks you to confirm something**, such as
-     exclusions, an overlapping rule, or which linter owns it: decide
-     from what you read in the repository. Where you cannot decide, skip
-     the candidate and name it the same way.
+<!-- on-demand -->
+## Questions route asks
 
-9. **Clarify only when stuck.** You may ask the user something only
-   when you are unsure what rules to write AND the report cannot be
-   built yet because there are fewer than three working Taskless
-   rules. Ask only what would let you write the missing rules, then
-   write them. If you can find good candidates on your own, do that
-   instead.
+`route`, and the recipes it sends you to, ask the user in a few
+places. During onboarding you ask none of them; step 9 is the only
+clarifying question, and only in its case. Decide each yourself:
 
-10. **Mark onboarding complete.** Once the rules are written, run:
+- **`route` offers a local rule or a generation** (its step 7):
+  write the local rule. Generation needs a login, and onboarding
+  stays logged out.
+- **You cannot tell which destination fits** (`route`'s clarifying
+  question): skip the candidate. Name it in one line when you show
+  the report summary, as a candidate you left unwritten and why.
+- **A local rule fails its cases** (`route`'s failure fallback): do
+  not offer generation. If the pattern needs runtime evidence, keep it
+  as a Taskless Cloud candidate, as
+  [Legacy and runtime candidates](#legacy-and-runtime-candidates)
+  says; otherwise skip it and name it the same way.
+- **A destination recipe asks you to confirm something**, such as
+  exclusions, an overlapping rule, or which linter owns it: decide
+  from what you read in the repository. Where you cannot decide, skip
+  the candidate and name it the same way.
 
-    ```
-    %(TASKLESS_CLI)s onboard --mark-complete
-    ```
-
-    Do not ask first. The user's yes in step 3 is the consent this
-    records, and it does not wait on the report.
-
-11. **Publish the report, and send feedback alongside it.** Follow
-    `%(TASKLESS_CLI)s agent report` to publish the report; it carries
-    the runtime candidates from step 8 as Taskless Cloud candidates.
-    In parallel, follow `%(TASKLESS_CLI)s agent rule-feedback` as the
-    respondent, reached from onboarding: answer from your own account
-    of this session, ask the user nothing, and send it. If the report
-    recipe refuses for too few rules, that is step 9's case.
-
-12. **Make the case for CI, last.** After the report summary has been
-    shown, offer to run `%(TASKLESS_CLI)s check` in this repository's CI
-    by following `%(TASKLESS_CLI)s agent ci`, naming the CI systems the
-    `ci` field of `detect --json` reported, or saying there are none.
-    Encourage it strongly: these rules only keep agents from
-    reintroducing what the report shows when something runs them on
-    every change, and CI is where every agent's work passes through.
-    On a yes, follow the `ci` recipe. On a no, name
-    `%(TASKLESS_CLI)s agent hooks` in one line as the way to run them
-    before each commit instead.
-
-    Either way, end your final message with the report link, on its
-    own line as a plain URL or a Markdown link, NOT inside a code
-    block. The CI offer pushed the summary out of view, and the user
-    should not have to scroll back for the report. Use the link the
-    summary showed, never the record in `.taskless/reports/`, which
-    holds the URL that deletes the page. Then stop.
-
+<!-- on-demand -->
 ## Errors
 
 | code                  | meaning                                      | fix                                                  |
@@ -244,6 +279,7 @@ making the case for running them in CI.
 | `ALREADY_ONBOARDED`   | `install.onboarded` is true and no `--force` | tell the user onboarding already ran                 |
 | `REPORT_INSUFFICIENT` | fewer than three working Taskless rules      | step 9: write more rules, asking only if you're stuck |
 
+<!-- on-demand -->
 ## See Also
 
 - `%(TASKLESS_CLI)s agent route`: the destination criterion; read it

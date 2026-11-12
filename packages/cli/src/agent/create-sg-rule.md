@@ -1,4 +1,4 @@
-# Topic: create-sg-rule     (CLI v%(CLI_VERSION)s / topic v17)
+# Topic: create-sg-rule     (CLI v%(CLI_VERSION)s / topic v18)
 
 %(ONE_COMMAND_PER_CALL)s
 
@@ -12,15 +12,15 @@ and follow its decision rather than adapting this recipe.
 Produce a verified ast-grep rule and its test cases, locally, without
 contacting the Taskless service. You derive the rule yourself, write it
 in the canonical on-disk shape, and check it with `validate` and
-`verify` in a feedback loop. The files you produce match exactly what the
-service writes, so `check`, `improve-rule`, `validate`, and `verify` treat
-them identically.
+`verify` in a feedback loop. The files match what the service writes,
+so every command treats them the same.
 
 ## Preconditions
 - `.taskless/` directory exists.
 - The agent can read/write files and run shell commands.
 - No auth required.
 
+<!-- on-demand -->
 ## One rule, one directory
 
 Everything defining a rule lives in `.taskless/rules/sg/<id>/`. Writing
@@ -41,17 +41,14 @@ whole rule.
 
 ## Steps
 
-1. **Learn the ast-grep rule format.** Consult the ast-grep rule
-   reference at https://ast-grep.github.io/guide/rule-config.html for
-   valid fields and operators (`pattern`, `kind`, `regex`,
-   `any`/`all`/`has`/`inside`/`not`) and meta-variable syntax. This
-   recipe does not embed the schema. Read it from upstream rather than
-   writing a rule from memory.
+1. **Learn the ast-grep rule format** from the upstream reference,
+   https://ast-grep.github.io/guide/rule-config.html: fields, operators
+   (`pattern`, `kind`, `regex`, `any`/`all`/`has`/`inside`/`not`) and
+   meta-variables. Do not write a rule from memory.
 
-2. **Gather and confirm the pattern.** Make sure you have concrete
-   success cases (code that should pass) and failure cases (code that
-   should be flagged), the target language, and any exceptions. Search
-   the codebase for real instances and confirm exclusions with the user.
+2. **Gather and confirm the pattern**: code that should pass, code that
+   should be flagged, the target language, and any exceptions. Search the
+   codebase for real instances and confirm exclusions with the user.
 
 3. **Check for an existing rule that already covers this.** Scan
    `.taskless/rules/sg/` and read each rule's `message`, `note`, and
@@ -61,9 +58,10 @@ whole rule.
 
 4. **Author the rule in the canonical shape.** Write the rule to
    `.taskless/rules/sg/<id>/<id>.yml`, where `<id>` is kebab-case and
-   names both the directory and the file. At minimum:
+   names both the directory and the file
+   ([One rule, one directory](#one-rule-one-directory)). At minimum:
    - `id`: kebab-case, matching the filename (e.g. `no-eval`)
-   - `language`: the target language, in ast-grep's spelling (below)
+   - `language`: the target language, copied from [Languages](#languages)
    - `severity`: `error`, `warning`, `info`, or `hint`
    - `message`: a concise single-line explanation
    - `rule`: the ast-grep rule object
@@ -89,74 +87,26 @@ whole rule.
    as another language, and `--json` gives the same tree as data. There
    is no need to locate an ast-grep binary yourself.
 
-   **`language` is ast-grep's vocabulary.** The vendored rule schema
-   types the field as a bare string with no enum, so the schema layer
-   accepts anything. `validate` checks it separately: an off-list spelling
-   is an error naming the accepted list, and a spelling ast-grep resolves
-   but does not itself use (`typescript` for `TypeScript`) is a notice.
-   Get it right anyway rather than leaning on that check. An unrecognized
-   name aborts config parsing, which takes every other sg rule in the
-   project down with it and reports nothing.
-   ast-grep (v%(AST_GREP_VERSION)s) parses:
+   A `language` spelling that only looks right can take every other sg
+   rule down with it, so copy it rather than typing it.
 
-     %(AST_GREP_LANGUAGES)s
-
-   Copy a spelling from that list rather than typing one that looks
-   right. Off-list spellings fail two different ways and neither is
-   caught locally: one ast-grep does not recognize at all takes the
-   whole scan down (`did not match any variant of untagged enum
-   SgLang`, so every other rule goes unreported too), and one it
-   recognizes but that names the wrong parser reports nothing and looks
-   like a clean codebase.
-
-   Three more `language:` mistakes have their own entries under
-   **Quirks** below: copying a spelling from `detect --json`, treating
-   `Tsx` as an alias of `TypeScript`, and expecting `Markdown` to see
-   inside a line.
-
-5. **Check the rule against Quirks.** Read the **Quirks** section below
-   against what you just wrote, before writing any tests. Most entries
-   there get past `validate` and then either fail the whole scan or match
-   less than they should, and a test case written from the same
-   assumption passes anyway. The table says which ones `validate` does
-   catch. Look again at:
-   - a `$$$` next to a comma (the separator trap),
-   - any `kind:` you did not read off `%(TASKLESS_CLI)s ast`,
-   - a rule that keys on a call's callee, if callers write
-     `await f<T>(...)`,
-   - a `has`, `inside`, `follows` or `precedes` without `stopBy`, or
-     a `not` that reuses a metavariable.
+5. **Check the rule against the quirks.** Read [Quirks](#quirks) and
+   [Pattern quirks](#pattern-quirks) against what you just wrote, before
+   writing any tests. Most get past `validate` and then fail the whole
+   scan or match less than they should: a `$$$` next to a comma, a
+   `kind:` you did not read off `%(TASKLESS_CLI)s ast`, a callee rule
+   over `await f<T>(...)`, a `has`, `inside`, `follows` or `precedes`
+   without `stopBy`, a `not` that reuses a metavariable.
 
 6. **Write the tests.** Write at least two cases in each bucket under
    `.taskless/rules/sg/<id>/tests/`. These paths are the same ones the
-   service writes; do not invent a different layout.
-
-   %(FIXTURE_LAYOUT)s
-
-   Each case file takes the extension ast-grep parses as the rule's
-   `language:` (`.ts` for `TypeScript`, `.tsx` for `Tsx`, `.yml` for
-   `Yaml`), and sits at a path the rule's `files:` admits and its
-   `ignores:` does not. To show that `files:` or `ignores:` excludes a
-   path, put the offending file at that path in a `pass/` case beside a
-   clean file the scope admits, as the layout above describes. A `pass/`
-   case holding only the excluded file is never read and fails.
-
-   %(FIXTURE_SOURCES)s
+   service writes; do not invent a different layout. Read
+   [Fixtures](#fixtures) for how cases are laid out and judged and where
+   to take them from, before writing the first one.
 
    **Both buckets must hold a case, and `verify` fails the rule if either
-   one is empty.** An empty `fail/` is not a neutral starting point to
-   fill in later: it is the only thing that demonstrates the rule can
-   fire, and a rule that matches nothing anywhere looks exactly like a
-   rule that works without it.
-
-   Where the rule has an arity boundary (the separator trap under
-   Quirks), put a case on each side of it. A pattern that starts at two
-   arguments when it was meant to start at one passes a test suite whose
-   fixtures all have two. Where the rule keys on a callee that the
-   repository awaits with a type argument (`await f<T>(...)`), put that
-   form among the `fail/` cases. Write it only for such a callee: an
-   awaited generic call to a function the repository never awaits is
-   not code it would accept, and the case would teach the wrong shape.
+   one is empty.** An empty `fail/` is the only thing that demonstrates
+   the rule can fire.
 
 7. **Run the feedback loop.** Both commands take the rule's
    directory as their argument:
@@ -164,19 +114,71 @@ whole rule.
    %(TASKLESS_CLI)s validate .taskless/rules/sg/<id> --json
    %(TASKLESS_CLI)s verify   .taskless/rules/sg/<id> --json
    ```
-   `validate` asks whether the rule is well-formed: the YAML matches the
-   ast-grep schema and every Taskless-required field is present. Run it
-   the moment the rule exists. `verify` runs
-   the cases, after running `validate` and stopping if that fails, so a
-   malformed rule reports the malformation rather than a test complaint.
+   `validate` checks the rule is well-formed; run it the moment the rule
+   exists. `verify` runs `validate` first, then the cases.
 
-   Both answer in the same shape:
-   ```json
-   {"ok":true,"rules":[{"engine":"sg","ruleId":"no-eval",
-    "status":"passed","ok":true,"errors":[],"ran":true}]}
-   ```
    - `ok: true` → go to step 8.
-   - `ok: false` → read `errors` and fix. Repeat up to 3 times.
+   - `ok: false` → read `errors` and fix, using
+     [Feedback loop](#feedback-loop) to read them. Repeat up to 3 times.
+
+8. **On success, report.** Show the rule directory and what is in it,
+   plus a one-line summary of what the rule detects. Suggest
+   `%(RECIPE_FETCH)scheck` to validate against the broader codebase.
+
+9. **On failure, escalate, with confirmation.** If after the feedback
+   loop the rule still cannot capture the user's cases:
+   - Delete the candidate `.taskless/rules/sg/<id>/` directory, rule
+     and tests together, so the repo is not left with a broken rule.
+   - Tell the user the local rule could not capture the cases, and that
+     generating via the Taskless service uses a generation and requires
+     login.
+   - Only after the user confirms, fetch
+     `%(RECIPE_FETCH)screate-remote-rule` and follow it. Do not call the
+     service silently.
+
+<!-- on-demand -->
+## Fixtures
+
+How step 6's cases are laid out and judged, then where to take them
+from, then what is particular to ast-grep's.
+
+   %(FIXTURE_LAYOUT)s
+
+   %(FIXTURE_SOURCES)s
+
+Each case file takes the extension ast-grep parses as the rule's
+`language:` (`.ts` for `TypeScript`, `.tsx` for `Tsx`, `.yml` for
+`Yaml`), and sits at a path the rule's `files:` admits and its
+`ignores:` does not. To show that `files:` or `ignores:` excludes a
+path, put the offending file at that path in a `pass/` case beside a
+clean file the scope admits, as the layout above describes. A `pass/`
+case holding only the excluded file is never read and fails.
+
+An empty `fail/` is not a neutral starting point to fill in later: it
+is the only thing that demonstrates the rule can fire, and a rule that
+matches nothing anywhere looks exactly like a rule that works without
+it.
+
+Where the rule has an arity boundary (the separator trap under
+[Pattern quirks](#pattern-quirks)), put a case on each side of it. A
+pattern that starts at two arguments when it was meant to start at one
+passes a test suite whose fixtures all have two. Where the rule keys on
+a callee that the repository awaits with a type argument
+(`await f<T>(...)`), put that form among the `fail/` cases. Write it
+only for such a callee: an awaited generic call to a function the
+repository never awaits is not code it would accept, and the case would
+teach the wrong shape.
+
+<!-- on-demand -->
+## Feedback loop
+
+How to read what step 7's `validate` and `verify` report. Both answer
+in the same shape:
+
+```json
+{"ok":true,"rules":[{"engine":"sg","ruleId":"no-eval",
+ "status":"passed","ok":true,"errors":[],"ran":true}]}
+```
 
 | what `errors` says                              | fix                                             |
 |-------------------------------------------------|-------------------------------------------------|
@@ -186,30 +188,43 @@ whole rule.
 | the rule's scope excluded a case                | move the fixture to a path `files:` admits      |
 | a pass case showing an exclusion was never read | add a clean file the scope admits to that case  |
 
-   Every `regex`, at any depth, needs a `kind` beside it, or
-   validation fails. That includes `constraints`, `utils`, and every
-   `not`, `has`, `inside`, `any` and `all` sub-rule; see **Quirks**.
+Every `regex`, at any depth, needs a `kind` beside it, or validation
+fails. That includes `constraints`, `utils`, and every `not`, `has`,
+`inside`, `any` and `all` sub-rule; see [Quirks](#quirks).
 
-   Pass a directory above a rule and every rule beneath it is checked,
-   one entry per rule in the report. `.taskless/rules/sg` covers every
-   ast-grep rule; no argument at all covers the project.
+Pass a directory above a rule and every rule beneath it is checked,
+one entry per rule in the report. `.taskless/rules/sg` covers every
+ast-grep rule; no argument at all covers the project.
 
-8. **On success, report.** Show the rule directory and what is in it,
-   plus a one-line summary of what the rule detects. Suggest
-   `%(RECIPE_FETCH)scheck` to validate against the broader codebase.
+<!-- on-demand -->
+## Languages
 
-9. **On failure, escalate, with confirmation.** If after the feedback
-   loop the rule still cannot capture the user's cases:
-   - Delete the candidate `.taskless/rules/sg/<id>/` directory so the
-     repo is not left with a broken rule. One `rm -rf` removes the rule
-     and its tests together.
-   - Tell the user the local rule could not capture the cases, and that
-     generating via the Taskless service uses a generation and requires
-     login.
-   - Only after the user confirms, fetch
-     `%(RECIPE_FETCH)screate-remote-rule` and follow it. Do not call the
-     service silently.
+**`language` is ast-grep's vocabulary.** The vendored rule schema
+types the field as a bare string with no enum, so the schema layer
+accepts anything. `validate` checks it separately: an off-list spelling
+is an error naming the accepted list, and a spelling ast-grep resolves
+but does not itself use (`typescript` for `TypeScript`) is a notice.
+Get it right anyway rather than leaning on that check. An unrecognized
+name aborts config parsing, which takes every other sg rule in the
+project down with it and reports nothing.
+ast-grep (v%(AST_GREP_VERSION)s) parses:
 
+  %(AST_GREP_LANGUAGES)s
+
+Copy a spelling from that list rather than typing one that looks
+right. Off-list spellings fail two different ways and neither is
+caught locally: one ast-grep does not recognize at all takes the
+whole scan down (`did not match any variant of untagged enum
+SgLang`, so every other rule goes unreported too), and one it
+recognizes but that names the wrong parser reports nothing and looks
+like a clean codebase.
+
+Three more `language:` mistakes have their own entries under
+[Quirks](#quirks): copying a spelling from `detect --json`, treating
+`Tsx` as an alias of `TypeScript`, and expecting `Markdown` to see
+inside a line.
+
+<!-- on-demand -->
 ## Quirks
 
 Each of these, except the first, comes from a grammar or from ast-grep
@@ -287,7 +302,7 @@ several kinds, list them in a sibling `any:` as above.
 vocabulary. It says `C++` where ast-grep's list says `Cpp`. That one
 happens to resolve, and `validate` reports it as a notice, but a
 spelling ast-grep does not recognize at all is a config error.
-Workaround: copy the spelling from the list in step 4.
+Workaround: copy the spelling from the list in [Languages](#languages).
 
 ### `Tsx` and `TypeScript` are two parsers, not aliases
 
@@ -310,6 +325,12 @@ kind; naming one is a config error, and writing it as a pattern
 Workaround: a rule about the words inside a line belongs to Vale, not
 here. ast-grep also has no count and no absence assertion, so "every
 doc has an h1" is not expressible as an `sg` rule at any severity.
+
+<!-- on-demand -->
+## Pattern quirks
+
+The rest of the [Quirks](#quirks) table: the ones that come from how a
+pattern or a relational rule is written rather than from the language.
 
 ### `$$$` next to a comma (the separator trap)
 
@@ -526,12 +547,12 @@ metavariable, it always finds it.
 ## Important Notes
 
 - Do NOT make any HTTP requests to taskless.io on this path.
-- Do NOT write to `.taskless/rule-metadata/`: no rule has a metadata
-  sidecar, service-generated ones included, because the CLI never
-  writes that directory. Locally authored rules iterate via file edits.
+- Do NOT write to `.taskless/rule-metadata/`. The CLI never writes it,
+  and a local rule iterates by editing its files.
 - The feedback loop is the quality gate. A clean failure is a legitimate
   reason to escalate, but only with the user's confirmation (step 9).
 
+<!-- on-demand -->
 ## See Also
 
 - `%(RECIPE_FETCH)sroute`: re-decide the destination

@@ -1,4 +1,4 @@
-# Topic: ci     (CLI v%(CLI_VERSION)s / topic v11)
+# Topic: ci     (CLI v%(CLI_VERSION)s / topic v12)
 
 %(ONE_COMMAND_PER_CALL)s
 
@@ -28,7 +28,8 @@ you recognize one not on the list, apply the same patterns.
   project runs a nightly; ask whether CI should run that nightly, and if
   so use `cli-nightly.mjs` wherever this recipe says `cli.mjs`.
 - No auth required for CI: `check` is unauthenticated by default.
-  (Optionally tokenized as a server-enforced backstop; see step 7.)
+  (Optionally tokenized as a server-enforced backstop; see
+  [Authentication in CI](#authentication-in-ci).)
 
 ## Steps
 
@@ -36,8 +37,73 @@ you recognize one not on the list, apply the same patterns.
 
 Start from `%(TASKLESS_CLI)s detect --json`: its `ci` field names the CI
 systems configured at the repository root, with the files that matched.
-It recognizes the systems below. If it reports none, or you recognize a
-system it does not, look at the repo root yourself:
+If it reports none, or you recognize a system it does not, look at the
+repo root yourself, using [CI systems](#ci-systems) for the files each
+system keeps there.
+
+Sum up what you found and confirm with the user. If zero match, ask
+which CI they use. If multiple match, ask which should run Taskless.
+
+### 2. Agree on the scan pattern
+
+- **Full scan**: `%(TASKLESS_CLI)s check`. Scans everything. Best for runs
+  on the main/default branch.
+- **Diff scan**: `%(TASKLESS_CLI)s check $(git diff --name-only ...)`.
+  Faster for PR builds.
+
+**Recommended default:** diff scan on PRs, full scan on pushes to
+main. Read [Scan patterns](#scan-patterns) for each CI's target branch
+variable and how `check` treats the diff's paths.
+
+### 3. Verify locally first
+
+Run `%(TASKLESS_CLI)s check`:
+- Clean pass → proceed.
+- "No rules configured" → stop. Fetch `%(TASKLESS_CLI)s agent route`.
+- Findings → tell the user CI will fail; ask whether to fix,
+  suppress, or proceed knowing the first CI run will be red.
+- Anything else in `failures`, a withheld-rules notice, or an edited
+  rule → read [Local check outcomes](#local-check-outcomes) before
+  going on. Never add a flag to the CI command to get green.
+
+### 4. Generate the config
+
+Rules:
+1. Write a NEW standalone file. Never modify the user's existing
+   CI config.
+2. Prefer the CI's native include mechanism. Tell the user the one
+   line they need to add to their main config.
+3. If the file you'd write already exists, ask before overwriting.
+
+[Config paths](#config-paths) names the file to write for each CI.
+
+### 5. Write the job
+
+For GitHub Actions, start from [GitHub Actions template](#github-actions-template).
+For any other CI, translate it with [Other CI systems](#other-ci-systems).
+Either way the job runs `node .taskless/bin/cli.mjs check` from the
+repository root, never through `npx` or another download-and-run
+launcher, and caches `.taskless/.cache`. When the main pipeline's image
+has no Node, read [Repositories that are not Node projects](#repositories-that-are-not-node-projects).
+
+### 6. Offer authentication only when asked
+
+The job needs no secrets. Read [Authentication in CI](#authentication-in-ci)
+only when the user wants server-enforced rules or runtime rules in CI, or
+asks to run authenticated commands there.
+
+### 7. Report back
+
+Show:
+1. The path written and a 10-15 line excerpt.
+2. For CIs needing manual wiring, the exact `include:` / reference
+   line for their main config.
+3. `git status` so they can review before committing.
+4. A note that the first CI run exercises rules, if existing
+   matches exist, CI will fail until fixed or suppressed.
+
+<!-- on-demand -->
+## CI systems
 
 | File / directory          | CI system           |
 |---------------------------|---------------------|
@@ -51,15 +117,11 @@ system it does not, look at the repo root yourself:
 | `.drone.yml`              | Drone               |
 | `.travis.yml`             | Travis CI           |
 
-Sum up what you found and confirm with the user. If zero match, ask
-which CI they use. If multiple match, ask which should run Taskless.
+<!-- on-demand -->
+## Scan patterns
 
-### 2. Agree on the scan pattern
-
-- **Full scan**: `%(TASKLESS_CLI)s check`. Scans everything. Best for runs
-  on the main/default branch.
-- **Diff scan**: `%(TASKLESS_CLI)s check $(git diff --name-only ...)`.
-  Faster for PR builds. Per-CI diff target var:
+A diff scan, `%(TASKLESS_CLI)s check $(git diff --name-only ...)`, diffs
+against the pull request's target branch. Per-CI diff target var:
 
 | CI                  | Target branch variable                        |
 |---------------------|-----------------------------------------------|
@@ -70,21 +132,16 @@ which CI they use. If multiple match, ask which should run Taskless.
 | Azure Pipelines     | `System.PullRequest.TargetBranch`             |
 | Bitbucket Pipelines | `BITBUCKET_PR_DESTINATION_BRANCH`             |
 
-  `%(TASKLESS_CLI)s check` skips paths that don't exist (naming them in a
-  notice), so raw `git diff --name-only` output can pipe in directly.
-  Run it from the repository root: `git diff` paths are relative to the
-  root, and a path outside the project is refused.
+`%(TASKLESS_CLI)s check` skips paths that don't exist (naming them in a
+notice), so raw `git diff --name-only` output can pipe in directly.
+Run it from the repository root: `git diff` paths are relative to the
+root, and a path outside the project is refused.
 
-**Recommended default:** diff scan on PRs, full scan on pushes to
-main.
+<!-- on-demand -->
+## Local check outcomes
 
-### 3. Verify locally first
-
-Run `%(TASKLESS_CLI)s check`:
-- Clean pass → proceed.
-- "No rules configured" → stop. Fetch `%(TASKLESS_CLI)s agent route`.
-- Findings → tell the user CI will fail; ask whether to fix,
-  suppress, or proceed knowing the first CI run will be red.
+What the rest of a local `%(TASKLESS_CLI)s check`'s results mean for CI,
+beyond a clean pass, "No rules configured", and findings (step 3):
 - Runtime rules withheld for the plan (a notice with an upgrade URL,
   or `entitlement.withheld` under `--json`) → tell the user CI will
   fail until the organization's plan includes runtime rules. This is
@@ -103,16 +160,8 @@ Run `%(TASKLESS_CLI)s check`:
 - A rule service that cannot be reached does not fail the run; only a
   rejected token or a retired CLI version does.
 
-### 4. Generate the config
-
-Rules:
-1. Write a NEW standalone file. Never modify the user's existing
-   CI config.
-2. Prefer the CI's native include mechanism. Tell the user the one
-   line they need to add to their main config.
-3. If the file you'd write already exists, ask before overwriting.
-
-Canonical paths:
+<!-- on-demand -->
+## Config paths
 
 | CI                  | File path                                                           |
 |---------------------|---------------------------------------------------------------------|
@@ -124,7 +173,8 @@ Canonical paths:
 | Bitbucket Pipelines | `.taskless/ci/bitbucket-pipelines.yml` (user merges manually)       |
 | Other               | `.taskless/ci/<system>.<ext>` + clear wiring instructions           |
 
-### 5. GitHub Actions reference template
+<!-- on-demand -->
+## GitHub Actions template
 
 The reference template, translate the same shape (checkout with
 full history, set up Node, conditional check) for other CIs.
@@ -190,7 +240,8 @@ Simplifications:
 - Full-scan only → drop the `if`, just run `node .taskless/bin/cli.mjs check`.
 - Diff-scan only → remove the `push:` trigger.
 
-### 6. Translate to other CIs
+<!-- on-demand -->
+## Other CI systems
 
 The six universal steps:
 1. Make Node available to the job (22.22 or later, which `22` resolves
@@ -213,7 +264,18 @@ The six universal steps:
 YAML for GitHub/GitLab/Azure/Bitbucket; Groovy for Jenkins;
 different structure for CircleCI. The six steps stay the same.
 
-### 7. Authentication in CI (optional backstop)
+<!-- on-demand -->
+## Repositories that are not Node projects
+
+The job needs Node and nothing else. When the repository's main
+pipeline runs in an image without Node (a `python:3.12` image, for
+example), keep Taskless in its own job with a Node image or setup step,
+rather than installing Node into the main job. Do not add a
+`package.json`, and do not add `@taskless/cli` as a dependency: the
+launcher already pins the version through `.taskless/taskless.json`.
+
+<!-- on-demand -->
+## Authentication in CI
 
 `%(TASKLESS_CLI)s check` does NOT require authentication. The generated CI
 config works out of the box with no secrets and scans all local rules.
@@ -246,35 +308,18 @@ unauthenticated default remains fully supported. Also mention auth if
 the user explicitly asks to run authenticated commands (e.g.
 `rule create`/`rule improve`) in CI, uncommon.
 
-### 8. Repositories that are not Node projects
-
-The job needs Node and nothing else. When the repository's main
-pipeline runs in an image without Node (a `python:3.12` image, for
-example), keep Taskless in its own job with a Node image or setup step,
-rather than installing Node into the main job. Do not add a
-`package.json`, and do not add `@taskless/cli` as a dependency: the
-launcher already pins the version through `.taskless/taskless.json`.
-
-### 9. Report back
-
-Show:
-1. The path written and a 10-15 line excerpt.
-2. For CIs needing manual wiring, the exact `include:` / reference
-   line for their main config.
-3. `git status` so they can review before committing.
-4. A note that the first CI run exercises rules, if existing
-   matches exist, CI will fail until fixed or suppressed.
-
 ## Errors
 
 - **No rules** → fetch `%(TASKLESS_CLI)s agent route`. Don't write CI
   config.
 - **Unrecognized CI** → produce a generic `.taskless/ci/check.sh`
-  script implementing the six universal steps. Be upfront it's a
+  script implementing the six universal steps of
+  [Other CI systems](#other-ci-systems). Be upfront it's a
   starting point.
 - **Target CI file exists, user declines overwrite** → stop. Show
   what you would have written; let them reconcile manually.
 
+<!-- on-demand -->
 ## See Also
 
 - `%(TASKLESS_CLI)s agent check`: the command being wired into CI

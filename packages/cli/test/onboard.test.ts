@@ -349,8 +349,13 @@ describe("onboard recipe establishes the routing surface first", () => {
     expect(routing).toBeLessThan(writing);
   });
 
+  // #672: the candidate list's form is served on request, from the section
+  // step 7 sends the agent to.
   it("carries the destination in the bullet format", async () => {
-    const { stdout } = await runCli(["agent", "onboard", "-d", cwd], cwd);
+    const { stdout } = await runCli(
+      ["agent", "onboard", "--section", "choosing-candidates", "-d", cwd],
+      cwd
+    );
 
     expect(stdout).toContain("- <kebab-case-name> [<destination>]:");
     // The annotation is only useful if the agent knows the vocabulary, so the
@@ -361,7 +366,12 @@ describe("onboard recipe establishes the routing surface first", () => {
   });
 
   it("defers the real decision to `route` rather than settling it here", async () => {
-    const { stdout } = await runCli(["agent", "onboard", "-d", cwd], cwd);
+    // The whole recipe, so a destination table added to any section, on
+    // request or not, is noticed.
+    const { stdout } = await runCli(
+      ["agent", "onboard", "--full", "-d", cwd],
+      cwd
+    );
 
     expect(stdout).toContain("provisional");
     // `route.md` states the comparison is made there and only there. If this
@@ -388,6 +398,16 @@ describe("onboard recipe asks one question and finishes on its own", () => {
     ({ stdout } = await runCli(["agent", "onboard", "-d", cwd], cwd));
   });
 
+  /** One section the outline serves on request (#672), without the preamble. */
+  async function section(name: string): Promise<string> {
+    const { stdout: text, exitCode } = await runCli(
+      ["agent", "onboard", "--section", name, "-d", cwd],
+      cwd
+    );
+    expect(exitCode).toBe(0);
+    return text.slice(text.indexOf("\n## "));
+  }
+
   afterEach(async () => {
     await rm(cwd, { recursive: true, force: true });
   });
@@ -402,19 +422,22 @@ describe("onboard recipe asks one question and finishes on its own", () => {
       : stdout.slice(start, start + title.length + next);
   }
 
-  it("is topic v13", () => {
-    expect(stdout).toMatch(/^# Topic: onboard {5}\(CLI v.+ \/ topic v13\)/m);
+  it("is topic v14", () => {
+    expect(stdout).toMatch(/^# Topic: onboard {5}\(CLI v.+ \/ topic v14\)/m);
   });
 
   // v10 (#554): a worktree holds only commits, and `init` commits nothing, so
   // an agent in a fresh worktree finds no Taskless. `onboard` bootstraps an
   // empty `.taskless/` before serving this, so the test is "tracked", never
   // "present".
-  it("first checks a worktree has Taskless committed, before anything else", () => {
-    const check = step("Check that this checkout has Taskless committed");
+  it("first checks a worktree has Taskless committed, before anything else", async () => {
+    expect(step("Check that this checkout has Taskless committed")).toMatch(
+      /`worktree-check`/
+    );
     expect(
       stdout.indexOf("Check that this checkout has Taskless")
     ).toBeLessThan(stdout.indexOf("Read the manifest first"));
+    const check = await section("worktree-check");
     expect(check).toContain(
       "git rev-parse --path-format=absolute --git-dir --git-common-dir"
     );
@@ -425,8 +448,11 @@ describe("onboard recipe asks one question and finishes on its own", () => {
     expect(flat).toContain("`init` ran in this worktree; go on");
   });
 
-  it("gives the method for counting surfaced while mining, not after", () => {
-    const scan = step("Scan with high-signal filtering");
+  it("gives the method for counting surfaced while mining, not after", async () => {
+    expect(step("Scan with high-signal filtering")).toContain(
+      "before you mine"
+    );
+    const scan = await section("choosing-candidates");
     expect(scan).toContain("merged in the");
     expect(scan).toContain("Bot and author comments count too");
     expect(scan).toContain("never by matching keywords");
@@ -435,26 +461,22 @@ describe("onboard recipe asks one question and finishes on its own", () => {
 
   // taskless/cli#674: mining grouped themes more broadly than the rules
   // finally written, so runs re-read every comment to count them.
-  it("records each counted comment under its candidate, at the rule's scope", () => {
-    const scan = step("Scan with high-signal filtering").replaceAll(
-      /\s+/g,
-      " "
-    );
+  it("records each counted comment under its candidate, at the rule's scope", async () => {
+    const scan = (await section("choosing-candidates")).replaceAll(/\s+/g, " ");
     expect(scan).toContain("Count while you mine, not afterwards");
     expect(scan).toContain("scoped to the rule you expect to write");
     expect(scan).toContain("recount from the list");
   });
 
-  it("mines commit history for recurring fixes, but never counts it as surfaced", () => {
+  it("mines commit history for recurring fixes, but never counts it as surfaced", async () => {
     const mine = step("Mine every source you can reach");
     expect(mine).toContain("**Commit history**");
     expect(mine.replaceAll(/\s+/g, " ")).toContain(
       "reviewed before its pull requests open"
     );
-    const scan = step("Scan with high-signal filtering").replaceAll(
-      /\s+/g,
-      " "
-    );
+    expect(await section("sources")).toContain("**Commit history**");
+    const choosing = await section("choosing-candidates");
+    const scan = choosing.replaceAll(/\s+/g, " ");
     expect(scan).toContain(
       "Evidence from commit history chooses candidates; it never counts toward these numbers"
     );
@@ -491,8 +513,15 @@ describe("onboard recipe asks one question and finishes on its own", () => {
 
   // #675: route and the recipes it sends to still ask in places; onboarding
   // must say what to do instead at each one, so the two read as one answer.
-  it("answers each of route's questions itself instead of asking", () => {
-    const write = step("Write the rules").replaceAll(/\s+/g, " ");
+  it("answers each of route's questions itself instead of asking", async () => {
+    expect(step("Write the rules").replaceAll(/\s+/g, " ")).toContain(
+      "During onboarding you ask none of them"
+    );
+    expect(step("Write the rules")).toMatch(/`questions-route-asks`/);
+    const write = (await section("questions-route-asks")).replaceAll(
+      /\s+/g,
+      " "
+    );
     expect(write).toContain("During onboarding you ask none of them");
     expect(write).toContain(
       "**`route` offers a local rule or a generation** (its step 7): write the local rule."
@@ -554,8 +583,8 @@ describe("onboard recipe asks one question and finishes on its own", () => {
     );
   });
 
-  it("names its neighbors in See Also", () => {
-    const seeAlso = stdout.slice(stdout.indexOf("## See Also"));
+  it("names its neighbors in See Also", async () => {
+    const seeAlso = await section("see-also");
     for (const topic of ["route", "report", "rule-feedback", "ci", "hooks"]) {
       expect(seeAlso).toMatch(new RegExp(`agent ${topic}\``));
     }
