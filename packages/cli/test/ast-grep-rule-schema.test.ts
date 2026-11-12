@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { z } from "zod";
 
 import upstreamSchema from "../src/generated/ast-grep-rule-schema.json";
 import {
@@ -204,19 +205,72 @@ describe("astGrepRuleSchema", () => {
     }
   });
 
-  // A plain `.superRefine()` would be skipped here, hiding the regex problem
-  // behind an unrelated one for a whole extra round.
+  // zod skips a refinement attached to a schema that already failed, so the
+  // pairing must not hang off the upstream schema: a rule with an unrelated
+  // mistake would hide its regex problem for a whole extra round.
   it("still reports the pairing when another field fails the schema", () => {
     const result = astGrepRuleSchema.safeParse({
       ...BASE,
       severity: 3,
       rule: { regex: "a" },
     });
-    const paths = (result.error?.issues ?? []).map((issue) =>
-      issue.path.join(".")
-    );
-    expect(paths).toContain("severity");
-    expect(paths).toContain("rule");
+    expect(result.success).toBe(false);
+    const issues = result.error?.issues ?? [];
+    expect(
+      issues.map((issue) => [
+        issue.path.join("."),
+        issue.code,
+        issue.code === "custom" ? issue.params : undefined,
+      ])
+    ).toEqual([
+      ["severity", "invalid_union", undefined],
+      ["rule", "custom", { constraintId: "sg-regex-needs-kind" }],
+    ]);
+  });
+
+  it("still reports the pairing when the rule is missing a required field", () => {
+    const { language: _language, ...withoutLanguage } = BASE;
+    const result = astGrepRuleSchema.safeParse({
+      ...withoutLanguage,
+      rule: { regex: "a" },
+    });
+    const issues = result.error?.issues ?? [];
+    expect(issues.map((issue) => issue.path.join("."))).toEqual([
+      "language",
+      "rule",
+    ]);
+    const last = issues.at(-1);
+    expect(last?.code === "custom" && last.params).toEqual({
+      constraintId: "sg-regex-needs-kind",
+    });
+  });
+
+  it("reports upstream schema failures unchanged when no regex is involved", () => {
+    const upstream = z
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-argument
+      .fromJSONSchema(upstreamSchema as any);
+    for (const input of [
+      { ...BASE, severity: 3, rule: { kind: "identifier" } },
+      { ...BASE, rule: { kind: 3 } },
+      { id: "probe", rule: { kind: "identifier" } },
+    ]) {
+      const result = astGrepRuleSchema.safeParse(input);
+      expect(result.success).toBe(false);
+      expect(result.error?.issues).toEqual(
+        upstream.safeParse(input).error?.issues
+      );
+    }
+  });
+
+  it("refuses input that is not a rule object at all", () => {
+    for (const input of [undefined, null, "rule", []]) {
+      expect(astGrepRuleSchema.safeParse(input).success).toBe(false);
+    }
+  });
+
+  it("returns the rule unchanged when it passes", () => {
+    const rule = { ...BASE, rule: { kind: "identifier", regex: "^a$" } };
+    expect(astGrepRuleSchema.parse(rule)).toEqual(rule);
   });
 
   it("accepts a regex anchored by a sibling `any` of kinds", () => {
